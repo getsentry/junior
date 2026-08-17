@@ -53,6 +53,7 @@ const BUILD_LOCK_PREFIX = "junior:workspace_snapshot_start";
 const WAIT_POLL_MS = 5_000;
 const TRANSIENT_API_RETRY_MS = 2_000;
 const BUILD_COMMAND_TIMEOUT_MS = 10 * 60 * 1000;
+const COMMAND_STATUS_POLL_TIMEOUT_MS = 1_000;
 /** Leave time for the tool result and durable run checkpoint. */
 const WAIT_YIELD_BUFFER_MS = 40_000;
 
@@ -245,10 +246,21 @@ async function finishBuild(
       signal,
     );
     const command = await sandbox.getCommand(build.commandId, { signal });
-    if (command.exitCode == null) return null;
-    if (command.exitCode !== 0) {
+    const pollSignal = AbortSignal.timeout(COMMAND_STATUS_POLL_TIMEOUT_MS);
+    const waitSignal = signal
+      ? AbortSignal.any([signal, pollSignal])
+      : pollSignal;
+    let finished: Awaited<ReturnType<typeof command.wait>>;
+    try {
+      finished = await command.wait({ signal: waitSignal });
+    } catch (error) {
+      if (pollSignal.aborted && !signal?.aborted) return null;
+      throw error;
+    }
+    if (finished.exitCode !== 0) {
       const error =
-        (await command.stderr({ signal })).trim() || `exit ${command.exitCode}`;
+        (await finished.stderr({ signal })).trim() ||
+        `exit ${finished.exitCode}`;
       throw new Error(
         `Workspace ${workspace.name} snapshot setup failed: ${error}`,
       );

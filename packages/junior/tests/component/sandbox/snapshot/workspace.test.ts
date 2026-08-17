@@ -66,7 +66,9 @@ describe("Workspace snapshot completion", () => {
 
     const builder = {
       delete: vi.fn(),
-      getCommand: vi.fn(async () => ({ exitCode: 0 })),
+      getCommand: vi.fn(async () => ({
+        wait: vi.fn(async () => ({ exitCode: 0 })),
+      })),
       snapshot: vi.fn(async () => ({ snapshotId: "snapshot-ready" })),
     };
     sandboxGetMock.mockResolvedValue(builder);

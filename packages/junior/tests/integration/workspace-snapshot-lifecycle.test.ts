@@ -1,8 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { Sandbox } from "@vercel/sandbox";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { getDb } from "@/chat/db";
-import { getVercelSandboxCredentials } from "@/chat/sandbox/credentials";
 import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
 import { createSandboxRuntime } from "@/chat/sandbox/session";
 import { deleteWorkspaceSnapshotBuilders } from "@/chat/sandbox/snapshot/builder-sandbox";
@@ -19,7 +17,7 @@ import type {
 
 const MARKER_PATH = `${SANDBOX_WORKSPACE_ROOT}/marker/setup.txt`;
 /** Cold builds install the global Sandbox runtime dependencies, including Docker. */
-const LIVE_TEST_TIMEOUT_MS = 15 * 60 * 1000;
+const LIVE_TEST_TIMEOUT_MS = 40 * 60 * 1000;
 
 function sandboxCredentialsReady(): boolean {
   if (process.env.VERCEL_OIDC_TOKEN?.trim()) return true;
@@ -109,42 +107,15 @@ describe.skipIf(!sandboxCredentialsReady())(
   "Workspace snapshot lifecycle",
   () => {
     const builderNames: string[] = [];
-    let observedWorkspace: Workspace | null = null;
-    let progressTimer: ReturnType<typeof setInterval> | null = null;
 
     beforeEach(async () => {
       await getStateAdapter().connect();
     });
 
     afterEach(async () => {
-      if (progressTimer) {
-        clearInterval(progressTimer);
-        progressTimer = null;
-      }
-      if (observedWorkspace) {
-        const build = await loadBuild(observedWorkspace);
-        console.info("Workspace snapshot SQL state", {
-          command: Boolean(build?.commandId),
-          phase: build?.phase ?? null,
-          status: build?.status ?? null,
-        });
-      }
       for (const name of builderNames.splice(0)) {
-        const listed = await Sandbox.list({
-          namePrefix: name,
-          signal: AbortSignal.timeout(10_000),
-          ...(getVercelSandboxCredentials() ?? {}),
-        });
-        const builder = (await listed.toArray()).find(
-          (sandbox) => sandbox.name === name,
-        );
-        console.info("Workspace snapshot provider state", {
-          currentSnapshotId: builder?.currentSnapshotId ?? null,
-          status: builder?.status ?? null,
-        });
         await deleteNamedSandbox(name);
       }
-      observedWorkspace = null;
       await disconnectStateAdapter();
     });
 
@@ -157,7 +128,6 @@ describe.skipIf(!sandboxCredentialsReady())(
           repos: [],
         });
         const workspaceId = workspace.id;
-        observedWorkspace = workspace;
 
         const started = await startUntilBuildingCheckpoint(workspaceId);
         builderNames.push(started.build.sandboxName!);
@@ -165,20 +135,6 @@ describe.skipIf(!sandboxCredentialsReady())(
           status: "building",
           profileHash: profileHash(started.workspace),
         });
-        let priorState = "";
-        progressTimer = setInterval(() => {
-          void loadBuild(started.workspace).then((build) => {
-            const state = JSON.stringify({
-              command: Boolean(build?.commandId),
-              phase: build?.phase ?? null,
-              status: build?.status ?? null,
-            });
-            if (state === priorState) return;
-            priorState = state;
-            console.info("Workspace snapshot progress", JSON.parse(state));
-          });
-        }, 5_000);
-        progressTimer.unref();
 
         const runtime = createSandboxRuntime({
           workspace: (await getWorkspace(getDb(), workspaceId))!,
