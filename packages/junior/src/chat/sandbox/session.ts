@@ -21,11 +21,13 @@ import { prepareWorkspaceSnapshot } from "@/chat/sandbox/prepare-workspace";
 import { getSandboxResources } from "@/chat/sandbox/resources";
 import { hash as profileHash } from "@/chat/sandbox/snapshot/profile";
 import { SANDBOX_RUNTIME } from "@/chat/sandbox/snapshot/runtime";
+import { createSandboxFromResolvedSnapshot } from "@/chat/sandbox/snapshot/boot";
 import {
-  isMissingError,
   resolve as resolveSnapshot,
   type Snapshot,
 } from "@/chat/sandbox/snapshot/resolve";
+import { recordResolvedWorkspaceSnapshot } from "@/chat/sandbox/snapshot/store";
+import { resolveWorkspaceSnapshot } from "@/chat/sandbox/snapshot/workspace";
 import { syncSkillsToSandbox } from "@/chat/sandbox/skill-sync";
 import {
   createSandboxSession,
@@ -37,7 +39,6 @@ import {
 import { sleep } from "@/chat/sleep";
 import type { SkillMetadata } from "@/chat/skills";
 import type { SandboxRef } from "@/chat/sandbox/ref";
-import { recordResolvedWorkspaceSnapshot } from "@/chat/workspaces/store";
 import type { Workspace } from "@/chat/workspaces/types";
 import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
 const DEFAULT_MAX_OUTPUT_LENGTH = 30_000;
@@ -125,6 +126,9 @@ interface SandboxRuntimeOptions {
   skills: SkillMetadata[];
   referenceFiles: string[];
   timeoutMs?: number;
+  /** Durable-worker soft yield; Workspace snapshot waits requeue through this. */
+  shouldYield?: () => boolean;
+  turnDeadlineAtMs?: number;
   traceContext?: LogContext;
   commandEnv?: () => Promise<Record<string, string>>;
   createNetworkPolicy?: (
@@ -379,80 +383,14 @@ export function createSandboxRuntime(
       "app.sandbox.source": snapshot.snapshotId ? "snapshot" : "created",
       "app.sandbox.snapshot.cache_hit": snapshot.cacheHit,
       "app.sandbox.snapshot.resolve_outcome": snapshot.resolveOutcome,
-      ...(snapshot.profileHash
-        ? {
-            "app.sandbox.snapshot.profile_hash": snapshot.profileHash,
-          }
-        : {}),
       "app.sandbox.snapshot.dependency_count": snapshot.dependencyCount,
+      ...(snapshot.profileHash
+        ? { "app.sandbox.snapshot.profile_hash": snapshot.profileHash }
+        : {}),
       ...(snapshot.rebuildReason
-        ? {
-            "app.sandbox.snapshot.rebuild_reason": snapshot.rebuildReason,
-          }
+        ? { "app.sandbox.snapshot.rebuild_reason": snapshot.rebuildReason }
         : {}),
     });
-  };
-
-  const createSandboxFromResolvedSnapshot = async (params: {
-    runtime: string;
-    snapshot: Snapshot;
-    sandboxCredentials: SandboxCredentials | undefined;
-    sandboxName: string;
-    signal?: AbortSignal;
-    workspace?: Workspace;
-    prepareWorkspace?: (sandbox: SandboxSession) => Promise<void>;
-  }): Promise<{ session: SandboxSession; snapshot: Snapshot }> => {
-    const { runtime, snapshot, sandboxCredentials, sandboxName, signal } =
-      params;
-    signal?.throwIfAborted();
-    if (!snapshot.snapshotId) {
-      const networkPolicy = preflightNetworkPolicy(sandboxName);
-      const resources = getSandboxResources();
-      const session = adaptSandbox(
-        await Sandbox.create({
-          timeout: timeoutMs,
-          runtime,
-          ...(networkPolicy
-            ? { name: sandboxName, persistent: false, networkPolicy }
-            : {}),
-          ...(resources ? { resources } : {}),
-          ...(sandboxCredentials ?? {}),
-          ...sandboxFetchOptions(signal),
-        }),
-      );
-      return { session, snapshot };
-    }
-
-    try {
-      const session = await createSandboxFromSnapshot(
-        snapshot.snapshotId,
-        sandboxCredentials,
-        sandboxName,
-        signal,
-      );
-      return { session, snapshot };
-    } catch (error) {
-      if (!isMissingError(error)) throw error;
-      setSpanAttributes({ "app.sandbox.snapshot.rebuild_after_missing": true });
-      const rebuilt = await resolveSnapshot({
-        runtime,
-        timeoutMs,
-        forceRebuild: true,
-        staleSnapshotId: snapshot.snapshotId,
-        signal,
-        workspace: params.workspace,
-        prepareWorkspace: params.prepareWorkspace,
-      });
-      if (!rebuilt.snapshotId) throw error;
-      signal?.throwIfAborted();
-      const session = await createSandboxFromSnapshot(
-        rebuilt.snapshotId,
-        sandboxCredentials,
-        sandboxName,
-        signal,
-      );
-      return { session, snapshot: rebuilt };
-    }
   };
 
   const createSandboxCandidate = async (
@@ -486,13 +424,25 @@ export function createSandboxRuntime(
           "app.sandbox.runtime": runtime,
         },
         async () => {
-          const snapshot = await resolveSnapshot({
-            runtime,
-            timeoutMs,
-            signal,
-            workspace,
-            prepareWorkspace,
-          });
+          // Workspace recipes always use the durable multi-slice builder.
+          // Baseline (no workspace) stays on the fast inline resolve path.
+          const snapshot = workspace
+            ? await resolveWorkspaceSnapshot({
+                workspace,
+                runtime,
+                signal,
+                shouldYield: options.shouldYield,
+                turnDeadlineAtMs: options.turnDeadlineAtMs,
+                applyNetworkPolicy,
+                prepareRepositories: options.onWorkspacePrepare,
+                removeCredentialRoute: Boolean(options.createNetworkPolicy),
+              })
+            : await resolveSnapshot({
+                runtime,
+                timeoutMs,
+                signal,
+                prepareWorkspace,
+              });
           signal?.throwIfAborted();
           setSnapshotAttributes(snapshot);
           const created = await createSandboxFromResolvedSnapshot({
@@ -501,15 +451,25 @@ export function createSandboxRuntime(
             sandboxCredentials,
             sandboxName,
             signal,
+            timeoutMs,
             workspace,
             prepareWorkspace,
+            shouldYield: options.shouldYield,
+            turnDeadlineAtMs: options.turnDeadlineAtMs,
+            applyNetworkPolicy,
+            prepareRepositories: options.onWorkspacePrepare,
+            removeCredentialRoute: Boolean(options.createNetworkPolicy),
+            preflightNetworkPolicy,
+            adaptSandbox,
+            createSandboxFromSnapshot,
+            sandboxFetchOptions,
           });
           // Durable dashboard facts belong in SQL. Redis remains the hot registry.
           if (workspace) {
-            await recordResolvedWorkspaceSnapshot(
-              workspace.id,
-              created.snapshot,
-            );
+            await recordResolvedWorkspaceSnapshot(workspace.id, {
+              ...created.snapshot,
+              runtime,
+            });
           }
           return created.session;
         },

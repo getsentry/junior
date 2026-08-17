@@ -145,6 +145,8 @@ jobs:
     name: test / junior ${{ matrix.suite }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
     needs: changes
+    # Live workspace snapshot builds install sandbox runtime deps (docker).
+    timeout-minutes: 45
     if: github.event_name == 'push' || needs.changes.outputs.ci == 'true' || needs.changes.outputs.core == 'true' || needs.changes.outputs.plugins == 'true' || needs.changes.outputs.full == 'true'
     permissions:
       actions: read
@@ -164,6 +166,11 @@ jobs:
     env:
       DATABASE_URL: postgres://junior:junior@localhost:5432/junior
       REDIS_URL: redis://localhost:6379
+      # Live Vercel Sandbox for workspace snapshot integration coverage.
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_TEAM_ID: ${{ secrets.VERCEL_TEAM_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+      VERCEL_OIDC_TOKEN: ${{ secrets.VERCEL_OIDC_TOKEN }}
     services:
       postgres:
         image: pgvector/pgvector:pg17

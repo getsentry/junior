@@ -106,7 +106,7 @@ export async function getCachedSnapshot(
 }
 
 /** Persist one dependency profile's reusable snapshot pointer. */
-async function setCachedSnapshot(entry: CachedSnapshot): Promise<void> {
+export async function setCachedSnapshot(entry: CachedSnapshot): Promise<void> {
   const state = getStateAdapter();
   await state.connect();
   await state.set(
@@ -114,6 +114,15 @@ async function setCachedSnapshot(entry: CachedSnapshot): Promise<void> {
     JSON.stringify(entry),
     SNAPSHOT_CACHE_TTL_MS,
   );
+}
+
+/** Drop one profile's hot cache entry so the next resolve cannot reuse it. */
+export async function clearCachedSnapshot(
+  profileHash: string,
+): Promise<void> {
+  const state = getStateAdapter();
+  await state.connect();
+  await state.delete(profileCacheKey(profileHash));
 }
 
 async function build(

@@ -85,8 +85,10 @@ import {
 } from "@/chat/services/provider-error";
 import { nextProviderRetry } from "@/chat/services/provider-retry";
 import { nextEmptyOutputContinuation } from "@/chat/services/empty-output-continuation";
+import { continueWorkspaceSnapshotWait } from "@/chat/services/workspace-snapshot-wait";
 import { getDiscardedRetryUsage } from "@/chat/agent/retry-usage";
 import { projectTimedOutToolResult } from "@/chat/tool-support/timed-out-tool-result";
+import { CooperativeTurnYieldError } from "@/chat/runtime/turn";
 import {
   configuredTurnRoute,
   selectTurnRoute,
@@ -1206,12 +1208,41 @@ async function executeAgentRunInPrivacyContext(
       },
       prepareNextTurnWithContext: async (nextTurn, hookSignal) => {
         try {
+          // Host-owned Workspace snapshot wait runs before the model sees the
+          // timed_out tool result, so soft yield requeues without model mediation.
+          for (;;) {
+            const snapshotWait = await continueWorkspaceSnapshotWait({
+              messages: currentAgentMessages(),
+              tools: toolsForActiveProfile(),
+              signal: hookSignal,
+            });
+            if (snapshotWait.kind === "none") break;
+            if (snapshotWait.kind === "failed") {
+              agent!.state.messages = snapshotWait.messages;
+              await runResume.persistSafeBoundary(snapshotWait.messages);
+              throw snapshotWait.error;
+            }
+            agent!.state.messages = snapshotWait.messages;
+            await runResume.persistSafeBoundary(snapshotWait.messages);
+            if (snapshotWait.kind === "ready") break;
+            if (runResume.prepareYieldIfDue(snapshotWait.messages)) {
+              throw new CooperativeTurnYieldError(
+                "Workspace snapshot wait yielded for requeue",
+              );
+            }
+            // Still waiting but soft yield is not due yet. Poll instead of
+            // immediately re-entering switchWorkspace (avoids a busy loop if
+            // wait yield and worker shouldYield disagree for a beat).
+            await sleep(5_000, hookSignal);
+          }
+
           const handoffUpdate = applyPendingHandoff();
           const pendingMessages = await drainSteeringMessages();
+          // Always compact the live agent transcript. nextTurn.context.messages
+          // was captured before the snapshot-wait loop and would drop wait
+          // tool-calls/results if used as the compaction source.
           const capacityUpdate = await applyActiveContextCompaction(
-            handoffUpdate
-              ? currentAgentMessages()
-              : (nextTurn.context.messages as PiMessage[]),
+            currentAgentMessages(),
             hookSignal,
             pendingMessages,
             true,

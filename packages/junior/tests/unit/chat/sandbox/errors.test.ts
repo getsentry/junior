@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { isSandboxUnavailableError } from "@/chat/sandbox/errors";
+import {
+  isAbortError,
+  isSandboxApiTransientError,
+  isSandboxUnavailableError,
+} from "@/chat/sandbox/errors";
 
 describe("isSandboxUnavailableError", () => {
   it("treats an invalid sandbox session token as unavailable", () => {
@@ -23,5 +27,72 @@ describe("isSandboxUnavailableError", () => {
     });
 
     expect(isSandboxUnavailableError(error)).toBe(false);
+  });
+});
+
+describe("isAbortError", () => {
+  it("treats production cancel reasons as cancellation", () => {
+    const abortError = new Error("The operation was aborted");
+    abortError.name = "AbortError";
+    expect(isAbortError(abortError)).toBe(true);
+    // api-turns/cancellation.ts
+    expect(isAbortError(new Error("API Turn cancelled"))).toBe(true);
+    // runtime/agent-runner.ts
+    expect(
+      isAbortError(new Error("executeAgentRun timed out after 720000ms")),
+    ).toBe(true);
+    expect(
+      isAbortError(new Error("wrapper", { cause: abortError })),
+    ).toBe(true);
+  });
+
+  it("does not treat ordinary setup failures as cancellation", () => {
+    expect(isAbortError(new Error("snapshot setup failed: exit 1"))).toBe(
+      false,
+    );
+    expect(isAbortError(new Error("Status code 404 is not ok"))).toBe(false);
+    // Setup stderr can contain "aborted" without being a host cancel.
+    expect(
+      isAbortError(new Error("deps failed: Transaction aborted")),
+    ).toBe(false);
+    expect(
+      isAbortError(new Error("npm error signal SIGABORTED")),
+    ).toBe(false);
+  });
+});
+
+describe("isSandboxApiTransientError", () => {
+  it("treats Sandbox API 500 responses as transient", () => {
+    const error = Object.assign(new Error("Status code 500 is not ok"), {
+      response: {
+        status: 500,
+        statusText: "Internal Server Error",
+        url: "https://vercel.com/api/v2/sandboxes/sessions/sbx_x/cmd",
+      },
+      json: {
+        error: {
+          code: "internal_server_error",
+          message: "An unexpected internal error occurred",
+        },
+      },
+    });
+
+    expect(isSandboxApiTransientError(error)).toBe(true);
+    expect(
+      isSandboxApiTransientError(
+        new Error("sandbox setup failed (status=500)", { cause: error }),
+      ),
+    ).toBe(true);
+  });
+
+  it("does not treat permanent client errors as transient", () => {
+    const error = Object.assign(new Error("Status code 404 is not ok"), {
+      response: {
+        status: 404,
+        url: "https://vercel.com/api/v2/sandboxes/sessions/sbx_x",
+      },
+    });
+
+    expect(isSandboxApiTransientError(error)).toBe(false);
   });
 });

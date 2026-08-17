@@ -97,6 +97,9 @@ export interface SandboxOptions {
   skills: SkillMetadata[];
   referenceFiles: string[];
   timeoutMs?: number;
+  /** Durable-worker soft yield; Workspace snapshot waits requeue through this. */
+  shouldYield?: () => boolean;
+  turnDeadlineAtMs?: number;
   traceContext?: LogContext;
   tracePropagation?: SandboxEgressTracePropagationConfig;
   credentialEgress?: CredentialContext;
@@ -234,6 +237,8 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
     onSandboxPrepare: options.prepare,
     onWorkspacePrepare: options.prepareWorkspace,
     onSandboxRefChanged: options.onSandboxRefChanged,
+    shouldYield: options.shouldYield,
+    turnDeadlineAtMs: options.turnDeadlineAtMs,
   });
   const createToolCallContext = (
     signal?: AbortSignal,

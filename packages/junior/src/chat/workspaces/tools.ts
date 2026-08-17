@@ -2,6 +2,7 @@ import { z } from "zod";
 import { getDb } from "@/chat/db";
 import { logWarn } from "@/chat/logging";
 import { getPlugins } from "@/chat/plugins/agent-hooks";
+import { isWorkspaceSnapshotWaitingError } from "@/chat/sandbox/snapshot/waiting-error";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
@@ -306,7 +307,21 @@ export function createWorkspaceTools(
         const workspace = await getWorkspaceByName(getDb(), name);
         if (!workspace)
           throw new ToolInputError(`Workspace not found: ${name}`);
-        await context.workspaces!.switch(workspace, options.signal);
+        try {
+          await context.workspaces!.switch(workspace, options.signal);
+        } catch (error) {
+          // Soft deadline while the builder is still running. Return a normal
+          // timed_out tool result so the host can yield at a toolResult
+          // boundary and continue the same wait without model mediation.
+          if (isWorkspaceSnapshotWaitingError(error)) {
+            return {
+              workspace: view(workspace),
+              waiting: "workspace_snapshot" as const,
+              timed_out: true as const,
+            };
+          }
+          throw error;
+        }
         await tryRecordWorkspaceSwitchStat(workspace);
         return { workspace: view(workspace) };
       },
