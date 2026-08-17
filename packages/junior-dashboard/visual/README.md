@@ -46,6 +46,7 @@ reviewable. Force every registered scenario with either:
    steps in `capture.ts`. Keep the registry data-only.
 
 `conversation-create-focused` is the mobile create-mode keyboard shot: open
-create, focus the composer, shrink `visualViewport`, then capture the viewport.
+create, focus the composer, set a short `visualViewport` with a non-zero top
+offset, then capture that visible rectangle.
 
 This is evidence for reviewers, not a pixel-diff gate.
