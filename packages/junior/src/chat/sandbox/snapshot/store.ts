@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
-import { and, asc, desc, eq, ne } from "drizzle-orm";
+import { and, asc, desc, eq, ne, or } from "drizzle-orm";
 import { getSqlExecutor } from "@/chat/db";
 import { logException } from "@/chat/logging";
+import { deleteWorkspaceSnapshotBuilders } from "@/chat/sandbox/snapshot/builder-sandbox";
 import type { JuniorDatabase } from "@/db/db";
 import { juniorSnapshots } from "@/db/schema";
 import type {
@@ -15,6 +16,22 @@ type SnapshotRow = typeof juniorSnapshots.$inferSelect;
 export interface WorkspaceSnapshots {
   ready: WorkspaceSnapshot | null;
   build: WorkspaceSnapshotBuild | null;
+}
+
+/** Result of replacing the ready snapshot for one Workspace profile. */
+export interface WorkspaceSnapshotWriteResult {
+  written: boolean;
+  replacedBuilderNames: string[];
+}
+
+function builderNames(rows: Array<{ sandboxName: string | null }>): string[] {
+  return [
+    ...new Set(
+      rows
+        .map((row) => row.sandboxName)
+        .filter((name): name is string => Boolean(name)),
+    ),
+  ];
 }
 
 function snapshotFromRow(row: SnapshotRow): WorkspaceSnapshot {
@@ -85,29 +102,6 @@ export async function loadSnapshotsForProfile(
   };
 }
 
-/** Drop in-flight or failed rows when a recipe changes. Keep ready rows. */
-export async function clearNonReadySnapshots(
-  db: JuniorDatabase,
-  workspaceId: string,
-): Promise<string[]> {
-  // DELETE … RETURNING ensures a concurrent row cannot disappear without
-  // returning its builder reference to the caller.
-  const deleted = await db
-    .delete(juniorSnapshots)
-    .where(
-      and(
-        eq(juniorSnapshots.workspaceId, workspaceId),
-        ne(juniorSnapshots.status, "ready"),
-      ),
-    )
-    .returning({
-      sandboxName: juniorSnapshots.buildSandboxName,
-    });
-  return deleted
-    .map((row) => row.sandboxName)
-    .filter((name): name is string => Boolean(name));
-}
-
 /** Drop every snapshot row before its Workspace is deleted. */
 export async function clearWorkspaceSnapshots(
   db: JuniorDatabase,
@@ -117,21 +111,19 @@ export async function clearWorkspaceSnapshots(
     .delete(juniorSnapshots)
     .where(eq(juniorSnapshots.workspaceId, workspaceId))
     .returning({ sandboxName: juniorSnapshots.buildSandboxName });
-  return deleted
-    .map((row) => row.sandboxName)
-    .filter((name): name is string => Boolean(name));
+  return builderNames(deleted);
 }
 
-/** Drop one ready row whose provider snapshot no longer exists. */
-export async function invalidateMissingReadySnapshot(params: {
+/** Drop one ready snapshot and return the name of its provider owner. */
+export async function invalidateReadySnapshot(params: {
   workspaceId: string;
   profileHash: string;
   snapshotId: string;
-}): Promise<void> {
+}): Promise<string | null> {
   const executor = getSqlExecutor();
-  await executor.transaction(async () => {
+  return await executor.transaction(async () => {
     const db = executor.db();
-    await db
+    const deleted = await db
       .delete(juniorSnapshots)
       .where(
         and(
@@ -140,16 +132,18 @@ export async function invalidateMissingReadySnapshot(params: {
           eq(juniorSnapshots.status, "ready"),
           eq(juniorSnapshots.snapshotId, params.snapshotId),
         ),
-      );
+      )
+      .returning({ sandboxName: juniorSnapshots.buildSandboxName });
+    return deleted[0]?.sandboxName ?? null;
   });
 }
 
-/** Record the full Sandbox snapshot after a successful Workspace prepare. */
+/** Record one ready snapshot and report provider owners that it replaced. */
 export async function setWorkspaceSnapshot(
   workspaceId: string,
   snapshot: WorkspaceSnapshot,
   options: { buildId?: string } = {},
-): Promise<boolean> {
+): Promise<WorkspaceSnapshotWriteResult> {
   const executor = getSqlExecutor();
   return await executor.transaction(async () => {
     const db = executor.db();
@@ -177,17 +171,27 @@ export async function setWorkspaceSnapshot(
           ),
         )
         .returning({ id: juniorSnapshots.id });
-      if (updated.length === 0) return false;
-      await db
+      if (updated.length === 0) {
+        return { written: false, replacedBuilderNames: [] };
+      }
+      const replaced = await db
         .delete(juniorSnapshots)
         .where(
           and(
             eq(juniorSnapshots.workspaceId, workspaceId),
             eq(juniorSnapshots.profileHash, snapshot.profileHash),
-            eq(juniorSnapshots.status, "failed"),
+            ne(juniorSnapshots.id, options.buildId),
+            or(
+              eq(juniorSnapshots.status, "failed"),
+              eq(juniorSnapshots.status, "ready"),
+            ),
           ),
-        );
-      return true;
+        )
+        .returning({ sandboxName: juniorSnapshots.buildSandboxName });
+      return {
+        written: true,
+        replacedBuilderNames: builderNames(replaced),
+      };
     }
 
     const existing = await db
@@ -218,8 +222,19 @@ export async function setWorkspaceSnapshot(
           updatedAt: now,
         })
         .where(eq(juniorSnapshots.id, current.id));
-      return true;
+      return { written: true, replacedBuilderNames: [] };
     }
+
+    const replaced = await db
+      .delete(juniorSnapshots)
+      .where(
+        and(
+          eq(juniorSnapshots.workspaceId, workspaceId),
+          eq(juniorSnapshots.profileHash, snapshot.profileHash),
+          eq(juniorSnapshots.status, "ready"),
+        ),
+      )
+      .returning({ sandboxName: juniorSnapshots.buildSandboxName });
 
     // Build rows have immutable owners. Record an independently resolved
     // snapshot in its own ready row instead of changing active build state.
@@ -238,7 +253,10 @@ export async function setWorkspaceSnapshot(
       createdAt: now,
       updatedAt: now,
     });
-    return true;
+    return {
+      written: true,
+      replacedBuilderNames: builderNames(replaced),
+    };
   });
 }
 
@@ -320,8 +338,9 @@ export async function recordResolvedWorkspaceSnapshot(
   ) {
     return;
   }
+  let result: WorkspaceSnapshotWriteResult;
   try {
-    await setWorkspaceSnapshot(workspaceId, {
+    result = await setWorkspaceSnapshot(workspaceId, {
       id: snapshot.snapshotId,
       generatedAt: new Date(snapshot.createdAtMs),
       buildDurationMs: snapshot.buildDurationMs,
@@ -331,6 +350,15 @@ export async function recordResolvedWorkspaceSnapshot(
     // Dashboard enrichment must not fail a prepared Workspace Sandbox.
     logException(error, "sandbox.workspace_snapshot.persist.failed", {
       "app.workspace.id": workspaceId,
+    });
+    return;
+  }
+  try {
+    await deleteWorkspaceSnapshotBuilders(result.replacedBuilderNames);
+  } catch (error) {
+    logException(error, "sandbox.workspace_snapshot.builder.delete_failed", {
+      "app.workspace.id": workspaceId,
+      "app.sandbox.snapshot.builder_count": result.replacedBuilderNames.length,
     });
   }
 }

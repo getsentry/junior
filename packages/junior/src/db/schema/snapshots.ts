@@ -16,7 +16,7 @@ import { juniorWorkspaces } from "./workspaces";
 
 /**
  * Sandbox snapshot build and ready artifact for one Workspace recipe.
- * Keep prior ready rows so Vercel snapshot ids can be garbage-collected later.
+ * A ready row keeps its builder owner until the snapshot is discarded.
  */
 export const juniorSnapshots = pgTable(
   "junior_snapshots",

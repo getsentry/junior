@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { closeDb, getDb } from "@/chat/db";
 import {
   clearWorkspaceSnapshots,
+  invalidateReadySnapshot,
   loadSnapshotsForProfile,
   setWorkspaceSnapshot,
   setWorkspaceSnapshotBuild,
@@ -72,7 +73,7 @@ describe("Workspace snapshot store", () => {
         buildDurationMs: 50,
         profileHash: build.profileHash,
       }),
-    ).resolves.toBe(true);
+    ).resolves.toEqual({ written: true, replacedBuilderNames: [] });
     await expect(
       loadSnapshotsForProfile(getDb(), workspace.id, build.profileHash),
     ).resolves.toMatchObject({
@@ -90,7 +91,7 @@ describe("Workspace snapshot store", () => {
         },
         { buildId: randomUUID() },
       ),
-    ).resolves.toBe(false);
+    ).resolves.toEqual({ written: false, replacedBuilderNames: [] });
     await expect(
       setWorkspaceSnapshot(
         workspace.id,
@@ -102,7 +103,7 @@ describe("Workspace snapshot store", () => {
         },
         { buildId: failedBuildId },
       ),
-    ).resolves.toBe(false);
+    ).resolves.toEqual({ written: false, replacedBuilderNames: [] });
     await expect(
       setWorkspaceSnapshot(
         workspace.id,
@@ -114,7 +115,10 @@ describe("Workspace snapshot store", () => {
         },
         { buildId: build.id },
       ),
-    ).resolves.toBe(true);
+    ).resolves.toEqual({
+      written: true,
+      replacedBuilderNames: ["failed-builder"],
+    });
 
     const state = await loadSnapshotsForProfile(
       getDb(),
@@ -123,9 +127,65 @@ describe("Workspace snapshot store", () => {
     );
     expect(state.build).toBeNull();
     expect(state.ready?.id).toBe("snapshot-one");
+
+    const nextBuild = {
+      ...build,
+      id: randomUUID(),
+      sandboxName: "builder-two",
+    };
+    await expect(
+      setWorkspaceSnapshotBuild(workspace.id, nextBuild, {
+        insertIfMissing: true,
+      }),
+    ).resolves.toBe(true);
+    await expect(
+      setWorkspaceSnapshot(
+        workspace.id,
+        {
+          id: "snapshot-two",
+          generatedAt: new Date(),
+          buildDurationMs: 200,
+          profileHash: build.profileHash,
+        },
+        { buildId: nextBuild.id },
+      ),
+    ).resolves.toEqual({
+      written: true,
+      replacedBuilderNames: ["builder-one"],
+    });
+    await expect(
+      invalidateReadySnapshot({
+        workspaceId: workspace.id,
+        profileHash: build.profileHash,
+        snapshotId: "snapshot-two",
+      }),
+    ).resolves.toBe("builder-two");
+
+    const finalBuild = {
+      ...build,
+      id: randomUUID(),
+      sandboxName: "builder-three",
+    };
+    await expect(
+      setWorkspaceSnapshotBuild(workspace.id, finalBuild, {
+        insertIfMissing: true,
+      }),
+    ).resolves.toBe(true);
+    await expect(
+      setWorkspaceSnapshot(
+        workspace.id,
+        {
+          id: "snapshot-three",
+          generatedAt: new Date(),
+          buildDurationMs: 300,
+          profileHash: build.profileHash,
+        },
+        { buildId: finalBuild.id },
+      ),
+    ).resolves.toEqual({ written: true, replacedBuilderNames: [] });
     await expect(
       clearWorkspaceSnapshots(getDb(), workspace.id),
-    ).resolves.toEqual(["builder-one"]);
+    ).resolves.toEqual(["builder-three"]);
     await expect(
       loadSnapshotsForProfile(getDb(), workspace.id, build.profileHash),
     ).resolves.toEqual({ build: null, ready: null });

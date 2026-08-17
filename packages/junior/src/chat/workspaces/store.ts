@@ -6,7 +6,6 @@ import { deleteWorkspaceSnapshotBuilders } from "@/chat/sandbox/snapshot/builder
 import { hash as workspaceProfileHash } from "@/chat/sandbox/snapshot/profile";
 import { SANDBOX_RUNTIME } from "@/chat/sandbox/snapshot/runtime";
 import {
-  clearNonReadySnapshots,
   clearWorkspaceSnapshots,
   loadSnapshotsForProfile,
 } from "@/chat/sandbox/snapshot/store";
@@ -294,7 +293,7 @@ export async function updateWorkspace(
         .returning();
       await replaceWorkspaceRepos(db, id, recipe.repos);
       const builderNames = snapshotChanged
-        ? await clearNonReadySnapshots(db, id)
+        ? await clearWorkspaceSnapshots(db, id)
         : [];
       return { builderNames, workspace: rows[0] };
     });

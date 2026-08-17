@@ -1260,7 +1260,9 @@ async function executeAgentRunInPrivacyContext(
               : undefined;
           const pendingMessages = await drainSteeringMessages();
           const capacityUpdate = await applyActiveContextCompaction(
-            currentAgentMessages(),
+            handoffUpdate || continuedSnapshotWait
+              ? currentAgentMessages()
+              : (nextTurn.context.messages as PiMessage[]),
             hookSignal,
             pendingMessages,
             true,

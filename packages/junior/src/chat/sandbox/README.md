@@ -69,7 +69,9 @@ traffic through verified host egress.
 - Missing or invalid snapshots rebuild through the owning snapshot path;
   callers do not mutate a cached snapshot in place.
 - A ready snapshot retains its named builder Sandbox. Deleting that Sandbox
-  would also delete the snapshot it owns.
+  would also delete the snapshot it owns. Junior deletes the builder after it
+  discards the ready row because the recipe changed, the snapshot is stale or
+  missing, another snapshot replaced it, or the Workspace was deleted.
 - Snapshot state never contains real provider credentials.
 - The global baseline installs Docker and Compose clients plus
   `junior-ensure-docker`. Sandbox prepare starts `dockerd` so nested

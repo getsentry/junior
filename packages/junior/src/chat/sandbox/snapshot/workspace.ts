@@ -25,7 +25,7 @@ import {
   type Snapshot,
 } from "@/chat/sandbox/snapshot/resolve";
 import {
-  invalidateMissingReadySnapshot,
+  invalidateReadySnapshot,
   loadSnapshotsForProfile,
   setWorkspaceSnapshot,
   setWorkspaceSnapshotBuild,
@@ -108,15 +108,23 @@ async function snapshotFromSql(
     workspaceId,
     value.hash,
   );
-  if (!ready || profile.isStale(value, ready.generatedAt.getTime())) {
-    return null;
-  }
-  if (ready.id === staleSnapshotId) {
-    await invalidateMissingReadySnapshot({
+  if (!ready) return null;
+  if (
+    ready.id === staleSnapshotId ||
+    profile.isStale(value, ready.generatedAt.getTime())
+  ) {
+    const ownerName = await invalidateReadySnapshot({
       workspaceId,
       profileHash: value.hash,
       snapshotId: ready.id,
     });
+    try {
+      await deleteBuilder(ownerName);
+    } catch (error) {
+      logException(error, "sandbox.workspace_snapshot.builder.delete_failed", {
+        "app.workspace.id": workspaceId,
+      });
+    }
     return null;
   }
   try {
@@ -275,7 +283,7 @@ async function finishBuild(
       createdAtMs - build.startedAt.getTime(),
     );
     await beforeWrite();
-    const written = await setWorkspaceSnapshot(
+    const result = await setWorkspaceSnapshot(
       workspace.id,
       {
         id: snapshot.snapshotId,
@@ -285,7 +293,16 @@ async function finishBuild(
       },
       { buildId: build.id },
     );
-    requireBuildWrite(written, workspace);
+    requireBuildWrite(result.written, workspace);
+    try {
+      await deleteWorkspaceSnapshotBuilders(result.replacedBuilderNames);
+    } catch (error) {
+      logException(error, "sandbox.workspace_snapshot.builder.delete_failed", {
+        "app.workspace.id": workspace.id,
+        "app.sandbox.snapshot.builder_count":
+          result.replacedBuilderNames.length,
+      });
+    }
     try {
       await setCachedSnapshot({
         profileHash: value.hash,

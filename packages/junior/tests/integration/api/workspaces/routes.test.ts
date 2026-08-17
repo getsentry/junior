@@ -343,7 +343,7 @@ describe("workspace admin API", () => {
     );
     expect(workspaceSchema.parse(await revertedDetail.json())).toMatchObject({
       id: created.id,
-      snapshot: { id: "snap_old", buildDurationMs: 9_000 },
+      snapshot: null,
     });
   });
 
