@@ -263,8 +263,6 @@ async function finishBuild(
       createdAtMs - build.startedAt.getTime(),
     );
     await beforeWrite();
-    await deleteBuilder(build.sandboxName);
-    await beforeWrite();
     const written = await setWorkspaceSnapshot(
       workspace.id,
       {
@@ -276,6 +274,15 @@ async function finishBuild(
       { buildId: build.id },
     );
     requireBuildWrite(written, workspace);
+    try {
+      await deleteBuilder(build.sandboxName);
+    } catch (cleanupError) {
+      logException(
+        cleanupError,
+        "sandbox.workspace_snapshot.builder.delete_failed",
+        { "app.workspace.id": workspace.id },
+      );
+    }
     try {
       await setCachedSnapshot({
         profileHash: value.hash,
