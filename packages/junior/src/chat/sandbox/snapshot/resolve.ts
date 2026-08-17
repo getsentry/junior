@@ -106,7 +106,7 @@ export async function getCachedSnapshot(
 }
 
 /** Persist one dependency profile's reusable snapshot pointer. */
-async function setCachedSnapshot(entry: CachedSnapshot): Promise<void> {
+export async function setCachedSnapshot(entry: CachedSnapshot): Promise<void> {
   const state = getStateAdapter();
   await state.connect();
   await state.set(

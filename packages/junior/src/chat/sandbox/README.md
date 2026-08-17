@@ -51,9 +51,13 @@ traffic through verified host egress.
 - A Workspace recipe is part of the profile hash. One build installs runtime
   dependencies, prepares repositories, runs setup, and captures the complete
   snapshot. Operators manage recipes from `/system/workspaces` or
-  `/api/workspaces`. After a successful Workspace prepare, Junior records the
-  current snapshot id, generation time, build duration, and profile hash on
-  the Workspace SQL row for the dashboard.
+  `/api/workspaces`. The `junior_snapshots` table records each build as
+  `building`, `failed`, or `ready`. A cold build uses one named Sandbox for up
+  to one hour. Short control-plane slices create the builder, install
+  dependencies, prepare repositories, start setup, and poll setup. Each slice
+  records its phase in SQL. The next run can continue after a soft yield or a
+  worker stop. The host continues a waiting `switchWorkspace` tool call without
+  asking the model to repeat it.
 - Workspace repositories clone to fixed `repos/{name}` paths. Setup scripts
   receive `JUNIOR_WORKSPACE_ROOT` and `JUNIOR_REPOS_ROOT` so they do not depend
   on the provider's absolute Sandbox path.

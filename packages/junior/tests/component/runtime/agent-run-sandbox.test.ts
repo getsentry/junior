@@ -12,13 +12,15 @@ const {
   sessionRecordResumed,
   sessionRecordTurnStartMessageIndex,
   selectedThinkingLevels,
+  workspaceSwitchCount,
 } = vi.hoisted(() => ({
   agentMode: {
     value: "plain" as
       | "plain"
       | "loadSkill"
       | "bashThenError"
-      | "agentsAfterBash",
+      | "agentsAfterBash"
+      | "workspaceSnapshotWait",
   },
   createSandboxCallCount: {
     value: 0,
@@ -46,6 +48,9 @@ const {
   },
   selectedThinkingLevels: {
     value: [] as unknown[],
+  },
+  workspaceSwitchCount: {
+    value: 0,
   },
 }));
 
@@ -179,6 +184,55 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
         preparedMessages.value = [...this.state.messages];
       }
 
+      if (agentMode.value === "workspaceSnapshotWait") {
+        const switchWorkspace = this.state.tools.find(
+          (tool) => tool.name === "switchWorkspace",
+        );
+        if (!switchWorkspace) {
+          throw new Error("switchWorkspace tool missing");
+        }
+        const assistantMessage = {
+          role: "assistant",
+          content: [
+            {
+              type: "toolCall",
+              id: "tool-call-switch-workspace",
+              name: "switchWorkspace",
+              arguments: { name: "snapshot-test" },
+            },
+          ],
+          stopReason: "toolUse",
+        };
+        const result = (await switchWorkspace.execute(
+          "tool-call-switch-workspace",
+          { name: "snapshot-test" },
+        )) as { content: unknown[]; details: unknown };
+        const toolResult = {
+          role: "toolResult",
+          toolCallId: "tool-call-switch-workspace",
+          toolName: "switchWorkspace",
+          content: result.content,
+          details: result.details,
+          isError: false,
+        };
+        this.state.messages.push(assistantMessage, toolResult);
+        const inFlightContext = {
+          messages: [...this.state.messages],
+          systemPrompt: this.state.systemPrompt,
+          tools: this.state.tools,
+        };
+        const update = (await this.prepareNextTurn?.({
+          context: inFlightContext,
+          message: assistantMessage,
+          newMessages: [],
+          toolResults: [toolResult],
+        })) as { context?: { messages?: unknown[] } } | undefined;
+        preparedMessages.value = [
+          ...(update?.context?.messages ?? inFlightContext.messages),
+        ];
+        this.state.messages = [...preparedMessages.value];
+      }
+
       this.state.messages.push({
         role: "assistant",
         content: [{ type: "text", text: "Plain reply." }],
@@ -299,6 +353,8 @@ vi.mock("@/chat/plugins/catalog-runtime", () => ({
   pluginCatalogRuntime: {
     getMcpProviders: () => [],
     getProviders: () => [],
+    getRuntimeDependencies: () => [],
+    getRuntimePostinstall: () => [],
   },
 }));
 
@@ -496,6 +552,15 @@ vi.mock("@/chat/sandbox/sandbox", () => ({
               profileHash: "hash-test",
             }
           : undefined),
+      switchWorkspace: async () => {
+        workspaceSwitchCount.value += 1;
+        if (workspaceSwitchCount.value === 1) {
+          throw Object.assign(new Error("Workspace snapshot is building"), {
+            code: "workspace_snapshot_waiting",
+            name: "WorkspaceSnapshotWaitingError",
+          });
+        }
+      },
       close: vi.fn(),
     };
   },
@@ -503,6 +568,8 @@ vi.mock("@/chat/sandbox/sandbox", () => ({
 
 import { executeAgentRun } from "@/chat/agent";
 import type { AgentRun } from "@/chat/agent/types";
+import { getDb } from "@/chat/db";
+import { juniorWorkspaces } from "@/db/schema";
 
 const LOCAL_DESTINATION = {
   platform: "local" as const,
@@ -546,6 +613,7 @@ describe("executeAgentRun lazy sandbox boot", () => {
     sessionRecordResumed.value = false;
     sessionRecordTurnStartMessageIndex.value = undefined;
     selectedThinkingLevels.value = [];
+    workspaceSwitchCount.value = 0;
   });
 
   it("does not create a sandbox for turns that never touch sandbox-backed tools", async () => {
@@ -777,5 +845,36 @@ describe("executeAgentRun lazy sandbox boot", () => {
     expect(JSON.stringify(preparedMessages.value)).not.toContain(
       '"stdout":"# AGENTS.md instructions',
     );
+  });
+
+  it("returns host Workspace continuation messages to Pi's in-flight context", async () => {
+    agentMode.value = "workspaceSnapshotWait";
+    repositoryInstructionsAvailable.value = false;
+    const now = new Date();
+    await getDb().insert(juniorWorkspaces).values({
+      id: "33333333-3333-4333-8333-333333333333",
+      name: "snapshot-test",
+      setupScript: "",
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    const reply = await generateLocalReply("switch to snapshot-test");
+
+    expect(reply.text).toBe("Plain reply.");
+    expect(workspaceSwitchCount.value).toBe(2);
+    const switchResults = preparedMessages.value.filter(
+      (message) =>
+        (message as { role?: string }).role === "toolResult" &&
+        (message as { toolName?: string }).toolName === "switchWorkspace",
+    ) as Array<{ details?: unknown }>;
+    expect(switchResults).toHaveLength(2);
+    expect(switchResults[0]?.details).toMatchObject({
+      waiting: "workspace_snapshot",
+      timed_out: true,
+    });
+    expect(switchResults[1]?.details).toMatchObject({
+      workspace: { name: "snapshot-test" },
+    });
   });
 });

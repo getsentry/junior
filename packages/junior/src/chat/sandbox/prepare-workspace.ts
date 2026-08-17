@@ -5,8 +5,7 @@ import {
 import type { SandboxSession } from "@/chat/sandbox/workspace";
 import type { Workspace } from "@/chat/workspaces/types";
 
-/** Prepare repositories and setup state before a Workspace snapshot is captured. */
-export async function prepareWorkspaceSnapshot(params: {
+interface PrepareWorkspaceParams {
   sandbox: SandboxSession;
   workspace: Workspace;
   signal?: AbortSignal;
@@ -17,7 +16,12 @@ export async function prepareWorkspaceSnapshot(params: {
     signal?: AbortSignal,
   ): Promise<void>;
   removeCredentialRoute: boolean;
-}): Promise<void> {
+}
+
+/** Prepare repositories before a Workspace setup script starts. */
+export async function prepareWorkspaceRepositories(
+  params: PrepareWorkspaceParams,
+): Promise<void> {
   const { sandbox, workspace, signal } = params;
   signal?.throwIfAborted();
   await params.applyNetworkPolicy(sandbox);
@@ -27,8 +31,11 @@ export async function prepareWorkspaceSnapshot(params: {
   if (params.removeCredentialRoute) {
     await sandbox.update({ networkPolicy: "allow-all" });
   }
-  if (!workspace.setupScript.trim()) return;
-  const result = await sandbox.runCommand({
+}
+
+/** Build the command for one Workspace setup script. */
+export function workspaceSetupCommand(workspace: Workspace) {
+  return {
     cmd: "bash",
     args: ["-euo", "pipefail", "-c", workspace.setupScript],
     cwd: SANDBOX_WORKSPACE_ROOT,
@@ -36,6 +43,18 @@ export async function prepareWorkspaceSnapshot(params: {
       JUNIOR_REPOS_ROOT: SANDBOX_REPOS_ROOT,
       JUNIOR_WORKSPACE_ROOT: SANDBOX_WORKSPACE_ROOT,
     },
+  };
+}
+
+/** Prepare repositories and setup state before a Workspace snapshot is captured. */
+export async function prepareWorkspaceSnapshot(
+  params: PrepareWorkspaceParams,
+): Promise<void> {
+  const { sandbox, workspace, signal } = params;
+  await prepareWorkspaceRepositories(params);
+  if (!workspace.setupScript.trim()) return;
+  const result = await sandbox.runCommand({
+    ...workspaceSetupCommand(workspace),
     signal,
   });
   if (result.exitCode !== 0) {

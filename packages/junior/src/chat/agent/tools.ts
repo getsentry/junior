@@ -237,6 +237,8 @@ export async function wireAgentTools(
     actor: args.currentActor,
     locationConfiguration: args.run.environment?.locationConfiguration,
     configurationValues: args.configurationValues,
+    shouldYield: args.durability.shouldYield,
+    turnDeadlineAtMs: args.run.deadlineAtMs,
     getActiveSkill: () => args.skillSandbox.getActiveSkill(),
     prepareSandbox: pluginHooks.prepareSandbox,
     prepareWorkspace: async (sandbox, recipe, signal) =>

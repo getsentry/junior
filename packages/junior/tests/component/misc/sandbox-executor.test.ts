@@ -2,11 +2,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  SANDBOX_REPOS_ROOT,
-  SANDBOX_WORKSPACE_ROOT,
-  sandboxSkillDir,
-} from "@/chat/sandbox/paths";
+import { SANDBOX_WORKSPACE_ROOT, sandboxSkillDir } from "@/chat/sandbox/paths";
 import type { SandboxSession } from "@/chat/sandbox/workspace";
 import type { SkillMetadata } from "@/chat/skills";
 
@@ -110,24 +106,38 @@ vi.mock("@/chat/plugins/catalog-runtime", () => ({
   },
 }));
 
-const { resolveMock, missingErrorMock, hashMock } = vi.hoisted(() => ({
-  resolveMock: vi.fn<
-    (...args: any[]) => Promise<{
-      snapshotId?: string;
-      profileHash?: string;
-      dependencyCount: number;
-      cacheHit: boolean;
-      resolveOutcome: string;
-      rebuildReason?: string;
-    }>
-  >(async () => ({
-    dependencyCount: 0,
-    cacheHit: false,
-    resolveOutcome: "no_profile",
-  })),
-  missingErrorMock: vi.fn<(error: unknown) => boolean>(() => false),
-  hashMock: vi.fn<(runtime: string) => string | undefined>(() => undefined),
-}));
+const { resolveMock, resolveWorkspaceMock, missingErrorMock, hashMock } =
+  vi.hoisted(() => ({
+    resolveMock: vi.fn<
+      (...args: any[]) => Promise<{
+        snapshotId?: string;
+        profileHash?: string;
+        dependencyCount: number;
+        cacheHit: boolean;
+        resolveOutcome: string;
+        rebuildReason?: string;
+      }>
+    >(async () => ({
+      dependencyCount: 0,
+      cacheHit: false,
+      resolveOutcome: "no_profile",
+    })),
+    resolveWorkspaceMock: vi.fn<
+      (...args: any[]) => Promise<{
+        snapshotId?: string;
+        profileHash?: string;
+        dependencyCount: number;
+        cacheHit: boolean;
+        resolveOutcome: string;
+      }>
+    >(async () => ({
+      dependencyCount: 0,
+      cacheHit: false,
+      resolveOutcome: "no_profile",
+    })),
+    missingErrorMock: vi.fn<(error: unknown) => boolean>(() => false),
+    hashMock: vi.fn<(runtime: string) => string | undefined>(() => undefined),
+  }));
 
 vi.mock("@/chat/sandbox/snapshot/profile", () => ({
   hash: hashMock,
@@ -136,6 +146,9 @@ vi.mock("@/chat/sandbox/snapshot/profile", () => ({
 vi.mock("@/chat/sandbox/snapshot/resolve", () => ({
   resolve: resolveMock,
   isMissingError: missingErrorMock,
+}));
+vi.mock("@/chat/sandbox/snapshot/workspace", () => ({
+  resolveWorkspaceSnapshot: resolveWorkspaceMock,
 }));
 
 vi.mock("@/chat/sandbox/docker", () => ({
@@ -505,6 +518,12 @@ describe("createTestSandbox", () => {
     sandboxCreateMock.mockReset();
     resolveMock.mockReset();
     resolveMock.mockResolvedValue({
+      dependencyCount: 0,
+      cacheHit: false,
+      resolveOutcome: "no_profile",
+    });
+    resolveWorkspaceMock.mockReset();
+    resolveWorkspaceMock.mockResolvedValue({
       dependencyCount: 0,
       cacheHit: false,
       resolveOutcome: "no_profile",
@@ -1149,8 +1168,16 @@ describe("createTestSandbox", () => {
         networkPolicy: policy,
       });
     });
-    resolveMock.mockImplementationOnce(async (params: any) => {
-      await params.prepareWorkspace?.(buildSandbox);
+    resolveWorkspaceMock.mockImplementationOnce(async (params: any) => {
+      await params.applyNetworkPolicy(buildSandbox);
+      await params.prepareRepositories?.(buildSandbox, params.workspace);
+      if (params.removeCredentialRoute) {
+        await (
+          buildSandbox.update as (input: {
+            networkPolicy: string;
+          }) => Promise<void>
+        )({ networkPolicy: "allow-all" });
+      }
       return {
         snapshotId: "snap_workspace",
         profileHash: "profile-workspace",
@@ -1166,7 +1193,7 @@ describe("createTestSandbox", () => {
         id: "workspace-1",
         name: "sentry",
         setupScript: "",
-      snapshot: null,
+        snapshot: null,
         repos: [],
       },
       skills: [],
@@ -1186,69 +1213,38 @@ describe("createTestSandbox", () => {
     });
   });
 
-  it("forwards abort signal into workspace setup scripts", async () => {
-    const buildSandbox = makeSandbox("sbx_workspace_setup_signal");
+  it("routes Workspace setup through the resumable snapshot builder", async () => {
     const controller = new AbortController();
-    let releaseSetup: (() => void) | undefined;
-    const setupStarted = new Promise<void>((resolve) => {
-      buildSandbox.runCommand.mockImplementationOnce(async (input: any) => {
-        resolve();
-        await new Promise<void>((settle) => {
-          releaseSetup = settle;
-          input.signal?.addEventListener("abort", () => settle(), {
-            once: true,
-          });
-        });
-        if (input.signal?.aborted) {
-          const error = new Error("aborted");
-          error.name = "AbortError";
-          throw error;
-        }
-        return { exitCode: 0, stdout: async () => "", stderr: async () => "" };
-      });
-    });
-    resolveMock.mockImplementationOnce(async (params: any) => {
-      await params.prepareWorkspace?.(buildSandbox);
-      return {
-        snapshotId: "snap_workspace_setup",
-        profileHash: "profile-workspace-setup",
-        dependencyCount: 0,
-        cacheHit: false,
-        resolveOutcome: "built",
-      };
+    resolveWorkspaceMock.mockResolvedValueOnce({
+      snapshotId: "snap_workspace_setup",
+      profileHash: "profile-workspace-setup",
+      dependencyCount: 0,
+      cacheHit: false,
+      resolveOutcome: "rebuilt",
     });
     hashMock.mockReturnValue("profile-workspace-setup");
-    const runtime = createSandboxRuntime({
-      workspace: {
-        id: "workspace-setup",
-        name: "setup",
-        setupScript: "echo ready",
+    sandboxCreateMock.mockResolvedValueOnce(makeSandbox("sbx_workspace_setup"));
+    const workspace = {
+      id: "workspace-setup",
+      name: "setup",
+      setupScript: "echo ready",
       snapshot: null,
-        repos: [],
-      },
+      repos: [],
+    };
+    const runtime = createSandboxRuntime({
+      workspace,
       skills: [],
       referenceFiles: [],
     });
 
-    const acquirePromise = runtime.acquire(controller.signal);
-    await setupStarted;
-    const setupCommand = buildSandbox.runCommand.mock.calls[0]?.[0] as {
-      cmd?: string;
-      env?: Record<string, string>;
-      signal?: AbortSignal;
-    };
-    expect(setupCommand.cmd).toBe("bash");
-    expect(setupCommand.env).toEqual({
-      JUNIOR_REPOS_ROOT: SANDBOX_REPOS_ROOT,
-      JUNIOR_WORKSPACE_ROOT: SANDBOX_WORKSPACE_ROOT,
-    });
-    expect(setupCommand.signal).toBeInstanceOf(AbortSignal);
-    expect(setupCommand.signal?.aborted).toBe(false);
+    await runtime.acquire(controller.signal);
 
-    controller.abort("cancel setup");
-    await expect(acquirePromise).rejects.toBe("cancel setup");
-    expect(setupCommand.signal?.aborted).toBe(true);
-    releaseSetup?.();
+    expect(resolveWorkspaceMock).toHaveBeenCalledTimes(1);
+    const call = resolveWorkspaceMock.mock.calls[0]?.[0];
+    expect(call?.workspace.id).toBe(workspace.id);
+    expect(call?.signal).toBeInstanceOf(AbortSignal);
+    expect(call?.signal?.aborted).toBe(false);
+    expect(resolveMock).not.toHaveBeenCalled();
   });
 
   it("forwards abort signal into Workspace provider preparation", async () => {
@@ -1259,8 +1255,12 @@ describe("createTestSandbox", () => {
     const providerStarted = new Promise<void>((resolve) => {
       markProviderStarted = resolve;
     });
-    resolveMock.mockImplementationOnce(async (params: any) => {
-      await params.prepareWorkspace?.(buildSandbox);
+    resolveWorkspaceMock.mockImplementationOnce(async (params: any) => {
+      await params.prepareRepositories?.(
+        buildSandbox,
+        params.workspace,
+        params.signal,
+      );
       return {
         snapshotId: "snap_workspace_provider",
         profileHash: "profile-workspace-provider",
@@ -1270,12 +1270,15 @@ describe("createTestSandbox", () => {
       };
     });
     hashMock.mockReturnValue("profile-workspace-provider");
+    sandboxCreateMock.mockResolvedValueOnce(
+      makeSandbox("sbx_workspace_provider_active"),
+    );
     const runtime = createSandboxRuntime({
       workspace: {
         id: "workspace-provider",
         name: "provider",
         setupScript: "",
-      snapshot: null,
+        snapshot: null,
         repos: [],
       },
       skills: [],

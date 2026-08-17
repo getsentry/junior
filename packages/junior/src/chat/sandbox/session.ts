@@ -27,6 +27,7 @@ import {
   type Snapshot,
 } from "@/chat/sandbox/snapshot/resolve";
 import { recordResolvedWorkspaceSnapshot } from "@/chat/sandbox/snapshot/store";
+import { resolveWorkspaceSnapshot } from "@/chat/sandbox/snapshot/workspace";
 import { syncSkillsToSandbox } from "@/chat/sandbox/skill-sync";
 import {
   createSandboxSession,
@@ -125,6 +126,9 @@ interface SandboxRuntimeOptions {
   skills: SkillMetadata[];
   referenceFiles: string[];
   timeoutMs?: number;
+  /** Durable-worker soft yield for long Workspace snapshot waits. */
+  shouldYield?: () => boolean;
+  turnDeadlineAtMs?: number;
   traceContext?: LogContext;
   commandEnv?: () => Promise<Record<string, string>>;
   createNetworkPolicy?: (
@@ -486,13 +490,23 @@ export function createSandboxRuntime(
           "app.sandbox.runtime": runtime,
         },
         async () => {
-          const snapshot = await resolveSnapshot({
-            runtime,
-            timeoutMs,
-            signal,
-            workspace,
-            prepareWorkspace,
-          });
+          const snapshot = workspace
+            ? await resolveWorkspaceSnapshot({
+                workspace,
+                runtime,
+                signal,
+                shouldYield: options.shouldYield,
+                turnDeadlineAtMs: options.turnDeadlineAtMs,
+                applyNetworkPolicy,
+                prepareRepositories: options.onWorkspacePrepare,
+                removeCredentialRoute: Boolean(options.createNetworkPolicy),
+              })
+            : await resolveSnapshot({
+                runtime,
+                timeoutMs,
+                signal,
+                prepareWorkspace,
+              });
           signal?.throwIfAborted();
           setSnapshotAttributes(snapshot);
           const created = await createSandboxFromResolvedSnapshot({
