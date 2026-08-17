@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  isAbortError,
   isSandboxApiTransientError,
   isSandboxUnavailableError,
 } from "@/chat/sandbox/errors";
@@ -26,6 +27,24 @@ describe("isSandboxUnavailableError", () => {
     });
 
     expect(isSandboxUnavailableError(error)).toBe(false);
+  });
+});
+
+describe("isAbortError", () => {
+  it("treats AbortError and aborted messages as cancellation", () => {
+    const abortError = new Error("The operation was aborted");
+    abortError.name = "AbortError";
+    expect(isAbortError(abortError)).toBe(true);
+    expect(isAbortError(new Error("API Turn cancelled / aborted"))).toBe(true);
+    expect(
+      isAbortError(new Error("wrapper", { cause: abortError })),
+    ).toBe(true);
+  });
+
+  it("does not treat ordinary setup failures as cancellation", () => {
+    expect(isAbortError(new Error("snapshot setup failed: exit 1"))).toBe(
+      false,
+    );
   });
 });
 

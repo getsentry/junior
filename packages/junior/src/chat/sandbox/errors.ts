@@ -137,6 +137,24 @@ export function isSnapshottingError(error: unknown): boolean {
   });
 }
 
+/** Detect cancellation so durable builders stay alive for the next check-in. */
+export function isAbortError(error: unknown): boolean {
+  return findInErrorChain(error, (candidate) => {
+    if (
+      typeof DOMException !== "undefined" &&
+      candidate instanceof DOMException
+    ) {
+      return candidate.name === "AbortError";
+    }
+    if (!(candidate instanceof Error)) {
+      return false;
+    }
+    if (candidate.name === "AbortError") return true;
+    const message = candidate.message.toLowerCase();
+    return message.includes("aborted") || message.includes("this operation was aborted");
+  });
+}
+
 /** Detect transient Vercel Sandbox API failures that should retry without failing the job. */
 export function isSandboxApiTransientError(error: unknown): boolean {
   return findInErrorChain(error, (candidate) => {

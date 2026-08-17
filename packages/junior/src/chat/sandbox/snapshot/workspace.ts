@@ -2,7 +2,10 @@ import { randomUUID } from "node:crypto";
 import { Sandbox } from "@vercel/sandbox";
 import { getDb } from "@/chat/db";
 import { getVercelSandboxCredentials } from "@/chat/sandbox/credentials";
-import { isSandboxApiTransientError } from "@/chat/sandbox/errors";
+import {
+  isAbortError,
+  isSandboxApiTransientError,
+} from "@/chat/sandbox/errors";
 import {
   prepareWorkspaceRepositories,
   workspaceSetupCommand,
@@ -277,8 +280,8 @@ async function finishBuild(
     if (error instanceof Error && error.message === BUILD_TIMEOUT_ERROR) {
       throw error;
     }
-    // Keep the builder + SQL phase so the next check-in retries this poll.
-    if (isSandboxApiTransientError(error)) {
+    // Cancel / soft-stop must leave SQL + builder for the next check-in.
+    if (isAbortError(error) || isSandboxApiTransientError(error)) {
       throw error;
     }
     const message = error instanceof Error ? error.message : String(error);
@@ -319,6 +322,11 @@ async function startBuild(params: {
       error: null,
     });
   } catch (error) {
+    // Abort before the building row is durable must not invent a failed job.
+    if (isAbortError(error) || isSandboxApiTransientError(error)) {
+      await stopBuilder(name);
+      throw error;
+    }
     await setWorkspaceSnapshotBuild(workspace.id, {
       status: "failed",
       phase: "created",
@@ -413,8 +421,8 @@ async function continueBuild(params: {
     if (error instanceof Error && error.message === BUILD_TIMEOUT_ERROR) {
       throw error;
     }
-    // Keep the builder + SQL phase so the next check-in retries this slice.
-    if (isSandboxApiTransientError(error)) {
+    // Cancel / soft-stop must leave SQL + builder for the next check-in.
+    if (isAbortError(error) || isSandboxApiTransientError(error)) {
       throw error;
     }
     const message = error instanceof Error ? error.message : String(error);
