@@ -46,6 +46,41 @@ export function workspaceSetupCommand(workspace: Workspace) {
   };
 }
 
+/** Build a restart-safe command for one Workspace snapshot setup script. */
+export function workspaceSnapshotSetupCommand(
+  workspace: Workspace,
+  buildId: string,
+) {
+  const stateRoot = `/tmp/junior-snapshot-build-${buildId}`;
+  const wrapper = [
+    `mkdir -p "${stateRoot}"`,
+    `exec 9>"${stateRoot}/lock"`,
+    "flock 9",
+    `if test -f "${stateRoot}/exit"; then exit "$(cat "${stateRoot}/exit")"; fi`,
+    "set +e",
+    'bash -euo pipefail -c "$1"',
+    "status=$?",
+    `printf '%s\\n' "$status" > "${stateRoot}/exit"`,
+    'exit "$status"',
+  ].join("\n");
+  return {
+    cmd: "bash",
+    args: [
+      "-euo",
+      "pipefail",
+      "-c",
+      wrapper,
+      "junior-setup",
+      workspace.setupScript,
+    ],
+    cwd: SANDBOX_WORKSPACE_ROOT,
+    env: {
+      JUNIOR_REPOS_ROOT: SANDBOX_REPOS_ROOT,
+      JUNIOR_WORKSPACE_ROOT: SANDBOX_WORKSPACE_ROOT,
+    },
+  };
+}
+
 /** Prepare repositories and setup state before a Workspace snapshot is captured. */
 export async function prepareWorkspaceSnapshot(
   params: PrepareWorkspaceParams,

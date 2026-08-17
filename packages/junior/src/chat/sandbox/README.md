@@ -53,7 +53,7 @@ traffic through verified host egress.
   snapshot. Operators manage recipes from `/system/workspaces` or
   `/api/workspaces`. The `junior_snapshots` table records each build as
   `building`, `failed`, or `ready`. A cold build uses one named Sandbox for up
-  to one hour. Short control-plane slices create the builder, install
+  to one hour. Short execution slices create the builder, install
   dependencies, prepare repositories, start setup, and poll setup. Each slice
   records its phase in SQL. The next run can continue after a soft yield or a
   worker stop. The host continues a waiting `switchWorkspace` tool call without

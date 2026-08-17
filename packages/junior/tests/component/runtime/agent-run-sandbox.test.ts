@@ -20,6 +20,7 @@ const {
       | "loadSkill"
       | "bashThenError"
       | "agentsAfterBash"
+      | "mixedWorkspaceSwitch"
       | "workspaceSnapshotWait",
   },
   createSandboxCallCount: {
@@ -67,9 +68,23 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
         execute: (toolCallId: unknown, params: unknown) => Promise<unknown>;
       }>;
     };
+    private beforeToolCall?: (input: {
+      assistantMessage: unknown;
+      toolCall: unknown;
+    }) =>
+      | Promise<{ block?: boolean } | undefined>
+      | { block?: boolean }
+      | undefined;
     private prepareNextTurn?: (context: unknown) => Promise<unknown> | unknown;
 
     constructor(input: {
+      beforeToolCall?: (input: {
+        assistantMessage: unknown;
+        toolCall: unknown;
+      }) =>
+        | Promise<{ block?: boolean } | undefined>
+        | { block?: boolean }
+        | undefined;
       prepareNextTurnWithContext?: (
         context: unknown,
       ) => Promise<unknown> | unknown;
@@ -89,6 +104,7 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
         systemPrompt: input.initialState.systemPrompt,
         tools: input.initialState.tools,
       };
+      this.beforeToolCall = input.beforeToolCall;
       this.prepareNextTurn = input.prepareNextTurnWithContext;
       selectedThinkingLevels.value.push(input.initialState.thinkingLevel);
     }
@@ -231,6 +247,39 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
           ...(update?.context?.messages ?? inFlightContext.messages),
         ];
         this.state.messages = [...preparedMessages.value];
+      }
+
+      if (agentMode.value === "mixedWorkspaceSwitch") {
+        const assistantMessage = {
+          role: "assistant",
+          content: [
+            {
+              type: "toolCall",
+              id: "tool-call-switch-workspace",
+              name: "switchWorkspace",
+              arguments: { name: "snapshot-test" },
+            },
+            {
+              type: "toolCall",
+              id: "tool-call-bash-after-switch",
+              name: "bash",
+              arguments: { command: "pwd" },
+            },
+          ],
+          stopReason: "toolUse",
+        };
+        for (const toolCall of assistantMessage.content) {
+          const decision = await this.beforeToolCall?.({
+            assistantMessage,
+            toolCall,
+          });
+          if (decision?.block) continue;
+          const tool = this.state.tools.find(
+            (candidate) => candidate.name === toolCall.name,
+          );
+          if (!tool) throw new Error(`${toolCall.name} tool missing`);
+          await tool.execute(toolCall.id, toolCall.arguments);
+        }
       }
 
       this.state.messages.push({
@@ -509,7 +558,8 @@ vi.mock("@/chat/sandbox/sandbox", () => ({
       tools: {
         supports: (toolName: string) =>
           (agentMode.value === "bashThenError" ||
-            agentMode.value === "agentsAfterBash") &&
+            agentMode.value === "agentsAfterBash" ||
+            agentMode.value === "mixedWorkspaceSwitch") &&
           toolName === "bash",
         execute: async ({ toolName }: { toolName: string; input: unknown }) => {
           if (toolName !== "bash") {
@@ -520,7 +570,8 @@ vi.mock("@/chat/sandbox/sandbox", () => ({
 
           if (
             agentMode.value !== "bashThenError" &&
-            agentMode.value !== "agentsAfterBash"
+            agentMode.value !== "agentsAfterBash" &&
+            agentMode.value !== "mixedWorkspaceSwitch"
           ) {
             throw new Error(
               "sandbox executor should not handle tools in this test",
@@ -876,5 +927,23 @@ describe("executeAgentRun lazy sandbox boot", () => {
     expect(switchResults[1]?.details).toMatchObject({
       workspace: { name: "snapshot-test" },
     });
+  });
+
+  it("blocks a Workspace switch that is mixed with a sibling tool", async () => {
+    agentMode.value = "mixedWorkspaceSwitch";
+    const now = new Date();
+    await getDb().insert(juniorWorkspaces).values({
+      id: "44444444-4444-4444-8444-444444444444",
+      name: "snapshot-test",
+      setupScript: "",
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    const reply = await generateLocalReply("switch and then inspect files");
+
+    expect(reply.text).toBe("Plain reply.");
+    expect(workspaceSwitchCount.value).toBe(0);
+    expect(createSandboxCallCount.value).toBe(0);
   });
 });

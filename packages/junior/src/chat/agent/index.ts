@@ -1183,11 +1183,18 @@ async function executeAgentRunInPrivacyContext(
         const containsHandoff = toolCalls.some(
           (call) => call.name === HANDOFF_TOOL_NAME,
         );
-        if (containsHandoff && toolCalls.length !== 1) {
+        const containsWorkspaceSwitch = toolCalls.some(
+          (call) => call.name === "switchWorkspace",
+        );
+        const exclusiveTool = containsHandoff
+          ? HANDOFF_TOOL_NAME
+          : containsWorkspaceSwitch
+            ? "switchWorkspace"
+            : undefined;
+        if (exclusiveTool && toolCalls.length !== 1) {
           return {
             block: true,
-            reason:
-              "handoff must be the only tool call in its assistant message; reissue it alone",
+            reason: `${exclusiveTool} must be the only tool call in its assistant message; reissue it alone`,
           };
         }
         return undefined;

@@ -21,7 +21,7 @@ export function pendingWorkspaceSnapshotWait(
     if (!isToolResultMessage(message)) break;
     if (message.toolName !== SWITCH_WORKSPACE_TOOL) continue;
     const name = workspaceNameFromWaitingResult(message.details);
-    if (name) return { name };
+    return name ? { name } : null;
   }
   return null;
 }

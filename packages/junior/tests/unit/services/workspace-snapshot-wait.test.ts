@@ -73,6 +73,25 @@ describe("Workspace snapshot wait continuation", () => {
     ).toEqual({ name: "sentry" });
   });
 
+  it("does not revive an older wait after a newer Workspace switch succeeds", () => {
+    expect(
+      pendingWorkspaceSnapshotWait([
+        ...waitingMessages("old-workspace"),
+        {
+          role: "toolResult",
+          toolCallId: "tool-2",
+          toolName: "switchWorkspace",
+          content: [{ type: "text", text: "ready" }],
+          isError: false,
+          timestamp: 3,
+          details: {
+            workspace: { id: "workspace-2", name: "new-workspace" },
+          },
+        },
+      ]),
+    ).toBeNull();
+  });
+
   it("continues switchWorkspace from tool-result boundaries until ready", async () => {
     const execute = vi
       .fn()

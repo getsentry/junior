@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
-import { and, desc, eq, ne } from "drizzle-orm";
+import { and, asc, desc, eq, ne } from "drizzle-orm";
 import { getSqlExecutor } from "@/chat/db";
 import { logException } from "@/chat/logging";
 import type { JuniorDatabase } from "@/db/db";
-import { juniorSnapshots, juniorWorkspaces } from "@/db/schema";
+import { juniorSnapshots } from "@/db/schema";
 import type {
   WorkspaceSnapshot,
   WorkspaceSnapshotBuild,
@@ -39,6 +39,7 @@ function snapshotBuildFromRow(row: SnapshotRow): WorkspaceSnapshotBuild {
     throw new Error(`Invalid Workspace snapshot build row: ${row.id}`);
   }
   return {
+    id: row.id,
     status: row.status,
     phase: row.buildPhase,
     profileHash: row.profileHash,
@@ -75,7 +76,7 @@ export async function loadSnapshotsForProfile(
       .select()
       .from(juniorSnapshots)
       .where(and(profile, ne(juniorSnapshots.status, "ready")))
-      .orderBy(...order)
+      .orderBy(asc(juniorSnapshots.status), ...order)
       .limit(1),
   ]);
   return {
@@ -133,18 +134,49 @@ export async function invalidateMissingReadySnapshot(params: {
 export async function setWorkspaceSnapshot(
   workspaceId: string,
   snapshot: WorkspaceSnapshot,
-): Promise<void> {
+  options: { buildId?: string } = {},
+): Promise<boolean> {
   const executor = getSqlExecutor();
-  await executor.transaction(async () => {
+  return await executor.transaction(async () => {
     const db = executor.db();
-    const workspaceRows = await db
-      .select({ id: juniorWorkspaces.id })
-      .from(juniorWorkspaces)
-      .where(eq(juniorWorkspaces.id, workspaceId))
-      .limit(1);
-    if (!workspaceRows[0]) return;
-
     const now = new Date();
+    if (options.buildId) {
+      const updated = await db
+        .update(juniorSnapshots)
+        .set({
+          status: "ready",
+          snapshotId: snapshot.id,
+          buildDurationMs: snapshot.buildDurationMs,
+          generatedAt: snapshot.generatedAt,
+          buildStartedAt: null,
+          buildPhase: null,
+          buildSandboxName: null,
+          buildCommandId: null,
+          buildError: null,
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(juniorSnapshots.id, options.buildId),
+            eq(juniorSnapshots.workspaceId, workspaceId),
+            eq(juniorSnapshots.profileHash, snapshot.profileHash),
+            eq(juniorSnapshots.status, "building"),
+          ),
+        )
+        .returning({ id: juniorSnapshots.id });
+      if (updated.length === 0) return false;
+      await db
+        .delete(juniorSnapshots)
+        .where(
+          and(
+            eq(juniorSnapshots.workspaceId, workspaceId),
+            eq(juniorSnapshots.profileHash, snapshot.profileHash),
+            eq(juniorSnapshots.status, "failed"),
+          ),
+        );
+      return true;
+    }
+
     const existing = await db
       .select()
       .from(juniorSnapshots)
@@ -175,7 +207,7 @@ export async function setWorkspaceSnapshot(
           updatedAt: now,
         })
         .where(eq(juniorSnapshots.id, current.id));
-      return;
+      return true;
     }
 
     if (
@@ -196,7 +228,7 @@ export async function setWorkspaceSnapshot(
           updatedAt: now,
         })
         .where(eq(juniorSnapshots.id, current.id));
-      return;
+      return true;
     }
 
     await db.insert(juniorSnapshots).values({
@@ -214,72 +246,67 @@ export async function setWorkspaceSnapshot(
       createdAt: now,
       updatedAt: now,
     });
+    return true;
   });
 }
 
-/** Record a Workspace snapshot build that can continue across execution slices. */
+/** Update an owned build row. Initial creation must opt into insertion. */
 export async function setWorkspaceSnapshotBuild(
   workspaceId: string,
   build: WorkspaceSnapshotBuild,
-): Promise<void> {
+  options: { insertIfMissing?: boolean } = {},
+): Promise<boolean> {
   const executor = getSqlExecutor();
-  await executor.transaction(async () => {
+  return await executor.transaction(async () => {
     const db = executor.db();
-    const workspaceRows = await db
-      .select({ id: juniorWorkspaces.id })
-      .from(juniorWorkspaces)
-      .where(eq(juniorWorkspaces.id, workspaceId))
-      .limit(1);
-    if (!workspaceRows[0]) return;
-
     const now = new Date();
-    const existing = await db
-      .select()
-      .from(juniorSnapshots)
+    const updated = await db
+      .update(juniorSnapshots)
+      .set({
+        status: build.status,
+        buildStartedAt: build.startedAt,
+        buildPhase: build.phase,
+        buildSandboxName: build.sandboxName,
+        buildCommandId: build.commandId,
+        buildError: build.error,
+        updatedAt: now,
+      })
       .where(
         and(
+          eq(juniorSnapshots.id, build.id),
           eq(juniorSnapshots.workspaceId, workspaceId),
           eq(juniorSnapshots.profileHash, build.profileHash),
+          eq(juniorSnapshots.status, "building"),
         ),
       )
-      .orderBy(desc(juniorSnapshots.updatedAt), desc(juniorSnapshots.createdAt))
-      .limit(1);
-    const current = existing[0];
-
-    // Never overwrite a ready artifact with build state. Insert a new row so
-    // the prior ready snapshot stays available.
-    if (current && current.status !== "ready") {
-      await db
-        .update(juniorSnapshots)
-        .set({
-          status: build.status,
-          buildStartedAt: build.startedAt,
-          buildPhase: build.phase,
-          buildSandboxName: build.sandboxName,
-          buildCommandId: build.commandId,
-          buildError: build.error,
-          updatedAt: now,
-        })
-        .where(eq(juniorSnapshots.id, current.id));
-      return;
+      .returning({ id: juniorSnapshots.id });
+    if (updated.length > 0) {
+      return true;
     }
+    if (!options.insertIfMissing) return false;
 
-    await db.insert(juniorSnapshots).values({
-      id: randomUUID(),
-      workspaceId,
-      profileHash: build.profileHash,
-      status: build.status,
-      snapshotId: null,
-      buildDurationMs: null,
-      generatedAt: null,
-      buildStartedAt: build.startedAt,
-      buildPhase: build.phase,
-      buildSandboxName: build.sandboxName,
-      buildCommandId: build.commandId,
-      buildError: build.error,
-      createdAt: now,
-      updatedAt: now,
-    });
+    // Terminal rows are immutable. A new build gets its own id and row.
+    const inserted = await db
+      .insert(juniorSnapshots)
+      .values({
+        id: build.id,
+        workspaceId,
+        profileHash: build.profileHash,
+        status: build.status,
+        snapshotId: null,
+        buildDurationMs: null,
+        generatedAt: null,
+        buildStartedAt: build.startedAt,
+        buildPhase: build.phase,
+        buildSandboxName: build.sandboxName,
+        buildCommandId: build.commandId,
+        buildError: build.error,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .onConflictDoNothing()
+      .returning({ id: juniorSnapshots.id });
+    return inserted.length > 0;
   });
 }
 

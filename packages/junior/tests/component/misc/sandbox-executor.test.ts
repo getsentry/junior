@@ -2904,6 +2904,59 @@ describe("createTestSandbox", () => {
     });
   });
 
+  it("rebuilds a missing Workspace snapshot through its resumable owner", async () => {
+    const rebuiltSandbox = makeSandbox("sbx_workspace_rebuilt");
+    resolveWorkspaceMock
+      .mockResolvedValueOnce({
+        snapshotId: "snap_workspace_missing",
+        profileHash: "hash_workspace",
+        dependencyCount: 2,
+        cacheHit: true,
+        resolveOutcome: "cache_hit",
+      })
+      .mockResolvedValueOnce({
+        snapshotId: "snap_workspace_rebuilt",
+        profileHash: "hash_workspace",
+        dependencyCount: 2,
+        cacheHit: false,
+        resolveOutcome: "rebuilt",
+      });
+    const missingError = new Error("Workspace snapshot not found");
+    sandboxCreateMock
+      .mockRejectedValueOnce(missingError)
+      .mockResolvedValueOnce(rebuiltSandbox);
+    missingErrorMock.mockImplementation(
+      (error: unknown) => error === missingError,
+    );
+    hashMock.mockReturnValue("hash_workspace");
+    const runtime = createSandboxRuntime({
+      workspace: {
+        id: "workspace-missing-snapshot",
+        name: "missing-snapshot",
+        setupScript: "",
+        snapshot: null,
+        repos: [],
+      },
+      skills: [],
+      referenceFiles: [],
+    });
+
+    await runtime.acquire();
+
+    expect(resolveWorkspaceMock).toHaveBeenCalledTimes(2);
+    expect(resolveWorkspaceMock).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        runtime: "node22",
+        staleSnapshotId: "snap_workspace_missing",
+        workspace: expect.objectContaining({
+          id: "workspace-missing-snapshot",
+        }),
+      }),
+    );
+    expect(resolveMock).not.toHaveBeenCalled();
+  });
+
   it("retries snapshot boot when Vercel reports snapshotting in progress", async () => {
     const snapshotSandbox = makeSandbox("sbx_snapshot_ready");
     resolveMock.mockResolvedValue({

@@ -69,6 +69,9 @@ export const juniorSnapshots = pgTable(
       table.profileHash,
       table.status,
     ),
+    uniqueIndex("junior_snapshots_active_build_uidx")
+      .on(table.workspaceId, table.profileHash)
+      .where(sql`${table.status} = 'building'`),
     index("junior_snapshots_workspace_status_idx").on(
       table.workspaceId,
       table.status,

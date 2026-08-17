@@ -2,15 +2,15 @@ import { fileURLToPath } from "node:url";
 import { readMigrationFiles } from "drizzle-orm/migrator";
 import { describe, expect, it } from "vitest";
 import { applyCoreMigrations } from "../fixtures/conversation-sql-migrations";
-import { createLocalJuniorSqlFixture } from "../fixtures/sql";
+import { createEmptyJuniorSqlFixture } from "../fixtures/postgres/fixture";
 
 const coreMigrations = readMigrationFiles({
   migrationsFolder: fileURLToPath(new URL("../../migrations", import.meta.url)),
 });
 
 describe("Workspace snapshot migration", () => {
-  it("moves legacy snapshot facts into snapshot history", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
+  it("copies legacy snapshot facts into snapshot history", async () => {
+    const fixture = await createEmptyJuniorSqlFixture();
     const migrationIndex = coreMigrations.findIndex((migration) =>
       migration.sql.some((statement) =>
         statement.includes('CREATE TABLE "junior_snapshots"'),
@@ -59,6 +59,22 @@ FROM junior_snapshots
       expect(snapshot?.generatedAt.toISOString()).toBe(
         "2026-03-01T00:00:00.000Z",
       );
+      await fixture.sql.execute(`
+UPDATE junior_workspaces
+SET
+  snapshot_id = 'snap_written_by_old_worker',
+  snapshot_generated_at = CURRENT_TIMESTAMP,
+  snapshot_build_duration_ms = 20000,
+  snapshot_profile_hash = 'profile-written-by-old-worker'
+WHERE id = 'workspace-legacy-snapshot'
+`);
+      const [legacy] = await fixture.sql.query<{ snapshotId: string }>(`
+SELECT snapshot_id AS "snapshotId"
+FROM junior_workspaces
+WHERE id = 'workspace-legacy-snapshot'
+`);
+      expect(legacy?.snapshotId).toBe("snap_written_by_old_worker");
+
       await expect(
         fixture.sql.execute(`
 INSERT INTO junior_snapshots (
@@ -69,6 +85,26 @@ INSERT INTO junior_snapshots (
 )
 `),
       ).rejects.toThrow(/junior_snapshots_ready_fields_check/);
+      await fixture.sql.execute(`
+INSERT INTO junior_snapshots (
+  id, workspace_id, profile_hash, status, build_started_at, build_phase,
+  created_at, updated_at
+) VALUES (
+  'active-build-one', 'workspace-legacy-snapshot', 'profile-active', 'building',
+  CURRENT_TIMESTAMP, 'created', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+)
+`);
+      await expect(
+        fixture.sql.execute(`
+INSERT INTO junior_snapshots (
+  id, workspace_id, profile_hash, status, build_started_at, build_phase,
+  created_at, updated_at
+) VALUES (
+  'active-build-two', 'workspace-legacy-snapshot', 'profile-active', 'building',
+  CURRENT_TIMESTAMP, 'created', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+)
+`),
+      ).rejects.toThrow(/junior_snapshots_active_build_uidx/);
     } finally {
       await fixture.close();
     }

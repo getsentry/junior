@@ -145,8 +145,18 @@ async function build(
       );
 
       try {
-        await install.dependencies(sandbox, value.dependencies, signal);
-        await install.postinstall(sandbox, value.postinstall, signal);
+        await install.dependencies(
+          sandbox,
+          value.dependencies,
+          signal,
+          timeoutMs,
+        );
+        await install.postinstall(
+          sandbox,
+          value.postinstall,
+          signal,
+          timeoutMs,
+        );
         await prepare?.(sandbox);
         const snapshotId = await trace(
           "sandbox.snapshot.capture",

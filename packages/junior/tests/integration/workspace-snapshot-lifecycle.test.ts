@@ -1,21 +1,19 @@
 import { randomUUID } from "node:crypto";
-import { Sandbox } from "@vercel/sandbox";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { getDb } from "@/chat/db";
-import { getVercelSandboxCredentials } from "@/chat/sandbox/credentials";
 import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
 import { createSandboxRuntime } from "@/chat/sandbox/session";
+import { deleteWorkspaceSnapshotBuilders } from "@/chat/sandbox/snapshot/builder-sandbox";
 import { hash as workspaceProfileHash } from "@/chat/sandbox/snapshot/profile";
 import { SANDBOX_RUNTIME } from "@/chat/sandbox/snapshot/runtime";
 import { loadSnapshotsForProfile } from "@/chat/sandbox/snapshot/store";
 import { isWorkspaceSnapshotWaitingError } from "@/chat/sandbox/snapshot/waiting-error";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
-import { getWorkspace } from "@/chat/workspaces/store";
+import { createWorkspace, getWorkspace } from "@/chat/workspaces/store";
 import type {
   Workspace,
   WorkspaceSnapshotBuild,
 } from "@/chat/workspaces/types";
-import { juniorWorkspaces } from "@/db/schema";
 
 const MARKER_PATH = `${SANDBOX_WORKSPACE_ROOT}/marker/setup.txt`;
 /** Cold builds install the global Sandbox runtime dependencies, including Docker. */
@@ -38,19 +36,9 @@ function setupScript(): string {
   ].join("\n");
 }
 
-async function stopNamedSandbox(name: string | null): Promise<void> {
+async function deleteNamedSandbox(name: string | null): Promise<void> {
   if (!name) return;
-  try {
-    const credentials = getVercelSandboxCredentials();
-    const sandbox = await Sandbox.get({
-      name,
-      resume: true,
-      ...(credentials ?? {}),
-    });
-    await sandbox.stop();
-  } catch {
-    // Snapshot creation or a failed provider start may already stop the builder.
-  }
+  await deleteWorkspaceSnapshotBuilders([name]);
 }
 
 function profileHash(workspace: Workspace): string {
@@ -84,7 +72,13 @@ async function startUntilBuildingCheckpoint(
       workspace,
       skills: [],
       referenceFiles: [],
-      shouldYield: () => true,
+      shouldYield: (() => {
+        let checks = 0;
+        return () => {
+          checks += 1;
+          return checks > 1;
+        };
+      })(),
     });
     try {
       await expect(runtime.acquire()).rejects.toSatisfy(
@@ -120,7 +114,7 @@ describe.skipIf(!sandboxCredentialsReady())(
 
     afterEach(async () => {
       for (const name of builderNames.splice(0)) {
-        await stopNamedSandbox(name);
+        await deleteNamedSandbox(name);
       }
       await disconnectStateAdapter();
     });
@@ -128,24 +122,18 @@ describe.skipIf(!sandboxCredentialsReady())(
     it(
       "resumes a cold build from its SQL checkpoint and boots the snapshot",
       async () => {
-        const workspaceId = randomUUID();
-        const now = new Date();
-        await getDb()
-          .insert(juniorWorkspaces)
-          .values({
-            id: workspaceId,
-            name: `snapshot-lifecycle-${workspaceId.slice(0, 8)}`,
-            setupScript: setupScript(),
-            createdAt: now,
-            updatedAt: now,
-          });
+        const workspace = await createWorkspace({
+          name: `snapshot-lifecycle-${randomUUID()}`,
+          setupScript: setupScript(),
+          repos: [],
+        });
+        const workspaceId = workspace.id;
 
         const started = await startUntilBuildingCheckpoint(workspaceId);
         builderNames.push(started.build.sandboxName!);
         expect(started.build).toMatchObject({
           status: "building",
-          phase: "created",
-          commandId: null,
+          profileHash: profileHash(started.workspace),
         });
 
         const runtime = createSandboxRuntime({
