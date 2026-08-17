@@ -31,11 +31,16 @@ describe("isSandboxUnavailableError", () => {
 });
 
 describe("isAbortError", () => {
-  it("treats AbortError and aborted messages as cancellation", () => {
+  it("treats production cancel reasons as cancellation", () => {
     const abortError = new Error("The operation was aborted");
     abortError.name = "AbortError";
     expect(isAbortError(abortError)).toBe(true);
-    expect(isAbortError(new Error("API Turn cancelled / aborted"))).toBe(true);
+    // api-turns/cancellation.ts
+    expect(isAbortError(new Error("API Turn cancelled"))).toBe(true);
+    // runtime/agent-runner.ts
+    expect(
+      isAbortError(new Error("executeAgentRun timed out after 720000ms")),
+    ).toBe(true);
     expect(
       isAbortError(new Error("wrapper", { cause: abortError })),
     ).toBe(true);
@@ -45,6 +50,7 @@ describe("isAbortError", () => {
     expect(isAbortError(new Error("snapshot setup failed: exit 1"))).toBe(
       false,
     );
+    expect(isAbortError(new Error("Status code 404 is not ok"))).toBe(false);
   });
 });
 

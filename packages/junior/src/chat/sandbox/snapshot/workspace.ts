@@ -39,6 +39,18 @@ import { withLock } from "@/chat/state/locks";
 import { getWorkspace } from "@/chat/workspaces/store";
 import type { Workspace, WorkspaceSnapshotBuild } from "@/chat/workspaces/types";
 
+/** Cancel leaves SQL + builder for the next check-in; do not markFailed. */
+function isCancelOrTransient(
+  error: unknown,
+  signal?: AbortSignal,
+): boolean {
+  return (
+    signal?.aborted === true ||
+    isAbortError(error) ||
+    isSandboxApiTransientError(error)
+  );
+}
+
 const BUILD_TIMEOUT_MS = 60 * 60 * 1000;
 const BUILD_TIMEOUT_ERROR = "Workspace snapshot build timed out after 1 hour";
 const BUILD_LOCK_TTL_MS = 2 * 60 * 1000;
@@ -281,7 +293,7 @@ async function finishBuild(
       throw error;
     }
     // Cancel / soft-stop must leave SQL + builder for the next check-in.
-    if (isAbortError(error) || isSandboxApiTransientError(error)) {
+    if (isCancelOrTransient(error, signal)) {
       throw error;
     }
     const message = error instanceof Error ? error.message : String(error);
@@ -323,7 +335,7 @@ async function startBuild(params: {
     });
   } catch (error) {
     // Abort before the building row is durable must not invent a failed job.
-    if (isAbortError(error) || isSandboxApiTransientError(error)) {
+    if (isCancelOrTransient(error, signal)) {
       await stopBuilder(name);
       throw error;
     }
@@ -422,7 +434,7 @@ async function continueBuild(params: {
       throw error;
     }
     // Cancel / soft-stop must leave SQL + builder for the next check-in.
-    if (isAbortError(error) || isSandboxApiTransientError(error)) {
+    if (isCancelOrTransient(error, params.signal)) {
       throw error;
     }
     const message = error instanceof Error ? error.message : String(error);

@@ -150,8 +150,16 @@ export function isAbortError(error: unknown): boolean {
       return false;
     }
     if (candidate.name === "AbortError") return true;
+    // Production cancel reasons are plain Errors via signal.reason:
+    // api-turns/cancellation.ts → "API Turn cancelled"
+    // runtime/agent-runner.ts → "executeAgentRun timed out after …"
     const message = candidate.message.toLowerCase();
-    return message.includes("aborted") || message.includes("this operation was aborted");
+    return (
+      message.includes("aborted") ||
+      message.includes("api turn cancelled") ||
+      message.includes("api turn canceled") ||
+      message.includes("executeagentrun timed out after")
+    );
   });
 }
 
