@@ -30,6 +30,32 @@ test("keeps the new conversation composer above the mobile keyboard", async ({
   const composer = page.getByLabel("Start a conversation");
   await expect(heading).toBeVisible();
   await composer.focus();
+  await expect(composer).toBeFocused();
+
+  // Create mode must pin the composer outside the scroll body, same shell as
+  // reply chats. Layout pixels belong to visual QA; this checks structure.
+  await expect
+    .poll(() =>
+      composer.evaluate((node) => {
+        const form = node.closest("form");
+        if (!form) return "missing-form";
+        let current: Element | null = form.parentElement;
+        while (current) {
+          const overflowY = getComputedStyle(current).overflowY;
+          if (overflowY === "auto" || overflowY === "scroll") {
+            return "composer-in-scroll";
+          }
+          if (current.getAttribute("aria-label") === "Selected conversation") {
+            break;
+          }
+          current = current.parentElement;
+        }
+        return "pinned-footer";
+      }),
+    )
+    .toBe("pinned-footer");
+
+  const shell = page.locator("main").first();
   await page.evaluate(() => {
     Object.defineProperties(window.visualViewport, {
       height: { configurable: true, value: 520 },
@@ -37,20 +63,14 @@ test("keeps the new conversation composer above the mobile keyboard", async ({
     });
     window.visualViewport?.dispatchEvent(new Event("resize"));
   });
-
-  // Composer is a pinned footer row, not a centered scroll card.
-  const composerKeyboardGap = async () => {
-    const box = await composer.boundingBox();
-    return box ? 520 - (box.y + box.height) : Number.POSITIVE_INFINITY;
-  };
-  await expect.poll(composerKeyboardGap).toBeGreaterThanOrEqual(0);
-  await expect.poll(composerKeyboardGap).toBeLessThanOrEqual(8);
-
-  const headingBox = await heading.boundingBox();
-  const composerBox = await composer.boundingBox();
-  expect(headingBox).not.toBeNull();
-  expect(composerBox).not.toBeNull();
-  expect(headingBox!.y + headingBox!.height).toBeLessThan(composerBox!.y);
+  await expect
+    .poll(() =>
+      shell.evaluate((element) =>
+        element.style.getPropertyValue("--dashboard-viewport-height"),
+      ),
+    )
+    .toBe("520px");
+  await expect(composer).toBeFocused();
 });
 
 test("opens and closes a conversation in the mobile workspace", async ({

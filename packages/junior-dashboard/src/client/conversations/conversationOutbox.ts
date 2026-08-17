@@ -114,7 +114,24 @@ function sameMailboxMessage(
     left.role === right.role &&
     left.createdAt === right.createdAt &&
     left.receivedAt === right.receivedAt &&
-    left.idempotencyKey === right.idempotencyKey
+    left.idempotencyKey === right.idempotencyKey &&
+    // Pending rows render actorLabel(actorIdentity). Live polls may enrich
+    // identity after the first accept; keep that change visible.
+    sameActorIdentity(left.actorIdentity, right.actorIdentity)
+  );
+}
+
+function sameActorIdentity(
+  left: ConversationMailboxMessage["actorIdentity"],
+  right: ConversationMailboxMessage["actorIdentity"],
+): boolean {
+  if (left === right) return true;
+  if (!left || !right) return false;
+  return (
+    left.email === right.email &&
+    left.fullName === right.fullName &&
+    left.slackUserId === right.slackUserId &&
+    left.slackUserName === right.slackUserName
   );
 }
 
