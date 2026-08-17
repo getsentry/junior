@@ -71,6 +71,53 @@ async function readMarker(
   return result.stdout.trim();
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+/**
+ * Soft-yield start until SQL has a durable building checkpoint.
+ *
+ * A single soft-yield can return waiting with no row when Sandbox.create hits a
+ * transient API error before the building write. Product retries on the next
+ * wake; tests must wait for the checkpoint instead of assuming one attempt.
+ */
+async function startUntilBuildingCheckpoint(workspaceId: string): Promise<
+  NonNullable<Awaited<ReturnType<typeof getWorkspace>>>
+> {
+  const db = getDb();
+  const deadlineAtMs = Date.now() + 2 * 60 * 1000;
+  while (Date.now() < deadlineAtMs) {
+    const runtime = createSandboxRuntime({
+      workspace: (await getWorkspace(db, workspaceId))!,
+      skills: [],
+      referenceFiles: [],
+      shouldYield: () => true,
+    });
+    try {
+      await expect(runtime.acquire()).rejects.toSatisfy(
+        isWorkspaceSnapshotWaitingError,
+      );
+    } finally {
+      runtime.close();
+    }
+
+    const started = await getWorkspace(db, workspaceId);
+    if (
+      started?.snapshotBuild?.status === "building" &&
+      started.snapshotBuild.sandboxName
+    ) {
+      return started;
+    }
+    await sleep(2_000);
+  }
+  throw new Error(
+    `workspace ${workspaceId} never reached a durable building checkpoint`,
+  );
+}
+
 /**
  * Real Vercel Sandbox proof for the durable workspace snapshot control plane.
  * Integration may only fake Slack + LLMs — not @vercel/sandbox.
@@ -112,26 +159,13 @@ describe.skipIf(!sandboxCredentialsReady())(
           updatedAt: now,
         });
 
-        const workspace = (await getWorkspace(db, workspaceId))!;
-        // Soft-yield once so start returns before the long prep slices.
-        const starting = createSandboxRuntime({
-          workspace,
-          skills: [],
-          referenceFiles: [],
-          shouldYield: () => true,
-        });
-        try {
-          await expect(starting.acquire()).rejects.toSatisfy(
-            isWorkspaceSnapshotWaitingError,
-          );
-          const started = await getWorkspace(db, workspaceId);
-          expect(started?.snapshotBuild?.status).toBe("building");
-          expect(started?.snapshotBuild?.phase).toBe("created");
-          expect(started?.snapshotBuild?.sandboxName).toBeTruthy();
-          expect(started?.snapshotBuild?.commandId).toBeNull();
-        } finally {
-          starting.close();
-        }
+        // Soft-yield start may wait with no row after a transient create 5xx;
+        // retry until the durable building checkpoint exists.
+        const started = await startUntilBuildingCheckpoint(workspaceId);
+        expect(started.snapshotBuild?.status).toBe("building");
+        expect(started.snapshotBuild?.phase).toBe("created");
+        expect(started.snapshotBuild?.sandboxName).toBeTruthy();
+        expect(started.snapshotBuild?.commandId).toBeNull();
 
         // Hold through deps/repos/setup (retries transient Sandbox API errors).
         const finishing = createSandboxRuntime({
@@ -208,25 +242,15 @@ describe.skipIf(!sandboxCredentialsReady())(
           setupScript: setupScript("beta"),
           repos: [],
         });
-        const recipeB = (await getWorkspace(db, workspaceId))!;
         // Start B only far enough to prove it is a different profile build.
-        const startB = createSandboxRuntime({
-          workspace: recipeB,
-          skills: [],
-          referenceFiles: [],
-          shouldYield: () => true,
-        });
+        let buildingB: Awaited<ReturnType<typeof getWorkspace>>;
         try {
-          await expect(startB.acquire()).rejects.toSatisfy(
-            isWorkspaceSnapshotWaitingError,
-          );
-          const buildingB = await getWorkspace(db, workspaceId);
-          expect(buildingB?.snapshotBuild?.status).toBe("building");
-          expect(buildingB?.snapshotBuild?.profileHash).not.toBe(profileHashA);
+          buildingB = await startUntilBuildingCheckpoint(workspaceId);
+          expect(buildingB.snapshotBuild?.status).toBe("building");
+          expect(buildingB.snapshotBuild?.profileHash).not.toBe(profileHashA);
           // Ready A stays while B builds.
-          expect(buildingB?.snapshot?.id).toBe(snapshotIdA);
+          expect(buildingB.snapshot?.id).toBe(snapshotIdA);
         } finally {
-          startB.close();
           await stopWorkspaceBuilders(workspaceId);
         }
 
@@ -280,22 +304,7 @@ describe.skipIf(!sandboxCredentialsReady())(
           updatedAt: now,
         });
 
-        const workspace = (await getWorkspace(db, workspaceId))!;
-        const starting = createSandboxRuntime({
-          workspace,
-          skills: [],
-          referenceFiles: [],
-          shouldYield: () => true,
-        });
-        try {
-          await expect(starting.acquire()).rejects.toSatisfy(
-            isWorkspaceSnapshotWaitingError,
-          );
-        } finally {
-          starting.close();
-        }
-
-        const started = (await getWorkspace(db, workspaceId))!;
+        const started = await startUntilBuildingCheckpoint(workspaceId);
         const build = started.snapshotBuild;
         expect(build?.status).toBe("building");
         expect(build?.sandboxName).toBeTruthy();
