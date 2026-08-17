@@ -37,26 +37,21 @@ INSERT INTO junior_workspaces (
 
       const [snapshot] = await fixture.sql.query<{
         buildDurationMs: number;
-        dependencyCount: number;
         generatedAt: Date;
         profileHash: string;
-        runtime: string;
         snapshotId: string;
         status: string;
         workspaceId: string;
       }>(`
 SELECT
   workspace_id AS "workspaceId", profile_hash AS "profileHash", status,
-  snapshot_id AS "snapshotId", runtime,
-  dependency_count AS "dependencyCount",
-  build_duration_ms AS "buildDurationMs", generated_at AS "generatedAt"
+  snapshot_id AS "snapshotId", build_duration_ms AS "buildDurationMs",
+  generated_at AS "generatedAt"
 FROM junior_snapshots
 `);
       expect(snapshot).toMatchObject({
         buildDurationMs: 12_345,
-        dependencyCount: 0,
         profileHash: "profile-legacy",
-        runtime: "node22",
         snapshotId: "snap_legacy",
         status: "ready",
         workspaceId: "workspace-legacy-snapshot",
@@ -64,8 +59,18 @@ FROM junior_snapshots
       expect(snapshot?.generatedAt.toISOString()).toBe(
         "2026-03-01T00:00:00.000Z",
       );
+      await expect(
+        fixture.sql.execute(`
+INSERT INTO junior_snapshots (
+  id, workspace_id, profile_hash, status, created_at, updated_at
+) VALUES (
+  'invalid-ready', 'workspace-legacy-snapshot', 'profile-invalid', 'ready',
+  CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+)
+`),
+      ).rejects.toThrow(/junior_snapshots_ready_fields_check/);
     } finally {
       await fixture.close();
     }
-  });
+  }, 10_000);
 });

@@ -1,31 +1,25 @@
 import { randomUUID } from "node:crypto";
 import { and, asc, eq, sql } from "drizzle-orm";
 import { getSqlExecutor } from "@/chat/db";
+import { hash as workspaceProfileHash } from "@/chat/sandbox/snapshot/profile";
+import { SANDBOX_RUNTIME } from "@/chat/sandbox/snapshot/runtime";
 import {
   clearNonReadySnapshots,
-  loadLatestSnapshots,
-  loadLatestSnapshotsByWorkspace,
-  snapshotBuildFromRow,
-  snapshotFromRow,
-  type WorkspaceSnapshotRows,
+  loadSnapshotsForProfile,
 } from "@/chat/sandbox/snapshot/store";
 import type { JuniorDatabase } from "@/db/db";
 import { juniorWorkspaceRepos, juniorWorkspaces } from "@/db/schema";
-import type { Workspace } from "./types";
+import type { Workspace, WorkspaceSnapshot } from "./types";
 import {
   normalizeWorkspaceRecipe,
   WorkspaceValidationError,
   type WorkspaceRecipeInput,
 } from "./validation";
 
-function emptySnapshotRows(): WorkspaceSnapshotRows {
-  return { ready: undefined, build: undefined };
-}
-
 function workspaceFromRows(
   row: typeof juniorWorkspaces.$inferSelect,
   repos: Array<typeof juniorWorkspaceRepos.$inferSelect>,
-  snapshots: WorkspaceSnapshotRows,
+  snapshot: WorkspaceSnapshot | null,
 ): Workspace {
   return {
     id: row.id,
@@ -35,9 +29,24 @@ function workspaceFromRows(
       provider: repo.provider,
       repo: repo.repo,
     })),
-    snapshot: snapshotFromRow(snapshots.ready),
-    snapshotBuild: snapshotBuildFromRow(snapshots.build),
+    snapshot,
   };
+}
+
+async function workspaceWithSnapshot(
+  db: JuniorDatabase,
+  row: typeof juniorWorkspaces.$inferSelect,
+  repos: Array<typeof juniorWorkspaceRepos.$inferSelect>,
+): Promise<Workspace> {
+  const workspace = workspaceFromRows(row, repos, null);
+  const profileHash = workspaceProfileHash(SANDBOX_RUNTIME, workspace);
+  if (!profileHash) return workspace;
+  const snapshots = await loadSnapshotsForProfile(
+    db,
+    workspace.id,
+    profileHash,
+  );
+  return { ...workspace, snapshot: snapshots.ready };
 }
 
 async function loadWorkspaceRepos(
@@ -116,15 +125,11 @@ export async function listWorkspaces(db: JuniorDatabase): Promise<Workspace[]> {
         asc(juniorWorkspaceRepos.repo),
       ),
   ]);
-  const snapshots = await loadLatestSnapshotsByWorkspace(
-    db,
-    workspaces.map((workspace) => workspace.id),
-  );
   return workspaces.map((workspace) =>
     workspaceFromRows(
       workspace,
       repos.filter((repo) => repo.workspaceId === workspace.id),
-      snapshots.get(workspace.id) ?? emptySnapshotRows(),
+      null,
     ),
   );
 }
@@ -166,10 +171,10 @@ export async function getWorkspaceByName(
     .limit(1);
   const workspace = rows[0];
   if (!workspace) return undefined;
-  return workspaceFromRows(
+  return await workspaceWithSnapshot(
+    db,
     workspace,
     await loadWorkspaceRepos(db, workspace.id),
-    await loadLatestSnapshots(db, workspace.id),
   );
 }
 
@@ -185,10 +190,10 @@ export async function getWorkspace(
     .limit(1);
   const workspace = rows[0];
   if (!workspace) return undefined;
-  return workspaceFromRows(
+  return await workspaceWithSnapshot(
+    db,
     workspace,
     await loadWorkspaceRepos(db, workspace.id),
-    await loadLatestSnapshots(db, workspace.id),
   );
 }
 

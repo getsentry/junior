@@ -227,8 +227,6 @@ describe("workspace admin API", () => {
       generatedAt: new Date("2026-03-01T00:00:00.000Z"),
       buildDurationMs: 12_345,
       profileHash: profileHash!,
-      runtime: SANDBOX_RUNTIME,
-      dependencyCount: 0,
     });
 
     const detailResponse = await app.request(
@@ -245,7 +243,7 @@ describe("workspace admin API", () => {
     });
   });
 
-  it("preserves snapshot metadata for a rename and clears it after the recipe changes", async () => {
+  it("selects snapshot metadata for the current Workspace recipe", async () => {
     const app = authenticatedApi();
     const createResponse = await app.request(
       "http://localhost/api/workspaces",
@@ -270,8 +268,6 @@ describe("workspace admin API", () => {
       generatedAt: new Date("2026-03-01T00:00:00.000Z"),
       buildDurationMs: 9_000,
       profileHash: profileHash!,
-      runtime: SANDBOX_RUNTIME,
-      dependencyCount: 0,
     });
 
     const renameResponse = await app.request(
@@ -314,6 +310,20 @@ describe("workspace admin API", () => {
     expect(workspaceSchema.parse(await detailResponse.json())).toMatchObject({
       id: created.id,
       snapshot: null,
+    });
+
+    const changedWorkspace = await getWorkspace(getDb(), created.id);
+    expect(changedWorkspace).toBeDefined();
+    const changedProfileHash = workspaceProfileHash(
+      SANDBOX_RUNTIME,
+      changedWorkspace!,
+    );
+    expect(changedProfileHash).toBeTruthy();
+    await setWorkspaceSnapshot(created.id, {
+      id: "snap_new",
+      generatedAt: new Date("2026-03-02T00:00:00.000Z"),
+      buildDurationMs: 10_000,
+      profileHash: changedProfileHash!,
     });
 
     const revertResponse = await app.request(

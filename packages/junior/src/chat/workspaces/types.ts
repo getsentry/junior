@@ -10,11 +10,10 @@ export interface WorkspaceSnapshot {
   generatedAt: Date;
   buildDurationMs: number;
   profileHash: string;
-  runtime: string;
-  dependencyCount: number;
 }
 
-export type WorkspaceSnapshotStatus = "building" | "failed" | "ready";
+export type WorkspaceSnapshotBuildStatus = "building" | "failed";
+export type WorkspaceSnapshotStatus = WorkspaceSnapshotBuildStatus | "ready";
 export type WorkspaceSnapshotBuildPhase =
   | "created"
   | "dependencies_installed"
@@ -22,7 +21,7 @@ export type WorkspaceSnapshotBuildPhase =
 
 /** Current snapshot build for one Workspace recipe. */
 export interface WorkspaceSnapshotBuild {
-  status: WorkspaceSnapshotStatus;
+  status: WorkspaceSnapshotBuildStatus;
   phase: WorkspaceSnapshotBuildPhase;
   profileHash: string;
   startedAt: Date;
@@ -38,5 +37,4 @@ export interface Workspace {
   setupScript: string;
   repos: WorkspaceRepo[];
   snapshot: WorkspaceSnapshot | null;
-  snapshotBuild?: WorkspaceSnapshotBuild | null;
 }

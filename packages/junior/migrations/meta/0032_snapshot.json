@@ -2329,18 +2329,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "runtime": {
-          "name": "runtime",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "dependency_count": {
-          "name": "dependency_count",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
         "build_duration_ms": {
           "name": "build_duration_ms",
           "type": "integer",
@@ -2427,9 +2415,15 @@
           "method": "btree",
           "with": {}
         },
-        "junior_snapshots_profile_status_idx": {
-          "name": "junior_snapshots_profile_status_idx",
+        "junior_snapshots_workspace_profile_status_idx": {
+          "name": "junior_snapshots_workspace_profile_status_idx",
           "columns": [
+            {
+              "expression": "workspace_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
             {
               "expression": "profile_hash",
               "isExpression": false,
@@ -2492,6 +2486,18 @@
         "junior_snapshots_build_phase_check": {
           "name": "junior_snapshots_build_phase_check",
           "value": "\"junior_snapshots\".\"build_phase\" is null or \"junior_snapshots\".\"build_phase\" in ('created', 'dependencies_installed', 'repositories_prepared')"
+        },
+        "junior_snapshots_ready_fields_check": {
+          "name": "junior_snapshots_ready_fields_check",
+          "value": "\"junior_snapshots\".\"status\" <> 'ready' or (\"junior_snapshots\".\"snapshot_id\" is not null and \"junior_snapshots\".\"build_duration_ms\" is not null and \"junior_snapshots\".\"generated_at\" is not null)"
+        },
+        "junior_snapshots_build_fields_check": {
+          "name": "junior_snapshots_build_fields_check",
+          "value": "\"junior_snapshots\".\"status\" = 'ready' or (\"junior_snapshots\".\"build_started_at\" is not null and \"junior_snapshots\".\"build_phase\" is not null)"
+        },
+        "junior_snapshots_build_duration_check": {
+          "name": "junior_snapshots_build_duration_check",
+          "value": "\"junior_snapshots\".\"build_duration_ms\" is null or \"junior_snapshots\".\"build_duration_ms\" >= 0"
         }
       },
       "isRLSEnabled": false
