@@ -1,15 +1,18 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { chromium, type Page } from "@playwright/test";
+import { chromium, expect, type Page } from "@playwright/test";
 import { mockDashboardApis, startDashboardE2eServer } from "../e2e/harness.ts";
 import {
   resolveVisualScenarios,
   selectVisualScenarioIds,
   VISUAL_ALL_LABEL,
   type VisualScenario,
+  type VisualScenarioPrepare,
   type VisualViewport,
 } from "./scenarios.ts";
+
+const FOCUSED_COMPOSER_VISUAL_HEIGHT_PX = 520;
 
 const ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -85,6 +88,49 @@ function shotName(scenarioId: string, viewport: VisualViewport) {
   return `${scenarioId}__${viewport.name}.png`;
 }
 
+async function prepareScenario(
+  page: Page,
+  prepare: VisualScenarioPrepare | undefined,
+  viewport: VisualViewport,
+): Promise<void> {
+  if (!prepare) return;
+  if (prepare === "new-conversation-focused") {
+    await page.getByRole("button", { name: "New conversation" }).click();
+    const composer = page.getByLabel("Start a conversation");
+    await page
+      .getByRole("heading", { name: "New conversation", exact: true })
+      .waitFor({ state: "visible", timeout: 15_000 });
+    await composer.focus();
+    // Shrink both the layout viewport and visualViewport so the PNG bottom edge
+    // is the keyboard edge. A tall layout viewport leaves empty space under a
+    // correctly docked composer and hides the regression in review screenshots.
+    await page.setViewportSize({
+      height: FOCUSED_COMPOSER_VISUAL_HEIGHT_PX,
+      width: viewport.width,
+    });
+    await page.evaluate((heightPx) => {
+      Object.defineProperties(window.visualViewport, {
+        height: { configurable: true, value: heightPx },
+        offsetTop: { configurable: true, value: 0 },
+      });
+      window.visualViewport?.dispatchEvent(new Event("resize"));
+      window.dispatchEvent(new Event("resize"));
+    }, FOCUSED_COMPOSER_VISUAL_HEIGHT_PX);
+    const shell = page.locator("main").first();
+    await expect
+      .poll(() =>
+        shell.evaluate((element) =>
+          element.style.getPropertyValue("--dashboard-viewport-height"),
+        ),
+      )
+      .toBe(`${FOCUSED_COMPOSER_VISUAL_HEIGHT_PX}px`);
+    await expect(composer).toBeFocused();
+    return;
+  }
+  const _exhaustive: never = prepare;
+  throw new Error(`Unknown visual prepare: ${_exhaustive}`);
+}
+
 async function captureScenario(options: {
   baseURL: string;
   outDir: string;
@@ -105,6 +151,7 @@ async function captureScenario(options: {
       .getByRole("heading", { name: scenario.ready, exact: true })
       .first()
       .waitFor({ state: "visible", timeout: 15_000 });
+    await prepareScenario(page, scenario.prepare, viewport);
 
     // Let layout/fonts settle before the shot.
     await page.evaluate(async () => {
@@ -114,7 +161,9 @@ async function captureScenario(options: {
     const file = shotName(scenario.id, viewport);
     await page.screenshot({
       animations: "disabled",
-      fullPage: true,
+      // Focused composer shots already resize the layout viewport to the
+      // keyboard frame, so a viewport shot matches what the user sees.
+      fullPage: scenario.prepare ? false : true,
       path: path.join(outDir, file),
       type: "png",
     });

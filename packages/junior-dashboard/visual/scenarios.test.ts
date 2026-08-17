@@ -13,7 +13,11 @@ describe("selectVisualScenarioIds", () => {
       selectVisualScenarioIds([
         "packages/junior-dashboard/src/client/conversations/ConversationPage.tsx",
       ]),
-    ).toEqual(["conversations", "conversation-detail"]);
+    ).toEqual([
+      "conversations",
+      "conversation-detail",
+      "conversation-create-focused",
+    ]);
   });
 
   it("selects the person profile for people page changes", () => {
@@ -39,8 +43,8 @@ describe("selectVisualScenarioIds", () => {
     expect(selected).toEqual([
       "conversations",
       "conversation-detail",
+      "conversation-create-focused",
       "system",
-      "component-gallery",
     ]);
     expect(selected).toHaveLength(MAX_VISUAL_SCENARIOS);
   });
@@ -53,8 +57,8 @@ describe("selectVisualScenarioIds", () => {
     ).toEqual([
       "conversations",
       "conversation-detail",
+      "conversation-create-focused",
       "system",
-      "component-gallery",
     ]);
   });
 
@@ -97,8 +101,8 @@ describe("selectVisualScenarioIds", () => {
     ).toEqual([
       "conversations",
       "conversation-detail",
+      "conversation-create-focused",
       "system",
-      "memories",
     ]);
   });
 
@@ -127,5 +131,13 @@ describe("resolveVisualScenarios", () => {
   it("keeps every registered scenario unique", () => {
     const ids = VISUAL_SCENARIOS.map((scenario) => scenario.id);
     expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it("registers the focused create composer as mobile-only evidence", () => {
+    const scenario = resolveVisualScenarios(["conversation-create-focused"])[0];
+    expect(scenario?.prepare).toBe("new-conversation-focused");
+    expect(scenario?.viewports.map((viewport) => viewport.name)).toEqual([
+      "mobile",
+    ]);
   });
 });
