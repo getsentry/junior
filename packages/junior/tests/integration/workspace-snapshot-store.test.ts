@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { afterEach, describe, expect, it } from "vitest";
 import { closeDb, getDb } from "@/chat/db";
 import {
+  clearWorkspaceSnapshots,
   loadSnapshotsForProfile,
   setWorkspaceSnapshot,
   setWorkspaceSnapshotBuild,
@@ -65,6 +66,20 @@ describe("Workspace snapshot store", () => {
       loadSnapshotsForProfile(getDb(), workspace.id, build.profileHash),
     ).resolves.toMatchObject({ build: { id: build.id, status: "building" } });
     await expect(
+      setWorkspaceSnapshot(workspace.id, {
+        id: "snapshot-independent",
+        generatedAt: new Date(),
+        buildDurationMs: 50,
+        profileHash: build.profileHash,
+      }),
+    ).resolves.toBe(true);
+    await expect(
+      loadSnapshotsForProfile(getDb(), workspace.id, build.profileHash),
+    ).resolves.toMatchObject({
+      build: { id: build.id, status: "building" },
+      ready: { id: "snapshot-independent" },
+    });
+    await expect(
       setWorkspaceSnapshot(
         workspace.id,
         {
@@ -108,5 +123,11 @@ describe("Workspace snapshot store", () => {
     );
     expect(state.build).toBeNull();
     expect(state.ready?.id).toBe("snapshot-one");
+    await expect(
+      clearWorkspaceSnapshots(getDb(), workspace.id),
+    ).resolves.toEqual(["builder-one"]);
+    await expect(
+      loadSnapshotsForProfile(getDb(), workspace.id, build.profileHash),
+    ).resolves.toEqual({ build: null, ready: null });
   });
 });

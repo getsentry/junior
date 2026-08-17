@@ -1,13 +1,15 @@
 import { randomUUID } from "node:crypto";
+import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { sandboxGetMock } = vi.hoisted(() => ({
+const { sandboxCreateMock, sandboxGetMock } = vi.hoisted(() => ({
+  sandboxCreateMock: vi.fn(),
   sandboxGetMock: vi.fn(),
 }));
 
 vi.mock("@vercel/sandbox", () => ({
   Sandbox: {
-    create: vi.fn(),
+    create: sandboxCreateMock,
     get: sandboxGetMock,
   },
 }));
@@ -17,14 +19,18 @@ import * as profile from "@/chat/sandbox/snapshot/profile";
 import { SANDBOX_RUNTIME } from "@/chat/sandbox/snapshot/runtime";
 import {
   loadSnapshotsForProfile,
+  setWorkspaceSnapshot,
   setWorkspaceSnapshotBuild,
 } from "@/chat/sandbox/snapshot/store";
+import { isWorkspaceSnapshotWaitingError } from "@/chat/sandbox/snapshot/waiting-error";
 import { resolveWorkspaceSnapshot } from "@/chat/sandbox/snapshot/workspace";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { createWorkspace } from "@/chat/workspaces/store";
+import { juniorSnapshots } from "@/db/schema";
 
 describe("Workspace snapshot completion", () => {
   beforeEach(() => {
+    sandboxCreateMock.mockReset();
     sandboxGetMock.mockReset();
   });
 
@@ -33,7 +39,7 @@ describe("Workspace snapshot completion", () => {
     await closeDb();
   });
 
-  it("keeps the ready snapshot when builder deletion fails", async () => {
+  it("keeps the snapshot owner after completion and enrichment", async () => {
     const workspace = await createWorkspace({
       name: `snapshot-cleanup-${randomUUID()}`,
       setupScript: "printf ready",
@@ -51,7 +57,7 @@ describe("Workspace snapshot completion", () => {
         phase: "repositories_prepared",
         profileHash: value.hash,
         startedAt: new Date(),
-        sandboxName: "builder-cleanup-fails",
+        sandboxName: "snapshot-owner",
         commandId: "setup-command",
         error: null,
       },
@@ -59,9 +65,7 @@ describe("Workspace snapshot completion", () => {
     );
 
     const builder = {
-      delete: vi.fn(async () => {
-        throw new Error("Vercel cleanup failed");
-      }),
+      delete: vi.fn(),
       getCommand: vi.fn(async () => ({ exitCode: 0 })),
       snapshot: vi.fn(async () => ({ snapshotId: "snapshot-ready" })),
     };
@@ -83,6 +87,67 @@ describe("Workspace snapshot completion", () => {
       build: null,
       ready: { id: "snapshot-ready" },
     });
-    expect(builder.delete).toHaveBeenCalledTimes(1);
+    await setWorkspaceSnapshot(workspace.id, {
+      id: "snapshot-ready",
+      generatedAt: new Date(),
+      buildDurationMs: 100,
+      profileHash: value.hash,
+    });
+    await expect(
+      getDb()
+        .select({ sandboxName: juniorSnapshots.buildSandboxName })
+        .from(juniorSnapshots)
+        .where(eq(juniorSnapshots.id, buildId)),
+    ).resolves.toEqual([{ sandboxName: "snapshot-owner" }]);
+    expect(builder.delete).not.toHaveBeenCalled();
+  });
+
+  it("starts a rebuild when failed-builder deletion fails", async () => {
+    const workspace = await createWorkspace({
+      name: `snapshot-rebuild-${randomUUID()}`,
+      setupScript: "printf ready",
+      repos: [],
+    });
+    const value = profile.create(SANDBOX_RUNTIME, workspace);
+    if (!value) throw new Error("Workspace snapshot profile is missing");
+
+    await setWorkspaceSnapshotBuild(
+      workspace.id,
+      {
+        id: randomUUID(),
+        status: "failed",
+        phase: "created",
+        profileHash: value.hash,
+        startedAt: new Date(),
+        sandboxName: "failed-builder-cleanup-fails",
+        commandId: null,
+        error: "install failed",
+      },
+      { insertIfMissing: true },
+    );
+    sandboxGetMock.mockRejectedValue(new Error("Vercel cleanup failed"));
+    sandboxCreateMock.mockResolvedValue({});
+    let yieldChecks = 0;
+
+    await expect(
+      resolveWorkspaceSnapshot({
+        workspace,
+        runtime: SANDBOX_RUNTIME,
+        shouldYield: () => {
+          yieldChecks += 1;
+          return yieldChecks > 1;
+        },
+        applyNetworkPolicy: async () => {},
+        removeCredentialRoute: false,
+      }),
+    ).rejects.toSatisfy(isWorkspaceSnapshotWaitingError);
+
+    await expect(
+      loadSnapshotsForProfile(getDb(), workspace.id, value.hash),
+    ).resolves.toMatchObject({
+      build: { status: "building" },
+      ready: null,
+    });
+    expect(sandboxCreateMock).toHaveBeenCalledTimes(1);
   });
 });

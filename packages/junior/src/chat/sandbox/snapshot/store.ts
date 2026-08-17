@@ -108,6 +108,20 @@ export async function clearNonReadySnapshots(
     .filter((name): name is string => Boolean(name));
 }
 
+/** Drop every snapshot row before its Workspace is deleted. */
+export async function clearWorkspaceSnapshots(
+  db: JuniorDatabase,
+  workspaceId: string,
+): Promise<string[]> {
+  const deleted = await db
+    .delete(juniorSnapshots)
+    .where(eq(juniorSnapshots.workspaceId, workspaceId))
+    .returning({ sandboxName: juniorSnapshots.buildSandboxName });
+  return deleted
+    .map((row) => row.sandboxName)
+    .filter((name): name is string => Boolean(name));
+}
+
 /** Drop one ready row whose provider snapshot no longer exists. */
 export async function invalidateMissingReadySnapshot(params: {
   workspaceId: string;
@@ -150,7 +164,6 @@ export async function setWorkspaceSnapshot(
           generatedAt: snapshot.generatedAt,
           buildStartedAt: null,
           buildPhase: null,
-          buildSandboxName: null,
           buildCommandId: null,
           buildError: null,
           updatedAt: now,
@@ -184,24 +197,22 @@ export async function setWorkspaceSnapshot(
         and(
           eq(juniorSnapshots.workspaceId, workspaceId),
           eq(juniorSnapshots.profileHash, snapshot.profileHash),
+          eq(juniorSnapshots.status, "ready"),
+          eq(juniorSnapshots.snapshotId, snapshot.id),
         ),
       )
       .orderBy(desc(juniorSnapshots.updatedAt), desc(juniorSnapshots.createdAt))
       .limit(1);
     const current = existing[0];
 
-    // Keep prior ready rows with different snapshot ids for later cleanup.
-    if (current && current.status !== "ready") {
+    if (current) {
       await db
         .update(juniorSnapshots)
         .set({
-          status: "ready",
-          snapshotId: snapshot.id,
           buildDurationMs: snapshot.buildDurationMs,
           generatedAt: snapshot.generatedAt,
           buildStartedAt: null,
           buildPhase: null,
-          buildSandboxName: null,
           buildCommandId: null,
           buildError: null,
           updatedAt: now,
@@ -210,27 +221,8 @@ export async function setWorkspaceSnapshot(
       return true;
     }
 
-    if (
-      current &&
-      current.status === "ready" &&
-      current.snapshotId === snapshot.id
-    ) {
-      await db
-        .update(juniorSnapshots)
-        .set({
-          buildDurationMs: snapshot.buildDurationMs,
-          generatedAt: snapshot.generatedAt,
-          buildStartedAt: null,
-          buildPhase: null,
-          buildSandboxName: null,
-          buildCommandId: null,
-          buildError: null,
-          updatedAt: now,
-        })
-        .where(eq(juniorSnapshots.id, current.id));
-      return true;
-    }
-
+    // Build rows have immutable owners. Record an independently resolved
+    // snapshot in its own ready row instead of changing active build state.
     await db.insert(juniorSnapshots).values({
       id: randomUUID(),
       workspaceId,

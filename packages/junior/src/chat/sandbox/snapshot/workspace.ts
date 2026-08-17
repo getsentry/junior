@@ -275,15 +275,6 @@ async function finishBuild(
     );
     requireBuildWrite(written, workspace);
     try {
-      await deleteBuilder(build.sandboxName);
-    } catch (cleanupError) {
-      logException(
-        cleanupError,
-        "sandbox.workspace_snapshot.builder.delete_failed",
-        { "app.workspace.id": workspace.id },
-      );
-    }
-    try {
       await setCachedSnapshot({
         profileHash: value.hash,
         snapshotId: snapshot.snapshotId,
@@ -597,7 +588,15 @@ async function advanceWorkspaceSnapshot(params: {
         });
       } else if (!build) {
         if (loaded?.sandboxName) {
-          await deleteBuilder(loaded.sandboxName);
+          try {
+            await deleteBuilder(loaded.sandboxName);
+          } catch (cleanupError) {
+            logException(
+              cleanupError,
+              "sandbox.workspace_snapshot.builder.delete_failed",
+              { "app.workspace.id": workspace.id },
+            );
+          }
         }
         await startBuild({
           workspace,

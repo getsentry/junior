@@ -7,6 +7,7 @@ import { hash as workspaceProfileHash } from "@/chat/sandbox/snapshot/profile";
 import { SANDBOX_RUNTIME } from "@/chat/sandbox/snapshot/runtime";
 import {
   clearNonReadySnapshots,
+  clearWorkspaceSnapshots,
   loadSnapshotsForProfile,
 } from "@/chat/sandbox/snapshot/store";
 import type { JuniorDatabase } from "@/db/db";
@@ -316,7 +317,7 @@ export async function deleteWorkspace(id: string): Promise<boolean> {
   const executor = getSqlExecutor();
   const result = await executor.transaction(async () => {
     const db = executor.db();
-    const builderNames = await clearNonReadySnapshots(db, id);
+    const builderNames = await clearWorkspaceSnapshots(db, id);
     const rows = await db
       .delete(juniorWorkspaces)
       .where(eq(juniorWorkspaces.id, id))
