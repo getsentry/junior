@@ -1,4 +1,5 @@
 import {
+  memo,
   useCallback,
   useDeferredValue,
   useEffect,
@@ -93,10 +94,16 @@ export function ConversationPage(props: {
     : undefined;
   // Keep live flags and mailbox chrome urgent. Only the heavy transcript body is deferred.
   const live = conversationIsLive(visualStatus, detail.data);
+  // Key on the event array, not the whole detail object. Metadata-only polls
+  // reuse events via structural sharing, so the footer keeps a stable id list.
   const mailboxCommittedIds = useMemo(
-    () => committedMessageIds(detail.data),
-    [detail.data],
+    () => committedMessageIds(detail.data?.events),
+    [detail.data?.events],
   );
+  // Cancel needs the latest mailbox watermark, but not as a render prop. Live
+  // polls refresh generatedAt every 2s even when the queue is unchanged.
+  const pendingGeneratedAtRef = useRef(detail.pendingGeneratedAt);
+  pendingGeneratedAtRef.current = detail.pendingGeneratedAt;
   const requestPin = useCallback(() => {
     setPinRequestVersion((version) => version + 1);
   }, []);
@@ -261,7 +268,9 @@ export function ConversationPage(props: {
           committedMessageIds={mailboxCommittedIds}
           onPinRequest={requestPin}
           pendingAuthorization={detail.pendingAuthorization}
-          pendingGeneratedAt={detail.pendingGeneratedAt}
+          // Keep the cancel watermark off props. Live polls refresh generatedAt
+          // every 2s; a prop would bust footer memo while the reader types.
+          pendingGeneratedAtRef={pendingGeneratedAtRef}
           pendingMessages={detail.pendingMessages}
         />
       ) : null}
@@ -276,14 +285,17 @@ export function ConversationPage(props: {
 /**
  * Own mutation state and mailbox chrome outside the page tree that re-renders
  * on every live transcript poll. Keeps composer props stable while typing.
+ *
+ * Memoized so metadata-only polls that keep mailbox identity stable skip the
+ * footer tree. Fast chat UIs isolate the composer the same way.
  */
-function ConversationReplyFooter(props: {
+const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
   committedMessageIds: readonly string[];
   conversationId: string;
   onPinRequest: () => void;
   pendingAuthorization?: ConversationPendingMessagesReport["authorization"];
-  pendingGeneratedAt?: string;
-  pendingMessages: ConversationMailboxMessage[];
+  pendingGeneratedAtRef: { current: string | undefined };
+  pendingMessages: readonly ConversationMailboxMessage[];
 }) {
   const appendMessage = useAppendConversationMessage(props.conversationId);
   const cancelPendingMessages = useCancelConversationPendingMessages(
@@ -343,16 +355,14 @@ function ConversationReplyFooter(props: {
   const cancellableMessageIds = props.pendingMessages
     .filter((message) => message.clientStatus === undefined)
     .map((message) => message.inboundMessageId);
-  const pendingGeneratedAtRef = useRef(props.pendingGeneratedAt);
-  pendingGeneratedAtRef.current = props.pendingGeneratedAt;
   const onCancelMessage = useCallback((message: ConversationMailboxMessage) => {
-    const receivedBefore = pendingGeneratedAtRef.current;
+    const receivedBefore = props.pendingGeneratedAtRef.current;
     if (!receivedBefore) return;
     cancelPendingMessagesRef.current.mutate({
       inboundMessageIds: [message.inboundMessageId],
       receivedBefore,
     });
-  }, []);
+  }, [props.pendingGeneratedAtRef]);
   const cancelTargetInboundMessageId =
     cancelPendingMessages.variables?.inboundMessageIds[0];
   const cancelError = Boolean(
@@ -397,7 +407,7 @@ function ConversationReplyFooter(props: {
       </div>
     </div>
   );
-}
+});
 
 function applyPendingArchiveUpdate(
   conversation: Conversation | undefined,
@@ -426,11 +436,11 @@ function conversationIsLive(
 }
 
 function committedMessageIds(
-  detail: ConversationDetailReport | undefined,
+  events: ConversationDetailReport["events"] | undefined,
 ): readonly string[] {
-  if (!detail) return EMPTY_MESSAGE_IDS;
+  if (!events) return EMPTY_MESSAGE_IDS;
   const ids: string[] = [];
-  for (const event of detail.events) {
+  for (const event of events) {
     if (event.data.type === "message") ids.push(event.data.messageId);
   }
   return ids;

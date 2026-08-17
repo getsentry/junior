@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import {
   queryOptions,
   useInfiniteQuery,
@@ -37,6 +37,7 @@ import {
   mergeConversationMailboxMessages,
   removeConversationOutboxMessage,
   upsertConversationOutboxMessage,
+  type ConversationMailboxMessage,
   type ConversationOutboxMessage,
 } from "./conversationOutbox";
 import {
@@ -493,10 +494,21 @@ export function useConversationData(conversationId: string | undefined) {
     staleTime: Infinity,
     gcTime: Infinity,
   });
-  const pendingMessages = useMemo(
-    () => mergeConversationMailboxMessages(pending.data?.messages, outbox.data),
-    [outbox.data, pending.data?.messages],
+  // Live polls mint fresh server arrays every 2s. Reuse the previous list when
+  // visible mailbox rows are unchanged so the reply footer can skip work while
+  // the reader types.
+  const pendingMessagesRef = useRef<ConversationMailboxMessage[] | undefined>(
+    undefined,
   );
+  const pendingMessages = useMemo(() => {
+    const next = mergeConversationMailboxMessages(
+      pending.data?.messages,
+      outbox.data,
+      pendingMessagesRef.current,
+    );
+    pendingMessagesRef.current = next;
+    return next;
+  }, [outbox.data, pending.data?.messages]);
   const invalidHistoryCursor = isInvalidCursorError(history.error);
   const shouldRefreshDetail = Boolean(
     detail.data &&

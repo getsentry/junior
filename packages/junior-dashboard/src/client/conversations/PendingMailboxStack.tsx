@@ -1,4 +1,5 @@
 import {
+  memo,
   useLayoutEffect,
   useRef,
   useState,
@@ -222,7 +223,7 @@ function ExpandQueuedMessagesButton(props: {
 }
 
 /** Render accepted mailbox rows as a compact stack attached above the composer. */
-export function PendingMailboxStack(props: {
+export const PendingMailboxStack = memo(function PendingMailboxStack(props: {
   cancelError?: boolean;
   cancelPending?: boolean;
   cancelTargetInboundMessageId?: string;
@@ -326,4 +327,4 @@ export function PendingMailboxStack(props: {
       ) : null}
     </div>
   );
-}
+});
