@@ -1,8 +1,13 @@
 import { and, asc, desc, eq, ne, or } from "drizzle-orm";
 import { getSqlExecutor } from "@/chat/db";
 import type { JuniorDatabase } from "@/db/db";
-import { juniorSnapshots } from "@/db/schema";
+import {
+  juniorSnapshots,
+  juniorWorkspaceRepos,
+  juniorWorkspaces,
+} from "@/db/schema";
 import type {
+  Workspace,
   WorkspaceSnapshot,
   WorkspaceSnapshotBuild,
 } from "@/chat/workspaces/types";
@@ -29,6 +34,27 @@ function builderNames(rows: Array<{ sandboxName: string | null }>): string[] {
         .filter((name): name is string => Boolean(name)),
     ),
   ];
+}
+
+function sameWorkspaceRecipe(
+  stored: {
+    setupScript: string;
+    repos: Array<{ provider: string; repo: string }>;
+  },
+  expected: Pick<Workspace, "setupScript" | "repos">,
+): boolean {
+  if (
+    stored.setupScript !== expected.setupScript ||
+    stored.repos.length !== expected.repos.length
+  ) {
+    return false;
+  }
+  const expectedRepos = new Set(
+    expected.repos.map((repo) => JSON.stringify([repo.provider, repo.repo])),
+  );
+  return stored.repos.every((repo) =>
+    expectedRepos.has(JSON.stringify([repo.provider, repo.repo])),
+  );
 }
 
 function snapshotFromRow(row: SnapshotRow): WorkspaceSnapshot {
@@ -104,6 +130,13 @@ export async function clearWorkspaceSnapshots(
   db: JuniorDatabase,
   workspaceId: string,
 ): Promise<string[]> {
+  // Serialize snapshot cleanup with initial build insertion. This ensures a
+  // concurrent recipe write or delete collects every recorded builder owner.
+  await db
+    .select({ id: juniorWorkspaces.id })
+    .from(juniorWorkspaces)
+    .where(eq(juniorWorkspaces.id, workspaceId))
+    .for("update");
   const deleted = await db
     .delete(juniorSnapshots)
     .where(eq(juniorSnapshots.workspaceId, workspaceId))
@@ -191,11 +224,14 @@ export async function setWorkspaceSnapshot(
   });
 }
 
-/** Update an owned build row. Initial creation must opt into insertion. */
+/** Update an owned build row. Initial creation locks and verifies its Workspace. */
 export async function setWorkspaceSnapshotBuild(
   workspaceId: string,
   build: WorkspaceSnapshotBuild,
-  options: { insertIfMissing?: boolean } = {},
+  options: {
+    insertIfMissing?: boolean;
+    expectedRecipe?: Pick<Workspace, "setupScript" | "repos">;
+  } = {},
 ): Promise<boolean> {
   const executor = getSqlExecutor();
   return await executor.transaction(async () => {
@@ -225,6 +261,28 @@ export async function setWorkspaceSnapshotBuild(
       return true;
     }
     if (!options.insertIfMissing) return false;
+
+    const workspaceRows = await db
+      .select({ setupScript: juniorWorkspaces.setupScript })
+      .from(juniorWorkspaces)
+      .where(eq(juniorWorkspaces.id, workspaceId))
+      .for("update");
+    const workspace = workspaceRows[0];
+    if (!workspace) return false;
+    if (options.expectedRecipe) {
+      const repos = await db
+        .select({
+          provider: juniorWorkspaceRepos.provider,
+          repo: juniorWorkspaceRepos.repo,
+        })
+        .from(juniorWorkspaceRepos)
+        .where(eq(juniorWorkspaceRepos.workspaceId, workspaceId));
+      if (
+        !sameWorkspaceRecipe({ ...workspace, repos }, options.expectedRecipe)
+      ) {
+        return false;
+      }
+    }
 
     // Terminal rows are immutable. A new build gets its own id and row.
     const inserted = await db

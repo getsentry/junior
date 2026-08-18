@@ -147,4 +147,47 @@ describe("Workspace snapshot completion", () => {
     });
     expect(sandboxCreateMock).toHaveBeenCalledTimes(1);
   });
+
+  it("marks a build failed when its named builder is missing", async () => {
+    const workspace = await createWorkspace({
+      name: `snapshot-missing-builder-${randomUUID()}`,
+      setupScript: "printf ready",
+      repos: [],
+    });
+    const value = profile.create(SANDBOX_RUNTIME, workspace);
+    if (!value) throw new Error("Workspace snapshot profile is missing");
+
+    await setWorkspaceSnapshotBuild(
+      workspace.id,
+      {
+        id: randomUUID(),
+        status: "building",
+        phase: "created",
+        profileHash: value.hash,
+        startedAt: new Date(),
+        sandboxName: "missing-builder",
+        commandId: null,
+        error: null,
+      },
+      { insertIfMissing: true },
+    );
+    sandboxGetMock.mockRejectedValue(new Error("status code 404"));
+
+    await expect(
+      resolveWorkspaceSnapshot({
+        workspace,
+        runtime: SANDBOX_RUNTIME,
+        shouldYield: () => false,
+        applyNetworkPolicy: async () => {},
+        removeCredentialRoute: false,
+      }),
+    ).rejects.toThrow("status code 404");
+
+    await expect(
+      loadSnapshotsForProfile(getDb(), workspace.id, value.hash),
+    ).resolves.toMatchObject({
+      build: { status: "failed", error: "status code 404" },
+      ready: null,
+    });
+  });
 });

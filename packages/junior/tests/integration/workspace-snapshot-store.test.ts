@@ -8,7 +8,11 @@ import {
   setWorkspaceSnapshot,
   setWorkspaceSnapshotBuild,
 } from "@/chat/sandbox/snapshot/store";
-import { createWorkspace } from "@/chat/workspaces/store";
+import {
+  createWorkspace,
+  deleteWorkspace,
+  updateWorkspace,
+} from "@/chat/workspaces/store";
 import type {
   WorkspaceSnapshot,
   WorkspaceSnapshotBuild,
@@ -208,5 +212,31 @@ describe("Workspace snapshot store", () => {
     await expect(
       loadSnapshotsForProfile(getDb(), workspace.id, build.profileHash),
     ).resolves.toEqual({ build: null, ready: null });
+
+    const previousRecipe = {
+      setupScript: workspace.setupScript,
+      repos: workspace.repos,
+    };
+    await updateWorkspace(workspace.id, {
+      name: workspace.name,
+      setupScript: "printf changed",
+      repos: [],
+    });
+    await expect(
+      setWorkspaceSnapshotBuild(
+        workspace.id,
+        { ...finalBuild, id: randomUUID(), sandboxName: "stale-builder" },
+        { insertIfMissing: true, expectedRecipe: previousRecipe },
+      ),
+    ).resolves.toBe(false);
+
+    await expect(deleteWorkspace(workspace.id)).resolves.toBe(true);
+    await expect(
+      setWorkspaceSnapshotBuild(
+        workspace.id,
+        { ...finalBuild, id: randomUUID(), sandboxName: "deleted-builder" },
+        { insertIfMissing: true },
+      ),
+    ).resolves.toBe(false);
   });
 });

@@ -319,9 +319,20 @@ async function startBuild(params: {
         commandId: null,
         error: null,
       },
-      { insertIfMissing: true },
+      { insertIfMissing: true, expectedRecipe: workspace },
     );
-    requireBuildWrite(written, workspace);
+    if (!written) {
+      try {
+        await deleteBuilder(name);
+      } catch (cleanupError) {
+        logException(
+          cleanupError,
+          "sandbox.workspace_snapshot.builder.delete_failed",
+          { "app.workspace.id": workspace.id },
+        );
+      }
+      return;
+    }
   } catch (error) {
     try {
       if (!isCancelOrTransient(error, signal)) {
@@ -339,7 +350,7 @@ async function startBuild(params: {
               commandId: null,
               error: error instanceof Error ? error.message : String(error),
             },
-            { insertIfMissing: true },
+            { insertIfMissing: true, expectedRecipe: workspace },
           );
         } catch {
           // The failed row is diagnostic. Builder cleanup still owns safety.
@@ -393,12 +404,12 @@ async function continueBuild(params: {
   const phaseSignal = params.signal
     ? AbortSignal.any([params.signal, phaseTimeoutSignal])
     : phaseTimeoutSignal;
-  const sandbox = await getWorkspaceSnapshotBuilder(
-    build.sandboxName,
-    phaseSignal,
-  );
-  const session = createSandboxSession(sandbox);
   try {
+    const sandbox = await getWorkspaceSnapshotBuilder(
+      build.sandboxName,
+      phaseSignal,
+    );
+    const session = createSandboxSession(sandbox);
     if (build.phase === "created") {
       await install.dependencies(
         session,
