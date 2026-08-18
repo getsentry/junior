@@ -9,7 +9,7 @@ const coreMigrations = readMigrationFiles({
 });
 
 describe("Workspace snapshot migration", () => {
-  it("copies legacy snapshot facts into snapshot history", async () => {
+  it("moves legacy facts and adds the active-build guard in order", async () => {
     const fixture = await createEmptyJuniorSqlFixture();
     const migrationIndex = coreMigrations.findIndex((migration) =>
       migration.sql.some((statement) =>
@@ -18,6 +18,14 @@ describe("Workspace snapshot migration", () => {
     );
     const migration = coreMigrations[migrationIndex];
     if (!migration) throw new Error("Workspace snapshot migration not found");
+    const activeBuildMigrationIndex = coreMigrations.findIndex((candidate) =>
+      candidate.sql.some((statement) =>
+        statement.includes("junior_snapshots_active_build_uidx"),
+      ),
+    );
+    if (activeBuildMigrationIndex <= migrationIndex) {
+      throw new Error("Workspace active-build migration not found");
+    }
 
     try {
       await applyCoreMigrations(fixture, coreMigrations, 0, migrationIndex);
@@ -59,22 +67,6 @@ FROM junior_snapshots
       expect(snapshot?.generatedAt.toISOString()).toBe(
         "2026-03-01T00:00:00.000Z",
       );
-      await fixture.sql.execute(`
-UPDATE junior_workspaces
-SET
-  snapshot_id = 'snap_written_by_old_worker',
-  snapshot_generated_at = CURRENT_TIMESTAMP,
-  snapshot_build_duration_ms = 20000,
-  snapshot_profile_hash = 'profile-written-by-old-worker'
-WHERE id = 'workspace-legacy-snapshot'
-`);
-      const [legacy] = await fixture.sql.query<{ snapshotId: string }>(`
-SELECT snapshot_id AS "snapshotId"
-FROM junior_workspaces
-WHERE id = 'workspace-legacy-snapshot'
-`);
-      expect(legacy?.snapshotId).toBe("snap_written_by_old_worker");
-
       await expect(
         fixture.sql.execute(`
 INSERT INTO junior_snapshots (
@@ -85,6 +77,12 @@ INSERT INTO junior_snapshots (
 )
 `),
       ).rejects.toThrow(/junior_snapshots_ready_fields_check/);
+      await applyCoreMigrations(
+        fixture,
+        coreMigrations,
+        migrationIndex + 1,
+        activeBuildMigrationIndex + 1,
+      );
       await fixture.sql.execute(`
 INSERT INTO junior_snapshots (
   id, workspace_id, profile_hash, status, build_started_at, build_phase,

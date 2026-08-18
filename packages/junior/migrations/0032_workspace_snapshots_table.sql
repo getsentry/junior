@@ -24,10 +24,8 @@ ALTER TABLE "junior_snapshots" ADD CONSTRAINT "junior_snapshots_workspace_id_jun
 CREATE UNIQUE INDEX "junior_snapshots_snapshot_id_uidx" ON "junior_snapshots" USING btree ("snapshot_id");--> statement-breakpoint
 CREATE INDEX "junior_snapshots_workspace_idx" ON "junior_snapshots" USING btree ("workspace_id");--> statement-breakpoint
 CREATE INDEX "junior_snapshots_workspace_profile_status_idx" ON "junior_snapshots" USING btree ("workspace_id","profile_hash","status");--> statement-breakpoint
-CREATE UNIQUE INDEX "junior_snapshots_active_build_uidx" ON "junior_snapshots" USING btree ("workspace_id","profile_hash") WHERE "junior_snapshots"."status" = 'building';--> statement-breakpoint
 CREATE INDEX "junior_snapshots_workspace_status_idx" ON "junior_snapshots" USING btree ("workspace_id","status");--> statement-breakpoint
--- Copy legacy recipe-column snapshot facts once. Keep the legacy columns for
--- rolling compatibility; a missing or later legacy snapshot can be rebuilt.
+-- Move legacy recipe-column snapshot facts into junior_snapshots before drop.
 INSERT INTO "junior_snapshots" (
 	"id",
 	"workspace_id",
@@ -64,4 +62,8 @@ WHERE
 	"snapshot_id" IS NOT NULL
 	AND "snapshot_profile_hash" IS NOT NULL
 	AND "snapshot_generated_at" IS NOT NULL
-	AND "snapshot_build_duration_ms" IS NOT NULL;
+	AND "snapshot_build_duration_ms" IS NOT NULL;--> statement-breakpoint
+ALTER TABLE "junior_workspaces" DROP COLUMN "snapshot_id";--> statement-breakpoint
+ALTER TABLE "junior_workspaces" DROP COLUMN "snapshot_generated_at";--> statement-breakpoint
+ALTER TABLE "junior_workspaces" DROP COLUMN "snapshot_build_duration_ms";--> statement-breakpoint
+ALTER TABLE "junior_workspaces" DROP COLUMN "snapshot_profile_hash";

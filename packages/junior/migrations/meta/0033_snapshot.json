@@ -1,6 +1,6 @@
 {
-  "id": "7f66cacd-886c-4bbd-8b80-ea3ce8a0a466",
-  "prevId": "6fe6b9af-5375-4f04-bc6e-3db5c77d5193",
+  "id": "30e30f6e-cfbc-4d22-aa24-8c0d8a5abc37",
+  "prevId": "7f66cacd-886c-4bbd-8b80-ea3ce8a0a466",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -2438,6 +2438,28 @@
             }
           ],
           "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "junior_snapshots_active_build_uidx": {
+          "name": "junior_snapshots_active_build_uidx",
+          "columns": [
+            {
+              "expression": "workspace_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "profile_hash",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"junior_snapshots\".\"status\" = 'building'",
           "concurrently": false,
           "method": "btree",
           "with": {}
