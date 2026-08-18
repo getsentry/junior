@@ -89,10 +89,67 @@ function shotName(scenarioId: string, viewport: VisualViewport) {
   return `${scenarioId}__${viewport.name}.png`;
 }
 
+function isFocusedComposerPrepare(
+  prepare: VisualScenarioPrepare | undefined,
+): prepare is VisualScenarioPrepare {
+  return (
+    prepare === "conversation-detail-focused" ||
+    prepare === "new-conversation-focused"
+  );
+}
+
+/** Simulate an open software keyboard and wait for the shell to dock to it. */
+async function dockFocusedComposerToKeyboard(
+  page: Page,
+  composer: ReturnType<Page["getByLabel"]>,
+): Promise<void> {
+  await composer.focus();
+  // Keep the layout viewport tall and simulate Safari's first-focus pan. The
+  // screenshot clips to this visual viewport below, so its bottom edge is the
+  // keyboard edge.
+  await page.evaluate(
+    ({ heightPx, offsetTopPx }) => {
+      Object.defineProperties(window.visualViewport, {
+        height: { configurable: true, value: heightPx },
+        offsetTop: { configurable: true, value: offsetTopPx },
+      });
+      window.visualViewport?.dispatchEvent(new Event("resize"));
+      window.visualViewport?.dispatchEvent(new Event("scroll"));
+    },
+    {
+      heightPx: FOCUSED_COMPOSER_VISUAL_HEIGHT_PX,
+      offsetTopPx: FOCUSED_COMPOSER_VISUAL_OFFSET_TOP_PX,
+    },
+  );
+  const shell = page.locator("main").first();
+  await expect
+    .poll(() =>
+      shell.evaluate((element) =>
+        element.style.getPropertyValue("--dashboard-viewport-height"),
+      ),
+    )
+    .toBe(`${FOCUSED_COMPOSER_VISUAL_HEIGHT_PX}px`);
+  await expect
+    .poll(() =>
+      shell.evaluate((element) =>
+        element.style.getPropertyValue("--dashboard-viewport-offset-top"),
+      ),
+    )
+    .toBe(`${FOCUSED_COMPOSER_VISUAL_OFFSET_TOP_PX}px`);
+  await expect
+    .poll(() =>
+      shell.evaluate((element) =>
+        element.style.getPropertyValue("--dashboard-keyboard-open"),
+      ),
+    )
+    .toBe("1");
+  await expect(composer).toBeFocused();
+}
+
 async function prepareScenario(
   page: Page,
   prepare: VisualScenarioPrepare | undefined,
-  viewport: VisualViewport,
+  _viewport: VisualViewport,
 ): Promise<void> {
   if (!prepare) return;
   if (prepare === "new-conversation-focused") {
@@ -101,40 +158,13 @@ async function prepareScenario(
     await page
       .getByRole("heading", { name: "New conversation", exact: true })
       .waitFor({ state: "visible", timeout: 15_000 });
-    await composer.focus();
-    // Keep the layout viewport tall and simulate Safari's first-focus pan. The
-    // screenshot clips to this visual viewport below, so its bottom edge is the
-    // keyboard edge.
-    await page.evaluate(
-      ({ heightPx, offsetTopPx }) => {
-        Object.defineProperties(window.visualViewport, {
-          height: { configurable: true, value: heightPx },
-          offsetTop: { configurable: true, value: offsetTopPx },
-        });
-        window.visualViewport?.dispatchEvent(new Event("resize"));
-        window.visualViewport?.dispatchEvent(new Event("scroll"));
-      },
-      {
-        heightPx: FOCUSED_COMPOSER_VISUAL_HEIGHT_PX,
-        offsetTopPx: FOCUSED_COMPOSER_VISUAL_OFFSET_TOP_PX,
-      },
-    );
-    const shell = page.locator("main").first();
-    await expect
-      .poll(() =>
-        shell.evaluate((element) =>
-          element.style.getPropertyValue("--dashboard-viewport-height"),
-        ),
-      )
-      .toBe(`${FOCUSED_COMPOSER_VISUAL_HEIGHT_PX}px`);
-    await expect
-      .poll(() =>
-        shell.evaluate((element) =>
-          element.style.getPropertyValue("--dashboard-viewport-offset-top"),
-        ),
-      )
-      .toBe(`${FOCUSED_COMPOSER_VISUAL_OFFSET_TOP_PX}px`);
-    await expect(composer).toBeFocused();
+    await dockFocusedComposerToKeyboard(page, composer);
+    return;
+  }
+  if (prepare === "conversation-detail-focused") {
+    const composer = page.getByPlaceholder("Message Junior…");
+    await expect(composer).toBeVisible();
+    await dockFocusedComposerToKeyboard(page, composer);
     return;
   }
   const _exhaustive: never = prepare;
@@ -173,7 +203,7 @@ async function captureScenario(options: {
       animations: "disabled",
       // Focused composer shots clip to the visual viewport. Other shots capture
       // the full page.
-      clip: scenario.prepare
+      clip: isFocusedComposerPrepare(scenario.prepare)
         ? {
             height: FOCUSED_COMPOSER_VISUAL_HEIGHT_PX,
             width: viewport.width,
@@ -181,7 +211,7 @@ async function captureScenario(options: {
             y: FOCUSED_COMPOSER_VISUAL_OFFSET_TOP_PX,
           }
         : undefined,
-      fullPage: scenario.prepare ? false : true,
+      fullPage: isFocusedComposerPrepare(scenario.prepare) ? false : true,
       path: path.join(outDir, file),
       type: "png",
     });

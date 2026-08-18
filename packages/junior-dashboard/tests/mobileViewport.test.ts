@@ -28,6 +28,7 @@ describe("mobileViewportMetrics", () => {
       }),
     ).toEqual({
       heightPx: 844,
+      keyboardOpen: false,
       offsetTopPx: 0,
     });
   });
@@ -42,6 +43,7 @@ describe("mobileViewportMetrics", () => {
       }),
     ).toEqual({
       heightPx: 844,
+      keyboardOpen: false,
       offsetTopPx: 0,
     });
   });
@@ -56,6 +58,7 @@ describe("mobileViewportMetrics", () => {
       }),
     ).toEqual({
       heightPx: 520,
+      keyboardOpen: true,
       offsetTopPx: 140,
     });
   });
@@ -70,6 +73,7 @@ describe("mobileViewportMetrics", () => {
       }),
     ).toEqual({
       heightPx: 480,
+      keyboardOpen: true,
       offsetTopPx: 0,
     });
   });
@@ -97,6 +101,7 @@ describe("mobileViewportOffsetTop", () => {
     expect(
       mobileViewportOffsetTop({
         editableFocused: true,
+        keyboardOpen: true,
         nextOffsetTop: 140,
         previousOffsetTop: 0,
         source: "resize",
@@ -108,6 +113,7 @@ describe("mobileViewportOffsetTop", () => {
     expect(
       mobileViewportOffsetTop({
         editableFocused: true,
+        keyboardOpen: true,
         nextOffsetTop: 180,
         previousOffsetTop: 140,
         source: "scroll",
@@ -115,10 +121,32 @@ describe("mobileViewportOffsetTop", () => {
     ).toBe(140);
   });
 
-  it("accepts the settled offset after the editor loses focus", () => {
+  it("freezes measure and focus churn while an editor is focused", () => {
+    expect(
+      mobileViewportOffsetTop({
+        editableFocused: true,
+        keyboardOpen: true,
+        nextOffsetTop: 200,
+        previousOffsetTop: 140,
+        source: "measure",
+      }),
+    ).toBe(140);
+    expect(
+      mobileViewportOffsetTop({
+        editableFocused: true,
+        keyboardOpen: true,
+        nextOffsetTop: 200,
+        previousOffsetTop: 140,
+        source: "focusin",
+      }),
+    ).toBe(140);
+  });
+
+  it("snaps closed after the editor loses focus", () => {
     expect(
       mobileViewportOffsetTop({
         editableFocused: false,
+        keyboardOpen: false,
         nextOffsetTop: 0,
         previousOffsetTop: 140,
         source: "focusout",
@@ -126,10 +154,23 @@ describe("mobileViewportOffsetTop", () => {
     ).toBe(0);
   });
 
-  it("follows blur-time scroll offsets when no editor is focused", () => {
+  it("snaps closed even if a stale visual offset remains after blur", () => {
     expect(
       mobileViewportOffsetTop({
         editableFocused: false,
+        keyboardOpen: false,
+        nextOffsetTop: 180,
+        previousOffsetTop: 140,
+        source: "focusout",
+      }),
+    ).toBe(0);
+  });
+
+  it("follows open-keyboard scroll offsets when no editor is focused", () => {
+    expect(
+      mobileViewportOffsetTop({
+        editableFocused: false,
+        keyboardOpen: true,
         nextOffsetTop: 180,
         previousOffsetTop: 140,
         source: "scroll",

@@ -138,7 +138,7 @@ export function DashboardShell() {
         className={cn(
           "grid font-sans text-dashboard-text",
           workspace
-            ? "fixed inset-x-0 top-[var(--dashboard-viewport-offset-top,0px)] h-[var(--dashboard-viewport-height,100dvh)] min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden overscroll-none md:relative md:inset-auto md:h-dvh md:overscroll-auto"
+            ? "fixed inset-x-0 top-[var(--dashboard-viewport-offset-top,0px)] h-[var(--dashboard-viewport-height,100dvh)] max-h-[var(--dashboard-viewport-height,100dvh)] min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden overscroll-none md:relative md:inset-auto md:h-dvh md:max-h-none md:overscroll-auto"
             : "relative min-h-screen grid-rows-[auto_1fr]",
         )}
         ref={shellRef}
