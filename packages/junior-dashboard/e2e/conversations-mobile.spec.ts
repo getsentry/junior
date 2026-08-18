@@ -276,12 +276,14 @@ test("opens and closes a conversation in the mobile workspace", async ({
 
   // First keyboard open docks to the visual viewport (height + offset) so the
   // focused composer lands on the visible bottom, not the layout bottom.
+  // Safari can emit resize then scroll in one frame. Resize must win that burst.
   await page.evaluate(() => {
     Object.defineProperties(window.visualViewport, {
       height: { configurable: true, value: 520 },
       offsetTop: { configurable: true, value: 140 },
     });
     window.visualViewport?.dispatchEvent(new Event("resize"));
+    window.visualViewport?.dispatchEvent(new Event("scroll"));
   });
   await expect
     .poll(() =>

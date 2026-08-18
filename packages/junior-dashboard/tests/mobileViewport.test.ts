@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  coalescedMobileViewportSyncSource,
   mobileViewportMetrics,
   mobileViewportOffsetTop,
 } from "../src/client/mobileViewport";
@@ -71,6 +72,23 @@ describe("mobileViewportMetrics", () => {
       heightPx: 480,
       offsetTopPx: 0,
     });
+  });
+});
+
+describe("coalescedMobileViewportSyncSource", () => {
+  it("keeps keyboard resize stronger than a same-frame scroll", () => {
+    expect(coalescedMobileViewportSyncSource("resize", "scroll")).toBe(
+      "resize",
+    );
+    expect(coalescedMobileViewportSyncSource("scroll", "resize")).toBe(
+      "resize",
+    );
+  });
+
+  it("uses scroll when it is the only signal in a frame", () => {
+    expect(coalescedMobileViewportSyncSource(undefined, "scroll")).toBe(
+      "scroll",
+    );
   });
 });
 

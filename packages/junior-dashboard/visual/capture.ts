@@ -112,6 +112,7 @@ async function prepareScenario(
           offsetTop: { configurable: true, value: offsetTopPx },
         });
         window.visualViewport?.dispatchEvent(new Event("resize"));
+        window.visualViewport?.dispatchEvent(new Event("scroll"));
       },
       {
         heightPx: FOCUSED_COMPOSER_VISUAL_HEIGHT_PX,

@@ -19,6 +19,24 @@ export type MobileViewportSyncSource =
   | "resize"
   | "scroll";
 
+const mobileViewportSyncPriority: Record<MobileViewportSyncSource, number> = {
+  focusout: 2,
+  measure: 1,
+  resize: 3,
+  scroll: 0,
+};
+
+/** Keep the strongest viewport signal when browser events share one frame. */
+export function coalescedMobileViewportSyncSource(
+  current: MobileViewportSyncSource | undefined,
+  next: MobileViewportSyncSource,
+): MobileViewportSyncSource {
+  if (current === undefined) return next;
+  return mobileViewportSyncPriority[next] > mobileViewportSyncPriority[current]
+    ? next
+    : current;
+}
+
 /**
  * Map layout + visual viewport into shell geometry.
  * Only follow visualViewport offset/height while the keyboard is open so
@@ -84,6 +102,7 @@ export function useMobileViewportHeight(
     const mobile = window.matchMedia("(max-width: 767px)");
     const viewport = window.visualViewport;
     let frame: number | undefined;
+    let pendingSource: MobileViewportSyncSource | undefined;
     let lastHeight = "";
     let lastOffsetTop = "";
     let appliedOffsetTopPx = 0;
@@ -114,8 +133,11 @@ export function useMobileViewportHeight(
     };
 
     const syncHeight = (source: MobileViewportSyncSource) => {
-      if (frame !== undefined) cancelAnimationFrame(frame);
+      pendingSource = coalescedMobileViewportSyncSource(pendingSource, source);
+      if (frame !== undefined) return;
       frame = requestAnimationFrame(() => {
+        const syncSource = pendingSource ?? source;
+        pendingSource = undefined;
         const metrics = mobileViewportMetrics({
           layoutHeight: window.innerHeight,
           mobile: mobile.matches,
@@ -135,7 +157,7 @@ export function useMobileViewportHeight(
           editableFocused: isEditableElement(document.activeElement),
           nextOffsetTop: metrics.offsetTopPx,
           previousOffsetTop: appliedOffsetTopPx,
-          source,
+          source: syncSource,
         });
         const nextHeight = `${metrics.heightPx}px`;
         const nextOffsetTop = `${offsetTopPx}px`;
