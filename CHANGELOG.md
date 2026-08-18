@@ -1,4 +1,10 @@
 # Changelog
+## 0.173.0
+
+### Bug Fixes 🐛
+
+- (dashboard) Dock chat shell to the visual viewport by @sentry-junior in [#1609](https://github.com/getsentry/junior/pull/1609)
+
 ## 0.172.0
 
 ### Bug Fixes 🐛
