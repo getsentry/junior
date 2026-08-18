@@ -12,16 +12,13 @@ const {
   sessionRecordResumed,
   sessionRecordTurnStartMessageIndex,
   selectedThinkingLevels,
-  workspaceSwitchCount,
 } = vi.hoisted(() => ({
   agentMode: {
     value: "plain" as
       | "plain"
       | "loadSkill"
       | "bashThenError"
-      | "agentsAfterBash"
-      | "mixedWorkspaceSwitch"
-      | "workspaceSnapshotWait",
+      | "agentsAfterBash",
   },
   createSandboxCallCount: {
     value: 0,
@@ -50,9 +47,6 @@ const {
   selectedThinkingLevels: {
     value: [] as unknown[],
   },
-  workspaceSwitchCount: {
-    value: 0,
-  },
 }));
 
 vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
@@ -68,23 +62,9 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
         execute: (toolCallId: unknown, params: unknown) => Promise<unknown>;
       }>;
     };
-    private beforeToolCall?: (input: {
-      assistantMessage: unknown;
-      toolCall: unknown;
-    }) =>
-      | Promise<{ block?: boolean } | undefined>
-      | { block?: boolean }
-      | undefined;
     private prepareNextTurn?: (context: unknown) => Promise<unknown> | unknown;
 
     constructor(input: {
-      beforeToolCall?: (input: {
-        assistantMessage: unknown;
-        toolCall: unknown;
-      }) =>
-        | Promise<{ block?: boolean } | undefined>
-        | { block?: boolean }
-        | undefined;
       prepareNextTurnWithContext?: (
         context: unknown,
       ) => Promise<unknown> | unknown;
@@ -104,7 +84,6 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
         systemPrompt: input.initialState.systemPrompt,
         tools: input.initialState.tools,
       };
-      this.beforeToolCall = input.beforeToolCall;
       this.prepareNextTurn = input.prepareNextTurnWithContext;
       selectedThinkingLevels.value.push(input.initialState.thinkingLevel);
     }
@@ -198,88 +177,6 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
           this.state.messages = update.context.messages;
         }
         preparedMessages.value = [...this.state.messages];
-      }
-
-      if (agentMode.value === "workspaceSnapshotWait") {
-        const switchWorkspace = this.state.tools.find(
-          (tool) => tool.name === "switchWorkspace",
-        );
-        if (!switchWorkspace) {
-          throw new Error("switchWorkspace tool missing");
-        }
-        const assistantMessage = {
-          role: "assistant",
-          content: [
-            {
-              type: "toolCall",
-              id: "tool-call-switch-workspace",
-              name: "switchWorkspace",
-              arguments: { name: "snapshot-test" },
-            },
-          ],
-          stopReason: "toolUse",
-        };
-        const result = (await switchWorkspace.execute(
-          "tool-call-switch-workspace",
-          { name: "snapshot-test" },
-        )) as { content: unknown[]; details: unknown };
-        const toolResult = {
-          role: "toolResult",
-          toolCallId: "tool-call-switch-workspace",
-          toolName: "switchWorkspace",
-          content: result.content,
-          details: result.details,
-          isError: false,
-        };
-        this.state.messages.push(assistantMessage, toolResult);
-        const inFlightContext = {
-          messages: [...this.state.messages],
-          systemPrompt: this.state.systemPrompt,
-          tools: this.state.tools,
-        };
-        const update = (await this.prepareNextTurn?.({
-          context: inFlightContext,
-          message: assistantMessage,
-          newMessages: [],
-          toolResults: [toolResult],
-        })) as { context?: { messages?: unknown[] } } | undefined;
-        preparedMessages.value = [
-          ...(update?.context?.messages ?? inFlightContext.messages),
-        ];
-        this.state.messages = [...preparedMessages.value];
-      }
-
-      if (agentMode.value === "mixedWorkspaceSwitch") {
-        const assistantMessage = {
-          role: "assistant",
-          content: [
-            {
-              type: "toolCall",
-              id: "tool-call-switch-workspace",
-              name: "switchWorkspace",
-              arguments: { name: "snapshot-test" },
-            },
-            {
-              type: "toolCall",
-              id: "tool-call-bash-after-switch",
-              name: "bash",
-              arguments: { command: "pwd" },
-            },
-          ],
-          stopReason: "toolUse",
-        };
-        for (const toolCall of assistantMessage.content) {
-          const decision = await this.beforeToolCall?.({
-            assistantMessage,
-            toolCall,
-          });
-          if (decision?.block) continue;
-          const tool = this.state.tools.find(
-            (candidate) => candidate.name === toolCall.name,
-          );
-          if (!tool) throw new Error(`${toolCall.name} tool missing`);
-          await tool.execute(toolCall.id, toolCall.arguments);
-        }
       }
 
       this.state.messages.push({
@@ -558,8 +455,7 @@ vi.mock("@/chat/sandbox/sandbox", () => ({
       tools: {
         supports: (toolName: string) =>
           (agentMode.value === "bashThenError" ||
-            agentMode.value === "agentsAfterBash" ||
-            agentMode.value === "mixedWorkspaceSwitch") &&
+            agentMode.value === "agentsAfterBash") &&
           toolName === "bash",
         execute: async ({ toolName }: { toolName: string; input: unknown }) => {
           if (toolName !== "bash") {
@@ -570,8 +466,7 @@ vi.mock("@/chat/sandbox/sandbox", () => ({
 
           if (
             agentMode.value !== "bashThenError" &&
-            agentMode.value !== "agentsAfterBash" &&
-            agentMode.value !== "mixedWorkspaceSwitch"
+            agentMode.value !== "agentsAfterBash"
           ) {
             throw new Error(
               "sandbox executor should not handle tools in this test",
@@ -603,15 +498,6 @@ vi.mock("@/chat/sandbox/sandbox", () => ({
               profileHash: "hash-test",
             }
           : undefined),
-      switchWorkspace: async () => {
-        workspaceSwitchCount.value += 1;
-        if (workspaceSwitchCount.value === 1) {
-          throw Object.assign(new Error("Workspace snapshot is building"), {
-            code: "workspace_snapshot_waiting",
-            name: "WorkspaceSnapshotWaitingError",
-          });
-        }
-      },
       close: vi.fn(),
     };
   },
@@ -619,8 +505,6 @@ vi.mock("@/chat/sandbox/sandbox", () => ({
 
 import { executeAgentRun } from "@/chat/agent";
 import type { AgentRun } from "@/chat/agent/types";
-import { getDb } from "@/chat/db";
-import { juniorWorkspaces } from "@/db/schema";
 
 const LOCAL_DESTINATION = {
   platform: "local" as const,
@@ -664,7 +548,6 @@ describe("executeAgentRun lazy sandbox boot", () => {
     sessionRecordResumed.value = false;
     sessionRecordTurnStartMessageIndex.value = undefined;
     selectedThinkingLevels.value = [];
-    workspaceSwitchCount.value = 0;
   });
 
   it("does not create a sandbox for turns that never touch sandbox-backed tools", async () => {
@@ -896,54 +779,5 @@ describe("executeAgentRun lazy sandbox boot", () => {
     expect(JSON.stringify(preparedMessages.value)).not.toContain(
       '"stdout":"# AGENTS.md instructions',
     );
-  });
-
-  it("returns host Workspace continuation messages to Pi's in-flight context", async () => {
-    agentMode.value = "workspaceSnapshotWait";
-    repositoryInstructionsAvailable.value = false;
-    const now = new Date();
-    await getDb().insert(juniorWorkspaces).values({
-      id: "33333333-3333-4333-8333-333333333333",
-      name: "snapshot-test",
-      setupScript: "",
-      createdAt: now,
-      updatedAt: now,
-    });
-
-    const reply = await generateLocalReply("switch to snapshot-test");
-
-    expect(reply.text).toBe("Plain reply.");
-    expect(workspaceSwitchCount.value).toBe(2);
-    const switchResults = preparedMessages.value.filter(
-      (message) =>
-        (message as { role?: string }).role === "toolResult" &&
-        (message as { toolName?: string }).toolName === "switchWorkspace",
-    ) as Array<{ details?: unknown }>;
-    expect(switchResults).toHaveLength(2);
-    expect(switchResults[0]?.details).toMatchObject({
-      waiting: "workspace_snapshot",
-      timed_out: true,
-    });
-    expect(switchResults[1]?.details).toMatchObject({
-      workspace: { name: "snapshot-test" },
-    });
-  });
-
-  it("blocks a Workspace switch that is mixed with a sibling tool", async () => {
-    agentMode.value = "mixedWorkspaceSwitch";
-    const now = new Date();
-    await getDb().insert(juniorWorkspaces).values({
-      id: "44444444-4444-4444-8444-444444444444",
-      name: "snapshot-test",
-      setupScript: "",
-      createdAt: now,
-      updatedAt: now,
-    });
-
-    const reply = await generateLocalReply("switch and then inspect files");
-
-    expect(reply.text).toBe("Plain reply.");
-    expect(workspaceSwitchCount.value).toBe(0);
-    expect(createSandboxCallCount.value).toBe(0);
   });
 });

@@ -574,19 +574,10 @@ async function advanceWorkspaceSnapshot(params: {
 }
 
 /** Reserve enough host time to persist the waiting tool-result boundary. */
-function shouldYieldWait(params: {
-  shouldYield?: () => boolean;
-  turnDeadlineAtMs?: number;
-}): boolean {
-  if (params.shouldYield) return params.shouldYield();
+function shouldYieldWait(shouldYield?: () => boolean): boolean {
+  if (shouldYield) return shouldYield();
 
-  const requestDeadline = getTurnRequestDeadline()?.deadlineAtMs;
-  const deadlineAtMs =
-    params.turnDeadlineAtMs === undefined
-      ? requestDeadline
-      : requestDeadline === undefined
-        ? params.turnDeadlineAtMs
-        : Math.min(params.turnDeadlineAtMs, requestDeadline);
+  const deadlineAtMs = getTurnRequestDeadline()?.deadlineAtMs;
   return (
     deadlineAtMs !== undefined &&
     Date.now() >= deadlineAtMs - WAIT_YIELD_BUFFER_MS
@@ -603,7 +594,6 @@ export async function resolveWorkspaceSnapshot(params: {
   staleSnapshotId?: string;
   signal?: AbortSignal;
   shouldYield?: () => boolean;
-  turnDeadlineAtMs?: number;
   applyNetworkPolicy(sandbox: SandboxSession): Promise<unknown>;
   prepareRepositories?(
     sandbox: SandboxSession,
@@ -617,7 +607,7 @@ export async function resolveWorkspaceSnapshot(params: {
     const workspace = await getWorkspace(getDb(), params.workspace.id);
     if (!workspace) throw workspaceDeletedError(params.workspace);
     const slice = { ...params, workspace };
-    if (shouldYieldWait(slice)) {
+    if (shouldYieldWait(slice.shouldYield)) {
       throw new WorkspaceSnapshotWaitingError(workspace.name);
     }
 
@@ -626,13 +616,13 @@ export async function resolveWorkspaceSnapshot(params: {
       snapshot = await advanceWorkspaceSnapshot(slice);
     } catch (error) {
       if (!isSandboxApiTransientError(error)) throw error;
-      if (shouldYieldWait(slice)) {
+      if (shouldYieldWait(slice.shouldYield)) {
         throw new WorkspaceSnapshotWaitingError(workspace.name);
       }
       await sleep(TRANSIENT_API_RETRY_MS, params.signal);
       continue;
     }
-    if (shouldYieldWait(slice)) {
+    if (shouldYieldWait(slice.shouldYield)) {
       throw new WorkspaceSnapshotWaitingError(workspace.name);
     }
     if (snapshot) return snapshot;

@@ -41,7 +41,6 @@ export interface AgentSandboxOptions {
   configurationValues: Record<string, unknown>;
   /** Durable-worker soft yield for long Workspace snapshot waits. */
   shouldYield?: () => boolean;
-  turnDeadlineAtMs?: number;
   getActiveSkill(): Skill | null;
   prepareSandbox(workspace: SandboxWorkspace): void | Promise<void>;
   prepareWorkspace?(
@@ -158,7 +157,6 @@ export function createAgentSandbox(options: AgentSandboxOptions): AgentSandbox {
     egressSignals: options.egressSignals,
     credentialEgress: options.credentialEgress,
     shouldYield: options.shouldYield,
-    turnDeadlineAtMs: options.turnDeadlineAtMs,
     prepare: options.prepareSandbox,
     prepareWorkspace: options.prepareWorkspace,
     onSandboxRefChanged: async (sandboxRef) => {

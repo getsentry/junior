@@ -128,7 +128,6 @@ interface SandboxRuntimeOptions {
   timeoutMs?: number;
   /** Durable-worker soft yield for long Workspace snapshot waits. */
   shouldYield?: () => boolean;
-  turnDeadlineAtMs?: number;
   traceContext?: LogContext;
   commandEnv?: () => Promise<Record<string, string>>;
   createNetworkPolicy?: (
@@ -426,7 +425,6 @@ export function createSandboxRuntime(
             staleSnapshotId: snapshot.snapshotId,
             signal,
             shouldYield: options.shouldYield,
-            turnDeadlineAtMs: options.turnDeadlineAtMs,
             applyNetworkPolicy,
             prepareRepositories: options.onWorkspacePrepare,
             removeCredentialRoute: Boolean(options.createNetworkPolicy),
@@ -488,7 +486,6 @@ export function createSandboxRuntime(
                 runtime,
                 signal,
                 shouldYield: options.shouldYield,
-                turnDeadlineAtMs: options.turnDeadlineAtMs,
                 applyNetworkPolicy,
                 prepareRepositories: options.onWorkspacePrepare,
                 removeCredentialRoute: Boolean(options.createNetworkPolicy),

@@ -99,7 +99,6 @@ export interface SandboxOptions {
   timeoutMs?: number;
   /** Durable-worker soft yield for long Workspace snapshot waits. */
   shouldYield?: () => boolean;
-  turnDeadlineAtMs?: number;
   traceContext?: LogContext;
   tracePropagation?: SandboxEgressTracePropagationConfig;
   credentialEgress?: CredentialContext;
@@ -220,7 +219,6 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
     referenceFiles: options.referenceFiles,
     timeoutMs: options.timeoutMs,
     shouldYield: options.shouldYield,
-    turnDeadlineAtMs: options.turnDeadlineAtMs,
     traceContext,
     commandEnv: credentialEgress ? resolveSandboxCommandEnvironment : undefined,
     createNetworkPolicy:
