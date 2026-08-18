@@ -4,7 +4,9 @@ export type VisualViewport = {
   width: number;
 };
 
-export type VisualScenarioPrepare = "new-conversation-focused";
+export type VisualScenarioPrepare =
+  | "conversation-detail-focused"
+  | "new-conversation-focused";
 
 export type VisualScenario = {
   componentGallery?: boolean;
@@ -51,6 +53,16 @@ export const VISUAL_SCENARIOS: VisualScenario[] = [
     path: `/conversations/${encodeURIComponent(ACTIVE_CONVERSATION_ID)}`,
     ready: "Investigate checkout latency",
     viewports: [DESKTOP, MOBILE],
+  },
+  {
+    id: "conversation-detail-focused",
+    label: "Conversation detail · focused composer",
+    path: `/conversations/${encodeURIComponent(ACTIVE_CONVERSATION_ID)}`,
+    // Focus the reply composer and shrink the visual viewport so the PR
+    // screenshot shows the input docked above the keyboard with chat chrome.
+    prepare: "conversation-detail-focused",
+    ready: "Investigate checkout latency",
+    viewports: [MOBILE],
   },
   {
     id: "conversation-create-focused",
@@ -135,6 +147,7 @@ const PATH_RULES: PathRule[] = [
     scenarioIds: [
       "conversations",
       "conversation-detail",
+      "conversation-detail-focused",
       "conversation-create-focused",
     ],
   },
@@ -180,7 +193,7 @@ const PATH_RULES: PathRule[] = [
       ),
     scenarioIds: [
       "conversations",
-      "conversation-detail",
+      "conversation-detail-focused",
       "conversation-create-focused",
       "system",
     ],

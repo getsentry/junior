@@ -16,6 +16,7 @@ describe("selectVisualScenarioIds", () => {
     ).toEqual([
       "conversations",
       "conversation-detail",
+      "conversation-detail-focused",
       "conversation-create-focused",
     ]);
   });
@@ -42,7 +43,7 @@ describe("selectVisualScenarioIds", () => {
     ]);
     expect(selected).toEqual([
       "conversations",
-      "conversation-detail",
+      "conversation-detail-focused",
       "conversation-create-focused",
       "system",
     ]);
@@ -56,7 +57,7 @@ describe("selectVisualScenarioIds", () => {
       ]),
     ).toEqual([
       "conversations",
-      "conversation-detail",
+      "conversation-detail-focused",
       "conversation-create-focused",
       "system",
     ]);
@@ -101,8 +102,8 @@ describe("selectVisualScenarioIds", () => {
     ).toEqual([
       "conversations",
       "conversation-detail",
+      "conversation-detail-focused",
       "conversation-create-focused",
-      "system",
     ]);
   });
 
@@ -136,6 +137,14 @@ describe("resolveVisualScenarios", () => {
   it("registers the focused create composer as mobile-only evidence", () => {
     const scenario = resolveVisualScenarios(["conversation-create-focused"])[0];
     expect(scenario?.prepare).toBe("new-conversation-focused");
+    expect(scenario?.viewports.map((viewport) => viewport.name)).toEqual([
+      "mobile",
+    ]);
+  });
+
+  it("registers the focused reply composer as mobile-only evidence", () => {
+    const scenario = resolveVisualScenarios(["conversation-detail-focused"])[0];
+    expect(scenario?.prepare).toBe("conversation-detail-focused");
     expect(scenario?.viewports.map((viewport) => viewport.name)).toEqual([
       "mobile",
     ]);

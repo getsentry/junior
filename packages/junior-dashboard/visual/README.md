@@ -45,8 +45,13 @@ reviewable. Force every registered scenario with either:
 5. For interaction shots (focus, open menu), set `prepare` and implement the
    steps in `capture.ts`. Keep the registry data-only.
 
-`conversation-create-focused` is the mobile create-mode keyboard shot: open
-create, focus the composer, set a short `visualViewport` with a non-zero top
-offset, then capture that visible rectangle.
+Focused keyboard shots:
+
+- `conversation-create-focused`: open create, focus the composer, set a short
+  `visualViewport` with a non-zero top offset, then capture that visible
+  rectangle.
+- `conversation-detail-focused`: open a reply conversation, focus the composer,
+  apply the same keyboard viewport, then capture the docked input with chat
+  chrome and the queued mailbox.
 
 This is evidence for reviewers, not a pixel-diff gate.
