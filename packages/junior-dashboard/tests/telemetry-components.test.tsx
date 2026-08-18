@@ -920,6 +920,45 @@ describe("dashboard canonical-event components", () => {
     expect(html).not.toContain("{}");
   });
 
+  it("does not render empty JSON message bodies as {}", () => {
+    const html = renderTranscript(
+      conversation([
+        event(0, {
+          type: "message",
+          messageId: "assistant-1",
+          role: "assistant",
+          text: "{}",
+        }),
+      ]),
+    );
+
+    expect(html).not.toContain("{}");
+  });
+
+  it("does not expand tool rows for empty object input or output", () => {
+    const html = renderTranscript(
+      conversation([
+        event(0, {
+          type: "tool_calls",
+          calls: [
+            {
+              toolCallId: "list-1",
+              name: "listEventTasks",
+              status: "completed",
+              input: {},
+              output: {},
+            },
+          ],
+        }),
+      ]),
+    );
+
+    expect(html).toContain("listEventTasks");
+    expect(html).not.toContain("arguments");
+    expect(html).not.toContain("result");
+    expect(html).not.toContain("{}");
+  });
+
   it("renders one in-progress row for a tool start", () => {
     const html = renderTranscript(
       conversation(

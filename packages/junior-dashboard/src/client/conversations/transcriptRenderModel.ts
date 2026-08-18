@@ -174,7 +174,12 @@ export function groupTranscriptMessages(
 export function messageRawText(message: TranscriptViewMessage): string {
   return message.parts
     .map((part) => {
-      if (part.type === "text") return part.text ?? "";
+      if (part.type === "text") {
+        // Match rich view: empty JSON containers are not useful raw content.
+        const text = part.text ?? "";
+        const trimmed = text.trim();
+        return trimmed === "{}" || trimmed === "[]" ? "" : text;
+      }
       if (part.type === "reasoning") return part.text ?? "reasoning redacted";
       if (part.type === "tool_call") return `tool_call ${part.name}`;
       if (part.type === "subagent") {

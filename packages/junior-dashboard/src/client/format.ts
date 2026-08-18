@@ -834,6 +834,8 @@ export function parseMarkdownBlocks(text: string): CodeBlock[] {
     });
   }
   if (blocks.length > 0) return blocks;
+  // Whitespace-only bodies should not invent a code/prose shell.
+  if (!text.trim()) return [];
   const language = detectOutputLanguage(text);
   return [{ code: formatCodeBlock(text, language), fenced: false, language }];
 }
@@ -936,6 +938,27 @@ export function filterConversationList(
 /** Serialize transcript part payloads for raw view and syntax highlighting. */
 export function stringifyPartValue(value: unknown): string {
   if (value == null || value === "") return "";
-  if (typeof value === "string") return prettyJsonData(value) ?? value;
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return "";
+    // Empty JSON containers are noise in the transcript, not useful payload.
+    try {
+      if (isEmptyJsonValue(JSON.parse(trimmed))) return "";
+    } catch {
+      // keep non-JSON strings as-is
+    }
+    return prettyJsonData(value) ?? value;
+  }
+  if (isEmptyJsonValue(value)) return "";
   return JSON.stringify(value, null, 2) ?? "";
+}
+
+function isEmptyJsonValue(value: unknown): boolean {
+  if (Array.isArray(value)) return value.length === 0;
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    !Array.isArray(value) &&
+    Object.keys(value as Record<string, unknown>).length === 0
+  );
 }

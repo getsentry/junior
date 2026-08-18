@@ -28,6 +28,7 @@ import {
   peoplePath,
   slackLocationLabel,
   setDashboardTimeZone,
+  stringifyPartValue,
   summarizeMessages,
   summarizeToolCalls,
   summarizeTurns,
@@ -369,5 +370,25 @@ describe("transcript blocks", () => {
       fenced: true,
       language: "xml",
     });
+  });
+
+  it("does not invent a block for empty prose", () => {
+    expect(parseMarkdownBlocks("")).toEqual([]);
+    expect(parseMarkdownBlocks("   \n\t")).toEqual([]);
+  });
+});
+
+describe("stringifyPartValue", () => {
+  it("hides empty JSON containers instead of rendering {}", () => {
+    expect(stringifyPartValue(undefined)).toBe("");
+    expect(stringifyPartValue(null)).toBe("");
+    expect(stringifyPartValue("")).toBe("");
+    expect(stringifyPartValue("   ")).toBe("");
+    expect(stringifyPartValue({})).toBe("");
+    expect(stringifyPartValue([])).toBe("");
+    expect(stringifyPartValue("{}")).toBe("");
+    expect(stringifyPartValue("[]")).toBe("");
+    expect(stringifyPartValue({ ok: true })).toContain("ok");
+    expect(stringifyPartValue('{"ok":true}')).toContain("ok");
   });
 });

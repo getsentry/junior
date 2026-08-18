@@ -4,6 +4,7 @@ import { HighlightedCode } from "../code";
 import {
   detectLanguage,
   formatMessageTimestamp,
+  stringifyPartValue,
   transcriptMessageActorLabel,
   transcriptRoleKind,
 } from "../format";
@@ -59,17 +60,21 @@ export const TranscriptMessageView = memo(
           conversation={props.conversation}
         />
         {props.view === "raw" ? (
-          <HighlightedCode
-            code={rawText}
-            language={detectLanguage(rawText)}
-          />
+          rawText ? (
+            <HighlightedCode
+              code={rawText}
+              language={detectLanguage(rawText)}
+            />
+          ) : null
         ) : (
           <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2">
-            {props.message.parts.map((part, index) =>
-              part.type === "text" ? (
-                <TranscriptText key={index} role={role} text={part.text ?? ""} />
-              ) : null,
-            )}
+            {props.message.parts.map((part, index) => {
+              if (part.type !== "text") return null;
+              const text = part.text ?? "";
+              // Hide empty / empty-JSON bodies so they never render as `{}`.
+              if (!stringifyPartValue(text)) return null;
+              return <TranscriptText key={index} role={role} text={text} />;
+            })}
           </div>
         )}
         {props.view === "rich" &&

@@ -406,21 +406,13 @@ function appendTool(
     "Duration",
     formatElapsedDuration(timestamp, part.resultTimestamp),
   );
-  if (part.input !== undefined) {
-    lines.push(
-      "",
-      "#### Arguments",
-      "",
-      fencedBlock(stringifyPartValue(part.input), "json"),
-    );
+  const input = stringifyPartValue(part.input);
+  if (input) {
+    lines.push("", "#### Arguments", "", fencedBlock(input, "json"));
   }
-  if (part.output !== undefined) {
-    lines.push(
-      "",
-      "#### Result",
-      "",
-      fencedBlock(stringifyPartValue(part.output), "json"),
-    );
+  const output = stringifyPartValue(part.output);
+  if (output) {
+    lines.push("", "#### Result", "", fencedBlock(output, "json"));
   }
 }
 

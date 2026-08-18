@@ -26,9 +26,14 @@ export function TranscriptToolView(props: {
     props.timestamp,
     props.part.resultTimestamp,
   );
-  const hasDetails =
-    props.part.input !== undefined || props.part.output !== undefined;
-  const responseSize = formatPayloadSize(props.part.output);
+  const inputCode = stringifyPartValue(props.part.input);
+  const outputCode = stringifyPartValue(props.part.output);
+  const hasInput = inputCode.length > 0;
+  const hasOutput = outputCode.length > 0;
+  const hasDetails = hasInput || hasOutput;
+  const responseSize = hasOutput
+    ? formatPayloadSize(props.part.output)
+    : undefined;
   const executionMeta = [duration, responseSize].filter(isString).join(" · ");
   const meta = [executionMeta, timestamp].filter(isString);
   const mobileSummary = executionMeta;
@@ -53,7 +58,7 @@ export function TranscriptToolView(props: {
             code={stringifyPartValue({
               call: {
                 id: props.part.id,
-                input: props.part.input,
+                ...(hasInput ? { input: props.part.input } : {}),
                 name: props.part.name,
               },
               result:
@@ -61,7 +66,7 @@ export function TranscriptToolView(props: {
                   ? undefined
                   : {
                       outcome: props.part.status,
-                      output: props.part.output,
+                      ...(hasOutput ? { output: props.part.output } : {}),
                     },
             })}
             language="json"
@@ -75,20 +80,14 @@ export function TranscriptToolView(props: {
         mobileSummaryMeta={mobileSummary}
         signature={signature}
       >
-        {props.part.input !== undefined ? (
+        {hasInput ? (
           <ToolBody label="arguments">
-            <HighlightedCode
-              code={stringifyPartValue(props.part.input)}
-              language="json"
-            />
+            <HighlightedCode code={inputCode} language="json" />
           </ToolBody>
         ) : null}
-        {props.part.output !== undefined ? (
+        {hasOutput ? (
           <ToolBody label="result">
-            <HighlightedCode
-              code={stringifyPartValue(props.part.output)}
-              language="json"
-            />
+            <HighlightedCode code={outputCode} language="json" />
           </ToolBody>
         ) : null}
       </ToolFrame>
