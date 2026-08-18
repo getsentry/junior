@@ -295,15 +295,6 @@ async function finishBuild(
     );
     requireBuildWrite(result.written, workspace);
     try {
-      await deleteWorkspaceSnapshotBuilders(result.replacedBuilderNames);
-    } catch (error) {
-      logException(error, "sandbox.workspace_snapshot.builder.delete_failed", {
-        "app.workspace.id": workspace.id,
-        "app.sandbox.snapshot.builder_count":
-          result.replacedBuilderNames.length,
-      });
-    }
-    try {
       await setCachedSnapshot({
         profileHash: value.hash,
         snapshotId: snapshot.snapshotId,
@@ -314,6 +305,15 @@ async function finishBuild(
       });
     } catch {
       // SQL is authoritative. Redis warming is best effort.
+    }
+    try {
+      await deleteWorkspaceSnapshotBuilders(result.replacedBuilderNames);
+    } catch (error) {
+      logException(error, "sandbox.workspace_snapshot.builder.delete_failed", {
+        "app.workspace.id": workspace.id,
+        "app.sandbox.snapshot.builder_count":
+          result.replacedBuilderNames.length,
+      });
     }
     return {
       snapshotId: snapshot.snapshotId,

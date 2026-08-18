@@ -27,7 +27,6 @@ import {
   resolve as resolveSnapshot,
   type Snapshot,
 } from "@/chat/sandbox/snapshot/resolve";
-import { recordResolvedWorkspaceSnapshot } from "@/chat/sandbox/snapshot/store";
 import { resolveWorkspaceSnapshot } from "@/chat/sandbox/snapshot/workspace";
 import { syncSkillsToSandbox } from "@/chat/sandbox/skill-sync";
 import {
@@ -511,13 +510,6 @@ export function createSandboxRuntime(
             workspace,
             prepareWorkspace,
           });
-          // Durable dashboard facts belong in SQL. Redis remains the hot registry.
-          if (workspace) {
-            await recordResolvedWorkspaceSnapshot(
-              workspace.id,
-              created.snapshot,
-            );
-          }
           return created.session;
         },
       );

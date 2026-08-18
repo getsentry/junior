@@ -9,7 +9,29 @@ import {
   setWorkspaceSnapshotBuild,
 } from "@/chat/sandbox/snapshot/store";
 import { createWorkspace } from "@/chat/workspaces/store";
-import type { WorkspaceSnapshotBuild } from "@/chat/workspaces/types";
+import type {
+  WorkspaceSnapshot,
+  WorkspaceSnapshotBuild,
+} from "@/chat/workspaces/types";
+import { juniorSnapshots } from "@/db/schema";
+
+async function insertReadySnapshot(
+  workspaceId: string,
+  snapshot: WorkspaceSnapshot,
+): Promise<void> {
+  const now = new Date();
+  await getDb().insert(juniorSnapshots).values({
+    id: randomUUID(),
+    workspaceId,
+    profileHash: snapshot.profileHash,
+    status: "ready",
+    snapshotId: snapshot.id,
+    buildDurationMs: snapshot.buildDurationMs,
+    generatedAt: snapshot.generatedAt,
+    createdAt: now,
+    updatedAt: now,
+  });
+}
 
 describe("Workspace snapshot store", () => {
   afterEach(async () => {
@@ -66,14 +88,12 @@ describe("Workspace snapshot store", () => {
     await expect(
       loadSnapshotsForProfile(getDb(), workspace.id, build.profileHash),
     ).resolves.toMatchObject({ build: { id: build.id, status: "building" } });
-    await expect(
-      setWorkspaceSnapshot(workspace.id, {
-        id: "snapshot-independent",
-        generatedAt: new Date(),
-        buildDurationMs: 50,
-        profileHash: build.profileHash,
-      }),
-    ).resolves.toEqual({ written: true, replacedBuilderNames: [] });
+    await insertReadySnapshot(workspace.id, {
+      id: "snapshot-independent",
+      generatedAt: new Date(),
+      buildDurationMs: 50,
+      profileHash: build.profileHash,
+    });
     await expect(
       loadSnapshotsForProfile(getDb(), workspace.id, build.profileHash),
     ).resolves.toMatchObject({
@@ -127,7 +147,6 @@ describe("Workspace snapshot store", () => {
     );
     expect(state.build).toBeNull();
     expect(state.ready?.id).toBe("snapshot-one");
-
     const nextBuild = {
       ...build,
       id: randomUUID(),

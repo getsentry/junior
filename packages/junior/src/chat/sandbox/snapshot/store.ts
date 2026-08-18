@@ -1,8 +1,5 @@
-import { randomUUID } from "node:crypto";
 import { and, asc, desc, eq, ne, or } from "drizzle-orm";
 import { getSqlExecutor } from "@/chat/db";
-import { logException } from "@/chat/logging";
-import { deleteWorkspaceSnapshotBuilders } from "@/chat/sandbox/snapshot/builder-sandbox";
 import type { JuniorDatabase } from "@/db/db";
 import { juniorSnapshots } from "@/db/schema";
 import type {
@@ -138,121 +135,55 @@ export async function invalidateReadySnapshot(params: {
   });
 }
 
-/** Record one ready snapshot and report provider owners that it replaced. */
+/** Complete one owned build and report provider owners that it replaced. */
 export async function setWorkspaceSnapshot(
   workspaceId: string,
   snapshot: WorkspaceSnapshot,
-  options: { buildId?: string } = {},
+  options: { buildId: string },
 ): Promise<WorkspaceSnapshotWriteResult> {
   const executor = getSqlExecutor();
   return await executor.transaction(async () => {
     const db = executor.db();
     const now = new Date();
-    if (options.buildId) {
-      const updated = await db
-        .update(juniorSnapshots)
-        .set({
-          status: "ready",
-          snapshotId: snapshot.id,
-          buildDurationMs: snapshot.buildDurationMs,
-          generatedAt: snapshot.generatedAt,
-          buildStartedAt: null,
-          buildPhase: null,
-          buildCommandId: null,
-          buildError: null,
-          updatedAt: now,
-        })
-        .where(
-          and(
-            eq(juniorSnapshots.id, options.buildId),
-            eq(juniorSnapshots.workspaceId, workspaceId),
-            eq(juniorSnapshots.profileHash, snapshot.profileHash),
-            eq(juniorSnapshots.status, "building"),
-          ),
-        )
-        .returning({ id: juniorSnapshots.id });
-      if (updated.length === 0) {
-        return { written: false, replacedBuilderNames: [] };
-      }
-      const replaced = await db
-        .delete(juniorSnapshots)
-        .where(
-          and(
-            eq(juniorSnapshots.workspaceId, workspaceId),
-            eq(juniorSnapshots.profileHash, snapshot.profileHash),
-            ne(juniorSnapshots.id, options.buildId),
-            or(
-              eq(juniorSnapshots.status, "failed"),
-              eq(juniorSnapshots.status, "ready"),
-            ),
-          ),
-        )
-        .returning({ sandboxName: juniorSnapshots.buildSandboxName });
-      return {
-        written: true,
-        replacedBuilderNames: builderNames(replaced),
-      };
-    }
-
-    const existing = await db
-      .select()
-      .from(juniorSnapshots)
+    const updated = await db
+      .update(juniorSnapshots)
+      .set({
+        status: "ready",
+        snapshotId: snapshot.id,
+        buildDurationMs: snapshot.buildDurationMs,
+        generatedAt: snapshot.generatedAt,
+        buildStartedAt: null,
+        buildPhase: null,
+        buildCommandId: null,
+        buildError: null,
+        updatedAt: now,
+      })
       .where(
         and(
+          eq(juniorSnapshots.id, options.buildId),
           eq(juniorSnapshots.workspaceId, workspaceId),
           eq(juniorSnapshots.profileHash, snapshot.profileHash),
-          eq(juniorSnapshots.status, "ready"),
-          eq(juniorSnapshots.snapshotId, snapshot.id),
+          eq(juniorSnapshots.status, "building"),
         ),
       )
-      .orderBy(desc(juniorSnapshots.updatedAt), desc(juniorSnapshots.createdAt))
-      .limit(1);
-    const current = existing[0];
-
-    if (current) {
-      await db
-        .update(juniorSnapshots)
-        .set({
-          buildDurationMs: snapshot.buildDurationMs,
-          generatedAt: snapshot.generatedAt,
-          buildStartedAt: null,
-          buildPhase: null,
-          buildCommandId: null,
-          buildError: null,
-          updatedAt: now,
-        })
-        .where(eq(juniorSnapshots.id, current.id));
-      return { written: true, replacedBuilderNames: [] };
+      .returning({ id: juniorSnapshots.id });
+    if (updated.length === 0) {
+      return { written: false, replacedBuilderNames: [] };
     }
-
     const replaced = await db
       .delete(juniorSnapshots)
       .where(
         and(
           eq(juniorSnapshots.workspaceId, workspaceId),
           eq(juniorSnapshots.profileHash, snapshot.profileHash),
-          eq(juniorSnapshots.status, "ready"),
+          ne(juniorSnapshots.id, options.buildId),
+          or(
+            eq(juniorSnapshots.status, "failed"),
+            eq(juniorSnapshots.status, "ready"),
+          ),
         ),
       )
       .returning({ sandboxName: juniorSnapshots.buildSandboxName });
-
-    // Build rows have immutable owners. Record an independently resolved
-    // snapshot in its own ready row instead of changing active build state.
-    await db.insert(juniorSnapshots).values({
-      id: randomUUID(),
-      workspaceId,
-      profileHash: snapshot.profileHash,
-      status: "ready",
-      snapshotId: snapshot.id,
-      buildDurationMs: snapshot.buildDurationMs,
-      generatedAt: snapshot.generatedAt,
-      buildStartedAt: null,
-      buildSandboxName: null,
-      buildCommandId: null,
-      buildError: null,
-      createdAt: now,
-      updatedAt: now,
-    });
     return {
       written: true,
       replacedBuilderNames: builderNames(replaced),
@@ -318,47 +249,4 @@ export async function setWorkspaceSnapshotBuild(
       .returning({ id: juniorSnapshots.id });
     return inserted.length > 0;
   });
-}
-
-/** Persist Workspace snapshot facts when resolve returns a concrete entry. */
-export async function recordResolvedWorkspaceSnapshot(
-  workspaceId: string,
-  snapshot: {
-    snapshotId?: string;
-    profileHash?: string;
-    createdAtMs?: number;
-    buildDurationMs?: number;
-  },
-): Promise<void> {
-  if (
-    !snapshot.snapshotId ||
-    !snapshot.profileHash ||
-    snapshot.createdAtMs == null ||
-    snapshot.buildDurationMs == null
-  ) {
-    return;
-  }
-  let result: WorkspaceSnapshotWriteResult;
-  try {
-    result = await setWorkspaceSnapshot(workspaceId, {
-      id: snapshot.snapshotId,
-      generatedAt: new Date(snapshot.createdAtMs),
-      buildDurationMs: snapshot.buildDurationMs,
-      profileHash: snapshot.profileHash,
-    });
-  } catch (error) {
-    // Dashboard enrichment must not fail a prepared Workspace Sandbox.
-    logException(error, "sandbox.workspace_snapshot.persist.failed", {
-      "app.workspace.id": workspaceId,
-    });
-    return;
-  }
-  try {
-    await deleteWorkspaceSnapshotBuilders(result.replacedBuilderNames);
-  } catch (error) {
-    logException(error, "sandbox.workspace_snapshot.builder.delete_failed", {
-      "app.workspace.id": workspaceId,
-      "app.sandbox.snapshot.builder_count": result.replacedBuilderNames.length,
-    });
-  }
 }

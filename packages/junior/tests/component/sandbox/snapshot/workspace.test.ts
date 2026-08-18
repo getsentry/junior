@@ -19,7 +19,6 @@ import * as profile from "@/chat/sandbox/snapshot/profile";
 import { SANDBOX_RUNTIME } from "@/chat/sandbox/snapshot/runtime";
 import {
   loadSnapshotsForProfile,
-  setWorkspaceSnapshot,
   setWorkspaceSnapshotBuild,
 } from "@/chat/sandbox/snapshot/store";
 import { isWorkspaceSnapshotWaitingError } from "@/chat/sandbox/snapshot/waiting-error";
@@ -39,7 +38,7 @@ describe("Workspace snapshot completion", () => {
     await closeDb();
   });
 
-  it("keeps the snapshot owner after completion and enrichment", async () => {
+  it("keeps the snapshot owner after completion", async () => {
     const workspace = await createWorkspace({
       name: `snapshot-cleanup-${randomUUID()}`,
       setupScript: "printf ready",
@@ -88,12 +87,6 @@ describe("Workspace snapshot completion", () => {
     ).resolves.toMatchObject({
       build: null,
       ready: { id: "snapshot-ready" },
-    });
-    await setWorkspaceSnapshot(workspace.id, {
-      id: "snapshot-ready",
-      generatedAt: new Date(),
-      buildDurationMs: 100,
-      profileHash: value.hash,
     });
     await expect(
       getDb()
