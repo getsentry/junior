@@ -1,0 +1,82 @@
+{
+  "commitSha": "ac5aaa740a27286360600b751253e9d1bc7edebb",
+  "mode": "all",
+  "reasons": [
+    "forced full suite (--all or trigger-visual)"
+  ],
+  "scenarioIds": [
+    "conversations",
+    "conversation-detail",
+    "conversation-create-focused",
+    "person-profile",
+    "system",
+    "workspaces",
+    "workspace-detail",
+    "memories",
+    "settings",
+    "component-gallery"
+  ],
+  "shots": [
+    {
+      "file": "conversations__desktop.png",
+      "label": "Conversations · desktop"
+    },
+    {
+      "file": "conversations__mobile.png",
+      "label": "Conversations · mobile"
+    },
+    {
+      "file": "conversation-detail__desktop.png",
+      "label": "Conversation detail · desktop"
+    },
+    {
+      "file": "conversation-detail__mobile.png",
+      "label": "Conversation detail · mobile"
+    },
+    {
+      "file": "conversation-create-focused__mobile.png",
+      "label": "New conversation · focused composer · mobile"
+    },
+    {
+      "file": "person-profile__desktop.png",
+      "label": "Person profile · desktop"
+    },
+    {
+      "file": "person-profile__mobile.png",
+      "label": "Person profile · mobile"
+    },
+    {
+      "file": "system__desktop.png",
+      "label": "System · desktop"
+    },
+    {
+      "file": "workspaces__desktop.png",
+      "label": "Workspaces · desktop"
+    },
+    {
+      "file": "workspaces__mobile.png",
+      "label": "Workspaces · mobile"
+    },
+    {
+      "file": "workspace-detail__desktop.png",
+      "label": "Workspace detail · desktop"
+    },
+    {
+      "file": "workspace-detail__mobile.png",
+      "label": "Workspace detail · mobile"
+    },
+    {
+      "file": "memories__desktop.png",
+      "label": "Memories · desktop"
+    },
+    {
+      "file": "settings__desktop.png",
+      "label": "Settings · desktop"
+    },
+    {
+      "file": "component-gallery__desktop.png",
+      "label": "Component gallery · desktop"
+    }
+  ],
+  "skipped": false
+}
