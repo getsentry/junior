@@ -4,22 +4,26 @@ import { acquireBodyScrollLock, releaseBodyScrollLock } from "./bodyScrollLock";
 
 const viewportHeightProperty = "--dashboard-viewport-height";
 const viewportOffsetTopProperty = "--dashboard-viewport-offset-top";
+const keyboardOpenProperty = "--dashboard-keyboard-open";
 // Ignore small visualViewport shrink from rubber-band and transient chrome.
 // Real software keyboards reduce height by much more than this.
 const KEYBOARD_OPEN_HEIGHT_DELTA_PX = 100;
 
 export type MobileViewportMetrics = {
   heightPx: number;
+  keyboardOpen: boolean;
   offsetTopPx: number;
 };
 
 export type MobileViewportSyncSource =
+  | "focusin"
   | "focusout"
   | "measure"
   | "resize"
   | "scroll";
 
 const mobileViewportSyncPriority: Record<MobileViewportSyncSource, number> = {
+  focusin: 2,
   focusout: 2,
   measure: 1,
   resize: 3,
@@ -39,11 +43,12 @@ export function coalescedMobileViewportSyncSource(
 
 /**
  * Map layout + visual viewport into shell geometry.
- * Only follow visualViewport offset/height while the keyboard is open so
- * rubber-band pans cannot move the fixed conversation shell.
  *
- * Focus-time Safari pan freezes while typing use `mobileViewportOffsetTop`
- * (from #1594). This helper owns the closed-keyboard rubber-band case.
+ * Contract:
+ * - closed keyboard: shell = layout viewport, offset 0 (ignore rubber-band)
+ * - open keyboard: shell = visual viewport rectangle (height + offsetTop)
+ *
+ * Focus-time Safari pan freezes while typing use `mobileViewportOffsetTop`.
  */
 export function mobileViewportMetrics(input: {
   layoutHeight: number;
@@ -61,12 +66,14 @@ export function mobileViewportMetrics(input: {
   if (!keyboardOpen) {
     return {
       heightPx: layoutHeight,
+      keyboardOpen: false,
       offsetTopPx: 0,
     };
   }
 
   return {
     heightPx: visualHeight,
+    keyboardOpen: true,
     offsetTopPx: Math.max(0, Math.round(input.visualOffsetTop)),
   };
 }
@@ -75,18 +82,25 @@ export function mobileViewportMetrics(input: {
  * Keep Safari focus panning from moving the fixed workspace with the keyboard.
  *
  * First focus opens the keyboard with a resize that may set a non-zero
- * offsetTop. Accept that dock so the composer stays on the visual bottom.
- * Freeze only scroll-driven pans while an editor is focused.
+ * offsetTop. Accept only resize docks while focused so the composer stays on
+ * the visual bottom. Freeze every other source (scroll pans, focus churn,
+ * measure) so the shell does not chase the caret.
  */
 export function mobileViewportOffsetTop(input: {
   editableFocused: boolean;
+  keyboardOpen: boolean;
   nextOffsetTop: number;
   previousOffsetTop: number;
   source: MobileViewportSyncSource;
 }): number {
-  if (input.editableFocused && input.source === "scroll") {
+  // While an editor is focused, only keyboard resize may move the shell.
+  // Scroll pans, focus churn, and measure must not chase the caret.
+  if (input.editableFocused && input.source !== "resize") {
     return input.previousOffsetTop;
   }
+  // After blur, snap closed-keyboard geometry back to the layout top even if a
+  // stale visual offset is still reported for a frame.
+  if (!input.keyboardOpen) return 0;
   return input.nextOffsetTop;
 }
 
@@ -105,6 +119,7 @@ export function useMobileViewportHeight(
     let pendingSource: MobileViewportSyncSource | undefined;
     let lastHeight = "";
     let lastOffsetTop = "";
+    let lastKeyboardOpen = "";
     let appliedOffsetTopPx = 0;
     let documentScrollLocked = false;
 
@@ -129,6 +144,10 @@ export function useMobileViewportHeight(
         root.style.removeProperty(viewportOffsetTopProperty);
         lastOffsetTop = "";
       }
+      if (lastKeyboardOpen !== "") {
+        root.style.removeProperty(keyboardOpenProperty);
+        lastKeyboardOpen = "";
+      }
       appliedOffsetTopPx = 0;
     };
 
@@ -138,11 +157,16 @@ export function useMobileViewportHeight(
       frame = requestAnimationFrame(() => {
         const syncSource = pendingSource ?? source;
         pendingSource = undefined;
+        // Prefer visualViewport as the single geometry owner. Fall back to
+        // layout height only when the browser has no visual viewport API.
+        const layoutHeight = window.innerHeight;
+        const visualHeight = viewport?.height ?? layoutHeight;
+        const visualOffsetTop = viewport?.offsetTop ?? 0;
         const metrics = mobileViewportMetrics({
-          layoutHeight: window.innerHeight,
+          layoutHeight,
           mobile: mobile.matches,
-          visualHeight: viewport?.height ?? window.innerHeight,
-          visualOffsetTop: viewport?.offsetTop ?? 0,
+          visualHeight,
+          visualOffsetTop,
         });
 
         if (!metrics) {
@@ -153,14 +177,21 @@ export function useMobileViewportHeight(
         }
 
         setDocumentScrollLocked(true);
+        // Zero document scroll so iOS cannot leave the fixed shell above the
+        // visual top after a focus pan.
+        if (window.scrollY !== 0 || window.scrollX !== 0) {
+          window.scrollTo(0, 0);
+        }
         const offsetTopPx = mobileViewportOffsetTop({
           editableFocused: isEditableElement(document.activeElement),
+          keyboardOpen: metrics.keyboardOpen,
           nextOffsetTop: metrics.offsetTopPx,
           previousOffsetTop: appliedOffsetTopPx,
           source: syncSource,
         });
         const nextHeight = `${metrics.heightPx}px`;
         const nextOffsetTop = `${offsetTopPx}px`;
+        const nextKeyboardOpen = metrics.keyboardOpen ? "1" : "0";
         if (lastHeight !== nextHeight) {
           root.style.setProperty(viewportHeightProperty, nextHeight);
           lastHeight = nextHeight;
@@ -168,6 +199,10 @@ export function useMobileViewportHeight(
         if (lastOffsetTop !== nextOffsetTop) {
           root.style.setProperty(viewportOffsetTopProperty, nextOffsetTop);
           lastOffsetTop = nextOffsetTop;
+        }
+        if (lastKeyboardOpen !== nextKeyboardOpen) {
+          root.style.setProperty(keyboardOpenProperty, nextKeyboardOpen);
+          lastKeyboardOpen = nextKeyboardOpen;
         }
         appliedOffsetTopPx = offsetTopPx;
         frame = undefined;
@@ -177,6 +212,7 @@ export function useMobileViewportHeight(
     const syncFromMeasure = () => syncHeight("measure");
     const syncFromResize = () => syncHeight("resize");
     const syncFromScroll = () => syncHeight("scroll");
+    const syncFromFocusIn = () => syncHeight("focusin");
     const syncFromFocusOut = () => syncHeight("focusout");
 
     syncFromMeasure();
@@ -186,6 +222,7 @@ export function useMobileViewportHeight(
     // arrive as scroll while focused (freeze so the shell does not chase).
     viewport?.addEventListener("resize", syncFromResize);
     viewport?.addEventListener("scroll", syncFromScroll);
+    document.addEventListener("focusin", syncFromFocusIn);
     document.addEventListener("focusout", syncFromFocusOut);
     return () => {
       if (frame !== undefined) cancelAnimationFrame(frame);
@@ -193,6 +230,7 @@ export function useMobileViewportHeight(
       window.removeEventListener("resize", syncFromResize);
       viewport?.removeEventListener("resize", syncFromResize);
       viewport?.removeEventListener("scroll", syncFromScroll);
+      document.removeEventListener("focusin", syncFromFocusIn);
       document.removeEventListener("focusout", syncFromFocusOut);
       setDocumentScrollLocked(false);
       clearViewportProperties();

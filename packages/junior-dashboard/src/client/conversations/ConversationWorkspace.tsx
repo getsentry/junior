@@ -205,7 +205,7 @@ function NewConversationView(props: {
           </div>
         </div>
       </div>
-      <div className="min-w-0 shrink-0 self-end px-2 pt-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] md:self-auto md:px-8 md:pt-2 md:pb-8">
+      <div className="min-w-0 shrink-0 px-2 pt-1.5 pb-[max(0.375rem,calc(env(safe-area-inset-bottom)*(1-var(--dashboard-keyboard-open,0))))] md:px-8 md:pt-2 md:pb-8">
         <div className="mx-auto w-full max-w-2xl">
           <ConversationComposer
             draftId="new"

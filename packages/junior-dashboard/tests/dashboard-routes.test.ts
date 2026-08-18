@@ -378,7 +378,7 @@ describe("dashboard routes", () => {
     expect(html).toMatch(/\/_junior\/dashboard\/client\.js\?v=[a-z0-9]+/);
     expect(html).toContain("__JUNIOR_DASHBOARD_BASE_PATH__");
     expect(html).toContain(
-      'content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover"',
+      'content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, interactive-widget=resizes-content"',
     );
     expect(html).toContain('name="theme-color" content="#000000"');
     expect(html).toContain(

@@ -299,6 +299,13 @@ test("opens and closes a conversation in the mobile workspace", async ({
       ),
     )
     .toBe("140px");
+  await expect
+    .poll(() =>
+      shell.evaluate((element) =>
+        element.style.getPropertyValue("--dashboard-keyboard-open"),
+      ),
+    )
+    .toBe("1");
   // Focused reply input must stay docked at the bottom of the visual viewport.
   await expectFocusedComposerAtVisualViewportBottom(composer, 520, 140);
 
@@ -320,7 +327,13 @@ test("opens and closes a conversation in the mobile workspace", async ({
   await expectFocusedComposerAtVisualViewportBottom(composer, 520, 140);
 
   await composer.blur();
+  // Closed keyboard must snap the shell back to the layout top even if a stale
+  // visual offset remains for a frame after blur.
   await page.evaluate(() => {
+    Object.defineProperties(window.visualViewport, {
+      height: { configurable: true, value: window.innerHeight },
+      offsetTop: { configurable: true, value: 180 },
+    });
     window.visualViewport?.dispatchEvent(new Event("resize"));
   });
   await expect
@@ -329,14 +342,22 @@ test("opens and closes a conversation in the mobile workspace", async ({
         element.style.getPropertyValue("--dashboard-viewport-offset-top"),
       ),
     )
-    .toBe("180px");
+    .toBe("0px");
+  await expect
+    .poll(() =>
+      shell.evaluate((element) =>
+        element.style.getPropertyValue("--dashboard-keyboard-open"),
+      ),
+    )
+    .toBe("0");
 
+  // Open-keyboard pans with no focused editor may follow visual offset.
   await page.evaluate(() => {
     Object.defineProperties(window.visualViewport, {
       height: { configurable: true, value: 520 },
       offsetTop: { configurable: true, value: 200 },
     });
-    window.visualViewport?.dispatchEvent(new Event("scroll"));
+    window.visualViewport?.dispatchEvent(new Event("resize"));
   });
   await expect
     .poll(() =>
@@ -345,6 +366,13 @@ test("opens and closes a conversation in the mobile workspace", async ({
       ),
     )
     .toBe("200px");
+  await expect
+    .poll(() =>
+      shell.evaluate((element) =>
+        element.style.getPropertyValue("--dashboard-keyboard-open"),
+      ),
+    )
+    .toBe("1");
   await transcript.evaluate((element) => {
     element.scrollTop = 0;
   });
