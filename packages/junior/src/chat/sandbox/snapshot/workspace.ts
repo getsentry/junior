@@ -19,11 +19,7 @@ import {
 } from "@/chat/sandbox/snapshot/builder-sandbox";
 import * as install from "@/chat/sandbox/snapshot/install";
 import * as profile from "@/chat/sandbox/snapshot/profile";
-import {
-  getCachedSnapshot,
-  setCachedSnapshot,
-  type Snapshot,
-} from "@/chat/sandbox/snapshot/resolve";
+import type { Snapshot } from "@/chat/sandbox/snapshot/resolve";
 import {
   invalidateReadySnapshot,
   loadSnapshotsForProfile,
@@ -74,33 +70,9 @@ function builderName(): string {
   return `junior-ws-${randomUUID()}`;
 }
 
-function snapshotFromCache(
-  cached: Awaited<ReturnType<typeof getCachedSnapshot>>,
-  value: profile.Profile,
-  staleSnapshotId?: string,
-): Snapshot | null {
-  if (
-    !cached ||
-    cached.snapshotId === staleSnapshotId ||
-    profile.isStale(value, cached.createdAtMs)
-  ) {
-    return null;
-  }
-  return {
-    snapshotId: cached.snapshotId,
-    profileHash: cached.profileHash,
-    dependencyCount: cached.dependencyCount,
-    cacheHit: true,
-    resolveOutcome: "cache_hit",
-    createdAtMs: cached.createdAtMs,
-    buildDurationMs: cached.buildDurationMs,
-  };
-}
-
 async function snapshotFromSql(
   workspaceId: string,
   value: profile.Profile,
-  runtime: string,
   staleSnapshotId?: string,
 ): Promise<Snapshot | null> {
   const { ready } = await loadSnapshotsForProfile(
@@ -126,18 +98,6 @@ async function snapshotFromSql(
       });
     }
     return null;
-  }
-  try {
-    await setCachedSnapshot({
-      profileHash: ready.profileHash,
-      snapshotId: ready.id,
-      runtime,
-      createdAtMs: ready.generatedAt.getTime(),
-      dependencyCount: value.dependencyCount,
-      buildDurationMs: ready.buildDurationMs,
-    });
-  } catch {
-    // SQL is authoritative. Redis warming is best effort.
   }
   return {
     snapshotId: ready.id,
@@ -235,7 +195,6 @@ async function requireRemainingBuildTime(
 async function finishBuild(
   workspace: Workspace,
   value: profile.Profile,
-  runtime: string,
   signal: AbortSignal | undefined,
   beforeWrite: () => Promise<void>,
 ): Promise<Snapshot | null> {
@@ -294,18 +253,6 @@ async function finishBuild(
       { buildId: build.id },
     );
     requireBuildWrite(result.written, workspace);
-    try {
-      await setCachedSnapshot({
-        profileHash: value.hash,
-        snapshotId: snapshot.snapshotId,
-        runtime,
-        createdAtMs,
-        dependencyCount: value.dependencyCount,
-        buildDurationMs,
-      });
-    } catch {
-      // SQL is authoritative. Redis warming is best effort.
-    }
     try {
       await deleteWorkspaceSnapshotBuilders(result.replacedBuilderNames);
     } catch (error) {
@@ -549,17 +496,9 @@ async function advanceWorkspaceSnapshot(params: {
       `Workspace ${params.workspace.name} has no snapshot profile`,
     );
   }
-  const cached = snapshotFromCache(
-    await getCachedSnapshot(value.hash),
-    value,
-    params.staleSnapshotId,
-  );
-  if (cached) return cached;
-
   const sqlCached = await snapshotFromSql(
     params.workspace.id,
     value,
-    params.runtime,
     params.staleSnapshotId,
   );
   if (sqlCached) return sqlCached;
@@ -578,17 +517,9 @@ async function advanceWorkspaceSnapshot(params: {
         await fenceLock(state, lock, BUILD_LOCK_TTL_MS);
       };
 
-      const cachedInsideLock = snapshotFromCache(
-        await getCachedSnapshot(lockedValue.hash),
-        lockedValue,
-        params.staleSnapshotId,
-      );
-      if (cachedInsideLock) return cachedInsideLock;
-
       const sqlInsideLock = await snapshotFromSql(
         workspace.id,
         lockedValue,
-        params.runtime,
         params.staleSnapshotId,
       );
       if (sqlInsideLock) return sqlInsideLock;
@@ -596,7 +527,6 @@ async function advanceWorkspaceSnapshot(params: {
       const finished = await finishBuild(
         workspace,
         lockedValue,
-        params.runtime,
         params.signal,
         beforeWrite,
       );

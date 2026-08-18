@@ -106,7 +106,7 @@ export async function getCachedSnapshot(
 }
 
 /** Persist one dependency profile's reusable snapshot pointer. */
-export async function setCachedSnapshot(entry: CachedSnapshot): Promise<void> {
+async function setCachedSnapshot(entry: CachedSnapshot): Promise<void> {
   const state = getStateAdapter();
   await state.connect();
   await state.set(
@@ -145,18 +145,8 @@ async function build(
       );
 
       try {
-        await install.dependencies(
-          sandbox,
-          value.dependencies,
-          signal,
-          timeoutMs,
-        );
-        await install.postinstall(
-          sandbox,
-          value.postinstall,
-          signal,
-          timeoutMs,
-        );
+        await install.dependencies(sandbox, value.dependencies, signal);
+        await install.postinstall(sandbox, value.postinstall, signal);
         await prepare?.(sandbox);
         const snapshotId = await trace(
           "sandbox.snapshot.capture",

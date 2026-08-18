@@ -58,6 +58,8 @@ traffic through verified host egress.
   records its phase in SQL. The next run can continue after a soft yield or a
   worker stop. The host continues a waiting `switchWorkspace` tool call without
   asking the model to repeat it.
+- SQL is the only source of Workspace snapshot state. Redis coordinates the
+  build lock and its fencing. It does not store Workspace snapshot pointers.
 - Workspace repositories clone to fixed `repos/{name}` paths. Setup scripts
   receive `JUNIOR_WORKSPACE_ROOT` and `JUNIOR_REPOS_ROOT` so they do not depend
   on the provider's absolute Sandbox path.

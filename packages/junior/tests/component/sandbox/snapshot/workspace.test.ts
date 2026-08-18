@@ -16,6 +16,7 @@ vi.mock("@vercel/sandbox", () => ({
 
 import { closeDb, getDb } from "@/chat/db";
 import * as profile from "@/chat/sandbox/snapshot/profile";
+import { getCachedSnapshot } from "@/chat/sandbox/snapshot/resolve";
 import { SANDBOX_RUNTIME } from "@/chat/sandbox/snapshot/runtime";
 import {
   loadSnapshotsForProfile,
@@ -38,7 +39,7 @@ describe("Workspace snapshot completion", () => {
     await closeDb();
   });
 
-  it("keeps the snapshot owner after completion", async () => {
+  it("stores a completed snapshot only in SQL and keeps its owner", async () => {
     const workspace = await createWorkspace({
       name: `snapshot-cleanup-${randomUUID()}`,
       setupScript: "printf ready",
@@ -88,6 +89,7 @@ describe("Workspace snapshot completion", () => {
       build: null,
       ready: { id: "snapshot-ready" },
     });
+    await expect(getCachedSnapshot(value.hash)).resolves.toBeNull();
     await expect(
       getDb()
         .select({ sandboxName: juniorSnapshots.buildSandboxName })
