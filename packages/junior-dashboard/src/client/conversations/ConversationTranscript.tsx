@@ -78,9 +78,9 @@ export const ConversationTranscriptView = memo(function ConversationTranscriptVi
           onOpenSubagentTranscript={props.onOpenSubagentTranscript}
           conversation={props.conversation}
           messages={messages}
+          responding={props.responding}
           view={props.view}
         />
-        {props.responding ? <TranscriptTypingIndicator /> : null}
       </div>
     </section>
   );
@@ -93,6 +93,7 @@ function SegmentEvents(props: {
   }) => void;
   conversation: ConversationTranscript;
   messages: TranscriptViewMessage[];
+  responding?: boolean;
   view: TranscriptViewMode;
 }) {
   return (
@@ -123,6 +124,7 @@ function SegmentEvents(props: {
           {unavailableTranscriptLabel(props.conversation)}
         </div>
       )}
+      {props.responding ? <TranscriptTypingIndicator /> : null}
     </div>
   );
 }

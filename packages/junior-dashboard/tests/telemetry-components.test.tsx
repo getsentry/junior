@@ -375,10 +375,12 @@ describe("dashboard canonical-event components", () => {
     );
 
     expect(liveHtml).toContain('role="status"');
-    expect(liveHtml).toContain("Junior is responding");
+    expect(liveHtml).toContain("Junior is thinking…");
+    expect(liveHtml).toContain("junior-text-shimmer");
+    expect(liveHtml).not.toContain("animate-bounce");
     expect(liveHtml).not.toContain(">active</span>");
-    expect(quietHtml).not.toContain("Junior is responding");
-    expect(completedHtml).not.toContain("Junior is responding");
+    expect(quietHtml).not.toContain("Junior is thinking…");
+    expect(completedHtml).not.toContain("Junior is thinking…");
   });
 
   it("does not present partial event counts as conversation totals", () => {
@@ -531,7 +533,7 @@ describe("dashboard canonical-event components", () => {
     const failedHtml = renderConversationPageWithClient(failedClient);
 
     expect(activeHtml).not.toContain(">active</span>");
-    expect(activeHtml).toContain("Junior is responding");
+    expect(activeHtml).toContain("Junior is thinking…");
     expect(failedHtml).not.toContain(">error</span>");
   });
 
@@ -728,7 +730,7 @@ describe("dashboard canonical-event components", () => {
     expect(staleHtml).toContain(
       "Transcript refresh failed. Showing the latest available data.",
     );
-    expect(staleHtml).not.toContain("Junior is responding");
+    expect(staleHtml).not.toContain("Junior is thinking…");
   });
 
   it("renders redacted visible events without exposing text", () => {
