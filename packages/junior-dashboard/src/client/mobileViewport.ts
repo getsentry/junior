@@ -2,6 +2,7 @@ import { useEffect, type RefObject } from "react";
 
 const viewportHeightProperty = "--dashboard-viewport-height";
 const viewportOffsetTopProperty = "--dashboard-viewport-offset-top";
+const composerBottomPaddingProperty = "--dashboard-composer-bottom-padding";
 
 /** Keep the mobile workspace inside the visual viewport while the keyboard is open. */
 export function useMobileViewportHeight(
@@ -19,17 +20,27 @@ export function useMobileViewportHeight(
       if (frame !== undefined) cancelAnimationFrame(frame);
       frame = requestAnimationFrame(() => {
         if (mobile.matches) {
+          const viewportHeight = viewport?.height ?? window.innerHeight;
+          const viewportOffsetTop = viewport?.offsetTop ?? 0;
           root.style.setProperty(
             viewportHeightProperty,
-            `${Math.round(viewport?.height ?? window.innerHeight)}px`,
+            `${Math.round(viewportHeight)}px`,
           );
           root.style.setProperty(
             viewportOffsetTopProperty,
-            `${Math.round(viewport?.offsetTop ?? 0)}px`,
+            `${Math.round(viewportOffsetTop)}px`,
           );
+          const keyboardInset =
+            window.innerHeight - viewportHeight - viewportOffsetTop;
+          if (keyboardInset > 100) {
+            root.style.setProperty(composerBottomPaddingProperty, "0px");
+          } else {
+            root.style.removeProperty(composerBottomPaddingProperty);
+          }
         } else {
           root.style.removeProperty(viewportHeightProperty);
           root.style.removeProperty(viewportOffsetTopProperty);
+          root.style.removeProperty(composerBottomPaddingProperty);
         }
         frame = undefined;
       });
@@ -50,6 +61,7 @@ export function useMobileViewportHeight(
       viewport?.removeEventListener("scroll", syncHeight);
       root.style.removeProperty(viewportHeightProperty);
       root.style.removeProperty(viewportOffsetTopProperty);
+      root.style.removeProperty(composerBottomPaddingProperty);
     };
   }, [enabled, rootRef]);
 }

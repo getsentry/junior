@@ -474,6 +474,13 @@ test("opens and closes a conversation in the mobile workspace", async ({
       ),
     )
     .toBe("140px");
+  await expect
+    .poll(() =>
+      shell.evaluate((element) =>
+        element.style.getPropertyValue("--dashboard-composer-bottom-padding"),
+      ),
+    )
+    .toBe("0px");
 
   await page.evaluate(() => {
     Object.defineProperties(window.visualViewport, {
