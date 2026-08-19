@@ -878,6 +878,7 @@ describe("dashboard canonical-event components", () => {
     );
 
     expect(html).toContain('aria-label="View turn context"');
+    expect(html).toContain("hidden justify-end md:flex");
     expect(html).toContain('aria-expanded="false"');
     expect(html).not.toContain("Release notes live in Notion.");
     expect(html).not.toContain("memory-1");
