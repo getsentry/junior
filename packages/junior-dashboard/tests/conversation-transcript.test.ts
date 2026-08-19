@@ -11,6 +11,7 @@ import {
   conversationHistoryVersion,
   loadCompleteConversationTranscript,
   nextConversationHistoryCursor,
+  reuseConversationEventReferences,
   type ConversationHistoryPage,
 } from "../src/client/conversations/transcript";
 
@@ -258,5 +259,32 @@ describe("conversation transcript", () => {
 
     expect(readPage).not.toHaveBeenCalled();
     expect(complete.events.map((item) => item.seq)).toEqual([1, 2, 3, 4]);
+  });
+
+  it("reuses events while keeping fresh poll metadata", () => {
+    const previous = detail();
+    const next = {
+      ...previous,
+      cumulativeDurationMs: previous.cumulativeDurationMs + 2_000,
+      generatedAt: "2026-07-23T00:00:02.000Z",
+      lastProgressAt: "2026-07-23T00:00:02.000Z",
+      lastSeenAt: "2026-07-23T00:00:02.000Z",
+    };
+
+    const result = reuseConversationEventReferences(previous, next);
+    expect(result).toBe(next);
+    expect(result.events).toBe(previous.events);
+    expect(result.generatedAt).toBe("2026-07-23T00:00:02.000Z");
+  });
+
+  it("keeps the next events when their version changes", () => {
+    const previous = detail();
+    const next = {
+      ...previous,
+      events: [...previous.events, event(5)],
+      generatedAt: "2026-07-23T00:00:02.000Z",
+    };
+
+    expect(reuseConversationEventReferences(previous, next)).toBe(next);
   });
 });

@@ -121,7 +121,15 @@ export function conversationTranscriptMessages(
   conversation: ConversationTranscript,
   pendingMessages?: readonly ConversationPendingMessage[],
 ): TranscriptViewMessage[] {
-  const replacedToolIds = specialToolIds(conversation.events);
+  return transcriptMessagesFromEvents(conversation.events, pendingMessages);
+}
+
+/** Reduce ordered reporting events without subscribing to detail metadata. */
+export function transcriptMessagesFromEvents(
+  events: ConversationReportEvent[],
+  pendingMessages?: readonly ConversationPendingMessage[],
+): TranscriptViewMessage[] {
+  const replacedToolIds = specialToolIds(events);
   const tools = new Map<
     string,
     Extract<TranscriptViewPart, { type: "tool_call" }>
@@ -179,7 +187,7 @@ export function conversationTranscriptMessages(
 
   // API sequence is the only ordering authority. Do not sort by timestamps:
   // producers may preserve ingestion order while clocks are skewed.
-  for (const event of conversation.events) {
+  for (const event of events) {
     const data = event.data;
     if (data.type === "message") {
       const message = {

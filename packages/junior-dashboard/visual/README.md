@@ -42,5 +42,16 @@ reviewable. Force every registered scenario with either:
 3. Keep the default selection under `MAX_VISUAL_SCENARIOS`.
 4. Prefer a stable page/section heading as `ready` (for example `System`,
    `Baseline snapshot`). Do not wait on chart titles or stat labels.
+5. For interaction shots (focus, open menu), set `prepare` and implement the
+   steps in `capture.ts`. Keep the registry data-only.
+
+Focused keyboard shots:
+
+- `conversation-create-focused`: open create, focus the composer, set a short
+  `visualViewport` with a non-zero top offset, then capture that visible
+  rectangle.
+- `conversation-detail-focused`: open a reply conversation, focus the composer,
+  apply the same keyboard viewport, then capture the docked input with chat
+  chrome and the queued mailbox.
 
 This is evidence for reviewers, not a pixel-diff gate.

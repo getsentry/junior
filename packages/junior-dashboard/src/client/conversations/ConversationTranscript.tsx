@@ -1,7 +1,7 @@
-import { memo, useRef, type ReactNode } from "react";
+import { memo, useMemo, useRef, type ReactNode } from "react";
 
 import { unavailableTranscriptLabel } from "../format";
-import { conversationTranscriptMessages } from "./eventTranscript";
+import { transcriptMessagesFromEvents } from "./eventTranscript";
 import type {
   ConversationTranscript,
   TranscriptViewMessage,
@@ -36,6 +36,7 @@ import {
 } from "./transcriptRenderModel";
 import { transcriptEmptyClass } from "./transcriptStyles";
 import { entryMatchesSearch, useTranscriptSearch } from "./transcriptSearch";
+import { TranscriptTimestampProvider } from "./TranscriptTimestamp";
 
 type TranscriptEntry = ReturnType<typeof groupTranscriptMessages>[number];
 type TranscriptContextEntry = Extract<TranscriptEntry, { kind: "context" }>;
@@ -60,29 +61,39 @@ function renderReasoningEntry(entry: TranscriptReasoningEntry): ReactNode {
 }
 
 /** Render one conversation transcript segment as actor messages and tool events. */
-export const ConversationTranscriptView = memo(function ConversationTranscriptView(props: {
-  onOpenSubagentTranscript?: (args: {
-    part: TranscriptViewSubagentPart;
+export const ConversationTranscriptView = memo(
+  function ConversationTranscriptView(props: {
+    onOpenSubagentTranscript?: (args: {
+      part: TranscriptViewSubagentPart;
+      conversation: ConversationTranscript;
+    }) => void;
     conversation: ConversationTranscript;
-  }) => void;
-  conversation: ConversationTranscript;
-  responding?: boolean;
-  view: TranscriptViewMode;
-}) {
-  const messages = conversationTranscriptMessages(props.conversation);
+    responding?: boolean;
+    view: TranscriptViewMode;
+  }) {
+    // Event arrays stay stable across metadata-only polls. Project the transcript
+    // only when event content changes, not when timing metadata refreshes.
+    const events = props.conversation.events;
+    const messages = useMemo(
+      () => transcriptMessagesFromEvents(events),
+      [events],
+    );
 
-  return (
-    <section className="min-w-0">
-      <SegmentEvents
-        onOpenSubagentTranscript={props.onOpenSubagentTranscript}
-        conversation={props.conversation}
-        messages={messages}
-        responding={props.responding}
-        view={props.view}
-      />
-    </section>
-  );
-});
+    return (
+      <TranscriptTimestampProvider>
+        <section className="min-w-0 pt-1">
+          <SegmentEvents
+            onOpenSubagentTranscript={props.onOpenSubagentTranscript}
+            conversation={props.conversation}
+            messages={messages}
+            responding={props.responding}
+            view={props.view}
+          />
+        </section>
+      </TranscriptTimestampProvider>
+    );
+  },
+);
 
 function SegmentEvents(props: {
   onOpenSubagentTranscript?: (args: {
@@ -127,7 +138,7 @@ function SegmentEvents(props: {
   );
 }
 
-function VisibleTranscriptEntries(props: {
+const VisibleTranscriptEntries = memo(function VisibleTranscriptEntries(props: {
   onOpenSubagentTranscript?: (args: {
     part: TranscriptViewSubagentPart;
     conversation: ConversationTranscript;
@@ -136,9 +147,13 @@ function VisibleTranscriptEntries(props: {
   conversation: ConversationTranscript;
   view: TranscriptViewMode;
 }) {
+  const entries = useMemo(
+    () => groupTranscriptMessages(props.transcript),
+    [props.transcript],
+  );
   return (
     <TranscriptEntryList
-      entries={groupTranscriptMessages(props.transcript)}
+      entries={entries}
       keyPrefix={props.conversation.conversationId}
       renderContext={(entry) => (
         <TranscriptRailEvent
@@ -220,7 +235,7 @@ function VisibleTranscriptEntries(props: {
       )}
     />
   );
-}
+});
 
 function TranscriptEntryList(props: {
   entries: TranscriptEntry[];
