@@ -12,6 +12,10 @@ import type {
 import type { PluginCredentialSubject } from "./credentials";
 import type { PluginAnnotations } from "./annotations";
 import type { SlackConversationLink } from "./operations";
+import type {
+  ResourceEventSubscriptionResult,
+  SubscribableResource,
+} from "./resource-events";
 import type { PluginState } from "./state";
 import { z, type ZodTypeAny } from "zod";
 
@@ -516,8 +520,14 @@ export interface SlackToolRegistrationHookContext {
 }
 
 export interface PluginResourceEventToolContext {
-  /** Whether this invocation can create a working resource-event subscription. */
+  /** Whether this invocation can create a working resource subscription. */
   canSubscribe: boolean;
+  /** Create a temporary resource subscription for the current conversation. */
+  subscribe(input: {
+    events: string[];
+    intent: string;
+    resource: SubscribableResource;
+  }): Promise<ResourceEventSubscriptionResult>;
 }
 
 export interface PluginWorkspaceToolContext {

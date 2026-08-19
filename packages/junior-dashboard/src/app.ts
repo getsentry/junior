@@ -341,7 +341,7 @@ function forbidden(request: Request, agentName: string): Response {
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, interactive-widget=resizes-content" />
   <title>${escapeHtml(agentName)} access denied</title>
   <style>
     ${readDashboardTailwind()}
@@ -462,30 +462,26 @@ function readDashboardTailwind(): string {
   );
 }
 
-function readDashboardAvatarHeader(): ArrayBuffer {
-  if (dashboardAvatarHeaderAsset) {
-    return Uint8Array.from(Buffer.from(dashboardAvatarHeaderAsset, "base64"))
-      .buffer;
-  }
-
-  const assetUrl = new URL("./assets/junior-avatar-line.png", import.meta.url);
-  if (!existsSync(assetUrl)) {
-    throw new Error("Junior dashboard avatar asset was not found");
-  }
-  return Uint8Array.from(readFileSync(assetUrl)).buffer;
-}
-
-function readDashboardInstallIcon(): ArrayBuffer {
-  if (dashboardInstallIconAsset) {
-    return Uint8Array.from(Buffer.from(dashboardInstallIconAsset, "base64"))
-      .buffer;
+function readDashboardColorIcon(): ArrayBuffer {
+  const embeddedAsset =
+    dashboardInstallIconAsset || dashboardAvatarHeaderAsset;
+  if (embeddedAsset) {
+    return Uint8Array.from(Buffer.from(embeddedAsset, "base64")).buffer;
   }
 
   const assetUrl = new URL("./assets/junior-avatar.png", import.meta.url);
   if (!existsSync(assetUrl)) {
-    throw new Error("Junior dashboard install icon was not found");
+    throw new Error("Junior dashboard color icon was not found");
   }
   return Uint8Array.from(readFileSync(assetUrl)).buffer;
+}
+
+function readDashboardAvatarHeader(): ArrayBuffer {
+  return readDashboardColorIcon();
+}
+
+function readDashboardInstallIcon(): ArrayBuffer {
+  return readDashboardColorIcon();
 }
 
 /** Use the exact registered dashboard base path so installed launches do not 404. */
@@ -587,7 +583,7 @@ function renderDashboard(basePath: string, agentName: string): Response {
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, interactive-widget=resizes-content" />
   <meta name="theme-color" content="${DASHBOARD_THEME_COLOR}" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />

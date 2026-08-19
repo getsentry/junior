@@ -59,22 +59,80 @@ export function mailboxMessageFromOutbox(
  *
  * Server rows win once present. Outbox rows stay visible while sending or failed
  * so a submit never depends on restoring text into the composer.
+ *
+ * Preserve list identity when the visible rows did not change so live polls do
+ * not re-render the composer footer while the reader is typing.
  */
 export function mergeConversationMailboxMessages(
   server: readonly ConversationPendingMessage[] | undefined,
   outbox: readonly ConversationOutboxMessage[] | undefined,
+  previous?: readonly ConversationMailboxMessage[],
 ): ConversationMailboxMessage[] {
   const serverMessages = server ?? [];
   const outboxMessages = outbox ?? [];
-  if (outboxMessages.length === 0) return [...serverMessages];
+  let next: readonly ConversationMailboxMessage[] = serverMessages;
+  if (outboxMessages.length > 0) {
+    const serverIds = new Set(serverMessages.map((message) => message.messageId));
+    const extras = outboxMessages
+      .filter((message) => !serverIds.has(message.messageId))
+      .map(mailboxMessageFromOutbox);
+    if (extras.length > 0) next = [...serverMessages, ...extras];
+  }
+  return reuseConversationMailboxMessages(previous, next);
+}
 
-  const serverIds = new Set(serverMessages.map((message) => message.messageId));
-  const extras = outboxMessages
-    .filter((message) => !serverIds.has(message.messageId))
-    .map(mailboxMessageFromOutbox);
-  return extras.length === 0
-    ? [...serverMessages]
-    : [...serverMessages, ...extras];
+/** Keep the previous mailbox list when visible row identity is unchanged. */
+export function reuseConversationMailboxMessages(
+  previous: readonly ConversationMailboxMessage[] | undefined,
+  next: readonly ConversationMailboxMessage[],
+): ConversationMailboxMessage[] {
+  if (!previous) return next as ConversationMailboxMessage[];
+  if (previous === next) return previous as ConversationMailboxMessage[];
+  if (previous.length !== next.length) {
+    return next as ConversationMailboxMessage[];
+  }
+  for (let index = 0; index < previous.length; index += 1) {
+    if (!sameMailboxMessage(previous[index]!, next[index]!)) {
+      return next as ConversationMailboxMessage[];
+    }
+  }
+  return previous as ConversationMailboxMessage[];
+}
+
+function sameMailboxMessage(
+  left: ConversationMailboxMessage,
+  right: ConversationMailboxMessage,
+): boolean {
+  return (
+    left.inboundMessageId === right.inboundMessageId &&
+    left.messageId === right.messageId &&
+    left.clientStatus === right.clientStatus &&
+    left.delivery === right.delivery &&
+    left.text === right.text &&
+    left.redacted === right.redacted &&
+    left.source === right.source &&
+    left.role === right.role &&
+    left.createdAt === right.createdAt &&
+    left.receivedAt === right.receivedAt &&
+    left.idempotencyKey === right.idempotencyKey &&
+    // Pending rows render actorLabel(actorIdentity). Live polls may enrich
+    // identity after the first accept; keep that change visible.
+    sameActorIdentity(left.actorIdentity, right.actorIdentity)
+  );
+}
+
+function sameActorIdentity(
+  left: ConversationMailboxMessage["actorIdentity"],
+  right: ConversationMailboxMessage["actorIdentity"],
+): boolean {
+  if (left === right) return true;
+  if (!left || !right) return false;
+  return (
+    left.email === right.email &&
+    left.fullName === right.fullName &&
+    left.slackUserId === right.slackUserId &&
+    left.slackUserName === right.slackUserName
+  );
 }
 
 /** Append or replace one outbox row by idempotency key. */

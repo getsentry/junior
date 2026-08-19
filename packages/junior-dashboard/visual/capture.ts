@@ -1,15 +1,19 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { chromium, type Page } from "@playwright/test";
+import { chromium, expect, type Page } from "@playwright/test";
 import { mockDashboardApis, startDashboardE2eServer } from "../e2e/harness.ts";
 import {
   resolveVisualScenarios,
   selectVisualScenarioIds,
   VISUAL_ALL_LABEL,
   type VisualScenario,
+  type VisualScenarioPrepare,
   type VisualViewport,
 } from "./scenarios.ts";
+
+const FOCUSED_COMPOSER_VISUAL_HEIGHT_PX = 520;
+const FOCUSED_COMPOSER_VISUAL_OFFSET_TOP_PX = 140;
 
 const ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -85,6 +89,15 @@ function shotName(scenarioId: string, viewport: VisualViewport) {
   return `${scenarioId}__${viewport.name}.png`;
 }
 
+function isFocusedComposerPrepare(
+  prepare: VisualScenarioPrepare | undefined,
+): prepare is VisualScenarioPrepare {
+  return (
+    prepare === "conversation-detail-focused" ||
+    prepare === "new-conversation-focused"
+  );
+}
+
 function attachmentImage(page: Page) {
   return page
     .locator('a[href*="/attachments/qa-chart-png"]')
@@ -93,22 +106,92 @@ function attachmentImage(page: Page) {
     .first();
 }
 
-async function prepareScenarioState(page: Page, scenario: VisualScenario) {
-  if (!scenario.state) return;
-
-  const image = attachmentImage(page);
-  await image.waitFor({ state: "visible", timeout: 15_000 });
-  await image.evaluate((element) =>
-    element.scrollIntoView({ block: "center", inline: "nearest" }),
+/** Simulate an open software keyboard and wait for the shell to dock to it. */
+async function dockFocusedComposerToKeyboard(
+  page: Page,
+  composer: ReturnType<Page["getByLabel"]>,
+): Promise<void> {
+  await composer.focus();
+  // Keep the layout viewport tall and simulate Safari's first-focus pan. The
+  // screenshot clips to this visual viewport below, so its bottom edge is the
+  // keyboard edge.
+  await page.evaluate(
+    ({ heightPx, offsetTopPx }) => {
+      Object.defineProperties(window.visualViewport, {
+        height: { configurable: true, value: heightPx },
+        offsetTop: { configurable: true, value: offsetTopPx },
+      });
+      window.visualViewport?.dispatchEvent(new Event("resize"));
+      window.visualViewport?.dispatchEvent(new Event("scroll"));
+    },
+    {
+      heightPx: FOCUSED_COMPOSER_VISUAL_HEIGHT_PX,
+      offsetTopPx: FOCUSED_COMPOSER_VISUAL_OFFSET_TOP_PX,
+    },
   );
+  const shell = page.locator("main").first();
+  await expect
+    .poll(() =>
+      shell.evaluate((element) =>
+        element.style.getPropertyValue("--dashboard-viewport-height"),
+      ),
+    )
+    .toBe(`${FOCUSED_COMPOSER_VISUAL_HEIGHT_PX}px`);
+  await expect
+    .poll(() =>
+      shell.evaluate((element) =>
+        element.style.getPropertyValue("--dashboard-viewport-offset-top"),
+      ),
+    )
+    .toBe(`${FOCUSED_COMPOSER_VISUAL_OFFSET_TOP_PX}px`);
+  await expect
+    .poll(() =>
+      shell.evaluate((element) =>
+        element.style.getPropertyValue("--dashboard-keyboard-open"),
+      ),
+    )
+    .toBe("1");
+  await expect(composer).toBeFocused();
+}
 
-  if (scenario.state === "attachment-modal") {
-    await image.click();
-    await page.locator("dialog[open]").waitFor({
-      state: "visible",
-      timeout: 5_000,
-    });
+async function prepareScenario(
+  page: Page,
+  prepare: VisualScenarioPrepare | undefined,
+  _viewport: VisualViewport,
+): Promise<void> {
+  if (!prepare) return;
+  if (prepare === "attachment-entry" || prepare === "attachment-modal") {
+    const image = attachmentImage(page);
+    await image.waitFor({ state: "visible", timeout: 15_000 });
+    await image.evaluate((element) =>
+      element.scrollIntoView({ block: "center", inline: "nearest" }),
+    );
+    if (prepare === "attachment-modal") {
+      await image.click();
+      await page.locator("dialog[open]").waitFor({
+        state: "visible",
+        timeout: 5_000,
+      });
+    }
+    return;
   }
+  if (prepare === "new-conversation-focused") {
+    await page.getByRole("button", { name: "New conversation" }).click();
+    const composer = page.getByLabel("Start a conversation");
+    await page
+      .getByRole("heading", { name: "New conversation", exact: true })
+      .waitFor({ state: "visible", timeout: 15_000 });
+    await dockFocusedComposerToKeyboard(page, composer);
+    return;
+  }
+  if (prepare === "conversation-detail-focused") {
+    const composer = page.getByPlaceholder("Message Junior…");
+    await expect(composer).toBeVisible();
+    await dockFocusedComposerToKeyboard(page, composer);
+    return;
+  }
+  const _exhaustive: never = prepare;
+  throw new Error(`Unknown visual prepare: ${_exhaustive}`);
 }
 
 async function captureScenario(options: {
@@ -131,17 +214,27 @@ async function captureScenario(options: {
       .getByRole("heading", { name: scenario.ready, exact: true })
       .first()
       .waitFor({ state: "visible", timeout: 15_000 });
+    await prepareScenario(page, scenario.prepare, viewport);
 
     // Let layout/fonts settle before the shot.
     await page.evaluate(async () => {
       await document.fonts.ready;
     });
-    await prepareScenarioState(page, scenario);
 
     const file = shotName(scenario.id, viewport);
     await page.screenshot({
       animations: "disabled",
-      fullPage: true,
+      // Focused composer shots clip to the visual viewport. Other shots capture
+      // the full page.
+      clip: isFocusedComposerPrepare(scenario.prepare)
+        ? {
+            height: FOCUSED_COMPOSER_VISUAL_HEIGHT_PX,
+            width: viewport.width,
+            x: 0,
+            y: FOCUSED_COMPOSER_VISUAL_OFFSET_TOP_PX,
+          }
+        : undefined,
+      fullPage: isFocusedComposerPrepare(scenario.prepare) ? false : true,
       path: path.join(outDir, file),
       type: "png",
     });

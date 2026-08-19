@@ -74,11 +74,14 @@ function conversation(
   };
 }
 
-function renderTranscript(detail: ConversationTranscript): string {
+function renderTranscript(
+  detail: ConversationTranscript,
+  view: "raw" | "rich" = "rich",
+): string {
   return renderToStaticMarkup(
     <QueryClientProvider client={client}>
       <TranscriptSearchProvider query="">
-        <ConversationTranscriptView conversation={detail} view="rich" />
+        <ConversationTranscriptView conversation={detail} view={view} />
       </TranscriptSearchProvider>
     </QueryClientProvider>,
   );
@@ -375,10 +378,12 @@ describe("dashboard canonical-event components", () => {
     );
 
     expect(liveHtml).toContain('role="status"');
-    expect(liveHtml).toContain("Junior is responding");
+    expect(liveHtml).toContain("Junior is thinking…");
+    expect(liveHtml).toContain("junior-text-shimmer");
+    expect(liveHtml).not.toContain("animate-bounce");
     expect(liveHtml).not.toContain(">active</span>");
-    expect(quietHtml).not.toContain("Junior is responding");
-    expect(completedHtml).not.toContain("Junior is responding");
+    expect(quietHtml).not.toContain("Junior is thinking…");
+    expect(completedHtml).not.toContain("Junior is thinking…");
   });
 
   it("does not present partial event counts as conversation totals", () => {
@@ -531,7 +536,7 @@ describe("dashboard canonical-event components", () => {
     const failedHtml = renderConversationPageWithClient(failedClient);
 
     expect(activeHtml).not.toContain(">active</span>");
-    expect(activeHtml).toContain("Junior is responding");
+    expect(activeHtml).toContain("Junior is thinking…");
     expect(failedHtml).not.toContain(">error</span>");
   });
 
@@ -728,7 +733,7 @@ describe("dashboard canonical-event components", () => {
     expect(staleHtml).toContain(
       "Transcript refresh failed. Showing the latest available data.",
     );
-    expect(staleHtml).not.toContain("Junior is responding");
+    expect(staleHtml).not.toContain("Junior is thinking…");
   });
 
   it("renders redacted visible events without exposing text", () => {
@@ -882,6 +887,7 @@ describe("dashboard canonical-event components", () => {
     );
 
     expect(html).toContain('aria-label="View turn context"');
+    expect(html).toContain("hidden justify-end md:flex");
     expect(html).toContain('aria-expanded="false"');
     expect(html).not.toContain("Release notes live in Notion.");
     expect(html).not.toContain("memory-1");
@@ -903,6 +909,22 @@ describe("dashboard canonical-event components", () => {
       "Junior could not deliver this message to its destination.",
     );
     expect(html).not.toContain("Agent response failed");
+  });
+
+  it("does not invent an object for an empty raw message", () => {
+    const html = renderTranscript(
+      conversation([
+        event(0, {
+          type: "message",
+          messageId: "assistant-1",
+          role: "assistant",
+          text: "",
+        }),
+      ]),
+      "raw",
+    );
+
+    expect(html).not.toContain("{}");
   });
 
   it("renders one in-progress row for a tool start", () => {

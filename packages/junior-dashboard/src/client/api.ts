@@ -88,11 +88,15 @@ export function usePluginUserPagesData() {
 }
 
 /** Fetch the conversation summary feed used by list-oriented dashboard routes. */
-export function useConversationsData() {
+export function useConversationsData(status: "active" | "archived" = "active") {
   return useQuery({
-    queryKey: ["dashboard", "conversations", "viewer"],
+    queryKey: ["dashboard", "conversations", "viewer", status],
     queryFn: ({ signal }) =>
-      fetchDashboardJson(conversationFeedSchema, "/api/conversations", signal),
+      fetchDashboardJson(
+        conversationFeedSchema,
+        `/api/conversations${status === "archived" ? "?status=archived" : ""}`,
+        signal,
+      ),
     retry: false,
   });
 }

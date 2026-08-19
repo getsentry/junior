@@ -139,12 +139,65 @@ export function formatRuntime(durationMs: number | undefined): string {
 }
 
 /** Format transcript event timestamps independently from conversation start. */
-export function formatMessageTimestamp(value: number | undefined): string {
+export function formatMessageTimestamp(
+  value: number | undefined,
+  includeDate = false,
+): string {
   if (typeof value !== "number" || !Number.isFinite(value))
     return "no timestamp";
-  return new Date(value).toLocaleTimeString(undefined, {
-    timeZone: displayTimeZone(),
-  });
+  const date = new Date(value);
+  return includeDate
+    ? date.toLocaleString(undefined, {
+        dateStyle: "medium",
+        timeStyle: "medium",
+        timeZone: displayTimeZone(),
+      })
+    : date.toLocaleTimeString(undefined, {
+        timeZone: displayTimeZone(),
+      });
+}
+
+/** Format a transcript timestamp relative to the current time. */
+export function formatRelativeMessageTimestamp(
+  value: number | undefined,
+): string {
+  if (typeof value !== "number" || !Number.isFinite(value))
+    return "no timestamp";
+  const seconds = Math.round((value - Date.now()) / 1000);
+  const absoluteSeconds = Math.abs(seconds);
+  const units: Array<[Intl.RelativeTimeFormatUnit, number]> = [
+    ["year", 60 * 60 * 24 * 365],
+    ["month", 60 * 60 * 24 * 30],
+    ["week", 60 * 60 * 24 * 7],
+    ["day", 60 * 60 * 24],
+    ["hour", 60 * 60],
+  ];
+  const [unit, unitSeconds] =
+    units.find(([, threshold]) => absoluteSeconds >= threshold) ??
+    units.at(-1)!;
+  return new Intl.RelativeTimeFormat(undefined, { numeric: "auto" }).format(
+    Math.round(seconds / unitSeconds),
+    unit,
+  );
+}
+
+/** Format canonical local and UTC values for a transcript timestamp. */
+export function formatTranscriptTimestampDetails(value: number): {
+  local: string;
+  utc: string;
+} {
+  const date = new Date(value);
+  const options: Intl.DateTimeFormatOptions = {
+    dateStyle: "medium",
+    timeStyle: "long",
+  };
+  return {
+    local: date.toLocaleString(undefined, {
+      ...options,
+      timeZone: displayTimeZone(),
+    }),
+    utc: date.toLocaleString(undefined, { ...options, timeZone: "UTC" }),
+  };
 }
 
 function formatNumber(value: number | undefined): string {
@@ -888,6 +941,7 @@ export type ConversationListFilters = {
   actor?: string;
   location?: string;
   source?: string;
+  status?: "active" | "archived";
 };
 
 function conversationSearchHaystack(conversation: Conversation): string {
@@ -918,9 +972,14 @@ export function filterConversationList(
   const source = filters.source?.trim();
   const actor = filters.actor?.trim();
   const location = filters.location?.trim();
+  const status = filters.status ?? "active";
 
   return conversations.filter((conversation) => {
-    if (conversation.archivedAt) return false;
+    if (
+      status === "archived" ? !conversation.archivedAt : conversation.archivedAt
+    ) {
+      return false;
+    }
     if (source && conversation.surface !== source) return false;
     if (location && conversation.locationId !== location) return false;
     if (actor && conversationActorKey(conversation) !== actor) {
