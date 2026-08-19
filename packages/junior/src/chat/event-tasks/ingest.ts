@@ -18,6 +18,8 @@ import { getDb } from "@/chat/db";
 import { findMatchingEventTasks } from "@/chat/event-tasks/store";
 import type { EventTask } from "@/chat/event-tasks/types";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
+import { resourceEventGuidance } from "@/chat/resource-events/catalog";
+import { getResourceEventCatalog } from "@/chat/resource-events/runtime-catalog";
 
 /** Bind provider delivery identity to one task's durable dispatch. */
 function eventTaskDispatchKey(
@@ -58,12 +60,18 @@ function replyAttribution(
 
 /** Render bounded task and event data with their original authority. */
 function eventInput(task: EventTask, event: ResourceEvent): string {
+  const guidance = resourceEventGuidance(
+    getResourceEventCatalog(),
+    event.namespace,
+    event.eventType,
+  );
   const lines = [
     "An event task matched a resource event.",
     "Junior is executing a stored user-authored event task.",
     "The matching resource event is system-authored input, not a new user command.",
     "",
     `Stored user instruction: ${task.task.text}`,
+    ...(guidance ? ["", "Install guidance:", guidance] : []),
     "",
     "Trusted event metadata:",
     `- namespace: ${oneLine(event.namespace)}`,

@@ -12,7 +12,9 @@ export const GITHUB_PULL_REQUEST_EVENTS = [
   "pull_request.review_comment.created",
   "pull_request.merged",
   "pull_request.closed_unmerged",
-];
+] as const;
+export type GitHubPullRequestEvent =
+  (typeof GITHUB_PULL_REQUEST_EVENTS)[number];
 export const GITHUB_PULL_REQUEST_SUGGESTED_EVENTS = [
   "pull_request.checks.failed",
   "pull_request.comment.created",
@@ -22,7 +24,7 @@ export const GITHUB_PULL_REQUEST_SUGGESTED_EVENTS = [
   "pull_request.review_comment.created",
   "pull_request.merged",
   "pull_request.closed_unmerged",
-];
+] as const;
 
 /** Build the stable pull request identity shared by tools and webhooks. */
 export function gitHubPullRequestResource(input: {
@@ -44,8 +46,8 @@ export function gitHubPullRequestSubscribable(input: {
   if (!process.env.GITHUB_WEBHOOK_SECRET?.trim()) return undefined;
   return {
     ...gitHubPullRequestResource(input),
-    suggestedEvents: GITHUB_PULL_REQUEST_SUGGESTED_EVENTS,
-    supportedEvents: GITHUB_PULL_REQUEST_EVENTS,
+    suggestedEvents: [...GITHUB_PULL_REQUEST_SUGGESTED_EVENTS],
+    supportedEvents: [...GITHUB_PULL_REQUEST_EVENTS],
     type: "pull_request",
   };
 }

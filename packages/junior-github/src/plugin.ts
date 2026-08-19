@@ -31,6 +31,7 @@ import {
 import {
   GITHUB_PULL_REQUEST_EVENTS,
   GITHUB_PULL_REQUEST_SUGGESTED_EVENTS,
+  type GitHubPullRequestEvent,
 } from "./resource-events/pull-request.js";
 import {
   GITHUB_RELEASE_EVENTS,
@@ -127,6 +128,18 @@ export interface GitHubPluginOptions {
 
   /** Environment variable containing the GitHub App private key. */
   privateKeyEnv?: string;
+
+  /** Install-local pull request resource event behavior. */
+  pullRequestEvents?: {
+    /** Guidance added when one pull request event reaches the agent. */
+    guidance?: Partial<Record<GitHubPullRequestEvent, string>>;
+    /** Temporary subscription created after Junior creates a pull request. */
+    subscribeAfterCreate?: {
+      events: GitHubPullRequestEvent[];
+      intent: string;
+      ttlMs?: number;
+    };
+  };
 }
 
 function githubSmartHttpAccess(
@@ -720,6 +733,9 @@ export function githubPlugin(
           type: "pull_request",
           supportedEvents: [...GITHUB_PULL_REQUEST_EVENTS],
           suggestedEvents: [...GITHUB_PULL_REQUEST_SUGGESTED_EVENTS],
+          ...(options.pullRequestEvents?.guidance
+            ? { guidance: options.pullRequestEvents.guidance }
+            : {}),
         },
         {
           type: "release_source",
@@ -887,7 +903,11 @@ export function githubPlugin(
         });
       },
       tools(ctx) {
-        return createGitHubTools(ctx, readEnv(botEmailEnv));
+        return createGitHubTools(
+          ctx,
+          readEnv(botEmailEnv),
+          options.pullRequestEvents?.subscribeAfterCreate,
+        );
       },
       workspacePrepare: prepareWorkspace,
       async sandboxPrepare(ctx) {

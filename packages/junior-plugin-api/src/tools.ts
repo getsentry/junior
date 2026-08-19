@@ -516,8 +516,15 @@ export interface SlackToolRegistrationHookContext {
 }
 
 export interface PluginResourceEventToolContext {
-  /** Whether this invocation can create a working resource-event subscription. */
+  /** Whether this invocation can create a working resource subscription. */
   canSubscribe: boolean;
+  /** Create a temporary resource subscription for the current conversation. */
+  subscribe(input: {
+    events: string[];
+    intent: string;
+    resource: import("./resource-events").SubscribableResource;
+    ttlMs?: number;
+  }): Promise<{ events: string[]; expiresAtMs: number; id: string }>;
 }
 
 export interface PluginWorkspaceToolContext {

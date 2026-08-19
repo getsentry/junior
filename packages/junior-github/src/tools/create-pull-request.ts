@@ -13,7 +13,10 @@ import { Value } from "@sinclair/typebox/value";
 import { z } from "zod";
 import { appendGitHubFooter } from "./footer.js";
 import { subscribableResourceSchema } from "@sentry/junior-plugin-api";
-import { gitHubPullRequestSubscribable } from "../resource-events/pull-request.js";
+import {
+  gitHubPullRequestSubscribable,
+  type GitHubPullRequestEvent,
+} from "../resource-events/pull-request.js";
 import { appendGitHubRequesterAttribution } from "../tool-support/attribution.js";
 const GITHUB_PULL_REQUEST_CREATE_IDEMPOTENCY_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const GITHUB_PULL_REQUEST_CREATE_LOCK_TTL_MS = 60_000;
@@ -107,8 +110,15 @@ interface GitHubPullRequestResult {
   url: string;
 }
 
+export interface GitHubPullRequestSubscriptionConfig {
+  events: GitHubPullRequestEvent[];
+  intent: string;
+  ttlMs?: number;
+}
+
 interface GitHubPullRequestToolResult extends GitHubPullRequestResult {
   subscribable?: SubscribableResource;
+  subscription?: { events: string[]; expiresAtMs: number; id: string };
 }
 
 interface GitHubPullRequestStructuredResult
@@ -120,6 +130,13 @@ const gitHubPullRequestDataSchema = z.object({
   number: z.number(),
   url: z.string(),
   subscribable: subscribableResourceSchema.optional(),
+  subscription: z
+    .object({
+      events: z.array(z.string()),
+      expiresAtMs: z.number(),
+      id: z.string(),
+    })
+    .optional(),
 });
 
 const gitHubPullRequestOutputSchema = pluginToolOutputSchema.extend({
@@ -342,20 +359,40 @@ async function annotatePullRequest(
   });
 }
 
-function gitHubPullRequestStructuredResult(
+async function gitHubPullRequestStructuredResult(
+  ctx: ToolRegistrationHookContext,
   input: CreateGitHubPullRequestInput,
   result: GitHubPullRequestResult,
-  canSubscribe: boolean,
-): GitHubPullRequestStructuredResult {
-  const data = gitHubPullRequestToolResult(input, result, canSubscribe);
+  subscriptionConfig?: GitHubPullRequestSubscriptionConfig,
+): Promise<GitHubPullRequestStructuredResult> {
+  const data = gitHubPullRequestToolResult(
+    input,
+    result,
+    ctx.resourceEvents.canSubscribe,
+  );
+  const subscription =
+    subscriptionConfig && data.subscribable
+      ? await ctx.resourceEvents.subscribe({
+          events: subscriptionConfig.events,
+          intent: subscriptionConfig.intent,
+          resource: data.subscribable,
+          ...(subscriptionConfig.ttlMs !== undefined
+            ? { ttlMs: subscriptionConfig.ttlMs }
+            : {}),
+        })
+      : undefined;
   return {
     target: "createPullRequest",
     ...data,
+    ...(subscription ? { subscription } : {}),
   };
 }
 
 /** Own PR creation so provider writes use host egress and the footer stays deterministic. */
-export function createGitHubPullRequestTool(ctx: ToolRegistrationHookContext) {
+export function createGitHubPullRequestTool(
+  ctx: ToolRegistrationHookContext,
+  subscriptionConfig?: GitHubPullRequestSubscriptionConfig,
+) {
   return definePluginTool({
     annotations: {
       destructiveHint: false,
@@ -390,10 +427,11 @@ export function createGitHubPullRequestTool(ctx: ToolRegistrationHookContext) {
               url: state.url,
             };
             await annotatePullRequest(ctx, completedInput, completedResult);
-            return gitHubPullRequestStructuredResult(
+            return await gitHubPullRequestStructuredResult(
+              ctx,
               completedInput,
               completedResult,
-              ctx.resourceEvents.canSubscribe,
+              subscriptionConfig,
             );
           }
           if (state?.status === "pending") {
@@ -433,10 +471,11 @@ export function createGitHubPullRequestTool(ctx: ToolRegistrationHookContext) {
               );
             }
             await annotatePullRequest(ctx, parsedInput, result);
-            return gitHubPullRequestStructuredResult(
+            return await gitHubPullRequestStructuredResult(
+              ctx,
               parsedInput,
               result,
-              ctx.resourceEvents.canSubscribe,
+              subscriptionConfig,
             );
           } catch (error) {
             if (
