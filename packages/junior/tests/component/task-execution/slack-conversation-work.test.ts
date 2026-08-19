@@ -775,6 +775,49 @@ describe("Slack conversation work execution", () => {
     });
   });
 
+  it("completes empty non-Slack wakes without paused-turn recovery", async () => {
+    const state = getStateAdapter();
+    await state.connect();
+    const slackAdapter = createSlackAdapterFixture();
+    const runNextPausedTurn = vi.fn(async () => true);
+    const worker = createSlackConversationWorker({
+      getSlackAdapter: () => slackAdapter,
+      runNextPausedTurn,
+      runtime: {
+        handleNewMention: async () => {
+          throw new Error("empty non-Slack wakes must not reach the runtime");
+        },
+        handleSubscribedMessage: async () => {
+          throw new Error("empty non-Slack wakes must not reach the runtime");
+        },
+      },
+      state,
+    });
+    const destination = {
+      platform: "local" as const,
+      conversationId: "local:web:idle-wake",
+    };
+
+    await expect(
+      worker({
+        attempt: {
+          ack: async () => undefined,
+          conversationId: destination.conversationId,
+          destination,
+          drain: async () => [],
+          isFinalAttempt: false,
+          messages: [],
+        },
+        checkIn: async () => true,
+        conversationId: destination.conversationId,
+        destination,
+        publishExternally: false,
+        shouldYield: () => false,
+      }),
+    ).resolves.toEqual({ status: "completed" });
+    expect(runNextPausedTurn).not.toHaveBeenCalled();
+  });
+
   it("processes pending Slack follow-ups before checking idle continuations", async () => {
     const queue = createConversationWorkQueueTestAdapter();
     const state = getStateAdapter();

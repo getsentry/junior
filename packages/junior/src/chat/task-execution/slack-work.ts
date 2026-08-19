@@ -756,6 +756,11 @@ export function createSlackConversationWorker(
       execution: { pendingMessages: [...context.attempt.messages] },
     });
     if (records.length === 0) {
+      // Empty wakes are multi-tenant. Only Slack Destinations own paused-turn
+      // recovery here; local/web wakes must complete without throwing.
+      if (context.destination?.platform !== "slack") {
+        return { status: "completed" };
+      }
       const destination = requireSlackDestination(
         context.destination,
         "Slack paused-turn recovery",

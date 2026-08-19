@@ -364,6 +364,70 @@ describe("api turn conversation work", () => {
     expect(resolved).toEqual({ kind: "resume", turnId });
   });
 
+  it("claims idle local empty wakes instead of falling through to Slack", async () => {
+    const { actor, conversationStore, queue, state } =
+      await createApiTurnWorkFixture();
+    const accepted = await createAndEnqueueApiConversation(
+      {
+        actor,
+        idempotencyKey: "idle-wake-1",
+        message: "Start a dashboard turn.",
+      },
+      { conversationStore, queue, state },
+    );
+    // Drain the initial mailbox message so later work is an empty wake.
+    const worker = createApiTurnWorker({
+      agentRunner: createModelAgentRunnerForRun(() =>
+        createModelStream([{ type: "text", text: "Done." }]),
+      ),
+    });
+    const route = routeApiTurnWork({
+      apiTurnWorker: worker,
+      fallbackWorker: async () => {
+        throw new Error("fallback worker must not run for idle local wakes");
+      },
+    });
+    await expect(
+      processConversationQueueMessage(queue.takeMessage(), {
+        conversationStore,
+        queue,
+        run: route,
+        state,
+      }),
+    ).resolves.toMatchObject({ status: "completed" });
+
+    const destination = {
+      platform: "local" as const,
+      conversationId: accepted.conversationId,
+    };
+    const resolved = await resolveApiTurnWork({
+      attempt: emptyApiTurnAttempt({
+        conversationId: accepted.conversationId,
+        destination,
+      }),
+      conversationId: accepted.conversationId,
+      destination,
+      publishExternally: false,
+      shouldYield: () => false,
+      checkIn: async () => true,
+    });
+    expect(resolved).toEqual({ kind: "idle" });
+
+    await expect(
+      worker({
+        attempt: emptyApiTurnAttempt({
+          conversationId: accepted.conversationId,
+          destination,
+        }),
+        conversationId: accepted.conversationId,
+        destination,
+        publishExternally: false,
+        shouldYield: () => false,
+        checkIn: async () => true,
+      }),
+    ).resolves.toEqual({ status: "completed" });
+  });
+
   it("does not claim dispatch resume wakes that share surface api", async () => {
     await createApiTurnWorkFixture();
     const conversationId = "agent-dispatch:dispatch_shared_surface";

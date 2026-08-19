@@ -46,10 +46,33 @@ function parseApiTurnMessages(
 }
 
 /**
- * Resolve API Turn work from mailbox metadata or an active checkpoint.
+ * True when an empty wake belongs to a local web root conversation.
  *
- * Empty resume wakes after yield carry no mailbox rows. Use durable active
- * Turn state so these wakes do not fall through to Slack.
+ * Agent-invocation children may inherit a parent local Destination while using
+ * a different conversation id. Only claim the root itself so those children
+ * still reach the invocation router.
+ */
+function isIdleLocalApiTurnWake(
+  context: ConversationWorkerContext,
+): boolean {
+  if (context.attempt.messages.length > 0) {
+    return false;
+  }
+  if (context.destination?.platform === "local") {
+    return context.destination.conversationId === context.conversationId;
+  }
+  // Dashboard roots keep the local:web prefix even when Destination is missing
+  // from a stale queue wake.
+  return context.conversationId.startsWith("local:web:");
+}
+
+/**
+ * Resolve API Turn work from mailbox metadata, an active checkpoint, or an
+ * idle local web wake.
+ *
+ * Empty resume wakes after yield carry no mailbox rows. Active Turn state owns
+ * those resumes. Idle local web wakes still belong here so they do not fall
+ * through to Slack paused-turn recovery.
  */
 export async function resolveApiTurnWork(
   context: ConversationWorkerContext,
@@ -62,6 +85,7 @@ export async function resolveApiTurnWork(
       }>;
     }
   | { kind: "resume"; turnId: string }
+  | { kind: "idle" }
   | undefined
 > {
   const batch = parseApiTurnMessages(context.attempt.messages);
@@ -87,19 +111,22 @@ export async function resolveApiTurnWork(
     );
   }
   const turnId = active[0]?.turnId;
-  if (!turnId) {
-    return undefined;
+  if (turnId) {
+    const record = await getTurnRecord(context.conversationId, turnId);
+    if (
+      record &&
+      record.surface === "api" &&
+      !record.dispatchId &&
+      (record.state === "paused" || record.state === "running")
+    ) {
+      return { kind: "resume", turnId };
+    }
   }
-  const record = await getTurnRecord(context.conversationId, turnId);
-  if (
-    !record ||
-    record.surface !== "api" ||
-    Boolean(record.dispatchId) ||
-    (record.state !== "paused" && record.state !== "running")
-  ) {
-    return undefined;
+
+  if (isIdleLocalApiTurnWake(context)) {
+    return { kind: "idle" };
   }
-  return { kind: "resume", turnId };
+  return undefined;
 }
 
 /** Return whether the leased attempt belongs to an API Turn. */

@@ -444,6 +444,11 @@ export function createApiTurnWorker(options: {
         `API turn work must not publish externally for ${context.conversationId}`,
       );
     }
+    // Idle local wakes mean the mailbox is empty and no web Turn needs resume.
+    // Complete them here so Slack paused-turn recovery never sees them.
+    if (resolved.kind === "idle") {
+      return { status: "completed" };
+    }
 
     const lifecycle =
       options.turnLifecycle ??
