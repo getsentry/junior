@@ -6,7 +6,9 @@ import {
   type DashboardIdentity,
 } from "../../api/schema";
 import { Button } from "../components/Button";
+import { Field } from "../components/Field";
 import { InlineError } from "../components/InlineError";
+import { TextInput } from "../components/TextInput";
 import { patch } from "../http";
 import { dashboardContainerClass } from "../styles";
 import type { DashboardCoreData } from "../types";
@@ -61,28 +63,25 @@ export function SettingsPage({ identity }: SettingsPageProps) {
           onSubmit={submit}
         >
           <h2 className="m-0 text-lg font-bold">Profile</h2>
-          <label
-            className="mt-5 block text-sm font-semibold"
+          <Field
+            className="mt-5"
+            help="Your display name is shown with your conversations and activity."
             htmlFor="display-name"
+            label="Display name"
           >
-            Display name
-          </label>
-          <input
-            autoComplete="name"
-            className="mt-2 block w-full rounded border border-white/15 bg-black px-3 py-2 text-sm text-dashboard-text focus:border-[#beaaff] focus:outline-none"
-            id="display-name"
-            maxLength={80}
-            onChange={(event) => {
-              setDisplayName(event.target.value);
-              if (updateProfile.isError || updateProfile.isSuccess) {
-                updateProfile.reset();
-              }
-            }}
-            value={displayName}
-          />
-          <p className="mt-2 mb-0 text-xs text-dashboard-text-muted">
-            Your display name is shown with your conversations and activity.
-          </p>
+            <TextInput
+              autoComplete="name"
+              id="display-name"
+              maxLength={80}
+              onChange={(event) => {
+                setDisplayName(event.target.value);
+                if (updateProfile.isError || updateProfile.isSuccess) {
+                  updateProfile.reset();
+                }
+              }}
+              value={displayName}
+            />
+          </Field>
           <div className="mt-5 flex items-center gap-3">
             <Button disabled={!canSave} type="submit">
               {updateProfile.isPending ? "Saving…" : "Save changes"}

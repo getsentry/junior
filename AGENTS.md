@@ -22,6 +22,7 @@ Use **pnpm**: `pnpm install`, `pnpm dev`, `pnpm test`, `pnpm typecheck`, `pnpm s
 | Guardian eval file         | `pnpm --filter @sentry/junior-evals evals:guardian path/to/file.eval.ts`       |
 | Guardian eval case         | `pnpm --filter @sentry/junior-evals evals:guardian path/to/file.eval.ts -t "case name"` |
 | Generate package schema    | `pnpm --filter <package> db:generate`                                          |
+| Dashboard visual capture   | `pnpm visual:dashboard -- --scenarios gallery-foundations`                     |
 | Release package alignment  | `pnpm release:check`                                                           |
 
 ## Workflow
@@ -62,6 +63,7 @@ Use **pnpm**: `pnpm install`, `pnpm dev`, `pnpm test`, `pnpm typecheck`, `pnpm s
 | Repo-wide policy index | `policies/README.md`                                                                                             |
 | Runtime vocabulary     | `TERMINOLOGY.md`                                                                                                 |
 | Design and failures    | `policies/interface-design.md`, `policies/correctness-complexity.md`, `policies/error-handling.md`               |
+| Frontend components    | `policies/frontend-components.md`, `packages/junior-dashboard/src/client/components/README.md`                   |
 | Agent steering         | `policies/agent-steering.md`                                                                                     |
 | Provider boundaries    | `policies/provider-boundaries.md`                                                                                |
 | Comments and telemetry | `policies/code-comments.md`, `policies/observability.md`, `TELEMETRY.md`                                         |
