@@ -55,9 +55,6 @@ function parseApiTurnMessages(
 function isIdleLocalApiTurnWake(
   context: ConversationWorkerContext,
 ): boolean {
-  if (context.attempt.messages.length > 0) {
-    return false;
-  }
   if (context.destination?.platform === "local") {
     return context.destination.conversationId === context.conversationId;
   }

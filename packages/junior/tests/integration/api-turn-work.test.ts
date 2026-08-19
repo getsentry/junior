@@ -19,12 +19,18 @@ import {
   saveTurnCheckpoint,
 } from "@/chat/task-execution/checkpoint";
 import {
+  ensureConversationWake,
+  requestConversationWork,
+} from "@/chat/task-execution/store";
+import {
   closeApiTurnWorkFixture,
   createApiTurnWorkFixture,
+  createConversationWorkWebHarness,
   emptyApiTurnAttempt,
 } from "../fixtures/api-turn";
 import { createModelAgentRunnerForRun } from "../fixtures/agent-runner";
 import { createModelStream } from "../fixtures/model-stream";
+import { streamReplies } from "../fixtures/conversation-work";
 
 describe("api turn conversation work", () => {
   afterEach(async () => {
@@ -364,68 +370,58 @@ describe("api turn conversation work", () => {
     expect(resolved).toEqual({ kind: "resume", turnId });
   });
 
-  it("claims idle local empty wakes instead of falling through to Slack", async () => {
-    const { actor, conversationStore, queue, state } =
-      await createApiTurnWorkFixture();
-    const accepted = await createAndEnqueueApiConversation(
-      {
-        actor,
-        idempotencyKey: "idle-wake-1",
-        message: "Start a dashboard turn.",
-      },
-      { conversationStore, queue, state },
-    );
-    // Drain the initial mailbox message so later work is an empty wake.
-    const worker = createApiTurnWorker({
-      agentRunner: createModelAgentRunnerForRun(() =>
-        createModelStream([{ type: "text", text: "Done." }]),
-      ),
+  it("completes idle local empty wakes on the production router", async () => {
+    // Product contract: after a finished local web turn, a stale empty queue
+    // wake must complete without falling through to Slack paused-turn recovery.
+    const harness = await createConversationWorkWebHarness({
+      modelStream: streamReplies("Done."),
     });
-    const route = routeApiTurnWork({
-      apiTurnWorker: worker,
-      fallbackWorker: async () => {
-        throw new Error("fallback worker must not run for idle local wakes");
-      },
+    const started = await harness.start({
+      idempotencyKey: "idle-wake-1",
+      message: "Start a dashboard turn.",
     });
-    await expect(
-      processConversationQueueMessage(queue.takeMessage(), {
-        conversationStore,
-        queue,
-        run: route,
-        state,
-      }),
-    ).resolves.toMatchObject({ status: "completed" });
+    await harness.drain();
 
     const destination = {
       platform: "local" as const,
-      conversationId: accepted.conversationId,
+      conversationId: started.conversationId,
     };
-    const resolved = await resolveApiTurnWork({
-      attempt: emptyApiTurnAttempt({
-        conversationId: accepted.conversationId,
-        destination,
-      }),
-      conversationId: accepted.conversationId,
+    const nowMs = Date.now();
+    await requestConversationWork({
+      conversationId: started.conversationId,
       destination,
-      publishExternally: false,
-      shouldYield: () => false,
-      checkIn: async () => true,
+      nowMs,
+      conversationStore: harness.conversationStore,
+      state: harness.state,
     });
-    expect(resolved).toEqual({ kind: "idle" });
+    await ensureConversationWake({
+      conversationId: started.conversationId,
+      // Force a fresh nudge past the recent-enqueue marker left by the first turn.
+      idempotencyKey: `idle-wake:${started.conversationId}:${nowMs}`,
+      nowMs: nowMs + 61_000,
+      queue: harness.queue,
+      replaceExistingWake: true,
+      state: harness.state,
+    });
 
     await expect(
-      worker({
-        attempt: emptyApiTurnAttempt({
-          conversationId: accepted.conversationId,
-          destination,
-        }),
-        conversationId: accepted.conversationId,
-        destination,
-        publishExternally: false,
-        shouldYield: () => false,
-        checkIn: async () => true,
+      processConversationQueueMessage(harness.queue.takeMessage(), {
+        conversationStore: harness.conversationStore,
+        queue: harness.queue,
+        run: harness.conversationWork.run,
+        state: harness.state,
       }),
-    ).resolves.toEqual({ status: "completed" });
+    ).resolves.toMatchObject({ status: "completed" });
+    expect(harness.queue.hasQueuedMessages()).toBe(false);
+    await expect(
+      getTurnRecord(
+        started.conversationId,
+        apiTurnIdForMessage(started.messageId),
+      ),
+    ).resolves.toMatchObject({
+      state: "completed",
+      surface: "api",
+    });
   });
 
   it("does not claim dispatch resume wakes that share surface api", async () => {
