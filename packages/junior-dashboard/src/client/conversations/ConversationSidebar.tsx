@@ -345,6 +345,10 @@ function ArchiveConversationErrorNotice(props: {
   onDismiss(): void;
 }) {
   const title = conversationDisplayTitle(props.conversation);
+  // Restore failures still carry archivedAt from the archived row.
+  const actionTitle = props.conversation.archivedAt
+    ? "Could not restore"
+    : "Could not archive";
   return (
     <Notice
       action={
@@ -354,7 +358,7 @@ function ArchiveConversationErrorNotice(props: {
       }
       detail={title}
       icon={CircleAlert}
-      title="Could not archive"
+      title={actionTitle}
       tone="error"
     />
   );

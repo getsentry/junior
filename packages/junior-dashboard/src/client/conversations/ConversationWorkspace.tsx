@@ -83,6 +83,8 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
           onNewConversation={() => {
             createConversation.reset();
             createSourceId.current = selectedId;
+            // New chats are active; leave archived view so the created row can appear.
+            setStatus("active");
             setCreating(true);
             if (selectedId) navigate("/", { replace: true });
           }}
