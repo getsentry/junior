@@ -1321,6 +1321,53 @@ Conversation: \`local:test:old-conversation\`
     );
   });
 
+  it("returns the created pull request when subscribe-after-create fails", async () => {
+    process.env.GITHUB_WEBHOOK_SECRET = "test-secret";
+    const warn = vi.fn();
+    const subscribe = vi.fn(async () => {
+      throw new Error("subscription store unavailable");
+    });
+    const ctx = githubToolsContext({ subscribe });
+    ctx.log = { ...ctx.log, warn };
+    const tool = githubPlugin({
+      pullRequestEvents: {
+        subscribeAfterCreate: {
+          events: ["pull_request.checks.failed"],
+          intent: "Report failed checks.",
+        },
+      },
+    }).hooks?.tools?.(ctx as any)?.createPullRequest;
+
+    const result = await tool?.execute?.(
+      {
+        repo: "getsentry/junior",
+        title: "Typed PR",
+        head: "feature",
+        base: "main",
+      },
+      { toolCallId: "call-create-pull-request-subscribe-fail" },
+    );
+    expect(result).toMatchObject({
+      number: 660,
+      url: "https://github.com/getsentry/junior/issues/660",
+      subscribable: {
+        suggestedEvents: expect.arrayContaining([
+          "pull_request.checks.failed",
+        ]),
+      },
+    });
+    expect(result).not.toHaveProperty("subscription");
+    expect(subscribe).toHaveBeenCalledOnce();
+    expect(warn).toHaveBeenCalledWith(
+      "github.pull_request.subscribe_after_create.failed",
+      expect.objectContaining({
+        error: "subscription store unavailable",
+        number: 660,
+        repo: "getsentry/junior",
+      }),
+    );
+  });
+
   it("prefers stored identity names for requester attribution", async () => {
     const ctx = githubToolsContext({
       actor: {

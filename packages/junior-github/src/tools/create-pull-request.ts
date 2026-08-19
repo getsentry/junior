@@ -357,25 +357,47 @@ async function gitHubPullRequestStructuredResult(
   result: GitHubPullRequestResult,
   subscriptionConfig?: GitHubPullRequestSubscriptionConfig,
 ): Promise<GitHubPullRequestStructuredResult> {
-  const data = gitHubPullRequestToolResult(
+  // Subscribe first. Only prune suggested events after a successful forced
+  // subscription so a failed side effect still leaves the created PR usable.
+  const base = gitHubPullRequestToolResult(
     input,
     result,
     ctx.resourceEvents.canSubscribe,
-    subscriptionConfig?.events,
   );
-  const subscription =
-    subscriptionConfig && data.subscribable
-      ? await ctx.resourceEvents.subscribe({
-          events: subscriptionConfig.events,
-          intent: subscriptionConfig.intent,
-          resource: data.subscribable,
-        })
-      : undefined;
-  return {
-    target: "createPullRequest",
-    ...data,
-    ...(subscription ? { subscription } : {}),
-  };
+  if (!subscriptionConfig || !base.subscribable) {
+    return {
+      target: "createPullRequest",
+      ...base,
+    };
+  }
+  try {
+    const subscription = await ctx.resourceEvents.subscribe({
+      events: subscriptionConfig.events,
+      intent: subscriptionConfig.intent,
+      resource: base.subscribable,
+    });
+    const data = gitHubPullRequestToolResult(
+      input,
+      result,
+      ctx.resourceEvents.canSubscribe,
+      subscriptionConfig.events,
+    );
+    return {
+      target: "createPullRequest",
+      ...data,
+      subscription,
+    };
+  } catch (error) {
+    ctx.log.warn("github.pull_request.subscribe_after_create.failed", {
+      error: error instanceof Error ? error.message : String(error),
+      number: result.number,
+      repo: input.repo,
+    });
+    return {
+      target: "createPullRequest",
+      ...base,
+    };
+  }
 }
 
 /** Own PR creation so provider writes use host egress and the footer stays deterministic. */
