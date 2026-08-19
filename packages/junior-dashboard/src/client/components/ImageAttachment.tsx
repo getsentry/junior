@@ -32,6 +32,7 @@ export function shouldPreviewImageAttachment(
 /** Render an image attachment that opens in a responsive modal on a normal click. */
 export function ImageAttachment(
   props: {
+    context?: string;
     filename: string;
     imageClassName?: string;
     src: string;
@@ -41,7 +42,14 @@ export function ImageAttachment(
   const dialogRef = useRef<HTMLDialogElement>(null);
   const previousBodyOverflowRef = useRef<string | undefined>(undefined);
   const titleId = useId();
-  const { filename, imageClassName, src, triggerClassName, ...imageProps } = props;
+  const {
+    context,
+    filename,
+    imageClassName,
+    src,
+    triggerClassName,
+    ...imageProps
+  } = props;
 
   const unlockBodyScroll = () => {
     if (previousBodyOverflowRef.current === undefined) return;
@@ -91,11 +99,18 @@ export function ImageAttachment(
       >
         <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] bg-[#070707]">
           <header className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-1.5 border-b border-white/10 bg-dashboard-surface-raised px-3 py-2 pt-[max(0.5rem,env(safe-area-inset-top))] md:px-4">
-            <div
-              className="truncate font-mono text-xs text-dashboard-text"
-              id={titleId}
-            >
-              {filename}
+            <div className="min-w-0">
+              <div
+                className="truncate font-mono text-xs text-dashboard-text"
+                id={titleId}
+              >
+                {filename}
+              </div>
+              {context ? (
+                <div className="truncate font-mono text-2xs text-dashboard-text-muted">
+                  {context}
+                </div>
+              ) : null}
             </div>
             <a
               className="inline-flex min-h-10 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium text-dashboard-text-muted no-underline transition-colors hover:bg-white/[0.06] hover:text-dashboard-text"

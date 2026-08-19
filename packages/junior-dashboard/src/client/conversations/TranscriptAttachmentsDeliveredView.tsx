@@ -49,11 +49,12 @@ function AttachmentItem(props: {
     <div className="min-w-0">
       {inline && !search.active ? (
         <ImageAttachment
+          context={meta}
           filename={props.attachment.filename}
-          imageClassName="max-h-48 max-w-sm h-auto w-auto object-contain"
+          imageClassName="max-h-48 max-w-sm h-auto w-auto rounded-md object-contain"
           loading="lazy"
           src={href}
-          triggerClassName="mb-1.5 inline-block max-w-full overflow-hidden rounded-md bg-black/20"
+          triggerClassName="mb-1.5 inline-block max-w-full align-top"
         />
       ) : null}
       <a
@@ -92,7 +93,7 @@ export function TranscriptAttachmentsDeliveredView(props: {
   const title = count === 1 ? "1 file delivered" : `${count} files delivered`;
 
   return (
-    <article className="min-w-0 rounded-lg bg-white/[0.025] px-3 py-2.5">
+    <article className="min-w-0">
       <TranscriptHeadingRow
         left={
           <span className="font-display text-xs font-semibold text-dashboard-text-muted">
@@ -108,7 +109,7 @@ export function TranscriptAttachmentsDeliveredView(props: {
           ) : undefined
         }
       />
-      <div className="mt-2 grid gap-2">
+      <div className="mt-2 grid max-w-sm gap-2">
         {props.part.attachments.map((attachment) => (
           <AttachmentItem
             attachment={attachment}
