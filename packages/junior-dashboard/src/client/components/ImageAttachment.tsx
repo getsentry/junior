@@ -4,6 +4,7 @@ import {
   useEffect,
   useId,
   useRef,
+  useState,
   type ComponentPropsWithoutRef,
 } from "react";
 
@@ -42,6 +43,7 @@ export function ImageAttachment(
   const dialogRef = useRef<HTMLDialogElement>(null);
   const previousBodyOverflowRef = useRef<string | undefined>(undefined);
   const titleId = useId();
+  const [open, setOpen] = useState(false);
   const {
     context,
     filename,
@@ -59,6 +61,7 @@ export function ImageAttachment(
 
   const close = () => {
     dialogRef.current?.close();
+    setOpen(false);
     unlockBodyScroll();
   };
 
@@ -76,6 +79,7 @@ export function ImageAttachment(
           if (!dialog || dialog.open) return;
           previousBodyOverflowRef.current = document.body.style.overflow;
           document.body.style.overflow = "hidden";
+          setOpen(true);
           dialog.showModal();
         }}
         rel="noreferrer"
@@ -94,7 +98,10 @@ export function ImageAttachment(
         onClick={(event) => {
           if (event.target === event.currentTarget) close();
         }}
-        onClose={unlockBodyScroll}
+        onClose={() => {
+          setOpen(false);
+          unlockBodyScroll();
+        }}
         ref={dialogRef}
       >
         <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] bg-[#070707]">
@@ -131,11 +138,13 @@ export function ImageAttachment(
             </button>
           </header>
           <div className="grid min-h-0 place-items-center overflow-auto p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:p-6">
-            <img
-              alt={filename}
-              className="max-h-full max-w-full object-contain"
-              src={src}
-            />
+            {open ? (
+              <img
+                alt={filename}
+                className="max-h-full max-w-full object-contain"
+                src={src}
+              />
+            ) : null}
           </div>
         </div>
       </dialog>
