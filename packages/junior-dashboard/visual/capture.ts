@@ -85,6 +85,32 @@ function shotName(scenarioId: string, viewport: VisualViewport) {
   return `${scenarioId}__${viewport.name}.png`;
 }
 
+function attachmentImage(page: Page) {
+  return page
+    .locator('a[href*="/attachments/qa-chart-png"]')
+    .filter({ has: page.locator('img[alt="chart.png"]') })
+    .filter({ hasNot: page.locator("dialog") })
+    .first();
+}
+
+async function prepareScenarioState(page: Page, scenario: VisualScenario) {
+  if (!scenario.state) return;
+
+  const image = attachmentImage(page);
+  await image.waitFor({ state: "visible", timeout: 15_000 });
+  await image.evaluate((element) =>
+    element.scrollIntoView({ block: "center", inline: "nearest" }),
+  );
+
+  if (scenario.state === "attachment-modal") {
+    await image.click();
+    await page.locator("dialog[open]").waitFor({
+      state: "visible",
+      timeout: 5_000,
+    });
+  }
+}
+
 async function captureScenario(options: {
   baseURL: string;
   outDir: string;
@@ -110,6 +136,7 @@ async function captureScenario(options: {
     await page.evaluate(async () => {
       await document.fonts.ready;
     });
+    await prepareScenarioState(page, scenario);
 
     const file = shotName(scenario.id, viewport);
     await page.screenshot({
