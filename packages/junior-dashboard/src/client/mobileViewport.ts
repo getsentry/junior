@@ -5,9 +5,17 @@ import { acquireBodyScrollLock, releaseBodyScrollLock } from "./bodyScrollLock";
 const viewportHeightProperty = "--dashboard-viewport-height";
 const viewportOffsetTopProperty = "--dashboard-viewport-offset-top";
 const keyboardOpenProperty = "--dashboard-keyboard-open";
+/** Single owner for composer bottom pad. Call sites must not invent safe-area math. */
+export const composerDockPaddingProperty =
+  "--dashboard-composer-dock-padding";
 // Ignore small visualViewport shrink from rubber-band and transient chrome.
 // Real software keyboards reduce height by much more than this.
 const KEYBOARD_OPEN_HEIGHT_DELTA_PX = 100;
+// Tight closed/open pad. Safe-area is intentionally omitted: with
+// viewport-fit=cover + visualViewport shell docking, env(safe-area-inset-bottom)
+// stacks a large home-indicator gap (and Safari often keeps it while the
+// keyboard is open: https://bugs.webkit.org/show_bug.cgi?id=217754).
+const COMPOSER_DOCK_PADDING = "0.375rem";
 
 export type MobileViewportMetrics = {
   heightPx: number;
@@ -48,11 +56,16 @@ export function coalescedMobileViewportSyncSource(
  * - closed keyboard: shell = layout viewport, offset 0 (ignore rubber-band)
  * - open keyboard: shell = visual viewport rectangle (height + offsetTop)
  *
+ * `restingLayoutHeight` is the last closed-keyboard layout height. Needed when
+ * `interactive-widget=resizes-content` shrinks layout and visual together so a
+ * plain layout-vs-visual delta never trips.
+ *
  * Focus-time Safari pan freezes while typing use `mobileViewportOffsetTop`.
  */
 export function mobileViewportMetrics(input: {
   layoutHeight: number;
   mobile: boolean;
+  restingLayoutHeight: number;
   visualHeight: number;
   visualOffsetTop: number;
 }): MobileViewportMetrics | null {
@@ -60,8 +73,16 @@ export function mobileViewportMetrics(input: {
 
   const layoutHeight = Math.max(0, Math.round(input.layoutHeight));
   const visualHeight = Math.max(0, Math.round(input.visualHeight));
+  const restingLayoutHeight = Math.max(
+    0,
+    Math.round(input.restingLayoutHeight),
+  );
+  // Shortest visible edge covers both resizes-visual (layout steady, visual
+  // shrinks) and resizes-content (both shrink against the resting height).
+  const shortestVisible = Math.min(layoutHeight, visualHeight);
+  const referenceHeight = Math.max(restingLayoutHeight, layoutHeight);
   const keyboardOpen =
-    layoutHeight - visualHeight >= KEYBOARD_OPEN_HEIGHT_DELTA_PX;
+    referenceHeight - shortestVisible >= KEYBOARD_OPEN_HEIGHT_DELTA_PX;
 
   if (!keyboardOpen) {
     return {
@@ -120,7 +141,9 @@ export function useMobileViewportHeight(
     let lastHeight = "";
     let lastOffsetTop = "";
     let lastKeyboardOpen = "";
+    let lastDockPadding = "";
     let appliedOffsetTopPx = 0;
+    let restingLayoutHeight = Math.round(window.innerHeight);
     let documentScrollLocked = false;
 
     // Share the dashboard body-scroll lock with drawers and the mobile nav
@@ -148,6 +171,10 @@ export function useMobileViewportHeight(
         root.style.removeProperty(keyboardOpenProperty);
         lastKeyboardOpen = "";
       }
+      if (lastDockPadding !== "") {
+        root.style.removeProperty(composerDockPaddingProperty);
+        lastDockPadding = "";
+      }
       appliedOffsetTopPx = 0;
     };
 
@@ -165,6 +192,7 @@ export function useMobileViewportHeight(
         const metrics = mobileViewportMetrics({
           layoutHeight,
           mobile: mobile.matches,
+          restingLayoutHeight,
           visualHeight,
           visualOffsetTop,
         });
@@ -174,6 +202,12 @@ export function useMobileViewportHeight(
           clearViewportProperties();
           frame = undefined;
           return;
+        }
+
+        if (!metrics.keyboardOpen) {
+          // Remember the full closed height so resizes-content can still detect
+          // an open keyboard after layout and visual shrink together.
+          restingLayoutHeight = Math.max(restingLayoutHeight, layoutHeight);
         }
 
         setDocumentScrollLocked(true);
@@ -192,6 +226,7 @@ export function useMobileViewportHeight(
         const nextHeight = `${metrics.heightPx}px`;
         const nextOffsetTop = `${offsetTopPx}px`;
         const nextKeyboardOpen = metrics.keyboardOpen ? "1" : "0";
+        const nextDockPadding = COMPOSER_DOCK_PADDING;
         if (lastHeight !== nextHeight) {
           root.style.setProperty(viewportHeightProperty, nextHeight);
           lastHeight = nextHeight;
@@ -203,6 +238,10 @@ export function useMobileViewportHeight(
         if (lastKeyboardOpen !== nextKeyboardOpen) {
           root.style.setProperty(keyboardOpenProperty, nextKeyboardOpen);
           lastKeyboardOpen = nextKeyboardOpen;
+        }
+        if (lastDockPadding !== nextDockPadding) {
+          root.style.setProperty(composerDockPaddingProperty, nextDockPadding);
+          lastDockPadding = nextDockPadding;
         }
         appliedOffsetTopPx = offsetTopPx;
         frame = undefined;

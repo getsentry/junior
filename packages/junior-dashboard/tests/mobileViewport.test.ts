@@ -12,6 +12,7 @@ describe("mobileViewportMetrics", () => {
       mobileViewportMetrics({
         layoutHeight: 900,
         mobile: false,
+        restingLayoutHeight: 900,
         visualHeight: 900,
         visualOffsetTop: 40,
       }),
@@ -23,6 +24,7 @@ describe("mobileViewportMetrics", () => {
       mobileViewportMetrics({
         layoutHeight: 844,
         mobile: true,
+        restingLayoutHeight: 844,
         visualHeight: 844,
         visualOffsetTop: 48,
       }),
@@ -38,6 +40,7 @@ describe("mobileViewportMetrics", () => {
       mobileViewportMetrics({
         layoutHeight: 844,
         mobile: true,
+        restingLayoutHeight: 844,
         visualHeight: 820,
         visualOffsetTop: 12,
       }),
@@ -53,6 +56,7 @@ describe("mobileViewportMetrics", () => {
       mobileViewportMetrics({
         layoutHeight: 844,
         mobile: true,
+        restingLayoutHeight: 844,
         visualHeight: 520,
         visualOffsetTop: 140,
       }),
@@ -63,11 +67,30 @@ describe("mobileViewportMetrics", () => {
     });
   });
 
+  it("detects keyboard open when resizes-content shrinks layout and visual together", () => {
+    // interactive-widget=resizes-content shrinks both viewports. Without a
+    // resting closed height, layout-vs-visual delta stays near zero.
+    expect(
+      mobileViewportMetrics({
+        layoutHeight: 520,
+        mobile: true,
+        restingLayoutHeight: 844,
+        visualHeight: 520,
+        visualOffsetTop: 0,
+      }),
+    ).toEqual({
+      heightPx: 520,
+      keyboardOpen: true,
+      offsetTopPx: 0,
+    });
+  });
+
   it("never reports a negative keyboard offset", () => {
     expect(
       mobileViewportMetrics({
         layoutHeight: 844,
         mobile: true,
+        restingLayoutHeight: 844,
         visualHeight: 480,
         visualOffsetTop: -12,
       }),

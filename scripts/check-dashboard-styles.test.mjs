@@ -4,6 +4,7 @@ import {
   findAdditiveSafeAreaPadding,
   findArbitraryTextSizes,
   findClassicViewportHeights,
+  findComposerSafeAreaBottomPadding,
   findDashboardUtilityAssertions,
   findNonstandardNeutralTextColors,
   findUndersizedHardcodedFontSizes,
@@ -124,6 +125,26 @@ test("reports additive safe-area padding and allows max()", () => {
     [
       'src/composer.tsx:1: const stacked = "pb-[calc(0.375rem+env(safe-area-inset-bottom))]";',
       'src/composer.tsx:2: const stackedReverse = "pb-[calc(env(safe-area-inset-bottom)+0.375rem)]";',
+    ],
+  );
+});
+
+test("reports composer footers that reintroduce bottom safe-area math", () => {
+  assert.deepEqual(
+    findComposerSafeAreaBottomPadding([
+      {
+        path: "src/client/conversations/ConversationPage.tsx",
+        contents:
+          'const bad = "pb-[max(0.5rem,env(safe-area-inset-bottom))]";',
+      },
+      {
+        path: "src/client/components/Drawer.tsx",
+        contents:
+          'const okElsewhere = "pb-[max(1rem,env(safe-area-inset-bottom))]";',
+      },
+    ]),
+    [
+      'src/client/conversations/ConversationPage.tsx:1: const bad = "pb-[max(0.5rem,env(safe-area-inset-bottom))]";',
     ],
   );
 });
