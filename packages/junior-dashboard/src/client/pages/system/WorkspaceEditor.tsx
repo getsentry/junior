@@ -1,8 +1,10 @@
 import { Plus, Trash2 } from "lucide-react";
-import type { FormEvent, ReactNode } from "react";
+import type { FormEvent } from "react";
 
 import { Button } from "../../components/Button";
+import { Field } from "../../components/Field";
 import { InlineError } from "../../components/InlineError";
+import { TextArea, TextInput } from "../../components/TextInput";
 import { Card } from "../../components/layout/Card";
 import {
   createRepoDraft,
@@ -19,9 +21,6 @@ type WorkspaceEditorProps = {
   onChange(draft: WorkspaceDraft): void;
   onSubmit(): void;
 };
-
-const fieldClassName =
-  "block w-full rounded border border-white/15 bg-black px-3 py-2 text-sm text-dashboard-text focus:border-[#beaaff] focus:outline-none";
 
 /** Edit one Workspace recipe without owning persistence. */
 export function WorkspaceEditor(props: WorkspaceEditorProps) {
@@ -67,9 +66,8 @@ export function WorkspaceEditor(props: WorkspaceEditorProps) {
           htmlFor="workspace-name"
           label="Name"
         >
-          <input
+          <TextInput
             autoComplete="off"
-            className={fieldClassName}
             id="workspace-name"
             maxLength={64}
             onChange={(event) =>
@@ -124,9 +122,8 @@ export function WorkspaceEditor(props: WorkspaceEditorProps) {
                     <span className="font-mono text-xs uppercase tracking-[0.12em] text-dashboard-text-muted">
                       Provider
                     </span>
-                    <input
+                    <TextInput
                       aria-label={`Provider ${index + 1}`}
-                      className={fieldClassName}
                       onChange={(event) =>
                         updateRepo(repo.key, { provider: event.target.value })
                       }
@@ -138,9 +135,8 @@ export function WorkspaceEditor(props: WorkspaceEditorProps) {
                     <span className="font-mono text-xs uppercase tracking-[0.12em] text-dashboard-text-muted">
                       Repository
                     </span>
-                    <input
+                    <TextInput
                       aria-label={`Repository ${index + 1}`}
-                      className={fieldClassName}
                       onChange={(event) =>
                         updateRepo(repo.key, { repo: event.target.value })
                       }
@@ -180,8 +176,7 @@ export function WorkspaceEditor(props: WorkspaceEditorProps) {
           htmlFor="workspace-setup"
           label="Setup script"
         >
-          <textarea
-            className={`${fieldClassName} min-h-36 font-mono`}
+          <TextArea
             id="workspace-setup"
             onChange={(event) =>
               props.onChange({
@@ -214,27 +209,5 @@ export function WorkspaceEditor(props: WorkspaceEditorProps) {
         </div>
       </form>
     </Card>
-  );
-}
-
-function Field(props: {
-  children: ReactNode;
-  help: ReactNode;
-  htmlFor: string;
-  label: string;
-}) {
-  return (
-    <div className="grid gap-2">
-      <label
-        className="text-sm font-semibold text-dashboard-text"
-        htmlFor={props.htmlFor}
-      >
-        {props.label}
-      </label>
-      {props.children}
-      <p className="m-0 text-xs leading-relaxed text-dashboard-text-muted sm:text-sm">
-        {props.help}
-      </p>
-    </div>
   );
 }

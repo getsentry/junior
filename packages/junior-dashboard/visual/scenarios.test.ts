@@ -29,12 +29,74 @@ describe("selectVisualScenarioIds", () => {
     ).toEqual(["person-profile"]);
   });
 
-  it("selects the component gallery for shared component changes", () => {
+  it("selects focused gallery pages for shared component changes", () => {
     expect(
       selectVisualScenarioIds([
         "packages/junior-dashboard/src/client/components/Button.tsx",
       ]),
-    ).toEqual(["component-gallery"]);
+    ).toEqual(["gallery-foundations", "gallery-index"]);
+  });
+
+  it("selects the charts gallery for chart component changes", () => {
+    expect(
+      selectVisualScenarioIds([
+        "packages/junior-dashboard/src/client/components/charts/ActivityChart.tsx",
+      ]),
+    ).toEqual(["gallery-charts"]);
+  });
+
+  it("selects the charts gallery for feature chart fixtures under people/system", () => {
+    expect(
+      selectVisualScenarioIds([
+        "packages/junior-dashboard/src/client/pages/people/ContributionGrid.tsx",
+      ]),
+    ).toEqual(["gallery-charts"]);
+    expect(
+      selectVisualScenarioIds([
+        "packages/junior-dashboard/src/client/pages/system/ConversationActivityChart.tsx",
+      ]),
+    ).toEqual(["gallery-charts"]);
+  });
+
+  it("selects every gallery page for catalog source changes", () => {
+    expect(
+      selectVisualScenarioIds([
+        "packages/junior-dashboard/src/client/pages/dev/ComponentsPage.tsx",
+      ]),
+    ).toEqual([
+      "gallery-foundations",
+      "gallery-charts",
+      "gallery-transcripts",
+      "gallery-index",
+    ]);
+  });
+
+  it("selects the transcripts gallery for transcript fixture components", () => {
+    expect(
+      selectVisualScenarioIds([
+        "packages/junior-dashboard/src/client/conversations/TranscriptMarkdown.tsx",
+      ]),
+    ).toEqual(["gallery-transcripts"]);
+  });
+
+  it("keeps focused gallery pages under the cap when feature pages also match", () => {
+    const selected = selectVisualScenarioIds([
+      "packages/junior-dashboard/src/client/components/Field.tsx",
+      "packages/junior-dashboard/src/client/pages/memory/MemoryPage.tsx",
+      "packages/junior-dashboard/src/client/pages/SettingsPage.tsx",
+      "packages/junior-dashboard/src/client/pages/system/WorkspaceEditor.tsx",
+      "packages/junior-dashboard/src/client/pages/system/WorkspacesPage.tsx",
+    ]);
+    expect(selected[0]).toBe("gallery-foundations");
+    expect(selected).toHaveLength(MAX_VISUAL_SCENARIOS);
+    expect(selected).toEqual(
+      expect.arrayContaining([
+        "gallery-foundations",
+        "gallery-index",
+        "workspaces",
+        "workspace-detail",
+      ]),
+    );
   });
 
   it("selects a capped shell set for shared layout changes", () => {
@@ -148,5 +210,13 @@ describe("resolveVisualScenarios", () => {
     expect(scenario?.viewports.map((viewport) => viewport.name)).toEqual([
       "mobile",
     ]);
+  });
+
+  it("registers one gallery scenario per category page", () => {
+    expect(
+      resolveVisualScenarios(["gallery-foundations", "gallery-charts", "gallery-transcripts"]).map(
+        (scenario) => scenario.path,
+      ),
+    ).toEqual(["/dev/foundations", "/dev/charts", "/dev/transcripts"]);
   });
 });
