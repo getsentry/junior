@@ -31,7 +31,7 @@ import {
 import {
   GITHUB_PULL_REQUEST_EVENTS,
   GITHUB_PULL_REQUEST_SUGGESTED_EVENTS,
-  type GitHubPullRequestEvent,
+  type GitHubPullRequestEventOptions,
 } from "./resource-events/pull-request.js";
 import {
   GITHUB_RELEASE_EVENTS,
@@ -125,21 +125,10 @@ export interface GitHubPluginOptions {
 
   /** Environment variable containing the GitHub App installation id. */
   installationIdEnv?: string;
-
   /** Environment variable containing the GitHub App private key. */
   privateKeyEnv?: string;
-
   /** Install-local pull request resource event behavior. */
-  pullRequestEvents?: {
-    /** Guidance added when one pull request event reaches the agent. */
-    guidance?: Partial<Record<GitHubPullRequestEvent, string>>;
-    /** Temporary subscription created after Junior creates a pull request. */
-    subscribeAfterCreate?: {
-      events: GitHubPullRequestEvent[];
-      intent: string;
-      ttlMs?: number;
-    };
-  };
+  pullRequestEvents?: GitHubPullRequestEventOptions;
 }
 
 function githubSmartHttpAccess(

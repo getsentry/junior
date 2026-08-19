@@ -611,6 +611,11 @@ describe("agent plugin hooks", () => {
           displayName: "Agent Demo",
           description: "Agent demo",
         },
+        resourceEvents: {
+          resourceTypes: [
+            { type: "demo", supportedEvents: ["demo.completed"] },
+          ],
+        },
         hooks: {
           tools(ctx) {
             expect(ctx.actor).toEqual(TEST_ACTOR);

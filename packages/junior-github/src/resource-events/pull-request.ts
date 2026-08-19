@@ -15,6 +15,22 @@ export const GITHUB_PULL_REQUEST_EVENTS = [
 ] as const;
 export type GitHubPullRequestEvent =
   (typeof GITHUB_PULL_REQUEST_EVENTS)[number];
+
+/** Install-local pull request resource event behavior. */
+export interface GitHubPullRequestEventOptions {
+  /** Guidance added when one pull request event reaches the agent. */
+  guidance?: Partial<Record<GitHubPullRequestEvent, string>>;
+  /** Temporary subscription created after Junior creates a pull request. */
+  subscribeAfterCreate?: GitHubPullRequestSubscriptionConfig;
+}
+
+/** Temporary subscription created after Junior creates a pull request. */
+export interface GitHubPullRequestSubscriptionConfig {
+  events: GitHubPullRequestEvent[];
+  intent: string;
+  ttlMs?: number;
+}
+
 export const GITHUB_PULL_REQUEST_SUGGESTED_EVENTS = [
   "pull_request.checks.failed",
   "pull_request.comment.created",

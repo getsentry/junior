@@ -5,10 +5,8 @@ import type {
 import { createGitHubCloneRepositoryTool } from "./tools/clone-repository.js";
 import { createGitHubIssueTool } from "./tools/create-issue.js";
 import { createGitHubGetDeploymentTool } from "./tools/get-deployment.js";
-import {
-  createGitHubPullRequestTool,
-  type GitHubPullRequestSubscriptionConfig,
-} from "./tools/create-pull-request.js";
+import { createGitHubPullRequestTool } from "./tools/create-pull-request.js";
+import type { GitHubPullRequestSubscriptionConfig } from "./resource-events/pull-request.js";
 import { createGitHubGetPullRequestTool } from "./tools/get-pull-request.js";
 import { createGitHubGetReleaseTool } from "./tools/get-release.js";
 import { createGitHubGetRepositoryTool } from "./tools/get-repository.js";

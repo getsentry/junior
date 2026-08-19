@@ -15,7 +15,7 @@ import { appendGitHubFooter } from "./footer.js";
 import { subscribableResourceSchema } from "@sentry/junior-plugin-api";
 import {
   gitHubPullRequestSubscribable,
-  type GitHubPullRequestEvent,
+  type GitHubPullRequestSubscriptionConfig,
 } from "../resource-events/pull-request.js";
 import { appendGitHubRequesterAttribution } from "../tool-support/attribution.js";
 const GITHUB_PULL_REQUEST_CREATE_IDEMPOTENCY_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -108,12 +108,6 @@ type CreatePullRequestState = Static<typeof createPullRequestStateSchema>;
 interface GitHubPullRequestResult {
   number: number;
   url: string;
-}
-
-export interface GitHubPullRequestSubscriptionConfig {
-  events: GitHubPullRequestEvent[];
-  intent: string;
-  ttlMs?: number;
 }
 
 interface GitHubPullRequestToolResult extends GitHubPullRequestResult {
