@@ -18,7 +18,7 @@ import {
   visualStatusForConversation,
 } from "../format";
 import { cn } from "../styles";
-import type { Conversation } from "../types";
+import type { Conversation, VisualStatus } from "../types";
 import { ActiveIndicator } from "../components/ActiveIndicator";
 import { Notice, NoticeAction } from "../components/Notice";
 import { AnimatedList } from "./AnimatedList";
@@ -250,6 +250,42 @@ function conversationSidebarEntries(
   ]);
 }
 
+/** Status glyph for a sidebar row; private rows use the lock instead of a dot. */
+function ConversationListStatusIcon(props: {
+  isPrivate: boolean;
+  status: VisualStatus;
+}) {
+  if (props.isPrivate) {
+    return (
+      <LockKeyhole
+        aria-label="Private conversation"
+        className={cn(
+          "size-3 shrink-0",
+          props.status === "active" &&
+            "animate-[junior-active-indicator_1.8s_ease-in-out_infinite] text-emerald-300 drop-shadow-[0_0_6px_rgba(110,231,183,0.55)] motion-reduce:animate-none",
+          props.status === "failed" && "text-rose-300",
+          props.status === "idle" && "text-dashboard-text-muted",
+        )}
+      />
+    );
+  }
+
+  if (props.status === "active") {
+    return <ActiveIndicator className="size-1.5" />;
+  }
+
+  return (
+    <span
+      aria-hidden="true"
+      className={cn(
+        "size-1.5 shrink-0 rounded-full",
+        props.status === "failed" && "bg-rose-300",
+        props.status === "idle" && "bg-white/25",
+      )}
+    />
+  );
+}
+
 const ConversationSidebarRow = memo(function ConversationSidebarRow(props: {
   conversation: Conversation;
   onArchiveError(conversation: Conversation): void;
@@ -268,13 +304,15 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(props: {
   });
   const title = conversationDisplayTitle(props.conversation);
   const hasAnnotations = Boolean(props.conversation.sidebarAnnotations?.length);
+  const isPrivate = props.conversation.visibility === "private";
   // Linked work is denser and more actionable than channel; hide channel when
-  // annotations own the meta row.
-  const showLocation = Boolean(location) && !hasAnnotations;
-  const hasMeta =
-    showLocation ||
-    props.conversation.visibility === "private" ||
-    hasAnnotations;
+  // annotations own the meta row. Also skip a location that only restates the
+  // title (common for redacted private destinations).
+  const showLocation =
+    Boolean(location) &&
+    !hasAnnotations &&
+    location?.toLocaleLowerCase() !== title.toLocaleLowerCase();
+  const hasMeta = showLocation || hasAnnotations;
   return (
     <div className="mobile-conversation-row group relative min-w-0">
       <Link
@@ -285,37 +323,27 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(props: {
         )}
         to={conversationPath(props.conversation.id)}
       >
-        <div className="flex min-w-0 items-center gap-1.5">
-          {status === "active" ? (
-            <ActiveIndicator className="size-1.5" />
-          ) : (
-            <span
-              aria-hidden="true"
-              className={cn(
-                "size-1.5 shrink-0 rounded-full",
-                status === "failed" && "bg-rose-300",
-                status === "idle" && "bg-white/25",
-              )}
+        <div className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-start gap-x-1.5">
+          <div className="col-start-1 row-start-1 mt-[0.3rem] grid size-3 shrink-0 place-items-center">
+            <ConversationListStatusIcon
+              isPrivate={isPrivate}
+              status={status}
             />
-          )}
-          <div className="truncate font-display text-sm font-medium leading-snug text-dashboard-text">
+          </div>
+          <div className="col-start-2 row-start-1 min-w-0 truncate font-display text-sm font-medium leading-snug text-dashboard-text">
             {title}
           </div>
-        </div>
-        {hasMeta ? (
-          <div className="ml-3 mt-0.5 flex min-w-0 items-center gap-1.5 font-mono text-2xs leading-tight text-dashboard-text-muted">
-            {props.conversation.visibility === "private" ? (
-              <LockKeyhole
-                aria-label="Private conversation"
-                className="size-3 shrink-0"
+          {hasMeta ? (
+            <div className="col-start-2 row-start-2 mt-0.5 flex min-w-0 items-center gap-1.5 font-mono text-2xs leading-tight text-dashboard-text-muted">
+              {showLocation ? (
+                <span className="truncate">{location}</span>
+              ) : null}
+              <ConversationSidebarAnnotations
+                annotations={props.conversation.sidebarAnnotations}
               />
-            ) : null}
-            {showLocation ? <span className="truncate">{location}</span> : null}
-            <ConversationSidebarAnnotations
-              annotations={props.conversation.sidebarAnnotations}
-            />
-          </div>
-        ) : null}
+            </div>
+          ) : null}
+        </div>
       </Link>
       <button
         aria-label={`${props.conversation.archivedAt ? "Restore" : "Archive"} ${title}`}
