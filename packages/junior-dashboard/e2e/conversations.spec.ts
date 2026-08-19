@@ -776,46 +776,16 @@ test("inspects and copies an advisor transcript", async ({ context, page }) => {
 
 test("filters archived conversations and restores one", async ({ page }) => {
   await page.setViewportSize({ height: 900, width: 1600 });
-  let activeFeed: { conversations: Array<Record<string, unknown>> } | undefined;
-  await page.route(/\/api\/conversations(?:\?.*)?$/, async (route) => {
-    if (route.request().method() !== "GET") {
-      await route.fallback();
-      return;
-    }
-    const status = new URL(route.request().url()).searchParams.get("status");
-    if (status === "archived") {
-      const conversation = activeFeed?.conversations.find(
-        (item) => item.displayTitle === "Dashboard QA edge cases",
-      );
-      await route.fulfill({
-        json: {
-          ...activeFeed,
-          conversations: conversation
-            ? [
-                {
-                  ...conversation,
-                  archivedAt: "2026-08-01T00:00:00.000Z",
-                },
-              ]
-            : [],
-        },
-      });
-      return;
-    }
-    const response = await route.fetch();
-    activeFeed = await response.json();
-    await route.fulfill({ response, json: activeFeed });
-  });
-  await page.route("**/api/conversations/*/archive", async (route) => {
-    await route.fulfill({ json: { archived: false } });
-  });
-
   await page.goto(server.baseURL);
+  await expect(
+    page.getByRole("link", { name: /Archived restore target/ }),
+  ).toHaveCount(0);
+
   await page.getByRole("button", { name: "Filter conversations" }).click();
   await page.getByRole("menuitemradio", { name: "Archived" }).click();
 
   const conversationLink = page.getByRole("link", {
-    name: /Dashboard QA edge cases/,
+    name: /Archived restore target/,
   });
   await expect(conversationLink).toBeVisible();
   await conversationLink.hover();
@@ -824,12 +794,18 @@ test("filters archived conversations and restores one", async ({ page }) => {
       request.method() === "PATCH" && request.url().endsWith("/archive"),
   );
   await page
-    .getByRole("button", { name: "Restore Dashboard QA edge cases" })
+    .getByRole("button", { name: "Restore Archived restore target" })
     .click();
   expect((await restoreRequest).postDataJSON()).toMatchObject({
     archived: false,
   });
   await expect(conversationLink).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Filter conversations" }).click();
+  await page.getByRole("menuitemradio", { name: "Active" }).click();
+  await expect(
+    page.getByRole("link", { name: /Archived restore target/ }),
+  ).toBeVisible();
 });
 
 test("archives and restores a conversation from the sidebar", async ({

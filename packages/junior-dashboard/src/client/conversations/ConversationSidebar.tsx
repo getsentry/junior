@@ -98,7 +98,7 @@ export function ConversationSidebar(props: {
   );
   return (
     <aside className="relative grid h-full min-h-0 min-w-0 grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden border-r border-white/[0.07] bg-white/[0.02]">
-      <div className="px-3 pb-2 pt-3">
+      <div className="relative z-40 px-3 pb-2 pt-3">
         <div className="flex items-center justify-between gap-2">
           <h2 className="m-0 font-display text-lg font-medium leading-tight text-dashboard-text">
             Conversations
@@ -112,7 +112,8 @@ export function ConversationSidebar(props: {
                 aria-label="Filter conversations"
                 className={cn(
                   "grid size-7 cursor-pointer place-items-center rounded-md text-dashboard-text-muted transition hover:bg-white/[0.05] hover:text-dashboard-text focus:outline-none focus:ring-2 focus:ring-cyan-300/35",
-                  filterOpen && "bg-white/[0.06] text-dashboard-text",
+                  (filterOpen || props.status === "archived") &&
+                    "bg-white/[0.06] text-dashboard-text",
                 )}
                 onClick={() => setFilterOpen((open) => !open)}
                 title="Filter conversations"
@@ -122,7 +123,7 @@ export function ConversationSidebar(props: {
               </button>
               {filterOpen ? (
                 <div
-                  className="absolute right-0 top-[calc(100%+0.35rem)] z-30 w-36 rounded-lg bg-dashboard-surface-raised p-1 shadow-2xl shadow-black/75"
+                  className="absolute right-0 top-[calc(100%+0.35rem)] z-40 w-36 rounded-lg bg-dashboard-surface-raised/95 p-1 shadow-2xl shadow-black/75 backdrop-blur-xl"
                   id="conversation-status-filter"
                   role="menu"
                 >
