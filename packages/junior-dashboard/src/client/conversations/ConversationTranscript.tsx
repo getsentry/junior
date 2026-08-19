@@ -181,7 +181,6 @@ function VisibleTranscriptEntries(props: {
           <TranscriptAttachmentsDeliveredView
             conversation={props.conversation}
             part={entry.part}
-            timestamp={entry.timestamp}
           />
         </TranscriptRailEvent>
       )}
@@ -388,7 +387,6 @@ function RedactedTranscriptView(props: {
           <TranscriptAttachmentsDeliveredView
             conversation={props.conversation}
             part={entry.part}
-            timestamp={entry.timestamp}
           />
         </TranscriptRailEvent>
       )}

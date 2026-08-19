@@ -122,12 +122,12 @@ export function ImageAttachment(
               <span className="max-sm:sr-only">Open raw file</span>
             </a>
             <button
-              aria-label="Close image preview"
-              className="grid size-10 place-items-center rounded-md text-dashboard-text-muted transition-colors hover:bg-white/[0.06] hover:text-dashboard-text"
+              className="inline-flex min-h-10 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium text-dashboard-text-muted transition-colors hover:bg-white/[0.06] hover:text-dashboard-text"
               onClick={close}
               type="button"
             >
-              <X aria-hidden="true" size={18} />
+              <X aria-hidden="true" size={16} />
+              <span>Close</span>
             </button>
           </header>
           <div className="grid min-h-0 place-items-center overflow-auto p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:p-6">

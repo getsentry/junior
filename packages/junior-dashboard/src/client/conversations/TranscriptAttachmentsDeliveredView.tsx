@@ -1,16 +1,11 @@
-import { FileText, Image as ImageIcon } from "lucide-react";
+import { FileText } from "lucide-react";
 
 import { ImageAttachment } from "../components/ImageAttachment";
-import { formatMessageTimestamp } from "../format";
 import type {
   ConversationTranscript,
   TranscriptViewAttachmentsDeliveredPart,
   TranscriptViewDeliveredAttachment,
 } from "../types";
-import {
-  TranscriptHeadingMeta,
-  TranscriptHeadingRow,
-} from "./TranscriptHeadingRow";
 import { HighlightText, useTranscriptSearch } from "./transcriptSearch";
 
 function mayDisplayInline(contentType: string): boolean {
@@ -45,40 +40,41 @@ function AttachmentItem(props: {
   const inline = mayDisplayInline(props.attachment.contentType);
   const meta = [props.attachment.contentType, size].join(" · ");
 
+  if (inline && !search.active) {
+    return (
+      <ImageAttachment
+        context={meta}
+        filename={props.attachment.filename}
+        imageClassName="max-h-48 max-w-sm h-auto w-auto rounded-md object-contain"
+        loading="lazy"
+        src={href}
+        triggerClassName="inline-block max-w-full align-top"
+      />
+    );
+  }
+
   return (
-    <div className="min-w-0">
-      {inline && !search.active ? (
-        <ImageAttachment
-          context={meta}
-          filename={props.attachment.filename}
-          imageClassName="max-h-48 max-w-sm h-auto w-auto rounded-md object-contain"
-          loading="lazy"
-          src={href}
-          triggerClassName="mb-1.5 inline-block max-w-full align-top"
-        />
-      ) : null}
-      <a
-        className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-2 rounded-md px-1.5 py-1 -mx-1.5 no-underline transition-colors hover:bg-white/[0.04]"
-        download={props.attachment.filename}
-        href={href}
-        rel="noreferrer"
+    <a
+      className="grid min-w-0 max-w-sm grid-cols-[auto_minmax(0,1fr)] items-center gap-2 rounded-md px-1.5 py-1 -mx-1.5 no-underline transition-colors hover:bg-white/[0.04]"
+      download={props.attachment.filename}
+      href={href}
+      rel="noreferrer"
+    >
+      <span
+        aria-hidden="true"
+        className="grid size-6 place-items-center text-dashboard-text-muted"
       >
-        <span
-          aria-hidden="true"
-          className="grid size-6 place-items-center text-dashboard-text-muted"
-        >
-          {inline ? <ImageIcon size={13} /> : <FileText size={13} />}
-        </span>
-        <div className="min-w-0">
-          <div className="truncate font-mono text-xs text-dashboard-text">
-            <HighlightText text={props.attachment.filename} />
-          </div>
-          <div className="truncate font-mono text-2xs text-dashboard-text-muted">
-            <HighlightText text={meta} />
-          </div>
+        <FileText size={13} />
+      </span>
+      <div className="min-w-0">
+        <div className="truncate font-mono text-xs text-dashboard-text">
+          <HighlightText text={props.attachment.filename} />
         </div>
-      </a>
-    </div>
+        <div className="truncate font-mono text-2xs text-dashboard-text-muted">
+          <HighlightText text={meta} />
+        </div>
+      </div>
+    </a>
   );
 }
 
@@ -86,38 +82,16 @@ function AttachmentItem(props: {
 export function TranscriptAttachmentsDeliveredView(props: {
   conversation: ConversationTranscript;
   part: TranscriptViewAttachmentsDeliveredPart;
-  timestamp?: number;
 }) {
-  const timestamp = formatMessageTimestamp(props.timestamp);
-  const count = props.part.attachments.length;
-  const title = count === 1 ? "1 file delivered" : `${count} files delivered`;
-
   return (
-    <article className="min-w-0">
-      <TranscriptHeadingRow
-        left={
-          <span className="font-display text-xs font-semibold text-dashboard-text-muted">
-            <HighlightText text={title} />
-          </span>
-        }
-        leftClassName="min-w-0"
-        right={
-          timestamp ? (
-            <TranscriptHeadingMeta className="font-mono text-2xs text-dashboard-text-muted/70 max-md:hidden">
-              {timestamp}
-            </TranscriptHeadingMeta>
-          ) : undefined
-        }
-      />
-      <div className="mt-2 grid max-w-sm gap-2">
-        {props.part.attachments.map((attachment) => (
-          <AttachmentItem
-            attachment={attachment}
-            conversationId={props.conversation.conversationId}
-            key={attachment.id}
-          />
-        ))}
-      </div>
-    </article>
+    <div className="grid max-w-sm gap-2">
+      {props.part.attachments.map((attachment) => (
+        <AttachmentItem
+          attachment={attachment}
+          conversationId={props.conversation.conversationId}
+          key={attachment.id}
+        />
+      ))}
+    </div>
   );
 }
