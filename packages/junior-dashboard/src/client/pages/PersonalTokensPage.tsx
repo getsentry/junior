@@ -11,6 +11,7 @@ import { dashboardContainerClass } from "../styles";
 import { getDashboardAgentName } from "../agentName";
 import { Button } from "../components/Button";
 import { InlineError } from "../components/InlineError";
+import { TextInput } from "../components/TextInput";
 
 const personalTokensQueryKey = ["dashboard", "personal-tokens"] as const;
 
@@ -125,9 +126,9 @@ export function PersonalTokensPage() {
             </div>
           ) : (
             <div className="mt-5 flex gap-2">
-              <input
+              <TextInput
                 aria-label="Token name"
-                className="min-w-0 flex-1 rounded border border-white/15 bg-black px-3 py-2 text-sm text-dashboard-text"
+                className="min-w-0 flex-1"
                 maxLength={80}
                 onChange={(event) => setName(event.target.value)}
                 value={name}

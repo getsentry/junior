@@ -13,11 +13,14 @@ import {
   type TimeRangeDays,
 } from "../../components/controls/TimeRangeSelector";
 import { EmptyTelemetry } from "../../components/EmptyTelemetry";
+import { Field } from "../../components/Field";
 import { Card } from "../../components/layout/Card";
 import { CardHeader } from "../../components/layout/CardHeader";
 import { PageHeader } from "../../components/layout/PageHeader";
 import { MetricList, MetricValue } from "../../components/Metric";
 import { StatCard } from "../../components/metrics/StatCard";
+import { StatusChip } from "../../components/StatusChip";
+import { TextArea, TextInput } from "../../components/TextInput";
 import { TranscriptMarkdown } from "../../conversations/TranscriptMarkdown";
 import { TranscriptText } from "../../conversations/TranscriptText";
 import { TranscriptToolView } from "../../conversations/TranscriptToolView";
@@ -266,6 +269,45 @@ export function ComponentsPage() {
               Alternate
             </ToggleButton>
             <TimeRangeSelector onChange={setRange} value={range} />
+          </div>
+        </Fixture>
+        <Fixture title="Forms">
+          <div className="grid max-w-xl gap-4">
+            <Field
+              help="Lowercase name used when agents switch into this Workspace."
+              htmlFor="gallery-workspace-name"
+              label="Name"
+            >
+              <TextInput
+                defaultValue="sentry"
+                id="gallery-workspace-name"
+                placeholder="sentry"
+              />
+            </Field>
+            <Field
+              help="Runs once while Junior builds the reusable snapshot."
+              htmlFor="gallery-setup-script"
+              label="Setup script"
+            >
+              <TextArea
+                defaultValue={'pnpm install --dir "$JUNIOR_REPOS_ROOT/sentry"'}
+                id="gallery-setup-script"
+              />
+            </Field>
+            <TextInput aria-label="Disabled text input" disabled value="read only" />
+          </div>
+        </Fixture>
+        <Fixture title="Status chips">
+          <div className="flex flex-wrap items-center gap-2">
+            <StatusChip tone="neutral">private</StatusChip>
+            <StatusChip tone="success">completed</StatusChip>
+            <StatusChip tone="danger">failed</StatusChip>
+            <StatusChip tone="warning">blocked</StatusChip>
+            <StatusChip tone="info">preference</StatusChip>
+            <StatusChip tone="accent">knowledge</StatusChip>
+            <StatusChip size="compact" tone="success">
+              public
+            </StatusChip>
           </div>
         </Fixture>
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">

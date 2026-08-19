@@ -19,6 +19,7 @@ import { LoadingView } from "../../components/LoadingView";
 import { LoadMorePagination } from "../../components/Pagination";
 import { SearchInput } from "../../components/SearchInput";
 import { SelectableRow } from "../../components/SelectableRow";
+import { StatusChip } from "../../components/StatusChip";
 import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
@@ -503,13 +504,10 @@ function MemoryRow(props: {
             </div>
           </div>
         </div>
-        <span
-          className={cn(
-            "hidden items-center gap-1.5 rounded border px-2 py-1 font-mono text-2xs uppercase tracking-[0.08em] sm:inline-flex",
-            isPublic
-              ? "border-emerald-300/20 bg-emerald-300/[0.07] text-emerald-100"
-              : "border-white/[0.08] bg-white/[0.025] text-dashboard-text-muted",
-          )}
+        <StatusChip
+          className="hidden sm:inline-flex"
+          size="compact"
+          tone={isPublic ? "success" : "neutral"}
         >
           {isPublic ? (
             <Globe2 aria-hidden="true" size={11} />
@@ -517,15 +515,14 @@ function MemoryRow(props: {
             <LockKeyhole aria-hidden="true" size={11} />
           )}
           {visibility}
-        </span>
-        <span
-          className={cn(
-            "hidden w-fit rounded border px-2 py-1 font-mono text-2xs uppercase tracking-[0.08em] sm:block",
-            memoryKindClass(kind),
-          )}
+        </StatusChip>
+        <StatusChip
+          className="hidden sm:inline-flex"
+          size="compact"
+          tone={memoryKindTone(kind)}
         >
           {kind}
-        </span>
+        </StatusChip>
         <span className="hidden truncate font-mono text-xs text-dashboard-text sm:block">
           {shortDate(remembered)}
         </span>
@@ -552,12 +549,10 @@ function shortDate(value: string): string {
   return value.split(",").slice(0, 2).join(",");
 }
 
-function memoryKindClass(kind: string): string {
-  if (kind === "Preference") {
-    return "border-cyan-300/20 bg-cyan-300/[0.07] text-cyan-100";
-  }
-  if (kind === "Procedure") {
-    return "border-amber-300/20 bg-amber-300/[0.07] text-amber-100";
-  }
-  return "border-violet-300/20 bg-violet-300/[0.07] text-violet-100";
+function memoryKindTone(
+  kind: string,
+): "accent" | "info" | "warning" {
+  if (kind === "Preference") return "info";
+  if (kind === "Procedure") return "warning";
+  return "accent";
 }
