@@ -45,6 +45,32 @@ describe("selectVisualScenarioIds", () => {
     ).toEqual(["gallery-charts"]);
   });
 
+  it("selects the charts gallery for feature chart fixtures under people/system", () => {
+    expect(
+      selectVisualScenarioIds([
+        "packages/junior-dashboard/src/client/pages/people/ContributionGrid.tsx",
+      ]),
+    ).toEqual(["gallery-charts"]);
+    expect(
+      selectVisualScenarioIds([
+        "packages/junior-dashboard/src/client/pages/system/ConversationActivityChart.tsx",
+      ]),
+    ).toEqual(["gallery-charts"]);
+  });
+
+  it("selects every gallery page for catalog source changes", () => {
+    expect(
+      selectVisualScenarioIds([
+        "packages/junior-dashboard/src/client/pages/dev/ComponentsPage.tsx",
+      ]),
+    ).toEqual([
+      "gallery-foundations",
+      "gallery-charts",
+      "gallery-transcripts",
+      "gallery-index",
+    ]);
+  });
+
   it("selects the transcripts gallery for transcript fixture components", () => {
     expect(
       selectVisualScenarioIds([

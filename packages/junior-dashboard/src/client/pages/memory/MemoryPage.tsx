@@ -505,7 +505,7 @@ function MemoryRow(props: {
           </div>
         </div>
         <StatusChip
-          className="hidden sm:inline-flex"
+          className="max-sm:hidden"
           size="compact"
           tone={isPublic ? "success" : "neutral"}
         >
@@ -517,7 +517,7 @@ function MemoryRow(props: {
           {visibility}
         </StatusChip>
         <StatusChip
-          className="hidden sm:inline-flex"
+          className="max-sm:hidden"
           size="compact"
           tone={memoryKindTone(kind)}
         >

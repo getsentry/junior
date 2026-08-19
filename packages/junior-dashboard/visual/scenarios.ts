@@ -179,6 +179,23 @@ const PATH_RULES: PathRule[] = [
     scenarioIds: ["gallery-transcripts"],
   },
   {
+    // Keep chart-gallery paths ahead of people/system feature rules.
+    match: (filePath) =>
+      filePath.startsWith(
+        "packages/junior-dashboard/src/client/components/charts/",
+      ) ||
+      filePath.startsWith(
+        "packages/junior-dashboard/src/client/pages/people/ContributionGrid",
+      ) ||
+      filePath.startsWith(
+        "packages/junior-dashboard/src/client/pages/locations/LocationDirectoryActivityChart",
+      ) ||
+      filePath.startsWith(
+        "packages/junior-dashboard/src/client/pages/system/ConversationActivityChart",
+      ),
+    scenarioIds: ["gallery-charts"],
+  },
+  {
     match: (filePath) =>
       filePath.startsWith(
         "packages/junior-dashboard/src/client/conversations/",
@@ -239,24 +256,17 @@ const PATH_RULES: PathRule[] = [
   },
   {
     match: (filePath) =>
-      filePath.startsWith(
-        "packages/junior-dashboard/src/client/components/charts/",
-      ) ||
-      filePath.startsWith(
-        "packages/junior-dashboard/src/client/pages/people/ContributionGrid",
-      ) ||
-      filePath.startsWith(
-        "packages/junior-dashboard/src/client/pages/locations/LocationDirectoryActivityChart",
-      ) ||
-      filePath.startsWith(
-        "packages/junior-dashboard/src/client/pages/system/ConversationActivityChart",
-      ),
-    scenarioIds: ["gallery-charts"],
+      filePath.startsWith("packages/junior-dashboard/src/client/pages/dev/"),
+    scenarioIds: [
+      "gallery-foundations",
+      "gallery-charts",
+      "gallery-transcripts",
+      "gallery-index",
+    ],
   },
   {
     match: (filePath) =>
-      filePath.startsWith("packages/junior-dashboard/src/client/components/") ||
-      filePath.startsWith("packages/junior-dashboard/src/client/pages/dev/"),
+      filePath.startsWith("packages/junior-dashboard/src/client/components/"),
     scenarioIds: ["gallery-foundations", "gallery-index"],
   },
   {
