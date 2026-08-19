@@ -82,15 +82,25 @@ export function DashboardShell() {
     location.pathname === "/conversations" ||
     location.pathname.startsWith("/conversations/");
   const conversationId = conversationIdFromPath(location.pathname);
-  const conversationsQuery = useConversationsData();
+  const activeConversationsQuery = useConversationsData("active");
+  // Archived rows are absent from the active feed; keep both caches for mobile titles.
+  const archivedConversationsQuery = useConversationsData("archived");
   // Detail query shares the page cache so titles outside the top-50 feed stay accurate.
   const conversationDetail = useConversationData(conversationId);
   const mobileConversation = useMemo(() => {
     if (!conversationId) return undefined;
-    return buildConversations(
-      conversationsQuery.data?.conversations ?? [],
+    const active = buildConversations(
+      activeConversationsQuery.data?.conversations ?? [],
     ).find((item) => item.id === conversationId);
-  }, [conversationId, conversationsQuery.data?.conversations]);
+    if (active) return active;
+    return buildConversations(
+      archivedConversationsQuery.data?.conversations ?? [],
+    ).find((item) => item.id === conversationId);
+  }, [
+    conversationId,
+    activeConversationsQuery.data?.conversations,
+    archivedConversationsQuery.data?.conversations,
+  ]);
   const mobileConversationTitle = conversationId
     ? conversationDetail.data?.displayTitle?.trim() ||
       conversationDisplayTitle(mobileConversation)
