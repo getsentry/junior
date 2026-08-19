@@ -219,7 +219,7 @@ export const ConversationComposer = memo(function ConversationComposer(
         </div>
       ) : null}
       <form
-        className="grid grid-cols-[minmax(0,1fr)_auto] items-end overflow-hidden rounded-lg bg-dashboard-surface-raised md:block"
+        className="grid grid-cols-[minmax(0,1fr)_auto] items-end overflow-hidden rounded-lg bg-dashboard-surface-raised focus-within:ring-1 focus-within:ring-cyan-300/35 md:block"
         onSubmit={submit}
       >
         <label className="sr-only" htmlFor={id}>
@@ -259,7 +259,7 @@ export const ConversationComposer = memo(function ConversationComposer(
           </div>
           <Button
             aria-label={sendLocked ? "Sending message" : props.submitLabel}
-            className="border-0 bg-transparent hover:border-0 hover:bg-white/[0.06] disabled:hover:border-0 disabled:hover:bg-transparent"
+            className="!border-0 !bg-transparent hover:!border-0 hover:!bg-white/[0.06] focus-visible:outline focus-visible:outline-1 focus-visible:outline-cyan-300/55 disabled:hover:!border-0 disabled:hover:!bg-transparent"
             disabled={!message.trim() || !online || sendLocked}
             title={
               !online
