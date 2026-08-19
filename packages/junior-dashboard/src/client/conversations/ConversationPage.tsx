@@ -363,7 +363,7 @@ function ConversationReplyFooter(props: {
   }, []);
 
   return (
-    <div className="flex w-full min-h-0 max-h-[min(55dvh,24rem)] flex-col overflow-hidden self-end px-2 pt-1.5 pb-[calc(0.375rem+env(safe-area-inset-bottom))] md:max-h-none md:overflow-visible md:self-auto md:px-7 md:py-4 md:pb-4">
+    <div className="flex w-full min-h-0 max-h-[min(55dvh,24rem)] flex-col overflow-hidden self-end bg-[#050507] px-2 pt-1 pb-[env(safe-area-inset-bottom)] md:max-h-none md:overflow-visible md:self-auto md:px-7 md:pt-3 md:pb-2">
       {/* Queue chrome may scroll; keep the composer pinned below it on mobile. */}
       <div className="min-h-0 min-w-0 shrink overflow-y-auto overscroll-contain md:overflow-visible">
         {props.live ? (

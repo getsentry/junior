@@ -72,16 +72,14 @@ export const ConversationTranscriptView = memo(function ConversationTranscriptVi
   const messages = conversationTranscriptMessages(props.conversation);
 
   return (
-    <section className="min-w-0 py-1">
-      <div className="min-w-0">
-        <SegmentEvents
-          onOpenSubagentTranscript={props.onOpenSubagentTranscript}
-          conversation={props.conversation}
-          messages={messages}
-          responding={props.responding}
-          view={props.view}
-        />
-      </div>
+    <section className="min-w-0">
+      <SegmentEvents
+        onOpenSubagentTranscript={props.onOpenSubagentTranscript}
+        conversation={props.conversation}
+        messages={messages}
+        responding={props.responding}
+        view={props.view}
+      />
     </section>
   );
 });
@@ -97,7 +95,7 @@ function SegmentEvents(props: {
   view: TranscriptViewMode;
 }) {
   return (
-    <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-5 pt-1">
+    <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-3 md:gap-4">
       {props.conversation.eventHistory.status === "available" ? (
         <VisibleTranscriptEntries
           onOpenSubagentTranscript={props.onOpenSubagentTranscript}
@@ -313,7 +311,9 @@ function TranscriptEntryList(props: {
     );
   }
 
-  return <div className="grid min-w-0 gap-5">{rows}</div>;
+  // Let rows participate in the parent transcript stack so messages, tool
+  // groups, and the thinking indicator share one vertical gap.
+  return rows;
 }
 
 /** Keep one activity group mounted while new or historical events extend either edge. */
