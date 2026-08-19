@@ -361,7 +361,6 @@ function githubToolsContext(input?: {
         input?.subscribe ??
         (async ({ events }) => ({
           events,
-          expiresAtMs: 123_456,
           id: "subscription-1",
         })),
     },
@@ -1271,7 +1270,6 @@ Conversation: \`local:test:old-conversation\`
     process.env.GITHUB_WEBHOOK_SECRET = "test-secret";
     const subscribe = vi.fn(async ({ events }) => ({
       events,
-      expiresAtMs: 123_456,
       id: "subscription-1",
     }));
     const ctx = githubToolsContext({ subscribe });
@@ -1298,12 +1296,17 @@ Conversation: \`local:test:old-conversation\`
         { toolCallId: "call-create-pull-request-subscribe" },
       ),
     ).resolves.toMatchObject({
+      subscribable: {
+        suggestedEvents: expect.not.arrayContaining([
+          "pull_request.checks.failed",
+          "pull_request.review.changes_requested",
+        ]),
+      },
       subscription: {
         events: [
           "pull_request.checks.failed",
           "pull_request.review.changes_requested",
         ],
-        expiresAtMs: 123_456,
         id: "subscription-1",
       },
     });

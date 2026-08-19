@@ -153,6 +153,18 @@ export const subscribableResourceSchema = z
 
 export type SubscribableResource = z.output<typeof subscribableResourceSchema>;
 
+/** Result returned after a temporary resource subscription is created. */
+export const resourceEventSubscriptionResultSchema = z
+  .object({
+    events: z.array(resourceEventTypeSchema).min(1),
+    id: z.string().min(1),
+  })
+  .strict();
+
+export type ResourceEventSubscriptionResult = z.output<
+  typeof resourceEventSubscriptionResultSchema
+>;
+
 export const resourceEventInputSchema = z
   .object({
     eventKey: z.string().min(1),

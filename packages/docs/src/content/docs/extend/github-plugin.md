@@ -169,7 +169,7 @@ export const plugins = defineJuniorPlugins([
 - **Required:** No
 - **Environment override:** None
 
-`subscribeAfterCreate` creates a temporary resource subscription after a successful `github_createPullRequest` call. It only runs in Slack conversations that can host resource subscriptions, and only when GitHub webhooks are enabled. The subscription still expires like any other watch.
+`subscribeAfterCreate` creates a temporary resource subscription after a successful `github_createPullRequest` call. It only runs in Slack conversations that can host resource subscriptions, and only when GitHub webhooks are enabled. Forced events are removed from the tool result's suggested events so the model does not re-watch them. The subscription still expires like any other watch.
 
 `guidance` adds short install text when a matching pull request event reaches the agent. Keep each value short. Guidance cannot grant credentials or bypass action review.
 

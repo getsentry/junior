@@ -28,7 +28,6 @@ export interface GitHubPullRequestEventOptions {
 export interface GitHubPullRequestSubscriptionConfig {
   events: GitHubPullRequestEvent[];
   intent: string;
-  ttlMs?: number;
 }
 
 export const GITHUB_PULL_REQUEST_SUGGESTED_EVENTS = [
@@ -58,11 +57,17 @@ export function gitHubPullRequestResource(input: {
 export function gitHubPullRequestSubscribable(input: {
   number: number;
   repo: string;
+  /** Events already covered by a forced subscription; omit them from suggestions. */
+  omitSuggestedEvents?: readonly string[];
 }): SubscribableResource | undefined {
   if (!process.env.GITHUB_WEBHOOK_SECRET?.trim()) return undefined;
+  const omitted = new Set(input.omitSuggestedEvents ?? []);
+  const suggestedEvents = GITHUB_PULL_REQUEST_SUGGESTED_EVENTS.filter(
+    (eventType) => !omitted.has(eventType),
+  );
   return {
     ...gitHubPullRequestResource(input),
-    suggestedEvents: [...GITHUB_PULL_REQUEST_SUGGESTED_EVENTS],
+    ...(suggestedEvents.length > 0 ? { suggestedEvents: [...suggestedEvents] } : {}),
     supportedEvents: [...GITHUB_PULL_REQUEST_EVENTS],
     type: "pull_request",
   };

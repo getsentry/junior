@@ -2,17 +2,19 @@ import {
   definePluginTool,
   EgressAuthRequired,
   PluginToolInputError,
+  type ResourceEventSubscriptionResult,
   type SubscribableResource,
   type PluginToolExecuteOptions,
   type PluginToolOutput,
   type ToolRegistrationHookContext,
   pluginToolOutputSchema,
+  resourceEventSubscriptionResultSchema,
+  subscribableResourceSchema,
 } from "@sentry/junior-plugin-api";
 import { Type, type Static } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { z } from "zod";
 import { appendGitHubFooter } from "./footer.js";
-import { subscribableResourceSchema } from "@sentry/junior-plugin-api";
 import {
   gitHubPullRequestSubscribable,
   type GitHubPullRequestSubscriptionConfig,
@@ -112,7 +114,7 @@ interface GitHubPullRequestResult {
 
 interface GitHubPullRequestToolResult extends GitHubPullRequestResult {
   subscribable?: SubscribableResource;
-  subscription?: { events: string[]; expiresAtMs: number; id: string };
+  subscription?: ResourceEventSubscriptionResult;
 }
 
 interface GitHubPullRequestStructuredResult
@@ -124,13 +126,7 @@ const gitHubPullRequestDataSchema = z.object({
   number: z.number(),
   url: z.string(),
   subscribable: subscribableResourceSchema.optional(),
-  subscription: z
-    .object({
-      events: z.array(z.string()),
-      expiresAtMs: z.number(),
-      id: z.string(),
-    })
-    .optional(),
+  subscription: resourceEventSubscriptionResultSchema.optional(),
 });
 
 const gitHubPullRequestOutputSchema = pluginToolOutputSchema.extend({
@@ -327,12 +323,14 @@ function gitHubPullRequestToolResult(
   input: CreateGitHubPullRequestInput,
   result: GitHubPullRequestResult,
   canSubscribe: boolean,
+  omitSuggestedEvents?: readonly string[],
 ): GitHubPullRequestToolResult {
   const repo = parseRepo(input.repo);
   const subscribable = canSubscribe
     ? gitHubPullRequestSubscribable({
         number: result.number,
         repo: `${repo.owner}/${repo.name}`,
+        ...(omitSuggestedEvents ? { omitSuggestedEvents } : {}),
       })
     : undefined;
   return { ...result, ...(subscribable ? { subscribable } : {}) };
@@ -363,6 +361,7 @@ async function gitHubPullRequestStructuredResult(
     input,
     result,
     ctx.resourceEvents.canSubscribe,
+    subscriptionConfig?.events,
   );
   const subscription =
     subscriptionConfig && data.subscribable
@@ -370,9 +369,6 @@ async function gitHubPullRequestStructuredResult(
           events: subscriptionConfig.events,
           intent: subscriptionConfig.intent,
           resource: data.subscribable,
-          ...(subscriptionConfig.ttlMs !== undefined
-            ? { ttlMs: subscriptionConfig.ttlMs }
-            : {}),
         })
       : undefined;
   return {

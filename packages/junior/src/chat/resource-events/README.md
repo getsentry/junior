@@ -51,7 +51,8 @@ conversation.
   than silently shortening them.
 - Plugins may expose `resourceEvents.subscribe()` so a successful tool can
   create a temporary subscription without asking the model to call
-  `watchResourceEvents`.
+  `watchResourceEvents`. Forced subscriptions should omit those events from the
+  tool result's suggested events.
 - Resource types may declare optional install guidance per event type. Core
   inserts that text into subscription and event-task inputs. Keep it separate
   from subscription intent, trusted facts, and untrusted provider content.
