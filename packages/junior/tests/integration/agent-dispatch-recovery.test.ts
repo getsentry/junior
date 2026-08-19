@@ -3,7 +3,6 @@ import { createSlackSource } from "@sentry/junior-plugin-api";
 import {
   getDispatchConversationId,
   getDispatchInputMessageId,
-  getDispatchInputMessageIds,
   getDispatchRecord,
   getDispatchStorageKey,
   getDispatchTurnId,
@@ -11,18 +10,11 @@ import {
   listPendingDispatchMailboxAppends,
 } from "@/chat/agent-dispatch/store";
 import { recoverPendingDispatchMailboxAppends } from "@/chat/agent-dispatch/heartbeat";
-import {
-  buildDispatchRoutingContext,
-  createAgentDispatchConversationWorker,
-  createAgentDispatchWorkRouter,
-  enqueueAgentDispatch,
-} from "@/chat/agent-dispatch/work";
+import { enqueueAgentDispatch } from "@/chat/agent-dispatch/work";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { JUNIOR_THREAD_STATE_TTL_MS } from "@/chat/state/ttl";
 import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation-work";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
-import { runNextPausedTurn } from "@/chat/task-execution/paused-turn";
-import { wakePausedTurn } from "@/chat/task-execution/turn-wake";
 import {
   getTurnRecord,
   listTurnSummaries,
@@ -36,13 +28,14 @@ import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { slackApiOutbox } from "../fixtures/slack-api-outbox";
 import { resetSlackApiMockState } from "../msw/handlers/slack-api";
 import { turnCursorKey } from "@/chat/task-execution/turn-cursor-keys";
-import { createModelAgentRunner } from "../fixtures/agent-runner";
+import {
+  createModelAgentRunner,
+  neverRunAgentRunner,
+} from "../fixtures/agent-runner";
 import { createModelStream } from "../fixtures/model-stream";
 import {
-  createAgentDispatchModelHarness as createModelHarness,
   createAgentDispatchTestRecord as createDispatch,
-  createAgentDispatchTestRuntime as createDispatchRuntime,
-  createAgentDispatchWorkerContext as createContext,
+  createAgentDispatchWorkHarness,
 } from "../fixtures/agent-dispatch";
 
 vi.hoisted(() => {
@@ -62,16 +55,20 @@ describe("agent dispatch recovery", () => {
 
   it("projects the diagnostic from a terminal model failure", async () => {
     const dispatch = await createDispatch("model-failure-detail");
-    const { runtime } = createModelHarness(
-      createModelStream([
-        {
-          type: "error",
-          errorMessage: "Model provider quota exhausted",
-        },
-      ]),
+    const firstRun = await createAgentDispatchWorkHarness(
+      createModelAgentRunner(
+        createModelStream([
+          {
+            type: "error",
+            errorMessage: "Model provider quota exhausted",
+          },
+        ]),
+      ),
     );
     await expect(
-      runtime.runDispatchTurn(dispatch, { ack: vi.fn(async () => {}) }),
+      firstRun.runtime.runDispatchTurn(dispatch, {
+        ack: vi.fn(async () => {}),
+      }),
     ).resolves.toMatchObject({
       errorMessage: "Model provider quota exhausted",
       outcome: "failed",
@@ -90,19 +87,18 @@ describe("agent dispatch recovery", () => {
       errorMessage: "Model provider quota exhausted",
     });
 
-    const runTurn = vi.fn();
-    const resumeTurn = vi.fn();
-    const worker = createAgentDispatchConversationWorker({
-      resumeTurn,
-      runTurn,
+    const replay = await createAgentDispatchWorkHarness(neverRunAgentRunner());
+    await enqueueAgentDispatch(dispatch, {
+      queue: replay.queue,
+      state: replay.state,
     });
-    const replay = createContext(dispatch);
-    await expect(worker(replay.context, dispatch.id)).resolves.toEqual({
-      status: "completed",
+    await processConversationQueueMessage(replay.queue.takeMessage(), {
+      queue: replay.queue,
+      run: replay.run,
+      state: replay.state,
     });
 
-    expect(runTurn).not.toHaveBeenCalled();
-    expect(resumeTurn).not.toHaveBeenCalled();
+    expect(replay.queue.hasQueuedMessages()).toBe(false);
     await expect(getDispatchRecord(dispatch.id)).resolves.toMatchObject({
       errorMessage: "Model provider quota exhausted",
       resultMessageTs: expect.any(String),
@@ -132,9 +128,6 @@ describe("agent dispatch recovery", () => {
       }),
       { label: "Scheduled task", detail: "Weekly" },
     );
-    const queue = createConversationWorkQueueTestAdapter();
-    const state = getStateAdapter();
-    await state.connect();
     const agentRunner = createModelAgentRunner(
       createModelStream([
         { type: "toolCall", name: "systemTime", arguments: {} },
@@ -142,34 +135,8 @@ describe("agent dispatch recovery", () => {
       ]),
     );
     const runAgent = vi.spyOn(agentRunner, "run");
-    const runtime = createDispatchRuntime({
-      agentRunner,
-      wakePausedTurn: async (request) => {
-        await wakePausedTurn(request, { queue, state });
-      },
-    });
-    const dispatchWorker = createAgentDispatchConversationWorker({
-      resumeTurn: async (_dispatch, hooks) => {
-        await runNextPausedTurn(
-          `agent-dispatch:${_dispatch.id}`,
-          {
-            agentRunner,
-            inputMessageIds: getDispatchInputMessageIds(_dispatch.id),
-            routingContext: buildDispatchRoutingContext(_dispatch),
-            wakePausedTurn: async (request) => {
-              await wakePausedTurn(request, { queue, state });
-            },
-          },
-          { shouldYield: hooks.shouldYield },
-        );
-      },
-      runTurn: runtime.runDispatchTurn,
-    });
-    const slackWorker = vi.fn(async () => ({ status: "completed" as const }));
-    const route = createAgentDispatchWorkRouter({
-      dispatchWorker,
-      fallbackWorker: slackWorker,
-    });
+    const { queue, run, state } =
+      await createAgentDispatchWorkHarness(agentRunner);
 
     await enqueueAgentDispatch(dispatch, { queue, state });
     let deliveries = 0;
@@ -180,7 +147,7 @@ describe("agent dispatch recovery", () => {
       }
       await processConversationQueueMessage(queue.takeMessage(), {
         queue,
-        run: route,
+        run,
         // Pause the first slice after the tool result is saved.
         softYieldAfterMs: deliveries === 1 ? 0 : undefined,
         state,
@@ -254,7 +221,6 @@ describe("agent dispatch recovery", () => {
       resultMessageTs: expect.any(String),
       status: "completed",
     });
-    expect(slackWorker).not.toHaveBeenCalled();
     expect(runAgent).toHaveBeenCalledTimes(2);
     const resumedRun = runAgent.mock.calls[1]?.[0];
     expect(resumedRun).toMatchObject({

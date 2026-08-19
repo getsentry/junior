@@ -96,6 +96,23 @@ test("rejects scripted agent runners", () => {
   );
 });
 
+
+test("rejects direct agent dispatch worker composition", () => {
+  assert.deepEqual(
+    checkIntegrationTestArchitecture([
+      integrationTest(
+        [
+          "const worker = createAgentDispatchConversationWorker(options);",
+          "const route = createAgentDispatchWorkRouter({ dispatchWorker: worker });",
+        ].join("\n"),
+      ),
+    ]),
+    [
+      `${TEST_PATH}: integration tests must compose agent dispatch through production conversation work (2 found, 0 allowed)`,
+    ],
+  );
+});
+
 test("rejects unsafe Slack double casts", () => {
   assert.deepEqual(
     checkIntegrationTestArchitecture([
