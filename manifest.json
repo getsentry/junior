@@ -1,0 +1,58 @@
+{
+  "commitSha": "8899fa1b2f0935b674785e08dc018b8292a52588",
+  "mode": "path",
+  "reasons": [
+    "packages/junior-dashboard/src/client/components/ImageAttachment.tsx",
+    "packages/junior-dashboard/src/client/conversations/ConversationSidebar.tsx",
+    "packages/junior-dashboard/src/client/conversations/ConversationTranscript.tsx",
+    "packages/junior-dashboard/src/client/conversations/TranscriptAttachmentsDeliveredView.tsx",
+    "packages/junior-dashboard/src/client/conversations/TranscriptMessageView.tsx",
+    "packages/junior-dashboard/src/mock-reporting/fixtures.ts",
+    "packages/junior-dashboard/tests/image-attachment.test.tsx",
+    "packages/junior-dashboard/tests/telemetry-components.test.tsx",
+    "packages/junior-dashboard/visual/capture.ts",
+    "packages/junior-dashboard/visual/scenarios.test.ts",
+    "packages/junior-dashboard/visual/scenarios.ts"
+  ],
+  "scenarioIds": [
+    "conversations",
+    "conversation-detail",
+    "conversation-attachment",
+    "conversation-attachment-modal"
+  ],
+  "shots": [
+    {
+      "file": "conversations__desktop.png",
+      "label": "Conversations · desktop"
+    },
+    {
+      "file": "conversations__mobile.png",
+      "label": "Conversations · mobile"
+    },
+    {
+      "file": "conversation-detail__desktop.png",
+      "label": "Conversation detail · desktop"
+    },
+    {
+      "file": "conversation-detail__mobile.png",
+      "label": "Conversation detail · mobile"
+    },
+    {
+      "file": "conversation-attachment__desktop.png",
+      "label": "Conversation attachment · desktop"
+    },
+    {
+      "file": "conversation-attachment__mobile.png",
+      "label": "Conversation attachment · mobile"
+    },
+    {
+      "file": "conversation-attachment-modal__desktop.png",
+      "label": "Conversation attachment modal · desktop"
+    },
+    {
+      "file": "conversation-attachment-modal__mobile.png",
+      "label": "Conversation attachment modal · mobile"
+    }
+  ],
+  "skipped": false
+}
