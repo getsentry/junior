@@ -888,6 +888,7 @@ export type ConversationListFilters = {
   actor?: string;
   location?: string;
   source?: string;
+  status?: "active" | "archived";
 };
 
 function conversationSearchHaystack(conversation: Conversation): string {
@@ -918,9 +919,14 @@ export function filterConversationList(
   const source = filters.source?.trim();
   const actor = filters.actor?.trim();
   const location = filters.location?.trim();
+  const status = filters.status ?? "active";
 
   return conversations.filter((conversation) => {
-    if (conversation.archivedAt) return false;
+    if (
+      status === "archived" ? !conversation.archivedAt : conversation.archivedAt
+    ) {
+      return false;
+    }
     if (source && conversation.surface !== source) return false;
     if (location && conversation.locationId !== location) return false;
     if (actor && conversationActorKey(conversation) !== actor) {

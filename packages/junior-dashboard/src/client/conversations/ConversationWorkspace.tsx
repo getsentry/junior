@@ -24,10 +24,11 @@ import { ConversationPage } from "./ConversationPage";
 /** Render the personal split-pane conversation workspace at the dashboard root. */
 export function ConversationWorkspace(props: { data: DashboardCoreData }) {
   const [query, setQuery] = useState("");
+  const [status, setStatus] = useState<"active" | "archived">("active");
   const params = useParams();
   const navigate = useNavigate();
   const selectedId = params.conversationId;
-  const feed = useConversationsData();
+  const feed = useConversationsData(status);
   const pendingArchiveUpdates = usePendingArchiveConversationUpdates();
   const createConversation = useCreateConversation();
   const [creating, setCreating] = useState(false);
@@ -46,8 +47,9 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
         actor: "",
         query,
         source: "",
+        status,
       }),
-    [conversations, query],
+    [conversations, query, status],
   );
 
   useEffect(() => {
@@ -81,12 +83,16 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
           onNewConversation={() => {
             createConversation.reset();
             createSourceId.current = selectedId;
+            // New chats are active; leave archived view so the created row can appear.
+            setStatus("active");
             setCreating(true);
             if (selectedId) navigate("/", { replace: true });
           }}
           onQueryChange={setQuery}
+          onStatusChange={setStatus}
           query={query}
           selectedId={creating ? undefined : selectedId}
+          status={status}
           timeZone={props.data.config.timeZone}
         />
       </div>

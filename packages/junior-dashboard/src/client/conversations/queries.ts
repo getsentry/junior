@@ -60,6 +60,14 @@ function archivedConversationQueryKey(conversationId: string) {
   return ["dashboard", "archived-conversation", conversationId] as const;
 }
 
+/** Read active/archived status from a dashboard conversations query key. */
+function conversationFeedStatus(
+  queryKey: readonly unknown[],
+): "active" | "archived" | undefined {
+  const status = queryKey[queryKey.length - 1];
+  return status === "active" || status === "archived" ? status : undefined;
+}
+
 type ArchivedConversationSnapshot = {
   conversation: ConversationSummaryReport;
   feedQueryHashes: string[];
@@ -328,24 +336,23 @@ export function useArchiveConversation(
           archivedQueryKey,
         );
       const archivedAt = args.archived ? new Date().toISOString() : undefined;
-      const archivedSnapshot = args.archived
-        ? (buildArchivedConversationSnapshot(previousFeeds, conversationId) ??
-          previousArchivedSnapshot)
-        : previousArchivedSnapshot;
+      // Snapshot from any loaded feed, including archived-only fixtures that
+      // were never archived through this client session.
+      const archivedSnapshot =
+        buildArchivedConversationSnapshot(previousFeeds, conversationId) ??
+        previousArchivedSnapshot;
 
       previousFeeds.forEach(([queryKey, feed]) => {
         if (!feed) return;
         const conversationExists = feed.conversations.some(
           (conversation) => conversation.conversationId === conversationId,
         );
+        const feedStatus = conversationFeedStatus(queryKey);
         const shouldRestore =
           !args.archived &&
           !conversationExists &&
-          Boolean(
-            archivedSnapshot?.feedQueryHashes.includes(
-              JSON.stringify(queryKey),
-            ),
-          );
+          Boolean(archivedSnapshot) &&
+          feedStatus !== "archived";
         const conversations = shouldRestore
           ? [
               ...feed.conversations,

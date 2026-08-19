@@ -591,6 +591,40 @@ test("inspects and copies an advisor transcript", async ({ context, page }) => {
   await expect(drawer).toBeVisible();
 });
 
+test("filters archived conversations and restores one", async ({ page }) => {
+  await page.setViewportSize({ height: 900, width: 1600 });
+  await page.goto(server.baseURL);
+  await expect(
+    page.getByRole("link", { name: /Archived restore target/ }),
+  ).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Filter conversations" }).click();
+  await page.getByRole("menuitemradio", { name: "Archived" }).click();
+
+  const conversationLink = page.getByRole("link", {
+    name: /Archived restore target/,
+  });
+  await expect(conversationLink).toBeVisible();
+  await conversationLink.hover();
+  const restoreRequest = page.waitForRequest(
+    (request) =>
+      request.method() === "PATCH" && request.url().endsWith("/archive"),
+  );
+  await page
+    .getByRole("button", { name: "Restore Archived restore target" })
+    .click();
+  expect((await restoreRequest).postDataJSON()).toMatchObject({
+    archived: false,
+  });
+  await expect(conversationLink).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Filter conversations" }).click();
+  await page.getByRole("menuitemradio", { name: "Active" }).click();
+  await expect(
+    page.getByRole("link", { name: /Archived restore target/ }),
+  ).toBeVisible();
+});
+
 test("archives and restores a conversation from the sidebar", async ({
   page,
 }) => {
