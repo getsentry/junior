@@ -219,7 +219,7 @@ export const ConversationComposer = memo(function ConversationComposer(
         </div>
       ) : null}
       <form
-        className="grid grid-cols-[minmax(0,1fr)_auto] items-end bg-[#050507] md:block"
+        className="grid grid-cols-[minmax(0,1fr)_auto] items-end overflow-hidden rounded-lg bg-dashboard-surface-raised md:block"
         onSubmit={submit}
       >
         <label className="sr-only" htmlFor={id}>
@@ -231,7 +231,7 @@ export const ConversationComposer = memo(function ConversationComposer(
           autoCapitalize="off"
           autoComplete="off"
           autoCorrect="off"
-          className="min-h-11 max-h-28 w-full resize-none overflow-y-auto border-0 bg-[#050507] px-3 py-2.5 font-mono text-sm leading-relaxed text-dashboard-text outline-none placeholder:text-dashboard-text-muted/65 md:min-h-24 md:max-h-none md:resize-y md:overflow-visible md:px-0 md:py-3"
+          className="min-h-12 max-h-28 w-full resize-none overflow-y-auto border-0 bg-transparent px-3 py-3 font-mono text-sm leading-relaxed text-dashboard-text outline-none placeholder:text-dashboard-text-muted/65 md:min-h-24 md:max-h-none md:resize-y md:overflow-visible md:px-3.5 md:py-3.5"
           enterKeyHint="send"
           id={id}
           inputMode="text"
@@ -253,7 +253,7 @@ export const ConversationComposer = memo(function ConversationComposer(
           spellCheck={false}
           value={message}
         />
-        <div className="flex min-w-0 items-center justify-end gap-3 bg-[#050507] px-1 py-1 md:justify-between md:px-0 md:py-1.5">
+        <div className="flex min-w-0 items-center justify-end gap-3 px-2 py-1.5 md:justify-between md:px-3 md:py-2">
           <div className="hidden min-w-0 font-mono text-xs leading-relaxed text-dashboard-text-muted md:block">
             Enter to send · Shift+Enter for a new line
           </div>
