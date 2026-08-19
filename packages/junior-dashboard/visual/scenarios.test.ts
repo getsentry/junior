@@ -37,6 +37,26 @@ describe("selectVisualScenarioIds", () => {
     ).toEqual(["component-gallery"]);
   });
 
+  it("keeps the component gallery under the cap when feature pages also match", () => {
+    const selected = selectVisualScenarioIds([
+      "packages/junior-dashboard/src/client/components/Field.tsx",
+      "packages/junior-dashboard/src/client/pages/memory/MemoryPage.tsx",
+      "packages/junior-dashboard/src/client/pages/SettingsPage.tsx",
+      "packages/junior-dashboard/src/client/pages/system/WorkspaceEditor.tsx",
+      "packages/junior-dashboard/src/client/pages/system/WorkspacesPage.tsx",
+    ]);
+    expect(selected[0]).toBe("component-gallery");
+    expect(selected).toHaveLength(MAX_VISUAL_SCENARIOS);
+    expect(selected).toEqual(
+      expect.arrayContaining([
+        "component-gallery",
+        "workspaces",
+        "workspace-detail",
+        "memories",
+      ]),
+    );
+  });
+
   it("selects a capped shell set for shared layout changes", () => {
     const selected = selectVisualScenarioIds([
       "packages/junior-dashboard/src/tailwind.css",

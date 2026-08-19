@@ -248,9 +248,16 @@ export function selectVisualScenarioIds(
     }
   }
 
-  return VISUAL_SCENARIOS.map((scenario) => scenario.id)
-    .filter((id) => selected.has(id))
-    .slice(0, max);
+  // Shared kit changes should keep the gallery under the cap. Registry order
+  // alone would drop it when several feature pages also match.
+  const ordered = VISUAL_SCENARIOS.map((scenario) => scenario.id).filter((id) =>
+    selected.has(id),
+  );
+  if (!selected.has("component-gallery") || ordered.length <= max) {
+    return ordered.slice(0, max);
+  }
+  const withoutGallery = ordered.filter((id) => id !== "component-gallery");
+  return ["component-gallery", ...withoutGallery].slice(0, max);
 }
 
 /** Resolve scenario records for selected ids, preserving registry order. */
