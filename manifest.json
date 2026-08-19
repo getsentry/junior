@@ -1,0 +1,41 @@
+{
+  "commitSha": "bedfe22229a70a15a8242bbad6d715e767f20412",
+  "mode": "path",
+  "reasons": [
+    "packages/junior-dashboard/src/client/conversations/TranscriptTurnContextView.tsx",
+    "packages/junior-dashboard/tests/telemetry-components.test.tsx"
+  ],
+  "scenarioIds": [
+    "conversations",
+    "conversation-detail",
+    "conversation-detail-focused",
+    "conversation-create-focused"
+  ],
+  "shots": [
+    {
+      "file": "conversations__desktop.png",
+      "label": "Conversations · desktop"
+    },
+    {
+      "file": "conversations__mobile.png",
+      "label": "Conversations · mobile"
+    },
+    {
+      "file": "conversation-detail__desktop.png",
+      "label": "Conversation detail · desktop"
+    },
+    {
+      "file": "conversation-detail__mobile.png",
+      "label": "Conversation detail · mobile"
+    },
+    {
+      "file": "conversation-detail-focused__mobile.png",
+      "label": "Conversation detail · focused composer · mobile"
+    },
+    {
+      "file": "conversation-create-focused__mobile.png",
+      "label": "New conversation · focused composer · mobile"
+    }
+  ],
+  "skipped": false
+}
