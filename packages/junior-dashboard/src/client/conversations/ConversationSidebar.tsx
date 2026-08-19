@@ -197,7 +197,7 @@ function ConversationListStatusIcon(props: {
           props.status === "active" &&
             "animate-[junior-active-indicator_1.8s_ease-in-out_infinite] text-emerald-300 drop-shadow-[0_0_6px_rgba(110,231,183,0.55)] motion-reduce:animate-none",
           props.status === "failed" && "text-rose-300",
-          props.status === "idle" && "text-white/35",
+          props.status === "idle" && "text-dashboard-text-muted",
         )}
       />
     );
@@ -238,9 +238,13 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(props: {
   const title = conversationDisplayTitle(props.conversation);
   const hasAnnotations = Boolean(props.conversation.sidebarAnnotations?.length);
   const isPrivate = props.conversation.visibility === "private";
-  // Linked work is denser and more actionable than channel. The leading lock
-  // already identifies private conversations, so do not repeat that label.
-  const showLocation = Boolean(location) && !hasAnnotations && !isPrivate;
+  // Linked work is denser and more actionable than channel; hide channel when
+  // annotations own the meta row. Also skip a location that only restates the
+  // title (common for redacted private destinations).
+  const showLocation =
+    Boolean(location) &&
+    !hasAnnotations &&
+    location?.toLocaleLowerCase() !== title.toLocaleLowerCase();
   const hasMeta = showLocation || hasAnnotations;
   return (
     <div className="mobile-conversation-row group relative min-w-0">

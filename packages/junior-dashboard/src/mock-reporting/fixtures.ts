@@ -1007,7 +1007,8 @@ function privateConversation(nowMs: number): ConversationDetailReport {
     surface: "slack",
     visibility: "private",
     channel: "DQA123",
-    channelName: "Private conversation",
+    // Owner-visible private DM: type label, not a privacy restatement.
+    channelName: "Direct Message",
     channelNameRedacted: true,
     actorIdentity: actor("avery@sentry.io", "Avery Chen", "avery"),
     cumulativeDurationMs: 42_000,
