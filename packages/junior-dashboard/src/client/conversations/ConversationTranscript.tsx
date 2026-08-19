@@ -82,15 +82,13 @@ export const ConversationTranscriptView = memo(
     return (
       <TranscriptTimestampProvider>
         <section className="min-w-0 pt-1">
-          <div className="min-w-0">
-            <SegmentEvents
-              onOpenSubagentTranscript={props.onOpenSubagentTranscript}
-              conversation={props.conversation}
-              messages={messages}
-              view={props.view}
-            />
-            {props.responding ? <TranscriptTypingIndicator /> : null}
-          </div>
+          <SegmentEvents
+            onOpenSubagentTranscript={props.onOpenSubagentTranscript}
+            conversation={props.conversation}
+            messages={messages}
+            responding={props.responding}
+            view={props.view}
+          />
         </section>
       </TranscriptTimestampProvider>
     );
@@ -104,10 +102,11 @@ function SegmentEvents(props: {
   }) => void;
   conversation: ConversationTranscript;
   messages: TranscriptViewMessage[];
+  responding?: boolean;
   view: TranscriptViewMode;
 }) {
   return (
-    <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-5 pt-1">
+    <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-3 md:gap-4">
       {props.conversation.eventHistory.status === "available" ? (
         <VisibleTranscriptEntries
           onOpenSubagentTranscript={props.onOpenSubagentTranscript}
@@ -134,6 +133,7 @@ function SegmentEvents(props: {
           {unavailableTranscriptLabel(props.conversation)}
         </div>
       )}
+      {props.responding ? <TranscriptTypingIndicator /> : null}
     </div>
   );
 }
@@ -326,7 +326,9 @@ function TranscriptEntryList(props: {
     );
   }
 
-  return <div className="grid min-w-0 gap-5">{rows}</div>;
+  // Let rows participate in the parent transcript stack so messages, tool
+  // groups, and the thinking indicator share one vertical gap.
+  return rows;
 }
 
 /** Keep one activity group mounted while new or historical events extend either edge. */

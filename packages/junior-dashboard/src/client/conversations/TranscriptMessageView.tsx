@@ -239,4 +239,3 @@ function transcriptRoleLabelClass(role: string): string {
     kind === "other" && "text-dashboard-text",
   );
 }
-

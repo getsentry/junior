@@ -378,7 +378,7 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
   }, []);
 
   return (
-    <div className="flex w-full min-h-0 max-h-[min(calc(var(--dashboard-viewport-height,100dvh)*0.55),24rem)] flex-col overflow-hidden px-2 pt-1.5 pb-[max(0.375rem,calc(env(safe-area-inset-bottom)*(1-var(--dashboard-keyboard-open,0))))] md:max-h-none md:overflow-visible md:px-7 md:pt-2 md:pb-3">
+    <div className="flex w-full min-h-0 max-h-[min(calc(var(--dashboard-viewport-height,100dvh)*0.55),24rem)] flex-col overflow-hidden bg-[#050507] px-2 pt-1.5 pb-[max(0.5rem,calc(env(safe-area-inset-bottom)*(1-var(--dashboard-keyboard-open,0))))] md:max-h-none md:overflow-visible md:px-7 md:pt-3 md:pb-3">
       {/* Queue chrome may scroll inside the footer row; composer stays below it. */}
       <div className="min-h-0 min-w-0 shrink overflow-y-auto overscroll-contain md:overflow-visible">
         {props.pendingAuthorization ? (

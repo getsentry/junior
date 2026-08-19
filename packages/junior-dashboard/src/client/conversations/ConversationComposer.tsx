@@ -255,7 +255,7 @@ export const ConversationComposer = memo(function ConversationComposer(
         </div>
       ) : null}
       <form
-        className="grid grid-cols-[minmax(0,1fr)_auto] items-end overflow-hidden rounded-lg border border-white/[0.09] bg-white/[0.035] focus-within:border-cyan-300/35 focus-within:ring-1 focus-within:ring-cyan-300/25 md:block"
+        className="grid grid-cols-[minmax(0,1fr)_auto] items-end overflow-hidden rounded-lg bg-dashboard-surface-raised focus-within:ring-1 focus-within:ring-cyan-300/35 md:block"
         onSubmit={submit}
       >
         <label className="sr-only" htmlFor={id}>
@@ -267,7 +267,7 @@ export const ConversationComposer = memo(function ConversationComposer(
           autoCapitalize="off"
           autoComplete="off"
           autoCorrect="off"
-          className="min-h-11 max-h-28 w-full resize-none overflow-y-auto border-0 bg-transparent px-3 py-2.5 font-mono text-sm leading-relaxed text-dashboard-text outline-none placeholder:text-dashboard-text-muted/65 md:min-h-24 md:max-h-none md:resize-y md:overflow-visible md:px-3.5 md:py-3"
+          className="min-h-12 max-h-28 w-full resize-none overflow-y-auto border-0 bg-transparent px-3 py-3 font-mono text-sm leading-relaxed text-dashboard-text outline-none placeholder:text-dashboard-text-muted/65 md:min-h-24 md:max-h-none md:resize-y md:overflow-visible md:px-3.5 md:py-3.5"
           enterKeyHint="send"
           id={id}
           inputMode="text"
@@ -284,12 +284,13 @@ export const ConversationComposer = memo(function ConversationComposer(
           rows={1}
           spellCheck={false}
         />
-        <div className="flex min-w-0 items-center justify-end gap-3 border-l border-white/[0.07] bg-black/15 px-2 py-1.5 md:justify-between md:border-l-0 md:border-t md:px-3 md:py-2">
+        <div className="flex min-w-0 items-center justify-end gap-3 px-2 py-1.5 md:justify-between md:px-3 md:py-2">
           <div className="hidden min-w-0 font-mono text-xs leading-relaxed text-dashboard-text-muted md:block">
             Enter to send · Shift+Enter for a new line
           </div>
           <Button
             aria-label={sendLocked ? "Sending message" : props.submitLabel}
+            className="!border-0 !bg-transparent hover:!border-0 hover:!bg-white/[0.06] focus-visible:outline focus-visible:outline-1 focus-visible:outline-cyan-300/55 disabled:hover:!border-0 disabled:hover:!bg-transparent"
             disabled={!canSend || !online || sendLocked}
             title={
               !online
