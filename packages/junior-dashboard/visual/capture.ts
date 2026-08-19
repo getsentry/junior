@@ -98,6 +98,14 @@ function isFocusedComposerPrepare(
   );
 }
 
+function attachmentImage(page: Page) {
+  return page
+    .locator('a[href*="/attachments/qa-chart-png"]')
+    .filter({ has: page.locator('img[alt="chart.png"]') })
+    .filter({ hasNot: page.locator("dialog") })
+    .first();
+}
+
 /** Simulate an open software keyboard and wait for the shell to dock to it. */
 async function dockFocusedComposerToKeyboard(
   page: Page,
@@ -152,6 +160,21 @@ async function prepareScenario(
   _viewport: VisualViewport,
 ): Promise<void> {
   if (!prepare) return;
+  if (prepare === "attachment-entry" || prepare === "attachment-modal") {
+    const image = attachmentImage(page);
+    await image.waitFor({ state: "visible", timeout: 15_000 });
+    await image.evaluate((element) =>
+      element.scrollIntoView({ block: "center", inline: "nearest" }),
+    );
+    if (prepare === "attachment-modal") {
+      await image.click();
+      await page.locator("dialog[open]").waitFor({
+        state: "visible",
+        timeout: 5_000,
+      });
+    }
+    return;
+  }
   if (prepare === "new-conversation-focused") {
     await page.getByRole("button", { name: "New conversation" }).click();
     const composer = page.getByLabel("Start a conversation");

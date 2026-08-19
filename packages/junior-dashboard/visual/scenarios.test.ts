@@ -21,6 +21,18 @@ describe("selectVisualScenarioIds", () => {
     ]);
   });
 
+  it("selects attachment entry and modal states for attachment changes", () => {
+    expect(
+      selectVisualScenarioIds([
+        "packages/junior-dashboard/src/client/components/ImageAttachment.tsx",
+        "packages/junior-dashboard/src/client/conversations/TranscriptAttachmentsDeliveredView.tsx",
+      ]),
+    ).toEqual([
+      "conversation-attachment",
+      "conversation-attachment-modal",
+    ]);
+  });
+
   it("selects the person profile for people page changes", () => {
     expect(
       selectVisualScenarioIds([
@@ -194,6 +206,15 @@ describe("resolveVisualScenarios", () => {
   it("keeps every registered scenario unique", () => {
     const ids = VISUAL_SCENARIOS.map((scenario) => scenario.id);
     expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it("registers both attachment visual states", () => {
+    expect(
+      resolveVisualScenarios([
+        "conversation-attachment",
+        "conversation-attachment-modal",
+      ]).map((scenario) => scenario.prepare),
+    ).toEqual(["attachment-entry", "attachment-modal"]);
   });
 
   it("registers the focused create composer as mobile-only evidence", () => {

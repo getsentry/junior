@@ -833,12 +833,16 @@ describe("dashboard canonical-event components", () => {
       ]),
     );
 
-    expect(html).toContain(
+    expect(html).not.toContain(
       'data-transcript-rail-event="attachments_delivered"',
     );
-    expect(html).toContain("2 files delivered");
-    expect(html).toContain("chart.png");
+    expect(html).toContain("Junior");
+    expect(html).not.toContain("files delivered");
+    expect(html).toContain('alt="chart.png"');
     expect(html).toContain("notes.txt");
+    expect(html).toContain("text/plain · 42 B");
+    expect(html).toContain("image/png · 17.8 KB");
+    expect(html).toContain(">Close<");
     expect(html).toContain(
       "/api/conversations/conversation-1/attachments/att-1",
     );

@@ -5,6 +5,8 @@ export type VisualViewport = {
 };
 
 export type VisualScenarioPrepare =
+  | "attachment-entry"
+  | "attachment-modal"
   | "conversation-detail-focused"
   | "new-conversation-focused";
 
@@ -36,6 +38,7 @@ export const MOBILE: VisualViewport = {
 };
 
 const ACTIVE_CONVERSATION_ID = "slack:CQA123:1770003600.000200";
+const DASHBOARD_QA_CONVERSATION_ID = "internal:dashboard-qa";
 const WORKSPACE_ID = "11111111-1111-4111-8111-111111111111";
 
 /** Named dashboard surfaces CI can screenshot for a PR. */
@@ -52,6 +55,22 @@ export const VISUAL_SCENARIOS: VisualScenario[] = [
     label: "Conversation detail",
     path: `/conversations/${encodeURIComponent(ACTIVE_CONVERSATION_ID)}`,
     ready: "Investigate checkout latency",
+    viewports: [DESKTOP, MOBILE],
+  },
+  {
+    id: "conversation-attachment",
+    label: "Conversation attachment",
+    path: `/conversations/${encodeURIComponent(DASHBOARD_QA_CONVERSATION_ID)}`,
+    prepare: "attachment-entry",
+    ready: "Dashboard QA edge cases",
+    viewports: [DESKTOP, MOBILE],
+  },
+  {
+    id: "conversation-attachment-modal",
+    label: "Conversation attachment modal",
+    path: `/conversations/${encodeURIComponent(DASHBOARD_QA_CONVERSATION_ID)}`,
+    prepare: "attachment-modal",
+    ready: "Dashboard QA edge cases",
     viewports: [DESKTOP, MOBILE],
   },
   {
@@ -171,6 +190,17 @@ type PathRule = {
 };
 
 const PATH_RULES: PathRule[] = [
+  {
+    match: (filePath) =>
+      filePath ===
+        "packages/junior-dashboard/src/client/components/ImageAttachment.tsx" ||
+      filePath ===
+        "packages/junior-dashboard/src/client/conversations/TranscriptAttachmentsDeliveredView.tsx",
+    scenarioIds: [
+      "conversation-attachment",
+      "conversation-attachment-modal",
+    ],
+  },
   {
     match: (filePath) =>
       /\/conversations\/Transcript(?:Markdown|Text|ToolView)\.tsx$/.test(

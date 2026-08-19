@@ -201,7 +201,8 @@ function RedactedMetadataRow(props: { meta?: string }) {
   );
 }
 
-function transcriptMessageClass(role: string): string {
+/** Return the shared chat bubble classes for a transcript role. */
+export function transcriptMessageClass(role: string): string {
   const kind = transcriptRoleKind(role);
 
   return cn(
