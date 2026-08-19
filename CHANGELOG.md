@@ -1,4 +1,35 @@
 # Changelog
+## 0.175.0
+
+### New Features ✨
+
+#### Dashboard
+
+- Preview image attachments in a modal by @sentry-junior in [#1621](https://github.com/getsentry/junior/pull/1621)
+- Show privacy in conversation status icon by @sentry-junior in [#1616](https://github.com/getsentry/junior/pull/1616)
+- Extract shared form and status primitives by @sentry-junior in [#1618](https://github.com/getsentry/junior/pull/1618)
+- Add relative transcript timestamps by @sentry-junior in [#1617](https://github.com/getsentry/junior/pull/1617)
+
+#### Other
+
+- (resource-events) Add install-local pull request policy by @sentry-junior in [#1619](https://github.com/getsentry/junior/pull/1619)
+
+### Bug Fixes 🐛
+
+#### Dashboard
+
+- Align transcript thinking indicator and composer chrome by @sentry-junior in [#1615](https://github.com/getsentry/junior/pull/1615)
+- Hide turn context button on mobile by @sentry-junior in [#1620](https://github.com/getsentry/junior/pull/1620)
+- Show single repo name on mobile by @sentry-junior in [#1613](https://github.com/getsentry/junior/pull/1613)
+
+#### Other
+
+- (github) Own review threads by bot user id by @sentry-junior in [#1623](https://github.com/getsentry/junior/pull/1623)
+
+### Documentation 📚
+
+- (testing) Prefer visual QA over junk UI tests by @sentry-junior in [#1622](https://github.com/getsentry/junior/pull/1622)
+
 ## 0.174.0
 
 ### New Features ✨
