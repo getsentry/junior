@@ -1,5 +1,6 @@
 import { FileText, Image as ImageIcon } from "lucide-react";
 
+import { ImageAttachment } from "../components/ImageAttachment";
 import { formatMessageTimestamp } from "../format";
 import type {
   ConversationTranscript,
@@ -47,19 +48,13 @@ function AttachmentItem(props: {
   return (
     <div className="min-w-0">
       {inline && !search.active ? (
-        <a
-          className="mb-1.5 inline-block max-w-full overflow-hidden rounded-md bg-black/20"
-          href={href}
-          rel="noreferrer"
-          target="_blank"
-        >
-          <img
-            alt={props.attachment.filename}
-            className="max-h-48 max-w-sm h-auto w-auto object-contain"
-            loading="lazy"
-            src={href}
-          />
-        </a>
+        <ImageAttachment
+          filename={props.attachment.filename}
+          imageClassName="max-h-48 max-w-sm h-auto w-auto object-contain"
+          loading="lazy"
+          src={href}
+          triggerClassName="mb-1.5 inline-block max-w-full overflow-hidden rounded-md bg-black/20"
+        />
       ) : null}
       <a
         className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-2 rounded-md px-1.5 py-1 -mx-1.5 no-underline transition-colors hover:bg-white/[0.04]"
