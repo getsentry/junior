@@ -630,6 +630,7 @@ describe("agent plugin hooks", () => {
     ]);
     try {
       const tools = getPluginTools({
+        conversationId: "slack:DDM:1712345.0001",
         destination: SLACK_DESTINATION,
         actor: TEST_ACTOR,
         egress: TEST_EGRESS,
