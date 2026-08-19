@@ -49,6 +49,12 @@ conversation.
   credential authority.
 - Watches default to 14 days and reject requested lifetimes over 30 days rather
   than silently shortening them.
+- Plugins may expose `resourceEvents.subscribe()` so a successful tool can
+  create a temporary subscription without asking the model to call
+  `watchResourceEvents`.
+- Resource types may declare optional install guidance per event type. Core
+  inserts that text into subscription and event-task inputs. Keep it separate
+  from subscription intent, trusted facts, and untrusted provider content.
 
 The plugin-facing types and publisher contract live in
 `packages/junior-plugin-api/src/resource-events.ts`; subscription storage and

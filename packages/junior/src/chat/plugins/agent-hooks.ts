@@ -40,6 +40,10 @@ import type { AnyToolDefinition } from "@/chat/tools/definition";
 import { getDashboardConversationLink } from "@/chat/slack/dashboard-link";
 import { canRouteResourceEvents } from "@/chat/resource-events/workspace";
 import { createResourceEventSubscription } from "@/chat/resource-events/store";
+import {
+  RESOURCE_SUBSCRIPTION_DEFAULT_TTL_MS,
+  RESOURCE_SUBSCRIPTION_MAX_TTL_MS,
+} from "@/chat/resource-events/tool-support";
 import { getSlackToolContext } from "@/chat/slack/tool-support/context";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
@@ -646,11 +650,11 @@ export function getPluginTools(
             "Resource subscription contains an event or resource that the plugin does not support.",
           );
         }
-        const ttlMs = input.ttlMs ?? 14 * 24 * 60 * 60 * 1000;
+        const ttlMs = input.ttlMs ?? RESOURCE_SUBSCRIPTION_DEFAULT_TTL_MS;
         if (
           !Number.isFinite(ttlMs) ||
           ttlMs <= 0 ||
-          ttlMs > 30 * 24 * 60 * 60 * 1000
+          ttlMs > RESOURCE_SUBSCRIPTION_MAX_TTL_MS
         ) {
           throw new Error(
             "Resource subscription duration must be between 1 ms and 30 days.",

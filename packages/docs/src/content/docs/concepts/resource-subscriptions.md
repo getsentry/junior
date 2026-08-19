@@ -14,14 +14,16 @@ Plugins can publish events for resources such as issues, pull requests, and depl
 
 ## Choose a Watch or Task
 
-| Type | Use it for | Lifetime |
-| ---- | ---------- | -------- |
-| Resource subscription | “Watch this” or “tell me when” | Temporary and thread-bound |
-| Event task | “Whenever this happens, do this” | Durable and destination-bound |
+| Type                  | Use it for                       | Lifetime                      |
+| --------------------- | -------------------------------- | ----------------------------- |
+| Resource subscription | “Watch this” or “tell me when”   | Temporary and thread-bound    |
+| Event task            | “Whenever this happens, do this” | Durable and destination-bound |
 
 A resource subscription sends matching updates to the current conversation. It ends when it expires, completes, is cancelled, or Junior leaves the thread.
 
 An event task stores an instruction and runs it for each matching event. It remains attached to its Slack channel or DM until deleted.
+
+An install can also create a temporary subscription after a successful provider action, or add short event guidance in `plugins.ts`. That install policy is separate from a user-authored watch or event task. See the [GitHub plugin](/extend/github-plugin/) for a concrete example.
 
 ## Examples
 
@@ -37,6 +39,7 @@ whenever an issue is reopened in this repository, summarize why in this channel
 
 - Watches default to 14 days and cannot exceed 30 days.
 - Event data cannot change conversation visibility or credential access.
+- Install guidance cannot grant credentials or bypass action review.
 - Duplicate provider deliveries should not create duplicate work.
 - Resource events currently require single-workspace Slack mode.
 

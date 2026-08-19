@@ -12,6 +12,7 @@ import type {
 import type { PluginCredentialSubject } from "./credentials";
 import type { PluginAnnotations } from "./annotations";
 import type { SlackConversationLink } from "./operations";
+import type { SubscribableResource } from "./resource-events";
 import type { PluginState } from "./state";
 import { z, type ZodTypeAny } from "zod";
 
@@ -522,7 +523,7 @@ export interface PluginResourceEventToolContext {
   subscribe(input: {
     events: string[];
     intent: string;
-    resource: import("./resource-events").SubscribableResource;
+    resource: SubscribableResource;
     ttlMs?: number;
   }): Promise<{ events: string[]; expiresAtMs: number; id: string }>;
 }
