@@ -8,6 +8,11 @@ import {
   type ComponentPropsWithoutRef,
 } from "react";
 
+import {
+  acquireBodyScrollLock,
+  releaseBodyScrollLock,
+} from "../bodyScrollLock";
+
 /** Return true when an image link click should open the inline preview. */
 export function shouldPreviewImageAttachment(
   event: Pick<
@@ -41,7 +46,7 @@ export function ImageAttachment(
   } & Omit<ComponentPropsWithoutRef<"img">, "alt" | "className" | "src">,
 ) {
   const dialogRef = useRef<HTMLDialogElement>(null);
-  const previousBodyOverflowRef = useRef<string | undefined>(undefined);
+  const bodyScrollLockedRef = useRef(false);
   const titleId = useId();
   const [open, setOpen] = useState(false);
   const {
@@ -54,9 +59,9 @@ export function ImageAttachment(
   } = props;
 
   const unlockBodyScroll = () => {
-    if (previousBodyOverflowRef.current === undefined) return;
-    document.body.style.overflow = previousBodyOverflowRef.current;
-    previousBodyOverflowRef.current = undefined;
+    if (!bodyScrollLockedRef.current) return;
+    releaseBodyScrollLock();
+    bodyScrollLockedRef.current = false;
   };
 
   const close = () => {
@@ -77,8 +82,8 @@ export function ImageAttachment(
           event.preventDefault();
           const dialog = dialogRef.current;
           if (!dialog || dialog.open) return;
-          previousBodyOverflowRef.current = document.body.style.overflow;
-          document.body.style.overflow = "hidden";
+          acquireBodyScrollLock();
+          bodyScrollLockedRef.current = true;
           setOpen(true);
           dialog.showModal();
         }}
