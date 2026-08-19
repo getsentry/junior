@@ -1,0 +1,51 @@
+{
+  "commitSha": "8b973a60ea04f517bea6c706dfb6d2a31a96800c",
+  "mode": "path",
+  "reasons": [
+    "packages/junior-dashboard/src/client/components/Field.tsx",
+    "packages/junior-dashboard/src/client/components/README.md",
+    "packages/junior-dashboard/src/client/components/StatusChip.tsx",
+    "packages/junior-dashboard/src/client/components/TextInput.tsx",
+    "packages/junior-dashboard/src/client/conversations/ConversationTranscript.tsx",
+    "packages/junior-dashboard/src/client/conversations/TranscriptMessageView.tsx",
+    "packages/junior-dashboard/src/client/conversations/TranscriptTimestamp.tsx",
+    "packages/junior-dashboard/src/client/conversations/TranscriptTurnContextView.tsx",
+    "packages/junior-dashboard/src/client/format.ts",
+    "packages/junior-dashboard/src/client/pages/PersonalTokensPage.tsx",
+    "packages/junior-dashboard/src/client/pages/SettingsPage.tsx",
+    "packages/junior-dashboard/src/client/pages/dev/ComponentsPage.tsx",
+    "packages/junior-dashboard/src/client/pages/memory/MemoryPage.tsx",
+    "packages/junior-dashboard/src/client/pages/system/WorkspaceEditor.tsx",
+    "packages/junior-dashboard/src/client/pages/tasks/TaskExecutionsPage.tsx",
+    "packages/junior-dashboard/src/client/pages/tasks/TaskRunsPage.tsx",
+    "packages/junior-dashboard/tests/format.test.ts",
+    "packages/junior-dashboard/tests/telemetry-components.test.tsx",
+    "packages/junior-dashboard/visual/scenarios.test.ts",
+    "packages/junior-dashboard/visual/scenarios.ts"
+  ],
+  "scenarioIds": [
+    "gallery-foundations",
+    "gallery-charts",
+    "gallery-transcripts",
+    "gallery-index"
+  ],
+  "shots": [
+    {
+      "file": "gallery-foundations__desktop.png",
+      "label": "Gallery · Foundations · desktop"
+    },
+    {
+      "file": "gallery-charts__desktop.png",
+      "label": "Gallery · Charts · desktop"
+    },
+    {
+      "file": "gallery-transcripts__desktop.png",
+      "label": "Gallery · Transcripts · desktop"
+    },
+    {
+      "file": "gallery-index__desktop.png",
+      "label": "Component gallery index · desktop"
+    }
+  ],
+  "skipped": false
+}
