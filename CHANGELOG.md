@@ -1,4 +1,14 @@
 # Changelog
+## 0.174.0
+
+### New Features ✨
+
+- (dashboard) Add archived conversation filter by @sentry-junior in [#1611](https://github.com/getsentry/junior/pull/1611)
+
+### Bug Fixes 🐛
+
+- (dashboard) Keep conversations pinned to latest by @sentry-junior in [#1610](https://github.com/getsentry/junior/pull/1610)
+
 ## 0.173.0
 
 ### Bug Fixes 🐛
