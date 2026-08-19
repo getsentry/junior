@@ -4,6 +4,7 @@ export const RESOURCE_EVENT_SUMMARY_MAX_LENGTH = 4_000;
 export const RESOURCE_EVENT_TEXT_MAX_LENGTH = 8_000;
 export const RESOURCE_EVENT_DATA_MAX_KEYS = 32;
 export const RESOURCE_EVENT_DATA_MAX_JSON_BYTES = 4_000;
+export const RESOURCE_EVENT_GUIDANCE_MAX_LENGTH = 1_000;
 
 /** Small trusted facts from the plugin. The agent should not look these up again. */
 export const resourceEventDataSchema = z
@@ -16,7 +17,9 @@ export const resourceEventDataSchema = z
         message: `Resource event data may include at most ${RESOURCE_EVENT_DATA_MAX_KEYS} keys.`,
       });
     }
-    const jsonBytes = new TextEncoder().encode(JSON.stringify(value)).byteLength;
+    const jsonBytes = new TextEncoder().encode(
+      JSON.stringify(value),
+    ).byteLength;
     if (jsonBytes > RESOURCE_EVENT_DATA_MAX_JSON_BYTES) {
       context.addIssue({
         code: "custom",
@@ -45,6 +48,12 @@ export const pluginResourceEventTypeSchema = z
     type: resourceTypeSchema,
     supportedEvents: z.array(resourceEventTypeSchema).min(1),
     suggestedEvents: z.array(resourceEventTypeSchema).optional(),
+    guidance: z
+      .record(
+        resourceEventTypeSchema,
+        z.string().trim().min(1).max(RESOURCE_EVENT_GUIDANCE_MAX_LENGTH),
+      )
+      .optional(),
   })
   .strict()
   .superRefine((resourceType, context) => {
@@ -59,6 +68,15 @@ export const pluginResourceEventTypeSchema = z
       }
       supported.add(eventType);
     });
+    for (const eventType of Object.keys(resourceType.guidance ?? {})) {
+      if (!supported.has(eventType)) {
+        context.addIssue({
+          code: "custom",
+          message: `Guidance resource event type "${eventType}" is not supported.`,
+          path: ["guidance", eventType],
+        });
+      }
+    }
     const suggested = new Set<string>();
     resourceType.suggestedEvents?.forEach((eventType, index) => {
       if (suggested.has(eventType)) {
@@ -134,6 +152,18 @@ export const subscribableResourceSchema = z
   .strict();
 
 export type SubscribableResource = z.output<typeof subscribableResourceSchema>;
+
+/** Result returned after a temporary resource subscription is created. */
+export const resourceEventSubscriptionResultSchema = z
+  .object({
+    events: z.array(resourceEventTypeSchema).min(1),
+    id: z.string().min(1),
+  })
+  .strict();
+
+export type ResourceEventSubscriptionResult = z.output<
+  typeof resourceEventSubscriptionResultSchema
+>;
 
 export const resourceEventInputSchema = z
   .object({

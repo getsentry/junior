@@ -2,6 +2,8 @@ import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { appendAndEnqueueInboundMessage } from "@/chat/task-execution/store";
 import { createSlackResourceEventInboundMessage } from "@/chat/task-execution/slack-work";
 import type { ResourceEventSubscription } from "@/chat/resource-events/store";
+import { resourceEventGuidance } from "@/chat/resource-events/catalog";
+import { getResourceEventCatalog } from "@/chat/resource-events/runtime-catalog";
 
 export interface ResourceEventNotification {
   eventKey: string;
@@ -31,9 +33,14 @@ export function renderResourceEventNotificationText(
   subscription: Pick<ResourceEventSubscription, "intent" | "label">,
   event: Pick<
     ResourceEventNotification,
-    "eventType" | "trustedSummary" | "data" | "untrustedText"
+    "namespace" | "eventType" | "trustedSummary" | "data" | "untrustedText"
   >,
 ): string {
+  const guidance = resourceEventGuidance(
+    getResourceEventCatalog(),
+    event.namespace,
+    event.eventType,
+  );
   const lines = [
     "[event notification]",
     "",
@@ -51,6 +58,7 @@ export function renderResourceEventNotificationText(
     `- resource: ${subscription.label}`,
     `- event: ${event.eventType}`,
     `- intent: ${subscription.intent}`,
+    ...(guidance ? ["", "Install guidance:", guidance] : []),
     "",
     "Trusted event summary:",
     event.trustedSummary,
