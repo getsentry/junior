@@ -29,6 +29,12 @@ const RULES = [
   },
   {
     message:
+      "integration tests must compose agent dispatch through production conversation work",
+    pattern:
+      /\b(?:createAgentDispatchConversationWorker|createAgentDispatchWorkRouter)\s*\(/g,
+  },
+  {
+    message:
       "integration tests must use typed Slack fixtures instead of double casts",
     pattern:
       /\bas\s+unknown\s+as\s+(?:SlackAdapter|Thread|Message)(?:\b|\s*<)/g,
