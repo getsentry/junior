@@ -8,7 +8,7 @@ export function LoadingView(props: { label: string }) {
     <div
       className={cn(
         dashboardContainerClass,
-        "grid min-h-[calc(100vh-5rem)] place-items-center px-4 py-8 md:px-8",
+        "grid min-h-[calc(100dvh-5rem)] place-items-center px-4 py-8 md:px-8",
       )}
     >
       <section className="grid w-full max-w-lg grid-cols-[auto_minmax(0,1fr)] items-center gap-3 rounded-lg border border-white/15 bg-dashboard-surface-raised p-4">

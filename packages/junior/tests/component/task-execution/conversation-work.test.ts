@@ -71,6 +71,7 @@ function failingMetadataStore(): ConversationStore {
     getConversationIdByProviderConversation: vi.fn(async () => undefined),
     bindProviderConversation: vi.fn(),
     getDestinationVisibility: vi.fn(async () => undefined),
+    findSlackDestinationByName: vi.fn(async () => undefined),
     recordActivity: vi.fn(),
     recordExecution: vi.fn(async () => {
       throw new Error("metadata unavailable");
@@ -86,6 +87,7 @@ function metadataEventsStore(events: string[]): ConversationStore {
     getConversationIdByProviderConversation: vi.fn(async () => undefined),
     bindProviderConversation: vi.fn(),
     getDestinationVisibility: vi.fn(async () => undefined),
+    findSlackDestinationByName: vi.fn(async () => undefined),
     recordActivity: vi.fn(),
     recordExecution: vi.fn(async () => {
       events.push("metadata");

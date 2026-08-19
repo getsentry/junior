@@ -1,7 +1,9 @@
 import {
+  memo,
   useCallback,
   useDeferredValue,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -92,6 +94,16 @@ export function ConversationPage(props: {
     : undefined;
   // Keep live flags and mailbox chrome urgent. Only the heavy transcript body is deferred.
   const live = conversationIsLive(visualStatus, detail.data);
+  // Key on the event array, not the whole detail object. Metadata-only polls
+  // reuse events via structural sharing, so the footer keeps a stable id list.
+  const mailboxCommittedIds = useMemo(
+    () => committedMessageIds(detail.data?.events),
+    [detail.data?.events],
+  );
+  // Cancel needs the latest mailbox watermark, but not as a render prop. Live
+  // polls refresh generatedAt every 2s even when the queue is unchanged.
+  const pendingGeneratedAtRef = useRef(detail.pendingGeneratedAt);
+  pendingGeneratedAtRef.current = detail.pendingGeneratedAt;
   const requestPin = useCallback(() => {
     setPinRequestVersion((version) => version + 1);
   }, []);
@@ -114,7 +126,7 @@ export function ConversationPage(props: {
     <div className="grid min-h-0 min-w-0 grid-rows-[minmax(7rem,1fr)_minmax(0,auto)]">
       <div
         aria-label="Conversation transcript"
-        className="min-h-0 overflow-y-auto overscroll-contain px-3 pb-3 md:px-7 md:pb-5"
+        className="min-h-0 overflow-y-auto overscroll-contain px-3 pb-1.5 md:px-7 md:pb-2"
         tabIndex={0}
       >
         <section className="min-w-0">
@@ -250,12 +262,15 @@ export function ConversationPage(props: {
       </div>
       {detail.data?.isParticipant ? (
         <ConversationReplyFooter
-          conversation={detail.data}
           conversationId={conversationId}
-          live={live}
+          // Only pass committed ids for mailbox de-dupe. The full transcript is
+          // too large to re-enter the footer on every live poll while typing.
+          committedMessageIds={mailboxCommittedIds}
           onPinRequest={requestPin}
           pendingAuthorization={detail.pendingAuthorization}
-          pendingGeneratedAt={detail.pendingGeneratedAt}
+          // Keep the cancel watermark off props. Live polls refresh generatedAt
+          // every 2s; a prop would bust footer memo while the reader types.
+          pendingGeneratedAtRef={pendingGeneratedAtRef}
           pendingMessages={detail.pendingMessages}
         />
       ) : null}
@@ -270,15 +285,17 @@ export function ConversationPage(props: {
 /**
  * Own mutation state and mailbox chrome outside the page tree that re-renders
  * on every live transcript poll. Keeps composer props stable while typing.
+ *
+ * Memoized so metadata-only polls that keep mailbox identity stable skip the
+ * footer tree. Fast chat UIs isolate the composer the same way.
  */
-function ConversationReplyFooter(props: {
-  conversation: ConversationTranscript;
+const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
+  committedMessageIds: readonly string[];
   conversationId: string;
-  live: boolean;
   onPinRequest: () => void;
   pendingAuthorization?: ConversationPendingMessagesReport["authorization"];
-  pendingGeneratedAt?: string;
-  pendingMessages: ConversationMailboxMessage[];
+  pendingGeneratedAtRef: { current: string | undefined };
+  pendingMessages: readonly ConversationMailboxMessage[];
 }) {
   const appendMessage = useAppendConversationMessage(props.conversationId);
   const cancelPendingMessages = useCancelConversationPendingMessages(
@@ -338,16 +355,14 @@ function ConversationReplyFooter(props: {
   const cancellableMessageIds = props.pendingMessages
     .filter((message) => message.clientStatus === undefined)
     .map((message) => message.inboundMessageId);
-  const pendingGeneratedAtRef = useRef(props.pendingGeneratedAt);
-  pendingGeneratedAtRef.current = props.pendingGeneratedAt;
   const onCancelMessage = useCallback((message: ConversationMailboxMessage) => {
-    const receivedBefore = pendingGeneratedAtRef.current;
+    const receivedBefore = props.pendingGeneratedAtRef.current;
     if (!receivedBefore) return;
     cancelPendingMessagesRef.current.mutate({
       inboundMessageIds: [message.inboundMessageId],
       receivedBefore,
     });
-  }, []);
+  }, [props.pendingGeneratedAtRef]);
   const cancelTargetInboundMessageId =
     cancelPendingMessages.variables?.inboundMessageIds[0];
   const cancelError = Boolean(
@@ -363,18 +378,9 @@ function ConversationReplyFooter(props: {
   }, []);
 
   return (
-    <div className="flex w-full min-h-0 max-h-[min(55dvh,24rem)] flex-col overflow-hidden self-end px-2 pt-1.5 pb-[calc(0.375rem+env(safe-area-inset-bottom))] md:max-h-none md:overflow-visible md:self-auto md:px-7 md:py-4 md:pb-4">
-      {/* Queue chrome may scroll; keep the composer pinned below it on mobile. */}
+    <div className="flex w-full min-h-0 max-h-[min(calc(var(--dashboard-viewport-height,100dvh)*0.55),24rem)] flex-col overflow-hidden px-2 pt-1.5 pb-[max(0.375rem,calc(env(safe-area-inset-bottom)*(1-var(--dashboard-keyboard-open,0))))] md:max-h-none md:overflow-visible md:px-7 md:pt-2 md:pb-3">
+      {/* Queue chrome may scroll inside the footer row; composer stays below it. */}
       <div className="min-h-0 min-w-0 shrink overflow-y-auto overscroll-contain md:overflow-visible">
-        {props.live ? (
-          <div className="mb-1.5 flex items-center gap-2 font-sans text-xs text-dashboard-text-muted md:hidden">
-            <span
-              aria-hidden="true"
-              className="size-1.5 shrink-0 animate-pulse rounded-full bg-emerald-300"
-            />
-            <span>Junior is working…</span>
-          </div>
-        ) : null}
         {props.pendingAuthorization ? (
           <PendingAuthorization authorization={props.pendingAuthorization} />
         ) : null}
@@ -382,7 +388,7 @@ function ConversationReplyFooter(props: {
           cancelError={cancelError}
           cancelPending={cancelPendingMessages.isPending}
           cancelTargetInboundMessageId={cancelTargetInboundMessageId}
-          conversation={props.conversation}
+          committedMessageIds={props.committedMessageIds}
           messages={props.pendingMessages}
           onCancelMessage={onCancelMessage}
           onLayoutChange={onMailboxLayoutChange}
@@ -401,7 +407,7 @@ function ConversationReplyFooter(props: {
       </div>
     </div>
   );
-}
+});
 
 function applyPendingArchiveUpdate(
   conversation: Conversation | undefined,
@@ -428,3 +434,16 @@ function conversationIsLive(
   if (detail) return detail.status === "active";
   return visualStatus === "active";
 }
+
+function committedMessageIds(
+  events: ConversationDetailReport["events"] | undefined,
+): readonly string[] {
+  if (!events) return EMPTY_MESSAGE_IDS;
+  const ids: string[] = [];
+  for (const event of events) {
+    if (event.data.type === "message") ids.push(event.data.messageId);
+  }
+  return ids;
+}
+
+const EMPTY_MESSAGE_IDS: readonly string[] = [];

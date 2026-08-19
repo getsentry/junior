@@ -343,6 +343,13 @@ describe("dashboard conversation formatting", () => {
     expect(filterConversationList(rows, { source: "scheduler" })).toHaveLength(
       1,
     );
+    const archivedRows = [
+      ...rows,
+      { ...rows[0]!, archivedAt: "2026-01-02T00:00:00.000Z" },
+    ];
+    expect(
+      filterConversationList(archivedRows, { status: "archived" }),
+    ).toEqual([expect.objectContaining({ archivedAt: expect.any(String) })]);
   });
 
   it("formats actor and Slack labels", () => {
