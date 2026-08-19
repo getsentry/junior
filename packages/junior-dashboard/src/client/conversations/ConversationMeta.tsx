@@ -140,7 +140,7 @@ export function ConversationSidebarAnnotations(props: {
         aria-label={`Linked work, newest first: ${details.join(", ")}`}
         className="inline-flex min-w-0 max-w-full items-center"
       >
-        {isMobile ? (
+        {isMobile && stack.length > 1 ? (
           <SidebarAnnotationIconFacepile
             annotations={stack}
             // Discs sit on the sidebar panel / row surface (#09090b).

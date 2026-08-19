@@ -97,6 +97,19 @@ test("keeps cached conversation and draft available through reconnect", async ({
   await expect(page.getByRole("button", { name: "Send" })).toBeEnabled();
 });
 
+test("shows the repo name for one annotation scope on mobile", async ({
+  page,
+}) => {
+  await page.setViewportSize({ height: 844, width: 390 });
+  await page.goto(server.baseURL);
+
+  const conversation = page.getByRole("link", {
+    name: /Checkout latency triage/,
+  });
+  await expect(conversation).toBeVisible();
+  await expect(conversation.getByText("payments", { exact: true })).toBeVisible();
+});
+
 test("opens a conversation in the built dashboard", async ({ page }) => {
   await page.setViewportSize({ height: 900, width: 1600 });
 
