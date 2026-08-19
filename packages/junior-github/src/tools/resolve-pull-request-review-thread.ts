@@ -6,7 +6,7 @@ import {
   type ToolRegistrationHookContext,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
-import { botLoginFromEmail } from "../webhooks/ownership.js";
+import { botUserIdFromEmail } from "../webhooks/ownership.js";
 
 /**
  * GraphQL-only GitHub mutation. There is no REST endpoint and no first-class
@@ -104,8 +104,8 @@ export function createGitHubResolvePullRequestReviewThreadTool(
         );
       }
       const repo = parseRepo(parsedInput.data.repo);
-      const botLogin = botLoginFromEmail(botEmail)?.toLowerCase();
-      if (!botLogin) {
+      const botUserId = botUserIdFromEmail(botEmail);
+      if (botUserId === undefined) {
         throw new Error("GitHub App bot identity is not configured.");
       }
 
@@ -117,7 +117,7 @@ export function createGitHubResolvePullRequestReviewThreadTool(
             pullRequest {
               number
               repository { nameWithOwner }
-              author { login }
+              author { ... on Bot { databaseId } }
             }
           }
         }
@@ -149,7 +149,9 @@ export function createGitHubResolvePullRequestReviewThreadTool(
                 id: z.string(),
                 isResolved: z.boolean(),
                 pullRequest: z.object({
-                  author: z.object({ login: z.string() }),
+                  author: z
+                    .object({ databaseId: z.number().optional() })
+                    .nullable(),
                   number: z.number(),
                   repository: z.object({ nameWithOwner: z.string() }),
                 }),
@@ -166,7 +168,7 @@ export function createGitHubResolvePullRequestReviewThreadTool(
       const ownsPullRequest =
         pullRequest.repository.nameWithOwner.toLowerCase() ===
           repo.ref.toLowerCase() &&
-        pullRequest.author.login.toLowerCase() === botLogin;
+        pullRequest.author?.databaseId === botUserId;
       if (!ownsPullRequest) {
         throw new PluginToolInputError(
           "Junior can only resolve review threads on pull requests it authored.",
