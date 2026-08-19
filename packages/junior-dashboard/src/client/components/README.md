@@ -15,7 +15,8 @@ instead of copying Tailwind blocks.
 
 - Prefer a named component on the second real use.
 - Keep Tailwind classes on the owning component.
-- Add gallery fixtures on `/dev` for new or changed shared components.
+- Add gallery fixtures under `/dev/<section>` for new or changed shared
+  components. Keep the `/dev` index as the catalog only.
 - One-off page glue may stay inline when extraction only adds indirection.
 
 See `policies/frontend-components.md`.

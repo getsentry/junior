@@ -121,13 +121,45 @@ export const VISUAL_SCENARIOS: VisualScenario[] = [
   },
   {
     componentGallery: true,
-    id: "component-gallery",
-    label: "Component gallery",
+    id: "gallery-index",
+    label: "Component gallery index",
     path: "/dev",
     ready: "Component gallery",
     viewports: [DESKTOP],
   },
+  {
+    componentGallery: true,
+    id: "gallery-foundations",
+    label: "Gallery · Foundations",
+    path: "/dev/foundations",
+    ready: "Foundations",
+    viewports: [DESKTOP],
+  },
+  {
+    componentGallery: true,
+    id: "gallery-charts",
+    label: "Gallery · Charts",
+    path: "/dev/charts",
+    ready: "Charts",
+    viewports: [DESKTOP],
+  },
+  {
+    componentGallery: true,
+    id: "gallery-transcripts",
+    label: "Gallery · Transcripts",
+    path: "/dev/transcripts",
+    ready: "Transcripts",
+    viewports: [DESKTOP],
+  },
 ];
+
+/** Prefer these gallery scenarios under the selection cap when kit files change. */
+const GALLERY_SCENARIO_PRIORITY = [
+  "gallery-foundations",
+  "gallery-charts",
+  "gallery-transcripts",
+  "gallery-index",
+] as const;
 
 const SCENARIO_BY_ID = new Map(
   VISUAL_SCENARIOS.map((scenario) => [scenario.id, scenario]),
@@ -139,6 +171,13 @@ type PathRule = {
 };
 
 const PATH_RULES: PathRule[] = [
+  {
+    match: (filePath) =>
+      /\/conversations\/Transcript(?:Markdown|Text|ToolView)\.tsx$/.test(
+        filePath,
+      ),
+    scenarioIds: ["gallery-transcripts"],
+  },
   {
     match: (filePath) =>
       filePath.startsWith(
@@ -200,9 +239,25 @@ const PATH_RULES: PathRule[] = [
   },
   {
     match: (filePath) =>
-      filePath.startsWith("packages/junior-dashboard/src/client/pages/dev/") ||
-      filePath.startsWith("packages/junior-dashboard/src/client/components/"),
-    scenarioIds: ["component-gallery"],
+      filePath.startsWith(
+        "packages/junior-dashboard/src/client/components/charts/",
+      ) ||
+      filePath.startsWith(
+        "packages/junior-dashboard/src/client/pages/people/ContributionGrid",
+      ) ||
+      filePath.startsWith(
+        "packages/junior-dashboard/src/client/pages/locations/LocationDirectoryActivityChart",
+      ) ||
+      filePath.startsWith(
+        "packages/junior-dashboard/src/client/pages/system/ConversationActivityChart",
+      ),
+    scenarioIds: ["gallery-charts"],
+  },
+  {
+    match: (filePath) =>
+      filePath.startsWith("packages/junior-dashboard/src/client/components/") ||
+      filePath.startsWith("packages/junior-dashboard/src/client/pages/dev/"),
+    scenarioIds: ["gallery-foundations", "gallery-index"],
   },
   {
     match: (filePath) =>
@@ -210,7 +265,7 @@ const PATH_RULES: PathRule[] = [
       !filePath.startsWith("packages/junior-dashboard/e2e/") &&
       !filePath.startsWith("packages/junior-dashboard/tests/") &&
       !filePath.startsWith("packages/junior-dashboard/visual/"),
-    scenarioIds: ["component-gallery"],
+    scenarioIds: ["gallery-index"],
   },
 ];
 
@@ -248,16 +303,13 @@ export function selectVisualScenarioIds(
     }
   }
 
-  // Shared kit changes should keep the gallery under the cap. Registry order
-  // alone would drop it when several feature pages also match.
-  const ordered = VISUAL_SCENARIOS.map((scenario) => scenario.id).filter((id) =>
-    selected.has(id),
+  // Prefer focused gallery pages first so shared kit diffs stay reviewable.
+  const galleryIds = GALLERY_SCENARIO_PRIORITY.filter((id) => selected.has(id));
+  const galleryIdSet = new Set<string>(galleryIds);
+  const rest = VISUAL_SCENARIOS.map((scenario) => scenario.id).filter(
+    (id) => selected.has(id) && !galleryIdSet.has(id),
   );
-  if (!selected.has("component-gallery") || ordered.length <= max) {
-    return ordered.slice(0, max);
-  }
-  const withoutGallery = ordered.filter((id) => id !== "component-gallery");
-  return ["component-gallery", ...withoutGallery].slice(0, max);
+  return [...galleryIds, ...rest].slice(0, max);
 }
 
 /** Resolve scenario records for selected ids, preserving registry order. */

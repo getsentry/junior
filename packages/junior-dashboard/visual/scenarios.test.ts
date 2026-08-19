@@ -29,15 +29,31 @@ describe("selectVisualScenarioIds", () => {
     ).toEqual(["person-profile"]);
   });
 
-  it("selects the component gallery for shared component changes", () => {
+  it("selects focused gallery pages for shared component changes", () => {
     expect(
       selectVisualScenarioIds([
         "packages/junior-dashboard/src/client/components/Button.tsx",
       ]),
-    ).toEqual(["component-gallery"]);
+    ).toEqual(["gallery-foundations", "gallery-index"]);
   });
 
-  it("keeps the component gallery under the cap when feature pages also match", () => {
+  it("selects the charts gallery for chart component changes", () => {
+    expect(
+      selectVisualScenarioIds([
+        "packages/junior-dashboard/src/client/components/charts/ActivityChart.tsx",
+      ]),
+    ).toEqual(["gallery-charts"]);
+  });
+
+  it("selects the transcripts gallery for transcript fixture components", () => {
+    expect(
+      selectVisualScenarioIds([
+        "packages/junior-dashboard/src/client/conversations/TranscriptMarkdown.tsx",
+      ]),
+    ).toEqual(["gallery-transcripts"]);
+  });
+
+  it("keeps focused gallery pages under the cap when feature pages also match", () => {
     const selected = selectVisualScenarioIds([
       "packages/junior-dashboard/src/client/components/Field.tsx",
       "packages/junior-dashboard/src/client/pages/memory/MemoryPage.tsx",
@@ -45,14 +61,14 @@ describe("selectVisualScenarioIds", () => {
       "packages/junior-dashboard/src/client/pages/system/WorkspaceEditor.tsx",
       "packages/junior-dashboard/src/client/pages/system/WorkspacesPage.tsx",
     ]);
-    expect(selected[0]).toBe("component-gallery");
+    expect(selected[0]).toBe("gallery-foundations");
     expect(selected).toHaveLength(MAX_VISUAL_SCENARIOS);
     expect(selected).toEqual(
       expect.arrayContaining([
-        "component-gallery",
+        "gallery-foundations",
+        "gallery-index",
         "workspaces",
         "workspace-detail",
-        "memories",
       ]),
     );
   });
@@ -168,5 +184,13 @@ describe("resolveVisualScenarios", () => {
     expect(scenario?.viewports.map((viewport) => viewport.name)).toEqual([
       "mobile",
     ]);
+  });
+
+  it("registers one gallery scenario per category page", () => {
+    expect(
+      resolveVisualScenarios(["gallery-foundations", "gallery-charts", "gallery-transcripts"]).map(
+        (scenario) => scenario.path,
+      ),
+    ).toEqual(["/dev/foundations", "/dev/charts", "/dev/transcripts"]);
   });
 });

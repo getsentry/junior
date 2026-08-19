@@ -25,8 +25,9 @@ named components so pages stay thin and taste stays consistent.
   large one-off Tailwind blocks inside a page when the same surface already has,
   or should have, a named component.
 - When you add or change a shared dashboard component, add or update a fixture
-  on the local component gallery (`/dev`) so visual review can cover the shared
-  surface. Feature-only widgets do not need gallery coverage.
+  on the matching local gallery section (`/dev/foundations`, `/dev/charts`, or
+  `/dev/transcripts`) so visual review can cover only that surface. Keep `/dev`
+  as the catalog index. Feature-only widgets do not need gallery coverage.
 - Do not add filler eyebrows or section labels that only restate the page title,
   chart purpose, or an obvious section role. If the page or chart title already
   names the content, skip decorative headers such as `Automation`,
