@@ -828,9 +828,11 @@ describe("dashboard canonical-event components", () => {
       ]),
     );
 
-    expect(html).toContain(
+    expect(html).not.toContain(
       'data-transcript-rail-event="attachments_delivered"',
     );
+    expect(html).toContain("Junior");
+    expect(html).toContain("bg-[#0f191c]");
     expect(html).not.toContain("files delivered");
     expect(html).toContain('alt="chart.png"');
     expect(html).toContain("notes.txt");

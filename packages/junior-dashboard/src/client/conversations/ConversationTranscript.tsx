@@ -177,12 +177,11 @@ function VisibleTranscriptEntries(props: {
         )
       }
       renderAttachmentsDelivered={(entry) => (
-        <TranscriptRailEvent kind="attachments_delivered">
-          <TranscriptAttachmentsDeliveredView
-            conversation={props.conversation}
-            part={entry.part}
-          />
-        </TranscriptRailEvent>
+        <TranscriptAttachmentsDeliveredView
+          conversation={props.conversation}
+          part={entry.part}
+          timestamp={entry.timestamp}
+        />
       )}
       renderStructuredEvent={(entry) => (
         <TranscriptRailEvent
@@ -383,12 +382,11 @@ function RedactedTranscriptView(props: {
         )
       }
       renderAttachmentsDelivered={(entry) => (
-        <TranscriptRailEvent kind="attachments_delivered">
-          <TranscriptAttachmentsDeliveredView
-            conversation={props.conversation}
-            part={entry.part}
-          />
-        </TranscriptRailEvent>
+        <TranscriptAttachmentsDeliveredView
+          conversation={props.conversation}
+          part={entry.part}
+          timestamp={entry.timestamp}
+        />
       )}
       renderStructuredEvent={(entry) => (
         <TranscriptRailEvent

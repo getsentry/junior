@@ -1,11 +1,18 @@
 import { FileText } from "lucide-react";
 
+import { getDashboardAgentName } from "../agentName";
 import { ImageAttachment } from "../components/ImageAttachment";
+import { formatMessageTimestamp } from "../format";
 import type {
   ConversationTranscript,
   TranscriptViewAttachmentsDeliveredPart,
   TranscriptViewDeliveredAttachment,
 } from "../types";
+import {
+  TranscriptHeadingMeta,
+  TranscriptHeadingRow,
+} from "./TranscriptHeadingRow";
+import { transcriptMessageClass } from "./TranscriptMessageView";
 import { HighlightText, useTranscriptSearch } from "./transcriptSearch";
 
 function mayDisplayInline(contentType: string): boolean {
@@ -82,16 +89,36 @@ function AttachmentItem(props: {
 export function TranscriptAttachmentsDeliveredView(props: {
   conversation: ConversationTranscript;
   part: TranscriptViewAttachmentsDeliveredPart;
+  timestamp?: number;
 }) {
+  const timestamp = formatMessageTimestamp(props.timestamp);
+
   return (
-    <div className="grid max-w-sm gap-2">
-      {props.part.attachments.map((attachment) => (
-        <AttachmentItem
-          attachment={attachment}
-          conversationId={props.conversation.conversationId}
-          key={attachment.id}
-        />
-      ))}
-    </div>
+    <article className={transcriptMessageClass("assistant")}>
+      <TranscriptHeadingRow
+        left={
+          <span className="inline-block max-w-full truncate font-display text-xs font-semibold leading-tight text-cyan-100 md:text-sm">
+            {getDashboardAgentName()}
+          </span>
+        }
+        leftClassName="text-xs leading-snug text-cyan-100/70"
+        right={
+          timestamp ? (
+            <TranscriptHeadingMeta className="text-2xs leading-snug text-dashboard-text-muted/80 md:leading-none">
+              {timestamp}
+            </TranscriptHeadingMeta>
+          ) : undefined
+        }
+      />
+      <div className="grid max-w-sm gap-2">
+        {props.part.attachments.map((attachment) => (
+          <AttachmentItem
+            attachment={attachment}
+            conversationId={props.conversation.conversationId}
+            key={attachment.id}
+          />
+        ))}
+      </div>
+    </article>
   );
 }
