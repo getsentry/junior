@@ -1,5 +1,5 @@
 import type { User } from "@sentry/junior-plugin-api";
-import { and, asc, desc, eq, isNull, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, isNotNull, isNull, type SQL } from "drizzle-orm";
 import { getDb } from "@/chat/db";
 import type { Conversation } from "@/chat/conversations/store";
 import { locationFromRow } from "@/chat/conversations/sql/location";
@@ -54,6 +54,7 @@ function conversationFeedMembershipFilter(
 async function conversationRows(
   db: JuniorDatabase,
   limit: number,
+  status: "active" | "archived",
   filter?: ConversationFeedMembership,
 ) {
   return db
@@ -81,7 +82,9 @@ async function conversationRows(
     .where(
       and(
         isNull(juniorConversations.parentConversationId),
-        isNull(juniorConversations.archivedAt),
+        status === "archived"
+          ? isNotNull(juniorConversations.archivedAt)
+          : isNull(juniorConversations.archivedAt),
         conversationFeedMembershipFilter(filter),
       ),
     )
@@ -228,6 +231,7 @@ export async function readConversationFeedFromSql(
   options: {
     actorEmail?: string;
     limit?: number;
+    status?: "active" | "archived";
     viewer?: User;
   } = {},
 ): Promise<ConversationFeed> {
@@ -236,6 +240,7 @@ export async function readConversationFeedFromSql(
   const rows = await conversationRows(
     db,
     options.limit ?? CONVERSATION_FEED_LIMIT,
+    options.status ?? "active",
     conversationFeedFilter(options),
   );
   const conversations = rows.map((row) => conversationFromRow(row));
@@ -347,7 +352,11 @@ export async function readConversationFeedFromSql(
  * This filter is not an authorization boundary.
  */
 export async function readConversationFeed(
-  options: { actorEmail?: string; viewer?: User } = {},
+  options: {
+    actorEmail?: string;
+    status?: "active" | "archived";
+    viewer?: User;
+  } = {},
 ): Promise<ConversationFeed> {
   return conversationFeedSchema.parse(
     await readConversationFeedFromSql(options),

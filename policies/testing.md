@@ -9,7 +9,7 @@ refactors should not churn brittle unit tests.
 ## Policy
 
 - Prefer integration tests for product and runtime behavior when the contract
-  can be proven through real wiring with only the allowed fake edge.
+  can be proven through real wiring with only Slack and LLM fakes.
 - Prefer evals for agent-facing behavior that depends on model reading,
   continuity, routing, or reply quality. Assert through normalized session,
   tool, and artifact surfaces. Fixed persistence belongs in integration tests.
@@ -42,7 +42,10 @@ refactors should not churn brittle unit tests.
   stack mocks across persistence, runtime, delivery, and reply execution to fake
   a product workflow.
 - Integration tests must not mock Junior-owned modules. Compose real Junior
-  wiring and fake only the external edge named by the test harness.
+  wiring. Fake only Slack and LLMs, and only through the shared harnesses (Slack
+  MSW/outbox fixtures and model-stream). Do not mock other external edges such
+  as `@vercel/sandbox`, provider SDKs, or other live infrastructure the product
+  calls. Put those fakes in component tests when the contract needs them.
 - Prefer existing harnesses, shared fixtures, memory adapters, MSW handlers, and
   outboxes over ad hoc mocks or local payload schemas.
 - Assert user-visible outcomes and external contracts before implementation

@@ -72,6 +72,17 @@ export function pluginSupportsEvent(
   );
 }
 
+/** Return install guidance for one registered resource event type. */
+export function resourceEventGuidance(
+  catalog: ResourceEventCatalog,
+  namespace: string,
+  eventType: string,
+): string | undefined {
+  return catalog[namespace]?.resourceTypes.find((resourceType) =>
+    resourceType.supportedEvents.includes(eventType),
+  )?.guidance?.[eventType];
+}
+
 /** Normalize one selector with the convention declared by its plugin. */
 export function normalizeEventIdentifier(
   catalog: ResourceEventCatalog,

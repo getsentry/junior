@@ -12,15 +12,22 @@ named components so pages stay thin and taste stays consistent.
 - Prefer component-owned Tailwind utility classes over dashboard or feature
   stylesheets.
 - Prefer small named components for repeated UI surfaces, such as `Field`,
-  `Section`, `Toolbar`, `EmptyState`, or `StatusIndicator`, instead of repeated
-  `<div className="field">` style hooks.
+  `TextInput`, `StatusChip`, `Section`, `Toolbar`, or `EmptyState`, instead of
+  repeated `<div className="field">` style hooks.
 - Put repeated semantic surfaces in shared client components outside the route
-  or page module. Charts, drawers, tables, secondary nav, and page time-range
-  controls belong under a shared client area such as `components/`, not as
-  copy-pasted route markup.
+  or page module. For the dashboard, that home is
+  `packages/junior-dashboard/src/client/components/`. Charts, drawers, tables,
+  secondary nav, and page time-range controls belong there, not as copy-pasted
+  route markup. See that directory's `README.md` for the local kit map.
+- Promote a surface into a shared component on the second real use, or when a
+  third use is already certain. Do not extract on taste alone.
 - Keep page modules thin. Compose shared components and wire data. Do not grow
   large one-off Tailwind blocks inside a page when the same surface already has,
   or should have, a named component.
+- When you add or change a shared dashboard component, add or update a fixture
+  on the matching local gallery section (`/dev/foundations`, `/dev/charts`, or
+  `/dev/transcripts`) so visual review can cover only that surface. Keep `/dev`
+  as the catalog index. Feature-only widgets do not need gallery coverage.
 - Do not add filler eyebrows or section labels that only restate the page title,
   chart purpose, or an obvious section role. If the page or chart title already
   names the content, skip decorative headers such as `Automation`,
@@ -47,8 +54,8 @@ named components so pages stay thin and taste stays consistent.
 
 ## Exceptions
 
-- Shared design-system packages may expose components whose internals are styled
-  elsewhere.
+- Do not create a separate published design-system package for Junior UI unless
+  a second product must share the same components.
 - Third-party rendered markup may need narrow wrapper selectors when utilities
   cannot reach the generated DOM safely.
 - A page may keep truly one-off layout glue inline when it is not a repeated

@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import {
   queryOptions,
   useInfiniteQuery,
@@ -37,6 +37,7 @@ import {
   mergeConversationMailboxMessages,
   removeConversationOutboxMessage,
   upsertConversationOutboxMessage,
+  type ConversationMailboxMessage,
   type ConversationOutboxMessage,
 } from "./conversationOutbox";
 import {
@@ -46,6 +47,7 @@ import {
   conversationHistoryVersion,
   loadCompleteConversationTranscript,
   nextConversationHistoryCursor,
+  reuseConversationEventReferences,
   type ConversationHistoryPage,
 } from "./transcript";
 
@@ -56,6 +58,14 @@ export function conversationDetailQueryKey(conversationId: string | undefined) {
 
 function archivedConversationQueryKey(conversationId: string) {
   return ["dashboard", "archived-conversation", conversationId] as const;
+}
+
+/** Read active/archived status from a dashboard conversations query key. */
+function conversationFeedStatus(
+  queryKey: readonly unknown[],
+): "active" | "archived" | undefined {
+  const status = queryKey[queryKey.length - 1];
+  return status === "active" || status === "archived" ? status : undefined;
 }
 
 type ArchivedConversationSnapshot = {
@@ -127,6 +137,16 @@ export function conversationDetailQueryOptions(
     enabled: Boolean(conversationId),
     queryKey: conversationDetailQueryKey(conversationId),
     queryFn: ({ signal }) => readConversationData(conversationId!, signal),
+    // Keep immutable events stable across metadata-only polls. Consumers can
+    // skip transcript work while status and timing metadata still stay fresh.
+    structuralSharing: (previous, next) => {
+      if (!next || typeof next !== "object") return next;
+      if (!previous || typeof previous !== "object") return next;
+      return reuseConversationEventReferences(
+        previous as ConversationDetailReport,
+        next as ConversationDetailReport,
+      );
+    },
     refetchInterval: (query) =>
       query.state.data?.status === "active" ? 2_000 : false,
     retry: false,
@@ -316,24 +336,23 @@ export function useArchiveConversation(
           archivedQueryKey,
         );
       const archivedAt = args.archived ? new Date().toISOString() : undefined;
-      const archivedSnapshot = args.archived
-        ? (buildArchivedConversationSnapshot(previousFeeds, conversationId) ??
-          previousArchivedSnapshot)
-        : previousArchivedSnapshot;
+      // Snapshot from any loaded feed, including archived-only fixtures that
+      // were never archived through this client session.
+      const archivedSnapshot =
+        buildArchivedConversationSnapshot(previousFeeds, conversationId) ??
+        previousArchivedSnapshot;
 
       previousFeeds.forEach(([queryKey, feed]) => {
         if (!feed) return;
         const conversationExists = feed.conversations.some(
           (conversation) => conversation.conversationId === conversationId,
         );
+        const feedStatus = conversationFeedStatus(queryKey);
         const shouldRestore =
           !args.archived &&
           !conversationExists &&
-          Boolean(
-            archivedSnapshot?.feedQueryHashes.includes(
-              JSON.stringify(queryKey),
-            ),
-          );
+          Boolean(archivedSnapshot) &&
+          feedStatus !== "archived";
         const conversations = shouldRestore
           ? [
               ...feed.conversations,
@@ -482,10 +501,21 @@ export function useConversationData(conversationId: string | undefined) {
     staleTime: Infinity,
     gcTime: Infinity,
   });
-  const pendingMessages = useMemo(
-    () => mergeConversationMailboxMessages(pending.data?.messages, outbox.data),
-    [outbox.data, pending.data?.messages],
+  // Live polls mint fresh server arrays every 2s. Reuse the previous list when
+  // visible mailbox rows are unchanged so the reply footer can skip work while
+  // the reader types.
+  const pendingMessagesRef = useRef<ConversationMailboxMessage[] | undefined>(
+    undefined,
   );
+  const pendingMessages = useMemo(() => {
+    const next = mergeConversationMailboxMessages(
+      pending.data?.messages,
+      outbox.data,
+      pendingMessagesRef.current,
+    );
+    pendingMessagesRef.current = next;
+    return next;
+  }, [outbox.data, pending.data?.messages]);
   const invalidHistoryCursor = isInvalidCursorError(history.error);
   const shouldRefreshDetail = Boolean(
     detail.data &&

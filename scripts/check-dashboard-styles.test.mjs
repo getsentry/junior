@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  findAdditiveSafeAreaPadding,
   findArbitraryTextSizes,
+  findClassicViewportHeights,
   findDashboardUtilityAssertions,
   findNonstandardNeutralTextColors,
   findUndersizedHardcodedFontSizes,
@@ -84,6 +86,44 @@ test("reports hardcoded font sizes below the 12px floor", () => {
     [
       'src/chart.tsx:1: <text fontSize="9">axis</text>',
       'src/chart.tsx:2: <text fontSize="11">still small</text>',
+    ],
+  );
+});
+
+test("reports classic 100vh and allows dvh", () => {
+  assert.deepEqual(
+    findClassicViewportHeights([
+      {
+        path: "src/shell.tsx",
+        contents: [
+          'const bad = "min-h-[calc(100vh-5rem)]";',
+          'const ok = "h-[100dvh] min-h-[var(--dashboard-viewport-height)]";',
+          "// note about 100vh stays a comment",
+          "/* fallback: 100vh */",
+          '{/* className="h-[100vh]" */}',
+          " * JSDoc 100vh continuation",
+        ].join("\n"),
+      },
+    ]),
+    ['src/shell.tsx:1: const bad = "min-h-[calc(100vh-5rem)]";'],
+  );
+});
+
+test("reports additive safe-area padding and allows max()", () => {
+  assert.deepEqual(
+    findAdditiveSafeAreaPadding([
+      {
+        path: "src/composer.tsx",
+        contents: [
+          'const stacked = "pb-[calc(0.375rem+env(safe-area-inset-bottom))]";',
+          'const stackedReverse = "pb-[calc(env(safe-area-inset-bottom)+0.375rem)]";',
+          'const ok = "pb-[max(0.375rem,env(safe-area-inset-bottom))]";',
+        ].join("\n"),
+      },
+    ]),
+    [
+      'src/composer.tsx:1: const stacked = "pb-[calc(0.375rem+env(safe-area-inset-bottom))]";',
+      'src/composer.tsx:2: const stackedReverse = "pb-[calc(env(safe-area-inset-bottom)+0.375rem)]";',
     ],
   );
 });

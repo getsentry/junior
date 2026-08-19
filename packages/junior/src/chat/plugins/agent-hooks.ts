@@ -39,6 +39,8 @@ import { runNonInteractiveCommand } from "@/chat/sandbox/noninteractive-command"
 import type { AnyToolDefinition } from "@/chat/tools/definition";
 import { getDashboardConversationLink } from "@/chat/slack/dashboard-link";
 import { canRouteResourceEvents } from "@/chat/resource-events/workspace";
+import { createResourceEventSubscription } from "@/chat/resource-events/store";
+import { RESOURCE_SUBSCRIPTION_DEFAULT_TTL_MS } from "@/chat/resource-events/tool-support";
 import { getSlackToolContext } from "@/chat/slack/tool-support/context";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
@@ -614,9 +616,56 @@ export function getPluginTools(
         })
       : undefined;
     const mcp = pluginMcpContext(plugin, context);
-    const resourceEvents = {
-      canSubscribe:
-        context.source.platform === "slack" && canRouteResourceEvents(),
+    const canSubscribe =
+      context.source.platform === "slack" &&
+      context.destination.platform === "slack" &&
+      Boolean(context.conversationId) &&
+      canRouteResourceEvents() &&
+      Boolean(plugin.resourceEvents) &&
+      plugin.resourceEvents?.isEnabled?.() !== false;
+    const resourceEvents: ToolRegistrationHookContext["resourceEvents"] = {
+      canSubscribe,
+      async subscribe(input) {
+        if (!canSubscribe || context.destination.platform !== "slack") {
+          throw new Error(
+            "Resource subscriptions are not available in this conversation.",
+          );
+        }
+        const registration = plugin.resourceEvents;
+        const resourceType = registration?.resourceTypes.find(
+          (candidate) => candidate.type === input.resource.type,
+        );
+        if (
+          input.resource.namespace !== pluginName ||
+          !resourceType ||
+          input.events.length === 0 ||
+          input.events.some(
+            (eventType) => !resourceType.supportedEvents.includes(eventType),
+          )
+        ) {
+          throw new Error(
+            "Resource subscription contains an event or resource that the plugin does not support.",
+          );
+        }
+        const subscription = await createResourceEventSubscription({
+          conversationId: context.conversationId!,
+          destination: context.destination,
+          events: input.events,
+          expiresAtMs: Date.now() + RESOURCE_SUBSCRIPTION_DEFAULT_TTL_MS,
+          intent: input.intent,
+          label: input.resource.label,
+          namespace: pluginName,
+          identifier: normalizeResourceEventIdentifier(
+            registration,
+            input.resource.identifier,
+          ),
+          resourceType: input.resource.type,
+        });
+        return {
+          events: subscription.events,
+          id: subscription.id,
+        };
+      },
     };
     const resolveActor =
       context.resolveActorIdentity ?? (async () => undefined);

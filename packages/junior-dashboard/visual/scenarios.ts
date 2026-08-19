@@ -4,11 +4,20 @@ export type VisualViewport = {
   width: number;
 };
 
+export type VisualScenarioPrepare =
+  | "conversation-detail-focused"
+  | "new-conversation-focused";
+
 export type VisualScenario = {
   componentGallery?: boolean;
   id: string;
   label: string;
   path: string;
+  /**
+   * Optional interaction before the shot. Capture owns the Playwright steps so
+   * this registry stays data-only.
+   */
+  prepare?: VisualScenarioPrepare;
   /** Accessible heading used as the ready-state signal. */
   ready: string;
   viewports: VisualViewport[];
@@ -44,6 +53,26 @@ export const VISUAL_SCENARIOS: VisualScenario[] = [
     path: `/conversations/${encodeURIComponent(ACTIVE_CONVERSATION_ID)}`,
     ready: "Investigate checkout latency",
     viewports: [DESKTOP, MOBILE],
+  },
+  {
+    id: "conversation-detail-focused",
+    label: "Conversation detail · focused composer",
+    path: `/conversations/${encodeURIComponent(ACTIVE_CONVERSATION_ID)}`,
+    // Focus the reply composer and shrink the visual viewport so the PR
+    // screenshot shows the input docked above the keyboard with chat chrome.
+    prepare: "conversation-detail-focused",
+    ready: "Investigate checkout latency",
+    viewports: [MOBILE],
+  },
+  {
+    id: "conversation-create-focused",
+    label: "New conversation · focused composer",
+    path: "/",
+    // Open create mode, focus the composer, and shrink the visual viewport so
+    // the PR screenshot shows the input docked above the keyboard.
+    prepare: "new-conversation-focused",
+    ready: "Conversations",
+    viewports: [MOBILE],
   },
   {
     id: "person-profile",
@@ -92,13 +121,45 @@ export const VISUAL_SCENARIOS: VisualScenario[] = [
   },
   {
     componentGallery: true,
-    id: "component-gallery",
-    label: "Component gallery",
+    id: "gallery-index",
+    label: "Component gallery index",
     path: "/dev",
     ready: "Component gallery",
     viewports: [DESKTOP],
   },
+  {
+    componentGallery: true,
+    id: "gallery-foundations",
+    label: "Gallery · Foundations",
+    path: "/dev/foundations",
+    ready: "Foundations",
+    viewports: [DESKTOP],
+  },
+  {
+    componentGallery: true,
+    id: "gallery-charts",
+    label: "Gallery · Charts",
+    path: "/dev/charts",
+    ready: "Charts",
+    viewports: [DESKTOP],
+  },
+  {
+    componentGallery: true,
+    id: "gallery-transcripts",
+    label: "Gallery · Transcripts",
+    path: "/dev/transcripts",
+    ready: "Transcripts",
+    viewports: [DESKTOP],
+  },
 ];
+
+/** Prefer these gallery scenarios under the selection cap when kit files change. */
+const GALLERY_SCENARIO_PRIORITY = [
+  "gallery-foundations",
+  "gallery-charts",
+  "gallery-transcripts",
+  "gallery-index",
+] as const;
 
 const SCENARIO_BY_ID = new Map(
   VISUAL_SCENARIOS.map((scenario) => [scenario.id, scenario]),
@@ -112,10 +173,39 @@ type PathRule = {
 const PATH_RULES: PathRule[] = [
   {
     match: (filePath) =>
+      /\/conversations\/Transcript(?:Markdown|Text|ToolView)\.tsx$/.test(
+        filePath,
+      ),
+    scenarioIds: ["gallery-transcripts"],
+  },
+  {
+    // Keep chart-gallery paths ahead of people/system feature rules.
+    match: (filePath) =>
+      filePath.startsWith(
+        "packages/junior-dashboard/src/client/components/charts/",
+      ) ||
+      filePath.startsWith(
+        "packages/junior-dashboard/src/client/pages/people/ContributionGrid",
+      ) ||
+      filePath.startsWith(
+        "packages/junior-dashboard/src/client/pages/locations/LocationDirectoryActivityChart",
+      ) ||
+      filePath.startsWith(
+        "packages/junior-dashboard/src/client/pages/system/ConversationActivityChart",
+      ),
+    scenarioIds: ["gallery-charts"],
+  },
+  {
+    match: (filePath) =>
       filePath.startsWith(
         "packages/junior-dashboard/src/client/conversations/",
       ) || filePath.includes("/mock-reporting/"),
-    scenarioIds: ["conversations", "conversation-detail"],
+    scenarioIds: [
+      "conversations",
+      "conversation-detail",
+      "conversation-detail-focused",
+      "conversation-create-focused",
+    ],
   },
   {
     match: (filePath) =>
@@ -159,16 +249,25 @@ const PATH_RULES: PathRule[] = [
       ),
     scenarioIds: [
       "conversations",
-      "conversation-detail",
+      "conversation-detail-focused",
+      "conversation-create-focused",
       "system",
-      "component-gallery",
     ],
   },
   {
     match: (filePath) =>
-      filePath.startsWith("packages/junior-dashboard/src/client/pages/dev/") ||
+      filePath.startsWith("packages/junior-dashboard/src/client/pages/dev/"),
+    scenarioIds: [
+      "gallery-foundations",
+      "gallery-charts",
+      "gallery-transcripts",
+      "gallery-index",
+    ],
+  },
+  {
+    match: (filePath) =>
       filePath.startsWith("packages/junior-dashboard/src/client/components/"),
-    scenarioIds: ["component-gallery"],
+    scenarioIds: ["gallery-foundations", "gallery-index"],
   },
   {
     match: (filePath) =>
@@ -176,7 +275,7 @@ const PATH_RULES: PathRule[] = [
       !filePath.startsWith("packages/junior-dashboard/e2e/") &&
       !filePath.startsWith("packages/junior-dashboard/tests/") &&
       !filePath.startsWith("packages/junior-dashboard/visual/"),
-    scenarioIds: ["component-gallery"],
+    scenarioIds: ["gallery-index"],
   },
 ];
 
@@ -214,9 +313,13 @@ export function selectVisualScenarioIds(
     }
   }
 
-  return VISUAL_SCENARIOS.map((scenario) => scenario.id)
-    .filter((id) => selected.has(id))
-    .slice(0, max);
+  // Prefer focused gallery pages first so shared kit diffs stay reviewable.
+  const galleryIds = GALLERY_SCENARIO_PRIORITY.filter((id) => selected.has(id));
+  const galleryIdSet = new Set<string>(galleryIds);
+  const rest = VISUAL_SCENARIOS.map((scenario) => scenario.id).filter(
+    (id) => selected.has(id) && !galleryIdSet.has(id),
+  );
+  return [...galleryIds, ...rest].slice(0, max);
 }
 
 /** Resolve scenario records for selected ids, preserving registry order. */

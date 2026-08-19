@@ -303,6 +303,7 @@ function githubToolsContext(input?: {
   }) => Promise<Response>;
   resolveActor?: ToolRegistrationHookContext["users"]["resolveActor"];
   stateSet?: (input: { key: string; value: unknown }) => Promise<void> | void;
+  subscribe?: ToolRegistrationHookContext["resourceEvents"]["subscribe"];
 }) {
   const conversationId = input?.conversationId ?? "local:test:github-tool";
   const annotations: ConversationAnnotationInput[] = [];
@@ -354,7 +355,15 @@ function githubToolsContext(input?: {
       },
     },
     model: {},
-    resourceEvents: { canSubscribe: true },
+    resourceEvents: {
+      canSubscribe: true,
+      subscribe:
+        input?.subscribe ??
+        (async ({ events }) => ({
+          events,
+          id: "subscription-1",
+        })),
+    },
     users: {
       resolveActor: input?.resolveActor ?? (async () => undefined),
     },
@@ -521,6 +530,22 @@ describe("github plugin", () => {
         "pull_request.ready_for_review",
         "pull_request.merged",
       ]),
+    });
+  });
+
+  it("registers install guidance for pull request events", () => {
+    const pullRequest = githubPlugin({
+      pullRequestEvents: {
+        guidance: {
+          "pull_request.checks.failed": "Inspect the failed checks.",
+        },
+      },
+    }).resourceEvents?.resourceTypes.find(
+      (resourceType) => resourceType.type === "pull_request",
+    );
+
+    expect(pullRequest?.guidance).toEqual({
+      "pull_request.checks.failed": "Inspect the failed checks.",
     });
   });
 
@@ -1241,6 +1266,108 @@ Conversation: \`local:test:old-conversation\`
     ]);
   });
 
+  it("subscribes configured events after creating a pull request", async () => {
+    process.env.GITHUB_WEBHOOK_SECRET = "test-secret";
+    const subscribe = vi.fn(async ({ events }) => ({
+      events,
+      id: "subscription-1",
+    }));
+    const ctx = githubToolsContext({ subscribe });
+    const tool = githubPlugin({
+      pullRequestEvents: {
+        subscribeAfterCreate: {
+          events: [
+            "pull_request.checks.failed",
+            "pull_request.review.changes_requested",
+          ],
+          intent: "Report failed checks and requested changes.",
+        },
+      },
+    }).hooks?.tools?.(ctx as any)?.createPullRequest;
+
+    await expect(
+      tool?.execute?.(
+        {
+          repo: "getsentry/junior",
+          title: "Typed PR",
+          head: "feature",
+          base: "main",
+        },
+        { toolCallId: "call-create-pull-request-subscribe" },
+      ),
+    ).resolves.toMatchObject({
+      subscribable: {
+        suggestedEvents: expect.not.arrayContaining([
+          "pull_request.checks.failed",
+          "pull_request.review.changes_requested",
+        ]),
+      },
+      subscription: {
+        events: [
+          "pull_request.checks.failed",
+          "pull_request.review.changes_requested",
+        ],
+        id: "subscription-1",
+      },
+    });
+    expect(subscribe).toHaveBeenCalledWith(
+      expect.objectContaining({
+        intent: "Report failed checks and requested changes.",
+        resource: expect.objectContaining({
+          identifier: "getsentry/junior#660",
+          type: "pull_request",
+        }),
+      }),
+    );
+  });
+
+  it("returns the created pull request when subscribe-after-create fails", async () => {
+    process.env.GITHUB_WEBHOOK_SECRET = "test-secret";
+    const warn = vi.fn();
+    const subscribe = vi.fn(async () => {
+      throw new Error("subscription store unavailable");
+    });
+    const ctx = githubToolsContext({ subscribe });
+    ctx.log = { ...ctx.log, warn };
+    const tool = githubPlugin({
+      pullRequestEvents: {
+        subscribeAfterCreate: {
+          events: ["pull_request.checks.failed"],
+          intent: "Report failed checks.",
+        },
+      },
+    }).hooks?.tools?.(ctx as any)?.createPullRequest;
+
+    const result = await tool?.execute?.(
+      {
+        repo: "getsentry/junior",
+        title: "Typed PR",
+        head: "feature",
+        base: "main",
+      },
+      { toolCallId: "call-create-pull-request-subscribe-fail" },
+    );
+    expect(result).toMatchObject({
+      number: 660,
+      url: "https://github.com/getsentry/junior/issues/660",
+      subscribable: {
+        suggestedEvents: expect.arrayContaining([
+          "pull_request.checks.failed",
+        ]),
+      },
+    });
+    expect(result).not.toHaveProperty("subscription");
+    expect(subscribe).toHaveBeenCalledOnce();
+    expect(warn).toHaveBeenCalledWith(
+      "github.pull_request.subscribe_after_create.failed",
+      expect.objectContaining({
+        error: "subscription store unavailable",
+        number: 660,
+        repo: "getsentry/junior",
+      }),
+    );
+  });
+
   it("prefers stored identity names for requester attribution", async () => {
     const ctx = githubToolsContext({
       actor: {
@@ -1836,7 +1963,7 @@ Conversation: \`local:test:old-conversation\`
         bodyText: JSON.stringify({
           operationName: "AddIssueComment",
           query:
-            "mutation AddIssueComment { addComment(input: {subjectId: \"I_kwDO\", body: \"test\"}) { clientMutationId } }",
+            'mutation AddIssueComment { addComment(input: {subjectId: "I_kwDO", body: "test"}) { clientMutationId } }',
         }),
       }),
     ).rejects.toThrow("GraphQL mutations are not enabled");

@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router";
 
 import {
+  useConversationsData,
   useDashboardCoreData,
   usePersonalSpendData,
   usePluginUserPagesData,
@@ -15,8 +16,13 @@ import {
   DashboardChromeProvider,
 } from "./components/layout/DashboardChrome";
 import { DashboardHeader } from "./components/layout/DashboardHeader";
-import { setDashboardTimeZone } from "./format";
+import {
+  buildConversations,
+  conversationDisplayTitle,
+  setDashboardTimeZone,
+} from "./format";
 import { ConversationWorkspace } from "./conversations/ConversationWorkspace";
+import { useConversationData } from "./conversations/queries";
 import { useMobileViewportHeight } from "./mobileViewport";
 import { ComponentsPage } from "./pages/dev/ComponentsPage";
 import { LocationDetailPage } from "./pages/locations/LocationDetailPage";
@@ -75,6 +81,20 @@ export function DashboardShell() {
     location.pathname === "/" ||
     location.pathname === "/conversations" ||
     location.pathname.startsWith("/conversations/");
+  const conversationId = conversationIdFromPath(location.pathname);
+  const conversationsQuery = useConversationsData();
+  // Detail query shares the page cache so titles outside the top-50 feed stay accurate.
+  const conversationDetail = useConversationData(conversationId);
+  const mobileConversation = useMemo(() => {
+    if (!conversationId) return undefined;
+    return buildConversations(
+      conversationsQuery.data?.conversations ?? [],
+    ).find((item) => item.id === conversationId);
+  }, [conversationId, conversationsQuery.data?.conversations]);
+  const mobileConversationTitle = conversationId
+    ? conversationDetail.data?.displayTitle?.trim() ||
+      conversationDisplayTitle(mobileConversation)
+    : undefined;
   const primaryNavItems = [
     ...(loggedIn
       ? [{ key: "tasks", label: "Tasks", to: "/tasks" }]
@@ -118,7 +138,7 @@ export function DashboardShell() {
         className={cn(
           "grid font-sans text-dashboard-text",
           workspace
-            ? "fixed inset-x-0 top-[var(--dashboard-viewport-offset-top,0px)] h-[var(--dashboard-viewport-height,100dvh)] min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden md:relative md:inset-auto md:h-dvh"
+            ? "fixed inset-x-0 top-[var(--dashboard-viewport-offset-top,0px)] h-[var(--dashboard-viewport-height,100dvh)] max-h-[var(--dashboard-viewport-height,100dvh)] min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden overscroll-none md:relative md:inset-auto md:h-dvh md:max-h-none md:overscroll-auto"
             : "relative min-h-screen grid-rows-[auto_1fr]",
         )}
         ref={shellRef}
@@ -129,9 +149,44 @@ export function DashboardShell() {
           header={
             <DashboardHeader
               compact={workspace}
+              mobileBackTo={conversationId ? "/" : undefined}
+              mobileTitle={mobileConversationTitle}
               mobileNavigationOpen={mobileNavigationOpen}
               navItems={primaryNavItems}
               onMobileNavigationOpenChange={setMobileNavigationOpen}
+              mobileIdentity={
+                loggedIn ? (
+                  <ProfileMenu
+                    identity={data!.me}
+                    onSignOut={signOut}
+                    spend={personalSpendQuery.data}
+                    userPages={userPages}
+                    variant="sheet-identity"
+                  />
+                ) : undefined
+              }
+              mobileProfile={
+                loggedIn ? (
+                  <ProfileMenu
+                    identity={data!.me}
+                    onSignOut={signOut}
+                    spend={personalSpendQuery.data}
+                    userPages={userPages}
+                    variant="sheet-links"
+                  />
+                ) : undefined
+              }
+              mobileSpend={
+                loggedIn ? (
+                  <ProfileMenu
+                    identity={data!.me}
+                    onSignOut={signOut}
+                    spend={personalSpendQuery.data}
+                    userPages={userPages}
+                    variant="sheet-spend"
+                  />
+                ) : undefined
+              }
               profile={
                 loggedIn ? (
                   <ProfileMenu
@@ -439,6 +494,17 @@ export function DashboardShell() {
       </main>
     </DashboardChromeProvider>
   );
+}
+
+/** Read the selected conversation id from a workspace detail path. */
+function conversationIdFromPath(pathname: string): string | undefined {
+  const match = pathname.match(/^\/conversations\/([^/]+)$/);
+  if (!match?.[1]) return undefined;
+  try {
+    return decodeURIComponent(match[1]);
+  } catch {
+    return match[1];
+  }
 }
 
 function LegacySystemRedirect(props: { section: "locations" | "people" }) {
