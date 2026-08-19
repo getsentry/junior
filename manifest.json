@@ -1,0 +1,51 @@
+{
+  "commitSha": "b20c844aa3b7b70fc0fd36eeb55d6f6cee4595f9",
+  "mode": "path",
+  "reasons": [
+    "packages/junior-dashboard/e2e/conversations-mobile.spec.ts",
+    "packages/junior-dashboard/e2e/conversations.spec.ts",
+    "packages/junior-dashboard/src/client/api.ts",
+    "packages/junior-dashboard/src/client/conversations/ConversationSidebar.tsx",
+    "packages/junior-dashboard/src/client/conversations/ConversationWorkspace.tsx",
+    "packages/junior-dashboard/src/client/conversations/queries.ts",
+    "packages/junior-dashboard/src/client/conversations/transcriptBottomPinning.ts",
+    "packages/junior-dashboard/src/client/format.ts",
+    "packages/junior-dashboard/src/mock-reporting/fixtures.ts",
+    "packages/junior-dashboard/src/mock-reporting/routes.ts",
+    "packages/junior-dashboard/tests/dashboard-mock-routes.test.ts",
+    "packages/junior-dashboard/tests/format.test.ts"
+  ],
+  "scenarioIds": [
+    "conversations",
+    "conversation-detail",
+    "conversation-detail-focused",
+    "conversation-create-focused"
+  ],
+  "shots": [
+    {
+      "file": "conversations__desktop.png",
+      "label": "Conversations · desktop"
+    },
+    {
+      "file": "conversations__mobile.png",
+      "label": "Conversations · mobile"
+    },
+    {
+      "file": "conversation-detail__desktop.png",
+      "label": "Conversation detail · desktop"
+    },
+    {
+      "file": "conversation-detail__mobile.png",
+      "label": "Conversation detail · mobile"
+    },
+    {
+      "file": "conversation-detail-focused__mobile.png",
+      "label": "Conversation detail · focused composer · mobile"
+    },
+    {
+      "file": "conversation-create-focused__mobile.png",
+      "label": "New conversation · focused composer · mobile"
+    }
+  ],
+  "skipped": false
+}
