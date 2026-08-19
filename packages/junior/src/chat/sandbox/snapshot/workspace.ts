@@ -54,12 +54,8 @@ const COMMAND_STATUS_POLL_TIMEOUT_MS = 1_000;
 const WAIT_YIELD_BUFFER_MS = 40_000;
 
 /** Keep a named builder resumable when the caller stops or Vercel is transient. */
-function isCancelOrTransient(error: unknown, signal?: AbortSignal): boolean {
-  return (
-    signal?.aborted === true ||
-    isAbortError(error) ||
-    isSandboxApiTransientError(error)
-  );
+function isCancelOrTransient(error: unknown): boolean {
+  return isAbortError(error) || isSandboxApiTransientError(error);
 }
 
 function buildLockKey(profileHash: string): string {
@@ -276,7 +272,7 @@ async function finishBuild(
     if (error instanceof Error && error.message === BUILD_TIMEOUT_ERROR) {
       throw error;
     }
-    if (isCancelOrTransient(error, signal)) throw error;
+    if (isCancelOrTransient(error)) throw error;
     await markFailed(workspace, build, error, beforeWrite);
     throw error;
   }
@@ -335,7 +331,7 @@ async function startBuild(params: {
     }
   } catch (error) {
     try {
-      if (!isCancelOrTransient(error, signal)) {
+      if (!isCancelOrTransient(error)) {
         try {
           await params.beforeWrite();
           await setWorkspaceSnapshotBuild(
@@ -481,7 +477,7 @@ async function continueBuild(params: {
     if (error instanceof Error && error.message === BUILD_TIMEOUT_ERROR) {
       throw error;
     }
-    if (isCancelOrTransient(error, params.signal)) throw error;
+    if (isCancelOrTransient(error)) throw error;
     await markFailed(params.workspace, build, error, params.beforeWrite);
     throw error;
   }
@@ -586,7 +582,7 @@ async function advanceWorkspaceSnapshot(params: {
 
 /** Reserve enough host time to persist the waiting tool-result boundary. */
 function shouldYieldWait(shouldYield?: () => boolean): boolean {
-  if (shouldYield) return shouldYield();
+  if (shouldYield?.()) return true;
 
   const deadlineAtMs = getTurnRequestDeadline()?.deadlineAtMs;
   return (

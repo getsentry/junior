@@ -15,6 +15,9 @@ vi.mock("@vercel/sandbox", () => ({
 }));
 
 import { closeDb, getDb } from "@/chat/db";
+import { FUNCTION_TIMEOUT_BUFFER_SECONDS, getChatConfig } from "@/chat/config";
+import { runWithTurnRequestDeadline } from "@/chat/runtime/request-deadline";
+import { deleteWorkspaceSnapshotBuilders } from "@/chat/sandbox/snapshot/builder-sandbox";
 import * as profile from "@/chat/sandbox/snapshot/profile";
 import { getCachedSnapshot } from "@/chat/sandbox/snapshot/resolve";
 import { SANDBOX_RUNTIME } from "@/chat/sandbox/snapshot/runtime";
@@ -171,12 +174,17 @@ describe("Workspace snapshot completion", () => {
       },
       { insertIfMissing: true },
     );
-    sandboxGetMock.mockRejectedValue(new Error("status code 404"));
+    const controller = new AbortController();
+    sandboxGetMock.mockImplementation(async () => {
+      controller.abort();
+      throw new Error("status code 404");
+    });
 
     await expect(
       resolveWorkspaceSnapshot({
         workspace,
         runtime: SANDBOX_RUNTIME,
+        signal: controller.signal,
         shouldYield: () => false,
         applyNetworkPolicy: async () => {},
         removeCredentialRoute: false,
@@ -189,5 +197,54 @@ describe("Workspace snapshot completion", () => {
       build: { status: "failed", error: "status code 404" },
       ready: null,
     });
+  });
+
+  it("keeps the host deadline buffer when the caller can continue", async () => {
+    const workspace = await createWorkspace({
+      name: `snapshot-deadline-${randomUUID()}`,
+      setupScript: "printf ready",
+      repos: [],
+    });
+    const requestBudgetMs = Math.max(
+      1,
+      (getChatConfig().functionMaxDurationSeconds -
+        FUNCTION_TIMEOUT_BUFFER_SECONDS) *
+        1_000,
+    );
+    const requestStartedAtMs = Date.now() - requestBudgetMs + 10_000;
+
+    await expect(
+      runWithTurnRequestDeadline(
+        () =>
+          resolveWorkspaceSnapshot({
+            workspace,
+            runtime: SANDBOX_RUNTIME,
+            shouldYield: () => false,
+            applyNetworkPolicy: async () => {},
+            removeCredentialRoute: false,
+          }),
+        requestStartedAtMs,
+      ),
+    ).rejects.toSatisfy(isWorkspaceSnapshotWaitingError);
+    expect(sandboxCreateMock).not.toHaveBeenCalled();
+  });
+
+  it("attempts every builder cleanup after a provider failure", async () => {
+    const attempted: string[] = [];
+    sandboxGetMock.mockImplementation(async ({ name }: { name: string }) => ({
+      delete: async () => {
+        attempted.push(name);
+        if (name === "builder-one") throw new Error("provider unavailable");
+      },
+    }));
+
+    await expect(
+      deleteWorkspaceSnapshotBuilders([
+        "builder-one",
+        "builder-two",
+        "builder-three",
+      ]),
+    ).rejects.toThrow("provider unavailable");
+    expect(attempted).toEqual(["builder-one", "builder-two", "builder-three"]);
   });
 });

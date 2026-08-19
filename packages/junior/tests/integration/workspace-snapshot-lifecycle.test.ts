@@ -36,11 +36,6 @@ function setupScript(): string {
   ].join("\n");
 }
 
-async function deleteNamedSandbox(name: string | null): Promise<void> {
-  if (!name) return;
-  await deleteWorkspaceSnapshotBuilders([name]);
-}
-
 function profileHash(workspace: Workspace): string {
   const hash = workspaceProfileHash(SANDBOX_RUNTIME, workspace);
   if (!hash) throw new Error(`Workspace ${workspace.name} has no profile`);
@@ -113,10 +108,11 @@ describe.skipIf(!sandboxCredentialsReady())(
     });
 
     afterEach(async () => {
-      for (const name of builderNames.splice(0)) {
-        await deleteNamedSandbox(name);
+      try {
+        await deleteWorkspaceSnapshotBuilders(builderNames.splice(0));
+      } finally {
+        await disconnectStateAdapter();
       }
-      await disconnectStateAdapter();
     });
 
     it(

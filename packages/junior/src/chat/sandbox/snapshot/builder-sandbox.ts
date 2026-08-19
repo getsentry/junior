@@ -21,6 +21,8 @@ export async function deleteWorkspaceSnapshotBuilders(
   names: Iterable<string>,
 ): Promise<void> {
   const credentials = getVercelSandboxCredentials();
+  let hasError = false;
+  let firstError: unknown;
   for (const name of new Set(names)) {
     try {
       const sandbox = await Sandbox.get({
@@ -30,7 +32,11 @@ export async function deleteWorkspaceSnapshotBuilders(
       });
       await sandbox.delete();
     } catch (error) {
-      if (!isSandboxMissingError(error)) throw error;
+      if (!isSandboxMissingError(error)) {
+        if (!hasError) firstError = error;
+        hasError = true;
+      }
     }
   }
+  if (hasError) throw firstError;
 }
