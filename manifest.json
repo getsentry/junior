@@ -1,0 +1,44 @@
+{
+  "commitSha": "bf281d551ce3c00cb73bf0af9e602e1da9388fe1",
+  "mode": "path",
+  "reasons": [
+    "packages/junior-dashboard/src/client/conversations/ConversationTranscript.tsx",
+    "packages/junior-dashboard/src/client/conversations/TranscriptMessageView.tsx",
+    "packages/junior-dashboard/src/client/conversations/TranscriptTimestamp.tsx",
+    "packages/junior-dashboard/src/client/format.ts",
+    "packages/junior-dashboard/tests/format.test.ts"
+  ],
+  "scenarioIds": [
+    "conversations",
+    "conversation-detail",
+    "conversation-detail-focused",
+    "conversation-create-focused"
+  ],
+  "shots": [
+    {
+      "file": "conversations__desktop.png",
+      "label": "Conversations · desktop"
+    },
+    {
+      "file": "conversations__mobile.png",
+      "label": "Conversations · mobile"
+    },
+    {
+      "file": "conversation-detail__desktop.png",
+      "label": "Conversation detail · desktop"
+    },
+    {
+      "file": "conversation-detail__mobile.png",
+      "label": "Conversation detail · mobile"
+    },
+    {
+      "file": "conversation-detail-focused__mobile.png",
+      "label": "Conversation detail · focused composer · mobile"
+    },
+    {
+      "file": "conversation-create-focused__mobile.png",
+      "label": "New conversation · focused composer · mobile"
+    }
+  ],
+  "skipped": false
+}
