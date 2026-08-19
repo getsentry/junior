@@ -22,6 +22,7 @@ import { RedactedMarker } from "./TranscriptRedacted";
 import { SlackMark } from "./SlackMark";
 import { TranscriptText } from "./TranscriptText";
 import { TranscriptTurnContextView } from "./TranscriptTurnContextView";
+import { TranscriptTimestamp } from "./TranscriptTimestamp";
 import { showsSlackSourceIcon } from "./transcriptSource";
 
 /** Render one primary chat message bubble and its attached turn context. */
@@ -54,20 +55,30 @@ export const TranscriptMessageView = memo(
         }}
       >
         <TranscriptMessageHeader
-          meta={[formatMessageTimestamp(props.message.timestamp)]}
+          meta={
+            props.message.role === "assistant"
+              ? [
+                  <TranscriptTimestamp
+                    key="timestamp"
+                    value={props.message.timestamp}
+                  />,
+                ]
+              : [formatMessageTimestamp(props.message.timestamp)]
+          }
           message={props.message}
           conversation={props.conversation}
         />
         {props.view === "raw" ? (
-          <HighlightedCode
-            code={rawText}
-            language={detectLanguage(rawText)}
-          />
+          <HighlightedCode code={rawText} language={detectLanguage(rawText)} />
         ) : (
           <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2">
             {props.message.parts.map((part, index) =>
               part.type === "text" ? (
-                <TranscriptText key={index} role={role} text={part.text ?? ""} />
+                <TranscriptText
+                  key={index}
+                  role={role}
+                  text={part.text ?? ""}
+                />
               ) : null,
             )}
           </div>
@@ -92,9 +103,15 @@ export function RedactedMessageView(props: {
   message: TranscriptViewMessage;
   conversation: ConversationTranscript;
 }) {
-  const meta = [formatMessageTimestamp(props.message.timestamp)].filter(
-    isString,
-  );
+  const meta =
+    props.message.role === "assistant"
+      ? [
+          <TranscriptTimestamp
+            key="timestamp"
+            value={props.message.timestamp}
+          />,
+        ]
+      : [formatMessageTimestamp(props.message.timestamp)];
 
   return (
     <TranscriptMessageShell role={props.message.role}>
@@ -128,12 +145,12 @@ function TranscriptMessageShell(props: {
 }
 
 function TranscriptMessageHeader(props: {
-  meta?: Array<string | undefined>;
+  meta?: ReactNode[];
   message: TranscriptViewMessage;
   conversation: ConversationTranscript;
 }) {
   const showSlack = showsSlackSourceIcon(props.message, props.conversation);
-  const metaText = (props.meta ?? []).filter(isString).join(" · ");
+  const meta = props.meta ?? [];
   const roleLabel = transcriptMessageActorLabel(
     props.conversation,
     props.message,
@@ -148,15 +165,22 @@ function TranscriptMessageHeader(props: {
       }
       leftClassName={transcriptRoleClass(props.message.role)}
       right={
-        showSlack || metaText ? (
+        showSlack || meta.length ? (
           <TranscriptHeadingMeta className="flex min-w-0 items-center gap-1.5 break-words text-2xs leading-snug text-dashboard-text-muted/80 md:leading-none">
             {showSlack ? (
               <span className="inline-flex shrink-0" title="Slack">
                 <SlackMark className="size-3.5" />
               </span>
             ) : null}
-            {showSlack && metaText ? <span aria-hidden="true">·</span> : null}
-            {metaText}
+            {showSlack && meta.length ? (
+              <span aria-hidden="true">·</span>
+            ) : null}
+            {meta.map((item, index) => (
+              <span className="contents" key={index}>
+                {index > 0 ? <span aria-hidden="true">·</span> : null}
+                {item}
+              </span>
+            ))}
           </TranscriptHeadingMeta>
         ) : undefined
       }
@@ -216,6 +240,3 @@ function transcriptRoleLabelClass(role: string): string {
   );
 }
 
-function isString(value: string | undefined): value is string {
-  return typeof value === "string" && value.length > 0;
-}

@@ -20,8 +20,10 @@ import {
   formatCostTotal,
   formatElapsedDuration,
   formatPayloadSize,
+  formatRelativeMessageTimestamp,
   formatRuntime,
   formatTime,
+  formatTranscriptTimestampDetails,
   formatTranscriptDuration,
   formatUsageTotal,
   parseMarkdownBlocks,
@@ -132,6 +134,23 @@ describe("dashboard conversation formatting", () => {
     expect(formatElapsedDuration(1_000, 4_500)).toBe("3.5s");
     expect(formatElapsedDuration(undefined, 4_500)).toBeUndefined();
     expect(formatElapsedDuration(4_500, 1_000)).toBeUndefined();
+  });
+
+  it("formats old transcript timestamps relative to now", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-10T16:00:00.000Z"));
+    expect(
+      formatRelativeMessageTimestamp(Date.parse("2026-08-09T16:00:00.000Z")),
+    ).toBe("yesterday");
+  });
+
+  it("formats canonical transcript timestamp details in local time and UTC", () => {
+    setDashboardTimeZone("America/Los_Angeles");
+    const details = formatTranscriptTimestampDetails(
+      Date.parse("2026-08-10T16:00:00.000Z"),
+    );
+    expect(details.local).toContain("9:00:00 AM");
+    expect(details.utc).toContain("4:00:00 PM");
   });
 
   it("formats absolute timestamps in the configured dashboard timezone", () => {

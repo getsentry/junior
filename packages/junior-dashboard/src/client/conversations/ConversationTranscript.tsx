@@ -36,6 +36,7 @@ import {
 } from "./transcriptRenderModel";
 import { transcriptEmptyClass } from "./transcriptStyles";
 import { entryMatchesSearch, useTranscriptSearch } from "./transcriptSearch";
+import { TranscriptTimestampProvider } from "./TranscriptTimestamp";
 
 type TranscriptEntry = ReturnType<typeof groupTranscriptMessages>[number];
 type TranscriptContextEntry = Extract<TranscriptEntry, { kind: "context" }>;
@@ -60,34 +61,41 @@ function renderReasoningEntry(entry: TranscriptReasoningEntry): ReactNode {
 }
 
 /** Render one conversation transcript segment as actor messages and tool events. */
-export const ConversationTranscriptView = memo(function ConversationTranscriptView(props: {
-  onOpenSubagentTranscript?: (args: {
-    part: TranscriptViewSubagentPart;
+export const ConversationTranscriptView = memo(
+  function ConversationTranscriptView(props: {
+    onOpenSubagentTranscript?: (args: {
+      part: TranscriptViewSubagentPart;
+      conversation: ConversationTranscript;
+    }) => void;
     conversation: ConversationTranscript;
-  }) => void;
-  conversation: ConversationTranscript;
-  responding?: boolean;
-  view: TranscriptViewMode;
-}) {
-  // Event arrays stay stable across metadata-only polls. Project the transcript
-  // only when event content changes, not when timing metadata refreshes.
-  const events = props.conversation.events;
-  const messages = useMemo(() => transcriptMessagesFromEvents(events), [events]);
+    responding?: boolean;
+    view: TranscriptViewMode;
+  }) {
+    // Event arrays stay stable across metadata-only polls. Project the transcript
+    // only when event content changes, not when timing metadata refreshes.
+    const events = props.conversation.events;
+    const messages = useMemo(
+      () => transcriptMessagesFromEvents(events),
+      [events],
+    );
 
-  return (
-    <section className="min-w-0 pt-1">
-      <div className="min-w-0">
-        <SegmentEvents
-          onOpenSubagentTranscript={props.onOpenSubagentTranscript}
-          conversation={props.conversation}
-          messages={messages}
-          view={props.view}
-        />
-        {props.responding ? <TranscriptTypingIndicator /> : null}
-      </div>
-    </section>
-  );
-});
+    return (
+      <TranscriptTimestampProvider>
+        <section className="min-w-0 pt-1">
+          <div className="min-w-0">
+            <SegmentEvents
+              onOpenSubagentTranscript={props.onOpenSubagentTranscript}
+              conversation={props.conversation}
+              messages={messages}
+              view={props.view}
+            />
+            {props.responding ? <TranscriptTypingIndicator /> : null}
+          </div>
+        </section>
+      </TranscriptTimestampProvider>
+    );
+  },
+);
 
 function SegmentEvents(props: {
   onOpenSubagentTranscript?: (args: {
