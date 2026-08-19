@@ -237,11 +237,11 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(props: {
   });
   const title = conversationDisplayTitle(props.conversation);
   const hasAnnotations = Boolean(props.conversation.sidebarAnnotations?.length);
-  // Linked work is denser and more actionable than channel; hide channel when
-  // annotations own the meta row.
-  const showLocation = Boolean(location) && !hasAnnotations;
-  const hasMeta = showLocation || hasAnnotations;
   const isPrivate = props.conversation.visibility === "private";
+  // Linked work is denser and more actionable than channel. The leading lock
+  // already identifies private conversations, so do not repeat that label.
+  const showLocation = Boolean(location) && !hasAnnotations && !isPrivate;
+  const hasMeta = showLocation || hasAnnotations;
   return (
     <div className="mobile-conversation-row group relative min-w-0">
       <Link
