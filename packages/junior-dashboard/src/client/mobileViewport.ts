@@ -56,13 +56,17 @@ export function coalescedMobileViewportSyncSource(
  * - closed keyboard: shell = layout viewport, offset 0 (ignore rubber-band)
  * - open keyboard: shell = visual viewport rectangle (height + offsetTop)
  *
- * `restingLayoutHeight` is the last closed-keyboard layout height. Needed when
- * `interactive-widget=resizes-content` shrinks layout and visual together so a
- * plain layout-vs-visual delta never trips.
+ * Keyboard detection:
+ * - resizes-visual: layout stays large, visual shrinks (Safari default)
+ * - resizes-content: layout and visual shrink together. Trust the resting
+ *   closed height only when an editor is focused or the visual viewport is
+ *   already offset. A bare height drop (orientation change) must not stick
+ *   keyboard-open forever against a stale resting value.
  *
  * Focus-time Safari pan freezes while typing use `mobileViewportOffsetTop`.
  */
 export function mobileViewportMetrics(input: {
+  editableFocused: boolean;
   layoutHeight: number;
   mobile: boolean;
   restingLayoutHeight: number;
@@ -77,12 +81,21 @@ export function mobileViewportMetrics(input: {
     0,
     Math.round(input.restingLayoutHeight),
   );
-  // Shortest visible edge covers both resizes-visual (layout steady, visual
-  // shrinks) and resizes-content (both shrink against the resting height).
-  const shortestVisible = Math.min(layoutHeight, visualHeight);
-  const referenceHeight = Math.max(restingLayoutHeight, layoutHeight);
-  const keyboardOpen =
-    referenceHeight - shortestVisible >= KEYBOARD_OPEN_HEIGHT_DELTA_PX;
+  const visualOffsetTop = Math.max(0, Math.round(input.visualOffsetTop));
+  const layoutVisualDelta = layoutHeight - visualHeight;
+  // Safari default: layout stays large while the keyboard shrinks visual.
+  const resizesVisualOpen =
+    layoutVisualDelta >= KEYBOARD_OPEN_HEIGHT_DELTA_PX;
+  // resizes-content: both edges shrink together. Height alone is ambiguous
+  // with orientation changes, so require focus or a non-zero visual offset.
+  const bothShrunkTogether =
+    Math.abs(layoutVisualDelta) < KEYBOARD_OPEN_HEIGHT_DELTA_PX &&
+    restingLayoutHeight - Math.min(layoutHeight, visualHeight) >=
+      KEYBOARD_OPEN_HEIGHT_DELTA_PX;
+  const resizesContentOpen =
+    bothShrunkTogether &&
+    (input.editableFocused || visualOffsetTop > 0);
+  const keyboardOpen = resizesVisualOpen || resizesContentOpen;
 
   if (!keyboardOpen) {
     return {
@@ -95,8 +108,23 @@ export function mobileViewportMetrics(input: {
   return {
     heightPx: visualHeight,
     keyboardOpen: true,
-    offsetTopPx: Math.max(0, Math.round(input.visualOffsetTop)),
+    offsetTopPx: visualOffsetTop,
   };
+}
+
+/** Next closed-keyboard resting height. Always track the current layout. */
+export function nextRestingLayoutHeight(input: {
+  keyboardOpen: boolean;
+  layoutHeight: number;
+  previousRestingLayoutHeight: number;
+}): number {
+  const layoutHeight = Math.max(0, Math.round(input.layoutHeight));
+  if (input.keyboardOpen) {
+    return Math.max(0, Math.round(input.previousRestingLayoutHeight));
+  }
+  // Closed: follow the current layout so orientation shrinks do not leave a
+  // taller stale resting value that later looks like a keyboard.
+  return layoutHeight;
 }
 
 /**
@@ -189,7 +217,9 @@ export function useMobileViewportHeight(
         const layoutHeight = window.innerHeight;
         const visualHeight = viewport?.height ?? layoutHeight;
         const visualOffsetTop = viewport?.offsetTop ?? 0;
+        const editableFocused = isEditableElement(document.activeElement);
         const metrics = mobileViewportMetrics({
+          editableFocused,
           layoutHeight,
           mobile: mobile.matches,
           restingLayoutHeight,
@@ -204,11 +234,11 @@ export function useMobileViewportHeight(
           return;
         }
 
-        if (!metrics.keyboardOpen) {
-          // Remember the full closed height so resizes-content can still detect
-          // an open keyboard after layout and visual shrink together.
-          restingLayoutHeight = Math.max(restingLayoutHeight, layoutHeight);
-        }
+        restingLayoutHeight = nextRestingLayoutHeight({
+          keyboardOpen: metrics.keyboardOpen,
+          layoutHeight,
+          previousRestingLayoutHeight: restingLayoutHeight,
+        });
 
         setDocumentScrollLocked(true);
         // Zero document scroll so iOS cannot leave the fixed shell above the
@@ -217,7 +247,7 @@ export function useMobileViewportHeight(
           window.scrollTo(0, 0);
         }
         const offsetTopPx = mobileViewportOffsetTop({
-          editableFocused: isEditableElement(document.activeElement),
+          editableFocused,
           keyboardOpen: metrics.keyboardOpen,
           nextOffsetTop: metrics.offsetTopPx,
           previousOffsetTop: appliedOffsetTopPx,
