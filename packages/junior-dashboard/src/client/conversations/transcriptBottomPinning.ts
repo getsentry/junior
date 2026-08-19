@@ -347,11 +347,7 @@ export function usePinnedTranscriptBottom(input: {
 
   useEffect(() => {
     enabledRef.current = input.enabled;
-    if (!input.enabled) {
-      followingRef.current = false;
-      setFollowing(false);
-      setHasPendingUpdate(false);
-    }
+    if (!input.enabled) setHasPendingUpdate(false);
   }, [input.enabled]);
 
   const setFollowingIntent = useCallback((value: boolean) => {
@@ -465,9 +461,12 @@ export function usePinnedTranscriptBottom(input: {
     initializedConversationRef.current = input.conversationId;
     setScrollTop(root, scrollSnapshot(root).scrollHeight);
     previousScrollTopRef.current = scrollSnapshot(root).scrollTop;
-    setFollowingIntent(input.enabled);
+    // Start every conversation at its latest message. Keep following until the
+    // reader scrolls up so late content and footer layout cannot expose stale
+    // space below the transcript.
+    setFollowingIntent(true);
     setHasPendingUpdate(false);
-  }, [contentElement, input.conversationId, input.enabled, setFollowingIntent]);
+  }, [contentElement, input.conversationId, setFollowingIntent]);
 
   useBrowserLayoutEffect(() => {
     const previous = prependSnapshotRef.current;
@@ -492,12 +491,7 @@ export function usePinnedTranscriptBottom(input: {
   }, [input.historyVersion, input.loadingPreviousPage]);
 
   const syncAfterLayoutChange = useCallback(() => {
-    if (
-      shouldAutoPinTranscriptBottom({
-        enabled: enabledRef.current,
-        following: followingRef.current,
-      })
-    ) {
+    if (followingRef.current) {
       scrollToBottom("auto");
       return;
     }

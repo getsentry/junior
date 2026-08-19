@@ -240,6 +240,15 @@ test("opens and closes a conversation in the mobile workspace", async ({
   await expect(
     pending.getByRole("button", { name: "Show fewer queued messages" }),
   ).toHaveAttribute("aria-expanded", "true");
+  // Footer growth must keep a completed conversation at its latest message.
+  await expect
+    .poll(() =>
+      transcript.evaluate(
+        (element) =>
+          element.scrollHeight - element.scrollTop - element.clientHeight,
+      ),
+    )
+    .toBeLessThanOrEqual(1);
 
   const composer = page.getByPlaceholder("Message Junior…");
   await expect(composer).toBeVisible();
