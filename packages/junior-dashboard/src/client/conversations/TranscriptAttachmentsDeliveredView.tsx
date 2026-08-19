@@ -52,17 +52,17 @@ function AttachmentItem(props: {
       <ImageAttachment
         context={meta}
         filename={props.attachment.filename}
-        imageClassName="max-h-48 max-w-sm h-auto w-auto rounded-md object-contain"
+        imageClassName="max-h-48 w-auto max-w-full h-auto rounded-md object-contain"
         loading="lazy"
         src={href}
-        triggerClassName="inline-block max-w-full align-top"
+        triggerClassName="block min-w-0 max-w-full"
       />
     );
   }
 
   return (
     <a
-      className="grid min-w-0 max-w-sm grid-cols-[auto_minmax(0,1fr)] items-center gap-2 rounded-md px-1.5 py-1 -mx-1.5 no-underline transition-colors hover:bg-white/[0.04]"
+      className="grid min-w-0 w-full max-w-full grid-cols-[auto_minmax(0,1fr)] items-center gap-2 rounded-md px-1.5 py-1 -mx-1.5 no-underline transition-colors hover:bg-white/[0.04]"
       download={props.attachment.filename}
       href={href}
       rel="noreferrer"
@@ -110,7 +110,7 @@ export function TranscriptAttachmentsDeliveredView(props: {
           ) : undefined
         }
       />
-      <div className="grid max-w-sm gap-2">
+      <div className="grid min-w-0 w-full max-w-full gap-2">
         {props.part.attachments.map((attachment) => (
           <AttachmentItem
             attachment={attachment}
