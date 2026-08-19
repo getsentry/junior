@@ -46,11 +46,11 @@ function parseApiTurnMessages(
 }
 
 /**
- * True when an empty wake belongs to a local web root conversation.
+ * True when an empty wake belongs to this local web conversation.
  *
- * Agent-invocation children may inherit a parent local Destination while using
- * a different conversation id. Only claim the root itself so those children
- * still reach the invocation router.
+ * A local Destination can be reused on another conversation id (agent-invocation
+ * work). Only claim when destination.conversationId equals the leased
+ * conversation id so those wakes stay on the invocation router.
  */
 function isIdleLocalApiTurnWake(
   context: ConversationWorkerContext,
