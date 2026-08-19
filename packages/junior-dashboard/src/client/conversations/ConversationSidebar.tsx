@@ -1,8 +1,10 @@
-import { memo, useCallback, useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Archive,
   ArchiveRestore,
+  Check,
   CircleAlert,
+  ListFilter,
   LockKeyhole,
   SquarePen,
 } from "lucide-react";
@@ -42,9 +44,13 @@ export function ConversationSidebar(props: {
   query: string;
   selectedId?: string;
   timeZone: string;
+  status: "active" | "archived";
   onNewConversation(): void;
   onQueryChange(value: string): void;
+  onStatusChange(value: "active" | "archived"): void;
 }) {
+  const [filterOpen, setFilterOpen] = useState(false);
+  const filterRef = useRef<HTMLDivElement>(null);
   const [archivedConversation, setArchivedConversation] =
     useState<Conversation>();
   const [archiveError, setArchiveError] = useState<Conversation>();
@@ -61,6 +67,23 @@ export function ConversationSidebar(props: {
     );
     setArchivedConversation(conversation);
   }, []);
+  useEffect(() => {
+    if (!filterOpen) return;
+    function closeFilter(event: PointerEvent) {
+      if (!filterRef.current?.contains(event.target as Node)) {
+        setFilterOpen(false);
+      }
+    }
+    function closeFilterOnEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") setFilterOpen(false);
+    }
+    document.addEventListener("pointerdown", closeFilter);
+    document.addEventListener("keydown", closeFilterOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeFilter);
+      document.removeEventListener("keydown", closeFilterOnEscape);
+    };
+  }, [filterOpen]);
   // Rebuild section rows only when the feed or timezone changes. Avoid fresh
   // Date.now() arrays on unrelated parent renders while the reader is scrolling.
   const entries = useMemo(
@@ -80,15 +103,60 @@ export function ConversationSidebar(props: {
           <h2 className="m-0 font-display text-lg font-medium leading-tight text-dashboard-text">
             Conversations
           </h2>
-          <button
-            aria-label="New conversation"
-            className="grid size-7 cursor-pointer place-items-center rounded-md text-dashboard-text-muted transition hover:bg-white/[0.05] hover:text-dashboard-text focus:outline-none focus:ring-2 focus:ring-cyan-300/35"
-            onClick={props.onNewConversation}
-            title="New conversation"
-            type="button"
-          >
-            <SquarePen aria-hidden="true" size={15} />
-          </button>
+          <div className="flex items-center gap-0.5">
+            <div className="relative" ref={filterRef}>
+              <button
+                aria-controls="conversation-status-filter"
+                aria-expanded={filterOpen}
+                aria-haspopup="menu"
+                aria-label="Filter conversations"
+                className={cn(
+                  "grid size-7 cursor-pointer place-items-center rounded-md text-dashboard-text-muted transition hover:bg-white/[0.05] hover:text-dashboard-text focus:outline-none focus:ring-2 focus:ring-cyan-300/35",
+                  filterOpen && "bg-white/[0.06] text-dashboard-text",
+                )}
+                onClick={() => setFilterOpen((open) => !open)}
+                title="Filter conversations"
+                type="button"
+              >
+                <ListFilter aria-hidden="true" size={15} />
+              </button>
+              {filterOpen ? (
+                <div
+                  className="absolute right-0 top-[calc(100%+0.35rem)] z-30 w-36 rounded-lg bg-dashboard-surface-raised p-1 shadow-2xl shadow-black/75"
+                  id="conversation-status-filter"
+                  role="menu"
+                >
+                  {(["active", "archived"] as const).map((status) => (
+                    <button
+                      className="flex w-full cursor-pointer items-center justify-between rounded-md px-2.5 py-2 text-left text-sm capitalize text-dashboard-text transition hover:bg-white/10 focus:bg-white/10 focus:outline-none"
+                      key={status}
+                      onClick={() => {
+                        props.onStatusChange(status);
+                        setFilterOpen(false);
+                      }}
+                      role="menuitemradio"
+                      aria-checked={props.status === status}
+                      type="button"
+                    >
+                      {status}
+                      {props.status === status ? (
+                        <Check aria-hidden="true" size={14} />
+                      ) : null}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+            <button
+              aria-label="New conversation"
+              className="grid size-7 cursor-pointer place-items-center rounded-md text-dashboard-text-muted transition hover:bg-white/[0.05] hover:text-dashboard-text focus:outline-none focus:ring-2 focus:ring-cyan-300/35"
+              onClick={props.onNewConversation}
+              title="New conversation"
+              type="button"
+            >
+              <SquarePen aria-hidden="true" size={15} />
+            </button>
+          </div>
         </div>
       </div>
       <div className="px-2 pb-2">
@@ -251,19 +319,23 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(props: {
         ) : null}
       </Link>
       <button
-        aria-label={`Archive ${title}`}
+        aria-label={`${props.conversation.archivedAt ? "Restore" : "Archive"} ${title}`}
         className="absolute right-1.5 top-1/2 z-10 grid size-7 -translate-y-1/2 cursor-pointer place-items-center rounded-md bg-[#111719] text-dashboard-text-muted shadow-[-8px_0_12px_rgba(9,12,14,0.8)] transition hover:text-dashboard-text focus:outline-none focus:ring-2 focus:ring-cyan-300/35 sm:pointer-events-none sm:opacity-0 sm:focus:pointer-events-auto sm:focus:opacity-100 sm:group-focus-within:pointer-events-auto sm:group-focus-within:opacity-100 sm:group-hover:pointer-events-auto sm:group-hover:opacity-100 disabled:cursor-not-allowed"
         disabled={archive.isPending}
         onClick={() =>
           archive.mutate({
-            archived: true,
+            archived: !props.conversation.archivedAt,
             lastSeenAt: props.conversation.lastSeenAt,
           })
         }
-        title={`Archive ${title}`}
+        title={`${props.conversation.archivedAt ? "Restore" : "Archive"} ${title}`}
         type="button"
       >
-        <Archive aria-hidden="true" size={14} />
+        {props.conversation.archivedAt ? (
+          <ArchiveRestore aria-hidden="true" size={14} />
+        ) : (
+          <Archive aria-hidden="true" size={14} />
+        )}
       </button>
     </div>
   );

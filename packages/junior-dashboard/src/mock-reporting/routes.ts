@@ -103,7 +103,7 @@ export function createMockReportingApi(): Hono<{
     }
     return jsonResponse(
       conversationFeedSchema,
-      readMockConversationFeed(query.data.actorEmail),
+      readMockConversationFeed(query.data.actorEmail, query.data.status),
     );
   });
   app.get("/conversations/stats", () =>

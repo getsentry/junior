@@ -1343,17 +1343,22 @@ function mockGuardianStats(nowMs: number): ConversationStatsReport["guardian"] {
 /** Return the explicit canonical-event visual-QA feed, optionally scoped by actor. */
 export function readMockConversationFeed(
   actorEmail?: string,
+  status: "active" | "archived" = "active",
 ): ConversationFeed {
   const feed = mockConversationFeed(Date.now());
-  if (!actorEmail) return feed;
-  return {
-    ...feed,
-    conversations: feed.conversations.filter(
+  const conversations = feed.conversations
+    .filter((conversation) =>
+      status === "archived"
+        ? Boolean(conversation.archivedAt)
+        : !conversation.archivedAt,
+    )
+    .filter(
       (conversation) =>
+        !actorEmail ||
         conversation.actorIdentity?.email?.toLowerCase() ===
-        actorEmail.toLowerCase(),
-    ),
-  };
+          actorEmail.toLowerCase(),
+    );
+  return { ...feed, conversations };
 }
 
 /** Return accepted mailbox rows for local dashboard visual QA. */
