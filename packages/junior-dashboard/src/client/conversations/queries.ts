@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import {
   queryOptions,
   useInfiniteQuery,
@@ -37,6 +37,7 @@ import {
   mergeConversationMailboxMessages,
   removeConversationOutboxMessage,
   upsertConversationOutboxMessage,
+  type ConversationMailboxMessage,
   type ConversationOutboxMessage,
 } from "./conversationOutbox";
 import {
@@ -46,6 +47,7 @@ import {
   conversationHistoryVersion,
   loadCompleteConversationTranscript,
   nextConversationHistoryCursor,
+  reuseConversationEventReferences,
   type ConversationHistoryPage,
 } from "./transcript";
 
@@ -127,6 +129,16 @@ export function conversationDetailQueryOptions(
     enabled: Boolean(conversationId),
     queryKey: conversationDetailQueryKey(conversationId),
     queryFn: ({ signal }) => readConversationData(conversationId!, signal),
+    // Keep immutable events stable across metadata-only polls. Consumers can
+    // skip transcript work while status and timing metadata still stay fresh.
+    structuralSharing: (previous, next) => {
+      if (!next || typeof next !== "object") return next;
+      if (!previous || typeof previous !== "object") return next;
+      return reuseConversationEventReferences(
+        previous as ConversationDetailReport,
+        next as ConversationDetailReport,
+      );
+    },
     refetchInterval: (query) =>
       query.state.data?.status === "active" ? 2_000 : false,
     retry: false,
@@ -482,10 +494,21 @@ export function useConversationData(conversationId: string | undefined) {
     staleTime: Infinity,
     gcTime: Infinity,
   });
-  const pendingMessages = useMemo(
-    () => mergeConversationMailboxMessages(pending.data?.messages, outbox.data),
-    [outbox.data, pending.data?.messages],
+  // Live polls mint fresh server arrays every 2s. Reuse the previous list when
+  // visible mailbox rows are unchanged so the reply footer can skip work while
+  // the reader types.
+  const pendingMessagesRef = useRef<ConversationMailboxMessage[] | undefined>(
+    undefined,
   );
+  const pendingMessages = useMemo(() => {
+    const next = mergeConversationMailboxMessages(
+      pending.data?.messages,
+      outbox.data,
+      pendingMessagesRef.current,
+    );
+    pendingMessagesRef.current = next;
+    return next;
+  }, [outbox.data, pending.data?.messages]);
   const invalidHistoryCursor = isInvalidCursorError(history.error);
   const shouldRefreshDetail = Boolean(
     detail.data &&

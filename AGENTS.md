@@ -36,7 +36,7 @@ Use **pnpm**: `pnpm install`, `pnpm dev`, `pnpm test`, `pnpm typecheck`, `pnpm s
 
 ## Testing And Validation
 
-- Follow `policies/testing.md` and `policies/evals.md`. Product/runtime behavior belongs in integration tests through real Junior wiring; agent interpretation and reply quality belong in evals; unit tests are reserved for isolated deterministic logic.
+- Follow `policies/testing.md` and `policies/evals.md`. Product/runtime behavior belongs in integration tests through real Junior wiring (fake only Slack and LLMs via shared harnesses); agent interpretation and reply quality belong in evals; unit tests are reserved for isolated deterministic logic.
 - Before adding a test, search every test layer for the behavior and extend its primary owning scenario. A source change does not automatically require a new test, and equal- or higher-fidelity existing coverage is sufficient.
 - Do not repeat the same behavioral assertion at multiple layers or add one test per implementation branch. Add cross-layer coverage only for a distinct contract or failure boundary, and use representative cases unless exhaustive inputs protect a local deterministic invariant.
 - Test harness mechanics live in `packages/junior/tests/README.md` and `packages/junior-evals/README.md`.

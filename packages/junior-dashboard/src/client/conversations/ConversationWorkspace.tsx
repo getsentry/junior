@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, Globe2, LockKeyhole } from "lucide-react";
-import { Link, useNavigate, useParams } from "react-router";
+import { useNavigate, useParams } from "react-router";
 
 import { useConversationsData } from "../api";
 import { ConversationSidebar } from "./ConversationSidebar";
@@ -93,22 +93,15 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
       <section
         aria-label="Selected conversation"
         className={
-          selectedId || creating
-            ? "grid min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden bg-white/[0.012]"
-            : "hidden min-h-0 overflow-hidden bg-white/[0.012] md:grid md:grid-rows-[minmax(0,1fr)]"
+          selectedId
+            ? "grid min-h-0 grid-rows-[minmax(0,1fr)] overflow-hidden bg-white/[0.012]"
+            : creating
+              ? "grid min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden bg-white/[0.012]"
+              : "hidden min-h-0 overflow-hidden bg-white/[0.012] md:grid md:grid-rows-[minmax(0,1fr)]"
         }
       >
         {selectedId && !creating ? (
           <>
-            <div className="border-b border-white/[0.07] bg-white/[0.025] px-3 py-2.5 md:hidden">
-              <Link
-                className="inline-flex items-center gap-2 font-mono text-xs text-dashboard-text-muted no-underline hover:text-dashboard-text"
-                to="/"
-              >
-                <ArrowLeft aria-hidden="true" size={15} />
-                Your conversations
-              </Link>
-            </div>
             <ConversationPage
               key={selectedId}
               conversationId={selectedId}
@@ -142,7 +135,7 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
                 </button>
               </div>
             ) : null}
-            <div className="min-h-0 overflow-y-auto">
+            <div className="min-h-0 h-full">
               <NewConversationView
                 error={
                   createConversation.error
@@ -177,10 +170,13 @@ function NewConversationView(props: {
   const [visibility, setVisibility] = useState<"private" | "public">("public");
   const isPublic = visibility === "public";
 
+  // Same chat shell as ConversationPage: scrollable intro above a pinned
+  // composer. Keeps the input glued to the visual viewport on mobile instead of
+  // floating in a centered scroll card.
   return (
-    <div className="grid min-h-full place-items-center px-4 py-8 pb-[max(2rem,env(safe-area-inset-bottom))] md:px-8 md:pb-8">
-      <div className="w-full max-w-2xl">
-        <div className="mb-5">
+    <div className="grid h-full min-h-0 min-w-0 grid-rows-[minmax(0,1fr)_minmax(0,auto)]">
+      <div className="min-h-0 overflow-y-auto overscroll-contain px-4 pt-8 md:px-8 md:pt-10">
+        <div className="mx-auto flex w-full max-w-2xl flex-col justify-end md:min-h-full md:justify-center md:pb-6">
           <h2 className="m-0 font-display text-2xl font-medium tracking-[-0.03em] text-dashboard-text md:text-3xl">
             New conversation
           </h2>
@@ -208,16 +204,20 @@ function NewConversationView(props: {
             </ToggleButton>
           </div>
         </div>
-        <ConversationComposer
-          draftId="new"
-          error={props.error}
-          label="Start a conversation"
-          restoreDraftOnError
-          submitLabel="Send"
-          onSubmit={(message, idempotencyKey) =>
-            props.onSubmit(message, idempotencyKey, visibility)
-          }
-        />
+      </div>
+      <div className="min-w-0 shrink-0 px-2 pt-1.5 pb-[max(0.375rem,calc(env(safe-area-inset-bottom)*(1-var(--dashboard-keyboard-open,0))))] md:px-8 md:pt-2 md:pb-8">
+        <div className="mx-auto w-full max-w-2xl">
+          <ConversationComposer
+            draftId="new"
+            error={props.error}
+            label="Start a conversation"
+            restoreDraftOnError
+            submitLabel="Send"
+            onSubmit={(message, idempotencyKey) =>
+              props.onSubmit(message, idempotencyKey, visibility)
+            }
+          />
+        </div>
       </div>
     </div>
   );

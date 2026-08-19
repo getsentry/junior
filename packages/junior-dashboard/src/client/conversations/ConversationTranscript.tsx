@@ -1,7 +1,7 @@
-import { memo, useRef, type ReactNode } from "react";
+import { memo, useMemo, useRef, type ReactNode } from "react";
 
 import { unavailableTranscriptLabel } from "../format";
-import { conversationTranscriptMessages } from "./eventTranscript";
+import { transcriptMessagesFromEvents } from "./eventTranscript";
 import type {
   ConversationTranscript,
   TranscriptViewMessage,
@@ -69,10 +69,13 @@ export const ConversationTranscriptView = memo(function ConversationTranscriptVi
   responding?: boolean;
   view: TranscriptViewMode;
 }) {
-  const messages = conversationTranscriptMessages(props.conversation);
+  // Event arrays stay stable across metadata-only polls. Project the transcript
+  // only when event content changes, not when timing metadata refreshes.
+  const events = props.conversation.events;
+  const messages = useMemo(() => transcriptMessagesFromEvents(events), [events]);
 
   return (
-    <section className="min-w-0 py-1">
+    <section className="min-w-0 pt-1">
       <div className="min-w-0">
         <SegmentEvents
           onOpenSubagentTranscript={props.onOpenSubagentTranscript}
@@ -127,7 +130,7 @@ function SegmentEvents(props: {
   );
 }
 
-function VisibleTranscriptEntries(props: {
+const VisibleTranscriptEntries = memo(function VisibleTranscriptEntries(props: {
   onOpenSubagentTranscript?: (args: {
     part: TranscriptViewSubagentPart;
     conversation: ConversationTranscript;
@@ -136,9 +139,13 @@ function VisibleTranscriptEntries(props: {
   conversation: ConversationTranscript;
   view: TranscriptViewMode;
 }) {
+  const entries = useMemo(
+    () => groupTranscriptMessages(props.transcript),
+    [props.transcript],
+  );
   return (
     <TranscriptEntryList
-      entries={groupTranscriptMessages(props.transcript)}
+      entries={entries}
       keyPrefix={props.conversation.conversationId}
       renderContext={(entry) => (
         <TranscriptRailEvent
@@ -220,7 +227,7 @@ function VisibleTranscriptEntries(props: {
       )}
     />
   );
-}
+});
 
 function TranscriptEntryList(props: {
   entries: TranscriptEntry[];

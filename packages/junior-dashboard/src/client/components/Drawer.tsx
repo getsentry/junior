@@ -1,6 +1,10 @@
 import { X } from "lucide-react";
 import { useEffect, useRef, type ReactNode } from "react";
 
+import {
+  acquireBodyScrollLock,
+  releaseBodyScrollLock,
+} from "../bodyScrollLock";
 import { cn } from "../styles";
 import { Button } from "./Button";
 
@@ -13,26 +17,6 @@ const focusableSelector = [
   "summary",
   "[tabindex]:not([tabindex='-1'])",
 ].join(",");
-
-// Nested drawers share one body scroll lock so unmounting the first open
-// drawer does not unlock the page under a still-open sibling drawer.
-let bodyScrollLockCount = 0;
-let previousBodyOverflow: string | undefined;
-
-function lockBodyScroll() {
-  if (bodyScrollLockCount === 0) {
-    previousBodyOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-  }
-  bodyScrollLockCount += 1;
-}
-
-function unlockBodyScroll() {
-  bodyScrollLockCount = Math.max(0, bodyScrollLockCount - 1);
-  if (bodyScrollLockCount > 0) return;
-  document.body.style.overflow = previousBodyOverflow ?? "";
-  previousBodyOverflow = undefined;
-}
 
 /** Render an accessible modal drawer and own its focus and scroll lifecycle. */
 export function Drawer(props: {
@@ -56,7 +40,7 @@ export function Drawer(props: {
       document.activeElement instanceof HTMLElement
         ? document.activeElement
         : undefined;
-    lockBodyScroll();
+    acquireBodyScrollLock();
     const focusFrame = requestAnimationFrame(() => {
       dialogRef.current
         ?.querySelector<HTMLElement>("[data-drawer-close]")
@@ -99,7 +83,7 @@ export function Drawer(props: {
     return () => {
       cancelAnimationFrame(focusFrame);
       window.removeEventListener("keydown", onKeyDown);
-      unlockBodyScroll();
+      releaseBodyScrollLock();
       const previousFocus = previousFocusRef.current;
       previousFocusRef.current = undefined;
       if (previousFocus?.isConnected) previousFocus.focus();

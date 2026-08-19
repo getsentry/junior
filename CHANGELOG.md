@@ -1,4 +1,53 @@
 # Changelog
+## 0.173.0
+
+### Bug Fixes 🐛
+
+- (dashboard) Dock chat shell to the visual viewport by @sentry-junior in [#1609](https://github.com/getsentry/junior/pull/1609)
+
+## 0.172.0
+
+### Bug Fixes 🐛
+
+- (dashboard) Dock composer on first keyboard focus by @sentry-junior in [#1608](https://github.com/getsentry/junior/pull/1608)
+
+## 0.171.0
+
+### New Features ✨
+
+- (workspaces) Move snapshots to dedicated table by @dcramer in [#1606](https://github.com/getsentry/junior/pull/1606)
+
+### Bug Fixes 🐛
+
+- (dashboard) Pin chat composer and keep typing snappy by @sentry-junior in [#1603](https://github.com/getsentry/junior/pull/1603)
+
+### Documentation 📚
+
+- (testing) Limit integration fakes to Slack and LLMs by @dcramer in [#1605](https://github.com/getsentry/junior/pull/1605)
+
+### Internal Changes 🔧
+
+- (agent) Keep invocation failures at owning boundaries by @dcramer in [#1602](https://github.com/getsentry/junior/pull/1602)
+
+## 0.170.0
+
+### Bug Fixes 🐛
+
+#### Dashboard
+
+- Clean up mobile conversation chrome by @sentry-junior in [#1598](https://github.com/getsentry/junior/pull/1598)
+- Update responsive dashboard branding by @sentry-junior in [#1597](https://github.com/getsentry/junior/pull/1597)
+- Compact live working indicator by @sentry-junior in [#1593](https://github.com/getsentry/junior/pull/1593)
+- Remove empty message placeholder by @sentry-junior in [#1595](https://github.com/getsentry/junior/pull/1595)
+
+#### Other
+
+- (slack) Prefer ids and known destinations for channel refs by @sentry-junior in [#1596](https://github.com/getsentry/junior/pull/1596)
+
+### Internal Changes 🔧
+
+- (dashboard) Stop live polls thrashing typing by @sentry-junior in [#1594](https://github.com/getsentry/junior/pull/1594)
+
 ## 0.169.0
 
 ### New Features ✨

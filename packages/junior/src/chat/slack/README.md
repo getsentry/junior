@@ -56,8 +56,14 @@ status rendering.
 - `tools/` holds concrete model-facing tool definitions and executors only.
   Keep one tool per file.
 - Shared helpers used by those tools live in `tool-support/` (for example
-  channel access checks, channel name resolution, canvas/list API helpers, and
-  Slack tool context). Do not put reusable helpers under `tools/`.
+  channel access checks, channel id parsing, canvas/list API helpers, and Slack
+  tool context). Do not put reusable helpers under `tools/`.
+- Channel tool params accept id-bearing forms first: exact ids (`C123`), Slack
+  mentions (`<#C123>` / `<#C123|name>`), and Junior slack references
+  (`slack:C123`). Plain names may resolve only against destinations Junior
+  already stored for this workspace (`junior_destinations.display_name`). Do not
+  scan Slack with `conversations.list` to invent completeness. Use public search
+  when the model needs to discover an unknown channel.
 
 ## Boundaries
 

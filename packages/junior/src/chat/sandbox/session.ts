@@ -26,6 +26,7 @@ import {
   resolve as resolveSnapshot,
   type Snapshot,
 } from "@/chat/sandbox/snapshot/resolve";
+import { recordResolvedWorkspaceSnapshot } from "@/chat/sandbox/snapshot/store";
 import { syncSkillsToSandbox } from "@/chat/sandbox/skill-sync";
 import {
   createSandboxSession,
@@ -37,7 +38,6 @@ import {
 import { sleep } from "@/chat/sleep";
 import type { SkillMetadata } from "@/chat/skills";
 import type { SandboxRef } from "@/chat/sandbox/ref";
-import { recordResolvedWorkspaceSnapshot } from "@/chat/workspaces/store";
 import type { Workspace } from "@/chat/workspaces/types";
 import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
 const DEFAULT_MAX_OUTPUT_LENGTH = 30_000;

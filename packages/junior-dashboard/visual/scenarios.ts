@@ -4,11 +4,20 @@ export type VisualViewport = {
   width: number;
 };
 
+export type VisualScenarioPrepare =
+  | "conversation-detail-focused"
+  | "new-conversation-focused";
+
 export type VisualScenario = {
   componentGallery?: boolean;
   id: string;
   label: string;
   path: string;
+  /**
+   * Optional interaction before the shot. Capture owns the Playwright steps so
+   * this registry stays data-only.
+   */
+  prepare?: VisualScenarioPrepare;
   /** Accessible heading used as the ready-state signal. */
   ready: string;
   viewports: VisualViewport[];
@@ -44,6 +53,26 @@ export const VISUAL_SCENARIOS: VisualScenario[] = [
     path: `/conversations/${encodeURIComponent(ACTIVE_CONVERSATION_ID)}`,
     ready: "Investigate checkout latency",
     viewports: [DESKTOP, MOBILE],
+  },
+  {
+    id: "conversation-detail-focused",
+    label: "Conversation detail · focused composer",
+    path: `/conversations/${encodeURIComponent(ACTIVE_CONVERSATION_ID)}`,
+    // Focus the reply composer and shrink the visual viewport so the PR
+    // screenshot shows the input docked above the keyboard with chat chrome.
+    prepare: "conversation-detail-focused",
+    ready: "Investigate checkout latency",
+    viewports: [MOBILE],
+  },
+  {
+    id: "conversation-create-focused",
+    label: "New conversation · focused composer",
+    path: "/",
+    // Open create mode, focus the composer, and shrink the visual viewport so
+    // the PR screenshot shows the input docked above the keyboard.
+    prepare: "new-conversation-focused",
+    ready: "Conversations",
+    viewports: [MOBILE],
   },
   {
     id: "person-profile",
@@ -115,7 +144,12 @@ const PATH_RULES: PathRule[] = [
       filePath.startsWith(
         "packages/junior-dashboard/src/client/conversations/",
       ) || filePath.includes("/mock-reporting/"),
-    scenarioIds: ["conversations", "conversation-detail"],
+    scenarioIds: [
+      "conversations",
+      "conversation-detail",
+      "conversation-detail-focused",
+      "conversation-create-focused",
+    ],
   },
   {
     match: (filePath) =>
@@ -159,9 +193,9 @@ const PATH_RULES: PathRule[] = [
       ),
     scenarioIds: [
       "conversations",
-      "conversation-detail",
+      "conversation-detail-focused",
+      "conversation-create-focused",
       "system",
-      "component-gallery",
     ],
   },
   {
