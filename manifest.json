@@ -1,0 +1,51 @@
+{
+  "commitSha": "e4367ed604563a02d1a0471b5764c24fccde5e58",
+  "mode": "path",
+  "reasons": [
+    "packages/junior-dashboard/src/app.ts",
+    "packages/junior-dashboard/src/client.tsx",
+    "packages/junior-dashboard/src/client/App.tsx",
+    "packages/junior-dashboard/src/client/components/Button.tsx",
+    "packages/junior-dashboard/src/client/components/ConversationList.tsx",
+    "packages/junior-dashboard/src/client/components/Drawer.tsx",
+    "packages/junior-dashboard/src/client/components/ImageAttachment.tsx",
+    "packages/junior-dashboard/src/client/components/LoadingView.tsx",
+    "packages/junior-dashboard/src/client/components/ProfileMenu.tsx",
+    "packages/junior-dashboard/src/client/components/README.md",
+    "packages/junior-dashboard/src/client/components/SearchInput.tsx",
+    "packages/junior-dashboard/src/client/components/StatusChip.tsx",
+    "packages/junior-dashboard/src/client/components/TextInput.tsx",
+    "packages/junior-dashboard/src/client/components/Tooltip.tsx",
+    "packages/junior-dashboard/src/client/components/controls/DirectorySortSelect.tsx",
+    "packages/junior-dashboard/src/client/components/directory/DirectoryTable.tsx",
+    "packages/junior-dashboard/src/client/components/layout/Card.tsx",
+    "packages/junior-dashboard/src/client/components/layout/DashboardChrome.tsx",
+    "packages/junior-dashboard/src/client/components/layout/DashboardHeader.tsx",
+    "packages/junior-dashboard/src/client/components/layout/SectionHeader.tsx"
+  ],
+  "scenarioIds": [
+    "gallery-foundations",
+    "gallery-charts",
+    "gallery-transcripts",
+    "gallery-index"
+  ],
+  "shots": [
+    {
+      "file": "gallery-foundations__desktop.png",
+      "label": "Gallery · Foundations · desktop"
+    },
+    {
+      "file": "gallery-charts__desktop.png",
+      "label": "Gallery · Charts · desktop"
+    },
+    {
+      "file": "gallery-transcripts__desktop.png",
+      "label": "Gallery · Transcripts · desktop"
+    },
+    {
+      "file": "gallery-index__desktop.png",
+      "label": "Component gallery index · desktop"
+    }
+  ],
+  "skipped": false
+}
