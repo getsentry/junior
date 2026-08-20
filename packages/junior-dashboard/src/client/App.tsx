@@ -45,14 +45,8 @@ import {
   PluginUserPageRoute,
   pluginUserPagePath,
 } from "./pages/user/PluginUserPage";
+import { dashboardShellBgClass } from "./styles";
 import type { DashboardCoreData } from "./types";
-
-const dashboardBackground = {
-  backgroundColor: "#050507",
-  backgroundImage:
-    "radial-gradient(ellipse at 50% 0%, transparent 0%, #050507 70%), linear-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 255, 255, 0.04) 1px, transparent 1px)",
-  backgroundSize: "100% 100%, 40px 40px, 40px 40px",
-};
 
 const dashboardNoise = {
   backgroundImage:
@@ -133,7 +127,7 @@ export function DashboardShell() {
 
   return (
     <DashboardChromeProvider>
-      <VisualViewportShell enabled={workspace} style={dashboardBackground}>
+      <VisualViewportShell className={dashboardShellBgClass} enabled={workspace}>
         <DashboardChrome
           banner={<ConnectionBanner />}
           header={

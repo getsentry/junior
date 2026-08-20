@@ -77,14 +77,14 @@ export function DashboardHeader(props: {
       "shrink-0 whitespace-nowrap rounded-md px-2.5 py-2 font-mono text-xs font-medium tracking-normal no-underline transition-colors",
       isActive
         ? "bg-cyan-300/[0.1] text-cyan-50"
-        : cn("hover:bg-white/[0.035]", dashboardInteractiveTextClass),
+        : cn("hover:bg-dashboard-fill-soft", dashboardInteractiveTextClass),
     );
   const sheetLinkClass = ({ isActive }: { isActive: boolean }) =>
     cn(
       "rounded-lg px-3 py-3 font-mono text-sm font-medium tracking-normal no-underline transition-colors",
       isActive
         ? "bg-cyan-300/[0.1] text-cyan-50"
-        : cn("hover:bg-white/[0.035]", dashboardInteractiveTextClass),
+        : cn("hover:bg-dashboard-fill-soft", dashboardInteractiveTextClass),
     );
 
   useEffect(() => {
@@ -150,7 +150,7 @@ export function DashboardHeader(props: {
   }, [props.mobileNavigationOpen]);
 
   return (
-    <header className="relative border-b border-white/[0.05]">
+    <header className="relative border-b border-dashboard-border-subtle">
       <div
         className={cn(
           dashboardContainerClass,
@@ -164,7 +164,7 @@ export function DashboardHeader(props: {
         {conversationMode && props.mobileBackTo ? (
           <Link
             aria-label="Back to conversations"
-            className="grid size-10 place-items-center rounded-lg text-dashboard-text no-underline transition-colors hover:bg-white/[0.06] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#beaaff]/70 md:hidden"
+            className="grid size-10 place-items-center rounded-lg text-dashboard-text no-underline transition-colors hover:bg-dashboard-fill-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70 md:hidden"
             to={props.mobileBackTo}
           >
             <ArrowLeft aria-hidden="true" size={20} strokeWidth={2} />
@@ -175,7 +175,7 @@ export function DashboardHeader(props: {
             aria-expanded={props.mobileNavigationOpen}
             aria-hidden={props.mobileNavigationOpen || undefined}
             aria-label="Open navigation"
-            className="grid size-10 cursor-pointer place-items-center rounded-lg border-0 bg-transparent text-dashboard-text transition-colors hover:bg-white/[0.06] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#beaaff]/70 md:hidden"
+            className="grid size-10 cursor-pointer place-items-center rounded-lg border-0 bg-transparent text-dashboard-text transition-colors hover:bg-dashboard-fill-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70 md:hidden"
             onClick={() => props.onMobileNavigationOpenChange(true)}
             ref={openButtonRef}
             tabIndex={props.mobileNavigationOpen ? -1 : undefined}
@@ -237,7 +237,7 @@ export function DashboardHeader(props: {
         <div
           aria-label="Navigation"
           aria-modal="true"
-          className="fixed inset-0 z-50 flex flex-col bg-[#070707] md:hidden"
+          className="fixed inset-0 z-50 flex flex-col bg-dashboard-bg-elevated md:hidden"
           id="mobile-navigation"
           onClick={(event) => {
             // Close on route taps and sheet actions such as Log out.
@@ -251,7 +251,7 @@ export function DashboardHeader(props: {
           ref={sheetRef}
           role="dialog"
         >
-          <div className="flex items-center justify-between gap-3 border-b border-white/[0.07] bg-dashboard-surface-raised px-3 py-2 pt-[max(0.5rem,env(safe-area-inset-top))]">
+          <div className="flex items-center justify-between gap-3 border-b border-dashboard-border-subtle bg-dashboard-surface-raised px-3 py-2 pt-[max(0.5rem,env(safe-area-inset-top))]">
             <Link
               aria-label={`${getDashboardAgentName()} home`}
               className="min-w-0 truncate font-mono text-sm font-semibold text-inherit no-underline"
@@ -261,7 +261,7 @@ export function DashboardHeader(props: {
             </Link>
             <button
               aria-label="Close navigation"
-              className="grid size-10 cursor-pointer place-items-center rounded-lg border-0 bg-transparent text-dashboard-text transition-colors hover:bg-white/[0.06] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#beaaff]/70"
+              className="grid size-10 cursor-pointer place-items-center rounded-lg border-0 bg-transparent text-dashboard-text transition-colors hover:bg-dashboard-fill-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70"
               data-mobile-nav-close
               onClick={() => props.onMobileNavigationOpenChange(false)}
               type="button"
@@ -296,13 +296,13 @@ export function DashboardHeader(props: {
               </nav>
               <MobileSecondaryNavigationSlot />
               {props.mobileProfile ? (
-                <div className="mt-4 border-t border-white/[0.07] pt-3">
+                <div className="mt-4 border-t border-dashboard-border-subtle pt-3">
                   {props.mobileProfile}
                 </div>
               ) : null}
             </div>
             {props.mobileIdentity || props.version ? (
-              <div className="border-t border-white/[0.07] px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+              <div className="border-t border-dashboard-border-subtle px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
                 {props.mobileIdentity ? (
                   <div className={props.version ? "mb-2.5" : undefined}>
                     {props.mobileIdentity}

@@ -12,4 +12,7 @@ export const dashboardInteractiveTextClass =
 
 /** Raised input surface so the chat box reads against the near-black shell. */
 export const dashboardComposerSurfaceClass =
-  "rounded-2xl bg-white/[0.045] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]";
+  "rounded-2xl bg-dashboard-fill-soft shadow-[inset_0_0_0_1px_var(--color-dashboard-border-subtle)]";
+
+/** Shared shell canvas + grid background class from `tailwind.css`. */
+export const dashboardShellBgClass = "dashboard-shell-bg";

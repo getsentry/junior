@@ -99,7 +99,7 @@ export function ImageAttachment(
       </a>
       <dialog
         aria-labelledby={titleId}
-        className="m-0 h-dvh max-h-none w-screen max-w-none overflow-hidden border-0 bg-black p-0 text-dashboard-text backdrop:bg-black/80 md:m-auto md:h-[min(90dvh,960px)] md:w-[min(92vw,1440px)] md:rounded-lg md:border md:border-white/15"
+        className="m-0 h-dvh max-h-none w-screen max-w-none overflow-hidden border-0 bg-dashboard-ink p-0 text-dashboard-text backdrop:bg-dashboard-overlay md:m-auto md:h-[min(90dvh,960px)] md:w-[min(92vw,1440px)] md:rounded-lg md:border md:border-dashboard-border-emphasis"
         onClick={(event) => {
           if (event.target === event.currentTarget) close();
         }}
@@ -109,8 +109,8 @@ export function ImageAttachment(
         }}
         ref={dialogRef}
       >
-        <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] bg-[#070707]">
-          <header className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-1.5 border-b border-white/10 bg-dashboard-surface-raised px-3 py-2 pt-[max(0.5rem,env(safe-area-inset-top))] md:px-4">
+        <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] bg-dashboard-bg-elevated">
+          <header className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-1.5 border-b border-dashboard-border-strong bg-dashboard-surface-raised px-3 py-2 pt-[max(0.5rem,env(safe-area-inset-top))] md:px-4">
             <div className="min-w-0">
               <div
                 className="truncate font-mono text-xs text-dashboard-text"
@@ -125,7 +125,7 @@ export function ImageAttachment(
               ) : null}
             </div>
             <a
-              className="inline-flex min-h-10 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium text-dashboard-text-muted no-underline transition-colors hover:bg-white/[0.06] hover:text-dashboard-text"
+              className="inline-flex min-h-10 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium text-dashboard-text-muted no-underline transition-colors hover:bg-dashboard-fill-hover hover:text-dashboard-text"
               href={src}
               rel="noreferrer"
               target="_blank"
@@ -134,7 +134,7 @@ export function ImageAttachment(
               <span className="max-sm:sr-only">Open raw file</span>
             </a>
             <button
-              className="inline-flex min-h-10 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium text-dashboard-text-muted transition-colors hover:bg-white/[0.06] hover:text-dashboard-text"
+              className="inline-flex min-h-10 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium text-dashboard-text-muted transition-colors hover:bg-dashboard-fill-hover hover:text-dashboard-text"
               onClick={close}
               type="button"
             >

@@ -18,10 +18,10 @@ export type ToggleButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
 };
 
 const buttonClassName =
-  "inline-flex h-9 max-w-full items-center gap-2 rounded border border-white/15 bg-dashboard-surface-raised px-3 font-mono text-sm font-semibold leading-none text-dashboard-text transition-colors hover:border-white/30 hover:bg-dashboard-surface-hover hover:text-dashboard-text";
+  "inline-flex h-9 max-w-full items-center gap-2 rounded border border-dashboard-border-emphasis bg-dashboard-surface-raised px-3 font-mono text-sm font-semibold leading-none text-dashboard-text transition-colors hover:border-dashboard-border-heavy hover:bg-dashboard-surface-hover hover:text-dashboard-text";
 
 const dangerButtonClassName =
-  "inline-flex h-9 max-w-full items-center justify-center gap-1.5 rounded border border-white/10 bg-transparent px-3 font-mono text-xs font-semibold text-dashboard-text-muted transition-colors hover:border-rose-300/40 hover:text-rose-300";
+  "inline-flex h-9 max-w-full items-center justify-center gap-1.5 rounded border border-dashboard-border-strong bg-transparent px-3 font-mono text-xs font-semibold text-dashboard-text-muted transition-colors hover:border-rose-300/40 hover:text-rose-300";
 
 /** Render the dashboard's standard bordered command button surface. */
 export function Button({
@@ -42,16 +42,16 @@ export function Button({
               "grid size-9 place-items-center rounded-md border-0 bg-transparent p-0 focus-visible:outline focus-visible:outline-1 disabled:hover:!bg-transparent",
               isDanger
                 ? "text-dashboard-text-muted hover:!bg-rose-300/10 hover:!text-rose-300 focus-visible:outline-rose-300/55 disabled:hover:!text-dashboard-text-muted"
-                : "text-dashboard-text-muted hover:!bg-white/10 hover:!text-dashboard-text focus-visible:outline-cyan-300/55 disabled:hover:!text-dashboard-text-muted",
+                : "text-dashboard-text-muted hover:!bg-dashboard-fill-strong hover:!text-dashboard-text focus-visible:outline-cyan-300/55 disabled:hover:!text-dashboard-text-muted",
             )
           : isDanger
             ? cn(
                 dangerButtonClassName,
-                "disabled:hover:border-white/10 disabled:hover:text-dashboard-text-muted",
+                "disabled:hover:border-dashboard-border-strong disabled:hover:text-dashboard-text-muted",
               )
             : cn(
                 buttonClassName,
-                "disabled:hover:border-white/15 disabled:hover:bg-dashboard-surface-raised disabled:hover:text-dashboard-text",
+                "disabled:hover:border-dashboard-border-emphasis disabled:hover:bg-dashboard-surface-raised disabled:hover:text-dashboard-text",
               ),
         props.disabled ? "" : "cursor-pointer",
         className,
@@ -101,14 +101,14 @@ const toggleButtonBase: Record<ToggleButtonVariant, string> = {
 };
 
 const toggleButtonPressed: Record<ToggleButtonVariant, string> = {
-  pill: "border-white/30 bg-white text-black",
+  pill: "border-dashboard-border-heavy bg-dashboard-text-solid text-dashboard-text-inverse",
   segment: "border-amber-500/30 bg-amber-500/20 text-amber-400",
-  text: "text-dashboard-text underline decoration-white",
+  text: "text-dashboard-text underline decoration-dashboard-text-solid",
 };
 
 const toggleButtonIdle: Record<ToggleButtonVariant, string> = {
-  pill: "border-white/10 bg-dashboard-surface-raised text-dashboard-text-muted hover:border-white/25 hover:bg-dashboard-surface-hover hover:text-dashboard-text",
+  pill: "border-dashboard-border-strong bg-dashboard-surface-raised text-dashboard-text-muted hover:border-dashboard-border-interactive hover:bg-dashboard-surface-hover hover:text-dashboard-text",
   segment:
-    "border-white/10 bg-white/5 text-dashboard-text-muted hover:bg-white/10 hover:text-dashboard-text",
+    "border-dashboard-border-strong bg-dashboard-fill-faint text-dashboard-text-muted hover:bg-dashboard-fill-strong hover:text-dashboard-text",
   text: "text-dashboard-text-muted hover:text-dashboard-text",
 };
