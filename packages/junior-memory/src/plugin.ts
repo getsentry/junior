@@ -48,7 +48,6 @@ function memoryToolContext(ctx: {
   db: MemoryToolContext["db"];
   embedder?: MemoryToolContext["embedder"];
   actor?: MemoryToolContext["actor"];
-  log: MemoryToolContext["log"];
   source: MemoryToolContext["source"];
   userText?: string;
 }): MemoryToolContext {
@@ -58,7 +57,6 @@ function memoryToolContext(ctx: {
     ...(ctx.actor ? { actor: ctx.actor } : undefined),
     db: ctx.db,
     ...(ctx.embedder ? { embedder: ctx.embedder } : undefined),
-    log: ctx.log,
     source: ctx.source,
     ...(ctx.userText ? { userText: ctx.userText } : undefined),
   };
@@ -70,7 +68,6 @@ function memoryCreateToolContext(ctx: {
   db: MemoryCreateToolContext["db"];
   embedder?: MemoryCreateToolContext["embedder"];
   actor?: MemoryCreateToolContext["actor"];
-  log: MemoryCreateToolContext["log"];
   source: MemoryCreateToolContext["source"];
   supersessionDecider: MemoryCreateToolContext["supersessionDecider"];
   userText?: string;
@@ -160,7 +157,6 @@ export function memoryPlugin(options: MemoryPluginOptions = {}) {
               const identities = await readLinkedIdentities(
                 ctx.db as MemoryDb,
                 ctx.actor,
-                ctx.log,
               );
               return await createMemoryPromptContributions({
                 agent: createMemoryAgent(ctx.model),

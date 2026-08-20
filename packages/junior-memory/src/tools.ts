@@ -7,7 +7,6 @@ import {
   type PluginToolOutput,
   type Source,
   type Actor,
-  type PluginLogger,
   pluginToolOutputSchema,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
@@ -56,7 +55,6 @@ export interface MemoryToolContext {
   db: MemoryDb;
   embedder?: MemoryEmbeddingProvider;
   actor?: Actor;
-  log: PluginLogger;
   source: Source;
   userText?: string;
 }
@@ -88,7 +86,7 @@ async function memoryRuntimeContext(
 ): Promise<MemoryRuntimeContext> {
   const identities =
     includeLinkedIdentities
-      ? await readLinkedIdentities(context.db, context.actor, context.log)
+      ? await readLinkedIdentities(context.db, context.actor)
       : undefined;
   return memoryRuntimeContextSchema.parse({
     ...(context.conversationId
