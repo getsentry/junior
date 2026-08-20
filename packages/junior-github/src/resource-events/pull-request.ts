@@ -16,9 +16,9 @@ export const GITHUB_PULL_REQUEST_EVENTS = [
 export type GitHubPullRequestEvent =
   (typeof GITHUB_PULL_REQUEST_EVENTS)[number];
 
-/** Install-local pull request resource event behavior. */
+/** App-configured pull request resource event behavior. */
 export interface GitHubPullRequestEventOptions {
-  /** Guidance added when one pull request event reaches the agent. */
+  /** App guidance applied within the matching subscription or event task instruction. */
   guidance?: Partial<Record<GitHubPullRequestEvent, string>>;
   /** Temporary subscription created after Junior creates a pull request. */
   subscribeAfterCreate?: GitHubPullRequestSubscriptionConfig;

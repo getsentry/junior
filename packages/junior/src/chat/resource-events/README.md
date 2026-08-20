@@ -53,9 +53,10 @@ conversation.
   create a temporary subscription without asking the model to call
   `watchResourceEvents`. Forced subscriptions should omit those events from the
   tool result's suggested events.
-- Resource types may declare optional install guidance per event type. Core
-  inserts that text into subscription and event-task inputs. Keep it separate
-  from subscription intent, trusted facts, and untrusted provider content.
+- Resource types may declare optional app guidance per event type. Core inserts
+  that text only for the matching resource type. The prompt applies it within
+  the subscription intent or stored event task instruction. Keep it separate
+  from trusted facts and untrusted provider content.
 
 The plugin-facing types and publisher contract live in
 `packages/junior-plugin-api/src/resource-events.ts`; subscription storage and

@@ -127,7 +127,7 @@ export interface GitHubPluginOptions {
   installationIdEnv?: string;
   /** Environment variable containing the GitHub App private key. */
   privateKeyEnv?: string;
-  /** Install-local pull request resource event behavior. */
+  /** App-configured pull request resource event behavior. */
   pullRequestEvents?: GitHubPullRequestEventOptions;
 }
 

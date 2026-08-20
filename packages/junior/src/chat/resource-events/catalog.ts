@@ -72,14 +72,15 @@ export function pluginSupportsEvent(
   );
 }
 
-/** Return install guidance for one registered resource event type. */
+/** Return app guidance for one registered resource type and event type. */
 export function resourceEventGuidance(
   catalog: ResourceEventCatalog,
   namespace: string,
+  resourceType: string,
   eventType: string,
 ): string | undefined {
-  return catalog[namespace]?.resourceTypes.find((resourceType) =>
-    resourceType.supportedEvents.includes(eventType),
+  return catalog[namespace]?.resourceTypes.find(
+    (candidate) => candidate.type === resourceType,
   )?.guidance?.[eventType];
 }
 

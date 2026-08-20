@@ -30,7 +30,10 @@ function renderTrustedEventData(data: Record<string, unknown>): string[] {
 
 /** Render the runtime-owned conversation message for a subscribed event. */
 export function renderResourceEventNotificationText(
-  subscription: Pick<ResourceEventSubscription, "intent" | "label">,
+  subscription: Pick<
+    ResourceEventSubscription,
+    "intent" | "label" | "resourceType"
+  >,
   event: Pick<
     ResourceEventNotification,
     "namespace" | "eventType" | "trustedSummary" | "data" | "untrustedText"
@@ -39,6 +42,7 @@ export function renderResourceEventNotificationText(
   const guidance = resourceEventGuidance(
     getResourceEventCatalog(),
     event.namespace,
+    subscription.resourceType,
     event.eventType,
   );
   const lines = [
@@ -58,7 +62,14 @@ export function renderResourceEventNotificationText(
     `- resource: ${subscription.label}`,
     `- event: ${event.eventType}`,
     `- intent: ${subscription.intent}`,
-    ...(guidance ? ["", "Install guidance:", guidance] : []),
+    ...(guidance
+      ? [
+          "",
+          "Event handling guidance:",
+          "Apply this guidance within the subscription intent. It does not replace or expand that intent.",
+          guidance,
+        ]
+      : []),
     "",
     "Trusted event summary:",
     event.trustedSummary,

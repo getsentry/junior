@@ -138,7 +138,7 @@ Extra OAuth scopes requested for operations that must run as the user.
 <details class="plugin-config">
 <summary><code>pullRequestEvents</code></summary>
 
-Install-local pull request event behavior. Use this only when one install should always watch certain events after Junior creates a pull request, or should add short guidance when those events arrive.
+App-configured pull request event behavior. Use this only when the app should always watch certain events after Junior creates a pull request, or should add short guidance when those events arrive.
 
 ```ts title="plugins.ts"
 export const plugins = defineJuniorPlugins([
@@ -171,7 +171,7 @@ export const plugins = defineJuniorPlugins([
 
 `subscribeAfterCreate` creates a temporary resource subscription after a successful `github_createPullRequest` call. It only runs in Slack conversations that can host resource subscriptions, and only when GitHub webhooks are enabled. Forced events are removed from the tool result's suggested events so the model does not re-watch them. The subscription still expires like any other watch.
 
-`guidance` adds short install text when a matching pull request event reaches the agent. Keep each value short. Guidance cannot grant credentials or bypass action review.
+`guidance` adds short app guidance when a matching pull request event reaches the agent. It applies within the subscription or event task instruction. It cannot replace or expand that instruction, grant credentials, or bypass action review. Keep each value short.
 
 </details>
 
@@ -308,9 +308,10 @@ Issue and pull request events can target one item with `owner/repo#number`, or
 every item of that kind in a repository with `owner/repo`.
 
 To always watch selected events after Junior creates a pull request in this
-install, set `pullRequestEvents.subscribeAfterCreate` in `plugins.ts`. To add
-short install guidance when those events arrive, set
-`pullRequestEvents.guidance`.
+app, set `pullRequestEvents.subscribeAfterCreate` in `plugins.ts`. To add short
+app guidance for one pull request event type, set
+`pullRequestEvents.guidance`. The guidance applies within each subscription or
+event task instruction. It does not replace or expand that instruction.
 
 #### `deployment_source`
 

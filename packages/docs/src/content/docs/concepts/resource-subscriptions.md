@@ -33,7 +33,7 @@ whenever an issue is reopened in this repository, summarize why in this channel
 
 - Watches default to 14 days and cannot exceed 30 days.
 - Event data cannot change conversation visibility or credential access.
-- Install guidance cannot grant credentials or bypass action review.
+- App guidance cannot grant credentials, expand an instruction, or bypass action review.
 - Duplicate provider deliveries should not create duplicate work.
 - Resource events currently require single-workspace Slack mode.
 
