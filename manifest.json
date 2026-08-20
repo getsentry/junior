@@ -1,0 +1,59 @@
+{
+  "commitSha": "9aecbf3c7eaa50be544175775ec79ff5bdebd4a0",
+  "mode": "path",
+  "reasons": [
+    "packages/junior-dashboard/e2e/conversations-mobile.spec.ts",
+    "packages/junior-dashboard/e2e/conversations.spec.ts",
+    "packages/junior-dashboard/src/client/App.tsx",
+    "packages/junior-dashboard/src/client/components/ConversationList.tsx",
+    "packages/junior-dashboard/src/client/components/README.md",
+    "packages/junior-dashboard/src/client/components/layout/DashboardHeader.tsx",
+    "packages/junior-dashboard/src/client/components/layout/VisualViewportShell.tsx",
+    "packages/junior-dashboard/src/client/conversations/ChatLayout.tsx",
+    "packages/junior-dashboard/src/client/conversations/ComposerDock.tsx",
+    "packages/junior-dashboard/src/client/conversations/ConversationComposer.tsx",
+    "packages/junior-dashboard/src/client/conversations/ConversationPage.tsx",
+    "packages/junior-dashboard/src/client/conversations/ConversationSidebar.tsx",
+    "packages/junior-dashboard/src/client/conversations/ConversationWorkspace.tsx",
+    "packages/junior-dashboard/src/client/conversations/SubagentTranscriptDrawer.tsx",
+    "packages/junior-dashboard/src/client/conversations/conversationRoutes.ts",
+    "packages/junior-dashboard/src/client/format.ts",
+    "packages/junior-dashboard/src/client/mobileViewport.ts",
+    "packages/junior-dashboard/src/client/pages/tasks/TaskDetailsDrawer.tsx",
+    "packages/junior-dashboard/src/client/pages/tasks/TaskExecutionsPage.tsx",
+    "packages/junior-dashboard/src/client/pages/tasks/TaskRunsPage.tsx"
+  ],
+  "scenarioIds": [
+    "gallery-foundations",
+    "gallery-index",
+    "conversations",
+    "conversation-detail"
+  ],
+  "shots": [
+    {
+      "file": "gallery-foundations__desktop.png",
+      "label": "Gallery · Foundations · desktop"
+    },
+    {
+      "file": "gallery-index__desktop.png",
+      "label": "Component gallery index · desktop"
+    },
+    {
+      "file": "conversations__desktop.png",
+      "label": "Conversations · desktop"
+    },
+    {
+      "file": "conversations__mobile.png",
+      "label": "Conversations · mobile"
+    },
+    {
+      "file": "conversation-detail__desktop.png",
+      "label": "Conversation detail · desktop"
+    },
+    {
+      "file": "conversation-detail__mobile.png",
+      "label": "Conversation detail · mobile"
+    }
+  ],
+  "skipped": false
+}
