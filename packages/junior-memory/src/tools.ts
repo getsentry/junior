@@ -8,6 +8,7 @@ import {
   type Source,
   type Actor,
   type Identity,
+  type PluginLogger,
   pluginToolOutputSchema,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
@@ -55,9 +56,11 @@ export interface MemoryToolContext {
   db: MemoryDb;
   embedder?: MemoryEmbeddingProvider;
   actor?: Actor;
-  /** Resolve linked identities for person-scoped read tools. */
-  resolveIdentities?: () => Promise<Identity[] | undefined>;
+  log: PluginLogger;
   source: Source;
+  users: {
+    resolveActor(): Promise<{ user?: { identities: Identity[] } } | undefined>;
+  };
   userText?: string;
 }
 
@@ -82,13 +85,25 @@ function asToolInputError(error: unknown): never {
   throw error;
 }
 
+async function resolveLinkedIdentities(
+  context: MemoryToolContext,
+): Promise<Identity[] | undefined> {
+  try {
+    const resolved = await context.users.resolveActor();
+    return resolved?.user?.identities;
+  } catch {
+    context.log.warn("memory_identity_resolve_failed");
+    return undefined;
+  }
+}
+
 async function memoryRuntimeContext(
   context: MemoryToolContext,
   includeLinkedIdentities = false,
 ): Promise<MemoryRuntimeContext> {
   const identities =
-    includeLinkedIdentities && context.resolveIdentities
-      ? await context.resolveIdentities()
+    includeLinkedIdentities && context.source.platform === "web"
+      ? await resolveLinkedIdentities(context)
       : undefined;
   return memoryRuntimeContextSchema.parse({
     ...(context.conversationId

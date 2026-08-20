@@ -53,20 +53,20 @@ function memoryToolContext(ctx: {
   db: MemoryToolContext["db"];
   embedder?: MemoryToolContext["embedder"];
   actor?: MemoryToolContext["actor"];
-  resolveIdentities?: () => Promise<Identity[] | undefined>;
+  log: MemoryToolContext["log"];
   source: MemoryToolContext["source"];
+  users: MemoryToolContext["users"];
   userText?: string;
 }): MemoryToolContext {
   return {
     agent: ctx.agent,
     ...(ctx.conversationId ? { conversationId: ctx.conversationId } : undefined),
     ...(ctx.actor ? { actor: ctx.actor } : undefined),
-    ...(ctx.resolveIdentities
-      ? { resolveIdentities: ctx.resolveIdentities }
-      : undefined),
     db: ctx.db,
     ...(ctx.embedder ? { embedder: ctx.embedder } : undefined),
+    log: ctx.log,
     source: ctx.source,
+    users: ctx.users,
     ...(ctx.userText ? { userText: ctx.userText } : undefined),
   };
 }
@@ -77,8 +77,10 @@ function memoryCreateToolContext(ctx: {
   db: MemoryCreateToolContext["db"];
   embedder?: MemoryCreateToolContext["embedder"];
   actor?: MemoryCreateToolContext["actor"];
+  log: MemoryCreateToolContext["log"];
   source: MemoryCreateToolContext["source"];
   supersessionDecider: MemoryCreateToolContext["supersessionDecider"];
+  users: MemoryCreateToolContext["users"];
   userText?: string;
 }): MemoryCreateToolContext {
   return {
@@ -157,23 +159,11 @@ export function memoryPlugin(options: MemoryPluginOptions = {}) {
       },
       tools(ctx: ToolRegistrationHookContext) {
         const agent = createMemoryAgent(ctx.model);
-        let identitiesPromise: Promise<Identity[] | undefined> | undefined;
-        const resolveIdentities =
-          ctx.source.platform === "web"
-            ? () => {
-                identitiesPromise ??= resolveLinkedIdentities(
-                  ctx.users,
-                  ctx.log,
-                );
-                return identitiesPromise;
-              }
-            : undefined;
         const context = memoryToolContext({
           ...ctx,
           agent,
           db: ctx.db as MemoryDb,
           embedder: ctx.embedder,
-          ...(resolveIdentities ? { resolveIdentities } : {}),
         });
         return {
           createMemory: createMemoryCreateTool(
