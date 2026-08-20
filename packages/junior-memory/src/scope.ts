@@ -172,5 +172,11 @@ export function deriveVisibleMemoryScopes(
   } catch {
     // Conversation memory is optional for synthetic invocations.
   }
-  return scopes;
+  // Linked identities expand read access to the same person-scoped scopes the
+  // dashboard memory page already authorizes. Write paths ignore this list.
+  if (ctx.identities && ctx.identities.length > 0) {
+    const linked = deriveViewerMemoryScopes(ctx.identities);
+    scopes.push(...linked.privateScopes, ...linked.publicScopes);
+  }
+  return uniqueScopes(scopes);
 }

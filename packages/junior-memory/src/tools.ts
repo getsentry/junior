@@ -7,6 +7,7 @@ import {
   type PluginToolOutput,
   type Source,
   type Actor,
+  type Identity,
   pluginToolOutputSchema,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
@@ -54,6 +55,10 @@ export interface MemoryToolContext {
   db: MemoryDb;
   embedder?: MemoryEmbeddingProvider;
   actor?: Actor;
+  /** Pre-resolved linked identities that expand read scopes. */
+  identities?: Identity[];
+  /** Lazy identity resolution for sync tool registration hooks. */
+  resolveIdentities?: () => Promise<Identity[] | undefined>;
   source: Source;
   userText?: string;
 }
@@ -79,23 +84,30 @@ function asToolInputError(error: unknown): never {
   throw error;
 }
 
-function memoryRuntimeContext(
+async function memoryRuntimeContext(
   context: MemoryToolContext,
-): MemoryRuntimeContext {
+): Promise<MemoryRuntimeContext> {
+  const identities =
+    context.identities && context.identities.length > 0
+      ? context.identities
+      : context.resolveIdentities
+        ? await context.resolveIdentities()
+        : undefined;
   return memoryRuntimeContextSchema.parse({
     ...(context.conversationId
       ? { conversationId: context.conversationId }
       : undefined),
     ...(context.actor ? { actor: context.actor } : undefined),
+    ...(identities && identities.length > 0 ? { identities } : undefined),
     source: context.source,
   });
 }
 
-function memoryStore(
+async function memoryStore(
   context: MemoryToolContext,
   options: { supersessionDecider?: MemorySupersessionDecider } = {},
 ) {
-  return createMemoryStore(context.db, memoryRuntimeContext(context), {
+  return createMemoryStore(context.db, await memoryRuntimeContext(context), {
     embedder: context.embedder,
     ...(options.supersessionDecider
       ? { supersessionDecider: options.supersessionDecider }
@@ -408,8 +420,8 @@ export function createMemoryCreateTool(context: MemoryCreateToolContext) {
       const parsedInput = parseMemoryToolInput(createMemoryInputSchema, input);
       const toolCallId = requireToolCallId(options.toolCallId);
       const requestedExpiresAtMs = parseExpiresAt(parsedInput.expires_at);
-      const runtimeContext = memoryRuntimeContext(context);
-      const store = memoryStore(context, {
+      const runtimeContext = await memoryRuntimeContext(context);
+      const store = await memoryStore(context, {
         supersessionDecider: context.supersessionDecider,
       });
       const review = await (async () => {
@@ -500,7 +512,7 @@ export function createMemoryRemoveTool(context: MemoryToolContext) {
       const parsedInput = parseMemoryToolInput(removeMemoryInputSchema, input);
       const memory = await (async () => {
         try {
-          return await memoryStore(context).archiveMemory({
+          return await (await memoryStore(context)).archiveMemory({
             id: parsedInput.id,
             reason: "tool_removed",
           });
@@ -530,7 +542,7 @@ export function createMemoryListTool(context: MemoryToolContext) {
     outputSchema: memoryManyOutputSchema,
     execute: async (input) => {
       const parsedInput = parseMemoryToolInput(listMemoriesInputSchema, input);
-      const memories = await memoryStore(context).listMemories({
+      const memories = await (await memoryStore(context)).listMemories({
         limit: boundedLimit(parsedInput.limit, DEFAULT_RESULT_LIMIT),
       });
       return memoryToolResult("listMemories", {
@@ -558,7 +570,7 @@ export function createMemorySearchTool(context: MemoryToolContext) {
         searchMemoriesInputSchema,
         input,
       );
-      const memories = await memoryStore(context).searchMemories({
+      const memories = await (await memoryStore(context)).searchMemories({
         query: parsedInput.query,
         limit: boundedLimit(parsedInput.limit, DEFAULT_SEARCH_LIMIT),
       });

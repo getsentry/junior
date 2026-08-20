@@ -1803,6 +1803,62 @@ describe("memory plugin storage", () => {
     }
   });
 
+  it("reads public Slack workspace memory from a web runtime with linked identities", async () => {
+    const fixture = await createMemoryFixture();
+    const linkedSlack = slackContext({ teamId: "T123", userId: "U123" });
+    const otherSlack = slackContext({ teamId: "T999", userId: "U999" });
+    const web = apiContext({ email: "dashboard@example.com" });
+    const identities = viewerUser(
+      [web.actor, linkedSlack.actor],
+      "dashboard@example.com",
+    ).identities;
+
+    try {
+      const linkedStore = createMemoryStore(memoryDb(fixture), linkedSlack, {
+        now: () => TEST_NOW_MS,
+      });
+      const otherStore = createMemoryStore(memoryDb(fixture), otherSlack, {
+        now: () => TEST_NOW_MS + 1,
+      });
+      const publicMemory = await linkedStore.createConversationMemory({
+        content: "Public workspace runbooks live in Notion.",
+        idempotencyKey: "session:slack:public",
+        kind: "knowledge",
+      });
+      await otherStore.createConversationMemory({
+        content: "Other workspace process stays private to that team.",
+        idempotencyKey: "session:other:public",
+        kind: "knowledge",
+      });
+
+      const webWithoutLinks = createMemoryStore(memoryDb(fixture), web, {
+        now: () => TEST_NOW_MS + 2,
+      });
+      await expect(webWithoutLinks.listMemories({ limit: 20 })).resolves.toEqual(
+        [],
+      );
+
+      const webWithLinks = createMemoryStore(
+        memoryDb(fixture),
+        { ...web, identities },
+        { now: () => TEST_NOW_MS + 3 },
+      );
+      await expect(webWithLinks.listMemories({ limit: 20 })).resolves.toEqual([
+        expect.objectContaining({ id: publicMemory.memory.id }),
+      ]);
+      await expect(
+        webWithLinks.searchMemories({
+          query: "runbooks",
+          limit: 10,
+        }),
+      ).resolves.toEqual([
+        expect.objectContaining({ id: publicMemory.memory.id }),
+      ]);
+    } finally {
+      await fixture.close();
+    }
+  });
+
   it("skips passive extraction for Slack sessions without a message key", async () => {
     const fixture = await createMemoryFixture();
     const runtime = slackContext();

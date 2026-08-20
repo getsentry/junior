@@ -1,4 +1,10 @@
-import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
+import {
+  defineJuniorPlugin,
+  type Identity,
+  type PluginLogger,
+  type ToolRegistrationHookContext,
+  type UserPromptContext,
+} from "@sentry/junior-plugin-api";
 import { createMemoryAgent } from "./agent";
 import { createMemoryApi } from "./api";
 import { createMemoryCliCommand } from "./cli";
@@ -47,6 +53,8 @@ function memoryToolContext(ctx: {
   db: MemoryToolContext["db"];
   embedder?: MemoryToolContext["embedder"];
   actor?: MemoryToolContext["actor"];
+  identities?: Identity[];
+  resolveIdentities?: () => Promise<Identity[] | undefined>;
   source: MemoryToolContext["source"];
   userText?: string;
 }): MemoryToolContext {
@@ -54,6 +62,12 @@ function memoryToolContext(ctx: {
     agent: ctx.agent,
     ...(ctx.conversationId ? { conversationId: ctx.conversationId } : undefined),
     ...(ctx.actor ? { actor: ctx.actor } : undefined),
+    ...(ctx.identities && ctx.identities.length > 0
+      ? { identities: ctx.identities }
+      : undefined),
+    ...(ctx.resolveIdentities
+      ? { resolveIdentities: ctx.resolveIdentities }
+      : undefined),
     db: ctx.db,
     ...(ctx.embedder ? { embedder: ctx.embedder } : undefined),
     source: ctx.source,
@@ -67,6 +81,8 @@ function memoryCreateToolContext(ctx: {
   db: MemoryCreateToolContext["db"];
   embedder?: MemoryCreateToolContext["embedder"];
   actor?: MemoryCreateToolContext["actor"];
+  identities?: Identity[];
+  resolveIdentities?: () => Promise<Identity[] | undefined>;
   source: MemoryCreateToolContext["source"];
   supersessionDecider: MemoryCreateToolContext["supersessionDecider"];
   userText?: string;
@@ -75,6 +91,24 @@ function memoryCreateToolContext(ctx: {
     ...memoryToolContext(ctx),
     supersessionDecider: ctx.supersessionDecider,
   };
+}
+
+/** Resolve linked identities for person-scoped memory read access. */
+async function resolveLinkedIdentities(
+  users: {
+    resolveActor(): Promise<{ user?: { identities: Identity[] } } | undefined>;
+  },
+  log: PluginLogger,
+): Promise<Identity[] | undefined> {
+  try {
+    const resolved = await users.resolveActor();
+    const identities = resolved?.user?.identities;
+    return identities && identities.length > 0 ? identities : undefined;
+  } catch {
+    // Identity resolution is optional context. Fail closed to actor/source scopes.
+    log.warn("memory_identity_resolve_failed");
+    return undefined;
+  }
 }
 
 /** Register Junior's long-term memory plugin. */
@@ -127,13 +161,21 @@ export function memoryPlugin(options: MemoryPluginOptions = {}) {
           users: ctx.users,
         });
       },
-      tools(ctx) {
+      tools(ctx: ToolRegistrationHookContext) {
         const agent = createMemoryAgent(ctx.model);
+        // tools() is sync; resolve linked identities once, lazily on first execute.
+        let identitiesPromise: Promise<Identity[] | undefined> | undefined;
+        const resolveIdentities = () => {
+          identitiesPromise ??=
+            resolveLinkedIdentities(ctx.users, ctx.log);
+          return identitiesPromise;
+        };
         const context = memoryToolContext({
           ...ctx,
           agent,
           db: ctx.db as MemoryDb,
           embedder: ctx.embedder,
+          resolveIdentities,
         });
         return {
           createMemory: createMemoryCreateTool(
@@ -143,6 +185,7 @@ export function memoryPlugin(options: MemoryPluginOptions = {}) {
               db: ctx.db as MemoryDb,
               embedder: ctx.embedder,
               supersessionDecider: agent,
+              resolveIdentities,
             }),
           ),
           removeMemory: createMemoryRemoveTool(context),
@@ -152,13 +195,18 @@ export function memoryPlugin(options: MemoryPluginOptions = {}) {
       },
       ...(!options.disableRecall
         ? {
-            async userPrompt(ctx) {
+            async userPrompt(ctx: UserPromptContext) {
+              const identities = await resolveLinkedIdentities(
+                ctx.users,
+                ctx.log,
+              );
               return await createMemoryPromptContributions({
                 agent: createMemoryAgent(ctx.model),
                 ...(ctx.conversationId
                   ? { conversationId: ctx.conversationId }
                   : undefined),
                 ...(ctx.actor ? { actor: ctx.actor } : undefined),
+                ...(identities ? { identities } : undefined),
                 db: ctx.db as MemoryDb,
                 embedder: ctx.embedder,
                 events: ctx.events,

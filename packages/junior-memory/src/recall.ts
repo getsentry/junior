@@ -2,6 +2,7 @@ import {
   definePromptContext,
   type UserPromptContribution,
   type Actor,
+  type Identity,
   type PluginConversationEvents,
   type PluginLogger,
   type Source,
@@ -29,6 +30,8 @@ export interface MemoryRecallContext {
   events?: PluginConversationEvents;
   log: PluginLogger;
   actor?: Actor;
+  /** Linked identities that expand read scopes for the current person. */
+  identities?: Identity[];
   source: Source;
   text: string;
 }
@@ -143,6 +146,9 @@ export async function createMemoryPromptContributions(
       ? { conversationId: context.conversationId }
       : undefined),
     ...(context.actor ? { actor: context.actor } : undefined),
+    ...(context.identities && context.identities.length > 0
+      ? { identities: context.identities }
+      : undefined),
     source: context.source,
   });
   let embeddingCostUsd: number | undefined;

@@ -1,4 +1,8 @@
-import { actorSchema, sourceSchema } from "@sentry/junior-plugin-api";
+import {
+  actorSchema,
+  identitySchema,
+  sourceSchema,
+} from "@sentry/junior-plugin-api";
 import { z } from "zod";
 
 export const MEMORY_KINDS = ["preference", "procedure", "knowledge"] as const;
@@ -27,6 +31,9 @@ export const memoryRuntimeContextSchema = z
   .object({
     conversationId: nonEmptyStringSchema.optional(),
     actor: actorSchema.optional(),
+    // Linked identities authorize cross-surface public/personal read scopes.
+    // Writes still use only actor + source authority.
+    identities: z.array(identitySchema).max(100).optional(),
     source: sourceSchema,
   })
   .strict();
