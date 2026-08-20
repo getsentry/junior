@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, asc, eq, or } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import {
   identitySchema,
   userSchema,
@@ -145,8 +145,6 @@ export async function readActorIdentityFromSql(
 ): Promise<{ identity: Identity; user?: User } | undefined> {
   if (actor.platform === "system") return undefined;
   const providerTenantId = actor.platform === "slack" ? actor.teamId : "";
-  const normalizedEmail =
-    "email" in actor ? normalizeIdentityEmail(actor.email) : undefined;
   const row = (
     await db
       .select({
@@ -158,28 +156,28 @@ export async function readActorIdentityFromSql(
       .where(
         and(
           eq(juniorIdentities.kind, "user"),
-          or(
-            and(
-              eq(juniorIdentities.provider, actor.platform),
-              eq(juniorIdentities.providerTenantId, providerTenantId),
-              eq(juniorIdentities.providerSubjectId, actor.userId),
-            ),
-            normalizedEmail
-              ? and(
-                  eq(juniorIdentities.emailVerified, true),
-                  eq(juniorIdentities.emailNormalized, normalizedEmail),
-                )
-              : undefined,
-          ),
+          eq(juniorIdentities.provider, actor.platform),
+          eq(juniorIdentities.providerTenantId, providerTenantId),
+          eq(juniorIdentities.providerSubjectId, actor.userId),
         ),
       )
       .limit(1)
   )[0];
-  if (!row) return undefined;
-  return {
-    identity: identityFromRow(row.identity),
-    ...(row.user ? { user: await readUserById(db, row.user) } : undefined),
-  };
+  if (row) {
+    return {
+      identity: identityFromRow(row.identity),
+      ...(row.user ? { user: await readUserById(db, row.user) } : undefined),
+    };
+  }
+  if (actor.platform !== "web" || !actor.email) return undefined;
+  const user = await findUserByEmailFromSql(db, actor.email);
+  const normalizedEmail = normalizeIdentityEmail(user?.email);
+  const identity = user?.identities.find(
+    (candidate) =>
+      candidate.provider === "junior" &&
+      candidate.providerSubjectId === normalizedEmail,
+  );
+  return identity && user ? { identity, user } : undefined;
 }
 
 /** Resolve the stored identity and linked user for one runtime actor. */

@@ -336,6 +336,20 @@ WHERE indexname = 'junior_memory_memories_search_idx'
         email,
         emailVerified: true,
       });
+      await expect(
+        readActorIdentity({
+          platform: "slack",
+          teamId: "T123",
+          userId: "U123",
+          email,
+        }),
+      ).resolves.toMatchObject({
+        identity: {
+          provider: "slack",
+          providerSubjectId: "U123",
+          providerTenantId: "T123",
+        },
+      });
       const linkedSource = createSlackSource({
         teamId: "T123",
         channelId: "C123",
