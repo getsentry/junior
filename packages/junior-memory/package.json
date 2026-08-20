@@ -23,7 +23,7 @@
     "src"
   ],
   "scripts": {
-    "build": "tsup && tsc -p tsconfig.build.json --emitDeclarationOnly",
+    "build": "pnpm --filter @sentry/junior build && tsup && tsc -p tsconfig.build.json --emitDeclarationOnly",
     "db:generate": "pnpm exec drizzle-kit generate --config drizzle.config.ts",
     "lint": "oxlint --config ../junior/.oxlintrc.json --deny-warnings src tests tsup.config.ts",
     "prepare": "pnpm run build",
