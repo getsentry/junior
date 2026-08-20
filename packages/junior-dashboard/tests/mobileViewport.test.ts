@@ -227,16 +227,19 @@ describe("mobileViewportOffsetTop", () => {
     ).toBe(140);
   });
 
-  it("accepts a first keyboard dock delivered as a scroll", () => {
-    expect(
-      mobileViewportOffsetTop({
-        editableFocused: true,
-        keyboardOpen: true,
-        nextOffsetTop: 140,
-        previousOffsetTop: 0,
-        source: "scroll",
-      }),
-    ).toBe(140);
+  it("accepts a first keyboard dock from non-resize sources while undocked", () => {
+    for (const source of ["scroll", "focusin", "measure"] as const) {
+      expect(
+        mobileViewportOffsetTop({
+          editableFocused: true,
+          keyboardOpen: true,
+          nextOffsetTop: 140,
+          previousOffsetTop: 0,
+          source,
+        }),
+        source,
+      ).toBe(140);
+    }
   });
 
   it("keeps the shell still while Safari later pans a focused editor", () => {
@@ -251,7 +254,7 @@ describe("mobileViewportOffsetTop", () => {
     ).toBe(140);
   });
 
-  it("freezes measure and focus churn while an editor is focused", () => {
+  it("freezes measure and focus churn after the shell is already docked", () => {
     expect(
       mobileViewportOffsetTop({
         editableFocused: true,
@@ -270,6 +273,70 @@ describe("mobileViewportOffsetTop", () => {
         source: "focusin",
       }),
     ).toBe(140);
+  });
+
+  it("still follows keyboard resize after the first dock", () => {
+    expect(
+      mobileViewportOffsetTop({
+        editableFocused: true,
+        keyboardOpen: true,
+        nextOffsetTop: 160,
+        previousOffsetTop: 140,
+        source: "resize",
+      }),
+    ).toBe(160);
+  });
+
+  it("walks the iOS first-focus dock sequence without drifting", () => {
+    // 1. Keyboard opens: height shrinks, offset still 0 for a frame.
+    let offset = mobileViewportOffsetTop({
+      editableFocused: true,
+      keyboardOpen: true,
+      nextOffsetTop: 0,
+      previousOffsetTop: 0,
+      source: "resize",
+    });
+    expect(offset).toBe(0);
+
+    // 2. First dock arrives as scroll (the physical-iPhone failure mode).
+    offset = mobileViewportOffsetTop({
+      editableFocused: true,
+      keyboardOpen: true,
+      nextOffsetTop: 140,
+      previousOffsetTop: offset,
+      source: "scroll",
+    });
+    expect(offset).toBe(140);
+
+    // 3. Later caret pan must not chase.
+    offset = mobileViewportOffsetTop({
+      editableFocused: true,
+      keyboardOpen: true,
+      nextOffsetTop: 180,
+      previousOffsetTop: offset,
+      source: "scroll",
+    });
+    expect(offset).toBe(140);
+
+    // 4. Keyboard animation may still move the dock via resize.
+    offset = mobileViewportOffsetTop({
+      editableFocused: true,
+      keyboardOpen: true,
+      nextOffsetTop: 160,
+      previousOffsetTop: offset,
+      source: "resize",
+    });
+    expect(offset).toBe(160);
+
+    // 5. Blur snaps closed even with a stale visual offset.
+    offset = mobileViewportOffsetTop({
+      editableFocused: false,
+      keyboardOpen: false,
+      nextOffsetTop: 160,
+      previousOffsetTop: offset,
+      source: "focusout",
+    });
+    expect(offset).toBe(0);
   });
 
   it("snaps closed after the editor loses focus", () => {

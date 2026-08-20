@@ -130,10 +130,15 @@ export function nextRestingLayoutHeight(input: {
 /**
  * Keep Safari focus panning from moving the fixed workspace with the keyboard.
  *
- * First focus opens the keyboard with a resize that may set a non-zero
- * offsetTop. Accept only resize docks while focused so the composer stays on
- * the visual bottom. Freeze every other source (scroll pans, focus churn,
- * measure) so the shell does not chase the caret.
+ * Contract while an editor is focused and the keyboard is open:
+ * 1. Always follow keyboard **resize** (height/offset animation).
+ * 2. Accept the **first** positive offset from any other source when the shell
+ *    is still undocked (`previousOffsetTop === 0`). iOS often delivers that
+ *    first dock as scroll after a zero-offset resize.
+ * 3. Freeze later non-resize sources so caret pans do not chase the shell.
+ *
+ * After blur / closed keyboard, snap offset to 0 even if a stale visual offset
+ * remains for a frame.
  */
 export function mobileViewportOffsetTop(input: {
   editableFocused: boolean;
@@ -142,20 +147,15 @@ export function mobileViewportOffsetTop(input: {
   previousOffsetTop: number;
   source: MobileViewportSyncSource;
 }): number {
-  // iOS can report the first keyboard dock as a scroll after a zero-offset
-  // resize. Accept that first positive offset, then freeze later scroll pans.
-  if (
-    input.editableFocused &&
-    input.keyboardOpen &&
-    input.source === "scroll" &&
-    input.previousOffsetTop === 0 &&
-    input.nextOffsetTop > 0
-  ) {
-    return input.nextOffsetTop;
-  }
-  // While an editor is focused, only keyboard resize may move the shell.
-  // Later scroll pans, focus churn, and measure must not chase the caret.
-  if (input.editableFocused && input.source !== "resize") {
+  if (input.editableFocused && input.keyboardOpen) {
+    if (input.source === "resize") {
+      return input.nextOffsetTop;
+    }
+    // First dock handoff: height may open with offset 0, then scroll/focus/
+    // measure reports the real visual top. Accept once, then freeze.
+    if (input.previousOffsetTop === 0 && input.nextOffsetTop > 0) {
+      return input.nextOffsetTop;
+    }
     return input.previousOffsetTop;
   }
   // After blur, snap closed-keyboard geometry back to the layout top even if a
