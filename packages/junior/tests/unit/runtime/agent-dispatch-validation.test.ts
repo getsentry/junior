@@ -214,18 +214,16 @@ describe("agent dispatch validation", () => {
   it("rejects non-canonical dispatch records from durable state", () => {
     const baseRecord = {
       actor: { platform: "system", name: "scheduler" },
-      attempt: 0,
       createdAtMs: Date.parse("2026-05-26T12:00:00.000Z"),
       destination: validOptions.destination,
+      destinationVisibility: "private",
       id: "dispatch_123",
       idempotencyKey: "run-1",
       input: "Run the scheduled task.",
-      maxAttempts: 5,
       plugin: "scheduler",
       source: validOptions.source,
       status: "pending",
       updatedAtMs: Date.parse("2026-05-26T12:00:00.000Z"),
-      version: 1,
     };
 
     expect(
@@ -264,44 +262,6 @@ describe("agent dispatch validation", () => {
   it("rejects persisted dispatch records without source", () => {
     const legacyRecord = {
       actor: { platform: "system", name: "scheduler" },
-      attempt: 0,
-      createdAtMs: Date.parse("2026-05-26T12:00:00.000Z"),
-      destination: validOptions.destination,
-      id: "dispatch_legacy",
-      idempotencyKey: "run-legacy",
-      input: "Run the scheduled task.",
-      maxAttempts: 5,
-      plugin: "scheduler",
-      status: "pending",
-      updatedAtMs: Date.parse("2026-05-26T12:00:00.000Z"),
-      version: 1,
-    };
-
-    expect(parseDispatchRecord(legacyRecord)).toBeUndefined();
-  });
-
-  it("strips bounded callback-owned fields from rollout-era records", () => {
-    expect(
-      parseDispatchRecord({
-        actor: { platform: "system", name: "scheduler" },
-        attempt: 2,
-        createdAtMs: Date.parse("2026-05-26T12:00:00.000Z"),
-        destination: validOptions.destination,
-        destinationVisibility: "private",
-        id: "dispatch_legacy",
-        idempotencyKey: "run-legacy",
-        input: "Run the scheduled task.",
-        lastCallbackAtMs: Date.parse("2026-05-26T12:01:00.000Z"),
-        leaseExpiresAtMs: Date.parse("2026-05-26T12:02:00.000Z"),
-        maxAttempts: 5,
-        plugin: "scheduler",
-        source: validOptions.source,
-        status: "running",
-        updatedAtMs: Date.parse("2026-05-26T12:01:00.000Z"),
-        version: 3,
-      }),
-    ).toEqual({
-      actor: { platform: "system", name: "scheduler" },
       createdAtMs: Date.parse("2026-05-26T12:00:00.000Z"),
       destination: validOptions.destination,
       destinationVisibility: "private",
@@ -309,11 +269,13 @@ describe("agent dispatch validation", () => {
       idempotencyKey: "run-legacy",
       input: "Run the scheduled task.",
       plugin: "scheduler",
-      source: validOptions.source,
-      status: "running",
-      updatedAtMs: Date.parse("2026-05-26T12:01:00.000Z"),
-    });
+      status: "pending",
+      updatedAtMs: Date.parse("2026-05-26T12:00:00.000Z"),
+    };
+
+    expect(parseDispatchRecord(legacyRecord)).toBeUndefined();
   });
+
 
   it("bounds durable idempotency and metadata keys", () => {
     expect(() =>

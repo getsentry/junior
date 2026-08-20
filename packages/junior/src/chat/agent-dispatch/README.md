@@ -51,9 +51,6 @@ holding that lock.
 - `slack/dispatch-turn.ts` owns Slack message/thread adaptation and receives
   only dispatch-owned contracts.
 
-The legacy signed callback route only appends conversation work. It cannot
-execute a turn or reclaim lifecycle ownership.
-
 Representative behavior coverage lives in
 `tests/integration/agent-dispatch-work.test.ts`; local transition and authority
 contracts live in `tests/component/agent-dispatch-worker.test.ts`.

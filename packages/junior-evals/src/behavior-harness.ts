@@ -80,7 +80,7 @@ import {
   type ConversationTurnLifecycle,
 } from "@/chat/conversations/turn-lifecycle";
 import {
-  getDispatchInputMessageIds,
+  getDispatchInputMessageId,
   getDispatchRecord,
 } from "@/chat/agent-dispatch/store";
 import { ingestResourceEvent } from "@/chat/resource-events/ingest";
@@ -2180,7 +2180,7 @@ async function processEvents(args: {
           `agent-dispatch:${dispatch.id}`,
           {
             agentRunner,
-            inputMessageIds: getDispatchInputMessageIds(dispatch.id),
+            inputMessageIds: [getDispatchInputMessageId(dispatch.id)],
             routingContext: buildDispatchRoutingContext(dispatch),
             wakePausedTurn: async (request) => {
               await wakePausedTurn(request, {

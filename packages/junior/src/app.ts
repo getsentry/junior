@@ -56,7 +56,6 @@ import {
   type JuniorPluginSet,
 } from "./plugins";
 import { GET as healthGET } from "@/handlers/health";
-import { POST as agentDispatchPOST } from "@/handlers/agent-dispatch";
 import { GET as heartbeatGET } from "@/handlers/heartbeat";
 import { GET as retentionGET } from "@/handlers/retention";
 import { GET as mcpOauthCallbackGET } from "@/handlers/mcp-oauth-callback";
@@ -776,12 +775,6 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
 
   app.post("/api/internal/local-oauth-credentials", (c) => {
     return receiveLocalOAuthCredential(c.req.raw);
-  });
-
-  app.post("/api/internal/agent-dispatch", (c) => {
-    return agentDispatchPOST(c.req.raw, waitUntil, {
-      conversationWorkQueue: getVercelConversationWorkQueue(),
-    });
   });
 
   let agentContinuePOST:
