@@ -277,7 +277,16 @@ describe("resource event delivery", () => {
           run: async () => ({ status: "completed" }),
           state,
         },
-        plugins: defineJuniorPlugins([githubPlugin()]),
+        plugins: defineJuniorPlugins([
+          githubPlugin({
+            pullRequestEvents: {
+              guidance: {
+                "pull_request.comment.created":
+                  "Address actionable review feedback.",
+              },
+            },
+          }),
+        ]),
       });
       const response = await app.fetch(
         new Request("https://example.test/api/webhooks/github", {
@@ -320,12 +329,26 @@ describe("resource event delivery", () => {
         input: expect.stringContaining("Summarize the reviewer comment."),
         plugin: "junior",
       });
+      expect(dispatch?.input).toContain("Event handling guidance:");
+      expect(dispatch?.input).toContain(
+        "Apply this guidance within the stored user instruction. It does not replace or expand that instruction.",
+      );
+      expect(dispatch?.input).toContain("Address actionable review feedback.");
       const work = await getConversationWorkState({
         conversationId: CONVERSATION_ID,
         state,
       });
       expect(work?.messages[0]?.input.text).toContain(
         "please add regression coverage",
+      );
+      expect(work?.messages[0]?.input.text).toContain(
+        "Event handling guidance:",
+      );
+      expect(work?.messages[0]?.input.text).toContain(
+        "Apply this guidance within the subscription intent. It does not replace or expand that intent.",
+      );
+      expect(work?.messages[0]?.input.text).toContain(
+        "Address actionable review feedback.",
       );
     } finally {
       if (eventTaskId) {

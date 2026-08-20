@@ -1018,6 +1018,7 @@ interface ResourceEventNotificationOptions {
   label: string;
   namespace?: string;
   identifier: string;
+  resourceType: string;
   subscriptionId?: string;
   thread?: ThreadOverrides;
   trustedSummary: string;
@@ -1067,7 +1068,11 @@ function resourceEventNotificationText(
   opts: ResourceEventNotificationOptions,
 ): string {
   return renderResourceEventNotificationText(
-    { intent: opts.intent, label: opts.label },
+    {
+      intent: opts.intent,
+      label: opts.label,
+      resourceType: opts.resourceType,
+    },
     {
       namespace: opts.namespace ?? "github",
       eventType: opts.eventType,

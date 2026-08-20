@@ -533,7 +533,7 @@ describe("github plugin", () => {
     });
   });
 
-  it("registers install guidance for pull request events", () => {
+  it("registers app guidance for pull request events", () => {
     const pullRequest = githubPlugin({
       pullRequestEvents: {
         guidance: {
