@@ -304,17 +304,7 @@ export function DashboardShell() {
           path="/"
         />
         <Route
-          element={
-            loading ? (
-              <LoadingView label="Loading your conversations" />
-            ) : data ? (
-              <ConversationWorkspace data={data} />
-            ) : (
-              <LoadingView
-                label={query.error?.message ?? "Dashboard unavailable"}
-              />
-            )
-          }
+          element={<Navigate replace to="/" />}
           path="/conversations/new"
         />
         <Route

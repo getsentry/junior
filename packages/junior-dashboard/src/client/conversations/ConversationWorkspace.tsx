@@ -1,6 +1,13 @@
-import { useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { Globe2, LockKeyhole } from "lucide-react";
-import { useLocation, useNavigate, useParams } from "react-router";
+import { useNavigate, useParams } from "react-router";
 
 import { useConversationsData } from "../api";
 import { ConversationSidebar } from "./ConversationSidebar";
@@ -11,11 +18,7 @@ import {
   usePendingArchiveConversationUpdates,
   type PendingArchiveConversationUpdate,
 } from "./queries";
-import {
-  conversationPath,
-  isNewConversationPath,
-  NEW_CONVERSATION_PATH,
-} from "./conversationRoutes";
+import { conversationPath, NEW_CONVERSATION_PATH } from "./conversationRoutes";
 import { buildConversations, filterConversationList } from "../format";
 import type { DashboardCoreData } from "../types";
 import type { Conversation } from "../types";
@@ -27,12 +30,11 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<"active" | "archived">("active");
   const params = useParams();
-  const location = useLocation();
   const navigate = useNavigate();
   const selectedId = params.conversationId;
-  // Create mode is route-driven so mobile back uses the app header chevron
-  // (same affordance as opening a thread), not a floating control.
-  const creating = isNewConversationPath(location.pathname);
+  // Home and create are one surface: no selected thread means the landing
+  // (compose hero + list nav). Desktop already did this; mobile matches it.
+  const landing = !selectedId;
   const feed = useConversationsData(status);
   const pendingArchiveUpdates = usePendingArchiveConversationUpdates();
   const createConversation = useCreateConversation();
@@ -56,15 +58,15 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
   );
 
   useEffect(() => {
-    if (!creating) return;
+    if (!landing) return;
     // New chats are active; leave archived view so the created row can appear.
     setStatus("active");
-  }, [creating]);
+  }, [landing]);
 
   const openCreate = () => {
     createConversation.reset();
     setStatus("active");
-    if (!creating) navigate(NEW_CONVERSATION_PATH);
+    if (selectedId) navigate(NEW_CONVERSATION_PATH);
   };
 
   const createView = (
@@ -85,10 +87,10 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
     />
   );
 
-  // Mobile create is a landing page: simple app header (shell) + compose hero +
-  // conversation list as navigation. Desktop keeps the split pane. One create
-  // tree only — dual mounts break focus/a11y queries.
-  if (creating) {
+  // Landing (home + create): simple app header + compose hero + list nav on
+  // mobile; desktop keeps the split pane. One create tree only — dual mounts
+  // break focus/a11y queries.
+  if (landing) {
     return (
       <div
         className={cn(
@@ -114,10 +116,7 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
           aria-label="New conversation"
           className="min-h-0 overflow-hidden bg-white/[0.012]"
         >
-          <div
-            className="h-full min-h-0 overflow-y-auto overscroll-contain"
-            data-create-landing-scroll=""
-          >
+          <CreateLandingScroll>
             {createView}
             <div className="md:hidden">
               <ConversationSidebar
@@ -134,7 +133,7 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
                 variant="landing"
               />
             </div>
-          </div>
+          </CreateLandingScroll>
         </section>
       </div>
     );
@@ -147,13 +146,7 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
         "grid h-full min-h-0 overflow-hidden md:grid-cols-[21rem_minmax(0,1fr)] xl:border-x xl:border-white/[0.07]",
       )}
     >
-      <div
-        className={
-          selectedId
-            ? "hidden h-full min-h-0 overflow-hidden md:block"
-            : "h-full min-h-0 overflow-hidden"
-        }
-      >
+      <div className="hidden h-full min-h-0 overflow-hidden md:block">
         <ConversationSidebar
           conversations={visibleConversations}
           error={feed.error?.message}
@@ -169,31 +162,125 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
       </div>
       <section
         aria-label="Selected conversation"
-        className={
-          selectedId
-            ? "grid min-h-0 grid-rows-[minmax(0,1fr)] overflow-hidden bg-white/[0.012]"
-            : "hidden min-h-0 overflow-hidden bg-white/[0.012] md:grid md:grid-rows-[minmax(0,1fr)]"
-        }
+        className="grid min-h-0 grid-rows-[minmax(0,1fr)] overflow-hidden bg-white/[0.012]"
       >
-        {selectedId ? (
-          <ConversationPage
-            key={selectedId}
-            conversationId={selectedId}
-            data={
-              feed.data
-                ? {
-                    conversations: feed.data,
-                  }
-                : undefined
-            }
-            pendingArchiveUpdate={pendingArchiveUpdates.find(
-              (update) => update.conversationId === selectedId,
-            )}
-          />
-        ) : (
-          createView
-        )}
+        <ConversationPage
+          key={selectedId}
+          conversationId={selectedId}
+          data={
+            feed.data
+              ? {
+                  conversations: feed.data,
+                }
+              : undefined
+          }
+          pendingArchiveUpdate={pendingArchiveUpdates.find(
+            (update) => update.conversationId === selectedId,
+          )}
+        />
       </section>
+    </div>
+  );
+}
+
+
+/**
+ * Keep create-landing scroll stable while the hero composer is focused.
+ *
+ * iOS Safari scrolls the nearest overflow ancestor to center a focused field.
+ * On this landing page that yanks the hero/list upward as the keyboard opens.
+ * Freeze only for the hero composer — list search and other fields must keep
+ * normal scroll so they stay on-screen while focused.
+ */
+function CreateLandingScroll(props: { children: ReactNode }) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const freezeScrollTopRef = useRef(0);
+  const focusedRef = useRef(false);
+
+  const isHeroComposerTarget = (target: EventTarget | null) =>
+    target instanceof HTMLElement &&
+    Boolean(target.closest("[data-create-landing-hero]")) &&
+    (target instanceof HTMLInputElement ||
+      target instanceof HTMLTextAreaElement ||
+      target.isContentEditable);
+
+  const lockToFrozenTop = useCallback(() => {
+    const root = rootRef.current;
+    if (!root || !focusedRef.current) return;
+    if (root.scrollTop !== freezeScrollTopRef.current) {
+      root.scrollTop = freezeScrollTopRef.current;
+    }
+  }, []);
+
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!root) return;
+
+    const onFocusIn = (event: FocusEvent) => {
+      if (!isHeroComposerTarget(event.target)) return;
+      focusedRef.current = true;
+      // Always pin landing to the hero while the composer is focused. Capturing
+      // scrollTop after Safari's pan would freeze the jumped position.
+      freezeScrollTopRef.current = 0;
+      root.style.overflowY = "hidden";
+      root.scrollTop = 0;
+      requestAnimationFrame(lockToFrozenTop);
+      queueMicrotask(lockToFrozenTop);
+    };
+
+    const onFocusOut = (event: FocusEvent) => {
+      if (!isHeroComposerTarget(event.target)) return;
+      // Stay frozen while focus moves inside the hero compose stack.
+      const next = event.relatedTarget;
+      if (next instanceof Node && isHeroComposerTarget(next)) {
+        return;
+      }
+      focusedRef.current = false;
+      root.style.overflowY = "";
+      root.scrollTop = freezeScrollTopRef.current;
+    };
+
+    const onScroll = () => {
+      if (!focusedRef.current) return;
+      lockToFrozenTop();
+    };
+
+    // Prefer preventScroll focus on pointer so iOS never starts its focus pan.
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (!isHeroComposerTarget(target)) return;
+      if (!(target instanceof HTMLElement) || document.activeElement === target) {
+        return;
+      }
+      event.preventDefault();
+      focusedRef.current = true;
+      // Hero compose owns the top of this page. Keep scroll at 0 while typing.
+      freezeScrollTopRef.current = 0;
+      root.style.overflowY = "hidden";
+      target.focus({ preventScroll: true });
+      root.scrollTop = 0;
+      requestAnimationFrame(lockToFrozenTop);
+    };
+
+    root.addEventListener("pointerdown", onPointerDown);
+    root.addEventListener("focusin", onFocusIn);
+    root.addEventListener("focusout", onFocusOut);
+    root.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      root.removeEventListener("pointerdown", onPointerDown);
+      root.removeEventListener("focusin", onFocusIn);
+      root.removeEventListener("focusout", onFocusOut);
+      root.removeEventListener("scroll", onScroll);
+    };
+  }, [lockToFrozenTop]);
+
+  return (
+    <div
+      className="h-full min-h-0 overflow-y-auto overscroll-contain"
+      data-create-landing-scroll=""
+      ref={rootRef}
+    >
+      {props.children}
     </div>
   );
 }
@@ -212,7 +299,10 @@ function NewConversationView(props: {
   // Landing-page compose hero. Parent owns page scroll and stacks conversation
   // nav under this block on mobile; desktop still centers the hero alone.
   return (
-    <div className="px-4 py-10 md:flex md:min-h-full md:flex-col md:justify-center md:px-8 md:py-12">
+    <div
+      className="px-4 py-10 md:flex md:min-h-full md:flex-col md:justify-center md:px-8 md:py-12"
+      data-create-landing-hero=""
+    >
       <div className="mx-auto flex w-full max-w-xl flex-col items-stretch gap-5 md:max-w-2xl md:gap-8">
           <h2 className="m-0 text-center font-display text-2xl font-medium tracking-[-0.03em] text-dashboard-text md:text-3xl">
             What do you need?

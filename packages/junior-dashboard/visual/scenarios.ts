@@ -47,7 +47,8 @@ export const VISUAL_SCENARIOS: VisualScenario[] = [
     id: "conversations",
     label: "Conversations",
     path: "/",
-    ready: "Conversations",
+    // Home is the create landing (hero + list), same as desktop empty state.
+    ready: "What do you need?",
     viewports: [DESKTOP, MOBILE],
   },
   {
@@ -87,10 +88,10 @@ export const VISUAL_SCENARIOS: VisualScenario[] = [
     id: "conversation-create-focused",
     label: "New conversation · landing compose",
     path: "/",
-    // Open create mode and focus the composer. Capture landing page chrome
+    // Home is the create landing. Focus the composer and capture chrome
     // (header + hero + conversation nav), not a keyboard-docked reply footer.
     prepare: "new-conversation-focused",
-    ready: "Conversations",
+    ready: "What do you need?",
     viewports: [DESKTOP, MOBILE],
   },
   {

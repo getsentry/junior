@@ -59,7 +59,8 @@ named components so pages stay thin and taste stays consistent.
   - `conversations/ComposerDock` owns reply bottom pad and dock chrome.
   Pages and feature modules pass children only. They must not invent viewport
   height, offset, bottom pad, or `env(safe-area-inset-bottom)` math for the
-  composer. Create and empty-state compose is not a dock.
+  composer. Home and create are one landing surface (compose hero + list nav),
+  not a dock. `/conversations/new` redirects to `/`.
 
 ## Exceptions
 
