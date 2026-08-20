@@ -165,6 +165,36 @@ describe("nextRestingLayoutHeight", () => {
       }),
     ).toBe(844);
   });
+
+  it("drops a tall desktop resting height when later measuring closed mobile layout", () => {
+    // Desktop effect path refreshes resting while metrics are null. Without
+    // that, a focused resize below 768px would false-positive keyboard-open.
+    const afterDesktop = nextRestingLayoutHeight({
+      keyboardOpen: false,
+      layoutHeight: 900,
+      previousRestingLayoutHeight: 900,
+    });
+    const afterMobileClosed = nextRestingLayoutHeight({
+      keyboardOpen: false,
+      layoutHeight: 700,
+      previousRestingLayoutHeight: afterDesktop,
+    });
+    expect(afterMobileClosed).toBe(700);
+    expect(
+      mobileViewportMetrics({
+        editableFocused: true,
+        layoutHeight: 700,
+        mobile: true,
+        restingLayoutHeight: afterMobileClosed,
+        visualHeight: 700,
+        visualOffsetTop: 0,
+      }),
+    ).toEqual({
+      heightPx: 700,
+      keyboardOpen: false,
+      offsetTopPx: 0,
+    });
+  });
 });
 
 describe("coalescedMobileViewportSyncSource", () => {

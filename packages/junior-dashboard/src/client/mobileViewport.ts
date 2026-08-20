@@ -172,6 +172,7 @@ export function useMobileViewportHeight(
     let lastDockPadding = "";
     let appliedOffsetTopPx = 0;
     let restingLayoutHeight = Math.round(window.innerHeight);
+    let wasMobile = mobile.matches;
     let documentScrollLocked = false;
 
     // Share the dashboard body-scroll lock with drawers and the mobile nav
@@ -218,10 +219,30 @@ export function useMobileViewportHeight(
         const visualHeight = viewport?.height ?? layoutHeight;
         const visualOffsetTop = viewport?.offsetTop ?? 0;
         const editableFocused = isEditableElement(document.activeElement);
+        const isMobile = mobile.matches;
+        if (!isMobile) {
+          // Desktop: keep resting in lockstep with layout so a later mobile
+          // breakpoint cannot compare against a tall stale desktop height.
+          restingLayoutHeight = nextRestingLayoutHeight({
+            keyboardOpen: false,
+            layoutHeight,
+            previousRestingLayoutHeight: restingLayoutHeight,
+          });
+          wasMobile = false;
+          setDocumentScrollLocked(false);
+          clearViewportProperties();
+          frame = undefined;
+          return;
+        }
+        if (!wasMobile) {
+          // First mobile frame after desktop: baseline against current layout.
+          restingLayoutHeight = Math.round(layoutHeight);
+          wasMobile = true;
+        }
         const metrics = mobileViewportMetrics({
           editableFocused,
           layoutHeight,
-          mobile: mobile.matches,
+          mobile: true,
           restingLayoutHeight,
           visualHeight,
           visualOffsetTop,
