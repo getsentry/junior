@@ -129,6 +129,36 @@ test("starts a new conversation from a centered compose empty state", async ({
     )
     .toBe("hero-pinned");
   await expect(composer).toBeFocused();
+
+  // List search lives in the same scroller and must not inherit the freeze.
+  const search = page.getByRole("searchbox", {
+    name: "Search your conversations",
+  });
+  await search.focus();
+  await expect(search).toBeFocused();
+  await expect
+    .poll(() =>
+      search.evaluate((node) => {
+        const scroller = node.closest("[data-create-landing-scroll]");
+        if (!(scroller instanceof HTMLElement)) return "missing-scroller";
+        const overflowY = getComputedStyle(scroller).overflowY;
+        if (overflowY === "hidden") return "search-froze-scroller";
+        // Freeze pins to 0. Search focus may pan into view, but the scroller must
+        // remain unlocked so a manual scroll is not forced back to the hero.
+        const before = scroller.scrollTop;
+        scroller.scrollTop = before + 40;
+        const after = scroller.scrollTop;
+        if (after === 0 && before === 0) {
+          // Short lists may have no overflow; unlocked is enough.
+          return scroller.scrollHeight > scroller.clientHeight
+            ? "search-pinned-to-hero"
+            : "search-unlocked";
+        }
+        if (after === before) return "search-scroll-rejected";
+        return "search-unlocked";
+      }),
+    )
+    .toBe("search-unlocked");
 });
 
 test("opens and closes a conversation in the mobile workspace", async ({

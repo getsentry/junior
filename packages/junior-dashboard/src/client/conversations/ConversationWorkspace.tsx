@@ -208,16 +208,17 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
  *
  * iOS Safari scrolls the nearest overflow ancestor to center a focused field.
  * On this landing page that yanks the hero/list upward as the keyboard opens.
- * Freeze the scroller at the pre-focus top (hero stays put); list still scrolls
- * again after blur.
+ * Freeze only for the hero composer — list search and other fields must keep
+ * normal scroll so they stay on-screen while focused.
  */
 function CreateLandingScroll(props: { children: ReactNode }) {
   const rootRef = useRef<HTMLDivElement>(null);
   const freezeScrollTopRef = useRef(0);
   const focusedRef = useRef(false);
 
-  const isEditableTarget = (target: EventTarget | null) =>
+  const isHeroComposerTarget = (target: EventTarget | null) =>
     target instanceof HTMLElement &&
+    Boolean(target.closest("[data-create-landing-hero]")) &&
     (target instanceof HTMLInputElement ||
       target instanceof HTMLTextAreaElement ||
       target.isContentEditable);
@@ -235,7 +236,7 @@ function CreateLandingScroll(props: { children: ReactNode }) {
     if (!root) return;
 
     const onFocusIn = (event: FocusEvent) => {
-      if (!isEditableTarget(event.target)) return;
+      if (!isHeroComposerTarget(event.target)) return;
       focusedRef.current = true;
       // Always pin landing to the hero while the composer is focused. Capturing
       // scrollTop after Safari's pan would freeze the jumped position.
@@ -247,10 +248,10 @@ function CreateLandingScroll(props: { children: ReactNode }) {
     };
 
     const onFocusOut = (event: FocusEvent) => {
-      if (!isEditableTarget(event.target)) return;
-      // Stay frozen until focus fully leaves the landing scroller.
+      if (!isHeroComposerTarget(event.target)) return;
+      // Stay frozen while focus moves inside the hero compose stack.
       const next = event.relatedTarget;
-      if (next instanceof Node && root.contains(next) && isEditableTarget(next)) {
+      if (next instanceof Node && isHeroComposerTarget(next)) {
         return;
       }
       focusedRef.current = false;
@@ -266,10 +267,10 @@ function CreateLandingScroll(props: { children: ReactNode }) {
     // Prefer preventScroll focus on pointer so iOS never starts its focus pan.
     const onPointerDown = (event: PointerEvent) => {
       const target = event.target;
-      if (!(target instanceof HTMLTextAreaElement) && !(target instanceof HTMLInputElement)) {
+      if (!isHeroComposerTarget(target)) return;
+      if (!(target instanceof HTMLElement) || document.activeElement === target) {
         return;
       }
-      if (!root.contains(target) || document.activeElement === target) return;
       event.preventDefault();
       focusedRef.current = true;
       // Hero compose owns the top of this page. Keep scroll at 0 while typing.
@@ -317,7 +318,10 @@ function NewConversationView(props: {
   // Landing-page compose hero. Parent owns page scroll and stacks conversation
   // nav under this block on mobile; desktop still centers the hero alone.
   return (
-    <div className="px-4 py-10 md:flex md:min-h-full md:flex-col md:justify-center md:px-8 md:py-12">
+    <div
+      className="px-4 py-10 md:flex md:min-h-full md:flex-col md:justify-center md:px-8 md:py-12"
+      data-create-landing-hero=""
+    >
       <div className="mx-auto flex w-full max-w-xl flex-col items-stretch gap-5 md:max-w-2xl md:gap-8">
           <h2 className="m-0 text-center font-display text-2xl font-medium tracking-[-0.03em] text-dashboard-text md:text-3xl">
             What do you need?
