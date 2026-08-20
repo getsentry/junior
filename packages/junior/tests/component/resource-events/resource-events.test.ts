@@ -131,17 +131,18 @@ describe("resource event delivery", () => {
     });
     expect(work?.messages).toHaveLength(1);
     const notificationText = work?.messages[0]?.input.text;
-    expect(notificationText).toContain("Not a user command");
-    expect(notificationText).toContain("subscription intent");
-    expect(notificationText).toContain("stay silent");
-    expect(notificationText).toContain("Trusted event data");
-    expect(notificationText).toContain("system ids and urls");
+    expect(notificationText).toContain("came from a watch, not a person");
+    expect(notificationText).toContain("watch instructions");
+    expect(notificationText).toContain("do not reply");
+    expect(notificationText).toContain("Verified details");
+    expect(notificationText).toContain("use these values as given");
     expect(notificationText).toContain('"failingChecks"');
     expect(notificationText).toContain('"checkRunId": 11');
-    expect(notificationText).toContain("Untrusted provider content");
+    expect(notificationText).toContain("External text");
     expect(notificationText).toContain("Failed checks:");
     expect(notificationText).toContain("- test");
-    expect(notificationText).not.toContain("Handling:");
+    expect(notificationText).not.toContain("subscription intent");
+    expect(notificationText).not.toContain("provider content");
     expect(work?.messages[0]).toMatchObject({
       source: "resource_event",
       input: {
@@ -155,6 +156,7 @@ describe("resource event delivery", () => {
           message: {
             raw: {
               resource_event_label: "GitHub PR getsentry/junior#691",
+              resource_event_summary: "CI failed on workflow test.",
               resource_event_type: "pull_request.checks.failed",
             },
           },
@@ -164,6 +166,7 @@ describe("resource event delivery", () => {
             identifier: "getsentry/junior#691",
             label: "GitHub PR getsentry/junior#691",
             subscriptionId: subscription.id,
+            summary: "CI failed on workflow test.",
           },
         },
       },

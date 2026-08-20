@@ -384,6 +384,7 @@ describe("Slack conversation work execution", () => {
           occurredAtMs: 1_700_000_000_000,
           namespace: "github",
           identifier: "getsentry/junior#691",
+          trustedSummary: "GitHub PR getsentry/junior#691 checks failed.",
         },
         subscription: {
           conversationId: CONVERSATION_ID,
@@ -1012,6 +1013,7 @@ describe("Slack conversation work execution", () => {
               occurredAtMs: 2_000,
               namespace: "github",
               identifier: "getsentry/junior#1010",
+              trustedSummary: "GitHub PR getsentry/junior#1010 checks finished.",
             },
             subscription: {
               conversationId: CONVERSATION_ID,

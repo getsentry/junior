@@ -108,7 +108,7 @@ import {
 } from "@/chat/services/message-actor-identity";
 import {
   isResourceEventSlackMessage,
-  replyAttributionForResourceEventMessage,
+  replyAttributionForResourceEventMessages,
   RESOURCE_EVENT_SYSTEM_ACTOR,
 } from "@/chat/resource-events/actor";
 import type { PausedTurnRequest } from "@/chat/task-execution/turn-wake";
@@ -517,6 +517,18 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             ),
         );
         const effectiveUserText = currentText.userText;
+        const contributingResourceEvents = new Map(
+          [
+            ...(options.queuedMessages ?? []).map((queued) => queued.message),
+            message,
+          ]
+            .filter(isResourceEventSlackMessage)
+            .map((eventMessage) => [eventMessage.id, eventMessage]),
+        );
+        const resourceEventReplyAttribution = () =>
+          replyAttributionForResourceEventMessages([
+            ...contributingResourceEvents.values(),
+          ]);
         // Actor first, then credential projection. Dispatch already binds both
         // (and any delegated subject); other turns derive credentials from actor.
         let executionActor: Actor | undefined;
@@ -599,7 +611,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                 conversationId,
                 replyAttribution:
                   options.execution?.dispatch?.replyAttribution ??
-                  replyAttributionForResourceEventMessage(message),
+                  resourceEventReplyAttribution(),
                 text,
                 threadTs,
               });
@@ -618,6 +630,11 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
         const resolveSteeringMessages = async (
           queuedMessages: QueuedTurnMessage[],
         ): Promise<AgentSteeringMessage[]> => {
+          for (const queued of queuedMessages) {
+            if (isResourceEventSlackMessage(queued.message)) {
+              contributingResourceEvents.set(queued.message.id, queued.message);
+            }
+          }
           return await Promise.all(
             queuedMessages.map(async (queued) => {
               const attachments = queued.message.attachments;
@@ -1053,7 +1070,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                   conversationId,
                   replyAttribution:
                     options.execution?.dispatch?.replyAttribution ??
-                    replyAttributionForResourceEventMessage(message),
+                    resourceEventReplyAttribution(),
                   text,
                   ...(threadTs ? { threadTs } : {}),
                 });

@@ -26,26 +26,54 @@ function oneLine(value: string, maxLength: number): string {
     .slice(0, maxLength);
 }
 
-function resourceEventRaw(message: {
+interface ResourceEventSlackMessage {
+  id?: string;
   raw?: unknown;
-}): Record<string, unknown> | undefined {
+}
+
+function resourceEventRaw(
+  message: ResourceEventSlackMessage,
+): Record<string, unknown> | undefined {
   return message.raw && typeof message.raw === "object"
     ? (message.raw as Record<string, unknown>)
     : undefined;
 }
 
-/** Compact destination-visible context for resource-event subscription replies. */
-export function resourceEventReplyAttribution(args: {
-  eventType: string;
-  label: string;
-}): ReplyAttribution {
-  const label = oneLine(args.label, 128);
-  const eventType = oneLine(args.eventType, 128);
-  const detail = oneLine(
-    label && eventType ? `${label} · ${eventType}` : label || eventType,
-    128,
-  );
-  return detail ? { label: "Event", detail } : { label: "Event" };
+function resourceEventSummary(message: ResourceEventSlackMessage): string {
+  const raw = resourceEventRaw(message);
+  const summary =
+    typeof raw?.resource_event_summary === "string"
+      ? oneLine(raw.resource_event_summary, 128)
+      : "";
+  if (summary) {
+    return summary;
+  }
+  return typeof raw?.resource_event_label === "string"
+    ? oneLine(raw.resource_event_label, 128)
+    : "";
+}
+
+/** Build plain Slack context for every resource event that contributed to a turn. */
+export function replyAttributionForResourceEventMessages(
+  messages: readonly ResourceEventSlackMessage[],
+): ReplyAttribution | undefined {
+  const events = messages.filter(isResourceEventSlackMessage);
+  if (events.length === 0) {
+    return undefined;
+  }
+  const latestSummary = resourceEventSummary(events.at(-1) ?? {});
+  if (events.length === 1) {
+    return latestSummary
+      ? { label: "Update", detail: latestSummary }
+      : { label: "Update" };
+  }
+  const detail = latestSummary
+    ? oneLine(`${latestSummary} (+${events.length - 1} more)`, 128)
+    : undefined;
+  return {
+    label: `${events.length} updates`,
+    ...(detail ? { detail } : {}),
+  };
 }
 
 /** Whether a durable conversation message is a resource-event turn input. */
@@ -67,27 +95,4 @@ export function isResourceEventSlackMessage(message: {
   raw?: unknown;
 }): boolean {
   return resourceEventRaw(message)?.event_type === "resource_event";
-}
-
-/**
- * Destination-visible footer attribution for a resource-event Slack message.
- * Uses the label and event type stamped on the synthetic mailbox payload.
- */
-export function replyAttributionForResourceEventMessage(message: {
-  raw?: unknown;
-}): ReplyAttribution | undefined {
-  const raw = resourceEventRaw(message);
-  if (raw?.event_type !== "resource_event") {
-    return undefined;
-  }
-  const eventType =
-    typeof raw.resource_event_type === "string" ? raw.resource_event_type : "";
-  const label =
-    typeof raw.resource_event_label === "string"
-      ? raw.resource_event_label
-      : "";
-  if (!eventType && !label) {
-    return { label: "Event" };
-  }
-  return resourceEventReplyAttribution({ eventType, label });
 }

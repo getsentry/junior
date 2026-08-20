@@ -41,13 +41,13 @@ conversation.
   task-execution wake-up. Resource-event identity constants and detection live
   in `actor.ts` (`RESOURCE_EVENT_SYSTEM_ACTOR`, synthetic Slack author id, and
   message markers). Live and resume paths both execute as that system actor.
-- Notification text stays short: subscription facts, trusted summary/data, and
-  untrusted provider content. Stable handling rules live in runtime and docs,
-  not a long per-event prompt essay (`notification.ts`).
-- Visible Slack replies from resource-event turns attach compact
-  `replyAttribution` (`Event · <label> · <event type>`), matching event-task
-  and scheduled-task footers. The label and event type are stamped on the
-  synthetic mailbox message so live and resume paths can rebuild the footer.
+- Notification text stays short and uses plain language: watch instructions,
+  a verified summary and details, and external text. Stable handling rules live
+  in runtime and docs, not a long per-event prompt (`notification.ts`).
+- Visible Slack replies show compact plain-language context. One update shows
+  its verified summary. A turn with several updates shows the latest summary
+  and the total count. The summary is stamped on the synthetic mailbox message
+  so live and queued input use the same reply context.
 - A subscription selector is one Slack workspace, one namespace, one
   identifier, and one or more event types. `resourceType` and `label` are
   presentation metadata, not match keys.
