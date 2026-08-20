@@ -10,11 +10,10 @@ import {
   type PluginHooks,
   type PluginRegistration,
 } from "@sentry/junior-plugin-api";
-import {
-  hostFromBaseUrl,
-  type GocdPluginOptions,
-} from "./config.js";
+import { hostFromBaseUrl, type GocdPluginOptions } from "./config.js";
+import { createGocdJobLogTool } from "./tools/job-log.js";
 import { createGocdPipelineHistoryTool } from "./tools/pipeline-history.js";
+import { createGocdStageTool } from "./tools/stage.js";
 
 export type GocdCredentialHooks = Pick<
   PluginHooks,
@@ -91,6 +90,8 @@ export function gocdPlugin(
       tools(ctx) {
         return {
           pipelineHistory: createGocdPipelineHistoryTool(ctx, options),
+          stage: createGocdStageTool(ctx, options),
+          jobLog: createGocdJobLogTool(ctx, options),
         };
       },
     },

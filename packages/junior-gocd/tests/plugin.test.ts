@@ -29,11 +29,12 @@ describe("gocdPlugin", () => {
       },
       domains: ["gocd.example.com"],
     });
-    expect(
-      plugin.hooks?.tools?.({
-        egress: { fetch: vi.fn() },
-      } as never),
-    ).toHaveProperty("pipelineHistory");
+    const tools = plugin.hooks?.tools?.({
+      egress: { fetch: vi.fn() },
+    } as never);
+    expect(tools).toHaveProperty("pipelineHistory");
+    expect(tools).toHaveProperty("stage");
+    expect(tools).toHaveProperty("jobLog");
   });
 
   it("can derive the egress domain from GOCD_URL", () => {

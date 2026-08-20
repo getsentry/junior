@@ -24,9 +24,9 @@ export const plugins = defineJuniorPlugins([
 
 ## Environment
 
-| Variable | Required | Notes |
-| --- | --- | --- |
-| `GOCD_URL` | when `baseUrl` is omitted | Absolute https GoCD origin, for example `https://gocd.example.com` |
+| Variable            | Required                    | Notes                                                                       |
+| ------------------- | --------------------------- | --------------------------------------------------------------------------- |
+| `GOCD_URL`          | when `baseUrl` is omitted   | Absolute https GoCD origin, for example `https://gocd.example.com`          |
 | `GOCD_ACCESS_TOKEN` | for the default bearer path | Read-only GoCD API token. Injected by Junior as `Authorization: bearer ...` |
 
 ### Static bearer headers
@@ -80,12 +80,17 @@ gocdPlugin({
 ## Tools
 
 - `pipelineHistory`: recent runs for one exact pipeline name
+- `stage`: one exact stage run — result, jobs, failed job names, and a stable link
+- `jobLog`: console log for one exact job — tailed, de-duplicated, and secret-redacted
 
 API usage is checked against GoCD **25.2.0**:
 
 - bearer auth: `Authorization: bearer <token>`
 - history: `GET /go/api/pipelines/:name/history` with `Accept: application/vnd.go.cd.v1+json`
+- stage: `GET /go/api/stages/:pipeline/:pipeline_counter/:stage/:stage_counter` with `Accept: application/vnd.go.cd.v3+json`
+- job log: `GET /go/files/:pipeline/:pipeline_counter/:stage/:stage_counter/:job/cruise-output/console.log` (text)
 - `page_size` clamped to 10..100 per server rules
+- `jobLog` returns `available: false` when a console log is missing or expired
 
 ## Notes
 

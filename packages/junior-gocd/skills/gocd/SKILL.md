@@ -5,7 +5,13 @@ description: Query read-only GoCD pipeline history through the GoCD API. Use whe
 
 # GoCD
 
-Use the GoCD plugin tools for live pipeline data. The current tool returns recent pipeline runs.
+Use the GoCD plugin tools for live pipeline data.
+
+- `pipelineHistory` returns recent runs for one exact pipeline name.
+- `stage` returns one exact stage run: its result, jobs, and failed job names.
+- `jobLog` returns the console log for one exact job. It is tailed, de-duplicated, and secret-redacted.
+
+Resolve the exact run first (`pipelineHistory` or a GoCD link), read the failed `stage`, then read the failed `jobLog`. Start with a small tail and expand only if the failure is not in it.
 
 ## Auth model
 
@@ -21,6 +27,7 @@ Host configuration:
 
 - GoCD access is read-only.
 - Use an exact pipeline name.
-- Do not claim that old console logs are available from pipeline history.
+- Do not claim that old console logs are available from pipeline history. Use `jobLog` for console output.
+- If `jobLog` reports `available: false`, the log is expired or missing. Say so; do not guess its contents.
 - Keep private deploy topology out of generic answers unless the host skill provides it.
 - If authentication fails, report whether the host base URL/token is missing or GoCD rejected the request.
