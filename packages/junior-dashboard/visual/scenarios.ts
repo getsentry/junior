@@ -47,7 +47,8 @@ export const VISUAL_SCENARIOS: VisualScenario[] = [
     id: "conversations",
     label: "Conversations",
     path: "/",
-    ready: "Conversations",
+    // Home is the create landing (hero + list), same as desktop empty state.
+    ready: "What do you need?",
     viewports: [DESKTOP, MOBILE],
   },
   {
