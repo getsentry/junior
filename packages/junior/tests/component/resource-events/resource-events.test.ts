@@ -131,7 +131,7 @@ describe("resource event delivery", () => {
     });
     expect(work?.messages).toHaveLength(1);
     const notificationText = work?.messages[0]?.input.text;
-    expect(notificationText).toContain("not a user-authored command");
+    expect(notificationText).toContain("Not a user command");
     expect(notificationText).toContain("subscription intent");
     expect(notificationText).toContain("stay silent");
     expect(notificationText).toContain("Trusted event data");
@@ -141,6 +141,7 @@ describe("resource event delivery", () => {
     expect(notificationText).toContain("Untrusted provider content");
     expect(notificationText).toContain("Failed checks:");
     expect(notificationText).toContain("- test");
+    expect(notificationText).not.toContain("Handling:");
     expect(work?.messages[0]).toMatchObject({
       source: "resource_event",
       input: {
@@ -151,10 +152,17 @@ describe("resource event delivery", () => {
             teamId: "T123",
           },
           route: "subscribed",
+          message: {
+            raw: {
+              resource_event_label: "GitHub PR getsentry/junior#691",
+              resource_event_type: "pull_request.checks.failed",
+            },
+          },
           resourceEvent: {
             eventType: "pull_request.checks.failed",
             namespace: "github",
             identifier: "getsentry/junior#691",
+            label: "GitHub PR getsentry/junior#691",
             subscriptionId: subscription.id,
           },
         },

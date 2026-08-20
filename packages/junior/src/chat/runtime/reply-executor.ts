@@ -108,6 +108,7 @@ import {
 } from "@/chat/services/message-actor-identity";
 import {
   isResourceEventSlackMessage,
+  replyAttributionForResourceEventMessage,
   RESOURCE_EVENT_SYSTEM_ACTOR,
 } from "@/chat/resource-events/actor";
 import type { PausedTurnRequest } from "@/chat/task-execution/turn-wake";
@@ -596,7 +597,9 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               await sendSlackReply({
                 channelId,
                 conversationId,
-                replyAttribution: options.execution?.dispatch?.replyAttribution,
+                replyAttribution:
+                  options.execution?.dispatch?.replyAttribution ??
+                  replyAttributionForResourceEventMessage(message),
                 text,
                 threadTs,
               });
@@ -1049,7 +1052,8 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                   channelId,
                   conversationId,
                   replyAttribution:
-                    options.execution?.dispatch?.replyAttribution,
+                    options.execution?.dispatch?.replyAttribution ??
+                    replyAttributionForResourceEventMessage(message),
                   text,
                   ...(threadTs ? { threadTs } : {}),
                 });

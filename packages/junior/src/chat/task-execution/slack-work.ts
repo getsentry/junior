@@ -405,6 +405,7 @@ const slackConversationMessageMetadataSchema = z.union([
           eventType: z.string(),
           namespace: z.string(),
           identifier: z.string(),
+          label: z.string(),
           subscriptionId: z.string(),
         })
         .strict(),
@@ -450,6 +451,7 @@ interface SlackResourceEventInboundInput {
       teamId: string;
     };
     id: string;
+    label: string;
   };
   text: string;
 }
@@ -511,6 +513,7 @@ function slackSerializedResourceEventMessage(input: {
   channelId: string;
   eventType: string;
   id: string;
+  label: string;
   text: string;
   threadTs: string;
   timestampIso: string;
@@ -534,6 +537,7 @@ function slackSerializedResourceEventMessage(input: {
     raw: {
       channel: input.channelId,
       event_type: "resource_event",
+      resource_event_label: input.label,
       resource_event_type: input.eventType,
       thread_ts: input.threadTs,
       type: "message",
@@ -566,6 +570,7 @@ export function createSlackResourceEventInboundMessage(
     channelId: slack.channelId,
     eventType: input.event.eventType,
     id: messageId,
+    label: input.subscription.label,
     text: input.text,
     threadTs: slack.threadTs,
     timestampIso,
@@ -601,6 +606,7 @@ export function createSlackResourceEventInboundMessage(
           eventType: input.event.eventType,
           namespace: input.event.namespace,
           identifier: input.event.identifier,
+          label: input.subscription.label,
           subscriptionId: input.subscription.id,
         },
       } satisfies SlackConversationMessageMetadata,
