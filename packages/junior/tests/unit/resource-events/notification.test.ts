@@ -13,7 +13,6 @@ describe("resource event notification framing", () => {
         label: "GitHub PR getsentry/junior#691",
       },
       {
-        eventType: "pull_request.checks.failed",
         trustedSummary: "CI failed on workflow test.",
         data: { pullRequest: 691 },
         untrustedText: "Failed checks:\n- test",
@@ -24,7 +23,6 @@ describe("resource event notification framing", () => {
     expect(text).toContain("came from a watch, not a person");
     expect(text).toContain("do not reply");
     expect(text).toContain("GitHub PR getsentry/junior#691");
-    expect(text).toContain("pull_request.checks.failed");
     expect(text).toContain("Fix failed checks on this PR.");
     expect(text).toContain("CI failed on workflow test.");
     expect(text).toContain('"pullRequest": 691');
@@ -33,6 +31,7 @@ describe("resource event notification framing", () => {
     expect(text).not.toContain("subscription intent");
     expect(text).not.toContain("provider content");
     expect(text).not.toContain("system ids");
+    expect(text).not.toContain("pull_request.checks.failed");
   });
 
   it("uses the verified summary for one Slack update", () => {

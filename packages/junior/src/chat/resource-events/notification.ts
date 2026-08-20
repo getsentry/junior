@@ -36,7 +36,7 @@ export function renderResourceEventNotificationText(
   subscription: Pick<ResourceEventSubscription, "intent" | "label">,
   event: Pick<
     ResourceEventNotification,
-    "eventType" | "trustedSummary" | "data" | "untrustedText"
+    "trustedSummary" | "data" | "untrustedText"
   >,
 ): string {
   const lines = [
@@ -50,7 +50,6 @@ export function renderResourceEventNotificationText(
     `- instructions: ${subscription.intent}`,
     "",
     "Update:",
-    `- type: ${event.eventType}`,
     `- summary: ${event.trustedSummary}`,
   ];
   if (event.data && Object.keys(event.data).length > 0) {
