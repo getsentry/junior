@@ -1,10 +1,7 @@
 import { useNavigate } from "react-router";
 
-import {
-  conversationPath,
-  formatTime,
-  visualStatusForConversation,
-} from "../format";
+import { conversationPath } from "../conversations/conversationRoutes";
+import { formatTime, visualStatusForConversation } from "../format";
 import { cn } from "../styles";
 import type { Conversation, VisualStatus } from "../types";
 import { ConversationRowStats } from "./ConversationRowStats";

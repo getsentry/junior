@@ -3,7 +3,8 @@ import { Bot, ExternalLink } from "lucide-react";
 import { Link } from "react-router";
 
 import { useConversationData } from "./queries";
-import { conversationPath, formatMessageTimestamp } from "../format";
+import { conversationPath } from "./conversationRoutes";
+import { formatMessageTimestamp } from "../format";
 import { buildConversationMarkdown } from "../markdownExport";
 import type { TranscriptViewSubagentPart } from "../types";
 import { Drawer } from "../components/Drawer";

@@ -12,12 +12,11 @@ import {
   type PendingArchiveConversationUpdate,
 } from "./queries";
 import {
-  buildConversations,
   conversationPath,
-  filterConversationList,
   isNewConversationPath,
   NEW_CONVERSATION_PATH,
-} from "../format";
+} from "./conversationRoutes";
+import { buildConversations, filterConversationList } from "../format";
 import type { DashboardCoreData } from "../types";
 import type { Conversation } from "../types";
 import { cn, dashboardContainerClass } from "../styles";

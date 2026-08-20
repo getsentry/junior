@@ -20,9 +20,9 @@ import { VisualViewportShell } from "./components/layout/VisualViewportShell";
 import {
   buildConversations,
   conversationDisplayTitle,
-  isNewConversationPath,
   setDashboardTimeZone,
 } from "./format";
+import { isNewConversationPath } from "./conversations/conversationRoutes";
 import { ConversationWorkspace } from "./conversations/ConversationWorkspace";
 import { useConversationData } from "./conversations/queries";
 import { ComponentsPage } from "./pages/dev/ComponentsPage";

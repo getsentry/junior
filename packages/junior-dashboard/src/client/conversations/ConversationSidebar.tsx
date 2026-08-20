@@ -11,9 +11,9 @@ import {
 import { Link } from "react-router";
 
 import { useArchiveConversation } from "./queries";
+import { conversationPath } from "./conversationRoutes";
 import {
   conversationDisplayTitle,
-  conversationPath,
   slackLocationLabel,
   visualStatusForConversation,
 } from "../format";
