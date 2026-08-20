@@ -31,6 +31,7 @@ export function ChatLayout(props: {
           "min-h-0 overflow-y-auto overscroll-contain",
           props.scrollClassName,
         )}
+        data-chat-scroll=""
         tabIndex={props.scrollAriaLabel ? 0 : undefined}
       >
         {props.scroll}

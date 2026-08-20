@@ -114,7 +114,10 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
           aria-label="New conversation"
           className="min-h-0 overflow-hidden bg-white/[0.012]"
         >
-          <div className="h-full min-h-0 overflow-y-auto overscroll-contain">
+          <div
+            className="h-full min-h-0 overflow-y-auto overscroll-contain"
+            data-create-landing-scroll=""
+          >
             {createView}
             <div className="md:hidden">
               <ConversationSidebar

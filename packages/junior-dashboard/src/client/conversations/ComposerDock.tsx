@@ -24,6 +24,7 @@ export function ComposerDock(props: {
         "flex w-full min-h-0 max-h-[min(calc(var(--dashboard-viewport-height,100dvh)*0.55),24rem)] shrink-0 flex-col overflow-hidden bg-[#050507] px-2 pt-1.5 pb-[var(--dashboard-composer-dock-padding,0.375rem)] md:max-h-none md:overflow-visible md:px-7 md:pt-3 md:pb-3",
         props.className,
       )}
+      data-composer-dock=""
     >
       {props.above ? (
         <div className="min-h-0 min-w-0 shrink overflow-y-auto overscroll-contain md:overflow-visible">

@@ -95,17 +95,15 @@ test("starts a new conversation from a centered compose empty state", async ({
         if ((position & Node.DOCUMENT_POSITION_FOLLOWING) === 0) {
           return "title-not-above-composer";
         }
-        // Reply docks pin outside overflow-y scroll. Landing compose must live
-        // inside a scroll owner so a pinned footer regression fails.
-        let current: Element | null = form.parentElement;
-        while (current && current !== section) {
-          const overflowY = getComputedStyle(current).overflowY;
-          if (overflowY === "auto" || overflowY === "scroll") {
-            return "landing-compose";
-          }
-          current = current.parentElement;
+        // Landing compose must live under the page scroll owner, not the reply
+        // dock. Ownership markers are the product contract (see frontend policy).
+        if (form.closest("[data-composer-dock]")) {
+          return "pinned-on-composer-dock";
         }
-        return "pinned-outside-scroll";
+        if (!form.closest("[data-create-landing-scroll]")) {
+          return "missing-landing-scroll";
+        }
+        return "landing-compose";
       }),
     )
     .toBe("landing-compose");
@@ -320,6 +318,26 @@ test("opens and closes a conversation in the mobile workspace", async ({
       ),
     )
     .toBe("140px");
+  // Reply threads must use the dock owner, not the create landing scroll path.
+  await expect
+    .poll(() =>
+      composer.evaluate((node) => {
+        const form = node.closest("form");
+        if (!form) return "missing-form";
+        if (form.closest("[data-create-landing-scroll]")) {
+          return "reply-on-landing-scroll";
+        }
+        if (!form.closest("[data-composer-dock]")) return "missing-composer-dock";
+        if (!form.closest("[data-chat-scroll]") && !document.querySelector("[data-chat-scroll]")) {
+          return "missing-chat-scroll";
+        }
+        // Dock is a sibling of the scroll region under ChatLayout, not inside it.
+        if (form.closest("[data-chat-scroll]")) return "composer-inside-chat-scroll";
+        return "reply-dock";
+      }),
+    )
+    .toBe("reply-dock");
+
   // Focused reply input must stay docked at the bottom of the visual viewport.
   await expectFocusedComposerAtVisualViewportBottom(composer, 520, 140);
 
