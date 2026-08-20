@@ -12,4 +12,4 @@ export const dashboardInteractiveTextClass =
 
 /** Raised input surface so the chat box reads against the near-black shell. */
 export const dashboardComposerSurfaceClass =
-  "rounded-lg border border-white/12 bg-[#1a1a1c]";
+  "rounded-2xl bg-white/[0.045] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]";

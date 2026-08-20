@@ -74,6 +74,7 @@ test("starts a new conversation from a centered compose empty state", async ({
 
   // Create mode is an empty-state form, not a reply dock. Title + composer live
   // in one centered stack; layout pixels belong to visual QA.
+  await expect(page.getByRole("button", { name: "Back to conversations" })).toBeVisible();
   await expect
     .poll(() =>
       composer.evaluate((node) => {
@@ -87,8 +88,8 @@ test("starts a new conversation from a centered compose empty state", async ({
         if ((position & Node.DOCUMENT_POSITION_FOLLOWING) === 0) {
           return "title-not-above-composer";
         }
-        // Reply docks pin outside overflow-y scroll. Create compose may scroll
-        // with the empty state and must not claim a pinned footer contract.
+        // Reply docks pin outside overflow-y scroll. Create compose must live
+        // inside a scroll owner so a pinned footer regression fails.
         let current: Element | null = form.parentElement;
         while (current && current !== section) {
           const overflowY = getComputedStyle(current).overflowY;
@@ -97,7 +98,7 @@ test("starts a new conversation from a centered compose empty state", async ({
           }
           current = current.parentElement;
         }
-        return "centered-compose";
+        return "pinned-outside-scroll";
       }),
     )
     .toBe("centered-compose");

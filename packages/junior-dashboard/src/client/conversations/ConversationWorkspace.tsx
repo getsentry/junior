@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, Globe2, LockKeyhole } from "lucide-react";
+import { Globe2, LockKeyhole, X } from "lucide-react";
 import { useNavigate, useParams } from "react-router";
 
 import { useConversationsData } from "../api";
@@ -99,66 +99,50 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
       <section
         aria-label="Selected conversation"
         className={
-          selectedId
+          selectedId || creating
             ? "grid min-h-0 grid-rows-[minmax(0,1fr)] overflow-hidden bg-white/[0.012]"
-            : creating
-              ? "grid min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden bg-white/[0.012]"
-              : "hidden min-h-0 overflow-hidden bg-white/[0.012] md:grid md:grid-rows-[minmax(0,1fr)]"
+            : "hidden min-h-0 overflow-hidden bg-white/[0.012] md:grid md:grid-rows-[minmax(0,1fr)]"
         }
       >
         {selectedId && !creating ? (
-          <>
-            <ConversationPage
-              key={selectedId}
-              conversationId={selectedId}
-              data={
-                feed.data
-                  ? {
-                      conversations: feed.data,
-                    }
-                  : undefined
-              }
-              pendingArchiveUpdate={pendingArchiveUpdates.find(
-                (update) => update.conversationId === selectedId,
-              )}
-            />
-          </>
+          <ConversationPage
+            key={selectedId}
+            conversationId={selectedId}
+            data={
+              feed.data
+                ? {
+                    conversations: feed.data,
+                  }
+                : undefined
+            }
+            pendingArchiveUpdate={pendingArchiveUpdates.find(
+              (update) => update.conversationId === selectedId,
+            )}
+          />
         ) : (
-          <>
-            {creating ? (
-              <div className="border-b border-white/[0.07] bg-white/[0.025] px-3 py-2.5 md:hidden">
-                <button
-                  className="inline-flex cursor-pointer items-center gap-2 font-mono text-xs text-dashboard-text-muted hover:text-dashboard-text"
-                  onClick={() => {
+          <NewConversationView
+            error={
+              createConversation.error
+                ? "Could not create the conversation. Try again."
+                : undefined
+            }
+            onDismiss={
+              creating
+                ? () => {
                     createSourceId.current = undefined;
                     setCreating(false);
-                  }}
-                  title="Your conversations"
-                  type="button"
-                >
-                  <ArrowLeft aria-hidden="true" size={15} />
-                  Your conversations
-                </button>
-              </div>
-            ) : null}
-            <div className="min-h-0 h-full">
-              <NewConversationView
-                error={
-                  createConversation.error
-                    ? "Could not create the conversation. Try again."
-                    : undefined
-                }
-                onSubmit={async (message, idempotencyKey, visibility) => {
-                  const accepted = await createConversation.mutateAsync({
-                    idempotencyKey,
-                    message,
-                    visibility,
-                  });
-                  navigate(conversationPath(accepted.conversationId));
-                }}
-              />
-            </div>
-          </>
+                  }
+                : undefined
+            }
+            onSubmit={async (message, idempotencyKey, visibility) => {
+              const accepted = await createConversation.mutateAsync({
+                idempotencyKey,
+                message,
+                visibility,
+              });
+              navigate(conversationPath(accepted.conversationId));
+            }}
+          />
         )}
       </section>
     </div>
@@ -167,6 +151,8 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
 
 function NewConversationView(props: {
   error?: string;
+  /** Mobile-only escape from create mode back to the conversation list. */
+  onDismiss?: () => void;
   onSubmit(
     message: string,
     idempotencyKey: string,
@@ -176,53 +162,66 @@ function NewConversationView(props: {
   const [visibility, setVisibility] = useState<"private" | "public">("public");
   const isPublic = visibility === "public";
 
-  // Peer empty-chat pattern (ChatGPT / Claude / Gemini): greeting + hero input.
-  // Privacy is quiet composer chrome, not a form header above the box.
+  // Peer empty-chat pattern: greeting + hero input, no secondary page header.
+  // Mobile dismiss is a floating close, not a second nav strip.
+  // Use flex + my-auto (not place-items-center) so overflow scrolls from the top.
   return (
-    <div className="grid h-full min-h-0 place-items-center overflow-y-auto overscroll-contain px-4 py-10 md:px-8">
-      <div className="flex w-full max-w-xl flex-col items-stretch gap-6 md:max-w-2xl md:gap-8">
-        <h2 className="m-0 text-center font-display text-2xl font-medium tracking-[-0.03em] text-dashboard-text md:text-3xl">
-          What do you need?
-        </h2>
-        <ConversationComposer
-          draftId="new"
-          error={props.error}
-          footerStart={
-            <div
-              aria-label="Conversation visibility"
-              className="inline-flex items-center gap-1"
-              role="group"
-            >
-              <ToggleButton
-                onClick={() => setVisibility("public")}
-                pressed={isPublic}
-                type="button"
-                variant="segment"
+    <div className="relative h-full min-h-0 overflow-y-auto overscroll-contain">
+      {props.onDismiss ? (
+        <button
+          aria-label="Back to conversations"
+          className="absolute left-2 top-2 z-10 grid size-10 cursor-pointer place-items-center rounded-lg border-0 bg-transparent text-dashboard-text-muted transition-colors hover:bg-white/[0.06] hover:text-dashboard-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-300/55 md:hidden"
+          onClick={props.onDismiss}
+          type="button"
+        >
+          <X aria-hidden="true" size={20} strokeWidth={2} />
+        </button>
+      ) : null}
+      <div className="flex min-h-full flex-col justify-center px-4 py-12 md:px-8">
+        <div className="mx-auto flex w-full max-w-xl flex-col items-stretch gap-6 md:max-w-2xl md:gap-8">
+          <h2 className="m-0 text-center font-display text-2xl font-medium tracking-[-0.03em] text-dashboard-text md:text-3xl">
+            What do you need?
+          </h2>
+          <ConversationComposer
+            draftId="new"
+            error={props.error}
+            footerStart={
+              <div
+                aria-label="Conversation visibility"
+                className="inline-flex items-center gap-1"
+                role="group"
               >
-                <Globe2 aria-hidden="true" className="mr-1 inline size-3" />
-                Public
-              </ToggleButton>
-              <ToggleButton
-                onClick={() => setVisibility("private")}
-                pressed={!isPublic}
-                type="button"
-                variant="segment"
-              >
-                <LockKeyhole
-                  aria-hidden="true"
-                  className="mr-1 inline size-3"
-                />
-                Private
-              </ToggleButton>
-            </div>
-          }
-          label="Start a conversation"
-          restoreDraftOnError
-          submitLabel="Send"
-          onSubmit={(message, idempotencyKey) =>
-            props.onSubmit(message, idempotencyKey, visibility)
-          }
-        />
+                <ToggleButton
+                  onClick={() => setVisibility("public")}
+                  pressed={isPublic}
+                  type="button"
+                  variant="segment"
+                >
+                  <Globe2 aria-hidden="true" className="mr-1 inline size-3" />
+                  Public
+                </ToggleButton>
+                <ToggleButton
+                  onClick={() => setVisibility("private")}
+                  pressed={!isPublic}
+                  type="button"
+                  variant="segment"
+                >
+                  <LockKeyhole
+                    aria-hidden="true"
+                    className="mr-1 inline size-3"
+                  />
+                  Private
+                </ToggleButton>
+              </div>
+            }
+            label="Start a conversation"
+            restoreDraftOnError
+            submitLabel="Send"
+            onSubmit={(message, idempotencyKey) =>
+              props.onSubmit(message, idempotencyKey, visibility)
+            }
+          />
+        </div>
       </div>
     </div>
   );
