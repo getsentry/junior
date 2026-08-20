@@ -1,4 +1,27 @@
 # Changelog
+## 0.176.0
+
+### New Features ✨
+
+- (dashboard) Finish shared control primitive cutover by @sentry-junior in [#1629](https://github.com/getsentry/junior/pull/1629)
+
+### Bug Fixes 🐛
+
+#### Dashboard
+
+- Limit durations to two units by @sentry-junior in [#1630](https://github.com/getsentry/junior/pull/1630)
+- Own composer dock padding and raise input contrast by @sentry-junior in [#1626](https://github.com/getsentry/junior/pull/1626)
+
+#### Other
+
+- (evals) Assert sendFiles attachment_refs and wire storage by @sentry-junior in [#1628](https://github.com/getsentry/junior/pull/1628)
+- (resource-events) Scope configured guidance by @sentry-junior in [#1627](https://github.com/getsentry/junior/pull/1627)
+
+### Internal Changes 🔧
+
+- (agent) Run dispatch tests through conversation work by @sentry-junior in [#1624](https://github.com/getsentry/junior/pull/1624)
+- (agent-dispatch) Remove expired v0.116 compatibility by @sentry-junior in [#1625](https://github.com/getsentry/junior/pull/1625)
+
 ## 0.175.0
 
 ### New Features ✨
