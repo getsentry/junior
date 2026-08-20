@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Globe2, LockKeyhole, X } from "lucide-react";
-import { useNavigate, useParams } from "react-router";
+import { useEffect, useMemo, useState } from "react";
+import { Globe2, LockKeyhole } from "lucide-react";
+import { useLocation, useNavigate, useParams } from "react-router";
 
 import { useConversationsData } from "../api";
 import { ConversationSidebar } from "./ConversationSidebar";
@@ -15,6 +15,8 @@ import {
   buildConversations,
   conversationPath,
   filterConversationList,
+  isNewConversationPath,
+  NEW_CONVERSATION_PATH,
 } from "../format";
 import type { DashboardCoreData } from "../types";
 import type { Conversation } from "../types";
@@ -26,13 +28,15 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<"active" | "archived">("active");
   const params = useParams();
+  const location = useLocation();
   const navigate = useNavigate();
   const selectedId = params.conversationId;
+  // Create mode is route-driven so mobile back uses the app header chevron
+  // (same affordance as opening a thread), not a floating control.
+  const creating = isNewConversationPath(location.pathname);
   const feed = useConversationsData(status);
   const pendingArchiveUpdates = usePendingArchiveConversationUpdates();
   const createConversation = useCreateConversation();
-  const [creating, setCreating] = useState(false);
-  const createSourceId = useRef<string | undefined>(undefined);
   const conversations = useMemo(
     () =>
       applyPendingArchiveUpdates(
@@ -53,14 +57,10 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
   );
 
   useEffect(() => {
-    if (!selectedId) {
-      // Root has no selection. Keep create mode only when New set it.
-      createSourceId.current = undefined;
-      return;
-    }
-    if (selectedId === createSourceId.current) return;
-    setCreating(false);
-  }, [selectedId]);
+    if (!creating) return;
+    // New chats are active; leave archived view so the created row can appear.
+    setStatus("active");
+  }, [creating]);
 
   return (
     <div
@@ -82,11 +82,8 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
           loading={feed.isPending}
           onNewConversation={() => {
             createConversation.reset();
-            createSourceId.current = selectedId;
-            // New chats are active; leave archived view so the created row can appear.
             setStatus("active");
-            setCreating(true);
-            if (selectedId) navigate("/", { replace: true });
+            if (!creating) navigate(NEW_CONVERSATION_PATH);
           }}
           onQueryChange={setQuery}
           onStatusChange={setStatus}
@@ -126,14 +123,6 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
                 ? "Could not create the conversation. Try again."
                 : undefined
             }
-            onDismiss={
-              creating
-                ? () => {
-                    createSourceId.current = undefined;
-                    setCreating(false);
-                  }
-                : undefined
-            }
             onSubmit={async (message, idempotencyKey, visibility) => {
               const accepted = await createConversation.mutateAsync({
                 idempotencyKey,
@@ -151,8 +140,6 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
 
 function NewConversationView(props: {
   error?: string;
-  /** Mobile-only escape from create mode back to the conversation list. */
-  onDismiss?: () => void;
   onSubmit(
     message: string,
     idempotencyKey: string,
@@ -162,21 +149,11 @@ function NewConversationView(props: {
   const [visibility, setVisibility] = useState<"private" | "public">("public");
   const isPublic = visibility === "public";
 
-  // Peer empty-chat pattern: greeting + hero input, no secondary page header.
-  // Mobile dismiss is a floating close, not a second nav strip.
-  // Use flex + my-auto (not place-items-center) so overflow scrolls from the top.
+  // Peer empty-chat pattern: greeting + hero input.
+  // Mobile back lives in the app header chevron via /conversations/new.
+  // Use flex + justify-center so tall stacks still scroll from the top.
   return (
-    <div className="relative h-full min-h-0 overflow-y-auto overscroll-contain">
-      {props.onDismiss ? (
-        <button
-          aria-label="Back to conversations"
-          className="absolute left-2 top-2 z-10 grid size-10 cursor-pointer place-items-center rounded-lg border-0 bg-transparent text-dashboard-text-muted transition-colors hover:bg-white/[0.06] hover:text-dashboard-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-cyan-300/55 md:hidden"
-          onClick={props.onDismiss}
-          type="button"
-        >
-          <X aria-hidden="true" size={20} strokeWidth={2} />
-        </button>
-      ) : null}
+    <div className="h-full min-h-0 overflow-y-auto overscroll-contain">
       <div className="flex min-h-full flex-col justify-center px-4 py-12 md:px-8">
         <div className="mx-auto flex w-full max-w-xl flex-col items-stretch gap-6 md:max-w-2xl md:gap-8">
           <h2 className="m-0 text-center font-display text-2xl font-medium tracking-[-0.03em] text-dashboard-text md:text-3xl">

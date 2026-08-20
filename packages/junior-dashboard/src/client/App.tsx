@@ -20,6 +20,7 @@ import { VisualViewportShell } from "./components/layout/VisualViewportShell";
 import {
   buildConversations,
   conversationDisplayTitle,
+  isNewConversationPath,
   setDashboardTimeZone,
 } from "./format";
 import { ConversationWorkspace } from "./conversations/ConversationWorkspace";
@@ -79,6 +80,7 @@ export function DashboardShell() {
     location.pathname === "/" ||
     location.pathname === "/conversations" ||
     location.pathname.startsWith("/conversations/");
+  const creatingConversation = isNewConversationPath(location.pathname);
   const conversationId = conversationIdFromPath(location.pathname);
   const conversationsQuery = useConversationsData();
   // Detail query shares the page cache so titles outside the top-50 feed stay accurate.
@@ -89,10 +91,14 @@ export function DashboardShell() {
       conversationsQuery.data?.conversations ?? [],
     ).find((item) => item.id === conversationId);
   }, [conversationId, conversationsQuery.data?.conversations]);
-  const mobileConversationTitle = conversationId
-    ? conversationDetail.data?.displayTitle?.trim() ||
-      conversationDisplayTitle(mobileConversation)
-    : undefined;
+  // Create mode uses the same mobile back chevron as a thread, with no title.
+  // Explicit empty string suppresses the loading fallback title.
+  const mobileConversationTitle = creatingConversation
+    ? ""
+    : conversationId
+      ? conversationDetail.data?.displayTitle?.trim() ||
+        conversationDisplayTitle(mobileConversation)
+      : undefined;
   const primaryNavItems = [
     ...(loggedIn
       ? [{ key: "tasks", label: "Tasks", to: "/tasks" }]
@@ -136,7 +142,9 @@ export function DashboardShell() {
           header={
             <DashboardHeader
               compact={workspace}
-              mobileBackTo={conversationId ? "/" : undefined}
+              mobileBackTo={
+                conversationId || creatingConversation ? "/" : undefined
+              }
               mobileTitle={mobileConversationTitle}
               mobileNavigationOpen={mobileNavigationOpen}
               navItems={primaryNavItems}
@@ -299,6 +307,20 @@ export function DashboardShell() {
             )
           }
           path="/"
+        />
+        <Route
+          element={
+            loading ? (
+              <LoadingView label="Loading your conversations" />
+            ) : data ? (
+              <ConversationWorkspace data={data} />
+            ) : (
+              <LoadingView
+                label={query.error?.message ?? "Dashboard unavailable"}
+              />
+            )
+          }
+          path="/conversations/new"
         />
         <Route
           element={
@@ -485,6 +507,7 @@ export function DashboardShell() {
 
 /** Read the selected conversation id from a workspace detail path. */
 function conversationIdFromPath(pathname: string): string | undefined {
+  if (isNewConversationPath(pathname)) return undefined;
   const match = pathname.match(/^\/conversations\/([^/]+)$/);
   if (!match?.[1]) return undefined;
   try {

@@ -73,8 +73,19 @@ test("starts a new conversation from a centered compose empty state", async ({
   await expect(composer).toBeFocused();
 
   // Create mode is an empty-state form, not a reply dock. Title + composer live
-  // in one centered stack; layout pixels belong to visual QA.
-  await expect(page.getByRole("button", { name: "Back to conversations" })).toBeVisible();
+  // in one centered stack; layout pixels belong to visual QA. Mobile back uses
+  // the same app-header chevron as opening a thread (route: /conversations/new).
+  await expect(page).toHaveURL(/\/conversations\/new$/);
+  await expect(
+    page.getByRole("link", { name: "Back to conversations" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "What do you need?" }),
+  ).toBeVisible();
+  // No secondary page chrome / fake conversation title in the app header.
+  await expect(
+    page.getByRole("heading", { name: "Conversation", exact: true }),
+  ).toHaveCount(0);
   await expect
     .poll(() =>
       composer.evaluate((node) => {
