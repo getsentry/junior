@@ -1,4 +1,10 @@
 # Changelog
+## 0.176.1
+
+### Bug Fixes 🐛
+
+- (dashboard) Mobile chat shell and create landing by @sentry-junior in [#1631](https://github.com/getsentry/junior/pull/1631)
+
 ## 0.176.0
 
 ### New Features ✨
