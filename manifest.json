@@ -1,0 +1,40 @@
+{
+  "commitSha": "c9f8ee9f43336cba6eef1db2d8105ce838e268e0",
+  "mode": "path",
+  "reasons": [
+    "packages/junior-dashboard/src/client/components/Button.tsx",
+    "packages/junior-dashboard/src/client/components/Field.tsx",
+    "packages/junior-dashboard/src/client/components/README.md",
+    "packages/junior-dashboard/src/client/components/controls/TimeRangeSelector.tsx",
+    "packages/junior-dashboard/src/client/components/layout/Card.tsx",
+    "packages/junior-dashboard/src/client/pages/PersonalTokensPage.tsx",
+    "packages/junior-dashboard/src/client/pages/SettingsPage.tsx",
+    "packages/junior-dashboard/src/client/pages/dev/ComponentsPage.tsx",
+    "packages/junior-dashboard/src/client/pages/system/WorkspaceEditor.tsx"
+  ],
+  "scenarioIds": [
+    "gallery-foundations",
+    "gallery-charts",
+    "gallery-transcripts",
+    "gallery-index"
+  ],
+  "shots": [
+    {
+      "file": "gallery-foundations__desktop.png",
+      "label": "Gallery · Foundations · desktop"
+    },
+    {
+      "file": "gallery-charts__desktop.png",
+      "label": "Gallery · Charts · desktop"
+    },
+    {
+      "file": "gallery-transcripts__desktop.png",
+      "label": "Gallery · Transcripts · desktop"
+    },
+    {
+      "file": "gallery-index__desktop.png",
+      "label": "Component gallery index · desktop"
+    }
+  ],
+  "skipped": false
+}
