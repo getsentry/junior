@@ -1,0 +1,33 @@
+{
+  "commitSha": "20528e0c9cda99303342606cfac1614ca7ae8b19",
+  "mode": "path",
+  "reasons": [
+    "packages/junior-dashboard/src/client/components/Duration.tsx",
+    "packages/junior-dashboard/src/client/pages/people/PeopleDirectory.tsx",
+    "packages/junior-dashboard/tests/format.test.ts"
+  ],
+  "scenarioIds": [
+    "gallery-foundations",
+    "gallery-index",
+    "person-profile"
+  ],
+  "shots": [
+    {
+      "file": "gallery-foundations__desktop.png",
+      "label": "Gallery · Foundations · desktop"
+    },
+    {
+      "file": "gallery-index__desktop.png",
+      "label": "Component gallery index · desktop"
+    },
+    {
+      "file": "person-profile__desktop.png",
+      "label": "Person profile · desktop"
+    },
+    {
+      "file": "person-profile__mobile.png",
+      "label": "Person profile · mobile"
+    }
+  ],
+  "skipped": false
+}
