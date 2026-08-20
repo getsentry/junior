@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  clampMobileViewportOffsetTop,
   coalescedMobileViewportSyncSource,
   mobileViewportMetrics,
   mobileViewportOffsetTop,
@@ -469,5 +470,52 @@ describe("mobileViewportOffsetTop", () => {
         source: "scroll",
       }),
     ).toBe(180);
+  });
+});
+
+describe("clampMobileViewportOffsetTop", () => {
+  it("keeps a classic Safari visual dock inside a tall layout viewport", () => {
+    expect(
+      clampMobileViewportOffsetTop({
+        heightPx: 520,
+        layoutHeight: 844,
+        offsetTopPx: 140,
+      }),
+    ).toBe(140);
+  });
+
+  it("zeros offset when layout already shrank to the visible band", () => {
+    // interactive-widget=resizes-content / hybrid WebKit: page height is the
+    // keyboard band. A leftover visual offset would shove the composer under
+    // the keyboard (the physical reply-detail failure).
+    expect(
+      clampMobileViewportOffsetTop({
+        heightPx: 520,
+        layoutHeight: 520,
+        offsetTopPx: 140,
+      }),
+    ).toBe(0);
+  });
+
+  it("caps offset so top + height never exceeds layout height", () => {
+    // Layout still taller than the shell by more than the keyboard delta, but
+    // the reported visual offset overshoots the remaining space.
+    expect(
+      clampMobileViewportOffsetTop({
+        heightPx: 520,
+        layoutHeight: 700,
+        offsetTopPx: 250,
+      }),
+    ).toBe(180);
+  });
+
+  it("treats near-equal layout and shell height as page-owned geometry", () => {
+    expect(
+      clampMobileViewportOffsetTop({
+        heightPx: 520,
+        layoutHeight: 560,
+        offsetTopPx: 48,
+      }),
+    ).toBe(0);
   });
 });
