@@ -11,6 +11,7 @@ import { Send } from "lucide-react";
 
 import { Button } from "../components/Button";
 import { useDashboardOnline } from "../connection";
+import { cn, dashboardComposerSurfaceClass } from "../styles";
 
 const MOBILE_COMPOSER_MAX_HEIGHT_PX = 112;
 const DESKTOP_MEDIA_QUERY = "(min-width: 768px)";
@@ -255,7 +256,10 @@ export const ConversationComposer = memo(function ConversationComposer(
         </div>
       ) : null}
       <form
-        className="grid grid-cols-[minmax(0,1fr)_auto] items-end overflow-hidden rounded-lg bg-dashboard-surface-raised focus-within:ring-1 focus-within:ring-cyan-300/35 md:block"
+        className={cn(
+          "grid grid-cols-[minmax(0,1fr)_auto] items-end overflow-hidden focus-within:border-cyan-300/35 focus-within:ring-1 focus-within:ring-cyan-300/35 md:block",
+          dashboardComposerSurfaceClass,
+        )}
         onSubmit={submit}
       >
         <label className="sr-only" htmlFor={id}>

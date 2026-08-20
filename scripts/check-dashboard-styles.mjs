@@ -22,6 +22,9 @@ const CLASSIC_VIEWPORT_HEIGHT_PATTERN = /(?<!\w)100vh\b/;
 // Stacking padding + safe-area recreates the composer gap. Prefer max().
 const ADDITIVE_SAFE_AREA_PATTERN =
   /calc\((?:(?!\)[\s"'`]).)*?(?:\+\s*env\(safe-area-inset-(?:top|right|bottom|left)\)|env\(safe-area-inset-(?:top|right|bottom|left)\)\s*\+)/;
+// Composer footers own bottom pad through --dashboard-composer-dock-padding.
+// Inline env(safe-area-inset-bottom) on those surfaces reintroduces the gap.
+const COMPOSER_SAFE_AREA_BOTTOM_PATTERN = /safe-area-inset-bottom/g;
 
 function hasArbitraryNeutralTextColor(line) {
   return [...line.matchAll(ARBITRARY_TEXT_COLOR_PATTERN)].some((match) => {
@@ -121,6 +124,22 @@ export function findAdditiveSafeAreaPadding(files) {
   );
 }
 
+/** Report composer footers that reintroduce bottom safe-area math. */
+export function findComposerSafeAreaBottomPadding(files) {
+  return files.flatMap((file) => {
+    if (!/Conversation(?:Page|Workspace|Composer)\.tsx$/.test(file.path)) {
+      return [];
+    }
+    return file.contents.split("\n").flatMap((line, index) => {
+      if (isCommentOnlyLine(line)) return [];
+      COMPOSER_SAFE_AREA_BOTTOM_PATTERN.lastIndex = 0;
+      return COMPOSER_SAFE_AREA_BOTTOM_PATTERN.test(line)
+        ? [`${file.path}:${index + 1}: ${line.trim()}`]
+        : [];
+    });
+  });
+}
+
 function collectSourceFiles(root, directory, files = []) {
   for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
     const absolutePath = path.join(directory, entry.name);
@@ -153,6 +172,7 @@ function main() {
     ...findUndersizedHardcodedFontSizes(files),
     ...findClassicViewportHeights(files),
     ...findAdditiveSafeAreaPadding(files),
+    ...findComposerSafeAreaBottomPadding(files),
     ...findDashboardUtilityAssertions(testFiles),
   ];
   if (errors.length === 0) {
