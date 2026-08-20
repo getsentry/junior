@@ -134,6 +134,7 @@ import { createSlackDestination } from "@/chat/destination";
 import { createSlackConversationWorker } from "@/chat/task-execution/slack-work";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
 import { normalizeGitHubResourceEvents } from "@sentry/junior-github/testing";
+import { createMemoryAttachmentStorage } from "./fixtures/attachment-storage";
 import { createMockImageGenerateDeps } from "./fixtures/image-generate";
 import { parseSlackMrkdwnLinkUrl } from "./slack-link";
 import { loadEvalPluginFixtures } from "./eval-plugin-fixtures";
@@ -1702,6 +1703,8 @@ function buildRuntimeServices(
   const replyState = { successfulCount: 0 };
   let activeTurnCompactionInjected = false;
   let timeoutResumeInjected = false;
+  // Match production agent runs: sendFiles stores durable attachment refs.
+  const attachmentStorage = createMemoryAttachmentStorage();
 
   const services: JuniorRuntimeServiceOverrides = {
     ...(subscribedDecisions.length > 0
@@ -1955,6 +1958,9 @@ function buildRuntimeServices(
                   ),
                   environment: {
                     ...runRequest.environment,
+                    attachmentStorage:
+                      runRequest.environment?.attachmentStorage ??
+                      attachmentStorage,
                     ...(env.configuredSkillDirs.length > 0
                       ? { skillDirs: env.configuredSkillDirs }
                       : {}),

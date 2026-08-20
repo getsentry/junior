@@ -115,8 +115,12 @@ describeEval("Slack Message Delivery", slackEvals, (it) => {
       expect.objectContaining({
         status: "ok",
         result: expect.objectContaining({
-          file_count: 1,
-          file_ids: expect.arrayContaining([expect.any(String)]),
+          attachment_refs: [
+            expect.objectContaining({
+              id: expect.any(String),
+              filename: expect.any(String),
+            }),
+          ],
         }),
       }),
     ]);
