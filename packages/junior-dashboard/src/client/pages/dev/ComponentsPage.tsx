@@ -279,7 +279,7 @@ function GalleryIndexPage() {
       <div className="grid gap-3">
         {GALLERY_SECTIONS.map((section) => (
           <Link
-            className="group grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-lg border border-white/[0.08] bg-white/[0.02] px-4 py-4 no-underline transition-colors hover:border-white/15 hover:bg-white/[0.04]"
+            className="group grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-lg border border-dashboard-border bg-dashboard-fill-faint px-4 py-4 no-underline transition-colors hover:border-dashboard-border-emphasis hover:bg-dashboard-fill-soft"
             key={section.id}
             to={`/dev/${section.id}`}
           >
@@ -313,6 +313,70 @@ function FoundationsGalleryPage() {
       sectionId="foundations"
       title="Foundations"
     >
+      <Fixture title="Color tokens">
+        <div className="grid gap-4">
+          <TokenSwatchRow
+            label="Canvas / surface"
+            swatches={[
+              { className: "bg-dashboard-bg", label: "bg" },
+              { className: "bg-dashboard-bg-elevated", label: "elevated" },
+              { className: "bg-dashboard-surface-panel", label: "panel" },
+              { className: "bg-dashboard-surface-raised", label: "raised" },
+              { className: "bg-dashboard-surface-hover", label: "hover" },
+              { className: "bg-dashboard-control", label: "control" },
+              { className: "bg-dashboard-ink", label: "ink" },
+            ]}
+          />
+          <TokenSwatchRow
+            label="Text"
+            swatches={[
+              { className: "bg-dashboard-text", label: "text" },
+              { className: "bg-dashboard-text-muted", label: "muted" },
+              { className: "bg-dashboard-text-subtle", label: "subtle" },
+              { className: "bg-dashboard-text-faint", label: "faint" },
+              { className: "bg-dashboard-focus", label: "focus" },
+            ]}
+          />
+          <TokenSwatchRow
+            label="Border"
+            swatches={[
+              {
+                className: "bg-transparent border-2 border-dashboard-border-subtle",
+                label: "subtle",
+              },
+              {
+                className: "bg-transparent border-2 border-dashboard-border",
+                label: "border",
+              },
+              {
+                className: "bg-transparent border-2 border-dashboard-border-strong",
+                label: "strong",
+              },
+              {
+                className:
+                  "bg-transparent border-2 border-dashboard-border-emphasis",
+                label: "emphasis",
+              },
+              {
+                className:
+                  "bg-transparent border-2 border-dashboard-border-interactive",
+                label: "interactive",
+              },
+            ]}
+          />
+          <TokenSwatchRow
+            label="Fill / overlay"
+            swatches={[
+              { className: "bg-dashboard-fill-faint", label: "faint" },
+              { className: "bg-dashboard-fill-soft", label: "soft" },
+              { className: "bg-dashboard-fill-hover", label: "hover" },
+              { className: "bg-dashboard-fill-strong", label: "strong" },
+              { className: "bg-dashboard-overlay-soft", label: "overlay soft" },
+              { className: "bg-dashboard-overlay", label: "overlay" },
+            ]}
+          />
+        </div>
+      </Fixture>
       <Fixture title="Buttons and controls">
         <div className="grid gap-4">
           <div className="flex flex-wrap items-center gap-3">
@@ -536,8 +600,8 @@ function TranscriptsGalleryPage() {
 /** Render typed transcript tool states for visual regression and interaction checks. */
 export function ToolCallGallery() {
   return (
-    <div className="min-w-0 overflow-hidden rounded-lg border border-white/[0.08] bg-white/[0.02]">
-      <div className="border-b border-white/[0.06] px-2.5 py-1.5 font-mono text-xs text-dashboard-text-muted">
+    <div className="min-w-0 overflow-hidden rounded-lg border border-dashboard-border bg-dashboard-fill-faint">
+      <div className="border-b border-dashboard-border-subtle px-2.5 py-1.5 font-mono text-xs text-dashboard-text-muted">
         Activity lane · click a row for arguments and result
       </div>
       <div className="grid min-w-0 gap-1 px-2 py-1.5">
@@ -589,11 +653,39 @@ function GalleryShell(props: {
 function Fixture(props: { children: ReactNode; title: string }) {
   return (
     <Card className="grid min-w-0 gap-3 p-4 sm:p-5" padding="none">
-      <div className="border-b border-white/[0.05] pb-3 font-mono text-xs font-medium uppercase tracking-[0.14em] text-dashboard-text-muted">
+      <div className="border-b border-dashboard-border-subtle pb-3 font-mono text-xs font-medium uppercase tracking-[0.14em] text-dashboard-text-muted">
         {props.title}
       </div>
       <div className="min-w-0">{props.children}</div>
     </Card>
+  );
+}
+
+function TokenSwatchRow(props: {
+  label: string;
+  swatches: readonly { className: string; label: string }[];
+}) {
+  return (
+    <div className="grid gap-2">
+      <div className="font-mono text-xs uppercase tracking-[0.12em] text-dashboard-text-muted">
+        {props.label}
+      </div>
+      <div className="flex flex-wrap gap-3">
+        {props.swatches.map((swatch) => (
+          <div className="grid w-20 gap-1.5" key={swatch.label}>
+            <div
+              className={cn(
+                "h-10 rounded-md border border-dashboard-border-subtle",
+                swatch.className,
+              )}
+            />
+            <div className="truncate font-mono text-2xs text-dashboard-text-muted">
+              {swatch.label}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 

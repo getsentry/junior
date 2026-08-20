@@ -9,7 +9,10 @@ instead of copying Tailwind blocks.
    `StatusChip`, `Notice`, `Drawer`, `Tooltip`, and other small reusable
    controls. Prefer `ToggleButton` variants (`pill`, `segment`, `text`) over
    one-off pressed styles. Prefer `Field` sizes (`default`, `compact`) over
-   handwritten labels.
+   handwritten labels. Structural colors live as slim `dashboard-*` tokens in
+   `src/tailwind.css` (canvas, surface, text, border, fill, overlay, focus).
+   Prefer those roles over `white/*`, `black/*`, or hex literals. Status accents
+   stay as Tailwind palette utilities.
 2. **Patterns** — layout, filters, directory tables, charts, metrics.
    Conversation mobile geometry is a hard ownership edge (see
    `policies/frontend-components.md`):

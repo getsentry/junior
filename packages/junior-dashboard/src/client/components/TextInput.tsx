@@ -3,7 +3,7 @@ import type { InputHTMLAttributes, TextareaHTMLAttributes } from "react";
 import { cn } from "../styles";
 
 const textControlClassName =
-  "block w-full rounded border border-white/15 bg-black px-3 py-2 text-sm text-dashboard-text focus:border-[#beaaff] focus:outline-none disabled:cursor-not-allowed disabled:opacity-50";
+  "block w-full rounded border border-dashboard-border-emphasis bg-dashboard-ink px-3 py-2 text-sm text-dashboard-text focus:border-dashboard-focus focus:outline-none disabled:cursor-not-allowed disabled:opacity-50";
 
 export type TextInputProps = Omit<
   InputHTMLAttributes<HTMLInputElement>,

@@ -16,7 +16,7 @@ const toneClass: Record<StatusChipTone, string> = {
   accent: "border-violet-300/20 bg-violet-300/[0.07] text-violet-100",
   danger: "border-rose-400/25 bg-rose-400/10 text-rose-200",
   info: "border-cyan-300/20 bg-cyan-300/[0.07] text-cyan-100",
-  neutral: "border-white/[0.08] bg-white/[0.025] text-dashboard-text-muted",
+  neutral: "border-dashboard-border bg-dashboard-fill-faint text-dashboard-text-muted",
   success: "border-emerald-400/25 bg-emerald-400/10 text-emerald-200",
   warning: "border-amber-400/25 bg-amber-400/10 text-amber-100",
 };

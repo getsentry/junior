@@ -51,7 +51,7 @@ function initials(name: string | null | undefined, email: string): string {
 }
 
 const profileLinkClass =
-  "flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-semibold text-dashboard-text no-underline transition-colors hover:bg-white/10 hover:text-dashboard-text focus-visible:bg-white/10 focus-visible:text-dashboard-text focus-visible:outline-none";
+  "flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-semibold text-dashboard-text no-underline transition-colors hover:bg-dashboard-fill-strong hover:text-dashboard-text focus-visible:bg-dashboard-fill-strong focus-visible:text-dashboard-text focus-visible:outline-none";
 
 /** Group the signed-in identity, personal profile, and session actions. */
 export function ProfileMenu({
@@ -131,14 +131,14 @@ export function ProfileMenu({
   const avatar = (
     <span
       aria-hidden="true"
-      className="grid size-8 shrink-0 place-items-center rounded-full bg-[#beaaff] text-xs font-bold tracking-wide text-black shadow-sm shadow-black/40"
+      className="grid size-8 shrink-0 place-items-center rounded-full bg-dashboard-focus text-xs font-bold tracking-wide text-dashboard-text-inverse shadow-sm shadow-black/40"
     >
       {initials(identity.user.name, email)}
     </span>
   );
 
   const identityBlock = (
-    <div className="border-b border-white/10 px-2.5 py-2.5">
+    <div className="border-b border-dashboard-border-strong px-2.5 py-2.5">
       <div className="flex min-w-0 items-center gap-2.5">
         {avatar}
         <div className="min-w-0">
@@ -203,7 +203,7 @@ export function ProfileMenu({
         </Link>
       ))}
       <button
-        className="flex w-full cursor-pointer items-center gap-2.5 rounded-md border-0 bg-transparent px-2.5 py-2 text-left text-sm font-semibold text-dashboard-text transition-colors hover:bg-white/10 hover:text-dashboard-text focus-visible:bg-white/10 focus-visible:text-dashboard-text focus-visible:outline-none"
+        className="flex w-full cursor-pointer items-center gap-2.5 rounded-md border-0 bg-transparent px-2.5 py-2 text-left text-sm font-semibold text-dashboard-text transition-colors hover:bg-dashboard-fill-strong hover:text-dashboard-text focus-visible:bg-dashboard-fill-strong focus-visible:text-dashboard-text focus-visible:outline-none"
         onClick={() => {
           close();
           void onSignOut();
@@ -221,7 +221,7 @@ export function ProfileMenu({
     return (
       <div
         aria-label={`Personal model spend: 7 days ${sevenDaySpend}, 30 days ${thirtyDaySpend}`}
-        className="grid gap-1.5 rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-2.5 font-mono text-xs tabular-nums text-dashboard-text-muted"
+        className="grid gap-1.5 rounded-lg border border-dashboard-border bg-dashboard-fill-soft px-3 py-2.5 font-mono text-xs tabular-nums text-dashboard-text-muted"
       >
         <span className="text-xs font-medium uppercase tracking-[0.08em]">
           Spend
@@ -243,7 +243,7 @@ export function ProfileMenu({
   if (variant === "sheet-links") {
     // Match primary sheet rows exactly.
     const sheetItemClass = cn(
-      "rounded-lg border-0 bg-transparent px-3 py-3 text-left font-mono text-sm font-medium tracking-normal no-underline transition-colors hover:bg-white/[0.035] focus-visible:bg-white/[0.035] focus-visible:outline-none",
+      "rounded-lg border-0 bg-transparent px-3 py-3 text-left font-mono text-sm font-medium tracking-normal no-underline transition-colors hover:bg-dashboard-fill-soft focus-visible:bg-dashboard-fill-soft focus-visible:outline-none",
       dashboardInteractiveTextClass,
     );
     return (
@@ -288,7 +288,7 @@ export function ProfileMenu({
       >
         <span
           aria-hidden="true"
-          className="grid size-7 shrink-0 place-items-center rounded-full bg-[#beaaff] text-xs font-bold tracking-wide text-black shadow-sm shadow-black/40"
+          className="grid size-7 shrink-0 place-items-center rounded-full bg-dashboard-focus text-xs font-bold tracking-wide text-dashboard-text-inverse shadow-sm shadow-black/40"
         >
           {initials(identity.user.name, email)}
         </span>
@@ -324,8 +324,8 @@ export function ProfileMenu({
         aria-haspopup="true"
         aria-label={`${open ? "Close" : "Open"} profile menu for ${name}. Personal model spend: 7 days ${sevenDaySpend}, 30 days ${thirtyDaySpend}.`}
         className={cn(
-          "group flex h-10 cursor-pointer items-center gap-2 rounded-lg border-0 bg-transparent px-1.5 text-dashboard-text transition-colors hover:bg-white/[0.06] hover:text-dashboard-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#beaaff]/70",
-          open && "bg-white/[0.08] text-dashboard-text",
+          "group flex h-10 cursor-pointer items-center gap-2 rounded-lg border-0 bg-transparent px-1.5 text-dashboard-text transition-colors hover:bg-dashboard-fill-hover hover:text-dashboard-text focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70",
+          open && "bg-dashboard-fill-hover text-dashboard-text",
         )}
         onClick={(event) => {
           clearHoverTimers();
@@ -343,7 +343,7 @@ export function ProfileMenu({
               {sevenDaySpend}
             </span>
           </span>
-          <span aria-hidden="true" className="h-3 w-px bg-white/10" />
+          <span aria-hidden="true" className="h-3 w-px bg-dashboard-fill-strong" />
           <span className="flex items-baseline gap-1 whitespace-nowrap tabular-nums">
             <span className="text-xs font-medium tracking-[0.08em] text-dashboard-text-muted">
               30d
@@ -355,7 +355,7 @@ export function ProfileMenu({
         </span>
         <span
           aria-hidden="true"
-          className="grid size-7 place-items-center rounded-full bg-[#beaaff] text-xs font-bold tracking-wide text-black shadow-sm shadow-black/40"
+          className="grid size-7 place-items-center rounded-full bg-dashboard-focus text-xs font-bold tracking-wide text-dashboard-text-inverse shadow-sm shadow-black/40"
         >
           {initials(identity.user.name, email)}
         </span>
