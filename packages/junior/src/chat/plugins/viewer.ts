@@ -138,50 +138,12 @@ export async function updateViewerDisplayName(
   return await updateViewerDisplayNameFromSql(getDb(), userId, displayName);
 }
 
-/** Resolve the stored junior identity for one verified web actor email. */
-async function readJuniorIdentityForEmail(
-  db: JuniorDatabase,
-  email: string,
-): Promise<{ identity: Identity; user?: User } | undefined> {
-  const normalizedEmail = normalizeIdentityEmail(email);
-  if (!normalizedEmail) return undefined;
-  const rows = await db
-    .select({
-      identity: juniorIdentities,
-      user: juniorUsers,
-    })
-    .from(juniorIdentities)
-    .leftJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
-    .where(
-      and(
-        eq(juniorIdentities.kind, "user"),
-        eq(juniorIdentities.provider, "junior"),
-        eq(juniorIdentities.providerTenantId, ""),
-        eq(juniorIdentities.providerSubjectId, normalizedEmail),
-      ),
-    )
-    .limit(1);
-  const row = rows[0];
-  if (!row) return undefined;
-  return {
-    identity: identityFromRow(row.identity),
-    ...(row.user ? { user: await readUserById(db, row.user) } : {}),
-  };
-}
-
 /** Resolve the stored identity and linked user for one runtime actor. */
 export async function readActorIdentityFromSql(
   db: JuniorDatabase,
   actor: Actor,
 ): Promise<{ identity: Identity; user?: User } | undefined> {
   if (actor.platform === "system") return undefined;
-  // Web actors use dashboard:<hash> user ids while durable identities use the
-  // verified junior email subject. Resolve through the email, not the hash.
-  if (actor.platform === "web") {
-    return actor.email
-      ? await readJuniorIdentityForEmail(db, actor.email)
-      : undefined;
-  }
   const providerTenantId = actor.platform === "slack" ? actor.teamId : "";
   const rows = await db
     .select({

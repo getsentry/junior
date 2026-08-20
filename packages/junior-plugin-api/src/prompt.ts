@@ -1,14 +1,12 @@
 import { z } from "zod";
 import type {
   Destination,
-  Identity,
   Platform,
   PluginContext,
   PluginEmbedder,
   PluginModel,
   Actor,
   Source,
-  User,
 } from "./context";
 import type { PluginState } from "./state";
 import type { PluginConversationEvents } from "./conversation-events";
@@ -90,8 +88,4 @@ export type UserPromptContext = Pick<PluginContext, "db" | "log" | "plugin"> & {
   source: Source;
   state: PluginState;
   text: string;
-  users: {
-    /** Resolve the current actor's stored identity and linked user. */
-    resolveActor(): Promise<{ identity: Identity; user?: User } | undefined>;
-  };
 };

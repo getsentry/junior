@@ -17,7 +17,6 @@ import { readMigrationFiles } from "drizzle-orm/migrator";
 import { closeDb } from "@/chat/db";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { upsertIdentity } from "@/chat/identities/sql";
-import { readActorIdentityFromSql } from "@/chat/plugins/viewer";
 import { migratePluginsToSql } from "@/cli/upgrade/migrations/plugin-sql";
 import { runUpgrade } from "@/cli/upgrade";
 import { createLocalJuniorSqlFixture } from "../fixtures/sql";
@@ -374,8 +373,6 @@ WHERE indexname = 'junior_memory_memories_search_idx'
         kind: "knowledge",
       });
       const source = createWebSource("local:web:linked-memory", "public");
-      const resolveActorIdentity = () =>
-        readActorIdentityFromSql(fixture.sql.db(), webActor);
       const context = {
         conversationId: "local:web:linked-memory",
         destination: {
@@ -383,7 +380,6 @@ WHERE indexname = 'junior_memory_memories_search_idx'
           conversationId: "local:web:linked-memory",
         },
         actor: webActor,
-        resolveActorIdentity,
         source,
         userText: "where do public workspace runbooks live?",
       };
