@@ -348,9 +348,6 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
       message: message.text,
     });
   }, []);
-  const onFocus = useCallback(() => {
-    onPinRequestRef.current();
-  }, []);
   const onSubmitStart = useCallback(() => {
     // Keep an in-flight remove intact so optimistic cache rollback stays coherent.
     if (!cancelPendingMessagesRef.current.isPending) {
@@ -407,7 +404,6 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
         draftId={props.conversationId}
         label="Continue this conversation"
         submitLabel="Send"
-        onFocus={onFocus}
         onSubmitStart={onSubmitStart}
         onSubmit={onSubmit}
       />

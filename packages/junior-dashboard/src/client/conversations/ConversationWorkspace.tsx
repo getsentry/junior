@@ -1,4 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { Globe2, LockKeyhole } from "lucide-react";
 import { useLocation, useNavigate, useParams } from "react-router";
 
@@ -114,10 +121,7 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
           aria-label="New conversation"
           className="min-h-0 overflow-hidden bg-white/[0.012]"
         >
-          <div
-            className="h-full min-h-0 overflow-y-auto overscroll-contain"
-            data-create-landing-scroll=""
-          >
+          <CreateLandingScroll>
             {createView}
             <div className="md:hidden">
               <ConversationSidebar
@@ -134,7 +138,7 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
                 variant="landing"
               />
             </div>
-          </div>
+          </CreateLandingScroll>
         </section>
       </div>
     );
@@ -194,6 +198,107 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
           createView
         )}
       </section>
+    </div>
+  );
+}
+
+
+/**
+ * Keep create-landing scroll stable while the hero composer is focused.
+ *
+ * iOS Safari scrolls the nearest overflow ancestor to center a focused field.
+ * On this landing page that yanks the hero/list upward as the keyboard opens.
+ * Freeze the scroller at the pre-focus top (hero stays put); list still scrolls
+ * again after blur.
+ */
+function CreateLandingScroll(props: { children: ReactNode }) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const freezeScrollTopRef = useRef(0);
+  const focusedRef = useRef(false);
+
+  const isEditableTarget = (target: EventTarget | null) =>
+    target instanceof HTMLElement &&
+    (target instanceof HTMLInputElement ||
+      target instanceof HTMLTextAreaElement ||
+      target.isContentEditable);
+
+  const lockToFrozenTop = useCallback(() => {
+    const root = rootRef.current;
+    if (!root || !focusedRef.current) return;
+    if (root.scrollTop !== freezeScrollTopRef.current) {
+      root.scrollTop = freezeScrollTopRef.current;
+    }
+  }, []);
+
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!root) return;
+
+    const onFocusIn = (event: FocusEvent) => {
+      if (!isEditableTarget(event.target)) return;
+      focusedRef.current = true;
+      // Always pin landing to the hero while the composer is focused. Capturing
+      // scrollTop after Safari's pan would freeze the jumped position.
+      freezeScrollTopRef.current = 0;
+      root.style.overflowY = "hidden";
+      root.scrollTop = 0;
+      requestAnimationFrame(lockToFrozenTop);
+      queueMicrotask(lockToFrozenTop);
+    };
+
+    const onFocusOut = (event: FocusEvent) => {
+      if (!isEditableTarget(event.target)) return;
+      // Stay frozen until focus fully leaves the landing scroller.
+      const next = event.relatedTarget;
+      if (next instanceof Node && root.contains(next) && isEditableTarget(next)) {
+        return;
+      }
+      focusedRef.current = false;
+      root.style.overflowY = "";
+      root.scrollTop = freezeScrollTopRef.current;
+    };
+
+    const onScroll = () => {
+      if (!focusedRef.current) return;
+      lockToFrozenTop();
+    };
+
+    // Prefer preventScroll focus on pointer so iOS never starts its focus pan.
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof HTMLTextAreaElement) && !(target instanceof HTMLInputElement)) {
+        return;
+      }
+      if (!root.contains(target) || document.activeElement === target) return;
+      event.preventDefault();
+      focusedRef.current = true;
+      // Hero compose owns the top of this page. Keep scroll at 0 while typing.
+      freezeScrollTopRef.current = 0;
+      root.style.overflowY = "hidden";
+      target.focus({ preventScroll: true });
+      root.scrollTop = 0;
+      requestAnimationFrame(lockToFrozenTop);
+    };
+
+    root.addEventListener("pointerdown", onPointerDown);
+    root.addEventListener("focusin", onFocusIn);
+    root.addEventListener("focusout", onFocusOut);
+    root.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      root.removeEventListener("pointerdown", onPointerDown);
+      root.removeEventListener("focusin", onFocusIn);
+      root.removeEventListener("focusout", onFocusOut);
+      root.removeEventListener("scroll", onScroll);
+    };
+  }, [lockToFrozenTop]);
+
+  return (
+    <div
+      className="h-full min-h-0 overflow-y-auto overscroll-contain"
+      data-create-landing-scroll=""
+      ref={rootRef}
+    >
+      {props.children}
     </div>
   );
 }
