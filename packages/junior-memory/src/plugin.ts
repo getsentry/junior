@@ -53,7 +53,6 @@ function memoryToolContext(ctx: {
   db: MemoryToolContext["db"];
   embedder?: MemoryToolContext["embedder"];
   actor?: MemoryToolContext["actor"];
-  identities?: Identity[];
   resolveIdentities?: () => Promise<Identity[] | undefined>;
   source: MemoryToolContext["source"];
   userText?: string;
@@ -62,9 +61,6 @@ function memoryToolContext(ctx: {
     agent: ctx.agent,
     ...(ctx.conversationId ? { conversationId: ctx.conversationId } : undefined),
     ...(ctx.actor ? { actor: ctx.actor } : undefined),
-    ...(ctx.identities && ctx.identities.length > 0
-      ? { identities: ctx.identities }
-      : undefined),
     ...(ctx.resolveIdentities
       ? { resolveIdentities: ctx.resolveIdentities }
       : undefined),
@@ -81,8 +77,6 @@ function memoryCreateToolContext(ctx: {
   db: MemoryCreateToolContext["db"];
   embedder?: MemoryCreateToolContext["embedder"];
   actor?: MemoryCreateToolContext["actor"];
-  identities?: Identity[];
-  resolveIdentities?: () => Promise<Identity[] | undefined>;
   source: MemoryCreateToolContext["source"];
   supersessionDecider: MemoryCreateToolContext["supersessionDecider"];
   userText?: string;
@@ -163,19 +157,23 @@ export function memoryPlugin(options: MemoryPluginOptions = {}) {
       },
       tools(ctx: ToolRegistrationHookContext) {
         const agent = createMemoryAgent(ctx.model);
-        // tools() is sync; resolve linked identities once, lazily on first execute.
         let identitiesPromise: Promise<Identity[] | undefined> | undefined;
-        const resolveIdentities = () => {
-          identitiesPromise ??=
-            resolveLinkedIdentities(ctx.users, ctx.log);
-          return identitiesPromise;
-        };
+        const resolveIdentities =
+          ctx.source.platform === "web"
+            ? () => {
+                identitiesPromise ??= resolveLinkedIdentities(
+                  ctx.users,
+                  ctx.log,
+                );
+                return identitiesPromise;
+              }
+            : undefined;
         const context = memoryToolContext({
           ...ctx,
           agent,
           db: ctx.db as MemoryDb,
           embedder: ctx.embedder,
-          resolveIdentities,
+          ...(resolveIdentities ? { resolveIdentities } : {}),
         });
         return {
           createMemory: createMemoryCreateTool(
@@ -185,7 +183,6 @@ export function memoryPlugin(options: MemoryPluginOptions = {}) {
               db: ctx.db as MemoryDb,
               embedder: ctx.embedder,
               supersessionDecider: agent,
-              resolveIdentities,
             }),
           ),
           removeMemory: createMemoryRemoveTool(context),
@@ -196,10 +193,10 @@ export function memoryPlugin(options: MemoryPluginOptions = {}) {
       ...(!options.disableRecall
         ? {
             async userPrompt(ctx: UserPromptContext) {
-              const identities = await resolveLinkedIdentities(
-                ctx.users,
-                ctx.log,
-              );
+              const identities =
+                ctx.source.platform === "web"
+                  ? await resolveLinkedIdentities(ctx.users, ctx.log)
+                  : undefined;
               return await createMemoryPromptContributions({
                 agent: createMemoryAgent(ctx.model),
                 ...(ctx.conversationId

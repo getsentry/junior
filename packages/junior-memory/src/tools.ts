@@ -55,9 +55,7 @@ export interface MemoryToolContext {
   db: MemoryDb;
   embedder?: MemoryEmbeddingProvider;
   actor?: Actor;
-  /** Pre-resolved linked identities that expand read scopes. */
-  identities?: Identity[];
-  /** Lazy identity resolution for sync tool registration hooks. */
+  /** Resolve linked identities for person-scoped read tools. */
   resolveIdentities?: () => Promise<Identity[] | undefined>;
   source: Source;
   userText?: string;
@@ -86,13 +84,12 @@ function asToolInputError(error: unknown): never {
 
 async function memoryRuntimeContext(
   context: MemoryToolContext,
+  includeLinkedIdentities = false,
 ): Promise<MemoryRuntimeContext> {
   const identities =
-    context.identities && context.identities.length > 0
-      ? context.identities
-      : context.resolveIdentities
-        ? await context.resolveIdentities()
-        : undefined;
+    includeLinkedIdentities && context.resolveIdentities
+      ? await context.resolveIdentities()
+      : undefined;
   return memoryRuntimeContextSchema.parse({
     ...(context.conversationId
       ? { conversationId: context.conversationId }
@@ -105,14 +102,21 @@ async function memoryRuntimeContext(
 
 async function memoryStore(
   context: MemoryToolContext,
-  options: { supersessionDecider?: MemorySupersessionDecider } = {},
+  options: {
+    includeLinkedIdentities?: boolean;
+    supersessionDecider?: MemorySupersessionDecider;
+  } = {},
 ) {
-  return createMemoryStore(context.db, await memoryRuntimeContext(context), {
-    embedder: context.embedder,
-    ...(options.supersessionDecider
-      ? { supersessionDecider: options.supersessionDecider }
-      : undefined),
-  });
+  return createMemoryStore(
+    context.db,
+    await memoryRuntimeContext(context, options.includeLinkedIdentities),
+    {
+      embedder: context.embedder,
+      ...(options.supersessionDecider
+        ? { supersessionDecider: options.supersessionDecider }
+        : undefined),
+    },
+  );
 }
 
 function boundedLimit(value: number | undefined, fallback: number): number {
@@ -542,7 +546,10 @@ export function createMemoryListTool(context: MemoryToolContext) {
     outputSchema: memoryManyOutputSchema,
     execute: async (input) => {
       const parsedInput = parseMemoryToolInput(listMemoriesInputSchema, input);
-      const memories = await (await memoryStore(context)).listMemories({
+      const store = await memoryStore(context, {
+        includeLinkedIdentities: true,
+      });
+      const memories = await store.listMemories({
         limit: boundedLimit(parsedInput.limit, DEFAULT_RESULT_LIMIT),
       });
       return memoryToolResult("listMemories", {
@@ -556,7 +563,7 @@ export function createMemoryListTool(context: MemoryToolContext) {
 export function createMemorySearchTool(context: MemoryToolContext) {
   return definePluginTool({
     description:
-      "Search active memories visible in the current context. Use when the model needs targeted memory recall. The tool searches only the current actor and active conversation scopes.",
+      "Search active memories visible in the current context. Use when the model needs targeted memory recall. The tool searches only the current person's authorized scopes and the active conversation scope.",
     annotations: {
       destructiveHint: false,
       idempotentHint: true,
@@ -570,7 +577,10 @@ export function createMemorySearchTool(context: MemoryToolContext) {
         searchMemoriesInputSchema,
         input,
       );
-      const memories = await (await memoryStore(context)).searchMemories({
+      const store = await memoryStore(context, {
+        includeLinkedIdentities: true,
+      });
+      const memories = await store.searchMemories({
         query: parsedInput.query,
         limit: boundedLimit(parsedInput.limit, DEFAULT_SEARCH_LIMIT),
       });

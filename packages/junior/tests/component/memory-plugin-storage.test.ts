@@ -7,15 +7,23 @@ import {
   type MemoryDb,
 } from "@sentry/junior-memory";
 import { defineJuniorPlugins } from "@/plugins";
-import { getPluginTools, setPlugins } from "@/chat/plugins/agent-hooks";
+import {
+  getPluginTools,
+  getPluginUserPromptContributions,
+  setPlugins,
+} from "@/chat/plugins/agent-hooks";
 import { migratePluginSchemas } from "@/chat/plugins/migrations";
 import { readMigrationFiles } from "drizzle-orm/migrator";
 import { closeDb } from "@/chat/db";
+import { migrateSchema } from "@/chat/conversations/sql/migrations";
+import { upsertIdentity } from "@/chat/identities/sql";
+import { readActorIdentityFromSql } from "@/chat/plugins/viewer";
 import { migratePluginsToSql } from "@/cli/upgrade/migrations/plugin-sql";
 import { runUpgrade } from "@/cli/upgrade";
 import { createLocalJuniorSqlFixture } from "../fixtures/sql";
 import {
   createSlackSource,
+  createWebSource,
   defineJuniorPlugin,
   PluginToolInputError,
 } from "@sentry/junior-plugin-api";
@@ -51,14 +59,20 @@ vi.mock("@/db/executor", () => ({
 }));
 
 vi.mock("@/chat/pi/client", () => ({
-  completeObject: vi.fn(async () => ({
-    object: {
-      canonicalFact: "Prefers terse status updates.",
-      decision: "store",
-      expiresAtMs: null,
-      kind: "preference",
-    },
-  })),
+  completeObject: vi.fn(async ({ prompt }: { prompt: string }) => {
+    if (prompt.includes("<memory-recall-input>")) {
+      const id = prompt.match(/"id":"(.+?)"/)?.[1];
+      return { object: { relevantIds: id ? [id] : [] } };
+    }
+    return {
+      object: {
+        canonicalFact: "Prefers terse status updates.",
+        decision: "store",
+        expiresAtMs: null,
+        kind: "preference",
+      },
+    };
+  }),
   embedTexts: vi.fn(async ({ texts }: { texts: string[] }) => ({
     dimensions: 1,
     model: "test-embedding-model",
@@ -288,6 +302,118 @@ WHERE indexname = 'junior_memory_memories_search_idx'
         `Database is up to date (${totalMigrationCount} migrations).`,
       ]);
     } finally {
+      NEON.sql = undefined;
+      await fixture.close();
+    }
+  }, 15_000);
+
+  it("uses linked identity scopes for web memory reads", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+    const previousPlugins = setPlugins([memoryPlugin()]);
+    NEON.sql = fixture.sql;
+
+    try {
+      await migrateSchema(fixture.sql);
+      await migrateMemorySchema(fixture);
+      const email = "web-memory@example.com";
+      const webActor = {
+        platform: "web" as const,
+        userId: "dashboard:web-memory",
+        email,
+      };
+      await upsertIdentity(fixture.sql, {
+        kind: "user",
+        provider: "junior",
+        providerSubjectId: email,
+        email,
+        emailVerified: true,
+      });
+      await upsertIdentity(fixture.sql, {
+        kind: "user",
+        provider: "slack",
+        providerTenantId: "T123",
+        providerSubjectId: "U123",
+        email,
+        emailVerified: true,
+      });
+      const linkedSource = createSlackSource({
+        teamId: "T123",
+        channelId: "C123",
+        messageTs: "1718800000.000000",
+        visibility: "public",
+      });
+      const linkedStore = createMemoryStore(
+        fixture.sql.db() as unknown as MemoryDb,
+        {
+          conversationId: "slack:C123:1718800000.000000",
+          actor: { platform: "slack", teamId: "T123", userId: "U123" },
+          source: linkedSource,
+        },
+      );
+      const linked = await linkedStore.createConversationMemory({
+        content: "Public workspace runbooks live in Notion.",
+        idempotencyKey: "component-web-linked-memory",
+        kind: "knowledge",
+      });
+      const otherStore = createMemoryStore(
+        fixture.sql.db() as unknown as MemoryDb,
+        {
+          conversationId: "slack:C999:1718800001.000000",
+          actor: { platform: "slack", teamId: "T999", userId: "U999" },
+          source: createSlackSource({
+            teamId: "T999",
+            channelId: "C999",
+            messageTs: "1718800001.000000",
+            visibility: "public",
+          }),
+        },
+      );
+      await otherStore.createConversationMemory({
+        content: "Other workspace runbooks are not visible.",
+        idempotencyKey: "component-web-other-memory",
+        kind: "knowledge",
+      });
+      const source = createWebSource("local:web:linked-memory", "public");
+      const resolveActorIdentity = () =>
+        readActorIdentityFromSql(fixture.sql.db(), webActor);
+      const context = {
+        conversationId: "local:web:linked-memory",
+        destination: {
+          platform: "local" as const,
+          conversationId: "local:web:linked-memory",
+        },
+        actor: webActor,
+        resolveActorIdentity,
+        source,
+        userText: "where do public workspace runbooks live?",
+      };
+
+      await expect(
+        getPluginUserPromptContributions({ context }),
+      ).resolves.toEqual([
+        expect.objectContaining({
+          pluginName: "memory",
+          text: expect.stringContaining("Public workspace runbooks live in Notion."),
+        }),
+      ]);
+
+      const tools = getPluginTools({
+        ...context,
+        egress: {
+          async fetch() {
+            return new Response("ok");
+          },
+        },
+        workspace: {} as Parameters<typeof getPluginTools>[0]["workspace"],
+      });
+      await expect(
+        tools.memory_listMemories.execute!({}, {}),
+      ).resolves.toMatchObject({
+        memories: [expect.objectContaining({ id: linked.memory.id })],
+      });
+    } finally {
+      setPlugins(previousPlugins);
+      await closeDb();
       NEON.sql = undefined;
       await fixture.close();
     }
