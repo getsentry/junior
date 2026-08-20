@@ -404,8 +404,9 @@ WHERE indexname = 'junior_memory_memories_search_idx'
       });
       await expect(
         tools.memory_listMemories.execute!({}, {}),
-      ).resolves.toMatchObject({
+      ).resolves.toEqual({
         memories: [expect.objectContaining({ id: linked.memory.id })],
+        target: "listMemories",
       });
     } finally {
       setPlugins(previousPlugins);
