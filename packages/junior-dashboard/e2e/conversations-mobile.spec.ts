@@ -107,6 +107,28 @@ test("starts a new conversation from a centered compose empty state", async ({
       }),
     )
     .toBe("landing-compose");
+
+  // Focusing the hero must keep the landing scroller on the hero (no iOS jump).
+  await composer.evaluate((node) => {
+    if (node instanceof HTMLElement) node.blur();
+  });
+  await expect
+    .poll(() =>
+      composer.evaluate(async (node) => {
+        const scroller = node.closest("[data-create-landing-scroll]");
+        if (!(scroller instanceof HTMLElement) || !(node instanceof HTMLElement)) {
+          return "missing-scroller";
+        }
+        scroller.scrollTop = 80;
+        // Match iOS: focus can pan the overflow ancestor before our freeze runs.
+        node.focus();
+        await new Promise((resolve) => requestAnimationFrame(resolve));
+        await new Promise((resolve) => requestAnimationFrame(resolve));
+        return scroller.scrollTop === 0 ? "hero-pinned" : `jumped:${scroller.scrollTop}`;
+      }),
+    )
+    .toBe("hero-pinned");
+  await expect(composer).toBeFocused();
 });
 
 test("opens and closes a conversation in the mobile workspace", async ({
