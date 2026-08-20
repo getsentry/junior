@@ -62,7 +62,6 @@ test("starts a new conversation from a centered compose empty state", async ({
 }) => {
   await page.setViewportSize({ height: 844, width: 390 });
   await page.goto(server.baseURL);
-  await page.getByRole("button", { name: "New conversation" }).click();
 
   const heading = page.getByRole("heading", { name: "What do you need?" });
   const composer = page.getByLabel("Start a conversation");
@@ -72,9 +71,9 @@ test("starts a new conversation from a centered compose empty state", async ({
   await composer.focus();
   await expect(composer).toBeFocused();
 
-  // Create mode is a landing page: simple app chrome + compose hero + list nav.
-  // Not a thread destination and not a reply dock.
-  await expect(page).toHaveURL(/\/conversations\/new$/);
+  // Home and create are the same landing: simple app chrome + compose hero +
+  // list nav. Not a thread destination and not a reply dock.
+  await expect(page).toHaveURL(`${server.baseURL}/`);
   await expect(page.getByRole("button", { name: "Open navigation" })).toBeVisible();
   await expect(
     page.getByRole("link", { name: "Back to conversations" }),
@@ -82,6 +81,10 @@ test("starts a new conversation from a centered compose empty state", async ({
   await expect(
     page.getByRole("heading", { name: "Your conversations" }),
   ).toBeVisible();
+  // Legacy create deep link collapses onto home.
+  await page.goto(`${server.baseURL}/conversations/new`);
+  await expect(page).toHaveURL(`${server.baseURL}/`);
+  await expect(heading).toBeVisible();
   await expect
     .poll(() =>
       composer.evaluate((node) => {
@@ -176,8 +179,12 @@ test("opens and closes a conversation in the mobile workspace", async ({
   });
   await page.goto(`${server.baseURL}/conversations`);
   await expect(page).toHaveURL(`${server.baseURL}/`);
+  // Mobile home is the create landing (hero + list), same as desktop empty state.
   await expect(
-    page.getByRole("heading", { name: "Conversations" }),
+    page.getByRole("heading", { name: "What do you need?" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Your conversations" }),
   ).toBeVisible();
   const navigationTrigger = page.getByRole("button", {
     name: "Open navigation",
@@ -537,7 +544,10 @@ test("opens and closes a conversation in the mobile workspace", async ({
   await page.getByRole("link", { name: "Back to conversations" }).click();
   await expect(page).toHaveURL(`${server.baseURL}/`);
   await expect(
-    page.getByRole("heading", { name: "Conversations" }),
+    page.getByRole("heading", { name: "What do you need?" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Your conversations" }),
   ).toBeVisible();
 
   // Log out must POST and dismiss the sheet before the response completes.

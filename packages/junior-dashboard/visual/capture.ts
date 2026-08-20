@@ -179,7 +179,7 @@ async function prepareScenario(
     return;
   }
   if (prepare === "new-conversation-focused") {
-    await page.getByRole("button", { name: "New conversation" }).click();
+    // Home is already the create landing (hero + list). Focus the composer.
     const composer = page.getByLabel("Start a conversation");
     await page
       .getByRole("heading", { name: "What do you need?", exact: true })

@@ -7,7 +7,7 @@ import {
   type ReactNode,
 } from "react";
 import { Globe2, LockKeyhole } from "lucide-react";
-import { useLocation, useNavigate, useParams } from "react-router";
+import { useNavigate, useParams } from "react-router";
 
 import { useConversationsData } from "../api";
 import { ConversationSidebar } from "./ConversationSidebar";
@@ -18,11 +18,7 @@ import {
   usePendingArchiveConversationUpdates,
   type PendingArchiveConversationUpdate,
 } from "./queries";
-import {
-  conversationPath,
-  isNewConversationPath,
-  NEW_CONVERSATION_PATH,
-} from "./conversationRoutes";
+import { conversationPath, NEW_CONVERSATION_PATH } from "./conversationRoutes";
 import { buildConversations, filterConversationList } from "../format";
 import type { DashboardCoreData } from "../types";
 import type { Conversation } from "../types";
@@ -34,12 +30,11 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<"active" | "archived">("active");
   const params = useParams();
-  const location = useLocation();
   const navigate = useNavigate();
   const selectedId = params.conversationId;
-  // Create mode is route-driven so mobile back uses the app header chevron
-  // (same affordance as opening a thread), not a floating control.
-  const creating = isNewConversationPath(location.pathname);
+  // Home and create are one surface: no selected thread means the landing
+  // (compose hero + list nav). Desktop already did this; mobile matches it.
+  const landing = !selectedId;
   const feed = useConversationsData(status);
   const pendingArchiveUpdates = usePendingArchiveConversationUpdates();
   const createConversation = useCreateConversation();
@@ -63,15 +58,15 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
   );
 
   useEffect(() => {
-    if (!creating) return;
+    if (!landing) return;
     // New chats are active; leave archived view so the created row can appear.
     setStatus("active");
-  }, [creating]);
+  }, [landing]);
 
   const openCreate = () => {
     createConversation.reset();
     setStatus("active");
-    if (!creating) navigate(NEW_CONVERSATION_PATH);
+    if (selectedId) navigate(NEW_CONVERSATION_PATH);
   };
 
   const createView = (
@@ -92,10 +87,10 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
     />
   );
 
-  // Mobile create is a landing page: simple app header (shell) + compose hero +
-  // conversation list as navigation. Desktop keeps the split pane. One create
-  // tree only — dual mounts break focus/a11y queries.
-  if (creating) {
+  // Landing (home + create): simple app header + compose hero + list nav on
+  // mobile; desktop keeps the split pane. One create tree only — dual mounts
+  // break focus/a11y queries.
+  if (landing) {
     return (
       <div
         className={cn(
@@ -151,13 +146,7 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
         "grid h-full min-h-0 overflow-hidden md:grid-cols-[21rem_minmax(0,1fr)] xl:border-x xl:border-white/[0.07]",
       )}
     >
-      <div
-        className={
-          selectedId
-            ? "hidden h-full min-h-0 overflow-hidden md:block"
-            : "h-full min-h-0 overflow-hidden"
-        }
-      >
+      <div className="hidden h-full min-h-0 overflow-hidden md:block">
         <ConversationSidebar
           conversations={visibleConversations}
           error={feed.error?.message}
@@ -173,30 +162,22 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
       </div>
       <section
         aria-label="Selected conversation"
-        className={
-          selectedId
-            ? "grid min-h-0 grid-rows-[minmax(0,1fr)] overflow-hidden bg-white/[0.012]"
-            : "hidden min-h-0 overflow-hidden bg-white/[0.012] md:grid md:grid-rows-[minmax(0,1fr)]"
-        }
+        className="grid min-h-0 grid-rows-[minmax(0,1fr)] overflow-hidden bg-white/[0.012]"
       >
-        {selectedId ? (
-          <ConversationPage
-            key={selectedId}
-            conversationId={selectedId}
-            data={
-              feed.data
-                ? {
-                    conversations: feed.data,
-                  }
-                : undefined
-            }
-            pendingArchiveUpdate={pendingArchiveUpdates.find(
-              (update) => update.conversationId === selectedId,
-            )}
-          />
-        ) : (
-          createView
-        )}
+        <ConversationPage
+          key={selectedId}
+          conversationId={selectedId}
+          data={
+            feed.data
+              ? {
+                  conversations: feed.data,
+                }
+              : undefined
+          }
+          pendingArchiveUpdate={pendingArchiveUpdates.find(
+            (update) => update.conversationId === selectedId,
+          )}
+        />
       </section>
     </div>
   );
