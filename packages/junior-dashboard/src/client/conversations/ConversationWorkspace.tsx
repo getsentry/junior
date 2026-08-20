@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, Globe2, LockKeyhole } from "lucide-react";
-import { useNavigate, useParams } from "react-router";
+import { useEffect, useMemo, useState } from "react";
+import { Globe2, LockKeyhole } from "lucide-react";
+import { useLocation, useNavigate, useParams } from "react-router";
 
 import { useConversationsData } from "../api";
 import { ConversationSidebar } from "./ConversationSidebar";
@@ -12,17 +12,14 @@ import {
   type PendingArchiveConversationUpdate,
 } from "./queries";
 import {
-  buildConversations,
   conversationPath,
-  filterConversationList,
-} from "../format";
+  isNewConversationPath,
+  NEW_CONVERSATION_PATH,
+} from "./conversationRoutes";
+import { buildConversations, filterConversationList } from "../format";
 import type { DashboardCoreData } from "../types";
 import type { Conversation } from "../types";
-import {
-  cn,
-  dashboardComposerDockClass,
-  dashboardContainerClass,
-} from "../styles";
+import { cn, dashboardContainerClass } from "../styles";
 import { ConversationPage } from "./ConversationPage";
 
 /** Render the personal split-pane conversation workspace at the dashboard root. */
@@ -30,13 +27,15 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<"active" | "archived">("active");
   const params = useParams();
+  const location = useLocation();
   const navigate = useNavigate();
   const selectedId = params.conversationId;
+  // Create mode is route-driven so mobile back uses the app header chevron
+  // (same affordance as opening a thread), not a floating control.
+  const creating = isNewConversationPath(location.pathname);
   const feed = useConversationsData(status);
   const pendingArchiveUpdates = usePendingArchiveConversationUpdates();
   const createConversation = useCreateConversation();
-  const [creating, setCreating] = useState(false);
-  const createSourceId = useRef<string | undefined>(undefined);
   const conversations = useMemo(
     () =>
       applyPendingArchiveUpdates(
@@ -57,14 +56,89 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
   );
 
   useEffect(() => {
-    if (!selectedId) {
-      // Root has no selection. Keep create mode only when New set it.
-      createSourceId.current = undefined;
-      return;
-    }
-    if (selectedId === createSourceId.current) return;
-    setCreating(false);
-  }, [selectedId]);
+    if (!creating) return;
+    // New chats are active; leave archived view so the created row can appear.
+    setStatus("active");
+  }, [creating]);
+
+  const openCreate = () => {
+    createConversation.reset();
+    setStatus("active");
+    if (!creating) navigate(NEW_CONVERSATION_PATH);
+  };
+
+  const createView = (
+    <NewConversationView
+      error={
+        createConversation.error
+          ? "Could not create the conversation. Try again."
+          : undefined
+      }
+      onSubmit={async (message, idempotencyKey, visibility) => {
+        const accepted = await createConversation.mutateAsync({
+          idempotencyKey,
+          message,
+          visibility,
+        });
+        navigate(conversationPath(accepted.conversationId));
+      }}
+    />
+  );
+
+  // Mobile create is a landing page: simple app header (shell) + compose hero +
+  // conversation list as navigation. Desktop keeps the split pane. One create
+  // tree only — dual mounts break focus/a11y queries.
+  if (creating) {
+    return (
+      <div
+        className={cn(
+          dashboardContainerClass,
+          "grid h-full min-h-0 overflow-hidden md:grid-cols-[21rem_minmax(0,1fr)] xl:border-x xl:border-white/[0.07]",
+        )}
+      >
+        <div className="hidden h-full min-h-0 overflow-hidden md:block">
+          <ConversationSidebar
+            conversations={visibleConversations}
+            error={feed.error?.message}
+            loading={feed.isPending}
+            onNewConversation={openCreate}
+            onQueryChange={setQuery}
+            onStatusChange={setStatus}
+            query={query}
+            selectedId={undefined}
+            status={status}
+            timeZone={props.data.config.timeZone}
+          />
+        </div>
+        <section
+          aria-label="New conversation"
+          className="min-h-0 overflow-hidden bg-white/[0.012]"
+        >
+          <div
+            className="h-full min-h-0 overflow-y-auto overscroll-contain"
+            data-create-landing-scroll=""
+          >
+            {createView}
+            <div className="md:hidden">
+              <ConversationSidebar
+                conversations={visibleConversations}
+                error={feed.error?.message}
+                loading={feed.isPending}
+                onNewConversation={openCreate}
+                onQueryChange={setQuery}
+                onStatusChange={setStatus}
+                query={query}
+                selectedId={undefined}
+                status={status}
+                timeZone={props.data.config.timeZone}
+                variant="landing"
+              />
+            </div>
+          </div>
+        </section>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -75,7 +149,7 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
     >
       <div
         className={
-          selectedId || creating
+          selectedId
             ? "hidden h-full min-h-0 overflow-hidden md:block"
             : "h-full min-h-0 overflow-hidden"
         }
@@ -84,18 +158,11 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
           conversations={visibleConversations}
           error={feed.error?.message}
           loading={feed.isPending}
-          onNewConversation={() => {
-            createConversation.reset();
-            createSourceId.current = selectedId;
-            // New chats are active; leave archived view so the created row can appear.
-            setStatus("active");
-            setCreating(true);
-            if (selectedId) navigate("/", { replace: true });
-          }}
+          onNewConversation={openCreate}
           onQueryChange={setQuery}
           onStatusChange={setStatus}
           query={query}
-          selectedId={creating ? undefined : selectedId}
+          selectedId={selectedId}
           status={status}
           timeZone={props.data.config.timeZone}
         />
@@ -105,64 +172,26 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
         className={
           selectedId
             ? "grid min-h-0 grid-rows-[minmax(0,1fr)] overflow-hidden bg-white/[0.012]"
-            : creating
-              ? "grid min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden bg-white/[0.012]"
-              : "hidden min-h-0 overflow-hidden bg-white/[0.012] md:grid md:grid-rows-[minmax(0,1fr)]"
+            : "hidden min-h-0 overflow-hidden bg-white/[0.012] md:grid md:grid-rows-[minmax(0,1fr)]"
         }
       >
-        {selectedId && !creating ? (
-          <>
-            <ConversationPage
-              key={selectedId}
-              conversationId={selectedId}
-              data={
-                feed.data
-                  ? {
-                      conversations: feed.data,
-                    }
-                  : undefined
-              }
-              pendingArchiveUpdate={pendingArchiveUpdates.find(
-                (update) => update.conversationId === selectedId,
-              )}
-            />
-          </>
+        {selectedId ? (
+          <ConversationPage
+            key={selectedId}
+            conversationId={selectedId}
+            data={
+              feed.data
+                ? {
+                    conversations: feed.data,
+                  }
+                : undefined
+            }
+            pendingArchiveUpdate={pendingArchiveUpdates.find(
+              (update) => update.conversationId === selectedId,
+            )}
+          />
         ) : (
-          <>
-            {creating ? (
-              <div className="border-b border-white/[0.07] bg-white/[0.025] px-3 py-2.5 md:hidden">
-                <button
-                  className="inline-flex cursor-pointer items-center gap-2 font-mono text-xs text-dashboard-text-muted hover:text-dashboard-text"
-                  onClick={() => {
-                    createSourceId.current = undefined;
-                    setCreating(false);
-                  }}
-                  title="Your conversations"
-                  type="button"
-                >
-                  <ArrowLeft aria-hidden="true" size={15} />
-                  Your conversations
-                </button>
-              </div>
-            ) : null}
-            <div className="min-h-0 h-full">
-              <NewConversationView
-                error={
-                  createConversation.error
-                    ? "Could not create the conversation. Try again."
-                    : undefined
-                }
-                onSubmit={async (message, idempotencyKey, visibility) => {
-                  const accepted = await createConversation.mutateAsync({
-                    idempotencyKey,
-                    message,
-                    visibility,
-                  });
-                  navigate(conversationPath(accepted.conversationId));
-                }}
-              />
-            </div>
-          </>
+          createView
         )}
       </section>
     </div>
@@ -180,51 +209,46 @@ function NewConversationView(props: {
   const [visibility, setVisibility] = useState<"private" | "public">("public");
   const isPublic = visibility === "public";
 
-  // Same chat shell as ConversationPage: scrollable intro above a pinned
-  // composer. Keeps the input glued to the visual viewport on mobile instead of
-  // floating in a centered scroll card.
+  // Landing-page compose hero. Parent owns page scroll and stacks conversation
+  // nav under this block on mobile; desktop still centers the hero alone.
   return (
-    <div className="grid h-full min-h-0 min-w-0 grid-rows-[minmax(0,1fr)_minmax(0,auto)]">
-      <div className="min-h-0 overflow-y-auto overscroll-contain px-4 pt-8 md:px-8 md:pt-10">
-        <div className="mx-auto flex w-full max-w-2xl flex-col justify-end md:min-h-full md:justify-center md:pb-6">
-          <h2 className="m-0 font-display text-2xl font-medium tracking-[-0.03em] text-dashboard-text md:text-3xl">
-            New conversation
+    <div className="px-4 py-10 md:flex md:min-h-full md:flex-col md:justify-center md:px-8 md:py-12">
+      <div className="mx-auto flex w-full max-w-xl flex-col items-stretch gap-5 md:max-w-2xl md:gap-8">
+          <h2 className="m-0 text-center font-display text-2xl font-medium tracking-[-0.03em] text-dashboard-text md:text-3xl">
+            What do you need?
           </h2>
-          <div className="mt-3 flex flex-wrap gap-2">
-            <ToggleButton
-              onClick={() => setVisibility("public")}
-              pressed={isPublic}
-              type="button"
-              variant="pill"
-            >
-              <Globe2 aria-hidden="true" className="mr-1.5 inline size-3" />
-              Public
-            </ToggleButton>
-            <ToggleButton
-              onClick={() => setVisibility("private")}
-              pressed={!isPublic}
-              type="button"
-              variant="pill"
-            >
-              <LockKeyhole
-                aria-hidden="true"
-                className="mr-1.5 inline size-3"
-              />
-              Private
-            </ToggleButton>
-          </div>
-        </div>
-      </div>
-      <div
-        className={cn(
-          "min-w-0 shrink-0 px-2 pt-1.5 md:px-8 md:pt-2 md:pb-8",
-          dashboardComposerDockClass,
-        )}
-      >
-        <div className="mx-auto w-full max-w-2xl">
           <ConversationComposer
             draftId="new"
             error={props.error}
+            footerStart={
+              <div
+                aria-label="Conversation visibility"
+                className="inline-flex items-center gap-1"
+                role="group"
+              >
+                <ToggleButton
+                  onClick={() => setVisibility("public")}
+                  pressed={isPublic}
+                  type="button"
+                  variant="segment"
+                >
+                  <Globe2 aria-hidden="true" className="mr-1 inline size-3" />
+                  Public
+                </ToggleButton>
+                <ToggleButton
+                  onClick={() => setVisibility("private")}
+                  pressed={!isPublic}
+                  type="button"
+                  variant="segment"
+                >
+                  <LockKeyhole
+                    aria-hidden="true"
+                    className="mr-1 inline size-3"
+                  />
+                  Private
+                </ToggleButton>
+              </div>
+            }
             label="Start a conversation"
             restoreDraftOnError
             submitLabel="Send"
@@ -232,7 +256,6 @@ function NewConversationView(props: {
               props.onSubmit(message, idempotencyKey, visibility)
             }
           />
-        </div>
       </div>
     </div>
   );

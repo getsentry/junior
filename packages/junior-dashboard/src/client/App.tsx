@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router";
 
 import {
@@ -16,14 +16,15 @@ import {
   DashboardChromeProvider,
 } from "./components/layout/DashboardChrome";
 import { DashboardHeader } from "./components/layout/DashboardHeader";
+import { VisualViewportShell } from "./components/layout/VisualViewportShell";
 import {
   buildConversations,
   conversationDisplayTitle,
   setDashboardTimeZone,
 } from "./format";
+import { isNewConversationPath } from "./conversations/conversationRoutes";
 import { ConversationWorkspace } from "./conversations/ConversationWorkspace";
 import { useConversationData } from "./conversations/queries";
-import { useMobileViewportHeight } from "./mobileViewport";
 import { ComponentsPage } from "./pages/dev/ComponentsPage";
 import { LocationDetailPage } from "./pages/locations/LocationDetailPage";
 import { LocationsPage } from "./pages/locations/LocationsPage";
@@ -44,7 +45,6 @@ import {
   PluginUserPageRoute,
   pluginUserPagePath,
 } from "./pages/user/PluginUserPage";
-import { cn } from "./styles";
 import type { DashboardCoreData } from "./types";
 
 const dashboardBackground = {
@@ -62,7 +62,6 @@ const dashboardNoise = {
 /** Render the dashboard SPA shell and route-level loading states. */
 export function DashboardShell() {
   const location = useLocation();
-  const shellRef = useRef<HTMLElement>(null);
   const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
   const query = useDashboardCoreData();
   const userPagesQuery = usePluginUserPagesData();
@@ -91,6 +90,8 @@ export function DashboardShell() {
       conversationsQuery.data?.conversations ?? [],
     ).find((item) => item.id === conversationId);
   }, [conversationId, conversationsQuery.data?.conversations]);
+  // Create mode is a landing page (normal app chrome), not a thread destination.
+  // Only open conversations use the mobile back chevron + title row.
   const mobileConversationTitle = conversationId
     ? conversationDetail.data?.displayTitle?.trim() ||
       conversationDisplayTitle(mobileConversation)
@@ -106,8 +107,6 @@ export function DashboardShell() {
     })),
     { key: "system", label: "System", to: "/system" },
   ];
-
-  useMobileViewportHeight(shellRef, workspace);
 
   useEffect(() => {
     setMobileNavigationOpen(false);
@@ -134,16 +133,7 @@ export function DashboardShell() {
 
   return (
     <DashboardChromeProvider>
-      <main
-        className={cn(
-          "grid font-sans text-dashboard-text",
-          workspace
-            ? "fixed inset-x-0 top-[var(--dashboard-viewport-offset-top,0px)] h-[var(--dashboard-viewport-height,100dvh)] max-h-[var(--dashboard-viewport-height,100dvh)] min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden overscroll-none md:relative md:inset-auto md:h-dvh md:max-h-none md:overscroll-auto"
-            : "relative min-h-screen grid-rows-[auto_1fr]",
-        )}
-        ref={shellRef}
-        style={dashboardBackground}
-      >
+      <VisualViewportShell enabled={workspace} style={dashboardBackground}>
         <DashboardChrome
           banner={<ConnectionBanner />}
           header={
@@ -325,6 +315,20 @@ export function DashboardShell() {
               />
             )
           }
+          path="/conversations/new"
+        />
+        <Route
+          element={
+            loading ? (
+              <LoadingView label="Loading your conversations" />
+            ) : data ? (
+              <ConversationWorkspace data={data} />
+            ) : (
+              <LoadingView
+                label={query.error?.message ?? "Dashboard unavailable"}
+              />
+            )
+          }
           path="/conversations/:conversationId"
         />
         <Route element={<Navigate replace to="/" />} path="/conversations" />
@@ -491,13 +495,14 @@ export function DashboardShell() {
           className="pointer-events-none fixed inset-0 z-50 block opacity-[0.018]"
           style={dashboardNoise}
         />
-      </main>
+      </VisualViewportShell>
     </DashboardChromeProvider>
   );
 }
 
 /** Read the selected conversation id from a workspace detail path. */
 function conversationIdFromPath(pathname: string): string | undefined {
+  if (isNewConversationPath(pathname)) return undefined;
   const match = pathname.match(/^\/conversations\/([^/]+)$/);
   if (!match?.[1]) return undefined;
   try {

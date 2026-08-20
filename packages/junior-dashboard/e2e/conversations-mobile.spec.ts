@@ -57,67 +57,56 @@ async function expectFocusedComposerAtVisualViewportBottom(
     .toBe("composer-at-bottom");
 }
 
-test("keeps the new conversation composer above the mobile keyboard", async ({
+test("starts a new conversation from a centered compose empty state", async ({
   page,
 }) => {
   await page.setViewportSize({ height: 844, width: 390 });
   await page.goto(server.baseURL);
   await page.getByRole("button", { name: "New conversation" }).click();
 
-  const heading = page.getByRole("heading", { name: "New conversation" });
+  const heading = page.getByRole("heading", { name: "What do you need?" });
   const composer = page.getByLabel("Start a conversation");
   await expect(heading).toBeVisible();
+  await expect(page.getByRole("button", { name: "Public" })).toBeVisible();
+  await expect(composer).toBeVisible();
   await composer.focus();
   await expect(composer).toBeFocused();
 
-  // Create mode must pin the composer outside the scroll body, same shell as
-  // reply chats. Layout pixels belong to visual QA; this checks structure.
+  // Create mode is a landing page: simple app chrome + compose hero + list nav.
+  // Not a thread destination and not a reply dock.
+  await expect(page).toHaveURL(/\/conversations\/new$/);
+  await expect(page.getByRole("button", { name: "Open navigation" })).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Back to conversations" }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("heading", { name: "Your conversations" }),
+  ).toBeVisible();
   await expect
     .poll(() =>
       composer.evaluate((node) => {
         const form = node.closest("form");
-        if (!form) return "missing-form";
-        let current: Element | null = form.parentElement;
-        while (current) {
-          const overflowY = getComputedStyle(current).overflowY;
-          if (overflowY === "auto" || overflowY === "scroll") {
-            return "composer-in-scroll";
-          }
-          if (current.getAttribute("aria-label") === "Selected conversation") {
-            break;
-          }
-          current = current.parentElement;
+        const section = node.closest('[aria-label="New conversation"]');
+        const title = section?.querySelector("h2");
+        if (!form || !(title instanceof HTMLElement) || !section) {
+          return "missing-compose-stack";
         }
-        return "pinned-footer";
+        const position = title.compareDocumentPosition(form);
+        if ((position & Node.DOCUMENT_POSITION_FOLLOWING) === 0) {
+          return "title-not-above-composer";
+        }
+        // Landing compose must live under the page scroll owner, not the reply
+        // dock. Ownership markers are the product contract (see frontend policy).
+        if (form.closest("[data-composer-dock]")) {
+          return "pinned-on-composer-dock";
+        }
+        if (!form.closest("[data-create-landing-scroll]")) {
+          return "missing-landing-scroll";
+        }
+        return "landing-compose";
       }),
     )
-    .toBe("pinned-footer");
-
-  const shell = page.locator("main").first();
-  // First focus often opens the keyboard with a non-zero visual offset. Dock to
-  // that rectangle so the input stays on the visible bottom, not mid-screen.
-  await page.evaluate(() => {
-    Object.defineProperties(window.visualViewport, {
-      height: { configurable: true, value: 520 },
-      offsetTop: { configurable: true, value: 140 },
-    });
-    window.visualViewport?.dispatchEvent(new Event("resize"));
-  });
-  await expect
-    .poll(() =>
-      shell.evaluate((element) =>
-        element.style.getPropertyValue("--dashboard-viewport-height"),
-      ),
-    )
-    .toBe("520px");
-  await expect
-    .poll(() =>
-      shell.evaluate((element) =>
-        element.style.getPropertyValue("--dashboard-viewport-offset-top"),
-      ),
-    )
-    .toBe("140px");
-  await expectFocusedComposerAtVisualViewportBottom(composer, 520, 140);
+    .toBe("landing-compose");
 });
 
 test("opens and closes a conversation in the mobile workspace", async ({
@@ -283,16 +272,15 @@ test("opens and closes a conversation in the mobile workspace", async ({
     )
     .toBe(true);
 
-  // First keyboard open docks to the visual viewport (height + offset) so the
-  // focused composer lands on the visible bottom, not the layout bottom.
-  // Safari can emit resize then scroll in one frame. Resize must win that burst.
+  // iOS often opens the keyboard with height-only resize (offset still 0),
+  // then delivers the first dock as a visualViewport scroll. The shell must
+  // accept that handoff or the composer freezes above the visible viewport.
   await page.evaluate(() => {
     Object.defineProperties(window.visualViewport, {
       height: { configurable: true, value: 520 },
-      offsetTop: { configurable: true, value: 140 },
+      offsetTop: { configurable: true, value: 0 },
     });
     window.visualViewport?.dispatchEvent(new Event("resize"));
-    window.visualViewport?.dispatchEvent(new Event("scroll"));
   });
   await expect
     .poll(() =>
@@ -307,7 +295,7 @@ test("opens and closes a conversation in the mobile workspace", async ({
         element.style.getPropertyValue("--dashboard-viewport-offset-top"),
       ),
     )
-    .toBe("140px");
+    .toBe("0px");
   await expect
     .poll(() =>
       shell.evaluate((element) =>
@@ -315,14 +303,11 @@ test("opens and closes a conversation in the mobile workspace", async ({
       ),
     )
     .toBe("1");
-  // Focused reply input must stay docked at the bottom of the visual viewport.
-  await expectFocusedComposerAtVisualViewportBottom(composer, 520, 140);
 
-  // Scroll-driven Safari pans while focused must not chase the shell.
   await page.evaluate(() => {
     Object.defineProperties(window.visualViewport, {
       height: { configurable: true, value: 520 },
-      offsetTop: { configurable: true, value: 180 },
+      offsetTop: { configurable: true, value: 140 },
     });
     window.visualViewport?.dispatchEvent(new Event("scroll"));
   });
@@ -333,7 +318,70 @@ test("opens and closes a conversation in the mobile workspace", async ({
       ),
     )
     .toBe("140px");
+  // Reply threads must use the dock owner, not the create landing scroll path.
+  await expect
+    .poll(() =>
+      composer.evaluate((node) => {
+        const form = node.closest("form");
+        if (!form) return "missing-form";
+        if (form.closest("[data-create-landing-scroll]")) {
+          return "reply-on-landing-scroll";
+        }
+        if (!form.closest("[data-composer-dock]")) return "missing-composer-dock";
+        if (!form.closest("[data-chat-scroll]") && !document.querySelector("[data-chat-scroll]")) {
+          return "missing-chat-scroll";
+        }
+        // Dock is a sibling of the scroll region under ChatLayout, not inside it.
+        if (form.closest("[data-chat-scroll]")) return "composer-inside-chat-scroll";
+        return "reply-dock";
+      }),
+    )
+    .toBe("reply-dock");
+
+  // Focused reply input must stay docked at the bottom of the visual viewport.
   await expectFocusedComposerAtVisualViewportBottom(composer, 520, 140);
+
+  // Same-frame resize+scroll burst must still dock (resize wins the coalesce).
+  await page.evaluate(() => {
+    Object.defineProperties(window.visualViewport, {
+      height: { configurable: true, value: 500 },
+      offsetTop: { configurable: true, value: 150 },
+    });
+    window.visualViewport?.dispatchEvent(new Event("resize"));
+    window.visualViewport?.dispatchEvent(new Event("scroll"));
+  });
+  await expect
+    .poll(() =>
+      shell.evaluate((element) =>
+        element.style.getPropertyValue("--dashboard-viewport-height"),
+      ),
+    )
+    .toBe("500px");
+  await expect
+    .poll(() =>
+      shell.evaluate((element) =>
+        element.style.getPropertyValue("--dashboard-viewport-offset-top"),
+      ),
+    )
+    .toBe("150px");
+  await expectFocusedComposerAtVisualViewportBottom(composer, 500, 150);
+
+  // Scroll-driven Safari pans while focused must not chase the shell.
+  await page.evaluate(() => {
+    Object.defineProperties(window.visualViewport, {
+      height: { configurable: true, value: 500 },
+      offsetTop: { configurable: true, value: 180 },
+    });
+    window.visualViewport?.dispatchEvent(new Event("scroll"));
+  });
+  await expect
+    .poll(() =>
+      shell.evaluate((element) =>
+        element.style.getPropertyValue("--dashboard-viewport-offset-top"),
+      ),
+    )
+    .toBe("150px");
+  await expectFocusedComposerAtVisualViewportBottom(composer, 500, 150);
 
   await composer.blur();
   // Closed keyboard must snap the shell back to the layout top even if a stale

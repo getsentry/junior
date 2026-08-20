@@ -51,6 +51,15 @@ named components so pages stay thin and taste stays consistent.
 - Avoid visual gradients by default in product UI. Use solid surfaces, borders,
   spacing, and status accents unless a gradient carries specific product meaning.
 - Do not create broad semantic CSS class APIs for one-off feature UI.
+- Own conversation mobile geometry in named components only:
+  - `layout/VisualViewportShell` owns the fixed shell, visualViewport CSS
+    variables, and body scroll lock.
+  - `conversations/ChatLayout` owns the scroll-above-dock frame for reply
+    threads.
+  - `conversations/ComposerDock` owns reply bottom pad and dock chrome.
+  Pages and feature modules pass children only. They must not invent viewport
+  height, offset, bottom pad, or `env(safe-area-inset-bottom)` math for the
+  composer. Create and empty-state compose is not a dock.
 
 ## Exceptions
 

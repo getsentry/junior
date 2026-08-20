@@ -85,13 +85,13 @@ export const VISUAL_SCENARIOS: VisualScenario[] = [
   },
   {
     id: "conversation-create-focused",
-    label: "New conversation · focused composer",
+    label: "New conversation · landing compose",
     path: "/",
-    // Open create mode, focus the composer, and shrink the visual viewport so
-    // the PR screenshot shows the input docked above the keyboard.
+    // Open create mode and focus the composer. Capture landing page chrome
+    // (header + hero + conversation nav), not a keyboard-docked reply footer.
     prepare: "new-conversation-focused",
     ready: "Conversations",
-    viewports: [MOBILE],
+    viewports: [DESKTOP, MOBILE],
   },
   {
     id: "person-profile",
@@ -227,9 +227,16 @@ const PATH_RULES: PathRule[] = [
   },
   {
     match: (filePath) =>
+      filePath ===
+        "packages/junior-dashboard/src/client/mobileViewport.ts" ||
+      filePath ===
+        "packages/junior-dashboard/src/client/bodyScrollLock.ts" ||
+      filePath ===
+        "packages/junior-dashboard/src/client/components/layout/VisualViewportShell.tsx" ||
       filePath.startsWith(
         "packages/junior-dashboard/src/client/conversations/",
-      ) || filePath.includes("/mock-reporting/"),
+      ) ||
+      filePath.includes("/mock-reporting/"),
     scenarioIds: [
       "conversations",
       "conversation-detail",

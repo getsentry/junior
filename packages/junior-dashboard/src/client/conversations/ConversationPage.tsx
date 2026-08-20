@@ -44,7 +44,8 @@ import {
   visualStatusForConversation,
 } from "../format";
 import { Card } from "../components/layout/Card";
-import { cn, dashboardComposerDockClass } from "../styles";
+import { ChatLayout } from "./ChatLayout";
+import { ComposerDock } from "./ComposerDock";
 import { Transcript } from "./TranscriptView";
 import { TranscriptLoading } from "./TranscriptLoading";
 import type { TranscriptViewMode } from "./transcriptRenderModel";
@@ -124,164 +125,168 @@ export function ConversationPage(props: {
   );
 
   return (
-    <div className="grid min-h-0 min-w-0 grid-rows-[minmax(7rem,1fr)_minmax(0,auto)]">
-      <div
-        aria-label="Conversation transcript"
-        className="min-h-0 overflow-y-auto overscroll-contain px-3 pb-1.5 md:px-7 md:pb-2"
-        tabIndex={0}
-      >
-        <section className="min-w-0">
-          <ConversationHeader
-            conversationId={conversationId}
-            copyAction={
-              <CopyMarkdownButton
-                key={conversationDetail?.conversationId ?? "loading"}
-                getMarkdown={
-                  conversationDetail
-                    ? async () =>
-                        buildConversationMarkdown(
-                          await detail.loadCompleteTranscript(),
-                          conversation,
-                        )
-                    : undefined
-                }
-              />
-            }
-            annotations={
-              hasConversationAnnotations(detail.data?.annotations) ? (
-                <ConversationAnnotations detail={detail.data} />
-              ) : null
-            }
-            archive={{
-              archived: Boolean(conversation?.archivedAt),
-              disabled: !conversation || archive.isPending,
-              error: Boolean(archive.error),
-              onClick: () =>
-                archive.mutate({
-                  archived: !conversation?.archivedAt,
-                  lastSeenAt: conversation!.lastSeenAt,
-                }),
-              pending: archive.isPending,
-            }}
-            identity={
-              hasConversationIdentity({
-                conversation,
-                conversationId,
-                detail: detail.data,
-              }) ? (
-                <ConversationIdentity
-                  conversation={conversation}
-                  conversationId={conversationId}
-                  detail={detail.data}
+    <>
+      <ChatLayout
+        scrollMinTall
+        scrollAriaLabel="Conversation transcript"
+        scrollClassName="px-3 pb-1.5 md:px-7 md:pb-2"
+        scroll={
+          <section className="min-w-0">
+            <ConversationHeader
+              conversationId={conversationId}
+              copyAction={
+                <CopyMarkdownButton
+                  key={conversationDetail?.conversationId ?? "loading"}
+                  getMarkdown={
+                    conversationDetail
+                      ? async () =>
+                          buildConversationMarkdown(
+                            await detail.loadCompleteTranscript(),
+                            conversation,
+                          )
+                      : undefined
+                  }
                 />
-              ) : null
-            }
-            live={live}
-            meta={
-              <ConversationHeaderMeta
-                identity={
-                  hasConversationIdentity({
-                    conversation,
-                    conversationId,
-                    detail: detail.data,
-                    variant: "compact",
-                  }) ? (
-                    <ConversationIdentity
-                      conversation={conversation}
-                      conversationId={conversationId}
-                      detail={detail.data}
-                      variant="compact"
-                    />
-                  ) : null
-                }
-                stats={
-                  hasConversationStats({
-                    conversation,
-                    detail: detail.data,
-                    variant: "compact",
-                  }) ? (
-                    <ConversationStats
-                      conversation={conversation}
-                      detail={detail.data}
-                      variant="compact"
-                    />
-                  ) : null
-                }
-              />
-            }
-            onSearchChange={setSearch}
-            onViewChange={setView}
-            privacy={
-              <ConversationPrivacyChip visibility={conversation?.visibility} />
-            }
-            search={search}
-            stats={
-              hasConversationStats({
-                conversation,
-                detail: detail.data,
-              }) ? (
-                <ConversationStats
-                  conversation={conversation}
-                  detail={detail.data}
+              }
+              annotations={
+                hasConversationAnnotations(detail.data?.annotations) ? (
+                  <ConversationAnnotations detail={detail.data} />
+                ) : null
+              }
+              archive={{
+                archived: Boolean(conversation?.archivedAt),
+                disabled: !conversation || archive.isPending,
+                error: Boolean(archive.error),
+                onClick: () =>
+                  archive.mutate({
+                    archived: !conversation?.archivedAt,
+                    lastSeenAt: conversation!.lastSeenAt,
+                  }),
+                pending: archive.isPending,
+              }}
+              identity={
+                hasConversationIdentity({
+                  conversation,
+                  conversationId,
+                  detail: detail.data,
+                }) ? (
+                  <ConversationIdentity
+                    conversation={conversation}
+                    conversationId={conversationId}
+                    detail={detail.data}
+                  />
+                ) : null
+              }
+              live={live}
+              meta={
+                <ConversationHeaderMeta
+                  identity={
+                    hasConversationIdentity({
+                      conversation,
+                      conversationId,
+                      detail: detail.data,
+                      variant: "compact",
+                    }) ? (
+                      <ConversationIdentity
+                        conversation={conversation}
+                        conversationId={conversationId}
+                        detail={detail.data}
+                        variant="compact"
+                      />
+                    ) : null
+                  }
+                  stats={
+                    hasConversationStats({
+                      conversation,
+                      detail: detail.data,
+                      variant: "compact",
+                    }) ? (
+                      <ConversationStats
+                        conversation={conversation}
+                        detail={detail.data}
+                        variant="compact"
+                      />
+                    ) : null
+                  }
                 />
-              ) : null
-            }
-            title={conversationDisplayTitle(conversation)}
-            view={view}
-          />
+              }
+              onSearchChange={setSearch}
+              onViewChange={setView}
+              privacy={
+                <ConversationPrivacyChip visibility={conversation?.visibility} />
+              }
+              search={search}
+              stats={
+                hasConversationStats({
+                  conversation,
+                  detail: detail.data,
+                }) ? (
+                  <ConversationStats
+                    conversation={conversation}
+                    detail={detail.data}
+                  />
+                ) : null
+              }
+              title={conversationDisplayTitle(conversation)}
+              view={view}
+            />
 
-          {detail.isPending ? (
-            <TranscriptLoading />
-          ) : detail.error && !detail.data ? (
-            <Card className="border-white/[0.07] bg-white/[0.025] p-4 font-sans text-xs leading-relaxed text-dashboard-text-muted">
-              {detail.error.message}
-            </Card>
-          ) : (
-            <>
-              {detail.error ? (
-                <div className="mb-3 rounded-lg border border-amber-300/15 bg-amber-300/[0.045] px-3 py-2 font-sans text-xs text-amber-100/65">
-                  Transcript refresh failed. Showing the latest available data.
-                </div>
-              ) : null}
-              <Transcript
-                hasPreviousPage={detail.hasPreviousPage}
-                historyError={detail.historyError}
-                historyVersion={detail.historyVersion}
-                live={live}
-                loadingPreviousPage={detail.isLoadingPreviousPage}
-                onLoadPreviousPage={detail.loadPreviousPage}
-                pinRequestVersion={pinRequestVersion}
-                responding={!detail.error && live}
-                onOpenSubagentTranscript={onOpenSubagentTranscript}
-                search={search}
-                transcript={transcript}
-                view={view}
-              />
-            </>
-          )}
-        </section>
-      </div>
-      {detail.data?.isParticipant ? (
-        <ConversationReplyFooter
-          conversationId={conversationId}
-          // Only pass committed ids for mailbox de-dupe. The full transcript is
-          // too large to re-enter the footer on every live poll while typing.
-          committedMessageIds={mailboxCommittedIds}
-          onPinRequest={requestPin}
-          pendingAuthorization={detail.pendingAuthorization}
-          // Keep the cancel watermark off props. Live polls refresh generatedAt
-          // every 2s; a prop would bust footer memo while the reader types.
-          pendingGeneratedAtRef={pendingGeneratedAtRef}
-          pendingMessages={detail.pendingMessages}
-        />
-      ) : null}
+            {detail.isPending ? (
+              <TranscriptLoading />
+            ) : detail.error && !detail.data ? (
+              <Card className="border-white/[0.07] bg-white/[0.025] p-4 font-sans text-xs leading-relaxed text-dashboard-text-muted">
+                {detail.error.message}
+              </Card>
+            ) : (
+              <>
+                {detail.error ? (
+                  <div className="mb-3 rounded-lg border border-amber-300/15 bg-amber-300/[0.045] px-3 py-2 font-sans text-xs text-amber-100/65">
+                    Transcript refresh failed. Showing the latest available data.
+                  </div>
+                ) : null}
+                <Transcript
+                  hasPreviousPage={detail.hasPreviousPage}
+                  historyError={detail.historyError}
+                  historyVersion={detail.historyVersion}
+                  live={live}
+                  loadingPreviousPage={detail.isLoadingPreviousPage}
+                  onLoadPreviousPage={detail.loadPreviousPage}
+                  pinRequestVersion={pinRequestVersion}
+                  responding={!detail.error && live}
+                  onOpenSubagentTranscript={onOpenSubagentTranscript}
+                  search={search}
+                  transcript={transcript}
+                  view={view}
+                />
+              </>
+            )}
+          </section>
+        }
+        dock={
+          detail.data?.isParticipant ? (
+            <ConversationReplyFooter
+              conversationId={conversationId}
+              // Only pass committed ids for mailbox de-dupe. The full transcript is
+              // too large to re-enter the footer on every live poll while typing.
+              committedMessageIds={mailboxCommittedIds}
+              onPinRequest={requestPin}
+              pendingAuthorization={detail.pendingAuthorization}
+              // Keep the cancel watermark off props. Live polls refresh generatedAt
+              // every 2s; a prop would bust footer memo while the reader types.
+              pendingGeneratedAtRef={pendingGeneratedAtRef}
+              pendingMessages={detail.pendingMessages}
+            />
+          ) : undefined
+        }
+      />
       <SubagentTranscriptDrawer
         onClose={() => setSubagentTarget(undefined)}
         target={subagentTarget}
       />
-    </div>
+    </>
   );
 }
+
 
 /**
  * Own mutation state and mailbox chrome outside the page tree that re-renders
@@ -379,39 +384,34 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
   }, []);
 
   return (
-    <div
-      className={cn(
-        "flex w-full min-h-0 max-h-[min(calc(var(--dashboard-viewport-height,100dvh)*0.55),24rem)] flex-col overflow-hidden bg-[#050507] px-2 pt-1.5 md:max-h-none md:overflow-visible md:px-7 md:pt-3 md:pb-3",
-        dashboardComposerDockClass,
-      )}
+    <ComposerDock
+      above={
+        <>
+          {props.pendingAuthorization ? (
+            <PendingAuthorization authorization={props.pendingAuthorization} />
+          ) : null}
+          <PendingMailboxStack
+            cancelError={cancelError}
+            cancelPending={cancelPendingMessages.isPending}
+            cancelTargetInboundMessageId={cancelTargetInboundMessageId}
+            committedMessageIds={props.committedMessageIds}
+            messages={props.pendingMessages}
+            onCancelMessage={onCancelMessage}
+            onLayoutChange={onMailboxLayoutChange}
+            onRetry={onRetry}
+          />
+        </>
+      }
     >
-      {/* Queue chrome may scroll inside the footer row; composer stays below it. */}
-      <div className="min-h-0 min-w-0 shrink overflow-y-auto overscroll-contain md:overflow-visible">
-        {props.pendingAuthorization ? (
-          <PendingAuthorization authorization={props.pendingAuthorization} />
-        ) : null}
-        <PendingMailboxStack
-          cancelError={cancelError}
-          cancelPending={cancelPendingMessages.isPending}
-          cancelTargetInboundMessageId={cancelTargetInboundMessageId}
-          committedMessageIds={props.committedMessageIds}
-          messages={props.pendingMessages}
-          onCancelMessage={onCancelMessage}
-          onLayoutChange={onMailboxLayoutChange}
-          onRetry={onRetry}
-        />
-      </div>
-      <div className="min-w-0 shrink-0">
-        <ConversationComposer
-          draftId={props.conversationId}
-          label="Continue this conversation"
-          submitLabel="Send"
-          onFocus={onFocus}
-          onSubmitStart={onSubmitStart}
-          onSubmit={onSubmit}
-        />
-      </div>
-    </div>
+      <ConversationComposer
+        draftId={props.conversationId}
+        label="Continue this conversation"
+        submitLabel="Send"
+        onFocus={onFocus}
+        onSubmitStart={onSubmitStart}
+        onSubmit={onSubmit}
+      />
+    </ComposerDock>
   );
 });
 

@@ -721,11 +721,6 @@ export function unavailableTranscriptLabel(
   return "Transcript unavailable for this conversation.";
 }
 
-/** Build the canonical workspace route for a conversation id. */
-export function conversationPath(conversationId: string): string {
-  return `/conversations/${encodeURIComponent(conversationId)}`;
-}
-
 /** Build the canonical actor profile route for a trusted email address. */
 export function peoplePath(email: string): string {
   return `/people/${encodeURIComponent(email)}`;

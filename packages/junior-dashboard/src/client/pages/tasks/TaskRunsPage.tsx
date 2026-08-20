@@ -15,7 +15,8 @@ import {
 import { StatusChip } from "../../components/StatusChip";
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
-import { conversationPath, formatTime } from "../../format";
+import { conversationPath } from "../../conversations/conversationRoutes";
+import { formatTime } from "../../format";
 import {
   useDebouncedSearchParam,
   useSearchParamEnum,

@@ -11,9 +11,9 @@ import {
 import { Link } from "react-router";
 
 import { useArchiveConversation } from "./queries";
+import { conversationPath } from "./conversationRoutes";
 import {
   conversationDisplayTitle,
-  conversationPath,
   slackLocationLabel,
   visualStatusForConversation,
 } from "../format";
@@ -45,10 +45,17 @@ export function ConversationSidebar(props: {
   selectedId?: string;
   timeZone: string;
   status: "active" | "archived";
+  /**
+   * `panel` = split-pane dock with internal scroll.
+   * `landing` = flow nav under create compose (parent owns scroll).
+   */
+  variant?: "panel" | "landing";
   onNewConversation(): void;
   onQueryChange(value: string): void;
   onStatusChange(value: "active" | "archived"): void;
 }) {
+  const variant = props.variant ?? "panel";
+  const isLanding = variant === "landing";
   const [filterOpen, setFilterOpen] = useState(false);
   const filterRef = useRef<HTMLDivElement>(null);
   const [archivedConversation, setArchivedConversation] =
@@ -97,11 +104,23 @@ export function ConversationSidebar(props: {
     [props.conversations, props.timeZone],
   );
   return (
-    <aside className="relative grid h-full min-h-0 min-w-0 grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden border-r border-white/[0.07] bg-white/[0.02]">
-      <div className="px-3 pb-2 pt-3" ref={filterRef}>
+    <aside
+      className={cn(
+        "relative min-w-0",
+        isLanding
+          ? "border-t border-white/[0.07] bg-transparent"
+          : "grid h-full min-h-0 grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden border-r border-white/[0.07] bg-white/[0.02]",
+      )}
+    >
+      <div className={cn("px-3 pb-2", isLanding ? "pt-5" : "pt-3")} ref={filterRef}>
         <div className="flex items-center justify-between gap-2">
-          <h2 className="m-0 font-display text-lg font-medium leading-tight text-dashboard-text">
-            Conversations
+          <h2
+            className={cn(
+              "m-0 font-display font-medium leading-tight text-dashboard-text",
+              isLanding ? "text-base" : "text-lg",
+            )}
+          >
+            {isLanding ? "Your conversations" : "Conversations"}
           </h2>
           <div className="flex items-center gap-0.5">
             <button
@@ -120,15 +139,17 @@ export function ConversationSidebar(props: {
             >
               <ListFilter aria-hidden="true" size={15} />
             </button>
-            <button
-              aria-label="New conversation"
-              className="grid size-7 cursor-pointer place-items-center rounded-md text-dashboard-text-muted transition hover:bg-white/[0.05] hover:text-dashboard-text focus:outline-none focus:ring-2 focus:ring-cyan-300/35"
-              onClick={props.onNewConversation}
-              title="New conversation"
-              type="button"
-            >
-              <SquarePen aria-hidden="true" size={15} />
-            </button>
+            {isLanding ? null : (
+              <button
+                aria-label="New conversation"
+                className="grid size-7 cursor-pointer place-items-center rounded-md text-dashboard-text-muted transition hover:bg-white/[0.05] hover:text-dashboard-text focus:outline-none focus:ring-2 focus:ring-cyan-300/35"
+                onClick={props.onNewConversation}
+                title="New conversation"
+                type="button"
+              >
+                <SquarePen aria-hidden="true" size={15} />
+              </button>
+            )}
           </div>
         </div>
         {filterOpen ? (
@@ -167,7 +188,14 @@ export function ConversationSidebar(props: {
           value={props.query}
         />
       </div>
-      <div className="min-h-0 overflow-y-auto overscroll-contain px-1.5 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+      <div
+        className={cn(
+          "px-1.5",
+          isLanding
+            ? "pb-[max(1rem,env(safe-area-inset-bottom))]"
+            : "min-h-0 overflow-y-auto overscroll-contain pb-[max(0.5rem,env(safe-area-inset-bottom))]",
+        )}
+      >
         {props.error ? (
           <div className="p-2">
             <EmptyTelemetry>{props.error}</EmptyTelemetry>
@@ -211,7 +239,15 @@ export function ConversationSidebar(props: {
         )}
       </div>
       {archivedConversation || archiveError ? (
-        <div className="absolute bottom-[max(0.75rem,env(safe-area-inset-bottom))] left-3 right-3 z-20 grid gap-2">
+        <div
+          className={cn(
+            // Landing is content-tall (parent scrolls). Keep notices on the
+            // visible viewport instead of the end of the long list.
+            isLanding
+              ? "fixed bottom-[max(0.75rem,env(safe-area-inset-bottom))] left-3 right-3 z-30 grid gap-2"
+              : "absolute bottom-[max(0.75rem,env(safe-area-inset-bottom))] left-3 right-3 z-20 grid gap-2",
+          )}
+        >
           {archiveError ? (
             <ArchiveConversationErrorNotice
               conversation={archiveError}

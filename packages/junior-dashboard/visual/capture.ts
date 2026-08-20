@@ -89,13 +89,12 @@ function shotName(scenarioId: string, viewport: VisualViewport) {
   return `${scenarioId}__${viewport.name}.png`;
 }
 
-function isFocusedComposerPrepare(
+function isKeyboardDockedComposerPrepare(
   prepare: VisualScenarioPrepare | undefined,
 ): prepare is VisualScenarioPrepare {
-  return (
-    prepare === "conversation-detail-focused" ||
-    prepare === "new-conversation-focused"
-  );
+  // Only reply threads pin the composer to the visual viewport bottom.
+  // Create mode is a centered empty-state form and uses a full-page shot.
+  return prepare === "conversation-detail-focused";
 }
 
 function attachmentImage(page: Page) {
@@ -112,23 +111,16 @@ async function dockFocusedComposerToKeyboard(
   composer: ReturnType<Page["getByLabel"]>,
 ): Promise<void> {
   await composer.focus();
-  // Keep the layout viewport tall and simulate Safari's first-focus pan. The
-  // screenshot clips to this visual viewport below, so its bottom edge is the
-  // keyboard edge.
-  await page.evaluate(
-    ({ heightPx, offsetTopPx }) => {
-      Object.defineProperties(window.visualViewport, {
-        height: { configurable: true, value: heightPx },
-        offsetTop: { configurable: true, value: offsetTopPx },
-      });
-      window.visualViewport?.dispatchEvent(new Event("resize"));
-      window.visualViewport?.dispatchEvent(new Event("scroll"));
-    },
-    {
-      heightPx: FOCUSED_COMPOSER_VISUAL_HEIGHT_PX,
-      offsetTopPx: FOCUSED_COMPOSER_VISUAL_OFFSET_TOP_PX,
-    },
-  );
+  // Mirror the physical iOS sequence: height-only resize first (offset still 0),
+  // then the first dock as a visualViewport scroll. The screenshot clips to this
+  // visual rectangle so its bottom edge is the keyboard edge.
+  await page.evaluate(({ heightPx }) => {
+    Object.defineProperties(window.visualViewport, {
+      height: { configurable: true, value: heightPx },
+      offsetTop: { configurable: true, value: 0 },
+    });
+    window.visualViewport?.dispatchEvent(new Event("resize"));
+  }, { heightPx: FOCUSED_COMPOSER_VISUAL_HEIGHT_PX });
   const shell = page.locator("main").first();
   await expect
     .poll(() =>
@@ -140,17 +132,28 @@ async function dockFocusedComposerToKeyboard(
   await expect
     .poll(() =>
       shell.evaluate((element) =>
-        element.style.getPropertyValue("--dashboard-viewport-offset-top"),
-      ),
-    )
-    .toBe(`${FOCUSED_COMPOSER_VISUAL_OFFSET_TOP_PX}px`);
-  await expect
-    .poll(() =>
-      shell.evaluate((element) =>
         element.style.getPropertyValue("--dashboard-keyboard-open"),
       ),
     )
     .toBe("1");
+
+  await page.evaluate(({ heightPx, offsetTopPx }) => {
+    Object.defineProperties(window.visualViewport, {
+      height: { configurable: true, value: heightPx },
+      offsetTop: { configurable: true, value: offsetTopPx },
+    });
+    window.visualViewport?.dispatchEvent(new Event("scroll"));
+  }, {
+    heightPx: FOCUSED_COMPOSER_VISUAL_HEIGHT_PX,
+    offsetTopPx: FOCUSED_COMPOSER_VISUAL_OFFSET_TOP_PX,
+  });
+  await expect
+    .poll(() =>
+      shell.evaluate((element) =>
+        element.style.getPropertyValue("--dashboard-viewport-offset-top"),
+      ),
+    )
+    .toBe(`${FOCUSED_COMPOSER_VISUAL_OFFSET_TOP_PX}px`);
   await expect(composer).toBeFocused();
 }
 
@@ -179,9 +182,11 @@ async function prepareScenario(
     await page.getByRole("button", { name: "New conversation" }).click();
     const composer = page.getByLabel("Start a conversation");
     await page
-      .getByRole("heading", { name: "New conversation", exact: true })
+      .getByRole("heading", { name: "What do you need?", exact: true })
       .waitFor({ state: "visible", timeout: 15_000 });
-    await dockFocusedComposerToKeyboard(page, composer);
+    // Capture landing compose (header + hero + nav), not a keyboard dock.
+    await composer.focus();
+    await expect(composer).toBeFocused();
     return;
   }
   if (prepare === "conversation-detail-focused") {
@@ -224,9 +229,9 @@ async function captureScenario(options: {
     const file = shotName(scenario.id, viewport);
     await page.screenshot({
       animations: "disabled",
-      // Focused composer shots clip to the visual viewport. Other shots capture
-      // the full page.
-      clip: isFocusedComposerPrepare(scenario.prepare)
+      // Reply keyboard-dock shots clip to the visual viewport. Other shots,
+      // including centered create compose, capture the full page.
+      clip: isKeyboardDockedComposerPrepare(scenario.prepare)
         ? {
             height: FOCUSED_COMPOSER_VISUAL_HEIGHT_PX,
             width: viewport.width,
@@ -234,7 +239,9 @@ async function captureScenario(options: {
             y: FOCUSED_COMPOSER_VISUAL_OFFSET_TOP_PX,
           }
         : undefined,
-      fullPage: isFocusedComposerPrepare(scenario.prepare) ? false : true,
+      fullPage: isKeyboardDockedComposerPrepare(scenario.prepare)
+        ? false
+        : true,
       path: path.join(outDir, file),
       type: "png",
     });

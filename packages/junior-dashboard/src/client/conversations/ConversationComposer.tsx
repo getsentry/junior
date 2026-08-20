@@ -6,6 +6,7 @@ import {
   useState,
   type FormEvent,
   type KeyboardEvent,
+  type ReactNode,
 } from "react";
 import { Send } from "lucide-react";
 
@@ -48,6 +49,12 @@ type ConversationComposerProps = {
   disabled?: boolean;
   draftId: string;
   error?: string;
+  /**
+   * Optional chrome to the left of the send row (create-mode visibility,
+   * tools, etc). Presence also forces a stacked form so accessories are not
+   * crushed beside the mobile send button.
+   */
+  footerStart?: ReactNode;
   label: string;
   /**
    * Restore the submitted text after a failed accept when there is no mailbox
@@ -257,7 +264,11 @@ export const ConversationComposer = memo(function ConversationComposer(
       ) : null}
       <form
         className={cn(
-          "grid grid-cols-[minmax(0,1fr)_auto] items-end overflow-hidden focus-within:border-cyan-300/35 focus-within:ring-1 focus-within:ring-cyan-300/35 md:block",
+          // Accessory chrome needs a full footer row. Side-by-side mobile is
+          // only for the bare reply dock.
+          props.footerStart
+            ? "block overflow-hidden focus-within:border-cyan-300/35 focus-within:ring-1 focus-within:ring-cyan-300/35"
+            : "grid grid-cols-[minmax(0,1fr)_auto] items-end overflow-hidden focus-within:border-cyan-300/35 focus-within:ring-1 focus-within:ring-cyan-300/35 md:block",
           dashboardComposerSurfaceClass,
         )}
         onSubmit={submit}
@@ -288,9 +299,19 @@ export const ConversationComposer = memo(function ConversationComposer(
           rows={1}
           spellCheck={false}
         />
-        <div className="flex min-w-0 items-center justify-end gap-3 px-2 py-1.5 md:justify-between md:px-3 md:py-2">
-          <div className="hidden min-w-0 font-mono text-xs leading-relaxed text-dashboard-text-muted md:block">
-            Enter to send · Shift+Enter for a new line
+        <div
+          className={cn(
+            "flex min-w-0 items-center gap-3 px-2 py-1.5 md:px-3 md:py-2",
+            props.footerStart ? "justify-between" : "justify-end md:justify-between",
+          )}
+        >
+          <div className="flex min-w-0 items-center gap-3">
+            {props.footerStart}
+            {props.footerStart ? null : (
+              <div className="hidden min-w-0 font-mono text-xs leading-relaxed text-dashboard-text-muted md:block">
+                Enter to send · Shift+Enter for a new line
+              </div>
+            )}
           </div>
           <Button
             aria-label={sendLocked ? "Sending message" : props.submitLabel}

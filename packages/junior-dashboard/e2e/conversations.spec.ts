@@ -246,7 +246,7 @@ test("starts and continues conversations from the dashboard", async ({
   await page.goto(server.baseURL);
   await expect(page).toHaveURL(`${server.baseURL}/`);
   await expect(
-    page.getByRole("heading", { name: "New conversation" }),
+    page.getByRole("heading", { name: "What do you need?" }),
   ).toBeVisible();
   await page.getByRole("button", { name: "Private" }).click();
   const startComposer = page.getByLabel("Start a conversation");
