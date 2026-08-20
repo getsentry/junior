@@ -124,6 +124,7 @@ export function WorkspaceEditor(props: WorkspaceEditorProps) {
                     size="compact"
                   >
                     <TextInput
+                      aria-label={`Provider ${index + 1}`}
                       id={`workspace-repo-provider-${repo.key}`}
                       onChange={(event) =>
                         updateRepo(repo.key, { provider: event.target.value })
@@ -138,6 +139,7 @@ export function WorkspaceEditor(props: WorkspaceEditorProps) {
                     size="compact"
                   >
                     <TextInput
+                      aria-label={`Repository ${index + 1}`}
                       id={`workspace-repo-name-${repo.key}`}
                       onChange={(event) =>
                         updateRepo(repo.key, { repo: event.target.value })
