@@ -136,10 +136,10 @@ test("reports composer footers that reintroduce bottom safe-area math", () => {
         path: "src/client/conversations/ConversationPage.tsx",
         contents: [
           'const bad = "pb-[max(0.5rem,env(safe-area-inset-bottom))]";',
-          "// dashboardComposerDockClass owns safe-area-inset-bottom",
+          "// ComposerDock owns --dashboard-composer-dock-padding",
           "className={cn(",
           '  "px-2",',
-          "  dashboardComposerDockClass,",
+          '  "pb-[var(--dashboard-composer-dock-padding,0.375rem)]",',
           ")}",
         ].join("\n"),
       },

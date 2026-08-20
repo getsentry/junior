@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router";
 
 import {
@@ -16,6 +16,7 @@ import {
   DashboardChromeProvider,
 } from "./components/layout/DashboardChrome";
 import { DashboardHeader } from "./components/layout/DashboardHeader";
+import { VisualViewportShell } from "./components/layout/VisualViewportShell";
 import {
   buildConversations,
   conversationDisplayTitle,
@@ -23,7 +24,6 @@ import {
 } from "./format";
 import { ConversationWorkspace } from "./conversations/ConversationWorkspace";
 import { useConversationData } from "./conversations/queries";
-import { useMobileViewportHeight } from "./mobileViewport";
 import { ComponentsPage } from "./pages/dev/ComponentsPage";
 import { LocationDetailPage } from "./pages/locations/LocationDetailPage";
 import { LocationsPage } from "./pages/locations/LocationsPage";
@@ -44,7 +44,6 @@ import {
   PluginUserPageRoute,
   pluginUserPagePath,
 } from "./pages/user/PluginUserPage";
-import { cn } from "./styles";
 import type { DashboardCoreData } from "./types";
 
 const dashboardBackground = {
@@ -62,7 +61,6 @@ const dashboardNoise = {
 /** Render the dashboard SPA shell and route-level loading states. */
 export function DashboardShell() {
   const location = useLocation();
-  const shellRef = useRef<HTMLElement>(null);
   const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
   const query = useDashboardCoreData();
   const userPagesQuery = usePluginUserPagesData();
@@ -107,8 +105,6 @@ export function DashboardShell() {
     { key: "system", label: "System", to: "/system" },
   ];
 
-  useMobileViewportHeight(shellRef, workspace);
-
   useEffect(() => {
     setMobileNavigationOpen(false);
   }, [location.pathname]);
@@ -134,16 +130,7 @@ export function DashboardShell() {
 
   return (
     <DashboardChromeProvider>
-      <main
-        className={cn(
-          "grid font-sans text-dashboard-text",
-          workspace
-            ? "fixed inset-x-0 top-[var(--dashboard-viewport-offset-top,0px)] h-[var(--dashboard-viewport-height,100dvh)] max-h-[var(--dashboard-viewport-height,100dvh)] min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden overscroll-none md:relative md:inset-auto md:h-dvh md:max-h-none md:overscroll-auto"
-            : "relative min-h-screen grid-rows-[auto_1fr]",
-        )}
-        ref={shellRef}
-        style={dashboardBackground}
-      >
+      <VisualViewportShell enabled={workspace} style={dashboardBackground}>
         <DashboardChrome
           banner={<ConnectionBanner />}
           header={
@@ -491,7 +478,7 @@ export function DashboardShell() {
           className="pointer-events-none fixed inset-0 z-50 block opacity-[0.018]"
           style={dashboardNoise}
         />
-      </main>
+      </VisualViewportShell>
     </DashboardChromeProvider>
   );
 }

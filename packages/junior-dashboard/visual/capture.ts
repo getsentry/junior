@@ -112,23 +112,16 @@ async function dockFocusedComposerToKeyboard(
   composer: ReturnType<Page["getByLabel"]>,
 ): Promise<void> {
   await composer.focus();
-  // Keep the layout viewport tall and simulate Safari's first-focus pan. The
-  // screenshot clips to this visual viewport below, so its bottom edge is the
-  // keyboard edge.
-  await page.evaluate(
-    ({ heightPx, offsetTopPx }) => {
-      Object.defineProperties(window.visualViewport, {
-        height: { configurable: true, value: heightPx },
-        offsetTop: { configurable: true, value: offsetTopPx },
-      });
-      window.visualViewport?.dispatchEvent(new Event("resize"));
-      window.visualViewport?.dispatchEvent(new Event("scroll"));
-    },
-    {
-      heightPx: FOCUSED_COMPOSER_VISUAL_HEIGHT_PX,
-      offsetTopPx: FOCUSED_COMPOSER_VISUAL_OFFSET_TOP_PX,
-    },
-  );
+  // Mirror the physical iOS sequence: height-only resize first (offset still 0),
+  // then the first dock as a visualViewport scroll. The screenshot clips to this
+  // visual rectangle so its bottom edge is the keyboard edge.
+  await page.evaluate(({ heightPx }) => {
+    Object.defineProperties(window.visualViewport, {
+      height: { configurable: true, value: heightPx },
+      offsetTop: { configurable: true, value: 0 },
+    });
+    window.visualViewport?.dispatchEvent(new Event("resize"));
+  }, { heightPx: FOCUSED_COMPOSER_VISUAL_HEIGHT_PX });
   const shell = page.locator("main").first();
   await expect
     .poll(() =>
@@ -140,17 +133,28 @@ async function dockFocusedComposerToKeyboard(
   await expect
     .poll(() =>
       shell.evaluate((element) =>
-        element.style.getPropertyValue("--dashboard-viewport-offset-top"),
-      ),
-    )
-    .toBe(`${FOCUSED_COMPOSER_VISUAL_OFFSET_TOP_PX}px`);
-  await expect
-    .poll(() =>
-      shell.evaluate((element) =>
         element.style.getPropertyValue("--dashboard-keyboard-open"),
       ),
     )
     .toBe("1");
+
+  await page.evaluate(({ heightPx, offsetTopPx }) => {
+    Object.defineProperties(window.visualViewport, {
+      height: { configurable: true, value: heightPx },
+      offsetTop: { configurable: true, value: offsetTopPx },
+    });
+    window.visualViewport?.dispatchEvent(new Event("scroll"));
+  }, {
+    heightPx: FOCUSED_COMPOSER_VISUAL_HEIGHT_PX,
+    offsetTopPx: FOCUSED_COMPOSER_VISUAL_OFFSET_TOP_PX,
+  });
+  await expect
+    .poll(() =>
+      shell.evaluate((element) =>
+        element.style.getPropertyValue("--dashboard-viewport-offset-top"),
+      ),
+    )
+    .toBe(`${FOCUSED_COMPOSER_VISUAL_OFFSET_TOP_PX}px`);
   await expect(composer).toBeFocused();
 }
 

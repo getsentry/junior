@@ -227,9 +227,16 @@ const PATH_RULES: PathRule[] = [
   },
   {
     match: (filePath) =>
+      filePath ===
+        "packages/junior-dashboard/src/client/mobileViewport.ts" ||
+      filePath ===
+        "packages/junior-dashboard/src/client/bodyScrollLock.ts" ||
+      filePath ===
+        "packages/junior-dashboard/src/client/components/layout/VisualViewportShell.tsx" ||
       filePath.startsWith(
         "packages/junior-dashboard/src/client/conversations/",
-      ) || filePath.includes("/mock-reporting/"),
+      ) ||
+      filePath.includes("/mock-reporting/"),
     scenarioIds: [
       "conversations",
       "conversation-detail",

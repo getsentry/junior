@@ -18,11 +18,9 @@ import {
 } from "../format";
 import type { DashboardCoreData } from "../types";
 import type { Conversation } from "../types";
-import {
-  cn,
-  dashboardComposerDockClass,
-  dashboardContainerClass,
-} from "../styles";
+import { cn, dashboardContainerClass } from "../styles";
+import { ChatLayout } from "./ChatLayout";
+import { ComposerDock } from "./ComposerDock";
 import { ConversationPage } from "./ConversationPage";
 
 /** Render the personal split-pane conversation workspace at the dashboard root. */
@@ -184,8 +182,9 @@ function NewConversationView(props: {
   // composer. Keeps the input glued to the visual viewport on mobile instead of
   // floating in a centered scroll card.
   return (
-    <div className="grid h-full min-h-0 min-w-0 grid-rows-[minmax(0,1fr)_minmax(0,auto)]">
-      <div className="min-h-0 overflow-y-auto overscroll-contain px-4 pt-8 md:px-8 md:pt-10">
+    <ChatLayout
+      scrollClassName="px-4 pt-8 md:px-8 md:pt-10"
+      scroll={
         <div className="mx-auto flex w-full max-w-2xl flex-col justify-end md:min-h-full md:justify-center md:pb-6">
           <h2 className="m-0 font-display text-2xl font-medium tracking-[-0.03em] text-dashboard-text md:text-3xl">
             New conversation
@@ -214,27 +213,24 @@ function NewConversationView(props: {
             </ToggleButton>
           </div>
         </div>
-      </div>
-      <div
-        className={cn(
-          "min-w-0 shrink-0 px-2 pt-1.5 md:px-8 md:pt-2 md:pb-8",
-          dashboardComposerDockClass,
-        )}
-      >
-        <div className="mx-auto w-full max-w-2xl">
-          <ConversationComposer
-            draftId="new"
-            error={props.error}
-            label="Start a conversation"
-            restoreDraftOnError
-            submitLabel="Send"
-            onSubmit={(message, idempotencyKey) =>
-              props.onSubmit(message, idempotencyKey, visibility)
-            }
-          />
-        </div>
-      </div>
-    </div>
+      }
+      dock={
+        <ComposerDock variant="create">
+          <div className="mx-auto w-full max-w-2xl">
+            <ConversationComposer
+              draftId="new"
+              error={props.error}
+              label="Start a conversation"
+              restoreDraftOnError
+              submitLabel="Send"
+              onSubmit={(message, idempotencyKey) =>
+                props.onSubmit(message, idempotencyKey, visibility)
+              }
+            />
+          </div>
+        </ComposerDock>
+      }
+    />
   );
 }
 
