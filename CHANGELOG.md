@@ -1,4 +1,13 @@
 # Changelog
+## 0.176.2
+
+### Bug Fixes 🐛
+
+#### Dashboard
+
+- Keep reply shell above the keyboard by @sentry-junior in [#1634](https://github.com/getsentry/junior/pull/1634)
+- Unify home and create landing on mobile by @sentry-junior in [#1633](https://github.com/getsentry/junior/pull/1633)
+
 ## 0.176.1
 
 ### Bug Fixes 🐛
