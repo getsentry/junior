@@ -239,7 +239,15 @@ export function ConversationSidebar(props: {
         )}
       </div>
       {archivedConversation || archiveError ? (
-        <div className="absolute bottom-[max(0.75rem,env(safe-area-inset-bottom))] left-3 right-3 z-20 grid gap-2">
+        <div
+          className={cn(
+            // Landing is content-tall (parent scrolls). Keep notices on the
+            // visible viewport instead of the end of the long list.
+            isLanding
+              ? "fixed bottom-[max(0.75rem,env(safe-area-inset-bottom))] left-3 right-3 z-30 grid gap-2"
+              : "absolute bottom-[max(0.75rem,env(safe-area-inset-bottom))] left-3 right-3 z-20 grid gap-2",
+          )}
+        >
           {archiveError ? (
             <ArchiveConversationErrorNotice
               conversation={archiveError}
