@@ -142,8 +142,19 @@ export function mobileViewportOffsetTop(input: {
   previousOffsetTop: number;
   source: MobileViewportSyncSource;
 }): number {
+  // iOS can report the first keyboard dock as a scroll after a zero-offset
+  // resize. Accept that first positive offset, then freeze later scroll pans.
+  if (
+    input.editableFocused &&
+    input.keyboardOpen &&
+    input.source === "scroll" &&
+    input.previousOffsetTop === 0 &&
+    input.nextOffsetTop > 0
+  ) {
+    return input.nextOffsetTop;
+  }
   // While an editor is focused, only keyboard resize may move the shell.
-  // Scroll pans, focus churn, and measure must not chase the caret.
+  // Later scroll pans, focus churn, and measure must not chase the caret.
   if (input.editableFocused && input.source !== "resize") {
     return input.previousOffsetTop;
   }

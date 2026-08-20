@@ -227,7 +227,19 @@ describe("mobileViewportOffsetTop", () => {
     ).toBe(140);
   });
 
-  it("keeps the shell still while Safari pans a focused editor", () => {
+  it("accepts a first keyboard dock delivered as a scroll", () => {
+    expect(
+      mobileViewportOffsetTop({
+        editableFocused: true,
+        keyboardOpen: true,
+        nextOffsetTop: 140,
+        previousOffsetTop: 0,
+        source: "scroll",
+      }),
+    ).toBe(140);
+  });
+
+  it("keeps the shell still while Safari later pans a focused editor", () => {
     expect(
       mobileViewportOffsetTop({
         editableFocused: true,
