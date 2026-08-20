@@ -217,10 +217,11 @@ describe("resolveVisualScenarios", () => {
     ).toEqual(["attachment-entry", "attachment-modal"]);
   });
 
-  it("registers the focused create composer as mobile-only evidence", () => {
+  it("registers the centered create compose as desktop and mobile evidence", () => {
     const scenario = resolveVisualScenarios(["conversation-create-focused"])[0];
     expect(scenario?.prepare).toBe("new-conversation-focused");
     expect(scenario?.viewports.map((viewport) => viewport.name)).toEqual([
+      "desktop",
       "mobile",
     ]);
   });

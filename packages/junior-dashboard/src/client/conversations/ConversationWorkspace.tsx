@@ -19,8 +19,6 @@ import {
 import type { DashboardCoreData } from "../types";
 import type { Conversation } from "../types";
 import { cn, dashboardContainerClass } from "../styles";
-import { ChatLayout } from "./ChatLayout";
-import { ComposerDock } from "./ComposerDock";
 import { ConversationPage } from "./ConversationPage";
 
 /** Render the personal split-pane conversation workspace at the dashboard root. */
@@ -178,59 +176,52 @@ function NewConversationView(props: {
   const [visibility, setVisibility] = useState<"private" | "public">("public");
   const isPublic = visibility === "public";
 
-  // Same chat shell as ConversationPage: scrollable intro above a pinned
-  // composer. Keeps the input glued to the visual viewport on mobile instead of
-  // floating in a centered scroll card.
+  // Empty-state compose, not a chat dock. Title, privacy, and input sit together
+  // in the middle like ChatGPT / Claude new-chat, then become a docked reply
+  // thread only after the first message lands.
   return (
-    <ChatLayout
-      scrollClassName="px-4 pt-8 md:px-8 md:pt-10"
-      scroll={
-        <div className="mx-auto flex w-full max-w-2xl flex-col justify-end md:min-h-full md:justify-center md:pb-6">
-          <h2 className="m-0 font-display text-2xl font-medium tracking-[-0.03em] text-dashboard-text md:text-3xl">
-            New conversation
-          </h2>
-          <div className="mt-3 flex flex-wrap gap-2">
-            <ToggleButton
-              onClick={() => setVisibility("public")}
-              pressed={isPublic}
-              type="button"
-              variant="pill"
-            >
-              <Globe2 aria-hidden="true" className="mr-1.5 inline size-3" />
-              Public
-            </ToggleButton>
-            <ToggleButton
-              onClick={() => setVisibility("private")}
-              pressed={!isPublic}
-              type="button"
-              variant="pill"
-            >
-              <LockKeyhole
-                aria-hidden="true"
-                className="mr-1.5 inline size-3"
-              />
-              Private
-            </ToggleButton>
-          </div>
-        </div>
-      }
-      dock={
-        <ComposerDock variant="create">
-          <div className="mx-auto w-full max-w-2xl">
-            <ConversationComposer
-              draftId="new"
-              error={props.error}
-              label="Start a conversation"
-              restoreDraftOnError
-              submitLabel="Send"
-              onSubmit={(message, idempotencyKey) =>
-                props.onSubmit(message, idempotencyKey, visibility)
-              }
+    <div className="grid h-full min-h-0 place-items-center overflow-y-auto overscroll-contain px-4 py-8 md:px-8">
+      <div className="w-full max-w-2xl">
+        <h2 className="m-0 font-display text-2xl font-medium tracking-[-0.03em] text-dashboard-text md:text-3xl">
+          New conversation
+        </h2>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <ToggleButton
+            onClick={() => setVisibility("public")}
+            pressed={isPublic}
+            type="button"
+            variant="pill"
+          >
+            <Globe2 aria-hidden="true" className="mr-1.5 inline size-3" />
+            Public
+          </ToggleButton>
+          <ToggleButton
+            onClick={() => setVisibility("private")}
+            pressed={!isPublic}
+            type="button"
+            variant="pill"
+          >
+            <LockKeyhole
+              aria-hidden="true"
+              className="mr-1.5 inline size-3"
             />
-          </div>
-        </ComposerDock>
-      }
-    />
+            Private
+          </ToggleButton>
+        </div>
+        <div className="mt-6">
+          <ConversationComposer
+            draftId="new"
+            error={props.error}
+            label="Start a conversation"
+            restoreDraftOnError
+            submitLabel="Send"
+            onSubmit={(message, idempotencyKey) =>
+              props.onSubmit(message, idempotencyKey, visibility)
+            }
+          />
+        </div>
+      </div>
+    </div>
   );
 }
 

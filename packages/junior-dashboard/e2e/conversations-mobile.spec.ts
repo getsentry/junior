@@ -57,7 +57,7 @@ async function expectFocusedComposerAtVisualViewportBottom(
     .toBe("composer-at-bottom");
 }
 
-test("keeps the new conversation composer above the mobile keyboard", async ({
+test("starts a new conversation from a centered compose empty state", async ({
   page,
 }) => {
   await page.setViewportSize({ height: 844, width: 390 });
@@ -67,57 +67,40 @@ test("keeps the new conversation composer above the mobile keyboard", async ({
   const heading = page.getByRole("heading", { name: "New conversation" });
   const composer = page.getByLabel("Start a conversation");
   await expect(heading).toBeVisible();
+  await expect(page.getByRole("button", { name: "Public" })).toBeVisible();
+  await expect(composer).toBeVisible();
   await composer.focus();
   await expect(composer).toBeFocused();
 
-  // Create mode must pin the composer outside the scroll body, same shell as
-  // reply chats. Layout pixels belong to visual QA; this checks structure.
+  // Create mode is an empty-state form, not a reply dock. Title + composer live
+  // in one centered stack; layout pixels belong to visual QA.
   await expect
     .poll(() =>
       composer.evaluate((node) => {
         const form = node.closest("form");
-        if (!form) return "missing-form";
+        const section = node.closest('[aria-label="Selected conversation"]');
+        const title = section?.querySelector("h2");
+        if (!form || !(title instanceof HTMLElement) || !section) {
+          return "missing-compose-stack";
+        }
+        const position = title.compareDocumentPosition(form);
+        if ((position & Node.DOCUMENT_POSITION_FOLLOWING) === 0) {
+          return "title-not-above-composer";
+        }
+        // Reply docks pin outside overflow-y scroll. Create compose may scroll
+        // with the empty state and must not claim a pinned footer contract.
         let current: Element | null = form.parentElement;
-        while (current) {
+        while (current && current !== section) {
           const overflowY = getComputedStyle(current).overflowY;
           if (overflowY === "auto" || overflowY === "scroll") {
-            return "composer-in-scroll";
-          }
-          if (current.getAttribute("aria-label") === "Selected conversation") {
-            break;
+            return "centered-compose";
           }
           current = current.parentElement;
         }
-        return "pinned-footer";
+        return "centered-compose";
       }),
     )
-    .toBe("pinned-footer");
-
-  const shell = page.locator("main").first();
-  // First focus often opens the keyboard with a non-zero visual offset. Dock to
-  // that rectangle so the input stays on the visible bottom, not mid-screen.
-  await page.evaluate(() => {
-    Object.defineProperties(window.visualViewport, {
-      height: { configurable: true, value: 520 },
-      offsetTop: { configurable: true, value: 140 },
-    });
-    window.visualViewport?.dispatchEvent(new Event("resize"));
-  });
-  await expect
-    .poll(() =>
-      shell.evaluate((element) =>
-        element.style.getPropertyValue("--dashboard-viewport-height"),
-      ),
-    )
-    .toBe("520px");
-  await expect
-    .poll(() =>
-      shell.evaluate((element) =>
-        element.style.getPropertyValue("--dashboard-viewport-offset-top"),
-      ),
-    )
-    .toBe("140px");
-  await expectFocusedComposerAtVisualViewportBottom(composer, 520, 140);
+    .toBe("centered-compose");
 });
 
 test("opens and closes a conversation in the mobile workspace", async ({

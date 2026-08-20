@@ -85,13 +85,13 @@ export const VISUAL_SCENARIOS: VisualScenario[] = [
   },
   {
     id: "conversation-create-focused",
-    label: "New conversation · focused composer",
+    label: "New conversation · centered compose",
     path: "/",
-    // Open create mode, focus the composer, and shrink the visual viewport so
-    // the PR screenshot shows the input docked above the keyboard.
+    // Open create mode and focus the composer. Capture the centered empty-state
+    // stack (title + privacy + input), not a keyboard-docked reply footer.
     prepare: "new-conversation-focused",
     ready: "Conversations",
-    viewports: [MOBILE],
+    viewports: [DESKTOP, MOBILE],
   },
   {
     id: "person-profile",

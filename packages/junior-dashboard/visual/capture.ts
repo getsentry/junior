@@ -89,13 +89,12 @@ function shotName(scenarioId: string, viewport: VisualViewport) {
   return `${scenarioId}__${viewport.name}.png`;
 }
 
-function isFocusedComposerPrepare(
+function isKeyboardDockedComposerPrepare(
   prepare: VisualScenarioPrepare | undefined,
 ): prepare is VisualScenarioPrepare {
-  return (
-    prepare === "conversation-detail-focused" ||
-    prepare === "new-conversation-focused"
-  );
+  // Only reply threads pin the composer to the visual viewport bottom.
+  // Create mode is a centered empty-state form and uses a full-page shot.
+  return prepare === "conversation-detail-focused";
 }
 
 function attachmentImage(page: Page) {
@@ -185,7 +184,9 @@ async function prepareScenario(
     await page
       .getByRole("heading", { name: "New conversation", exact: true })
       .waitFor({ state: "visible", timeout: 15_000 });
-    await dockFocusedComposerToKeyboard(page, composer);
+    // Capture the centered empty-state compose stack, not a keyboard dock.
+    await composer.focus();
+    await expect(composer).toBeFocused();
     return;
   }
   if (prepare === "conversation-detail-focused") {
@@ -228,9 +229,9 @@ async function captureScenario(options: {
     const file = shotName(scenario.id, viewport);
     await page.screenshot({
       animations: "disabled",
-      // Focused composer shots clip to the visual viewport. Other shots capture
-      // the full page.
-      clip: isFocusedComposerPrepare(scenario.prepare)
+      // Reply keyboard-dock shots clip to the visual viewport. Other shots,
+      // including centered create compose, capture the full page.
+      clip: isKeyboardDockedComposerPrepare(scenario.prepare)
         ? {
             height: FOCUSED_COMPOSER_VISUAL_HEIGHT_PX,
             width: viewport.width,
@@ -238,7 +239,9 @@ async function captureScenario(options: {
             y: FOCUSED_COMPOSER_VISUAL_OFFSET_TOP_PX,
           }
         : undefined,
-      fullPage: isFocusedComposerPrepare(scenario.prepare) ? false : true,
+      fullPage: isKeyboardDockedComposerPrepare(scenario.prepare)
+        ? false
+        : true,
       path: path.join(outDir, file),
       type: "png",
     });

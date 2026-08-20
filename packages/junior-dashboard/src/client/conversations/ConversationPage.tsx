@@ -402,7 +402,6 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
           />
         </>
       }
-      variant="reply"
     >
       <ConversationComposer
         draftId={props.conversationId}
