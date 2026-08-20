@@ -184,7 +184,7 @@ async function prepareScenario(
     await page
       .getByRole("heading", { name: "What do you need?", exact: true })
       .waitFor({ state: "visible", timeout: 15_000 });
-    // Capture the greeting + hero composer empty state, not a keyboard dock.
+    // Capture landing compose (header + hero + nav), not a keyboard dock.
     await composer.focus();
     await expect(composer).toBeFocused();
     return;

@@ -72,25 +72,21 @@ test("starts a new conversation from a centered compose empty state", async ({
   await composer.focus();
   await expect(composer).toBeFocused();
 
-  // Create mode is an empty-state form, not a reply dock. Title + composer live
-  // in one centered stack; layout pixels belong to visual QA. Mobile back uses
-  // the same app-header chevron as opening a thread (route: /conversations/new).
+  // Create mode is a landing page: simple app chrome + compose hero + list nav.
+  // Not a thread destination and not a reply dock.
   await expect(page).toHaveURL(/\/conversations\/new$/);
+  await expect(page.getByRole("button", { name: "Open navigation" })).toBeVisible();
   await expect(
     page.getByRole("link", { name: "Back to conversations" }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("heading", { name: "What do you need?" }),
-  ).toBeVisible();
-  // No secondary page chrome / fake conversation title in the app header.
-  await expect(
-    page.getByRole("heading", { name: "Conversation", exact: true }),
   ).toHaveCount(0);
+  await expect(
+    page.getByRole("heading", { name: "Your conversations" }),
+  ).toBeVisible();
   await expect
     .poll(() =>
       composer.evaluate((node) => {
         const form = node.closest("form");
-        const section = node.closest('[aria-label="Selected conversation"]');
+        const section = node.closest('[aria-label="New conversation"]');
         const title = section?.querySelector("h2");
         if (!form || !(title instanceof HTMLElement) || !section) {
           return "missing-compose-stack";
@@ -99,20 +95,20 @@ test("starts a new conversation from a centered compose empty state", async ({
         if ((position & Node.DOCUMENT_POSITION_FOLLOWING) === 0) {
           return "title-not-above-composer";
         }
-        // Reply docks pin outside overflow-y scroll. Create compose must live
+        // Reply docks pin outside overflow-y scroll. Landing compose must live
         // inside a scroll owner so a pinned footer regression fails.
         let current: Element | null = form.parentElement;
         while (current && current !== section) {
           const overflowY = getComputedStyle(current).overflowY;
           if (overflowY === "auto" || overflowY === "scroll") {
-            return "centered-compose";
+            return "landing-compose";
           }
           current = current.parentElement;
         }
         return "pinned-outside-scroll";
       }),
     )
-    .toBe("centered-compose");
+    .toBe("landing-compose");
 });
 
 test("opens and closes a conversation in the mobile workspace", async ({

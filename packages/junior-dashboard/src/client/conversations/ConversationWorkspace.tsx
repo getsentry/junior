@@ -62,6 +62,82 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
     setStatus("active");
   }, [creating]);
 
+  const openCreate = () => {
+    createConversation.reset();
+    setStatus("active");
+    if (!creating) navigate(NEW_CONVERSATION_PATH);
+  };
+
+  const createView = (
+    <NewConversationView
+      error={
+        createConversation.error
+          ? "Could not create the conversation. Try again."
+          : undefined
+      }
+      onSubmit={async (message, idempotencyKey, visibility) => {
+        const accepted = await createConversation.mutateAsync({
+          idempotencyKey,
+          message,
+          visibility,
+        });
+        navigate(conversationPath(accepted.conversationId));
+      }}
+    />
+  );
+
+  // Mobile create is a landing page: simple app header (shell) + compose hero +
+  // conversation list as navigation. Desktop keeps the split pane. One create
+  // tree only — dual mounts break focus/a11y queries.
+  if (creating) {
+    return (
+      <div
+        className={cn(
+          dashboardContainerClass,
+          "grid h-full min-h-0 overflow-hidden md:grid-cols-[21rem_minmax(0,1fr)] xl:border-x xl:border-white/[0.07]",
+        )}
+      >
+        <div className="hidden h-full min-h-0 overflow-hidden md:block">
+          <ConversationSidebar
+            conversations={visibleConversations}
+            error={feed.error?.message}
+            loading={feed.isPending}
+            onNewConversation={openCreate}
+            onQueryChange={setQuery}
+            onStatusChange={setStatus}
+            query={query}
+            selectedId={undefined}
+            status={status}
+            timeZone={props.data.config.timeZone}
+          />
+        </div>
+        <section
+          aria-label="New conversation"
+          className="min-h-0 overflow-hidden bg-white/[0.012]"
+        >
+          <div className="h-full min-h-0 overflow-y-auto overscroll-contain">
+            {createView}
+            <div className="md:hidden">
+              <ConversationSidebar
+                conversations={visibleConversations}
+                error={feed.error?.message}
+                loading={feed.isPending}
+                onNewConversation={openCreate}
+                onQueryChange={setQuery}
+                onStatusChange={setStatus}
+                query={query}
+                selectedId={undefined}
+                status={status}
+                timeZone={props.data.config.timeZone}
+                variant="landing"
+              />
+            </div>
+          </div>
+        </section>
+      </div>
+    );
+  }
+
   return (
     <div
       className={cn(
@@ -71,7 +147,7 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
     >
       <div
         className={
-          selectedId || creating
+          selectedId
             ? "hidden h-full min-h-0 overflow-hidden md:block"
             : "h-full min-h-0 overflow-hidden"
         }
@@ -80,15 +156,11 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
           conversations={visibleConversations}
           error={feed.error?.message}
           loading={feed.isPending}
-          onNewConversation={() => {
-            createConversation.reset();
-            setStatus("active");
-            if (!creating) navigate(NEW_CONVERSATION_PATH);
-          }}
+          onNewConversation={openCreate}
           onQueryChange={setQuery}
           onStatusChange={setStatus}
           query={query}
-          selectedId={creating ? undefined : selectedId}
+          selectedId={selectedId}
           status={status}
           timeZone={props.data.config.timeZone}
         />
@@ -96,12 +168,12 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
       <section
         aria-label="Selected conversation"
         className={
-          selectedId || creating
+          selectedId
             ? "grid min-h-0 grid-rows-[minmax(0,1fr)] overflow-hidden bg-white/[0.012]"
             : "hidden min-h-0 overflow-hidden bg-white/[0.012] md:grid md:grid-rows-[minmax(0,1fr)]"
         }
       >
-        {selectedId && !creating ? (
+        {selectedId ? (
           <ConversationPage
             key={selectedId}
             conversationId={selectedId}
@@ -117,21 +189,7 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
             )}
           />
         ) : (
-          <NewConversationView
-            error={
-              createConversation.error
-                ? "Could not create the conversation. Try again."
-                : undefined
-            }
-            onSubmit={async (message, idempotencyKey, visibility) => {
-              const accepted = await createConversation.mutateAsync({
-                idempotencyKey,
-                message,
-                visibility,
-              });
-              navigate(conversationPath(accepted.conversationId));
-            }}
-          />
+          createView
         )}
       </section>
     </div>
@@ -149,13 +207,11 @@ function NewConversationView(props: {
   const [visibility, setVisibility] = useState<"private" | "public">("public");
   const isPublic = visibility === "public";
 
-  // Peer empty-chat pattern: greeting + hero input.
-  // Mobile back lives in the app header chevron via /conversations/new.
-  // Use flex + justify-center so tall stacks still scroll from the top.
+  // Landing-page compose hero. Parent owns page scroll and stacks conversation
+  // nav under this block on mobile; desktop still centers the hero alone.
   return (
-    <div className="h-full min-h-0 overflow-y-auto overscroll-contain">
-      <div className="flex min-h-full flex-col justify-center px-4 py-12 md:px-8">
-        <div className="mx-auto flex w-full max-w-xl flex-col items-stretch gap-6 md:max-w-2xl md:gap-8">
+    <div className="px-4 py-10 md:flex md:min-h-full md:flex-col md:justify-center md:px-8 md:py-12">
+      <div className="mx-auto flex w-full max-w-xl flex-col items-stretch gap-5 md:max-w-2xl md:gap-8">
           <h2 className="m-0 text-center font-display text-2xl font-medium tracking-[-0.03em] text-dashboard-text md:text-3xl">
             What do you need?
           </h2>
@@ -198,7 +254,6 @@ function NewConversationView(props: {
               props.onSubmit(message, idempotencyKey, visibility)
             }
           />
-        </div>
       </div>
     </div>
   );

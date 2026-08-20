@@ -80,7 +80,6 @@ export function DashboardShell() {
     location.pathname === "/" ||
     location.pathname === "/conversations" ||
     location.pathname.startsWith("/conversations/");
-  const creatingConversation = isNewConversationPath(location.pathname);
   const conversationId = conversationIdFromPath(location.pathname);
   const conversationsQuery = useConversationsData();
   // Detail query shares the page cache so titles outside the top-50 feed stay accurate.
@@ -91,14 +90,12 @@ export function DashboardShell() {
       conversationsQuery.data?.conversations ?? [],
     ).find((item) => item.id === conversationId);
   }, [conversationId, conversationsQuery.data?.conversations]);
-  // Create mode uses the same mobile back chevron as a thread, with no title.
-  // Explicit empty string suppresses the loading fallback title.
-  const mobileConversationTitle = creatingConversation
-    ? ""
-    : conversationId
-      ? conversationDetail.data?.displayTitle?.trim() ||
-        conversationDisplayTitle(mobileConversation)
-      : undefined;
+  // Create mode is a landing page (normal app chrome), not a thread destination.
+  // Only open conversations use the mobile back chevron + title row.
+  const mobileConversationTitle = conversationId
+    ? conversationDetail.data?.displayTitle?.trim() ||
+      conversationDisplayTitle(mobileConversation)
+    : undefined;
   const primaryNavItems = [
     ...(loggedIn
       ? [{ key: "tasks", label: "Tasks", to: "/tasks" }]
@@ -142,9 +139,7 @@ export function DashboardShell() {
           header={
             <DashboardHeader
               compact={workspace}
-              mobileBackTo={
-                conversationId || creatingConversation ? "/" : undefined
-              }
+              mobileBackTo={conversationId ? "/" : undefined}
               mobileTitle={mobileConversationTitle}
               mobileNavigationOpen={mobileNavigationOpen}
               navItems={primaryNavItems}
