@@ -85,10 +85,10 @@ export const VISUAL_SCENARIOS: VisualScenario[] = [
   },
   {
     id: "conversation-create-focused",
-    label: "New conversation · centered compose",
+    label: "New conversation · greeting compose",
     path: "/",
-    // Open create mode and focus the composer. Capture the centered empty-state
-    // stack (title + privacy + input), not a keyboard-docked reply footer.
+    // Open create mode and focus the composer. Capture greeting + hero input
+    // with privacy as composer chrome, not a keyboard-docked reply footer.
     prepare: "new-conversation-focused",
     ready: "Conversations",
     viewports: [DESKTOP, MOBILE],

@@ -176,50 +176,53 @@ function NewConversationView(props: {
   const [visibility, setVisibility] = useState<"private" | "public">("public");
   const isPublic = visibility === "public";
 
-  // Empty-state compose, not a chat dock. Title, privacy, and input sit together
-  // in the middle like ChatGPT / Claude new-chat, then become a docked reply
-  // thread only after the first message lands.
+  // Peer empty-chat pattern (ChatGPT / Claude / Gemini): greeting + hero input.
+  // Privacy is quiet composer chrome, not a form header above the box.
   return (
-    <div className="grid h-full min-h-0 place-items-center overflow-y-auto overscroll-contain px-4 py-8 md:px-8">
-      <div className="w-full max-w-2xl">
-        <h2 className="m-0 font-display text-2xl font-medium tracking-[-0.03em] text-dashboard-text md:text-3xl">
-          New conversation
+    <div className="grid h-full min-h-0 place-items-center overflow-y-auto overscroll-contain px-4 py-10 md:px-8">
+      <div className="flex w-full max-w-xl flex-col items-stretch gap-6 md:max-w-2xl md:gap-8">
+        <h2 className="m-0 text-center font-display text-2xl font-medium tracking-[-0.03em] text-dashboard-text md:text-3xl">
+          What do you need?
         </h2>
-        <div className="mt-3 flex flex-wrap gap-2">
-          <ToggleButton
-            onClick={() => setVisibility("public")}
-            pressed={isPublic}
-            type="button"
-            variant="pill"
-          >
-            <Globe2 aria-hidden="true" className="mr-1.5 inline size-3" />
-            Public
-          </ToggleButton>
-          <ToggleButton
-            onClick={() => setVisibility("private")}
-            pressed={!isPublic}
-            type="button"
-            variant="pill"
-          >
-            <LockKeyhole
-              aria-hidden="true"
-              className="mr-1.5 inline size-3"
-            />
-            Private
-          </ToggleButton>
-        </div>
-        <div className="mt-6">
-          <ConversationComposer
-            draftId="new"
-            error={props.error}
-            label="Start a conversation"
-            restoreDraftOnError
-            submitLabel="Send"
-            onSubmit={(message, idempotencyKey) =>
-              props.onSubmit(message, idempotencyKey, visibility)
-            }
-          />
-        </div>
+        <ConversationComposer
+          draftId="new"
+          error={props.error}
+          footerStart={
+            <div
+              aria-label="Conversation visibility"
+              className="inline-flex items-center gap-1"
+              role="group"
+            >
+              <ToggleButton
+                onClick={() => setVisibility("public")}
+                pressed={isPublic}
+                type="button"
+                variant="segment"
+              >
+                <Globe2 aria-hidden="true" className="mr-1 inline size-3" />
+                Public
+              </ToggleButton>
+              <ToggleButton
+                onClick={() => setVisibility("private")}
+                pressed={!isPublic}
+                type="button"
+                variant="segment"
+              >
+                <LockKeyhole
+                  aria-hidden="true"
+                  className="mr-1 inline size-3"
+                />
+                Private
+              </ToggleButton>
+            </div>
+          }
+          label="Start a conversation"
+          restoreDraftOnError
+          submitLabel="Send"
+          onSubmit={(message, idempotencyKey) =>
+            props.onSubmit(message, idempotencyKey, visibility)
+          }
+        />
       </div>
     </div>
   );

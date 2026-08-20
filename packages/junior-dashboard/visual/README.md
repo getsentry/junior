@@ -48,7 +48,7 @@ reviewable. Force every registered scenario with either:
 Composer interaction shots:
 
 - `conversation-create-focused`: open create, focus the composer, and capture
-  the centered empty-state stack (title + privacy + input). Not a keyboard dock.
+  greeting + hero input with privacy as composer chrome. Not a keyboard dock.
 - `conversation-detail-focused`: open a reply conversation, focus the composer,
   apply a short keyboard `visualViewport`, then capture the docked input with
   chat chrome and the queued mailbox.

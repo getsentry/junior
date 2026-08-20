@@ -64,7 +64,7 @@ test("starts a new conversation from a centered compose empty state", async ({
   await page.goto(server.baseURL);
   await page.getByRole("button", { name: "New conversation" }).click();
 
-  const heading = page.getByRole("heading", { name: "New conversation" });
+  const heading = page.getByRole("heading", { name: "What do you need?" });
   const composer = page.getByLabel("Start a conversation");
   await expect(heading).toBeVisible();
   await expect(page.getByRole("button", { name: "Public" })).toBeVisible();

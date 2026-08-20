@@ -182,9 +182,9 @@ async function prepareScenario(
     await page.getByRole("button", { name: "New conversation" }).click();
     const composer = page.getByLabel("Start a conversation");
     await page
-      .getByRole("heading", { name: "New conversation", exact: true })
+      .getByRole("heading", { name: "What do you need?", exact: true })
       .waitFor({ state: "visible", timeout: 15_000 });
-    // Capture the centered empty-state compose stack, not a keyboard dock.
+    // Capture the greeting + hero composer empty state, not a keyboard dock.
     await composer.focus();
     await expect(composer).toBeFocused();
     return;
