@@ -156,6 +156,10 @@ export function nextRestingLayoutHeight(input: {
  *
  * After blur / closed keyboard, snap offset to 0 even if a stale visual offset
  * remains for a frame.
+ *
+ * Callers must still run `clampMobileViewportOffsetTop` so a lying browser
+ * offset cannot push the fixed shell below the layout viewport (composer under
+ * the keyboard).
  */
 export function mobileViewportOffsetTop(input: {
   editableFocused: boolean;
@@ -189,6 +193,31 @@ export function mobileViewportOffsetTop(input: {
   // stale visual offset is still reported for a frame.
   if (!input.keyboardOpen) return 0;
   return input.nextOffsetTop;
+}
+
+/**
+ * Keep a fixed shell inside the layout viewport.
+ *
+ * `top + height` must not exceed layout height. When the page already shrank
+ * for the keyboard (`interactive-widget=resizes-content` or hybrid WebKit),
+ * a non-zero `visualViewport.offsetTop` would shove the shell down and hide
+ * the composer under the keyboard.
+ */
+export function clampMobileViewportOffsetTop(input: {
+  heightPx: number;
+  layoutHeight: number;
+  offsetTopPx: number;
+}): number {
+  const heightPx = Math.max(0, Math.round(input.heightPx));
+  const layoutHeight = Math.max(0, Math.round(input.layoutHeight));
+  const offsetTopPx = Math.max(0, Math.round(input.offsetTopPx));
+  // Layout already matches the visible band: page resize owns geometry.
+  // Trusting a leftover visual offset here is the "composer under keyboard" bug.
+  if (Math.abs(layoutHeight - heightPx) < KEYBOARD_OPEN_HEIGHT_DELTA_PX) {
+    return 0;
+  }
+  const maxOffsetTop = Math.max(0, layoutHeight - heightPx);
+  return Math.min(offsetTopPx, maxOffsetTop);
 }
 
 /** Keep the mobile workspace inside the visual viewport while the keyboard is open. */
@@ -305,13 +334,17 @@ export function useMobileViewportHeight(
         if (window.scrollY !== 0 || window.scrollX !== 0) {
           window.scrollTo(0, 0);
         }
-        const offsetTopPx = mobileViewportOffsetTop({
-          editableFocused,
-          keyboardMode: metrics.keyboardMode,
-          keyboardOpen: metrics.keyboardOpen,
-          nextOffsetTop: metrics.offsetTopPx,
-          previousOffsetTop: appliedOffsetTopPx,
-          source: syncSource,
+        const offsetTopPx = clampMobileViewportOffsetTop({
+          heightPx: metrics.heightPx,
+          layoutHeight,
+          offsetTopPx: mobileViewportOffsetTop({
+            editableFocused,
+            keyboardMode: metrics.keyboardMode,
+            keyboardOpen: metrics.keyboardOpen,
+            nextOffsetTop: metrics.offsetTopPx,
+            previousOffsetTop: appliedOffsetTopPx,
+            source: syncSource,
+          }),
         });
         const nextHeight = `${metrics.heightPx}px`;
         const nextOffsetTop = `${offsetTopPx}px`;
