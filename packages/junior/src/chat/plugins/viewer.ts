@@ -138,11 +138,11 @@ export async function updateViewerDisplayName(
   return await updateViewerDisplayNameFromSql(getDb(), userId, displayName);
 }
 
-/** Resolve the stored identity and linked user for one runtime actor. */
+/** Resolve the stored identity and/or linked user for one runtime actor. */
 export async function readActorIdentityFromSql(
   db: JuniorDatabase,
   actor: Actor,
-): Promise<{ identity: Identity; user?: User } | undefined> {
+): Promise<{ identity?: Identity; user?: User } | undefined> {
   if (actor.platform === "system") return undefined;
   const providerTenantId = actor.platform === "slack" ? actor.teamId : "";
   const row = (
@@ -171,18 +171,19 @@ export async function readActorIdentityFromSql(
   }
   if (actor.platform !== "web" || !actor.email) return undefined;
   const user = await findUserByEmailFromSql(db, actor.email);
-  const normalizedEmail = normalizeIdentityEmail(user?.email);
-  const identity = user?.identities.find(
+  if (!user) return undefined;
+  const normalizedEmail = normalizeIdentityEmail(user.email);
+  const identity = user.identities.find(
     (candidate) =>
       candidate.provider === "junior" &&
       candidate.providerSubjectId === normalizedEmail,
   );
-  return identity && user ? { identity, user } : undefined;
+  return { ...(identity ? { identity } : {}), user };
 }
 
-/** Resolve the stored identity and linked user for one runtime actor. */
+/** Resolve the stored identity and/or linked user for one runtime actor. */
 export async function readActorIdentity(
   actor: Actor,
-): Promise<{ identity: Identity; user?: User } | undefined> {
+): Promise<{ identity?: Identity; user?: User } | undefined> {
   return await readActorIdentityFromSql(getDb(), actor);
 }

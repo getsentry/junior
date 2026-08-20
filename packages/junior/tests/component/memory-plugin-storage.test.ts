@@ -323,13 +323,6 @@ WHERE indexname = 'junior_memory_memories_search_idx'
       };
       await upsertIdentity(fixture.sql, {
         kind: "user",
-        provider: "junior",
-        providerSubjectId: email,
-        email,
-        emailVerified: true,
-      });
-      await upsertIdentity(fixture.sql, {
-        kind: "user",
         provider: "slack",
         providerTenantId: "T123",
         providerSubjectId: "U123",

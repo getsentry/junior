@@ -78,8 +78,8 @@ export interface PluginContext {
 }
 
 export interface PluginUserContext {
-  /** Resolve the current actor's stored identity and linked user. */
-  resolveActor(): Promise<{ identity: Identity; user?: User } | undefined>;
+  /** Resolve the current actor's stored identity and/or linked user. */
+  resolveActor(): Promise<{ identity?: Identity; user?: User } | undefined>;
 }
 
 interface BaseInvocationContext {
