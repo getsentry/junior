@@ -5,8 +5,11 @@ instead of copying Tailwind blocks.
 
 ## Layers
 
-1. **Primitives** — `Button`, `Field`, `TextInput`, `StatusChip`, `Notice`,
-   `Drawer`, `Tooltip`, and other small reusable controls.
+1. **Primitives** — `Button` / `ToggleButton`, `Field`, `TextInput`,
+   `StatusChip`, `Notice`, `Drawer`, `Tooltip`, and other small reusable
+   controls. Prefer `ToggleButton` variants (`pill`, `segment`, `text`) over
+   one-off pressed styles. Prefer `Field` sizes (`default`, `compact`) over
+   handwritten labels.
 2. **Patterns** — layout, filters, directory tables, charts, metrics.
 3. **Features** — stay under `conversations/` or `pages/` until a surface is
    shared by two real callers.

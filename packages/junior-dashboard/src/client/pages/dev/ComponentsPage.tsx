@@ -1,4 +1,12 @@
-import { Activity, Bot, ChevronRight, Copy, MessageSquare, Timer } from "lucide-react";
+import {
+  Activity,
+  Bot,
+  ChevronRight,
+  Copy,
+  MessageSquare,
+  Timer,
+  Trash2,
+} from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { Link, Navigate, Route, Routes } from "react-router";
 import type {
@@ -306,45 +314,91 @@ function FoundationsGalleryPage() {
       title="Foundations"
     >
       <Fixture title="Buttons and controls">
-        <div className="flex flex-wrap items-center gap-3">
-          <Button>
-            <Copy aria-hidden="true" size={14} />
-            Copy
-          </Button>
-          <Button disabled>Disabled</Button>
-          <Button aria-label="Bot action" size="icon">
-            <Bot aria-hidden="true" size={16} />
-          </Button>
-          <ToggleButton
-            pressed={pressed}
-            variant="pill"
-            onClick={() => setPressed((value) => !value)}
-          >
-            Toggle
-          </ToggleButton>
-          <ToggleButton
-            pressed={!pressed}
-            variant="text"
-            onClick={() => setPressed((value) => !value)}
-          >
-            Alternate
-          </ToggleButton>
-          <TimeRangeSelector onChange={setRange} value={range} />
+        <div className="grid gap-4">
+          <div className="flex flex-wrap items-center gap-3">
+            <Button>
+              <Copy aria-hidden="true" size={14} />
+              Copy
+            </Button>
+            <Button disabled>Disabled</Button>
+            <Button tone="danger">
+              <Trash2 aria-hidden="true" size={14} />
+              Remove
+            </Button>
+            <Button disabled tone="danger">
+              Remove disabled
+            </Button>
+            <Button aria-label="Bot action" size="icon">
+              <Bot aria-hidden="true" size={16} />
+            </Button>
+            <Button aria-label="Delete action" size="icon" tone="danger">
+              <Trash2 aria-hidden="true" size={16} />
+            </Button>
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <ToggleButton
+              pressed={pressed}
+              variant="pill"
+              onClick={() => setPressed((value) => !value)}
+            >
+              Toggle
+            </ToggleButton>
+            <ToggleButton
+              pressed={!pressed}
+              variant="text"
+              onClick={() => setPressed((value) => !value)}
+            >
+              Alternate
+            </ToggleButton>
+            <ToggleButton pressed variant="segment">
+              30d
+            </ToggleButton>
+            <ToggleButton pressed={false} variant="segment">
+              90d
+            </ToggleButton>
+            <TimeRangeSelector onChange={setRange} value={range} />
+          </div>
         </div>
       </Fixture>
       <Fixture title="Forms">
         <div className="grid max-w-xl gap-4">
-          <Field
-            help="Lowercase name used when agents switch into this Workspace."
-            htmlFor="gallery-workspace-name"
-            label="Name"
-          >
-            <TextInput
-              defaultValue="sentry"
-              id="gallery-workspace-name"
-              placeholder="sentry"
-            />
-          </Field>
+          <Card className="mb-0" padding="md" variant="raised">
+            <Field
+              help="Lowercase name used when agents switch into this Workspace."
+              htmlFor="gallery-workspace-name"
+              label="Name"
+            >
+              <TextInput
+                defaultValue="sentry"
+                id="gallery-workspace-name"
+                placeholder="sentry"
+              />
+            </Field>
+          </Card>
+          <div className="grid gap-3 sm:grid-cols-[minmax(0,8.5rem)_minmax(0,1fr)]">
+            <Field
+              htmlFor="gallery-provider"
+              label="Provider"
+              size="compact"
+            >
+              <TextInput
+                defaultValue="github"
+                id="gallery-provider"
+                placeholder="github"
+              />
+            </Field>
+            <Field
+              htmlFor="gallery-repository"
+              label="Repository"
+              size="compact"
+            >
+              <TextInput
+                defaultValue="getsentry/sentry"
+                id="gallery-repository"
+                placeholder="getsentry/sentry"
+              />
+            </Field>
+          </div>
           <Field
             help="Runs once while Junior builds the reusable snapshot."
             htmlFor="gallery-setup-script"

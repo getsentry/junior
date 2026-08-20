@@ -11,6 +11,7 @@ import { dashboardContainerClass } from "../styles";
 import { getDashboardAgentName } from "../agentName";
 import { Button } from "../components/Button";
 import { InlineError } from "../components/InlineError";
+import { Card } from "../components/layout/Card";
 import { TextInput } from "../components/TextInput";
 
 const personalTokensQueryKey = ["dashboard", "personal-tokens"] as const;
@@ -105,7 +106,7 @@ export function PersonalTokensPage() {
           or script. Tokens expire after 90 days.
         </p>
 
-        <div className="mt-6 rounded-lg border border-white/15 bg-dashboard-surface-raised p-5">
+        <Card className="mb-0 mt-6" padding="md" variant="raised">
           {createdToken ? (
             <div className="mt-5 rounded border border-emerald-400/40 bg-emerald-400/5 p-3">
               <p className="mt-0 mb-2 text-sm font-semibold">
@@ -176,9 +177,8 @@ export function PersonalTokensPage() {
                       {new Date(token.expiresAt).toLocaleDateString()}
                     </p>
                   </div>
-                  <button
+                  <Button
                     aria-label={`Revoke ${token.name}`}
-                    className="cursor-pointer border-0 bg-transparent p-1 text-dashboard-text-muted hover:text-rose-300"
                     disabled={busy}
                     onClick={() => {
                       if (createTokenMutation.isError) {
@@ -186,15 +186,17 @@ export function PersonalTokensPage() {
                       }
                       revokeTokenMutation.mutate(token);
                     }}
+                    size="icon"
+                    tone="danger"
                     type="button"
                   >
                     <Trash2 size={16} />
-                  </button>
+                  </Button>
                 </div>
               ))
             )}
           </div>
-        </div>
+        </Card>
       </section>
     </div>
   );

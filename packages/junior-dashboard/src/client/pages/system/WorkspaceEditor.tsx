@@ -118,41 +118,46 @@ export function WorkspaceEditor(props: WorkspaceEditorProps) {
                 key={repo.key}
               >
                 <div className="grid gap-3 sm:grid-cols-[minmax(0,8.5rem)_minmax(0,1fr)_auto] sm:items-end">
-                  <div className="grid gap-1.5">
-                    <span className="font-mono text-xs uppercase tracking-[0.12em] text-dashboard-text-muted">
-                      Provider
-                    </span>
+                  <Field
+                    htmlFor={`workspace-repo-provider-${repo.key}`}
+                    label="Provider"
+                    size="compact"
+                  >
                     <TextInput
                       aria-label={`Provider ${index + 1}`}
+                      id={`workspace-repo-provider-${repo.key}`}
                       onChange={(event) =>
                         updateRepo(repo.key, { provider: event.target.value })
                       }
                       placeholder="github"
                       value={repo.provider}
                     />
-                  </div>
-                  <div className="grid gap-1.5">
-                    <span className="font-mono text-xs uppercase tracking-[0.12em] text-dashboard-text-muted">
-                      Repository
-                    </span>
+                  </Field>
+                  <Field
+                    htmlFor={`workspace-repo-name-${repo.key}`}
+                    label="Repository"
+                    size="compact"
+                  >
                     <TextInput
                       aria-label={`Repository ${index + 1}`}
+                      id={`workspace-repo-name-${repo.key}`}
                       onChange={(event) =>
                         updateRepo(repo.key, { repo: event.target.value })
                       }
                       placeholder="getsentry/sentry"
                       value={repo.repo}
                     />
-                  </div>
-                  <button
+                  </Field>
+                  <Button
                     aria-label={`Remove repository ${index + 1}`}
-                    className="inline-flex h-9 w-full items-center justify-center gap-1.5 rounded border border-white/10 bg-transparent px-3 text-xs font-semibold text-dashboard-text-muted transition-colors hover:border-rose-300/40 hover:text-rose-300 sm:w-auto"
+                    className="w-full sm:w-auto"
                     onClick={() => removeRepo(repo.key)}
+                    tone="danger"
                     type="button"
                   >
                     <Trash2 aria-hidden="true" size={14} />
                     Remove
-                  </button>
+                  </Button>
                 </div>
               </div>
             ))}
