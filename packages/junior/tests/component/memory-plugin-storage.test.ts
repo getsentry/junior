@@ -15,6 +15,7 @@ import {
 import { migratePluginSchemas } from "@/chat/plugins/migrations";
 import { readMigrationFiles } from "drizzle-orm/migrator";
 import { closeDb } from "@/chat/db";
+import { readActorIdentity } from "@/chat/plugins/viewer";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { upsertIdentity } from "@/chat/identities/sql";
 import { migratePluginsToSql } from "@/cli/upgrade/migrations/plugin-sql";
@@ -380,6 +381,7 @@ WHERE indexname = 'junior_memory_memories_search_idx'
           conversationId: "local:web:linked-memory",
         },
         actor: webActor,
+        resolveActorIdentity: async () => await readActorIdentity(webActor),
         source,
         userText: "where do public workspace runbooks live?",
       };

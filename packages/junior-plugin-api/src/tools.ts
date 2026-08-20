@@ -1,12 +1,11 @@
 import type {
   Actor,
-  Identity,
   LocalInvocationContext,
   PluginContext,
   PluginEmbedder,
+  PluginUserContext,
   PluginModel,
   SlackInvocationContext,
-  User,
   WebInvocationContext,
 } from "./context";
 import type { PluginCredentialSubject } from "./credentials";
@@ -559,10 +558,7 @@ interface BaseToolRegistrationHookContext extends PluginContext {
   /** Sandbox filesystem and command capability for plugin-owned workspace tools. */
   sandbox: PluginSandbox;
   state: PluginState;
-  users: {
-    /** Resolve the current actor's stored identity and linked user. */
-    resolveActor(): Promise<{ identity: Identity; user?: User } | undefined>;
-  };
+  users: PluginUserContext;
   userText?: string;
   workspaces: PluginWorkspaceToolContext;
 }

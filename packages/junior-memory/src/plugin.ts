@@ -21,7 +21,6 @@ import {
 } from "./events";
 import type { MemoryDb } from "./store";
 import { createMemoryUserPage } from "./user-pages";
-import { readLinkedIdentities } from "./linked-identities";
 
 const MEMORY_MODEL_ENV = "AI_MEMORY_MODEL";
 
@@ -49,6 +48,7 @@ function memoryToolContext(ctx: {
   embedder?: MemoryToolContext["embedder"];
   actor?: MemoryToolContext["actor"];
   source: MemoryToolContext["source"];
+  users: MemoryToolContext["users"];
   userText?: string;
 }): MemoryToolContext {
   return {
@@ -58,6 +58,7 @@ function memoryToolContext(ctx: {
     db: ctx.db,
     ...(ctx.embedder ? { embedder: ctx.embedder } : undefined),
     source: ctx.source,
+    users: ctx.users,
     ...(ctx.userText ? { userText: ctx.userText } : undefined),
   };
 }
@@ -70,6 +71,7 @@ function memoryCreateToolContext(ctx: {
   actor?: MemoryCreateToolContext["actor"];
   source: MemoryCreateToolContext["source"];
   supersessionDecider: MemoryCreateToolContext["supersessionDecider"];
+  users: MemoryCreateToolContext["users"];
   userText?: string;
 }): MemoryCreateToolContext {
   return {
@@ -154,17 +156,14 @@ export function memoryPlugin(options: MemoryPluginOptions = {}) {
       ...(!options.disableRecall
         ? {
             async userPrompt(ctx) {
-              const identities = await readLinkedIdentities(
-                ctx.db as MemoryDb,
-                ctx.actor,
-              );
+              const user = (await ctx.users.resolveActor())?.user;
               return await createMemoryPromptContributions({
                 agent: createMemoryAgent(ctx.model),
                 ...(ctx.conversationId
                   ? { conversationId: ctx.conversationId }
                   : undefined),
                 ...(ctx.actor ? { actor: ctx.actor } : undefined),
-                ...(identities ? { identities } : undefined),
+                ...(user ? { identities: user.identities } : undefined),
                 db: ctx.db as MemoryDb,
                 embedder: ctx.embedder,
                 events: ctx.events,

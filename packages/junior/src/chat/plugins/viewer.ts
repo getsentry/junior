@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, or } from "drizzle-orm";
 import {
   identitySchema,
   userSchema,
@@ -145,23 +145,36 @@ export async function readActorIdentityFromSql(
 ): Promise<{ identity: Identity; user?: User } | undefined> {
   if (actor.platform === "system") return undefined;
   const providerTenantId = actor.platform === "slack" ? actor.teamId : "";
-  const rows = await db
-    .select({
-      identity: juniorIdentities,
-      user: juniorUsers,
-    })
-    .from(juniorIdentities)
-    .leftJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
-    .where(
-      and(
-        eq(juniorIdentities.kind, "user"),
-        eq(juniorIdentities.provider, actor.platform),
-        eq(juniorIdentities.providerTenantId, providerTenantId),
-        eq(juniorIdentities.providerSubjectId, actor.userId),
-      ),
-    )
-    .limit(1);
-  const row = rows[0];
+  const normalizedEmail =
+    "email" in actor ? normalizeIdentityEmail(actor.email) : undefined;
+  const row = (
+    await db
+      .select({
+        identity: juniorIdentities,
+        user: juniorUsers,
+      })
+      .from(juniorIdentities)
+      .leftJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
+      .where(
+        and(
+          eq(juniorIdentities.kind, "user"),
+          or(
+            and(
+              eq(juniorIdentities.provider, actor.platform),
+              eq(juniorIdentities.providerTenantId, providerTenantId),
+              eq(juniorIdentities.providerSubjectId, actor.userId),
+            ),
+            normalizedEmail
+              ? and(
+                  eq(juniorIdentities.emailVerified, true),
+                  eq(juniorIdentities.emailNormalized, normalizedEmail),
+                )
+              : undefined,
+          ),
+        ),
+      )
+      .limit(1)
+  )[0];
   if (!row) return undefined;
   return {
     identity: identityFromRow(row.identity),

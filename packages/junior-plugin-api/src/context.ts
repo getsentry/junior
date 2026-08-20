@@ -77,6 +77,11 @@ export interface PluginContext {
   plugin: PluginMetadata;
 }
 
+export interface PluginUserContext {
+  /** Resolve the current actor's stored identity and linked user. */
+  resolveActor(): Promise<{ identity: Identity; user?: User } | undefined>;
+}
+
 interface BaseInvocationContext {
   /**
    * Opaque Junior conversation/session identity for this invocation.

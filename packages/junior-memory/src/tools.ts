@@ -7,6 +7,7 @@ import {
   type PluginToolOutput,
   type Source,
   type Actor,
+  type PluginUserContext,
   pluginToolOutputSchema,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
@@ -23,7 +24,6 @@ import {
   parseMemoryReview,
   type MemoryAgent,
 } from "./agent";
-import { readLinkedIdentities } from "./linked-identities";
 import {
   memoryRuntimeContextSchema,
   type MemoryKind,
@@ -56,6 +56,7 @@ export interface MemoryToolContext {
   embedder?: MemoryEmbeddingProvider;
   actor?: Actor;
   source: Source;
+  users: PluginUserContext;
   userText?: string;
 }
 
@@ -84,16 +85,15 @@ async function memoryRuntimeContext(
   context: MemoryToolContext,
   includeLinkedIdentities = false,
 ): Promise<MemoryRuntimeContext> {
-  const identities =
-    includeLinkedIdentities
-      ? await readLinkedIdentities(context.db, context.actor)
-      : undefined;
+  const user = includeLinkedIdentities
+    ? (await context.users.resolveActor())?.user
+    : undefined;
   return memoryRuntimeContextSchema.parse({
     ...(context.conversationId
       ? { conversationId: context.conversationId }
       : undefined),
     ...(context.actor ? { actor: context.actor } : undefined),
-    ...(identities && identities.length > 0 ? { identities } : undefined),
+    ...(user ? { identities: user.identities } : undefined),
     source: context.source,
   });
 }

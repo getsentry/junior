@@ -31,7 +31,6 @@ import {
 
 export { authenticatePersonalToken } from "./personal-tokens/store";
 export {
-  findUserByEmailFromSql,
   resolveViewerUser,
   updateViewerDisplayName,
 } from "./chat/plugins/viewer";
