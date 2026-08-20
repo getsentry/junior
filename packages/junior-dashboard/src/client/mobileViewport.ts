@@ -11,14 +11,24 @@ export const composerDockPaddingProperty =
 // Ignore small visualViewport shrink from rubber-band and transient chrome.
 // Real software keyboards reduce height by much more than this.
 const KEYBOARD_OPEN_HEIGHT_DELTA_PX = 100;
+// Ignore tiny visual offset jitter before the real iOS keyboard dock arrives.
+// Real first-focus docks are far larger than rubber-band noise.
+const MIN_FIRST_DOCK_OFFSET_PX = 24;
 // Tight closed/open pad. Safe-area is intentionally omitted: with
 // viewport-fit=cover + visualViewport shell docking, env(safe-area-inset-bottom)
 // stacks a large home-indicator gap (and Safari often keeps it while the
 // keyboard is open: https://bugs.webkit.org/show_bug.cgi?id=217754).
 const COMPOSER_DOCK_PADDING = "0.375rem";
 
+/** How the browser is resizing while the software keyboard is open. */
+export type MobileViewportKeyboardMode =
+  | "closed"
+  | "resizes-content"
+  | "resizes-visual";
+
 export type MobileViewportMetrics = {
   heightPx: number;
+  keyboardMode: MobileViewportKeyboardMode;
   keyboardOpen: boolean;
   offsetTopPx: number;
 };
@@ -100,6 +110,7 @@ export function mobileViewportMetrics(input: {
   if (!keyboardOpen) {
     return {
       heightPx: layoutHeight,
+      keyboardMode: "closed",
       keyboardOpen: false,
       offsetTopPx: 0,
     };
@@ -107,6 +118,9 @@ export function mobileViewportMetrics(input: {
 
   return {
     heightPx: visualHeight,
+    // Prefer the visual-only path when both signals could match. Safari keeps
+    // layout tall; Chrome with resizes-content shrinks both together.
+    keyboardMode: resizesVisualOpen ? "resizes-visual" : "resizes-content",
     keyboardOpen: true,
     offsetTopPx: visualOffsetTop,
   };
@@ -132,16 +146,20 @@ export function nextRestingLayoutHeight(input: {
  *
  * Contract while an editor is focused and the keyboard is open:
  * 1. Always follow keyboard **resize** (height/offset animation).
- * 2. Accept the **first** positive offset from any other source when the shell
- *    is still undocked (`previousOffsetTop === 0`). iOS often delivers that
- *    first dock as scroll after a zero-offset resize.
- * 3. Freeze later non-resize sources so caret pans do not chase the shell.
+ * 2. `resizes-visual` (Safari): accept the first significant non-resize offset
+ *    while still undocked. iOS often delivers that first dock as scroll after a
+ *    zero-offset resize. Tiny jitter below `MIN_FIRST_DOCK_OFFSET_PX` is ignored
+ *    so it cannot lock out the real dock.
+ * 3. `resizes-content` (Chrome meta): offset 0 is the steady open geometry.
+ *    Freeze every non-resize source so caret pans cannot move the shell.
+ * 4. Freeze later non-resize sources after the first real dock.
  *
  * After blur / closed keyboard, snap offset to 0 even if a stale visual offset
  * remains for a frame.
  */
 export function mobileViewportOffsetTop(input: {
   editableFocused: boolean;
+  keyboardMode: MobileViewportKeyboardMode;
   keyboardOpen: boolean;
   nextOffsetTop: number;
   previousOffsetTop: number;
@@ -151,9 +169,18 @@ export function mobileViewportOffsetTop(input: {
     if (input.source === "resize") {
       return input.nextOffsetTop;
     }
-    // First dock handoff: height may open with offset 0, then scroll/focus/
-    // measure reports the real visual top. Accept once, then freeze.
-    if (input.previousOffsetTop === 0 && input.nextOffsetTop > 0) {
+    // Chrome resizes-content keeps offset at 0 while open. A later caret pan
+    // must not be mistaken for an undocked first-dock handoff.
+    if (input.keyboardMode === "resizes-content") {
+      return input.previousOffsetTop;
+    }
+    // Safari resizes-visual first dock: height may open with offset 0, then
+    // scroll/focus/measure reports the real visual top. Require a real dock
+    // size so jitter cannot freeze the shell before the keyboard settles.
+    if (
+      input.previousOffsetTop === 0 &&
+      input.nextOffsetTop >= MIN_FIRST_DOCK_OFFSET_PX
+    ) {
       return input.nextOffsetTop;
     }
     return input.previousOffsetTop;
@@ -280,6 +307,7 @@ export function useMobileViewportHeight(
         }
         const offsetTopPx = mobileViewportOffsetTop({
           editableFocused,
+          keyboardMode: metrics.keyboardMode,
           keyboardOpen: metrics.keyboardOpen,
           nextOffsetTop: metrics.offsetTopPx,
           previousOffsetTop: appliedOffsetTopPx,
