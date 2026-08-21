@@ -36,6 +36,11 @@ export async function prepareWorkspace(
     paths.add(key);
   }
 
+  const gitEnv = {
+    GIT_CONFIG_GLOBAL: "/dev/null",
+    GIT_CONFIG_NOSYSTEM: "1",
+  };
+
   for (const { owner, name, path, repo } of repos) {
     const parent = path.includes("/")
       ? path.slice(0, path.lastIndexOf("/"))
@@ -58,9 +63,20 @@ export async function prepareWorkspace(
       cmd: "git",
       args: ["-C", path, "rev-parse", "--is-inside-work-tree"],
       cwd: ctx.sandbox.root,
+      env: gitEnv,
     });
-    const upstream =
+    const branch =
       worktree.exitCode === 0
+        ? await ctx.sandbox.run({
+            cmd: "git",
+            args: ["-C", path, "symbolic-ref", "--quiet", "--short", "HEAD"],
+            cwd: ctx.sandbox.root,
+            env: gitEnv,
+          })
+        : undefined;
+    const branchName = branch?.stdout.trim();
+    const upstream =
+      branch?.exitCode === 0 && branchName
         ? await ctx.sandbox.run({
             cmd: "git",
             args: [
@@ -71,6 +87,7 @@ export async function prepareWorkspace(
               "@{upstream}",
             ],
             cwd: ctx.sandbox.root,
+            env: gitEnv,
           })
         : undefined;
     const upstreamRef = upstream?.stdout.trim();
@@ -78,43 +95,110 @@ export async function prepareWorkspace(
     const upstreamBranch = upstreamRef?.startsWith(upstreamPrefix)
       ? upstreamRef.slice(upstreamPrefix.length)
       : undefined;
-    const branch =
-      worktree.exitCode === 0 && !upstreamBranch
-        ? await ctx.sandbox.run({
-            cmd: "git",
-            args: ["-C", path, "symbolic-ref", "--quiet", "--short", "HEAD"],
-            cwd: ctx.sandbox.root,
-          })
-        : undefined;
-    const branchName = upstreamBranch || branch?.stdout.trim();
     if (worktree.exitCode === 0 && branchName) {
-      const remoteRef = `${upstreamPrefix}${branchName}`;
-      // Existing Workspace checkouts keep setup outputs under ignored paths.
-      // Pin origin before network access, then reset the tracked tree without
-      // wiping those installs. The explicit refspec ignores snapshot config.
+      const remoteBranch = upstreamBranch || branchName;
+      const remoteRef = `${upstreamPrefix}${remoteBranch}`;
+      // Build trusted Git metadata outside the checkout before replacing the
+      // snapshot metadata. This keeps ignored setup outputs without running
+      // snapshot hooks or filters during credentialed Git commands.
+      const tempDir = await ctx.sandbox.run({
+        cmd: "mktemp",
+        args: ["-d", `${ctx.sandbox.juniorRoot}/workspace-refresh.XXXXXX`],
+        cwd: ctx.sandbox.root,
+      });
+      const refreshGitDir = tempDir.stdout.trim();
+      if (tempDir.exitCode !== 0 || !refreshGitDir) {
+        throw new Error(
+          `GitHub workspace refresh temp directory failed for ${repo}: ${tempDir.stderr.trim() || `exit ${tempDir.exitCode}`}`,
+        );
+      }
       for (const args of [
-        ["-C", path, "config", "--replace-all", "remote.origin.url", cloneUrl],
         [
-          "-C",
+          "--git-dir",
+          refreshGitDir,
+          "--work-tree",
+          path,
+          "init",
+          "--quiet",
+          "--initial-branch",
+          branchName,
+        ],
+        [
+          "--git-dir",
+          refreshGitDir,
+          "--work-tree",
+          path,
+          "remote",
+          "add",
+          "origin",
+          cloneUrl,
+        ],
+        [
+          "--git-dir",
+          refreshGitDir,
+          "--work-tree",
           path,
           "fetch",
           "--quiet",
           "origin",
-          `+refs/heads/${branchName}:${remoteRef}`,
+          `+refs/heads/${remoteBranch}:${remoteRef}`,
         ],
-        ["-C", path, "reset", "--hard", remoteRef],
-        ["-C", path, "clean", "-fd"],
+        [
+          "--git-dir",
+          refreshGitDir,
+          "--work-tree",
+          path,
+          "reset",
+          "--hard",
+          remoteRef,
+        ],
+        [
+          "--git-dir",
+          refreshGitDir,
+          "--work-tree",
+          path,
+          "branch",
+          `--set-upstream-to=origin/${remoteBranch}`,
+          branchName,
+        ],
       ]) {
         const result = await ctx.sandbox.run({
           cmd: "git",
           args,
           cwd: ctx.sandbox.root,
+          env: gitEnv,
         });
         if (result.exitCode !== 0) {
           throw new Error(
             `GitHub workspace refresh failed for ${repo}: ${result.stderr.trim() || `exit ${result.exitCode}`}`,
           );
         }
+      }
+      for (const [cmd, args] of [
+        ["rm", ["-rf", "--", `${path}/.git`]],
+        ["mv", ["--", refreshGitDir, `${path}/.git`]],
+      ] as const) {
+        const result = await ctx.sandbox.run({
+          cmd,
+          args: [...args],
+          cwd: ctx.sandbox.root,
+        });
+        if (result.exitCode !== 0) {
+          throw new Error(
+            `GitHub workspace metadata replacement failed for ${repo}: ${result.stderr.trim() || `exit ${result.exitCode}`}`,
+          );
+        }
+      }
+      const clean = await ctx.sandbox.run({
+        cmd: "git",
+        args: ["-C", path, "clean", "-fd"],
+        cwd: ctx.sandbox.root,
+        env: gitEnv,
+      });
+      if (clean.exitCode !== 0) {
+        throw new Error(
+          `GitHub workspace refresh failed for ${repo}: ${clean.stderr.trim() || `exit ${clean.exitCode}`}`,
+        );
       }
       continue;
     }
@@ -138,6 +222,7 @@ export async function prepareWorkspace(
       cmd: "git",
       args: ["clone", "--quiet", "--", cloneUrl, path],
       cwd: ctx.sandbox.root,
+      env: gitEnv,
     });
     if (result.exitCode !== 0) {
       throw new Error(

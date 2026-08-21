@@ -1351,9 +1351,7 @@ Conversation: \`local:test:old-conversation\`
       number: 660,
       url: "https://github.com/getsentry/junior/issues/660",
       subscribable: {
-        suggestedEvents: expect.arrayContaining([
-          "pull_request.checks.failed",
-        ]),
+        suggestedEvents: expect.arrayContaining(["pull_request.checks.failed"]),
       },
     });
     expect(result).not.toHaveProperty("subscription");
@@ -3047,7 +3045,16 @@ Conversation: \`local:test:old-conversation\`
         "repos/junior",
       ],
     ]);
-    expect(runs.every((run) => run.env === undefined)).toBe(true);
+    expect(runs.filter((run) => run.env)).toHaveLength(4);
+    expect(
+      runs
+        .filter((run) => run.env)
+        .every(
+          (run) =>
+            run.env?.GIT_CONFIG_GLOBAL === "/dev/null" &&
+            run.env.GIT_CONFIG_NOSYSTEM === "1",
+        ),
+    ).toBe(true);
   });
 
   it("refreshes an existing workspace repository from its configured origin branch", async () => {
@@ -3063,14 +3070,30 @@ Conversation: \`local:test:old-conversation\`
         async readFile() {
           return null;
         },
-        async run(input: { args?: string[] }) {
+        async run(input: {
+          args?: string[];
+          cmd?: string;
+          env?: Record<string, string>;
+        }) {
           runs.push(input.args ?? []);
+          if (input.cmd === "git") {
+            expect(input.env).toEqual({
+              GIT_CONFIG_GLOBAL: "/dev/null",
+              GIT_CONFIG_NOSYSTEM: "1",
+            });
+          }
           return {
             exitCode: 0,
             stderr: "",
-            stdout: input.args?.includes("--symbolic-full-name")
-              ? "refs/remotes/origin/stable\n"
-              : "",
+            stdout: input.args?.includes("symbolic-ref")
+              ? "feature\n"
+              : input.args?.includes("--symbolic-full-name")
+                ? "refs/remotes/origin/stable\n"
+                : input.args?.includes(
+                      "/vercel/sandbox/.junior/workspace-refresh.XXXXXX",
+                    )
+                  ? "/vercel/sandbox/.junior/workspace-refresh.test\n"
+                  : "",
           };
         },
         async writeFile() {},
@@ -3082,6 +3105,7 @@ Conversation: \`local:test:old-conversation\`
     expect(runs).toEqual([
       ["-p", "--", "repos"],
       ["-C", "repos/junior", "rev-parse", "--is-inside-work-tree"],
+      ["-C", "repos/junior", "symbolic-ref", "--quiet", "--short", "HEAD"],
       [
         "-C",
         "repos/junior",
@@ -3089,28 +3113,64 @@ Conversation: \`local:test:old-conversation\`
         "--symbolic-full-name",
         "@{upstream}",
       ],
+      ["-d", "/vercel/sandbox/.junior/workspace-refresh.XXXXXX"],
       [
-        "-C",
+        "--git-dir",
+        "/vercel/sandbox/.junior/workspace-refresh.test",
+        "--work-tree",
         "repos/junior",
-        "config",
-        "--replace-all",
-        "remote.origin.url",
+        "init",
+        "--quiet",
+        "--initial-branch",
+        "feature",
+      ],
+      [
+        "--git-dir",
+        "/vercel/sandbox/.junior/workspace-refresh.test",
+        "--work-tree",
+        "repos/junior",
+        "remote",
+        "add",
+        "origin",
         "https://github.com/getsentry/junior.git",
       ],
       [
-        "-C",
+        "--git-dir",
+        "/vercel/sandbox/.junior/workspace-refresh.test",
+        "--work-tree",
         "repos/junior",
         "fetch",
         "--quiet",
         "origin",
         "+refs/heads/stable:refs/remotes/origin/stable",
       ],
-      ["-C", "repos/junior", "reset", "--hard", "refs/remotes/origin/stable"],
+      [
+        "--git-dir",
+        "/vercel/sandbox/.junior/workspace-refresh.test",
+        "--work-tree",
+        "repos/junior",
+        "reset",
+        "--hard",
+        "refs/remotes/origin/stable",
+      ],
+      [
+        "--git-dir",
+        "/vercel/sandbox/.junior/workspace-refresh.test",
+        "--work-tree",
+        "repos/junior",
+        "branch",
+        "--set-upstream-to=origin/stable",
+        "feature",
+      ],
+      ["-rf", "--", "repos/junior/.git"],
+      [
+        "--",
+        "/vercel/sandbox/.junior/workspace-refresh.test",
+        "repos/junior/.git",
+      ],
       ["-C", "repos/junior", "clean", "-fd"],
     ]);
-    expect(
-      runs.some((args) => args[0] === "clone" || args.includes("-rf")),
-    ).toBe(false);
+    expect(runs.some((args) => args[0] === "clone")).toBe(false);
   });
 
   it("refreshes a valid checkout without an upstream and preserves setup outputs", async () => {
@@ -3134,7 +3194,13 @@ Conversation: \`local:test:old-conversation\`
           return {
             exitCode: 0,
             stderr: "",
-            stdout: input.args?.includes("symbolic-ref") ? "feature\n" : "",
+            stdout: input.args?.includes("symbolic-ref")
+              ? "feature\n"
+              : input.args?.includes(
+                    "/vercel/sandbox/.junior/workspace-refresh.XXXXXX",
+                  )
+                ? "/vercel/sandbox/.junior/workspace-refresh.test\n"
+                : "",
           };
         },
         async writeFile() {},
@@ -3144,7 +3210,9 @@ Conversation: \`local:test:old-conversation\`
     await githubPlugin().hooks?.workspacePrepare?.(ctx);
 
     expect(runs).toContainEqual([
-      "-C",
+      "--git-dir",
+      "/vercel/sandbox/.junior/workspace-refresh.test",
+      "--work-tree",
       "repos/junior",
       "fetch",
       "--quiet",
@@ -3152,13 +3220,24 @@ Conversation: \`local:test:old-conversation\`
       "+refs/heads/feature:refs/remotes/origin/feature",
     ]);
     expect(runs).toContainEqual([
-      "-C",
+      "--git-dir",
+      "/vercel/sandbox/.junior/workspace-refresh.test",
+      "--work-tree",
       "repos/junior",
       "reset",
       "--hard",
       "refs/remotes/origin/feature",
     ]);
-    expect(runs.some((args) => args.includes("-rf"))).toBe(false);
+    expect(runs).toContainEqual([
+      "--git-dir",
+      "/vercel/sandbox/.junior/workspace-refresh.test",
+      "--work-tree",
+      "repos/junior",
+      "branch",
+      "--set-upstream-to=origin/feature",
+      "feature",
+    ]);
+    expect(runs).not.toContainEqual(["-rf", "--", "repos/junior"]);
   });
 
   it("clones a missing workspace repository after detecting no worktree", async () => {
