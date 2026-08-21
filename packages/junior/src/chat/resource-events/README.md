@@ -41,6 +41,11 @@ conversation.
   task-execution wake-up. Resource-event identity constants and detection live
   in `actor.ts` (`RESOURCE_EVENT_SYSTEM_ACTOR`, synthetic Slack author id, and
   message markers). Live and resume paths both execute as that system actor.
+- Notification text stays short and uses plain language: what the update is
+  about, the instructions for this update, a verified summary and details, and
+  external text. When the agent replies, it should say what changed and what it
+  did or needs next. Stable handling rules live in runtime and docs, not a long
+  per-event prompt (`notification.ts`).
 - A subscription selector is one Slack workspace, one namespace, one
   identifier, and one or more event types. `resourceType` and `label` are
   presentation metadata, not match keys.
