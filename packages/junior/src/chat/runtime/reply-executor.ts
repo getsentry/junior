@@ -70,6 +70,7 @@ import { buildDeliveredTurnStatePatch } from "@/chat/runtime/delivered-turn-stat
 import { getTurnRequestDeadline } from "@/chat/runtime/request-deadline";
 import { completeAuthPauseTurn } from "@/chat/runtime/auth-pause-state";
 import type { PreparedTurnState } from "@/chat/runtime/turn-preparation";
+import { toConversationMessage } from "@/chat/runtime/conversation-message";
 import {
   type PrepareTurnStateInput,
   type QueuedTurnMessage,
@@ -630,10 +631,29 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
         const resolveSteeringMessages = async (
           queuedMessages: QueuedTurnMessage[],
         ): Promise<AgentSteeringMessage[]> => {
+          let stampedResourceEvent = false;
           for (const queued of queuedMessages) {
             if (isResourceEventSlackMessage(queued.message)) {
               contributingResourceEvents.set(queued.message.id, queued.message);
+              // Stamp mid-turn resource events into the durable transcript so
+              // resume can rebuild multi-update Slack chrome the same way the
+              // live path does from the mailbox Map.
+              upsertConversationMessage(
+                preparedState.conversation,
+                toConversationMessage({
+                  entry: queued.message,
+                  explicitMention: queued.explicitMention,
+                  text: queued.userText,
+                }),
+              );
+              stampedResourceEvent = true;
             }
+          }
+          if (stampedResourceEvent && conversationId) {
+            await persistConversationMessages({
+              conversation: preparedState.conversation,
+              conversationId,
+            });
           }
           return await Promise.all(
             queuedMessages.map(async (queued) => {
