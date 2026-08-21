@@ -48,7 +48,8 @@ conversation.
 - Visible Slack replies show compact plain-language context. One update shows
   its verified summary. A turn with several updates shows the latest summary
   and the total count. The summary is stamped on the synthetic mailbox message
-  so live and queued input use the same reply context.
+  and on durable conversation message meta so live, queued, and resumed turns
+  use the same reply context.
 - A subscription selector is one Slack workspace, one namespace, one
   identifier, and one or more event types. `resourceType` and `label` are
   presentation metadata, not match keys.

@@ -31,6 +31,14 @@ interface ResourceEventSlackMessage {
   raw?: unknown;
 }
 
+/** Live mailbox message or durable conversation message with event markers. */
+interface ResourceEventAttributionMessage {
+  author?: { userId?: string };
+  id?: string;
+  meta?: { eventType?: string; summary?: string };
+  raw?: unknown;
+}
+
 function resourceEventRaw(
   message: ResourceEventSlackMessage,
 ): Record<string, unknown> | undefined {
@@ -39,7 +47,14 @@ function resourceEventRaw(
     : undefined;
 }
 
-function resourceEventSummary(message: ResourceEventSlackMessage): string {
+function resourceEventSummary(message: ResourceEventAttributionMessage): string {
+  const metaSummary =
+    typeof message.meta?.summary === "string"
+      ? oneLine(message.meta.summary, 128)
+      : "";
+  if (metaSummary) {
+    return metaSummary;
+  }
   const raw = resourceEventRaw(message);
   const summary =
     typeof raw?.resource_event_summary === "string"
@@ -53,11 +68,20 @@ function resourceEventSummary(message: ResourceEventSlackMessage): string {
     : "";
 }
 
+function isResourceEventAttributionMessage(
+  message: ResourceEventAttributionMessage,
+): boolean {
+  return (
+    isResourceEventSlackMessage(message) ||
+    isResourceEventConversationMessage(message)
+  );
+}
+
 /** Build plain Slack context for every resource event that contributed to a turn. */
 export function replyAttributionForResourceEventMessages(
-  messages: readonly ResourceEventSlackMessage[],
+  messages: readonly ResourceEventAttributionMessage[],
 ): ReplyAttribution | undefined {
-  const events = messages.filter(isResourceEventSlackMessage);
+  const events = messages.filter(isResourceEventAttributionMessage);
   if (events.length === 0) {
     return undefined;
   }

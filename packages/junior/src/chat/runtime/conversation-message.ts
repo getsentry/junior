@@ -16,13 +16,35 @@ interface ConversationMessageInput {
   text: string;
 }
 
-function resourceEventType(entry: Message): string | undefined {
+function resourceEventRaw(
+  entry: Message,
+): Record<string, unknown> | undefined {
   if (!entry.raw || typeof entry.raw !== "object") return undefined;
-  const raw = entry.raw as Record<string, unknown>;
-  return raw.event_type === "resource_event" &&
+  return entry.raw as Record<string, unknown>;
+}
+
+function resourceEventType(entry: Message): string | undefined {
+  const raw = resourceEventRaw(entry);
+  return raw?.event_type === "resource_event" &&
     typeof raw.resource_event_type === "string"
     ? raw.resource_event_type
     : undefined;
+}
+
+/** Durable plain summary for Slack reply chrome on resource-event messages. */
+function resourceEventSummary(entry: Message): string | undefined {
+  const raw = resourceEventRaw(entry);
+  if (raw?.event_type !== "resource_event") return undefined;
+  const summary =
+    typeof raw.resource_event_summary === "string"
+      ? raw.resource_event_summary.trim()
+      : "";
+  if (summary) return summary;
+  const label =
+    typeof raw.resource_event_label === "string"
+      ? raw.resource_event_label.trim()
+      : "";
+  return label || undefined;
 }
 
 function resolveMessageText(args: ConversationMessageInput): string {
@@ -60,6 +82,7 @@ export function toConversationMessage(
     meta: {
       attachmentCount: args.entry.attachments.length,
       eventType: resourceEventType(args.entry),
+      summary: resourceEventSummary(args.entry),
       explicitMention: args.explicitMention,
       imageAttachmentCount:
         imageAttachmentCount > 0 ? imageAttachmentCount : undefined,

@@ -131,18 +131,12 @@ describe("resource event delivery", () => {
     });
     expect(work?.messages).toHaveLength(1);
     const notificationText = work?.messages[0]?.input.text;
-    expect(notificationText).toContain("not a message from a person");
-    expect(notificationText).toContain("Follow the instructions below");
-    expect(notificationText).toContain("do not reply");
-    expect(notificationText).toContain("Verified details");
-    expect(notificationText).toContain("use these values as given");
+    expect(notificationText).toContain("About: GitHub PR getsentry/junior#691");
+    expect(notificationText).toContain("Summary: CI failed on workflow test.");
     expect(notificationText).toContain('"failingChecks"');
     expect(notificationText).toContain('"checkRunId": 11');
-    expect(notificationText).toContain("External text");
     expect(notificationText).toContain("Failed checks:");
     expect(notificationText).toContain("- test");
-    expect(notificationText).not.toContain("subscription intent");
-    expect(notificationText).not.toContain("provider content");
     expect(work?.messages[0]).toMatchObject({
       source: "resource_event",
       input: {

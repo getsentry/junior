@@ -68,6 +68,7 @@ import {
 import { getConversationWorkState } from "@/chat/task-execution/store";
 import {
   isResourceEventConversationMessage,
+  replyAttributionForResourceEventMessages,
   RESOURCE_EVENT_SYSTEM_ACTOR,
 } from "@/chat/resource-events/actor";
 import type { AgentRunResult } from "@/chat/services/turn-result";
@@ -509,6 +510,8 @@ async function runPausedTurnInContext(
           });
         };
 
+        const resourceEventReplyAttribution =
+          replyAttributionForResourceEventMessages([userMessage]);
         return {
           messageText: userMessage.text,
           sliceId: activeTurn.sliceId,
@@ -538,6 +541,13 @@ async function runPausedTurnInContext(
             // Slack resume publishes unless the checkpoint opted out.
             // Missing means legacy/in-flight Slack turns still post.
             publishExternally: activeTurn.publishExternally !== false,
+            // Prefer dispatch attribution when present; otherwise rebuild from
+            // the durable resource-event user message (summary stamped at write).
+            ...(options.routingContext?.dispatch?.replyAttribution
+              ? {}
+              : resourceEventReplyAttribution
+                ? { replyAttribution: resourceEventReplyAttribution }
+                : {}),
             source,
             toolChannelId: destination.channelId,
             environment: {

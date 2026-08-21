@@ -15,6 +15,11 @@ export interface ConversationMessageMeta {
   /** Known message provenance. Omit when unknown; never invent a default. */
   source?: "slack" | "web";
   eventType?: string;
+  /**
+   * Plain verified summary for a resource-event message. Used for Slack reply
+   * chrome on live and resumed turns. Omit when the message is not an event.
+   */
+  summary?: string;
   explicitMention?: boolean;
   imageAttachmentCount?: number;
   imageFileIds?: string[];

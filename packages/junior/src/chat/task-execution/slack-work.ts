@@ -405,9 +405,11 @@ const slackConversationMessageMetadataSchema = z.union([
           eventType: z.string(),
           namespace: z.string(),
           identifier: z.string(),
-          label: z.string(),
+          // TODO(v0.171.0): Require label/summary after in-flight pre-framing mailbox
+          // rows have drained. Writers always set both for new events.
+          label: z.string().optional(),
           subscriptionId: z.string(),
-          summary: z.string(),
+          summary: z.string().optional(),
         })
         .strict(),
     })
