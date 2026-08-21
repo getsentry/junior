@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { TurnInputCommitLostError } from "@/chat/runtime/turn";
 import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
 import { createProviderError } from "@/chat/services/provider-error";
@@ -21,6 +21,10 @@ import {
   neverRunAgentRunner,
 } from "../../fixtures/agent-runner";
 import { createModelStream } from "../../fixtures/model-stream";
+import {
+  getCapturedSlackApiCalls,
+  resetSlackApiMockState,
+} from "../../msw/handlers/slack-api";
 
 const emptyThreadReplies = async () => [];
 
@@ -63,6 +67,12 @@ function replyForRun(selectText: (run: AgentRun) => string) {
 }
 
 describe("Slack behavior: subscribed messages", () => {
+  beforeEach(() => {
+    process.env.SLACK_BOT_TOKEN =
+      process.env.SLACK_BOT_TOKEN ?? "xoxb-test-token";
+    resetSlackApiMockState();
+  });
+
   it("skips reply when classifier says not to reply", async () => {
     const classifierCalls: string[] = [];
 
@@ -143,9 +153,11 @@ describe("Slack behavior: subscribed messages", () => {
     expect(thread.posts).toHaveLength(0);
   });
 
-  it("runs resource-event notifications as system actor turns", async () => {
+  it("runs resource-event notifications as system actor turns with Slack chrome", async () => {
     let classifierCalled = false;
     const agentRuns: AgentRun[] = [];
+    const summary =
+      "GitHub PR getsentry/junior#691 received a review comment.";
 
     const { slackRuntime } = createTestChatRuntime({
       services: {
@@ -165,11 +177,13 @@ describe("Slack behavior: subscribed messages", () => {
     });
 
     const thread = await createTestThread({
+      // Real Slack adapter name so reply-executor posts through sendSlackReply.
+      adapterName: "slack",
       id: "slack:C0BEHAVIOR:1700002000.002",
     });
     const message = createTestMessage({
       id: "resource-event-resub-1-check-suite-1",
-      text: "[event notification]\n\nA subscribed resource changed.\n\nHandling:\n- Stay concise.",
+      text: "[automated update]\n\nAbout: GitHub PR getsentry/junior#691\nSummary: GitHub PR getsentry/junior#691 received a review comment.",
       isMention: false,
       threadId: thread.id,
       author: {
@@ -181,6 +195,9 @@ describe("Slack behavior: subscribed messages", () => {
       raw: {
         channel: "C0BEHAVIOR",
         event_type: "resource_event",
+        resource_event_label: "GitHub PR getsentry/junior#691",
+        resource_event_summary: summary,
+        resource_event_type: "pull_request.review_comment.created",
         thread_ts: "1700002000.002",
         ts: "resource-event-resub-1-check-suite-1",
         type: "message",
@@ -203,7 +220,25 @@ describe("Slack behavior: subscribed messages", () => {
         actor: { platform: "system", name: "resource-event" },
       }),
     ]);
-    expect(thread.posts).toHaveLength(1);
+    expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([
+      expect.objectContaining({
+        params: expect.objectContaining({
+          channel: "C0BEHAVIOR",
+          text: expect.stringContaining(`Update · ${summary}`),
+          blocks: expect.arrayContaining([
+            expect.objectContaining({
+              type: "context",
+              elements: expect.arrayContaining([
+                expect.objectContaining({
+                  type: "plain_text",
+                  text: `Update · ${summary}`,
+                }),
+              ]),
+            }),
+          ]),
+        }),
+      }),
+    ]);
     const conversation = coerceThreadConversationState(
       (await thread.state) ?? {},
     );
@@ -214,7 +249,9 @@ describe("Slack behavior: subscribed messages", () => {
     expect(conversation.messages).toContainEqual(
       expect.objectContaining({
         id: "resource-event-resub-1-check-suite-1",
-        text: "[event notification]\n\nA subscribed resource changed.\n\nHandling:\n- Stay concise.",
+        meta: expect.objectContaining({
+          summary,
+        }),
       }),
     );
     expect(conversation.messages).toContainEqual(

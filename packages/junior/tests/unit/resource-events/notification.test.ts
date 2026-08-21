@@ -3,7 +3,6 @@ import { renderResourceEventNotificationText } from "@/chat/resource-events/noti
 import {
   isResourceEventSlackMessage,
   replyAttributionForResourceEventMessages,
-  resourceEventMessagesForResume,
 } from "@/chat/resource-events/actor";
 
 describe("resource event notification framing", () => {
@@ -141,62 +140,5 @@ describe("resource event notification framing", () => {
     expect(attribution?.detail).toMatch(/\(\+1 more\)$/);
     expect(attribution?.detail?.length).toBeLessThanOrEqual(128);
     expect(attribution?.detail).not.toMatch(/\(\+1 m$/);
-  });
-
-  it("rebuilds multi-update chrome from durable turn inputs on resume", () => {
-    const messages = resourceEventMessagesForResume({
-      conversationMessages: [
-        {
-          id: "event-queued",
-          role: "user",
-          author: { userId: "UJRNEVENT" },
-          meta: {
-            eventType: "pull_request.checks.failed",
-            summary: "Checks failed.",
-          },
-        },
-        {
-          id: "event-primary",
-          role: "user",
-          author: { userId: "UJRNEVENT" },
-          meta: {
-            eventType: "pull_request.review.commented",
-            summary: "A review comment was added.",
-          },
-        },
-        {
-          id: "event-mid-turn",
-          role: "user",
-          author: { userId: "UJRNEVENT" },
-          meta: {
-            eventType: "pull_request.review.approved",
-            summary: "The pull request was approved.",
-          },
-        },
-        {
-          id: "turn_event-primary:assistant:1",
-          role: "assistant",
-        },
-        {
-          id: "event-next-turn",
-          role: "user",
-          author: { userId: "UJRNEVENT" },
-          meta: {
-            eventType: "pull_request.merged",
-            summary: "The pull request was merged.",
-          },
-        },
-      ],
-      startedInputIds: ["event-queued", "event-primary"],
-      turnId: "turn_event-primary",
-      userMessageId: "event-primary",
-    });
-
-    expect(
-      replyAttributionForResourceEventMessages(messages),
-    ).toEqual({
-      label: "3 updates",
-      detail: "The pull request was approved. (+2 more)",
-    });
   });
 });

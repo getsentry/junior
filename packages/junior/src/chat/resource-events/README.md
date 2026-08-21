@@ -46,12 +46,10 @@ conversation.
   external text. Stable handling rules live in runtime and docs, not a long
   per-event prompt (`notification.ts`).
 - Visible Slack replies show compact plain-language context. One update shows
-  its verified summary. A turn with several updates shows the latest summary
-  and the total count. The summary is stamped on the synthetic mailbox message
-  and on durable conversation message meta for the initial batch and for
-  mid-turn drains after the matching steer or event-log commit succeeds, so
-  live, queued, and resumed turns use the same reply context and do not count
-  updates the agent never consumed.
+  its verified summary. A live turn with several updates shows the latest
+  summary and the total count from the current mailbox batch. The summary is
+  stamped on the synthetic mailbox message and on durable conversation message
+  meta at turn prep. Resume rebuilds chrome from the primary event input.
 - A subscription selector is one Slack workspace, one namespace, one
   identifier, and one or more event types. `resourceType` and `label` are
   presentation metadata, not match keys.

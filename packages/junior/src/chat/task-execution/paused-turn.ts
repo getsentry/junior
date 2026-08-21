@@ -15,10 +15,7 @@ import {
 import { resumeSlackTurn } from "@/chat/runtime/slack-resume";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { hydrateConversationMessages } from "@/chat/conversations/messages";
-import {
-  loadProjection,
-  loadTurnStarted,
-} from "@/chat/conversations/projection";
+import { loadProjection } from "@/chat/conversations/projection";
 import {
   completeTurnRecord,
   failTurnRecord,
@@ -72,7 +69,6 @@ import { getConversationWorkState } from "@/chat/task-execution/store";
 import {
   isResourceEventConversationMessage,
   replyAttributionForResourceEventMessages,
-  resourceEventMessagesForResume,
   RESOURCE_EVENT_SYSTEM_ACTOR,
 } from "@/chat/resource-events/actor";
 import type { AgentRunResult } from "@/chat/services/turn-result";
@@ -514,31 +510,16 @@ async function runPausedTurnInContext(
           });
         };
 
-        // Rebuild multi-update Slack chrome from every durable input that
-        // started this turn, plus later resource-event messages drained before
-        // the first assistant reply for this turn.
-        const turnStarted = await loadTurnStarted({
-          conversationId: payload.conversationId,
-          turnId: payload.turnId,
-        });
-        const startedInputIds =
-          turnStarted?.inputMessageIds ??
-          options.inputMessageIds ??
-          [userMessage.id];
+        // Resume chrome from the primary turn input only. Live turns may count
+        // additional queued/mid-turn events from the mailbox Map; resume does
+        // not reconstruct that side channel.
         const resourceEventReplyAttribution =
-          replyAttributionForResourceEventMessages(
-            resourceEventMessagesForResume({
-              conversationMessages: conversation.messages,
-              startedInputIds,
-              turnId: payload.turnId,
-              userMessageId: userMessage.id,
-            }),
-          );
+          replyAttributionForResourceEventMessages([userMessage]);
         return {
           messageText: userMessage.text,
           sliceId: activeTurn.sliceId,
           messageTs: getTurnUserSlackMessageTs(userMessage),
-          inputMessageIds: [...startedInputIds],
+          inputMessageIds: [userMessage.id],
           initialStatus: latestReportedProgress(turnMessages),
           replyContext: {
             instruction: {
@@ -564,7 +545,7 @@ async function runPausedTurnInContext(
             // Missing means legacy/in-flight Slack turns still post.
             publishExternally: activeTurn.publishExternally !== false,
             // Prefer dispatch attribution when present; otherwise rebuild from
-            // durable resource-event inputs for this turn.
+            // the primary resource-event input for this turn.
             ...(options.routingContext?.dispatch?.replyAttribution
               ? {}
               : resourceEventReplyAttribution

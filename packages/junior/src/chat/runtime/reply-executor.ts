@@ -70,7 +70,6 @@ import { buildDeliveredTurnStatePatch } from "@/chat/runtime/delivered-turn-stat
 import { getTurnRequestDeadline } from "@/chat/runtime/request-deadline";
 import { completeAuthPauseTurn } from "@/chat/runtime/auth-pause-state";
 import type { PreparedTurnState } from "@/chat/runtime/turn-preparation";
-import { toConversationMessage } from "@/chat/runtime/conversation-message";
 import {
   type PrepareTurnStateInput,
   type QueuedTurnMessage,
@@ -628,40 +627,20 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           }
         };
         let activeTurnId = preparedState.conversation.processing.activeTurnId;
-        /**
-         * After a successful steer / event-log commit, count resource events for
-         * live Slack chrome and stamp them into the durable transcript. Doing
-         * either earlier can make chrome count updates the agent never consumed.
-         */
-        const stampResourceEventsAfterCommit = async (
+        /** Count mid-turn resource events for live Slack chrome only. */
+        const trackResourceEventsForLiveChrome = (
           queuedMessages: QueuedTurnMessage[],
-        ): Promise<void> => {
-          let stamped = false;
+        ): void => {
           for (const queued of queuedMessages) {
-            if (!isResourceEventSlackMessage(queued.message)) {
-              continue;
+            if (isResourceEventSlackMessage(queued.message)) {
+              contributingResourceEvents.set(queued.message.id, queued.message);
             }
-            contributingResourceEvents.set(queued.message.id, queued.message);
-            upsertConversationMessage(
-              preparedState.conversation,
-              toConversationMessage({
-                entry: queued.message,
-                explicitMention: queued.explicitMention,
-                text: queued.userText,
-              }),
-            );
-            stamped = true;
-          }
-          if (stamped && conversationId) {
-            await persistConversationMessages({
-              conversation: preparedState.conversation,
-              conversationId,
-            });
           }
         };
         const resolveSteeringMessages = async (
           queuedMessages: QueuedTurnMessage[],
         ): Promise<AgentSteeringMessage[]> => {
+          trackResourceEventsForLiveChrome(queuedMessages);
           return await Promise.all(
             queuedMessages.map(async (queued) => {
               const attachments = queued.message.attachments;
@@ -791,11 +770,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             message: buildSteeringPiMessage(steering),
             provenance: steering.provenance,
           }));
-          const committed = await drainParkedInputToEventLog(parkedPairs);
-          if (committed) {
-            await stampResourceEventsAfterCommit(parkedMessages);
-          }
-          return committed;
+          return drainParkedInputToEventLog(parkedPairs);
         };
         if (preparedState.userMessageAlreadyReplied) {
           const deliveredMessage = [...preparedState.conversation.messages]
@@ -1253,11 +1228,12 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           // Batched parked input: each explicit-mention message another actor
           // sent before this turn started, drained into it, kept with its own
           // author's provenance so every contributor joins the run's actors.
-          const batchedQueuedMessages = (options.queuedMessages ?? []).filter(
-            (queued) => queued.explicitMention,
-          );
           const batchedInstructions = (
-            await resolveSteeringMessages(batchedQueuedMessages)
+            await resolveSteeringMessages(
+              (options.queuedMessages ?? []).filter(
+                (queued) => queued.explicitMention,
+              ),
+            )
           ).map((steering) => ({
             message: buildSteeringPiMessage(steering),
             provenance: steering.provenance,
@@ -1276,7 +1252,6 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             shouldPersistFailureState = false;
             throw new TurnInputDeferredError();
           }
-          await stampResourceEventsAfterCommit(batchedQueuedMessages);
           if (batchedInstructions.length > 0) {
             // Merge the committed batch into the transcript the model sees. A
             // redelivery reloads the batch from the durable log, so skip any
@@ -1334,20 +1309,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                   async (queuedMessages) => {
                     acceptedMessages =
                       await resolveSteeringMessages(queuedMessages);
-                    // Durable Pi checkpoint + steer first; only then count
-                    // chrome / stamp transcript for resource events. Stamp is
-                    // best-effort after accept: if it throws, the drain must
-                    // still commit so the mailbox does not redeliver and the
-                    // agent does not resteer the same messages.
                     await accept(acceptedMessages);
-                    try {
-                      await stampResourceEventsAfterCommit(queuedMessages);
-                    } catch (error) {
-                      logException(
-                        error,
-                        "resource_events.chrome_stamp.after_steer.failed",
-                      );
-                    }
                   },
                   { conversationContext: preparedState.conversationContext },
                 );

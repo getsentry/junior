@@ -80,58 +80,6 @@ function isResourceEventAttributionMessage(
 
 const REPLY_ATTRIBUTION_DETAIL_MAX = 128;
 
-/**
- * Select durable conversation messages that should rebuild live multi-update
- * Slack chrome after pause/resume.
- */
-export function resourceEventMessagesForResume<T extends ResourceEventAttributionMessage>(args: {
-  conversationMessages: readonly T[];
-  startedInputIds: readonly string[];
-  turnId: string;
-  userMessageId: string;
-}): T[] {
-  const startedIds = new Set(args.startedInputIds);
-  const selected: T[] = [];
-  let seenPrimary = false;
-  const assistantPrefix = `${args.turnId}:assistant:`;
-  for (const message of args.conversationMessages) {
-    if (message.id === args.userMessageId) {
-      seenPrimary = true;
-    }
-    if (message.role === "assistant") {
-      // Stop before this turn's first assistant reply so later-turn inputs
-      // cannot inflate the chrome.
-      if (seenPrimary && typeof message.id === "string" && message.id.startsWith(assistantPrefix)) {
-        break;
-      }
-      continue;
-    }
-    if (message.role !== undefined && message.role !== "user") {
-      continue;
-    }
-    if (!isResourceEventAttributionMessage(message)) {
-      continue;
-    }
-    // Include the initial batch and any resource events drained after the
-    // primary input before the first assistant reply.
-    if (
-      (typeof message.id === "string" && startedIds.has(message.id)) ||
-      seenPrimary
-    ) {
-      selected.push(message);
-    }
-  }
-  if (selected.length === 0) {
-    const primary = args.conversationMessages.find(
-      (message) => message.id === args.userMessageId,
-    );
-    if (primary) {
-      selected.push(primary);
-    }
-  }
-  return selected;
-}
-
 /** Build plain Slack context for every resource event that contributed to a turn. */
 export function replyAttributionForResourceEventMessages(
   messages: readonly ResourceEventAttributionMessage[],
