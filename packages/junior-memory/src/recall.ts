@@ -126,7 +126,7 @@ async function emitRecallOutcome(args: {
 
 const memoryRecallContext = definePromptContext({
   kind: "recall",
-  version: 1,
+  version: 2,
   schema: memoryRecallContextSchema,
   renderPrompt: (content) => renderMemoryPrompt(content.memories),
 });

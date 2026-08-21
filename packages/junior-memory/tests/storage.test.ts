@@ -3870,7 +3870,7 @@ WHERE id = '${superseded.memory.id}'
       }
       expect(contribution.context).toEqual({
         kind: "recall",
-        version: 1,
+        version: 2,
         content: {
           memories: [
             {
@@ -4013,7 +4013,7 @@ WHERE id = '${superseded.memory.id}'
       }
       expect(contribution.context).toEqual({
         kind: "recall",
-        version: 1,
+        version: 2,
         content: {
           memories: [
             {

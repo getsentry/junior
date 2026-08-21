@@ -2,34 +2,57 @@ import { z } from "zod";
 
 import type { TranscriptViewTurnContext } from "../types";
 
-/** Dashboard parser for the first persisted memory recall context version. */
-export const memoryRecallContentSchema = z
+const recalledMemorySchema = z
+  .object({
+    id: z.string(),
+    content: z.string(),
+    observedAtMs: z.number(),
+    kind: z.enum(["preference", "procedure", "knowledge"]),
+  })
+  .strict();
+
+const legacyMemoryRecallContentSchema = z
   .object({
     memories: z.array(
-      z
-        .object({
-          id: z.string(),
-          content: z.string(),
-          observedAtMs: z.number(),
-          scope: z.enum(["private", "public"]),
-          kind: z.enum(["preference", "procedure", "knowledge"]),
-        })
-        .strict(),
+      recalledMemorySchema.extend({
+        scope: z.enum(["personal", "conversation"]),
+      }),
     ),
   })
   .strict();
 
-export type MemoryRecallContent = z.output<typeof memoryRecallContentSchema>;
+/** Dashboard parser for the current persisted memory recall context. */
+export const memoryRecallContentSchema = z
+  .object({
+    memories: z.array(
+      recalledMemorySchema.extend({
+        scope: z.enum(["private", "public"]),
+      }),
+    ),
+  })
+  .strict();
 
-/** Parse the first native memory recall context version. */
+type LegacyMemoryRecallContent = z.output<
+  typeof legacyMemoryRecallContentSchema
+>;
+export type MemoryRecallContent =
+  | LegacyMemoryRecallContent
+  | z.output<typeof memoryRecallContentSchema>;
+
+/** Parse supported native memory recall context versions. */
 export function memoryRecallContent(context: TranscriptViewTurnContext) {
-  if (
-    context.pluginName !== "memory" ||
-    context.kind !== "recall" ||
-    context.version !== 1
-  ) {
+  if (context.pluginName !== "memory" || context.kind !== "recall") {
     return undefined;
   }
-  const parsed = memoryRecallContentSchema.safeParse(context.content);
+  const schema =
+    context.version === 1
+      ? legacyMemoryRecallContentSchema
+      : context.version === 2
+        ? memoryRecallContentSchema
+        : undefined;
+  if (!schema) {
+    return undefined;
+  }
+  const parsed = schema.safeParse(context.content);
   return parsed.success ? parsed.data : undefined;
 }
