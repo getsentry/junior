@@ -98,6 +98,11 @@ describe("conversation archive API", () => {
       ).archivedAt,
     ).toBeNull();
 
+    await getConversationStore().recordActivity({
+      conversationId,
+      nowMs: Date.parse(lastSeenAt) + 1_000,
+      source: "internal",
+    });
     const restore = await app.request(
       `http://localhost/api/conversations/${conversationId}/archive`,
       {

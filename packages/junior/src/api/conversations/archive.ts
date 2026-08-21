@@ -13,25 +13,6 @@ import type {
 } from "../schema/conversation";
 import { readConversationAccessFromSql } from "./access";
 
-async function readRootActivity(args: {
-  lastSeenAt: string;
-  rootConversationId: string;
-}): Promise<"conflict" | "missing" | "ok"> {
-  const [existing] = await getDb()
-    .select({
-      conversationId: juniorConversations.conversationId,
-      lastActivityAt: juniorConversations.lastActivityAt,
-    })
-    .from(juniorConversations)
-    .where(eq(juniorConversations.conversationId, args.rootConversationId))
-    .limit(1);
-  if (!existing) return "missing";
-  if (existing.lastActivityAt.getTime() !== Date.parse(args.lastSeenAt)) {
-    return "conflict";
-  }
-  return "ok";
-}
-
 async function setViewerArchive(args: {
   archived: boolean;
   lastSeenAt: string;
@@ -41,50 +22,59 @@ async function setViewerArchive(args: {
   | { status: "conflict" | "missing" }
   | { archivedAt: string | null; status: "updated" }
 > {
-  const activity = await readRootActivity({
-    lastSeenAt: args.lastSeenAt,
-    rootConversationId: args.rootConversationId,
-  });
-  if (activity !== "ok") return { status: activity };
+  const executor = getSqlExecutor();
+  return await executor.transaction(async () => {
+    const db = executor.db();
+    const [root] = await db
+      .select({ lastActivityAt: juniorConversations.lastActivityAt })
+      .from(juniorConversations)
+      .where(eq(juniorConversations.conversationId, args.rootConversationId))
+      .limit(1)
+      .for("update");
+    if (!root) return { status: "missing" as const };
 
-  if (args.archived) {
-    const archivedAt = new Date();
-    const lastMessageAt = new Date(args.lastSeenAt);
-    await getDb()
-      .insert(juniorConversationParticipants)
-      .values({
-        archivedAt,
-        lastMessageAt,
-        rootConversationId: args.rootConversationId,
-        userId: args.userId,
-      })
-      .onConflictDoUpdate({
-        target: [
-          juniorConversationParticipants.userId,
-          juniorConversationParticipants.rootConversationId,
-        ],
-        set: {
+    if (args.archived) {
+      if (root.lastActivityAt.getTime() !== Date.parse(args.lastSeenAt)) {
+        return { status: "conflict" as const };
+      }
+      const archivedAt = new Date();
+      const lastMessageAt = new Date(args.lastSeenAt);
+      await db
+        .insert(juniorConversationParticipants)
+        .values({
           archivedAt,
-          lastMessageAt: sql`greatest(${juniorConversationParticipants.lastMessageAt}, excluded.last_message_at)`,
-        },
-      });
-    return { archivedAt: archivedAt.toISOString(), status: "updated" };
-  }
+          lastMessageAt,
+          rootConversationId: args.rootConversationId,
+          userId: args.userId,
+        })
+        .onConflictDoUpdate({
+          target: [
+            juniorConversationParticipants.userId,
+            juniorConversationParticipants.rootConversationId,
+          ],
+          set: {
+            archivedAt,
+            lastMessageAt: sql`greatest(${juniorConversationParticipants.lastMessageAt}, excluded.last_message_at)`,
+          },
+        });
+      return { archivedAt: archivedAt.toISOString(), status: "updated" as const };
+    }
 
-  await getDb()
-    .update(juniorConversationParticipants)
-    .set({ archivedAt: null })
-    .where(
-      and(
-        eq(juniorConversationParticipants.userId, args.userId),
-        eq(
-          juniorConversationParticipants.rootConversationId,
-          args.rootConversationId,
+    await db
+      .update(juniorConversationParticipants)
+      .set({ archivedAt: null })
+      .where(
+        and(
+          eq(juniorConversationParticipants.userId, args.userId),
+          eq(
+            juniorConversationParticipants.rootConversationId,
+            args.rootConversationId,
+          ),
+          isNotNull(juniorConversationParticipants.archivedAt),
         ),
-        isNotNull(juniorConversationParticipants.archivedAt),
-      ),
-    );
-  return { archivedAt: null, status: "updated" };
+      );
+    return { archivedAt: null, status: "updated" as const };
+  });
 }
 
 /** Read one viewer's archive timestamp for a conversation root. */
