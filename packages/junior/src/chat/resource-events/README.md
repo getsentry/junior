@@ -41,9 +41,10 @@ conversation.
   task-execution wake-up. Resource-event identity constants and detection live
   in `actor.ts` (`RESOURCE_EVENT_SYSTEM_ACTOR`, synthetic Slack author id, and
   message markers). Live and resume paths both execute as that system actor.
-- Notification text stays short and uses plain language: watch instructions,
-  a verified summary and details, and external text. Stable handling rules live
-  in runtime and docs, not a long per-event prompt (`notification.ts`).
+- Notification text stays short and uses plain language: what the update is
+  about, the instructions for this update, a verified summary and details, and
+  external text. Stable handling rules live in runtime and docs, not a long
+  per-event prompt (`notification.ts`).
 - Visible Slack replies show compact plain-language context. One update shows
   its verified summary. A turn with several updates shows the latest summary
   and the total count. The summary is stamped on the synthetic mailbox message

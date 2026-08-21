@@ -131,8 +131,8 @@ describe("resource event delivery", () => {
     });
     expect(work?.messages).toHaveLength(1);
     const notificationText = work?.messages[0]?.input.text;
-    expect(notificationText).toContain("came from a watch, not a person");
-    expect(notificationText).toContain("watch instructions");
+    expect(notificationText).toContain("not a message from a person");
+    expect(notificationText).toContain("Follow the instructions below");
     expect(notificationText).toContain("do not reply");
     expect(notificationText).toContain("Verified details");
     expect(notificationText).toContain("use these values as given");

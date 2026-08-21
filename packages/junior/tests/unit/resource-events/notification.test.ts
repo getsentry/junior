@@ -20,15 +20,16 @@ describe("resource event notification framing", () => {
     );
 
     expect(text).toContain("[automated update]");
-    expect(text).toContain("came from a watch, not a person");
+    expect(text).toContain("not a message from a person");
     expect(text).toContain("do not reply");
-    expect(text).toContain("GitHub PR getsentry/junior#691");
-    expect(text).toContain("Fix failed checks on this PR.");
-    expect(text).toContain("CI failed on workflow test.");
+    expect(text).toContain("About: GitHub PR getsentry/junior#691");
+    expect(text).toContain("Instructions: Fix failed checks on this PR.");
+    expect(text).toContain("Summary: CI failed on workflow test.");
     expect(text).toContain('"pullRequest": 691');
     expect(text).toContain("External text");
     expect(text).toContain("Failed checks:");
-    expect(text).not.toContain("subscription intent");
+    expect(text).not.toContain("watch");
+    expect(text).not.toContain("subscription");
     expect(text).not.toContain("provider content");
     expect(text).not.toContain("system ids");
     expect(text).not.toContain("pull_request.checks.failed");

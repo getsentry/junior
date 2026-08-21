@@ -42,15 +42,13 @@ export function renderResourceEventNotificationText(
   const lines = [
     "[automated update]",
     "",
-    "This update came from a watch, not a person.",
-    "Use the watch instructions to decide what to do. If they do not call for action or a reply, do not reply.",
+    "This is an automated update, not a message from a person.",
+    "Follow the instructions below. If they do not call for action or a reply, do not reply.",
     "",
-    "Watch:",
-    `- item: ${subscription.label}`,
-    `- instructions: ${subscription.intent}`,
+    `About: ${subscription.label}`,
+    `Instructions: ${subscription.intent}`,
     "",
-    "Update:",
-    `- summary: ${event.trustedSummary}`,
+    `Summary: ${event.trustedSummary}`,
   ];
   if (event.data && Object.keys(event.data).length > 0) {
     lines.push(...renderVerifiedDetails(event.data));
