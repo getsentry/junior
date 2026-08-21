@@ -1,5 +1,7 @@
-import { FileText, Image as ImageIcon } from "lucide-react";
+import { FileText } from "lucide-react";
 
+import { getDashboardAgentName } from "../agentName";
+import { ImageAttachment } from "../components/ImageAttachment";
 import { formatMessageTimestamp } from "../format";
 import type {
   ConversationTranscript,
@@ -10,6 +12,7 @@ import {
   TranscriptHeadingMeta,
   TranscriptHeadingRow,
 } from "./TranscriptHeadingRow";
+import { transcriptMessageClass } from "./TranscriptMessageView";
 import { HighlightText, useTranscriptSearch } from "./transcriptSearch";
 
 function mayDisplayInline(contentType: string): boolean {
@@ -44,45 +47,41 @@ function AttachmentItem(props: {
   const inline = mayDisplayInline(props.attachment.contentType);
   const meta = [props.attachment.contentType, size].join(" · ");
 
+  if (inline && !search.active) {
+    return (
+      <ImageAttachment
+        context={meta}
+        filename={props.attachment.filename}
+        imageClassName="max-h-48 w-auto max-w-full h-auto rounded-md object-contain"
+        loading="lazy"
+        src={href}
+        triggerClassName="block min-w-0 max-w-full"
+      />
+    );
+  }
+
   return (
-    <div className="min-w-0">
-      {inline && !search.active ? (
-        <a
-          className="mb-1.5 inline-block max-w-full overflow-hidden rounded-md bg-black/20"
-          href={href}
-          rel="noreferrer"
-          target="_blank"
-        >
-          <img
-            alt={props.attachment.filename}
-            className="max-h-48 max-w-sm h-auto w-auto object-contain"
-            loading="lazy"
-            src={href}
-          />
-        </a>
-      ) : null}
-      <a
-        className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-2 rounded-md px-1.5 py-1 -mx-1.5 no-underline transition-colors hover:bg-white/[0.04]"
-        download={props.attachment.filename}
-        href={href}
-        rel="noreferrer"
+    <a
+      className="grid min-w-0 w-full max-w-full grid-cols-[auto_minmax(0,1fr)] items-center gap-2 rounded-md px-1.5 py-1 -mx-1.5 no-underline transition-colors hover:bg-white/[0.04]"
+      download={props.attachment.filename}
+      href={href}
+      rel="noreferrer"
+    >
+      <span
+        aria-hidden="true"
+        className="grid size-6 place-items-center text-dashboard-text-muted"
       >
-        <span
-          aria-hidden="true"
-          className="grid size-6 place-items-center text-dashboard-text-muted"
-        >
-          {inline ? <ImageIcon size={13} /> : <FileText size={13} />}
-        </span>
-        <div className="min-w-0">
-          <div className="truncate font-mono text-xs text-dashboard-text">
-            <HighlightText text={props.attachment.filename} />
-          </div>
-          <div className="truncate font-mono text-2xs text-dashboard-text-muted">
-            <HighlightText text={meta} />
-          </div>
+        <FileText size={13} />
+      </span>
+      <div className="min-w-0">
+        <div className="truncate font-mono text-xs text-dashboard-text">
+          <HighlightText text={props.attachment.filename} />
         </div>
-      </a>
-    </div>
+        <div className="truncate font-mono text-2xs text-dashboard-text-muted">
+          <HighlightText text={meta} />
+        </div>
+      </div>
+    </a>
   );
 }
 
@@ -93,27 +92,25 @@ export function TranscriptAttachmentsDeliveredView(props: {
   timestamp?: number;
 }) {
   const timestamp = formatMessageTimestamp(props.timestamp);
-  const count = props.part.attachments.length;
-  const title = count === 1 ? "1 file delivered" : `${count} files delivered`;
 
   return (
-    <article className="min-w-0 rounded-lg bg-white/[0.025] px-3 py-2.5">
+    <article className={transcriptMessageClass("assistant")}>
       <TranscriptHeadingRow
         left={
-          <span className="font-display text-xs font-semibold text-dashboard-text-muted">
-            <HighlightText text={title} />
+          <span className="inline-block max-w-full truncate font-display text-xs font-semibold leading-tight text-cyan-100 md:text-sm">
+            {getDashboardAgentName()}
           </span>
         }
-        leftClassName="min-w-0"
+        leftClassName="text-xs leading-snug text-cyan-100/70"
         right={
           timestamp ? (
-            <TranscriptHeadingMeta className="font-mono text-2xs text-dashboard-text-muted/70 max-md:hidden">
+            <TranscriptHeadingMeta className="text-2xs leading-snug text-dashboard-text-muted/80 md:leading-none">
               {timestamp}
             </TranscriptHeadingMeta>
           ) : undefined
         }
       />
-      <div className="mt-2 grid gap-2">
+      <div className="grid min-w-0 w-full max-w-full gap-2">
         {props.part.attachments.map((attachment) => (
           <AttachmentItem
             attachment={attachment}

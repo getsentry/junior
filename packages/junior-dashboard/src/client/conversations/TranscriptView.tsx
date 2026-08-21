@@ -8,6 +8,7 @@ import { Button } from "../components/Button";
 import { ConversationTranscriptView } from "./ConversationTranscript";
 import {
   transcriptBottomVersion,
+  transcriptJuniorMessageVersion,
   usePinnedTranscriptBottom,
 } from "./transcriptBottomPinning";
 import type { TranscriptViewMode } from "./transcriptRenderModel";
@@ -39,6 +40,7 @@ export function Transcript(props: {
     conversationId: props.transcript?.conversationId,
     enabled: props.live ?? false,
     historyVersion: props.historyVersion ?? "empty",
+    juniorMessageVersion: transcriptJuniorMessageVersion(props.transcript),
     loadingPreviousPage: props.loadingPreviousPage ?? false,
     pinRequestVersion: props.pinRequestVersion,
     version: transcriptBottomVersion(props.transcript),

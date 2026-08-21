@@ -6,7 +6,10 @@ import {
   type DashboardIdentity,
 } from "../../api/schema";
 import { Button } from "../components/Button";
+import { Field } from "../components/Field";
 import { InlineError } from "../components/InlineError";
+import { Card } from "../components/layout/Card";
+import { TextInput } from "../components/TextInput";
 import { patch } from "../http";
 import { dashboardContainerClass } from "../styles";
 import type { DashboardCoreData } from "../types";
@@ -56,46 +59,42 @@ export function SettingsPage({ identity }: SettingsPageProps) {
           Manage how your account appears in the dashboard.
         </p>
 
-        <form
-          className="mt-6 rounded-lg border border-white/15 bg-dashboard-surface-raised p-5"
-          onSubmit={submit}
-        >
-          <h2 className="m-0 text-lg font-bold">Profile</h2>
-          <label
-            className="mt-5 block text-sm font-semibold"
-            htmlFor="display-name"
-          >
-            Display name
-          </label>
-          <input
-            autoComplete="name"
-            className="mt-2 block w-full rounded border border-white/15 bg-black px-3 py-2 text-sm text-dashboard-text focus:border-[#beaaff] focus:outline-none"
-            id="display-name"
-            maxLength={80}
-            onChange={(event) => {
-              setDisplayName(event.target.value);
-              if (updateProfile.isError || updateProfile.isSuccess) {
-                updateProfile.reset();
-              }
-            }}
-            value={displayName}
-          />
-          <p className="mt-2 mb-0 text-xs text-dashboard-text-muted">
-            Your display name is shown with your conversations and activity.
-          </p>
-          <div className="mt-5 flex items-center gap-3">
-            <Button disabled={!canSave} type="submit">
-              {updateProfile.isPending ? "Saving…" : "Save changes"}
-            </Button>
-            {updateProfile.isSuccess ? (
-              <p className="m-0 text-sm text-emerald-300">Changes saved.</p>
-            ) : null}
-            {updateProfile.isError ? (
-              <InlineError>
-                Could not save your display name. Try again.
-              </InlineError>
-            ) : null}
-          </div>
+        <form className="mt-6" onSubmit={submit}>
+          <Card className="mb-0" padding="md" variant="raised">
+            <h2 className="m-0 text-lg font-bold">Profile</h2>
+            <Field
+              className="mt-5"
+              help="Your display name is shown with your conversations and activity."
+              htmlFor="display-name"
+              label="Display name"
+            >
+              <TextInput
+                autoComplete="name"
+                id="display-name"
+                maxLength={80}
+                onChange={(event) => {
+                  setDisplayName(event.target.value);
+                  if (updateProfile.isError || updateProfile.isSuccess) {
+                    updateProfile.reset();
+                  }
+                }}
+                value={displayName}
+              />
+            </Field>
+            <div className="mt-5 flex items-center gap-3">
+              <Button disabled={!canSave} type="submit">
+                {updateProfile.isPending ? "Saving…" : "Save changes"}
+              </Button>
+              {updateProfile.isSuccess ? (
+                <p className="m-0 text-sm text-emerald-300">Changes saved.</p>
+              ) : null}
+              {updateProfile.isError ? (
+                <InlineError>
+                  Could not save your display name. Try again.
+                </InlineError>
+              ) : null}
+            </div>
+          </Card>
         </form>
       </section>
     </div>

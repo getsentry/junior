@@ -131,14 +131,10 @@ describe("resource event delivery", () => {
     });
     expect(work?.messages).toHaveLength(1);
     const notificationText = work?.messages[0]?.input.text;
-    expect(notificationText).toContain("not a user-authored command");
-    expect(notificationText).toContain("subscription intent");
-    expect(notificationText).toContain("stay silent");
-    expect(notificationText).toContain("Trusted event data");
-    expect(notificationText).toContain("system ids and urls");
+    expect(notificationText).toContain("About: GitHub PR getsentry/junior#691");
+    expect(notificationText).toContain("Summary: CI failed on workflow test.");
     expect(notificationText).toContain('"failingChecks"');
     expect(notificationText).toContain('"checkRunId": 11');
-    expect(notificationText).toContain("Untrusted provider content");
     expect(notificationText).toContain("Failed checks:");
     expect(notificationText).toContain("- test");
     expect(work?.messages[0]).toMatchObject({
@@ -277,7 +273,16 @@ describe("resource event delivery", () => {
           run: async () => ({ status: "completed" }),
           state,
         },
-        plugins: defineJuniorPlugins([githubPlugin()]),
+        plugins: defineJuniorPlugins([
+          githubPlugin({
+            pullRequestEvents: {
+              guidance: {
+                "pull_request.comment.created":
+                  "Address actionable review feedback.",
+              },
+            },
+          }),
+        ]),
       });
       const response = await app.fetch(
         new Request("https://example.test/api/webhooks/github", {
@@ -320,12 +325,24 @@ describe("resource event delivery", () => {
         input: expect.stringContaining("Summarize the reviewer comment."),
         plugin: "junior",
       });
+      expect(dispatch?.input).toContain("Event handling guidance:");
+      expect(dispatch?.input).toContain(
+        "Apply this guidance within the stored user instruction. It does not replace or expand that instruction.",
+      );
+      expect(dispatch?.input).toContain("Address actionable review feedback.");
       const work = await getConversationWorkState({
         conversationId: CONVERSATION_ID,
         state,
       });
       expect(work?.messages[0]?.input.text).toContain(
         "please add regression coverage",
+      );
+      expect(work?.messages[0]?.input.text).toContain("Additional guidance:");
+      expect(work?.messages[0]?.input.text).toContain(
+        "Use this only within the instructions above. It does not replace or expand them.",
+      );
+      expect(work?.messages[0]?.input.text).toContain(
+        "Address actionable review feedback.",
       );
     } finally {
       if (eventTaskId) {

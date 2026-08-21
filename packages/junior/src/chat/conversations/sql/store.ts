@@ -685,6 +685,46 @@ export class SqlStore implements ConversationStore {
     return undefined;
   }
 
+  async findSlackDestinationByName(args: {
+    channelName: string;
+    teamId: string;
+  }): Promise<{ channelId: string; channelName?: string } | undefined> {
+    const normalized = args.channelName.trim().replace(/^#/, "").toLowerCase();
+    if (!normalized) {
+      return undefined;
+    }
+
+    // Limit 2 so an ambiguous exact name fails closed instead of guessing.
+    const rows = await this.executor
+      .db()
+      .select({
+        channelId: juniorDestinations.providerDestinationId,
+        channelName: juniorDestinations.displayName,
+      })
+      .from(juniorDestinations)
+      .where(
+        and(
+          eq(juniorDestinations.provider, "slack"),
+          eq(juniorDestinations.providerTenantId, tenantId(args.teamId)),
+          eq(juniorDestinations.kind, "channel"),
+          sql`lower(ltrim(${juniorDestinations.displayName}, '#')) = ${normalized}`,
+        ),
+      )
+      .limit(2);
+
+    if (rows.length !== 1) {
+      return undefined;
+    }
+    const row = rows[0];
+    if (!row?.channelId) {
+      return undefined;
+    }
+    return {
+      channelId: row.channelId,
+      ...(row.channelName ? { channelName: row.channelName } : {}),
+    };
+  }
+
   /** Serialize all durable mutations for one conversation inside a SQL transaction. */
   private async withConversationMutation<T>(
     conversationId: string,

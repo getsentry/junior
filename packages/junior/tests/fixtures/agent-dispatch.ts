@@ -1,39 +1,16 @@
-import { createHmac } from "node:crypto";
 import {
   createSlackSource,
   type ReplyAttribution,
   type Source,
 } from "@sentry/junior-plugin-api";
 import { createOrGetDispatch } from "@/chat/agent-dispatch/store";
-import { buildAgentDispatchInboundMessage } from "@/chat/agent-dispatch/work";
-import type { ConversationWorkerContext } from "@/chat/task-execution/worker";
-import { createSlackRuntime } from "@/chat/app/factory";
+import { createConversationWork } from "@/chat/app/conversation-work";
 import { createJuniorSlackAdapter } from "@/chat/slack/adapter";
 import type { CredentialSubject } from "@/chat/credentials/context";
-import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
-import type { StreamFn } from "@earendil-works/pi-agent-core";
-import { vi } from "vitest";
-import { createModelAgentRunner } from "./agent-runner";
-
-/** Build a rollout-compatible signed dispatch callback request. */
-export function createSignedDispatchCallbackRequest(
-  payload: { expectedVersion: number; id: string },
-  options?: { secret?: string; signature?: string },
-): Request {
-  const body = JSON.stringify(payload);
-  const timestamp = Date.now().toString();
-  const digest = createHmac("sha256", options?.secret ?? "dispatch-secret")
-    .update(`junior.agent_dispatch.v1:${timestamp}:${body}`)
-    .digest("hex");
-  return new Request("https://junior.example.com/api/internal/agent-dispatch", {
-    method: "POST",
-    headers: {
-      "x-junior-dispatch-signature": options?.signature ?? `v1=${digest}`,
-      "x-junior-dispatch-timestamp": timestamp,
-    },
-    body,
-  });
-}
+import type { AgentRunner } from "@/chat/runtime/agent-runner";
+import { getConversationStore } from "@/chat/db";
+import { getStateAdapter } from "@/chat/state/adapter";
+import { createConversationWorkQueueTestAdapter } from "./conversation-work";
 
 export const agentDispatchTestDestination = {
   platform: "slack",
@@ -41,28 +18,24 @@ export const agentDispatchTestDestination = {
   channelId: "C123",
 } as const;
 
-/** Build a Slack runtime with a test adapter and the provided reply executor. */
-export function createAgentDispatchTestRuntime(
-  replyExecutor: NonNullable<JuniorRuntimeServiceOverrides["replyExecutor"]>,
-) {
-  return createSlackRuntime({
-    getSlackAdapter: () =>
-      createJuniorSlackAdapter({
-        botToken: "xoxb-test",
-        botUserId: "U0BOT",
-        signingSecret: "test-signing-secret",
-      }),
-    services: { replyExecutor },
+/** Compose production conversation work for one agent dispatch test. */
+export async function createAgentDispatchWorkHarness(agentRunner: AgentRunner) {
+  const state = getStateAdapter();
+  await state.connect();
+  const queue = createConversationWorkQueueTestAdapter();
+  const adapter = createJuniorSlackAdapter({
+    botToken: "xoxb-test",
+    botUserId: "U0BOT",
+    signingSecret: "test-signing-secret",
   });
-}
-
-/** Build a dispatch harness that fakes only model output. */
-export function createAgentDispatchModelHarness(streamFn: StreamFn) {
-  const agentRunner = createModelAgentRunner(streamFn);
-  return {
+  const work = createConversationWork({
     agentRunner,
-    runtime: createAgentDispatchTestRuntime({ agentRunner }),
-  };
+    conversationStore: getConversationStore(),
+    getSlackAdapter: () => adapter,
+    queue,
+    state,
+  });
+  return { queue, run: work.run, runtime: work.runtime, state };
 }
 
 /** Create a durable dispatch record for integration tests. */
@@ -93,30 +66,4 @@ export async function createAgentDispatchTestRecord(
       plugin: "scheduler",
     })
   ).record;
-}
-
-/** Build a conversation-worker context around one dispatch inbound message. */
-export function createAgentDispatchWorkerContext(
-  dispatch: Awaited<ReturnType<typeof createAgentDispatchTestRecord>>,
-  overrides: Partial<ConversationWorkerContext> = {},
-) {
-  const ack = vi.fn(async () => {});
-  const message = buildAgentDispatchInboundMessage(dispatch);
-  const context: ConversationWorkerContext = {
-    attempt: {
-      ack,
-      conversationId: message.conversationId,
-      destination: agentDispatchTestDestination,
-      drain: vi.fn(async () => []),
-      isFinalAttempt: false,
-      messages: [message],
-    },
-    checkIn: vi.fn(async () => true),
-    conversationId: message.conversationId,
-    destination: agentDispatchTestDestination,
-    publishExternally: true,
-    shouldYield: () => false,
-    ...overrides,
-  };
-  return { ack, context };
 }

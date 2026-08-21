@@ -26,7 +26,7 @@ import {
 } from "@/chat/api-turns/cancellation";
 import {
   getDispatchConversationId,
-  getDispatchInputMessageIds,
+  getDispatchInputMessageId,
 } from "@/chat/agent-dispatch/store";
 import { createSlackRuntime } from "./factory";
 import type { JuniorRuntimeServiceOverrides } from "./services";
@@ -104,7 +104,7 @@ export function createConversationWork(
         getDispatchConversationId(dispatch),
         {
           agentRunner: options.agentRunner,
-          inputMessageIds: getDispatchInputMessageIds(dispatch.id),
+          inputMessageIds: [getDispatchInputMessageId(dispatch.id)],
           routingContext: buildDispatchRoutingContext(dispatch),
           scheduleSessionCompletedPluginTasks:
             services.replyExecutor?.scheduleSessionCompletedPluginTasks,

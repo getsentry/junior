@@ -102,6 +102,17 @@ export interface ConversationStore {
     providerDestinationId: string;
     providerTenantId?: string;
   }): Promise<ConversationPrivacy | undefined>;
+  /**
+   * Resolve one Slack channel id from a known destination display name.
+   *
+   * Matches only destinations Junior already stored for this workspace. Exact
+   * name match after stripping a leading `#`. Returns undefined when missing
+   * or ambiguous. Does not scan Slack.
+   */
+  findSlackDestinationByName(args: {
+    channelName: string;
+    teamId: string;
+  }): Promise<{ channelId: string; channelName?: string } | undefined>;
   recordActivity(args: {
     activityAtMs?: number;
     channelName?: string;

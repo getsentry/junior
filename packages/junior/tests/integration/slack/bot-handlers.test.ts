@@ -273,11 +273,10 @@ describe("bot handlers (integration)", () => {
 
   it("does not replay a message that already has a delivered reply", async () => {
     const conversationId = "slack:C0REPLAY:1700000000.000";
-    const executeAgentRun = vi.fn();
     const { slackRuntime } = createRuntime({
       services: {
         replyExecutor: {
-          agentRunner: { run: executeAgentRun },
+          agentRunner: neverRunAgentRunner(),
         },
       },
     });
@@ -356,7 +355,6 @@ describe("bot handlers (integration)", () => {
       ),
     ).resolves.toBeUndefined();
 
-    expect(executeAgentRun).not.toHaveBeenCalled();
     expect(thread.posts).toEqual([]);
   });
 
@@ -1034,12 +1032,11 @@ describe("bot handlers (integration)", () => {
   it("defers a batched fresh turn while a live resume holds the thread lock", async () => {
     const conversationId = "slack:C9BATCHLOCK:1700000000.000";
     const destination = slackDestination("C9BATCHLOCK");
-    const run = vi.fn();
     const ack = vi.fn();
     const { slackRuntime } = createRuntime({
       services: {
         replyExecutor: {
-          agentRunner: { run },
+          agentRunner: neverRunAgentRunner(),
         },
       },
     });
@@ -1079,7 +1076,6 @@ describe("bot handlers (integration)", () => {
 
     // Nothing ran, nothing was consumed, nothing was committed: the batch
     // stays pending in the mailbox for the next drain.
-    expect(run).not.toHaveBeenCalled();
     expect(ack).not.toHaveBeenCalled();
     expect(
       JSON.stringify(await loadProjection({ conversationId })),

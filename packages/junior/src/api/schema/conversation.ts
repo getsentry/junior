@@ -55,6 +55,7 @@ export const conversationFeedQuerySchema = z
       .email()
       .transform((value) => value.toLowerCase())
       .optional(),
+    status: z.enum(["active", "archived"]).default("active"),
   })
   .strict();
 

@@ -329,6 +329,11 @@ async function grepFilesWithRipgrep(params: {
   if (result.exitCode !== 0 && result.exitCode !== 1) {
     const detail =
       result.stderr.trim() || result.stdout.trim() || "command failed";
+    if (/error parsing glob/i.test(detail)) {
+      throw new ToolInputError(`Invalid glob: ${params.glob ?? ""}`, {
+        cause: new Error(detail),
+      });
+    }
     if (/regex parse error|error parsing regex/i.test(detail)) {
       throw new ToolInputError(`Invalid regex pattern: ${params.pattern}`, {
         cause: new Error(detail),

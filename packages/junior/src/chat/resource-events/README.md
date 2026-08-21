@@ -41,6 +41,11 @@ conversation.
   task-execution wake-up. Resource-event identity constants and detection live
   in `actor.ts` (`RESOURCE_EVENT_SYSTEM_ACTOR`, synthetic Slack author id, and
   message markers). Live and resume paths both execute as that system actor.
+- Notification text stays short and uses plain language: what the update is
+  about, the instructions for this update, a verified summary and details, and
+  external text. When the agent replies, it should say what changed and what it
+  did or needs next. Stable handling rules live in runtime and docs, not a long
+  per-event prompt (`notification.ts`).
 - A subscription selector is one Slack workspace, one namespace, one
   identifier, and one or more event types. `resourceType` and `label` are
   presentation metadata, not match keys.
@@ -49,6 +54,14 @@ conversation.
   credential authority.
 - Watches default to 14 days and reject requested lifetimes over 30 days rather
   than silently shortening them.
+- Plugins may expose `resourceEvents.subscribe()` so a successful tool can
+  create a temporary subscription without asking the model to call
+  `watchResourceEvents`. Forced subscriptions should omit those events from the
+  tool result's suggested events.
+- Resource types may declare optional app guidance per event type. Core inserts
+  that text only for the matching resource type. The prompt applies it within
+  the subscription intent or stored event task instruction. Keep it separate
+  from trusted facts and untrusted provider content.
 
 The plugin-facing types and publisher contract live in
 `packages/junior-plugin-api/src/resource-events.ts`; subscription storage and

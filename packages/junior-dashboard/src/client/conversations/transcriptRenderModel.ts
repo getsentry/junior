@@ -89,10 +89,16 @@ export function groupTranscriptMessages(
     let textGroup = 0;
     const flushMessage = () => {
       if (textParts.length === 0) return;
+      // Keep the original message object when the whole body is one text group so
+      // memoized message rows can skip work on unchanged history.
+      const nextMessage =
+        textGroup === 0 && textParts.length === message.parts.length
+          ? message
+          : { ...message, parts: textParts };
       entries.push({
         key: `${message.sourceSeq}:message:${textGroup}`,
         kind: "message",
-        message: { ...message, parts: textParts },
+        message: nextMessage as RenderedMessageEntry["message"],
       });
       textParts = [];
       textGroup += 1;

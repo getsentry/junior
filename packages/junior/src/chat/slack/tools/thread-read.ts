@@ -135,6 +135,7 @@ export function createSlackThreadReadTool(context: SlackToolContext) {
         const target = await resolveSlackChannelRef({
           field: "channel_id",
           value: channel_id,
+          teamId: context.teamId,
         });
         channelId = target.channelId;
         messageTs = parsedTs.value;

@@ -10,15 +10,14 @@ import {
 import { createResourceEventSubscription } from "@/chat/resource-events/store";
 import {
   requireResourceWatchConversation,
+  RESOURCE_SUBSCRIPTION_DEFAULT_TTL_MS,
+  RESOURCE_SUBSCRIPTION_MAX_TTL_MS,
   STOP_WATCHING_TOOL_NAME,
 } from "@/chat/resource-events/tool-support";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
-
-const DEFAULT_TTL_MS = 14 * 24 * 60 * 60 * 1000;
-const MAX_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
 function inputSchema(catalog: ResourceEventCatalog) {
   return z
@@ -118,11 +117,11 @@ function cleanStrings(values: string[]): string[] {
 }
 
 function ttlMs(input: Input): number {
-  if (input.ttlMs === undefined) return DEFAULT_TTL_MS;
+  if (input.ttlMs === undefined) return RESOURCE_SUBSCRIPTION_DEFAULT_TTL_MS;
   if (!Number.isFinite(input.ttlMs) || input.ttlMs <= 0) {
     throw new ToolInputError("ttlMs must be a positive finite number");
   }
-  if (input.ttlMs > MAX_TTL_MS) {
+  if (input.ttlMs > RESOURCE_SUBSCRIPTION_MAX_TTL_MS) {
     throw new ToolInputError("Resource watches cannot exceed 30 days");
   }
   return input.ttlMs;

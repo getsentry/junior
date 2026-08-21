@@ -611,6 +611,11 @@ describe("agent plugin hooks", () => {
           displayName: "Agent Demo",
           description: "Agent demo",
         },
+        resourceEvents: {
+          resourceTypes: [
+            { type: "demo", supportedEvents: ["demo.completed"] },
+          ],
+        },
         hooks: {
           tools(ctx) {
             expect(ctx.actor).toEqual(TEST_ACTOR);
@@ -625,6 +630,7 @@ describe("agent plugin hooks", () => {
     ]);
     try {
       const tools = getPluginTools({
+        conversationId: "slack:DDM:1712345.0001",
         destination: SLACK_DESTINATION,
         actor: TEST_ACTOR,
         egress: TEST_EGRESS,

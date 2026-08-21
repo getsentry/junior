@@ -229,8 +229,15 @@
     {
       "idx": 32,
       "version": "7",
-      "when": 1787328190098,
-      "tag": "0032_sturdy_marten_broadcloak",
+      "when": 1786954953911,
+      "tag": "0032_workspace_snapshots_table",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1787334639090,
+      "tag": "0033_solid_captain_america",
       "breakpoints": true
     }
   ]

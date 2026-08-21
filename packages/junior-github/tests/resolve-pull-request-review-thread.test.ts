@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createGitHubResolvePullRequestReviewThreadTool } from "../src/tools/resolve-pull-request-review-thread";
 
 const BOT_EMAIL = "123+junior[bot]@users.noreply.github.com";
+const BOT_USER_ID = 123;
 
 function response(body: unknown) {
   return new Response(JSON.stringify(body), {
@@ -26,7 +27,7 @@ function toolContext(responses: Response[]) {
 }
 
 function threadLookup(overrides?: {
-  author?: string;
+  databaseId?: number;
   number?: number;
   repo?: string;
 }) {
@@ -36,7 +37,7 @@ function threadLookup(overrides?: {
         id: "PRRT_kwDOthread",
         isResolved: false,
         pullRequest: {
-          author: { login: overrides?.author ?? "junior[bot]" },
+          author: { databaseId: overrides?.databaseId ?? BOT_USER_ID },
           number: overrides?.number ?? 1572,
           repository: { nameWithOwner: overrides?.repo ?? "getsentry/junior" },
         },
@@ -46,7 +47,7 @@ function threadLookup(overrides?: {
 }
 
 describe("resolvePullRequestReviewThread", () => {
-  it("verifies Junior ownership before resolving the thread", async () => {
+  it("verifies Junior ownership by bot user id before resolving the thread", async () => {
     const { fetch, tool } = toolContext([
       threadLookup(),
       response({
@@ -79,6 +80,8 @@ describe("resolvePullRequestReviewThread", () => {
       operation: "github.pull.review-thread.get",
       provider: "github",
     });
+    const lookupRequest = fetch.mock.calls[0]?.[0]?.request as Request;
+    await expect(lookupRequest.text()).resolves.toContain("databaseId");
     expect(fetch.mock.calls[1]?.[0]).toMatchObject({
       operation: "github.pull.review-thread.resolve:getsentry/junior",
       provider: "github",
@@ -86,7 +89,7 @@ describe("resolvePullRequestReviewThread", () => {
   });
 
   it.each([
-    ["another author", { author: "davidcramer" }],
+    ["another bot id", { databaseId: 999 }],
     ["another repository", { repo: "getsentry/sentry" }],
   ])("denies %s before mutation", async (_name, overrides) => {
     const { fetch, tool } = toolContext([threadLookup(overrides)]);

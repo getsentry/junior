@@ -136,6 +136,46 @@ Extra OAuth scopes requested for operations that must run as the user.
 </details>
 
 <details class="plugin-config">
+<summary><code>pullRequestEvents</code></summary>
+
+App-configured pull request event behavior. Use this only when the app should always watch certain events after Junior creates a pull request, or should add short guidance when those events arrive.
+
+```ts title="plugins.ts"
+export const plugins = defineJuniorPlugins([
+  githubPlugin({
+    pullRequestEvents: {
+      subscribeAfterCreate: {
+        events: [
+          "pull_request.checks.failed",
+          "pull_request.review.changes_requested",
+          "pull_request.merged",
+        ],
+        intent:
+          "Report failed checks and requested changes. Report when the pull request merges. Stay silent otherwise.",
+      },
+      guidance: {
+        "pull_request.checks.failed":
+          "Inspect the failed checks. Fix failures caused by this change when safe.",
+        "pull_request.review.changes_requested":
+          "Summarize actionable feedback before deciding whether to edit code.",
+      },
+    },
+  }),
+]);
+```
+
+- **Define:** `githubPlugin({ pullRequestEvents: { ... } })` in `plugins.ts`
+- **Default:** Off. Junior only watches a new pull request when asked, or when a tool result includes a subscribable resource and the model chooses to watch it.
+- **Required:** No
+- **Environment override:** None
+
+`subscribeAfterCreate` creates a temporary resource subscription after a successful `github_createPullRequest` call. It only runs in Slack conversations that can host resource subscriptions, and only when GitHub webhooks are enabled. Forced events are removed from the tool result's suggested events so the model does not re-watch them. The subscription still expires like any other watch.
+
+`guidance` adds short app guidance when a matching pull request event reaches the agent. It applies within the subscription or event task instruction. It cannot replace or expand that instruction, grant credentials, or bypass action review. Keep each value short.
+
+</details>
+
+<details class="plugin-config">
 <summary><code>appIdEnv</code></summary>
 
 Names the deployment variable containing the GitHub App ID.
@@ -266,6 +306,12 @@ resource subscriptions versus durable event tasks.
 
 Issue and pull request events can target one item with `owner/repo#number`, or
 every item of that kind in a repository with `owner/repo`.
+
+To always watch selected events after Junior creates a pull request in this
+app, set `pullRequestEvents.subscribeAfterCreate` in `plugins.ts`. To add short
+app guidance for one pull request event type, set
+`pullRequestEvents.guidance`. The guidance applies within each subscription or
+event task instruction. It does not replace or expand that instruction.
 
 #### `deployment_source`
 

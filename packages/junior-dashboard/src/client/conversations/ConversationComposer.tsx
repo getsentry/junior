@@ -6,11 +6,13 @@ import {
   useState,
   type FormEvent,
   type KeyboardEvent,
+  type ReactNode,
 } from "react";
 import { Send } from "lucide-react";
 
 import { Button } from "../components/Button";
 import { useDashboardOnline } from "../connection";
+import { cn, dashboardComposerSurfaceClass } from "../styles";
 
 const MOBILE_COMPOSER_MAX_HEIGHT_PX = 112;
 const DESKTOP_MEDIA_QUERY = "(min-width: 768px)";
@@ -47,6 +49,12 @@ type ConversationComposerProps = {
   disabled?: boolean;
   draftId: string;
   error?: string;
+  /**
+   * Optional chrome to the left of the send row (create-mode visibility,
+   * tools, etc). Presence also forces a stacked form so accessories are not
+   * crushed beside the mobile send button.
+   */
+  footerStart?: ReactNode;
   label: string;
   /**
    * Restore the submitted text after a failed accept when there is no mailbox
@@ -65,22 +73,24 @@ export const ConversationComposer = memo(function ConversationComposer(
   props: ConversationComposerProps,
 ) {
   const storageKey = `${DRAFT_STORAGE_PREFIX}${encodeURIComponent(props.draftId)}`;
-  const [draft, setDraft] = useState<ConversationDraft>(() =>
+  const [initialDraft] = useState<ConversationDraft>(() =>
     readStoredDraft(storageKey),
   );
   // New-conversation create holds the send control until accept settles so a
   // failed restore cannot race a later submit.
   const [createPending, setCreatePending] = useState(false);
+  const [canSend, setCanSend] = useState(() => Boolean(initialDraft.text.trim()));
   const online = useDashboardOnline();
-  const message = draft.text;
   const id = useId();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const draftRef = useRef(draft);
+  const draftRef = useRef(initialDraft);
+  const canSendRef = useRef(canSend);
+  const storageTimerRef = useRef<number | undefined>(undefined);
   // Source of truth for the in-flight attempt. React state alone is too late for
   // a second Enter before the parent pending flag flips.
   const attemptRef = useRef<ConversationAttempt>({
-    idempotencyKey: draft.idempotencyKey,
-    lastSubmittedText: draft.lastSubmittedText,
+    idempotencyKey: initialDraft.idempotencyKey,
+    lastSubmittedText: initialDraft.lastSubmittedText,
   });
   // Blocks same-tick double fire. For create restore, also blocks until settle.
   const submittingRef = useRef(false);
@@ -88,19 +98,13 @@ export const ConversationComposer = memo(function ConversationComposer(
   const submitTokenRef = useRef(0);
   const sendLocked =
     Boolean(props.disabled) || (props.restoreDraftOnError && createPending);
-  draftRef.current = draft;
-
-  // Persist drafts after typing settles so storage never contends with keystrokes.
-  useEffect(() => {
-    const timer = window.setTimeout(() => {
-      storeDraft(storageKey, draftRef.current);
-    }, DRAFT_STORAGE_DEBOUNCE_MS);
-    return () => window.clearTimeout(timer);
-  }, [draft, storageKey]);
 
   // Flush the latest draft if the reader leaves before the debounce lands.
   useEffect(() => {
     return () => {
+      if (storageTimerRef.current !== undefined) {
+        window.clearTimeout(storageTimerRef.current);
+      }
       storeDraft(storageKey, draftRef.current);
     };
   }, [storageKey]);
@@ -134,11 +138,53 @@ export const ConversationComposer = memo(function ConversationComposer(
     const media = window.matchMedia(DESKTOP_MEDIA_QUERY);
     media.addEventListener("change", syncHeight);
     return () => media.removeEventListener("change", syncHeight);
-  }, [message]);
+  }, []);
+
+  const updateCanSend = (text: string) => {
+    const nextCanSend = Boolean(text.trim());
+    if (canSendRef.current === nextCanSend) return;
+    canSendRef.current = nextCanSend;
+    setCanSend(nextCanSend);
+  };
+
+  const scheduleDraftStorage = () => {
+    if (storageTimerRef.current !== undefined) {
+      window.clearTimeout(storageTimerRef.current);
+    }
+    storageTimerRef.current = window.setTimeout(() => {
+      storageTimerRef.current = undefined;
+      storeDraft(storageKey, draftRef.current);
+    }, DRAFT_STORAGE_DEBOUNCE_MS);
+  };
+
+  const syncTextareaHeight = () => {
+    const textarea = textareaRef.current;
+    if (!textarea || window.matchMedia(DESKTOP_MEDIA_QUERY).matches) return;
+    const previous = textarea.style.height;
+    textarea.style.height = "auto";
+    const next = `${Math.min(textarea.scrollHeight, MOBILE_COMPOSER_MAX_HEIGHT_PX)}px`;
+    textarea.style.height = previous === next ? previous : next;
+  };
+
+  const setMessage = (text: string) => {
+    const current = draftRef.current;
+    if (current.text === text) return;
+    draftRef.current = { ...current, text };
+    updateCanSend(text);
+    scheduleDraftStorage();
+  };
+
+  const replaceMessage = (draft: ConversationDraft) => {
+    draftRef.current = draft;
+    const textarea = textareaRef.current;
+    if (textarea) textarea.value = draft.text;
+    updateCanSend(draft.text);
+    syncTextareaHeight();
+  };
 
   const submit = async (event?: FormEvent) => {
     event?.preventDefault();
-    const text = message.trim();
+    const text = draftRef.current.text.trim();
     if (!text || !online || submittingRef.current || sendLocked) return;
 
     // Keep the key while the trimmed text matches the last attempt. Edits that
@@ -158,8 +204,7 @@ export const ConversationComposer = memo(function ConversationComposer(
       ...nextAttempt,
       text: "",
     };
-    draftRef.current = clearedDraft;
-    setDraft(clearedDraft);
+    replaceMessage(clearedDraft);
     storeDraft(storageKey, clearedDraft);
     attemptRef.current = nextAttempt;
     submittingRef.current = true;
@@ -185,9 +230,8 @@ export const ConversationComposer = memo(function ConversationComposer(
       if (submitToken !== submitTokenRef.current) return;
       // Restore only when the reader has not already started another draft.
       if (draftRef.current.text) return;
-      draftRef.current = submittedDraft;
+      replaceMessage(submittedDraft);
       attemptRef.current = attempt;
-      setDraft(submittedDraft);
       storeDraft(storageKey, submittedDraft);
     } finally {
       if (props.restoreDraftOnError && submitToken === submitTokenRef.current) {
@@ -219,7 +263,14 @@ export const ConversationComposer = memo(function ConversationComposer(
         </div>
       ) : null}
       <form
-        className="grid grid-cols-[minmax(0,1fr)_auto] items-end overflow-hidden rounded-lg border border-white/[0.09] bg-white/[0.035] focus-within:border-cyan-300/35 focus-within:ring-1 focus-within:ring-cyan-300/25 md:block"
+        className={cn(
+          // Accessory chrome needs a full footer row. Side-by-side mobile is
+          // only for the bare reply dock.
+          props.footerStart
+            ? "block overflow-hidden focus-within:border-cyan-300/35 focus-within:ring-1 focus-within:ring-cyan-300/35"
+            : "grid grid-cols-[minmax(0,1fr)_auto] items-end overflow-hidden focus-within:border-cyan-300/35 focus-within:ring-1 focus-within:ring-cyan-300/35 md:block",
+          dashboardComposerSurfaceClass,
+        )}
         onSubmit={submit}
       >
         <label className="sr-only" htmlFor={id}>
@@ -231,19 +282,15 @@ export const ConversationComposer = memo(function ConversationComposer(
           autoCapitalize="off"
           autoComplete="off"
           autoCorrect="off"
-          className="min-h-11 max-h-28 w-full resize-none overflow-y-auto border-0 bg-transparent px-3 py-2.5 font-mono text-sm leading-relaxed text-dashboard-text outline-none placeholder:text-dashboard-text-muted/65 md:min-h-24 md:max-h-none md:resize-y md:overflow-visible md:px-3.5 md:py-3"
+          className="min-h-12 max-h-28 w-full resize-none overflow-y-auto border-0 bg-transparent px-3 py-3 font-mono text-sm leading-relaxed text-dashboard-text outline-none placeholder:text-dashboard-text-muted/65 md:min-h-24 md:max-h-none md:resize-y md:overflow-visible md:px-3.5 md:py-3.5"
           enterKeyHint="send"
           id={id}
           inputMode="text"
           maxLength={32_000}
+          defaultValue={initialDraft.text}
           onChange={(event) => {
-            const text = event.target.value;
-            setDraft((current) => {
-              if (current.text === text) return current;
-              const next = { ...current, text };
-              draftRef.current = next;
-              return next;
-            });
+            setMessage(event.target.value);
+            syncTextareaHeight();
           }}
           onFocus={props.onFocus}
           onKeyDown={handleKeyDown}
@@ -251,15 +298,25 @@ export const ConversationComposer = memo(function ConversationComposer(
           ref={textareaRef}
           rows={1}
           spellCheck={false}
-          value={message}
         />
-        <div className="flex min-w-0 items-center justify-end gap-3 border-l border-white/[0.07] bg-black/15 px-2 py-1.5 md:justify-between md:border-l-0 md:border-t md:px-3 md:py-2">
-          <div className="hidden min-w-0 font-mono text-xs leading-relaxed text-dashboard-text-muted md:block">
-            Enter to send · Shift+Enter for a new line
+        <div
+          className={cn(
+            "flex min-w-0 items-center gap-3 px-2 py-1.5 md:px-3 md:py-2",
+            props.footerStart ? "justify-between" : "justify-end md:justify-between",
+          )}
+        >
+          <div className="flex min-w-0 items-center gap-3">
+            {props.footerStart}
+            {props.footerStart ? null : (
+              <div className="hidden min-w-0 font-mono text-xs leading-relaxed text-dashboard-text-muted md:block">
+                Enter to send · Shift+Enter for a new line
+              </div>
+            )}
           </div>
           <Button
             aria-label={sendLocked ? "Sending message" : props.submitLabel}
-            disabled={!message.trim() || !online || sendLocked}
+            className="!border-0 !bg-transparent hover:!border-0 hover:!bg-white/[0.06] focus-visible:outline focus-visible:outline-1 focus-visible:outline-cyan-300/55 disabled:hover:!border-0 disabled:hover:!bg-transparent"
+            disabled={!canSend || !online || sendLocked}
             title={
               !online
                 ? "Connect to send"

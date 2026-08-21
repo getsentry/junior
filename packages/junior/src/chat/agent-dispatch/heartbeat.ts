@@ -89,7 +89,7 @@ export async function runPluginHeartbeats(args: {
 }
 
 /**
- * Repair bounded dispatch mailbox appends, including pre-cutover records.
+ * Repair bounded dispatch mailbox appends that crashed before enqueue.
  *
  * This index is only an ingress receipt; conversation work owns execution,
  * leases, retries, and continuation after the mailbox append succeeds.

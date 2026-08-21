@@ -1,10 +1,7 @@
 import { useNavigate } from "react-router";
 
-import {
-  conversationPath,
-  formatTime,
-  visualStatusForConversation,
-} from "../format";
+import { conversationPath } from "../conversations/conversationRoutes";
+import { formatTime, visualStatusForConversation } from "../format";
 import { cn } from "../styles";
 import type { Conversation, VisualStatus } from "../types";
 import { ConversationRowStats } from "./ConversationRowStats";
@@ -31,7 +28,7 @@ export function ConversationList(props: {
   return (
     <div className="min-w-0" role="table">
       <div
-        className="sticky top-0 z-[1] grid grid-cols-[minmax(13rem,1.7fr)_minmax(13rem,1fr)] items-center gap-3 border-b border-white/[0.06] bg-black/25 px-3 py-2.5 font-mono text-xs uppercase tracking-[0.1em] text-dashboard-text-muted max-md:hidden"
+        className="sticky top-0 z-[1] grid grid-cols-[minmax(13rem,1.7fr)_minmax(13rem,1fr)] items-center gap-3 border-b border-dashboard-border-subtle bg-dashboard-overlay-soft px-3 py-2.5 font-mono text-xs uppercase tracking-[0.1em] text-dashboard-text-muted max-md:hidden"
         role="row"
       >
         <div>Conversation</div>

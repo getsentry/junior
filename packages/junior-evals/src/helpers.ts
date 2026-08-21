@@ -813,7 +813,10 @@ function artifactStringArray(
   key: string,
 ): string[] {
   const value = artifact[key];
-  if (!Array.isArray(value) || value.some((entry) => typeof entry !== "string")) {
+  if (
+    !Array.isArray(value) ||
+    value.some((entry) => typeof entry !== "string")
+  ) {
     throw new Error(`Missing string-array Slack side-effect artifact: ${key}`);
   }
   return value as string[];
@@ -1015,6 +1018,7 @@ interface ResourceEventNotificationOptions {
   label: string;
   namespace?: string;
   identifier: string;
+  resourceType: string;
   subscriptionId?: string;
   thread?: ThreadOverrides;
   trustedSummary: string;
@@ -1064,8 +1068,13 @@ function resourceEventNotificationText(
   opts: ResourceEventNotificationOptions,
 ): string {
   return renderResourceEventNotificationText(
-    { intent: opts.intent, label: opts.label },
     {
+      intent: opts.intent,
+      label: opts.label,
+      resourceType: opts.resourceType,
+    },
+    {
+      namespace: opts.namespace ?? "github",
       eventType: opts.eventType,
       trustedSummary: opts.trustedSummary,
       data: opts.data,

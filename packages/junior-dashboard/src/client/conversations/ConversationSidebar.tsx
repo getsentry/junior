@@ -1,22 +1,24 @@
-import { memo, useCallback, useEffect, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Archive,
   ArchiveRestore,
+  Check,
   CircleAlert,
+  ListFilter,
   LockKeyhole,
   SquarePen,
 } from "lucide-react";
 import { Link } from "react-router";
 
 import { useArchiveConversation } from "./queries";
+import { conversationPath } from "./conversationRoutes";
 import {
   conversationDisplayTitle,
-  conversationPath,
   slackLocationLabel,
   visualStatusForConversation,
 } from "../format";
 import { cn } from "../styles";
-import type { Conversation } from "../types";
+import type { Conversation, VisualStatus } from "../types";
 import { ActiveIndicator } from "../components/ActiveIndicator";
 import { Notice, NoticeAction } from "../components/Notice";
 import { AnimatedList } from "./AnimatedList";
@@ -42,9 +44,20 @@ export function ConversationSidebar(props: {
   query: string;
   selectedId?: string;
   timeZone: string;
+  status: "active" | "archived";
+  /**
+   * `panel` = split-pane dock with internal scroll.
+   * `landing` = flow nav under create compose (parent owns scroll).
+   */
+  variant?: "panel" | "landing";
   onNewConversation(): void;
   onQueryChange(value: string): void;
+  onStatusChange(value: "active" | "archived"): void;
 }) {
+  const variant = props.variant ?? "panel";
+  const isLanding = variant === "landing";
+  const [filterOpen, setFilterOpen] = useState(false);
+  const filterRef = useRef<HTMLDivElement>(null);
   const [archivedConversation, setArchivedConversation] =
     useState<Conversation>();
   const [archiveError, setArchiveError] = useState<Conversation>();
@@ -61,6 +74,23 @@ export function ConversationSidebar(props: {
     );
     setArchivedConversation(conversation);
   }, []);
+  useEffect(() => {
+    if (!filterOpen) return;
+    function closeFilter(event: PointerEvent) {
+      if (!filterRef.current?.contains(event.target as Node)) {
+        setFilterOpen(false);
+      }
+    }
+    function closeFilterOnEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") setFilterOpen(false);
+    }
+    document.addEventListener("pointerdown", closeFilter);
+    document.addEventListener("keydown", closeFilterOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeFilter);
+      document.removeEventListener("keydown", closeFilterOnEscape);
+    };
+  }, [filterOpen]);
   // Rebuild section rows only when the feed or timezone changes. Avoid fresh
   // Date.now() arrays on unrelated parent renders while the reader is scrolling.
   const entries = useMemo(
@@ -74,22 +104,80 @@ export function ConversationSidebar(props: {
     [props.conversations, props.timeZone],
   );
   return (
-    <aside className="relative grid h-full min-h-0 min-w-0 grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden border-r border-white/[0.07] bg-white/[0.02]">
-      <div className="px-3 pb-2 pt-3">
+    <aside
+      className={cn(
+        "relative min-w-0",
+        isLanding
+          ? "border-t border-white/[0.07] bg-transparent"
+          : "grid h-full min-h-0 grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden border-r border-white/[0.07] bg-white/[0.02]",
+      )}
+    >
+      <div className={cn("px-3 pb-2", isLanding ? "pt-5" : "pt-3")} ref={filterRef}>
         <div className="flex items-center justify-between gap-2">
-          <h2 className="m-0 font-display text-lg font-medium leading-tight text-dashboard-text">
-            Conversations
-          </h2>
-          <button
-            aria-label="New conversation"
-            className="grid size-7 cursor-pointer place-items-center rounded-md text-dashboard-text-muted transition hover:bg-white/[0.05] hover:text-dashboard-text focus:outline-none focus:ring-2 focus:ring-cyan-300/35"
-            onClick={props.onNewConversation}
-            title="New conversation"
-            type="button"
+          <h2
+            className={cn(
+              "m-0 font-display font-medium leading-tight text-dashboard-text",
+              isLanding ? "text-base" : "text-lg",
+            )}
           >
-            <SquarePen aria-hidden="true" size={15} />
-          </button>
+            {isLanding ? "Your conversations" : "Conversations"}
+          </h2>
+          <div className="flex items-center gap-0.5">
+            <button
+              aria-controls="conversation-status-filter"
+              aria-expanded={filterOpen}
+              aria-haspopup="menu"
+              aria-label="Filter conversations"
+              className={cn(
+                "grid size-7 cursor-pointer place-items-center rounded-md text-dashboard-text-muted transition hover:bg-white/[0.05] hover:text-dashboard-text focus:outline-none focus:ring-2 focus:ring-cyan-300/35",
+                (filterOpen || props.status === "archived") &&
+                  "bg-white/[0.06] text-dashboard-text",
+              )}
+              onClick={() => setFilterOpen((open) => !open)}
+              title="Filter conversations"
+              type="button"
+            >
+              <ListFilter aria-hidden="true" size={15} />
+            </button>
+            {isLanding ? null : (
+              <button
+                aria-label="New conversation"
+                className="grid size-7 cursor-pointer place-items-center rounded-md text-dashboard-text-muted transition hover:bg-white/[0.05] hover:text-dashboard-text focus:outline-none focus:ring-2 focus:ring-cyan-300/35"
+                onClick={props.onNewConversation}
+                title="New conversation"
+                type="button"
+              >
+                <SquarePen aria-hidden="true" size={15} />
+              </button>
+            )}
+          </div>
         </div>
+        {filterOpen ? (
+          <div
+            className="mt-2 rounded-lg bg-dashboard-surface-raised/95 p-1 shadow-2xl shadow-black/75 backdrop-blur-xl"
+            id="conversation-status-filter"
+            role="menu"
+          >
+            {(["active", "archived"] as const).map((status) => (
+              <button
+                aria-checked={props.status === status}
+                className="flex w-full cursor-pointer items-center justify-between rounded-md px-2.5 py-2 text-left text-sm capitalize text-dashboard-text transition hover:bg-white/10 focus:bg-white/10 focus:outline-none"
+                key={status}
+                onClick={() => {
+                  props.onStatusChange(status);
+                  setFilterOpen(false);
+                }}
+                role="menuitemradio"
+                type="button"
+              >
+                {status}
+                {props.status === status ? (
+                  <Check aria-hidden="true" size={14} />
+                ) : null}
+              </button>
+            ))}
+          </div>
+        ) : null}
       </div>
       <div className="px-2 pb-2">
         <SearchInput
@@ -100,7 +188,14 @@ export function ConversationSidebar(props: {
           value={props.query}
         />
       </div>
-      <div className="min-h-0 overflow-y-auto overscroll-contain px-1.5 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+      <div
+        className={cn(
+          "px-1.5",
+          isLanding
+            ? "pb-[max(1rem,env(safe-area-inset-bottom))]"
+            : "min-h-0 overflow-y-auto overscroll-contain pb-[max(0.5rem,env(safe-area-inset-bottom))]",
+        )}
+      >
         {props.error ? (
           <div className="p-2">
             <EmptyTelemetry>{props.error}</EmptyTelemetry>
@@ -144,7 +239,15 @@ export function ConversationSidebar(props: {
         )}
       </div>
       {archivedConversation || archiveError ? (
-        <div className="absolute bottom-[max(0.75rem,env(safe-area-inset-bottom))] left-3 right-3 z-20 grid gap-2">
+        <div
+          className={cn(
+            // Landing is content-tall (parent scrolls). Keep notices on the
+            // visible viewport instead of the end of the long list.
+            isLanding
+              ? "fixed bottom-[max(0.75rem,env(safe-area-inset-bottom))] left-3 right-3 z-30 grid gap-2"
+              : "absolute bottom-[max(0.75rem,env(safe-area-inset-bottom))] left-3 right-3 z-20 grid gap-2",
+          )}
+        >
           {archiveError ? (
             <ArchiveConversationErrorNotice
               conversation={archiveError}
@@ -183,6 +286,42 @@ function conversationSidebarEntries(
   ]);
 }
 
+/** Status glyph for a sidebar row; private rows use the lock instead of a dot. */
+function ConversationListStatusIcon(props: {
+  isPrivate: boolean;
+  status: VisualStatus;
+}) {
+  if (props.isPrivate) {
+    return (
+      <LockKeyhole
+        aria-label="Private conversation"
+        className={cn(
+          "size-3 shrink-0",
+          props.status === "active" &&
+            "animate-[junior-active-indicator_1.8s_ease-in-out_infinite] text-emerald-300 drop-shadow-[0_0_6px_rgba(110,231,183,0.55)] motion-reduce:animate-none",
+          props.status === "failed" && "text-rose-300",
+          props.status === "idle" && "text-dashboard-text-muted",
+        )}
+      />
+    );
+  }
+
+  if (props.status === "active") {
+    return <ActiveIndicator className="size-1.5" />;
+  }
+
+  return (
+    <span
+      aria-hidden="true"
+      className={cn(
+        "size-1.5 shrink-0 rounded-full",
+        props.status === "failed" && "bg-rose-300",
+        props.status === "idle" && "bg-white/25",
+      )}
+    />
+  );
+}
+
 const ConversationSidebarRow = memo(function ConversationSidebarRow(props: {
   conversation: Conversation;
   onArchiveError(conversation: Conversation): void;
@@ -201,13 +340,15 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(props: {
   });
   const title = conversationDisplayTitle(props.conversation);
   const hasAnnotations = Boolean(props.conversation.sidebarAnnotations?.length);
+  const isPrivate = props.conversation.visibility === "private";
   // Linked work is denser and more actionable than channel; hide channel when
-  // annotations own the meta row.
-  const showLocation = Boolean(location) && !hasAnnotations;
-  const hasMeta =
-    showLocation ||
-    props.conversation.visibility === "private" ||
-    hasAnnotations;
+  // annotations own the meta row. Also skip a location that only restates the
+  // title (common for redacted private destinations).
+  const showLocation =
+    Boolean(location) &&
+    !hasAnnotations &&
+    location?.toLocaleLowerCase() !== title.toLocaleLowerCase();
+  const hasMeta = showLocation || hasAnnotations;
   return (
     <div className="mobile-conversation-row group relative min-w-0">
       <Link
@@ -218,52 +359,46 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(props: {
         )}
         to={conversationPath(props.conversation.id)}
       >
-        <div className="flex min-w-0 items-center gap-1.5">
-          {status === "active" ? (
-            <ActiveIndicator className="size-1.5" />
-          ) : (
-            <span
-              aria-hidden="true"
-              className={cn(
-                "size-1.5 shrink-0 rounded-full",
-                status === "failed" && "bg-rose-300",
-                status === "idle" && "bg-white/25",
-              )}
+        <div className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-start gap-x-1.5">
+          <div className="col-start-1 row-start-1 mt-[0.3rem] grid size-3 shrink-0 place-items-center">
+            <ConversationListStatusIcon
+              isPrivate={isPrivate}
+              status={status}
             />
-          )}
-          <div className="truncate font-display text-sm font-medium leading-snug text-dashboard-text">
+          </div>
+          <div className="col-start-2 row-start-1 min-w-0 truncate font-display text-sm font-medium leading-snug text-dashboard-text">
             {title}
           </div>
-        </div>
-        {hasMeta ? (
-          <div className="ml-3 mt-0.5 flex min-w-0 items-center gap-1.5 font-mono text-2xs leading-tight text-dashboard-text-muted">
-            {props.conversation.visibility === "private" ? (
-              <LockKeyhole
-                aria-label="Private conversation"
-                className="size-3 shrink-0"
+          {hasMeta ? (
+            <div className="col-start-2 row-start-2 mt-0.5 flex min-w-0 items-center gap-1.5 font-mono text-2xs leading-tight text-dashboard-text-muted">
+              {showLocation ? (
+                <span className="truncate">{location}</span>
+              ) : null}
+              <ConversationSidebarAnnotations
+                annotations={props.conversation.sidebarAnnotations}
               />
-            ) : null}
-            {showLocation ? <span className="truncate">{location}</span> : null}
-            <ConversationSidebarAnnotations
-              annotations={props.conversation.sidebarAnnotations}
-            />
-          </div>
-        ) : null}
+            </div>
+          ) : null}
+        </div>
       </Link>
       <button
-        aria-label={`Archive ${title}`}
+        aria-label={`${props.conversation.archivedAt ? "Restore" : "Archive"} ${title}`}
         className="absolute right-1.5 top-1/2 z-10 grid size-7 -translate-y-1/2 cursor-pointer place-items-center rounded-md bg-[#111719] text-dashboard-text-muted shadow-[-8px_0_12px_rgba(9,12,14,0.8)] transition hover:text-dashboard-text focus:outline-none focus:ring-2 focus:ring-cyan-300/35 sm:pointer-events-none sm:opacity-0 sm:focus:pointer-events-auto sm:focus:opacity-100 sm:group-focus-within:pointer-events-auto sm:group-focus-within:opacity-100 sm:group-hover:pointer-events-auto sm:group-hover:opacity-100 disabled:cursor-not-allowed"
         disabled={archive.isPending}
         onClick={() =>
           archive.mutate({
-            archived: true,
+            archived: !props.conversation.archivedAt,
             lastSeenAt: props.conversation.lastSeenAt,
           })
         }
-        title={`Archive ${title}`}
+        title={`${props.conversation.archivedAt ? "Restore" : "Archive"} ${title}`}
         type="button"
       >
-        <Archive aria-hidden="true" size={14} />
+        {props.conversation.archivedAt ? (
+          <ArchiveRestore aria-hidden="true" size={14} />
+        ) : (
+          <Archive aria-hidden="true" size={14} />
+        )}
       </button>
     </div>
   );
@@ -274,6 +409,10 @@ function ArchiveConversationErrorNotice(props: {
   onDismiss(): void;
 }) {
   const title = conversationDisplayTitle(props.conversation);
+  // Restore failures still carry archivedAt from the archived row.
+  const actionTitle = props.conversation.archivedAt
+    ? "Could not restore"
+    : "Could not archive";
   return (
     <Notice
       action={
@@ -283,7 +422,7 @@ function ArchiveConversationErrorNotice(props: {
       }
       detail={title}
       icon={CircleAlert}
-      title="Could not archive"
+      title={actionTitle}
       tone="error"
     />
   );

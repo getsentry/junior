@@ -1,5 +1,5 @@
 {
-  "id": "bed76e1a-6b7e-4d02-b577-8567be28a0b9",
+  "id": "7f66cacd-886c-4bbd-8b80-ea3ce8a0a466",
   "prevId": "6fe6b9af-5375-4f04-bc6e-3db5c77d5193",
   "version": "7",
   "dialect": "postgresql",
@@ -995,12 +995,6 @@
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": true
-        },
-        "archived_at": {
-          "name": "archived_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
         }
       },
       "indexes": {
@@ -1262,6 +1256,12 @@
         "metric_run_id": {
           "name": "metric_run_id",
           "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "archived_at": {
+          "name": "archived_at",
+          "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
         }
@@ -2295,6 +2295,213 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.junior_snapshots": {
+      "name": "junior_snapshots",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "workspace_id": {
+          "name": "workspace_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "profile_hash": {
+          "name": "profile_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "snapshot_id": {
+          "name": "snapshot_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "build_duration_ms": {
+          "name": "build_duration_ms",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "generated_at": {
+          "name": "generated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "build_started_at": {
+          "name": "build_started_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "build_phase": {
+          "name": "build_phase",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "build_sandbox_name": {
+          "name": "build_sandbox_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "build_command_id": {
+          "name": "build_command_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "build_error": {
+          "name": "build_error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "junior_snapshots_snapshot_id_uidx": {
+          "name": "junior_snapshots_snapshot_id_uidx",
+          "columns": [
+            {
+              "expression": "snapshot_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "junior_snapshots_workspace_idx": {
+          "name": "junior_snapshots_workspace_idx",
+          "columns": [
+            {
+              "expression": "workspace_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "junior_snapshots_workspace_profile_status_idx": {
+          "name": "junior_snapshots_workspace_profile_status_idx",
+          "columns": [
+            {
+              "expression": "workspace_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "profile_hash",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "junior_snapshots_workspace_status_idx": {
+          "name": "junior_snapshots_workspace_status_idx",
+          "columns": [
+            {
+              "expression": "workspace_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "junior_snapshots_workspace_id_junior_workspaces_id_fk": {
+          "name": "junior_snapshots_workspace_id_junior_workspaces_id_fk",
+          "tableFrom": "junior_snapshots",
+          "tableTo": "junior_workspaces",
+          "columnsFrom": ["workspace_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "junior_snapshots_status_check": {
+          "name": "junior_snapshots_status_check",
+          "value": "\"junior_snapshots\".\"status\" in ('building', 'failed', 'ready')"
+        },
+        "junior_snapshots_build_phase_check": {
+          "name": "junior_snapshots_build_phase_check",
+          "value": "\"junior_snapshots\".\"build_phase\" is null or \"junior_snapshots\".\"build_phase\" in ('created', 'dependencies_installed', 'repositories_prepared')"
+        },
+        "junior_snapshots_ready_fields_check": {
+          "name": "junior_snapshots_ready_fields_check",
+          "value": "\"junior_snapshots\".\"status\" <> 'ready' or (\"junior_snapshots\".\"snapshot_id\" is not null and \"junior_snapshots\".\"build_duration_ms\" is not null and \"junior_snapshots\".\"generated_at\" is not null)"
+        },
+        "junior_snapshots_build_fields_check": {
+          "name": "junior_snapshots_build_fields_check",
+          "value": "\"junior_snapshots\".\"status\" = 'ready' or (\"junior_snapshots\".\"build_started_at\" is not null and \"junior_snapshots\".\"build_phase\" is not null)"
+        },
+        "junior_snapshots_build_duration_check": {
+          "name": "junior_snapshots_build_duration_check",
+          "value": "\"junior_snapshots\".\"build_duration_ms\" is null or \"junior_snapshots\".\"build_duration_ms\" >= 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
     "public.junior_stats": {
       "name": "junior_stats",
       "schema": "",
@@ -2632,30 +2839,6 @@
           "primaryKey": false,
           "notNull": true,
           "default": "''"
-        },
-        "snapshot_id": {
-          "name": "snapshot_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "snapshot_generated_at": {
-          "name": "snapshot_generated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "snapshot_build_duration_ms": {
-          "name": "snapshot_build_duration_ms",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "snapshot_profile_hash": {
-          "name": "snapshot_profile_hash",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
         },
         "created_at": {
           "name": "created_at",

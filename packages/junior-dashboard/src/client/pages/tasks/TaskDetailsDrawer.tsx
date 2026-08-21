@@ -3,7 +3,8 @@ import { Link } from "react-router";
 import { MapPin } from "lucide-react";
 import { Detail, DetailList } from "../../components/DetailList";
 import { Drawer } from "../../components/Drawer";
-import { conversationPath, formatTime, peoplePath } from "../../format";
+import { conversationPath } from "../../conversations/conversationRoutes";
+import { formatTime, peoplePath } from "../../format";
 import { TranscriptText } from "../../conversations/TranscriptText";
 
 /** Show one task's instruction and metadata in a right-side slide-out. */

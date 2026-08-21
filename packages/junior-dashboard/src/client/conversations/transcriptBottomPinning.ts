@@ -9,8 +9,9 @@ import {
   type RefObject,
 } from "react";
 
-import type { ConversationTranscript, TranscriptViewPart } from "../types";
-import { conversationTranscriptMessages } from "./eventTranscript";
+import type { ConversationReportEvent } from "@sentry/junior/api/schema";
+
+import type { ConversationTranscript } from "../types";
 
 const BOTTOM_PROXIMITY_PX = 96;
 const MOBILE_MEDIA_QUERY = "(max-width: 767px)";
@@ -56,26 +57,169 @@ export function isNearScrollBottom(
   return remaining <= thresholdPx;
 }
 
-/** Build a compact transcript-tail key so polling without content changes does not look new. */
+/** Build a version that changes only when a visible Junior message appears. */
+export function transcriptJuniorMessageVersion(
+  conversation: ConversationTranscript | undefined,
+): string {
+  if (!conversation) return "empty";
+  for (let index = conversation.events.length - 1; index >= 0; index -= 1) {
+    const event = conversation.events[index]!;
+    const data = event.data;
+    if (data.type === "message" && data.role === "assistant") {
+      return [
+        event.seq,
+        event.createdAt,
+        data.messageId,
+        data.redacted ? "redacted" : (data.text?.length ?? 0),
+      ].join(":");
+    }
+    if (data.type === "assistant_message") {
+      const lastPart = data.parts.at(-1);
+      return [
+        event.seq,
+        event.createdAt,
+        data.parts.length,
+        lastPart?.redacted ? "redacted" : (lastPart?.text?.length ?? 0),
+      ].join(":");
+    }
+  }
+  return "empty";
+}
+
+/** Build a compact visible-tail key so metadata-only polls do not look new. */
 export function transcriptBottomVersion(
   conversation: ConversationTranscript | undefined,
 ): string {
   if (!conversation) return "empty";
 
-  const messages = conversationTranscriptMessages(conversation);
-  const lastMessage = messages.at(-1);
-  const lastPart = lastMessage?.parts.at(-1);
+  // Scan only for the last event that adds or changes a rendered transcript row.
+  // This avoids rebuilding the transcript while ignoring routing metadata.
+  let last: ConversationReportEvent | undefined;
+  for (let index = conversation.events.length - 1; index >= 0; index -= 1) {
+    const event = conversation.events[index]!;
+    if (!changesVisibleTranscript(event)) continue;
+    last = event;
+    break;
+  }
 
   return [
     conversation.conversationId,
     conversation.status,
-    lastMessage?.sourceSeq ?? "",
-    lastMessage?.role ?? "",
-    lastMessage?.outcome ?? "",
-    lastMessage?.timestamp ?? "",
-    lastMessage?.parts.length ?? 0,
-    transcriptPartVersion(lastPart),
+    last?.seq ?? "",
+    last?.createdAt ?? "",
+    eventTailVersion(last),
   ].join("|");
+}
+
+function changesVisibleTranscript(event: ConversationReportEvent): boolean {
+  const data = event.data;
+  if (data.type === "turn_lifecycle") return data.state === "failed";
+  return (
+    data.type === "message" ||
+    data.type === "assistant_message" ||
+    data.type === "tool_calls" ||
+    data.type === "subagent" ||
+    data.type === "structured_event" ||
+    data.type === "attachments_delivered" ||
+    data.type === "compaction" ||
+    data.type === "handoff"
+  );
+}
+
+function eventTailVersion(event: ConversationReportEvent | undefined): string {
+  if (!event) return "";
+  const data = event.data;
+  switch (data.type) {
+    case "message":
+      return [
+        data.type,
+        data.role,
+        data.messageId,
+        data.redacted ? "redacted" : (data.text?.length ?? 0),
+        data.eventType ?? "",
+      ].join(":");
+    case "assistant_message": {
+      const parts = data.parts;
+      const lastPart = parts.at(-1);
+      return [
+        data.type,
+        parts.length,
+        lastPart?.redacted ? "redacted" : (lastPart?.text?.length ?? 0),
+      ].join(":");
+    }
+    case "tool_calls": {
+      const call = data.calls.at(-1);
+      return [
+        data.type,
+        data.calls.length,
+        call?.toolCallId ?? "",
+        call?.name ?? "",
+        call?.status ?? "",
+        call?.output === undefined ? "" : "output",
+      ].join(":");
+    }
+    case "subagent":
+      return [
+        data.type,
+        data.childConversationId,
+        data.status,
+        data.subagentKind,
+        data.parentToolCallId ?? "",
+      ].join(":");
+    case "turn_lifecycle":
+      return [
+        data.type,
+        data.turnId,
+        data.state,
+        "failureKind" in data ? data.failureKind : "",
+      ].join(":");
+    case "structured_event":
+      return [
+        data.type,
+        data.namespace,
+        data.name,
+        data.version,
+        data.presentation.title,
+        data.presentation.preview?.length ?? 0,
+      ].join(":");
+    case "message_handled":
+      return [data.type, data.messageId].join(":");
+    case "attachments_delivered":
+      return [
+        data.type,
+        data.attachments.length,
+        ...data.attachments.map(
+          (attachment) =>
+            `${attachment.id}:${attachment.filename}:${attachment.bytes}`,
+        ),
+      ].join(":");
+    case "compaction":
+      return [data.type, data.summary?.length ?? 0, event.createdAt].join(":");
+    case "handoff":
+      return [
+        data.type,
+        data.modelProfile,
+        data.modelId,
+        data.summary?.length ?? 0,
+        event.createdAt,
+      ].join(":");
+    case "turn_routed":
+      return [data.type, data.turnId, data.modelProfile, data.modelId].join(
+        ":",
+      );
+    case "guardian_action_reviewed":
+      return [data.type, data.turnId, data.toolCallId, data.decision].join(":");
+    case "turn_context":
+      return [
+        data.type,
+        data.turnId,
+        data.pluginName,
+        data.kind,
+        data.version,
+      ].join(":");
+    default:
+      return `${(data as { type?: string }).type ?? "unknown"}:${event.seq}`;
+  }
 }
 
 /** Require both live mode and reader intent before moving the viewport. */
@@ -84,6 +228,23 @@ export function shouldAutoPinTranscriptBottom(input: {
   following: boolean;
 }): boolean {
   return input.enabled && input.following;
+}
+
+/** Keep a terminal pin pending until the deferred Junior reply arrives. */
+export function terminalReplyPinState(input: {
+  enabled: boolean;
+  following: boolean;
+  juniorMessageChanged: boolean;
+  pending: boolean;
+  wasEnabled: boolean;
+}): { pending: boolean; pin: boolean } {
+  if (input.enabled) return { pending: false, pin: false };
+  const pending =
+    input.pending || (input.wasEnabled && !input.enabled && input.following);
+  if (pending && input.juniorMessageChanged) {
+    return { pending: false, pin: true };
+  }
+  return { pending, pin: false };
 }
 
 /**
@@ -154,6 +315,7 @@ export function usePinnedTranscriptBottom(input: {
   conversationId?: string;
   enabled: boolean;
   historyVersion: string;
+  juniorMessageVersion: string;
   loadingPreviousPage: boolean;
   pinRequestVersion?: number;
   version: string;
@@ -167,6 +329,9 @@ export function usePinnedTranscriptBottom(input: {
   const previousScrollTopRef = useRef<number | null>(null);
   const prependSnapshotRef = useRef<PrependSnapshot | null>(null);
   const pinRequestVersionRef = useRef(input.pinRequestVersion ?? 0);
+  const juniorMessageVersionRef = useRef(input.juniorMessageVersion);
+  const terminalEnabledRef = useRef(input.enabled);
+  const terminalPinPendingRef = useRef(false);
   const versionRef = useRef(input.version);
   const programmaticScrollGenerationRef = useRef(0);
   const [following, setFollowing] = useState(false);
@@ -182,11 +347,7 @@ export function usePinnedTranscriptBottom(input: {
 
   useEffect(() => {
     enabledRef.current = input.enabled;
-    if (!input.enabled) {
-      followingRef.current = false;
-      setFollowing(false);
-      setHasPendingUpdate(false);
-    }
+    if (!input.enabled) setHasPendingUpdate(false);
   }, [input.enabled]);
 
   const setFollowingIntent = useCallback((value: boolean) => {
@@ -300,9 +461,12 @@ export function usePinnedTranscriptBottom(input: {
     initializedConversationRef.current = input.conversationId;
     setScrollTop(root, scrollSnapshot(root).scrollHeight);
     previousScrollTopRef.current = scrollSnapshot(root).scrollTop;
-    setFollowingIntent(input.enabled);
+    // Start every conversation at its latest message. Keep following until the
+    // reader scrolls up so late content and footer layout cannot expose stale
+    // space below the transcript.
+    setFollowingIntent(true);
     setHasPendingUpdate(false);
-  }, [contentElement, input.conversationId, input.enabled, setFollowingIntent]);
+  }, [contentElement, input.conversationId, setFollowingIntent]);
 
   useBrowserLayoutEffect(() => {
     const previous = prependSnapshotRef.current;
@@ -327,12 +491,7 @@ export function usePinnedTranscriptBottom(input: {
   }, [input.historyVersion, input.loadingPreviousPage]);
 
   const syncAfterLayoutChange = useCallback(() => {
-    if (
-      shouldAutoPinTranscriptBottom({
-        enabled: enabledRef.current,
-        following: followingRef.current,
-      })
-    ) {
+    if (followingRef.current) {
       scrollToBottom("auto");
       return;
     }
@@ -430,6 +589,32 @@ export function usePinnedTranscriptBottom(input: {
     scrollToBottom(preferredExplicitScrollBehavior());
   }, [scrollToBottom, setFollowingIntent]);
 
+  // Detail status updates before the deferred transcript. Save follow intent at
+  // completion, then consume it when the terminal Junior reply arrives.
+  useBrowserLayoutEffect(() => {
+    const juniorMessageChanged =
+      juniorMessageVersionRef.current !== input.juniorMessageVersion;
+    juniorMessageVersionRef.current = input.juniorMessageVersion;
+    const state = terminalReplyPinState({
+      enabled: input.enabled,
+      following: followingRef.current,
+      juniorMessageChanged,
+      pending: terminalPinPendingRef.current,
+      wasEnabled: terminalEnabledRef.current,
+    });
+    terminalEnabledRef.current = input.enabled;
+    terminalPinPendingRef.current = state.pending;
+    if (!state.pin) return;
+    setFollowingIntent(true);
+    setHasPendingUpdate(false);
+    scrollToBottom("auto");
+  }, [
+    input.enabled,
+    input.juniorMessageVersion,
+    scrollToBottom,
+    setFollowingIntent,
+  ]);
+
   useBrowserLayoutEffect(() => {
     const version = input.pinRequestVersion ?? 0;
     if (version === pinRequestVersionRef.current) return;
@@ -469,64 +654,6 @@ export function scrollTopAfterPrepend(
   scrollHeight: number,
 ): number {
   return previous.scrollTop + scrollHeight - previous.scrollHeight;
-}
-
-function transcriptPartVersion(part: TranscriptViewPart | undefined): string {
-  if (!part) return "";
-  if (part.type === "text") {
-    return [
-      part.type,
-      part.text?.length ?? 0,
-      part.redacted ? "redacted" : "",
-    ].join(":");
-  }
-  if (part.type === "tool_call") {
-    return [
-      part.type,
-      part.id,
-      part.status,
-      part.startedTimestamp ?? "",
-      part.input === undefined ? "" : "input",
-      part.output === undefined ? "" : "output",
-    ].join(":");
-  }
-  if (part.type === "reasoning") {
-    return [
-      part.type,
-      part.text?.length ?? 0,
-      part.redacted ? "redacted" : "",
-    ].join(":");
-  }
-  if (part.type === "subagent") {
-    return [
-      part.type,
-      part.id,
-      part.childConversationId,
-      part.subagentKind,
-      part.status,
-    ].join(":");
-  }
-  if (part.type === "structured_event") {
-    return [
-      part.type,
-      part.namespace,
-      part.name,
-      part.version,
-      part.presentation.title,
-      part.presentation.preview ?? "",
-      part.presentation.details?.length ?? 0,
-    ].join(":");
-  }
-  if (part.type === "attachments_delivered") {
-    return [
-      part.type,
-      ...part.attachments.map(
-        (attachment) =>
-          `${attachment.id}:${attachment.filename}:${attachment.contentType}:${attachment.bytes}`,
-      ),
-    ].join(":");
-  }
-  return [part.type, part.event.type, part.event.createdAt].join(":");
 }
 
 function scrollRootFor(element: HTMLElement | null): ScrollRoot | null {
