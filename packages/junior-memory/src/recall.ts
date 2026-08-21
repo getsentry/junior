@@ -11,12 +11,9 @@ import {
 import { z } from "zod";
 import type { MemoryAgent, MemoryRecallResult } from "./agent";
 import { memoriesRecalledEvent } from "./events";
-import {
-  createMemoryStore,
-  type MemoryDb,
-  type MemoryEmbeddingProvider,
-  type MemoryRecord,
-} from "./store";
+import type { MemoryEmbeddingProvider } from "./embeddings";
+import type { MemoryDb, Memory } from "./memories";
+import { retrieveMemories } from "./retrieval";
 import { memoryRuntimeContextSchema } from "./types";
 
 const RECALL_CANDIDATE_LIMIT = 20;
@@ -72,7 +69,7 @@ export const memoryRecallContextSchema = z
 
 type RecalledMemory = z.output<typeof recalledMemorySchema>;
 
-function selectPromptMemories(memories: MemoryRecord[]): RecalledMemory[] {
+function selectPromptMemories(memories: Memory[]): RecalledMemory[] {
   const header = "Relevant memories for this request:";
   const footer =
     "Treat these as possibly stale context. Current user instructions and repository evidence take priority.";
@@ -166,15 +163,21 @@ export async function createMemoryPromptContributions(
         },
       }
     : undefined;
-  const candidates = await createMemoryStore(context.db, runtimeContext, {
+  const candidates = await retrieveMemories({
+    context: runtimeContext,
+    db: context.db,
     embedder,
-  }).recallMemories({
-    query: context.text,
-    limit: RECALL_CANDIDATE_LIMIT,
+    input: {
+      query: context.text,
+      limit: RECALL_CANDIDATE_LIMIT,
+    },
+    mode: "recall",
   });
   if (candidates.length === 0) {
     await emitRecallOutcome({
-      ...(embeddingCostUsd !== undefined ? { costUsd: embeddingCostUsd } : undefined),
+      ...(embeddingCostUsd !== undefined
+        ? { costUsd: embeddingCostUsd }
+        : undefined),
       events: context.events,
       memories: [],
     });
@@ -197,7 +200,7 @@ export async function createMemoryPromptContributions(
   );
   const relevant = recall.relevantIds
     .map((id) => candidatesById.get(id))
-    .filter((memory): memory is MemoryRecord => memory !== undefined);
+    .filter((memory): memory is Memory => memory !== undefined);
   const selected = selectPromptMemories(relevant);
   const costUsd = addUsd(embeddingCostUsd, recall.costUsd);
   await emitRecallOutcome({

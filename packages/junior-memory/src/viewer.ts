@@ -19,7 +19,7 @@ import {
 import { z } from "zod";
 import { juniorMemoryEmbeddings, juniorMemoryMemories } from "./db/schema";
 import { publicMemoryScope } from "./scope";
-import { parseMemoryRow, type MemoryDb, type MemoryRecord } from "./store";
+import { parseMemoryRow, type MemoryDb, type Memory } from "./memories";
 import { MEMORY_KINDS, type MemorySourcePlatform } from "./types";
 
 const DAY_MS = 24 * 60 * 60 * 1_000;
@@ -52,7 +52,7 @@ const timelineDaysSchema = z.number().int().min(1).max(365);
 export type MemoryVisibility = z.output<typeof memoryVisibilitySchema>;
 
 /** Memory fields returned to an authenticated User. */
-export type MemoryView = MemoryRecord & {
+export type MemoryView = Memory & {
   origin: "automatic" | "explicit" | "other";
   sourcePlatform: MemorySourcePlatform;
   visibility: MemoryVisibility;

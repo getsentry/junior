@@ -10,11 +10,13 @@ import {
 import { createSlackSource } from "@sentry/junior-plugin-api";
 import { describe, expect, it } from "vitest";
 import * as memorySqlSchema from "../src/db/schema";
+import type { MemoryEmbeddingProvider } from "../src/embeddings";
+import type { MemoryDb } from "../src/memories";
 import {
-  createMemoryStore,
-  type MemoryDb,
-  type MemoryEmbeddingProvider,
-} from "../src/store";
+  createConversationMemory,
+  memoryFixture,
+  searchMemories,
+} from "./memory-operations";
 
 const EMBEDDING_DIMENSIONS = 1536;
 const NOW_MS = Date.parse("2026-07-29T12:00:00.000Z");
@@ -104,7 +106,7 @@ describe("memory retrieval quality", () => {
       [lexicalQuery]: unitEmbedding(1),
       [semanticQuery]: unitEmbedding(2),
     });
-    const store = createMemoryStore(fixture.db(), runtimeContext(), {
+    const test = memoryFixture(fixture.db(), runtimeContext(), {
       embedder,
       now: () => NOW_MS,
     });
@@ -117,7 +119,7 @@ describe("memory retrieval quality", () => {
         ["lexical", runbookContent],
         ["semantic", semanticContent],
       ] as const) {
-        const result = await store.createConversationMemory({
+        const result = await createConversationMemory(test, {
           content,
           idempotencyKey: `retrieval-quality:${key}`,
           kind: "knowledge",
@@ -132,7 +134,7 @@ describe("memory retrieval quality", () => {
       ];
       const outcomes = await Promise.all(
         cases.map(async ({ expected, query }) => {
-          const ranked = await store.searchMemories({ limit: 5, query });
+          const ranked = await searchMemories(test, { limit: 5, query });
           const rank = ranked.findIndex((memory) => memory.id === expected) + 1;
           return {
             hitAt1: rank === 1,

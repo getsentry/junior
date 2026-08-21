@@ -4,7 +4,8 @@ import { getDb, getSqlExecutor } from "@/chat/db";
 import { upsertIdentity } from "@/chat/identities/sql";
 import { completeText, resolveGatewayModel } from "@/chat/pi/client";
 import { createPluginEmbedder } from "@/chat/plugins/model";
-import { createMemoryStore, type MemoryDb } from "@sentry/junior-memory";
+import { createMemory } from "../../../junior-memory/src/create";
+import type { MemoryDb } from "../../../junior-memory/src/memories";
 import { createSlackSource } from "@sentry/junior-plugin-api";
 import {
   juniorMemoryEmbeddings,
@@ -47,37 +48,34 @@ export async function seedMemory(args: {
   if (!identity.userId) {
     throw new Error("Eval memory Actor did not resolve to a User");
   }
-  const store = createMemoryStore(
-    memoryDb(),
-    {
-      conversationId: `slack:${args.thread.channel_id}:${args.thread.thread_ts}`,
-      actor: {
-        platform: "slack",
-        teamId: memoryTeamId,
-        userId: actorUserId,
-      },
-      source: createSlackSource({
-        channelId: args.thread.channel_id,
-        messageTs: args.thread.thread_ts,
-        teamId: memoryTeamId,
-        threadTs: args.thread.thread_ts,
-        visibility:
-          args.thread.channel_type === "channel" ? "public" : "private",
-      }),
-      userId: identity.userId,
+  const context = {
+    conversationId: `slack:${args.thread.channel_id}:${args.thread.thread_ts}`,
+    actor: {
+      platform: "slack" as const,
+      teamId: memoryTeamId,
+      userId: actorUserId,
     },
-    { embedder: evalMemoryEmbedder },
-  );
+    source: createSlackSource({
+      channelId: args.thread.channel_id,
+      messageTs: args.thread.thread_ts,
+      teamId: memoryTeamId,
+      threadTs: args.thread.thread_ts,
+      visibility: args.thread.channel_type === "channel" ? "public" : "private",
+    }),
+    userId: identity.userId,
+  };
   const input = {
     content: args.content,
     idempotencyKey: args.idempotencyKey,
     kind: args.kind ?? "preference",
   };
-  if (args.subject === "conversation") {
-    await store.createConversationMemory(input);
-    return;
-  }
-  await store.createMemory(input);
+  await createMemory({
+    context,
+    db: memoryDb(),
+    embedder: evalMemoryEmbedder,
+    input,
+    subjectType: args.subject === "conversation" ? "conversation" : "user",
+  });
 }
 
 function memoryDb(): MemoryDb {

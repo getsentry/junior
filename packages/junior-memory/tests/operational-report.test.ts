@@ -12,7 +12,12 @@ import { describe, expect, it } from "vitest";
 import * as memorySqlSchema from "../src/db/schema";
 import { juniorMemoryMemories } from "../src/db/schema";
 import { buildMemoryOperationalReport } from "../src/operational-report";
-import { createMemoryStore, type MemoryDb } from "../src/store";
+import type { MemoryDb } from "../src/memories";
+import {
+  createConversationMemory,
+  createUserMemory,
+  memoryFixture,
+} from "./memory-operations";
 
 const TEST_NOW_MS = Date.parse("2026-07-28T12:00:00.000Z");
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -177,16 +182,16 @@ describe("memory operational report", () => {
     const fixture = await createMemoryFixture();
     try {
       const db = fixture.db();
-      const store = createMemoryStore(db, localContext(), {
+      const test = memoryFixture(db, localContext(), {
         embedder: testEmbedder(),
         now: () => TEST_NOW_MS,
       });
-      await store.createMemory({
+      await createUserMemory(test, {
         content: "Use compact pull request summaries.",
         idempotencyKey: "report-private",
         kind: "preference",
       });
-      await store.createConversationMemory({
+      await createConversationMemory(test, {
         content: "The checkout runbook lives in the service repository.",
         idempotencyKey: "report-conversation",
         kind: "procedure",

@@ -19,7 +19,7 @@ import {
   memoriesCapturedEventV1,
   memoriesRecalledEvent,
 } from "./events";
-import type { MemoryDb } from "./store";
+import type { MemoryDb } from "./memories";
 import { createMemoryUserPage } from "./user-pages";
 
 const MEMORY_MODEL_ENV = "AI_MEMORY_MODEL";

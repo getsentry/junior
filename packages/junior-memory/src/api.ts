@@ -10,7 +10,7 @@ import {
   type PluginRouteApp,
   type User,
 } from "@sentry/junior-plugin-api";
-import type { MemoryDb } from "./store";
+import type { MemoryDb } from "./memories";
 import {
   archiveMemory,
   getMemory,

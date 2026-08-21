@@ -7,11 +7,10 @@ import {
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import {
-  createMemoryStore,
+  createMemory,
   type CreateMemoryInput,
   type CreateMemoryResult,
-  type MemoryDb,
-} from "./store";
+} from "./create";
 import {
   createMemoryAgent,
   parseExtractedMemory,
@@ -20,6 +19,9 @@ import {
 } from "./agent";
 import { MEMORY_KINDS, memoryRuntimeContextSchema } from "./types";
 import { capturedMemory, memoriesCapturedEvent } from "./events";
+import { archiveExpiredMemoryBatch, type MemoryDb } from "./memories";
+import { retrieveMemories } from "./retrieval";
+import { deriveVisibleMemoryScopes } from "./scope";
 
 const MEMORY_TOOL_NAMES = new Set([
   "createMemory",
@@ -260,15 +262,19 @@ export async function processMemorySession(
     ...(run.actorUserId ? { userId: run.actorUserId } : undefined),
   });
   const agent = createMemoryAgent(context.model);
-  const store = createMemoryStore(context.db as MemoryDb, runtimeContext, {
-    embedder: context.embedder,
-    supersessionDecider: agent,
+  const db = context.db as MemoryDb;
+  await archiveExpiredMemoryBatch({
+    db,
+    nowMs: Date.now(),
+    scopes: deriveVisibleMemoryScopes(runtimeContext),
   });
-  await store.archiveExpiredMemories();
   const extraction = await getTaskExtraction(context, async () => {
-    const existingMemories = await store.searchMemories({
-      limit: 10,
-      query: evidenceText,
+    const existingMemories = await retrieveMemories({
+      context: runtimeContext,
+      db,
+      embedder: context.embedder,
+      input: { limit: 10, query: evidenceText },
+      mode: "search",
     });
     return await agent.extractSessionMemories({
       existingMemories: existingMemories.map((memory) => ({
@@ -290,12 +296,14 @@ export async function processMemorySession(
       continue;
     }
     const input = passiveInput(run.runId, memory, sourceKey, target);
-    if (target === "conversation") {
-      const result = await store.createConversationMemory(input);
-      recordCapturedMemory(captured, result);
-      continue;
-    }
-    const result = await store.createMemory(input);
+    const result = await createMemory({
+      context: runtimeContext,
+      db,
+      embedder: context.embedder,
+      input,
+      subjectType: target,
+      supersessionDecider: agent,
+    });
     recordCapturedMemory(captured, result);
   }
   await context.events.emit(

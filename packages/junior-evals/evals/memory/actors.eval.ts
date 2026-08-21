@@ -2,7 +2,7 @@ import { expect } from "vitest";
 import { describeEval } from "vitest-evals";
 import { getDb } from "@/chat/db";
 import { readActorIdentity } from "@/chat/plugins/viewer";
-import type { MemoryDb } from "@sentry/junior-memory";
+import type { MemoryDb } from "../../../junior-memory/src/memories";
 import {
   juniorMemoryEmbeddings,
   juniorMemoryMemories,

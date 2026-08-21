@@ -43,11 +43,20 @@ import {
   type MemoryReviewer,
 } from "../src/tools";
 import { listMemories } from "../src/viewer";
-import { createMemoryStore, type MemoryDb } from "../src/store";
 import type {
   MemorySupersessionDecider,
   MemorySupersessionInput,
-} from "../src/store";
+} from "../src/create";
+import type { MemoryDb } from "../src/memories";
+import {
+  archiveMemory,
+  createConversationMemory,
+  createUserMemory,
+  listMemories as listStoredMemories,
+  memoryFixture,
+  recallMemories,
+  searchMemories,
+} from "./memory-operations";
 const TEST_NOW_MS = Date.parse("2026-06-19T12:00:00.000Z");
 const TEST_EMBEDDING_DIMENSIONS = 1536;
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -1009,12 +1018,12 @@ describe("memory plugin storage", () => {
     const fixture = await createMemoryFixture();
 
     try {
-      const store = createMemoryStore(
+      const store = memoryFixture(
         memoryDb(fixture),
         slackContext({ channelId: "D123" }),
         { now: () => TEST_NOW_MS },
       );
-      const oldMemory = await store.createMemory({
+      const oldMemory = await createUserMemory(store, {
         content: "Prefers Python for automation scripts.",
         kind: "preference",
         idempotencyKey: "memory-test:passive-supersession-old",
@@ -1438,12 +1447,12 @@ describe("memory plugin storage", () => {
     const fixture = await createMemoryFixture();
     try {
       const duplicateContent = "Deployment runbooks live in Notion.";
-      const store = createMemoryStore(
+      const store = memoryFixture(
         memoryDb(fixture),
         slackContext({ channelId: "D123" }),
         { now: () => TEST_NOW_MS },
       );
-      await store.createConversationMemory({
+      await createConversationMemory(store, {
         content: duplicateContent,
         idempotencyKey: "memory-test:existing-conversation-fact",
         kind: "knowledge",
@@ -1757,10 +1766,10 @@ describe("memory plugin storage", () => {
 
     try {
       await installViewerCoreTables(fixture);
-      const store = createMemoryStore(memoryDb(fixture), runtime, {
+      const store = memoryFixture(memoryDb(fixture), runtime, {
         now: () => TEST_NOW_MS,
       });
-      const created = await store.createMemory({
+      const created = await createUserMemory(store, {
         content: "Prefers short dashboard answers.",
         idempotencyKey: "tool:api:personal-scope",
         kind: "preference",
@@ -2325,24 +2334,20 @@ describe("memory plugin storage", () => {
 
     try {
       let nowMs = TEST_NOW_MS;
-      const publicStore = createMemoryStore(memoryDb(fixture), slackContext(), {
+      const publicStore = memoryFixture(memoryDb(fixture), slackContext(), {
         now: () => nowMs,
       });
-      const publicMemory = await publicStore.createConversationMemory({
+      const publicMemory = await createConversationMemory(publicStore, {
         content: "Deploy runbooks live in Notion.",
         kind: "knowledge",
         idempotencyKey: "memory-test:public",
       });
       nowMs += 1;
       const privateContext = slackContext({ channelId: "D123" });
-      const privateStore = createMemoryStore(
-        memoryDb(fixture),
-        privateContext,
-        {
-          now: () => nowMs,
-        },
-      );
-      const privateMemory = await privateStore.createMemory({
+      const privateStore = memoryFixture(memoryDb(fixture), privateContext, {
+        now: () => nowMs,
+      });
+      const privateMemory = await createUserMemory(privateStore, {
         content: "Prefers short PR summaries.",
         kind: "preference",
         idempotencyKey: "memory-test:private",
@@ -2356,11 +2361,11 @@ describe("memory plugin storage", () => {
         scope: "private",
         subjectType: "user",
       });
-      await expect(privateStore.listMemories({})).resolves.toEqual([
+      await expect(listStoredMemories(privateStore, {})).resolves.toEqual([
         expect.objectContaining({ id: privateMemory.memory.id }),
         expect.objectContaining({ id: publicMemory.memory.id }),
       ]);
-      const sameUserStore = createMemoryStore(
+      const sameUserStore = memoryFixture(
         memoryDb(fixture),
         slackContext({
           ownerUserId: privateContext.userId,
@@ -2369,12 +2374,12 @@ describe("memory plugin storage", () => {
         }),
         { now: () => nowMs },
       );
-      await expect(sameUserStore.listMemories({})).resolves.toEqual([
+      await expect(listStoredMemories(sameUserStore, {})).resolves.toEqual([
         expect.objectContaining({ id: privateMemory.memory.id }),
         expect.objectContaining({ id: publicMemory.memory.id }),
       ]);
 
-      const otherUserStore = createMemoryStore(
+      const otherUserStore = memoryFixture(
         memoryDb(fixture),
         slackContext({
           channelId: "D123",
@@ -2383,10 +2388,10 @@ describe("memory plugin storage", () => {
         }),
         { now: () => nowMs },
       );
-      await expect(otherUserStore.listMemories({})).resolves.toEqual([
+      await expect(listStoredMemories(otherUserStore, {})).resolves.toEqual([
         expect.objectContaining({ id: publicMemory.memory.id }),
       ]);
-      const linkedIdentityStore = createMemoryStore(
+      const linkedIdentityStore = memoryFixture(
         memoryDb(fixture),
         slackContext({
           ownerUserId: privateContext.userId,
@@ -2395,19 +2400,21 @@ describe("memory plugin storage", () => {
         }),
         { now: () => nowMs },
       );
-      await expect(linkedIdentityStore.listMemories({})).resolves.toEqual([
+      await expect(
+        listStoredMemories(linkedIdentityStore, {}),
+      ).resolves.toEqual([
         expect.objectContaining({ id: privateMemory.memory.id }),
         expect.objectContaining({ id: publicMemory.memory.id }),
       ]);
       await expect(
-        otherUserStore.archiveMemory({ id: privateMemory.memory.id }),
+        archiveMemory(otherUserStore, { id: privateMemory.memory.id }),
       ).rejects.toThrow("Memory was not found in the current context.");
       await expect(
-        publicStore.archiveMemory({ id: publicMemory.memory.id }),
+        archiveMemory(publicStore, { id: publicMemory.memory.id }),
       ).rejects.toThrow("Memory was not found in the current context.");
 
       nowMs += 1;
-      const archived = await publicStore.archiveMemory({
+      const archived = await archiveMemory(publicStore, {
         id: privateMemory.memory.id.slice(0, 12),
       });
       expect(archived).toMatchObject({
@@ -2438,41 +2445,39 @@ describe("memory plugin storage", () => {
         teamId: "T123",
         userId: "U123",
       });
-      const firstStore = createMemoryStore(memoryDb(fixture), firstContext, {
+      const firstStore = memoryFixture(memoryDb(fixture), firstContext, {
         now: () => TEST_NOW_MS,
       });
-      const secondStore = createMemoryStore(memoryDb(fixture), secondContext, {
+      const secondStore = memoryFixture(memoryDb(fixture), secondContext, {
         now: () => TEST_NOW_MS + 1,
       });
-      const hiddenStore = createMemoryStore(memoryDb(fixture), hiddenContext, {
+      const hiddenStore = memoryFixture(memoryDb(fixture), hiddenContext, {
         now: () => TEST_NOW_MS + 2,
       });
-      const privateStore = createMemoryStore(
-        memoryDb(fixture),
-        privateContext,
-        { now: () => TEST_NOW_MS + 3 },
-      );
-      const first = await firstStore.createMemory({
+      const privateStore = memoryFixture(memoryDb(fixture), privateContext, {
+        now: () => TEST_NOW_MS + 3,
+      });
+      const first = await createUserMemory(firstStore, {
         content: "Prefers concise release notes.",
         idempotencyKey: "tool:api:first",
         kind: "preference",
       });
-      const second = await secondStore.createMemory({
+      const second = await createUserMemory(secondStore, {
         content: "Deploy runbooks live in Notion.",
         idempotencyKey: "session:api:second",
         kind: "knowledge",
       });
-      const hidden = await hiddenStore.createMemory({
+      const hidden = await createUserMemory(hiddenStore, {
         content: "Hidden viewer memory.",
         idempotencyKey: "api:hidden",
         kind: "knowledge",
       });
-      const publicMemory = await firstStore.createConversationMemory({
+      const publicMemory = await createConversationMemory(firstStore, {
         content: "Public workspace memory.",
         idempotencyKey: "session:api:public",
         kind: "knowledge",
       });
-      const privateMemory = await privateStore.createConversationMemory({
+      const privateMemory = await createConversationMemory(privateStore, {
         content: "Private conversation memory.",
         idempotencyKey: "session:api:private",
         kind: "knowledge",
@@ -2687,21 +2692,21 @@ describe("memory plugin storage", () => {
 
     try {
       const context = localContext({ userId: "cli-user" });
-      const store = createMemoryStore(memoryDb(fixture), context, {
+      const store = memoryFixture(memoryDb(fixture), context, {
         now: () => TEST_NOW_MS,
       });
-      const created = await store.createMemory({
+      const created = await createUserMemory(store, {
         content: "Prefers CLI memory QA with scoped search.",
         kind: "preference",
         idempotencyKey: "memory-test:cli-search",
       });
-      const expired = await store.createMemory({
+      const expired = await createUserMemory(store, {
         content: "Prefers expired CLI memory rows to stay hidden.",
         kind: "preference",
         expiresAtMs: Date.now() - 1,
         idempotencyKey: "memory-test:cli-search-expired",
       });
-      const superseded = await store.createMemory({
+      const superseded = await createUserMemory(store, {
         content: "Prefers superseded CLI memory rows to stay hidden.",
         kind: "preference",
         idempotencyKey: "memory-test:cli-search-superseded",
@@ -2819,18 +2824,18 @@ WHERE id = '${superseded.memory.id}'
         "client rendering library": unitEmbedding(1),
       });
       let nowMs = TEST_NOW_MS;
-      const store = createMemoryStore(memoryDb(fixture), slackContext(), {
+      const store = memoryFixture(memoryDb(fixture), slackContext(), {
         embedder,
         now: () => nowMs,
       });
 
-      const react = await store.createMemory({
+      const react = await createUserMemory(store, {
         content: reactMemory,
         kind: "preference",
         idempotencyKey: "memory-test:embedding-react",
       });
       nowMs += 1;
-      await store.createMemory({
+      await createUserMemory(store, {
         content: mangoMemory,
         kind: "preference",
         idempotencyKey: "memory-test:embedding-mango",
@@ -2851,7 +2856,7 @@ WHERE id = '${superseded.memory.id}'
           }),
         ]),
       );
-      const results = await store.searchMemories({
+      const results = await searchMemories(store, {
         query: "client rendering library",
       });
       expect(results[0]).toEqual(
@@ -2874,28 +2879,30 @@ WHERE id = '${superseded.memory.id}'
         [closeContent]: cosineEmbedding(0.8),
         [weakContent]: cosineEmbedding(0.5),
       });
-      const store = createMemoryStore(memoryDb(fixture), slackContext(), {
+      const store = memoryFixture(memoryDb(fixture), slackContext(), {
         embedder,
         now: () => TEST_NOW_MS,
       });
-      const close = await store.createMemory({
+      const close = await createUserMemory(store, {
         content: closeContent,
         kind: "knowledge",
         idempotencyKey: "memory-test:recall-distance-close",
       });
-      const weak = await store.createMemory({
+      const weak = await createUserMemory(store, {
         content: weakContent,
         kind: "knowledge",
         idempotencyKey: "memory-test:recall-distance-weak",
       });
 
-      await expect(store.recallMemories({ limit: 2, query })).resolves.toEqual([
-        expect.objectContaining({ id: close.memory.id }),
-      ]);
-      await expect(store.searchMemories({ limit: 2, query })).resolves.toEqual([
-        expect.objectContaining({ id: close.memory.id }),
-        expect.objectContaining({ id: weak.memory.id }),
-      ]);
+      await expect(recallMemories(store, { limit: 2, query })).resolves.toEqual(
+        [expect.objectContaining({ id: close.memory.id })],
+      );
+      await expect(searchMemories(store, { limit: 2, query })).resolves.toEqual(
+        [
+          expect.objectContaining({ id: close.memory.id }),
+          expect.objectContaining({ id: weak.memory.id }),
+        ],
+      );
     } finally {
       await fixture.close();
     }
@@ -2914,16 +2921,16 @@ WHERE id = '${superseded.memory.id}'
         [vectorDistractor]: cosineEmbedding(0.8),
         [lexicalAnswer]: unitEmbedding(1),
       });
-      const store = createMemoryStore(memoryDb(fixture), slackContext(), {
+      const store = memoryFixture(memoryDb(fixture), slackContext(), {
         embedder,
         now: () => TEST_NOW_MS,
       });
-      const distractor = await store.createMemory({
+      const distractor = await createUserMemory(store, {
         content: vectorDistractor,
         kind: "preference",
         idempotencyKey: "memory-test:recall-vector-distractor",
       });
-      const answer = await store.createMemory({
+      const answer = await createUserMemory(store, {
         content: lexicalAnswer,
         kind: "knowledge",
         idempotencyKey: "memory-test:recall-lexical-answer",
@@ -2931,7 +2938,7 @@ WHERE id = '${superseded.memory.id}'
 
       // Hybrid recall must keep both legs. A close vector hit must not hide
       // the exact/token memory that only lexical retrieval surfaces.
-      await expect(store.recallMemories({ limit: 2, query })).resolves.toEqual(
+      await expect(recallMemories(store, { limit: 2, query })).resolves.toEqual(
         expect.arrayContaining([
           expect.objectContaining({ id: distractor.memory.id }),
           expect.objectContaining({ id: answer.memory.id }),
@@ -2953,7 +2960,7 @@ WHERE id = '${superseded.memory.id}'
       const preferenceContent =
         "Located in San Francisco and uses Pacific Time (PT).";
       let nowMs = TEST_NOW_MS;
-      const privateStore = createMemoryStore(
+      const privateStore = memoryFixture(
         memoryDb(fixture),
         slackContext({ channelId: "D123" }),
         {
@@ -2961,11 +2968,11 @@ WHERE id = '${superseded.memory.id}'
           now: () => nowMs,
         },
       );
-      const publicStore = createMemoryStore(memoryDb(fixture), slackContext(), {
+      const publicStore = memoryFixture(memoryDb(fixture), slackContext(), {
         // No embedder: force the pure lexical path that production noise hits.
         now: () => nowMs,
       });
-      const preference = await privateStore.createMemory({
+      const preference = await createUserMemory(privateStore, {
         content: preferenceContent,
         kind: "preference",
         idempotencyKey: "memory-test:recall-personal-timezone",
@@ -2973,7 +2980,7 @@ WHERE id = '${superseded.memory.id}'
 
       for (let index = 0; index < 80; index += 1) {
         nowMs = TEST_NOW_MS + index + 1;
-        await publicStore.createConversationMemory({
+        await createConversationMemory(publicStore, {
           content: `Recent workspace time note ${index} about deploy time windows`,
           kind: "knowledge",
           idempotencyKey: `memory-test:recall-time-noise-${index}`,
@@ -2984,7 +2991,7 @@ WHERE id = '${superseded.memory.id}'
       // Public lexical recall alone would keep only the newest noise. The
       // The separate private search must still find the older preference.
       await expect(
-        privateStore.recallMemories({ limit: 5, query }),
+        recallMemories(privateStore, { limit: 5, query }),
       ).resolves.toEqual(
         expect.arrayContaining([
           expect.objectContaining({
@@ -3018,34 +3025,30 @@ WHERE id = '${superseded.memory.id}'
       }
       const embedder = createTestEmbedder(vectors);
       let nowMs = TEST_NOW_MS;
-      const vectorStore = createMemoryStore(memoryDb(fixture), slackContext(), {
+      const vectorStore = memoryFixture(memoryDb(fixture), slackContext(), {
         embedder,
         now: () => nowMs,
       });
       for (const [index, memory] of vectorMemories.entries()) {
         nowMs += 1;
-        await vectorStore.createMemory({
+        await createUserMemory(vectorStore, {
           content: memory,
           kind: "preference",
           idempotencyKey: `memory-test:fusion-vector-${index}`,
         });
       }
       nowMs += 1;
-      const lexicalStore = createMemoryStore(
-        memoryDb(fixture),
-        slackContext(),
-        {
-          now: () => nowMs,
-        },
-      );
-      const lexical = await lexicalStore.createMemory({
+      const lexicalStore = memoryFixture(memoryDb(fixture), slackContext(), {
+        now: () => nowMs,
+      });
+      const lexical = await createUserMemory(lexicalStore, {
         content: lexicalMemory,
         kind: "preference",
         idempotencyKey: "memory-test:fusion-lexical",
       });
 
       await expect(
-        vectorStore.searchMemories({ limit: 1, query }),
+        searchMemories(vectorStore, { limit: 1, query }),
       ).resolves.toEqual([expect.objectContaining({ id: lexical.memory.id })]);
     } finally {
       await fixture.close();
@@ -3057,24 +3060,24 @@ WHERE id = '${superseded.memory.id}'
 
     try {
       let nowMs = TEST_NOW_MS - 120 * 24 * 60 * 60 * 1000;
-      const store = createMemoryStore(memoryDb(fixture), slackContext(), {
+      const store = memoryFixture(memoryDb(fixture), slackContext(), {
         now: () => nowMs,
       });
-      const oldRelevant = await store.createMemory({
+      const oldRelevant = await createUserMemory(store, {
         content:
           "Deploy checklist ownership escalation requires release approval.",
         kind: "knowledge",
         idempotencyKey: "memory-test:recency-old-relevant",
       });
       nowMs = TEST_NOW_MS;
-      const newLessRelevant = await store.createMemory({
+      const newLessRelevant = await createUserMemory(store, {
         content: "Deploy snacks live near the office checklist.",
         kind: "knowledge",
         idempotencyKey: "memory-test:recency-new-less-relevant",
       });
 
       await expect(
-        store.searchMemories({
+        searchMemories(store, {
           limit: 2,
           query: "deploy checklist ownership escalation approval",
         }),
@@ -3092,23 +3095,23 @@ WHERE id = '${superseded.memory.id}'
 
     try {
       let nowMs = TEST_NOW_MS - 120 * 24 * 60 * 60 * 1000;
-      const store = createMemoryStore(memoryDb(fixture), slackContext(), {
+      const store = memoryFixture(memoryDb(fixture), slackContext(), {
         now: () => nowMs,
       });
-      const oldMemory = await store.createMemory({
+      const oldMemory = await createUserMemory(store, {
         content: "Deploy checklist lives in the legacy wiki.",
         kind: "knowledge",
         idempotencyKey: "memory-test:recency-old-equal",
       });
       nowMs = TEST_NOW_MS;
-      const newMemory = await store.createMemory({
+      const newMemory = await createUserMemory(store, {
         content: "Deploy checklist lives in Notion.",
         kind: "knowledge",
         idempotencyKey: "memory-test:recency-new-equal",
       });
 
       await expect(
-        store.searchMemories({ limit: 2, query: "deploy checklist" }),
+        searchMemories(store, { limit: 2, query: "deploy checklist" }),
       ).resolves.toEqual([
         expect.objectContaining({ id: newMemory.memory.id }),
         expect.objectContaining({ id: oldMemory.memory.id }),
@@ -3131,26 +3134,28 @@ WHERE id = '${superseded.memory.id}'
         [newContent]: cosineEmbedding(0.9),
       });
       let nowMs = TEST_NOW_MS - 120 * 24 * 60 * 60 * 1000;
-      const store = createMemoryStore(memoryDb(fixture), slackContext(), {
+      const store = memoryFixture(memoryDb(fixture), slackContext(), {
         embedder,
         now: () => nowMs,
       });
-      const oldMemory = await store.createMemory({
+      const oldMemory = await createUserMemory(store, {
         content: oldContent,
         kind: "knowledge",
         idempotencyKey: "memory-test:recency-vector-old",
       });
       nowMs = TEST_NOW_MS;
-      const newMemory = await store.createMemory({
+      const newMemory = await createUserMemory(store, {
         content: newContent,
         kind: "knowledge",
         idempotencyKey: "memory-test:recency-vector-new",
       });
 
-      await expect(store.searchMemories({ limit: 2, query })).resolves.toEqual([
-        expect.objectContaining({ id: oldMemory.memory.id }),
-        expect.objectContaining({ id: newMemory.memory.id }),
-      ]);
+      await expect(searchMemories(store, { limit: 2, query })).resolves.toEqual(
+        [
+          expect.objectContaining({ id: oldMemory.memory.id }),
+          expect.objectContaining({ id: newMemory.memory.id }),
+        ],
+      );
     } finally {
       await fixture.close();
     }
@@ -3161,18 +3166,18 @@ WHERE id = '${superseded.memory.id}'
 
     try {
       const embedder = createTestEmbedder();
-      const store = createMemoryStore(memoryDb(fixture), slackContext(), {
+      const store = memoryFixture(memoryDb(fixture), slackContext(), {
         embedder,
         now: () => TEST_NOW_MS,
       });
 
-      const created = await store.createMemory({
+      const created = await createUserMemory(store, {
         content: "Prefers duplicate-safe vector writes.",
         kind: "preference",
         idempotencyKey: "memory-test:embedding-idempotent",
       });
       await expect(
-        store.createMemory({
+        createUserMemory(store, {
           content: "Changed retry content should not be re-embedded.",
           kind: "preference",
           idempotencyKey: "memory-test:embedding-idempotent",
@@ -3196,17 +3201,17 @@ WHERE id = '${superseded.memory.id}'
 
     try {
       let nowMs = TEST_NOW_MS;
-      const store = createMemoryStore(memoryDb(fixture), slackContext(), {
+      const store = memoryFixture(memoryDb(fixture), slackContext(), {
         now: () => nowMs,
       });
 
-      const created = await store.createMemory({
+      const created = await createUserMemory(store, {
         content: "Prefers release notes with risk callouts.",
         kind: "preference",
         idempotencyKey: "memory-test:exact-dedup-original",
       });
       await expect(
-        store.createMemory({
+        createUserMemory(store, {
           content: "  Prefers release notes\nwith risk callouts.  ",
           kind: "preference",
           expiresAtMs: TEST_NOW_MS + 1,
@@ -3218,7 +3223,7 @@ WHERE id = '${superseded.memory.id}'
       });
       nowMs = TEST_NOW_MS + 2;
       await expect(
-        store.createMemory({
+        createUserMemory(store, {
           content: "Changed retry content must not create a duplicate.",
           kind: "preference",
           idempotencyKey: "memory-test:exact-dedup-repeat",
@@ -3227,7 +3232,7 @@ WHERE id = '${superseded.memory.id}'
         created: false,
         memory: { id: created.memory.id },
       });
-      const otherKind = await store.createMemory({
+      const otherKind = await createUserMemory(store, {
         content: "Prefers release notes with risk callouts.",
         kind: "knowledge",
         idempotencyKey: "memory-test:exact-dedup-other-kind",
@@ -3236,7 +3241,7 @@ WHERE id = '${superseded.memory.id}'
         created: true,
         memory: { content: created.memory.content, kind: "knowledge" },
       });
-      const otherScope = await store.createConversationMemory({
+      const otherScope = await createConversationMemory(store, {
         content: "Prefers release notes with risk callouts.",
         kind: "preference",
         idempotencyKey: "memory-test:exact-dedup-other-scope",
@@ -3246,14 +3251,14 @@ WHERE id = '${superseded.memory.id}'
         memory: { content: created.memory.content, kind: "preference" },
       });
 
-      await expect(store.listMemories({})).resolves.toEqual(
+      await expect(listStoredMemories(store, {})).resolves.toEqual(
         expect.arrayContaining([
           expect.objectContaining({ id: otherScope.memory.id }),
           expect.objectContaining({ id: otherKind.memory.id }),
           expect.objectContaining({ id: created.memory.id }),
         ]),
       );
-      await expect(store.listMemories({})).resolves.toHaveLength(3);
+      await expect(listStoredMemories(store, {})).resolves.toHaveLength(3);
     } finally {
       await fixture.close();
     }
@@ -3269,17 +3274,17 @@ WHERE id = '${superseded.memory.id}'
         [firstContent]: unitEmbedding(1),
         [duplicateContent]: unitEmbedding(1),
       });
-      const store = createMemoryStore(memoryDb(fixture), slackContext(), {
+      const store = memoryFixture(memoryDb(fixture), slackContext(), {
         embedder,
         now: () => TEST_NOW_MS,
       });
 
-      const first = await store.createMemory({
+      const first = await createUserMemory(store, {
         content: firstContent,
         kind: "preference",
         idempotencyKey: "memory-test:vector-dedup-idempotent-original",
       });
-      const second = await store.createMemory({
+      const second = await createUserMemory(store, {
         content: duplicateContent,
         kind: "preference",
         idempotencyKey: "memory-test:vector-dedup-idempotent-repeat",
@@ -3290,7 +3295,7 @@ WHERE id = '${superseded.memory.id}'
       });
       expect(second.memory.id).not.toBe(first.memory.id);
       await expect(
-        store.createMemory({
+        createUserMemory(store, {
           content:
             "Changed retry content should resolve to its original write.",
           kind: "preference",
@@ -3301,7 +3306,7 @@ WHERE id = '${superseded.memory.id}'
         memory: { id: second.memory.id, content: duplicateContent },
       });
 
-      await expect(store.listMemories({})).resolves.toHaveLength(2);
+      await expect(listStoredMemories(store, {})).resolves.toHaveLength(2);
     } finally {
       await fixture.close();
     }
@@ -3318,17 +3323,17 @@ WHERE id = '${superseded.memory.id}'
         [firstContent]: unitEmbedding(1),
         [duplicateContent]: unitEmbedding(1),
       });
-      const store = createMemoryStore(memoryDb(fixture), slackContext(), {
+      const store = memoryFixture(memoryDb(fixture), slackContext(), {
         embedder,
         now: () => TEST_NOW_MS,
       });
 
-      const created = await store.createMemory({
+      const created = await createUserMemory(store, {
         content: firstContent,
         kind: "knowledge",
         idempotencyKey: "memory-test:vector-dedup-original",
       });
-      const neighbor = await store.createMemory({
+      const neighbor = await createUserMemory(store, {
         content: duplicateContent,
         kind: "knowledge",
         idempotencyKey: "memory-test:vector-dedup-repeat",
@@ -3339,7 +3344,7 @@ WHERE id = '${superseded.memory.id}'
       });
       expect(neighbor.memory.id).not.toBe(created.memory.id);
 
-      await expect(store.listMemories({})).resolves.toHaveLength(2);
+      await expect(listStoredMemories(store, {})).resolves.toHaveLength(2);
       await expect(
         memoryDb(fixture).select().from(memorySqlSchema.juniorMemoryEmbeddings),
       ).resolves.toHaveLength(2);
@@ -3353,10 +3358,10 @@ WHERE id = '${superseded.memory.id}'
 
     try {
       const content = "Prefers derived embeddings to be repairable.";
-      const firstStore = createMemoryStore(memoryDb(fixture), slackContext(), {
+      const firstStore = memoryFixture(memoryDb(fixture), slackContext(), {
         now: () => TEST_NOW_MS,
       });
-      const created = await firstStore.createMemory({
+      const created = await createUserMemory(firstStore, {
         content,
         kind: "preference",
         idempotencyKey: "memory-test:embedding-retry-backfill",
@@ -3366,12 +3371,12 @@ WHERE id = '${superseded.memory.id}'
       ).resolves.toEqual([]);
 
       const embedder = createTestEmbedder();
-      const retryStore = createMemoryStore(memoryDb(fixture), slackContext(), {
+      const retryStore = memoryFixture(memoryDb(fixture), slackContext(), {
         embedder,
         now: () => TEST_NOW_MS + 1,
       });
       await expect(
-        retryStore.createMemory({
+        createUserMemory(retryStore, {
           content: "Changed retry content should not be embedded.",
           kind: "preference",
           idempotencyKey: "memory-test:embedding-retry-backfill",
@@ -3405,23 +3410,23 @@ WHERE id = '${superseded.memory.id}'
         [supersededContent]: unitEmbedding(3),
       });
       let nowMs = TEST_NOW_MS;
-      const store = createMemoryStore(memoryDb(fixture), slackContext(), {
+      const store = memoryFixture(memoryDb(fixture), slackContext(), {
         embedder,
         now: () => nowMs,
       });
 
-      const expired = await store.createMemory({
+      const expired = await createUserMemory(store, {
         content: expiredContent,
         kind: "preference",
         expiresAtMs: TEST_NOW_MS + 10,
         idempotencyKey: "memory-test:read-expired",
       });
-      const active = await store.createMemory({
+      const active = await createUserMemory(store, {
         content: activeContent,
         kind: "preference",
         idempotencyKey: "memory-test:read-active",
       });
-      const superseded = await store.createMemory({
+      const superseded = await createUserMemory(store, {
         content: supersededContent,
         kind: "preference",
         expiresAtMs: TEST_NOW_MS + 10,
@@ -3438,7 +3443,7 @@ WHERE id = '${superseded.memory.id}'
       ).resolves.toHaveLength(3);
 
       nowMs = TEST_NOW_MS + 11;
-      await expect(store.listMemories({})).resolves.toEqual([
+      await expect(listStoredMemories(store, {})).resolves.toEqual([
         expect.objectContaining({ id: active.memory.id }),
       ]);
       await expect(
@@ -3492,12 +3497,12 @@ WHERE id = '${superseded.memory.id}'
         { "Prefers lexical fallback for vector failures.": [1, 0, 0] },
         { dimensions: 3 },
       );
-      const store = createMemoryStore(memoryDb(fixture), slackContext(), {
+      const store = memoryFixture(memoryDb(fixture), slackContext(), {
         embedder,
         now: () => TEST_NOW_MS,
       });
 
-      const created = await store.createMemory({
+      const created = await createUserMemory(store, {
         content: "Prefers lexical fallback for vector failures.",
         kind: "preference",
         idempotencyKey: "memory-test:embedding-dimension-mismatch",
@@ -3507,7 +3512,7 @@ WHERE id = '${superseded.memory.id}'
         memoryDb(fixture).select().from(memorySqlSchema.juniorMemoryEmbeddings),
       ).resolves.toEqual([]);
       await expect(
-        store.searchMemories({ query: "lexical fallback" }),
+        searchMemories(store, { query: "lexical fallback" }),
       ).resolves.toEqual([expect.objectContaining({ id: created.memory.id })]);
     } finally {
       await fixture.close();
@@ -3787,37 +3792,40 @@ WHERE id = '${superseded.memory.id}'
     try {
       let nowMs = TEST_NOW_MS;
       const context = slackContext({ channelId: "D123" });
-      const store = createMemoryStore(memoryDb(fixture), context, {
+      const store = memoryFixture(memoryDb(fixture), context, {
         now: () => nowMs,
       });
-      const personal = await store.createMemory({
+      const personal = await createUserMemory(store, {
         content: "Prefers PR summaries with risks first.",
         kind: "preference",
         idempotencyKey: "memory-test:recall-personal",
       });
       nowMs += 1;
-      const conversation = await store.createConversationMemory({
+      const conversation = await createConversationMemory(store, {
         content: "Release notes live in Notion.",
         kind: "knowledge",
         idempotencyKey: "memory-test:recall-conversation",
       });
       nowMs += 1;
-      await store.createMemory({
+      await createUserMemory(store, {
         content: "Prefers PR summary obsolete wording.",
         kind: "preference",
         expiresAtMs: TEST_NOW_MS + 1,
         idempotencyKey: "memory-test:recall-expired",
       });
       nowMs += 1;
-      await createMemoryStore(
-        memoryDb(fixture),
-        slackContext({ channelId: "D456", userId: "U456" }),
-        { now: () => nowMs },
-      ).createMemory({
-        content: "Prefers PR summary unrelated owner.",
-        kind: "preference",
-        idempotencyKey: "memory-test:recall-other-user",
-      });
+      await createUserMemory(
+        memoryFixture(
+          memoryDb(fixture),
+          slackContext({ channelId: "D456", userId: "U456" }),
+          { now: () => nowMs },
+        ),
+        {
+          content: "Prefers PR summary unrelated owner.",
+          kind: "preference",
+          idempotencyKey: "memory-test:recall-other-user",
+        },
+      );
 
       const emitted: PluginConversationEventValue[] = [];
       const plugin = memoryPlugin();
@@ -3896,13 +3904,13 @@ WHERE id = '${superseded.memory.id}'
     try {
       let nowMs = TEST_NOW_MS;
       const context = slackContext();
-      const store = createMemoryStore(memoryDb(fixture), context, {
+      const store = memoryFixture(memoryDb(fixture), context, {
         now: () => nowMs,
       });
       const created = [];
       for (let index = 0; index < 6; index += 1) {
         created.push(
-          await store.createConversationMemory({
+          await createConversationMemory(store, {
             content: `Deploy step ${index + 1} uses checklist item ${index + 1}.`,
             kind: "procedure",
             idempotencyKey: `memory-test:recall-budget-${index}`,
@@ -3962,13 +3970,16 @@ WHERE id = '${superseded.memory.id}'
 
     try {
       const context = slackContext();
-      const conversation = await createMemoryStore(memoryDb(fixture), context, {
-        now: () => TEST_NOW_MS,
-      }).createConversationMemory({
-        content: "Release notes live in Notion.",
-        kind: "knowledge",
-        idempotencyKey: "memory-test:recall-conversation-context",
-      });
+      const conversation = await createConversationMemory(
+        memoryFixture(memoryDb(fixture), context, {
+          now: () => TEST_NOW_MS,
+        }),
+        {
+          content: "Release notes live in Notion.",
+          kind: "knowledge",
+          idempotencyKey: "memory-test:recall-conversation-context",
+        },
+      );
 
       const plugin = memoryPlugin();
       const result = await plugin.hooks?.userPrompt?.({
@@ -4022,20 +4033,20 @@ WHERE id = '${superseded.memory.id}'
 
     try {
       const context = slackContext();
-      const store = createMemoryStore(memoryDb(fixture), context, {
+      const store = memoryFixture(memoryDb(fixture), context, {
         now: () => TEST_NOW_MS,
       });
-      const relevant = await store.createConversationMemory({
+      const relevant = await createConversationMemory(store, {
         content: "getsentry/junior CI runs package tests with pnpm.",
         kind: "knowledge",
         idempotencyKey: "memory-test:recall-gate-relevant",
       });
-      await store.createConversationMemory({
+      await createConversationMemory(store, {
         content: "getsentry/sentry autofix PR tests use a dashboard workflow.",
         kind: "knowledge",
         idempotencyKey: "memory-test:recall-gate-vocabulary",
       });
-      await store.createConversationMemory({
+      await createConversationMemory(store, {
         content:
           "Single-tenant repository access is configured in the admin dashboard.",
         kind: "knowledge",
@@ -4078,13 +4089,17 @@ WHERE id = '${superseded.memory.id}'
 
     try {
       const context = slackContext();
-      await createMemoryStore(memoryDb(fixture), context, {
-        now: () => TEST_NOW_MS,
-      }).createConversationMemory({
-        content: "getsentry/sentry autofix PR tests use a dashboard workflow.",
-        kind: "knowledge",
-        idempotencyKey: "memory-test:recall-gate-empty",
-      });
+      await createConversationMemory(
+        memoryFixture(memoryDb(fixture), context, {
+          now: () => TEST_NOW_MS,
+        }),
+        {
+          content:
+            "getsentry/sentry autofix PR tests use a dashboard workflow.",
+          kind: "knowledge",
+          idempotencyKey: "memory-test:recall-gate-empty",
+        },
+      );
 
       const emitted: PluginConversationEventValue[] = [];
       const plugin = memoryPlugin();
@@ -4178,13 +4193,16 @@ WHERE id = '${superseded.memory.id}'
 
     try {
       const context = slackContext();
-      await createMemoryStore(memoryDb(fixture), context, {
-        now: () => TEST_NOW_MS,
-      }).createConversationMemory({
-        content: "Release notes live in Notion.",
-        kind: "knowledge",
-        idempotencyKey: "memory-test:recall-gate-failure",
-      });
+      await createConversationMemory(
+        memoryFixture(memoryDb(fixture), context, {
+          now: () => TEST_NOW_MS,
+        }),
+        {
+          content: "Release notes live in Notion.",
+          kind: "knowledge",
+          idempotencyKey: "memory-test:recall-gate-failure",
+        },
+      );
 
       const plugin = memoryPlugin();
       await expect(
@@ -4216,7 +4234,7 @@ WHERE id = '${superseded.memory.id}'
 
     try {
       const context = slackContext();
-      await createMemoryStore(memoryDb(fixture), context).createMemory({
+      await createUserMemory(memoryFixture(memoryDb(fixture), context), {
         content: "Prefers PR summaries with risks first.",
         kind: "preference",
         idempotencyKey: "memory-test:recall-blank",
@@ -4253,14 +4271,17 @@ WHERE id = '${superseded.memory.id}'
         [memory]: unitEmbedding(1),
         [query]: unitEmbedding(1),
       });
-      await createMemoryStore(memoryDb(fixture), context, {
-        embedder,
-        now: () => TEST_NOW_MS,
-      }).createMemory({
-        content: memory,
-        kind: "preference",
-        idempotencyKey: "memory-test:recall-semantic",
-      });
+      await createUserMemory(
+        memoryFixture(memoryDb(fixture), context, {
+          embedder,
+          now: () => TEST_NOW_MS,
+        }),
+        {
+          content: memory,
+          kind: "preference",
+          idempotencyKey: "memory-test:recall-semantic",
+        },
+      );
 
       const plugin = memoryPlugin();
       const result = await plugin.hooks?.userPrompt?.({
@@ -4325,7 +4346,10 @@ WHERE id = '${superseded.memory.id}'
       ).resolves.toMatchObject({ created: true });
 
       await expect(
-        createMemoryStore(memoryDb(fixture), slackContext()).listMemories({}),
+        listStoredMemories(
+          memoryFixture(memoryDb(fixture), slackContext()),
+          {},
+        ),
       ).resolves.toEqual([
         expect.objectContaining({
           content: "Prefers the second remembered fact.",
@@ -4344,47 +4368,49 @@ WHERE id = '${superseded.memory.id}'
 
     try {
       let nowMs = TEST_NOW_MS;
-      const store = createMemoryStore(memoryDb(fixture), localContext(), {
+      const store = memoryFixture(memoryDb(fixture), localContext(), {
         now: () => nowMs,
       });
 
-      const personal = await store.createMemory({
+      const personal = await createUserMemory(store, {
         content: "Prefers local CLI memory checks.",
         kind: "preference",
         idempotencyKey: "memory-test:local-personal",
       });
       nowMs = TEST_NOW_MS + 1;
-      const conversation = await store.createConversationMemory({
+      const conversation = await createConversationMemory(store, {
         content: "Memory plugin validation is tracked in this local session.",
         kind: "knowledge",
         idempotencyKey: "memory-test:local-conversation",
       });
 
-      await expect(store.listMemories({})).resolves.toEqual([
+      await expect(listStoredMemories(store, {})).resolves.toEqual([
         expect.objectContaining({ id: conversation.memory.id }),
         expect.objectContaining({ id: personal.memory.id }),
       ]);
       await expect(
-        store.searchMemories({ query: "validation" }),
+        searchMemories(store, { query: "validation" }),
       ).resolves.toEqual([
         expect.objectContaining({ id: conversation.memory.id }),
       ]);
 
-      const otherConversationStore = createMemoryStore(
+      const otherConversationStore = memoryFixture(
         memoryDb(fixture),
         localContext({ conversationId: "local:junior:other-memory-test" }),
         { now: () => nowMs },
       );
-      await expect(otherConversationStore.listMemories({})).resolves.toEqual([
+      await expect(
+        listStoredMemories(otherConversationStore, {}),
+      ).resolves.toEqual([
         expect.objectContaining({ id: conversation.memory.id }),
         expect.objectContaining({ id: personal.memory.id }),
       ]);
       await expect(
-        otherConversationStore.archiveMemory({ id: conversation.memory.id }),
+        archiveMemory(otherConversationStore, { id: conversation.memory.id }),
       ).resolves.toMatchObject({ id: conversation.memory.id });
 
       nowMs = TEST_NOW_MS + 2;
-      const archived = await otherConversationStore.archiveMemory({
+      const archived = await archiveMemory(otherConversationStore, {
         id: personal.memory.id,
       });
       expect(archived).toMatchObject({
@@ -4402,11 +4428,11 @@ WHERE id = '${superseded.memory.id}'
     try {
       let nowMs = TEST_NOW_MS;
       const context = slackContext({ channelId: "D123" });
-      const store = createMemoryStore(memoryDb(fixture), context, {
+      const store = memoryFixture(memoryDb(fixture), context, {
         now: () => nowMs,
       });
 
-      const created = await store.createMemory({
+      const created = await createUserMemory(store, {
         content: "Different content with the same retry key.",
         kind: "preference",
         idempotencyKey: "explicit-create-1",
@@ -4415,7 +4441,7 @@ WHERE id = '${superseded.memory.id}'
 
       nowMs = TEST_NOW_MS + 1;
       await expect(
-        store.createMemory({
+        createUserMemory(store, {
           content: "Changed content with the same retry key.",
           kind: "preference",
           idempotencyKey: "explicit-create-1",
@@ -4482,11 +4508,11 @@ INSERT INTO junior_memory_memories (
           };
         },
       };
-      const store = createMemoryStore(memoryDb(fixture), slackContext(), {
+      const store = memoryFixture(memoryDb(fixture), slackContext(), {
         now: () => TEST_NOW_MS,
         supersessionDecider: createMemoryAgent(model),
       });
-      const existing = await store.createMemory({
+      const existing = await createUserMemory(store, {
         content: "Prefers PR summaries with risks first.",
         kind: "preference",
         idempotencyKey: "memory-test:adjudicated-duplicate-original",
@@ -4494,7 +4520,7 @@ INSERT INTO junior_memory_memories (
       duplicateId = existing.memory.id;
 
       await expect(
-        store.createMemory({
+        createUserMemory(store, {
           content: "Wants danger notes at the beginning of code review recaps.",
           kind: "preference",
           idempotencyKey: "memory-test:adjudicated-duplicate-repeat",
@@ -4506,7 +4532,7 @@ INSERT INTO junior_memory_memories (
           id: existing.memory.id,
         },
       });
-      await expect(store.listMemories({})).resolves.toEqual([
+      await expect(listStoredMemories(store, {})).resolves.toEqual([
         expect.objectContaining({ id: existing.memory.id }),
       ]);
     } finally {
@@ -4528,7 +4554,7 @@ INSERT INTO junior_memory_memories (
         (_, index) => `Wants release notes for workflow detail ${index}.`,
       );
       let duplicateId: string | undefined;
-      const store = createMemoryStore(memoryDb(fixture), slackContext(), {
+      const store = memoryFixture(memoryDb(fixture), slackContext(), {
         now: () => nowMs,
         supersessionDecider: {
           adjudicateSupersession(input) {
@@ -4545,14 +4571,14 @@ INSERT INTO junior_memory_memories (
       });
       for (const [index, content] of distractorContents.entries()) {
         nowMs = TEST_NOW_MS + index;
-        await store.createMemory({
+        await createUserMemory(store, {
           content,
           kind: "preference",
           idempotencyKey: `memory-test:recent-candidate-distractor-${index}`,
         });
       }
       nowMs = TEST_NOW_MS + 20;
-      const existing = await store.createMemory({
+      const existing = await createUserMemory(store, {
         content: existingContent,
         kind: "preference",
         idempotencyKey: "memory-test:recent-candidate-existing",
@@ -4561,7 +4587,7 @@ INSERT INTO junior_memory_memories (
 
       nowMs = TEST_NOW_MS + 21;
       await expect(
-        store.createMemory({
+        createUserMemory(store, {
           content: duplicateContent,
           kind: "preference",
           idempotencyKey: "memory-test:recent-candidate-duplicate",
@@ -4595,7 +4621,7 @@ INSERT INTO junior_memory_memories (
       }
       const embedder = createTestEmbedder(vectors);
       const preferenceAdjudicationCalls: MemorySupersessionInput[] = [];
-      const store = createMemoryStore(memoryDb(fixture), slackContext(), {
+      const store = memoryFixture(memoryDb(fixture), slackContext(), {
         embedder,
         now: () => nowMs,
         supersessionDecider: {
@@ -4612,7 +4638,7 @@ INSERT INTO junior_memory_memories (
         },
       });
 
-      const oldMemory = await store.createMemory({
+      const oldMemory = await createUserMemory(store, {
         content: oldContent,
         kind: "preference",
         idempotencyKey: "memory-test:supersession-old",
@@ -4620,7 +4646,7 @@ INSERT INTO junior_memory_memories (
 
       for (const [index, content] of unrelatedContents.entries()) {
         nowMs = TEST_NOW_MS + index + 1;
-        await store.createMemory({
+        await createUserMemory(store, {
           content,
           kind: "preference",
           idempotencyKey: `memory-test:supersession-unrelated-${index}`,
@@ -4629,7 +4655,7 @@ INSERT INTO junior_memory_memories (
 
       preferenceAdjudicationCalls.length = 0;
       nowMs = TEST_NOW_MS + 20;
-      const newMemory = await store.createMemory({
+      const newMemory = await createUserMemory(store, {
         content: newContent,
         kind: "preference",
         idempotencyKey: "memory-test:supersession-new",
@@ -4647,7 +4673,7 @@ INSERT INTO junior_memory_memories (
         content: oldContent,
         id: oldMemory.memory.id,
       });
-      const activeMemories = await store.listMemories({});
+      const activeMemories = await listStoredMemories(store, {});
       expect(activeMemories).toContainEqual(
         expect.objectContaining({
           content: newContent,
@@ -4682,7 +4708,7 @@ INSERT INTO junior_memory_memories (
 
       nowMs = TEST_NOW_MS + 2;
       await expect(
-        store.createMemory({
+        createUserMemory(store, {
           content: "Different content with the superseding retry key.",
           kind: "preference",
           idempotencyKey: "memory-test:supersession-new",
@@ -4701,7 +4727,7 @@ INSERT INTO junior_memory_memories (
 
     try {
       let nowMs = TEST_NOW_MS;
-      const store = createMemoryStore(memoryDb(fixture), slackContext(), {
+      const store = memoryFixture(memoryDb(fixture), slackContext(), {
         now: () => nowMs,
         supersessionDecider: {
           adjudicateSupersession() {
@@ -4710,20 +4736,20 @@ INSERT INTO junior_memory_memories (
         },
       });
 
-      const oldMemory = await store.createMemory({
+      const oldMemory = await createUserMemory(store, {
         content: "Prefers terse PR summaries.",
         kind: "preference",
         idempotencyKey: "memory-test:supersession-distinct-old",
       });
 
       nowMs = TEST_NOW_MS + 1;
-      const newMemory = await store.createMemory({
+      const newMemory = await createUserMemory(store, {
         content: "Prefers Slack updates in the morning.",
         kind: "preference",
         idempotencyKey: "memory-test:supersession-distinct-new",
       });
 
-      await expect(store.listMemories({})).resolves.toEqual([
+      await expect(listStoredMemories(store, {})).resolves.toEqual([
         expect.objectContaining({ id: newMemory.memory.id }),
         expect.objectContaining({ id: oldMemory.memory.id }),
       ]);
@@ -4755,26 +4781,26 @@ INSERT INTO junior_memory_memories (
           throw new Error("expired replacement should not use supersession");
         },
       };
-      const store = createMemoryStore(memoryDb(fixture), slackContext(), {
+      const store = memoryFixture(memoryDb(fixture), slackContext(), {
         now: () => nowMs,
         supersessionDecider: adjudicator,
       });
 
-      const oldMemory = await store.createMemory({
+      const oldMemory = await createUserMemory(store, {
         content: "Prefers Python for automation scripts.",
         kind: "preference",
         idempotencyKey: "memory-test:supersession-expired-old",
       });
 
       nowMs = TEST_NOW_MS + 1;
-      await store.createMemory({
+      await createUserMemory(store, {
         content: "Prefers TypeScript for automation scripts.",
         expiresAtMs: TEST_NOW_MS,
         kind: "preference",
         idempotencyKey: "memory-test:supersession-expired-new",
       });
 
-      await expect(store.listMemories({})).resolves.toEqual([
+      await expect(listStoredMemories(store, {})).resolves.toEqual([
         expect.objectContaining({ id: oldMemory.memory.id }),
       ]);
       await expect(
@@ -4800,7 +4826,7 @@ INSERT INTO junior_memory_memories (
 
     try {
       let nowMs = TEST_NOW_MS;
-      const store = createMemoryStore(memoryDb(fixture), slackContext(), {
+      const store = memoryFixture(memoryDb(fixture), slackContext(), {
         now: () => nowMs,
         supersessionDecider: {
           adjudicateSupersession() {
@@ -4811,20 +4837,20 @@ INSERT INTO junior_memory_memories (
         },
       });
 
-      const oldMemory = await store.createConversationMemory({
+      const oldMemory = await createConversationMemory(store, {
         content: "Prefers Python for automation scripts.",
         kind: "preference",
         idempotencyKey: "memory-test:supersession-conversation-old",
       });
 
       nowMs = TEST_NOW_MS + 1;
-      const newMemory = await store.createConversationMemory({
+      const newMemory = await createConversationMemory(store, {
         content: "Prefers TypeScript for automation scripts.",
         kind: "preference",
         idempotencyKey: "memory-test:supersession-conversation-new",
       });
 
-      await expect(store.listMemories({})).resolves.toEqual([
+      await expect(listStoredMemories(store, {})).resolves.toEqual([
         expect.objectContaining({ id: newMemory.memory.id }),
         expect.objectContaining({ id: oldMemory.memory.id }),
       ]);
@@ -4838,7 +4864,7 @@ INSERT INTO junior_memory_memories (
 
     try {
       let nowMs = TEST_NOW_MS;
-      const store = createMemoryStore(memoryDb(fixture), slackContext(), {
+      const store = memoryFixture(memoryDb(fixture), slackContext(), {
         now: () => nowMs,
         supersessionDecider: {
           adjudicateSupersession() {
@@ -4847,20 +4873,20 @@ INSERT INTO junior_memory_memories (
         },
       });
 
-      const oldMemory = await store.createMemory({
+      const oldMemory = await createUserMemory(store, {
         content: "Deploy checks use the release runbook.",
         kind: "knowledge",
         idempotencyKey: "memory-test:supersession-knowledge-old",
       });
 
       nowMs = TEST_NOW_MS + 1;
-      const newMemory = await store.createMemory({
+      const newMemory = await createUserMemory(store, {
         content: "Deploy checks use the release checklist.",
         kind: "knowledge",
         idempotencyKey: "memory-test:supersession-knowledge-new",
       });
 
-      await expect(store.listMemories({})).resolves.toEqual([
+      await expect(listStoredMemories(store, {})).resolves.toEqual([
         expect.objectContaining({ id: newMemory.memory.id }),
         expect.objectContaining({ id: oldMemory.memory.id }),
       ]);
@@ -4874,23 +4900,23 @@ INSERT INTO junior_memory_memories (
 
     try {
       let nowMs = TEST_NOW_MS;
-      const store = createMemoryStore(
+      const store = memoryFixture(
         memoryDb(fixture),
         slackContext({ channelId: "D123" }),
         { now: () => nowMs },
       );
 
-      const archived = await store.createMemory({
+      const archived = await createUserMemory(store, {
         content: "Prefers short deployment summaries.",
         kind: "preference",
         idempotencyKey: "explicit-create-archived",
       });
 
       nowMs = TEST_NOW_MS + 1;
-      await store.archiveMemory({ id: archived.memory.id });
+      await archiveMemory(store, { id: archived.memory.id });
 
       nowMs = TEST_NOW_MS + 2;
-      const recreated = await store.createMemory({
+      const recreated = await createUserMemory(store, {
         content: "Prefers short deployment summaries.",
         kind: "preference",
         idempotencyKey: "explicit-create-archived",
@@ -4903,7 +4929,7 @@ INSERT INTO junior_memory_memories (
 
       nowMs = TEST_NOW_MS + 3;
       await expect(
-        store.createMemory({
+        createUserMemory(store, {
           content: "Changed content with the recreated retry key.",
           kind: "preference",
           idempotencyKey: "explicit-create-archived",
@@ -4915,7 +4941,7 @@ INSERT INTO junior_memory_memories (
           content: recreated.memory.content,
         },
       });
-      await expect(store.listMemories({})).resolves.toEqual([
+      await expect(listStoredMemories(store, {})).resolves.toEqual([
         expect.objectContaining({ id: recreated.memory.id }),
       ]);
     } finally {
@@ -4930,12 +4956,12 @@ INSERT INTO junior_memory_memories (
       let nowMs = TEST_NOW_MS;
       const content = "Temporarily prefers quiet deploy reminders.";
       const embedder = createTestEmbedder({ [content]: unitEmbedding(1) });
-      const store = createMemoryStore(memoryDb(fixture), slackContext(), {
+      const store = memoryFixture(memoryDb(fixture), slackContext(), {
         embedder,
         now: () => nowMs,
       });
 
-      const expired = await store.createMemory({
+      const expired = await createUserMemory(store, {
         content,
         kind: "preference",
         expiresAtMs: TEST_NOW_MS + 10,
@@ -4944,11 +4970,11 @@ INSERT INTO junior_memory_memories (
 
       nowMs = TEST_NOW_MS + 11;
       await expect(
-        store.archiveMemory({ id: expired.memory.id }),
+        archiveMemory(store, { id: expired.memory.id }),
       ).rejects.toThrow("Memory was not found in the current context.");
 
       nowMs = TEST_NOW_MS + 12;
-      const recreated = await store.createMemory({
+      const recreated = await createUserMemory(store, {
         content,
         kind: "preference",
         idempotencyKey: "memory-test:expires",
@@ -4977,7 +5003,7 @@ INSERT INTO junior_memory_memories (
       ).resolves.toEqual([
         expect.objectContaining({ memoryId: recreated.memory.id }),
       ]);
-      await expect(store.searchMemories({ query: "quiet" })).resolves.toEqual([
+      await expect(searchMemories(store, { query: "quiet" })).resolves.toEqual([
         expect.objectContaining({ id: recreated.memory.id }),
       ]);
     } finally {
@@ -4990,10 +5016,10 @@ INSERT INTO junior_memory_memories (
 
     try {
       let nowMs = TEST_NOW_MS;
-      const store = createMemoryStore(memoryDb(fixture), slackContext(), {
+      const store = memoryFixture(memoryDb(fixture), slackContext(), {
         now: () => nowMs,
       });
-      const target = await store.createConversationMemory({
+      const target = await createConversationMemory(store, {
         content: "Release cutover rehearsal is durable.",
         kind: "knowledge",
         idempotencyKey: "memory-test:search-target",
@@ -5001,7 +5027,7 @@ INSERT INTO junior_memory_memories (
 
       for (let index = 0; index < 205; index += 1) {
         nowMs = TEST_NOW_MS + index + 1;
-        await store.createConversationMemory({
+        await createConversationMemory(store, {
           content: `Recent unrelated memory ${index}`,
           kind: "knowledge",
           idempotencyKey: `memory-test:search-recent-${index}`,
@@ -5010,7 +5036,7 @@ INSERT INTO junior_memory_memories (
 
       nowMs = TEST_NOW_MS + 300;
       await expect(
-        store.searchMemories({ query: "cutover rehearsal" }),
+        searchMemories(store, { query: "cutover rehearsal" }),
       ).resolves.toEqual([expect.objectContaining({ id: target.memory.id })]);
     } finally {
       await fixture.close();
@@ -5023,13 +5049,13 @@ INSERT INTO junior_memory_memories (
     try {
       let nowMs = TEST_NOW_MS;
       // No embedder: vector leg stays empty so lexical alone must fill limit.
-      const store = createMemoryStore(memoryDb(fixture), slackContext(), {
+      const store = memoryFixture(memoryDb(fixture), slackContext(), {
         now: () => nowMs,
       });
       const ids: string[] = [];
       for (let index = 0; index < 55; index += 1) {
         nowMs = TEST_NOW_MS + index;
-        const created = await store.createConversationMemory({
+        const created = await createConversationMemory(store, {
           content: `Deploy freeze checklist item ${index}`,
           kind: "knowledge",
           idempotencyKey: `memory-test:search-leg-fill-${index}`,
@@ -5037,7 +5063,7 @@ INSERT INTO junior_memory_memories (
         ids.push(created.memory.id);
       }
 
-      const results = await store.searchMemories({
+      const results = await searchMemories(store, {
         limit: 50,
         query: "deploy freeze checklist",
       });
@@ -5052,27 +5078,27 @@ INSERT INTO junior_memory_memories (
     const fixture = await createMemoryFixture();
 
     try {
-      const store = createMemoryStore(memoryDb(fixture), slackContext(), {
+      const store = memoryFixture(memoryDb(fixture), slackContext(), {
         now: () => TEST_NOW_MS,
       });
 
       await expect(
-        store.createMemory({
+        createUserMemory(store, {
           content: "Prefers short PR summaries.",
           kind: "preference",
           idempotencyKey: "memory-test:smuggle",
           scope: "public",
           subjectKey: "slack:T123:U999",
           subjectType: "general",
-        } as Parameters<typeof store.createMemory>[0]),
+        } as Parameters<typeof createUserMemory>[1]),
       ).rejects.toThrow(/Invalid input|Unrecognized key/);
       await expect(
-        store.listMemories({
+        listStoredMemories(store, {
           actor: { platform: "local", userId: "local-user" },
-        } as Parameters<typeof store.listMemories>[0]),
+        } as Parameters<typeof listStoredMemories>[1]),
       ).rejects.toThrow(/Invalid input|Unrecognized key/);
 
-      await expect(store.listMemories({})).resolves.toEqual([]);
+      await expect(listStoredMemories(store, {})).resolves.toEqual([]);
     } finally {
       await fixture.close();
     }
@@ -5082,18 +5108,18 @@ INSERT INTO junior_memory_memories (
     const fixture = await createMemoryFixture();
 
     try {
-      const store = createMemoryStore(memoryDb(fixture), slackContext(), {
+      const store = memoryFixture(memoryDb(fixture), slackContext(), {
         now: () => TEST_NOW_MS,
       });
 
       await expect(
-        store.createMemory({
+        createUserMemory(store, {
           content: " \n\t ",
           kind: "preference",
           idempotencyKey: "memory-test:empty-content",
         }),
       ).rejects.toThrow("Memory content is required.");
-      await expect(store.listMemories({})).resolves.toEqual([]);
+      await expect(listStoredMemories(store, {})).resolves.toEqual([]);
     } finally {
       await fixture.close();
     }

@@ -1,11 +1,9 @@
 import path from "node:path";
 import { readdirSync } from "node:fs";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
-import {
-  memoryPlugin,
-  createMemoryStore,
-  type MemoryDb,
-} from "@sentry/junior-memory";
+import { memoryPlugin } from "@sentry/junior-memory";
+import { createMemory } from "../../../junior-memory/src/create";
+import type { MemoryDb } from "../../../junior-memory/src/memories";
 import { defineJuniorPlugins } from "@/plugins";
 import { getPluginTools, setPlugins } from "@/chat/plugins/agent-hooks";
 import { migratePluginSchemas } from "@/chat/plugins/migrations";
@@ -394,51 +392,67 @@ WHERE indexname = 'junior_memory_memories_search_idx'
         nowMs: Date.parse("2026-08-21T12:00:00.000Z"),
         userId: "U123",
       });
-      const publicMemory = await createMemoryStore(db, {
-        conversationId: "slack:C123:1718800000.000000",
-        actor: { platform: "slack", teamId: "T123", userId: "U123" },
-        source: createSlackSource({
-          teamId: "T123",
-          channelId: "C123",
-          messageTs: "1718800000.000000",
-          visibility: "public",
-        }),
-      }).createConversationMemory({
-        content: "Public runbooks live in Notion.",
-        idempotencyKey: "component-public-memory",
-        kind: "knowledge",
+      const publicMemory = await createMemory({
+        db,
+        context: {
+          conversationId: "slack:C123:1718800000.000000",
+          actor: { platform: "slack", teamId: "T123", userId: "U123" },
+          source: createSlackSource({
+            teamId: "T123",
+            channelId: "C123",
+            messageTs: "1718800000.000000",
+            visibility: "public",
+          }),
+        },
+        input: {
+          content: "Public runbooks live in Notion.",
+          idempotencyKey: "component-public-memory",
+          kind: "knowledge",
+        },
+        subjectType: "conversation",
       });
-      const privateMemory = await createMemoryStore(db, {
-        conversationId: viewerConversationId,
-        locationId: viewer.locationId,
-        actor: { platform: "slack", teamId: "T123", userId: "U123" },
-        source: createSlackSource({
-          teamId: "T123",
-          channelId: "D123",
-          messageTs: "1718800001.000000",
-          visibility: "private",
-        }),
-        userId: viewer.user.id,
-      }).createMemory({
-        content: "Prefers terse status updates in this DM.",
-        idempotencyKey: "component-private-memory",
-        kind: "preference",
+
+      const privateMemory = await createMemory({
+        db,
+        context: {
+          conversationId: viewerConversationId,
+          locationId: viewer.locationId,
+          actor: { platform: "slack", teamId: "T123", userId: "U123" },
+          source: createSlackSource({
+            teamId: "T123",
+            channelId: "D123",
+            messageTs: "1718800001.000000",
+            visibility: "private",
+          }),
+          userId: viewer.user.id,
+        },
+        input: {
+          content: "Prefers terse status updates in this DM.",
+          idempotencyKey: "component-private-memory",
+          kind: "preference",
+        },
+        subjectType: "user",
       });
-      const otherPrivateMemory = await createMemoryStore(db, {
-        conversationId: viewerConversationId,
-        locationId: viewer.locationId,
-        actor: { platform: "slack", teamId: "T123", userId: "U999" },
-        source: createSlackSource({
-          teamId: "T123",
-          channelId: "D123",
-          messageTs: "1718800002.000000",
-          visibility: "private",
-        }),
-        userId: "other-user",
-      }).createMemory({
-        content: "Only the other User can read this.",
-        idempotencyKey: "component-other-private-memory",
-        kind: "knowledge",
+      const otherPrivateMemory = await createMemory({
+        context: {
+          conversationId: viewerConversationId,
+          locationId: viewer.locationId,
+          actor: { platform: "slack", teamId: "T123", userId: "U999" },
+          source: createSlackSource({
+            teamId: "T123",
+            channelId: "D123",
+            messageTs: "1718800002.000000",
+            visibility: "private",
+          }),
+          userId: "other-user",
+        },
+        db,
+        input: {
+          content: "Only the other User can read this.",
+          idempotencyKey: "component-other-private-memory",
+          kind: "knowledge",
+        },
+        subjectType: "user",
       });
       await expect(
         fixture.sql.query<{ location_id: string | null }>(
@@ -511,26 +525,34 @@ WHERE indexname = 'junior_memory_memories_search_idx'
         nowMs: Date.parse("2026-08-21T12:00:00.000Z"),
         userId: actor.userId,
       });
-      const store = createMemoryStore(
-        // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
-        fixture.sql.db() as MemoryDb,
-        {
-          conversationId,
-          locationId: userContext.locationId,
-          actor,
-          source,
-          userId: userContext.user.id,
+      // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+      const db = fixture.sql.db() as MemoryDb;
+      const context = {
+        conversationId,
+        locationId: userContext.locationId,
+        actor,
+        source,
+        userId: userContext.user.id,
+      };
+      await createMemory({
+        context,
+        db,
+        input: {
+          content: "I prefer host-wired personal recall.",
+          idempotencyKey: "component-memory-personal",
+          kind: "preference",
         },
-      );
-      await store.createMemory({
-        content: "I prefer host-wired personal recall.",
-        idempotencyKey: "component-memory-personal",
-        kind: "preference",
+        subjectType: "user",
       });
-      await store.createConversationMemory({
-        content: "This thread tracks host-wired memory context.",
-        idempotencyKey: "component-memory-conversation",
-        kind: "knowledge",
+      await createMemory({
+        context,
+        db,
+        input: {
+          content: "This thread tracks host-wired memory context.",
+          idempotencyKey: "component-memory-conversation",
+          kind: "knowledge",
+        },
+        subjectType: "conversation",
       });
 
       const tools = getPluginTools({

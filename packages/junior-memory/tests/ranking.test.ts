@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { rankMemoryMatches, type MemoryMatch } from "../src/ranking";
-import type { MemoryRecord } from "../src/store";
+import type { Memory } from "../src/memories";
 
 const NOW_MS = Date.parse("2026-07-28T12:00:00.000Z");
 
-function memory(id: string, observedAtMs = NOW_MS): MemoryRecord {
+function memory(id: string, observedAtMs = NOW_MS): Memory {
   return {
     content: `Memory ${id}`,
     createdAtMs: observedAtMs,
