@@ -1,18 +1,16 @@
 /**
- * Serve one loopback ACP process, run the official client, and clean up its
- * short-lived personal token. This is test equipment, not a product transport.
+ * Serve one loopback ACP process and run the official client through the
+ * local dashboard authorization route. This is test equipment.
  */
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import type { AddressInfo } from "node:net";
 import { serve } from "@hono/node-server";
 import { createApp } from "@/app";
+import { completeAcpAuthorization } from "@sentry/junior-acp";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { getSqlExecutor } from "@/chat/db";
-import {
-  createPersonalToken,
-  revokePersonalToken,
-} from "@/personal-tokens/store";
+import { resolveViewerUser } from "@/chat/plugins/viewer";
 import {
   closeApiTurnWorkFixture,
   createConversationWorkWebHarness,
@@ -38,6 +36,8 @@ const harness = await createConversationWorkWebHarness({
     process.env.JUNIOR_ACP_LOCAL_REPLY?.trim() || DEFAULT_REPLY,
   ),
 });
+// Use the request origin instead of a deployed callback origin from .env.local.
+delete process.env.JUNIOR_BASE_URL;
 const app = await createApp({
   conversationWork: harness.conversationWork,
   experimental: { acp: true, subagents: true },
@@ -60,7 +60,27 @@ async function drainQueuedWork(): Promise<void> {
 
 const drainTimer = setInterval(() => void drainQueuedWork(), 10);
 const server = serve({
-  fetch: app.fetch,
+  async fetch(request) {
+    const match = /^\/api\/acp\/auth\/([0-9a-f-]+)$/i.exec(
+      new URL(request.url).pathname,
+    );
+    if (request.method === "POST" && match?.[1]) {
+      const value = (await request.formData()).get("code");
+      const userCode = typeof value === "string" ? value : "";
+      const user = await resolveViewerUser(harness.actor.email);
+      if (!user) throw new Error("Local ACP user could not be resolved");
+      const result = await completeAcpAuthorization({
+        state: harness.state,
+        transactionId: match[1],
+        user,
+        userCode,
+      });
+      return new Response(`ACP authorization ${result}`, {
+        status: result === "completed" ? 200 : 403,
+      });
+    }
+    return app.fetch(request);
+  },
   hostname: "127.0.0.1",
   port: localPort(),
 });
@@ -68,10 +88,6 @@ if (!server.listening) {
   await once(server, "listening");
 }
 
-const token = await createPersonalToken({
-  email: harness.actor.email,
-  name: "Local ACP test",
-});
 const address = server.address() as AddressInfo;
 const url = `http://127.0.0.1:${address.port}/api/acp`;
 console.log(`Local ACP URL: ${url}`);
@@ -79,7 +95,7 @@ console.log(`Local ACP URL: ${url}`);
 let smoke: ReturnType<typeof spawn> | undefined;
 let shutdownPromise: Promise<void> | undefined;
 
-/** Stop the HTTP client and server, revoke the token, and close test adapters. */
+/** Stop the HTTP client and server, then close test adapters. */
 function shutdown(): Promise<void> {
   shutdownPromise ??= (async () => {
     clearInterval(drainTimer);
@@ -88,7 +104,6 @@ function shutdown(): Promise<void> {
     }
     server.close();
     await once(server, "close");
-    await revokePersonalToken({ email: harness.actor.email, id: token.id });
     await closeApiTurnWorkFixture();
   })();
   return shutdownPromise;
@@ -120,7 +135,7 @@ try {
       ...process.env,
       JUNIOR_ACP_FOLLOW_UP:
         process.env.JUNIOR_ACP_FOLLOW_UP?.trim() || "Send a follow-up.",
-      JUNIOR_ACP_TOKEN: token.token,
+      JUNIOR_ACP_AUTO_AUTHORIZE: "true",
       JUNIOR_ACP_URL: url,
     },
     stdio: "inherit",

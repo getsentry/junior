@@ -30,12 +30,22 @@ import {
 } from "./assets";
 import {
   createDashboardAuth,
+  dashboardBearerSession,
+  dashboardPersonalBearerToken,
+  dashboardSessionIsAuthorized,
   resolveGoogleHostedDomainHint,
   sanitizeDashboardSession,
+  verifiedDashboardSessionEmail,
   type DashboardAuth,
   type DashboardSession,
 } from "./auth";
 import { dashboardRainbowProgressClass } from "./dashboardLoader";
+import {
+  ACP_AUTHORIZATION_PATH_PREFIX,
+  handleDashboardAcpAuthorization,
+  isAcpAuthorizationPath,
+  type DashboardAcpAuthorization,
+} from "./acp-authorization";
 import { createMockReportingApi } from "./mock-reporting/routes";
 import { resolveDashboardBaseURL } from "./url";
 
@@ -69,6 +79,7 @@ export interface JuniorDashboardOptions {
 }
 
 interface DashboardRuntimeOptions extends JuniorDashboardOptions {
+  acpAuthorization?: DashboardAcpAuthorization;
   pluginRoutes?: DashboardPluginRoute[];
 }
 
@@ -202,9 +213,12 @@ function isDashboardPagePath(
 function dashboardReturnPath(
   url: URL,
   basePath: string,
-  options: { componentGallery?: boolean } = {},
+  options: { acpAuthorization?: boolean; componentGallery?: boolean } = {},
 ): string | undefined {
-  if (!isDashboardPagePath(url.pathname, basePath, options)) {
+  if (
+    !isDashboardPagePath(url.pathname, basePath, options) &&
+    !(options.acpAuthorization && isAcpAuthorizationPath(url.pathname))
+  ) {
     return undefined;
   }
 
@@ -215,7 +229,7 @@ function dashboardReturnPath(
 function requestedReturnPath(
   url: URL,
   basePath: string,
-  options: { componentGallery?: boolean } = {},
+  options: { acpAuthorization?: boolean; componentGallery?: boolean } = {},
 ): string | undefined {
   const next = url.searchParams.get(LOGIN_NEXT_PARAM);
   if (!next?.startsWith("/") || next.startsWith("//")) {
@@ -225,7 +239,8 @@ function requestedReturnPath(
   const returnUrl = new URL(next, url.origin);
   if (
     returnUrl.origin !== url.origin ||
-    !isDashboardPagePath(returnUrl.pathname, basePath, options)
+    (!isDashboardPagePath(returnUrl.pathname, basePath, options) &&
+      !(options.acpAuthorization && isAcpAuthorizationPath(returnUrl.pathname)))
   ) {
     return undefined;
   }
@@ -237,7 +252,7 @@ function dashboardLoginUrl(
   request: Request,
   basePath: string,
   canonicalBaseURL?: string,
-  options: { componentGallery?: boolean } = {},
+  options: { acpAuthorization?: boolean; componentGallery?: boolean } = {},
 ): string {
   const requestUrl = new URL(request.url);
   const url = canonicalBaseURL
@@ -278,7 +293,7 @@ function dashboardLoginPath(basePath: string): string {
 function callbackUrl(
   request: Request,
   basePath: string,
-  options: { componentGallery?: boolean } = {},
+  options: { acpAuthorization?: boolean; componentGallery?: boolean } = {},
 ): string {
   const requestUrl = new URL(request.url);
   const returnPath = requestedReturnPath(requestUrl, basePath, options);
@@ -292,27 +307,6 @@ function callbackUrl(
     url.search = "";
   }
   return url.toString();
-}
-
-function isAuthorized(
-  session: DashboardSession,
-  allowedDomains: string[],
-  allowedEmails: string[],
-): boolean {
-  const email = session.user.email.toLowerCase();
-  const emailSeparator = email.lastIndexOf("@");
-  const emailDomain =
-    emailSeparator > 0 ? email.slice(emailSeparator + 1) : undefined;
-
-  if (session.user.emailVerified && email && allowedEmails.includes(email)) {
-    return true;
-  }
-
-  return Boolean(
-    session.user.emailVerified &&
-    emailDomain &&
-    allowedDomains.includes(emailDomain),
-  );
 }
 
 function unauthorized(
@@ -377,31 +371,9 @@ function localAuthBypassSession(email = LOCAL_VIEWER_EMAIL): DashboardSession {
   };
 }
 
-function personalBearerToken(request: Request): string | undefined {
-  const authorization = request.headers.get("authorization");
-  if (!authorization) return undefined;
-  const match = /^Bearer ([^\s]+)$/.exec(authorization);
-  return match?.[1];
-}
-
-function bearerSession(email: string): DashboardSession {
-  return {
-    user: {
-      email,
-      emailVerified: true,
-    },
-  };
-}
-
-function verifiedSessionEmail(session: DashboardSession): string | undefined {
-  if (session.user.emailVerified !== true) return undefined;
-  const email = session.user.email.trim().toLowerCase();
-  return email || undefined;
-}
-
 /** Build a local mock viewer without creating a durable Junior user. */
 function mockViewerFromSession(session: DashboardSession) {
-  const email = verifiedSessionEmail(session);
+  const email = verifiedDashboardSessionEmail(session);
   if (!email) return undefined;
   const displayName =
     mockDisplayNamesByEmail.get(email) ??
@@ -463,8 +435,7 @@ function readDashboardTailwind(): string {
 }
 
 function readDashboardColorIcon(): ArrayBuffer {
-  const embeddedAsset =
-    dashboardInstallIconAsset || dashboardAvatarHeaderAsset;
+  const embeddedAsset = dashboardInstallIconAsset || dashboardAvatarHeaderAsset;
   if (embeddedAsset) {
     return Uint8Array.from(Buffer.from(embeddedAsset, "base64")).buffer;
   }
@@ -761,13 +732,17 @@ export function createDashboardApp(
       return Response.redirect(canonicalUrl, 302);
     }
     const returnUrl = callbackUrl(c.req.raw, basePath, {
+      acpAuthorization: Boolean(options.acpAuthorization),
       componentGallery: options.componentGallery,
     });
     if (!auth) {
       return Response.redirect(returnUrl, 302);
     }
     const session = await auth.getSession(c.req.raw);
-    if (session && isAuthorized(session, allowedDomains, allowedEmails)) {
+    if (
+      session &&
+      dashboardSessionIsAuthorized(session, allowedDomains, allowedEmails)
+    ) {
       return Response.redirect(returnUrl, 302);
     }
     return auth.signInWithGoogle(c.req.raw, returnUrl);
@@ -775,6 +750,28 @@ export function createDashboardApp(
 
   if (auth) {
     app.on(["GET", "POST"], `${authPath}/*`, (c) => auth.handler(c.req.raw));
+  }
+
+  const acpAuthorization = options.acpAuthorization;
+  if (acpAuthorization) {
+    app.on(
+      ["GET", "POST"],
+      `${ACP_AUTHORIZATION_PATH_PREFIX}:transactionId`,
+      (c) =>
+        handleDashboardAcpAuthorization({
+          agentName,
+          allowedDomains,
+          allowedEmails,
+          auth,
+          authRequired,
+          authorization: acpAuthorization,
+          basePath,
+          canonicalBaseURL,
+          localViewerEmail: LOCAL_VIEWER_EMAIL,
+          request: c.req.raw,
+          transactionId: c.req.param("transactionId"),
+        }),
+    );
   }
 
   app.get("/favicon.ico", () => renderFavicon());
@@ -813,7 +810,7 @@ export function createDashboardApp(
       });
     }
     const browserSession = await auth.getSession(c.req.raw);
-    const token = personalBearerToken(c.req.raw);
+    const token = dashboardPersonalBearerToken(c.req.raw);
     const tokenEmail =
       !browserSession &&
       token &&
@@ -823,20 +820,21 @@ export function createDashboardApp(
         ? await authenticatePersonalToken(token)
         : undefined;
     const session =
-      browserSession ?? (tokenEmail ? bearerSession(tokenEmail) : null);
+      browserSession ??
+      (tokenEmail ? dashboardBearerSession(tokenEmail) : null);
     if (!session) {
       return unauthorized(c.req.raw, basePath, canonicalBaseURL, {
         componentGallery: options.componentGallery,
       });
     }
-    if (!isAuthorized(session, allowedDomains, allowedEmails)) {
+    if (!dashboardSessionIsAuthorized(session, allowedDomains, allowedEmails)) {
       return forbidden(c.req.raw, agentName);
     }
     const sanitizedSession = sanitizeDashboardSession(session);
     c.set("authSession", sanitizedSession);
     // Resolve the canonical user only for authenticated API requests.
     if (pathname.startsWith("/api/")) {
-      const email = verifiedSessionEmail(sanitizedSession);
+      const email = verifiedDashboardSessionEmail(sanitizedSession);
       if (!email) {
         throw new Error(
           "Authenticated dashboard session has no verified email",

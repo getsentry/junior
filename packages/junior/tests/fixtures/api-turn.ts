@@ -18,6 +18,7 @@ import {
   createConversationWork,
   type ConversationWorkCallbackOptions,
 } from "@/chat/app/conversation-work";
+import type { ConversationTurnLifecycle } from "@/chat/conversations/turn-lifecycle";
 import type { ConversationStore } from "@/chat/conversations/store";
 import {
   closeDb,
@@ -131,6 +132,7 @@ export async function createConversationWorkWebHarness(
   options: {
     agentRunner?: AgentRunner;
     modelStream?: StreamFn;
+    turnLifecycle?: ConversationTurnLifecycle;
   } = {},
 ): Promise<ConversationWorkWebHarness> {
   const conversationStore = getConversationStore();
@@ -151,7 +153,12 @@ export async function createConversationWorkWebHarness(
     getSlackAdapter: () => createSlackAdapterFixture(),
     queue,
     services: {
-      replyExecutor: { agentRunner },
+      replyExecutor: {
+        agentRunner,
+        ...(options.turnLifecycle
+          ? { turnLifecycle: options.turnLifecycle }
+          : {}),
+      },
     },
     state,
   });

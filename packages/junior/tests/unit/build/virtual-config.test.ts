@@ -24,6 +24,7 @@ describe("renderVirtualConfig", () => {
     expect(code).toContain(
       'export const pluginRuntimeRegistrations = ["github"];',
     );
+    expect(code).toContain('import("@sentry/junior-acp")');
   });
 
   it("supports default runtime plugin exports", () => {

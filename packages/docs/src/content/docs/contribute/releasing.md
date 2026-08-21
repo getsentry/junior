@@ -12,6 +12,7 @@ related:
 Junior uses lockstep package releases for:
 
 - `@sentry/junior`
+- `@sentry/junior-acp`
 - `@sentry/junior-plugin-api`
 - `@sentry/junior-agent-browser`
 - `@sentry/junior-amplitude`

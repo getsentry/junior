@@ -29,6 +29,10 @@ function renderDashboardImport(enabled: boolean): string[] {
     : ["export const createDashboardApp = undefined;"];
 }
 
+function renderAcpImport(): string[] {
+  return ['export const loadAcp = () => import("@sentry/junior-acp");'];
+}
+
 function dashboardEnabled(
   dashboard: JuniorDashboardOptions | undefined,
 ): boolean {
@@ -44,6 +48,7 @@ export function renderVirtualConfig(options: {
   pluginRuntimeRegistrations?: string[];
 }): string {
   const lines = [
+    ...renderAcpImport(),
     ...renderDashboardImport(dashboardEnabled(options.dashboard)),
     ...(options.pluginModule
       ? [

@@ -1,0 +1,379 @@
+import {
+  createHash,
+  randomBytes,
+  randomUUID,
+  timingSafeEqual,
+} from "node:crypto";
+import type { StateAdapter } from "chat";
+import * as acp from "@agentclientprotocol/sdk";
+import { userSchema, type User } from "@sentry/junior-plugin-api";
+import { z } from "zod";
+import { fenceLock, MUTATION_LOCK_TTL_MS, withLock } from "./state";
+import {
+  ACP_STATE_TTL_MS,
+  bindAcpConnectionUser,
+  completeAcpRequest,
+  type AcpRequestReceipt,
+} from "./transport";
+
+const ACP_AUTHORIZATION_TTL_MS = 10 * 60 * 1000;
+const ACP_CONNECTION_COOKIE = "junior_acp_connection";
+const LOCK_WAIT_MS = 5_000;
+const jsonRpcIdSchema = z.union([z.string(), z.number().finite(), z.null()]);
+
+const acpAuthorizationSchema = z
+  .object({
+    connectionId: z.string().uuid(),
+    credentialHash: z.string().length(64),
+    elicitationId: z.string().uuid(),
+    expiresAtMs: z.number().int().positive(),
+    requestId: jsonRpcIdSchema,
+    requestKey: z.string().min(1),
+    userCodeHash: z.string().length(64),
+  })
+  .strict();
+
+type AcpAuthorization = z.output<typeof acpAuthorizationSchema>;
+
+export type AcpAuthorizationCompletion =
+  | "busy"
+  | "completed"
+  | "conflict"
+  | "expired"
+  | "invalid";
+
+export const ACP_AUTH_METHOD_ID = "junior";
+
+export const ACP_AUTH_METHOD = {
+  id: ACP_AUTH_METHOD_ID,
+  name: "Sign in to Junior",
+  description: "Sign in with the Google account allowed by this Junior app.",
+} satisfies acp.AuthMethod;
+
+function authorizationKey(transactionId: string): string {
+  return `junior:acp:v1:authorization:${transactionId}`;
+}
+
+function authorizationLockKey(transactionId: string): string {
+  return `${authorizationKey(transactionId)}:lock`;
+}
+
+function credentialHash(value: string): string {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+function createUserCode(): string {
+  const value = randomBytes(6).toString("hex").toUpperCase();
+  return `${value.slice(0, 4)}-${value.slice(4, 8)}-${value.slice(8, 12)}`;
+}
+
+function userCodeHash(value: string): string {
+  return credentialHash(value.trim().replaceAll("-", "").toUpperCase());
+}
+
+function userCodeMatches(value: string, expectedHash: string): boolean {
+  const actual = Buffer.from(userCodeHash(value), "hex");
+  const expected = Buffer.from(expectedHash, "hex");
+  return actual.length === expected.length && timingSafeEqual(actual, expected);
+}
+
+function cookieValue(request: Request): string | undefined {
+  const header = request.headers.get("cookie");
+  if (!header) return undefined;
+  for (const part of header.split(";")) {
+    const separator = part.indexOf("=");
+    if (separator <= 0) continue;
+    if (part.slice(0, separator).trim() !== ACP_CONNECTION_COOKIE) continue;
+    const value = part.slice(separator + 1).trim();
+    if (value) return value;
+  }
+  return undefined;
+}
+
+function cookieAttributes(request: Request): string {
+  return [
+    "Path=/api/acp",
+    "HttpOnly",
+    "SameSite=Strict",
+    ...(new URL(request.url).protocol === "https:" ? ["Secure"] : []),
+  ].join("; ");
+}
+
+/** Create the secret cookie that proves control of one ACP connection. */
+export function createAcpConnectionCredential(request: Request): {
+  cookie: string;
+  credentialHash: string;
+} {
+  const credential = randomBytes(32).toString("base64url");
+  return {
+    cookie: `${ACP_CONNECTION_COOKIE}=${credential}; ${cookieAttributes(request)}; Max-Age=86400`,
+    credentialHash: credentialHash(credential),
+  };
+}
+
+/** Clear the ACP connection credential in the client cookie store. */
+export function clearAcpConnectionCredential(request: Request): string {
+  return `${ACP_CONNECTION_COOKIE}=; ${cookieAttributes(request)}; Max-Age=0`;
+}
+
+/** Verify that this request controls the supplied ACP connection hash. */
+export function hasAcpConnectionCredential(
+  request: Request,
+  expectedHash: string,
+): boolean {
+  const credential = cookieValue(request);
+  if (!credential) return false;
+  const actual = Buffer.from(credentialHash(credential), "hex");
+  const expected = Buffer.from(expectedHash, "hex");
+  return actual.length === expected.length && timingSafeEqual(actual, expected);
+}
+
+function authorizationBaseURL(request: Request, configured?: string): URL {
+  const value = configured?.trim();
+  const url = new URL(value || new URL(request.url).origin);
+  url.pathname = "/";
+  url.search = "";
+  url.hash = "";
+  return url;
+}
+
+async function readAuthorization(
+  state: StateAdapter,
+  transactionId: string,
+): Promise<AcpAuthorization | undefined> {
+  const value = await state.get(authorizationKey(transactionId));
+  return value === null || value === undefined
+    ? undefined
+    : acpAuthorizationSchema.parse(value);
+}
+
+function completionReceipt(
+  authorization: AcpAuthorization,
+  response: acp.AnyResponse,
+): AcpRequestReceipt {
+  return {
+    deliveryKey: `${authorization.requestKey}:authorization-complete`,
+    outputs: [
+      {
+        kind: "message",
+        message: {
+          jsonrpc: "2.0",
+          method: acp.methods.client.elicitation.complete,
+          params: { elicitationId: authorization.elicitationId },
+        },
+      },
+      { kind: "message", message: response },
+    ],
+  };
+}
+
+function resultMessage(requestId: acp.JsonRpcId): acp.AnyResponse {
+  return { jsonrpc: "2.0", id: requestId, result: {} };
+}
+
+function cancelledMessage(
+  requestId: acp.JsonRpcId,
+  message = "Junior sign-in was cancelled",
+): acp.AnyResponse {
+  return {
+    jsonrpc: "2.0",
+    id: requestId,
+    error: acp.RequestError.requestCancelled(
+      undefined,
+      message,
+    ).toErrorResponse(),
+  };
+}
+
+/** Start browser authorization for one ACP authenticate request. */
+export async function beginAcpAuthorization(args: {
+  baseURL?: string;
+  connectionId: string;
+  credentialHash: string;
+  request: Request;
+  requestId: acp.JsonRpcId;
+  requestKey: string;
+  state: StateAdapter;
+}): Promise<AcpRequestReceipt> {
+  const transactionId = randomUUID();
+  const userCode = createUserCode();
+  const authorization = acpAuthorizationSchema.parse({
+    connectionId: args.connectionId,
+    credentialHash: args.credentialHash,
+    elicitationId: transactionId,
+    expiresAtMs: Date.now() + ACP_AUTHORIZATION_TTL_MS,
+    requestId: args.requestId,
+    requestKey: args.requestKey,
+    userCodeHash: userCodeHash(userCode),
+  });
+  await args.state.set(
+    authorizationKey(transactionId),
+    authorization,
+    ACP_STATE_TTL_MS,
+  );
+  const url = authorizationBaseURL(args.request, args.baseURL);
+  url.pathname = `/api/acp/auth/${transactionId}`;
+  const params = {
+    mode: "url",
+    message: `Sign in to Junior in your browser. Enter verification code ${userCode}.`,
+    elicitationId: transactionId,
+    requestId: args.requestId,
+    url: url.toString(),
+  } satisfies acp.CreateElicitationRequest;
+  return {
+    deliveryKey: `${args.requestKey}:authorization-start`,
+    outputs: [
+      {
+        kind: "message",
+        message: {
+          jsonrpc: "2.0",
+          id: transactionId,
+          method: acp.methods.client.elicitation.create,
+          params,
+        },
+      },
+    ],
+  };
+}
+
+async function finishAuthorization(args: {
+  authorization: AcpAuthorization;
+  response: acp.AnyResponse;
+  state: StateAdapter;
+}): Promise<"busy" | "completed" | "expired"> {
+  const result = await completeAcpRequest({
+    connectionId: args.authorization.connectionId,
+    receipt: completionReceipt(args.authorization, args.response),
+    requestKey: args.authorization.requestKey,
+    state: args.state,
+  });
+  return result === "full" ? "busy" : result;
+}
+
+/** Bind a Google-authenticated user and resume the pending ACP request. */
+export async function completeAcpAuthorization(args: {
+  state: StateAdapter;
+  transactionId: string;
+  user: User;
+  userCode: string;
+}): Promise<AcpAuthorizationCompletion> {
+  const result = await withLock(
+    args.state,
+    authorizationLockKey(args.transactionId),
+    async (lock) => {
+      const authorization = await readAuthorization(
+        args.state,
+        args.transactionId,
+      );
+      if (!authorization) {
+        return "expired" as const;
+      }
+      if (authorization.expiresAtMs <= Date.now()) {
+        const completion = await finishAuthorization({
+          authorization,
+          response: cancelledMessage(
+            authorization.requestId,
+            "Junior sign-in request expired",
+          ),
+          state: args.state,
+        });
+        if (completion === "busy") return completion;
+        await fenceLock(args.state, lock, MUTATION_LOCK_TTL_MS);
+        await args.state.delete(authorizationKey(args.transactionId));
+        return "expired" as const;
+      }
+      if (!userCodeMatches(args.userCode, authorization.userCodeHash)) {
+        return "invalid" as const;
+      }
+      const binding = await bindAcpConnectionUser({
+        connectionId: authorization.connectionId,
+        credentialHash: authorization.credentialHash,
+        state: args.state,
+        user: userSchema.parse(args.user),
+      });
+      if (binding !== "completed") {
+        const completion = await finishAuthorization({
+          authorization,
+          response: cancelledMessage(
+            authorization.requestId,
+            "Junior sign-in could not bind this connection",
+          ),
+          state: args.state,
+        });
+        if (completion !== "completed") return completion;
+        await fenceLock(args.state, lock, MUTATION_LOCK_TTL_MS);
+        await args.state.delete(authorizationKey(args.transactionId));
+        return binding;
+      }
+      const completion = await finishAuthorization({
+        authorization,
+        response: resultMessage(authorization.requestId),
+        state: args.state,
+      });
+      if (completion !== "completed") return completion;
+      await fenceLock(args.state, lock, MUTATION_LOCK_TTL_MS);
+      await args.state.delete(authorizationKey(args.transactionId));
+      return "completed" as const;
+    },
+    {
+      keepAlive: true,
+      ttlMs: MUTATION_LOCK_TTL_MS,
+      waitMs: LOCK_WAIT_MS,
+    },
+  );
+  if (!result.acquired) {
+    throw new Error("Timed out acquiring ACP authorization control");
+  }
+  return result.value;
+}
+
+/** Consume a client response to the browser URL elicitation. */
+export async function handleAcpAuthorizationResponse(args: {
+  connectionId: string;
+  response: acp.AnyResponse;
+  state: StateAdapter;
+}): Promise<"accepted" | "cancelled" | "ignored"> {
+  if (typeof args.response.id !== "string") return "ignored";
+  const parsedId = z.string().uuid().safeParse(args.response.id);
+  if (!parsedId.success) return "ignored";
+  const authorization = await readAuthorization(args.state, parsedId.data);
+  if (!authorization || authorization.connectionId !== args.connectionId) {
+    return "ignored";
+  }
+  const action =
+    "result" in args.response &&
+    typeof args.response.result === "object" &&
+    args.response.result !== null &&
+    "action" in args.response.result &&
+    typeof args.response.result.action === "string"
+      ? args.response.result.action
+      : undefined;
+  if (action === "accept") return "accepted";
+
+  const result = await withLock(
+    args.state,
+    authorizationLockKey(parsedId.data),
+    async (lock) => {
+      const current = await readAuthorization(args.state, parsedId.data);
+      if (!current || current.connectionId !== args.connectionId) return false;
+      const completion = await finishAuthorization({
+        authorization: current,
+        response: cancelledMessage(current.requestId),
+        state: args.state,
+      });
+      if (completion === "busy") return false;
+      await fenceLock(args.state, lock, MUTATION_LOCK_TTL_MS);
+      await args.state.delete(authorizationKey(parsedId.data));
+      return true;
+    },
+    {
+      keepAlive: true,
+      ttlMs: MUTATION_LOCK_TTL_MS,
+      waitMs: LOCK_WAIT_MS,
+    },
+  );
+  if (!result.acquired) {
+    throw new Error("Timed out acquiring ACP authorization control");
+  }
+  return result.value ? "cancelled" : "ignored";
+}

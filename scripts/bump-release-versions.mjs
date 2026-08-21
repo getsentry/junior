@@ -10,6 +10,7 @@ if (!newVersion) {
 
 const files = [
   "packages/junior/package.json",
+  "packages/junior-acp/package.json",
   "packages/junior-plugin-api/package.json",
   "packages/junior-agent-browser/package.json",
   "packages/junior-amplitude/package.json",

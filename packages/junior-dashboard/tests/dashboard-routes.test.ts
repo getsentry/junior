@@ -107,6 +107,82 @@ describe("dashboard routes", () => {
     );
   });
 
+  it("returns ACP browser authorization through Google sign-in", async () => {
+    const transactionId = "11111111-1111-4111-8111-111111111111";
+    const path = `/api/acp/auth/${transactionId}`;
+    let callbackURL: string | undefined;
+    const complete = vi.fn(async () => "completed" as const);
+    const unauthenticatedApp = createDashboardApp({
+      acpAuthorization: { complete },
+      allowedGoogleDomains: ["sentry.io"],
+      auth: auth(null, (value) => {
+        callbackURL = value;
+      }),
+    });
+    const unauthenticated = await unauthenticatedApp.fetch(
+      new Request(`http://localhost${path}`),
+    );
+    expect(unauthenticated.status).toBe(302);
+    const loginURL = new URL(unauthenticated.headers.get("location")!);
+    expect(loginURL.pathname).toBe("/auth/login");
+    expect(loginURL.searchParams.get("next")).toBe(path);
+
+    await unauthenticatedApp.fetch(new Request(loginURL));
+    expect(callbackURL).toBe(`http://localhost${path}`);
+    expect(complete).not.toHaveBeenCalled();
+
+    const authenticatedApp = createDashboardApp({
+      acpAuthorization: { complete },
+      allowedGoogleDomains: ["sentry.io"],
+      auth: auth({
+        user: {
+          email: "person@sentry.io",
+          emailVerified: true,
+          name: "ACP User",
+        },
+      }),
+    });
+    const page = await authenticatedApp.request(`http://localhost${path}`);
+    expect(page.status).toBe(200);
+    const post = (origin: string) =>
+      authenticatedApp.request(`http://localhost${path}`, {
+        method: "POST",
+        headers: { Origin: origin },
+        body: new URLSearchParams({ code: "1234-5678-90AB" }),
+      });
+    expect((await post("https://attacker.example")).status).toBe(403);
+    expect(complete).not.toHaveBeenCalled();
+    expect((await post("http://localhost")).status).toBe(200);
+    expect(complete).toHaveBeenCalledWith(
+      transactionId,
+      expect.objectContaining({ id: "user:person@sentry.io" }),
+      "1234-5678-90AB",
+    );
+  });
+
+  it("does not complete ACP authorization for a disallowed Google account", async () => {
+    const complete = vi.fn(async () => "completed" as const);
+    const app = createDashboardApp({
+      acpAuthorization: { complete },
+      allowedGoogleDomains: ["sentry.io"],
+      auth: auth({
+        user: {
+          email: "person@example.com",
+          emailVerified: true,
+        },
+      }),
+    });
+
+    const response = await app.fetch(
+      new Request(
+        "http://localhost/api/acp/auth/11111111-1111-4111-8111-111111111111",
+      ),
+    );
+
+    expect(response.status).toBe(403);
+    expect(complete).not.toHaveBeenCalled();
+  });
+
   it("starts OAuth on the JUNIOR_BASE_URL origin", async () => {
     process.env.BETTER_AUTH_URL = "https://legacy-auth.example.com";
     process.env.JUNIOR_BASE_URL = "https://junior.example.com";
@@ -381,12 +457,8 @@ describe("dashboard routes", () => {
       'content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, interactive-widget=resizes-content"',
     );
     expect(html).toContain('name="theme-color" content="#000000"');
-    expect(html).toContain(
-      'href="/_junior/dashboard/manifest.webmanifest"',
-    );
-    expect(html).toContain(
-      'href="/_junior/dashboard/icon-512.png"',
-    );
+    expect(html).toContain('href="/_junior/dashboard/manifest.webmanifest"');
+    expect(html).toContain('href="/_junior/dashboard/icon-512.png"');
   });
 
   it("renders the configured agent name from the dashboard shell", async () => {

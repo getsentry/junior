@@ -139,7 +139,7 @@ import { createApp } from "@sentry/junior";
 
 const app = await createApp({
   experimental: {
-    // ACP v1 Streamable HTTP for one-process development and testing.
+    // ACP v1 Streamable HTTP backed by the configured shared state.
     acp: true,
     // Reply to non-mention messages in Slack threads Junior already joined.
     // Off by default. Without this, Junior only replies to explicit @mentions
@@ -155,10 +155,15 @@ const app = await createApp({
 `junior chat` enables experimental `subagents` automatically because it is the
 local createApp-equivalent entrypoint and already wires the child-worker path.
 
-`acp` mounts `GET`, `POST`, and `DELETE /api/acp`. Every request needs a Junior
-personal token in the bearer authorization header. The current transport keeps
-connection state in one Node process. Use it only for local or single-process
-testing. Run `pnpm acp:local` in this repository for a loopback test with the
+`acp` mounts `GET`, `POST`, and `DELETE /api/acp`. The client must support ACP
+URL elicitation. Junior asks the user to enter the verification code shown by
+the client, then uses the dashboard Google sign-in flow. Personal tokens do not
+grant access to this route. The route stores connection, authorization, and
+stream records in the configured `StateAdapter`. The production Redis adapter
+lets requests reach different app instances. It does not need process affinity.
+The memory adapter remains local to one process. A client must reconnect and
+call `session/load` when its live SSE request reaches the deployment request
+limit. Run `pnpm acp:local` in this repository for a loopback test with the
 official ACP SDK client.
 
 `passive-routing` turns on replies to non-mention messages in threads Junior
