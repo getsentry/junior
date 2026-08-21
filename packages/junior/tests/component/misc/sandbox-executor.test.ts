@@ -1037,7 +1037,7 @@ describe("createTestSandbox", () => {
     });
     resolveWorkspaceMock.mockImplementationOnce(async (params: any) => {
       releaseResolve?.();
-      await new Promise<never>((_resolve, reject) => {
+      return await new Promise<never>((_resolve, reject) => {
         const signal = params.signal as AbortSignal | undefined;
         if (signal?.aborted) {
           reject(
