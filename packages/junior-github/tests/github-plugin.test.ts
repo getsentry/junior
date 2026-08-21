@@ -2923,7 +2923,7 @@ Conversation: \`local:test:old-conversation\`
     expect(runs.every((run) => run.env === undefined)).toBe(true);
   });
 
-  it("updates the current branch when a workspace repository exists", async () => {
+  it("resets an existing workspace repository to its current upstream branch", async () => {
     const runs: string[][] = [];
     const ctx = {
       db,
@@ -2949,7 +2949,9 @@ Conversation: \`local:test:old-conversation\`
     expect(runs).toEqual([
       ["-p", "--", "repos"],
       ["-C", "repos/junior", "rev-parse", "--is-inside-work-tree"],
-      ["-C", "repos/junior", "pull", "--ff-only", "--quiet"],
+      ["-C", "repos/junior", "fetch", "--quiet", "origin"],
+      ["-C", "repos/junior", "reset", "--hard", "@{upstream}"],
+      ["-C", "repos/junior", "clean", "-fd"],
     ]);
   });
 
