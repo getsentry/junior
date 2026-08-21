@@ -53,12 +53,27 @@ export async function prepareWorkspace(
       }
     }
 
-    const checkout = await ctx.sandbox.run({
+    const worktree = await ctx.sandbox.run({
       cmd: "git",
       args: ["-C", path, "rev-parse", "--is-inside-work-tree"],
       cwd: ctx.sandbox.root,
     });
-    if (checkout.exitCode === 0) {
+    const upstream =
+      worktree.exitCode === 0
+        ? await ctx.sandbox.run({
+            cmd: "git",
+            args: [
+              "-C",
+              path,
+              "rev-parse",
+              "--verify",
+              "--quiet",
+              "@{upstream}^{commit}",
+            ],
+            cwd: ctx.sandbox.root,
+          })
+        : undefined;
+    if (upstream?.exitCode === 0) {
       // Existing Workspace checkouts keep setup outputs under ignored paths.
       // Reset the tracked tree without wiping those installs.
       for (const args of [

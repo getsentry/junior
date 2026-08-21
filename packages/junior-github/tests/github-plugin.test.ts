@@ -3076,13 +3076,21 @@ Conversation: \`local:test:old-conversation\`
     expect(runs).toEqual([
       ["-p", "--", "repos"],
       ["-C", "repos/junior", "rev-parse", "--is-inside-work-tree"],
+      [
+        "-C",
+        "repos/junior",
+        "rev-parse",
+        "--verify",
+        "--quiet",
+        "@{upstream}^{commit}",
+      ],
       ["-C", "repos/junior", "fetch", "--quiet", "origin"],
       ["-C", "repos/junior", "reset", "--hard", "@{upstream}"],
       ["-C", "repos/junior", "clean", "-fd"],
     ]);
-    expect(runs.some((args) => args[0] === "clone" || args.includes("-rf"))).toBe(
-      false,
-    );
+    expect(
+      runs.some((args) => args[0] === "clone" || args.includes("-rf")),
+    ).toBe(false);
   });
 
   it("clones a missing workspace repository after detecting no worktree", async () => {
@@ -3142,7 +3150,14 @@ Conversation: \`local:test:old-conversation\`
         async run(input: { args?: string[]; cmd: string }) {
           runs.push(input);
           if (input.cmd === "git") {
-            if (input.args?.includes("rev-parse")) {
+            if (input.args?.includes("--is-inside-work-tree")) {
+              return {
+                exitCode: cloneAttempts === 0 ? 1 : 0,
+                stderr: "",
+                stdout: "",
+              };
+            }
+            if (input.args?.includes("--verify")) {
               return { exitCode: 1, stderr: "", stdout: "" };
             }
             cloneAttempts += 1;
