@@ -59,16 +59,26 @@ export async function prepareWorkspace(
       args: ["-C", path, "rev-parse", "--is-inside-work-tree"],
       cwd: ctx.sandbox.root,
     });
-    const branch =
+    const upstream =
       worktree.exitCode === 0
         ? await ctx.sandbox.run({
             cmd: "git",
-            args: ["-C", path, "symbolic-ref", "--quiet", "--short", "HEAD"],
+            args: [
+              "-C",
+              path,
+              "rev-parse",
+              "--symbolic-full-name",
+              "@{upstream}",
+            ],
             cwd: ctx.sandbox.root,
           })
         : undefined;
-    const branchName = branch?.stdout.trim();
-    if (branch?.exitCode === 0 && branchName) {
+    const upstreamRef = upstream?.stdout.trim();
+    const upstreamPrefix = "refs/remotes/origin/";
+    const upstreamBranch = upstreamRef?.startsWith(upstreamPrefix)
+      ? upstreamRef.slice(upstreamPrefix.length)
+      : undefined;
+    if (upstream?.exitCode === 0 && upstreamRef && upstreamBranch) {
       // Existing Workspace checkouts keep setup outputs under ignored paths.
       // Pin origin before network access, then reset the tracked tree without
       // wiping those installs. The explicit refspec ignores snapshot config.
@@ -80,9 +90,9 @@ export async function prepareWorkspace(
           "fetch",
           "--quiet",
           "origin",
-          `+refs/heads/${branchName}:refs/remotes/origin/${branchName}`,
+          `+refs/heads/${upstreamBranch}:${upstreamRef}`,
         ],
-        ["-C", path, "reset", "--hard", `refs/remotes/origin/${branchName}`],
+        ["-C", path, "reset", "--hard", upstreamRef],
         ["-C", path, "clean", "-fd"],
       ]) {
         const result = await ctx.sandbox.run({

@@ -3050,7 +3050,7 @@ Conversation: \`local:test:old-conversation\`
     expect(runs.every((run) => run.env === undefined)).toBe(true);
   });
 
-  it("refreshes an existing workspace repository without recloning", async () => {
+  it("refreshes an existing workspace repository from its configured origin branch", async () => {
     const runs: string[][] = [];
     const ctx = {
       db,
@@ -3068,7 +3068,9 @@ Conversation: \`local:test:old-conversation\`
           return {
             exitCode: 0,
             stderr: "",
-            stdout: input.args?.includes("symbolic-ref") ? "main\n" : "",
+            stdout: input.args?.includes("--symbolic-full-name")
+              ? "refs/remotes/origin/stable\n"
+              : "",
           };
         },
         async writeFile() {},
@@ -3080,7 +3082,13 @@ Conversation: \`local:test:old-conversation\`
     expect(runs).toEqual([
       ["-p", "--", "repos"],
       ["-C", "repos/junior", "rev-parse", "--is-inside-work-tree"],
-      ["-C", "repos/junior", "symbolic-ref", "--quiet", "--short", "HEAD"],
+      [
+        "-C",
+        "repos/junior",
+        "rev-parse",
+        "--symbolic-full-name",
+        "@{upstream}",
+      ],
       [
         "-C",
         "repos/junior",
@@ -3095,9 +3103,9 @@ Conversation: \`local:test:old-conversation\`
         "fetch",
         "--quiet",
         "origin",
-        "+refs/heads/main:refs/remotes/origin/main",
+        "+refs/heads/stable:refs/remotes/origin/stable",
       ],
-      ["-C", "repos/junior", "reset", "--hard", "refs/remotes/origin/main"],
+      ["-C", "repos/junior", "reset", "--hard", "refs/remotes/origin/stable"],
       ["-C", "repos/junior", "clean", "-fd"],
     ]);
     expect(
@@ -3169,7 +3177,7 @@ Conversation: \`local:test:old-conversation\`
                 stdout: "",
               };
             }
-            if (input.args?.includes("symbolic-ref")) {
+            if (input.args?.includes("--symbolic-full-name")) {
               return { exitCode: 1, stderr: "", stdout: "" };
             }
             if (input.args?.[0] === "clone") {
