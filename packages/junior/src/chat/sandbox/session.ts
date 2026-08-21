@@ -378,32 +378,14 @@ export function createSandboxRuntime(
     throw new Error(`Failed to boot sandbox from snapshot ${snapshotId}`);
   };
 
-  const prepareRepositoriesForBuild = options.onWorkspacePrepare
-    ? async (
-        sandbox: SandboxSession,
-        workspace: Workspace,
-        signal?: AbortSignal,
-      ) =>
-        await options.onWorkspacePrepare?.(
-          sandbox,
-          workspace,
-          signal,
-          "build",
-        )
+  const prepare = options.onWorkspacePrepare;
+  const prepareRepositories = prepare
+    ? (purpose: "build" | "boot") =>
+        (sandbox: SandboxSession, workspace: Workspace, signal?: AbortSignal) =>
+          prepare(sandbox, workspace, signal, purpose)
     : undefined;
-  const prepareRepositoriesForBoot = options.onWorkspacePrepare
-    ? async (
-        sandbox: SandboxSession,
-        workspace: Workspace,
-        signal?: AbortSignal,
-      ) =>
-        await options.onWorkspacePrepare?.(
-          sandbox,
-          workspace,
-          signal,
-          "boot",
-        )
-    : undefined;
+  const prepareRepositoriesForBuild = prepareRepositories?.("build");
+  const prepareRepositoriesForBoot = prepareRepositories?.("boot");
 
   const createSandboxFromResolvedSnapshot = async (params: {
     runtime: string;
