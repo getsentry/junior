@@ -134,7 +134,7 @@ export interface Lease {
 
 /** Durable request to stop the current Conversation run. */
 export interface ConversationStop {
-  requestedAtMs: number;
+  inboundMessageIds: string[];
   runId: string;
 }
 
@@ -406,11 +406,15 @@ function normalizeStop(value: unknown): ConversationStop | undefined {
   if (!isRecord(value)) {
     return undefined;
   }
+  const inboundMessageIds = Array.isArray(value.inboundMessageIds)
+    ? uniqueStrings(
+        value.inboundMessageIds.filter(
+          (id): id is string => typeof id === "string",
+        ),
+      )
+    : [];
   const runId = toOptionalString(value.runId);
-  const requestedAtMs = toOptionalNumber(value.requestedAtMs);
-  return runId && typeof requestedAtMs === "number"
-    ? { requestedAtMs, runId }
-    : undefined;
+  return runId ? { inboundMessageIds, runId } : undefined;
 }
 
 /** Decode execution state and repair idle records that still own work. */
@@ -1704,6 +1708,9 @@ export async function stopConversationWork(args: {
     }
 
     const runId = current.execution.runId ?? randomUUID();
+    const inboundMessageIds = current.execution.pendingMessages
+      .filter(isHumanFacingMessage)
+      .map((message) => message.inboundMessageId);
     await writeConversation(
       state,
       lock,
@@ -1712,7 +1719,7 @@ export async function stopConversationWork(args: {
         {
           ...current.execution,
           runId,
-          stop: { requestedAtMs: nowMs, runId },
+          stop: { inboundMessageIds, runId },
         },
         nowMs,
       ),
@@ -1740,12 +1747,13 @@ export async function completeConversationStop(args: {
       return { status: "none", removedInboundMessageIds: [] };
     }
 
+    const stoppedInboundMessageIds = new Set(stop.inboundMessageIds);
     const removedInboundMessageIds: string[] = [];
     const pendingMessages = current.execution.pendingMessages.filter(
       (message) => {
-        const shouldStop =
-          isHumanFacingMessage(message) &&
-          message.receivedAtMs <= stop.requestedAtMs;
+        const shouldStop = stoppedInboundMessageIds.has(
+          message.inboundMessageId,
+        );
         if (shouldStop) {
           removedInboundMessageIds.push(message.inboundMessageId);
         }

@@ -1708,12 +1708,14 @@ describe("conversation work execution", () => {
 
     await appendInboundMessage({
       message: inboundMessage("m3", {
-        createdAtMs: 3_000,
-        receivedAtMs: 3_000,
+        // The append happens after the stop. Equal timestamps must not make
+        // this later message part of the stop request.
+        createdAtMs: 2_000,
+        receivedAtMs: 2_000,
       }),
-      nowMs: 3_000,
+      nowMs: 2_000,
     });
-    currentNowMs = 3_000;
+    currentNowMs = 2_000;
     finishRun.resolve();
 
     await expect(running).resolves.toEqual({ status: "pending_requeued" });
@@ -1763,7 +1765,7 @@ describe("conversation work execution", () => {
     ).resolves.toMatchObject({
       execution: {
         status: "paused",
-        stop: expect.objectContaining({ requestedAtMs: 2_000 }),
+        stop: expect.objectContaining({ inboundMessageIds: [] }),
       },
     });
 
