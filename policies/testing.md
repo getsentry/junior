@@ -33,8 +33,11 @@ refactors should not churn brittle unit tests.
   full input matrix is itself the contract.
 - Keep coverage proportional: one representative happy path and one realistic
   failure per distinct product outcome, safety rule, or irreversible delivery,
-  persistence, migration, or recovery edge. Merge examples of the same rule and
+  persistence, or recovery edge. Merge examples of the same rule and
   interchangeable mock failure sources.
+- Do not write automated tests for migrations or migration SQL. Validate
+  migration metadata and generated schemas with the repository checks. Test the
+  resulting product behavior through its primary owning scenario.
 - Test defensive branches only when the state is reachable through untrusted
   input or migration, protects a schema-enforced or documented stored rule, or
   has production history.
