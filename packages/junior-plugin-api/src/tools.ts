@@ -12,6 +12,10 @@ import type {
 import type { PluginCredentialSubject } from "./credentials";
 import type { PluginAnnotations } from "./annotations";
 import type { SlackConversationLink } from "./operations";
+import type {
+  ResourceEventSubscriptionResult,
+  SubscribableResource,
+} from "./resource-events";
 import type { PluginState } from "./state";
 import { z, type ZodTypeAny } from "zod";
 
@@ -140,7 +144,12 @@ export interface PluginMcp {
   prepare(): Promise<"authorization_pending" | "ready">;
 }
 
-/** Provider-owned, repeatable repository preparation for a Workspace Sandbox. */
+/**
+ * Provider-owned, repeatable repository preparation for a Workspace Sandbox.
+ * Snapshot builds and fresh boots can call the hook again, so implementations
+ * must replace or safely reuse partial prior work without discarding durable
+ * setup outputs when a complete checkout already exists.
+ */
 export interface WorkspacePrepareHookContext extends PluginContext {
   repos: Array<{
     path: string;
@@ -516,8 +525,14 @@ export interface SlackToolRegistrationHookContext {
 }
 
 export interface PluginResourceEventToolContext {
-  /** Whether this invocation can create a working resource-event subscription. */
+  /** Whether this invocation can create a working resource subscription. */
   canSubscribe: boolean;
+  /** Create a temporary resource subscription for the current conversation. */
+  subscribe(input: {
+    events: string[];
+    intent: string;
+    resource: SubscribableResource;
+  }): Promise<ResourceEventSubscriptionResult>;
 }
 
 export interface PluginWorkspaceToolContext {

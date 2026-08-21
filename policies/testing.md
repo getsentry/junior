@@ -9,7 +9,7 @@ refactors should not churn brittle unit tests.
 ## Policy
 
 - Prefer integration tests for product and runtime behavior when the contract
-  can be proven through real wiring with only the allowed fake edge.
+  can be proven through real wiring with only Slack and LLM fakes.
 - Prefer evals for agent-facing behavior that depends on model reading,
   continuity, routing, or reply quality. Assert through normalized session,
   tool, and artifact surfaces. Fixed persistence belongs in integration tests.
@@ -42,7 +42,10 @@ refactors should not churn brittle unit tests.
   stack mocks across persistence, runtime, delivery, and reply execution to fake
   a product workflow.
 - Integration tests must not mock Junior-owned modules. Compose real Junior
-  wiring and fake only the external edge named by the test harness.
+  wiring. Fake only Slack and LLMs, and only through the shared harnesses (Slack
+  MSW/outbox fixtures and model-stream). Do not mock other external edges such
+  as `@vercel/sandbox`, provider SDKs, or other live infrastructure the product
+  calls. Put those fakes in component tests when the contract needs them.
 - Prefer existing harnesses, shared fixtures, memory adapters, MSW handlers, and
   outboxes over ad hoc mocks or local payload schemas.
 - Assert user-visible outcomes and external contracts before implementation
@@ -66,9 +69,17 @@ refactors should not churn brittle unit tests.
   coverage, and validate layout and styling through visual QA.
 - Do not add fixed sleeps to browser E2E tests. Wait for the user-visible state,
   URL, request, or response that proves the behavior.
+- Most visual changes need no new automated test. Layout, styling, spacing,
+  theme, copy presentation, and other look-and-feel work should be manually
+  QA'd. Include the visual evidence in the change. Do not add unit, component,
+  snapshot, browser E2E, or other regression tests just because a UI file
+  changed.
 - UI changes do not require browser E2E coverage when they only change layout,
-  styling, copy, or already-covered presentation. Use visual QA and include its
-  evidence in the change instead.
+  styling, copy, or already-covered presentation. Use visual QA instead.
+- Add automated UI coverage only when the change owns a product behavior
+  contract such as navigation, interaction, accessibility state, request or
+  response shape, auth gating, or a realistic failure path. Extend the primary
+  owning scenario. Do not invent a nearby case for confidence.
 - Before you finish a non-trivial change, prune touched tests that equal- or
   higher-fidelity coverage already covers, only mirror implementation branches
   without a distinct contract, or exercise equivalent or unreachable cases.

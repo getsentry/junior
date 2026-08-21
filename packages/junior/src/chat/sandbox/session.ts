@@ -21,11 +21,13 @@ import { prepareWorkspaceSnapshot } from "@/chat/sandbox/prepare-workspace";
 import { getSandboxResources } from "@/chat/sandbox/resources";
 import { hash as profileHash } from "@/chat/sandbox/snapshot/profile";
 import { SANDBOX_RUNTIME } from "@/chat/sandbox/snapshot/runtime";
+import { setSnapshotSpanAttributes } from "@/chat/sandbox/snapshot/span";
 import {
   isMissingError,
   resolve as resolveSnapshot,
   type Snapshot,
 } from "@/chat/sandbox/snapshot/resolve";
+import { resolveWorkspaceSnapshot } from "@/chat/sandbox/snapshot/workspace";
 import { syncSkillsToSandbox } from "@/chat/sandbox/skill-sync";
 import {
   createSandboxSession,
@@ -37,7 +39,6 @@ import {
 import { sleep } from "@/chat/sleep";
 import type { SkillMetadata } from "@/chat/skills";
 import type { SandboxRef } from "@/chat/sandbox/ref";
-import { recordResolvedWorkspaceSnapshot } from "@/chat/workspaces/store";
 import type { Workspace } from "@/chat/workspaces/types";
 import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
 const DEFAULT_MAX_OUTPUT_LENGTH = 30_000;
@@ -125,6 +126,8 @@ interface SandboxRuntimeOptions {
   skills: SkillMetadata[];
   referenceFiles: string[];
   timeoutMs?: number;
+  /** Durable-worker soft yield for long Workspace snapshot waits. */
+  shouldYield?: () => boolean;
   traceContext?: LogContext;
   commandEnv?: () => Promise<Record<string, string>>;
   createNetworkPolicy?: (
@@ -374,25 +377,6 @@ export function createSandboxRuntime(
     throw new Error(`Failed to boot sandbox from snapshot ${snapshotId}`);
   };
 
-  const setSnapshotAttributes = (snapshot: Snapshot): void => {
-    setSpanAttributes({
-      "app.sandbox.source": snapshot.snapshotId ? "snapshot" : "created",
-      "app.sandbox.snapshot.cache_hit": snapshot.cacheHit,
-      "app.sandbox.snapshot.resolve_outcome": snapshot.resolveOutcome,
-      ...(snapshot.profileHash
-        ? {
-            "app.sandbox.snapshot.profile_hash": snapshot.profileHash,
-          }
-        : {}),
-      "app.sandbox.snapshot.dependency_count": snapshot.dependencyCount,
-      ...(snapshot.rebuildReason
-        ? {
-            "app.sandbox.snapshot.rebuild_reason": snapshot.rebuildReason,
-          }
-        : {}),
-    });
-  };
-
   const createSandboxFromResolvedSnapshot = async (params: {
     runtime: string;
     snapshot: Snapshot;
@@ -434,15 +418,25 @@ export function createSandboxRuntime(
     } catch (error) {
       if (!isMissingError(error)) throw error;
       setSpanAttributes({ "app.sandbox.snapshot.rebuild_after_missing": true });
-      const rebuilt = await resolveSnapshot({
-        runtime,
-        timeoutMs,
-        forceRebuild: true,
-        staleSnapshotId: snapshot.snapshotId,
-        signal,
-        workspace: params.workspace,
-        prepareWorkspace: params.prepareWorkspace,
-      });
+      const rebuilt = params.workspace
+        ? await resolveWorkspaceSnapshot({
+            workspace: params.workspace,
+            runtime,
+            staleSnapshotId: snapshot.snapshotId,
+            signal,
+            shouldYield: options.shouldYield,
+            applyNetworkPolicy,
+            prepareRepositories: options.onWorkspacePrepare,
+            removeCredentialRoute: Boolean(options.createNetworkPolicy),
+          })
+        : await resolveSnapshot({
+            runtime,
+            timeoutMs,
+            forceRebuild: true,
+            staleSnapshotId: snapshot.snapshotId,
+            signal,
+            prepareWorkspace: params.prepareWorkspace,
+          });
       if (!rebuilt.snapshotId) throw error;
       signal?.throwIfAborted();
       const session = await createSandboxFromSnapshot(
@@ -486,15 +480,24 @@ export function createSandboxRuntime(
           "app.sandbox.runtime": runtime,
         },
         async () => {
-          const snapshot = await resolveSnapshot({
-            runtime,
-            timeoutMs,
-            signal,
-            workspace,
-            prepareWorkspace,
-          });
+          const snapshot = workspace
+            ? await resolveWorkspaceSnapshot({
+                workspace,
+                runtime,
+                signal,
+                shouldYield: options.shouldYield,
+                applyNetworkPolicy,
+                prepareRepositories: options.onWorkspacePrepare,
+                removeCredentialRoute: Boolean(options.createNetworkPolicy),
+              })
+            : await resolveSnapshot({
+                runtime,
+                timeoutMs,
+                signal,
+                prepareWorkspace,
+              });
           signal?.throwIfAborted();
-          setSnapshotAttributes(snapshot);
+          setSnapshotSpanAttributes(snapshot);
           const created = await createSandboxFromResolvedSnapshot({
             runtime,
             snapshot,
@@ -504,13 +507,6 @@ export function createSandboxRuntime(
             workspace,
             prepareWorkspace,
           });
-          // Durable dashboard facts belong in SQL. Redis remains the hot registry.
-          if (workspace) {
-            await recordResolvedWorkspaceSnapshot(
-              workspace.id,
-              created.snapshot,
-            );
-          }
           return created.session;
         },
       );

@@ -205,6 +205,49 @@ jobs:
           informational-project: true
           informational-patch: true
 
+  workspace-snapshot-lifecycle:
+    name: test / Workspace snapshot lifecycle
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    needs: changes
+    timeout-minutes: 15
+    if: github.event_name == 'push' || needs.changes.outputs.ci == 'true' || needs.changes.outputs.core == 'true' || needs.changes.outputs.plugins == 'true' || needs.changes.outputs.full == 'true'
+    permissions:
+      contents: read
+    env:
+      DATABASE_URL: postgres://junior:junior@localhost:5432/junior
+      REDIS_URL: redis://localhost:6379
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_TEAM_ID: ${{ secrets.VERCEL_TEAM_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_DB: junior
+          POSTGRES_PASSWORD: junior
+          POSTGRES_USER: junior
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U junior -d junior"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node-pnpm
+      - run: pnpm --filter @sentry/junior build
+      - run: pnpm --filter @sentry/junior exec vitest run tests/integration/workspace-snapshot-lifecycle.test.ts
+
   plugin-tests:
     name: test / plugins
     runs-on: blacksmith-4vcpu-ubuntu-2404
@@ -333,6 +376,7 @@ jobs:
       - lint
       - typecheck
       - junior-tests
+      - workspace-snapshot-lifecycle
       - plugin-tests
       - dashboard-tests
       - dashboard-e2e
@@ -382,6 +426,7 @@ jobs:
       - lint
       - typecheck
       - junior-tests
+      - workspace-snapshot-lifecycle
       - plugin-tests
       - dashboard-tests
       - dashboard-e2e
@@ -406,6 +451,7 @@ jobs:
             "${{ needs.lint.result }}" \
             "${{ needs.typecheck.result }}" \
             "${{ needs.junior-tests.result }}" \
+            "${{ needs.workspace-snapshot-lifecycle.result }}" \
             "${{ needs.plugin-tests.result }}" \
             "${{ needs.dashboard-tests.result }}" \
             "${{ needs.dashboard-e2e.result }}" \

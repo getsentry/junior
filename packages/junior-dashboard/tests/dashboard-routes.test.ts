@@ -378,7 +378,7 @@ describe("dashboard routes", () => {
     expect(html).toMatch(/\/_junior\/dashboard\/client\.js\?v=[a-z0-9]+/);
     expect(html).toContain("__JUNIOR_DASHBOARD_BASE_PATH__");
     expect(html).toContain(
-      'content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover"',
+      'content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, interactive-widget=resizes-content"',
     );
     expect(html).toContain('name="theme-color" content="#000000"');
     expect(html).toContain(
@@ -592,13 +592,19 @@ describe("dashboard routes", () => {
     const response = await app.fetch(
       new Request("http://localhost/_junior/dashboard/avatar.png"),
     );
+    const installIcon = await app.fetch(
+      new Request("http://localhost/_junior/dashboard/icon-512.png"),
+    );
 
     expect(response.status).toBe(200);
     expect(response.headers.get("cache-control")).toBe(
       "public, max-age=0, must-revalidate",
     );
     expect(response.headers.get("content-type")).toBe("image/png");
-    expect((await response.arrayBuffer()).byteLength).toBeGreaterThan(1_000);
+    const avatarBytes = new Uint8Array(await response.arrayBuffer());
+    const installBytes = new Uint8Array(await installIcon.arrayBuffer());
+    expect(avatarBytes.byteLength).toBeGreaterThan(1_000);
+    expect(avatarBytes).toEqual(installBytes);
   });
 
   it("serves the dashboard favicon without auth noise", async () => {

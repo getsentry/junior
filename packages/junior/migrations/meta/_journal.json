@@ -225,6 +225,20 @@
       "when": 1786762860381,
       "tag": "0031_wild_phantom_reporter",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1786954953911,
+      "tag": "0032_workspace_snapshots_table",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1787069019525,
+      "tag": "0033_workspace_snapshot_active_build",
+      "breakpoints": true
     }
   ]
 }

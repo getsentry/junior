@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router";
 
 import {
+  useConversationsData,
   useDashboardCoreData,
   usePersonalSpendData,
   usePluginUserPagesData,
@@ -15,9 +16,15 @@ import {
   DashboardChromeProvider,
 } from "./components/layout/DashboardChrome";
 import { DashboardHeader } from "./components/layout/DashboardHeader";
-import { setDashboardTimeZone } from "./format";
+import { VisualViewportShell } from "./components/layout/VisualViewportShell";
+import {
+  buildConversations,
+  conversationDisplayTitle,
+  setDashboardTimeZone,
+} from "./format";
+import { isNewConversationPath } from "./conversations/conversationRoutes";
 import { ConversationWorkspace } from "./conversations/ConversationWorkspace";
-import { useMobileViewportHeight } from "./mobileViewport";
+import { useConversationData } from "./conversations/queries";
 import { ComponentsPage } from "./pages/dev/ComponentsPage";
 import { LocationDetailPage } from "./pages/locations/LocationDetailPage";
 import { LocationsPage } from "./pages/locations/LocationsPage";
@@ -38,15 +45,8 @@ import {
   PluginUserPageRoute,
   pluginUserPagePath,
 } from "./pages/user/PluginUserPage";
-import { cn } from "./styles";
+import { dashboardShellBgClass } from "./styles";
 import type { DashboardCoreData } from "./types";
-
-const dashboardBackground = {
-  backgroundColor: "#050507",
-  backgroundImage:
-    "radial-gradient(ellipse at 50% 0%, transparent 0%, #050507 70%), linear-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 255, 255, 0.04) 1px, transparent 1px)",
-  backgroundSize: "100% 100%, 40px 40px, 40px 40px",
-};
 
 const dashboardNoise = {
   backgroundImage:
@@ -56,7 +56,6 @@ const dashboardNoise = {
 /** Render the dashboard SPA shell and route-level loading states. */
 export function DashboardShell() {
   const location = useLocation();
-  const shellRef = useRef<HTMLElement>(null);
   const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
   const query = useDashboardCoreData();
   const userPagesQuery = usePluginUserPagesData();
@@ -75,6 +74,22 @@ export function DashboardShell() {
     location.pathname === "/" ||
     location.pathname === "/conversations" ||
     location.pathname.startsWith("/conversations/");
+  const conversationId = conversationIdFromPath(location.pathname);
+  const conversationsQuery = useConversationsData();
+  // Detail query shares the page cache so titles outside the top-50 feed stay accurate.
+  const conversationDetail = useConversationData(conversationId);
+  const mobileConversation = useMemo(() => {
+    if (!conversationId) return undefined;
+    return buildConversations(
+      conversationsQuery.data?.conversations ?? [],
+    ).find((item) => item.id === conversationId);
+  }, [conversationId, conversationsQuery.data?.conversations]);
+  // Create mode is a landing page (normal app chrome), not a thread destination.
+  // Only open conversations use the mobile back chevron + title row.
+  const mobileConversationTitle = conversationId
+    ? conversationDetail.data?.displayTitle?.trim() ||
+      conversationDisplayTitle(mobileConversation)
+    : undefined;
   const primaryNavItems = [
     ...(loggedIn
       ? [{ key: "tasks", label: "Tasks", to: "/tasks" }]
@@ -86,8 +101,6 @@ export function DashboardShell() {
     })),
     { key: "system", label: "System", to: "/system" },
   ];
-
-  useMobileViewportHeight(shellRef, workspace);
 
   useEffect(() => {
     setMobileNavigationOpen(false);
@@ -114,24 +127,50 @@ export function DashboardShell() {
 
   return (
     <DashboardChromeProvider>
-      <main
-        className={cn(
-          "grid font-sans text-dashboard-text",
-          workspace
-            ? "fixed inset-x-0 top-[var(--dashboard-viewport-offset-top,0px)] h-[var(--dashboard-viewport-height,100dvh)] min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden md:relative md:inset-auto md:h-dvh"
-            : "relative min-h-screen grid-rows-[auto_1fr]",
-        )}
-        ref={shellRef}
-        style={dashboardBackground}
-      >
+      <VisualViewportShell className={dashboardShellBgClass} enabled={workspace}>
         <DashboardChrome
           banner={<ConnectionBanner />}
           header={
             <DashboardHeader
               compact={workspace}
+              mobileBackTo={conversationId ? "/" : undefined}
+              mobileTitle={mobileConversationTitle}
               mobileNavigationOpen={mobileNavigationOpen}
               navItems={primaryNavItems}
               onMobileNavigationOpenChange={setMobileNavigationOpen}
+              mobileIdentity={
+                loggedIn ? (
+                  <ProfileMenu
+                    identity={data!.me}
+                    onSignOut={signOut}
+                    spend={personalSpendQuery.data}
+                    userPages={userPages}
+                    variant="sheet-identity"
+                  />
+                ) : undefined
+              }
+              mobileProfile={
+                loggedIn ? (
+                  <ProfileMenu
+                    identity={data!.me}
+                    onSignOut={signOut}
+                    spend={personalSpendQuery.data}
+                    userPages={userPages}
+                    variant="sheet-links"
+                  />
+                ) : undefined
+              }
+              mobileSpend={
+                loggedIn ? (
+                  <ProfileMenu
+                    identity={data!.me}
+                    onSignOut={signOut}
+                    spend={personalSpendQuery.data}
+                    userPages={userPages}
+                    variant="sheet-spend"
+                  />
+                ) : undefined
+              }
               profile={
                 loggedIn ? (
                   <ProfileMenu
@@ -257,6 +296,10 @@ export function DashboardShell() {
             )
           }
           path="/"
+        />
+        <Route
+          element={<Navigate replace to="/" />}
+          path="/conversations/new"
         />
         <Route
           element={
@@ -436,9 +479,21 @@ export function DashboardShell() {
           className="pointer-events-none fixed inset-0 z-50 block opacity-[0.018]"
           style={dashboardNoise}
         />
-      </main>
+      </VisualViewportShell>
     </DashboardChromeProvider>
   );
+}
+
+/** Read the selected conversation id from a workspace detail path. */
+function conversationIdFromPath(pathname: string): string | undefined {
+  if (isNewConversationPath(pathname)) return undefined;
+  const match = pathname.match(/^\/conversations\/([^/]+)$/);
+  if (!match?.[1]) return undefined;
+  try {
+    return decodeURIComponent(match[1]);
+  } catch {
+    return match[1];
+  }
 }
 
 function LegacySystemRedirect(props: { section: "locations" | "people" }) {

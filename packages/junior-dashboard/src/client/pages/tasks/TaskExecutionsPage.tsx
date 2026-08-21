@@ -15,10 +15,12 @@ import type {
 import { useTaskExecutionsData } from "../../api";
 import { InlineError } from "../../components/InlineError";
 import { LoadingView } from "../../components/LoadingView";
+import { StatusChip } from "../../components/StatusChip";
 import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
-import { conversationPath, formatTime } from "../../format";
+import { conversationPath } from "../../conversations/conversationRoutes";
+import { formatTime } from "../../format";
 import { DashboardApiError } from "../../http";
 import { pathWithSearch } from "../../searchParams";
 import { cn } from "../../styles";
@@ -205,28 +207,20 @@ function ExecutionRow(props: {
         </div>
       </div>
       <div className="grid min-w-0 justify-items-end gap-1 text-right max-md:justify-items-start max-md:text-left">
-        <StatusBadge status={execution.status} />
+        <StatusChip tone={runStatusTone(execution.status)}>
+          {execution.status}
+        </StatusChip>
       </div>
     </div>
   );
 }
 
-function StatusBadge(props: { status: TaskExecution["status"] }) {
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center rounded border px-2 py-1 font-mono text-xs uppercase tracking-[0.1em]",
-        props.status === "completed" &&
-          "border-emerald-400/25 bg-emerald-400/10 text-emerald-200",
-        props.status === "failed" &&
-          "border-rose-400/25 bg-rose-400/10 text-rose-200",
-        props.status === "blocked" &&
-          "border-amber-400/25 bg-amber-400/10 text-amber-100",
-      )}
-    >
-      {props.status}
-    </span>
-  );
+function runStatusTone(
+  status: TaskExecution["status"],
+): "danger" | "success" | "warning" {
+  if (status === "failed") return "danger";
+  if (status === "blocked") return "warning";
+  return "success";
 }
 
 function countByStatus(executions: TaskExecution[]) {

@@ -53,12 +53,13 @@ export function createConversationRoutes(options: {
       "Invalid query parameters.",
     ),
     async (context) => {
-      const { actorEmail } = context.req.valid("query");
+      const { actorEmail, status } = context.req.valid("query");
       const viewer = context.get("viewer");
       return jsonResponse(
         conversationFeedSchema,
         await readConversationFeed({
           ...(actorEmail ? { actorEmail } : {}),
+          status,
           ...(viewer ? { viewer } : {}),
         }),
       );

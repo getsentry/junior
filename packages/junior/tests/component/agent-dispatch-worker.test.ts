@@ -2,7 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createSlackSource } from "@sentry/junior-plugin-api";
 import {
   createOrGetDispatch,
+  getDispatchConversationId,
   getDispatchRecord,
+  getDispatchTurnId,
   markDispatchAwaitingResume,
   markDispatchBlocked,
   markDispatchCompleted,
@@ -14,6 +16,7 @@ import {
   createAgentDispatchConversationWorker,
 } from "@/chat/agent-dispatch/work";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
+import { recordTurnSummary } from "@/chat/task-execution/turn-cursor";
 import type { ConversationWorkerContext } from "@/chat/task-execution/worker";
 
 vi.hoisted(() => {
@@ -127,6 +130,100 @@ describe("agent dispatch worker contract", () => {
     expect(ack).not.toHaveBeenCalled();
     await expect(getDispatchRecord(dispatch.id)).resolves.toMatchObject({
       status: "running",
+    });
+  });
+
+  it.each(["awaiting_resume", "running"] as const)(
+    "resumes durable %s work instead of starting another turn",
+    async (sessionState) => {
+      const dispatch = await createDispatch(`resume-${sessionState}`);
+      const conversationId = getDispatchConversationId(dispatch);
+      const turnId = getDispatchTurnId(dispatch.id);
+      if (sessionState === "awaiting_resume") {
+        await markDispatchAwaitingResume(dispatch.id);
+      } else {
+        await markDispatchRunning(dispatch.id);
+      }
+      await recordTurnSummary({
+        actor: dispatch.actor,
+        conversationId,
+        destination: dispatch.destination,
+        destinationVisibility: dispatch.destinationVisibility,
+        dispatchId: dispatch.id,
+        turnId,
+        sliceId: 2,
+        source: dispatch.source,
+        state: sessionState === "awaiting_resume" ? "paused" : "running",
+        surface: "api",
+      });
+      const runTurn = vi.fn();
+      const resumeTurn = vi.fn(async () => {
+        await recordTurnSummary({
+          actor: dispatch.actor,
+          conversationId,
+          destination: dispatch.destination,
+          destinationVisibility: dispatch.destinationVisibility,
+          dispatchId: dispatch.id,
+          dispatchOutcome: "completed",
+          turnId,
+          sliceId: 2,
+          source: dispatch.source,
+          state: "completed",
+          surface: "api",
+        });
+      });
+      const worker = createAgentDispatchConversationWorker({
+        resumeTurn,
+        runTurn,
+      });
+      const { ack, context } = createContext(dispatch);
+
+      await expect(worker(context, dispatch.id)).resolves.toEqual({
+        status: "completed",
+      });
+
+      expect(runTurn).not.toHaveBeenCalled();
+      expect(resumeTurn).toHaveBeenCalledOnce();
+      expect(ack).toHaveBeenCalledOnce();
+      await expect(getDispatchRecord(dispatch.id)).resolves.toMatchObject({
+        status: "completed",
+      });
+    },
+  );
+
+  it("uses a delivery receipt without starting or resuming a turn", async () => {
+    const dispatch = await createDispatch("delivery-receipt-fence");
+    await recordTurnSummary({
+      actor: dispatch.actor,
+      conversationId: getDispatchConversationId(dispatch),
+      destination: dispatch.destination,
+      destinationVisibility: dispatch.destinationVisibility,
+      dispatchId: dispatch.id,
+      resultMessageId: "1700000000.000012",
+      turnId: getDispatchTurnId(dispatch.id),
+      sliceId: 1,
+      source: dispatch.source,
+      state: "running",
+      surface: "api",
+    });
+    const runTurn = vi.fn();
+    const resumeTurn = vi.fn();
+    const worker = createAgentDispatchConversationWorker({
+      resumeTurn,
+      runTurn,
+    });
+    const { ack, context } = createContext(dispatch);
+
+    await expect(worker(context, dispatch.id)).resolves.toEqual({
+      status: "completed",
+    });
+
+    expect(runTurn).not.toHaveBeenCalled();
+    expect(resumeTurn).not.toHaveBeenCalled();
+    expect(ack).toHaveBeenCalledOnce();
+    await expect(getDispatchRecord(dispatch.id)).resolves.toMatchObject({
+      resultMessageTs: "1700000000.000012",
+      status: "completed",
     });
   });
 

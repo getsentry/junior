@@ -391,7 +391,30 @@ describe("sandbox file tools", () => {
         pattern: "[invalid",
         runCommand: invalidRegex,
       }),
-    ).rejects.toThrow(ToolInputError);
+    ).rejects.toMatchObject({
+      name: "ToolInputError",
+      message: "Invalid regex pattern: [invalid",
+    });
+
+    const invalidGlob: SandboxCommandRunner = async () => ({
+      exitCode: 2,
+      stderr:
+        "rg: error parsing glob '{foo,{bar,baz}}': nested alternate groups are not allowed",
+      stdout: "",
+    });
+
+    await expect(
+      grepFiles({
+        fs: memory.fs,
+        glob: "{foo,{bar,baz}}",
+        path: "src",
+        pattern: "needle",
+        runCommand: invalidGlob,
+      }),
+    ).rejects.toMatchObject({
+      name: "ToolInputError",
+      message: "Invalid glob: {foo,{bar,baz}}",
+    });
 
     const lifecycleFailure = new Error("sandbox_stopped");
     await expect(

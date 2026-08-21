@@ -335,4 +335,57 @@ describe("Workspace tools", () => {
       namespace: "junior",
     });
   });
+
+  it("returns a timed-out result when snapshot preparation soft-yields", async () => {
+    const { WorkspaceSnapshotWaitingError } =
+      await import("@/chat/sandbox/snapshot/waiting-error");
+    const now = new Date();
+    const workspace = {
+      id: "22222222-2222-4222-8222-222222222222",
+      name: "sentry-building",
+      setupScript: "devenv sync",
+      snapshot: null,
+      repos: [{ provider: "github", repo: "getsentry/sentry" }],
+    };
+    const db = getDb();
+    await db.insert(juniorWorkspaces).values({
+      id: workspace.id,
+      name: workspace.name,
+      setupScript: workspace.setupScript,
+      createdAt: now,
+      updatedAt: now,
+    });
+    await db.insert(juniorWorkspaceRepos).values({
+      workspaceId: workspace.id,
+      ...workspace.repos[0]!,
+    });
+    const context = {
+      destination: {
+        platform: "local",
+        conversationId: "local:test:workspace-building",
+      },
+      source: createLocalSource("local:test:workspace-building"),
+      egress: {
+        async fetch() {
+          return new Response("ok");
+        },
+      },
+      workspace: {} as ToolRuntimeContext["workspace"],
+      workspaces: {
+        activeWorkspaceId: () => undefined,
+        switch: vi
+          .fn()
+          .mockRejectedValue(new WorkspaceSnapshotWaitingError(workspace.name)),
+      },
+    } satisfies ToolRuntimeContext;
+
+    const tools = createWorkspaceTools(context);
+    await expect(
+      tools.switchWorkspace!.execute!({ name: workspace.name }, {}),
+    ).resolves.toMatchObject({
+      workspace: { id: workspace.id },
+      waiting: "workspace_snapshot",
+      timed_out: true,
+    });
+  });
 });

@@ -14,6 +14,7 @@ async function runOrThrow(
     args?: string[];
     signal?: AbortSignal;
     sudo?: boolean;
+    timeoutMs?: number;
   },
   label: string,
 ): Promise<void> {
@@ -34,6 +35,7 @@ async function tryRun(
     args?: string[];
     signal?: AbortSignal;
     sudo?: boolean;
+    timeoutMs?: number;
   },
 ): Promise<boolean> {
   const result = await runNonInteractiveCommand(sandbox, params);
@@ -43,12 +45,14 @@ async function tryRun(
 async function installGh(
   sandbox: SandboxSession,
   signal?: AbortSignal,
+  timeoutMs?: number,
 ): Promise<void> {
   const installed = await tryRun(sandbox, {
     cmd: "dnf",
     args: ["install", "-y", "gh"],
     signal,
     sudo: true,
+    timeoutMs,
   });
   if (installed) {
     return;
@@ -63,6 +67,7 @@ async function installGh(
     ],
     signal,
     sudo: true,
+    timeoutMs,
   });
   if (!repoAdded) {
     await runOrThrow(
@@ -72,6 +77,7 @@ async function installGh(
         args: ["install", "-y", "dnf-command(config-manager)"],
         signal,
         sudo: true,
+        timeoutMs,
       },
       "dnf install dnf-command(config-manager)",
     );
@@ -86,6 +92,7 @@ async function installGh(
         ],
         signal,
         sudo: true,
+        timeoutMs,
       },
       "dnf config-manager --add-repo gh-cli.repo",
     );
@@ -98,6 +105,7 @@ async function installGh(
       args: ["install", "-y", "gh", "--repo", "gh-cli"],
       signal,
       sudo: true,
+      timeoutMs,
     },
     "dnf install gh --repo gh-cli",
   );
@@ -122,6 +130,7 @@ async function installUrl(
   sandbox: SandboxSession,
   dependency: Extract<PluginRuntimeDependency, { type: "system"; url: string }>,
   signal?: AbortSignal,
+  timeoutMs?: number,
 ): Promise<void> {
   const rpmPath = filePath(dependency.url, dependency.sha256);
   await runOrThrow(
@@ -130,6 +139,7 @@ async function installUrl(
       cmd: "curl",
       args: ["-fsSL", dependency.url, "-o", rpmPath],
       signal,
+      timeoutMs,
     },
     `curl download ${dependency.url}`,
   );
@@ -138,6 +148,7 @@ async function installUrl(
     cmd: "sha256sum",
     args: [rpmPath],
     signal,
+    timeoutMs,
   });
   const expected = dependency.sha256;
   const actual = checksum.stdout.trim().split(/\s+/)[0]?.toLowerCase();
@@ -162,6 +173,7 @@ async function installUrl(
       args: ["install", "-y", rpmPath],
       signal,
       sudo: true,
+      timeoutMs,
     },
     `dnf install ${dependency.url}`,
   );
@@ -172,6 +184,7 @@ export async function dependencies(
   sandbox: SandboxSession,
   values: PluginRuntimeDependency[],
   signal?: AbortSignal,
+  timeoutMs?: number,
 ): Promise<void> {
   const system = values.filter(
     (
@@ -199,9 +212,9 @@ export async function dependencies(
         for (const dependency of system) {
           signal?.throwIfAborted();
           if ("url" in dependency) {
-            await installUrl(sandbox, dependency, signal);
+            await installUrl(sandbox, dependency, signal, timeoutMs);
           } else if (dependency.package === "gh") {
-            await installGh(sandbox, signal);
+            await installGh(sandbox, signal, timeoutMs);
           } else {
             await runOrThrow(
               sandbox,
@@ -210,6 +223,7 @@ export async function dependencies(
                 args: ["install", "-y", dependency.package],
                 signal,
                 sudo: true,
+                timeoutMs,
               },
               `dnf install ${dependency.package}`,
             );
@@ -239,6 +253,7 @@ export async function dependencies(
               ...npm,
             ],
             signal,
+            timeoutMs,
           },
           "npm install",
         );
@@ -252,6 +267,7 @@ export async function postinstall(
   sandbox: SandboxSession,
   commands: PluginRuntimePostinstallCommand[],
   signal?: AbortSignal,
+  timeoutMs?: number,
 ): Promise<void> {
   if (commands.length === 0) {
     return;
@@ -272,6 +288,7 @@ export async function postinstall(
           login: true,
           pathPrefix: `${SANDBOX_WORKSPACE_ROOT}/.junior/bin:$PATH`,
           signal,
+          timeoutMs,
           ...(command.sudo !== undefined ? { sudo: command.sudo } : {}),
         });
         if (result.exitCode !== 0) {

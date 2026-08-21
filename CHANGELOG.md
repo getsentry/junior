@@ -1,4 +1,143 @@
 # Changelog
+## 0.177.0
+
+### Bug Fixes 🐛
+
+- (dashboard) Contain mobile composer overscroll by @sentry-junior in [#1640](https://github.com/getsentry/junior/pull/1640)
+- (resource-events) Frame event turns for humans and agents by @sentry-junior in [#1639](https://github.com/getsentry/junior/pull/1639)
+
+### Internal Changes 🔧
+
+- (dashboard) Add slim structural color tokens by @sentry-junior in [#1632](https://github.com/getsentry/junior/pull/1632)
+
+## 0.176.2
+
+### Bug Fixes 🐛
+
+#### Dashboard
+
+- Keep reply shell above the keyboard by @sentry-junior in [#1634](https://github.com/getsentry/junior/pull/1634)
+- Unify home and create landing on mobile by @sentry-junior in [#1633](https://github.com/getsentry/junior/pull/1633)
+
+## 0.176.1
+
+### Bug Fixes 🐛
+
+- (dashboard) Mobile chat shell and create landing by @sentry-junior in [#1631](https://github.com/getsentry/junior/pull/1631)
+
+## 0.176.0
+
+### New Features ✨
+
+- (dashboard) Finish shared control primitive cutover by @sentry-junior in [#1629](https://github.com/getsentry/junior/pull/1629)
+
+### Bug Fixes 🐛
+
+#### Dashboard
+
+- Limit durations to two units by @sentry-junior in [#1630](https://github.com/getsentry/junior/pull/1630)
+- Own composer dock padding and raise input contrast by @sentry-junior in [#1626](https://github.com/getsentry/junior/pull/1626)
+
+#### Other
+
+- (evals) Assert sendFiles attachment_refs and wire storage by @sentry-junior in [#1628](https://github.com/getsentry/junior/pull/1628)
+- (resource-events) Scope configured guidance by @sentry-junior in [#1627](https://github.com/getsentry/junior/pull/1627)
+
+### Internal Changes 🔧
+
+- (agent) Run dispatch tests through conversation work by @sentry-junior in [#1624](https://github.com/getsentry/junior/pull/1624)
+- (agent-dispatch) Remove expired v0.116 compatibility by @sentry-junior in [#1625](https://github.com/getsentry/junior/pull/1625)
+
+## 0.175.0
+
+### New Features ✨
+
+#### Dashboard
+
+- Preview image attachments in a modal by @sentry-junior in [#1621](https://github.com/getsentry/junior/pull/1621)
+- Show privacy in conversation status icon by @sentry-junior in [#1616](https://github.com/getsentry/junior/pull/1616)
+- Extract shared form and status primitives by @sentry-junior in [#1618](https://github.com/getsentry/junior/pull/1618)
+- Add relative transcript timestamps by @sentry-junior in [#1617](https://github.com/getsentry/junior/pull/1617)
+
+#### Other
+
+- (resource-events) Add install-local pull request policy by @sentry-junior in [#1619](https://github.com/getsentry/junior/pull/1619)
+
+### Bug Fixes 🐛
+
+#### Dashboard
+
+- Align transcript thinking indicator and composer chrome by @sentry-junior in [#1615](https://github.com/getsentry/junior/pull/1615)
+- Hide turn context button on mobile by @sentry-junior in [#1620](https://github.com/getsentry/junior/pull/1620)
+- Show single repo name on mobile by @sentry-junior in [#1613](https://github.com/getsentry/junior/pull/1613)
+
+#### Other
+
+- (github) Own review threads by bot user id by @sentry-junior in [#1623](https://github.com/getsentry/junior/pull/1623)
+
+### Documentation 📚
+
+- (testing) Prefer visual QA over junk UI tests by @sentry-junior in [#1622](https://github.com/getsentry/junior/pull/1622)
+
+## 0.174.0
+
+### New Features ✨
+
+- (dashboard) Add archived conversation filter by @sentry-junior in [#1611](https://github.com/getsentry/junior/pull/1611)
+
+### Bug Fixes 🐛
+
+- (dashboard) Keep conversations pinned to latest by @sentry-junior in [#1610](https://github.com/getsentry/junior/pull/1610)
+
+## 0.173.0
+
+### Bug Fixes 🐛
+
+- (dashboard) Dock chat shell to the visual viewport by @sentry-junior in [#1609](https://github.com/getsentry/junior/pull/1609)
+
+## 0.172.0
+
+### Bug Fixes 🐛
+
+- (dashboard) Dock composer on first keyboard focus by @sentry-junior in [#1608](https://github.com/getsentry/junior/pull/1608)
+
+## 0.171.0
+
+### New Features ✨
+
+- (workspaces) Move snapshots to dedicated table by @dcramer in [#1606](https://github.com/getsentry/junior/pull/1606)
+
+### Bug Fixes 🐛
+
+- (dashboard) Pin chat composer and keep typing snappy by @sentry-junior in [#1603](https://github.com/getsentry/junior/pull/1603)
+
+### Documentation 📚
+
+- (testing) Limit integration fakes to Slack and LLMs by @dcramer in [#1605](https://github.com/getsentry/junior/pull/1605)
+
+### Internal Changes 🔧
+
+- (agent) Keep invocation failures at owning boundaries by @dcramer in [#1602](https://github.com/getsentry/junior/pull/1602)
+
+## 0.170.0
+
+### Bug Fixes 🐛
+
+#### Dashboard
+
+- Clean up mobile conversation chrome by @sentry-junior in [#1598](https://github.com/getsentry/junior/pull/1598)
+- Update responsive dashboard branding by @sentry-junior in [#1597](https://github.com/getsentry/junior/pull/1597)
+- Compact live working indicator by @sentry-junior in [#1593](https://github.com/getsentry/junior/pull/1593)
+- Remove empty message placeholder by @sentry-junior in [#1595](https://github.com/getsentry/junior/pull/1595)
+
+#### Other
+
+- (slack) Prefer ids and known destinations for channel refs by @sentry-junior in [#1596](https://github.com/getsentry/junior/pull/1596)
+
+### Internal Changes 🔧
+
+- (dashboard) Stop live polls thrashing typing by @sentry-junior in [#1594](https://github.com/getsentry/junior/pull/1594)
+
 ## 0.169.0
 
 ### New Features ✨

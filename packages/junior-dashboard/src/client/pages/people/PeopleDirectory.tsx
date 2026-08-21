@@ -30,14 +30,9 @@ function personMeta(person: ActorSummaryReport): string | undefined {
     : person.actor.email;
 }
 
-function runtimeLabel(
-  durationMs: number,
-  conversations: number,
-  maxUnits?: number,
-): string {
+function runtimeLabel(durationMs: number, conversations: number): string {
   if (durationMs <= 0 && conversations > 0) return "unknown";
-  const duration = formatDuration(durationMs);
-  return maxUnits ? duration.split(" ").slice(0, maxUnits).join(" ") : duration;
+  return formatDuration(durationMs);
 }
 
 /** Filter and order people without mutating the reporting response. */
@@ -141,7 +136,7 @@ export function PeopleDirectory(props: {
               value={
                 <>
                   <span className="whitespace-nowrap md:hidden">
-                    {runtimeLabel(person.durationMs, person.conversations, 2)}
+                    {runtimeLabel(person.durationMs, person.conversations)}
                   </span>
                   <span className="hidden whitespace-nowrap md:inline">
                     {runtimeLabel(person.durationMs, person.conversations)}

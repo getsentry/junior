@@ -29,6 +29,7 @@ describeEval("Conversation Routing", slackEvals, (it) => {
           label: "Linear issue OPS-123",
           namespace: "linear",
           identifier: "OPS-123",
+          resourceType: "issue",
           thread: steeringThread,
           trustedSummary: "Linear issue OPS-123 was linked to this thread.",
         }),

@@ -1,8 +1,10 @@
 import { Plus, Trash2 } from "lucide-react";
-import type { FormEvent, ReactNode } from "react";
+import type { FormEvent } from "react";
 
 import { Button } from "../../components/Button";
+import { Field } from "../../components/Field";
 import { InlineError } from "../../components/InlineError";
+import { TextArea, TextInput } from "../../components/TextInput";
 import { Card } from "../../components/layout/Card";
 import {
   createRepoDraft,
@@ -19,9 +21,6 @@ type WorkspaceEditorProps = {
   onChange(draft: WorkspaceDraft): void;
   onSubmit(): void;
 };
-
-const fieldClassName =
-  "block w-full rounded border border-white/15 bg-black px-3 py-2 text-sm text-dashboard-text focus:border-[#beaaff] focus:outline-none";
 
 /** Edit one Workspace recipe without owning persistence. */
 export function WorkspaceEditor(props: WorkspaceEditorProps) {
@@ -67,9 +66,8 @@ export function WorkspaceEditor(props: WorkspaceEditorProps) {
           htmlFor="workspace-name"
           label="Name"
         >
-          <input
+          <TextInput
             autoComplete="off"
-            className={fieldClassName}
             id="workspace-name"
             maxLength={64}
             onChange={(event) =>
@@ -120,43 +118,46 @@ export function WorkspaceEditor(props: WorkspaceEditorProps) {
                 key={repo.key}
               >
                 <div className="grid gap-3 sm:grid-cols-[minmax(0,8.5rem)_minmax(0,1fr)_auto] sm:items-end">
-                  <div className="grid gap-1.5">
-                    <span className="font-mono text-xs uppercase tracking-[0.12em] text-dashboard-text-muted">
-                      Provider
-                    </span>
-                    <input
+                  <Field
+                    htmlFor={`workspace-repo-provider-${repo.key}`}
+                    label="Provider"
+                    size="compact"
+                  >
+                    <TextInput
                       aria-label={`Provider ${index + 1}`}
-                      className={fieldClassName}
+                      id={`workspace-repo-provider-${repo.key}`}
                       onChange={(event) =>
                         updateRepo(repo.key, { provider: event.target.value })
                       }
                       placeholder="github"
                       value={repo.provider}
                     />
-                  </div>
-                  <div className="grid gap-1.5">
-                    <span className="font-mono text-xs uppercase tracking-[0.12em] text-dashboard-text-muted">
-                      Repository
-                    </span>
-                    <input
+                  </Field>
+                  <Field
+                    htmlFor={`workspace-repo-name-${repo.key}`}
+                    label="Repository"
+                    size="compact"
+                  >
+                    <TextInput
                       aria-label={`Repository ${index + 1}`}
-                      className={fieldClassName}
+                      id={`workspace-repo-name-${repo.key}`}
                       onChange={(event) =>
                         updateRepo(repo.key, { repo: event.target.value })
                       }
                       placeholder="getsentry/sentry"
                       value={repo.repo}
                     />
-                  </div>
-                  <button
+                  </Field>
+                  <Button
                     aria-label={`Remove repository ${index + 1}`}
-                    className="inline-flex h-9 w-full items-center justify-center gap-1.5 rounded border border-white/10 bg-transparent px-3 text-xs font-semibold text-dashboard-text-muted transition-colors hover:border-rose-300/40 hover:text-rose-300 sm:w-auto"
+                    className="w-full sm:w-auto"
                     onClick={() => removeRepo(repo.key)}
+                    tone="danger"
                     type="button"
                   >
                     <Trash2 aria-hidden="true" size={14} />
                     Remove
-                  </button>
+                  </Button>
                 </div>
               </div>
             ))}
@@ -180,8 +181,7 @@ export function WorkspaceEditor(props: WorkspaceEditorProps) {
           htmlFor="workspace-setup"
           label="Setup script"
         >
-          <textarea
-            className={`${fieldClassName} min-h-36 font-mono`}
+          <TextArea
             id="workspace-setup"
             onChange={(event) =>
               props.onChange({
@@ -214,27 +214,5 @@ export function WorkspaceEditor(props: WorkspaceEditorProps) {
         </div>
       </form>
     </Card>
-  );
-}
-
-function Field(props: {
-  children: ReactNode;
-  help: ReactNode;
-  htmlFor: string;
-  label: string;
-}) {
-  return (
-    <div className="grid gap-2">
-      <label
-        className="text-sm font-semibold text-dashboard-text"
-        htmlFor={props.htmlFor}
-      >
-        {props.label}
-      </label>
-      {props.children}
-      <p className="m-0 text-xs leading-relaxed text-dashboard-text-muted sm:text-sm">
-        {props.help}
-      </p>
-    </div>
   );
 }

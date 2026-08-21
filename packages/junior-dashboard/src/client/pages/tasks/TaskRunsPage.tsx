@@ -12,9 +12,11 @@ import {
   pageItems,
   PagePagination,
 } from "../../components/Pagination";
+import { StatusChip } from "../../components/StatusChip";
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
-import { conversationPath, formatTime } from "../../format";
+import { conversationPath } from "../../conversations/conversationRoutes";
+import { formatTime } from "../../format";
 import {
   useDebouncedSearchParam,
   useSearchParamEnum,
@@ -223,21 +225,17 @@ function TaskRunRow(props: { run: TaskRun }) {
           {run.kind}
         </div>
       </div>
-      <span
-        className={cn(
-          "inline-flex w-fit items-center rounded border px-2 py-1 font-mono text-xs uppercase tracking-[0.1em]",
-          run.status === "completed" &&
-            "border-emerald-400/25 bg-emerald-400/10 text-emerald-200",
-          run.status === "failed" &&
-            "border-rose-400/25 bg-rose-400/10 text-rose-200",
-          run.status === "blocked" &&
-            "border-amber-400/25 bg-amber-400/10 text-amber-100",
-        )}
-      >
-        {run.status}
-      </span>
+      <StatusChip tone={runStatusTone(run.status)}>{run.status}</StatusChip>
     </div>
   );
+}
+
+function runStatusTone(
+  status: TaskRun["status"],
+): "danger" | "success" | "warning" {
+  if (status === "failed") return "danger";
+  if (status === "blocked") return "warning";
+  return "success";
 }
 
 function formatRunDate(value: string): string {

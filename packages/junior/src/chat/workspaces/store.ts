@@ -2,6 +2,13 @@ import { randomUUID } from "node:crypto";
 import { and, asc, eq, sql } from "drizzle-orm";
 import { getSqlExecutor } from "@/chat/db";
 import { logException } from "@/chat/logging";
+import { deleteWorkspaceSnapshotBuilders } from "@/chat/sandbox/snapshot/builder-sandbox";
+import { hash as workspaceProfileHash } from "@/chat/sandbox/snapshot/profile";
+import { SANDBOX_RUNTIME } from "@/chat/sandbox/snapshot/runtime";
+import {
+  clearWorkspaceSnapshots,
+  loadSnapshotsForProfile,
+} from "@/chat/sandbox/snapshot/store";
 import type { JuniorDatabase } from "@/db/db";
 import { juniorWorkspaceRepos, juniorWorkspaces } from "@/db/schema";
 import type { Workspace, WorkspaceSnapshot } from "./types";
@@ -11,28 +18,10 @@ import {
   type WorkspaceRecipeInput,
 } from "./validation";
 
-function snapshotFromRow(
-  row: typeof juniorWorkspaces.$inferSelect,
-): WorkspaceSnapshot | null {
-  if (
-    !row.snapshotId ||
-    !row.snapshotGeneratedAt ||
-    row.snapshotBuildDurationMs == null ||
-    !row.snapshotProfileHash
-  ) {
-    return null;
-  }
-  return {
-    id: row.snapshotId,
-    generatedAt: row.snapshotGeneratedAt,
-    buildDurationMs: row.snapshotBuildDurationMs,
-    profileHash: row.snapshotProfileHash,
-  };
-}
-
 function workspaceFromRows(
   row: typeof juniorWorkspaces.$inferSelect,
   repos: Array<typeof juniorWorkspaceRepos.$inferSelect>,
+  snapshot: WorkspaceSnapshot | null,
 ): Workspace {
   return {
     id: row.id,
@@ -42,8 +31,24 @@ function workspaceFromRows(
       provider: repo.provider,
       repo: repo.repo,
     })),
-    snapshot: snapshotFromRow(row),
+    snapshot,
   };
+}
+
+async function workspaceWithSnapshot(
+  db: JuniorDatabase,
+  row: typeof juniorWorkspaces.$inferSelect,
+  repos: Array<typeof juniorWorkspaceRepos.$inferSelect>,
+): Promise<Workspace> {
+  const workspace = workspaceFromRows(row, repos, null);
+  const profileHash = workspaceProfileHash(SANDBOX_RUNTIME, workspace);
+  if (!profileHash) return workspace;
+  const snapshots = await loadSnapshotsForProfile(
+    db,
+    workspace.id,
+    profileHash,
+  );
+  return { ...workspace, snapshot: snapshots.ready };
 }
 
 async function loadWorkspaceRepos(
@@ -109,6 +114,21 @@ function isUniqueViolation(error: unknown): boolean {
   return false;
 }
 
+async function cleanupSnapshotBuilders(
+  workspaceId: string,
+  names: string[],
+): Promise<void> {
+  if (names.length === 0) return;
+  try {
+    await deleteWorkspaceSnapshotBuilders(names);
+  } catch (error) {
+    logException(error, "sandbox.workspace_snapshot.builder.delete_failed", {
+      "app.workspace.id": workspaceId,
+      "app.sandbox.snapshot.builder_count": names.length,
+    });
+  }
+}
+
 /** List Workspace recipes by stable name. */
 export async function listWorkspaces(db: JuniorDatabase): Promise<Workspace[]> {
   const [workspaces, repos] = await Promise.all([
@@ -126,6 +146,7 @@ export async function listWorkspaces(db: JuniorDatabase): Promise<Workspace[]> {
     workspaceFromRows(
       workspace,
       repos.filter((repo) => repo.workspaceId === workspace.id),
+      null,
     ),
   );
 }
@@ -167,7 +188,8 @@ export async function getWorkspaceByName(
     .limit(1);
   const workspace = rows[0];
   if (!workspace) return undefined;
-  return workspaceFromRows(
+  return await workspaceWithSnapshot(
+    db,
     workspace,
     await loadWorkspaceRepos(db, workspace.id),
   );
@@ -185,7 +207,8 @@ export async function getWorkspace(
     .limit(1);
   const workspace = rows[0];
   if (!workspace) return undefined;
-  return workspaceFromRows(
+  return await workspaceWithSnapshot(
+    db,
     workspace,
     await loadWorkspaceRepos(db, workspace.id),
   );
@@ -246,7 +269,7 @@ export async function updateWorkspace(
   const now = new Date();
 
   try {
-    const updated = await executor.transaction(async () => {
+    const result = await executor.transaction(async () => {
       const db = executor.db();
       const existingRows = await db
         .select()
@@ -264,22 +287,18 @@ export async function updateWorkspace(
         .set({
           name: recipe.name,
           setupScript: recipe.setupScript,
-          ...(snapshotChanged
-            ? {
-                snapshotId: null,
-                snapshotGeneratedAt: null,
-                snapshotBuildDurationMs: null,
-                snapshotProfileHash: null,
-              }
-            : {}),
           updatedAt: now,
         })
         .where(eq(juniorWorkspaces.id, id))
         .returning();
       await replaceWorkspaceRepos(db, id, recipe.repos);
-      return rows[0];
+      const builderNames = snapshotChanged
+        ? await clearWorkspaceSnapshots(db, id)
+        : [];
+      return { builderNames, workspace: rows[0] };
     });
-    if (!updated) return undefined;
+    if (!result) return undefined;
+    await cleanupSnapshotBuilders(id, result.builderNames);
   } catch (error) {
     if (isUniqueViolation(error)) {
       throw new WorkspaceValidationError(
@@ -295,66 +314,17 @@ export async function updateWorkspace(
 /** Delete one install-wide Workspace recipe. */
 export async function deleteWorkspace(id: string): Promise<boolean> {
   const executor = getSqlExecutor();
-  return await executor.transaction(async () => {
-    const rows = await executor
-      .db()
+  const result = await executor.transaction(async () => {
+    const db = executor.db();
+    const builderNames = await clearWorkspaceSnapshots(db, id);
+    const rows = await db
       .delete(juniorWorkspaces)
       .where(eq(juniorWorkspaces.id, id))
       .returning({ id: juniorWorkspaces.id });
-    return rows.length > 0;
+    return { builderNames, deleted: rows.length > 0 };
   });
-}
-
-/** Record the current Sandbox snapshot after a successful Workspace prepare. */
-export async function setWorkspaceSnapshot(
-  workspaceId: string,
-  snapshot: WorkspaceSnapshot,
-): Promise<void> {
-  const executor = getSqlExecutor();
-  await executor
-    .db()
-    .update(juniorWorkspaces)
-    .set({
-      snapshotId: snapshot.id,
-      snapshotGeneratedAt: snapshot.generatedAt,
-      snapshotBuildDurationMs: snapshot.buildDurationMs,
-      snapshotProfileHash: snapshot.profileHash,
-      updatedAt: new Date(),
-    })
-    .where(eq(juniorWorkspaces.id, workspaceId));
-}
-
-/** Persist dashboard snapshot facts when resolve returned a concrete entry. */
-export async function recordResolvedWorkspaceSnapshot(
-  workspaceId: string,
-  snapshot: {
-    snapshotId?: string;
-    profileHash?: string;
-    createdAtMs?: number;
-    buildDurationMs?: number;
-  },
-): Promise<void> {
-  if (
-    !snapshot.snapshotId ||
-    !snapshot.profileHash ||
-    snapshot.createdAtMs == null ||
-    snapshot.buildDurationMs == null
-  ) {
-    return;
-  }
-  try {
-    await setWorkspaceSnapshot(workspaceId, {
-      id: snapshot.snapshotId,
-      generatedAt: new Date(snapshot.createdAtMs),
-      buildDurationMs: snapshot.buildDurationMs,
-      profileHash: snapshot.profileHash,
-    });
-  } catch (error) {
-    // Dashboard enrichment must not fail a prepared Workspace Sandbox.
-    logException(error, "sandbox.workspace_snapshot.persist.failed", {
-      "app.workspace.id": workspaceId,
-    });
-  }
+  await cleanupSnapshotBuilders(id, result.builderNames);
+  return result.deleted;
 }
 
 export { WorkspaceValidationError };

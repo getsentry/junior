@@ -25,13 +25,7 @@ interface EsbuildPlugin {
 
 const packageRoot = import.meta.dirname;
 const dashboardAssetsPath = path.join(packageRoot, "src", "assets.ts");
-const dashboardAvatarHeaderPath = path.join(
-  packageRoot,
-  "src",
-  "assets",
-  "junior-avatar-line.png",
-);
-const dashboardInstallIconPath = path.join(
+const dashboardColorIconPath = path.join(
   packageRoot,
   "src",
   "assets",
@@ -62,12 +56,15 @@ function dashboardAssetsPlugin(): EsbuildPlugin {
           };
         }
 
+        const colorIconBase64 = readFileSync(dashboardColorIconPath).toString(
+          "base64",
+        );
         return {
           contents: [
             `export const dashboardClientAsset = ${JSON.stringify(readBuiltAsset("client.js"))};`,
             `export const dashboardTailwindAsset = ${JSON.stringify(readBuiltAsset("tailwind.css"))};`,
-            `export const dashboardAvatarHeaderAsset = ${JSON.stringify(readFileSync(dashboardAvatarHeaderPath).toString("base64"))};`,
-            `export const dashboardInstallIconAsset = ${JSON.stringify(readFileSync(dashboardInstallIconPath).toString("base64"))};`,
+            `export const dashboardAvatarHeaderAsset = ${JSON.stringify(colorIconBase64)};`,
+            `export const dashboardInstallIconAsset = ${JSON.stringify(colorIconBase64)};`,
           ].join("\n"),
           loader: "ts",
         };

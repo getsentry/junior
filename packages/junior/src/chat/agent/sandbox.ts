@@ -39,6 +39,8 @@ export interface AgentSandboxOptions {
   actor?: Actor;
   locationConfiguration?: LocationConfigurationService;
   configurationValues: Record<string, unknown>;
+  /** Durable-worker soft yield for long Workspace snapshot waits. */
+  shouldYield?: () => boolean;
   getActiveSkill(): Skill | null;
   prepareSandbox(workspace: SandboxWorkspace): void | Promise<void>;
   prepareWorkspace?(
@@ -154,6 +156,7 @@ export function createAgentSandbox(options: AgentSandboxOptions): AgentSandbox {
     tracePropagation: options.tracePropagation,
     egressSignals: options.egressSignals,
     credentialEgress: options.credentialEgress,
+    shouldYield: options.shouldYield,
     prepare: options.prepareSandbox,
     prepareWorkspace: options.prepareWorkspace,
     onSandboxRefChanged: async (sandboxRef) => {
