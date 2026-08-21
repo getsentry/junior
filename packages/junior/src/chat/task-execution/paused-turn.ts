@@ -68,7 +68,6 @@ import {
 import { getConversationWorkState } from "@/chat/task-execution/store";
 import {
   isResourceEventConversationMessage,
-  replyAttributionForResourceEventMessages,
   RESOURCE_EVENT_SYSTEM_ACTOR,
 } from "@/chat/resource-events/actor";
 import type { AgentRunResult } from "@/chat/services/turn-result";
@@ -510,11 +509,6 @@ async function runPausedTurnInContext(
           });
         };
 
-        // Resume chrome from the primary turn input only. Live turns may count
-        // additional queued/mid-turn events from the mailbox Map; resume does
-        // not reconstruct that side channel.
-        const resourceEventReplyAttribution =
-          replyAttributionForResourceEventMessages([userMessage]);
         return {
           messageText: userMessage.text,
           sliceId: activeTurn.sliceId,
@@ -544,13 +538,6 @@ async function runPausedTurnInContext(
             // Slack resume publishes unless the checkpoint opted out.
             // Missing means legacy/in-flight Slack turns still post.
             publishExternally: activeTurn.publishExternally !== false,
-            // Prefer dispatch attribution when present; otherwise rebuild from
-            // the primary resource-event input for this turn.
-            ...(options.routingContext?.dispatch?.replyAttribution
-              ? {}
-              : resourceEventReplyAttribution
-                ? { replyAttribution: resourceEventReplyAttribution }
-                : {}),
             source,
             toolChannelId: destination.channelId,
             environment: {

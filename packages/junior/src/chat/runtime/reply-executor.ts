@@ -108,7 +108,6 @@ import {
 } from "@/chat/services/message-actor-identity";
 import {
   isResourceEventSlackMessage,
-  replyAttributionForResourceEventMessages,
   RESOURCE_EVENT_SYSTEM_ACTOR,
 } from "@/chat/resource-events/actor";
 import type { PausedTurnRequest } from "@/chat/task-execution/turn-wake";
@@ -517,18 +516,6 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             ),
         );
         const effectiveUserText = currentText.userText;
-        const contributingResourceEvents = new Map(
-          [
-            ...(options.queuedMessages ?? []).map((queued) => queued.message),
-            message,
-          ]
-            .filter(isResourceEventSlackMessage)
-            .map((eventMessage) => [eventMessage.id, eventMessage]),
-        );
-        const resourceEventReplyAttribution = () =>
-          replyAttributionForResourceEventMessages([
-            ...contributingResourceEvents.values(),
-          ]);
         // Actor first, then credential projection. Dispatch already binds both
         // (and any delegated subject); other turns derive credentials from actor.
         let executionActor: Actor | undefined;
@@ -609,9 +596,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               await sendSlackReply({
                 channelId,
                 conversationId,
-                replyAttribution:
-                  options.execution?.dispatch?.replyAttribution ??
-                  resourceEventReplyAttribution(),
+                replyAttribution: options.execution?.dispatch?.replyAttribution,
                 text,
                 threadTs,
               });
@@ -627,20 +612,9 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           }
         };
         let activeTurnId = preparedState.conversation.processing.activeTurnId;
-        /** Count mid-turn resource events for live Slack chrome only. */
-        const trackResourceEventsForLiveChrome = (
-          queuedMessages: QueuedTurnMessage[],
-        ): void => {
-          for (const queued of queuedMessages) {
-            if (isResourceEventSlackMessage(queued.message)) {
-              contributingResourceEvents.set(queued.message.id, queued.message);
-            }
-          }
-        };
         const resolveSteeringMessages = async (
           queuedMessages: QueuedTurnMessage[],
         ): Promise<AgentSteeringMessage[]> => {
-          trackResourceEventsForLiveChrome(queuedMessages);
           return await Promise.all(
             queuedMessages.map(async (queued) => {
               const attachments = queued.message.attachments;
@@ -1075,8 +1049,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                   channelId,
                   conversationId,
                   replyAttribution:
-                    options.execution?.dispatch?.replyAttribution ??
-                    resourceEventReplyAttribution(),
+                    options.execution?.dispatch?.replyAttribution,
                   text,
                   ...(threadTs ? { threadTs } : {}),
                 });

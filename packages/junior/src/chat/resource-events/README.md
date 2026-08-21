@@ -43,13 +43,9 @@ conversation.
   message markers). Live and resume paths both execute as that system actor.
 - Notification text stays short and uses plain language: what the update is
   about, the instructions for this update, a verified summary and details, and
-  external text. Stable handling rules live in runtime and docs, not a long
+  external text. When the agent replies, it should say what changed and what it
+  did or needs next. Stable handling rules live in runtime and docs, not a long
   per-event prompt (`notification.ts`).
-- Visible Slack replies show compact plain-language context. One update shows
-  its verified summary. A live turn with several updates shows the latest
-  summary and the total count from the current mailbox batch. The summary is
-  stamped on the synthetic mailbox message and on durable conversation message
-  meta at turn prep. Resume rebuilds chrome from the primary event input.
 - A subscription selector is one Slack workspace, one namespace, one
   identifier, and one or more event types. `resourceType` and `label` are
   presentation metadata, not match keys.

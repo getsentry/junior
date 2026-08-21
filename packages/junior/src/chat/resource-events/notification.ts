@@ -55,6 +55,7 @@ export function renderResourceEventNotificationText(
     "",
     "This is an automated update, not a message from a person.",
     "Follow the instructions below. If they do not call for action or a reply, do not reply.",
+    "When you reply, say what changed and what you did or need next in plain language.",
     "",
     `About: ${subscription.label}`,
     `Instructions: ${subscription.intent}`,
@@ -98,7 +99,6 @@ export async function enqueueResourceEventNotification(args: {
     conversationId: args.subscription.conversationId,
     destination: args.subscription.destination,
     id: args.subscription.id,
-    label: args.subscription.label,
   };
   return await appendAndEnqueueInboundMessage({
     message: createSlackResourceEventInboundMessage({

@@ -110,15 +110,11 @@ describe("conversation message actor identity", () => {
     message.raw = {
       event_type: "resource_event",
       resource_event_type: "pull_request.merged",
-      resource_event_summary: "GitHub PR getsentry/junior#691 was merged.",
     };
 
     expect(
       toConversationMessage({ entry: message, text: message.text }).meta,
-    ).toMatchObject({
-      eventType: "pull_request.merged",
-      summary: "GitHub PR getsentry/junior#691 was merged.",
-    });
+    ).toMatchObject({ eventType: "pull_request.merged" });
   });
 
   it("tags Slack conversation messages with known source slack", () => {

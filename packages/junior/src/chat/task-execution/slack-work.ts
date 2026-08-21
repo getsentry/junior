@@ -405,11 +405,7 @@ const slackConversationMessageMetadataSchema = z.union([
           eventType: z.string(),
           namespace: z.string(),
           identifier: z.string(),
-          // TODO(v0.171.0): Require label/summary after in-flight pre-framing mailbox
-          // rows have drained. Writers always set both for new events.
-          label: z.string().optional(),
           subscriptionId: z.string(),
-          summary: z.string().optional(),
         })
         .strict(),
     })
@@ -445,7 +441,6 @@ interface SlackResourceEventInboundInput {
     occurredAtMs: number;
     namespace: string;
     identifier: string;
-    trustedSummary: string;
   };
   subscription: {
     conversationId: string;
@@ -455,7 +450,6 @@ interface SlackResourceEventInboundInput {
       teamId: string;
     };
     id: string;
-    label: string;
   };
   text: string;
 }
@@ -517,8 +511,6 @@ function slackSerializedResourceEventMessage(input: {
   channelId: string;
   eventType: string;
   id: string;
-  label: string;
-  summary: string;
   text: string;
   threadTs: string;
   timestampIso: string;
@@ -542,8 +534,6 @@ function slackSerializedResourceEventMessage(input: {
     raw: {
       channel: input.channelId,
       event_type: "resource_event",
-      resource_event_label: input.label,
-      resource_event_summary: input.summary,
       resource_event_type: input.eventType,
       thread_ts: input.threadTs,
       type: "message",
@@ -576,8 +566,6 @@ export function createSlackResourceEventInboundMessage(
     channelId: slack.channelId,
     eventType: input.event.eventType,
     id: messageId,
-    label: input.subscription.label,
-    summary: input.event.trustedSummary,
     text: input.text,
     threadTs: slack.threadTs,
     timestampIso,
@@ -613,9 +601,7 @@ export function createSlackResourceEventInboundMessage(
           eventType: input.event.eventType,
           namespace: input.event.namespace,
           identifier: input.event.identifier,
-          label: input.subscription.label,
           subscriptionId: input.subscription.id,
-          summary: input.event.trustedSummary,
         },
       } satisfies SlackConversationMessageMetadata,
     },

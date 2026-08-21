@@ -217,15 +217,6 @@ type ResumeReplyContext = Omit<
   instruction?: Omit<AgentRun["instruction"], "text">;
 };
 
-/** Destination-visible reply chrome carried on the resumed run. */
-function resumeReplyAttribution(
-  replyContext: ResumeReplyContext | undefined,
-): ReplyAttribution | undefined {
-  return (
-    replyContext?.replyAttribution ?? replyContext?.dispatch?.replyAttribution
-  );
-}
-
 interface ResumePreparedTurn {
   messageText: string;
   /** Active durable execution slice being resumed. */
@@ -595,7 +586,7 @@ async function resumeSlackTurnInContext(
           slackMessageTs = await sendSlackReply({
             channelId: runArgs.channelId,
             conversationId: runArgs.conversationId,
-            replyAttribution: resumeReplyAttribution(runArgs.replyContext),
+            replyAttribution: runArgs.replyContext?.dispatch?.replyAttribution,
             text,
             threadTs: runArgs.threadTs,
           });
@@ -941,7 +932,7 @@ async function resumeSlackTurnInContext(
             deferredAuthInfo.requestText,
           ),
           runArgs.conversationId,
-          resumeReplyAttribution(runArgs.replyContext),
+          runArgs.replyContext?.dispatch?.replyAttribution,
         );
       }
       return true;

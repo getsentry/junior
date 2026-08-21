@@ -223,12 +223,6 @@ export type AgentRun = {
   destinationVisibility?: ConversationPrivacy;
   surface?: AgentTurnSurface;
   dispatch?: AgentDispatch;
-  /**
-   * Compact destination-visible context for this run's reply chrome. Dispatch
-   * may also carry attribution; prefer this field when the run is not a plugin
-   * dispatch (for example resource-event resume).
-   */
-  replyAttribution?: ReplyAttribution;
 
   /**
    * TODO: Move ephemeral Slack credentials and conversation labels into

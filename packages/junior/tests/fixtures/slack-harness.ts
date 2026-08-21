@@ -279,14 +279,12 @@ export class FakeSlackAdapter extends SlackAdapter {
   }
 }
 
-function createThreadAdapter(name = "test"): Adapter {
+function createThreadAdapter(): Adapter {
   const adapter = new FakeSlackAdapter();
   return new Proxy(adapter, {
     get(target, property, receiver) {
       if (property === "name") {
-        // Default "test" keeps reply-executor on thread.post. Pass "slack" when a
-        // case needs the real sendSlackReply / chat.postMessage path.
-        return name;
+        return "test";
       }
       const value = Reflect.get(target, property, receiver);
       return typeof value === "function" ? value.bind(target) : value;
@@ -349,11 +347,6 @@ async function deleteAdapterState(key: string): Promise<void> {
 export async function createTestThread(args: {
   id?: string;
   channelId?: string;
-  /**
-   * Adapter name exposed on the thread. Defaults to "test" so reply-executor
-   * posts through thread.post. Use "slack" to exercise sendSlackReply.
-   */
-  adapterName?: string;
   state?: Record<string, unknown>;
   channelStateRef?: { value: Record<string, unknown> };
   runId?: string;
@@ -372,7 +365,7 @@ export async function createTestThread(args: {
   let seededThreadState = false;
   let seededChannelState = false;
 
-  const stubAdapter = createThreadAdapter(args.adapterName);
+  const stubAdapter = createThreadAdapter();
   const channelRef = args.channelStateRef ?? { value: {} };
 
   // Constructor args own the fixture snapshot for this id. Always apply them so

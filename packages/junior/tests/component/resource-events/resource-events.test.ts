@@ -147,20 +147,11 @@ describe("resource event delivery", () => {
             teamId: "T123",
           },
           route: "subscribed",
-          message: {
-            raw: {
-              resource_event_label: "GitHub PR getsentry/junior#691",
-              resource_event_summary: "CI failed on workflow test.",
-              resource_event_type: "pull_request.checks.failed",
-            },
-          },
           resourceEvent: {
             eventType: "pull_request.checks.failed",
             namespace: "github",
             identifier: "getsentry/junior#691",
-            label: "GitHub PR getsentry/junior#691",
             subscriptionId: subscription.id,
-            summary: "CI failed on workflow test.",
           },
         },
       },
