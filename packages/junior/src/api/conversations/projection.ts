@@ -25,7 +25,6 @@ const PRIVATE_CONVERSATION_LABEL = "Private Conversation";
 type ConversationProjectionSource = Pick<
   StoredConversation,
   | "actor"
-  | "archivedAtMs"
   | "channelName"
   | "conversationId"
   | "createdAtMs"
@@ -208,6 +207,7 @@ export function conversationEventHistory(args: {
 /** Project one durable conversation and its SQL metrics into the REST summary. */
 export function conversationSummaryFromStoredConversation(args: {
   access?: ConversationAccess;
+  archivedAtMs?: number;
   auxiliaryCosts?: ConversationSummaryReport["auxiliaryCosts"];
   conversation: ConversationProjectionSource;
   durationMs: number;
@@ -266,9 +266,10 @@ export function conversationSummaryFromStoredConversation(args: {
     ...(usage ? { cumulativeUsage: usage } : {}),
     ...(actorIdentity ? { actorIdentity } : {}),
     ...(sourceUrl ? { sourceUrl } : {}),
-    archivedAt: conversation.archivedAtMs
-      ? new Date(conversation.archivedAtMs).toISOString()
-      : null,
+    archivedAt:
+      args.archivedAtMs === undefined
+        ? null
+        : new Date(args.archivedAtMs).toISOString(),
     ...(slackThread ? { channel: slackThread.channelId } : {}),
     ...(channelName ? { channelName } : {}),
     ...(channelNameRedacted ? { channelNameRedacted: true } : {}),

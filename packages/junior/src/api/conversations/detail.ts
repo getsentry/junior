@@ -26,6 +26,7 @@ import { readConversationArchivedAt } from "./archive";
 /** Project stored metadata and a bounded event page into a signed history cursor. */
 function projectConversationDetail(args: {
   access?: ConversationAccess;
+  archivedAtMs?: number;
   auxiliaryCosts?: ConversationDetailReport["auxiliaryCosts"];
   conversation: Conversation;
   durationMs: number;
@@ -48,6 +49,9 @@ function projectConversationDetail(args: {
   return {
     ...conversationSummaryFromStoredConversation({
       access: args.access,
+      ...(args.archivedAtMs === undefined
+        ? {}
+        : { archivedAtMs: args.archivedAtMs }),
       auxiliaryCosts: args.auxiliaryCosts,
       conversation,
       durationMs: args.durationMs,
@@ -87,14 +91,9 @@ async function readConversationDetailFromSql(
 ): Promise<ConversationDetailReport | undefined> {
   const record = await readConversationRecordFromSql(conversationId);
   if (!record) return undefined;
-  if (options.viewer) {
-    record.conversation.archivedAtMs = await readConversationArchivedAt(
-      options.viewer,
-      conversationId,
-    );
-  } else {
-    delete record.conversation.archivedAtMs;
-  }
+  const archivedAtMs = options.viewer
+    ? await readConversationArchivedAt(options.viewer, conversationId)
+    : undefined;
 
   const executor = getSqlExecutor();
   const includeDescendantMetrics = record.rootConversationId === conversationId;
@@ -145,6 +144,7 @@ async function readConversationDetailFromSql(
   return projectConversationDetail({
     ...record,
     access,
+    ...(archivedAtMs === undefined ? {} : { archivedAtMs }),
     annotations,
     auxiliaryCosts: auxiliaryCostsByConversation.get(conversationId),
     durationMs: metrics?.durationMs ?? record.durationMs,
