@@ -3,20 +3,16 @@ WITH target_rows AS (
   SELECT
     id,
     CASE
-      WHEN (scope = 'conversation'
+      WHEN scope = 'conversation'
         AND source_platform = 'slack'
-        AND scope_key = 'slack:' || split_part(source_key, ':', 2))
-        OR (source_platform = 'slack'
-          AND split_part(source_key, ':', 3) LIKE 'C%')
+        AND scope_key = 'slack:' || split_part(source_key, ':', 2)
         THEN 'public'
       ELSE 'private'
     END AS target_scope,
     CASE
-      WHEN (scope = 'conversation'
+      WHEN scope = 'conversation'
         AND source_platform = 'slack'
-        AND scope_key = 'slack:' || split_part(source_key, ':', 2))
-        OR (source_platform = 'slack'
-          AND split_part(source_key, ':', 3) LIKE 'C%')
+        AND scope_key = 'slack:' || split_part(source_key, ':', 2)
         THEN 'public'
       WHEN source_platform = 'slack'
         THEN regexp_replace(source_key, ':[^:]+$', '')
@@ -25,20 +21,16 @@ WITH target_rows AS (
     row_number() OVER (
       PARTITION BY
         CASE
-          WHEN (scope = 'conversation'
+          WHEN scope = 'conversation'
             AND source_platform = 'slack'
-            AND scope_key = 'slack:' || split_part(source_key, ':', 2))
-            OR (source_platform = 'slack'
-              AND split_part(source_key, ':', 3) LIKE 'C%')
+            AND scope_key = 'slack:' || split_part(source_key, ':', 2)
             THEN 'public'
           ELSE 'private'
         END,
         CASE
-          WHEN (scope = 'conversation'
+          WHEN scope = 'conversation'
             AND source_platform = 'slack'
-            AND scope_key = 'slack:' || split_part(source_key, ':', 2))
-            OR (source_platform = 'slack'
-              AND split_part(source_key, ':', 3) LIKE 'C%')
+            AND scope_key = 'slack:' || split_part(source_key, ':', 2)
             THEN 'public'
           WHEN source_platform = 'slack'
             THEN regexp_replace(source_key, ':[^:]+$', '')
@@ -61,20 +53,16 @@ WHERE junior_memory_memories.id = target_rows.id
 UPDATE junior_memory_memories
 SET
   scope = CASE
-    WHEN (scope = 'conversation'
+    WHEN scope = 'conversation'
       AND source_platform = 'slack'
-      AND scope_key = 'slack:' || split_part(source_key, ':', 2))
-      OR (source_platform = 'slack'
-        AND split_part(source_key, ':', 3) LIKE 'C%')
+      AND scope_key = 'slack:' || split_part(source_key, ':', 2)
       THEN 'public'
     ELSE 'private'
   END,
   scope_key = CASE
-    WHEN (scope = 'conversation'
+    WHEN scope = 'conversation'
       AND source_platform = 'slack'
-      AND scope_key = 'slack:' || split_part(source_key, ':', 2))
-      OR (source_platform = 'slack'
-        AND split_part(source_key, ':', 3) LIKE 'C%')
+      AND scope_key = 'slack:' || split_part(source_key, ':', 2)
       THEN 'public'
     WHEN source_platform = 'slack'
       THEN regexp_replace(source_key, ':[^:]+$', '')
