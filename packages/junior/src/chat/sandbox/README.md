@@ -57,9 +57,11 @@ traffic through verified host egress.
 - Workspace repositories clone to fixed `repos/{name}` paths. Setup scripts
   receive `JUNIOR_WORKSPACE_ROOT` and `JUNIOR_REPOS_ROOT` so they do not depend
   on the provider's absolute Sandbox path.
-- Repository preparation uses host egress for provider credentials. Snapshot
-  state and Sandbox commands do not receive real provider credentials. Setup
-  runs after Junior removes the credential route from the build Sandbox.
+- Repository preparation uses host egress for provider credentials. Junior
+  prepares repositories while it builds the snapshot, then updates the current
+  branch from its remote after the snapshot boots. Snapshot state and Sandbox
+  commands do not receive real provider credentials. Setup runs after Junior
+  removes the credential route from the build Sandbox.
 - A Workspace switch prepares a candidate Sandbox before it updates durable or
   live state. A failed candidate leaves the current Sandbox unchanged.
 - Missing or invalid snapshots rebuild through the owning snapshot path;

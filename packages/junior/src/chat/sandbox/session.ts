@@ -531,6 +531,9 @@ export function createSandboxRuntime(
     let networkPolicyKey: string | undefined;
     try {
       networkPolicyKey = await applyNetworkPolicy(createdSandbox);
+      if (workspace) {
+        await options.onWorkspacePrepare?.(createdSandbox, workspace, signal);
+      }
       await prepareSandbox(createdSandbox);
     } catch (error) {
       // A Workspace candidate has no durable owner until preparation succeeds.

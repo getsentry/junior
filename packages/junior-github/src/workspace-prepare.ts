@@ -1,7 +1,7 @@
 import type { WorkspacePrepareHookContext } from "@sentry/junior-plugin-api";
 import { isReservedSandboxDirectory } from "./sandbox-paths.js";
 
-/** Clone GitHub repositories into their host-selected Workspace paths. */
+/** Clone or update GitHub repositories in their host-selected Workspace paths. */
 export async function prepareWorkspace(
   ctx: WorkspacePrepareHookContext,
 ): Promise<void> {
@@ -52,21 +52,30 @@ export async function prepareWorkspace(
         );
       }
     }
+    const checkout = await ctx.sandbox.run({
+      cmd: "git",
+      args: ["-C", path, "rev-parse", "--is-inside-work-tree"],
+      cwd: ctx.sandbox.root,
+    });
     const result = await ctx.sandbox.run({
       cmd: "git",
-      args: [
-        "clone",
-        "--quiet",
-        "--depth=1",
-        "--",
-        `https://github.com/${owner}/${name}.git`,
-        path,
-      ],
+      args:
+        checkout.exitCode === 0
+          ? ["-C", path, "pull", "--ff-only", "--quiet"]
+          : [
+              "clone",
+              "--quiet",
+              "--depth=1",
+              "--",
+              `https://github.com/${owner}/${name}.git`,
+              path,
+            ],
       cwd: ctx.sandbox.root,
     });
     if (result.exitCode !== 0) {
+      const action = checkout.exitCode === 0 ? "update" : "clone";
       throw new Error(
-        `GitHub workspace clone failed for ${repo}: ${result.stderr.trim() || `exit ${result.exitCode}`}`,
+        `GitHub workspace ${action} failed for ${repo}: ${result.stderr.trim() || `exit ${result.exitCode}`}`,
       );
     }
   }

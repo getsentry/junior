@@ -2886,7 +2886,11 @@ Conversation: \`local:test:old-conversation\`
         },
         async run(input: { args?: string[]; env?: Record<string, string> }) {
           runs.push(input);
-          return { exitCode: 0, stderr: "", stdout: "" };
+          return {
+            exitCode: input.args?.includes("rev-parse") ? 1 : 0,
+            stderr: "",
+            stdout: "",
+          };
         },
         async writeFile() {},
       },
@@ -2896,6 +2900,7 @@ Conversation: \`local:test:old-conversation\`
 
     expect(runs.map((run) => run.args)).toEqual([
       ["-p", "--", "repos"],
+      ["-C", "repos/sentry", "rev-parse", "--is-inside-work-tree"],
       [
         "clone",
         "--quiet",
@@ -2905,6 +2910,7 @@ Conversation: \`local:test:old-conversation\`
         "repos/sentry",
       ],
       ["-p", "--", "repos"],
+      ["-C", "repos/junior", "rev-parse", "--is-inside-work-tree"],
       [
         "clone",
         "--quiet",
@@ -2915,6 +2921,36 @@ Conversation: \`local:test:old-conversation\`
       ],
     ]);
     expect(runs.every((run) => run.env === undefined)).toBe(true);
+  });
+
+  it("updates the current branch when a workspace repository exists", async () => {
+    const runs: string[][] = [];
+    const ctx = {
+      db,
+      log: pluginLog,
+      plugin: { name: "github" },
+      repos: [{ repo: "getsentry/junior", path: "repos/junior" }],
+      sandbox: {
+        juniorRoot: "/vercel/sandbox/.junior",
+        root: "/vercel/sandbox",
+        async readFile() {
+          return null;
+        },
+        async run(input: { args?: string[] }) {
+          runs.push(input.args ?? []);
+          return { exitCode: 0, stderr: "", stdout: "" };
+        },
+        async writeFile() {},
+      },
+    } as WorkspacePrepareHookContext;
+
+    await githubPlugin().hooks?.workspacePrepare?.(ctx);
+
+    expect(runs).toEqual([
+      ["-p", "--", "repos"],
+      ["-C", "repos/junior", "rev-parse", "--is-inside-work-tree"],
+      ["-C", "repos/junior", "pull", "--ff-only", "--quiet"],
+    ]);
   });
 
   it("rejects reserved workspace checkout paths", async () => {
