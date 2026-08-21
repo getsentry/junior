@@ -21,6 +21,7 @@ export type WorkspaceSnapshotBuildPhase =
 
 /** Current snapshot build for one Workspace recipe. */
 export interface WorkspaceSnapshotBuild {
+  id: string;
   status: WorkspaceSnapshotBuildStatus;
   phase: WorkspaceSnapshotBuildPhase;
   profileHash: string;

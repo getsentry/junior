@@ -14,7 +14,6 @@ import {
   hash as workspaceProfileHash,
 } from "@/chat/sandbox/snapshot/profile";
 import { SANDBOX_RUNTIME } from "@/chat/sandbox/snapshot/runtime";
-import { setWorkspaceSnapshot } from "@/chat/sandbox/snapshot/store";
 import { getStateAdapter } from "@/chat/state/adapter";
 import {
   createWorkspace,
@@ -22,6 +21,26 @@ import {
   getWorkspaceByName,
   updateWorkspace,
 } from "@/chat/workspaces/store";
+import type { WorkspaceSnapshot } from "@/chat/workspaces/types";
+import { juniorSnapshots } from "@/db/schema";
+
+async function insertReadySnapshot(
+  workspaceId: string,
+  snapshot: WorkspaceSnapshot,
+): Promise<void> {
+  const now = new Date();
+  await getDb().insert(juniorSnapshots).values({
+    id: snapshot.id,
+    workspaceId,
+    profileHash: snapshot.profileHash,
+    status: "ready",
+    snapshotId: snapshot.id,
+    buildDurationMs: snapshot.buildDurationMs,
+    generatedAt: snapshot.generatedAt,
+    createdAt: now,
+    updatedAt: now,
+  });
+}
 
 function authenticatedApi(email = "person@example.com") {
   const app = new Hono<{ Variables: JuniorApiVariables }>();
@@ -222,7 +241,7 @@ describe("workspace admin API", () => {
     const profileHash = workspaceProfileHash(SANDBOX_RUNTIME, workspace!);
     expect(profileHash).toBeTruthy();
 
-    await setWorkspaceSnapshot(created.id, {
+    await insertReadySnapshot(created.id, {
       id: "snap_duration",
       generatedAt: new Date("2026-03-01T00:00:00.000Z"),
       buildDurationMs: 12_345,
@@ -263,7 +282,7 @@ describe("workspace admin API", () => {
     const profileHash = workspaceProfileHash(SANDBOX_RUNTIME, workspace!);
     expect(profileHash).toBeTruthy();
 
-    await setWorkspaceSnapshot(created.id, {
+    await insertReadySnapshot(created.id, {
       id: "snap_old",
       generatedAt: new Date("2026-03-01T00:00:00.000Z"),
       buildDurationMs: 9_000,
@@ -319,7 +338,7 @@ describe("workspace admin API", () => {
       changedWorkspace!,
     );
     expect(changedProfileHash).toBeTruthy();
-    await setWorkspaceSnapshot(created.id, {
+    await insertReadySnapshot(created.id, {
       id: "snap_new",
       generatedAt: new Date("2026-03-02T00:00:00.000Z"),
       buildDurationMs: 10_000,
@@ -343,7 +362,7 @@ describe("workspace admin API", () => {
     );
     expect(workspaceSchema.parse(await revertedDetail.json())).toMatchObject({
       id: created.id,
-      snapshot: { id: "snap_old", buildDurationMs: 9_000 },
+      snapshot: null,
     });
   });
 
