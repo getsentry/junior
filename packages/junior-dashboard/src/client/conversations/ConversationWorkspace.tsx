@@ -1,11 +1,4 @@
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type ReactNode,
-} from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Globe2, LockKeyhole } from "lucide-react";
 import { useNavigate, useParams } from "react-router";
 
@@ -116,24 +109,26 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
           aria-label="New conversation"
           className="min-h-0 overflow-hidden bg-white/[0.012]"
         >
-          <CreateLandingScroll>
-            {createView}
-            <div className="md:hidden">
-              <ConversationSidebar
-                conversations={visibleConversations}
-                error={feed.error?.message}
-                loading={feed.isPending}
-                onNewConversation={openCreate}
-                onQueryChange={setQuery}
-                onStatusChange={setStatus}
-                query={query}
-                selectedId={undefined}
-                status={status}
-                timeZone={props.data.config.timeZone}
-                variant="landing"
-              />
-            </div>
-          </CreateLandingScroll>
+          <CreateLandingScroll
+            hero={createView}
+            list={
+              <div className="md:hidden">
+                <ConversationSidebar
+                  conversations={visibleConversations}
+                  error={feed.error?.message}
+                  loading={feed.isPending}
+                  onNewConversation={openCreate}
+                  onQueryChange={setQuery}
+                  onStatusChange={setStatus}
+                  query={query}
+                  selectedId={undefined}
+                  status={status}
+                  timeZone={props.data.config.timeZone}
+                  variant="landing"
+                />
+              </div>
+            }
+          />
         </section>
       </div>
     );
@@ -185,102 +180,29 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
 
 
 /**
- * Keep create-landing scroll stable while the hero composer is focused.
+ * Landing frame: non-scrolling hero above a list scroller.
  *
- * iOS Safari scrolls the nearest overflow ancestor to center a focused field.
- * On this landing page that yanks the hero/list upward as the keyboard opens.
- * Freeze only for the hero composer — list search and other fields must keep
- * normal scroll so they stay on-screen while focused.
+ * Keep the hero out of the overflow ancestor so iOS focus cannot pan it away.
+ * List search owns the only scroll region under the hero.
  */
-function CreateLandingScroll(props: { children: ReactNode }) {
-  const rootRef = useRef<HTMLDivElement>(null);
-  const freezeScrollTopRef = useRef(0);
-  const focusedRef = useRef(false);
-
-  const isHeroComposerTarget = (target: EventTarget | null) =>
-    target instanceof HTMLElement &&
-    Boolean(target.closest("[data-create-landing-hero]")) &&
-    (target instanceof HTMLInputElement ||
-      target instanceof HTMLTextAreaElement ||
-      target.isContentEditable);
-
-  const lockToFrozenTop = useCallback(() => {
-    const root = rootRef.current;
-    if (!root || !focusedRef.current) return;
-    if (root.scrollTop !== freezeScrollTopRef.current) {
-      root.scrollTop = freezeScrollTopRef.current;
-    }
-  }, []);
-
-  useEffect(() => {
-    const root = rootRef.current;
-    if (!root) return;
-
-    const onFocusIn = (event: FocusEvent) => {
-      if (!isHeroComposerTarget(event.target)) return;
-      focusedRef.current = true;
-      // Always pin landing to the hero while the composer is focused. Capturing
-      // scrollTop after Safari's pan would freeze the jumped position.
-      freezeScrollTopRef.current = 0;
-      root.style.overflowY = "hidden";
-      root.scrollTop = 0;
-      requestAnimationFrame(lockToFrozenTop);
-      queueMicrotask(lockToFrozenTop);
-    };
-
-    const onFocusOut = (event: FocusEvent) => {
-      if (!isHeroComposerTarget(event.target)) return;
-      // Stay frozen while focus moves inside the hero compose stack.
-      const next = event.relatedTarget;
-      if (next instanceof Node && isHeroComposerTarget(next)) {
-        return;
-      }
-      focusedRef.current = false;
-      root.style.overflowY = "";
-      root.scrollTop = freezeScrollTopRef.current;
-    };
-
-    const onScroll = () => {
-      if (!focusedRef.current) return;
-      lockToFrozenTop();
-    };
-
-    // Prefer preventScroll focus on pointer so iOS never starts its focus pan.
-    const onPointerDown = (event: PointerEvent) => {
-      const target = event.target;
-      if (!isHeroComposerTarget(target)) return;
-      if (!(target instanceof HTMLElement) || document.activeElement === target) {
-        return;
-      }
-      event.preventDefault();
-      focusedRef.current = true;
-      // Hero compose owns the top of this page. Keep scroll at 0 while typing.
-      freezeScrollTopRef.current = 0;
-      root.style.overflowY = "hidden";
-      target.focus({ preventScroll: true });
-      root.scrollTop = 0;
-      requestAnimationFrame(lockToFrozenTop);
-    };
-
-    root.addEventListener("pointerdown", onPointerDown);
-    root.addEventListener("focusin", onFocusIn);
-    root.addEventListener("focusout", onFocusOut);
-    root.addEventListener("scroll", onScroll, { passive: true });
-    return () => {
-      root.removeEventListener("pointerdown", onPointerDown);
-      root.removeEventListener("focusin", onFocusIn);
-      root.removeEventListener("focusout", onFocusOut);
-      root.removeEventListener("scroll", onScroll);
-    };
-  }, [lockToFrozenTop]);
-
+function CreateLandingScroll(props: {
+  hero: ReactNode;
+  list: ReactNode;
+}) {
   return (
     <div
-      className="h-full min-h-0 overflow-y-auto overscroll-contain"
+      // Mobile: pin hero above a list scroller. Desktop: one page scroller so
+      // the hero can still center with min-h-full (list is md:hidden).
+      className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden md:block md:overflow-y-auto md:overscroll-contain"
       data-create-landing-scroll=""
-      ref={rootRef}
     >
-      {props.children}
+      <div className="min-w-0 shrink-0 md:min-h-full">{props.hero}</div>
+      <div
+        className="min-h-0 min-w-0 overflow-y-auto overscroll-contain md:hidden"
+        data-create-landing-list=""
+      >
+        {props.list}
+      </div>
     </div>
   );
 }
