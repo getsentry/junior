@@ -1163,11 +1163,9 @@ describe("createTestSandbox", () => {
       },
     };
     const createNetworkPolicy = vi.fn(() => policy);
-    const onWorkspacePrepare = vi.fn(async () => {
-      expect(buildSandbox.update).toHaveBeenLastCalledWith({
-        networkPolicy: policy,
-      });
-    });
+    const onWorkspacePrepare = vi.fn(
+      async (_sandbox: SandboxSession, _workspace: unknown) => {},
+    );
     resolveWorkspaceMock.mockImplementationOnce(async (params: any) => {
       await params.applyNetworkPolicy(buildSandbox);
       await params.prepareRepositories?.(buildSandbox, params.workspace);
@@ -1204,7 +1202,17 @@ describe("createTestSandbox", () => {
 
     await runtime.acquire();
 
-    expect(onWorkspacePrepare).toHaveBeenCalledTimes(1);
+    expect(onWorkspacePrepare).toHaveBeenCalledTimes(2);
+    expect(onWorkspacePrepare.mock.calls[0]?.[0]).toBe(buildSandbox);
+    expect(onWorkspacePrepare.mock.calls[0]?.[1]).toEqual(
+      expect.objectContaining({ id: "workspace-1" }),
+    );
+    expect(onWorkspacePrepare.mock.calls[1]?.[0]).toEqual(
+      expect.objectContaining({ sandboxId: "sbx_workspace_active" }),
+    );
+    expect(onWorkspacePrepare.mock.calls[1]?.[1]).toEqual(
+      expect.objectContaining({ id: "workspace-1" }),
+    );
     expect(buildSandbox.update).toHaveBeenNthCalledWith(1, {
       networkPolicy: policy,
     });

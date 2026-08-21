@@ -145,9 +145,9 @@ export interface PluginMcp {
 }
 
 /**
- * Provider-owned repository preparation for one Workspace snapshot build.
- * A stopped execution slice can call the hook again in the same Sandbox, so
- * implementations must replace or safely reuse partial prior work.
+ * Provider-owned, repeatable repository preparation for a Workspace Sandbox.
+ * Implementations should refresh complete checkouts and replace missing or
+ * partial ones.
  */
 export interface WorkspacePrepareHookContext extends PluginContext {
   repos: Array<{

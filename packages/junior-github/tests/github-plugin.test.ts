@@ -1351,9 +1351,7 @@ Conversation: \`local:test:old-conversation\`
       number: 660,
       url: "https://github.com/getsentry/junior/issues/660",
       subscribable: {
-        suggestedEvents: expect.arrayContaining([
-          "pull_request.checks.failed",
-        ]),
+        suggestedEvents: expect.arrayContaining(["pull_request.checks.failed"]),
       },
     });
     expect(result).not.toHaveProperty("subscription");
@@ -3013,6 +3011,316 @@ Conversation: \`local:test:old-conversation\`
         },
         async run(input: { args?: string[]; env?: Record<string, string> }) {
           runs.push(input);
+          return {
+            exitCode: input.args?.includes("rev-parse") ? 1 : 0,
+            stderr: "",
+            stdout: "",
+          };
+        },
+        async writeFile() {},
+      },
+    } as WorkspacePrepareHookContext;
+
+    await githubPlugin().hooks?.workspacePrepare?.(ctx);
+
+    expect(runs.map((run) => run.args)).toEqual([
+      ["-p", "--", "repos"],
+      ["-C", "repos/sentry", "rev-parse", "--is-inside-work-tree"],
+      ["-rf", "--", "repos/sentry"],
+      [
+        "clone",
+        "--quiet",
+        "--",
+        "https://github.com/getsentry/sentry.git",
+        "repos/sentry",
+      ],
+      ["-p", "--", "repos"],
+      ["-C", "repos/junior", "rev-parse", "--is-inside-work-tree"],
+      ["-rf", "--", "repos/junior"],
+      [
+        "clone",
+        "--quiet",
+        "--",
+        "https://github.com/getsentry/junior.git",
+        "repos/junior",
+      ],
+    ]);
+    expect(runs.filter((run) => run.env)).toHaveLength(4);
+    expect(
+      runs
+        .filter((run) => run.env)
+        .every(
+          (run) =>
+            run.env?.GIT_CONFIG_GLOBAL === "/dev/null" &&
+            run.env.GIT_CONFIG_NOSYSTEM === "1",
+        ),
+    ).toBe(true);
+  });
+
+  it("refreshes an existing workspace repository from its configured origin branch", async () => {
+    const runs: string[][] = [];
+    const ctx = {
+      db,
+      log: pluginLog,
+      plugin: { name: "github" },
+      repos: [{ repo: "getsentry/junior", path: "repos/junior" }],
+      sandbox: {
+        juniorRoot: "/vercel/sandbox/.junior",
+        root: "/vercel/sandbox",
+        async readFile() {
+          return null;
+        },
+        async run(input: {
+          args?: string[];
+          cmd?: string;
+          env?: Record<string, string>;
+        }) {
+          runs.push(input.args ?? []);
+          if (input.cmd === "git") {
+            expect(input.env).toEqual({
+              GIT_CONFIG_GLOBAL: "/dev/null",
+              GIT_CONFIG_NOSYSTEM: "1",
+            });
+          }
+          return {
+            exitCode: 0,
+            stderr: "",
+            stdout: input.args?.includes("symbolic-ref")
+              ? "feature\n"
+              : input.args?.includes("--symbolic-full-name")
+                ? "refs/remotes/origin/stable\n"
+                : input.args?.includes(
+                      "/vercel/sandbox/.junior/workspace-refresh.XXXXXX",
+                    )
+                  ? "/vercel/sandbox/.junior/workspace-refresh.test\n"
+                  : "",
+          };
+        },
+        async writeFile() {},
+      },
+    } as WorkspacePrepareHookContext;
+
+    await githubPlugin().hooks?.workspacePrepare?.(ctx);
+
+    expect(runs).toEqual([
+      ["-p", "--", "repos"],
+      ["-C", "repos/junior", "rev-parse", "--is-inside-work-tree"],
+      ["-C", "repos/junior", "symbolic-ref", "--quiet", "--short", "HEAD"],
+      [
+        "-C",
+        "repos/junior",
+        "rev-parse",
+        "--symbolic-full-name",
+        "@{upstream}",
+      ],
+      ["-d", "/vercel/sandbox/.junior/workspace-refresh.XXXXXX"],
+      [
+        "--git-dir",
+        "/vercel/sandbox/.junior/workspace-refresh.test",
+        "--work-tree",
+        "repos/junior",
+        "init",
+        "--quiet",
+        "--initial-branch",
+        "feature",
+      ],
+      [
+        "--git-dir",
+        "/vercel/sandbox/.junior/workspace-refresh.test",
+        "--work-tree",
+        "repos/junior",
+        "remote",
+        "add",
+        "origin",
+        "https://github.com/getsentry/junior.git",
+      ],
+      [
+        "--git-dir",
+        "/vercel/sandbox/.junior/workspace-refresh.test",
+        "--work-tree",
+        "repos/junior",
+        "fetch",
+        "--quiet",
+        "--prune",
+        "--tags",
+        "origin",
+        "+refs/heads/*:refs/remotes/origin/*",
+      ],
+      [
+        "--git-dir",
+        "/vercel/sandbox/.junior/workspace-refresh.test",
+        "--work-tree",
+        "repos/junior",
+        "reset",
+        "--hard",
+        "refs/remotes/origin/stable",
+      ],
+      [
+        "--git-dir",
+        "/vercel/sandbox/.junior/workspace-refresh.test",
+        "--work-tree",
+        "repos/junior",
+        "branch",
+        "--set-upstream-to=origin/stable",
+        "feature",
+      ],
+      ["-rf", "--", "repos/junior/.git"],
+      [
+        "--",
+        "/vercel/sandbox/.junior/workspace-refresh.test",
+        "repos/junior/.git",
+      ],
+      ["-C", "repos/junior", "clean", "-fd"],
+    ]);
+    expect(runs.some((args) => args[0] === "clone")).toBe(false);
+  });
+
+  it("refreshes a valid checkout without an upstream and preserves setup outputs", async () => {
+    const runs: string[][] = [];
+    const ctx = {
+      db,
+      log: pluginLog,
+      plugin: { name: "github" },
+      repos: [{ repo: "getsentry/junior", path: "repos/junior" }],
+      sandbox: {
+        juniorRoot: "/vercel/sandbox/.junior",
+        root: "/vercel/sandbox",
+        async readFile() {
+          return null;
+        },
+        async run(input: { args?: string[] }) {
+          runs.push(input.args ?? []);
+          if (input.args?.includes("--symbolic-full-name")) {
+            return { exitCode: 1, stderr: "no upstream", stdout: "" };
+          }
+          return {
+            exitCode: 0,
+            stderr: "",
+            stdout: input.args?.includes("symbolic-ref")
+              ? "feature\n"
+              : input.args?.includes(
+                    "/vercel/sandbox/.junior/workspace-refresh.XXXXXX",
+                  )
+                ? "/vercel/sandbox/.junior/workspace-refresh.test\n"
+                : "",
+          };
+        },
+        async writeFile() {},
+      },
+    } as WorkspacePrepareHookContext;
+
+    await githubPlugin().hooks?.workspacePrepare?.(ctx);
+
+    expect(runs).toContainEqual([
+      "--git-dir",
+      "/vercel/sandbox/.junior/workspace-refresh.test",
+      "--work-tree",
+      "repos/junior",
+      "fetch",
+      "--quiet",
+      "--prune",
+      "--tags",
+      "origin",
+      "+refs/heads/*:refs/remotes/origin/*",
+    ]);
+    expect(runs).toContainEqual([
+      "--git-dir",
+      "/vercel/sandbox/.junior/workspace-refresh.test",
+      "--work-tree",
+      "repos/junior",
+      "reset",
+      "--hard",
+      "refs/remotes/origin/feature",
+    ]);
+    expect(runs).toContainEqual([
+      "--git-dir",
+      "/vercel/sandbox/.junior/workspace-refresh.test",
+      "--work-tree",
+      "repos/junior",
+      "branch",
+      "--set-upstream-to=origin/feature",
+      "feature",
+    ]);
+    expect(runs).not.toContainEqual(["-rf", "--", "repos/junior"]);
+  });
+
+  it("refreshes a detached checkout without deleting setup outputs", async () => {
+    const sha = "a".repeat(40);
+    const runs: string[][] = [];
+    const ctx = {
+      db,
+      log: pluginLog,
+      plugin: { name: "github" },
+      repos: [{ repo: "getsentry/junior", path: "repos/junior" }],
+      sandbox: {
+        juniorRoot: "/vercel/sandbox/.junior",
+        root: "/vercel/sandbox",
+        async readFile() {
+          return null;
+        },
+        async run(input: { args?: string[] }) {
+          runs.push(input.args ?? []);
+          if (input.args?.includes("symbolic-ref")) {
+            return { exitCode: 1, stderr: "detached", stdout: "" };
+          }
+          return {
+            exitCode: 0,
+            stderr: "",
+            stdout: input.args?.includes("HEAD^{commit}")
+              ? `${sha}\n`
+              : input.args?.includes(
+                    "/vercel/sandbox/.junior/workspace-refresh.XXXXXX",
+                  )
+                ? "/vercel/sandbox/.junior/workspace-refresh.test\n"
+                : "",
+          };
+        },
+        async writeFile() {},
+      },
+    } as WorkspacePrepareHookContext;
+
+    await githubPlugin().hooks?.workspacePrepare?.(ctx);
+
+    expect(runs).toContainEqual([
+      "--git-dir",
+      "/vercel/sandbox/.junior/workspace-refresh.test",
+      "--work-tree",
+      "repos/junior",
+      "update-ref",
+      "--no-deref",
+      "HEAD",
+      sha,
+    ]);
+    expect(runs).toContainEqual([
+      "--git-dir",
+      "/vercel/sandbox/.junior/workspace-refresh.test",
+      "--work-tree",
+      "repos/junior",
+      "reset",
+      "--hard",
+      sha,
+    ]);
+    expect(runs).not.toContainEqual(["-rf", "--", "repos/junior"]);
+  });
+
+  it("clones a missing workspace repository after detecting no worktree", async () => {
+    const runs: Array<{ args?: string[]; cmd?: string }> = [];
+    const ctx = {
+      db,
+      log: pluginLog,
+      plugin: { name: "github" },
+      repos: [{ repo: "getsentry/junior", path: "repos/junior" }],
+      sandbox: {
+        juniorRoot: "/vercel/sandbox/.junior",
+        root: "/vercel/sandbox",
+        async readFile() {
+          return null;
+        },
+        async run(input: { args?: string[]; cmd?: string }) {
+          runs.push(input);
+          if (input.args?.includes("rev-parse")) {
+            return { exitCode: 1, stderr: "", stdout: "" };
+          }
           return { exitCode: 0, stderr: "", stdout: "" };
         },
         async writeFile() {},
@@ -3023,27 +3331,16 @@ Conversation: \`local:test:old-conversation\`
 
     expect(runs.map((run) => run.args)).toEqual([
       ["-p", "--", "repos"],
-      ["-rf", "--", "repos/sentry"],
-      [
-        "clone",
-        "--quiet",
-        "--depth=1",
-        "--",
-        "https://github.com/getsentry/sentry.git",
-        "repos/sentry",
-      ],
-      ["-p", "--", "repos"],
+      ["-C", "repos/junior", "rev-parse", "--is-inside-work-tree"],
       ["-rf", "--", "repos/junior"],
       [
         "clone",
         "--quiet",
-        "--depth=1",
         "--",
         "https://github.com/getsentry/junior.git",
         "repos/junior",
       ],
     ]);
-    expect(runs.every((run) => run.env === undefined)).toBe(true);
   });
 
   it("replaces a partial checkout when an interrupted clone is retried", async () => {
@@ -3063,9 +3360,21 @@ Conversation: \`local:test:old-conversation\`
         async run(input: { args?: string[]; cmd: string }) {
           runs.push(input);
           if (input.cmd === "git") {
-            cloneAttempts += 1;
-            if (cloneAttempts === 1) {
-              return { exitCode: 130, stderr: "interrupted", stdout: "" };
+            if (input.args?.includes("--is-inside-work-tree")) {
+              return {
+                exitCode: cloneAttempts === 0 ? 1 : 0,
+                stderr: "",
+                stdout: "",
+              };
+            }
+            if (input.args?.includes("--symbolic-full-name")) {
+              return { exitCode: 1, stderr: "", stdout: "" };
+            }
+            if (input.args?.[0] === "clone") {
+              cloneAttempts += 1;
+              if (cloneAttempts === 1) {
+                return { exitCode: 130, stderr: "interrupted", stdout: "" };
+              }
             }
           }
           return { exitCode: 0, stderr: "", stdout: "" };
