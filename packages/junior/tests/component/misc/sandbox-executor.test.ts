@@ -1029,6 +1029,62 @@ describe("createTestSandbox", () => {
     expect(runtime.sandboxRef()?.id).toBe("sbx_workspace_refreshed");
   });
 
+  it("soft-waits when a hard turn abort interrupts Workspace snapshot setup", async () => {
+    hashMock.mockReturnValue("profile-abort-wait");
+    let releaseResolve: (() => void) | undefined;
+    const resolveStarted = new Promise<void>((resolve) => {
+      releaseResolve = resolve;
+    });
+    resolveWorkspaceMock.mockImplementationOnce(async (params: any) => {
+      releaseResolve?.();
+      await new Promise<never>((_resolve, reject) => {
+        const signal = params.signal as AbortSignal | undefined;
+        if (signal?.aborted) {
+          reject(
+            signal.reason ??
+              new DOMException("This operation was aborted", "AbortError"),
+          );
+          return;
+        }
+        signal?.addEventListener(
+          "abort",
+          () => {
+            reject(
+              signal.reason ??
+                new DOMException("This operation was aborted", "AbortError"),
+            );
+          },
+          { once: true },
+        );
+      });
+    });
+    const workspace = {
+      id: "workspace-abort-wait",
+      name: "sentry",
+      setupScript: "devenv sync",
+      snapshot: null,
+      repos: [],
+    };
+    const runtime = createSandboxRuntime({
+      skills: [],
+      referenceFiles: [],
+    });
+    const controller = new AbortController();
+    const switchPromise = runtime.switchWorkspace(workspace, controller.signal);
+    await resolveStarted;
+    controller.abort(
+      new DOMException("This operation was aborted", "AbortError"),
+    );
+
+    await expect(switchPromise).rejects.toSatisfy(
+      (error: unknown) =>
+        error instanceof Error &&
+        error.name === "WorkspaceSnapshotWaitingError" &&
+        error.message.includes(workspace.name),
+    );
+    expect(sandboxCreateMock).not.toHaveBeenCalled();
+  });
+
   it("keeps the live sandbox when workspace switch is cancelled mid-boot", async () => {
     const initialSandbox = makeSandbox("sbx_workspace_initial");
     const nextSandbox = makeSandbox("sbx_workspace_next");

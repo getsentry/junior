@@ -319,6 +319,89 @@ describe("Workspace snapshot completion", () => {
     expect(sandboxCreateMock).not.toHaveBeenCalled();
   });
 
+  it("soft-waits when a hard turn abort interrupts setup polling", async () => {
+    const workspace = await createWorkspace({
+      name: `snapshot-abort-${randomUUID()}`,
+      setupScript: "printf ready",
+      repos: [],
+    });
+    const value = profile.create(SANDBOX_RUNTIME, workspace);
+    if (!value) throw new Error("Workspace snapshot profile is missing");
+
+    await setWorkspaceSnapshotBuild(
+      workspace.id,
+      {
+        id: randomUUID(),
+        status: "building",
+        phase: "repositories_prepared",
+        profileHash: value.hash,
+        startedAt: new Date(),
+        sandboxName: "setup-poll-owner",
+        commandId: "setup-command",
+        error: null,
+      },
+      { insertIfMissing: true },
+    );
+
+    let releaseWait: (() => void) | undefined;
+    const waitStarted = new Promise<void>((resolve) => {
+      releaseWait = resolve;
+    });
+    sandboxGetMock.mockResolvedValue({
+      getCommand: vi.fn(async () => ({
+        wait: vi.fn(async ({ signal }: { signal?: AbortSignal }) => {
+          releaseWait?.();
+          await new Promise<never>((_resolve, reject) => {
+            if (signal?.aborted) {
+              reject(
+                signal.reason ??
+                  new DOMException("This operation was aborted", "AbortError"),
+              );
+              return;
+            }
+            signal?.addEventListener(
+              "abort",
+              () => {
+                reject(
+                  signal.reason ??
+                    new DOMException(
+                      "This operation was aborted",
+                      "AbortError",
+                    ),
+                );
+              },
+              { once: true },
+            );
+          });
+        }),
+      })),
+      snapshot: vi.fn(),
+      delete: vi.fn(),
+    });
+
+    const controller = new AbortController();
+    const pending = resolveWorkspaceSnapshot({
+      workspace,
+      runtime: SANDBOX_RUNTIME,
+      signal: controller.signal,
+      shouldYield: () => false,
+      applyNetworkPolicy: async () => {},
+      removeCredentialRoute: false,
+    });
+    await waitStarted;
+    controller.abort(
+      new DOMException("This operation was aborted", "AbortError"),
+    );
+
+    await expect(pending).rejects.toSatisfy(isWorkspaceSnapshotWaitingError);
+    await expect(
+      loadSnapshotsForProfile(getDb(), workspace.id, value.hash),
+    ).resolves.toMatchObject({
+      build: { status: "building", commandId: "setup-command" },
+      ready: null,
+    });
+  });
+
   it("attempts every builder cleanup after a provider failure", async () => {
     const attempted: string[] = [];
     sandboxGetMock.mockImplementation(async ({ name }: { name: string }) => ({

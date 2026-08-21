@@ -620,30 +620,39 @@ export async function resolveWorkspaceSnapshot(params: {
   ): Promise<void>;
   removeCredentialRoute: boolean;
 }): Promise<Snapshot> {
-  for (;;) {
-    params.signal?.throwIfAborted();
-    const workspace = await getWorkspace(getDb(), params.workspace.id);
-    if (!workspace) throw workspaceDeletedError(params.workspace);
-    const slice = { ...params, workspace };
-    if (shouldYieldWait(slice.shouldYield)) {
-      throw new WorkspaceSnapshotWaitingError(workspace.name);
-    }
-
-    let snapshot: Snapshot | null;
-    try {
-      snapshot = await advanceWorkspaceSnapshot(slice);
-    } catch (error) {
-      if (!isSandboxApiTransientError(error)) throw error;
+  const workspaceName = params.workspace.name;
+  try {
+    for (;;) {
+      params.signal?.throwIfAborted();
+      const workspace = await getWorkspace(getDb(), params.workspace.id);
+      if (!workspace) throw workspaceDeletedError(params.workspace);
+      const slice = { ...params, workspace };
       if (shouldYieldWait(slice.shouldYield)) {
         throw new WorkspaceSnapshotWaitingError(workspace.name);
       }
-      await sleep(TRANSIENT_API_RETRY_MS, params.signal);
-      continue;
+
+      let snapshot: Snapshot | null;
+      try {
+        snapshot = await advanceWorkspaceSnapshot(slice);
+      } catch (error) {
+        if (!isSandboxApiTransientError(error)) throw error;
+        if (shouldYieldWait(slice.shouldYield)) {
+          throw new WorkspaceSnapshotWaitingError(workspace.name);
+        }
+        await sleep(TRANSIENT_API_RETRY_MS, params.signal);
+        continue;
+      }
+      if (shouldYieldWait(slice.shouldYield)) {
+        throw new WorkspaceSnapshotWaitingError(workspace.name);
+      }
+      if (snapshot) return snapshot;
+      await sleep(WAIT_POLL_MS, params.signal);
     }
-    if (shouldYieldWait(slice.shouldYield)) {
-      throw new WorkspaceSnapshotWaitingError(workspace.name);
+  } catch (error) {
+    // Hard turn aborts must soft-wait so the next slice can resume the build.
+    if (isAbortError(error)) {
+      throw new WorkspaceSnapshotWaitingError(workspaceName);
     }
-    if (snapshot) return snapshot;
-    await sleep(WAIT_POLL_MS, params.signal);
+    throw error;
   }
 }
