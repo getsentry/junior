@@ -98,12 +98,13 @@ export async function prepareWorkspace(
         `GitHub workspace checkout cleanup failed for ${repo}: ${cleanup.stderr.trim() || `exit ${cleanup.exitCode}`}`,
       );
     }
+    // Full clone: Workspace checkouts need normal git history for blame,
+    // merge-base, branch switches, and later boot refreshes.
     const result = await ctx.sandbox.run({
       cmd: "git",
       args: [
         "clone",
         "--quiet",
-        "--depth=1",
         "--",
         `https://github.com/${owner}/${name}.git`,
         path,

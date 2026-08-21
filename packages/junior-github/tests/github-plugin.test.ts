@@ -3028,7 +3028,6 @@ Conversation: \`local:test:old-conversation\`
       [
         "clone",
         "--quiet",
-        "--depth=1",
         "--",
         "https://github.com/getsentry/sentry.git",
         "repos/sentry",
@@ -3038,7 +3037,6 @@ Conversation: \`local:test:old-conversation\`
       [
         "clone",
         "--quiet",
-        "--depth=1",
         "--",
         "https://github.com/getsentry/junior.git",
         "repos/junior",
