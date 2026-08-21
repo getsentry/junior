@@ -1,15 +1,18 @@
 import { Hono } from "hono";
 import { afterEach, describe, expect, it } from "vitest";
 import { createJuniorApi } from "@/api";
+import { readConversationDetail } from "@/api/conversations/detail";
 import { readConversationFeed } from "@/api/conversations/list";
 import type { JuniorApiEnv } from "@/api/route";
 import {
   apiErrorSchema,
   archiveConversationResponseSchema,
+  conversationDetailReportSchema,
 } from "@/api/schema";
 import { closeDb, getConversationStore, getDb } from "@/chat/db";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
-import { juniorConversationParticipants } from "@/db/schema";
+import { juniorConversationParticipants, juniorUsers } from "@/db/schema";
+import { eq } from "drizzle-orm";
 
 async function authenticatedApi(email: string) {
   const viewer = await resolveViewerUser(email);
@@ -43,7 +46,7 @@ describe("conversation archive API", () => {
     await closeDb();
   });
 
-  it("archives a conversation only for the viewer", async () => {
+  it("archives a conversation only for the viewer and exposes archivedAt on detail", async () => {
     const conversationId = "internal:archive-route";
     const lastSeenAt = "1970-01-01T00:00:01.000Z";
     await getConversationStore().recordActivity({
@@ -85,6 +88,16 @@ describe("conversation archive API", () => {
       conversations: [expect.objectContaining({ conversationId })],
     });
 
+    const archivedDetail = conversationDetailReportSchema.parse(
+      await readConversationDetail(conversationId, { viewer }),
+    );
+    expect(archivedDetail.archivedAt).toEqual(expect.any(String));
+    expect(
+      conversationDetailReportSchema.parse(
+        await readConversationDetail(conversationId, { viewer: otherViewer }),
+      ).archivedAt,
+    ).toBeUndefined();
+
     const restore = await app.request(
       `http://localhost/api/conversations/${conversationId}/archive`,
       {
@@ -97,6 +110,62 @@ describe("conversation archive API", () => {
     await expect(readConversationFeed({ viewer })).resolves.toMatchObject({
       conversations: [expect.objectContaining({ conversationId })],
     });
+    expect(
+      conversationDetailReportSchema.parse(
+        await readConversationDetail(conversationId, { viewer }),
+      ).archivedAt,
+    ).toBeUndefined();
+  });
+
+  it("archives for a root actor without an existing participant row", async () => {
+    const conversationId = "internal:archive-root-actor";
+    const lastSeenAt = "1970-01-01T00:00:02.000Z";
+    const email = "root-actor@example.com";
+    await getConversationStore().recordActivity({
+      actor: {
+        email,
+        platform: "slack",
+        slackUserId: "UROOT",
+        teamId: "T1",
+      },
+      conversationId,
+      nowMs: Date.parse(lastSeenAt),
+      source: "slack",
+      title: "Root actor archive",
+    });
+    const linkedUser = await getDb()
+      .select({ id: juniorUsers.id })
+      .from(juniorUsers)
+      .where(eq(juniorUsers.primaryEmailNormalized, email))
+      .limit(1);
+    const viewerId = linkedUser[0]?.id;
+    expect(viewerId).toBeDefined();
+    await getDb()
+      .delete(juniorConversationParticipants)
+      .where(eq(juniorConversationParticipants.userId, viewerId!));
+
+    const viewer = {
+      ...(await resolveViewerUser(email))!,
+      id: viewerId!,
+    };
+    const { app } = await authenticatedApi(email);
+    const archive = await app.request(
+      `http://localhost/api/conversations/${conversationId}/archive`,
+      {
+        body: JSON.stringify({ archived: true, lastSeenAt }),
+        headers: { "content-type": "application/json" },
+        method: "PATCH",
+      },
+    );
+    expect(archive.status).toBe(200);
+    await expect(readConversationFeed({ viewer })).resolves.toMatchObject({
+      conversations: [],
+    });
+    expect(
+      conversationDetailReportSchema.parse(
+        await readConversationDetail(conversationId, { viewer }),
+      ).archivedAt,
+    ).toEqual(expect.any(String));
   });
 
   it("requires a viewer and rejects stale activity", async () => {

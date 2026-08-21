@@ -1,5 +1,5 @@
 import type { User } from "@sentry/junior-plugin-api";
-import { and, eq, exists, isNotNull } from "drizzle-orm";
+import { and, eq, isNotNull, sql } from "drizzle-orm";
 import { getDb, getSqlExecutor } from "@/chat/db";
 import { resolveRootConversationId } from "@/chat/conversations/sql/participants";
 import {
@@ -13,25 +13,63 @@ import type {
 } from "../schema/conversation";
 import { readConversationAccessFromSql } from "./access";
 
-async function archiveIfUnchanged(args: {
+async function readRootActivity(args: {
+  lastSeenAt: string;
+  rootConversationId: string;
+}): Promise<"conflict" | "missing" | "ok"> {
+  const [existing] = await getDb()
+    .select({
+      conversationId: juniorConversations.conversationId,
+      lastActivityAt: juniorConversations.lastActivityAt,
+    })
+    .from(juniorConversations)
+    .where(eq(juniorConversations.conversationId, args.rootConversationId))
+    .limit(1);
+  if (!existing) return "missing";
+  if (existing.lastActivityAt.getTime() !== Date.parse(args.lastSeenAt)) {
+    return "conflict";
+  }
+  return "ok";
+}
+
+async function setViewerArchive(args: {
   archived: boolean;
   lastSeenAt: string;
   rootConversationId: string;
   userId: string;
-}): Promise<"conflict" | "updated"> {
-  const db = getDb();
-  const currentConversation = db
-    .select({ conversationId: juniorConversations.conversationId })
-    .from(juniorConversations)
-    .where(
-      and(
-        eq(juniorConversations.conversationId, args.rootConversationId),
-        eq(juniorConversations.lastActivityAt, new Date(args.lastSeenAt)),
-      ),
-    );
-  const rows = await db
+}): Promise<"conflict" | "missing" | "updated"> {
+  const activity = await readRootActivity({
+    lastSeenAt: args.lastSeenAt,
+    rootConversationId: args.rootConversationId,
+  });
+  if (activity !== "ok") return activity;
+
+  if (args.archived) {
+    const lastMessageAt = new Date(args.lastSeenAt);
+    await getDb()
+      .insert(juniorConversationParticipants)
+      .values({
+        archivedAt: new Date(),
+        lastMessageAt,
+        rootConversationId: args.rootConversationId,
+        userId: args.userId,
+      })
+      .onConflictDoUpdate({
+        target: [
+          juniorConversationParticipants.userId,
+          juniorConversationParticipants.rootConversationId,
+        ],
+        set: {
+          archivedAt: new Date(),
+          lastMessageAt: sql`greatest(${juniorConversationParticipants.lastMessageAt}, excluded.last_message_at)`,
+        },
+      });
+    return "updated";
+  }
+
+  await getDb()
     .update(juniorConversationParticipants)
-    .set({ archivedAt: args.archived ? new Date() : null })
+    .set({ archivedAt: null })
     .where(
       and(
         eq(juniorConversationParticipants.userId, args.userId),
@@ -39,15 +77,10 @@ async function archiveIfUnchanged(args: {
           juniorConversationParticipants.rootConversationId,
           args.rootConversationId,
         ),
-        args.archived ? exists(currentConversation) : undefined,
-        args.archived
-          ? undefined
-          : isNotNull(juniorConversationParticipants.archivedAt),
+        isNotNull(juniorConversationParticipants.archivedAt),
       ),
-    )
-    .returning({ userId: juniorConversationParticipants.userId });
-  if (rows.length > 0 || !args.archived) return "updated";
-  return "conflict";
+    );
+  return "updated";
 }
 
 /** Read one viewer's archive timestamp for a conversation root. */
@@ -93,12 +126,15 @@ export async function archiveConversation(
     getSqlExecutor(),
     conversationId,
   );
-  const result = await archiveIfUnchanged({
+  const result = await setViewerArchive({
     archived: body.archived,
     lastSeenAt: body.lastSeenAt,
     rootConversationId,
     userId: viewer.id,
   });
+  if (result === "missing") {
+    throwApiError(404, "Conversation not found.");
+  }
   if (result === "conflict") {
     throwApiError(409, "Conversation received new activity.");
   }
