@@ -111,29 +111,25 @@ test("starts a new conversation from a centered compose empty state", async ({
     )
     .toBe("landing-compose");
 
-  // Focusing the hero must keep the landing scroller on the hero (no iOS jump).
-  await composer.evaluate((node) => {
-    if (node instanceof HTMLElement) node.blur();
-  });
+  // Hero lives outside the list scroller so focus cannot pan it away.
   await expect
     .poll(() =>
-      composer.evaluate(async (node) => {
-        const scroller = node.closest("[data-create-landing-scroll]");
-        if (!(scroller instanceof HTMLElement) || !(node instanceof HTMLElement)) {
-          return "missing-scroller";
+      composer.evaluate((node) => {
+        const frame = node.closest("[data-create-landing-scroll]");
+        const list = frame?.querySelector("[data-create-landing-list]");
+        if (!(frame instanceof HTMLElement) || !(node instanceof HTMLElement)) {
+          return "missing-frame";
         }
-        scroller.scrollTop = 80;
-        // Match iOS: focus can pan the overflow ancestor before our freeze runs.
-        node.focus();
-        await new Promise((resolve) => requestAnimationFrame(resolve));
-        await new Promise((resolve) => requestAnimationFrame(resolve));
-        return scroller.scrollTop === 0 ? "hero-pinned" : `jumped:${scroller.scrollTop}`;
+        if (!(list instanceof HTMLElement)) return "missing-list-scroller";
+        if (list.contains(node)) return "hero-inside-list-scroller";
+        return "hero-outside-list-scroller";
       }),
     )
-    .toBe("hero-pinned");
+    .toBe("hero-outside-list-scroller");
+  await composer.focus();
   await expect(composer).toBeFocused();
 
-  // List search lives in the same scroller and must not inherit the freeze.
+  // List search owns the only landing scroll region under the hero.
   const search = page.getByRole("searchbox", {
     name: "Search your conversations",
   });
@@ -142,22 +138,19 @@ test("starts a new conversation from a centered compose empty state", async ({
   await expect
     .poll(() =>
       search.evaluate((node) => {
-        const scroller = node.closest("[data-create-landing-scroll]");
-        if (!(scroller instanceof HTMLElement)) return "missing-scroller";
-        const overflowY = getComputedStyle(scroller).overflowY;
-        if (overflowY === "hidden") return "search-froze-scroller";
-        // Freeze pins to 0. Search focus may pan into view, but the scroller must
-        // remain unlocked so a manual scroll is not forced back to the hero.
-        const before = scroller.scrollTop;
-        scroller.scrollTop = before + 40;
-        const after = scroller.scrollTop;
-        if (after === 0 && before === 0) {
-          // Short lists may have no overflow; unlocked is enough.
-          return scroller.scrollHeight > scroller.clientHeight
-            ? "search-pinned-to-hero"
+        const list = node
+          .closest("[data-create-landing-scroll]")
+          ?.querySelector("[data-create-landing-list]");
+        if (!(list instanceof HTMLElement)) return "missing-list-scroller";
+        if (!list.contains(node)) return "search-outside-list-scroller";
+        const before = list.scrollTop;
+        list.scrollTop = before + 40;
+        const after = list.scrollTop;
+        if (after === before) {
+          return list.scrollHeight > list.clientHeight
+            ? "search-scroll-rejected"
             : "search-unlocked";
         }
-        if (after === before) return "search-scroll-rejected";
         return "search-unlocked";
       }),
     )
@@ -331,13 +324,11 @@ test("opens and closes a conversation in the mobile workspace", async ({
     )
     .toBe(true);
 
-  // iOS often opens the keyboard with height-only resize (offset still 0),
-  // then delivers the first dock as a visualViewport scroll. The shell must
-  // accept that handoff or the composer freezes above the visible viewport.
+  // Open keyboard: shell follows live visual geometry (height + offset).
   await page.evaluate(() => {
     Object.defineProperties(window.visualViewport, {
       height: { configurable: true, value: 520 },
-      offsetTop: { configurable: true, value: 0 },
+      offsetTop: { configurable: true, value: 140 },
     });
     window.visualViewport?.dispatchEvent(new Event("resize"));
   });
@@ -354,7 +345,7 @@ test("opens and closes a conversation in the mobile workspace", async ({
         element.style.getPropertyValue("--dashboard-viewport-offset-top"),
       ),
     )
-    .toBe("0px");
+    .toBe("140px");
   await expect
     .poll(() =>
       shell.evaluate((element) =>
@@ -362,21 +353,6 @@ test("opens and closes a conversation in the mobile workspace", async ({
       ),
     )
     .toBe("1");
-
-  await page.evaluate(() => {
-    Object.defineProperties(window.visualViewport, {
-      height: { configurable: true, value: 520 },
-      offsetTop: { configurable: true, value: 140 },
-    });
-    window.visualViewport?.dispatchEvent(new Event("scroll"));
-  });
-  await expect
-    .poll(() =>
-      shell.evaluate((element) =>
-        element.style.getPropertyValue("--dashboard-viewport-offset-top"),
-      ),
-    )
-    .toBe("140px");
   // Reply threads must use the dock owner, not the create landing scroll path.
   await expect
     .poll(() =>
@@ -449,14 +425,13 @@ test("opens and closes a conversation in the mobile workspace", async ({
     )
     .toBe("140px");
 
-  // Same-frame resize+scroll burst must still dock (resize wins the coalesce).
+  // Later visual updates still follow live geometry (no freeze lock-in).
   await page.evaluate(() => {
     Object.defineProperties(window.visualViewport, {
       height: { configurable: true, value: 500 },
       offsetTop: { configurable: true, value: 150 },
     });
     window.visualViewport?.dispatchEvent(new Event("resize"));
-    window.visualViewport?.dispatchEvent(new Event("scroll"));
   });
   await expect
     .poll(() =>
@@ -465,23 +440,6 @@ test("opens and closes a conversation in the mobile workspace", async ({
       ),
     )
     .toBe("500px");
-  await expect
-    .poll(() =>
-      shell.evaluate((element) =>
-        element.style.getPropertyValue("--dashboard-viewport-offset-top"),
-      ),
-    )
-    .toBe("150px");
-  await expectFocusedComposerAtVisualViewportBottom(composer, 500, 150);
-
-  // Scroll-driven Safari pans while focused must not chase the shell.
-  await page.evaluate(() => {
-    Object.defineProperties(window.visualViewport, {
-      height: { configurable: true, value: 500 },
-      offsetTop: { configurable: true, value: 180 },
-    });
-    window.visualViewport?.dispatchEvent(new Event("scroll"));
-  });
   await expect
     .poll(() =>
       shell.evaluate((element) =>

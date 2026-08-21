@@ -1,10 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  clampMobileViewportOffsetTop,
-  coalescedMobileViewportSyncSource,
   mobileViewportMetrics,
-  mobileViewportOffsetTop,
   nextRestingLayoutHeight,
 } from "../src/client/mobileViewport";
 
@@ -34,7 +31,6 @@ describe("mobileViewportMetrics", () => {
       }),
     ).toEqual({
       heightPx: 844,
-      keyboardMode: "closed",
       keyboardOpen: false,
       offsetTopPx: 0,
     });
@@ -52,7 +48,6 @@ describe("mobileViewportMetrics", () => {
       }),
     ).toEqual({
       heightPx: 844,
-      keyboardMode: "closed",
       keyboardOpen: false,
       offsetTopPx: 0,
     });
@@ -70,7 +65,6 @@ describe("mobileViewportMetrics", () => {
       }),
     ).toEqual({
       heightPx: 520,
-      keyboardMode: "resizes-visual",
       keyboardOpen: true,
       offsetTopPx: 140,
     });
@@ -90,13 +84,14 @@ describe("mobileViewportMetrics", () => {
       }),
     ).toEqual({
       heightPx: 520,
-      keyboardMode: "resizes-content",
       keyboardOpen: true,
       offsetTopPx: 0,
     });
   });
 
-  it("detects resizes-content keyboard open from a non-zero visual offset", () => {
+  it("zeros leftover visual offset when layout already matches the visible band", () => {
+    // Hybrid WebKit can still report offsetTop after layout shrank. Trusting
+    // that offset shoves the fixed shell under the keyboard.
     expect(
       mobileViewportMetrics({
         editableFocused: false,
@@ -108,9 +103,8 @@ describe("mobileViewportMetrics", () => {
       }),
     ).toEqual({
       heightPx: 520,
-      keyboardMode: "resizes-content",
       keyboardOpen: true,
-      offsetTopPx: 120,
+      offsetTopPx: 0,
     });
   });
 
@@ -128,7 +122,6 @@ describe("mobileViewportMetrics", () => {
       }),
     ).toEqual({
       heightPx: 390,
-      keyboardMode: "closed",
       keyboardOpen: false,
       offsetTopPx: 0,
     });
@@ -146,9 +139,25 @@ describe("mobileViewportMetrics", () => {
       }),
     ).toEqual({
       heightPx: 480,
-      keyboardMode: "resizes-visual",
       keyboardOpen: true,
       offsetTopPx: 0,
+    });
+  });
+
+  it("caps offset so top + height never exceeds layout height", () => {
+    expect(
+      mobileViewportMetrics({
+        editableFocused: true,
+        layoutHeight: 700,
+        mobile: true,
+        restingLayoutHeight: 844,
+        visualHeight: 520,
+        visualOffsetTop: 250,
+      }),
+    ).toEqual({
+      heightPx: 520,
+      keyboardOpen: true,
+      offsetTopPx: 180,
     });
   });
 });
@@ -199,323 +208,8 @@ describe("nextRestingLayoutHeight", () => {
       }),
     ).toEqual({
       heightPx: 700,
-      keyboardMode: "closed",
       keyboardOpen: false,
       offsetTopPx: 0,
     });
-  });
-});
-
-describe("coalescedMobileViewportSyncSource", () => {
-  it("keeps keyboard resize stronger than a same-frame scroll", () => {
-    expect(coalescedMobileViewportSyncSource("resize", "scroll")).toBe(
-      "resize",
-    );
-    expect(coalescedMobileViewportSyncSource("scroll", "resize")).toBe(
-      "resize",
-    );
-  });
-
-  it("uses scroll when it is the only signal in a frame", () => {
-    expect(coalescedMobileViewportSyncSource(undefined, "scroll")).toBe(
-      "scroll",
-    );
-  });
-});
-
-describe("mobileViewportOffsetTop", () => {
-  it("docks to the keyboard offset on first focus resize", () => {
-    expect(
-      mobileViewportOffsetTop({
-        editableFocused: true,
-        keyboardMode: "resizes-visual",
-        keyboardOpen: true,
-        nextOffsetTop: 140,
-        previousOffsetTop: 0,
-        source: "resize",
-      }),
-    ).toBe(140);
-  });
-
-  it("accepts a first significant keyboard dock from non-resize sources while undocked under resizes-visual", () => {
-    for (const source of ["scroll", "focusin", "measure"] as const) {
-      expect(
-        mobileViewportOffsetTop({
-          editableFocused: true,
-          keyboardMode: "resizes-visual",
-          keyboardOpen: true,
-          nextOffsetTop: 140,
-          previousOffsetTop: 0,
-          source,
-        }),
-        source,
-      ).toBe(140);
-    }
-  });
-
-  it("ignores tiny offset jitter before the real first dock under resizes-visual", () => {
-    expect(
-      mobileViewportOffsetTop({
-        editableFocused: true,
-        keyboardMode: "resizes-visual",
-        keyboardOpen: true,
-        nextOffsetTop: 12,
-        previousOffsetTop: 0,
-        source: "scroll",
-      }),
-    ).toBe(0);
-  });
-
-  it("freezes non-resize caret pans under resizes-content even while offset is still zero", () => {
-    // interactive-widget=resizes-content keeps offset 0 as the steady open
-    // geometry. A later caret pan must not steal the shell.
-    expect(
-      mobileViewportOffsetTop({
-        editableFocused: true,
-        keyboardMode: "resizes-content",
-        keyboardOpen: true,
-        nextOffsetTop: 48,
-        previousOffsetTop: 0,
-        source: "scroll",
-      }),
-    ).toBe(0);
-  });
-
-  it("keeps the shell still while Safari later pans a focused editor", () => {
-    expect(
-      mobileViewportOffsetTop({
-        editableFocused: true,
-        keyboardMode: "resizes-visual",
-        keyboardOpen: true,
-        nextOffsetTop: 180,
-        previousOffsetTop: 140,
-        source: "scroll",
-      }),
-    ).toBe(140);
-  });
-
-  it("freezes measure and focus churn after the shell is already docked", () => {
-    expect(
-      mobileViewportOffsetTop({
-        editableFocused: true,
-        keyboardMode: "resizes-visual",
-        keyboardOpen: true,
-        nextOffsetTop: 200,
-        previousOffsetTop: 140,
-        source: "measure",
-      }),
-    ).toBe(140);
-    expect(
-      mobileViewportOffsetTop({
-        editableFocused: true,
-        keyboardMode: "resizes-visual",
-        keyboardOpen: true,
-        nextOffsetTop: 200,
-        previousOffsetTop: 140,
-        source: "focusin",
-      }),
-    ).toBe(140);
-  });
-
-  it("still follows keyboard resize after the first dock", () => {
-    expect(
-      mobileViewportOffsetTop({
-        editableFocused: true,
-        keyboardMode: "resizes-visual",
-        keyboardOpen: true,
-        nextOffsetTop: 160,
-        previousOffsetTop: 140,
-        source: "resize",
-      }),
-    ).toBe(160);
-  });
-
-  it("walks the iOS first-focus dock sequence without drifting", () => {
-    // 1. Keyboard opens: height shrinks, offset still 0 for a frame.
-    let offset = mobileViewportOffsetTop({
-      editableFocused: true,
-      keyboardMode: "resizes-visual",
-      keyboardOpen: true,
-      nextOffsetTop: 0,
-      previousOffsetTop: 0,
-      source: "resize",
-    });
-    expect(offset).toBe(0);
-
-    // 2. Tiny jitter before the real dock must not lock the shell.
-    offset = mobileViewportOffsetTop({
-      editableFocused: true,
-      keyboardMode: "resizes-visual",
-      keyboardOpen: true,
-      nextOffsetTop: 8,
-      previousOffsetTop: offset,
-      source: "scroll",
-    });
-    expect(offset).toBe(0);
-
-    // 3. First real dock arrives as scroll (the physical-iPhone failure mode).
-    offset = mobileViewportOffsetTop({
-      editableFocused: true,
-      keyboardMode: "resizes-visual",
-      keyboardOpen: true,
-      nextOffsetTop: 140,
-      previousOffsetTop: offset,
-      source: "scroll",
-    });
-    expect(offset).toBe(140);
-
-    // 4. Later caret pan must not chase.
-    offset = mobileViewportOffsetTop({
-      editableFocused: true,
-      keyboardMode: "resizes-visual",
-      keyboardOpen: true,
-      nextOffsetTop: 180,
-      previousOffsetTop: offset,
-      source: "scroll",
-    });
-    expect(offset).toBe(140);
-
-    // 5. Keyboard animation may still move the dock via resize.
-    offset = mobileViewportOffsetTop({
-      editableFocused: true,
-      keyboardMode: "resizes-visual",
-      keyboardOpen: true,
-      nextOffsetTop: 160,
-      previousOffsetTop: offset,
-      source: "resize",
-    });
-    expect(offset).toBe(160);
-
-    // 6. Blur snaps closed even with a stale visual offset.
-    offset = mobileViewportOffsetTop({
-      editableFocused: false,
-      keyboardMode: "closed",
-      keyboardOpen: false,
-      nextOffsetTop: 160,
-      previousOffsetTop: offset,
-      source: "focusout",
-    });
-    expect(offset).toBe(0);
-  });
-
-  it("walks the resizes-content open sequence without caret-pan drift", () => {
-    // 1. Both viewports shrink together; offset stays 0.
-    let offset = mobileViewportOffsetTop({
-      editableFocused: true,
-      keyboardMode: "resizes-content",
-      keyboardOpen: true,
-      nextOffsetTop: 0,
-      previousOffsetTop: 0,
-      source: "resize",
-    });
-    expect(offset).toBe(0);
-
-    // 2. Later caret pan must not move the shell.
-    offset = mobileViewportOffsetTop({
-      editableFocused: true,
-      keyboardMode: "resizes-content",
-      keyboardOpen: true,
-      nextOffsetTop: 48,
-      previousOffsetTop: offset,
-      source: "scroll",
-    });
-    expect(offset).toBe(0);
-
-    // 3. Resize may still move the dock if the browser reports one.
-    offset = mobileViewportOffsetTop({
-      editableFocused: true,
-      keyboardMode: "resizes-content",
-      keyboardOpen: true,
-      nextOffsetTop: 20,
-      previousOffsetTop: offset,
-      source: "resize",
-    });
-    expect(offset).toBe(20);
-  });
-
-  it("snaps closed after the editor loses focus", () => {
-    expect(
-      mobileViewportOffsetTop({
-        editableFocused: false,
-        keyboardMode: "closed",
-        keyboardOpen: false,
-        nextOffsetTop: 0,
-        previousOffsetTop: 140,
-        source: "focusout",
-      }),
-    ).toBe(0);
-  });
-
-  it("snaps closed even if a stale visual offset remains after blur", () => {
-    expect(
-      mobileViewportOffsetTop({
-        editableFocused: false,
-        keyboardMode: "closed",
-        keyboardOpen: false,
-        nextOffsetTop: 180,
-        previousOffsetTop: 140,
-        source: "focusout",
-      }),
-    ).toBe(0);
-  });
-
-  it("follows open-keyboard scroll offsets when no editor is focused", () => {
-    expect(
-      mobileViewportOffsetTop({
-        editableFocused: false,
-        keyboardMode: "resizes-visual",
-        keyboardOpen: true,
-        nextOffsetTop: 180,
-        previousOffsetTop: 140,
-        source: "scroll",
-      }),
-    ).toBe(180);
-  });
-});
-
-describe("clampMobileViewportOffsetTop", () => {
-  it("keeps a classic Safari visual dock inside a tall layout viewport", () => {
-    expect(
-      clampMobileViewportOffsetTop({
-        heightPx: 520,
-        layoutHeight: 844,
-        offsetTopPx: 140,
-      }),
-    ).toBe(140);
-  });
-
-  it("zeros offset when layout already shrank to the visible band", () => {
-    // interactive-widget=resizes-content / hybrid WebKit: page height is the
-    // keyboard band. A leftover visual offset would shove the composer under
-    // the keyboard (the physical reply-detail failure).
-    expect(
-      clampMobileViewportOffsetTop({
-        heightPx: 520,
-        layoutHeight: 520,
-        offsetTopPx: 140,
-      }),
-    ).toBe(0);
-  });
-
-  it("caps offset so top + height never exceeds layout height", () => {
-    // Layout still taller than the shell by more than the keyboard delta, but
-    // the reported visual offset overshoots the remaining space.
-    expect(
-      clampMobileViewportOffsetTop({
-        heightPx: 520,
-        layoutHeight: 700,
-        offsetTopPx: 250,
-      }),
-    ).toBe(180);
-  });
-
-  it("treats near-equal layout and shell height as page-owned geometry", () => {
-    expect(
-      clampMobileViewportOffsetTop({
-        heightPx: 520,
-        layoutHeight: 560,
-        offsetTopPx: 48,
-      }),
-    ).toBe(0);
   });
 });
