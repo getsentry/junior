@@ -3141,8 +3141,10 @@ Conversation: \`local:test:old-conversation\`
         "repos/junior",
         "fetch",
         "--quiet",
+        "--prune",
+        "--tags",
         "origin",
-        "+refs/heads/stable:refs/remotes/origin/stable",
+        "+refs/heads/*:refs/remotes/origin/*",
       ],
       [
         "--git-dir",
@@ -3216,8 +3218,10 @@ Conversation: \`local:test:old-conversation\`
       "repos/junior",
       "fetch",
       "--quiet",
+      "--prune",
+      "--tags",
       "origin",
-      "+refs/heads/feature:refs/remotes/origin/feature",
+      "+refs/heads/*:refs/remotes/origin/*",
     ]);
     expect(runs).toContainEqual([
       "--git-dir",

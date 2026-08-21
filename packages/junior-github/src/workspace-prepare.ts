@@ -140,8 +140,10 @@ export async function prepareWorkspace(
           path,
           "fetch",
           "--quiet",
+          "--prune",
+          "--tags",
           "origin",
-          `+refs/heads/${remoteBranch}:${remoteRef}`,
+          "+refs/heads/*:refs/remotes/origin/*",
         ],
         [
           "--git-dir",
