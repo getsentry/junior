@@ -1,4 +1,15 @@
 # Changelog
+## 0.177.0
+
+### Bug Fixes 🐛
+
+- (dashboard) Contain mobile composer overscroll by @sentry-junior in [#1640](https://github.com/getsentry/junior/pull/1640)
+- (resource-events) Frame event turns for humans and agents by @sentry-junior in [#1639](https://github.com/getsentry/junior/pull/1639)
+
+### Internal Changes 🔧
+
+- (dashboard) Add slim structural color tokens by @sentry-junior in [#1632](https://github.com/getsentry/junior/pull/1632)
+
 ## 0.176.2
 
 ### Bug Fixes 🐛
