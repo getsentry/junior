@@ -3065,7 +3065,11 @@ Conversation: \`local:test:old-conversation\`
         },
         async run(input: { args?: string[] }) {
           runs.push(input.args ?? []);
-          return { exitCode: 0, stderr: "", stdout: "" };
+          return {
+            exitCode: 0,
+            stderr: "",
+            stdout: input.args?.includes("symbolic-ref") ? "main\n" : "",
+          };
         },
         async writeFile() {},
       },
@@ -3076,16 +3080,24 @@ Conversation: \`local:test:old-conversation\`
     expect(runs).toEqual([
       ["-p", "--", "repos"],
       ["-C", "repos/junior", "rev-parse", "--is-inside-work-tree"],
+      ["-C", "repos/junior", "symbolic-ref", "--quiet", "--short", "HEAD"],
       [
         "-C",
         "repos/junior",
-        "rev-parse",
-        "--verify",
-        "--quiet",
-        "@{upstream}^{commit}",
+        "config",
+        "--replace-all",
+        "remote.origin.url",
+        "https://github.com/getsentry/junior.git",
       ],
-      ["-C", "repos/junior", "fetch", "--quiet", "origin"],
-      ["-C", "repos/junior", "reset", "--hard", "@{upstream}"],
+      [
+        "-C",
+        "repos/junior",
+        "fetch",
+        "--quiet",
+        "origin",
+        "+refs/heads/main:refs/remotes/origin/main",
+      ],
+      ["-C", "repos/junior", "reset", "--hard", "refs/remotes/origin/main"],
       ["-C", "repos/junior", "clean", "-fd"],
     ]);
     expect(
@@ -3157,12 +3169,14 @@ Conversation: \`local:test:old-conversation\`
                 stdout: "",
               };
             }
-            if (input.args?.includes("--verify")) {
+            if (input.args?.includes("symbolic-ref")) {
               return { exitCode: 1, stderr: "", stdout: "" };
             }
-            cloneAttempts += 1;
-            if (cloneAttempts === 1) {
-              return { exitCode: 130, stderr: "interrupted", stdout: "" };
+            if (input.args?.[0] === "clone") {
+              cloneAttempts += 1;
+              if (cloneAttempts === 1) {
+                return { exitCode: 130, stderr: "interrupted", stdout: "" };
+              }
             }
           }
           return { exitCode: 0, stderr: "", stdout: "" };

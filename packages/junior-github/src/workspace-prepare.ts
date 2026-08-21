@@ -53,32 +53,36 @@ export async function prepareWorkspace(
       }
     }
 
+    const cloneUrl = `https://github.com/${owner}/${name}.git`;
     const worktree = await ctx.sandbox.run({
       cmd: "git",
       args: ["-C", path, "rev-parse", "--is-inside-work-tree"],
       cwd: ctx.sandbox.root,
     });
-    const upstream =
+    const branch =
       worktree.exitCode === 0
         ? await ctx.sandbox.run({
             cmd: "git",
-            args: [
-              "-C",
-              path,
-              "rev-parse",
-              "--verify",
-              "--quiet",
-              "@{upstream}^{commit}",
-            ],
+            args: ["-C", path, "symbolic-ref", "--quiet", "--short", "HEAD"],
             cwd: ctx.sandbox.root,
           })
         : undefined;
-    if (upstream?.exitCode === 0) {
+    const branchName = branch?.stdout.trim();
+    if (branch?.exitCode === 0 && branchName) {
       // Existing Workspace checkouts keep setup outputs under ignored paths.
-      // Reset the tracked tree without wiping those installs.
+      // Pin origin before network access, then reset the tracked tree without
+      // wiping those installs. The explicit refspec ignores snapshot config.
       for (const args of [
-        ["-C", path, "fetch", "--quiet", "origin"],
-        ["-C", path, "reset", "--hard", "@{upstream}"],
+        ["-C", path, "config", "--replace-all", "remote.origin.url", cloneUrl],
+        [
+          "-C",
+          path,
+          "fetch",
+          "--quiet",
+          "origin",
+          `+refs/heads/${branchName}:refs/remotes/origin/${branchName}`,
+        ],
+        ["-C", path, "reset", "--hard", `refs/remotes/origin/${branchName}`],
         ["-C", path, "clean", "-fd"],
       ]) {
         const result = await ctx.sandbox.run({
@@ -112,13 +116,7 @@ export async function prepareWorkspace(
     // merge-base, branch switches, and later refreshes.
     const result = await ctx.sandbox.run({
       cmd: "git",
-      args: [
-        "clone",
-        "--quiet",
-        "--",
-        `https://github.com/${owner}/${name}.git`,
-        path,
-      ],
+      args: ["clone", "--quiet", "--", cloneUrl, path],
       cwd: ctx.sandbox.root,
     });
     if (result.exitCode !== 0) {
