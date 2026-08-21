@@ -1,7 +1,7 @@
 import type { WorkspacePrepareHookContext } from "@sentry/junior-plugin-api";
 import { isReservedSandboxDirectory } from "./sandbox-paths.js";
 
-/** Clone or refresh GitHub repositories in their host-selected Workspace paths. */
+/** Clone missing GitHub repositories or refresh existing Workspace checkouts. */
 export async function prepareWorkspace(
   ctx: WorkspacePrepareHookContext,
 ): Promise<void> {
@@ -53,19 +53,14 @@ export async function prepareWorkspace(
       }
     }
 
-    if (ctx.purpose === "boot") {
-      // Snapshot boots already contain complete checkouts and setup outputs.
-      // Refresh the tracked tree without recloning.
-      const checkout = await ctx.sandbox.run({
-        cmd: "git",
-        args: ["-C", path, "rev-parse", "--is-inside-work-tree"],
-        cwd: ctx.sandbox.root,
-      });
-      if (checkout.exitCode !== 0) {
-        throw new Error(
-          `GitHub workspace refresh failed for ${repo}: checkout is missing after snapshot boot`,
-        );
-      }
+    const checkout = await ctx.sandbox.run({
+      cmd: "git",
+      args: ["-C", path, "rev-parse", "--is-inside-work-tree"],
+      cwd: ctx.sandbox.root,
+    });
+    if (checkout.exitCode === 0) {
+      // Existing Workspace checkouts keep setup outputs under ignored paths.
+      // Reset the tracked tree without wiping those installs.
       for (const args of [
         ["-C", path, "fetch", "--quiet", "origin"],
         ["-C", path, "reset", "--hard", "@{upstream}"],
@@ -86,7 +81,7 @@ export async function prepareWorkspace(
     }
 
     // A stopped execution slice can leave a complete or partial checkout. The
-    // next build slice owns this fixed path and must start the clone from clean
+    // next preparation owns this fixed path and must start the clone from clean
     // state.
     const cleanup = await ctx.sandbox.run({
       cmd: "rm",
@@ -99,7 +94,7 @@ export async function prepareWorkspace(
       );
     }
     // Full clone: Workspace checkouts need normal git history for blame,
-    // merge-base, branch switches, and later boot refreshes.
+    // merge-base, branch switches, and later refreshes.
     const result = await ctx.sandbox.run({
       cmd: "git",
       args: [

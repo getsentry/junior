@@ -144,16 +144,12 @@ export interface PluginMcp {
   prepare(): Promise<"authorization_pending" | "ready">;
 }
 
-/** Why Junior is preparing Workspace repositories. */
-export type WorkspacePreparePurpose = "build" | "boot";
-
 /**
  * Provider-owned, repeatable repository preparation for a Workspace Sandbox.
- * `build` may create or replace checkouts. `boot` only refreshes complete
- * checkouts that the snapshot already contains.
+ * Implementations should refresh complete checkouts and replace missing or
+ * partial ones.
  */
 export interface WorkspacePrepareHookContext extends PluginContext {
-  purpose: WorkspacePreparePurpose;
   repos: Array<{
     path: string;
     repo: string;

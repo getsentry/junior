@@ -1201,19 +1201,15 @@ describe("createTestSandbox", () => {
     await runtime.acquire();
 
     expect(onWorkspacePrepare).toHaveBeenCalledTimes(2);
-    expect(onWorkspacePrepare).toHaveBeenNthCalledWith(
-      1,
-      buildSandbox,
+    expect(onWorkspacePrepare.mock.calls[0]?.[0]).toBe(buildSandbox);
+    expect(onWorkspacePrepare.mock.calls[0]?.[1]).toEqual(
       expect.objectContaining({ id: "workspace-1" }),
-      undefined,
-      "build",
     );
-    expect(onWorkspacePrepare).toHaveBeenNthCalledWith(
-      2,
+    expect(onWorkspacePrepare.mock.calls[1]?.[0]).toEqual(
       expect.objectContaining({ sandboxId: "sbx_workspace_active" }),
+    );
+    expect(onWorkspacePrepare.mock.calls[1]?.[1]).toEqual(
       expect.objectContaining({ id: "workspace-1" }),
-      undefined,
-      "boot",
     );
     expect(buildSandbox.update).toHaveBeenNthCalledWith(1, {
       networkPolicy: policy,
