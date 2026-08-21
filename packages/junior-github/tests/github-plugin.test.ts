@@ -3113,6 +3113,54 @@ Conversation: \`local:test:old-conversation\`
     ).toBe(false);
   });
 
+  it("refreshes a valid checkout without an upstream and preserves setup outputs", async () => {
+    const runs: string[][] = [];
+    const ctx = {
+      db,
+      log: pluginLog,
+      plugin: { name: "github" },
+      repos: [{ repo: "getsentry/junior", path: "repos/junior" }],
+      sandbox: {
+        juniorRoot: "/vercel/sandbox/.junior",
+        root: "/vercel/sandbox",
+        async readFile() {
+          return null;
+        },
+        async run(input: { args?: string[] }) {
+          runs.push(input.args ?? []);
+          if (input.args?.includes("--symbolic-full-name")) {
+            return { exitCode: 1, stderr: "no upstream", stdout: "" };
+          }
+          return {
+            exitCode: 0,
+            stderr: "",
+            stdout: input.args?.includes("symbolic-ref") ? "feature\n" : "",
+          };
+        },
+        async writeFile() {},
+      },
+    } as WorkspacePrepareHookContext;
+
+    await githubPlugin().hooks?.workspacePrepare?.(ctx);
+
+    expect(runs).toContainEqual([
+      "-C",
+      "repos/junior",
+      "fetch",
+      "--quiet",
+      "origin",
+      "+refs/heads/feature:refs/remotes/origin/feature",
+    ]);
+    expect(runs).toContainEqual([
+      "-C",
+      "repos/junior",
+      "reset",
+      "--hard",
+      "refs/remotes/origin/feature",
+    ]);
+    expect(runs.some((args) => args.includes("-rf"))).toBe(false);
+  });
+
   it("clones a missing workspace repository after detecting no worktree", async () => {
     const runs: Array<{ args?: string[]; cmd?: string }> = [];
     const ctx = {
