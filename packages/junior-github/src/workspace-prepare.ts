@@ -1,7 +1,7 @@
 import type { WorkspacePrepareHookContext } from "@sentry/junior-plugin-api";
 import { isReservedSandboxDirectory } from "./sandbox-paths.js";
 
-/** Clone or reset GitHub repositories in their host-selected Workspace paths. */
+/** Clone or refresh GitHub repositories in their host-selected Workspace paths. */
 export async function prepareWorkspace(
   ctx: WorkspacePrepareHookContext,
 ): Promise<void> {
@@ -52,20 +52,25 @@ export async function prepareWorkspace(
         );
       }
     }
-    const checkout = await ctx.sandbox.run({
-      cmd: "git",
-      args: ["-C", path, "rev-parse", "--is-inside-work-tree"],
-      cwd: ctx.sandbox.root,
-    });
-    if (checkout.exitCode === 0) {
-      // Fresh Workspace boots keep setup outputs under ignored paths. Reset the
-      // tracked tree to the current upstream without wiping those installs.
-      const commands = [
+
+    if (ctx.purpose === "boot") {
+      // Snapshot boots already contain complete checkouts and setup outputs.
+      // Refresh the tracked tree without recloning.
+      const checkout = await ctx.sandbox.run({
+        cmd: "git",
+        args: ["-C", path, "rev-parse", "--is-inside-work-tree"],
+        cwd: ctx.sandbox.root,
+      });
+      if (checkout.exitCode !== 0) {
+        throw new Error(
+          `GitHub workspace refresh failed for ${repo}: checkout is missing after snapshot boot`,
+        );
+      }
+      for (const args of [
         ["-C", path, "fetch", "--quiet", "origin"],
         ["-C", path, "reset", "--hard", "@{upstream}"],
         ["-C", path, "clean", "-fd"],
-      ];
-      for (const args of commands) {
+      ]) {
         const result = await ctx.sandbox.run({
           cmd: "git",
           args,
@@ -81,7 +86,8 @@ export async function prepareWorkspace(
     }
 
     // A stopped execution slice can leave a complete or partial checkout. The
-    // next slice owns this fixed path and must start the clone from clean state.
+    // next build slice owns this fixed path and must start the clone from clean
+    // state.
     const cleanup = await ctx.sandbox.run({
       cmd: "rm",
       args: ["-rf", "--", path],

@@ -108,6 +108,7 @@ export interface SandboxOptions {
     workspace: SandboxWorkspace,
     recipe: Workspace,
     signal?: AbortSignal,
+    purpose?: "build" | "boot",
   ) => Promise<void>;
   onSandboxRefChanged?: (sandboxRef: SandboxRef) => void | Promise<void>;
 }

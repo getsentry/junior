@@ -139,6 +139,7 @@ interface SandboxRuntimeOptions {
     sandbox: SandboxSession,
     workspace: Workspace,
     signal?: AbortSignal,
+    purpose?: "build" | "boot",
   ) => Promise<void>;
   onSandboxRefChanged?: (sandboxRef: SandboxRef) => void | Promise<void>;
 }
@@ -377,6 +378,33 @@ export function createSandboxRuntime(
     throw new Error(`Failed to boot sandbox from snapshot ${snapshotId}`);
   };
 
+  const prepareRepositoriesForBuild = options.onWorkspacePrepare
+    ? async (
+        sandbox: SandboxSession,
+        workspace: Workspace,
+        signal?: AbortSignal,
+      ) =>
+        await options.onWorkspacePrepare?.(
+          sandbox,
+          workspace,
+          signal,
+          "build",
+        )
+    : undefined;
+  const prepareRepositoriesForBoot = options.onWorkspacePrepare
+    ? async (
+        sandbox: SandboxSession,
+        workspace: Workspace,
+        signal?: AbortSignal,
+      ) =>
+        await options.onWorkspacePrepare?.(
+          sandbox,
+          workspace,
+          signal,
+          "boot",
+        )
+    : undefined;
+
   const createSandboxFromResolvedSnapshot = async (params: {
     runtime: string;
     snapshot: Snapshot;
@@ -426,7 +454,7 @@ export function createSandboxRuntime(
             signal,
             shouldYield: options.shouldYield,
             applyNetworkPolicy,
-            prepareRepositories: options.onWorkspacePrepare,
+            prepareRepositories: prepareRepositoriesForBuild,
             removeCredentialRoute: Boolean(options.createNetworkPolicy),
           })
         : await resolveSnapshot({
@@ -464,7 +492,7 @@ export function createSandboxRuntime(
             workspace,
             signal,
             applyNetworkPolicy,
-            prepareRepositories: options.onWorkspacePrepare,
+            prepareRepositories: prepareRepositoriesForBuild,
             removeCredentialRoute: Boolean(options.createNetworkPolicy),
           })
       : undefined;
@@ -487,7 +515,7 @@ export function createSandboxRuntime(
                 signal,
                 shouldYield: options.shouldYield,
                 applyNetworkPolicy,
-                prepareRepositories: options.onWorkspacePrepare,
+                prepareRepositories: prepareRepositoriesForBuild,
                 removeCredentialRoute: Boolean(options.createNetworkPolicy),
               })
             : await resolveSnapshot({
@@ -528,7 +556,7 @@ export function createSandboxRuntime(
     try {
       networkPolicyKey = await applyNetworkPolicy(createdSandbox);
       if (workspace) {
-        await options.onWorkspacePrepare?.(createdSandbox, workspace, signal);
+        await prepareRepositoriesForBoot?.(createdSandbox, workspace, signal);
       }
       await prepareSandbox(createdSandbox);
     } catch (error) {

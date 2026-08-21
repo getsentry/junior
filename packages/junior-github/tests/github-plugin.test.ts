@@ -3001,6 +3001,7 @@ Conversation: \`local:test:old-conversation\`
       db,
       log: pluginLog,
       plugin: { name: "github" },
+      purpose: "build",
       repos: [
         { repo: "getsentry/sentry", path: "repos/sentry" },
         { repo: "getsentry/junior", path: "repos/junior" },
@@ -3013,11 +3014,7 @@ Conversation: \`local:test:old-conversation\`
         },
         async run(input: { args?: string[]; env?: Record<string, string> }) {
           runs.push(input);
-          return {
-            exitCode: input.args?.includes("rev-parse") ? 1 : 0,
-            stderr: "",
-            stdout: "",
-          };
+          return { exitCode: 0, stderr: "", stdout: "" };
         },
         async writeFile() {},
       },
@@ -3027,7 +3024,6 @@ Conversation: \`local:test:old-conversation\`
 
     expect(runs.map((run) => run.args)).toEqual([
       ["-p", "--", "repos"],
-      ["-C", "repos/sentry", "rev-parse", "--is-inside-work-tree"],
       ["-rf", "--", "repos/sentry"],
       [
         "clone",
@@ -3038,7 +3034,6 @@ Conversation: \`local:test:old-conversation\`
         "repos/sentry",
       ],
       ["-p", "--", "repos"],
-      ["-C", "repos/junior", "rev-parse", "--is-inside-work-tree"],
       ["-rf", "--", "repos/junior"],
       [
         "clone",
@@ -3052,12 +3047,13 @@ Conversation: \`local:test:old-conversation\`
     expect(runs.every((run) => run.env === undefined)).toBe(true);
   });
 
-  it("resets an existing workspace repository to its current upstream branch", async () => {
+  it("refreshes an existing workspace repository on boot without recloning", async () => {
     const runs: string[][] = [];
     const ctx = {
       db,
       log: pluginLog,
       plugin: { name: "github" },
+      purpose: "boot",
       repos: [{ repo: "getsentry/junior", path: "repos/junior" }],
       sandbox: {
         juniorRoot: "/vercel/sandbox/.junior",
@@ -3082,6 +3078,40 @@ Conversation: \`local:test:old-conversation\`
       ["-C", "repos/junior", "reset", "--hard", "@{upstream}"],
       ["-C", "repos/junior", "clean", "-fd"],
     ]);
+    expect(runs.some((args) => args[0] === "clone" || args.includes("-rf"))).toBe(
+      false,
+    );
+  });
+
+  it("fails boot refresh when the snapshot checkout is missing", async () => {
+    const ctx = {
+      db,
+      log: pluginLog,
+      plugin: { name: "github" },
+      purpose: "boot",
+      repos: [{ repo: "getsentry/junior", path: "repos/junior" }],
+      sandbox: {
+        juniorRoot: "/vercel/sandbox/.junior",
+        root: "/vercel/sandbox",
+        async readFile() {
+          return null;
+        },
+        async run(input: { args?: string[]; cmd?: string }) {
+          if (input.cmd === "mkdir") {
+            return { exitCode: 0, stderr: "", stdout: "" };
+          }
+          if (input.args?.includes("rev-parse")) {
+            return { exitCode: 1, stderr: "", stdout: "" };
+          }
+          throw new Error(`unexpected command: ${input.cmd ?? "unknown"} ${(input.args ?? []).join(" ")}`);
+        },
+        async writeFile() {},
+      },
+    } as WorkspacePrepareHookContext;
+
+    await expect(githubPlugin().hooks?.workspacePrepare?.(ctx)).rejects.toThrow(
+      "checkout is missing after snapshot boot",
+    );
   });
 
   it("replaces a partial checkout when an interrupted clone is retried", async () => {
@@ -3091,6 +3121,7 @@ Conversation: \`local:test:old-conversation\`
       db,
       log: pluginLog,
       plugin: { name: "github" },
+      purpose: "build",
       repos: [{ repo: "getsentry/junior", path: "repos/junior" }],
       sandbox: {
         juniorRoot: "/vercel/sandbox/.junior",
@@ -3101,9 +3132,6 @@ Conversation: \`local:test:old-conversation\`
         async run(input: { args?: string[]; cmd: string }) {
           runs.push(input);
           if (input.cmd === "git") {
-            if (input.args?.includes("rev-parse")) {
-              return { exitCode: 1, stderr: "", stdout: "" };
-            }
             cloneAttempts += 1;
             if (cloneAttempts === 1) {
               return { exitCode: 130, stderr: "interrupted", stdout: "" };
@@ -3135,6 +3163,7 @@ Conversation: \`local:test:old-conversation\`
       db,
       log: pluginLog,
       plugin: { name: "github" },
+      purpose: "build",
       repos: [{ repo: "getsentry/skills", path: "skills" }],
       sandbox: {
         juniorRoot: "/vercel/sandbox/.junior",
@@ -3159,6 +3188,7 @@ Conversation: \`local:test:old-conversation\`
       db,
       log: pluginLog,
       plugin: { name: "github" },
+      purpose: "build",
       repos: [{ repo: "getsentry/skills", path: "Skills" }],
       sandbox: {
         juniorRoot: "/vercel/sandbox/.junior",
@@ -3183,6 +3213,7 @@ Conversation: \`local:test:old-conversation\`
       db,
       log: pluginLog,
       plugin: { name: "github" },
+      purpose: "build",
       repos: [
         { repo: "getsentry/sentry", path: "repos/sentry" },
         { repo: "acme/sentry", path: "repos/Sentry" },

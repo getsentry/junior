@@ -103,6 +103,7 @@ export interface PluginHookRunner {
       repo: string;
     }>,
     signal?: AbortSignal,
+    purpose?: "build" | "boot",
   ): Promise<void>;
 }
 
@@ -1461,7 +1462,7 @@ export function createPluginHookRunner(
         }
       }
     },
-    async prepareWorkspace(sandbox, repos, signal) {
+    async prepareWorkspace(sandbox, repos, signal, purpose = "build") {
       const preparers = new Set(
         loaded
           .filter((plugin) => plugin.hooks?.workspacePrepare)
@@ -1507,6 +1508,7 @@ export function createPluginHookRunner(
         if (selected.length === 0) continue;
         await hook({
           ...basePluginContext(plugin),
+          purpose,
           repos: selected,
           sandbox: sandboxCapability,
         });

@@ -1202,10 +1202,18 @@ describe("createTestSandbox", () => {
 
     expect(onWorkspacePrepare).toHaveBeenCalledTimes(2);
     expect(onWorkspacePrepare).toHaveBeenNthCalledWith(
+      1,
+      buildSandbox,
+      expect.objectContaining({ id: "workspace-1" }),
+      undefined,
+      "build",
+    );
+    expect(onWorkspacePrepare).toHaveBeenNthCalledWith(
       2,
       expect.objectContaining({ sandboxId: "sbx_workspace_active" }),
       expect.objectContaining({ id: "workspace-1" }),
       undefined,
+      "boot",
     );
     expect(buildSandbox.update).toHaveBeenNthCalledWith(1, {
       networkPolicy: policy,
