@@ -25,6 +25,7 @@ import {
   requestConversationWork,
   releaseConversationWork,
   startConversationWork,
+  stopConversationWork,
   type InboundMessage,
 } from "@/chat/task-execution/store";
 import {
@@ -1654,6 +1655,135 @@ describe("conversation work execution", () => {
 
     finish.resolve();
     await expect(running).resolves.toEqual({ status: "completed" });
+  });
+
+  it("observes a remote stop and removes older human mailbox work", async () => {
+    vi.useFakeTimers({ now: 1_000 });
+    let currentNowMs = 1_000;
+    const queue = createConversationWorkQueueTestAdapter();
+    await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
+    const entered = deferred<void>();
+    const stopObserved = deferred<void>();
+    const finishRun = deferred<void>();
+
+    const running = processConversationWork(conversationQueueMessage(), {
+      nowMs: () => currentNowMs,
+      queue,
+      softYieldAfterMs: 1_000,
+      run: async (context) => {
+        await context.attempt.ack();
+        const signal = context.stopSignal?.();
+        if (!signal) throw new Error("Expected a Conversation stop signal");
+        if (signal.aborted) {
+          stopObserved.resolve();
+        } else {
+          signal.addEventListener("abort", () => stopObserved.resolve(), {
+            once: true,
+          });
+        }
+        entered.resolve();
+        await stopObserved.promise;
+        await finishRun.promise;
+        return { status: "completed" };
+      },
+    });
+
+    await entered.promise;
+    await appendInboundMessage({
+      message: inboundMessage("m2", {
+        createdAtMs: 1_500,
+        receivedAtMs: 1_500,
+      }),
+      nowMs: 1_500,
+    });
+
+    await expect(
+      stopConversationWork({
+        conversationId: CONVERSATION_ID,
+        nowMs: 2_000,
+      }),
+    ).resolves.toMatchObject({ status: "requested" });
+    await vi.advanceTimersByTimeAsync(500);
+    await stopObserved.promise;
+
+    await appendInboundMessage({
+      message: inboundMessage("m3", {
+        createdAtMs: 3_000,
+        receivedAtMs: 3_000,
+      }),
+      nowMs: 3_000,
+    });
+    currentNowMs = 3_000;
+    finishRun.resolve();
+
+    await expect(running).resolves.toEqual({ status: "pending_requeued" });
+    await expect(
+      getConversationWorkState({ conversationId: CONVERSATION_ID }),
+    ).resolves.toMatchObject({
+      execution: { stop: undefined },
+      messages: [expect.objectContaining({ inboundMessageId: "m3" })],
+    });
+  });
+
+  it("resumes a paused Turn when its stop missed the live poll", async () => {
+    vi.useFakeTimers({ now: 1_000 });
+    let currentNowMs = 1_000;
+    const queue = createConversationWorkQueueTestAdapter();
+    await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
+    const entered = deferred<void>();
+    const finish = deferred<void>();
+
+    const running = processConversationWork(conversationQueueMessage(), {
+      nowMs: () => currentNowMs,
+      queue,
+      run: async (context) => {
+        await context.attempt.ack();
+        const signal = context.stopSignal?.();
+        if (!signal) throw new Error("Expected a Conversation stop signal");
+        expect(signal.aborted).toBe(false);
+        entered.resolve();
+        await finish.promise;
+        return { status: "paused" };
+      },
+    });
+
+    await entered.promise;
+    currentNowMs = 2_000;
+    await expect(
+      stopConversationWork({
+        conversationId: CONVERSATION_ID,
+        nowMs: currentNowMs,
+      }),
+    ).resolves.toMatchObject({ status: "requested" });
+    finish.resolve();
+
+    await expect(running).resolves.toEqual({ status: "pending_requeued" });
+    await expect(
+      getConversationWorkState({ conversationId: CONVERSATION_ID }),
+    ).resolves.toMatchObject({
+      execution: {
+        status: "paused",
+        stop: expect.objectContaining({ requestedAtMs: 2_000 }),
+      },
+    });
+
+    await expect(
+      processConversationWork(queue.takeMessage(), {
+        nowMs: () => currentNowMs,
+        queue,
+        run: async (context) => {
+          const signal = context.stopSignal?.();
+          if (!signal) throw new Error("Expected a Conversation stop signal");
+          expect(signal.aborted).toBe(true);
+          return { status: "completed" };
+        },
+      }),
+    ).resolves.toEqual({ status: "completed" });
+    await expect(
+      getConversationWorkState({ conversationId: CONVERSATION_ID }),
+    ).resolves.toMatchObject({
+      execution: { status: "idle", stop: undefined },
+    });
   });
 
   it("reports lost lease after periodic check-in loses ownership", async () => {

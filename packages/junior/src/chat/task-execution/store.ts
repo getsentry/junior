@@ -20,8 +20,10 @@ export {
   type AttemptFailure,
   type AppendAndEnqueueInboundMessageResult,
   type AppendInboundMessageResult,
+  type CompleteConversationStopResult,
   type Conversation,
   type ConversationExecution,
+  type ConversationStop,
   type ConversationWorkLease,
   type ConversationWorkState,
   type ExecutionStatus,
@@ -34,9 +36,12 @@ export {
   type StartConversationWorkActive,
   type StartConversationWorkNoWork,
   type StartConversationWorkResult,
+  type StopConversationWorkResult,
 } from "@/chat/task-execution/state";
 import type {
+  AppendAndEnqueueExclusiveInboundMessageResult,
   AppendAndEnqueueInboundMessageResult,
+  AppendExclusiveInboundMessageResult,
   Conversation,
   InboundMessage,
 } from "@/chat/task-execution/state";
@@ -234,20 +239,17 @@ export async function appendInboundMessage(args: {
   return result;
 }
 
-/** Persist inbound work and ensure a worker wake-up. */
-export async function appendAndEnqueueInboundMessage(args: {
+async function enqueueAfterAppend(args: {
+  appendResult: AppendExclusiveInboundMessageResult;
   message: InboundMessage;
   conversationStore?: ConversationStore;
   nowMs?: number;
   queue: ConversationWorkQueue;
   state?: StateAdapter;
-}): Promise<AppendAndEnqueueInboundMessageResult> {
+}): Promise<AppendAndEnqueueExclusiveInboundMessageResult> {
   const nowMs = args.nowMs ?? now();
-  const appendResult = await workState.appendInboundMessage({
-    message: args.message,
-    nowMs,
-    state: args.state,
-  });
+  const appendResult = args.appendResult;
+  if (appendResult.status === "active") return appendResult;
   let idempotencyKey = args.message.inboundMessageId;
   if (appendResult.status === "duplicate") {
     const conversation = await workState.getConversation({
@@ -299,6 +301,80 @@ export async function appendAndEnqueueInboundMessage(args: {
       ? { queueMessageId: wake.queueMessageId }
       : {}),
   };
+}
+
+/** Persist inbound work and ensure a worker wake-up. */
+export async function appendAndEnqueueInboundMessage(args: {
+  message: InboundMessage;
+  conversationStore?: ConversationStore;
+  nowMs?: number;
+  queue: ConversationWorkQueue;
+  state?: StateAdapter;
+}): Promise<AppendAndEnqueueInboundMessageResult> {
+  const nowMs = args.nowMs ?? now();
+  const result = await enqueueAfterAppend({
+    ...args,
+    appendResult: await workState.appendInboundMessage({
+      message: args.message,
+      nowMs,
+      state: args.state,
+    }),
+    nowMs,
+  });
+  if (result.status === "active") {
+    throw new Error("Non-exclusive mailbox enqueue returned active");
+  }
+  return result;
+}
+
+/** Persist exclusive inbound work and wake its worker when admitted. */
+export async function appendAndEnqueueExclusiveInboundMessage(args: {
+  message: InboundMessage;
+  conversationStore?: ConversationStore;
+  nowMs?: number;
+  queue: ConversationWorkQueue;
+  state?: StateAdapter;
+}): Promise<AppendAndEnqueueExclusiveInboundMessageResult> {
+  const nowMs = args.nowMs ?? now();
+  return await enqueueAfterAppend({
+    ...args,
+    appendResult: await workState.appendExclusiveInboundMessage({
+      message: args.message,
+      nowMs,
+      state: args.state,
+    }),
+    nowMs,
+  });
+}
+
+/** Persist a stop request for the current Conversation run. */
+export async function stopConversationWork(args: {
+  conversationId: string;
+  conversationStore?: ConversationStore;
+  nowMs?: number;
+  state?: StateAdapter;
+}) {
+  const result = await workState.stopConversationWork(args);
+  if (result.status === "requested") {
+    await recordExecutionMetadata(args);
+  }
+  return result;
+}
+
+/** Finish an observed stop request under the current worker lease. */
+export async function completeConversationStop(args: {
+  conversationId: string;
+  conversationStore?: ConversationStore;
+  leaseToken: string;
+  nowMs?: number;
+  runId: string;
+  state?: StateAdapter;
+}) {
+  const result = await workState.completeConversationStop(args);
+  if (result.status === "cleared") {
+    await recordExecutionMetadata(args);
+  }
+  return result;
 }
 
 /** Clear an accepted wake marker after its delivery finds no runnable work. */
@@ -478,6 +554,8 @@ export async function completeConversationWork(args: {
   madeProgress?: boolean;
   conversationStore?: ConversationStore;
   nowMs?: number;
+  /** Keep a raced stop runnable after the adapter pauses a Turn. */
+  resumeIfStopped?: boolean;
   state?: StateAdapter;
 }) {
   const result = await workState.completeConversationWork(args);

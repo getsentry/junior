@@ -85,6 +85,8 @@ export async function completeCancelledApiTurn(args: {
   userMessageId: string;
 }): Promise<void> {
   try {
+    const ownsPendingAuthorization =
+      args.conversation.processing.pendingAuth?.sessionId === args.turnId;
     await abandonTurnRecord({
       conversationId: args.conversationId,
       turnId: args.turnId,
@@ -100,10 +102,12 @@ export async function completeCancelledApiTurn(args: {
       nowMs: Date.now(),
       sessionId: args.turnId,
     });
-    await deleteWebAuthorization({
-      actorId: args.actorId,
-      conversationId: args.conversationId,
-    });
+    if (ownsPendingAuthorization) {
+      await deleteWebAuthorization({
+        actorId: args.actorId,
+        conversationId: args.conversationId,
+      });
+    }
     await persistThreadStateById(args.conversationId, {
       conversation: args.conversation,
       sandboxRef: args.sandboxRef,
