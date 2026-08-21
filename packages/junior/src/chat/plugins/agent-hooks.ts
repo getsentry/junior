@@ -206,12 +206,7 @@ function invocationPluginContext(
   plugin: PluginRegistration,
   context: Pick<
     ToolRuntimeContext,
-    | "conversationId"
-    | "destination"
-    | "actor"
-    | "resolveActorIdentity"
-    | "source"
-    | "userText"
+    "conversationId" | "destination" | "actor" | "source" | "userText"
   >,
   turnId?: string,
 ): UserPromptContext {
@@ -234,10 +229,6 @@ function invocationPluginContext(
     source: context.source,
     text: context.userText ?? "",
     state: createPluginState(plugin.manifest.name),
-    users: {
-      resolveActor:
-        context.resolveActorIdentity ?? (async () => undefined),
-    },
   };
   return {
     ...common,
@@ -501,12 +492,7 @@ export async function getPluginSystemPromptContributions(
 export async function getPluginUserPromptContributions(args: {
   context: Pick<
     ToolRuntimeContext,
-    | "conversationId"
-    | "destination"
-    | "actor"
-    | "resolveActorIdentity"
-    | "source"
-    | "userText"
+    "conversationId" | "destination" | "actor" | "source" | "userText"
   >;
   turnId?: string;
 }): Promise<PluginPromptContributionContext[]> {

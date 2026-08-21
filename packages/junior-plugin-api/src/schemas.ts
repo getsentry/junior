@@ -112,10 +112,23 @@ export const pluginCredentialSubjectSchema = z.discriminatedUnion(
   ],
 );
 
+/** Core-owned provider account linked to a user when verified. */
+export const identitySchema = z
+  .object({
+    displayName: nonBlankStringSchema.optional(),
+    handle: nonBlankStringSchema.optional(),
+    id: exactNonBlankStringSchema,
+    provider: exactNonBlankStringSchema,
+    providerSubjectId: exactNonBlankStringSchema,
+    providerTenantId: exactNonBlankStringSchema.optional(),
+  })
+  .strict();
+
 /** Shared exact actor profile fields for platform-scoped actors. */
 const actorProfileSchema = {
   email: nonBlankStringSchema.optional(),
   fullName: nonBlankStringSchema.optional(),
+  identities: z.array(identitySchema).max(100).optional(),
   userId: exactActorUserIdSchema,
   userName: nonBlankStringSchema.optional(),
 };
@@ -156,18 +169,6 @@ export const actorSchema = z.discriminatedUnion("platform", [
   webActorSchema,
   systemActorSchema,
 ]);
-
-/** Core-owned provider account linked to a user when verified. */
-export const identitySchema = z
-  .object({
-    displayName: nonBlankStringSchema.optional(),
-    handle: nonBlankStringSchema.optional(),
-    id: exactNonBlankStringSchema,
-    provider: exactNonBlankStringSchema,
-    providerSubjectId: exactNonBlankStringSchema,
-    providerTenantId: exactNonBlankStringSchema.optional(),
-  })
-  .strict();
 
 /** Core-owned person with every linked provider identity. */
 export const userSchema = z

@@ -157,8 +157,8 @@ export function deriveMemorySubject(
   return { subjectType: "conversation", subjectKey };
 }
 
-/** Return every visible scope for memory retrieval in the current context. */
-export function deriveVisibleMemoryScopes(
+/** Return scopes the current Actor and Source can write. */
+export function deriveWritableMemoryScopes(
   ctx: MemoryRuntimeContext,
 ): ResolvedMemoryScope[] {
   const scopes: ResolvedMemoryScope[] = [];
@@ -172,16 +172,20 @@ export function deriveVisibleMemoryScopes(
   } catch {
     // Conversation memory is optional for synthetic invocations.
   }
-  // Linked identities expand reads only on private web surfaces. Shared
-  // conversation surfaces stay bound to their current actor and Source.
-  if (
-    ctx.source.platform === "web" &&
-    ctx.source.visibility === "private" &&
-    ctx.identities &&
-    ctx.identities.length > 0
-  ) {
-    const linked = deriveViewerMemoryScopes(ctx.identities);
-    scopes.push(...linked.privateScopes, ...linked.publicScopes);
+  return uniqueScopes(scopes);
+}
+
+/** Return every scope visible for memory retrieval. */
+export function deriveVisibleMemoryScopes(
+  ctx: MemoryRuntimeContext,
+): ResolvedMemoryScope[] {
+  const scopes = deriveWritableMemoryScopes(ctx);
+  if (ctx.actor && ctx.actor.platform !== "system" && ctx.actor.identities) {
+    const linked = deriveViewerMemoryScopes(ctx.actor.identities);
+    scopes.push(...linked.publicScopes);
+    if (ctx.source.visibility === "private") {
+      scopes.push(...linked.privateScopes);
+    }
   }
   return uniqueScopes(scopes);
 }

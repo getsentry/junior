@@ -48,7 +48,6 @@ function memoryToolContext(ctx: {
   embedder?: MemoryToolContext["embedder"];
   actor?: MemoryToolContext["actor"];
   source: MemoryToolContext["source"];
-  users: MemoryToolContext["users"];
   userText?: string;
 }): MemoryToolContext {
   return {
@@ -58,7 +57,6 @@ function memoryToolContext(ctx: {
     db: ctx.db,
     ...(ctx.embedder ? { embedder: ctx.embedder } : undefined),
     source: ctx.source,
-    users: ctx.users,
     ...(ctx.userText ? { userText: ctx.userText } : undefined),
   };
 }
@@ -71,7 +69,6 @@ function memoryCreateToolContext(ctx: {
   actor?: MemoryCreateToolContext["actor"];
   source: MemoryCreateToolContext["source"];
   supersessionDecider: MemoryCreateToolContext["supersessionDecider"];
-  users: MemoryCreateToolContext["users"];
   userText?: string;
 }): MemoryCreateToolContext {
   return {
@@ -156,18 +153,12 @@ export function memoryPlugin(options: MemoryPluginOptions = {}) {
       ...(!options.disableRecall
         ? {
             async userPrompt(ctx) {
-              const user =
-                ctx.source.platform === "web" &&
-                ctx.source.visibility === "private"
-                  ? (await ctx.users.resolveActor())?.user
-                  : undefined;
               return await createMemoryPromptContributions({
                 agent: createMemoryAgent(ctx.model),
                 ...(ctx.conversationId
                   ? { conversationId: ctx.conversationId }
                   : undefined),
                 ...(ctx.actor ? { actor: ctx.actor } : undefined),
-                ...(user ? { identities: user.identities } : undefined),
                 db: ctx.db as MemoryDb,
                 embedder: ctx.embedder,
                 events: ctx.events,

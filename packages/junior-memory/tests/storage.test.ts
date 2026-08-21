@@ -383,8 +383,6 @@ function slackContext(
   };
 }
 
-const testPluginUsers = { resolveActor: async () => undefined };
-
 function slackDestination(context: ReturnType<typeof slackContext>) {
   return {
     platform: "slack" as const,
@@ -3760,7 +3758,6 @@ WHERE id = '${superseded.memory.id}'
         }),
         db: memoryDb(fixture),
         ...slackContext(),
-        users: testPluginUsers,
       };
       const tools = {
         createMemory: createMemoryCreateTool(context),
@@ -4064,7 +4061,6 @@ WHERE id = '${superseded.memory.id}'
         model: recallModel((candidates) => candidates, 0.0042),
         plugin: { name: "memory" },
         state: memoryState,
-        users: testPluginUsers,
         text: "Draft a PR summary and mention release notes.",
       });
 
@@ -4156,7 +4152,6 @@ WHERE id = '${superseded.memory.id}'
         model: selectAllRecallModel,
         plugin: { name: "memory" },
         state: memoryState,
-        users: testPluginUsers,
         text: "Walk through the deploy checklist steps.",
       });
 
@@ -4209,7 +4204,6 @@ WHERE id = '${superseded.memory.id}'
         model: selectAllRecallModel,
         plugin: { name: "memory" },
         state: memoryState,
-        users: testPluginUsers,
         text: "Where do release notes live?",
       });
 
@@ -4283,7 +4277,6 @@ WHERE id = '${superseded.memory.id}'
         ),
         plugin: { name: "memory" },
         state: memoryState,
-        users: testPluginUsers,
         text: "How does CI work in getsentry/junior?",
       });
 
@@ -4332,8 +4325,7 @@ WHERE id = '${superseded.memory.id}'
           model: recallModel(() => [], 0.0017),
           plugin: { name: "memory" },
           state: memoryState,
-          users: testPluginUsers,
-          text: "How do autofix PR tests use the dashboard workflow?",
+            text: "How do autofix PR tests use the dashboard workflow?",
         }),
       ).resolves.toBeUndefined();
       expect(emitted).toEqual([
@@ -4376,8 +4368,7 @@ WHERE id = '${superseded.memory.id}'
           },
           plugin: { name: "memory" },
           state: memoryState,
-          users: testPluginUsers,
-          text: "Where do release notes live?",
+            text: "Where do release notes live?",
         }),
       ).resolves.toBeUndefined();
       expect(emitted).toEqual([
@@ -4430,8 +4421,7 @@ WHERE id = '${superseded.memory.id}'
           },
           plugin: { name: "memory" },
           state: memoryState,
-          users: testPluginUsers,
-          text: "Where do release notes live?",
+            text: "Where do release notes live?",
         }),
       ).resolves.toBeUndefined();
       expect(warnings).toEqual(["memory_recall_selection_failed"]);
@@ -4462,8 +4452,7 @@ WHERE id = '${superseded.memory.id}'
           model: selectAllRecallModel,
           plugin: { name: "memory" },
           state: memoryState,
-          users: testPluginUsers,
-          text: "   ",
+            text: "   ",
         }),
       ).resolves.toBeUndefined();
     } finally {
@@ -4501,7 +4490,6 @@ WHERE id = '${superseded.memory.id}'
         model: selectAllRecallModel,
         plugin: { name: "memory" },
         state: memoryState,
-        users: testPluginUsers,
         text: query,
       });
       const contribution = result?.[0];

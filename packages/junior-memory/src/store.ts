@@ -44,6 +44,7 @@ import {
   deriveMemorySubject,
   type ResolvedMemorySubject,
   deriveVisibleMemoryScopes,
+  deriveWritableMemoryScopes,
   type ResolvedMemoryScope,
 } from "./scope";
 
@@ -1571,7 +1572,7 @@ export function createMemoryStore(
     async archiveMemory(input) {
       input = archiveMemoryInputSchema.parse(input);
       const nowMs = getNowMs();
-      const scopes = deriveVisibleMemoryScopes(runtimeContext);
+      const scopes = deriveWritableMemoryScopes(runtimeContext);
       const predicate = activeVisiblePredicate({ nowMs, scopes });
       const idPrefix = input.id.trim();
       if (!idPrefix) {

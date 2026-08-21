@@ -337,6 +337,9 @@ WHERE indexname = 'junior_memory_memories_search_idx'
         email,
         emailVerified: true,
       });
+      const user = (await readActorIdentity(webActor))?.user;
+      expect(user).toBeDefined();
+      const linkedWebActor = { ...webActor, identities: user!.identities };
       await expect(
         readActorIdentity({
           platform: "slack",
@@ -388,6 +391,11 @@ WHERE indexname = 'junior_memory_memories_search_idx'
         idempotencyKey: "component-web-second-linked-memory",
         kind: "knowledge",
       });
+      const privateLinked = await secondLinkedStore.createMemory({
+        content: "Prefers linked private memories only in private turns.",
+        idempotencyKey: "component-web-private-linked-memory",
+        kind: "preference",
+      });
       const otherStore = createMemoryStore(
         fixture.sql.db() as unknown as MemoryDb,
         {
@@ -413,8 +421,7 @@ WHERE indexname = 'junior_memory_memories_search_idx'
           platform: "local" as const,
           conversationId: "local:web:linked-memory",
         },
-        actor: webActor,
-        resolveActorIdentity: async () => await readActorIdentity(webActor),
+        actor: linkedWebActor,
         source,
         userText: "where do public workspace runbooks live?",
       };
@@ -441,6 +448,7 @@ WHERE indexname = 'junior_memory_memories_search_idx'
         tools.memory_listMemories.execute!({}, {}),
       ).resolves.toEqual({
         memories: [
+          expect.objectContaining({ id: privateLinked.memory.id }),
           expect.objectContaining({ id: secondLinked.memory.id }),
           expect.objectContaining({ id: linked.memory.id }),
         ],
@@ -458,7 +466,12 @@ WHERE indexname = 'junior_memory_memories_search_idx'
       };
       await expect(
         getPluginUserPromptContributions({ context: publicWebContext }),
-      ).resolves.toEqual([]);
+      ).resolves.toEqual([
+        expect.objectContaining({
+          pluginName: "memory",
+          text: expect.stringContaining("Public workspace runbooks live in Notion."),
+        }),
+      ]);
       const publicWebTools = getPluginTools({
         ...publicWebContext,
         egress: {
@@ -470,13 +483,20 @@ WHERE indexname = 'junior_memory_memories_search_idx'
       });
       await expect(
         publicWebTools.memory_listMemories.execute!({}, {}),
-      ).resolves.toEqual({ memories: [], target: "listMemories" });
+      ).resolves.toEqual({
+        memories: [
+          expect.objectContaining({ id: secondLinked.memory.id }),
+          expect.objectContaining({ id: linked.memory.id }),
+        ],
+        target: "listMemories",
+      });
 
       const slackActor = {
         platform: "slack" as const,
         teamId: "T123",
         userId: "U123",
         email,
+        identities: user!.identities,
       };
       const slackTools = getPluginTools({
         ...context,
@@ -492,14 +512,16 @@ WHERE indexname = 'junior_memory_memories_search_idx'
             return new Response("ok");
           },
         },
-        resolveActorIdentity: async () => await readActorIdentity(slackActor),
         source: linkedSource,
         workspace: {} as Parameters<typeof getPluginTools>[0]["workspace"],
       });
       await expect(
         slackTools.memory_listMemories.execute!({}, {}),
       ).resolves.toEqual({
-        memories: [expect.objectContaining({ id: linked.memory.id })],
+        memories: [
+          expect.objectContaining({ id: secondLinked.memory.id }),
+          expect.objectContaining({ id: linked.memory.id }),
+        ],
         target: "listMemories",
       });
     } finally {

@@ -6,7 +6,6 @@ import type {
   PluginEmbedder,
   PluginModel,
   Actor,
-  PluginUserContext,
   Source,
 } from "./context";
 import type { PluginState } from "./state";
@@ -89,5 +88,4 @@ export type UserPromptContext = Pick<PluginContext, "db" | "log" | "plugin"> & {
   source: Source;
   state: PluginState;
   text: string;
-  users: PluginUserContext;
 };
