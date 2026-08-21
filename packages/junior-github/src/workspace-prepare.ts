@@ -75,6 +75,22 @@ export async function prepareWorkspace(
           })
         : undefined;
     const branchName = branch?.stdout.trim();
+    const detachedHead =
+      worktree.exitCode === 0 && !branchName
+        ? await ctx.sandbox.run({
+            cmd: "git",
+            args: ["-C", path, "rev-parse", "--verify", "HEAD^{commit}"],
+            cwd: ctx.sandbox.root,
+            env: gitEnv,
+          })
+        : undefined;
+    const detachedSha = detachedHead?.stdout.trim();
+    const validDetachedSha =
+      detachedHead?.exitCode === 0 &&
+      detachedSha &&
+      /^[0-9a-f]{40,64}$/.test(detachedSha)
+        ? detachedSha
+        : undefined;
     const upstream =
       branch?.exitCode === 0 && branchName
         ? await ctx.sandbox.run({
@@ -95,9 +111,12 @@ export async function prepareWorkspace(
     const upstreamBranch = upstreamRef?.startsWith(upstreamPrefix)
       ? upstreamRef.slice(upstreamPrefix.length)
       : undefined;
-    if (worktree.exitCode === 0 && branchName) {
+    if (worktree.exitCode === 0 && (branchName || validDetachedSha)) {
+      const localBranch = branchName || "workspace-detached";
       const remoteBranch = upstreamBranch || branchName;
-      const remoteRef = `${upstreamPrefix}${remoteBranch}`;
+      const remoteRef = remoteBranch
+        ? `${upstreamPrefix}${remoteBranch}`
+        : validDetachedSha!;
       // Build trusted Git metadata outside the checkout before replacing the
       // snapshot metadata. This keeps ignored setup outputs without running
       // snapshot hooks or filters during credentialed Git commands.
@@ -121,7 +140,7 @@ export async function prepareWorkspace(
           "init",
           "--quiet",
           "--initial-branch",
-          branchName,
+          localBranch,
         ],
         [
           "--git-dir",
@@ -144,7 +163,22 @@ export async function prepareWorkspace(
           "--tags",
           "origin",
           "+refs/heads/*:refs/remotes/origin/*",
+          ...(validDetachedSha ? [validDetachedSha] : []),
         ],
+        ...(validDetachedSha
+          ? [
+              [
+                "--git-dir",
+                refreshGitDir,
+                "--work-tree",
+                path,
+                "update-ref",
+                "--no-deref",
+                "HEAD",
+                validDetachedSha,
+              ],
+            ]
+          : []),
         [
           "--git-dir",
           refreshGitDir,
@@ -154,15 +188,19 @@ export async function prepareWorkspace(
           "--hard",
           remoteRef,
         ],
-        [
-          "--git-dir",
-          refreshGitDir,
-          "--work-tree",
-          path,
-          "branch",
-          `--set-upstream-to=origin/${remoteBranch}`,
-          branchName,
-        ],
+        ...(remoteBranch && branchName
+          ? [
+              [
+                "--git-dir",
+                refreshGitDir,
+                "--work-tree",
+                path,
+                "branch",
+                `--set-upstream-to=origin/${remoteBranch}`,
+                branchName,
+              ],
+            ]
+          : []),
       ]) {
         const result = await ctx.sandbox.run({
           cmd: "git",

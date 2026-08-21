@@ -3244,6 +3244,65 @@ Conversation: \`local:test:old-conversation\`
     expect(runs).not.toContainEqual(["-rf", "--", "repos/junior"]);
   });
 
+  it("refreshes a detached checkout without deleting setup outputs", async () => {
+    const sha = "a".repeat(40);
+    const runs: string[][] = [];
+    const ctx = {
+      db,
+      log: pluginLog,
+      plugin: { name: "github" },
+      repos: [{ repo: "getsentry/junior", path: "repos/junior" }],
+      sandbox: {
+        juniorRoot: "/vercel/sandbox/.junior",
+        root: "/vercel/sandbox",
+        async readFile() {
+          return null;
+        },
+        async run(input: { args?: string[] }) {
+          runs.push(input.args ?? []);
+          if (input.args?.includes("symbolic-ref")) {
+            return { exitCode: 1, stderr: "detached", stdout: "" };
+          }
+          return {
+            exitCode: 0,
+            stderr: "",
+            stdout: input.args?.includes("HEAD^{commit}")
+              ? `${sha}\n`
+              : input.args?.includes(
+                    "/vercel/sandbox/.junior/workspace-refresh.XXXXXX",
+                  )
+                ? "/vercel/sandbox/.junior/workspace-refresh.test\n"
+                : "",
+          };
+        },
+        async writeFile() {},
+      },
+    } as WorkspacePrepareHookContext;
+
+    await githubPlugin().hooks?.workspacePrepare?.(ctx);
+
+    expect(runs).toContainEqual([
+      "--git-dir",
+      "/vercel/sandbox/.junior/workspace-refresh.test",
+      "--work-tree",
+      "repos/junior",
+      "update-ref",
+      "--no-deref",
+      "HEAD",
+      sha,
+    ]);
+    expect(runs).toContainEqual([
+      "--git-dir",
+      "/vercel/sandbox/.junior/workspace-refresh.test",
+      "--work-tree",
+      "repos/junior",
+      "reset",
+      "--hard",
+      sha,
+    ]);
+    expect(runs).not.toContainEqual(["-rf", "--", "repos/junior"]);
+  });
+
   it("clones a missing workspace repository after detecting no worktree", async () => {
     const runs: Array<{ args?: string[]; cmd?: string }> = [];
     const ctx = {
