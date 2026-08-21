@@ -49,6 +49,8 @@ const BUILD_LOCK_PREFIX = "junior:workspace_snapshot_start";
 const WAIT_POLL_MS = 5_000;
 const TRANSIENT_API_RETRY_MS = 2_000;
 const BUILD_COMMAND_TIMEOUT_MS = 10 * 60 * 1000;
+const BUILD_COMMAND_TIMEOUT_ERROR =
+  "Workspace snapshot build phase timed out after 10 minutes";
 const COMMAND_STATUS_POLL_TIMEOUT_MS = 1_000;
 /** Leave time for the tool result and durable run checkpoint. */
 const WAIT_YIELD_BUFFER_MS = 40_000;
@@ -472,7 +474,16 @@ async function continueBuild(params: {
     requireBuildWrite(written, params.workspace);
   } catch (error) {
     if (phaseTimeoutSignal.aborted && !params.signal?.aborted) {
-      throw new WorkspaceSnapshotWaitingError(params.workspace.name);
+      const timeoutError = new Error(BUILD_COMMAND_TIMEOUT_ERROR, {
+        cause: error,
+      });
+      await markFailed(
+        params.workspace,
+        build,
+        timeoutError,
+        params.beforeWrite,
+      );
+      throw timeoutError;
     }
     if (error instanceof Error && error.message === BUILD_TIMEOUT_ERROR) {
       throw error;

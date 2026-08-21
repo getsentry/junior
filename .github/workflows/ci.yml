@@ -209,7 +209,7 @@ jobs:
     name: test / Workspace snapshot lifecycle
     runs-on: blacksmith-4vcpu-ubuntu-2404
     needs: changes
-    timeout-minutes: 45
+    timeout-minutes: 15
     if: github.event_name == 'push' || needs.changes.outputs.ci == 'true' || needs.changes.outputs.core == 'true' || needs.changes.outputs.plugins == 'true' || needs.changes.outputs.full == 'true'
     permissions:
       contents: read

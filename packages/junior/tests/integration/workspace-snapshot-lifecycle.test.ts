@@ -16,8 +16,8 @@ import type {
 } from "@/chat/workspaces/types";
 
 const MARKER_PATH = `${SANDBOX_WORKSPACE_ROOT}/marker/setup.txt`;
-/** Cold builds install the global Sandbox runtime dependencies, including Docker. */
-const LIVE_TEST_TIMEOUT_MS = 40 * 60 * 1000;
+/** Fail a cold build that exceeds the production phase limit. */
+const LIVE_TEST_TIMEOUT_MS = 10 * 60 * 1000;
 
 function sandboxCredentialsReady(): boolean {
   if (process.env.VERCEL_OIDC_TOKEN?.trim()) return true;
