@@ -1163,7 +1163,9 @@ describe("createTestSandbox", () => {
       },
     };
     const createNetworkPolicy = vi.fn(() => policy);
-    const onWorkspacePrepare = vi.fn(async (_sandbox: SandboxSession) => {});
+    const onWorkspacePrepare = vi.fn(
+      async (_sandbox: SandboxSession, _workspace: unknown) => {},
+    );
     resolveWorkspaceMock.mockImplementationOnce(async (params: any) => {
       await params.applyNetworkPolicy(buildSandbox);
       await params.prepareRepositories?.(buildSandbox, params.workspace);
