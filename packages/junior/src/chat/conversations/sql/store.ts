@@ -286,9 +286,6 @@ function conversationFromRow(readRow: ConversationReadRow): Conversation {
     ...(destination ? { destination } : {}),
     ...(location ? { location } : {}),
     ...(actor ? { actor } : {}),
-    ...(msFromDate(row.archivedAt) !== undefined
-      ? { archivedAtMs: msFromDate(row.archivedAt) }
-      : {}),
     ...(row.channelName ? { channelName: row.channelName } : {}),
     ...(source ? { source } : {}),
     ...(sessionSource ? { sessionSource } : {}),

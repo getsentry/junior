@@ -1,5 +1,5 @@
 {
-  "id": "b1a6a26f-1ca1-4071-93a4-166c5fbb2540",
+  "id": "bed76e1a-6b7e-4d02-b577-8567be28a0b9",
   "prevId": "6fe6b9af-5375-4f04-bc6e-3db5c77d5193",
   "version": "7",
   "dialect": "postgresql",
@@ -1262,12 +1262,6 @@
         "metric_run_id": {
           "name": "metric_run_id",
           "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "archived_at": {
-          "name": "archived_at",
-          "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
         }

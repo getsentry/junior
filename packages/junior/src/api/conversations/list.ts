@@ -143,7 +143,6 @@ function conversationFromRow(row: ConversationRow): Conversation {
     },
     ...(actor ? { actor } : {}),
     ...(location ? { location } : {}),
-    ...(value.archivedAt ? { archivedAtMs: value.archivedAt.getTime() } : {}),
     ...(value.channelName ? { channelName: value.channelName } : {}),
     ...(value.source ? { source: value.source } : {}),
     ...(sessionSource ? { sessionSource } : {}),
