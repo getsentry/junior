@@ -37,19 +37,23 @@ async function setViewerArchive(args: {
   lastSeenAt: string;
   rootConversationId: string;
   userId: string;
-}): Promise<"conflict" | "missing" | "updated"> {
+}): Promise<
+  | { status: "conflict" | "missing" }
+  | { archivedAt: string | null; status: "updated" }
+> {
   const activity = await readRootActivity({
     lastSeenAt: args.lastSeenAt,
     rootConversationId: args.rootConversationId,
   });
-  if (activity !== "ok") return activity;
+  if (activity !== "ok") return { status: activity };
 
   if (args.archived) {
+    const archivedAt = new Date();
     const lastMessageAt = new Date(args.lastSeenAt);
     await getDb()
       .insert(juniorConversationParticipants)
       .values({
-        archivedAt: new Date(),
+        archivedAt,
         lastMessageAt,
         rootConversationId: args.rootConversationId,
         userId: args.userId,
@@ -60,11 +64,11 @@ async function setViewerArchive(args: {
           juniorConversationParticipants.rootConversationId,
         ],
         set: {
-          archivedAt: new Date(),
+          archivedAt,
           lastMessageAt: sql`greatest(${juniorConversationParticipants.lastMessageAt}, excluded.last_message_at)`,
         },
       });
-    return "updated";
+    return { archivedAt: archivedAt.toISOString(), status: "updated" };
   }
 
   await getDb()
@@ -80,7 +84,7 @@ async function setViewerArchive(args: {
         isNotNull(juniorConversationParticipants.archivedAt),
       ),
     );
-  return "updated";
+  return { archivedAt: null, status: "updated" };
 }
 
 /** Read one viewer's archive timestamp for a conversation root. */
@@ -132,11 +136,11 @@ export async function archiveConversation(
     rootConversationId,
     userId: viewer.id,
   });
-  if (result === "missing") {
+  if (result.status === "updated") {
+    return { archivedAt: result.archivedAt };
+  }
+  if (result.status === "missing") {
     throwApiError(404, "Conversation not found.");
   }
-  if (result === "conflict") {
-    throwApiError(409, "Conversation received new activity.");
-  }
-  return { archived: body.archived };
+  throwApiError(409, "Conversation received new activity.");
 }

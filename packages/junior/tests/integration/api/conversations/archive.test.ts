@@ -78,7 +78,7 @@ describe("conversation archive API", () => {
     expect(archive.status).toBe(200);
     expect(
       archiveConversationResponseSchema.parse(await archive.json()),
-    ).toEqual({ archived: true });
+    ).toEqual({ archivedAt: expect.any(String) });
     await expect(readConversationFeed({ viewer })).resolves.toMatchObject({
       conversations: [],
     });
@@ -96,7 +96,7 @@ describe("conversation archive API", () => {
       conversationDetailReportSchema.parse(
         await readConversationDetail(conversationId, { viewer: otherViewer }),
       ).archivedAt,
-    ).toBeUndefined();
+    ).toBeNull();
 
     const restore = await app.request(
       `http://localhost/api/conversations/${conversationId}/archive`,
@@ -107,6 +107,9 @@ describe("conversation archive API", () => {
       },
     );
     expect(restore.status).toBe(200);
+    expect(
+      archiveConversationResponseSchema.parse(await restore.json()),
+    ).toEqual({ archivedAt: null });
     await expect(readConversationFeed({ viewer })).resolves.toMatchObject({
       conversations: [expect.objectContaining({ conversationId })],
     });
@@ -114,7 +117,7 @@ describe("conversation archive API", () => {
       conversationDetailReportSchema.parse(
         await readConversationDetail(conversationId, { viewer }),
       ).archivedAt,
-    ).toBeUndefined();
+    ).toBeNull();
   });
 
   it("archives for a root actor without an existing participant row", async () => {

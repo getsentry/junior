@@ -63,7 +63,7 @@ export const archiveConversationBodySchema = z
   .strict();
 
 export const archiveConversationResponseSchema = z
-  .object({ archived: z.boolean() })
+  .object({ archivedAt: z.string().datetime().nullable() })
   .strict();
 
 export const createConversationBodySchema = z
@@ -207,13 +207,14 @@ export const conversationSourceTaskSchema = z
     }
   });
 
-const conversationAnnotationReportSchema = conversationAnnotationInputSchema.and(
-  z.object({
-    plugin: z.string().min(1),
-    createdAt: z.string().datetime(),
-    updatedAt: z.string().datetime(),
-  }),
-);
+const conversationAnnotationReportSchema =
+  conversationAnnotationInputSchema.and(
+    z.object({
+      plugin: z.string().min(1),
+      createdAt: z.string().datetime(),
+      updatedAt: z.string().datetime(),
+    }),
+  );
 
 export const conversationSummaryReportSchema = z
   .object({
@@ -230,7 +231,7 @@ export const conversationSummaryReportSchema = z
     lastProgressAt: z.string(),
     surface: conversationSurfaceSchema,
     actorIdentity: actorIdentitySchema.optional(),
-    archivedAt: z.string().optional(),
+    archivedAt: z.string().datetime().nullable().optional(),
     channel: z.string().optional(),
     channelName: z.string().optional(),
     channelNameRedacted: z.boolean().optional(),

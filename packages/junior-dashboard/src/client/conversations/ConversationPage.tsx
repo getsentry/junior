@@ -417,7 +417,7 @@ function applyPendingArchiveUpdate(
     ...updatedConversation,
     archivedAt: update.archived
       ? (updatedConversation.archivedAt ?? updatedConversation.lastSeenAt)
-      : undefined,
+      : null,
   };
 }
 
