@@ -140,7 +140,7 @@ export interface PluginMcp {
   prepare(): Promise<"authorization_pending" | "ready">;
 }
 
-/** Provider-owned repository preparation for one Workspace snapshot build. */
+/** Provider-owned, repeatable repository preparation for a Workspace Sandbox. */
 export interface WorkspacePrepareHookContext extends PluginContext {
   repos: Array<{
     path: string;
