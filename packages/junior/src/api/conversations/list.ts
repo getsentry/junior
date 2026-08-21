@@ -11,7 +11,6 @@ import {
   juniorIdentities,
   juniorUsers,
 } from "@/db/schema";
-import { conversationReadColumns } from "@/db/schema/conversations";
 import { resolveSlackTeamDomains } from "@/chat/slack/team-domain";
 import { conversationSummaryFromStoredConversation } from "./projection";
 import { readConversationAccessFromSql } from "./access";
@@ -76,7 +75,7 @@ async function conversationRows(
 ) {
   return db
     .select({
-      conversation: conversationReadColumns(),
+      conversation: juniorConversations,
       destination: juniorDestinations,
       identityDisplayName: juniorIdentities.displayName,
       identityEmail: juniorIdentities.email,
@@ -179,7 +178,7 @@ export async function readConversationRecordFromSql(
   const db = getDb();
   const rows = await db
     .select({
-      conversation: conversationReadColumns(),
+      conversation: juniorConversations,
       destination: juniorDestinations,
       identityDisplayName: juniorIdentities.displayName,
       identityEmail: juniorIdentities.email,
