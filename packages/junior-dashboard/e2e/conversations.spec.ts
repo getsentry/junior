@@ -662,7 +662,9 @@ test("archives and restores a conversation from the sidebar", async ({
     const request = route.request().postDataJSON();
     await new Promise((resolve) => setTimeout(resolve, 1_000));
     archived = request.archived;
-    await route.fulfill({ json: { archived } });
+    await route.fulfill({
+      json: { archivedAt: archived ? "2026-08-21T16:45:00.000Z" : null },
+    });
   });
   await page.goto(server.baseURL);
   const selectedConversation = page.getByRole("link", {
@@ -730,7 +732,9 @@ test("archives and restores a conversation from the sidebar", async ({
 test("expires the archive undo notice", async ({ page }) => {
   await page.clock.install();
   await page.route("**/api/conversations/*/archive", async (route) => {
-    await route.fulfill({ json: { archived: true } });
+    await route.fulfill({
+      json: { archivedAt: "2026-08-21T16:45:00.000Z" },
+    });
   });
   await page.goto(server.baseURL);
 
@@ -757,7 +761,9 @@ test("resets the archive undo timer when archiving another conversation", async 
 }) => {
   await page.clock.install();
   await page.route("**/api/conversations/*/archive", async (route) => {
-    await route.fulfill({ json: { archived: true } });
+    await route.fulfill({
+      json: { archivedAt: "2026-08-21T16:45:00.000Z" },
+    });
   });
   await page.goto(server.baseURL);
 
@@ -823,7 +829,9 @@ test("keeps undo available when another archive fails", async ({ page }) => {
   await page.route("**/api/conversations/*/archive", async (route) => {
     archiveRequests += 1;
     if (archiveRequests === 1) {
-      await route.fulfill({ json: { archived: true } });
+      await route.fulfill({
+        json: { archivedAt: "2026-08-21T16:45:00.000Z" },
+      });
       return;
     }
     await new Promise((resolve) => setTimeout(resolve, 250));
