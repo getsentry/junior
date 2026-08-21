@@ -793,6 +793,26 @@ export async function loadTurnRoute(args: {
   return event.data;
 }
 
+/** Load the durable input ids recorded when a turn started. */
+export async function loadTurnStarted(args: {
+  conversationId: string;
+  turnId: string;
+}): Promise<
+  Extract<ConversationEvent["data"], { type: "turn_started" }> | undefined
+> {
+  const event = await getConversationEventStore().loadByIdempotencyKey(
+    args.conversationId,
+    `turn:${args.turnId}:started`,
+  );
+  if (!event) {
+    return undefined;
+  }
+  if (event.data.type !== "turn_started" || event.data.turnId !== args.turnId) {
+    throw new Error(`Turn start key for "${args.turnId}" has invalid data`);
+  }
+  return event.data;
+}
+
 /** Record the execution profile selected for one turn without changing agent history. */
 export async function recordTurnRoute(args: {
   conversationId: string;
