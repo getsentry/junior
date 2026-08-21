@@ -1335,9 +1335,19 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                     acceptedMessages =
                       await resolveSteeringMessages(queuedMessages);
                     // Durable Pi checkpoint + steer first; only then count
-                    // chrome / stamp transcript for resource events.
+                    // chrome / stamp transcript for resource events. Stamp is
+                    // best-effort after accept: if it throws, the drain must
+                    // still commit so the mailbox does not redeliver and the
+                    // agent does not resteer the same messages.
                     await accept(acceptedMessages);
-                    await stampResourceEventsAfterCommit(queuedMessages);
+                    try {
+                      await stampResourceEventsAfterCommit(queuedMessages);
+                    } catch (error) {
+                      logException(
+                        error,
+                        "resource_events.chrome_stamp.after_steer.failed",
+                      );
+                    }
                   },
                   { conversationContext: preparedState.conversationContext },
                 );
