@@ -1,0 +1,159 @@
+import { describe, expect, it, vi } from "vitest";
+import type { PiMessage } from "@/chat/pi/messages";
+import {
+  continueWorkspaceSnapshotWait,
+  pendingWorkspaceSnapshotWait,
+} from "@/chat/services/workspace-snapshot-wait";
+
+const usage = {
+  input: 0,
+  output: 0,
+  cacheRead: 0,
+  cacheWrite: 0,
+  totalTokens: 0,
+  cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+};
+
+function waitingMessages(name = "sentry"): PiMessage[] {
+  return [
+    {
+      role: "assistant",
+      api: "test",
+      provider: "test",
+      model: "test",
+      content: [
+        {
+          type: "toolCall",
+          id: "tool-1",
+          name: "switchWorkspace",
+          arguments: { name },
+        },
+      ],
+      usage,
+      stopReason: "toolUse",
+      timestamp: 1,
+    },
+    {
+      role: "toolResult",
+      toolCallId: "tool-1",
+      toolName: "switchWorkspace",
+      content: [{ type: "text", text: "waiting" }],
+      isError: false,
+      timestamp: 2,
+      details: {
+        workspace: { name },
+        waiting: "workspace_snapshot",
+        timed_out: true,
+      },
+    },
+  ];
+}
+
+describe("Workspace snapshot wait continuation", () => {
+  it("detects a soft-wait tool result", () => {
+    expect(pendingWorkspaceSnapshotWait(waitingMessages())).toEqual({
+      name: "sentry",
+    });
+  });
+
+  it("detects a wait before sibling tool results", () => {
+    expect(
+      pendingWorkspaceSnapshotWait([
+        ...waitingMessages(),
+        {
+          role: "toolResult",
+          toolCallId: "tool-2",
+          toolName: "reportProgress",
+          content: [{ type: "text", text: "reported" }],
+          isError: false,
+          timestamp: 3,
+          details: { status: "building" },
+        },
+      ]),
+    ).toEqual({ name: "sentry" });
+  });
+
+  it("does not revive an older wait after a newer Workspace switch succeeds", () => {
+    expect(
+      pendingWorkspaceSnapshotWait([
+        ...waitingMessages("old-workspace"),
+        {
+          role: "toolResult",
+          toolCallId: "tool-2",
+          toolName: "switchWorkspace",
+          content: [{ type: "text", text: "ready" }],
+          isError: false,
+          timestamp: 3,
+          details: {
+            workspace: { id: "workspace-2", name: "new-workspace" },
+          },
+        },
+      ]),
+    ).toBeNull();
+  });
+
+  it("continues switchWorkspace from tool-result boundaries until ready", async () => {
+    const execute = vi
+      .fn()
+      .mockResolvedValueOnce({
+        content: [{ type: "text", text: "still building" }],
+        details: {
+          workspace: { name: "sentry" },
+          waiting: "workspace_snapshot",
+          timed_out: true,
+        },
+      })
+      .mockResolvedValueOnce({
+        content: [{ type: "text", text: "ready" }],
+        details: { workspace: { name: "sentry", id: "ws-1" } },
+      });
+    const tools = [
+      {
+        name: "switchWorkspace",
+        label: "switchWorkspace",
+        description: "switch",
+        parameters: {} as never,
+        execute,
+      },
+    ];
+
+    const first = await continueWorkspaceSnapshotWait({
+      messages: waitingMessages(),
+      tools: tools as never,
+    });
+    expect(first.kind).toBe("waiting");
+    expect(execute).toHaveBeenCalledTimes(1);
+
+    const second = await continueWorkspaceSnapshotWait({
+      messages: first.kind === "none" ? waitingMessages() : first.messages,
+      tools: tools as never,
+    });
+    expect(second.kind).toBe("ready");
+    expect(execute).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps a valid tool-result boundary when host continuation fails", async () => {
+    const error = new Error("Workspace was deleted");
+    const failed = await continueWorkspaceSnapshotWait({
+      messages: waitingMessages(),
+      tools: [
+        {
+          name: "switchWorkspace",
+          label: "switchWorkspace",
+          description: "switch",
+          parameters: {} as never,
+          execute: vi.fn().mockRejectedValue(error),
+        },
+      ] as never,
+    });
+
+    expect(failed).toMatchObject({ kind: "failed", error });
+    if (failed.kind !== "failed") throw new Error("Expected failed result");
+    expect(failed.messages.at(-1)).toMatchObject({
+      role: "toolResult",
+      toolName: "switchWorkspace",
+      isError: true,
+      details: { error: "Workspace was deleted" },
+    });
+  });
+});

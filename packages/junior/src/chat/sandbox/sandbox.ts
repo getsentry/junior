@@ -97,6 +97,8 @@ export interface SandboxOptions {
   skills: SkillMetadata[];
   referenceFiles: string[];
   timeoutMs?: number;
+  /** Durable-worker soft yield for long Workspace snapshot waits. */
+  shouldYield?: () => boolean;
   traceContext?: LogContext;
   tracePropagation?: SandboxEgressTracePropagationConfig;
   credentialEgress?: CredentialContext;
@@ -216,6 +218,7 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
     skills: options.skills,
     referenceFiles: options.referenceFiles,
     timeoutMs: options.timeoutMs,
+    shouldYield: options.shouldYield,
     traceContext,
     commandEnv: credentialEgress ? resolveSandboxCommandEnvironment : undefined,
     createNetworkPolicy:
@@ -802,10 +805,11 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
       const workspaceDirectories =
         activeWorkspace?.repos
           .map((repo) => tryWorkspaceRepoCheckoutPath(repo.repo))
-          .filter((checkoutPath): checkoutPath is string => Boolean(checkoutPath))
-          .map(
-            (checkoutPath) => `${SANDBOX_WORKSPACE_ROOT}/${checkoutPath}`,
-          ) ?? [];
+          .filter((checkoutPath): checkoutPath is string =>
+            Boolean(checkoutPath),
+          )
+          .map((checkoutPath) => `${SANDBOX_WORKSPACE_ROOT}/${checkoutPath}`) ??
+        [];
       const directories =
         workspaceDirectories.length > 0
           ? workspaceDirectories

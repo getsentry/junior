@@ -144,7 +144,11 @@ export interface PluginMcp {
   prepare(): Promise<"authorization_pending" | "ready">;
 }
 
-/** Provider-owned repository preparation for one Workspace snapshot build. */
+/**
+ * Provider-owned repository preparation for one Workspace snapshot build.
+ * A stopped execution slice can call the hook again in the same Sandbox, so
+ * implementations must replace or safely reuse partial prior work.
+ */
 export interface WorkspacePrepareHookContext extends PluginContext {
   repos: Array<{
     path: string;

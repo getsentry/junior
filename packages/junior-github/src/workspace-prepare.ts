@@ -52,6 +52,18 @@ export async function prepareWorkspace(
         );
       }
     }
+    // A stopped execution slice can leave a complete or partial checkout. The
+    // next slice owns this fixed path and must start the clone from clean state.
+    const cleanup = await ctx.sandbox.run({
+      cmd: "rm",
+      args: ["-rf", "--", path],
+      cwd: ctx.sandbox.root,
+    });
+    if (cleanup.exitCode !== 0) {
+      throw new Error(
+        `GitHub workspace checkout cleanup failed for ${repo}: ${cleanup.stderr.trim() || `exit ${cleanup.exitCode}`}`,
+      );
+    }
     const result = await ctx.sandbox.run({
       cmd: "git",
       args: [

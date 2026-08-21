@@ -299,6 +299,8 @@ vi.mock("@/chat/plugins/catalog-runtime", () => ({
   pluginCatalogRuntime: {
     getMcpProviders: () => [],
     getProviders: () => [],
+    getRuntimeDependencies: () => [],
+    getRuntimePostinstall: () => [],
   },
 }));
 

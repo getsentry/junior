@@ -16,7 +16,7 @@ import { juniorWorkspaces } from "./workspaces";
 
 /**
  * Sandbox snapshot build and ready artifact for one Workspace recipe.
- * Keep prior ready rows so Vercel snapshot ids can be garbage-collected later.
+ * A ready row keeps its builder owner until the snapshot is discarded.
  */
 export const juniorSnapshots = pgTable(
   "junior_snapshots",
@@ -31,7 +31,7 @@ export const juniorSnapshots = pgTable(
     snapshotId: text("snapshot_id"),
     buildDurationMs: integer("build_duration_ms"),
     generatedAt: timestamptz("generated_at"),
-    // In-flight builder references for check-in across execution slices.
+    // Builder references for check-in and snapshot-owner cleanup.
     buildStartedAt: timestamptz("build_started_at"),
     buildPhase: text("build_phase").$type<WorkspaceSnapshotBuildPhase>(),
     buildSandboxName: text("build_sandbox_name"),
@@ -69,6 +69,9 @@ export const juniorSnapshots = pgTable(
       table.profileHash,
       table.status,
     ),
+    uniqueIndex("junior_snapshots_active_build_uidx")
+      .on(table.workspaceId, table.profileHash)
+      .where(sql`${table.status} = 'building'`),
     index("junior_snapshots_workspace_status_idx").on(
       table.workspaceId,
       table.status,

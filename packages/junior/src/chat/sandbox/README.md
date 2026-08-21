@@ -51,9 +51,15 @@ traffic through verified host egress.
 - A Workspace recipe is part of the profile hash. One build installs runtime
   dependencies, prepares repositories, runs setup, and captures the complete
   snapshot. Operators manage recipes from `/system/workspaces` or
-  `/api/workspaces`. After a successful Workspace prepare, Junior records the
-  current snapshot id, generation time, build duration, and profile hash on
-  the Workspace SQL row for the dashboard.
+  `/api/workspaces`. The `junior_snapshots` table records each build as
+  `building`, `failed`, or `ready`. A cold build uses one named Sandbox for up
+  to one hour. Short execution slices create the builder, install
+  dependencies, prepare repositories, start setup, and poll setup. Each slice
+  records its phase in SQL. The next run can continue after a soft yield or a
+  worker stop. The host continues a waiting `switchWorkspace` tool call without
+  asking the model to repeat it.
+- SQL is the only source of Workspace snapshot state. Redis coordinates the
+  build lock and its fencing. It does not store Workspace snapshot pointers.
 - Workspace repositories clone to fixed `repos/{name}` paths. Setup scripts
   receive `JUNIOR_WORKSPACE_ROOT` and `JUNIOR_REPOS_ROOT` so they do not depend
   on the provider's absolute Sandbox path.
@@ -64,6 +70,10 @@ traffic through verified host egress.
   live state. A failed candidate leaves the current Sandbox unchanged.
 - Missing or invalid snapshots rebuild through the owning snapshot path;
   callers do not mutate a cached snapshot in place.
+- A ready snapshot retains its named builder Sandbox. Deleting that Sandbox
+  would also delete the snapshot it owns. Junior deletes the builder after it
+  discards the ready row because the recipe changed, the snapshot is stale or
+  missing, another snapshot replaced it, or the Workspace was deleted.
 - Snapshot state never contains real provider credentials.
 - The global baseline installs Docker and Compose clients plus
   `junior-ensure-docker`. Sandbox prepare starts `dockerd` so nested

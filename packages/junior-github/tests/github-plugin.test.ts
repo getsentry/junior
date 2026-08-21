@@ -3023,6 +3023,7 @@ Conversation: \`local:test:old-conversation\`
 
     expect(runs.map((run) => run.args)).toEqual([
       ["-p", "--", "repos"],
+      ["-rf", "--", "repos/sentry"],
       [
         "clone",
         "--quiet",
@@ -3032,6 +3033,7 @@ Conversation: \`local:test:old-conversation\`
         "repos/sentry",
       ],
       ["-p", "--", "repos"],
+      ["-rf", "--", "repos/junior"],
       [
         "clone",
         "--quiet",
@@ -3042,6 +3044,49 @@ Conversation: \`local:test:old-conversation\`
       ],
     ]);
     expect(runs.every((run) => run.env === undefined)).toBe(true);
+  });
+
+  it("replaces a partial checkout when an interrupted clone is retried", async () => {
+    let cloneAttempts = 0;
+    const runs: Array<{ args?: string[]; cmd: string }> = [];
+    const ctx = {
+      db,
+      log: pluginLog,
+      plugin: { name: "github" },
+      repos: [{ repo: "getsentry/junior", path: "repos/junior" }],
+      sandbox: {
+        juniorRoot: "/vercel/sandbox/.junior",
+        root: "/vercel/sandbox",
+        async readFile() {
+          return null;
+        },
+        async run(input: { args?: string[]; cmd: string }) {
+          runs.push(input);
+          if (input.cmd === "git") {
+            cloneAttempts += 1;
+            if (cloneAttempts === 1) {
+              return { exitCode: 130, stderr: "interrupted", stdout: "" };
+            }
+          }
+          return { exitCode: 0, stderr: "", stdout: "" };
+        },
+        async writeFile() {},
+      },
+    } as WorkspacePrepareHookContext;
+
+    await expect(githubPlugin().hooks?.workspacePrepare?.(ctx)).rejects.toThrow(
+      "GitHub workspace clone failed",
+    );
+    await expect(
+      githubPlugin().hooks?.workspacePrepare?.(ctx),
+    ).resolves.toBeUndefined();
+
+    expect(
+      runs.filter(
+        (run) =>
+          run.cmd === "rm" && run.args?.join(" ") === "-rf -- repos/junior",
+      ),
+    ).toHaveLength(2);
   });
 
   it("rejects reserved workspace checkout paths", async () => {
