@@ -42,7 +42,7 @@ import {
   createMemorySearchTool,
   type MemoryReviewer,
 } from "../src/tools";
-import { createViewerMemories } from "../src/viewer";
+import { listMemories } from "../src/viewer";
 import { createMemoryStore, type MemoryDb } from "../src/store";
 import type {
   MemorySupersessionDecider,
@@ -1784,11 +1784,9 @@ describe("memory plugin storage", () => {
         },
       ]);
 
-      const listed = await createViewerMemories(memoryDb(fixture), {
-        email: "dashboard@example.com",
-        id: runtime.userId,
-        identities: [],
-      }).list({ limit: 10 });
+      const listed = await listMemories(memoryDb(fixture), runtime.userId, {
+        limit: 10,
+      });
       expect(listed.memories.map((memory) => memory.id)).toEqual([
         created.memory.id,
       ]);

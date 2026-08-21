@@ -12,10 +12,14 @@ import {
 } from "@sentry/junior-plugin-api";
 import type { MemoryDb } from "./store";
 import {
-  createViewerMemories,
+  archiveMemory,
+  getMemory,
+  getMemoryStats,
+  getMemoryTimeline,
   InvalidMemoryCursorError,
+  listMemories,
   MemoryNotFoundError,
-  type ViewerMemory,
+  type MemoryView,
 } from "./viewer";
 import { MEMORY_SOURCE_PLATFORMS } from "./types";
 
@@ -108,7 +112,7 @@ function json(body: unknown, status = 200): Response {
   });
 }
 
-function apiMemory(memory: ViewerMemory): z.output<typeof memoryApiSchema> {
+function apiMemory(memory: MemoryView): z.output<typeof memoryApiSchema> {
   return {
     content: memory.content,
     createdAt: new Date(memory.createdAtMs).toISOString(),
@@ -132,7 +136,7 @@ function viewerEmail(context: unknown): string | undefined {
   return parsed.data.auth.user.email?.trim().toLowerCase() || undefined;
 }
 
-/** Create the authenticated viewer-memory REST app. */
+/** Create the authenticated memory REST app. */
 export function createMemoryApi(options: MemoryApiOptions): PluginRouteApp {
   return {
     async fetch(request, context) {
@@ -155,13 +159,13 @@ export function createMemoryApi(options: MemoryApiOptions): PluginRouteApp {
 
       const viewer = await options.users.resolve(email);
       if (!viewer) return json({ error: "Authentication required." }, 401);
+      const userId = viewer.id;
 
-      const memories = createViewerMemories(options.db, viewer);
       try {
         if (isDashboard && isRead) {
           const [stats, days, extractionDays, recallDays] = await Promise.all([
-            memories.stats(),
-            memories.timeline({ days: 90 }),
+            getMemoryStats(options.db, userId),
+            getMemoryTimeline(options.db, userId, 90),
             options.eventStats.costsByDay({
               days: 90,
               eventName: "memories_captured",
@@ -196,7 +200,7 @@ export function createMemoryApi(options: MemoryApiOptions): PluginRouteApp {
             limit: url.searchParams.get("limit") ?? undefined,
             q: url.searchParams.get("q") ?? undefined,
           });
-          const page = await memories.list({
+          const page = await listMemories(options.db, userId, {
             cursor: query.cursor,
             limit: query.limit,
             ...(query.q ? { query: query.q } : undefined),
@@ -214,19 +218,23 @@ export function createMemoryApi(options: MemoryApiOptions): PluginRouteApp {
         }
 
         if (memoryPath && isRead) {
-          const memory = memoryApiSchema.parse(
-            apiMemory(await memories.get(decodeURIComponent(memoryPath[1]!))),
+          const memory = await getMemory(
+            options.db,
+            userId,
+            decodeURIComponent(memoryPath[1]!),
           );
+          const body = memoryApiSchema.parse(apiMemory(memory));
           return request.method === "HEAD"
             ? new Response(null, {
                 headers: { "cache-control": "no-store" },
                 status: 200,
               })
-            : json(memory);
+            : json(body);
         }
 
         if (memoryPath && request.method === "DELETE") {
-          await memories.archive(decodeURIComponent(memoryPath[1]!));
+          const id = decodeURIComponent(memoryPath[1]!);
+          await archiveMemory(options.db, userId, id);
           return new Response(null, {
             headers: { "cache-control": "no-store" },
             status: 204,
