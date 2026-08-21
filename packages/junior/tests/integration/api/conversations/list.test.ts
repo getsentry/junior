@@ -14,6 +14,7 @@ import { createSqlConversationEventStore } from "@/chat/conversations/sql/histor
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import { setPlugins } from "@/chat/plugins/agent-hooks";
+import { resolveViewerUser } from "@/chat/plugins/viewer";
 import {
   juniorConversationEvents,
   juniorConversationParticipants,
@@ -36,20 +37,25 @@ describe("conversation list API", () => {
       const store = createSqlStore(fixture.sql);
       const archivedId = "slack:C123:archived";
       await store.recordActivity({ conversationId: archivedId, nowMs: 1_000 });
-      await fixture.sql
-        .db()
-        .update(juniorConversations)
-        .set({ archivedAt: new Date(2_000) })
-        .where(eq(juniorConversations.conversationId, archivedId));
+      const viewer = await resolveViewerUser("viewer@example.com");
+      expect(viewer).toBeDefined();
+      await fixture.sql.db().insert(juniorConversationParticipants).values({
+        archivedAt: new Date(2_000),
+        lastMessageAt: new Date(1_000),
+        rootConversationId: archivedId,
+        userId: viewer!.id,
+      });
       const app = createJuniorApi();
 
-      const response = await app.request("http://localhost/api/conversations");
+      const response = await app.request(
+        "http://localhost/api/conversations?actorEmail=viewer%40example.com",
+      );
       expect(response.status).toBe(200);
       expect(
         conversationFeedSchema.parse(await response.json()).conversations,
       ).toEqual([]);
       const archivedResponse = await app.request(
-        "http://localhost/api/conversations?status=archived",
+        "http://localhost/api/conversations?actorEmail=viewer%40example.com&status=archived",
       );
       expect(archivedResponse.status).toBe(200);
       expect(

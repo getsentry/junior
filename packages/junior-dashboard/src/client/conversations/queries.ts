@@ -307,7 +307,7 @@ export function useArchiveConversation(
   conversationId: string,
   options?: {
     onError?(): void;
-    onSuccess?(archived: boolean): void;
+    onSuccess?(archivedAt: string | null): void;
   },
 ) {
   const queryClient = useQueryClient();
@@ -335,7 +335,7 @@ export function useArchiveConversation(
         queryClient.getQueryData<ArchivedConversationSnapshot>(
           archivedQueryKey,
         );
-      const archivedAt = args.archived ? new Date().toISOString() : undefined;
+      const archivedAt = args.archived ? new Date().toISOString() : null;
       // Snapshot from any loaded feed, including archived-only fixtures that
       // were never archived through this client session.
       const archivedSnapshot =
@@ -356,7 +356,7 @@ export function useArchiveConversation(
         const conversations = shouldRestore
           ? [
               ...feed.conversations,
-              { ...archivedSnapshot!.conversation, archivedAt: undefined },
+              { ...archivedSnapshot!.conversation, archivedAt: null },
             ].sort((a, b) => b.lastSeenAt.localeCompare(a.lastSeenAt))
           : feed.conversations.map((conversation) =>
               conversation.conversationId === conversationId
@@ -407,14 +407,19 @@ export function useArchiveConversation(
       }
       options?.onError?.();
     },
-    onSuccess: (_result, args) => {
+    onSuccess: (result, args) => {
+      queryClient.setQueryData<ConversationDetailReport>(
+        conversationDetailQueryKey(conversationId),
+        (detail) =>
+          detail ? { ...detail, archivedAt: result.archivedAt } : detail,
+      );
       if (!args.archived) {
         queryClient.removeQueries({
           exact: true,
           queryKey: archivedConversationQueryKey(conversationId),
         });
       }
-      options?.onSuccess?.(args.archived);
+      options?.onSuccess?.(result.archivedAt);
     },
     onSettled: async () => {
       await Promise.all([

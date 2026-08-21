@@ -1393,14 +1393,14 @@ export function readMockConversationFeed(
 export function setMockConversationArchived(
   conversationId: string,
   archived: boolean,
-): { archived: boolean } | undefined {
+): { archivedAt: string | null } | undefined {
   const exists = mockConversations(Date.now()).some(
     (conversation) => conversation.conversationId === conversationId,
   );
   if (!exists) return undefined;
   if (archived) mockArchivedConversationIds.add(conversationId);
   else mockArchivedConversationIds.delete(conversationId);
-  return { archived };
+  return { archivedAt: archived ? new Date().toISOString() : null };
 }
 
 /** Return accepted mailbox rows for local dashboard visual QA. */

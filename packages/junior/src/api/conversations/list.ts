@@ -1,5 +1,5 @@
 import type { User } from "@sentry/junior-plugin-api";
-import { and, asc, desc, eq, isNotNull, isNull, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, isNull, sql, type SQL } from "drizzle-orm";
 import { getDb } from "@/chat/db";
 import type { Conversation } from "@/chat/conversations/store";
 import { locationFromRow } from "@/chat/conversations/sql/location";
@@ -11,12 +11,18 @@ import {
   juniorIdentities,
   juniorUsers,
 } from "@/db/schema";
+import { conversationReadColumns } from "@/db/schema/conversations";
 import { resolveSlackTeamDomains } from "@/chat/slack/team-domain";
 import { conversationSummaryFromStoredConversation } from "./projection";
 import { readConversationAccessFromSql } from "./access";
 import {
+  conversationArchivedForEmail,
+  conversationArchivedForUser,
+  conversationArchiveTimes,
   conversationHasParticipantEmail,
   conversationHasParticipantUser,
+  conversationNotArchivedForEmail,
+  conversationNotArchivedForUser,
   viewerConversationMembership,
 } from "./membership";
 import { conversationFeedSchema } from "../schema/conversation";
@@ -36,19 +42,30 @@ type ConversationFeedMembership =
   | { kind: "actorEmail"; email: string };
 
 function conversationFeedMembershipFilter(
+  status: "active" | "archived",
   filter?: ConversationFeedMembership,
 ): SQL | undefined {
-  if (!filter) return undefined;
+  if (!filter) return status === "archived" ? sql`false` : undefined;
   if (filter.kind === "viewer") {
-    return viewerConversationMembership({
-      actorMatch: eq(juniorIdentities.userId, filter.userId),
-      participantMatch: conversationHasParticipantUser(filter.userId),
-    });
+    return and(
+      viewerConversationMembership({
+        actorMatch: eq(juniorIdentities.userId, filter.userId),
+        participantMatch: conversationHasParticipantUser(filter.userId),
+      }),
+      status === "archived"
+        ? conversationArchivedForUser(filter.userId)
+        : conversationNotArchivedForUser(filter.userId),
+    );
   }
-  return viewerConversationMembership({
-    actorMatch: eq(juniorUsers.primaryEmailNormalized, filter.email),
-    participantMatch: conversationHasParticipantEmail(filter.email),
-  });
+  return and(
+    viewerConversationMembership({
+      actorMatch: eq(juniorUsers.primaryEmailNormalized, filter.email),
+      participantMatch: conversationHasParticipantEmail(filter.email),
+    }),
+    status === "archived"
+      ? conversationArchivedForEmail(filter.email)
+      : conversationNotArchivedForEmail(filter.email),
+  );
 }
 
 async function conversationRows(
@@ -59,7 +76,7 @@ async function conversationRows(
 ) {
   return db
     .select({
-      conversation: juniorConversations,
+      conversation: conversationReadColumns(),
       destination: juniorDestinations,
       identityDisplayName: juniorIdentities.displayName,
       identityEmail: juniorIdentities.email,
@@ -82,10 +99,7 @@ async function conversationRows(
     .where(
       and(
         isNull(juniorConversations.parentConversationId),
-        status === "archived"
-          ? isNotNull(juniorConversations.archivedAt)
-          : isNull(juniorConversations.archivedAt),
-        conversationFeedMembershipFilter(filter),
+        conversationFeedMembershipFilter(status, filter),
       ),
     )
     .orderBy(
@@ -139,7 +153,6 @@ function conversationFromRow(row: ConversationRow): Conversation {
     },
     ...(actor ? { actor } : {}),
     ...(location ? { location } : {}),
-    ...(value.archivedAt ? { archivedAtMs: value.archivedAt.getTime() } : {}),
     ...(value.channelName ? { channelName: value.channelName } : {}),
     ...(value.source ? { source: value.source } : {}),
     ...(sessionSource ? { sessionSource } : {}),
@@ -166,7 +179,7 @@ export async function readConversationRecordFromSql(
   const db = getDb();
   const rows = await db
     .select({
-      conversation: juniorConversations,
+      conversation: conversationReadColumns(),
       destination: juniorDestinations,
       identityDisplayName: juniorIdentities.displayName,
       identityEmail: juniorIdentities.email,
@@ -237,11 +250,12 @@ export async function readConversationFeedFromSql(
 ): Promise<ConversationFeed> {
   const nowMs = Date.now();
   const db = getDb();
+  const filter = conversationFeedFilter(options);
   const rows = await conversationRows(
     db,
     options.limit ?? CONVERSATION_FEED_LIMIT,
     options.status ?? "active",
-    conversationFeedFilter(options),
+    filter,
   );
   const conversations = rows.map((row) => conversationFromRow(row));
   const conversationIds = conversations.map(
@@ -249,6 +263,7 @@ export async function readConversationFeedFromSql(
   );
   const [
     accessByConversation,
+    archiveTimesByConversation,
     annotationsByConversation,
     auxiliaryCostsByRoot,
     metricsByRoot,
@@ -257,6 +272,15 @@ export async function readConversationFeedFromSql(
     lastUserMessageAtByConversation,
   ] = await Promise.all([
     readConversationAccessFromSql(db, conversationIds, options.viewer),
+    conversationArchiveTimes(
+      db,
+      conversationIds,
+      filter?.kind === "viewer"
+        ? { userId: filter.userId }
+        : filter?.kind === "actorEmail"
+          ? { email: filter.email }
+          : undefined,
+    ),
     listConversationAnnotationsById(db, conversationIds),
     readConversationAuxiliaryCostsFromSql(db, conversationIds, {
       includeDescendants: true,
@@ -292,7 +316,11 @@ export async function readConversationFeedFromSql(
       const row = rows[index]!;
       const access = accessByConversation.get(conversation.conversationId);
       const metrics = metricsByRoot.get(conversation.conversationId);
+      const archivedAtMs = archiveTimesByConversation.get(
+        conversation.conversationId,
+      );
       const summary = conversationSummaryFromStoredConversation({
+        ...(archivedAtMs === undefined ? {} : { archivedAtMs }),
         conversation,
         access,
         auxiliaryCosts: auxiliaryCostsByRoot.get(conversation.conversationId),

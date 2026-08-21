@@ -25,6 +25,7 @@ import {
   juniorIdentities,
   juniorUsers,
 } from "@/db/schema";
+import { conversationReadColumns } from "@/db/schema/conversations";
 import type { AgentTurnCost, AgentTurnUsage } from "@/chat/usage";
 import type {
   JuniorDestinationKind,
@@ -42,7 +43,10 @@ import {
   mergeActor,
 } from "./actor-identity";
 import { locationFromRow, privacyFromLocationRow } from "./location";
-type ConversationRow = typeof juniorConversations.$inferSelect;
+type ConversationRow = Omit<
+  typeof juniorConversations.$inferSelect,
+  "legacyArchivedAt"
+>;
 type DestinationRow = typeof juniorDestinations.$inferSelect;
 type IdentityRow = typeof juniorIdentities.$inferSelect;
 interface ConversationReadRow {
@@ -286,9 +290,6 @@ function conversationFromRow(readRow: ConversationReadRow): Conversation {
     ...(destination ? { destination } : {}),
     ...(location ? { location } : {}),
     ...(actor ? { actor } : {}),
-    ...(msFromDate(row.archivedAt) !== undefined
-      ? { archivedAtMs: msFromDate(row.archivedAt) }
-      : {}),
     ...(row.channelName ? { channelName: row.channelName } : {}),
     ...(source ? { source } : {}),
     ...(sessionSource ? { sessionSource } : {}),
@@ -623,7 +624,7 @@ export class SqlStore implements ConversationStore {
     const rows = await this.executor
       .db()
       .select({
-        conversation: juniorConversations,
+        conversation: conversationReadColumns(),
         destination: juniorDestinations,
         actorIdentity: juniorIdentities,
         actorUserDisplayName: juniorUsers.displayName,
@@ -746,7 +747,7 @@ export class SqlStore implements ConversationStore {
     const rows = await this.executor
       .db()
       .select({
-        conversation: juniorConversations,
+        conversation: conversationReadColumns(),
         destination: juniorDestinations,
         actorIdentity: juniorIdentities,
         actorUserDisplayName: juniorUsers.displayName,

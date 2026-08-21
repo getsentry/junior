@@ -114,6 +114,7 @@ export function createConversationRoutes(options: {
 
   app.patch(
     "/:conversationId/archive",
+    requireViewer,
     validateRequest(
       "param",
       conversationParamsSchema,
@@ -125,11 +126,12 @@ export function createConversationRoutes(options: {
       "Invalid request body.",
     ),
     async (context) => {
+      const viewer = context.get("viewer");
       const { conversationId } = context.req.valid("param");
       const body = context.req.valid("json");
       return jsonResponse(
         archiveConversationResponseSchema,
-        await archiveConversation(conversationId, body),
+        await archiveConversation(viewer, conversationId, body),
       );
     },
   );

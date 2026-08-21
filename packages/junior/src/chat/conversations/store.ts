@@ -36,7 +36,6 @@ export interface ConversationLineage {
 }
 
 export interface Conversation {
-  archivedAtMs?: number;
   channelName?: string;
   conversationId: string;
   createdAtMs: number;

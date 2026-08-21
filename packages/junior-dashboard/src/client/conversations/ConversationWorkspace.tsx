@@ -292,7 +292,7 @@ function applyPendingArchiveUpdates(
       ...conversation,
       archivedAt: update.archived
         ? (conversation.archivedAt ?? conversation.lastSeenAt)
-        : undefined,
+        : null,
     });
   }
   return [...byId.values()].sort((a, b) =>

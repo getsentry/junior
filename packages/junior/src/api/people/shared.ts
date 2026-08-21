@@ -190,9 +190,7 @@ export async function recentActorRows(email: string) {
       juniorDestinations,
       eq(juniorDestinations.id, juniorConversations.destinationId),
     )
-    .where(
-      and(verifiedActorWhere(email), isNull(juniorConversations.archivedAt)),
-    )
+    .where(verifiedActorWhere(email))
     .orderBy(
       desc(juniorConversations.lastActivityAt),
       asc(juniorConversations.conversationId),

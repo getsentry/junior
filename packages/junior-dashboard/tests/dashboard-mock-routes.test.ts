@@ -132,7 +132,7 @@ describe("dashboard canonical-event mock routes", () => {
       ),
     );
     expect(restore.status).toBe(200);
-    await expect(restore.json()).resolves.toEqual({ archived: false });
+    await expect(restore.json()).resolves.toEqual({ archivedAt: null });
 
     const restoredFeed = await app.fetch(
       new Request("http://localhost/api/conversations"),
