@@ -1,4 +1,16 @@
 # Changelog
+## 0.178.0
+
+### New Features ✨
+
+- (conversations) Make archive state personal by @sentry-junior in [#1645](https://github.com/getsentry/junior/pull/1645)
+- (workspaces) Build snapshots across execution slices by @dcramer in [#1607](https://github.com/getsentry/junior/pull/1607)
+
+### Bug Fixes 🐛
+
+- (grep) Handle ripgrep glob parse errors gracefully by @sentry in [#1642](https://github.com/getsentry/junior/pull/1642)
+- (workspaces) Refresh repositories after snapshot boot by @sentry-junior in [#1646](https://github.com/getsentry/junior/pull/1646)
+
 ## 0.177.0
 
 ### Bug Fixes 🐛
