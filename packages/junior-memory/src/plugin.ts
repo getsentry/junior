@@ -156,7 +156,10 @@ export function memoryPlugin(options: MemoryPluginOptions = {}) {
       ...(!options.disableRecall
         ? {
             async userPrompt(ctx) {
-              const user = (await ctx.users.resolveActor())?.user;
+              const user =
+                ctx.source.platform === "web"
+                  ? (await ctx.users.resolveActor())?.user
+                  : undefined;
               return await createMemoryPromptContributions({
                 agent: createMemoryAgent(ctx.model),
                 ...(ctx.conversationId

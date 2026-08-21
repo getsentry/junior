@@ -329,6 +329,14 @@ WHERE indexname = 'junior_memory_memories_search_idx'
         email,
         emailVerified: true,
       });
+      await upsertIdentity(fixture.sql, {
+        kind: "user",
+        provider: "slack",
+        providerTenantId: "T456",
+        providerSubjectId: "U456",
+        email,
+        emailVerified: true,
+      });
       await expect(
         readActorIdentity({
           platform: "slack",
@@ -362,15 +370,33 @@ WHERE indexname = 'junior_memory_memories_search_idx'
         idempotencyKey: "component-web-linked-memory",
         kind: "knowledge",
       });
+      const secondLinkedStore = createMemoryStore(
+        fixture.sql.db() as unknown as MemoryDb,
+        {
+          conversationId: "slack:C456:1718800001.000000",
+          actor: { platform: "slack", teamId: "T456", userId: "U456" },
+          source: createSlackSource({
+            teamId: "T456",
+            channelId: "C456",
+            messageTs: "1718800001.000000",
+            visibility: "public",
+          }),
+        },
+      );
+      const secondLinked = await secondLinkedStore.createConversationMemory({
+        content: "Second workspace runbooks are also visible on web.",
+        idempotencyKey: "component-web-second-linked-memory",
+        kind: "knowledge",
+      });
       const otherStore = createMemoryStore(
         fixture.sql.db() as unknown as MemoryDb,
         {
-          conversationId: "slack:C999:1718800001.000000",
+          conversationId: "slack:C999:1718800002.000000",
           actor: { platform: "slack", teamId: "T999", userId: "U999" },
           source: createSlackSource({
             teamId: "T999",
             channelId: "C999",
-            messageTs: "1718800001.000000",
+            messageTs: "1718800002.000000",
             visibility: "public",
           }),
         },
@@ -413,6 +439,40 @@ WHERE indexname = 'junior_memory_memories_search_idx'
       });
       await expect(
         tools.memory_listMemories.execute!({}, {}),
+      ).resolves.toEqual({
+        memories: [
+          expect.objectContaining({ id: secondLinked.memory.id }),
+          expect.objectContaining({ id: linked.memory.id }),
+        ],
+        target: "listMemories",
+      });
+
+      const slackActor = {
+        platform: "slack" as const,
+        teamId: "T123",
+        userId: "U123",
+        email,
+      };
+      const slackTools = getPluginTools({
+        ...context,
+        actor: slackActor,
+        conversationId: "slack:C123:1718800000.000000",
+        destination: {
+          platform: "slack" as const,
+          teamId: "T123",
+          channelId: "C123",
+        },
+        egress: {
+          async fetch() {
+            return new Response("ok");
+          },
+        },
+        resolveActorIdentity: async () => await readActorIdentity(slackActor),
+        source: linkedSource,
+        workspace: {} as Parameters<typeof getPluginTools>[0]["workspace"],
+      });
+      await expect(
+        slackTools.memory_listMemories.execute!({}, {}),
       ).resolves.toEqual({
         memories: [expect.objectContaining({ id: linked.memory.id })],
         target: "listMemories",

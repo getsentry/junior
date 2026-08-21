@@ -85,9 +85,10 @@ async function memoryRuntimeContext(
   context: MemoryToolContext,
   includeLinkedIdentities = false,
 ): Promise<MemoryRuntimeContext> {
-  const user = includeLinkedIdentities
-    ? (await context.users.resolveActor())?.user
-    : undefined;
+  const user =
+    includeLinkedIdentities && context.source.platform === "web"
+      ? (await context.users.resolveActor())?.user
+      : undefined;
   return memoryRuntimeContextSchema.parse({
     ...(context.conversationId
       ? { conversationId: context.conversationId }
@@ -506,7 +507,7 @@ export function createMemoryRemoveTool(context: MemoryToolContext) {
       readOnlyHint: false,
     },
     description:
-      "Forget one memory visible in the active context. Use only ids or short id prefixes returned by listMemories or searchMemories. Never remove memories by hidden actor, Slack, scope, or subject identifiers.",
+      "Forget one memory owned by the active actor or conversation. Linked memories returned by listMemories or searchMemories are read-only in this context. Never remove memories by hidden actor, Slack, scope, or subject identifiers.",
     executionMode: "sequential",
     inputSchema: removeMemoryInputSchema,
     outputSchema: memorySingleOutputSchema,
