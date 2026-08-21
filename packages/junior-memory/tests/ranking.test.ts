@@ -11,7 +11,7 @@ function memory(id: string, observedAtMs = NOW_MS): MemoryRecord {
     id,
     kind: "knowledge",
     observedAtMs,
-    scope: "conversation",
+    scope: "public",
     subjectType: "conversation",
   };
 }

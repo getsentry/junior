@@ -3,7 +3,7 @@ import { z } from "zod";
 
 export const MEMORY_KINDS = ["preference", "procedure", "knowledge"] as const;
 
-export const MEMORY_SCOPES = ["personal", "conversation"] as const;
+export const MEMORY_SCOPES = ["private", "public"] as const;
 export const MEMORY_SUBJECT_TYPES = [
   "user",
   "conversation",

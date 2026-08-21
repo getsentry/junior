@@ -1,23 +1,22 @@
 /**
  * Authenticated REST resources for viewer-visible memories.
  *
- * HTTP identity is one verified user whose linked identities authorize
- * personal and public workspace scopes.
+ * HTTP identity authenticates the request. It does not grant access to a
+ * private source domain.
  */
 import { z } from "zod";
 import {
   pluginApiRouteRequestContextSchema,
   type PluginConversationEventStats,
   type PluginRouteApp,
-  type User,
 } from "@sentry/junior-plugin-api";
 import type { MemoryDb } from "./store";
 import {
   createViewerMemories,
   InvalidMemoryCursorError,
-  PersonalMemoryNotFoundError,
-  type PersonalMemoryRecord,
-} from "./personal";
+  ViewerMemoryNotFoundError,
+  type ViewerMemory,
+} from "./viewer";
 import { MEMORY_SOURCE_PLATFORMS } from "./types";
 
 export const memoryApiSchema = z
@@ -30,7 +29,6 @@ export const memoryApiSchema = z
     observedAt: z.iso.datetime(),
     origin: z.enum(["automatic", "explicit", "other"]),
     sourcePlatform: z.enum(MEMORY_SOURCE_PLATFORMS),
-    visibility: z.enum(["private", "public"]),
   })
   .strict();
 
@@ -44,8 +42,7 @@ export const memoryListResponseSchema = z
 const memoryDashboardDaySchema = z
   .object({
     date: z.iso.date(),
-    personal: z.number().int().min(0),
-    public: z.number().int().min(0),
+    memories: z.number().int().min(0),
   })
   .strict();
 
@@ -71,10 +68,8 @@ export const memoryDashboardResponseSchema = z
         embedded: z.number().int().min(0),
         explicit: z.number().int().min(0),
         knowledge: z.number().int().min(0),
-        personal: z.number().int().min(0),
         preference: z.number().int().min(0),
         procedure: z.number().int().min(0),
-        public: z.number().int().min(0),
       })
       .strict(),
   })
@@ -97,9 +92,6 @@ const memoryListQuerySchema = z
 interface MemoryApiOptions {
   db: MemoryDb;
   eventStats: PluginConversationEventStats;
-  users: {
-    resolve(email: string): Promise<User | undefined>;
-  };
 }
 
 function json(body: unknown, status = 200): Response {
@@ -109,9 +101,7 @@ function json(body: unknown, status = 200): Response {
   });
 }
 
-function apiMemory(
-  memory: PersonalMemoryRecord,
-): z.output<typeof memoryApiSchema> {
+function apiMemory(memory: ViewerMemory): z.output<typeof memoryApiSchema> {
   return {
     content: memory.content,
     createdAt: new Date(memory.createdAtMs).toISOString(),
@@ -123,7 +113,6 @@ function apiMemory(
     observedAt: new Date(memory.observedAtMs).toISOString(),
     origin: memory.origin,
     sourcePlatform: memory.sourcePlatform,
-    visibility: memory.visibility,
   };
 }
 
@@ -152,14 +141,11 @@ export function createMemoryApi(options: MemoryApiOptions): PluginRouteApp {
         return json({ error: "Not found." }, 404);
       }
       const isRead = request.method === "GET" || request.method === "HEAD";
-      if (!isRead && !(memoryPath && request.method === "DELETE")) {
+      if (!isRead) {
         return json({ error: "Method not allowed." }, 405);
       }
 
-      const user = await options.users.resolve(email);
-      if (!user) return json({ error: "Authentication required." }, 401);
-
-      const memories = createViewerMemories(options.db, user);
+      const memories = createViewerMemories(options.db);
       try {
         if (isDashboard && isRead) {
           const [stats, days, extractionDays, recallDays] = await Promise.all([
@@ -223,14 +209,6 @@ export function createMemoryApi(options: MemoryApiOptions): PluginRouteApp {
               })
             : json(memory);
         }
-
-        if (memoryPath && request.method === "DELETE") {
-          await memories.archive(decodeURIComponent(memoryPath[1]!));
-          return new Response(null, {
-            headers: { "cache-control": "no-store" },
-            status: 204,
-          });
-        }
       } catch (error) {
         if (
           error instanceof z.ZodError ||
@@ -238,7 +216,7 @@ export function createMemoryApi(options: MemoryApiOptions): PluginRouteApp {
         ) {
           return json({ error: "Invalid memory request." }, 400);
         }
-        if (error instanceof PersonalMemoryNotFoundError) {
+        if (error instanceof ViewerMemoryNotFoundError) {
           return json({ error: error.message }, 404);
         }
         throw error;

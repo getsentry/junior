@@ -28,7 +28,7 @@ describeEval("Shared Memory", slackEvals, (it) => {
       content: "getsentry/junior CI runs package tests with pnpm.",
       idempotencyKey: "eval-memory-recall-relevant",
       kind: "knowledge",
-      scope: "conversation",
+      subject: "conversation",
       thread: recallRelevanceThread,
     });
     await seedMemory({
@@ -36,7 +36,7 @@ describeEval("Shared Memory", slackEvals, (it) => {
         "getsentry/sentry autofix pull request tests use a dashboard workflow.",
       idempotencyKey: "eval-memory-recall-vocabulary",
       kind: "knowledge",
-      scope: "conversation",
+      subject: "conversation",
       thread: recallRelevanceThread,
     });
     await seedMemory({
@@ -44,7 +44,7 @@ describeEval("Shared Memory", slackEvals, (it) => {
         "Single-tenant repository access is configured in the admin dashboard.",
       idempotencyKey: "eval-memory-recall-unrelated",
       kind: "knowledge",
-      scope: "conversation",
+      subject: "conversation",
       thread: recallRelevanceThread,
     });
 
@@ -113,14 +113,14 @@ describeEval("Shared Memory", slackEvals, (it) => {
     expect(rows).toContainEqual(
       expect.objectContaining({
         archivedAtMs: null,
-        scope: "conversation",
+        scope: "public",
         subjectType: "conversation",
       }),
     );
     expect(rows).not.toContainEqual(
       expect.objectContaining({
         archivedAtMs: null,
-        scope: "personal",
+        scope: "public",
         subjectType: "user",
       }),
     );
@@ -180,14 +180,14 @@ describeEval("Shared Memory", slackEvals, (it) => {
     expect(rows).toContainEqual(
       expect.objectContaining({
         archivedAtMs: null,
-        scope: "conversation",
+        scope: "public",
         subjectType: "conversation",
       }),
     );
     expect(rows).not.toContainEqual(
       expect.objectContaining({
         archivedAtMs: null,
-        scope: "personal",
+        scope: "public",
         subjectType: "user",
       }),
     );
@@ -247,14 +247,14 @@ describeEval("Shared Memory", slackEvals, (it) => {
     expect(rows).toContainEqual(
       expect.objectContaining({
         archivedAtMs: null,
-        scope: "conversation",
+        scope: "public",
         subjectType: "conversation",
       }),
     );
     expect(rows).not.toContainEqual(
       expect.objectContaining({
         archivedAtMs: null,
-        scope: "personal",
+        scope: "public",
         subjectType: "user",
       }),
     );

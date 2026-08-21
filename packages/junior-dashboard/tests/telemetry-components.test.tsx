@@ -786,7 +786,7 @@ describe("dashboard canonical-event components", () => {
                 id: "memory-1",
                 content: "Release notes live in Notion.",
                 observedAtMs: Date.parse("2026-01-01T00:00:00.000Z"),
-                scope: "conversation",
+                scope: "public",
                 kind: "knowledge",
               },
             ],

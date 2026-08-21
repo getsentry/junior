@@ -50,7 +50,7 @@ describeEval("Memory Management", slackEvals, (it) => {
       expect.objectContaining({
         archivedAtMs: null,
         content: "Prefers PR summaries with risks first.",
-        scope: "personal",
+        scope: "public",
       }),
     );
   });
@@ -94,7 +94,7 @@ describeEval("Memory Management", slackEvals, (it) => {
       expect.objectContaining({
         archivedAtMs: null,
         content: "Prefers PR summaries with risks first.",
-        scope: "personal",
+        scope: "public",
       }),
     ]);
   });

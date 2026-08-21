@@ -244,7 +244,7 @@ const MEMORY_EXTRACTION_SYSTEM = [
   "Use the completed run transcript as source evidence, including user-authored messages and tool results.",
   "Assistant text is context for interpreting the run, not independent evidence for new facts.",
   "Reject secrets, credentials, private or sensitive personal details, gossip, speculative claims about other people, assistant/system implementation details, vague references, and low-durability chatter.",
-  "If no public, durable, self-contained memory remains after rewriting, return an empty memories array.",
+  "If no durable, self-contained memory remains after rewriting, return an empty memories array.",
 ].join("\n");
 const MEMORY_RECALL_SYSTEM = [
   "You are Junior's memory recall relevance agent.",
@@ -277,9 +277,7 @@ function escapeXml(value: string): string {
     .replaceAll(">", "&gt;");
 }
 
-function actorLabel(
-  actor: z.output<typeof actorSchema> | undefined,
-): string {
+function actorLabel(actor: z.output<typeof actorSchema> | undefined): string {
   if (!actor) {
     return "none";
   }

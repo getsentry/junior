@@ -54,7 +54,7 @@ describeEval("Personal Memory", slackEvals, (it) => {
     expect(rows).toEqual([
       expect.objectContaining({
         archivedAtMs: null,
-        scope: "personal",
+        scope: "public",
         subjectType: "user",
       }),
     ]);
@@ -105,7 +105,7 @@ describeEval("Personal Memory", slackEvals, (it) => {
         content: `Recent workspace time note ${index} about deploy time windows`,
         idempotencyKey: `eval-memory-timezone-noise-${index}`,
         kind: "knowledge",
-        scope: "conversation",
+        subject: "conversation",
         thread: timezoneRecallThread,
       });
     }
@@ -135,7 +135,7 @@ describeEval("Personal Memory", slackEvals, (it) => {
       expect.arrayContaining([
         expect.objectContaining({
           content: timezoneMemoryContent,
-          scope: "personal",
+          scope: "public",
         }),
       ]),
     );
@@ -200,7 +200,7 @@ describeEval("Personal Memory", slackEvals, (it) => {
     expect(rows).toEqual([
       expect.objectContaining({
         archivedAtMs: null,
-        scope: "personal",
+        scope: "public",
         subjectType: "user",
       }),
     ]);
@@ -252,7 +252,7 @@ describeEval("Personal Memory", slackEvals, (it) => {
     await expect(readActiveMemories(explicitDuplicateThread)).resolves.toEqual([
       expect.objectContaining({
         content: "Prefers PR summaries with risks first.",
-        scope: "personal",
+        scope: "public",
       }),
     ]);
   });

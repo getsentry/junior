@@ -11,7 +11,7 @@ export const memoryRecallContentSchema = z
           id: z.string(),
           content: z.string(),
           observedAtMs: z.number(),
-          scope: z.enum(["personal", "conversation"]),
+          scope: z.enum(["private", "public"]),
           kind: z.enum(["preference", "procedure", "knowledge"]),
         })
         .strict(),

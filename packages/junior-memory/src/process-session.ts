@@ -4,7 +4,6 @@ import {
   type PluginRunContext,
   type PluginRunTranscriptEntry,
   type PluginTaskContext,
-  type Source,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import {
@@ -54,23 +53,8 @@ const extractedMemoryCacheSchema = z.union([
     .transform((memories) => ({ memories })),
 ]);
 
-/** Where a passively extracted memory may be stored, or dropped when unproven. */
-type MemoryRouteTarget = "drop" | "personal" | "conversation";
-
-/**
- * V1 passive learning opts in by Source branch, then public vs private.
- * Public API is the same as public Slack: shared conversation evidence may
- * learn. Private sources stay out. Local remains available for QA.
- */
-function allowsPassiveMemoryExtraction(source: Source): boolean {
-  switch (source.platform) {
-    case "local":
-      return true;
-    case "web":
-    case "slack":
-      return source.visibility === "public";
-  }
-}
+/** Subject for a passively extracted memory, or drop when unproven. */
+type MemorySubjectTarget = "drop" | "user" | "conversation";
 
 function recordCapturedMemory(
   captured: ReturnType<typeof capturedMemory>[],
@@ -152,7 +136,7 @@ function routeExtractedMemory(
   memory: ExtractedMemory,
   transcript: PluginRunTranscriptEntry[],
   run: Pick<PluginRunContext, "actor" | "actors">,
-): MemoryRouteTarget {
+): MemorySubjectTarget {
   const cited = citedEntries(memory.evidenceMessageIndices, transcript);
   if (!cited.valid) {
     return "drop";
@@ -167,8 +151,8 @@ function routeExtractedMemory(
     if (!exactlyOneHumanRunActor) {
       return "drop";
     }
-    // Never downgrade an unproven first-person preference to conversation scope.
-    return cited.entries.every(isRunActorInstruction) ? "personal" : "drop";
+    // Never downgrade an unproven first-person preference to conversation subject.
+    return cited.entries.every(isRunActorInstruction) ? "user" : "drop";
   }
   return cited.entries.every(
     (entry) => isRunActorInstruction(entry) || isConversationEvidence(entry),
@@ -179,7 +163,7 @@ function routeExtractedMemory(
 
 function memoryIdempotencySuffix(
   memory: ExtractedMemory,
-  target: MemoryRouteTarget,
+  target: MemorySubjectTarget,
 ): string {
   return createHash("sha256")
     .update(target)
@@ -197,7 +181,7 @@ function passiveInput(
   sessionId: string,
   memory: ExtractedMemory,
   sourceKey: string,
-  target: MemoryRouteTarget,
+  target: MemorySubjectTarget,
 ): CreateMemoryInput {
   return {
     content: memory.content,
@@ -229,9 +213,8 @@ async function getTaskExtraction(
  * Extract and store memories from a completed session plugin task.
  *
  * Memory owns post-session extraction and consumes only the bounded plugin task
- * projection. Explicit memory tools and private non-local sources remain hard
- * boundaries so background retries cannot reinterpret user-directed mutations
- * or private conversations.
+ * projection. Explicit memory tools remain a hard boundary so background
+ * retries cannot reinterpret user-directed mutations.
  */
 export async function processMemorySession(
   context: PluginTaskContext,
@@ -245,11 +228,6 @@ export async function processMemorySession(
         entry.type === "toolResult" && MEMORY_TOOL_NAMES.has(entry.toolName),
     )
   ) {
-    return;
-  }
-  // V1 passive learning is a Source-branch policy: local QA always, public
-  // Slack/API by visibility, private sources never.
-  if (!allowsPassiveMemoryExtraction(run.source)) {
     return;
   }
   const sourceKey = getSourceKey(run.source);

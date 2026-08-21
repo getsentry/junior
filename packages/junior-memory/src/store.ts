@@ -36,15 +36,14 @@ import {
   MEMORY_KINDS,
   memoryRuntimeContextSchema,
   type MemoryRuntimeContext,
-  type MemoryScope,
   type MemorySourcePlatform,
+  type MemorySubjectType,
 } from "./types";
 import {
   deriveMemoryScope,
   deriveMemorySubject,
   type ResolvedMemorySubject,
   deriveVisibleMemoryScopes,
-  deriveWritableMemoryScopes,
   type ResolvedMemoryScope,
 } from "./scope";
 
@@ -335,16 +334,16 @@ export interface MemoryStore {
   ): Promise<ArchiveExpiredMemoriesResult>;
   /** Archive a visible memory in the current runtime context. */
   archiveMemory(input: ArchiveMemoryInput): Promise<MemoryRecord>;
-  /** Store a personal memory for the current actor. */
+  /** Store a user-subject memory with visibility derived from the Source. */
   createMemory(input: CreateMemoryInput): Promise<CreateMemoryResult>;
-  /** Store a conversation memory for the current source conversation. */
+  /** Store a conversation-subject memory with visibility derived from the Source. */
   createConversationMemory(
     input: CreateMemoryInput,
   ): Promise<CreateMemoryResult>;
   /** List active memories visible in the current runtime context. */
   listMemories(input: ListMemoriesInput): Promise<MemoryRecord[]>;
-  /** List active personal memories owned by the current actor. */
-  listPersonalMemories(input: ListMemoriesInput): Promise<MemoryRecord[]>;
+  /** List active private memories in the current source domain. */
+  listPrivateMemories(input: ListMemoriesInput): Promise<MemoryRecord[]>;
   /**
    * Retrieve a broad relevance-ranked candidate window for automatic recall.
    * Prompt admission remains owned by the recall boundary.
@@ -1209,13 +1208,13 @@ export function createMemoryStore(
   /** Persist a memory under the plugin-derived scope and subject. */
   async function createScopedMemory(
     rawInput: CreateMemoryInput,
-    scopeKind: MemoryScope,
+    subjectType: Extract<MemorySubjectType, "user" | "conversation">,
   ): Promise<CreateMemoryResult> {
     const input = createMemoryInputSchema.parse(rawInput);
     const nowMs = getNowMs();
     const content = normalizeContent(input.content);
-    const scope = deriveMemoryScope(runtimeContext, scopeKind);
-    const subject = deriveMemorySubject(runtimeContext, scope);
+    const scope = deriveMemoryScope(runtimeContext);
+    const subject = deriveMemorySubject(runtimeContext, subjectType);
     if (content.length > MAX_MEMORY_CONTENT_CHARS) {
       throw new Error("Memory content exceeds the maximum length.");
     }
@@ -1281,7 +1280,7 @@ export function createMemoryStore(
     }
     let supersededIds: string[] = [];
     if (
-      scopeKind === "personal" &&
+      subjectType === "user" &&
       input.kind === "preference" &&
       supersessionDecider &&
       (input.expiresAtMs === undefined || input.expiresAtMs > nowMs)
@@ -1420,10 +1419,10 @@ export function createMemoryStore(
    * miss path. Each leg is a hard-capped top-k probe so Postgres work stays
    * bounded even on broad queries.
    *
-   * Automatic recall also runs personal-scope-only probes. Workspace
-   * conversation memories sharing common tokens (for example "time") can fill
-   * the shared lexical recency window before ranking, which buries older actor
-   * preferences that explicit search still finds.
+   * Automatic recall also runs private-scope-only probes. Public memories
+   * sharing common tokens (for example "time") can fill the shared lexical
+   * recency window before ranking, which buries older domain memory that
+   * explicit search still finds.
    */
   async function retrieveVisibleMemories(
     rawInput: SearchMemoriesInput,
@@ -1443,11 +1442,11 @@ export function createMemoryStore(
         ? SEARCH_RETRIEVAL_OVERFETCH
         : RECALL_RETRIEVAL_OVERFETCH;
     const candidateLimit = retrievalLegLimit(limit, overfetch);
-    const personalScopes = scopes.filter((scope) => scope.scope === "personal");
-    // Automatic recall only: keep a personal-scope probe so workspace noise
-    // cannot monopolize the shared lexical recency window.
-    const probePersonal =
-      vectorMaxDistance !== undefined && personalScopes.length > 0;
+    const privateScopes = scopes.filter((scope) => scope.scope === "private");
+    // Automatic recall only: keep a private-scope probe so public noise cannot
+    // monopolize the shared lexical recency window.
+    const probePrivate =
+      vectorMaxDistance !== undefined && privateScopes.length > 0;
     const query = normalizeRetrievalQuery(input.query);
     let queryEmbedding: MemoryEmbedding | undefined;
     if (embedder && query) {
@@ -1484,20 +1483,20 @@ export function createMemoryStore(
         ...lexicalArgs,
         scopes,
       }),
-      queryEmbedding && probePersonal
+      queryEmbedding && probePrivate
         ? searchVisibleVectorMemories({
             db,
             embedding: queryEmbedding,
             limit: candidateLimit,
             maxDistance: vectorMaxDistance,
             nowMs,
-            scopes: personalScopes,
+            scopes: privateScopes,
           })
         : emptyMatches,
-      probePersonal
+      probePrivate
         ? searchVisibleLexicalMemories({
             ...lexicalArgs,
-            scopes: personalScopes,
+            scopes: privateScopes,
           })
         : emptyMatches,
     ]);
@@ -1520,7 +1519,7 @@ export function createMemoryStore(
     },
 
     async createMemory(input) {
-      return await createScopedMemory(input, "personal");
+      return await createScopedMemory(input, "user");
     },
 
     async createConversationMemory(input) {
@@ -1544,10 +1543,11 @@ export function createMemoryStore(
       });
     },
 
-    async listPersonalMemories(input) {
+    async listPrivateMemories(input) {
       input = listMemoriesInputSchema.parse(input);
       const nowMs = getNowMs();
-      const scopes = [deriveMemoryScope(runtimeContext, "personal")];
+      const scope = deriveMemoryScope(runtimeContext);
+      const scopes = scope.scope === "private" ? [scope] : [];
       await archiveExpiredMemoryBatch({
         db,
         nowMs,
@@ -1572,7 +1572,9 @@ export function createMemoryStore(
     async archiveMemory(input) {
       input = archiveMemoryInputSchema.parse(input);
       const nowMs = getNowMs();
-      const scopes = deriveWritableMemoryScopes(runtimeContext);
+      const scope = deriveMemoryScope(runtimeContext);
+      // Public memory is shared and has no single source-domain owner.
+      const scopes = scope.scope === "private" ? [scope] : [];
       const predicate = activeVisiblePredicate({ nowMs, scopes });
       const idPrefix = input.id.trim();
       if (!idPrefix) {

@@ -1,11 +1,13 @@
-import { type Actor, type Identity, type Source } from "@sentry/junior-plugin-api";
+import { type Actor, type Source } from "@sentry/junior-plugin-api";
 import type {
   MemoryRuntimeContext,
   MemoryScope,
   MemorySubjectType,
 } from "./types";
 
-/** Runtime-derived visibility scope used for memory authorization checks. */
+const PUBLIC_SCOPE_KEY = "public";
+
+/** Runtime-derived scope used for memory authorization checks. */
 export interface ResolvedMemoryScope {
   scope: MemoryScope;
   scopeKey: string;
@@ -17,89 +19,26 @@ export interface ResolvedMemorySubject {
   subjectType: MemorySubjectType;
 }
 
-function uniqueScopes(scopes: ResolvedMemoryScope[]): ResolvedMemoryScope[] {
-  return [
-    ...new Map(
-      scopes.map((scope) => [`${scope.scope}:${scope.scopeKey}`, scope]),
-    ).values(),
-  ];
-}
+/** Public memories are visible in every source domain. */
+export const publicMemoryScope: ResolvedMemoryScope = {
+  scope: "public",
+  scopeKey: PUBLIC_SCOPE_KEY,
+};
 
-/** Personal scope key for one verified provider identity, when one exists. */
-function personalScopeFromIdentity(
-  identity: Identity,
-): ResolvedMemoryScope | undefined {
-  if (identity.provider === "local") {
-    return {
-      scope: "personal",
-      scopeKey: `local:${identity.providerSubjectId}`,
-    };
-  }
-  // Dashboard/web actors persist as junior identities keyed by verified email.
-  if (identity.provider === "junior") {
-    return {
-      scope: "personal",
-      scopeKey: `junior:${identity.providerSubjectId}`,
-    };
-  }
-  if (identity.provider === "slack" && identity.providerTenantId) {
-    return {
-      scope: "personal",
-      scopeKey: `slack:${identity.providerTenantId}:${identity.providerSubjectId}`,
-    };
-  }
-  return undefined;
-}
-
-/** Derive viewer-visible memory scopes from canonical provider identities. */
-export function deriveViewerMemoryScopes(identities: Identity[]): {
-  privateScopes: ResolvedMemoryScope[];
-  publicScopes: ResolvedMemoryScope[];
-} {
-  const privateScopes = identities.flatMap((identity) => {
-    const scope = personalScopeFromIdentity(identity);
-    return scope ? [scope] : [];
-  });
-  const publicScopes = identities.flatMap((identity) =>
-    identity.provider === "slack" && identity.providerTenantId
-      ? [
-          {
-            scope: "conversation" as const,
-            scopeKey: `slack:${identity.providerTenantId}`,
-          },
-        ]
-      : [],
-  );
-  return {
-    privateScopes: uniqueScopes(privateScopes),
-    publicScopes: uniqueScopes(publicScopes),
-  };
-}
-
-/** Conversation-scoped key for the Source branch we actually have. */
-function sourceConversationKey(source: Source): string | undefined {
+/** Stable domain that contains private memory learned from one Source. */
+function sourceDomainKey(source: Source): string {
   switch (source.platform) {
     case "web":
     case "local":
       return source.conversationId;
-    case "slack": {
-      if (source.visibility === "public") {
-        return `slack:${source.teamId}`;
-      }
-      const threadKey = source.threadTs ?? source.messageTs;
-      if (!threadKey) {
-        return undefined;
-      }
-      return `slack:${source.teamId}:${source.channelId}:${threadKey}`;
-    }
+    case "slack":
+      return `slack:${source.teamId}:${source.channelId}`;
   }
 }
 
-/** Personal scope key for the Actor branch we actually have. */
-function actorScopeKey(actor: Actor | undefined): string | undefined {
-  if (!actor) {
-    return undefined;
-  }
+/** Stable provider subject used only to classify what a memory is about. */
+function actorSubjectKey(actor: Actor | undefined): string | undefined {
+  if (!actor) return undefined;
   switch (actor.platform) {
     case "system":
       return undefined;
@@ -108,84 +47,49 @@ function actorScopeKey(actor: Actor | undefined): string | undefined {
     case "local":
       return `local:${actor.userId}`;
     case "web": {
-      // Match junior identity personal scopes used by the dashboard viewer.
       const email = actor.email?.trim().toLowerCase();
-      return email ? `junior:${email}` : undefined;
+      return email ? `junior:${email}` : `web:${actor.userId}`;
     }
   }
 }
 
-/** Derive the authority-bearing key for a requested memory scope. */
+/** Derive write visibility from the Source that supplied the evidence. */
 export function deriveMemoryScope(
   ctx: MemoryRuntimeContext,
-  scope: MemoryScope,
 ): ResolvedMemoryScope {
-  if (scope === "personal") {
-    const scopeKey = actorScopeKey(ctx.actor);
-    if (!scopeKey) {
-      throw new Error("Personal memory requires actor context.");
-    }
-    return { scope, scopeKey };
+  if (ctx.source.visibility === "public") {
+    return publicMemoryScope;
   }
-
-  const scopeKey = sourceConversationKey(ctx.source);
-  if (!scopeKey) {
-    throw new Error("Conversation memory requires conversation context.");
-  }
-  return { scope, scopeKey };
+  return {
+    scope: "private",
+    scopeKey: sourceDomainKey(ctx.source),
+  };
 }
 
-/** Derive the memory subject from the already-authorized write scope. */
+/** Derive what a memory is about independently from its visibility. */
 export function deriveMemorySubject(
   ctx: MemoryRuntimeContext,
-  scope: ResolvedMemoryScope,
+  subjectType: Extract<MemorySubjectType, "user" | "conversation">,
 ): ResolvedMemorySubject {
-  if (scope.scope === "personal") {
-    const subjectKey = actorScopeKey(ctx.actor);
+  if (subjectType === "user") {
+    const subjectKey = actorSubjectKey(ctx.actor);
     if (!subjectKey) {
       throw new Error("User-subject memory requires actor context.");
     }
-    return { subjectType: "user", subjectKey };
+    return { subjectType, subjectKey };
   }
-
-  const subjectKey = sourceConversationKey(ctx.source);
-  if (!subjectKey) {
-    throw new Error(
-      "Conversation-subject memory requires conversation context.",
-    );
-  }
-  return { subjectType: "conversation", subjectKey };
+  return {
+    subjectType,
+    subjectKey: sourceDomainKey(ctx.source),
+  };
 }
 
-/** Return scopes the current Actor and Source can write. */
-export function deriveWritableMemoryScopes(
-  ctx: MemoryRuntimeContext,
-): ResolvedMemoryScope[] {
-  const scopes: ResolvedMemoryScope[] = [];
-  try {
-    scopes.push(deriveMemoryScope(ctx, "personal"));
-  } catch {
-    // Personal memory is optional when a runtime surface has no actor.
-  }
-  try {
-    scopes.push(deriveMemoryScope(ctx, "conversation"));
-  } catch {
-    // Conversation memory is optional for synthetic invocations.
-  }
-  return uniqueScopes(scopes);
-}
-
-/** Return every scope visible for memory retrieval. */
+/** Return every memory scope visible from the current Source. */
 export function deriveVisibleMemoryScopes(
   ctx: MemoryRuntimeContext,
 ): ResolvedMemoryScope[] {
-  const scopes = deriveWritableMemoryScopes(ctx);
-  if (ctx.actor && ctx.actor.platform !== "system" && ctx.actor.identities) {
-    const linked = deriveViewerMemoryScopes(ctx.actor.identities);
-    scopes.push(...linked.publicScopes);
-    if (ctx.source.visibility === "private") {
-      scopes.push(...linked.privateScopes);
-    }
+  if (ctx.source.visibility === "public") {
+    return [publicMemoryScope];
   }
-  return uniqueScopes(scopes);
+  return [publicMemoryScope, deriveMemoryScope(ctx)];
 }

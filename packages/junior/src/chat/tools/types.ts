@@ -90,7 +90,7 @@ interface BaseToolRuntimeContext {
 
   actor?: Actor;
   resolveActorIdentity?: () => Promise<
-    { identity?: Identity; user?: User } | undefined
+    { identity: Identity; user?: User } | undefined
   >;
   /** Runtime-owned source where this invocation came from. */
   source: Source;

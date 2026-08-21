@@ -561,7 +561,7 @@ interface BaseToolRegistrationHookContext extends PluginContext {
   state: PluginState;
   users: {
     /** Resolve the current actor's stored identity and linked user. */
-    resolveActor(): Promise<{ identity?: Identity; user?: User } | undefined>;
+    resolveActor(): Promise<{ identity: Identity; user?: User } | undefined>;
   };
   userText?: string;
   workspaces: PluginWorkspaceToolContext;

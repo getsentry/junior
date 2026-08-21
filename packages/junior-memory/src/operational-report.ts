@@ -12,9 +12,9 @@ const WINDOWS = [7, 30, 90] as const;
 
 const memoryDaySchema = z
   .object({
-    conversation: z.number().int().nonnegative(),
     date: z.string().date(),
-    personal: z.number().int().nonnegative(),
+    private: z.number().int().nonnegative(),
+    public: z.number().int().nonnegative(),
   })
   .strict();
 
@@ -55,11 +55,11 @@ async function aggregateMemoryDays(args: { db: MemoryDb; nowMs: number }) {
           to_timestamp(${table.createdAtMs} / 1000.0) AT TIME ZONE 'UTC'
         ) AS day,
         count(*) FILTER (
-          WHERE ${table.scope} = 'personal'
-        )::integer AS personal,
+          WHERE ${table.scope} = 'private'
+        )::integer AS private,
         count(*) FILTER (
-          WHERE ${table.scope} = 'conversation'
-        )::integer AS conversation
+          WHERE ${table.scope} = 'public'
+        )::integer AS public
       FROM ${table}
       WHERE ${table.createdAtMs} >= ${start.getTime()}
         AND ${table.createdAtMs} < ${endExclusiveMs}
@@ -70,8 +70,8 @@ async function aggregateMemoryDays(args: { db: MemoryDb; nowMs: number }) {
     )
     SELECT
       to_char(days.day, 'YYYY-MM-DD') AS date,
-      coalesce(daily.personal, 0)::integer AS personal,
-      coalesce(daily.conversation, 0)::integer AS conversation
+      coalesce(daily.private, 0)::integer AS private,
+      coalesce(daily.public, 0)::integer AS public
     FROM days
     LEFT JOIN daily ON daily.day = days.day
     ORDER BY days.day
@@ -119,8 +119,8 @@ export async function buildMemoryOperationalReport(args: {
     args.db
       .select({
         active: sql<number>`count(*) filter (where ${active})`.mapWith(Number),
-        conversation:
-          sql<number>`count(*) filter (where ${active} and ${juniorMemoryMemories.scope} = 'conversation')`.mapWith(
+        public:
+          sql<number>`count(*) filter (where ${active} and ${juniorMemoryMemories.scope} = 'public')`.mapWith(
             Number,
           ),
         createdThirtyDays:
@@ -131,8 +131,8 @@ export async function buildMemoryOperationalReport(args: {
           sql<number>`count(${juniorMemoryEmbeddings.memoryId}) filter (where ${active})`.mapWith(
             Number,
           ),
-        personal:
-          sql<number>`count(*) filter (where ${active} and ${juniorMemoryMemories.scope} = 'personal')`.mapWith(
+        private:
+          sql<number>`count(*) filter (where ${active} and ${juniorMemoryMemories.scope} = 'private')`.mapWith(
             Number,
           ),
       })
@@ -171,12 +171,12 @@ export async function buildMemoryOperationalReport(args: {
         value: formatCount(counts?.createdThirtyDays ?? 0),
       },
       {
-        label: "personal",
-        value: formatCount(counts?.personal ?? 0),
+        label: "private",
+        value: formatCount(counts?.private ?? 0),
       },
       {
-        label: "conversation",
-        value: formatCount(counts?.conversation ?? 0),
+        label: "public",
+        value: formatCount(counts?.public ?? 0),
       },
       {
         label: "embedding coverage",
@@ -208,15 +208,15 @@ export async function buildMemoryOperationalReport(args: {
           id: day.date,
           label: day.date,
           values: {
-            conversation: day.conversation,
-            personal: day.personal,
+            private: day.private,
+            public: day.public,
           },
         })),
-        description: "Memories stored per day by scope",
+        description: "Memories stored per day by visibility",
         id: "memories-created",
         series: [
-          { key: "personal", label: "Personal" },
-          { key: "conversation", label: "Conversation" },
+          { key: "private", label: "Private" },
+          { key: "public", label: "Public" },
         ],
         timeRangeDays: [...WINDOWS],
         title: "Memories created",

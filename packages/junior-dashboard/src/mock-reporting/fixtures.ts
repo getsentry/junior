@@ -225,7 +225,7 @@ function activeConversation(nowMs: number): ConversationDetailReport {
               content:
                 "Checkout latency investigations start with the deployment comparison dashboard.",
               observedAtMs: Date.parse(startedAt) - 86_400_000,
-              scope: "conversation",
+              scope: "public",
               kind: "procedure",
             },
           ],
@@ -597,11 +597,11 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
           details: [
             {
               title: "Use pnpm for repository commands.",
-              metadata: ["preference", "personal"],
+              metadata: ["preference", "public"],
             },
             {
               title: "Dashboard transcript events should remain expandable.",
-              metadata: ["knowledge", "conversation"],
+              metadata: ["knowledge", "public"],
             },
           ],
         },

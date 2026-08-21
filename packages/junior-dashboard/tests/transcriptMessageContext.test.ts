@@ -106,7 +106,7 @@ describe("transcript message context classification", () => {
                 id: "memory-1",
                 content: "Release notes live in Notion.",
                 observedAtMs: 1_750_000_000_000,
-                scope: "conversation",
+                scope: "public",
                 kind: "knowledge",
               },
             ],

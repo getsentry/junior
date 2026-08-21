@@ -676,7 +676,7 @@ describe("canonical event transcript reduction", () => {
                 id: "memory-1",
                 content: "Release notes live in Notion.",
                 observedAtMs: 1_750_000_000_000,
-                scope: "conversation",
+                scope: "public",
                 kind: "knowledge",
               },
             ],

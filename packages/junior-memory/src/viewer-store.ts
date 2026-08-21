@@ -1,13 +1,13 @@
 /**
  * SQL operations over memories visible to one authenticated viewer.
  *
- * A user may have several linked identities. This store combines their
- * identity-scoped personal memories with authorized public workspace scopes.
+ * Authenticated viewer surfaces expose global public memory only. Private
+ * memory stays inside the source domain that learned it.
  */
 import { and, asc, desc, eq, gt, ilike, like, lt, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { juniorMemoryEmbeddings, juniorMemoryMemories } from "./db/schema";
-import type { ResolvedMemoryScope } from "./scope";
+import { publicMemoryScope } from "./scope";
 import {
   activeVisiblePredicate,
   archiveExpiredMemoryBatch,
@@ -18,102 +18,85 @@ import {
 import { MEMORY_KINDS, type MemorySourcePlatform } from "./types";
 
 const nonEmptyStringSchema = z.string().min(1);
-const memoryVisibilitySchema = z.enum(["private", "public"]);
-const personalMemoryCursorSchema = z
+const viewerMemoryCursorSchema = z
   .object({
     createdAtMs: z.number().finite(),
     id: nonEmptyStringSchema,
   })
   .strict();
-const personalMemoryPageInputSchema = z
+const viewerMemoryPageInputSchema = z
   .object({
-    cursor: personalMemoryCursorSchema.optional(),
+    cursor: viewerMemoryCursorSchema.optional(),
     kind: z.enum(MEMORY_KINDS).optional(),
     limit: z.number().int().min(1).max(50),
     origin: z.enum(["automatic", "explicit"]).optional(),
     query: z.string().max(200).optional(),
-    visibility: memoryVisibilitySchema.optional(),
   })
   .strict();
-const personalMemoryTimelineInputSchema = z
+const viewerMemoryTimelineInputSchema = z
   .object({
     days: z.number().int().min(1).max(365),
   })
   .strict();
 const DAY_MS = 24 * 60 * 60 * 1_000;
 
-export type PersonalMemoryCursor = z.output<typeof personalMemoryCursorSchema>;
+type ViewerMemoryCursor = z.output<typeof viewerMemoryCursorSchema>;
 
-export type PersonalMemoryPageInput = z.output<
-  typeof personalMemoryPageInputSchema
->;
+type ViewerMemoryPageInput = z.output<typeof viewerMemoryPageInputSchema>;
 
-export type MemoryVisibility = z.output<typeof memoryVisibilitySchema>;
-
-export interface PersonalMemoryPage {
-  memories: PersonalMemoryRecord[];
-  nextCursor?: PersonalMemoryCursor;
+interface ViewerMemoryPage {
+  memories: ViewerMemory[];
+  nextCursor?: ViewerMemoryCursor;
 }
 
 /** Safe provenance attached to one viewer-visible memory. */
-export type PersonalMemoryRecord = MemoryRecord & {
+export type ViewerMemory = MemoryRecord & {
   origin: "automatic" | "explicit" | "other";
   sourcePlatform: MemorySourcePlatform;
-  visibility: MemoryVisibility;
 };
 
 /** Viewer-scoped active memory totals used by the dashboard. */
-export interface PersonalMemoryStats {
+export interface ViewerMemoryStats {
   active: number;
   automatic: number;
   createdThirtyDays: number;
   embedded: number;
   explicit: number;
   knowledge: number;
-  personal: number;
   preference: number;
   procedure: number;
-  public: number;
 }
 
 /** Viewer-scoped memory creation totals for one UTC calendar day. */
-export interface PersonalMemoryDay {
+export interface ViewerMemoryDay {
   date: string;
-  personal: number;
-  public: number;
+  memories: number;
 }
 
-/** Expected failure when a viewer does not own the requested memory. */
-export class PersonalMemoryNotFoundError extends Error {
+/** Expected failure when a viewer cannot read the requested memory. */
+export class ViewerMemoryNotFoundError extends Error {
   constructor() {
     super("Memory was not found for the authenticated viewer.");
-    this.name = "PersonalMemoryNotFoundError";
+    this.name = "ViewerMemoryNotFoundError";
   }
 }
 
 /** Viewer-scoped memory operations shared by dashboard and REST. */
-export interface PersonalMemoryCollection {
-  /** Archive one exact personal memory owned by a linked identity. */
-  archive(id: string): Promise<MemoryRecord>;
-  /** Read one exact memory visible to a linked identity. */
-  get(id: string): Promise<PersonalMemoryRecord>;
+interface ViewerMemoryCollection {
+  /** Read one exact memory visible to the authorized scopes. */
+  get(id: string): Promise<ViewerMemory>;
   /** List one stable page across every authorized viewer scope. */
-  list(input: PersonalMemoryPageInput): Promise<PersonalMemoryPage>;
+  list(input: ViewerMemoryPageInput): Promise<ViewerMemoryPage>;
   /** Summarize active memories across every authorized viewer scope. */
-  stats(): Promise<PersonalMemoryStats>;
+  stats(): Promise<ViewerMemoryStats>;
   /** Read memory creation history across every authorized viewer scope. */
-  timeline(input: { days: number }): Promise<PersonalMemoryDay[]>;
+  timeline(input: { days: number }): Promise<ViewerMemoryDay[]>;
 }
 
-function scopePredicate(scopes: ResolvedMemoryScope[]) {
-  if (scopes.length === 0) return undefined;
-  return or(
-    ...scopes.map((scope) =>
-      and(
-        eq(juniorMemoryMemories.scope, scope.scope),
-        eq(juniorMemoryMemories.scopeKey, scope.scopeKey),
-      ),
-    ),
+function publicScopePredicate() {
+  return and(
+    eq(juniorMemoryMemories.scope, publicMemoryScope.scope),
+    eq(juniorMemoryMemories.scopeKey, publicMemoryScope.scopeKey),
   );
 }
 
@@ -133,33 +116,24 @@ function searchTerms(query: string): string[] {
   ];
 }
 
-function memoryOrigin(
-  idempotencyKey: string | null,
-): PersonalMemoryRecord["origin"] {
+function memoryOrigin(idempotencyKey: string | null): ViewerMemory["origin"] {
   if (idempotencyKey?.startsWith("session:")) return "automatic";
   if (idempotencyKey?.startsWith("tool:")) return "explicit";
   return "other";
 }
 
-function memoryVisibility(
-  scope: MemoryRecord["scope"],
-): PersonalMemoryRecord["visibility"] {
-  return scope === "personal" ? "private" : "public";
-}
-
-function personalMemoryRecord(
+function viewerMemory(
   row: typeof juniorMemoryMemories.$inferSelect,
-): PersonalMemoryRecord {
+): ViewerMemory {
   const memory = parseMemoryRow(row);
   return {
     ...memory,
     origin: memoryOrigin(row.idempotencyKey),
     sourcePlatform: row.sourcePlatform,
-    visibility: memoryVisibility(memory.scope),
   };
 }
 
-function emptyStats(): PersonalMemoryStats {
+function emptyStats(): ViewerMemoryStats {
   return {
     active: 0,
     automatic: 0,
@@ -167,69 +141,26 @@ function emptyStats(): PersonalMemoryStats {
     embedded: 0,
     explicit: 0,
     knowledge: 0,
-    personal: 0,
     preference: 0,
     procedure: 0,
-    public: 0,
   };
 }
 
-/** Build storage operations for every memory scope linked to one viewer. */
-export function createPersonalMemoryCollection(
+/** Build public-memory storage operations for authenticated viewer surfaces. */
+export function createViewerMemoryCollection(
   db: MemoryDb,
-  scopes: {
-    privateScopes: ResolvedMemoryScope[];
-    publicScopes: ResolvedMemoryScope[];
-  },
   options: { now?: () => number } = {},
-): PersonalMemoryCollection {
-  const { privateScopes, publicScopes } = scopes;
-  const allScopes = [...privateScopes, ...publicScopes];
+): ViewerMemoryCollection {
+  const scopes = [publicMemoryScope];
   const getNowMs = () => options.now?.() ?? Date.now();
 
-  function scopesForVisibility(
-    visibility: MemoryVisibility | undefined,
-  ): ResolvedMemoryScope[] {
-    if (visibility === "private") return privateScopes;
-    if (visibility === "public") return publicScopes;
-    return allScopes;
-  }
-
   return {
-    async archive(id) {
-      const memoryId = nonEmptyStringSchema.parse(id);
-      const nowMs = getNowMs();
-      // Forget is personal-only; public workspace memories stay shared.
-      const predicate = activeVisiblePredicate({
-        nowMs,
-        scopes: privateScopes,
-      });
-      if (!predicate) {
-        throw new PersonalMemoryNotFoundError();
-      }
-      const updated = await db
-        .update(juniorMemoryMemories)
-        .set({
-          archivedAtMs: nowMs,
-          archiveReason: "user_removed",
-        })
-        .where(and(predicate, eq(juniorMemoryMemories.id, memoryId)))
-        .returning();
-      if (!updated[0]) {
-        throw new PersonalMemoryNotFoundError();
-      }
-      await db
-        .delete(juniorMemoryEmbeddings)
-        .where(eq(juniorMemoryEmbeddings.memoryId, memoryId));
-      return parseMemoryRow(updated[0]);
-    },
-
     async get(id) {
       const memoryId = nonEmptyStringSchema.parse(id);
       const nowMs = getNowMs();
-      const predicate = activeVisiblePredicate({ nowMs, scopes: allScopes });
+      const predicate = activeVisiblePredicate({ nowMs, scopes });
       if (!predicate) {
-        throw new PersonalMemoryNotFoundError();
+        throw new ViewerMemoryNotFoundError();
       }
       const rows = await db
         .select()
@@ -237,15 +168,14 @@ export function createPersonalMemoryCollection(
         .where(and(predicate, eq(juniorMemoryMemories.id, memoryId)))
         .limit(1);
       if (!rows[0]) {
-        throw new PersonalMemoryNotFoundError();
+        throw new ViewerMemoryNotFoundError();
       }
-      return personalMemoryRecord(rows[0]);
+      return viewerMemory(rows[0]);
     },
 
     async list(input) {
-      input = personalMemoryPageInputSchema.parse(input);
+      input = viewerMemoryPageInputSchema.parse(input);
       const nowMs = getNowMs();
-      const scopes = scopesForVisibility(input.visibility);
       await archiveExpiredMemoryBatch({ db, nowMs, scopes });
       const active = activeVisiblePredicate({ nowMs, scopes });
       if (!active) {
@@ -291,7 +221,7 @@ export function createPersonalMemoryCollection(
         )
         .limit(input.limit + 1);
       const hasNextPage = rows.length > input.limit;
-      const memories = rows.slice(0, input.limit).map(personalMemoryRecord);
+      const memories = rows.slice(0, input.limit).map(viewerMemory);
       const last = memories.at(-1);
       return {
         memories,
@@ -308,8 +238,8 @@ export function createPersonalMemoryCollection(
 
     async stats() {
       const nowMs = getNowMs();
-      await archiveExpiredMemoryBatch({ db, nowMs, scopes: allScopes });
-      const active = activeVisiblePredicate({ nowMs, scopes: allScopes });
+      await archiveExpiredMemoryBatch({ db, nowMs, scopes });
+      const active = activeVisiblePredicate({ nowMs, scopes });
       if (!active) {
         return emptyStats();
       }
@@ -336,20 +266,12 @@ export function createPersonalMemoryCollection(
             sql<number>`count(*) filter (where ${juniorMemoryMemories.kind} = 'knowledge')`.mapWith(
               Number,
             ),
-          personal:
-            sql<number>`count(*) filter (where ${juniorMemoryMemories.scope} = 'personal')`.mapWith(
-              Number,
-            ),
           preference:
             sql<number>`count(*) filter (where ${juniorMemoryMemories.kind} = 'preference')`.mapWith(
               Number,
             ),
           procedure:
             sql<number>`count(*) filter (where ${juniorMemoryMemories.kind} = 'procedure')`.mapWith(
-              Number,
-            ),
-          public:
-            sql<number>`count(*) filter (where ${juniorMemoryMemories.scope} = 'conversation')`.mapWith(
               Number,
             ),
         })
@@ -366,42 +288,28 @@ export function createPersonalMemoryCollection(
         embedded: counts?.embedded ?? 0,
         explicit: counts?.explicit ?? 0,
         knowledge: counts?.knowledge ?? 0,
-        personal: counts?.personal ?? 0,
         preference: counts?.preference ?? 0,
         procedure: counts?.procedure ?? 0,
-        public: counts?.public ?? 0,
       };
     },
 
     async timeline(input) {
-      input = personalMemoryTimelineInputSchema.parse(input);
+      input = viewerMemoryTimelineInputSchema.parse(input);
       const todayMs = Date.parse(`${utcDate(getNowMs())}T00:00:00.000Z`);
       const startMs = todayMs - (input.days - 1) * DAY_MS;
-      const ownership = scopePredicate(allScopes);
-      if (!ownership) {
-        return Array.from({ length: input.days }, (_, index) => ({
-          date: utcDate(startMs + index * DAY_MS),
-          personal: 0,
-          public: 0,
-        }));
-      }
       const rows = await db
         .select({
           date: sql<string>`to_char(to_timestamp(${juniorMemoryMemories.createdAtMs} / 1000.0) AT TIME ZONE 'UTC', 'YYYY-MM-DD')`.as(
             "date",
           ),
-          personal:
-            sql<number>`count(*) filter (where ${juniorMemoryMemories.scope} = 'personal')`.mapWith(
-              Number,
-            ),
-          public:
-            sql<number>`count(*) filter (where ${juniorMemoryMemories.scope} = 'conversation')`.mapWith(
-              Number,
-            ),
+          memories: sql<number>`count(*)`.mapWith(Number),
         })
         .from(juniorMemoryMemories)
         .where(
-          and(ownership, gt(juniorMemoryMemories.createdAtMs, startMs - 1)),
+          and(
+            publicScopePredicate(),
+            gt(juniorMemoryMemories.createdAtMs, startMs - 1),
+          ),
         )
         .groupBy(
           sql`to_char(to_timestamp(${juniorMemoryMemories.createdAtMs} / 1000.0) AT TIME ZONE 'UTC', 'YYYY-MM-DD')`,
@@ -412,8 +320,7 @@ export function createPersonalMemoryCollection(
         const row = byDate.get(date);
         return {
           date,
-          personal: row?.personal ?? 0,
-          public: row?.public ?? 0,
+          memories: row?.memories ?? 0,
         };
       });
     },

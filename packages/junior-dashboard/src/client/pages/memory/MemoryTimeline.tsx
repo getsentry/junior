@@ -6,18 +6,12 @@ import {
   createActivityChartLayout,
   formatActivityDate,
 } from "../../components/charts/ActivityChart";
-import { ChartLegend } from "../../components/charts/ChartLegend";
 import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
 import { Card } from "../../components/layout/Card";
 import { Tooltip } from "../../components/Tooltip";
 import type { MemoryDay } from "./memoryDashboard";
 
-const series = [
-  { color: "#67e8f9", key: "personal", label: "Personal" },
-  { color: "#6ee7b7", key: "public", label: "Public" },
-] as const;
-
-/** Render viewer memory creation as a stacked personal/public timeline. */
+/** Render public memory creation over time. */
 export function MemoryTimeline(props: {
   days: MemoryDay[];
   range: TimeRangeDays;
@@ -27,7 +21,7 @@ export function MemoryTimeline(props: {
   const step =
     days.length > 0 ? layout.plotWidth / days.length : layout.plotWidth;
   const barWidth = Math.max(2, Math.min(13, step * 0.68));
-  const totals = days.map((day) => day.personal + day.public);
+  const totals = days.map((day) => day.memories);
   const maximum = Math.max(1, ...totals);
   const hasMemories = totals.some((total) => total > 0);
 
@@ -38,11 +32,9 @@ export function MemoryTimeline(props: {
           Activity over time
         </h2>
         <p className="mt-1 mb-0 font-mono text-xs leading-relaxed text-dashboard-text-muted">
-          Stacked personal + public memories created each day.
+          Public memories created each day.
         </p>
       </div>
-
-      <ChartLegend ariaLabel="Memory visibility legend" items={series} />
 
       <div className="relative mt-3 overflow-hidden">
         <ChartSvg
@@ -52,44 +44,28 @@ export function MemoryTimeline(props: {
         >
           <ActivityChartGrid layout={layout} maximum={maximum} />
           {days.map((day, dayIndex) => {
-            let stackedHeight = 0;
             const x = layout.left + dayIndex * step + (step - barWidth) / 2;
             const total = totals[dayIndex] ?? 0;
+            const height = (total / maximum) * layout.plotHeight;
             return (
               <Tooltip
-                content={
-                  <ActivityTooltipRows
-                    rows={[
-                      ["personal", day.personal],
-                      ["public", day.public],
-                      ["total", total],
-                    ]}
-                  />
-                }
+                content={<ActivityTooltipRows rows={[["memories", total]]} />}
                 key={day.date}
                 label={formatActivityDate(day.date)}
               >
                 <g
-                  aria-label={`${formatActivityDate(day.date)}: ${day.personal} personal, ${day.public} public, ${total} total memories`}
+                  aria-label={`${formatActivityDate(day.date)}: ${total} memories`}
                   tabIndex={0}
                 >
-                  {series.map((item) => {
-                    const value = day[item.key];
-                    const segmentHeight = (value / maximum) * layout.plotHeight;
-                    stackedHeight += segmentHeight;
-                    return (
-                      <rect
-                        fill={item.color}
-                        height={segmentHeight}
-                        key={item.key}
-                        opacity={0.82}
-                        rx="1"
-                        width={barWidth}
-                        x={x}
-                        y={layout.top + layout.plotHeight - stackedHeight}
-                      />
-                    );
-                  })}
+                  <rect
+                    fill="#6ee7b7"
+                    height={height}
+                    opacity={0.82}
+                    rx="1"
+                    width={barWidth}
+                    x={x}
+                    y={layout.top + layout.plotHeight - height}
+                  />
                   <rect
                     fill="transparent"
                     height={layout.plotHeight}

@@ -65,11 +65,10 @@ reports, and other typed hook surfaces exported by this package.
 - Tool hooks may lazily resolve the active actor's canonical identity and linked
   user through `ctx.users.resolveActor()`.
 - Authenticated API route hooks receive `ctx.users.resolve(email)` for lazy
-  canonical user resolution. Routes that do not need personal ownership do not
-  query identity storage.
-- User page readers receive the canonical viewer `User` with linked identities.
-  Plugins return bounded data and do not mount their own page routes or browser
-  code.
+  canonical user resolution. Routes that do not need user data do not query
+  identity storage.
+- User page readers receive the canonical viewer `User`. Plugins return bounded
+  data and do not mount their own page routes or browser code.
 
 ## User Pages
 

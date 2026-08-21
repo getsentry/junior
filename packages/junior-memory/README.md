@@ -1,6 +1,6 @@
 # @sentry/junior-memory
 
-The memory plugin stores durable, actor-scoped facts, recalls relevant facts
+The memory plugin stores durable facts, recalls relevant facts
 into prompts, and learns candidates from completed sessions. SQL schemas,
 exported types, tools, and tests are authoritative.
 
@@ -14,26 +14,26 @@ exported types, tools, and tests are authoritative.
 - The `memory` CLI namespace provides explicit administrative search and
   inspection.
 - The dashboard exposes a searchable, paginated **Memories** user page for
-  personal memories owned by actors linked to the signed-in viewer. Its
-  **Forget** action archives the selected memory. The overview charts global
-  passive-extraction cost from the durable `memory/memories_captured` events;
-  the System plugin report uses the same event-cost feed.
-- Authenticated REST clients can list and search personal memories through
+  public memory. Private memory stays in its source domain. The overview charts
+  global passive-extraction cost from the durable
+  `memory/memories_captured` events. The System plugin report uses the same
+  event-cost feed.
+- Authenticated REST clients can list and search public memories through
   `GET /api/plugins/memory/memories`, read one through
-  `GET /api/plugins/memory/memories/:id`, and archive one through
-  `DELETE /api/plugins/memory/memories/:id`. Personal bearer tokens remain
-  read-only, so mutations require a dashboard browser session.
+  `GET /api/plugins/memory/memories/:id`. Public memory is read-only on these
+  viewer surfaces.
 
 ## Scope And Visibility
 
-- Memory scope is derived from the active actor and source, never from
-  model-supplied ownership fields.
-- Dashboard and REST requests authorize one verified viewer, then derive access
-  from every linked provider identity so no arbitrary identity is treated as
-  the canonical user.
-- Private conversations and local sources remain private by default.
-- Recall filters candidates by actor, source, visibility, status, and relevance
-  before content reaches the model.
+- Memory visibility is derived from the Source, never from model-supplied
+  ownership fields.
+- Public memory is visible in every source domain.
+- Private memory is visible only in the Slack channel, direct message, local
+  conversation, or web conversation that learned it.
+- Subject classification is independent from visibility. A user preference can
+  be public or private based on its Source.
+- Recall filters candidates by domain, visibility, status, and relevance before
+  content reaches the model.
 - Administrative reads require explicit selectors and safe output defaults.
 - Memory content, embeddings, source excerpts, and review prompts must not be
   logged or traced.
@@ -71,10 +71,10 @@ exported types, tools, and tests are authoritative.
   and slightly prefers lexical ranks so exact tokens survive soft semantic
   neighbors. Vector recall also applies the cosine distance cutoff in SQL, and
   embeddings use an HNSW cosine index (`vector_cosine_ops`).
-- Automatic recall also runs personal-scope-only vector and lexical probes so
-  older actor preferences are not buried when newer workspace conversation
-  memories fill the shared lexical recency window with common tokens. On RRF
-  score ties, personal-scope matches rank ahead of conversation matches.
+- Automatic recall also runs private-scope-only vector and lexical probes so
+  older domain memory is not buried when newer public memory fills the shared
+  lexical recency window with common tokens. On RRF score ties, private matches
+  rank ahead of public matches.
 - Automatic recall retrieves a bounded candidate window, then uses the
   memory-owned relevance model to admit at most five directly useful memories.
   An empty result contributes no filler prompt text.

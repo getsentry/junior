@@ -30,7 +30,7 @@ describe("memory conversation events", () => {
           id: "memory-1",
           kind: "knowledge",
           observedAtMs: 1,
-          scope: "conversation",
+          scope: "public",
         },
       ],
     });
@@ -48,14 +48,14 @@ describe("memory conversation events", () => {
           id: "memory-1",
           kind: "preference",
           observedAtMs: 1,
-          scope: "personal",
+          scope: "private",
         },
         {
           content: "Keep events expandable.",
           id: "memory-2",
           kind: "knowledge",
           observedAtMs: 2,
-          scope: "conversation",
+          scope: "public",
         },
       ],
     });

@@ -32,7 +32,7 @@ export async function seedMemory(args: {
   content: string;
   idempotencyKey: string;
   kind?: "knowledge" | "preference" | "procedure";
-  scope?: "conversation" | "personal";
+  subject?: "conversation" | "user";
   thread: MemoryThread;
 }) {
   const store = createMemoryStore(
@@ -49,7 +49,8 @@ export async function seedMemory(args: {
         messageTs: args.thread.thread_ts,
         teamId: memoryTeamId,
         threadTs: args.thread.thread_ts,
-        visibility: args.thread.channel_type === "channel" ? "public" : "private",
+        visibility:
+          args.thread.channel_type === "channel" ? "public" : "private",
       }),
     },
     { embedder: evalMemoryEmbedder },
@@ -59,7 +60,7 @@ export async function seedMemory(args: {
     idempotencyKey: args.idempotencyKey,
     kind: args.kind ?? "preference",
   };
-  if (args.scope === "conversation") {
+  if (args.subject === "conversation") {
     await store.createConversationMemory(input);
     return;
   }

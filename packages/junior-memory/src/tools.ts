@@ -237,7 +237,7 @@ const createMemoryInputSchema = z
       .min(1)
       .max(MAX_TOOL_CONTENT_CHARS)
       .describe(
-        "Self-contained public/shareable memory candidate. Include the subject in natural language when it matters; do not rely on surrounding chat context.",
+        "Self-contained memory candidate. Include the subject in natural language when it matters; do not rely on surrounding chat context.",
       ),
     expires_at: z
       .string()
@@ -400,7 +400,7 @@ export function createMemoryCreateTool(context: MemoryCreateToolContext) {
       readOnlyHint: false,
     },
     description:
-      "Explicit memory-write tool. Use only when the latest user message directly asks Junior to remember, store, save, or forget-and-replace a public/shareable fact. Do not use for ordinary statements like 'I prefer X', 'I use Y', or 'X goes before Y' unless the user also asks you to remember/store/save it; passive memory learning handles those after the visible reply. Pass one self-contained natural-language candidate preserving the user's explicit memory intent. Do not ask the user to rephrase ordinary first-person facts, and do not rewrite them into display-name or third-person wording. Do not include secrets, private personal details, medical/legal/financial/sensitive facts, or another person's personal preference, opinion, habit, identity, relationship, workflow, or private life. Runtime context derives actor, scope, source, and subject ids; the memory agent decides canonical stored content and memory kind, then the plugin derives storage target from kind.",
+      "Explicit memory-write tool. Use only when the latest user message directly asks Junior to remember, store, save, or forget-and-replace a fact. Do not use for ordinary statements like 'I prefer X', 'I use Y', or 'X goes before Y' unless the user also asks you to remember/store/save it; passive memory learning handles those after the visible reply. Pass one self-contained natural-language candidate preserving the user's explicit memory intent. Do not ask the user to rephrase ordinary first-person facts, and do not rewrite them into display-name or third-person wording. Do not include secrets, private personal details, medical/legal/financial/sensitive facts, or another person's personal preference, opinion, habit, identity, relationship, workflow, or private life. Runtime context derives visibility, domain, source, and subject ids; the memory agent decides canonical stored content and memory kind.",
     executionMode: "sequential",
     inputSchema: createMemoryInputSchema,
     outputSchema: memoryCreateOutputSchema,
@@ -492,7 +492,7 @@ export function createMemoryRemoveTool(context: MemoryToolContext) {
       readOnlyHint: false,
     },
     description:
-      "Forget one memory owned by the active actor or conversation. Linked memories returned by listMemories or searchMemories are read-only in this context. Never remove memories by hidden actor, Slack, scope, or subject identifiers.",
+      "Forget one private memory owned by the active source domain. Public memories are read-only. Use only ids or short id prefixes returned by listMemories or searchMemories. Never remove memories by hidden actor, Slack, scope, or subject identifiers.",
     executionMode: "sequential",
     inputSchema: removeMemoryInputSchema,
     outputSchema: memorySingleOutputSchema,
@@ -544,7 +544,7 @@ export function createMemoryListTool(context: MemoryToolContext) {
 export function createMemorySearchTool(context: MemoryToolContext) {
   return definePluginTool({
     description:
-      "Search active memories visible in the current context. Use when the model needs targeted memory recall. The tool searches only the current person's authorized scopes and the active conversation scope.",
+      "Search active memories visible in the current context. Use when the model needs targeted memory recall. Public memories are visible everywhere; private memories are limited to the active source domain.",
     annotations: {
       destructiveHint: false,
       idempotentHint: true,

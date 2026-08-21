@@ -83,8 +83,8 @@ export function rankMemoryMatches(
       byId.set(match.memory.id, match);
       continue;
     }
-    // Keep the first rank per modality. Shared legs are fused before personal
-    // probes, so a smaller personal top-k cannot overwrite a shared dense rank
+    // Keep the first rank per modality. Shared legs are fused before private
+    // probes, so a smaller private top-k cannot overwrite a shared dense rank
     // with an inflated top rank for the same memory.
     byId.set(match.memory.id, {
       ...existing,
@@ -100,13 +100,13 @@ export function rankMemoryMatches(
       return scoreDelta;
     }
     // Prefer actor preferences over workspace knowledge when RRF ties. Shared
-    // lexical legs often assign the same top rank to recent conversation noise
-    // and a personal-scope probe hit for the same common token.
-    const personalDelta =
-      Number(right.memory.scope === "personal") -
-      Number(left.memory.scope === "personal");
-    if (personalDelta !== 0) {
-      return personalDelta;
+    // lexical legs often assign the same top rank to recent public noise and a
+    // private-scope probe hit for the same common token.
+    const privateDelta =
+      Number(right.memory.scope === "private") -
+      Number(left.memory.scope === "private");
+    if (privateDelta !== 0) {
+      return privateDelta;
     }
     const channelDelta =
       Number(currentChannel(right, options.channelPrefix)) -

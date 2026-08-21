@@ -26,7 +26,7 @@ export interface SchedulerToolContext {
   now?: () => number;
   source?: SlackSource;
   users: {
-    resolveActor(): Promise<{ identity?: Identity; user?: User } | undefined>;
+    resolveActor(): Promise<{ identity: Identity; user?: User } | undefined>;
   };
   userText?: string;
 }

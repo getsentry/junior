@@ -324,15 +324,6 @@ export async function wireAgentTools(
     args.invokedSkill &&
     args.activeSkills.some((skill) => skill.name === args.invokedSkill?.name),
   );
-  const resolvedActor = args.currentActor
-    ? await readActorIdentity(args.currentActor)
-    : undefined;
-  const currentActor =
-    args.currentActor &&
-    args.currentActor.platform !== "system" &&
-    resolvedActor?.user
-      ? { ...args.currentActor, identities: resolvedActor.user.identities }
-      : args.currentActor;
   const commonToolRuntimeContext = {
     conversationId: args.run.conversationId,
     userText: args.userInput,
@@ -360,8 +351,11 @@ export async function wireAgentTools(
     workspace: agentSandbox.workspace,
     supportsImageInput: args.supportsImageInput,
     surface: args.surface,
-    ...(resolvedActor
-      ? { resolveActorIdentity: async () => resolvedActor }
+    ...(args.currentActor
+      ? {
+          resolveActorIdentity: async () =>
+            await readActorIdentity(args.currentActor!),
+        }
       : undefined),
     ...(args.durability.spawnAgent
       ? { spawnAgent: args.durability.spawnAgent }
@@ -369,7 +363,7 @@ export async function wireAgentTools(
     ...(args.requestHandoff ? { handoff: args.requestHandoff } : undefined),
   };
   const toolRoute = resolveToolRuntimeRoute({
-    actor: currentActor,
+    actor: args.currentActor,
     run: args.run,
   });
   const toolRuntimeContext = {

@@ -15,9 +15,6 @@ import {
 import { migratePluginSchemas } from "@/chat/plugins/migrations";
 import { readMigrationFiles } from "drizzle-orm/migrator";
 import { closeDb } from "@/chat/db";
-import { readActorIdentity } from "@/chat/plugins/viewer";
-import { migrateSchema } from "@/chat/conversations/sql/migrations";
-import { upsertIdentity } from "@/chat/identities/sql";
 import { migratePluginsToSql } from "@/cli/upgrade/migrations/plugin-sql";
 import { runUpgrade } from "@/cli/upgrade";
 import { createLocalJuniorSqlFixture } from "../fixtures/sql";
@@ -307,223 +304,137 @@ WHERE indexname = 'junior_memory_memories_search_idx'
     }
   }, 15_000);
 
-  it("uses linked identity scopes for web memory reads", async () => {
+  it("reads public memory everywhere and private memory only in its source domain", async () => {
     const fixture = await createLocalJuniorSqlFixture();
     const previousPlugins = setPlugins([memoryPlugin()]);
     NEON.sql = fixture.sql;
 
     try {
-      await migrateSchema(fixture.sql);
       await migrateMemorySchema(fixture);
-      const email = "web-memory@example.com";
-      const webActor = {
-        platform: "web" as const,
-        userId: "dashboard:web-memory",
-        email,
-      };
-      await upsertIdentity(fixture.sql, {
-        kind: "user",
-        provider: "slack",
-        providerTenantId: "T123",
-        providerSubjectId: "U123",
-        email,
-        emailVerified: true,
-      });
-      await upsertIdentity(fixture.sql, {
-        kind: "user",
-        provider: "slack",
-        providerTenantId: "T456",
-        providerSubjectId: "U456",
-        email,
-        emailVerified: true,
-      });
-      const user = (await readActorIdentity(webActor))?.user;
-      expect(user).toBeDefined();
-      const linkedWebActor = { ...webActor, identities: user!.identities };
-      await expect(
-        readActorIdentity({
-          platform: "slack",
-          teamId: "T123",
-          userId: "U123",
-          email,
-        }),
-      ).resolves.toMatchObject({
-        identity: {
-          provider: "slack",
-          providerSubjectId: "U123",
-          providerTenantId: "T123",
-        },
-      });
-      const linkedSource = createSlackSource({
+      const publicSource = createSlackSource({
         teamId: "T123",
         channelId: "C123",
         messageTs: "1718800000.000000",
         visibility: "public",
       });
-      const linkedStore = createMemoryStore(
+      const publicStore = createMemoryStore(
         fixture.sql.db() as unknown as MemoryDb,
         {
           conversationId: "slack:C123:1718800000.000000",
           actor: { platform: "slack", teamId: "T123", userId: "U123" },
-          source: linkedSource,
+          source: publicSource,
         },
       );
-      const linked = await linkedStore.createConversationMemory({
-        content: "Public workspace runbooks live in Notion.",
-        idempotencyKey: "component-web-linked-memory",
+      const publicMemory = await publicStore.createConversationMemory({
+        content: "Public runbooks live in Notion.",
+        idempotencyKey: "component-public-memory",
         kind: "knowledge",
       });
-      const secondLinkedStore = createMemoryStore(
+
+      const privateSource = createSlackSource({
+        teamId: "T123",
+        channelId: "D123",
+        messageTs: "1718800001.000000",
+        visibility: "private",
+      });
+      const privateStore = createMemoryStore(
         fixture.sql.db() as unknown as MemoryDb,
         {
-          conversationId: "slack:C456:1718800001.000000",
-          actor: { platform: "slack", teamId: "T456", userId: "U456" },
-          source: createSlackSource({
-            teamId: "T456",
-            channelId: "C456",
-            messageTs: "1718800001.000000",
-            visibility: "public",
-          }),
+          conversationId: "slack:D123:1718800001.000000",
+          actor: { platform: "slack", teamId: "T123", userId: "U123" },
+          source: privateSource,
         },
       );
-      const secondLinked = await secondLinkedStore.createConversationMemory({
-        content: "Second workspace runbooks are also visible on web.",
-        idempotencyKey: "component-web-second-linked-memory",
-        kind: "knowledge",
-      });
-      const privateLinked = await secondLinkedStore.createMemory({
-        content: "Prefers linked private memories only in private turns.",
-        idempotencyKey: "component-web-private-linked-memory",
+      const privateMemory = await privateStore.createMemory({
+        content: "Prefers terse status updates in this DM.",
+        idempotencyKey: "component-private-memory",
         kind: "preference",
       });
-      const otherStore = createMemoryStore(
-        fixture.sql.db() as unknown as MemoryDb,
-        {
-          conversationId: "slack:C999:1718800002.000000",
-          actor: { platform: "slack", teamId: "T999", userId: "U999" },
-          source: createSlackSource({
-            teamId: "T999",
-            channelId: "C999",
-            messageTs: "1718800002.000000",
-            visibility: "public",
-          }),
-        },
-      );
-      await otherStore.createConversationMemory({
-        content: "Other workspace runbooks are not visible.",
-        idempotencyKey: "component-web-other-memory",
-        kind: "knowledge",
-      });
-      const source = createWebSource("local:web:linked-memory", "private");
-      const context = {
-        conversationId: "local:web:linked-memory",
-        destination: {
-          platform: "local" as const,
-          conversationId: "local:web:linked-memory",
-        },
-        actor: linkedWebActor,
-        source,
-        userText: "where do public workspace runbooks live?",
-      };
 
-      await expect(
-        getPluginUserPromptContributions({ context }),
-      ).resolves.toEqual([
-        expect.objectContaining({
-          pluginName: "memory",
-          text: expect.stringContaining("Public workspace runbooks live in Notion."),
-        }),
-      ]);
-
-      const tools = getPluginTools({
-        ...context,
-        egress: {
-          async fetch() {
-            return new Response("ok");
-          },
-        },
-        workspace: {} as Parameters<typeof getPluginTools>[0]["workspace"],
-      });
-      await expect(
-        tools.memory_listMemories.execute!({}, {}),
-      ).resolves.toEqual({
-        memories: [
-          expect.objectContaining({ id: privateLinked.memory.id }),
-          expect.objectContaining({ id: secondLinked.memory.id }),
-          expect.objectContaining({ id: linked.memory.id }),
-        ],
-        target: "listMemories",
-      });
-
-      const publicWebContext = {
-        ...context,
-        conversationId: "local:web:public-linked-memory",
-        destination: {
-          platform: "local" as const,
-          conversationId: "local:web:public-linked-memory",
-        },
-        source: createWebSource("local:web:public-linked-memory", "public"),
-      };
-      await expect(
-        getPluginUserPromptContributions({ context: publicWebContext }),
-      ).resolves.toEqual([
-        expect.objectContaining({
-          pluginName: "memory",
-          text: expect.stringContaining("Public workspace runbooks live in Notion."),
-        }),
-      ]);
-      const publicWebTools = getPluginTools({
-        ...publicWebContext,
-        egress: {
-          async fetch() {
-            return new Response("ok");
-          },
-        },
-        workspace: {} as Parameters<typeof getPluginTools>[0]["workspace"],
-      });
-      await expect(
-        publicWebTools.memory_listMemories.execute!({}, {}),
-      ).resolves.toEqual({
-        memories: [
-          expect.objectContaining({ id: secondLinked.memory.id }),
-          expect.objectContaining({ id: linked.memory.id }),
-        ],
-        target: "listMemories",
-      });
-
-      const slackActor = {
-        platform: "slack" as const,
-        teamId: "T123",
-        userId: "U123",
-        email,
-        identities: user!.identities,
-      };
-      const slackTools = getPluginTools({
-        ...context,
-        actor: slackActor,
-        conversationId: "slack:C123:1718800000.000000",
+      const sameDomainContext = {
+        conversationId: "slack:D123:1718800099.000000",
         destination: {
           platform: "slack" as const,
           teamId: "T123",
-          channelId: "C123",
+          channelId: "D123",
         },
+        actor: { platform: "slack" as const, teamId: "T123", userId: "U999" },
+        source: createSlackSource({
+          teamId: "T123",
+          channelId: "D123",
+          messageTs: "1718800099.000000",
+          visibility: "private",
+        }),
+        userText: "what should I remember?",
+      };
+      const sameDomainTools = getPluginTools({
+        ...sameDomainContext,
         egress: {
           async fetch() {
             return new Response("ok");
           },
         },
-        source: linkedSource,
         workspace: {} as Parameters<typeof getPluginTools>[0]["workspace"],
       });
       await expect(
-        slackTools.memory_listMemories.execute!({}, {}),
+        sameDomainTools.memory_listMemories.execute!({}, {}),
       ).resolves.toEqual({
         memories: [
-          expect.objectContaining({ id: secondLinked.memory.id }),
-          expect.objectContaining({ id: linked.memory.id }),
+          expect.objectContaining({ id: privateMemory.memory.id }),
+          expect.objectContaining({ id: publicMemory.memory.id }),
         ],
         target: "listMemories",
       });
+
+      const otherDomainContext = {
+        ...sameDomainContext,
+        conversationId: "slack:D999:1718800099.000000",
+        destination: {
+          platform: "slack" as const,
+          teamId: "T123",
+          channelId: "D999",
+        },
+        source: createSlackSource({
+          teamId: "T123",
+          channelId: "D999",
+          messageTs: "1718800099.000000",
+          visibility: "private",
+        }),
+      };
+      const otherDomainTools = getPluginTools({
+        ...otherDomainContext,
+        egress: {
+          async fetch() {
+            return new Response("ok");
+          },
+        },
+        workspace: {} as Parameters<typeof getPluginTools>[0]["workspace"],
+      });
+      await expect(
+        otherDomainTools.memory_listMemories.execute!({}, {}),
+      ).resolves.toEqual({
+        memories: [expect.objectContaining({ id: publicMemory.memory.id })],
+        target: "listMemories",
+      });
+
+      const webContext = {
+        conversationId: "local:web:public-memory",
+        destination: {
+          platform: "local" as const,
+          conversationId: "local:web:public-memory",
+        },
+        actor: { platform: "web" as const, userId: "dashboard:memory" },
+        source: createWebSource("local:web:public-memory", "public"),
+        userText: "where do public runbooks live?",
+      };
+      await expect(
+        getPluginUserPromptContributions({ context: webContext }),
+      ).resolves.toEqual([
+        expect.objectContaining({
+          pluginName: "memory",
+          text: expect.stringContaining("Public runbooks live in Notion."),
+        }),
+      ]);
     } finally {
       setPlugins(previousPlugins);
       await closeDb();
@@ -616,7 +527,7 @@ WHERE indexname = 'junior_memory_memories_search_idx'
         tools.memory_createMemory.execute!(
           {
             content: "I prefer terse status updates.",
-            scope: "conversation",
+            scope: "public",
           } as never,
           { toolCallId: "tool-create-personal" },
         ),

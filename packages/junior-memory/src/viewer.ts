@@ -1,18 +1,15 @@
 /**
  * Authenticated-viewer memory access shared by REST and dashboard projections.
  *
- * One user may have multiple provider identities. This module adapts those
- * identities to the existing personal and public workspace scopes.
+ * Authenticated viewers can inspect globally public memory. Private memory
+ * stays inside the source domain that learned it.
  */
 import { z } from "zod";
-import type { User } from "@sentry/junior-plugin-api";
 import {
-  createPersonalMemoryCollection,
-  type MemoryVisibility,
-  type PersonalMemoryRecord,
-} from "./personal-store";
-import { deriveViewerMemoryScopes } from "./scope";
-import type { MemoryDb, MemoryRecord } from "./store";
+  createViewerMemoryCollection,
+  type ViewerMemory,
+} from "./viewer-store";
+import type { MemoryDb } from "./store";
 import type { MemoryKind } from "./types";
 
 const cursorSchema = z
@@ -23,12 +20,11 @@ const cursorSchema = z
     origin: z.enum(["automatic", "explicit"]).optional(),
     query: z.string().max(200).optional(),
     version: z.literal(1),
-    visibility: z.enum(["private", "public"]).optional(),
   })
   .strict();
 
 export interface ViewerMemoryPage {
-  memories: PersonalMemoryRecord[];
+  memories: ViewerMemory[];
   nextCursor?: string;
 }
 
@@ -38,7 +34,6 @@ export interface ViewerMemoryPageInput {
   limit: number;
   origin?: "automatic" | "explicit";
   query?: string;
-  visibility?: MemoryVisibility;
 }
 
 export class InvalidMemoryCursorError extends Error {
@@ -48,15 +43,12 @@ export class InvalidMemoryCursorError extends Error {
   }
 }
 
-export { PersonalMemoryNotFoundError } from "./personal-store";
-export type { MemoryVisibility, PersonalMemoryRecord } from "./personal-store";
+export { ViewerMemoryNotFoundError } from "./viewer-store";
+export type { ViewerMemory } from "./viewer-store";
 
 function decodeCursor(
   value: string | undefined,
-  input: Pick<
-    ViewerMemoryPageInput,
-    "kind" | "origin" | "query" | "visibility"
-  >,
+  input: Pick<ViewerMemoryPageInput, "kind" | "origin" | "query">,
 ) {
   if (!value) return undefined;
   try {
@@ -66,8 +58,7 @@ function decodeCursor(
     if (
       parsed.query !== input.query ||
       parsed.kind !== input.kind ||
-      parsed.origin !== input.origin ||
-      parsed.visibility !== input.visibility
+      parsed.origin !== input.origin
     ) {
       throw new InvalidMemoryCursorError();
     }
@@ -79,10 +70,7 @@ function decodeCursor(
 
 function encodeCursor(
   cursor: { createdAtMs: number; id: string },
-  input: Pick<
-    ViewerMemoryPageInput,
-    "kind" | "origin" | "query" | "visibility"
-  >,
+  input: Pick<ViewerMemoryPageInput, "kind" | "origin" | "query">,
 ): string {
   return Buffer.from(
     JSON.stringify({
@@ -90,33 +78,25 @@ function encodeCursor(
       ...(input.query ? { query: input.query } : undefined),
       ...(input.kind ? { kind: input.kind } : undefined),
       ...(input.origin ? { origin: input.origin } : undefined),
-      ...(input.visibility ? { visibility: input.visibility } : undefined),
       version: 1,
     }),
     "utf8",
   ).toString("base64url");
 }
 
-/** Build viewer memory operations authorized by a user's linked identities. */
-export function createViewerMemories(db: MemoryDb, user: User) {
-  const collection = createPersonalMemoryCollection(
-    db,
-    deriveViewerMemoryScopes(user.identities),
-  );
+/** Build viewer memory operations for globally public memory. */
+export function createViewerMemories(db: MemoryDb) {
+  const collection = createViewerMemoryCollection(db);
   return {
-    async archive(id: string): Promise<MemoryRecord> {
-      return await collection.archive(id);
-    },
-    async get(id: string): Promise<PersonalMemoryRecord> {
+    async get(id: string): Promise<ViewerMemory> {
       return await collection.get(id);
     },
     async list(input: ViewerMemoryPageInput): Promise<ViewerMemoryPage> {
       const query = input.query?.trim() || undefined;
       const filters = {
-        ...(input.kind ? { kind: input.kind } : undefined),
-        ...(input.origin ? { origin: input.origin } : undefined),
-        ...(query ? { query } : undefined),
-        ...(input.visibility ? { visibility: input.visibility } : undefined),
+      ...(input.kind ? { kind: input.kind } : undefined),
+      ...(input.origin ? { origin: input.origin } : undefined),
+      ...(query ? { query } : undefined),
       };
       const page = await collection.list({
         cursor: decodeCursor(input.cursor, filters),

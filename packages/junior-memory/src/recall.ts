@@ -50,7 +50,7 @@ const recalledMemorySchema = z
     id: z.string().min(1),
     content: z.string().min(1).max(MAX_MEMORY_LINE_CHARS),
     observedAtMs: z.number().finite(),
-    scope: z.enum(["personal", "conversation"]),
+    scope: z.enum(["private", "public"]),
     kind: z.enum(["preference", "procedure", "knowledge"]),
   })
   .strict();

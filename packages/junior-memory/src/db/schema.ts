@@ -80,7 +80,7 @@ export const juniorMemoryMemories = pgTable(
       ),
     check(
       "junior_memory_memories_scope_check",
-      sql`${table.scope} IN ('personal', 'conversation')`,
+      sql`${table.scope} IN ('private', 'public')`,
     ),
     check(
       "junior_memory_memories_kind_check",
