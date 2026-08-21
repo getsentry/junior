@@ -5,12 +5,18 @@ import {
   type Destination,
   type Source,
 } from "@sentry/junior-plugin-api";
+import { eq } from "drizzle-orm";
 import { createHeartbeatContext } from "@/chat/agent-dispatch/context";
 import {
-  createSchedulerSqlStore,
+  readScheduledTask,
+  saveScheduledTask,
+} from "@/chat/scheduled-tasks/tasks";
+import {
+  scheduledRunSchema,
   type ScheduledTask,
-  type SchedulerDb,
-} from "@/chat/scheduled-tasks";
+} from "@/chat/scheduled-tasks/types";
+import type { JuniorDatabase } from "@/db/db";
+import { juniorSchedulerRuns } from "@/db/schema/scheduled-tasks";
 import { getDb } from "@/chat/db";
 import {
   getDispatchRecord,
@@ -50,12 +56,10 @@ function slackDmSource(channelId = "D123"): Source {
   return createSlackSource({
     teamId: "T123",
     channelId,
-
     visibility: "private",
   });
 }
 
-let schedulerDb: SchedulerDb | undefined;
 let conversationWorkQueue = createConversationWorkQueueTestAdapter();
 
 function createTestHeartbeatContext(
@@ -82,9 +86,14 @@ function testHeartbeat(
   });
 }
 
-async function useSchedulerSqlStore() {
-  schedulerDb = getDb() as unknown as SchedulerDb;
-  return createSchedulerSqlStore(schedulerDb);
+const scheduledTaskDb = (): JuniorDatabase => getDb();
+async function readScheduledRun(db: JuniorDatabase, id: string) {
+  const rows = await db
+    .select({ record: juniorSchedulerRuns.record })
+    .from(juniorSchedulerRuns)
+    .where(eq(juniorSchedulerRuns.id, id));
+  const parsed = scheduledRunSchema.safeParse(rows[0]?.record);
+  return parsed.success ? parsed.data : undefined;
 }
 
 function createTask(overrides: Partial<ScheduledTask> = {}): ScheduledTask {
@@ -192,7 +201,6 @@ describe("plugin heartbeat", () => {
   afterEach(async () => {
     global.fetch = originalFetch;
     setPlugins([]);
-    schedulerDb = undefined;
     await disconnectStateAdapter();
     delete process.env.JUNIOR_SCHEDULER_SECRET;
     delete process.env.CRON_SECRET;
@@ -443,9 +451,9 @@ describe("plugin heartbeat", () => {
   });
 
   it("scopes dispatch lookup to the plugin that created it", async () => {
-    const fetchMock = vi.fn(async () => {
-      return new Response("Accepted", { status: 202 });
-    });
+    const fetchMock = vi.fn(
+      async () => new Response("Accepted", { status: 202 }),
+    );
     global.fetch = fetchMock as typeof fetch;
 
     const schedulerCtx = createTestHeartbeatContext({
@@ -638,8 +646,9 @@ describe("plugin heartbeat", () => {
       return new Response("Accepted", { status: 202 });
     });
     global.fetch = fetchMock as typeof fetch;
-    const store = await useSchedulerSqlStore();
-    await store.saveTask(
+    const db = scheduledTaskDb();
+    await saveScheduledTask(
+      db,
       createTask({
         createdBy: {
           slackUserId: "U039RR91S",
@@ -664,7 +673,10 @@ describe("plugin heartbeat", () => {
     expect(firstResponse.status).toBe(202);
     await firstWaitUntil.flush();
 
-    const running = await store.getRun(`sched_plugin_1:${TEST_RUN_AT_MS}`);
+    const running = await readScheduledRun(
+      db,
+      `sched_plugin_1:${TEST_RUN_AT_MS}`,
+    );
     expect(running).toMatchObject({
       status: "running",
       dispatchId: expect.any(String),
@@ -719,11 +731,13 @@ describe("plugin heartbeat", () => {
     expect(secondResponse.status).toBe(202);
     await secondWaitUntil.flush();
 
-    await expect(store.getRun(running!.id)).resolves.toMatchObject({
+    await expect(readScheduledRun(db, running!.id)).resolves.toMatchObject({
       status: "completed",
       resultMessageTs: "1700000000.000001",
     });
-    await expect(store.getTask("sched_plugin_1")).resolves.toMatchObject({
+    await expect(
+      readScheduledTask(db, "sched_plugin_1"),
+    ).resolves.toMatchObject({
       lastRunAtMs: Date.parse("2026-05-26T12:00:00.000Z"),
       status: "completed",
     });
@@ -749,8 +763,9 @@ describe("plugin heartbeat", () => {
   ])(
     "binds creator credentials to the scheduled task dispatch in a $label",
     async ({ conversationAccess, destination }) => {
-      const store = await useSchedulerSqlStore();
-      await store.saveTask(
+      const db = scheduledTaskDb();
+      await saveScheduledTask(
+        db,
         createTask({
           conversationAccess,
           credentialMode: "creator",
@@ -768,7 +783,10 @@ describe("plugin heartbeat", () => {
       expect(response.status).toBe(202);
       await waitUntil.flush();
 
-      const running = await store.getRun(`sched_plugin_1:${TEST_RUN_AT_MS}`);
+      const running = await readScheduledRun(
+        db,
+        `sched_plugin_1:${TEST_RUN_AT_MS}`,
+      );
       expect(running?.dispatchId).toEqual(expect.any(String));
       await expect(
         getDispatchRecord(running!.dispatchId!),
@@ -797,8 +815,8 @@ describe("plugin heartbeat", () => {
       return new Response("Accepted", { status: 202 });
     });
     global.fetch = fetchMock as typeof fetch;
-    const store = await useSchedulerSqlStore();
-    await store.saveTask(createTask());
+    const db = scheduledTaskDb();
+    await saveScheduledTask(db, createTask());
 
     const firstWaitUntil = createWaitUntilCollector();
     const firstResponse = await testHeartbeat(
@@ -810,7 +828,10 @@ describe("plugin heartbeat", () => {
     expect(firstResponse.status).toBe(202);
     await firstWaitUntil.flush();
 
-    const running = await store.getRun(`sched_plugin_1:${TEST_RUN_AT_MS}`);
+    const running = await readScheduledRun(
+      db,
+      `sched_plugin_1:${TEST_RUN_AT_MS}`,
+    );
     expect(running).toMatchObject({
       status: "running",
       dispatchId: expect.any(String),
@@ -829,11 +850,13 @@ describe("plugin heartbeat", () => {
     expect(secondResponse.status).toBe(202);
     await secondWaitUntil.flush();
 
-    await expect(store.getRun(running!.id)).resolves.toMatchObject({
+    await expect(readScheduledRun(db, running!.id)).resolves.toMatchObject({
       status: "failed",
       errorMessage: "Scheduled task dispatch record is missing.",
     });
-    await expect(store.getTask("sched_plugin_1")).resolves.toMatchObject({
+    await expect(
+      readScheduledTask(db, "sched_plugin_1"),
+    ).resolves.toMatchObject({
       status: "deleted",
     });
   }, 30_000);
@@ -843,40 +866,54 @@ describe("plugin heartbeat", () => {
       return new Response("Accepted", { status: 202 });
     });
     global.fetch = fetchMock as typeof fetch;
-    const store = await useSchedulerSqlStore();
-    await store.saveTask({
+    const db = scheduledTaskDb();
+    await saveScheduledTask(db, {
       ...createTask(),
       id: "sched_plugin_malformed",
-      task: {
-        text: "",
-      },
+      task: { text: "" },
     });
-
     const waitUntil = createWaitUntilCollector();
-    const response = await testHeartbeat(
-      new Request("https://example.invalid/api/internal/heartbeat", {
+    const request = new Request(
+      "https://example.invalid/api/internal/heartbeat",
+      {
         headers: { authorization: "Bearer heartbeat-secret" },
-      }),
-      waitUntil.fn,
+      },
     );
+    const response = await testHeartbeat(request, waitUntil.fn);
     expect(response.status).toBe(202);
     await waitUntil.flush();
 
     await expect(
-      store.getRun(`sched_plugin_malformed:${TEST_RUN_AT_MS}`),
+      readScheduledRun(db, `sched_plugin_malformed:${TEST_RUN_AT_MS}`),
     ).resolves.toMatchObject({
       status: "blocked",
       errorMessage: expect.stringContaining(
         "Scheduled task dispatch metadata could not be built",
       ),
     });
-    await expect(
-      store.getTask("sched_plugin_malformed"),
-    ).resolves.toMatchObject({
+    const blockedTask = await readScheduledTask(db, "sched_plugin_malformed");
+    expect(blockedTask).toMatchObject({
       status: "blocked",
       statusReason: expect.stringContaining(
         "Scheduled task dispatch metadata could not be built",
       ),
+    });
+    await saveScheduledTask(db, {
+      ...blockedTask!,
+      nextRunAtMs: TEST_RUN_AT_MS,
+      status: "active",
+      statusReason: undefined,
+      task: { text: "Post the recovered digest." },
+      updatedAtMs: TEST_NOW_MS + 1,
+    });
+    const retryWaitUntil = createWaitUntilCollector();
+    await testHeartbeat(request, retryWaitUntil.fn);
+    await retryWaitUntil.flush();
+    await expect(
+      readScheduledRun(db, `sched_plugin_malformed:${TEST_RUN_AT_MS}`),
+    ).resolves.toMatchObject({
+      status: "running",
+      dispatchId: expect.any(String),
     });
     expect(fetchMock).not.toHaveBeenCalled();
   }, 30_000);
@@ -886,9 +923,9 @@ describe("plugin heartbeat", () => {
       return new Response("Accepted", { status: 202 });
     });
     global.fetch = fetchMock as typeof fetch;
-    const store = await useSchedulerSqlStore();
+    const db = scheduledTaskDb();
     const task = createDailyTask();
-    await store.saveTask(task);
+    await saveScheduledTask(db, task);
 
     const waitUntil = createWaitUntilCollector();
     const response = await testHeartbeat(
@@ -901,12 +938,12 @@ describe("plugin heartbeat", () => {
     await waitUntil.flush();
 
     await expect(
-      store.getRun(`${task.id}:${task.nextRunAtMs}`),
+      readScheduledRun(db, `${task.id}:${task.nextRunAtMs}`),
     ).resolves.toMatchObject({
       status: "skipped",
       errorMessage: expect.stringContaining("more than 24 hours late"),
     });
-    await expect(store.getTask(task.id)).resolves.toMatchObject({
+    await expect(readScheduledTask(db, task.id)).resolves.toMatchObject({
       status: "active",
       nextRunAtMs: Date.parse("2026-05-27T12:00:00.000Z"),
     });
@@ -918,7 +955,7 @@ describe("plugin heartbeat", () => {
       return new Response("Accepted", { status: 202 });
     });
     global.fetch = fetchMock as typeof fetch;
-    const store = await useSchedulerSqlStore();
+    const db = scheduledTaskDb();
     const first = createDailyTask({
       id: "sched_plugin_duplicate_a",
       createdAtMs: Date.parse("2026-05-24T12:00:00.000Z"),
@@ -927,8 +964,8 @@ describe("plugin heartbeat", () => {
       id: "sched_plugin_duplicate_b",
       createdAtMs: Date.parse("2026-05-24T12:00:01.000Z"),
     });
-    await store.saveTask(first);
-    await store.saveTask(duplicate);
+    await saveScheduledTask(db, first);
+    await saveScheduledTask(db, duplicate);
 
     const waitUntil = createWaitUntilCollector();
     const response = await testHeartbeat(
@@ -941,18 +978,18 @@ describe("plugin heartbeat", () => {
     await waitUntil.flush();
 
     await expect(
-      store.getRun(`${duplicate.id}:${duplicate.nextRunAtMs}`),
+      readScheduledRun(db, `${duplicate.id}:${duplicate.nextRunAtMs}`),
     ).resolves.toMatchObject({
       status: "skipped",
       errorMessage: expect.stringContaining(
         "Duplicate stale scheduled task was skipped",
       ),
     });
-    await expect(store.getTask(first.id)).resolves.toMatchObject({
+    await expect(readScheduledTask(db, first.id)).resolves.toMatchObject({
       status: "active",
       nextRunAtMs: Date.parse("2026-05-27T12:00:00.000Z"),
     });
-    const duplicateTask = await store.getTask(duplicate.id);
+    const duplicateTask = await readScheduledTask(db, duplicate.id);
     expect(duplicateTask).toMatchObject({
       status: "deleted",
       statusReason: expect.stringContaining(first.id),

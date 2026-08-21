@@ -1,6 +1,9 @@
 import { sql } from "drizzle-orm";
 import { bigint, index, jsonb, pgTable, text } from "drizzle-orm/pg-core";
-import type { ScheduledRun, ScheduledTask } from "@/chat/scheduled-tasks/types";
+import type {
+  ScheduledRun,
+  ScheduledTaskRecord,
+} from "@/chat/scheduled-tasks/types";
 
 export const juniorSchedulerTasks = pgTable(
   "junior_scheduler_tasks",
@@ -16,7 +19,7 @@ export const juniorSchedulerTasks = pgTable(
     createdAtMs: bigint("created_at_ms", { mode: "number" }).notNull(),
     /** Short display title generated from the task instruction. */
     title: text("title"),
-    record: jsonb("record").$type<ScheduledTask>().notNull(),
+    record: jsonb("record").$type<ScheduledTaskRecord>().notNull(),
   },
   (table) => [
     // TODO(v0.128.0): Remove with creatorSlackUserId.

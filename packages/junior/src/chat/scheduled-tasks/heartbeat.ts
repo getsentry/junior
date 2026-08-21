@@ -13,7 +13,18 @@ import { getDb } from "@/chat/db";
 import { logInfo } from "@/chat/logging";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { recordTaskExecution } from "@/chat/tasks/execution-stats";
-import { createSchedulerSqlStore, type SchedulerStore } from "./store";
+import type { JuniorDatabase } from "@/db/db";
+import {
+  advanceScheduledTaskAfterRun,
+  claimDueScheduledRun,
+  listIncompleteScheduledRuns,
+  markScheduledRunBlocked,
+  markScheduledRunCompleted,
+  markScheduledRunDispatched,
+  markScheduledRunFailed,
+  markScheduledRunSkipped,
+} from "./runs";
+import { readScheduledTask } from "./tasks";
 import {
   logScheduledTaskRunSkipped,
   scheduledTaskRunAttributes,
@@ -141,13 +152,12 @@ async function logRunOutcome(args: {
     | "scheduled_task.run.failed"
     | "scheduled_task.run.blocked";
   run: ScheduledRun;
-  store: SchedulerStore;
+  db: JuniorDatabase;
   /** Prefer a fresh task load after terminal status transitions. */
   task?: ScheduledTask;
   extras?: Record<string, unknown>;
 }): Promise<void> {
-  const task =
-    args.task ?? (await args.store.getTask(args.run.taskId)) ?? undefined;
+  const task = args.task ?? (await readScheduledTask(args.db, args.run.taskId));
   if (!task) {
     logInfo(args.eventName, {
       "app.task.id": args.run.taskId,
@@ -157,7 +167,9 @@ async function logRunOutcome(args: {
       "app.task.run.scheduled_for": new Date(
         args.run.scheduledForMs,
       ).toISOString(),
-      ...(args.run.dispatchId ? { "app.dispatch.id": args.run.dispatchId } : {}),
+      ...(args.run.dispatchId
+        ? { "app.dispatch.id": args.run.dispatchId }
+        : {}),
       ...(args.run.resultMessageTs
         ? { "app.task.result_message_ts": args.run.resultMessageTs }
         : {}),
@@ -173,19 +185,19 @@ async function logRunOutcome(args: {
 
 async function applyDispatchResult(args: {
   dispatch: Dispatch;
+  db: JuniorDatabase;
   nowMs: number;
   run: ScheduledRun;
-  store: SchedulerStore;
 }): Promise<boolean> {
   if (args.dispatch.status === "completed") {
-    const completed = await args.store.markRunCompleted({
+    const completed = await markScheduledRunCompleted(args.db, {
       completedAtMs: args.nowMs,
       resultMessageTs: args.dispatch.resultMessageTs,
       runId: args.run.id,
       startedAtMs: args.run.startedAtMs!,
     });
     if (!completed) return false;
-    await args.store.updateTaskAfterRun({
+    await advanceScheduledTaskAfterRun(args.db, {
       nowMs: args.nowMs,
       run: args.run,
       status: "completed",
@@ -198,19 +210,19 @@ async function applyDispatchResult(args: {
     await logRunOutcome({
       eventName: "scheduled_task.run.completed",
       run: completed,
-      store: args.store,
+      db: args.db,
     });
     return true;
   }
   if (args.dispatch.status === "blocked") {
-    const blocked = await args.store.markRunBlocked({
+    const blocked = await markScheduledRunBlocked(args.db, {
       completedAtMs: args.nowMs,
       errorMessage: args.dispatch.errorMessage ?? "Dispatch blocked.",
       runId: args.run.id,
       startedAtMs: args.run.startedAtMs!,
     });
     if (!blocked) return false;
-    await args.store.updateTaskAfterRun({
+    await advanceScheduledTaskAfterRun(args.db, {
       errorMessage: blocked.errorMessage,
       nowMs: args.nowMs,
       run: args.run,
@@ -224,7 +236,7 @@ async function applyDispatchResult(args: {
     await logRunOutcome({
       eventName: "scheduled_task.run.blocked",
       run: blocked,
-      store: args.store,
+      db: args.db,
       extras: blocked.errorMessage
         ? { "app.task.run.error": blocked.errorMessage }
         : undefined,
@@ -232,14 +244,14 @@ async function applyDispatchResult(args: {
     return true;
   }
   if (args.dispatch.status === "failed") {
-    const failed = await args.store.markRunFailed({
+    const failed = await markScheduledRunFailed(args.db, {
       completedAtMs: args.nowMs,
       errorMessage: args.dispatch.errorMessage ?? "Dispatch failed.",
       runId: args.run.id,
       startedAtMs: args.run.startedAtMs,
     });
     if (!failed) return false;
-    await args.store.updateTaskAfterRun({
+    await advanceScheduledTaskAfterRun(args.db, {
       errorMessage: failed.errorMessage,
       nowMs: args.nowMs,
       run: args.run,
@@ -253,7 +265,7 @@ async function applyDispatchResult(args: {
     await logRunOutcome({
       eventName: "scheduled_task.run.failed",
       run: failed,
-      store: args.store,
+      db: args.db,
       extras: failed.errorMessage
         ? { "app.task.run.error": failed.errorMessage }
         : undefined,
@@ -264,27 +276,27 @@ async function applyDispatchResult(args: {
 }
 
 async function finishClaimedRun(args: {
+  db: JuniorDatabase;
   errorMessage: string;
   nowMs: number;
   run: ScheduledRun;
   status: "blocked" | "failed";
-  store: SchedulerStore;
 }): Promise<void> {
   const finished =
     args.status === "blocked"
-      ? await args.store.markRunBlocked({
+      ? await markScheduledRunBlocked(args.db, {
           completedAtMs: args.nowMs,
           errorMessage: args.errorMessage,
           runId: args.run.id,
         })
-      : await args.store.markRunFailed({
+      : await markScheduledRunFailed(args.db, {
           completedAtMs: args.nowMs,
           errorMessage: args.errorMessage,
           runId: args.run.id,
           startedAtMs: args.run.startedAtMs,
         });
   if (!finished) return;
-  await args.store.updateTaskAfterRun({
+  await advanceScheduledTaskAfterRun(args.db, {
     errorMessage: args.errorMessage,
     nowMs: args.nowMs,
     run: args.run,
@@ -301,7 +313,7 @@ async function finishClaimedRun(args: {
         ? "scheduled_task.run.blocked"
         : "scheduled_task.run.failed",
     run: finished,
-    store: args.store,
+    db: args.db,
     extras: { "app.task.run.error": args.errorMessage },
   });
 }
@@ -311,28 +323,28 @@ export async function runScheduledTaskHeartbeat(args: {
   conversationWorkQueue: ConversationWorkQueue;
   nowMs: number;
 }): Promise<number> {
-  const store = createSchedulerSqlStore(getDb());
+  const db = getDb();
   let processedCount = 0;
   let dispatchCount = 0;
-  for (const run of await store.listIncompleteRuns()) {
+  for (const run of await listIncompleteScheduledRuns(db)) {
     if (!run.dispatchId) continue;
     const dispatch = await getScheduledTaskDispatch(run.dispatchId);
     if (!dispatch) {
       await finishClaimedRun({
+        db,
         errorMessage: "Scheduled task dispatch record is missing.",
         nowMs: args.nowMs,
         run,
         status: "failed",
-        store,
       });
       continue;
     }
     if (
       await applyDispatchResult({
+        db,
         dispatch,
         nowMs: args.nowMs,
         run,
-        store,
       })
     ) {
       processedCount += 1;
@@ -344,11 +356,11 @@ export async function runScheduledTaskHeartbeat(args: {
     index < SCHEDULED_TASK_HEARTBEAT_LIMIT;
     index += 1
   ) {
-    const run = await store.claimDueRun({ nowMs: args.nowMs });
+    const run = await claimDueScheduledRun(db, { nowMs: args.nowMs });
     if (!run) break;
-    const task = await store.getTask(run.taskId);
+    const task = await readScheduledTask(db, run.taskId);
     if (!task) {
-      const failed = await store.markRunFailed({
+      const failed = await markScheduledRunFailed(db, {
         completedAtMs: args.nowMs,
         errorMessage: `Scheduled task ${run.taskId} was not found`,
         runId: run.id,
@@ -357,7 +369,7 @@ export async function runScheduledTaskHeartbeat(args: {
         await logRunOutcome({
           eventName: "scheduled_task.run.failed",
           run: failed,
-          store,
+          db,
           extras: {
             "app.task.run.error": `Scheduled task ${run.taskId} was not found`,
           },
@@ -371,7 +383,7 @@ export async function runScheduledTaskHeartbeat(args: {
     );
     const skippedReason = shouldSkipRun(task, run);
     if (skippedReason) {
-      const skipped = await store.markRunSkipped({
+      const skipped = await markScheduledRunSkipped(db, {
         completedAtMs: args.nowMs,
         errorMessage: skippedReason,
         runId: run.id,
@@ -389,6 +401,7 @@ export async function runScheduledTaskHeartbeat(args: {
       metadata = buildDispatchMetadata({ nowMs: args.nowMs, run, task });
     } catch (error) {
       await finishClaimedRun({
+        db,
         errorMessage:
           error instanceof Error
             ? `Scheduled task dispatch metadata could not be built: ${error.message}`
@@ -396,7 +409,6 @@ export async function runScheduledTaskHeartbeat(args: {
         nowMs: args.nowMs,
         run,
         status: "blocked",
-        store,
       });
       continue;
     }
@@ -428,6 +440,7 @@ export async function runScheduledTaskHeartbeat(args: {
       });
     } catch (error) {
       await finishClaimedRun({
+        db,
         errorMessage:
           error instanceof Error
             ? `Scheduled task dispatch could not be created: ${error.message}`
@@ -435,11 +448,10 @@ export async function runScheduledTaskHeartbeat(args: {
         nowMs: args.nowMs,
         run,
         status: "blocked",
-        store,
       });
       continue;
     }
-    const dispatched = await store.markRunDispatched({
+    const dispatched = await markScheduledRunDispatched(db, {
       claimedAtMs: run.claimedAtMs,
       dispatchId: dispatch.id,
       nowMs: args.nowMs,

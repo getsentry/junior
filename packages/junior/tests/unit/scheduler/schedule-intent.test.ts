@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { type ScheduledTask } from "@/chat/scheduled-tasks";
+import type { ScheduledTask } from "@/chat/scheduled-tasks/types";
 import { getNextRunAtMs } from "@/chat/scheduled-tasks/cadence";
 import { compileScheduleIntent } from "@/chat/scheduled-tasks/schedule-intent";
 
