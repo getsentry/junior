@@ -31,7 +31,7 @@ export const memoryRuntimeContextSchema = z
   .object({
     conversationId: nonEmptyStringSchema.optional(),
     actor: actorSchema.optional(),
-    // Linked identities expand reads on private web surfaces only.
+    // Linked identities expand reads on private web Sources only.
     // Writes still use only Actor + Source authority.
     identities: z.array(identitySchema).max(100).optional(),
     source: sourceSchema,

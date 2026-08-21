@@ -176,6 +176,7 @@ export function deriveVisibleMemoryScopes(
   // conversation surfaces stay bound to their current actor and Source.
   if (
     ctx.source.platform === "web" &&
+    ctx.source.visibility === "private" &&
     ctx.identities &&
     ctx.identities.length > 0
   ) {

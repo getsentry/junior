@@ -157,7 +157,8 @@ export function memoryPlugin(options: MemoryPluginOptions = {}) {
         ? {
             async userPrompt(ctx) {
               const user =
-                ctx.source.platform === "web"
+                ctx.source.platform === "web" &&
+                ctx.source.visibility === "private"
                   ? (await ctx.users.resolveActor())?.user
                   : undefined;
               return await createMemoryPromptContributions({

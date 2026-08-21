@@ -86,7 +86,9 @@ async function memoryRuntimeContext(
   includeLinkedIdentities = false,
 ): Promise<MemoryRuntimeContext> {
   const user =
-    includeLinkedIdentities && context.source.platform === "web"
+    includeLinkedIdentities &&
+    context.source.platform === "web" &&
+    context.source.visibility === "private"
       ? (await context.users.resolveActor())?.user
       : undefined;
   return memoryRuntimeContextSchema.parse({

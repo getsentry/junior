@@ -406,7 +406,7 @@ WHERE indexname = 'junior_memory_memories_search_idx'
         idempotencyKey: "component-web-other-memory",
         kind: "knowledge",
       });
-      const source = createWebSource("local:web:linked-memory", "public");
+      const source = createWebSource("local:web:linked-memory", "private");
       const context = {
         conversationId: "local:web:linked-memory",
         destination: {
@@ -446,6 +446,31 @@ WHERE indexname = 'junior_memory_memories_search_idx'
         ],
         target: "listMemories",
       });
+
+      const publicWebContext = {
+        ...context,
+        conversationId: "local:web:public-linked-memory",
+        destination: {
+          platform: "local" as const,
+          conversationId: "local:web:public-linked-memory",
+        },
+        source: createWebSource("local:web:public-linked-memory", "public"),
+      };
+      await expect(
+        getPluginUserPromptContributions({ context: publicWebContext }),
+      ).resolves.toEqual([]);
+      const publicWebTools = getPluginTools({
+        ...publicWebContext,
+        egress: {
+          async fetch() {
+            return new Response("ok");
+          },
+        },
+        workspace: {} as Parameters<typeof getPluginTools>[0]["workspace"],
+      });
+      await expect(
+        publicWebTools.memory_listMemories.execute!({}, {}),
+      ).resolves.toEqual({ memories: [], target: "listMemories" });
 
       const slackActor = {
         platform: "slack" as const,
