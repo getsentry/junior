@@ -116,4 +116,29 @@ describe("resource event notification framing", () => {
       detail: "The pull request was approved. (+2 more)",
     });
   });
+
+  it("keeps the batch suffix when the latest summary is long", () => {
+    const longSummary = "A".repeat(140);
+    const attribution = replyAttributionForResourceEventMessages([
+      {
+        id: "event-1",
+        raw: {
+          event_type: "resource_event",
+          resource_event_summary: "Earlier update.",
+        },
+      },
+      {
+        id: "event-2",
+        raw: {
+          event_type: "resource_event",
+          resource_event_summary: longSummary,
+        },
+      },
+    ]);
+
+    expect(attribution?.label).toBe("2 updates");
+    expect(attribution?.detail).toMatch(/\(\+1 more\)$/);
+    expect(attribution?.detail?.length).toBeLessThanOrEqual(128);
+    expect(attribution?.detail).not.toMatch(/\(\+1 m$/);
+  });
 });

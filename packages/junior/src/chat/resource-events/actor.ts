@@ -77,6 +77,8 @@ function isResourceEventAttributionMessage(
   );
 }
 
+const REPLY_ATTRIBUTION_DETAIL_MAX = 128;
+
 /** Build plain Slack context for every resource event that contributed to a turn. */
 export function replyAttributionForResourceEventMessages(
   messages: readonly ResourceEventAttributionMessage[],
@@ -91,8 +93,14 @@ export function replyAttributionForResourceEventMessages(
       ? { label: "Update", detail: latestSummary }
       : { label: "Update" };
   }
+  // Reserve room for the batch suffix so truncation never cuts `(+N more)`.
+  const moreCount = events.length - 1;
+  const moreSuffix = ` (+${moreCount} more)`;
   const detail = latestSummary
-    ? oneLine(`${latestSummary} (+${events.length - 1} more)`, 128)
+    ? `${oneLine(
+        latestSummary,
+        Math.max(0, REPLY_ATTRIBUTION_DETAIL_MAX - moreSuffix.length),
+      )}${moreSuffix}`
     : undefined;
   return {
     label: `${events.length} updates`,
