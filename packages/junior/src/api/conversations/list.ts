@@ -17,6 +17,8 @@ import { readConversationAccessFromSql } from "./access";
 import {
   conversationHasParticipantEmail,
   conversationHasParticipantUser,
+  conversationNotArchivedForEmail,
+  conversationNotArchivedForUser,
   viewerConversationMembership,
 } from "./membership";
 import { conversationFeedSchema } from "../schema/conversation";
@@ -40,15 +42,21 @@ function conversationFeedMembershipFilter(
 ): SQL | undefined {
   if (!filter) return undefined;
   if (filter.kind === "viewer") {
-    return viewerConversationMembership({
-      actorMatch: eq(juniorIdentities.userId, filter.userId),
-      participantMatch: conversationHasParticipantUser(filter.userId),
-    });
+    return and(
+      viewerConversationMembership({
+        actorMatch: eq(juniorIdentities.userId, filter.userId),
+        participantMatch: conversationHasParticipantUser(filter.userId),
+      }),
+      conversationNotArchivedForUser(filter.userId),
+    );
   }
-  return viewerConversationMembership({
-    actorMatch: eq(juniorUsers.primaryEmailNormalized, filter.email),
-    participantMatch: conversationHasParticipantEmail(filter.email),
-  });
+  return and(
+    viewerConversationMembership({
+      actorMatch: eq(juniorUsers.primaryEmailNormalized, filter.email),
+      participantMatch: conversationHasParticipantEmail(filter.email),
+    }),
+    conversationNotArchivedForEmail(filter.email),
+  );
 }
 
 async function conversationRows(
@@ -81,7 +89,6 @@ async function conversationRows(
     .where(
       and(
         isNull(juniorConversations.parentConversationId),
-        isNull(juniorConversations.archivedAt),
         conversationFeedMembershipFilter(filter),
       ),
     )

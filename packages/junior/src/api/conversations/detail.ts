@@ -21,6 +21,7 @@ import { conversationDetailReportSchema } from "../schema/conversation";
 import type { ConversationDetailReport } from "../schema/conversation";
 import { listConversationAnnotations } from "@/chat/plugins/annotations";
 import { readConversationSourceTask } from "@/chat/tasks/read";
+import { readConversationArchivedAt } from "./archive";
 
 /** Project stored metadata and a bounded event page into a signed history cursor. */
 function projectConversationDetail(args: {
@@ -86,6 +87,14 @@ async function readConversationDetailFromSql(
 ): Promise<ConversationDetailReport | undefined> {
   const record = await readConversationRecordFromSql(conversationId);
   if (!record) return undefined;
+  if (options.viewer) {
+    record.conversation.archivedAtMs = await readConversationArchivedAt(
+      options.viewer,
+      conversationId,
+    );
+  } else {
+    delete record.conversation.archivedAtMs;
+  }
 
   const executor = getSqlExecutor();
   const includeDescendantMetrics = record.rootConversationId === conversationId;

@@ -1,4 +1,13 @@
-import { and, eq, exists, inArray, or, type SQL } from "drizzle-orm";
+import {
+  and,
+  eq,
+  exists,
+  inArray,
+  isNotNull,
+  notExists,
+  or,
+  type SQL,
+} from "drizzle-orm";
 import { getDb } from "@/chat/db";
 import type { JuniorDatabase } from "@/db/db";
 import {
@@ -50,6 +59,50 @@ export function conversationHasParticipantEmail(email: string): SQL {
       ),
     );
   return exists(participant);
+}
+
+/** True when one user's personal feed has not archived this root. */
+export function conversationNotArchivedForUser(userId: string): SQL {
+  const archive = getDb()
+    .select({
+      rootConversationId: juniorConversationParticipants.rootConversationId,
+    })
+    .from(juniorConversationParticipants)
+    .where(
+      and(
+        eq(
+          juniorConversationParticipants.rootConversationId,
+          juniorConversations.conversationId,
+        ),
+        eq(juniorConversationParticipants.userId, userId),
+        isNotNull(juniorConversationParticipants.archivedAt),
+      ),
+    );
+  return notExists(archive);
+}
+
+/** True when one primary-email user's personal feed has not archived this root. */
+export function conversationNotArchivedForEmail(email: string): SQL {
+  const archive = getDb()
+    .select({
+      rootConversationId: juniorConversationParticipants.rootConversationId,
+    })
+    .from(juniorConversationParticipants)
+    .innerJoin(
+      juniorUsers,
+      eq(juniorUsers.id, juniorConversationParticipants.userId),
+    )
+    .where(
+      and(
+        eq(
+          juniorConversationParticipants.rootConversationId,
+          juniorConversations.conversationId,
+        ),
+        eq(juniorUsers.primaryEmailNormalized, email),
+        isNotNull(juniorConversationParticipants.archivedAt),
+      ),
+    );
+  return notExists(archive);
 }
 
 /** Root-actor ownership or a materialized participant row for the same person. */

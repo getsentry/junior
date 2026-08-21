@@ -249,6 +249,7 @@ class SqlConversationEventStore implements ConversationEventStore {
             actorIdentityId,
             conversationId,
             atMs: event.createdAtMs,
+            restoreArchive: eventUnarchivesConversation(event.data),
           });
         }
       }
