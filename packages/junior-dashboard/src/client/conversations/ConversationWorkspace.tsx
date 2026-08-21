@@ -1,6 +1,13 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, Globe2, LockKeyhole } from "lucide-react";
-import { Link, useNavigate, useParams } from "react-router";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+import { Globe2, LockKeyhole } from "lucide-react";
+import { useNavigate, useParams } from "react-router";
 
 import { useConversationsData } from "../api";
 import { ConversationSidebar } from "./ConversationSidebar";
@@ -11,11 +18,8 @@ import {
   usePendingArchiveConversationUpdates,
   type PendingArchiveConversationUpdate,
 } from "./queries";
-import {
-  buildConversations,
-  conversationPath,
-  filterConversationList,
-} from "../format";
+import { conversationPath, NEW_CONVERSATION_PATH } from "./conversationRoutes";
+import { buildConversations, filterConversationList } from "../format";
 import type { DashboardCoreData } from "../types";
 import type { Conversation } from "../types";
 import { cn, dashboardContainerClass } from "../styles";
@@ -24,14 +28,16 @@ import { ConversationPage } from "./ConversationPage";
 /** Render the personal split-pane conversation workspace at the dashboard root. */
 export function ConversationWorkspace(props: { data: DashboardCoreData }) {
   const [query, setQuery] = useState("");
+  const [status, setStatus] = useState<"active" | "archived">("active");
   const params = useParams();
   const navigate = useNavigate();
   const selectedId = params.conversationId;
-  const feed = useConversationsData();
+  // Home and create are one surface: no selected thread means the landing
+  // (compose hero + list nav). Desktop already did this; mobile matches it.
+  const landing = !selectedId;
+  const feed = useConversationsData(status);
   const pendingArchiveUpdates = usePendingArchiveConversationUpdates();
   const createConversation = useCreateConversation();
-  const [creating, setCreating] = useState(false);
-  const createSourceId = useRef<string | undefined>(undefined);
   const conversations = useMemo(
     () =>
       applyPendingArchiveUpdates(
@@ -46,19 +52,92 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
         actor: "",
         query,
         source: "",
+        status,
       }),
-    [conversations, query],
+    [conversations, query, status],
   );
 
   useEffect(() => {
-    if (!selectedId) {
-      // Root has no selection. Keep create mode only when New set it.
-      createSourceId.current = undefined;
-      return;
-    }
-    if (selectedId === createSourceId.current) return;
-    setCreating(false);
-  }, [selectedId]);
+    if (!landing) return;
+    // New chats are active; leave archived view so the created row can appear.
+    setStatus("active");
+  }, [landing]);
+
+  const openCreate = () => {
+    createConversation.reset();
+    setStatus("active");
+    if (selectedId) navigate(NEW_CONVERSATION_PATH);
+  };
+
+  const createView = (
+    <NewConversationView
+      error={
+        createConversation.error
+          ? "Could not create the conversation. Try again."
+          : undefined
+      }
+      onSubmit={async (message, idempotencyKey, visibility) => {
+        const accepted = await createConversation.mutateAsync({
+          idempotencyKey,
+          message,
+          visibility,
+        });
+        navigate(conversationPath(accepted.conversationId));
+      }}
+    />
+  );
+
+  // Landing (home + create): simple app header + compose hero + list nav on
+  // mobile; desktop keeps the split pane. One create tree only — dual mounts
+  // break focus/a11y queries.
+  if (landing) {
+    return (
+      <div
+        className={cn(
+          dashboardContainerClass,
+          "grid h-full min-h-0 overflow-hidden md:grid-cols-[21rem_minmax(0,1fr)] xl:border-x xl:border-white/[0.07]",
+        )}
+      >
+        <div className="hidden h-full min-h-0 overflow-hidden md:block">
+          <ConversationSidebar
+            conversations={visibleConversations}
+            error={feed.error?.message}
+            loading={feed.isPending}
+            onNewConversation={openCreate}
+            onQueryChange={setQuery}
+            onStatusChange={setStatus}
+            query={query}
+            selectedId={undefined}
+            status={status}
+            timeZone={props.data.config.timeZone}
+          />
+        </div>
+        <section
+          aria-label="New conversation"
+          className="min-h-0 overflow-hidden bg-white/[0.012]"
+        >
+          <CreateLandingScroll>
+            {createView}
+            <div className="md:hidden">
+              <ConversationSidebar
+                conversations={visibleConversations}
+                error={feed.error?.message}
+                loading={feed.isPending}
+                onNewConversation={openCreate}
+                onQueryChange={setQuery}
+                onStatusChange={setStatus}
+                query={query}
+                selectedId={undefined}
+                status={status}
+                timeZone={props.data.config.timeZone}
+                variant="landing"
+              />
+            </div>
+          </CreateLandingScroll>
+        </section>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -67,101 +146,141 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
         "grid h-full min-h-0 overflow-hidden md:grid-cols-[21rem_minmax(0,1fr)] xl:border-x xl:border-white/[0.07]",
       )}
     >
-      <div
-        className={
-          selectedId || creating
-            ? "hidden h-full min-h-0 overflow-hidden md:block"
-            : "h-full min-h-0 overflow-hidden"
-        }
-      >
+      <div className="hidden h-full min-h-0 overflow-hidden md:block">
         <ConversationSidebar
           conversations={visibleConversations}
           error={feed.error?.message}
           loading={feed.isPending}
-          onNewConversation={() => {
-            createConversation.reset();
-            createSourceId.current = selectedId;
-            setCreating(true);
-            if (selectedId) navigate("/", { replace: true });
-          }}
+          onNewConversation={openCreate}
           onQueryChange={setQuery}
+          onStatusChange={setStatus}
           query={query}
-          selectedId={creating ? undefined : selectedId}
+          selectedId={selectedId}
+          status={status}
           timeZone={props.data.config.timeZone}
         />
       </div>
       <section
         aria-label="Selected conversation"
-        className={
-          selectedId || creating
-            ? "grid min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden bg-white/[0.012]"
-            : "hidden min-h-0 overflow-hidden bg-white/[0.012] md:grid md:grid-rows-[minmax(0,1fr)]"
-        }
+        className="grid min-h-0 grid-rows-[minmax(0,1fr)] overflow-hidden bg-white/[0.012]"
       >
-        {selectedId && !creating ? (
-          <>
-            <div className="border-b border-white/[0.07] bg-white/[0.025] px-3 py-2.5 md:hidden">
-              <Link
-                className="inline-flex items-center gap-2 font-mono text-xs text-dashboard-text-muted no-underline hover:text-dashboard-text"
-                to="/"
-              >
-                <ArrowLeft aria-hidden="true" size={15} />
-                Your conversations
-              </Link>
-            </div>
-            <ConversationPage
-              key={selectedId}
-              conversationId={selectedId}
-              data={
-                feed.data
-                  ? {
-                      conversations: feed.data,
-                    }
-                  : undefined
-              }
-              pendingArchiveUpdate={pendingArchiveUpdates.find(
-                (update) => update.conversationId === selectedId,
-              )}
-            />
-          </>
-        ) : (
-          <>
-            {creating ? (
-              <div className="border-b border-white/[0.07] bg-white/[0.025] px-3 py-2.5 md:hidden">
-                <button
-                  className="inline-flex cursor-pointer items-center gap-2 font-mono text-xs text-dashboard-text-muted hover:text-dashboard-text"
-                  onClick={() => {
-                    createSourceId.current = undefined;
-                    setCreating(false);
-                  }}
-                  title="Your conversations"
-                  type="button"
-                >
-                  <ArrowLeft aria-hidden="true" size={15} />
-                  Your conversations
-                </button>
-              </div>
-            ) : null}
-            <div className="min-h-0 overflow-y-auto">
-              <NewConversationView
-                error={
-                  createConversation.error
-                    ? "Could not create the conversation. Try again."
-                    : undefined
+        <ConversationPage
+          key={selectedId}
+          conversationId={selectedId}
+          data={
+            feed.data
+              ? {
+                  conversations: feed.data,
                 }
-                onSubmit={async (message, idempotencyKey, visibility) => {
-                  const accepted = await createConversation.mutateAsync({
-                    idempotencyKey,
-                    message,
-                    visibility,
-                  });
-                  navigate(conversationPath(accepted.conversationId));
-                }}
-              />
-            </div>
-          </>
-        )}
+              : undefined
+          }
+          pendingArchiveUpdate={pendingArchiveUpdates.find(
+            (update) => update.conversationId === selectedId,
+          )}
+        />
       </section>
+    </div>
+  );
+}
+
+
+/**
+ * Keep create-landing scroll stable while the hero composer is focused.
+ *
+ * iOS Safari scrolls the nearest overflow ancestor to center a focused field.
+ * On this landing page that yanks the hero/list upward as the keyboard opens.
+ * Freeze only for the hero composer — list search and other fields must keep
+ * normal scroll so they stay on-screen while focused.
+ */
+function CreateLandingScroll(props: { children: ReactNode }) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const freezeScrollTopRef = useRef(0);
+  const focusedRef = useRef(false);
+
+  const isHeroComposerTarget = (target: EventTarget | null) =>
+    target instanceof HTMLElement &&
+    Boolean(target.closest("[data-create-landing-hero]")) &&
+    (target instanceof HTMLInputElement ||
+      target instanceof HTMLTextAreaElement ||
+      target.isContentEditable);
+
+  const lockToFrozenTop = useCallback(() => {
+    const root = rootRef.current;
+    if (!root || !focusedRef.current) return;
+    if (root.scrollTop !== freezeScrollTopRef.current) {
+      root.scrollTop = freezeScrollTopRef.current;
+    }
+  }, []);
+
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!root) return;
+
+    const onFocusIn = (event: FocusEvent) => {
+      if (!isHeroComposerTarget(event.target)) return;
+      focusedRef.current = true;
+      // Always pin landing to the hero while the composer is focused. Capturing
+      // scrollTop after Safari's pan would freeze the jumped position.
+      freezeScrollTopRef.current = 0;
+      root.style.overflowY = "hidden";
+      root.scrollTop = 0;
+      requestAnimationFrame(lockToFrozenTop);
+      queueMicrotask(lockToFrozenTop);
+    };
+
+    const onFocusOut = (event: FocusEvent) => {
+      if (!isHeroComposerTarget(event.target)) return;
+      // Stay frozen while focus moves inside the hero compose stack.
+      const next = event.relatedTarget;
+      if (next instanceof Node && isHeroComposerTarget(next)) {
+        return;
+      }
+      focusedRef.current = false;
+      root.style.overflowY = "";
+      root.scrollTop = freezeScrollTopRef.current;
+    };
+
+    const onScroll = () => {
+      if (!focusedRef.current) return;
+      lockToFrozenTop();
+    };
+
+    // Prefer preventScroll focus on pointer so iOS never starts its focus pan.
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (!isHeroComposerTarget(target)) return;
+      if (!(target instanceof HTMLElement) || document.activeElement === target) {
+        return;
+      }
+      event.preventDefault();
+      focusedRef.current = true;
+      // Hero compose owns the top of this page. Keep scroll at 0 while typing.
+      freezeScrollTopRef.current = 0;
+      root.style.overflowY = "hidden";
+      target.focus({ preventScroll: true });
+      root.scrollTop = 0;
+      requestAnimationFrame(lockToFrozenTop);
+    };
+
+    root.addEventListener("pointerdown", onPointerDown);
+    root.addEventListener("focusin", onFocusIn);
+    root.addEventListener("focusout", onFocusOut);
+    root.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      root.removeEventListener("pointerdown", onPointerDown);
+      root.removeEventListener("focusin", onFocusIn);
+      root.removeEventListener("focusout", onFocusOut);
+      root.removeEventListener("scroll", onScroll);
+    };
+  }, [lockToFrozenTop]);
+
+  return (
+    <div
+      className="h-full min-h-0 overflow-y-auto overscroll-contain"
+      data-create-landing-scroll=""
+      ref={rootRef}
+    >
+      {props.children}
     </div>
   );
 }
@@ -177,47 +296,56 @@ function NewConversationView(props: {
   const [visibility, setVisibility] = useState<"private" | "public">("public");
   const isPublic = visibility === "public";
 
+  // Landing-page compose hero. Parent owns page scroll and stacks conversation
+  // nav under this block on mobile; desktop still centers the hero alone.
   return (
-    <div className="grid min-h-full place-items-center px-4 py-8 pb-[max(2rem,env(safe-area-inset-bottom))] md:px-8 md:pb-8">
-      <div className="w-full max-w-2xl">
-        <div className="mb-5">
-          <h2 className="m-0 font-display text-2xl font-medium tracking-[-0.03em] text-dashboard-text md:text-3xl">
-            New conversation
+    <div
+      className="px-4 py-10 md:flex md:min-h-full md:flex-col md:justify-center md:px-8 md:py-12"
+      data-create-landing-hero=""
+    >
+      <div className="mx-auto flex w-full max-w-xl flex-col items-stretch gap-5 md:max-w-2xl md:gap-8">
+          <h2 className="m-0 text-center font-display text-2xl font-medium tracking-[-0.03em] text-dashboard-text md:text-3xl">
+            What do you need?
           </h2>
-          <div className="mt-3 flex flex-wrap gap-2">
-            <ToggleButton
-              onClick={() => setVisibility("public")}
-              pressed={isPublic}
-              type="button"
-              variant="pill"
-            >
-              <Globe2 aria-hidden="true" className="mr-1.5 inline size-3" />
-              Public
-            </ToggleButton>
-            <ToggleButton
-              onClick={() => setVisibility("private")}
-              pressed={!isPublic}
-              type="button"
-              variant="pill"
-            >
-              <LockKeyhole
-                aria-hidden="true"
-                className="mr-1.5 inline size-3"
-              />
-              Private
-            </ToggleButton>
-          </div>
-        </div>
-        <ConversationComposer
-          draftId="new"
-          error={props.error}
-          label="Start a conversation"
-          restoreDraftOnError
-          submitLabel="Send"
-          onSubmit={(message, idempotencyKey) =>
-            props.onSubmit(message, idempotencyKey, visibility)
-          }
-        />
+          <ConversationComposer
+            draftId="new"
+            error={props.error}
+            footerStart={
+              <div
+                aria-label="Conversation visibility"
+                className="inline-flex items-center gap-1"
+                role="group"
+              >
+                <ToggleButton
+                  onClick={() => setVisibility("public")}
+                  pressed={isPublic}
+                  type="button"
+                  variant="segment"
+                >
+                  <Globe2 aria-hidden="true" className="mr-1 inline size-3" />
+                  Public
+                </ToggleButton>
+                <ToggleButton
+                  onClick={() => setVisibility("private")}
+                  pressed={!isPublic}
+                  type="button"
+                  variant="segment"
+                >
+                  <LockKeyhole
+                    aria-hidden="true"
+                    className="mr-1 inline size-3"
+                  />
+                  Private
+                </ToggleButton>
+              </div>
+            }
+            label="Start a conversation"
+            restoreDraftOnError
+            submitLabel="Send"
+            onSubmit={(message, idempotencyKey) =>
+              props.onSubmit(message, idempotencyKey, visibility)
+            }
+          />
       </div>
     </div>
   );

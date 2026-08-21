@@ -146,7 +146,7 @@ export async function enqueueAgentDispatch(
   options: EnqueueAgentDispatchOptions,
 ): Promise<void> {
   const nowMs = options.nowMs ?? Date.now();
-  const claimedDispatch = await claimDispatchMailboxAppend(dispatch.id, nowMs);
+  const claimedDispatch = await claimDispatchMailboxAppend(dispatch.id);
   if (!claimedDispatch) {
     return;
   }
@@ -247,25 +247,13 @@ export async function resolveAgentDispatchId(
     );
   }
   const durableDispatchId = durableDispatchIds.values().next().value;
-  if (durableDispatchId) {
-    const dispatch = await getDispatchRecord(durableDispatchId);
-    if (dispatch && !isTerminalDispatchStatus(dispatch.status)) {
-      return durableDispatchId;
-    }
-  }
-
-  // TODO(v0.116.0): Remove conversation-id recovery for session records
-  // written before dispatchId became durable active-turn state.
-  const prefix = "agent-dispatch:";
-  if (!context.conversationId.startsWith(prefix)) {
+  if (!durableDispatchId) {
     return undefined;
   }
-  const dispatchId = context.conversationId.slice(prefix.length);
-  const dispatch = await getDispatchRecord(dispatchId);
-  if (!dispatch) {
-    return undefined;
-  }
-  return isTerminalDispatchStatus(dispatch.status) ? undefined : dispatch.id;
+  const dispatch = await getDispatchRecord(durableDispatchId);
+  return dispatch && !isTerminalDispatchStatus(dispatch.status)
+    ? durableDispatchId
+    : undefined;
 }
 
 /**

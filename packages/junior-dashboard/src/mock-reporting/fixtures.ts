@@ -35,8 +35,11 @@ const FAILED_CONVERSATION_ID = "slack:CQA777:1770014400.000500";
 const LONG_CONVERSATION_ID = "slack:CQA456:1770021600.000600";
 const SCHEDULER_CONVERSATION_ID = "scheduler:daily-ops-digest";
 export const DASHBOARD_QA_CONVERSATION_ID = "internal:dashboard-qa";
+export const ARCHIVED_CONVERSATION_ID = "internal:archived-restore-qa";
 const DASHBOARD_QA_PLAN_ID = "junior:internal:dashboard-qa:advisor-plan";
 const DASHBOARD_QA_REVIEW_ID = "junior:internal:dashboard-qa:advisor-review";
+/** Process-local archive state so mock restore can be exercised in visual QA. */
+const mockArchivedConversationIds = new Set<string>([ARCHIVED_CONVERSATION_ID]);
 const PEOPLE_ACTIVITY_DAYS = 90;
 const PEOPLE_PROFILE_ACTIVITY_DAYS = 365;
 const PUBLIC_MOCK_CHANNEL_IDS = new Set([
@@ -1007,7 +1010,8 @@ function privateConversation(nowMs: number): ConversationDetailReport {
     surface: "slack",
     visibility: "private",
     channel: "DQA123",
-    channelName: "Private conversation",
+    // Owner-visible private DM: type label, not a privacy restatement.
+    channelName: "Direct Message",
     channelNameRedacted: true,
     actorIdentity: actor("avery@sentry.io", "Avery Chen", "avery"),
     cumulativeDurationMs: 42_000,
@@ -1107,6 +1111,7 @@ function simpleConversation(
     surface: "internal" | "scheduler" | "slack";
     channel?: string;
     sourceTask?: ConversationDetailReport["sourceTask"];
+    archivedAt?: string;
   },
 ): ConversationDetailReport {
   // Finished work stays in Today even when it was active in the last 24 hours.
@@ -1182,6 +1187,12 @@ function mockConversations(nowMs: number): MockConversation[] {
         title: "Weekly project summary",
       },
     }),
+    simpleConversation(nowMs, {
+      conversationId: ARCHIVED_CONVERSATION_ID,
+      displayTitle: "Archived restore target",
+      surface: "internal",
+      archivedAt: iso(nowMs, -2 * 24 * 60 * 60_000),
+    }),
   ];
 }
 
@@ -1199,9 +1210,19 @@ function summaryFromConversation(
     sourceTask: _sourceTask,
     ...summary
   } = conversation;
-  return summary.channel && PUBLIC_MOCK_CHANNEL_IDS.has(summary.channel)
-    ? { ...summary, locationId: `mock:${summary.channel}` }
-    : summary;
+  const withArchiveState = mockArchivedConversationIds.has(
+    conversation.conversationId,
+  )
+    ? {
+        ...summary,
+        archivedAt:
+          summary.archivedAt ?? iso(Date.now(), -2 * 24 * 60 * 60_000),
+      }
+    : { ...summary, archivedAt: undefined };
+  return withArchiveState.channel &&
+    PUBLIC_MOCK_CHANNEL_IDS.has(withArchiveState.channel)
+    ? { ...withArchiveState, locationId: `mock:${withArchiveState.channel}` }
+    : withArchiveState;
 }
 
 function mockConversationFeed(nowMs: number): ConversationFeed {
@@ -1212,6 +1233,13 @@ function mockConversationFeed(nowMs: number): ConversationFeed {
       .filter((conversation) => !conversation.parentConversationId)
       .map(summaryFromConversation),
   };
+}
+
+/** Active root summaries used by mock aggregates and directories. */
+function activeMockSummaries(nowMs: number): ConversationSummaryReport[] {
+  return mockConversationFeed(nowMs).conversations.filter(
+    (summary) => !summary.archivedAt,
+  );
 }
 
 function summaryTokenTotal(summary: ConversationSummaryReport): number {
@@ -1343,17 +1371,36 @@ function mockGuardianStats(nowMs: number): ConversationStatsReport["guardian"] {
 /** Return the explicit canonical-event visual-QA feed, optionally scoped by actor. */
 export function readMockConversationFeed(
   actorEmail?: string,
+  status: "active" | "archived" = "active",
 ): ConversationFeed {
   const feed = mockConversationFeed(Date.now());
-  if (!actorEmail) return feed;
-  return {
-    ...feed,
-    conversations: feed.conversations.filter(
+  const conversations = feed.conversations
+    .filter((conversation) =>
+      status === "archived"
+        ? Boolean(conversation.archivedAt)
+        : !conversation.archivedAt,
+    )
+    .filter(
       (conversation) =>
+        !actorEmail ||
         conversation.actorIdentity?.email?.toLowerCase() ===
-        actorEmail.toLowerCase(),
-    ),
-  };
+          actorEmail.toLowerCase(),
+    );
+  return { ...feed, conversations };
+}
+
+/** Archive or restore one mock conversation for local dashboard visual QA. */
+export function setMockConversationArchived(
+  conversationId: string,
+  archived: boolean,
+): { archived: boolean } | undefined {
+  const exists = mockConversations(Date.now()).some(
+    (conversation) => conversation.conversationId === conversationId,
+  );
+  if (!exists) return undefined;
+  if (archived) mockArchivedConversationIds.add(conversationId);
+  else mockArchivedConversationIds.delete(conversationId);
+  return { archived };
 }
 
 /** Return accepted mailbox rows for local dashboard visual QA. */
@@ -1445,15 +1492,21 @@ export function readMockConversationDetail(
   if (!conversation) return undefined;
   const { parentConversationId: _parentConversationId, ...detail } =
     conversation;
-  const events = detail.events.slice(-limit);
+  const withArchiveState = mockArchivedConversationIds.has(conversationId)
+    ? {
+        ...detail,
+        archivedAt: detail.archivedAt ?? iso(Date.now(), -2 * 24 * 60 * 60_000),
+      }
+    : { ...detail, archivedAt: undefined };
+  const events = withArchiveState.events.slice(-limit);
   const bounded =
-    events.length < detail.events.length && events[0]
+    events.length < withArchiveState.events.length && events[0]
       ? {
-          ...detail,
+          ...withArchiveState,
           events,
           previousCursor: mockBeforeCursor(conversationId, events[0].seq),
         }
-      : detail;
+      : withArchiveState;
   return bounded.channel && PUBLIC_MOCK_CHANNEL_IDS.has(bounded.channel)
     ? { ...bounded, locationId: `mock:${bounded.channel}` }
     : bounded;
@@ -1520,12 +1573,10 @@ function parseMockBeforeCursor(
 export function readMockConversationStats(): ConversationStatsReport {
   const nowMs = Date.now();
   const windowStartMs = statsWindowStartMs(nowMs);
-  const summaries = mockConversationFeed(nowMs).conversations.filter(
-    (summary) => {
-      const lastSeenAtMs = Date.parse(summary.lastSeenAt);
-      return lastSeenAtMs >= windowStartMs && lastSeenAtMs <= nowMs;
-    },
-  );
+  const summaries = activeMockSummaries(nowMs).filter((summary) => {
+    const lastSeenAtMs = Date.parse(summary.lastSeenAt);
+    return lastSeenAtMs >= windowStartMs && lastSeenAtMs <= nowMs;
+  });
   const total = statsItem("All conversations");
   const actorItems = new Map<string, ConversationStatsItem>();
   const locationItems = new Map<string, ConversationStatsItem>();
@@ -1607,7 +1658,7 @@ function activityDates(nowMs: number, days = PEOPLE_ACTIVITY_DAYS): string[] {
 /** Build mock People analytics from canonical-event mock conversations. */
 export function readMockPeopleDirectory(): ActorDirectoryReport {
   const nowMs = Date.now();
-  const summaries = mockConversationFeed(nowMs).conversations;
+  const summaries = activeMockSummaries(nowMs);
   const byEmail = new Map<
     string,
     ActorSummaryReport & { dates: Set<string> }
@@ -1667,7 +1718,7 @@ export function readMockPeopleProfile(
 ): ActorProfileReport | undefined {
   const nowMs = Date.now();
   const normalized = email.toLowerCase();
-  const summaries = mockConversationFeed(nowMs).conversations.filter(
+  const summaries = activeMockSummaries(nowMs).filter(
     (summary) => summary.actorIdentity?.email?.toLowerCase() === normalized,
   );
   const identity = summaries[0]?.actorIdentity;
@@ -1907,7 +1958,7 @@ function publicLocation(
 /** Build the mock public-location directory from canonical-event summaries. */
 export function readMockLocationDirectory(): LocationDirectoryReport {
   const nowMs = Date.now();
-  const summaries = mockConversationFeed(nowMs).conversations;
+  const summaries = activeMockSummaries(nowMs);
   const channels = [
     ...new Set(
       summaries
@@ -1963,7 +2014,7 @@ export function readMockLocationDetail(
   const directory = readMockLocationDirectory();
   const location = directory.locations.find((item) => item.id === locationId);
   if (!location) return undefined;
-  const recentConversations = mockConversationFeed(nowMs).conversations.filter(
+  const recentConversations = activeMockSummaries(nowMs).filter(
     (summary) => summary.channel === location.providerDestinationId,
   );
   const actorItems = new Map<string, LocationActorSummaryReport>();

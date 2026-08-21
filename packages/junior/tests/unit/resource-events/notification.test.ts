@@ -11,8 +11,11 @@ describe("resource event notification framing", () => {
       {
         intent: "Fix failed checks on this PR.",
         label: "GitHub PR getsentry/junior#691",
+        resourceType: "pull_request",
       },
       {
+        namespace: "github",
+        eventType: "pull_request.checks.failed",
         trustedSummary: "CI failed on workflow test.",
         data: { pullRequest: 691 },
         untrustedText: "Failed checks:\n- test",

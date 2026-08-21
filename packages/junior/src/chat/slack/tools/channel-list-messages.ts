@@ -123,6 +123,7 @@ export function createSlackChannelListMessagesTool(context: SlackToolContext) {
         field: "channel_id",
         value: channel_id,
         defaultChannelId: context.destinationChannelId,
+        teamId: context.teamId,
       });
       const targetChannelId = target.channelId;
 

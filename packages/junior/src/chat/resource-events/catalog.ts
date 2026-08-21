@@ -72,6 +72,18 @@ export function pluginSupportsEvent(
   );
 }
 
+/** Return app guidance for one registered resource type and event type. */
+export function resourceEventGuidance(
+  catalog: ResourceEventCatalog,
+  namespace: string,
+  resourceType: string,
+  eventType: string,
+): string | undefined {
+  return catalog[namespace]?.resourceTypes.find(
+    (candidate) => candidate.type === resourceType,
+  )?.guidance?.[eventType];
+}
+
 /** Normalize one selector with the convention declared by its plugin. */
 export function normalizeEventIdentifier(
   catalog: ResourceEventCatalog,

@@ -29,6 +29,8 @@ export function buildConversationTranscript(
     });
   }
 
+  if (historyPages.length === 0) return detail;
+
   return {
     ...detail,
     events: orderedEvents([
@@ -201,4 +203,31 @@ function withoutModelUsage(
 ): ConversationDetailReport {
   const { modelUsage: _modelUsage, ...restricted } = detail;
   return restricted;
+}
+
+/**
+ * Reuse an unchanged event array without holding back fresh detail metadata.
+ * Reporting events are immutable by sequence, so sequence and timestamp form a
+ * cheap poll version. This avoids a deep walk through every event payload.
+ */
+export function reuseConversationEventReferences(
+  previous: ConversationDetailReport | undefined,
+  next: ConversationDetailReport,
+): ConversationDetailReport {
+  if (!previous || previous.events === next.events) return next;
+  if (!sameConversationEventVersion(previous.events, next.events)) return next;
+  return { ...next, events: previous.events };
+}
+
+function sameConversationEventVersion(
+  previous: ConversationReportEvent[],
+  next: ConversationReportEvent[],
+): boolean {
+  if (previous.length !== next.length) return false;
+  for (let index = 0; index < previous.length; index += 1) {
+    const left = previous[index]!;
+    const right = next[index]!;
+    if (left.seq !== right.seq || left.createdAt !== right.createdAt) return false;
+  }
+  return true;
 }

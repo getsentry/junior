@@ -31,6 +31,7 @@ import {
 import {
   GITHUB_PULL_REQUEST_EVENTS,
   GITHUB_PULL_REQUEST_SUGGESTED_EVENTS,
+  type GitHubPullRequestEventOptions,
 } from "./resource-events/pull-request.js";
 import {
   GITHUB_RELEASE_EVENTS,
@@ -124,9 +125,10 @@ export interface GitHubPluginOptions {
 
   /** Environment variable containing the GitHub App installation id. */
   installationIdEnv?: string;
-
   /** Environment variable containing the GitHub App private key. */
   privateKeyEnv?: string;
+  /** App-configured pull request resource event behavior. */
+  pullRequestEvents?: GitHubPullRequestEventOptions;
 }
 
 function githubSmartHttpAccess(
@@ -720,6 +722,9 @@ export function githubPlugin(
           type: "pull_request",
           supportedEvents: [...GITHUB_PULL_REQUEST_EVENTS],
           suggestedEvents: [...GITHUB_PULL_REQUEST_SUGGESTED_EVENTS],
+          ...(options.pullRequestEvents?.guidance
+            ? { guidance: options.pullRequestEvents.guidance }
+            : {}),
         },
         {
           type: "release_source",
@@ -887,7 +892,11 @@ export function githubPlugin(
         });
       },
       tools(ctx) {
-        return createGitHubTools(ctx, readEnv(botEmailEnv));
+        return createGitHubTools(
+          ctx,
+          readEnv(botEmailEnv),
+          options.pullRequestEvents?.subscribeAfterCreate,
+        );
       },
       workspacePrepare: prepareWorkspace,
       async sandboxPrepare(ctx) {

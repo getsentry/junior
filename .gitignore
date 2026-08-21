@@ -23,3 +23,4 @@ packages/junior-evals/integration-results*.json
 packages/junior-evals/guardian-results*.json
 packages/junior-evals/eval-results/
 .env*
+test-results/

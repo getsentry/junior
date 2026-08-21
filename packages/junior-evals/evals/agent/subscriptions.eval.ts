@@ -184,6 +184,7 @@ describeEval("Resource Event Subscriptions", slackEvals, (it) => {
             "Watch the pull request Junior opened for CI failures before review.",
           label: "GitHub PR getsentry/junior#691",
           identifier: "getsentry/junior#691",
+          resourceType: "pull_request",
           trustedSummary:
             "GitHub PR getsentry/junior#691 checks failed (1) for abcdef123456.",
           data: {
@@ -240,6 +241,7 @@ describeEval("Resource Event Subscriptions", slackEvals, (it) => {
             "Let the original Slack thread know when Junior's pull request lands.",
           label: "GitHub PR getsentry/junior#702",
           identifier: "getsentry/junior#702",
+          resourceType: "pull_request",
           trustedSummary: "GitHub PR getsentry/junior#702 was merged.",
         }),
       ],

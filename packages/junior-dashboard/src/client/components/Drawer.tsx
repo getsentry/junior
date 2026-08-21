@@ -1,6 +1,10 @@
 import { X } from "lucide-react";
 import { useEffect, useRef, type ReactNode } from "react";
 
+import {
+  acquireBodyScrollLock,
+  releaseBodyScrollLock,
+} from "../bodyScrollLock";
 import { cn } from "../styles";
 import { Button } from "./Button";
 
@@ -13,26 +17,6 @@ const focusableSelector = [
   "summary",
   "[tabindex]:not([tabindex='-1'])",
 ].join(",");
-
-// Nested drawers share one body scroll lock so unmounting the first open
-// drawer does not unlock the page under a still-open sibling drawer.
-let bodyScrollLockCount = 0;
-let previousBodyOverflow: string | undefined;
-
-function lockBodyScroll() {
-  if (bodyScrollLockCount === 0) {
-    previousBodyOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-  }
-  bodyScrollLockCount += 1;
-}
-
-function unlockBodyScroll() {
-  bodyScrollLockCount = Math.max(0, bodyScrollLockCount - 1);
-  if (bodyScrollLockCount > 0) return;
-  document.body.style.overflow = previousBodyOverflow ?? "";
-  previousBodyOverflow = undefined;
-}
 
 /** Render an accessible modal drawer and own its focus and scroll lifecycle. */
 export function Drawer(props: {
@@ -56,7 +40,7 @@ export function Drawer(props: {
       document.activeElement instanceof HTMLElement
         ? document.activeElement
         : undefined;
-    lockBodyScroll();
+    acquireBodyScrollLock();
     const focusFrame = requestAnimationFrame(() => {
       dialogRef.current
         ?.querySelector<HTMLElement>("[data-drawer-close]")
@@ -99,7 +83,7 @@ export function Drawer(props: {
     return () => {
       cancelAnimationFrame(focusFrame);
       window.removeEventListener("keydown", onKeyDown);
-      unlockBodyScroll();
+      releaseBodyScrollLock();
       const previousFocus = previousFocusRef.current;
       previousFocusRef.current = undefined;
       if (previousFocus?.isConnected) previousFocus.focus();
@@ -116,20 +100,20 @@ export function Drawer(props: {
     >
       <button
         aria-label={props.dismissLabel}
-        className="absolute inset-0 cursor-default bg-black/55"
+        className="absolute inset-0 cursor-default bg-dashboard-overlay"
         onClick={props.onClose}
         tabIndex={-1}
         type="button"
       />
       <aside
         className={cn(
-          "absolute top-0 right-0 grid h-full w-full grid-rows-[auto_minmax(0,1fr)] bg-[#070707] shadow-[-20px_0_60px_rgba(0,0,0,0.45)] md:border-l md:border-white/12",
+          "absolute top-0 right-0 grid h-full w-full grid-rows-[auto_minmax(0,1fr)] bg-dashboard-bg-elevated shadow-[-20px_0_60px_rgba(0,0,0,0.45)] md:border-l md:border-dashboard-border-emphasis",
           props.width === "wide"
             ? "md:w-[min(760px,94vw)]"
             : "md:w-[min(560px,94vw)]",
         )}
       >
-        <header className="relative grid grid-cols-[minmax(0,1fr)_auto] gap-3 border-b border-white/10 bg-dashboard-surface-raised px-4 py-3 pt-[max(0.75rem,env(safe-area-inset-top))] md:px-5">
+        <header className="relative grid grid-cols-[minmax(0,1fr)_auto] gap-3 border-b border-dashboard-border-strong bg-dashboard-surface-raised px-4 py-3 pt-[max(0.75rem,env(safe-area-inset-top))] md:px-5">
           <div className="min-w-0">{props.header}</div>
           <div className="flex items-start gap-1.5">
             {props.actions}

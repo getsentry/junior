@@ -31,7 +31,7 @@ export function TranscriptTurnContextView(props: {
 
   return (
     <>
-      <div className="group/context relative flex justify-end">
+      <div className="group/context relative hidden justify-end md:flex">
         <button
           aria-controls={panelId}
           aria-expanded={open}

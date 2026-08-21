@@ -33,11 +33,34 @@ describe("conversation list API", () => {
     const fixture = createConfiguredJuniorSqlFixture();
     try {
       await migrateSchema(fixture.sql);
+      const store = createSqlStore(fixture.sql);
+      const archivedId = "slack:C123:archived";
+      await store.recordActivity({ conversationId: archivedId, nowMs: 1_000 });
+      await fixture.sql
+        .db()
+        .update(juniorConversations)
+        .set({ archivedAt: new Date(2_000) })
+        .where(eq(juniorConversations.conversationId, archivedId));
       const app = createJuniorApi();
 
       const response = await app.request("http://localhost/api/conversations");
       expect(response.status).toBe(200);
-      conversationFeedSchema.parse(await response.json());
+      expect(
+        conversationFeedSchema.parse(await response.json()).conversations,
+      ).toEqual([]);
+      const archivedResponse = await app.request(
+        "http://localhost/api/conversations?status=archived",
+      );
+      expect(archivedResponse.status).toBe(200);
+      expect(
+        conversationFeedSchema.parse(await archivedResponse.json())
+          .conversations,
+      ).toEqual([
+        expect.objectContaining({
+          archivedAt: new Date(2_000).toISOString(),
+          conversationId: archivedId,
+        }),
+      ]);
 
       const invalid = await app.request(
         "http://localhost/api/conversations?actorEmail=not-an-email",

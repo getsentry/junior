@@ -2,6 +2,8 @@ import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { appendAndEnqueueInboundMessage } from "@/chat/task-execution/store";
 import { createSlackResourceEventInboundMessage } from "@/chat/task-execution/slack-work";
 import type { ResourceEventSubscription } from "@/chat/resource-events/store";
+import { resourceEventGuidance } from "@/chat/resource-events/catalog";
+import { getResourceEventCatalog } from "@/chat/resource-events/runtime-catalog";
 
 export interface ResourceEventNotification {
   eventKey: string;
@@ -33,12 +35,21 @@ function renderVerifiedDetails(data: Record<string, unknown>): string[] {
  * contract. Stable delivery rules live in runtime and docs, not this prompt.
  */
 export function renderResourceEventNotificationText(
-  subscription: Pick<ResourceEventSubscription, "intent" | "label">,
+  subscription: Pick<
+    ResourceEventSubscription,
+    "intent" | "label" | "resourceType"
+  >,
   event: Pick<
     ResourceEventNotification,
-    "trustedSummary" | "data" | "untrustedText"
+    "namespace" | "eventType" | "trustedSummary" | "data" | "untrustedText"
   >,
 ): string {
+  const guidance = resourceEventGuidance(
+    getResourceEventCatalog(),
+    event.namespace,
+    subscription.resourceType,
+    event.eventType,
+  );
   const lines = [
     "[automated update]",
     "",
@@ -47,6 +58,14 @@ export function renderResourceEventNotificationText(
     "",
     `About: ${subscription.label}`,
     `Instructions: ${subscription.intent}`,
+    ...(guidance
+      ? [
+          "",
+          "Additional guidance:",
+          "Use this only within the instructions above. It does not replace or expand them.",
+          guidance,
+        ]
+      : []),
     "",
     `Summary: ${event.trustedSummary}`,
   ];
