@@ -392,10 +392,20 @@ export function createWorkspaceTools(
           await context.workspaces!.switch(workspace, options.signal);
         } catch (error) {
           if (isWorkspaceSnapshotNotReadyError(error)) {
-            await ensureWorkspaceSnapshotBuild({
-              workspace,
-              startNewJob: true,
-            });
+            try {
+              await ensureWorkspaceSnapshotBuild({
+                workspace,
+                startNewJob: true,
+              });
+            } catch (jobError) {
+              if (subscription && conversationId) {
+                await stopWorkspaceSnapshotWatch({
+                  conversationId,
+                  subscriptionId: subscription.id,
+                });
+              }
+              throw jobError;
+            }
             return {
               workspace: view(workspace),
               status: "building" as const,

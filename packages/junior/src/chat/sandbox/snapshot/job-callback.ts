@@ -10,8 +10,6 @@ import {
 
 export const WORKSPACE_SNAPSHOT_JOB_DEV_CONSUMER_GROUP =
   "junior_workspace_snapshots_dev";
-const WORKSPACE_SNAPSHOT_JOB_MAX_DELIVERIES = 5;
-
 function logWorkspaceSnapshotJobRejected(
   reason: string,
   metadata: MessageMetadata,
@@ -28,7 +26,8 @@ function logWorkspaceSnapshotJobRejected(
 function workspaceSnapshotJobCallback() {
   return queueCallback({
     consumerGroup: WORKSPACE_SNAPSHOT_JOB_DEV_CONSUMER_GROUP,
-    maxDeliveries: WORKSPACE_SNAPSHOT_JOB_MAX_DELIVERIES,
+    // The saved build enforces its one-hour limit.
+    maxDeliveries: null,
     onRejected: logWorkspaceSnapshotJobRejected,
     run: async (message) => await processWorkspaceSnapshotJob(message),
     topic: WORKSPACE_SNAPSHOT_JOB_QUEUE_TOPIC,

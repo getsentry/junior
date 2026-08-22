@@ -377,14 +377,15 @@ describe("Workspace tools", () => {
     }
   });
 
-  it("starts a new snapshot job when a ready snapshot cannot boot", async () => {
+  it("stops the watch when a replacement snapshot job cannot start", async () => {
+    const enqueueError = new Error("Queue unavailable");
     const ensureSnapshot = vi
       .spyOn(
         await import("@/chat/sandbox/snapshot/job-runner"),
         "ensureWorkspaceSnapshotBuild",
       )
       .mockResolvedValueOnce("ready")
-      .mockResolvedValueOnce("building");
+      .mockRejectedValueOnce(enqueueError);
     try {
       const now = new Date();
       const workspace = {
@@ -424,17 +425,20 @@ describe("Workspace tools", () => {
       const tools = createWorkspaceTools(context);
       await expect(
         tools.switchWorkspace!.execute!({ name: workspace.name }, {}),
-      ).resolves.toMatchObject({ status: "building" });
+      ).rejects.toBe(enqueueError);
       expect(ensureSnapshot).toHaveBeenNthCalledWith(2, {
         workspace: expect.objectContaining({ id: workspace.id }),
         startNewJob: true,
       });
+      await expect(
+        listResourceEventSubscriptions({ conversationId }),
+      ).resolves.toEqual([]);
     } finally {
       ensureSnapshot.mockRestore();
     }
   });
 
-  it("starts a new snapshot job after a failed build", async () => {
+  it("starts a new snapshot job when an earlier build is still open", async () => {
     const now = new Date();
     const workspace = {
       id: "44444444-4444-4444-8444-444444444444",
@@ -456,13 +460,13 @@ describe("Workspace tools", () => {
       workspace.id,
       {
         id: "55555555-5555-4555-8555-555555555555",
-        status: "failed",
+        status: "building",
         phase: "created",
         profileHash: value.hash,
         startedAt: now,
-        sandboxName: "failed-builder",
+        sandboxName: "open-builder",
         commandId: null,
-        error: "setup failed",
+        error: null,
       },
       { insertIfMissing: true },
     );

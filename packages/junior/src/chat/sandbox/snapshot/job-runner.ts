@@ -221,7 +221,7 @@ export async function ensureWorkspaceSnapshotBuild(input: {
     workspaceId: input.workspace.id,
     profileHash: value.hash,
   };
-  if (input.startNewJob || current.build?.status === "failed") {
+  if (input.startNewJob || current.build) {
     await sendNextWorkspaceSnapshotJob(message);
   } else {
     await sendWorkspaceSnapshotJob(message);

@@ -129,7 +129,7 @@ describe("Workspace snapshot Vercel queue integration", () => {
     expect(retry(new Error("build failed"), metadata)).toBeUndefined();
     expect(
       retry(new Error("build failed"), { ...metadata, deliveryCount: 5 }),
-    ).toEqual({ acknowledge: true });
+    ).toBeUndefined();
 
     process.env.NODE_ENV = "development";
     expect(registerVercelWorkspaceSnapshotJobDevConsumer()).toBe(unregister);
