@@ -148,7 +148,7 @@ vi.mock("@/chat/sandbox/snapshot/resolve", () => ({
   isMissingError: missingErrorMock,
 }));
 vi.mock("@/chat/sandbox/snapshot/workspace", () => ({
-  getReadyWorkspaceSnapshot: getReadyWorkspaceMock,
+  requireReadyWorkspaceSnapshot: getReadyWorkspaceMock,
 }));
 
 vi.mock("@/chat/sandbox/docker", () => ({

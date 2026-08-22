@@ -9,7 +9,7 @@ import {
   workspaceSnapshotWatch,
 } from "@/chat/sandbox/snapshot/events";
 import { ensureWorkspaceSnapshotBuild } from "@/chat/sandbox/snapshot/job-runner";
-import { isWorkspaceSnapshotNeedsMoreTimeError } from "@/chat/sandbox/snapshot/needs-more-time-error";
+import { isWorkspaceSnapshotNotReadyError } from "@/chat/sandbox/snapshot/not-ready-error";
 import {
   cancelResourceEventSubscription,
   createResourceEventSubscription,
@@ -367,9 +367,11 @@ export function createWorkspaceTools(
             })
           : undefined;
 
-        let build: Awaited<ReturnType<typeof ensureWorkspaceSnapshotBuild>>;
+        let snapshotStatus: Awaited<
+          ReturnType<typeof ensureWorkspaceSnapshotBuild>
+        >;
         try {
-          build = await ensureWorkspaceSnapshotBuild({ workspace });
+          snapshotStatus = await ensureWorkspaceSnapshotBuild({ workspace });
         } catch (error) {
           if (subscription && conversationId) {
             await stopWorkspaceSnapshotWatch({
@@ -379,7 +381,7 @@ export function createWorkspaceTools(
           }
           throw error;
         }
-        if (build.status === "building") {
+        if (snapshotStatus === "building") {
           return {
             workspace: view(workspace),
             status: "building" as const,
@@ -389,10 +391,10 @@ export function createWorkspaceTools(
         try {
           await context.workspaces!.switch(workspace, options.signal);
         } catch (error) {
-          if (isWorkspaceSnapshotNeedsMoreTimeError(error)) {
+          if (isWorkspaceSnapshotNotReadyError(error)) {
             await ensureWorkspaceSnapshotBuild({
               workspace,
-              deduplicate: false,
+              startNewJob: true,
             });
             return {
               workspace: view(workspace),

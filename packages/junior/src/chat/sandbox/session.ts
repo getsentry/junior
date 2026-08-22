@@ -27,8 +27,7 @@ import {
   resolve as resolveSnapshot,
   type Snapshot,
 } from "@/chat/sandbox/snapshot/resolve";
-import { WorkspaceSnapshotNeedsMoreTimeError } from "@/chat/sandbox/snapshot/needs-more-time-error";
-import { getReadyWorkspaceSnapshot } from "@/chat/sandbox/snapshot/workspace";
+import { requireReadyWorkspaceSnapshot } from "@/chat/sandbox/snapshot/workspace";
 import { syncSkillsToSandbox } from "@/chat/sandbox/skill-sync";
 import {
   createSandboxSession,
@@ -420,17 +419,10 @@ export function createSandboxRuntime(
       if (!isMissingError(error)) throw error;
       setSpanAttributes({ "app.sandbox.snapshot.rebuild_after_missing": true });
       const rebuilt = params.workspace
-        ? await getReadyWorkspaceSnapshot({
+        ? await requireReadyWorkspaceSnapshot({
             workspace: params.workspace,
             runtime,
             staleSnapshotId: snapshot.snapshotId,
-          }).then((ready) => {
-            if (!ready) {
-              throw new WorkspaceSnapshotNeedsMoreTimeError(
-                params.workspace!.name,
-              );
-            }
-            return ready;
           })
         : await resolveSnapshot({
             runtime,
@@ -484,15 +476,7 @@ export function createSandboxRuntime(
         },
         async () => {
           const snapshot = workspace
-            ? await getReadyWorkspaceSnapshot({
-                workspace,
-                runtime,
-              }).then((ready) => {
-                if (!ready) {
-                  throw new WorkspaceSnapshotNeedsMoreTimeError(workspace.name);
-                }
-                return ready;
-              })
+            ? await requireReadyWorkspaceSnapshot({ workspace, runtime })
             : await resolveSnapshot({
                 runtime,
                 timeoutMs,

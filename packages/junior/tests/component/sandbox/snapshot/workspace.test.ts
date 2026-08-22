@@ -26,7 +26,7 @@ import {
   loadSnapshotsForProfile,
   setWorkspaceSnapshotBuild,
 } from "@/chat/sandbox/snapshot/store";
-import { isWorkspaceSnapshotNeedsMoreTimeError } from "@/chat/sandbox/snapshot/needs-more-time-error";
+import { isWorkspaceSnapshotNotReadyError } from "@/chat/sandbox/snapshot/not-ready-error";
 import { resolveWorkspaceSnapshot } from "@/chat/sandbox/snapshot/workspace";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { createWorkspace } from "@/chat/workspaces/store";
@@ -138,7 +138,7 @@ describe("Workspace snapshot completion", () => {
         applyNetworkPolicy: async () => {},
         removeCredentialRoute: false,
       }),
-    ).rejects.toSatisfy(isWorkspaceSnapshotNeedsMoreTimeError);
+    ).rejects.toSatisfy(isWorkspaceSnapshotNotReadyError);
 
     await expect(
       loadSnapshotsForProfile(getDb(), workspace.id, value.hash),
@@ -310,7 +310,7 @@ describe("Workspace snapshot completion", () => {
           }),
         requestStartedAtMs,
       ),
-    ).rejects.toSatisfy(isWorkspaceSnapshotNeedsMoreTimeError);
+    ).rejects.toSatisfy(isWorkspaceSnapshotNotReadyError);
     expect(sandboxCreateMock).toHaveBeenCalledTimes(1);
   });
 

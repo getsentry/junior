@@ -60,19 +60,30 @@ export function verifyWorkspaceSnapshotJobMessage(
   return verifyQueueMessage(workspaceSnapshotJobSign, value, nowMs);
 }
 
-/** Send one Workspace snapshot job. */
-export async function sendWorkspaceSnapshotJob(
+async function send(
   message: WorkspaceSnapshotJobMessage,
-  options: { deduplicate?: boolean } = {},
+  idempotencyKey?: string,
 ): Promise<void> {
   await createVercelQueueClient().send(
     WORKSPACE_SNAPSHOT_JOB_QUEUE_TOPIC,
     signWorkspaceSnapshotJobMessage(message),
     {
-      ...(options.deduplicate === false
-        ? {}
-        : { idempotencyKey: jobId(message) }),
+      ...(idempotencyKey ? { idempotencyKey } : {}),
       retentionSeconds: QUEUE_SIGNATURE_MAX_AGE_MS / 1000,
     },
   );
+}
+
+/** Send a job unless the same Workspace build already has one. */
+export async function sendWorkspaceSnapshotJob(
+  message: WorkspaceSnapshotJobMessage,
+): Promise<void> {
+  await send(message, jobId(message));
+}
+
+/** Send the next job for a Workspace build that is still running. */
+export async function sendNextWorkspaceSnapshotJob(
+  message: WorkspaceSnapshotJobMessage,
+): Promise<void> {
+  await send(message);
 }

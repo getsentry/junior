@@ -1,5 +1,4 @@
 /** Build Workspace snapshots in a background job. */
-import type { ResourceEvent } from "@sentry/junior-plugin-api";
 import { credentialContextForActor } from "@/chat/credentials/context";
 import { getDb } from "@/chat/db";
 import { logInfo } from "@/chat/logging";
@@ -13,7 +12,7 @@ import { createSandboxEgressCredentialToken } from "@/chat/sandbox/egress/sessio
 import * as profile from "@/chat/sandbox/snapshot/profile";
 import { SANDBOX_RUNTIME } from "@/chat/sandbox/snapshot/runtime";
 import { loadSnapshotsForProfile } from "@/chat/sandbox/snapshot/store";
-import { isWorkspaceSnapshotNeedsMoreTimeError } from "@/chat/sandbox/snapshot/needs-more-time-error";
+import { isWorkspaceSnapshotNotReadyError } from "@/chat/sandbox/snapshot/not-ready-error";
 import { resolveWorkspaceSnapshot } from "@/chat/sandbox/snapshot/workspace";
 import type { SandboxSession } from "@/chat/sandbox/workspace";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
@@ -21,6 +20,7 @@ import { getWorkspace } from "@/chat/workspaces/store";
 import type { Workspace } from "@/chat/workspaces/types";
 import { workspaceSnapshotFinishedEvent } from "./events";
 import {
+  sendNextWorkspaceSnapshotJob,
   sendWorkspaceSnapshotJob,
   type WorkspaceSnapshotJobMessage,
 } from "./job-queue";
@@ -35,7 +35,10 @@ const JOB_STOP_BUFFER_MS = 40_000;
 
 const resolveResourceEventTeamId = createResourceEventTeamIdResolver();
 
-async function publishSnapshotEvent(event: ResourceEvent): Promise<void> {
+async function publishFinishedEvent(
+  input: Parameters<typeof workspaceSnapshotFinishedEvent>[0],
+): Promise<void> {
+  const event = workspaceSnapshotFinishedEvent(input);
   const teamId = await resolveResourceEventTeamId();
   if (!teamId) {
     logInfo("workspace.snapshot.event.delivery.skipped", {
@@ -50,24 +53,6 @@ async function publishSnapshotEvent(event: ResourceEvent): Promise<void> {
     ingestResourceEvent(event, { queue, teamId }),
     ingestEventTasks(event, { queue, teamId }),
   ]);
-}
-
-async function publishFinishedEvent(input: {
-  workspaceId: string;
-  profileHash: string;
-  buildId?: string;
-  status: "ready" | "failed";
-  error?: string | null;
-}): Promise<void> {
-  await publishSnapshotEvent(
-    workspaceSnapshotFinishedEvent({
-      workspaceId: input.workspaceId,
-      buildId: input.buildId,
-      profileHash: input.profileHash,
-      status: input.status,
-      error: input.error,
-    }),
-  );
 }
 
 function createSnapshotBuildHelpers() {
@@ -170,8 +155,8 @@ export async function processWorkspaceSnapshotJob(
       removeCredentialRoute: true,
     });
   } catch (error) {
-    if (isWorkspaceSnapshotNeedsMoreTimeError(error)) {
-      await sendWorkspaceSnapshotJob(message, { deduplicate: false });
+    if (isWorkspaceSnapshotNotReadyError(error)) {
+      await sendNextWorkspaceSnapshotJob(message);
       return;
     }
     const afterFailure = await loadSnapshotsForProfile(
@@ -217,18 +202,14 @@ export async function processWorkspaceSnapshotJob(
     return;
   }
 
-  await sendWorkspaceSnapshotJob(message, { deduplicate: false });
+  await sendNextWorkspaceSnapshotJob(message);
 }
 
 /** Start a snapshot build when no ready snapshot exists. */
 export async function ensureWorkspaceSnapshotBuild(input: {
   workspace: Workspace;
-  deduplicate?: boolean;
-}): Promise<{
-  status: "ready" | "building";
-  profileHash: string;
-  buildId?: string;
-}> {
+  startNewJob?: boolean;
+}): Promise<"ready" | "building"> {
   const value = profile.create(SANDBOX_RUNTIME, input.workspace);
   if (!value) {
     throw new Error(
@@ -240,22 +221,16 @@ export async function ensureWorkspaceSnapshotBuild(input: {
     input.workspace.id,
     value.hash,
   );
-  if (current.ready) {
-    return { status: "ready", profileHash: value.hash };
-  }
+  if (current.ready) return "ready";
   const message = {
     workspaceId: input.workspace.id,
     profileHash: value.hash,
   };
-  if (input.deduplicate === false || current.build?.status === "failed") {
-    await sendWorkspaceSnapshotJob(message, { deduplicate: false });
+  if (input.startNewJob || current.build?.status === "failed") {
+    await sendNextWorkspaceSnapshotJob(message);
   } else {
     await sendWorkspaceSnapshotJob(message);
   }
 
-  return {
-    status: "building",
-    profileHash: value.hash,
-    buildId: current.build?.id,
-  };
+  return "building";
 }

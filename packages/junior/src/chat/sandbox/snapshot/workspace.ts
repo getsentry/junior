@@ -26,7 +26,7 @@ import {
   setWorkspaceSnapshot,
   setWorkspaceSnapshotBuild,
 } from "@/chat/sandbox/snapshot/store";
-import { WorkspaceSnapshotNeedsMoreTimeError } from "@/chat/sandbox/snapshot/needs-more-time-error";
+import { WorkspaceSnapshotNotReadyError } from "@/chat/sandbox/snapshot/not-ready-error";
 import {
   createSandboxSession,
   type SandboxSession,
@@ -601,23 +601,26 @@ function shouldStopForTimeLimit(shouldStop?: () => boolean): boolean {
   );
 }
 
-/** Return a ready Workspace snapshot without starting or waiting on a build. */
-export async function getReadyWorkspaceSnapshot(params: {
+/** Return the ready snapshot or report that the Workspace must build one. */
+export async function requireReadyWorkspaceSnapshot(params: {
   workspace: Workspace;
   runtime: string;
   staleSnapshotId?: string;
-}): Promise<Snapshot | null> {
+}): Promise<Snapshot> {
   const value = profile.create(params.runtime, params.workspace);
   if (!value) {
     throw new Error(
       `Workspace ${params.workspace.name} has no snapshot profile`,
     );
   }
-  return await snapshotFromSql(
+  const snapshot = await snapshotFromSql(
     params.workspace.id,
     value,
     params.staleSnapshotId,
   );
+  if (!snapshot)
+    throw new WorkspaceSnapshotNotReadyError(params.workspace.name);
+  return snapshot;
 }
 
 /**
@@ -646,7 +649,7 @@ export async function resolveWorkspaceSnapshot(params: {
     if (!workspace) throw workspaceDeletedError(params.workspace);
     const current = { ...params, workspace };
     if (advanced && shouldStopForTimeLimit(current.shouldStop)) {
-      throw new WorkspaceSnapshotNeedsMoreTimeError(workspace.name);
+      throw new WorkspaceSnapshotNotReadyError(workspace.name);
     }
 
     let snapshot: Snapshot | null;
@@ -656,7 +659,7 @@ export async function resolveWorkspaceSnapshot(params: {
       if (!isSandboxApiTransientError(error)) throw error;
       advanced = true;
       if (shouldStopForTimeLimit(current.shouldStop)) {
-        throw new WorkspaceSnapshotNeedsMoreTimeError(workspace.name);
+        throw new WorkspaceSnapshotNotReadyError(workspace.name);
       }
       await sleep(TRANSIENT_API_RETRY_MS, params.signal);
       continue;
@@ -664,7 +667,7 @@ export async function resolveWorkspaceSnapshot(params: {
     advanced = true;
     if (snapshot) return snapshot;
     if (shouldStopForTimeLimit(current.shouldStop)) {
-      throw new WorkspaceSnapshotNeedsMoreTimeError(workspace.name);
+      throw new WorkspaceSnapshotNotReadyError(workspace.name);
     }
     await sleep(WAIT_POLL_MS, params.signal);
   }

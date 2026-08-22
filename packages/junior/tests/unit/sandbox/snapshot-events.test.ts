@@ -15,7 +15,6 @@ describe("Workspace snapshot events", () => {
     );
     expect(event.data).toEqual({
       workspaceId: "11111111-1111-4111-8111-111111111111",
-      profileHash: "profile-1",
       status: "failed",
     });
   });
@@ -35,8 +34,6 @@ describe("Workspace snapshot events", () => {
     expect(event.trustedSummary).toBe("Workspace snapshot build failed.");
     expect(event.data).toEqual({
       workspaceId: "11111111-1111-4111-8111-111111111111",
-      buildId: "build-1",
-      profileHash: "profile-1",
       status: "failed",
     });
     expect(event.untrustedText).toBe(error);

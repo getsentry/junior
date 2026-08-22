@@ -5,7 +5,7 @@ import {
 } from "@sentry/junior-plugin-api";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { getDb } from "@/chat/db";
-import { WorkspaceSnapshotNeedsMoreTimeError } from "@/chat/sandbox/snapshot/needs-more-time-error";
+import { WorkspaceSnapshotNotReadyError } from "@/chat/sandbox/snapshot/not-ready-error";
 import * as snapshotProfile from "@/chat/sandbox/snapshot/profile";
 import { SANDBOX_RUNTIME } from "@/chat/sandbox/snapshot/runtime";
 import { setWorkspaceSnapshotBuild } from "@/chat/sandbox/snapshot/store";
@@ -25,16 +25,22 @@ import { createWorkspaceTools } from "@/chat/workspaces/tools";
 import { listWorkspaceNamesByRepository } from "@/chat/workspaces/store";
 import { readStats } from "@/stats";
 
-const sendWorkspaceSnapshotJob = vi.hoisted(() =>
-  vi.fn().mockResolvedValue(undefined),
+const { sendNextWorkspaceSnapshotJob, sendWorkspaceSnapshotJob } = vi.hoisted(
+  () => ({
+    sendNextWorkspaceSnapshotJob: vi.fn().mockResolvedValue(undefined),
+    sendWorkspaceSnapshotJob: vi.fn().mockResolvedValue(undefined),
+  }),
 );
 
 vi.mock("@/chat/sandbox/snapshot/job-queue", () => ({
+  sendNextWorkspaceSnapshotJob,
   sendWorkspaceSnapshotJob,
 }));
 
 describe("Workspace tools", () => {
   beforeEach(() => {
+    sendNextWorkspaceSnapshotJob.mockReset();
+    sendNextWorkspaceSnapshotJob.mockResolvedValue(undefined);
     sendWorkspaceSnapshotJob.mockReset();
     sendWorkspaceSnapshotJob.mockResolvedValue(undefined);
   });
@@ -305,7 +311,7 @@ describe("Workspace tools", () => {
         await import("@/chat/sandbox/snapshot/job-runner"),
         "ensureWorkspaceSnapshotBuild",
       )
-      .mockResolvedValue({ status: "ready", profileHash: "profile-ready" });
+      .mockResolvedValue("ready");
     try {
       const now = new Date();
       const workspace = {
@@ -377,8 +383,8 @@ describe("Workspace tools", () => {
         await import("@/chat/sandbox/snapshot/job-runner"),
         "ensureWorkspaceSnapshotBuild",
       )
-      .mockResolvedValueOnce({ status: "ready", profileHash: "profile-ready" })
-      .mockResolvedValueOnce({ status: "building", profileHash: "profile-ready" });
+      .mockResolvedValueOnce("ready")
+      .mockResolvedValueOnce("building");
     try {
       const now = new Date();
       const workspace = {
@@ -396,7 +402,7 @@ describe("Workspace tools", () => {
       });
       const switchWorkspace = vi.fn(async () => {
         throw new Error("Sandbox setup failed", {
-          cause: new WorkspaceSnapshotNeedsMoreTimeError(workspace.name),
+          cause: new WorkspaceSnapshotNotReadyError(workspace.name),
         });
       });
       const conversationId = "local:test:workspace-missing-snapshot";
@@ -421,7 +427,7 @@ describe("Workspace tools", () => {
       ).resolves.toMatchObject({ status: "building" });
       expect(ensureSnapshot).toHaveBeenNthCalledWith(2, {
         workspace: expect.objectContaining({ id: workspace.id }),
-        deduplicate: false,
+        startNewJob: true,
       });
     } finally {
       ensureSnapshot.mockRestore();
@@ -464,7 +470,11 @@ describe("Workspace tools", () => {
     const context = {
       destination: { platform: "local", conversationId },
       source: createLocalSource(conversationId),
-      egress: { async fetch() { return new Response("ok"); } },
+      egress: {
+        async fetch() {
+          return new Response("ok");
+        },
+      },
       workspace: {} as ToolRuntimeContext["workspace"],
       workspaces: {
         activeWorkspaceId: () => undefined,
@@ -476,10 +486,10 @@ describe("Workspace tools", () => {
     await expect(
       tools.switchWorkspace!.execute!({ name: workspace.name }, {}),
     ).resolves.toMatchObject({ status: "building" });
-    expect(sendWorkspaceSnapshotJob).toHaveBeenCalledWith(
-      { workspaceId: workspace.id, profileHash: value.hash },
-      { deduplicate: false },
-    );
+    expect(sendNextWorkspaceSnapshotJob).toHaveBeenCalledWith({
+      workspaceId: workspace.id,
+      profileHash: value.hash,
+    });
   });
 
   it("returns building status and enqueues a snapshot job when cold", async () => {

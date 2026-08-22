@@ -59,7 +59,7 @@ describe("Workspace snapshot Vercel queue integration", () => {
       createVercelWorkspaceSnapshotJobCallback,
       registerVercelWorkspaceSnapshotJobDevConsumer,
     } = await import("@/chat/sandbox/snapshot/job-callback");
-    const { sendWorkspaceSnapshotJob } =
+    const { sendNextWorkspaceSnapshotJob, sendWorkspaceSnapshotJob } =
       await import("@/chat/sandbox/snapshot/job-queue");
 
     expect(createVercelWorkspaceSnapshotJobCallback()).toBe(routeHandler);
@@ -83,7 +83,9 @@ describe("Workspace snapshot Vercel queue integration", () => {
     const handler = call?.[0];
     const retry = call?.[1].retry;
     if (!handler || !retry) {
-      throw new Error("Expected Workspace snapshot queue handler and retry hook");
+      throw new Error(
+        "Expected Workspace snapshot queue handler and retry hook",
+      );
     }
     const metadata: TestQueueMetadata = {
       consumerGroup: "workspace-snapshots",
@@ -117,7 +119,7 @@ describe("Workspace snapshot Vercel queue integration", () => {
     ).resolves.toBeUndefined();
     expect(processWorkspaceSnapshotJob).toHaveBeenCalledTimes(1);
 
-    await sendWorkspaceSnapshotJob(message, { deduplicate: false });
+    await sendNextWorkspaceSnapshotJob(message);
     expect(send).toHaveBeenLastCalledWith(
       "junior_workspace_snapshots",
       expect.objectContaining(message),
@@ -131,9 +133,9 @@ describe("Workspace snapshot Vercel queue integration", () => {
 
     process.env.NODE_ENV = "development";
     expect(registerVercelWorkspaceSnapshotJobDevConsumer()).toBe(unregister);
-    const registered = (registerDevConsumer.mock.calls as unknown as Array<
-      [unknown]
-    >)[0]?.[0] as
+    const registered = (
+      registerDevConsumer.mock.calls as unknown as Array<[unknown]>
+    )[0]?.[0] as
       | {
           client: { send: typeof send };
           consumerGroup: string;
@@ -167,10 +169,8 @@ describe("plugin task Vercel queue integration", () => {
       processPluginTask,
     }));
 
-    const {
-      createVercelPluginTaskCallback,
-      signPluginTaskQueueMessage,
-    } = await import("@/chat/plugins/task-queue");
+    const { createVercelPluginTaskCallback, signPluginTaskQueueMessage } =
+      await import("@/chat/plugins/task-queue");
 
     expect(createVercelPluginTaskCallback()).toBe(routeHandler);
 
@@ -258,9 +258,8 @@ describe("plugin task Vercel queue integration", () => {
 
     process.env.JUNIOR_SECRET = "plugin-task-secret";
 
-    const { PLUGIN_TASK_QUEUE_TOPIC, pluginTaskId, sendVercelPluginTask } = await import(
-      "@/chat/plugins/task-queue"
-    );
+    const { PLUGIN_TASK_QUEUE_TOPIC, pluginTaskId, sendVercelPluginTask } =
+      await import("@/chat/plugins/task-queue");
     const message = {
       name: "extractMemories",
       params: {
