@@ -12,7 +12,10 @@ import {
   botConfig,
   configureFunctionMaxDurationSeconds,
   getSlackReactionConfig,
+  restoreModelProfiles,
+  setModelConfig,
   setSlackReactionConfig,
+  type ModelConfig,
 } from "@/chat/config";
 import { getDb } from "@/chat/db";
 import { logException, logWarn } from "@/chat/logging";
@@ -109,6 +112,8 @@ export interface JuniorAppOptions {
    * you are deliberately dogfooding a pre-stable surface.
    */
   experimental?: ExperimentalFeaturesConfig;
+  /** Host-owned model profile configuration applied after env parsing. */
+  models?: ModelConfig;
   /** Slack-specific overrides applied after env parsing. */
   slack?: {
     /** Slack emoji shown while Junior is processing. Defaults to `eyes`. */
@@ -624,6 +629,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     hasConfiguredPluginCatalog(pluginConfig) ||
     Boolean(configuredPlugins?.registrations.length) ||
     Boolean(Object.keys(options?.configDefaults ?? {}).length);
+  const previousModelProfiles = botConfig.profiles;
   const previousPluginCatalogConfig =
     pluginCatalogRuntime.setConfig(pluginConfig);
   const previousPlugins = setPlugins(plugins);
@@ -671,6 +677,9 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     setExperimentalFeatures(options?.experimental);
     setConfigDefaults(options?.configDefaults);
     warnUnregisteredConfigDefaults(options?.configDefaults);
+    if (options?.models) {
+      setModelConfig(options.models);
+    }
     if (options?.slack) {
       setSlackReactionConfig(options.slack);
     }
@@ -690,6 +699,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     pluginCatalogRuntime.setConfig(previousPluginCatalogConfig);
     setPlugins(previousPlugins);
     setConfigDefaults(previousConfigDefaults);
+    restoreModelProfiles(previousModelProfiles);
     setSlackReactionConfig(previousSlackReactionConfig);
     setSandboxResourceConfig(previousSandboxResources);
     setExperimentalFeatures(previousExperimentalFeatures);

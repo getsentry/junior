@@ -44,6 +44,13 @@ const DEFAULT_ASSISTANT_LOADING_MESSAGES = [
   "Rattling the command line",
 ] as const;
 
+export interface ModelConfig {
+  /** Model ID for the built-in handoff profile. */
+  handoff?: string;
+  /** Additional named model profiles available to handoff. */
+  profiles?: Readonly<Record<string, string>>;
+}
+
 export interface BotConfig {
   contextWindowTokens: number;
   crossActorMidRunMode: CrossActorMidRunMode;
@@ -232,6 +239,44 @@ function validateEmbeddingModelId(raw: string | undefined): string | undefined {
   return toOptionalTrimmed(raw);
 }
 
+function parseAdditionalProfiles(
+  rawProfiles: unknown,
+  configName: string,
+): Readonly<Record<string, ExecutionProfileConfig>> {
+  if (
+    !rawProfiles ||
+    typeof rawProfiles !== "object" ||
+    Array.isArray(rawProfiles)
+  ) {
+    const objectType =
+      configName === "AI_MODEL_PROFILES" ? "a JSON object" : "an object";
+    throw new Error(`${configName} must be ${objectType}`);
+  }
+  const profiles: Record<string, ExecutionProfileConfig> = {};
+  for (const [profile, rawModelId] of Object.entries(rawProfiles)) {
+    if (!modelProfileSchema.safeParse(profile).success) {
+      throw new Error(
+        `${configName} profile "${profile}" must match ^[a-z][a-z0-9_-]*$`,
+      );
+    }
+    if (
+      profile === STANDARD_MODEL_PROFILE ||
+      profile === DEFAULT_HANDOFF_MODEL_PROFILE
+    ) {
+      throw new Error(`${configName} profile "${profile}" is reserved`);
+    }
+    if (typeof rawModelId !== "string") {
+      throw new Error(`${configName}.${profile} must be a model id string`);
+    }
+    const modelId = validateGatewayModelId(rawModelId);
+    if (!modelId) {
+      throw new Error(`${configName}.${profile} must not be empty`);
+    }
+    profiles[profile] = { modelId };
+  }
+  return profiles;
+}
+
 function parseProfiles(
   rawValue: string | undefined,
   standardModelId: string,
@@ -255,31 +300,10 @@ function parseProfiles(
   } catch {
     throw new Error("AI_MODEL_PROFILES must be a JSON object");
   }
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    throw new Error("AI_MODEL_PROFILES must be a JSON object");
-  }
-  for (const [profile, rawModelId] of Object.entries(parsed)) {
-    if (!modelProfileSchema.safeParse(profile).success) {
-      throw new Error(
-        `AI_MODEL_PROFILES profile "${profile}" must match ^[a-z][a-z0-9_-]*$`,
-      );
-    }
-    if (
-      profile === STANDARD_MODEL_PROFILE ||
-      profile === DEFAULT_HANDOFF_MODEL_PROFILE
-    ) {
-      throw new Error(`AI_MODEL_PROFILES profile "${profile}" is reserved`);
-    }
-    if (typeof rawModelId !== "string") {
-      throw new Error(`AI_MODEL_PROFILES.${profile} must be a model id string`);
-    }
-    const modelId = validateGatewayModelId(rawModelId);
-    if (!modelId) {
-      throw new Error(`AI_MODEL_PROFILES.${profile} must not be empty`);
-    }
-    profiles[profile] = { modelId };
-  }
-  return profiles;
+  return {
+    ...profiles,
+    ...parseAdditionalProfiles(parsed, "AI_MODEL_PROFILES"),
+  };
 }
 
 function parseReactionEmoji(
@@ -510,6 +534,30 @@ export function getRuntimeMetadata(): RuntimeMetadata {
 export interface SlackReactionConfig {
   completedReactionEmoji: string;
   processingReactionEmoji: string;
+}
+
+/** Apply host model profile overrides from createApp() options. */
+export function setModelConfig(config: ModelConfig): void {
+  const handoffModelId =
+    validateGatewayModelId(config.handoff) ??
+    botConfig.profiles[DEFAULT_HANDOFF_MODEL_PROFILE]!.modelId;
+  botConfig.profiles = {
+    [STANDARD_MODEL_PROFILE]: botConfig.profiles[STANDARD_MODEL_PROFILE]!,
+    [DEFAULT_HANDOFF_MODEL_PROFILE]: {
+      modelId: handoffModelId,
+      reasoningLevel: "high",
+    },
+    ...(config.profiles
+      ? parseAdditionalProfiles(config.profiles, "models.profiles")
+      : {}),
+  };
+}
+
+/** Replace model profiles with a previously validated configuration. */
+export function restoreModelProfiles(
+  profiles: Readonly<Record<string, ExecutionProfileConfig>>,
+): void {
+  botConfig.profiles = profiles;
 }
 
 /** Return the current Slack reaction emoji config. */

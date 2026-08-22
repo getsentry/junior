@@ -157,6 +157,23 @@ connection state in one Node process. Use it only for local or single-process
 testing. Run `pnpm acp:local` in this repository for a loopback test with the
 official ACP SDK client.
 
+## Model profiles
+
+Pass host-owned model profiles to `createApp()`. Additional profiles become targets for the `handoff` tool:
+
+```ts
+const app = await createApp({
+  models: {
+    profiles: {
+      "gpt-5": "openai/gpt-5.6-sol",
+      "opus-5": "anthropic/claude-opus-5",
+    },
+  },
+});
+```
+
+Use `models.handoff` to replace the model for the built-in `handoff` profile. App config takes precedence over `AI_HANDOFF_MODEL` and replaces profiles from `AI_MODEL_PROFILES`.
+
 ## Install-wide config defaults
 
 Pass `configDefaults` to `createApp()` to set provider defaults across all conversations:
