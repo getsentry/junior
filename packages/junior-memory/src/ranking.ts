@@ -74,9 +74,8 @@ export function rankMemoryMatches(
       byId.set(match.memory.id, match);
       continue;
     }
-    // Keep the first rank per modality. Shared legs are fused before private
-    // probes, so a smaller private top-k cannot overwrite a shared dense rank
-    // with an inflated top rank for the same memory.
+    // Keep the first rank from each search. The shared searches run first, so
+    // the smaller private searches cannot replace their ranks.
     byId.set(match.memory.id, {
       ...existing,
       ...(!existing.lexical && match.lexical
@@ -90,9 +89,8 @@ export function rankMemoryMatches(
     if (scoreDelta !== 0) {
       return scoreDelta;
     }
-    // Prefer actor preferences over workspace knowledge when RRF ties. Shared
-    // lexical legs often assign the same top rank to recent public noise and a
-    // private-scope probe hit for the same common token.
+    // Prefer private memory when RRF ties. Public and private searches can give
+    // the same rank to common words.
     const privateDelta =
       Number(right.memory.scope === "private") -
       Number(left.memory.scope === "private");

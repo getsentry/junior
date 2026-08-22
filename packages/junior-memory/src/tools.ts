@@ -45,8 +45,8 @@ const KNOWN_TOOL_INPUT_ERROR_MESSAGES = new Set([
   "Memory id is required.",
   "Memory was not found in the current context.",
   "Memory id prefix is ambiguous.",
-  "Private memory requires a linked user.",
-  "User-subject memory requires a linked user.",
+  "Private memory requires a User.",
+  "User memory requires a User.",
 ]);
 
 /** Runtime-owned context used to bind memory tools to visible scopes. */
@@ -410,7 +410,7 @@ export function createMemoryCreateTool(context: MemoryCreateToolContext) {
       readOnlyHint: false,
     },
     description:
-      "Explicit memory-write tool. Use only when the latest user message directly asks Junior to remember, store, save, or forget-and-replace a fact. Do not use for ordinary statements like 'I prefer X', 'I use Y', or 'X goes before Y' unless the user also asks you to remember/store/save it; passive memory learning handles those after the visible reply. Pass one self-contained natural-language candidate preserving the user's explicit memory intent. Do not ask the user to rephrase ordinary first-person facts, and do not rewrite them into display-name or third-person wording. Do not include secrets, private personal details, medical/legal/financial/sensitive facts, or another person's personal preference, opinion, habit, identity, relationship, workflow, or private life. Runtime context derives visibility, Location, source, and subject ids; the memory agent decides canonical stored content and memory kind.",
+      "Explicit memory-write tool. Use only when the latest user message directly asks Junior to remember, store, save, or forget-and-replace a fact. Do not use for ordinary statements like 'I prefer X', 'I use Y', or 'X goes before Y' unless the user also asks you to remember/store/save it; passive memory learning handles those after the visible reply. Pass one self-contained natural-language candidate preserving the user's explicit memory intent. Do not ask the user to rephrase ordinary first-person facts, and do not rewrite them into display-name or third-person wording. Do not include secrets, private personal details, medical/legal/financial/sensitive facts, or another person's personal preference, opinion, habit, identity, relationship, workflow, or private life. Junior sets access, Location, Source, and subject. The memory agent rewrites the content and sets the memory kind.",
     executionMode: "sequential",
     inputSchema: createMemoryInputSchema,
     outputSchema: memoryCreateOutputSchema,
@@ -502,7 +502,7 @@ export function createMemoryRemoveTool(context: MemoryToolContext) {
       readOnlyHint: false,
     },
     description:
-      "Forget one private memory owned by the active linked user. Public memories are read-only. Use only ids or short id prefixes returned by listMemories or searchMemories. Never remove memories by hidden actor, provider, scope, or subject identifiers.",
+      "Forget one private memory owned by the current User. Public memories are read-only. Use only ids or short id prefixes returned by listMemories or searchMemories. Never remove memories by hidden Actor, provider, scope, or subject ids.",
     executionMode: "sequential",
     inputSchema: removeMemoryInputSchema,
     outputSchema: memorySingleOutputSchema,
@@ -556,7 +556,7 @@ export function createMemoryListTool(context: MemoryToolContext) {
 export function createMemorySearchTool(context: MemoryToolContext) {
   return definePluginTool({
     description:
-      "Search active memories visible in the current context. Use when the model needs targeted memory recall. Public memories are visible everywhere; private memories belong to the active linked user.",
+      "Search active memories visible in the current context. Use when the model needs targeted memory recall. Public memories are visible everywhere. Private memories belong to the current User.",
     annotations: {
       destructiveHint: false,
       idempotentHint: true,

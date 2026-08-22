@@ -22,22 +22,20 @@ describe("memory conversation events", () => {
       memoriesCapturedEventV1.renderEvent(legacy)?.details?.[0]?.metadata,
     ).toEqual(["preference", "private"]);
 
-    const current = memoriesCapturedEvent.parse({
-      costUsd: 0.0042,
-      memories: [
-        {
-          content: "Release notes live in Notion.",
-          id: "memory-v2",
-          kind: "knowledge",
-          observedAtMs: 2,
-          scope: "conversation",
-        },
-      ],
-    });
-    expect(
-      memoriesCapturedEvent.renderEvent(current)?.details?.[0]?.metadata,
-    ).toEqual(["knowledge", "public"]);
-    expect(memoriesCapturedEvent.version).toBe(2);
+    expect(() =>
+      memoriesCapturedEvent.parse({
+        costUsd: 0.0042,
+        memories: [
+          {
+            content: "Release notes live in Notion.",
+            id: "memory-v2",
+            kind: "knowledge",
+            observedAtMs: 2,
+            scope: "conversation",
+          },
+        ],
+      }),
+    ).toThrow(/scope/);
   });
 
   it("omits empty extraction results from transcript presentation", () => {

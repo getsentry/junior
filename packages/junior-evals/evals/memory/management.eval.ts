@@ -13,8 +13,8 @@ import {
 describeEval("Memory Management", slackEvals, (it) => {
   const autoRecallThread = {
     id: "thread-memory-auto-recall",
-    channel_type: "channel",
-    channel_id: "CMEMORYAUTORECALL",
+    channel_type: "im",
+    channel_id: "DMEMORYAUTORECALL",
     thread_ts: "17000000.000009",
   } satisfies MemoryThread;
 
@@ -52,8 +52,8 @@ describeEval("Memory Management", slackEvals, (it) => {
       expect.objectContaining({
         archivedAtMs: null,
         content: "Prefers PR summaries with risks first.",
-        scope: "public",
-        scopeKey: "public",
+        scope: "private",
+        scopeKey: expect.any(String),
         subjectType: "user",
       }),
     );
@@ -61,8 +61,8 @@ describeEval("Memory Management", slackEvals, (it) => {
 
   const passiveDedupeThread = {
     id: "thread-memory-passive-dedupe",
-    channel_type: "channel",
-    channel_id: "CMEMORYPASSIVEDEDUPE",
+    channel_type: "im",
+    channel_id: "DMEMORYPASSIVEDEDUPE",
     thread_ts: "17000000.000010",
   } satisfies MemoryThread;
 
@@ -99,8 +99,8 @@ describeEval("Memory Management", slackEvals, (it) => {
       expect.objectContaining({
         archivedAtMs: null,
         content: "Prefers PR summaries with risks first.",
-        scope: "public",
-        scopeKey: "public",
+        scope: "private",
+        scopeKey: expect.any(String),
         subjectType: "user",
       }),
     ]);

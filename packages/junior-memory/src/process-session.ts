@@ -213,9 +213,9 @@ async function getTaskExtraction(
 /**
  * Extract and store memories from a completed session plugin task.
  *
- * Memory owns post-session extraction and consumes only the bounded plugin task
- * projection. Explicit memory tools remain a hard boundary so background
- * retries cannot reinterpret user-directed mutations.
+ * Memory owns learning after a run and reads only the plugin run data.
+ * Explicit memory tools stay separate so retries do not reinterpret user
+ * requests.
  */
 export async function processMemorySession(
   context: PluginTaskContext,
@@ -233,6 +233,9 @@ export async function processMemorySession(
   }
   const sourceKey = getSourceKey(run.source);
   if (!sourceKey || (run.source.visibility === "private" && !run.actorUserId)) {
+    return;
+  }
+  if (run.source.visibility === "private" && !run.actorUserId) {
     return;
   }
   const transcript = run.transcript

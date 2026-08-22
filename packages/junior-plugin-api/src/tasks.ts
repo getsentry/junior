@@ -50,12 +50,12 @@ export type PluginRunTranscriptProvenance = z.output<
 /** Runtime-owned completed-run projection exposed to plugin tasks. */
 export const pluginRunContextSchema = z
   .object({
-    /** Canonical user for the actor when the actor has a linked identity. */
+    /** User linked to the Actor, when known. */
     actorUserId: z.string().min(1).optional(),
     completedAtMs: z.number().finite(),
     conversationId: z.string().min(1),
     destination: destinationSchema,
-    /** Junior-owned Location identity associated with this conversation. */
+    /** Location associated with this Conversation. */
     locationId: z.string().min(1).optional(),
     /**
      * All distinct actors annotated on this run's committed instruction-authority

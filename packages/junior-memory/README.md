@@ -22,19 +22,18 @@ exported types, tools, and tests are authoritative.
   `GET /api/plugins/memory/memories`, read one through
   `GET /api/plugins/memory/memories/:id`, and forget an authorized private
   memory through `DELETE /api/plugins/memory/memories/:id`. Public memory is
-  read-only on these viewer surfaces.
+  read-only in the dashboard and REST API.
 
 ## Scope And Visibility
 
-- Memory visibility is derived from the Source, never from model-supplied
-  ownership fields.
+- The Source sets memory visibility. Model output cannot set it.
 - Public memory is visible everywhere.
-- Private memory is owned by one canonical User. It is visible through every
-  Identity linked to that User.
+- Private memory belongs to one User. Every Identity linked to that User can
+  access it.
 - Junior records the optional Location where it learned a memory. Location is
-  provenance only. It does not grant access.
-- Subject classification is independent from visibility. A user preference can
-  be public or private based on its Source.
+  a record of where Junior learned it. It does not grant access.
+- The subject says what a memory is about. It does not set access. A user
+  preference can be public or private based on its Source.
 - Recall filters candidates by visibility, status, and relevance before content
   reaches the model.
 - Administrative reads require explicit selectors and safe output defaults.
@@ -74,13 +73,12 @@ exported types, tools, and tests are authoritative.
   and slightly prefers lexical ranks so exact tokens survive soft semantic
   neighbors. Vector recall also applies the cosine distance cutoff in SQL, and
   embeddings use an HNSW cosine index (`vector_cosine_ops`).
-- Automatic recall also runs private-scope-only vector and lexical probes so
-  older private memory is not buried when newer public memory fills the shared
-  lexical recency window with common tokens. On RRF score ties, private matches
-  rank ahead of public matches.
+- Automatic recall also searches private memory by itself. This keeps newer
+  public memory with common words from hiding older private memory. On equal
+  RRF scores, private memory ranks first.
 - Automatic recall retrieves a bounded candidate window, then uses the
-  memory-owned relevance model and prompt budget to admit directly useful
-  memories. An empty result contributes no filler prompt text.
+  memory relevance model and prompt limit to select useful memories. An empty
+  result adds no prompt text.
 - Every completed automatic recall attempt emits an invisible, namespaced
   `memory/memories_recalled` conversation event with the admitted memory IDs
   and best-effort embedding and relevance-model cost, including retrievals that

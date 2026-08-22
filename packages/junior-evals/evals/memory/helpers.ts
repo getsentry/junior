@@ -45,7 +45,7 @@ export async function seedMemory(args: {
     providerTenantId: memoryTeamId,
   });
   if (!identity.userId) {
-    throw new Error("Eval memory actor did not resolve to a canonical user");
+    throw new Error("Eval memory Actor did not resolve to a User");
   }
   const store = createMemoryStore(
     memoryDb(),

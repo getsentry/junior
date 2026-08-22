@@ -48,7 +48,7 @@ export const juniorMemoryMemories = pgTable(
       enum: MEMORY_SOURCE_PLATFORMS,
     }).notNull(),
     sourceKey: text("source_key").notNull(),
-    /** Optional Junior-owned Location identity retained as source provenance. */
+    /** Location where Junior learned the memory, when known. */
     locationId: text("location_id"),
     idempotencyKey: text("idempotency_key"),
     observedAtMs: bigint("observed_at_ms", { mode: "number" }).notNull(),

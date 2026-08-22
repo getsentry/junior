@@ -1,8 +1,7 @@
 /**
- * Authenticated REST resources for viewer-visible memories.
+ * Authenticated REST access to memory.
  *
- * HTTP identity authenticates the request and resolves the linked user that
- * owns private memory.
+ * The signed-in User can read public memory and private memory that they own.
  */
 import { z } from "zod";
 import {
@@ -15,7 +14,7 @@ import type { MemoryDb } from "./store";
 import {
   createViewerMemories,
   InvalidMemoryCursorError,
-  ViewerMemoryNotFoundError,
+  MemoryNotFoundError,
   type ViewerMemory,
 } from "./viewer";
 import { MEMORY_SOURCE_PLATFORMS } from "./types";
@@ -240,7 +239,7 @@ export function createMemoryApi(options: MemoryApiOptions): PluginRouteApp {
         ) {
           return json({ error: "Invalid memory request." }, 400);
         }
-        if (error instanceof ViewerMemoryNotFoundError) {
+        if (error instanceof MemoryNotFoundError) {
           return json({ error: error.message }, 404);
         }
         throw error;

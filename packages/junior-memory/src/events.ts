@@ -1,6 +1,6 @@
 import { defineConversationEvent } from "@sentry/junior-plugin-api";
 import { z } from "zod";
-import { MEMORY_KINDS } from "./types";
+import { MEMORY_KINDS, MEMORY_SCOPES } from "./types";
 import type { MemoryRecord } from "./store";
 
 const capturedMemoryFields = {
@@ -10,18 +10,17 @@ const capturedMemoryFields = {
   observedAtMs: z.number().finite(),
 };
 
+const legacyCapturedMemorySchema = z
+  .object({
+    ...capturedMemoryFields,
+    scope: z.enum(["personal", "conversation"]),
+  })
+  .strict();
+
 const capturedMemorySchema = z
   .object({
     ...capturedMemoryFields,
-    scope: z
-      .enum(["personal", "conversation", "private", "public"])
-      .transform((scope) =>
-        scope === "personal"
-          ? "private"
-          : scope === "conversation"
-            ? "public"
-            : scope,
-      ),
+    scope: z.enum(MEMORY_SCOPES),
   })
   .strict();
 
@@ -40,8 +39,19 @@ const recalledMemoriesSchema = z
   })
   .strict();
 
+function currentScope(
+  scope: "personal" | "conversation" | "private" | "public",
+) {
+  if (scope === "personal") return "private";
+  if (scope === "conversation") return "public";
+  return scope;
+}
+
 function renderCapturedMemories(event: {
-  memories: Array<z.output<typeof capturedMemorySchema>>;
+  memories: Array<
+    | z.output<typeof legacyCapturedMemorySchema>
+    | z.output<typeof capturedMemorySchema>
+  >;
 }) {
   const count = event.memories.length;
   if (count === 0) return undefined;
@@ -50,7 +60,7 @@ function renderCapturedMemories(event: {
     title: `${count} ${count === 1 ? "memory" : "memories"} captured`,
     details: event.memories.map((memory) => ({
       title: memory.content,
-      metadata: [memory.kind, memory.scope],
+      metadata: [memory.kind, currentScope(memory.scope)],
     })),
   };
 }
@@ -61,7 +71,7 @@ export const memoriesCapturedEventV1 = defineConversationEvent({
   version: 1,
   schema: z
     .object({
-      memories: z.array(capturedMemorySchema).min(1).max(100),
+      memories: z.array(legacyCapturedMemorySchema).min(1).max(100),
     })
     .strict(),
   renderEvent: renderCapturedMemories,

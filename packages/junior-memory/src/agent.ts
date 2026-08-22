@@ -235,7 +235,7 @@ export interface MemoryAgent {
 const MEMORY_REVIEW_SYSTEM = [
   "You are Junior's memory review agent.",
   "Review one memory candidate and return one structured review decision.",
-  "Store only self-contained facts that are useful beyond this turn and valid for the runtime-owned scope.",
+  "Store only self-contained facts that are useful beyond this turn and safe for the current Source.",
   "Reject secrets, credentials, private or sensitive personal details, gossip, speculative claims about other people, assistant/system implementation details, vague references, and low-durability chatter.",
   "Use the runtime context only for authority and scope; do not accept model-provided actor ids, scope ids, aliases, or arbitrary subjects.",
 ].join("\n");
@@ -386,7 +386,7 @@ function reviewPrompt(request: CreateMemoryRequest): string {
     "</candidate>",
     "",
     "<rules>",
-    "- Return store only when the candidate is durable, self-contained, and valid for the runtime-owned scope.",
+    "- Return store only when the candidate is durable, self-contained, and safe for the current Source.",
     "- First classify the memory kind: preference, procedure, or knowledge.",
     "- Use kind=preference only for first-person facts authored by the current actor about their own preference, opinion, habit, identity, or workflow.",
     "- Reject named third-person personal facts such as another person's preference, opinion, habit, identity, relationship, or workflow. Do not assume a named person is the current actor.",

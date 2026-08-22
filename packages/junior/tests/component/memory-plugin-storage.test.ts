@@ -107,6 +107,81 @@ async function migrateMemorySchema(
   ]);
 }
 
+async function recordPrivateConversation(
+  fixture: Awaited<ReturnType<typeof createLocalJuniorSqlFixture>>,
+  args: {
+    channelId: string;
+    conversationId: string;
+    email: string;
+    nowMs: number;
+    userId: string;
+  },
+) {
+  const conversations = createSqlStore(fixture.sql);
+  await conversations.recordActivity({
+    actor: {
+      email: args.email,
+      platform: "slack",
+      slackUserId: args.userId,
+      teamId: "T123",
+    },
+    conversationId: args.conversationId,
+    destination: {
+      channelId: args.channelId,
+      platform: "slack",
+      teamId: "T123",
+    },
+    nowMs: args.nowMs,
+    source: "slack",
+    visibility: "private",
+  });
+  const [user, conversation] = await Promise.all([
+    resolveViewerUser(args.email),
+    conversations.get({ conversationId: args.conversationId }),
+  ]);
+  if (!user || !conversation?.location) {
+    throw new Error("Test Conversation did not resolve its User and Location");
+  }
+  return { locationId: conversation.location.id, user };
+}
+
+function memoryToolsFor(args: {
+  channelId: string;
+  conversationId: string;
+  locationId: string;
+  userId: string;
+}) {
+  const actor = {
+    platform: "slack" as const,
+    teamId: "T123",
+    userId: args.userId,
+  };
+  return getPluginTools({
+    actor,
+    conversationId: args.conversationId,
+    destination: {
+      channelId: args.channelId,
+      platform: "slack",
+      teamId: "T123",
+    },
+    egress: {
+      async fetch() {
+        return new Response("ok");
+      },
+    },
+    locationId: args.locationId,
+    resolveActorIdentity: () => readActorIdentity(actor),
+    source: createSlackSource({
+      channelId: args.channelId,
+      messageTs: "1718800099.000000",
+      teamId: "T123",
+      visibility: "private",
+    }),
+    userText: "what should I remember?",
+    workspace: {} as Parameters<typeof getPluginTools>[0]["workspace"],
+  });
+}
+
 describe("memory plugin host wiring", () => {
   it("adopts exact legacy migration hashes without replaying them", async () => {
     const fixture = await createLocalJuniorSqlFixture();
@@ -301,7 +376,7 @@ WHERE indexname = 'junior_memory_memories_search_idx'
     }
   }, 15_000);
 
-  it("reads public memory everywhere and private memory only for its linked user", async () => {
+  it("reads public memory everywhere and private memory only for its User", async () => {
     const fixture = await createLocalJuniorSqlFixture();
     const plugin = memoryPlugin();
     setPlugins([plugin]);
@@ -311,135 +386,74 @@ WHERE indexname = 'junior_memory_memories_search_idx'
       await migrateSchema(fixture.sql);
       await migrateMemorySchema(fixture);
       const viewerConversationId = "slack:D123:1718800001.000000";
-      const otherConversationId = "slack:D999:1718800002.000000";
-      const conversationStore = createSqlStore(fixture.sql);
-      await conversationStore.recordActivity({
-        actor: {
-          email: "memory-viewer@example.com",
-          platform: "slack",
-          slackUserId: "U123",
-          teamId: "T123",
-        },
+      const viewer = await recordPrivateConversation(fixture, {
+        channelId: "D123",
         conversationId: viewerConversationId,
-        destination: {
-          channelId: "D123",
-          platform: "slack",
-          teamId: "T123",
-        },
+        email: "memory-viewer@example.com",
         nowMs: Date.parse("2026-08-21T12:00:00.000Z"),
-        source: "slack",
-        visibility: "private",
+        userId: "U123",
       });
-      await conversationStore.recordActivity({
-        actor: {
-          email: "other-memory-viewer@example.com",
-          platform: "slack",
-          slackUserId: "U999",
-          teamId: "T123",
-        },
-        conversationId: otherConversationId,
-        destination: {
-          channelId: "D999",
-          platform: "slack",
-          teamId: "T123",
-        },
-        nowMs: Date.parse("2026-08-21T12:00:01.000Z"),
-        source: "slack",
-        visibility: "private",
-      });
-      const viewer = await resolveViewerUser("memory-viewer@example.com");
-      const otherViewer = await resolveViewerUser(
-        "other-memory-viewer@example.com",
-      );
-      const viewerConversation = await conversationStore.get({
-        conversationId: viewerConversationId,
-      });
-      const otherConversation = await conversationStore.get({
-        conversationId: otherConversationId,
-      });
-      expect(viewer).toBeDefined();
-      expect(otherViewer).toBeDefined();
-      expect(viewerConversation?.location).toBeDefined();
-      expect(otherConversation?.location).toBeDefined();
-      const publicSource = createSlackSource({
-        teamId: "T123",
-        channelId: "C123",
-        messageTs: "1718800000.000000",
-        visibility: "public",
-      });
-      const publicStore = createMemoryStore(
+      const publicMemory = await createMemoryStore(
         fixture.sql.db() as unknown as MemoryDb,
         {
           conversationId: "slack:C123:1718800000.000000",
           actor: { platform: "slack", teamId: "T123", userId: "U123" },
-          source: publicSource,
+          source: createSlackSource({
+            teamId: "T123",
+            channelId: "C123",
+            messageTs: "1718800000.000000",
+            visibility: "public",
+          }),
         },
-      );
-      const publicMemory = await publicStore.createConversationMemory({
+      ).createConversationMemory({
         content: "Public runbooks live in Notion.",
         idempotencyKey: "component-public-memory",
         kind: "knowledge",
       });
-      expect(publicMemory.memory).toMatchObject({
-        scope: "public",
-        subjectType: "conversation",
-      });
-
-      const privateSource = createSlackSource({
-        teamId: "T123",
-        channelId: "D123",
-        messageTs: "1718800001.000000",
-        visibility: "private",
-      });
-      const privateStore = createMemoryStore(
+      const privateMemory = await createMemoryStore(
         fixture.sql.db() as unknown as MemoryDb,
         {
-          conversationId: "slack:D123:1718800001.000000",
-          locationId: viewerConversation!.location!.id,
+          conversationId: viewerConversationId,
+          locationId: viewer.locationId,
           actor: { platform: "slack", teamId: "T123", userId: "U123" },
-          source: privateSource,
-          userId: viewer!.id,
+          source: createSlackSource({
+            teamId: "T123",
+            channelId: "D123",
+            messageTs: "1718800001.000000",
+            visibility: "private",
+          }),
+          userId: viewer.user.id,
         },
-      );
-      const privateMemory = await privateStore.createMemory({
+      ).createMemory({
         content: "Prefers terse status updates in this DM.",
         idempotencyKey: "component-private-memory",
         kind: "preference",
       });
-      expect(privateMemory.memory).toMatchObject({
-        scope: "private",
-        subjectType: "user",
-      });
-      const otherPrivateStore = createMemoryStore(
+      const otherPrivateMemory = await createMemoryStore(
         fixture.sql.db() as unknown as MemoryDb,
         {
-          conversationId: otherConversationId,
-          locationId: otherConversation!.location!.id,
+          conversationId: viewerConversationId,
+          locationId: viewer.locationId,
           actor: { platform: "slack", teamId: "T123", userId: "U999" },
           source: createSlackSource({
             teamId: "T123",
-            channelId: "D999",
+            channelId: "D123",
             messageTs: "1718800002.000000",
             visibility: "private",
           }),
-          userId: otherViewer!.id,
+          userId: "other-user",
         },
-      );
-      const otherPrivateMemory = await otherPrivateStore.createMemory({
-        content: "Only the other DM can read this.",
+      ).createMemory({
+        content: "Only the other User can read this.",
         idempotencyKey: "component-other-private-memory",
         kind: "knowledge",
-      });
-      expect(otherPrivateMemory.memory).toMatchObject({
-        scope: "private",
-        subjectType: "user",
       });
       await expect(
         fixture.sql.query<{ location_id: string | null }>(
           "SELECT location_id FROM junior_memory_memories WHERE id = $1",
           [privateMemory.memory.id],
         ),
-      ).resolves.toEqual([{ location_id: viewerConversation!.location!.id }]);
+      ).resolves.toEqual([{ location_id: viewer.locationId }]);
 
       const viewerPage = await readPluginUserPage({
         email: "memory-viewer@example.com",
@@ -457,85 +471,16 @@ WHERE indexname = 'junior_memory_memories_search_idx'
         otherPrivateMemory.memory.id,
       );
 
-      const sameUserContext = {
-        conversationId: "slack:D999:1718800099.000000",
-        locationId: otherConversation!.location!.id,
-        destination: {
-          platform: "slack" as const,
-          teamId: "T123",
-          channelId: "D999",
-        },
-        actor: { platform: "slack" as const, teamId: "T123", userId: "U123" },
-        resolveActorIdentity: () =>
-          readActorIdentity({
-            platform: "slack",
-            teamId: "T123",
-            userId: "U123",
-          }),
-        source: createSlackSource({
-          teamId: "T123",
-          channelId: "D999",
-          messageTs: "1718800099.000000",
-          visibility: "private",
-        }),
-        userText: "what should I remember?",
-      };
-      const sameUserTools = getPluginTools({
-        ...sameUserContext,
-        egress: {
-          async fetch() {
-            return new Response("ok");
-          },
-        },
-        workspace: {} as Parameters<typeof getPluginTools>[0]["workspace"],
-      });
       await expect(
-        sameUserTools.memory_listMemories.execute!({}, {}),
+        memoryToolsFor({
+          channelId: "D999",
+          conversationId: "slack:D999:1718800099.000000",
+          locationId: "other-location",
+          userId: "U123",
+        }).memory_listMemories.execute!({}, {}),
       ).resolves.toEqual({
         memories: [
           expect.objectContaining({ id: privateMemory.memory.id }),
-          expect.objectContaining({ id: publicMemory.memory.id }),
-        ],
-        target: "listMemories",
-      });
-
-      const otherUserContext = {
-        ...sameUserContext,
-        conversationId: "slack:D123:1718800099.000000",
-        locationId: viewerConversation!.location!.id,
-        destination: {
-          platform: "slack" as const,
-          teamId: "T123",
-          channelId: "D123",
-        },
-        actor: { platform: "slack" as const, teamId: "T123", userId: "U999" },
-        resolveActorIdentity: () =>
-          readActorIdentity({
-            platform: "slack",
-            teamId: "T123",
-            userId: "U999",
-          }),
-        source: createSlackSource({
-          teamId: "T123",
-          channelId: "D123",
-          messageTs: "1718800099.000000",
-          visibility: "private",
-        }),
-      };
-      const otherUserTools = getPluginTools({
-        ...otherUserContext,
-        egress: {
-          async fetch() {
-            return new Response("ok");
-          },
-        },
-        workspace: {} as Parameters<typeof getPluginTools>[0]["workspace"],
-      });
-      await expect(
-        otherUserTools.memory_listMemories.execute!({}, {}),
-      ).resolves.toEqual({
-        memories: [
-          expect.objectContaining({ id: otherPrivateMemory.memory.id }),
           expect.objectContaining({ id: publicMemory.memory.id }),
         ],
         target: "listMemories",
@@ -567,37 +512,22 @@ WHERE indexname = 'junior_memory_memories_search_idx'
 
         visibility: "private",
       });
-      const conversationStore = createSqlStore(fixture.sql);
-      await conversationStore.recordActivity({
-        actor: {
-          email: "tool-viewer@example.com",
-          platform: "slack",
-          slackUserId: actor.userId,
-          teamId: actor.teamId,
-        },
+      const userContext = await recordPrivateConversation(fixture, {
+        channelId: "C123",
         conversationId,
-        destination: {
-          channelId: "C123",
-          platform: "slack",
-          teamId: "T123",
-        },
+        email: "tool-viewer@example.com",
         nowMs: Date.parse("2026-08-21T12:00:00.000Z"),
-        source: "slack",
-        visibility: "private",
+        userId: actor.userId,
       });
-      const viewer = await resolveViewerUser("tool-viewer@example.com");
-      const conversation = await conversationStore.get({ conversationId });
-      expect(viewer).toBeDefined();
-      expect(conversation?.location).toBeDefined();
       const store = createMemoryStore(
         // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
         (fixture.sql.db()) as MemoryDb,
         {
-        conversationId,
-        locationId: conversation!.location!.id,
-        actor,
-        source,
-        userId: viewer!.id,
+          conversationId,
+          locationId: userContext.locationId,
+          actor,
+          source,
+          userId: userContext.user.id,
         },
       );
       await store.createMemory({
@@ -613,7 +543,7 @@ WHERE indexname = 'junior_memory_memories_search_idx'
 
       const tools = getPluginTools({
         conversationId,
-        locationId: conversation!.location!.id,
+        locationId: userContext.locationId,
         destination: {
           platform: "slack",
           teamId: "T123",

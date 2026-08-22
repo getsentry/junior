@@ -505,7 +505,13 @@ export async function getPluginSystemPromptContributions(
 export async function getPluginUserPromptContributions(args: {
   context: Pick<
     ToolRuntimeContext,
-    "conversationId" | "destination" | "actor" | "source" | "userText"
+    | "conversationId"
+    | "locationId"
+    | "destination"
+    | "actor"
+    | "resolveActorIdentity"
+    | "source"
+    | "userText"
   >;
   turnId?: string;
 }): Promise<PluginPromptContributionContext[]> {

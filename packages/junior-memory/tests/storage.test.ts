@@ -374,7 +374,7 @@ const throwingExtractionModel: PluginModel = {
 
 function slackContext(
   overrides: {
-    canonicalUserId?: string;
+    ownerUserId?: string;
     channelId?: string;
     teamId?: string;
     threadTs?: string;
@@ -402,7 +402,7 @@ function slackContext(
       messageTs: threadTs,
       threadTs,
     }),
-    userId: overrides.canonicalUserId ?? `user:${teamId}:${actorUserId}`,
+    userId: overrides.ownerUserId ?? `user:${teamId}:${actorUserId}`,
   };
 }
 
@@ -1633,7 +1633,7 @@ describe("memory plugin storage", () => {
     }
   });
 
-  it("stores passive extraction in its private Slack domain", async () => {
+  it("stores passive extraction from a private Slack Source for its User", async () => {
     const fixture = await createMemoryFixture();
     const privateContext = slackContext({ channelId: "D123" });
     const { model } = extractionModel([
@@ -1743,7 +1743,7 @@ describe("memory plugin storage", () => {
     }
   });
 
-  it("stores explicit private web memory for its linked user", async () => {
+  it("stores explicit private web memory for its User", async () => {
     const fixture = await createMemoryFixture();
     const runtime = apiContext({
       email: "dashboard@example.com",
@@ -2366,14 +2366,10 @@ describe("memory plugin storage", () => {
         expect.objectContaining({ id: privateMemory.memory.id }),
         expect.objectContaining({ id: publicMemory.memory.id }),
       ]);
-      await expect(publicStore.listPrivateMemories({})).resolves.toEqual([
-        expect.objectContaining({ id: privateMemory.memory.id }),
-      ]);
-
       const sameUserStore = createMemoryStore(
         memoryDb(fixture),
         slackContext({
-          canonicalUserId: privateContext.userId,
+          ownerUserId: privateContext.userId,
           channelId: "D999",
           userId: "U456",
         }),
@@ -2399,7 +2395,7 @@ describe("memory plugin storage", () => {
       const linkedIdentityStore = createMemoryStore(
         memoryDb(fixture),
         slackContext({
-          canonicalUserId: privateContext.userId,
+          ownerUserId: privateContext.userId,
           teamId: "T999",
           userId: "U456",
         }),
@@ -2429,7 +2425,7 @@ describe("memory plugin storage", () => {
     }
   }, 15_000);
 
-  it("serves public memories through the authenticated REST resource", async () => {
+  it("serves public and owned private memory through REST", async () => {
     const fixture = await createMemoryFixture();
     const now = vi.spyOn(Date, "now").mockReturnValue(TEST_NOW_MS);
 
@@ -2437,9 +2433,14 @@ describe("memory plugin storage", () => {
       await installViewerCoreTables(fixture);
       const firstContext = slackContext({ teamId: "T123", userId: "U123" });
       const secondContext = slackContext({ teamId: "T456", userId: "U456" });
-      const hiddenContext = slackContext({ teamId: "T999", userId: "U999" });
+      const hiddenContext = slackContext({
+        channelId: "D999",
+        teamId: "T999",
+        userId: "U999",
+      });
       const privateContext = slackContext({
         channelId: "D777",
+        ownerUserId: "api-viewer",
         teamId: "T123",
         userId: "U123",
       });
@@ -2477,7 +2478,7 @@ describe("memory plugin storage", () => {
         idempotencyKey: "session:api:public",
         kind: "knowledge",
       });
-      await privateStore.createConversationMemory({
+      const privateMemory = await privateStore.createConversationMemory({
         content: "Private conversation memory.",
         idempotencyKey: "session:api:private",
         kind: "knowledge",
@@ -2542,8 +2543,8 @@ describe("memory plugin storage", () => {
       );
       expect(firstPage.memories).toEqual([
         expect.objectContaining({
-          content: "Hidden viewer memory.",
-          id: hidden.memory.id,
+          content: "Private conversation memory.",
+          id: privateMemory.memory.id,
         }),
         expect.objectContaining({
           content: "Deploy runbooks live in Notion.",
@@ -2633,13 +2634,13 @@ describe("memory plugin storage", () => {
       );
       expect(dashboard.stats).toMatchObject({
         active: 4,
-        automatic: 2,
+        automatic: 3,
         explicit: 1,
         knowledge: 3,
-        personal: 0,
+        personal: 1,
         preference: 1,
         procedure: 0,
-        public: 4,
+        public: 3,
       });
       expect(dashboard.days).toHaveLength(90);
       expect(dashboard.extractionDays.at(-1)).toEqual({
@@ -2654,9 +2655,17 @@ describe("memory plugin storage", () => {
       });
       expect(dashboard.days.find((day) => day.date === "2026-06-19")).toEqual({
         date: "2026-06-19",
-        personal: 0,
-        public: 4,
+        personal: 1,
+        public: 3,
       });
+
+      const privateDeleteResponse = await api.fetch(
+        new Request(`http://localhost/memories/${privateMemory.memory.id}`, {
+          method: "DELETE",
+        }),
+        requestContext,
+      );
+      expect(privateDeleteResponse.status).toBe(204);
 
       const deleteResponse = await api.fetch(
         new Request(`http://localhost/memories/${second.memory.id}`, {
@@ -2665,7 +2674,6 @@ describe("memory plugin storage", () => {
         requestContext,
       );
       expect(deleteResponse.status).toBe(404);
-      await expect(secondStore.listPrivateMemories({})).resolves.toEqual([]);
 
       const hiddenDeleteResponse = await api.fetch(
         new Request(`http://localhost/memories/${hidden.memory.id}`, {
@@ -2674,7 +2682,6 @@ describe("memory plugin storage", () => {
         requestContext,
       );
       expect(hiddenDeleteResponse.status).toBe(404);
-      await expect(hiddenStore.listPrivateMemories({})).resolves.toEqual([]);
     } finally {
       now.mockRestore();
       await fixture.close();
@@ -2981,7 +2988,7 @@ WHERE id = '${superseded.memory.id}'
 
       nowMs = TEST_NOW_MS + 200;
       // Public lexical recall alone would keep only the newest noise. The
-      // private-scope probe must still surface the older domain preference.
+      // The separate private search must still find the older preference.
       await expect(
         privateStore.recallMemories({ limit: 5, query }),
       ).resolves.toEqual(
@@ -4338,7 +4345,7 @@ WHERE id = '${superseded.memory.id}'
     }
   }, 15_000);
 
-  it("keeps private local memory with its canonical user", async () => {
+  it("keeps private local memory with its User", async () => {
     const fixture = await createMemoryFixture();
 
     try {
