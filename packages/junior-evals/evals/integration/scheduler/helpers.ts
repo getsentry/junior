@@ -1,11 +1,8 @@
 import { toolCalls } from "vitest-evals";
 import { getDb } from "@/chat/db";
 import { createSlackDestination } from "@/chat/destination";
-import {
-  createSchedulerSqlStore,
-  type SchedulerDb,
-  type ScheduledTask,
-} from "@/chat/scheduled-tasks";
+import { saveScheduledTask } from "@/chat/scheduled-tasks/tasks";
+import type { ScheduledTask } from "@/chat/scheduled-tasks/types";
 
 interface ScheduledTaskThread {
   channel_id: string;
@@ -56,9 +53,7 @@ export async function seedScheduledTask(args: {
     task: { text: args.taskText },
     updatedAtMs: nowMs - 60_000,
   };
-  await createSchedulerSqlStore(getDb() as unknown as SchedulerDb).saveTask(
-    task,
-  );
+  await saveScheduledTask(getDb(), task);
 }
 
 export function scheduledTaskCreateCalls(

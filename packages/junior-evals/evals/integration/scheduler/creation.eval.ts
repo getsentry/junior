@@ -1,10 +1,7 @@
 import { describeEval } from "vitest-evals";
 import { expect } from "vitest";
 import { getDb } from "@/chat/db";
-import {
-  createSchedulerSqlStore,
-  type SchedulerDb,
-} from "@/chat/scheduled-tasks";
+import { listScheduledTasksForTeam } from "@/chat/scheduled-tasks/tasks";
 import { mention, rubric, slackEvals } from "../../../src/helpers";
 import { scheduledTaskCreateCalls } from "./helpers";
 
@@ -127,11 +124,9 @@ describeEval("Schedule Creation", slackEvals, (it) => {
         weekdays: ["monday"],
       },
     });
-    const stored = (
-      await createSchedulerSqlStore(
-        getDb() as unknown as SchedulerDb,
-      ).listTasksForTeam("TEVAL")
-    ).find((task) => task.task.text.toLowerCase().includes("scheduler"));
+    const stored = (await listScheduledTasksForTeam(getDb(), "TEVAL")).find(
+      (task) => task.task.text.toLowerCase().includes("scheduler"),
+    );
     expect(stored).toMatchObject({
       destination: {
         platform: "slack",

@@ -44,7 +44,7 @@ import {
   processPluginTask,
   scheduleSessionCompletedPluginTasks,
 } from "@/chat/plugins/task-runner";
-import type { PluginTaskQueueMessage } from "@/chat/plugins/task-message";
+import type { PluginTaskQueueMessage } from "@/chat/plugins/task-queue";
 import { buildSlackInboundMessage } from "@/chat/task-execution/slack-work";
 import { appendAndEnqueueInboundMessage } from "@/chat/task-execution/store";
 import { deleteConversationState } from "@/chat/task-execution/state";
@@ -60,11 +60,12 @@ import { runNextPausedTurn } from "@/chat/task-execution/paused-turn";
 import { wakePausedTurn } from "@/chat/task-execution/turn-wake";
 import { ACTIVE_TURN_COMPACTION_SUMMARY_PREFIX } from "@/chat/services/context-compaction-marker";
 import { TURN_CONTEXT_TAG } from "@/chat/turn-context-tag";
+import { listIncompleteScheduledRuns } from "@/chat/scheduled-tasks/runs";
 import {
-  createSchedulerSqlStore,
-  type ScheduledTask,
-  type SchedulerDb,
-} from "@/chat/scheduled-tasks";
+  readScheduledTask,
+  saveScheduledTask,
+} from "@/chat/scheduled-tasks/tasks";
+import type { ScheduledTask } from "@/chat/scheduled-tasks/types";
 import { githubPlugin } from "@sentry/junior-github";
 import { memoryPlugin } from "@sentry/junior-memory";
 import { sentryPlugin } from "@sentry/junior-sentry";
@@ -1779,9 +1780,7 @@ function buildRuntimeServices(
                 content: [
                   {
                     type: "text",
-                    text: renderCurrentInstruction(
-                      runRequest.instruction.text,
-                    ),
+                    text: renderCurrentInstruction(runRequest.instruction.text),
                   },
                 ],
                 timestamp: nowMs + 1,
@@ -1983,8 +1982,7 @@ function buildRuntimeServices(
                     }
                     const result = event.report;
                     const pendingIndex = pendingToolInvocations.findIndex(
-                      (candidate) =>
-                        candidate.toolCallId === result.toolCallId,
+                      (candidate) => candidate.toolCallId === result.toolCallId,
                     );
                     if (pendingIndex === -1) {
                       return;
@@ -2338,24 +2336,20 @@ async function processEvents(args: {
       task: { text: event.task_text },
       updatedAtMs: nowMs - 60_000,
     };
-    const schedulerStore = createSchedulerSqlStore(
-      getDb() as unknown as SchedulerDb,
-    );
-    await schedulerStore.saveTask(task);
+    const db = getDb();
+    await saveScheduledTask(db, task);
 
     await runScheduledTaskHeartbeat({
       conversationWorkQueue,
       nowMs,
     });
 
-    const dispatchedRuns = (await schedulerStore.listIncompleteRuns()).filter(
-      (run) => run.taskId === taskId && run.dispatchId,
+    const runs = (await listIncompleteScheduledRuns(db)).filter(
+      (run) => run.taskId === taskId,
     );
+    const dispatchedRuns = runs.filter((run) => run.dispatchId);
     if (dispatchedRuns.length === 0) {
-      const runs = (await schedulerStore.listIncompleteRuns()).filter(
-        (run) => run.taskId === taskId,
-      );
-      const savedTask = await schedulerStore.getTask(taskId);
+      const savedTask = await readScheduledTask(db, taskId);
       throw new Error(
         `Scheduled eval task did not create a dispatch: ${JSON.stringify({ runs, savedTask })}`,
       );

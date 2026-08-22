@@ -1,12 +1,13 @@
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { z } from "zod";
+import { getDb } from "@/chat/db";
+import { saveScheduledTask } from "../tasks";
 import type { ScheduledTask } from "../types";
 import {
   compactTask,
   getWritableTask,
   scheduleTaskToolResult,
   scheduleTaskToolResultSchema,
-  schedulerStore,
   type SchedulerToolContext,
 } from "../tool-support";
 
@@ -45,7 +46,7 @@ export function createSlackScheduleDeleteTaskTool(
         runNowAtMs: undefined,
       };
 
-      await schedulerStore(context).saveTask(next);
+      await saveScheduledTask(getDb(), next);
       return scheduleTaskToolResult(
         "slackScheduleDeleteTask",
         compactTask(next),

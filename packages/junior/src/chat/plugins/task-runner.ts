@@ -47,10 +47,10 @@ import { getPlugins } from "./agent-hooks";
 import {
   pluginTaskId,
   pluginTaskParamsSchema,
+  sendVercelPluginTask,
   type PluginTaskParams,
   type PluginTaskQueueMessage,
-} from "./task-message";
-import { sendVercelPluginTask } from "./task-queue";
+} from "./task-queue";
 import { getStateAdapter } from "@/chat/state/adapter";
 import type { Lock } from "chat";
 

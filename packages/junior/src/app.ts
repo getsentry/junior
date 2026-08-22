@@ -79,7 +79,7 @@ import { bindSpawnAgent } from "@/chat/agent-invocations/spawn";
 import {
   createVercelPluginTaskCallback,
   registerVercelPluginTaskDevConsumer,
-} from "@/chat/plugins/task-callback";
+} from "@/chat/plugins/task-queue";
 import {
   createVercelWorkspaceSnapshotJobCallback,
   registerVercelWorkspaceSnapshotJobDevConsumer,

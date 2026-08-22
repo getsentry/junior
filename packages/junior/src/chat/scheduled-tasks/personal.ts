@@ -1,7 +1,15 @@
 /** Viewer-scoped scheduled-task queries and mutations. */
 import type { User } from "@sentry/junior-plugin-api";
+import { and, desc, eq, inArray, lt, notInArray, or, sql } from "drizzle-orm";
 import { z } from "zod";
-import type { SchedulerStore } from "./store";
+import type { JuniorDatabase } from "@/db/db";
+import { juniorSchedulerTasks } from "@/db/schema/scheduled-tasks";
+import {
+  isListedScheduledTask,
+  parseScheduledTaskRow,
+  readScheduledTask,
+  saveScheduledTask,
+} from "./tasks";
 import type { ScheduledTask } from "./types";
 
 const cursorSchema = z
@@ -12,11 +20,6 @@ const cursorSchema = z
     version: z.literal(1),
   })
   .strict();
-
-type PersonalScheduledTaskStore = Pick<
-  SchedulerStore,
-  "getTask" | "listTasksCreatedBy" | "saveTask"
->;
 
 export interface ViewerScheduledTaskPage {
   nextCursor?: string;
@@ -77,50 +80,97 @@ function encodeCursor(
   ).toString("base64url");
 }
 
-/** Build scheduled-task operations limited to tasks created by one user. */
-export function createViewerScheduledTasks(
-  store: PersonalScheduledTaskStore,
+/** Delete one scheduled task created by the viewer. */
+export async function deleteViewerScheduledTask(
+  db: JuniorDatabase,
   user: User,
-) {
+  id: string,
+  nowMs = Date.now(),
+): Promise<void> {
   const identityIds = new Set(user.identities.map((identity) => identity.id));
+  const task = await readScheduledTask(db, id);
+  if (
+    !task ||
+    task.status === "deleted" ||
+    !identityIds.has(task.creatorIdentityId)
+  ) {
+    throw new PersonalScheduledTaskNotFoundError();
+  }
+  await saveScheduledTask(db, {
+    ...task,
+    nextRunAtMs: undefined,
+    runNowAtMs: undefined,
+    status: "deleted",
+    updatedAtMs: nowMs,
+  });
+}
 
+/** List scheduled tasks created by the viewer with a stable SQL cursor. */
+export async function listViewerScheduledTasks(
+  db: JuniorDatabase,
+  user: User,
+  input: ViewerScheduledTaskPageInput,
+): Promise<ViewerScheduledTaskPage> {
+  const identityIds = user.identities.map((identity) => identity.id);
+  if (identityIds.length === 0) return { tasks: [] };
+  const query = normalizeQuery(input.query);
+  const cursor = decodeCursor(input.cursor, query);
+  const tasks: ScheduledTask[] = [];
+  let before = cursor;
+  const fetchLimit = input.limit + 1;
+  while (tasks.length < fetchLimit) {
+    const cursorFilter = before
+      ? or(
+          lt(juniorSchedulerTasks.createdAtMs, before.createdAtMs),
+          and(
+            eq(juniorSchedulerTasks.createdAtMs, before.createdAtMs),
+            lt(juniorSchedulerTasks.id, before.id),
+          ),
+        )
+      : undefined;
+    const search = query
+      ? or(
+          sql<boolean>`strpos(lower(${juniorSchedulerTasks.title}), ${query}) > 0`,
+          sql<boolean>`strpos(lower(${juniorSchedulerTasks.record}->'task'->>'text'), ${query}) > 0`,
+          sql<boolean>`strpos(lower(${juniorSchedulerTasks.record}->'schedule'->>'description'), ${query}) > 0`,
+          sql<boolean>`strpos(lower(${juniorSchedulerTasks.record}->'schedule'->>'timezone'), ${query}) > 0`,
+          sql<boolean>`strpos(lower(${juniorSchedulerTasks.status}), ${query}) > 0`,
+        )
+      : undefined;
+    const rows = await db
+      .select({
+        createdAtMs: juniorSchedulerTasks.createdAtMs,
+        creatorIdentityId: juniorSchedulerTasks.creatorIdentityId,
+        id: juniorSchedulerTasks.id,
+        record: juniorSchedulerTasks.record,
+        title: juniorSchedulerTasks.title,
+      })
+      .from(juniorSchedulerTasks)
+      .where(
+        and(
+          notInArray(juniorSchedulerTasks.status, ["deleted", "paused"]),
+          inArray(juniorSchedulerTasks.creatorIdentityId, identityIds),
+          cursorFilter,
+          search,
+        ),
+      )
+      .orderBy(
+        desc(juniorSchedulerTasks.createdAtMs),
+        desc(juniorSchedulerTasks.id),
+      )
+      .limit(fetchLimit);
+    tasks.push(
+      ...rows.map(parseScheduledTaskRow).filter(isListedScheduledTask),
+    );
+    if (rows.length < fetchLimit) break;
+    const last = rows.at(-1)!;
+    before = { createdAtMs: last.createdAtMs, id: last.id };
+  }
+  const page = tasks.slice(0, input.limit);
   return {
-    async delete(id: string, nowMs = Date.now()): Promise<void> {
-      const task = await store.getTask(id);
-      if (
-        !task ||
-        task.status === "deleted" ||
-        !identityIds.has(task.creatorIdentityId)
-      ) {
-        throw new PersonalScheduledTaskNotFoundError();
-      }
-      await store.saveTask({
-        ...task,
-        nextRunAtMs: undefined,
-        runNowAtMs: undefined,
-        status: "deleted",
-        updatedAtMs: nowMs,
-      });
-    },
-
-    async list(
-      input: ViewerScheduledTaskPageInput,
-    ): Promise<ViewerScheduledTaskPage> {
-      const query = normalizeQuery(input.query);
-      const cursor = decodeCursor(input.cursor, query);
-      const matching = await store.listTasksCreatedBy({
-        ...(cursor ? { before: cursor } : {}),
-        identityIds: [...identityIds],
-        limit: input.limit + 1,
-        ...(query ? { query } : {}),
-      });
-      const tasks = matching.slice(0, input.limit);
-      return {
-        tasks,
-        ...(matching.length > input.limit && tasks.length > 0
-          ? { nextCursor: encodeCursor(tasks.at(-1)!, query) }
-          : {}),
-      };
-    },
+    tasks: page,
+    ...(tasks.length > input.limit && page.length > 0
+      ? { nextCursor: encodeCursor(page.at(-1)!, query) }
+      : {}),
   };
 }

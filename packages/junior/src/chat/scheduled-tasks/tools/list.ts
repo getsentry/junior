@@ -4,6 +4,8 @@ import {
 } from "@/chat/slack/id-param";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { z } from "zod";
+import { getDb } from "@/chat/db";
+import { listScheduledTasksForTeam } from "../tasks";
 import type { ScheduledTask } from "../types";
 import {
   compactTask,
@@ -13,7 +15,6 @@ import {
   sameDestination,
   scheduleListToolResult,
   scheduleListToolResultSchema,
-  schedulerStore,
   throwToolInputError,
   type SchedulerToolContext,
 } from "../tool-support";
@@ -81,7 +82,7 @@ export function createSlackScheduleListTasksTool(
         (channelId !== undefined && channelId !== destination.channelId);
 
       const matching = (
-        await schedulerStore(context).listTasksForTeam(destination.teamId)
+        await listScheduledTasksForTeam(getDb(), destination.teamId)
       )
         .filter((task) => {
           if (task.destination.platform !== "slack") return false;
