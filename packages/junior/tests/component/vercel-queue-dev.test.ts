@@ -39,10 +39,10 @@ describe("plugin task Vercel queue integration", () => {
       processPluginTask,
     }));
 
-    const { createVercelPluginTaskCallback } =
-      await import("@/chat/plugins/task-callback");
-    const { signPluginTaskQueueMessage } =
-      await import("@/chat/plugins/task-signing");
+    const {
+      createVercelPluginTaskCallback,
+      signPluginTaskQueueMessage,
+    } = await import("@/chat/plugins/task-queue");
 
     expect(createVercelPluginTaskCallback()).toBe(routeHandler);
 

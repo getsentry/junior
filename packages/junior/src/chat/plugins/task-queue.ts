@@ -1,31 +1,65 @@
 /**
- * Vercel Queue wakeup transport for plugin background tasks.
+ * Plugin background task queue.
  *
- * Vercel Queues own pending delivery; plugins receive only the task context
- * after the callback parses the bounded task request.
+ * The message is the work unit. Vercel Queue delivers it. The runner owns the
+ * actual plugin work.
  */
-import { createVercelQueueClient } from "@/chat/vercel-queue-client";
-import { pluginTaskId, type PluginTaskQueueMessage } from "./task-message";
+import { queueJob } from "@/chat/queue/job";
 import {
-  PLUGIN_TASK_QUEUE_SIGNATURE_MAX_SKEW_MS,
-  signPluginTaskQueueMessage,
-} from "./task-signing";
+  pluginTaskId,
+  pluginTaskQueueMessageSchema,
+  type PluginTaskQueueMessage,
+} from "./task-message";
 
 export const PLUGIN_TASK_QUEUE_TOPIC = "junior_plugin_tasks";
-export const PLUGIN_TASK_QUEUE_RETENTION_SECONDS =
-  PLUGIN_TASK_QUEUE_SIGNATURE_MAX_SKEW_MS / 1000;
 
-/** Send one plugin task wakeup through Vercel Queues. */
+export const pluginTasks = queueJob({
+  topic: PLUGIN_TASK_QUEUE_TOPIC,
+  consumerGroup: "junior_plugin_tasks_dev",
+  maxDeliveries: 5,
+  schema: pluginTaskQueueMessageSchema,
+  context: "junior.plugin_task_queue.v1",
+  version: "v1",
+  parts: (message) => [
+    message.plugin,
+    message.name,
+    message.params.conversationId,
+    message.params.sessionId,
+  ],
+  id: pluginTaskId,
+  rejectedLog: "plugin.task.queue_message.rejected",
+  // Load the runner on first use so this module can send without a cycle.
+  run: async (message) => {
+    const { processPluginTask } = await import("./task-runner");
+    await processPluginTask(message);
+  },
+});
+
+/** Send one plugin task through Vercel Queue. */
 export async function sendVercelPluginTask(
   message: PluginTaskQueueMessage,
 ): Promise<void> {
-  const client = createVercelQueueClient();
-  await client.send(
-    PLUGIN_TASK_QUEUE_TOPIC,
-    signPluginTaskQueueMessage(message),
-    {
-      idempotencyKey: pluginTaskId(message),
-      retentionSeconds: PLUGIN_TASK_QUEUE_RETENTION_SECONDS,
-    },
-  );
+  await pluginTasks.send(message);
+}
+
+/** Sign a plugin task message for tests and local checks. */
+export function signPluginTaskQueueMessage(
+  message: PluginTaskQueueMessage,
+  nowMs = Date.now(),
+) {
+  return pluginTasks.sign(message, nowMs);
+}
+
+/** Create the HTTP callback for plugin tasks. */
+export function createVercelPluginTaskCallback(): (
+  request: Request,
+) => Promise<Response> {
+  return pluginTasks.handle();
+}
+
+/** Register the local-dev consumer for plugin tasks. */
+export function registerVercelPluginTaskDevConsumer():
+  | (() => void)
+  | undefined {
+  return pluginTasks.registerDev();
 }
