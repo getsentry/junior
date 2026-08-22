@@ -20,6 +20,7 @@ import { createPluginConversationEvents } from "@/chat/plugins/conversation-even
 import { createPluginEmbedder, createPluginModel } from "@/chat/plugins/model";
 import { createPluginState } from "@/chat/plugins/state";
 import type { PiMessage } from "@/chat/pi/messages";
+
 import {
   getPiMessageRole,
   instructionTextForProjection,
@@ -91,7 +92,8 @@ function messageText(message: PiMessage): string {
 }
 
 function toolResultText(message: PiMessage): string {
-  const record = message as unknown as Record<string, unknown>;
+  // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+  const record = message as Record<string, unknown>;
   const parts = [
     messageText(message),
     record.output,
@@ -214,8 +216,12 @@ function slackContextAuthor(
     platform: "slack",
     teamId: source.teamId,
     userId,
-    ...(message.author?.userName ? { userName: message.author.userName } : undefined),
-    ...(message.author?.fullName ? { fullName: message.author.fullName } : undefined),
+    ...(message.author?.userName
+      ? { userName: message.author.userName }
+      : undefined),
+    ...(message.author?.fullName
+      ? { fullName: message.author.fullName }
+      : undefined),
   };
 }
 

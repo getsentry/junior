@@ -1,10 +1,14 @@
 import {
+  type Identity,
+  type User,
+  type Actor,
+  type PluginLogger,
+  type PluginEgress,
   definePluginTool,
   PluginToolInputError,
   pluginToolOutputSchema,
   type PluginToolOutput,
   type SubscribableResource,
-  type ToolRegistrationHookContext,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import { subscribableResourceSchema } from "@sentry/junior-plugin-api";
@@ -105,9 +109,17 @@ function githubApiErrorMessage(payload: unknown): string {
 }
 
 /** Update mutable PR metadata while preserving Junior-owned body attribution. */
-export function createGitHubUpdatePullRequestTool(
-  ctx: ToolRegistrationHookContext,
-) {
+export function createGitHubUpdatePullRequestTool(ctx: {
+  actor?: Actor;
+  conversationId?: string;
+  egress: PluginEgress;
+  log: PluginLogger;
+  resourceEvents: { canSubscribe: boolean };
+  slack?: { conversationLink?: { url?: string } };
+  users: {
+    resolveActor(): Promise<{ identity?: Identity; user?: User } | undefined>;
+  };
+}) {
   return definePluginTool({
     annotations: {
       destructiveHint: true,

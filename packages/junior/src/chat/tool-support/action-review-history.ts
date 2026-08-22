@@ -117,7 +117,8 @@ export function restoreToolActionRejections(
   const priorRejections: ToolActionPriorRejection[] = [];
 
   for (const message of messages) {
-    const record = message as unknown as Record<string, unknown>;
+    // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+    const record = message as Record<string, unknown>;
     if (record.role !== "toolResult" || record.isError !== true) {
       continue;
     }

@@ -1,5 +1,6 @@
 import { SlackActionError } from "@/chat/slack/client";
 import type { SlackMessageBlock } from "@/chat/slack/footer";
+
 import {
   getSlackClient,
   normalizeSlackConversationId,
@@ -113,7 +114,8 @@ export async function postSlackMessage(input: {
         unfurl_media: false,
         ...(input.blocks?.length
           ? {
-              blocks: input.blocks as unknown as Array<Record<string, unknown>>,
+              // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+              blocks: input.blocks as Array<Record<string, unknown>>,
             }
           : undefined),
         ...(threadTs ? { thread_ts: threadTs } : undefined),

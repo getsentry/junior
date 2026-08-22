@@ -1,14 +1,11 @@
-import {
-  PluginToolInputError,
-  type ToolRegistrationHookContext,
-} from "@sentry/junior-plugin-api";
+import { PluginToolInputError } from "@sentry/junior-plugin-api";
 import { describe, expect, it, vi } from "vitest";
 import { createGitHubCloneRepositoryTool } from "../src/tools/clone-repository.js";
 
 function context(
   run: ReturnType<typeof vi.fn>,
   findByRepository = vi.fn().mockResolvedValue([]),
-): ToolRegistrationHookContext {
+) {
   return {
     log: { error: vi.fn(), info: vi.fn(), warn: vi.fn() },
     sandbox: {
@@ -19,7 +16,7 @@ function context(
       writeFile: vi.fn(),
     },
     workspaces: { findByRepository },
-  } as unknown as ToolRegistrationHookContext;
+  };
 }
 
 describe("cloneRepository", () => {

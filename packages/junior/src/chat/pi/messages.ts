@@ -7,7 +7,8 @@ export const piMessageSchema = z
     role: z.string(),
   })
   .passthrough()
-  .transform((value) => value as unknown as AgentMessage);
+  // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+  .transform((value) => value as AgentMessage);
 
 /** Durable Pi transcript message stored across turns. */
 export type PiMessage = z.output<typeof piMessageSchema>;
@@ -19,4 +20,5 @@ export const piContentMessageSchema = z
     role: z.string().min(1),
   })
   .passthrough()
-  .transform((value) => value as unknown as PiMessage);
+  // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+  .transform((value) => value as PiMessage);

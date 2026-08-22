@@ -1,7 +1,5 @@
-import type { ToolRegistrationHookContext } from "@sentry/junior-plugin-api";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createGitHubUpdateIssueTool } from "../src/tools/update-issue";
-
 const ORIGINAL_WEBHOOK_SECRET = process.env.GITHUB_WEBHOOK_SECRET;
 
 function toolContext(response?: Response) {
@@ -28,6 +26,7 @@ function toolContext(response?: Response) {
     },
     conversationId: "slack:C123:123.456",
     egress: { fetch },
+    log: { error: vi.fn(), info: vi.fn(), warn: vi.fn() },
     resourceEvents: { canSubscribe: true },
     slack: {
       conversationLink: { url: "https://example.com/session" },
@@ -35,7 +34,7 @@ function toolContext(response?: Response) {
     users: {
       resolveActor: async () => undefined,
     },
-  } as unknown as ToolRegistrationHookContext;
+  };
   return { fetch, tool: createGitHubUpdateIssueTool(ctx) };
 }
 
