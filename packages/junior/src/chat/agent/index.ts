@@ -421,7 +421,6 @@ async function executeAgentRunInPrivacyContext(
     const projection = await openConversationProjection({ conversationId });
     activeModelProfile = projection.modelProfile;
     activeModelId = modelIdForProfile(botConfig, activeModelProfile);
-    let durableModelProfile = projection.modelProfile;
     shouldTrace = shouldEmitDevAgentTrace();
     const spanContext: LogContext = { modelId: activeModelId };
 
@@ -737,7 +736,7 @@ async function executeAgentRunInPrivacyContext(
       sourceMessages: PiMessage[];
       triggeringToolCallId?: string;
     }) => {
-      if (args.profile === durableModelProfile) {
+      if (args.profile === activeModelProfile) {
         return;
       }
       const runtimeContext = retainRuntimeTurnContext(
@@ -782,7 +781,6 @@ async function executeAgentRunInPrivacyContext(
           completeText: (args) => completeText(args),
         },
       );
-      durableModelProfile = args.profile;
       if (handoffReasoningLevel !== turnRoute!.reasoningLevel) {
         turnRoute = {
           ...turnRoute!,

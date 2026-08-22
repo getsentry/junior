@@ -422,6 +422,40 @@ describe("model handoff composition", () => {
     ).toEqual([]);
   });
 
+  it("can hand off from a routed profile to the durable default", async () => {
+    observations.routedModelProfile = "handoff";
+    observations.requestedProfile = "standard";
+    observations.requestHandoffAfterRouting = true;
+    const conversationId = "local:test:routed-model-handoff-default";
+
+    const outcome = await executeAgentRun({
+      conversationId,
+      runId: "run-routed-model-handoff-default",
+      turnId: "turn-routed-model-handoff-default",
+      instruction: { text: "Return to the default profile." },
+      destination: { platform: "local", conversationId },
+      source: createLocalSource(conversationId),
+    });
+
+    expect(outcome.status).toBe("completed");
+    if (outcome.status !== "completed") return;
+    expect(observations.providerCalls).toBe(2);
+    expect(observations.summaryCalls).toBe(1);
+    expect(observations.initialModelId).toBe("openai/gpt-5.6-sol");
+    expect(observations.afterHandoffModelId).toBe("xai/grok-4.5");
+    expect(
+      (await getConversationEventStore().loadHistory(conversationId))
+        .map((event) => event.data)
+        .filter((event) => event.type === "handoff"),
+    ).toEqual([
+      expect.objectContaining({
+        type: "handoff",
+        modelProfile: "standard",
+        modelId: "xai/grok-4.5",
+      }),
+    ]);
+  });
+
   it("can hand off twice when the second target was initially active", async () => {
     observations.routedModelProfile = "handoff";
     observations.requestedProfileSequence = ["coding", "handoff"];
