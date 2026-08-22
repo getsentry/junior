@@ -4,6 +4,7 @@ import { mention, rubric, slackEvals } from "../../src/helpers";
 import {
   clearMemories,
   memoryPluginOverrides,
+  type MemoryThread,
   readActiveMemories,
   readMemories,
   seedMemory,
@@ -12,9 +13,10 @@ import {
 describeEval("Memory Management", slackEvals, (it) => {
   const autoRecallThread = {
     id: "thread-memory-auto-recall",
+    channel_type: "channel",
     channel_id: "CMEMORYAUTORECALL",
     thread_ts: "17000000.000009",
-  };
+  } satisfies MemoryThread;
 
   it("automatically injects relevant memories without requiring a recall tool", async ({
     run,
@@ -57,9 +59,10 @@ describeEval("Memory Management", slackEvals, (it) => {
 
   const passiveDedupeThread = {
     id: "thread-memory-passive-dedupe",
+    channel_type: "channel",
     channel_id: "CMEMORYPASSIVEDEDUPE",
     thread_ts: "17000000.000010",
-  };
+  } satisfies MemoryThread;
 
   it("does not passively duplicate an existing semantic memory", async ({
     run,

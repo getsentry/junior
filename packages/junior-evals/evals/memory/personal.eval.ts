@@ -17,9 +17,10 @@ import {
 describeEval("Personal Memory", slackEvals, (it) => {
   const explicitRememberThread = {
     id: "thread-memory-explicit-remember",
+    channel_type: "channel",
     channel_id: "CMEMORYEXPLICIT",
     thread_ts: "17000000.000001",
-  };
+  } satisfies MemoryThread;
 
   it("when explicitly asked to remember a public first-person preference, store one personal memory", async ({
     run,
@@ -162,9 +163,10 @@ describeEval("Personal Memory", slackEvals, (it) => {
 
   const firstPersonRewrittenThread = {
     id: "thread-memory-first-person-rewritten",
+    channel_type: "channel",
     channel_id: "CMEMORYFIRSTPERSON",
     thread_ts: "17000000.000002",
-  };
+  } satisfies MemoryThread;
 
   it("when the actor states a first-person opinion, store it even if candidate wording is rewritten", async ({
     run,
@@ -215,9 +217,10 @@ describeEval("Personal Memory", slackEvals, (it) => {
 
   const explicitDuplicateThread = {
     id: "thread-memory-explicit-duplicate",
+    channel_type: "channel",
     channel_id: "CMEMORYEXPLICITDUPLICATE",
     thread_ts: "17000000.000004",
-  };
+  } satisfies MemoryThread;
 
   it("when explicitly asked to remember an existing preference, acknowledge the existing memory", async ({
     run,
