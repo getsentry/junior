@@ -431,7 +431,7 @@ export function createSandboxRuntime(
             throw rebuildError;
           }
           await ensureWorkspaceSnapshotBuild({ workspace: params.workspace });
-          throw error;
+          throw rebuildError;
         }
       } else {
         rebuilt = await resolveSnapshot({

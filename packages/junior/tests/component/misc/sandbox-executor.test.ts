@@ -172,7 +172,10 @@ import {
   setSandboxEgressPermissionDeniedSignal,
 } from "@/chat/sandbox/egress/session";
 import { createSandboxRuntime } from "@/chat/sandbox/session";
-import { WorkspaceSnapshotNotReadyError } from "@/chat/sandbox/snapshot/not-ready-error";
+import {
+  isWorkspaceSnapshotNotReadyError,
+  WorkspaceSnapshotNotReadyError,
+} from "@/chat/sandbox/snapshot/not-ready-error";
 import { createSandboxSession } from "@/chat/sandbox/workspace";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
@@ -2918,7 +2921,9 @@ describe("createTestSandbox", () => {
       referenceFiles: [],
     });
 
-    await expect(runtime.acquire()).rejects.toThrow("sandbox setup failed");
+    await expect(runtime.acquire()).rejects.toSatisfy(
+      isWorkspaceSnapshotNotReadyError,
+    );
 
     expect(getReadyWorkspaceMock).toHaveBeenCalledTimes(2);
     expect(getReadyWorkspaceMock).toHaveBeenNthCalledWith(
