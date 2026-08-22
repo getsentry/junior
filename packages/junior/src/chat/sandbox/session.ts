@@ -19,6 +19,8 @@ import {
 import { buildNonInteractiveShellScript } from "@/chat/sandbox/noninteractive-command";
 import { prepareWorkspaceSnapshot } from "@/chat/sandbox/prepare-workspace";
 import { getSandboxResources } from "@/chat/sandbox/resources";
+import { ensureWorkspaceSnapshotBuild } from "@/chat/sandbox/snapshot/job-runner";
+import { isWorkspaceSnapshotNotReadyError } from "@/chat/sandbox/snapshot/not-ready-error";
 import { hash as profileHash } from "@/chat/sandbox/snapshot/profile";
 import { SANDBOX_RUNTIME } from "@/chat/sandbox/snapshot/runtime";
 import { setSnapshotSpanAttributes } from "@/chat/sandbox/snapshot/span";
@@ -27,7 +29,7 @@ import {
   resolve as resolveSnapshot,
   type Snapshot,
 } from "@/chat/sandbox/snapshot/resolve";
-import { resolveWorkspaceSnapshot } from "@/chat/sandbox/snapshot/workspace";
+import { requireReadyWorkspaceSnapshot } from "@/chat/sandbox/snapshot/workspace";
 import { syncSkillsToSandbox } from "@/chat/sandbox/skill-sync";
 import {
   createSandboxSession,
@@ -126,8 +128,6 @@ interface SandboxRuntimeOptions {
   skills: SkillMetadata[];
   referenceFiles: string[];
   timeoutMs?: number;
-  /** Durable-worker soft yield for long Workspace snapshot waits. */
-  shouldYield?: () => boolean;
   traceContext?: LogContext;
   commandEnv?: () => Promise<Record<string, string>>;
   createNetworkPolicy?: (
@@ -377,6 +377,20 @@ export function createSandboxRuntime(
     throw new Error(`Failed to boot sandbox from snapshot ${snapshotId}`);
   };
 
+  const requireWorkspaceSnapshot = async (params: {
+    workspace: Workspace;
+    runtime: string;
+    staleSnapshotId?: string;
+  }): Promise<Snapshot> => {
+    try {
+      return await requireReadyWorkspaceSnapshot(params);
+    } catch (error) {
+      if (!isWorkspaceSnapshotNotReadyError(error)) throw error;
+      await ensureWorkspaceSnapshotBuild({ workspace: params.workspace });
+      throw error;
+    }
+  };
+
   const createSandboxFromResolvedSnapshot = async (params: {
     runtime: string;
     snapshot: Snapshot;
@@ -418,25 +432,23 @@ export function createSandboxRuntime(
     } catch (error) {
       if (!isMissingError(error)) throw error;
       setSpanAttributes({ "app.sandbox.snapshot.rebuild_after_missing": true });
-      const rebuilt = params.workspace
-        ? await resolveWorkspaceSnapshot({
-            workspace: params.workspace,
-            runtime,
-            staleSnapshotId: snapshot.snapshotId,
-            signal,
-            shouldYield: options.shouldYield,
-            applyNetworkPolicy,
-            prepareRepositories: options.onWorkspacePrepare,
-            removeCredentialRoute: Boolean(options.createNetworkPolicy),
-          })
-        : await resolveSnapshot({
-            runtime,
-            timeoutMs,
-            forceRebuild: true,
-            staleSnapshotId: snapshot.snapshotId,
-            signal,
-            prepareWorkspace: params.prepareWorkspace,
-          });
+      let rebuilt: Snapshot;
+      if (params.workspace) {
+        rebuilt = await requireWorkspaceSnapshot({
+          workspace: params.workspace,
+          runtime,
+          staleSnapshotId: snapshot.snapshotId,
+        });
+      } else {
+        rebuilt = await resolveSnapshot({
+          runtime,
+          timeoutMs,
+          forceRebuild: true,
+          staleSnapshotId: snapshot.snapshotId,
+          signal,
+          prepareWorkspace: params.prepareWorkspace,
+        });
+      }
       if (!rebuilt.snapshotId) throw error;
       signal?.throwIfAborted();
       const session = await createSandboxFromSnapshot(
@@ -481,15 +493,7 @@ export function createSandboxRuntime(
         },
         async () => {
           const snapshot = workspace
-            ? await resolveWorkspaceSnapshot({
-                workspace,
-                runtime,
-                signal,
-                shouldYield: options.shouldYield,
-                applyNetworkPolicy,
-                prepareRepositories: options.onWorkspacePrepare,
-                removeCredentialRoute: Boolean(options.createNetworkPolicy),
-              })
+            ? await requireWorkspaceSnapshot({ workspace, runtime })
             : await resolveSnapshot({
                 runtime,
                 timeoutMs,

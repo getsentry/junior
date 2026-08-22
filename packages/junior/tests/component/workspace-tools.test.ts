@@ -1,9 +1,14 @@
 import {
   createLocalSource,
+  createSlackSource,
   defineJuniorPlugin,
 } from "@sentry/junior-plugin-api";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { getDb } from "@/chat/db";
+import { WorkspaceSnapshotNotReadyError } from "@/chat/sandbox/snapshot/not-ready-error";
+import * as snapshotProfile from "@/chat/sandbox/snapshot/profile";
+import { SANDBOX_RUNTIME } from "@/chat/sandbox/snapshot/runtime";
+import { setWorkspaceSnapshotBuild } from "@/chat/sandbox/snapshot/store";
 import { normalizeLocalConversationId } from "@/chat/local/conversation";
 import {
   runLocalAgentTurn,
@@ -11,6 +16,7 @@ import {
   type LocalToolResult,
 } from "@/chat/local/runner";
 import { setPlugins } from "@/chat/plugins/agent-hooks";
+import { listResourceEventSubscriptions } from "@/chat/resource-events/store";
 import { juniorWorkspaceRepos, juniorWorkspaces } from "@/db/schema";
 import { createModelAgentRunner } from "../fixtures/agent-runner";
 import { createModelStream } from "../fixtures/model-stream";
@@ -19,7 +25,26 @@ import { createWorkspaceTools } from "@/chat/workspaces/tools";
 import { listWorkspaceNamesByRepository } from "@/chat/workspaces/store";
 import { readStats } from "@/stats";
 
+const { sendNextWorkspaceSnapshotJob, sendWorkspaceSnapshotJob } = vi.hoisted(
+  () => ({
+    sendNextWorkspaceSnapshotJob: vi.fn().mockResolvedValue(undefined),
+    sendWorkspaceSnapshotJob: vi.fn().mockResolvedValue(undefined),
+  }),
+);
+
+vi.mock("@/chat/sandbox/snapshot/job-queue", () => ({
+  sendNextWorkspaceSnapshotJob,
+  sendWorkspaceSnapshotJob,
+}));
+
 describe("Workspace tools", () => {
+  beforeEach(() => {
+    sendNextWorkspaceSnapshotJob.mockReset();
+    sendNextWorkspaceSnapshotJob.mockResolvedValue(undefined);
+    sendWorkspaceSnapshotJob.mockReset();
+    sendWorkspaceSnapshotJob.mockResolvedValue(undefined);
+  });
+
   it("runs Workspace tools through the real agent tool path", async () => {
     const previousPlugins = setPlugins([
       defineJuniorPlugin({
@@ -281,33 +306,174 @@ describe("Workspace tools", () => {
   });
 
   it("records successful Workspace switches in daily stats", async () => {
+    const ensureReady = vi
+      .spyOn(
+        await import("@/chat/sandbox/snapshot/job-runner"),
+        "ensureWorkspaceSnapshotBuild",
+      )
+      .mockResolvedValue("ready");
+    try {
+      const now = new Date();
+      const workspace = {
+        id: "11111111-1111-4111-8111-111111111111",
+        name: "sentry",
+        setupScript: "",
+        snapshot: null,
+        repos: [{ provider: "github", repo: "getsentry/sentry" }],
+      };
+      const db = getDb();
+      await db.insert(juniorWorkspaces).values({
+        id: workspace.id,
+        name: workspace.name,
+        setupScript: workspace.setupScript,
+        createdAt: now,
+        updatedAt: now,
+      });
+      await db.insert(juniorWorkspaceRepos).values({
+        workspaceId: workspace.id,
+        ...workspace.repos[0]!,
+      });
+      const switchWorkspace = vi.fn().mockResolvedValue(undefined);
+      const context = {
+        destination: {
+          platform: "local",
+          conversationId: "local:test:workspace-stats",
+        },
+        source: createLocalSource("local:test:workspace-stats"),
+        egress: {
+          async fetch() {
+            return new Response("ok");
+          },
+        },
+        workspace: {} as ToolRuntimeContext["workspace"],
+        workspaces: {
+          activeWorkspaceId: () => undefined,
+          switch: switchWorkspace,
+        },
+      } satisfies ToolRuntimeContext;
+
+      const tools = createWorkspaceTools(context);
+      await expect(
+        tools.switchWorkspace!.execute!({ name: workspace.name }, {}),
+      ).resolves.toMatchObject({
+        workspace: { id: workspace.id },
+        status: "ready",
+      });
+
+      expect(switchWorkspace).toHaveBeenCalledWith(
+        expect.objectContaining({ id: workspace.id, name: workspace.name }),
+        undefined,
+      );
+      const date = now.toISOString().slice(0, 10);
+      await expect(readStats(date, date)).resolves.toContainEqual({
+        count: 1,
+        date,
+        metric: "workspace_switch",
+        name: workspace.id,
+        namespace: "junior",
+      });
+    } finally {
+      ensureReady.mockRestore();
+    }
+  });
+
+  it("stops the watch when a replacement snapshot job cannot start", async () => {
+    const enqueueError = new Error("Queue unavailable");
+    const ensureSnapshot = vi
+      .spyOn(
+        await import("@/chat/sandbox/snapshot/job-runner"),
+        "ensureWorkspaceSnapshotBuild",
+      )
+      .mockResolvedValueOnce("ready")
+      .mockRejectedValueOnce(enqueueError);
+    try {
+      const now = new Date();
+      const workspace = {
+        id: "33333333-3333-4333-8333-333333333333",
+        name: "sentry-missing-snapshot",
+        setupScript: "devenv sync",
+        repos: [],
+      };
+      await getDb().insert(juniorWorkspaces).values({
+        id: workspace.id,
+        name: workspace.name,
+        setupScript: workspace.setupScript,
+        createdAt: now,
+        updatedAt: now,
+      });
+      const switchWorkspace = vi.fn(async () => {
+        throw new Error("Sandbox setup failed", {
+          cause: new WorkspaceSnapshotNotReadyError(workspace.name),
+        });
+      });
+      const conversationId = "local:test:workspace-missing-snapshot";
+      const context = {
+        destination: { platform: "local", conversationId },
+        source: createLocalSource(conversationId),
+        egress: {
+          async fetch() {
+            return new Response("ok");
+          },
+        },
+        workspace: {} as ToolRuntimeContext["workspace"],
+        workspaces: {
+          activeWorkspaceId: () => undefined,
+          switch: switchWorkspace,
+        },
+      } satisfies ToolRuntimeContext;
+
+      const tools = createWorkspaceTools(context);
+      await expect(
+        tools.switchWorkspace!.execute!({ name: workspace.name }, {}),
+      ).rejects.toBe(enqueueError);
+      expect(ensureSnapshot).toHaveBeenNthCalledWith(2, {
+        workspace: expect.objectContaining({ id: workspace.id }),
+        sendAgain: true,
+      });
+      await expect(
+        listResourceEventSubscriptions({ conversationId }),
+      ).resolves.toEqual([]);
+    } finally {
+      ensureSnapshot.mockRestore();
+    }
+  });
+
+  it("starts a new snapshot job when an earlier build is still open", async () => {
     const now = new Date();
     const workspace = {
-      id: "11111111-1111-4111-8111-111111111111",
-      name: "sentry",
-      setupScript: "",
+      id: "44444444-4444-4444-8444-444444444444",
+      name: "sentry-retry-snapshot",
+      setupScript: "devenv sync",
       snapshot: null,
-      repos: [{ provider: "github", repo: "getsentry/sentry" }],
+      repos: [],
     };
-    const db = getDb();
-    await db.insert(juniorWorkspaces).values({
+    await getDb().insert(juniorWorkspaces).values({
       id: workspace.id,
       name: workspace.name,
       setupScript: workspace.setupScript,
       createdAt: now,
       updatedAt: now,
     });
-    await db.insert(juniorWorkspaceRepos).values({
-      workspaceId: workspace.id,
-      ...workspace.repos[0]!,
-    });
-    const switchWorkspace = vi.fn().mockResolvedValue(undefined);
-    const context = {
-      destination: {
-        platform: "local",
-        conversationId: "local:test:workspace-stats",
+    const value = snapshotProfile.create(SANDBOX_RUNTIME, workspace);
+    if (!value) throw new Error("Workspace snapshot profile is missing");
+    await setWorkspaceSnapshotBuild(
+      workspace.id,
+      {
+        id: "55555555-5555-4555-8555-555555555555",
+        status: "building",
+        phase: "created",
+        profileHash: value.hash,
+        startedAt: now,
+        sandboxName: "open-builder",
+        commandId: null,
+        error: null,
       },
-      source: createLocalSource("local:test:workspace-stats"),
+      { insertIfMissing: true },
+    );
+    const conversationId = "local:test:workspace-retry-snapshot";
+    const context = {
+      destination: { platform: "local", conversationId },
+      source: createLocalSource(conversationId),
       egress: {
         async fetch() {
           return new Response("ok");
@@ -316,29 +482,21 @@ describe("Workspace tools", () => {
       workspace: {} as ToolRuntimeContext["workspace"],
       workspaces: {
         activeWorkspaceId: () => undefined,
-        switch: switchWorkspace,
+        switch: vi.fn(),
       },
     } satisfies ToolRuntimeContext;
 
     const tools = createWorkspaceTools(context);
     await expect(
       tools.switchWorkspace!.execute!({ name: workspace.name }, {}),
-    ).resolves.toMatchObject({ workspace: { id: workspace.id } });
-
-    expect(switchWorkspace).toHaveBeenCalledWith(workspace, undefined);
-    const date = now.toISOString().slice(0, 10);
-    await expect(readStats(date, date)).resolves.toContainEqual({
-      count: 1,
-      date,
-      metric: "workspace_switch",
-      name: workspace.id,
-      namespace: "junior",
+    ).resolves.toMatchObject({ status: "building" });
+    expect(sendNextWorkspaceSnapshotJob).toHaveBeenCalledWith({
+      workspaceId: workspace.id,
+      profileHash: value.hash,
     });
   });
 
-  it("returns a timed-out result when snapshot preparation soft-yields", async () => {
-    const { WorkspaceSnapshotWaitingError } =
-      await import("@/chat/sandbox/snapshot/waiting-error");
+  it("returns building status and enqueues a snapshot job when cold", async () => {
     const now = new Date();
     const workspace = {
       id: "22222222-2222-4222-8222-222222222222",
@@ -359,12 +517,22 @@ describe("Workspace tools", () => {
       workspaceId: workspace.id,
       ...workspace.repos[0]!,
     });
+    const switchWorkspace = vi.fn();
+    const conversationId = "slack:CWORKSPACE:1700000000.100000";
     const context = {
+      conversationId,
       destination: {
-        platform: "local",
-        conversationId: "local:test:workspace-building",
+        platform: "slack",
+        teamId: "TWORKSPACE",
+        channelId: "CWORKSPACE",
       },
-      source: createLocalSource("local:test:workspace-building"),
+      source: createSlackSource({
+        teamId: "TWORKSPACE",
+        channelId: "CWORKSPACE",
+        threadTs: "1700000000.100000",
+        messageTs: "1700000000.100001",
+        visibility: "public",
+      }),
       egress: {
         async fetch() {
           return new Response("ok");
@@ -373,19 +541,34 @@ describe("Workspace tools", () => {
       workspace: {} as ToolRuntimeContext["workspace"],
       workspaces: {
         activeWorkspaceId: () => undefined,
-        switch: vi
-          .fn()
-          .mockRejectedValue(new WorkspaceSnapshotWaitingError(workspace.name)),
+        switch: switchWorkspace,
       },
     } satisfies ToolRuntimeContext;
+
+    let subscribedBeforeSend = false;
+    sendWorkspaceSnapshotJob.mockImplementationOnce(async () => {
+      subscribedBeforeSend =
+        (await listResourceEventSubscriptions({ conversationId })).length === 1;
+    });
 
     const tools = createWorkspaceTools(context);
     await expect(
       tools.switchWorkspace!.execute!({ name: workspace.name }, {}),
     ).resolves.toMatchObject({
-      workspace: { id: workspace.id },
-      waiting: "workspace_snapshot",
-      timed_out: true,
+      workspace: { id: workspace.id, name: workspace.name },
+      status: "building",
+      subscribable: {
+        namespace: "junior",
+        type: "workspace_snapshot",
+        identifier: workspace.id,
+        suggestedEvents: [],
+      },
+    });
+    expect(switchWorkspace).not.toHaveBeenCalled();
+    expect(subscribedBeforeSend).toBe(true);
+    expect(sendWorkspaceSnapshotJob).toHaveBeenCalledWith({
+      workspaceId: workspace.id,
+      profileHash: expect.any(String),
     });
   });
 });

@@ -26,7 +26,7 @@ import {
   setWorkspaceSnapshot,
   setWorkspaceSnapshotBuild,
 } from "@/chat/sandbox/snapshot/store";
-import { WorkspaceSnapshotWaitingError } from "@/chat/sandbox/snapshot/waiting-error";
+import { WorkspaceSnapshotNotReadyError } from "@/chat/sandbox/snapshot/not-ready-error";
 import {
   createSandboxSession,
   type SandboxSession,
@@ -40,8 +40,8 @@ import type {
   WorkspaceSnapshotBuild,
 } from "@/chat/workspaces/types";
 
-// Workspace snapshot resolution owns the durable build state and the named
-// builder Sandbox. Each call advances at most one recorded build phase.
+// This module saves build progress and owns the Sandbox that runs the build.
+// Each call completes at most one saved step.
 const BUILD_TIMEOUT_MS = 60 * 60 * 1000;
 const BUILD_TIMEOUT_ERROR = "Workspace snapshot build timed out after 1 hour";
 const BUILD_LOCK_TTL_MS = 2 * 60 * 1000;
@@ -52,10 +52,10 @@ const BUILD_COMMAND_TIMEOUT_MS = 10 * 60 * 1000;
 const BUILD_COMMAND_TIMEOUT_ERROR =
   "Workspace snapshot build phase timed out after 10 minutes";
 const COMMAND_STATUS_POLL_TIMEOUT_MS = 1_000;
-/** Leave time for the tool result and durable run checkpoint. */
-const WAIT_YIELD_BUFFER_MS = 40_000;
+/** Leave time to save the build state before this request ends. */
+const STOP_BUFFER_MS = 40_000;
 
-/** Keep a named builder resumable when the caller stops or Vercel is transient. */
+/** Keep the build open when a request stops or Vercel has a short failure. */
 function isCancelOrTransient(error: unknown): boolean {
   return isAbortError(error) || isSandboxApiTransientError(error);
 }
@@ -108,7 +108,7 @@ async function snapshotFromSql(
   };
 }
 
-/** Return only a build row that has enough durable state to resume. */
+/** Return a build only when it has enough saved state to continue. */
 function activeBuild(
   build: WorkspaceSnapshotBuild | null,
 ): WorkspaceSnapshotBuild | null {
@@ -140,7 +140,7 @@ function requireBuildWrite(
   }
 }
 
-/** Persist a permanent build failure, then delete its named Sandbox. */
+/** Save a build failure, then delete its Sandbox. */
 async function markFailed(
   workspace: Workspace,
   build: WorkspaceSnapshotBuild,
@@ -161,8 +161,8 @@ async function markFailed(
       "sandbox.workspace_snapshot.failure_persist_failed",
       { "app.workspace.id": workspace.id },
     );
-    // A later owner may now be using this builder. Leave it intact unless this
-    // worker fenced and changed the build row to failed.
+    // Another job may now use this Sandbox. Do not delete it unless this job
+    // saved the failure.
     return;
   }
   try {
@@ -176,7 +176,7 @@ async function markFailed(
   }
 }
 
-/** Enforce the one-hour budget shared by every execution slice. */
+/** Stop a build after one hour. */
 async function requireRemainingBuildTime(
   workspace: Workspace,
   build: WorkspaceSnapshotBuild,
@@ -189,7 +189,7 @@ async function requireRemainingBuildTime(
   throw new Error(BUILD_TIMEOUT_ERROR);
 }
 
-/** Poll setup and capture the ready snapshot when its command has finished. */
+/** Save the snapshot when its setup command ends. */
 async function finishBuild(
   workspace: Workspace,
   value: profile.Profile,
@@ -280,7 +280,7 @@ async function finishBuild(
   }
 }
 
-/** Create and checkpoint the named persistent builder Sandbox. */
+/** Create the Sandbox and save its name. */
 async function startBuild(params: {
   workspace: Workspace;
   value: profile.Profile;
@@ -351,11 +351,11 @@ async function startBuild(params: {
             { insertIfMissing: true, expectedRecipe: workspace },
           );
         } catch {
-          // The failed row is diagnostic. Builder cleanup still owns safety.
+          // The build can still be cleaned up when this save fails.
         }
       }
     } finally {
-      // Create can provision the named VM before its request rejects.
+      // Vercel can create the Sandbox before it returns an error.
       try {
         await deleteBuilder(name);
       } catch (cleanupError) {
@@ -370,7 +370,7 @@ async function startBuild(params: {
   }
 }
 
-/** Advance one restart-safe preparation phase in the named builder. */
+/** Complete one saved setup step in the build Sandbox. */
 async function continueBuild(params: {
   workspace: Workspace;
   value: profile.Profile;
@@ -494,7 +494,7 @@ async function continueBuild(params: {
   }
 }
 
-/** Reuse a ready snapshot or advance one durable build phase under its lock. */
+/** Use a ready snapshot or complete one saved build step. */
 async function advanceWorkspaceSnapshot(params: {
   workspace: Workspace;
   runtime: string;
@@ -591,27 +591,48 @@ async function advanceWorkspaceSnapshot(params: {
   return locked.acquired ? (locked.value ?? null) : null;
 }
 
-/** Reserve enough host time to persist the waiting tool-result boundary. */
-function shouldYieldWait(shouldYield?: () => boolean): boolean {
-  if (shouldYield?.()) return true;
+/** Check whether this request must stop soon. */
+function shouldStopForTimeLimit(shouldStop?: () => boolean): boolean {
+  if (shouldStop?.()) return true;
 
   const deadlineAtMs = getTurnRequestDeadline()?.deadlineAtMs;
   return (
-    deadlineAtMs !== undefined &&
-    Date.now() >= deadlineAtMs - WAIT_YIELD_BUFFER_MS
+    deadlineAtMs !== undefined && Date.now() >= deadlineAtMs - STOP_BUFFER_MS
   );
 }
 
+/** Return the ready snapshot or report that the Workspace must build one. */
+export async function requireReadyWorkspaceSnapshot(params: {
+  workspace: Workspace;
+  runtime: string;
+  staleSnapshotId?: string;
+}): Promise<Snapshot> {
+  const value = profile.create(params.runtime, params.workspace);
+  if (!value) {
+    throw new Error(
+      `Workspace ${params.workspace.name} has no snapshot profile`,
+    );
+  }
+  const snapshot = await snapshotFromSql(
+    params.workspace.id,
+    value,
+    params.staleSnapshotId,
+  );
+  if (!snapshot)
+    throw new WorkspaceSnapshotNotReadyError(params.workspace.name);
+  return snapshot;
+}
+
 /**
- * Resolve a Workspace snapshot through resumable execution slices.
- * Cold builds have one shared one-hour budget across every execution slice.
+ * Continue a Workspace snapshot build from its saved state.
+ * The full build can run for up to one hour.
  */
 export async function resolveWorkspaceSnapshot(params: {
   workspace: Workspace;
   runtime: string;
   staleSnapshotId?: string;
   signal?: AbortSignal;
-  shouldYield?: () => boolean;
+  shouldStop?: () => boolean;
   applyNetworkPolicy(sandbox: SandboxSession): Promise<unknown>;
   prepareRepositories?(
     sandbox: SandboxSession,
@@ -620,30 +641,34 @@ export async function resolveWorkspaceSnapshot(params: {
   ): Promise<void>;
   removeCredentialRoute: boolean;
 }): Promise<Snapshot> {
+  // Do some work before the first time check. This prevents empty job runs.
+  let advanced = false;
   for (;;) {
     params.signal?.throwIfAborted();
     const workspace = await getWorkspace(getDb(), params.workspace.id);
     if (!workspace) throw workspaceDeletedError(params.workspace);
-    const slice = { ...params, workspace };
-    if (shouldYieldWait(slice.shouldYield)) {
-      throw new WorkspaceSnapshotWaitingError(workspace.name);
+    const current = { ...params, workspace };
+    if (advanced && shouldStopForTimeLimit(current.shouldStop)) {
+      throw new WorkspaceSnapshotNotReadyError(workspace.name);
     }
 
     let snapshot: Snapshot | null;
     try {
-      snapshot = await advanceWorkspaceSnapshot(slice);
+      snapshot = await advanceWorkspaceSnapshot(current);
     } catch (error) {
       if (!isSandboxApiTransientError(error)) throw error;
-      if (shouldYieldWait(slice.shouldYield)) {
-        throw new WorkspaceSnapshotWaitingError(workspace.name);
+      advanced = true;
+      if (shouldStopForTimeLimit(current.shouldStop)) {
+        throw new WorkspaceSnapshotNotReadyError(workspace.name);
       }
       await sleep(TRANSIENT_API_RETRY_MS, params.signal);
       continue;
     }
-    if (shouldYieldWait(slice.shouldYield)) {
-      throw new WorkspaceSnapshotWaitingError(workspace.name);
-    }
+    advanced = true;
     if (snapshot) return snapshot;
+    if (shouldStopForTimeLimit(current.shouldStop)) {
+      throw new WorkspaceSnapshotNotReadyError(workspace.name);
+    }
     await sleep(WAIT_POLL_MS, params.signal);
   }
 }

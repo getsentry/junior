@@ -1,8 +1,25 @@
 import { z } from "zod";
+import { subscribableResourceSchema } from "@sentry/junior-plugin-api";
 import { getDb } from "@/chat/db";
 import { logWarn } from "@/chat/logging";
 import { getPlugins } from "@/chat/plugins/agent-hooks";
-import { isWorkspaceSnapshotWaitingError } from "@/chat/sandbox/snapshot/waiting-error";
+import {
+  WORKSPACE_SNAPSHOT_FAILED_EVENT,
+  WORKSPACE_SNAPSHOT_READY_EVENT,
+  workspaceSnapshotWatch,
+} from "@/chat/sandbox/snapshot/events";
+import { ensureWorkspaceSnapshotBuild } from "@/chat/sandbox/snapshot/job-runner";
+import { isWorkspaceSnapshotNotReadyError } from "@/chat/sandbox/snapshot/not-ready-error";
+import {
+  cancelResourceEventSubscription,
+  createResourceEventSubscription,
+} from "@/chat/resource-events/store";
+import { canRouteResourceEvents } from "@/chat/resource-events/workspace";
+import {
+  canUseResourceEventSubscriptionTools,
+  RESOURCE_SUBSCRIPTION_DEFAULT_TTL_MS,
+  requireResourceWatchConversation,
+} from "@/chat/resource-events/tool-support";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
@@ -33,6 +50,23 @@ async function tryRecordWorkspaceSwitchStat(workspace: Workspace) {
     logWarn("workspace.switch.stat.failed", {
       "app.workspace.id": workspace.id,
       "app.workspace.name": workspace.name,
+      "exception.message":
+        error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+async function stopWorkspaceSnapshotWatch(input: {
+  conversationId: string;
+  subscriptionId: string;
+}): Promise<void> {
+  try {
+    await cancelResourceEventSubscription({
+      conversationId: input.conversationId,
+      id: input.subscriptionId,
+    });
+  } catch (error) {
+    logWarn("workspace.snapshot.watch.stop_failed", {
       "exception.message":
         error instanceof Error ? error.message : String(error),
     });
@@ -294,7 +328,7 @@ export function createWorkspaceTools(
         readOnlyHint: false,
       },
       description:
-        "Replace the current sandbox with a named preconfigured repository workspace. Files in the prior sandbox do not carry over.",
+        "Replace the current sandbox with a named repository Workspace. Files in the old sandbox do not carry over. If the snapshot is not ready, start the build and watch for the result.",
       inputSchema: z
         .object({
           name: z.string().trim().min(1).describe("Exact workspace name."),
@@ -302,25 +336,76 @@ export function createWorkspaceTools(
         .strict(),
       outputSchema: juniorToolOutputSchema.extend({
         workspace: workspaceSchema,
+        status: z.enum(["ready", "building"]),
+        subscribable: subscribableResourceSchema.optional(),
       }),
       async execute({ name }, options) {
         const workspace = await getWorkspaceByName(getDb(), name);
         if (!workspace)
           throw new ToolInputError(`Workspace not found: ${name}`);
+
+        const watch = workspaceSnapshotWatch({
+          workspaceId: workspace.id,
+          workspaceName: workspace.name,
+        });
+        const conversationId =
+          canRouteResourceEvents() &&
+          canUseResourceEventSubscriptionTools(context)
+            ? requireResourceWatchConversation(context)
+            : undefined;
+        const subscription = conversationId
+          ? await createResourceEventSubscription({
+              conversationId,
+              destination: context.destination,
+              events: [
+                WORKSPACE_SNAPSHOT_READY_EVENT,
+                WORKSPACE_SNAPSHOT_FAILED_EVENT,
+              ],
+              expiresAtMs: Date.now() + RESOURCE_SUBSCRIPTION_DEFAULT_TTL_MS,
+              intent: `Switch to Workspace ${workspace.name} when its snapshot is ready.`,
+              label: watch.label,
+              namespace: watch.namespace,
+              identifier: watch.identifier,
+              resourceType: watch.type,
+            })
+          : undefined;
+
+        let keepWatch = false;
         try {
-          await context.workspaces!.switch(workspace, options.signal);
-        } catch (error) {
-          if (isWorkspaceSnapshotWaitingError(error)) {
+          const status = await ensureWorkspaceSnapshotBuild({ workspace });
+          if (status === "building") {
+            keepWatch = true;
             return {
               workspace: view(workspace),
-              waiting: "workspace_snapshot" as const,
-              timed_out: true as const,
+              status,
+              subscribable: watch,
             };
           }
-          throw error;
+          try {
+            await context.workspaces!.switch(workspace, options.signal);
+          } catch (error) {
+            if (!isWorkspaceSnapshotNotReadyError(error)) throw error;
+            await ensureWorkspaceSnapshotBuild({ workspace, sendAgain: true });
+            keepWatch = true;
+            return {
+              workspace: view(workspace),
+              status: "building" as const,
+              subscribable: watch,
+            };
+          }
+          await tryRecordWorkspaceSwitchStat(workspace);
+          return {
+            workspace: view(workspace),
+            status: "ready" as const,
+          };
+        } finally {
+          if (!keepWatch && subscription && conversationId) {
+            await stopWorkspaceSnapshotWatch({
+              conversationId,
+              subscriptionId: subscription.id,
+            });
+          }
         }
-        await tryRecordWorkspaceSwitchStat(workspace);
-        return { workspace: view(workspace) };
       },
     }),
   };

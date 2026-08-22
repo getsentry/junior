@@ -26,7 +26,7 @@ import {
   loadSnapshotsForProfile,
   setWorkspaceSnapshotBuild,
 } from "@/chat/sandbox/snapshot/store";
-import { isWorkspaceSnapshotWaitingError } from "@/chat/sandbox/snapshot/waiting-error";
+import { isWorkspaceSnapshotNotReadyError } from "@/chat/sandbox/snapshot/not-ready-error";
 import { resolveWorkspaceSnapshot } from "@/chat/sandbox/snapshot/workspace";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { createWorkspace } from "@/chat/workspaces/store";
@@ -45,7 +45,7 @@ describe("Workspace snapshot completion", () => {
     await closeDb();
   });
 
-  it("stores a completed snapshot only in SQL and keeps its owner", async () => {
+  it("returns a completed snapshot before it stops for the request time limit", async () => {
     const workspace = await createWorkspace({
       name: `snapshot-cleanup-${randomUUID()}`,
       setupScript: "printf ready",
@@ -83,7 +83,7 @@ describe("Workspace snapshot completion", () => {
       resolveWorkspaceSnapshot({
         workspace,
         runtime: SANDBOX_RUNTIME,
-        shouldYield: () => false,
+        shouldStop: () => true,
         applyNetworkPolicy: async () => {},
         removeCredentialRoute: false,
       }),
@@ -130,20 +130,15 @@ describe("Workspace snapshot completion", () => {
     );
     sandboxGetMock.mockRejectedValue(new Error("Vercel cleanup failed"));
     sandboxCreateMock.mockResolvedValue({});
-    let yieldChecks = 0;
-
     await expect(
       resolveWorkspaceSnapshot({
         workspace,
         runtime: SANDBOX_RUNTIME,
-        shouldYield: () => {
-          yieldChecks += 1;
-          return yieldChecks > 1;
-        },
+        shouldStop: () => true,
         applyNetworkPolicy: async () => {},
         removeCredentialRoute: false,
       }),
-    ).rejects.toSatisfy(isWorkspaceSnapshotWaitingError);
+    ).rejects.toSatisfy(isWorkspaceSnapshotNotReadyError);
 
     await expect(
       loadSnapshotsForProfile(getDb(), workspace.id, value.hash),
@@ -188,7 +183,7 @@ describe("Workspace snapshot completion", () => {
         workspace,
         runtime: SANDBOX_RUNTIME,
         signal: controller.signal,
-        shouldYield: () => false,
+        shouldStop: () => false,
         applyNetworkPolicy: async () => {},
         removeCredentialRoute: false,
       }),
@@ -265,7 +260,7 @@ describe("Workspace snapshot completion", () => {
       const result = resolveWorkspaceSnapshot({
         workspace,
         runtime: SANDBOX_RUNTIME,
-        shouldYield: () => false,
+        shouldStop: () => false,
         applyNetworkPolicy: async () => {},
         removeCredentialRoute: false,
       });
@@ -289,7 +284,7 @@ describe("Workspace snapshot completion", () => {
     }
   });
 
-  it("keeps the host deadline buffer when the caller can continue", async () => {
+  it("does some work before it stops for the request time limit", async () => {
     const workspace = await createWorkspace({
       name: `snapshot-deadline-${randomUUID()}`,
       setupScript: "printf ready",
@@ -309,14 +304,14 @@ describe("Workspace snapshot completion", () => {
           resolveWorkspaceSnapshot({
             workspace,
             runtime: SANDBOX_RUNTIME,
-            shouldYield: () => false,
+            shouldStop: () => false,
             applyNetworkPolicy: async () => {},
             removeCredentialRoute: false,
           }),
         requestStartedAtMs,
       ),
-    ).rejects.toSatisfy(isWorkspaceSnapshotWaitingError);
-    expect(sandboxCreateMock).not.toHaveBeenCalled();
+    ).rejects.toSatisfy(isWorkspaceSnapshotNotReadyError);
+    expect(sandboxCreateMock).toHaveBeenCalledTimes(1);
   });
 
   it("attempts every builder cleanup after a provider failure", async () => {

@@ -4,16 +4,13 @@ import { getDb } from "@/chat/db";
 import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
 import { createSandboxRuntime } from "@/chat/sandbox/session";
 import { deleteWorkspaceSnapshotBuilders } from "@/chat/sandbox/snapshot/builder-sandbox";
+import { processWorkspaceSnapshotJob } from "@/chat/sandbox/snapshot/job-runner";
 import { hash as workspaceProfileHash } from "@/chat/sandbox/snapshot/profile";
 import { SANDBOX_RUNTIME } from "@/chat/sandbox/snapshot/runtime";
 import { loadSnapshotsForProfile } from "@/chat/sandbox/snapshot/store";
-import { isWorkspaceSnapshotWaitingError } from "@/chat/sandbox/snapshot/waiting-error";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { createWorkspace, getWorkspace } from "@/chat/workspaces/store";
-import type {
-  Workspace,
-  WorkspaceSnapshotBuild,
-} from "@/chat/workspaces/types";
+import type { Workspace } from "@/chat/workspaces/types";
 
 const MARKER_PATH = `${SANDBOX_WORKSPACE_ROOT}/marker/setup.txt`;
 /** Fail a cold build that exceeds the production phase limit. */
@@ -42,61 +39,9 @@ function profileHash(workspace: Workspace): string {
   return hash;
 }
 
-async function loadBuild(
-  workspace: Workspace,
-): Promise<WorkspaceSnapshotBuild | null> {
-  return (
-    await loadSnapshotsForProfile(getDb(), workspace.id, profileHash(workspace))
-  ).build;
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, ms);
-  });
-}
-
-/** Start until SQL contains the checkpoint needed by the next execution slice. */
-async function startUntilBuildingCheckpoint(
-  workspaceId: string,
-): Promise<{ build: WorkspaceSnapshotBuild; workspace: Workspace }> {
-  const deadlineAtMs = Date.now() + 2 * 60 * 1000;
-  while (Date.now() < deadlineAtMs) {
-    const workspace = (await getWorkspace(getDb(), workspaceId))!;
-    const runtime = createSandboxRuntime({
-      workspace,
-      skills: [],
-      referenceFiles: [],
-      shouldYield: (() => {
-        let checks = 0;
-        return () => {
-          checks += 1;
-          return checks > 1;
-        };
-      })(),
-    });
-    try {
-      await expect(runtime.acquire()).rejects.toSatisfy(
-        isWorkspaceSnapshotWaitingError,
-      );
-    } finally {
-      runtime.close();
-    }
-
-    const build = await loadBuild(workspace);
-    if (build?.status === "building" && build.sandboxName) {
-      return { build, workspace };
-    }
-    await sleep(2_000);
-  }
-  throw new Error(
-    `Workspace ${workspaceId} did not reach a durable building checkpoint`,
-  );
-}
-
 /**
- * Use the real Vercel provider for the durable Workspace snapshot boundary.
- * The test skips for local and fork runs that do not have provider credentials.
+ * Build a Workspace snapshot with Vercel, then start a Sandbox from it.
+ * Skip this test when Vercel credentials are not available.
  */
 describe.skipIf(!sandboxCredentialsReady())(
   "Workspace snapshot lifecycle",
@@ -116,7 +61,7 @@ describe.skipIf(!sandboxCredentialsReady())(
     });
 
     it(
-      "resumes a cold build from its SQL checkpoint and boots the snapshot",
+      "builds a snapshot on the job path and boots it through switch/acquire",
       async () => {
         const workspace = await createWorkspace({
           name: `snapshot-lifecycle-${randomUUID()}`,
@@ -124,30 +69,25 @@ describe.skipIf(!sandboxCredentialsReady())(
           repos: [],
         });
         const workspaceId = workspace.id;
+        const hash = profileHash(workspace);
 
-        const started = await startUntilBuildingCheckpoint(workspaceId);
-        builderNames.push(started.build.sandboxName!);
-        expect(started.build).toMatchObject({
-          status: "building",
-          profileHash: profileHash(started.workspace),
+        await processWorkspaceSnapshotJob({
+          workspaceId,
+          profileHash: hash,
         });
+
+        const state = await loadSnapshotsForProfile(getDb(), workspaceId, hash);
+        expect(state.build).toBeNull();
+        expect(state.ready?.id).toBeTruthy();
 
         const runtime = createSandboxRuntime({
           workspace: (await getWorkspace(getDb(), workspaceId))!,
           skills: [],
           referenceFiles: [],
-          shouldYield: () => false,
         });
         try {
           const session = await runtime.acquire();
           try {
-            const state = await loadSnapshotsForProfile(
-              getDb(),
-              workspaceId,
-              profileHash(started.workspace),
-            );
-            expect(state.build).toBeNull();
-            expect(state.ready?.id).toBeTruthy();
             expect(runtime.sandboxRef()).toMatchObject({
               profileHash: state.ready?.profileHash,
               workspaceId,
