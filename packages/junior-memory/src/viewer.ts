@@ -1,8 +1,8 @@
 /**
  * Authenticated-viewer memory access shared by REST and dashboard projections.
  *
- * Authenticated viewers can inspect public memory plus private memory from
- * source domains where their linked user participated.
+ * Authenticated viewers can inspect public memory plus private memory owned by
+ * their linked canonical user.
  */
 import { z } from "zod";
 import {

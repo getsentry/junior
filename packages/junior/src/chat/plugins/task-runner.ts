@@ -32,6 +32,7 @@ import {
 import { getPersistedThreadState } from "@/chat/runtime/thread-state";
 import { resolveTurnSessionRouting } from "@/chat/services/turn-session-routing";
 import { getDispatchRecord } from "@/chat/agent-dispatch/store";
+import { readActorIdentity } from "@/chat/plugins/viewer";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { hydrateConversationMessages } from "@/chat/conversations/messages";
 import type { ConversationMessage } from "@/chat/state/conversation";
@@ -353,6 +354,9 @@ async function loadPluginRun(
     (record.dispatchId
       ? (await getDispatchRecord(record.dispatchId))?.actor
       : undefined);
+  const actorUser = runActor
+    ? (await readActorIdentity(runActor))?.user
+    : undefined;
   const runEntries = turnMessagesWithProvenance(record)
     .map(({ message, provenance }) =>
       runTranscriptEntry(message, provenance, runActor),
@@ -373,9 +377,11 @@ async function loadPluginRun(
     (entry) => entry.type !== "message" || !runMessageTexts.has(entry.text),
   );
   return pluginRunContextSchema.parse({
+    ...(actorUser ? { actorUserId: actorUser.id } : {}),
     completedAtMs: record.updatedAtMs,
     conversationId: record.conversationId,
     destination: routing.destination,
+    ...(routing.locationId ? { locationId: routing.locationId } : {}),
     // Derived from the full run provenance on the record, not the sliced or
     // stripped transcript, so it reflects every committed instruction actor.
     actors: record.actors,

@@ -1,5 +1,5 @@
 {
-  "id": "22b4c829-8121-4ccf-a047-6dd61313e1c1",
+  "id": "bf82349c-95b3-4edf-b8a0-2bc597b7c8b4",
   "prevId": "030f5fc1-7062-4287-bd0b-14fcfd1c6a65",
   "version": "7",
   "dialect": "postgresql",
@@ -204,6 +204,12 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
+        },
+        "location_id": {
+          "name": "location_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         },
         "idempotency_key": {
           "name": "idempotency_key",

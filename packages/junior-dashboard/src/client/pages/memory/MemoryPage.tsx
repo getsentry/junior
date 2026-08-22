@@ -208,7 +208,7 @@ function MemoryLibrary(props: {
             value: "",
           },
           {
-            count: dashboardQuery.data?.stats?.private,
+            count: dashboardQuery.data?.stats?.personal,
             label: "Private",
             value: "private",
           },
@@ -304,14 +304,14 @@ function MemorySummary(props: { data: MemoryDashboardData }) {
   const { stats } = props.data;
   const items = [
     {
-      detail: "private + public",
+      detail: "personal + public",
       label: "Total active",
       value: stats.active.toLocaleString("en-US"),
     },
     {
-      detail: "not visible to others",
-      label: "Private",
-      value: stats.private.toLocaleString("en-US"),
+      detail: "private to you",
+      label: "Personal",
+      value: stats.personal.toLocaleString("en-US"),
     },
     {
       detail: "workspace shareable",
@@ -360,11 +360,11 @@ function MemoryKindPanel(props: { data: MemoryDashboardData }) {
         What Junior remembers
       </h2>
       <p className="mt-1 mb-0 font-mono text-xs leading-relaxed text-dashboard-text-muted">
-        Across private and public scopes.
+        Across personal and public scopes.
       </p>
       <div className="mt-5 grid gap-px overflow-hidden rounded border border-white/[0.06] bg-white/[0.055]">
         <OverviewBreakdownRow
-          detail="Actor preferences and habits"
+          detail="Almost entirely personal"
           icon={UserRound}
           label="Preferences"
           value={stats.preference}

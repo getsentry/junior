@@ -374,6 +374,7 @@ const throwingExtractionModel: PluginModel = {
 
 function slackContext(
   overrides: {
+    canonicalUserId?: string;
     channelId?: string;
     teamId?: string;
     threadTs?: string;
@@ -383,12 +384,14 @@ function slackContext(
   const teamId = overrides.teamId ?? "T123";
   const channelId = overrides.channelId ?? "C123";
   const threadTs = overrides.threadTs ?? "1718800000.000000";
+  const actorUserId = overrides.userId ?? "U123";
   return {
     conversationId: `slack:${channelId}:${threadTs}`,
+    locationId: `location:${teamId}:${channelId}`,
     actor: {
       platform: "slack" as const,
       teamId,
-      userId: overrides.userId ?? "U123",
+      userId: actorUserId,
     },
     source: createSlackSource({
       teamId,
@@ -399,6 +402,7 @@ function slackContext(
       messageTs: threadTs,
       threadTs,
     }),
+    userId: overrides.canonicalUserId ?? `user:${teamId}:${actorUserId}`,
   };
 }
 
@@ -429,6 +433,7 @@ function apiContext(
       email,
     },
     source: createWebSource(conversationId, overrides.visibility ?? "public"),
+    userId: `user:${email}`,
   };
 }
 
@@ -443,6 +448,27 @@ function localContext(
       userId: overrides.userId ?? "local-user",
     },
     source: createLocalSource(conversationId),
+    userId: `user:local:${overrides.userId ?? "local-user"}`,
+  };
+}
+
+function memoryUsers(userId: string) {
+  const identity = {
+    id: `identity:${userId}`,
+    provider: "test",
+    providerSubjectId: userId,
+  };
+  return {
+    async resolveActor() {
+      return {
+        identity,
+        user: {
+          email: `${userId.replaceAll(":", "-")}@example.com`,
+          id: userId,
+          identities: [identity],
+        },
+      };
+    },
   };
 }
 
@@ -455,6 +481,7 @@ function completedRun(
 ): NonNullable<Awaited<ReturnType<MemoryTaskContext["run"]["load"]>>> {
   const runtime = localContext();
   return {
+    actorUserId: runtime.userId,
     completedAtMs: TEST_NOW_MS,
     conversationId: runtime.conversationId,
     destination: {
@@ -1624,8 +1651,10 @@ describe("memory plugin storage", () => {
           run: {
             async load() {
               return completedRun({
+                actorUserId: privateContext.userId,
                 conversationId: "slack:D123:1718800000.000000",
                 destination: slackDestination(privateContext),
+                locationId: privateContext.locationId,
                 transcript: [
                   instructionMessage(
                     "I prefer private Slack memory.",
@@ -1647,7 +1676,8 @@ describe("memory plugin storage", () => {
         expect.objectContaining({
           content: "Prefers private Slack memory.",
           scope: "private",
-          scopeKey: "slack:T123:D123",
+          scopeKey: privateContext.userId,
+          locationId: privateContext.locationId,
         }),
       ]);
     } finally {
@@ -1677,6 +1707,7 @@ describe("memory plugin storage", () => {
           run: {
             async load() {
               return completedRun({
+                actorUserId: runtime.userId,
                 conversationId: runtime.conversationId,
                 destination: {
                   platform: "local",
@@ -1703,7 +1734,7 @@ describe("memory plugin storage", () => {
           scopeKey: "public",
           sourceKey: runtime.conversationId,
           sourcePlatform: "web",
-          subjectKey: "junior:dashboard@example.com",
+          subjectKey: runtime.userId,
           kind: "preference",
         },
       ]);
@@ -1740,7 +1771,7 @@ describe("memory plugin storage", () => {
           scopeKey: "public",
           sourceKey: runtime.conversationId,
           sourcePlatform: "web",
-          subjectKey: "junior:dashboard@example.com",
+          subjectKey: runtime.userId,
           subjectType: "user",
         },
       ]);
@@ -1840,7 +1871,7 @@ describe("memory plugin storage", () => {
         {
           content: "Prefers local passive memory QA.",
           scope: "private",
-          subjectKey: "local:local-user",
+          subjectKey: runtime.userId,
           kind: "preference",
         },
       ]);
@@ -2342,38 +2373,47 @@ describe("memory plugin storage", () => {
         expect.objectContaining({ id: privateMemory.memory.id }),
       ]);
 
-      const sameDomainStore = createMemoryStore(
+      const sameUserStore = createMemoryStore(
         memoryDb(fixture),
-        slackContext({ channelId: "D123", userId: "U456" }),
+        slackContext({
+          canonicalUserId: privateContext.userId,
+          channelId: "D999",
+          userId: "U456",
+        }),
         { now: () => nowMs },
       );
-      await expect(sameDomainStore.listMemories({})).resolves.toEqual([
+      await expect(sameUserStore.listMemories({})).resolves.toEqual([
         expect.objectContaining({ id: privateMemory.memory.id }),
         expect.objectContaining({ id: publicMemory.memory.id }),
       ]);
 
-      const otherDomainStore = createMemoryStore(
+      const otherUserStore = createMemoryStore(
         memoryDb(fixture),
         slackContext({
-          channelId: "D999",
+          channelId: "D123",
           threadTs: "1718800001.000000",
           userId: "U456",
         }),
         { now: () => nowMs },
       );
-      await expect(otherDomainStore.listMemories({})).resolves.toEqual([
+      await expect(otherUserStore.listMemories({})).resolves.toEqual([
         expect.objectContaining({ id: publicMemory.memory.id }),
       ]);
-      const otherTeamStore = createMemoryStore(
+      const linkedIdentityStore = createMemoryStore(
         memoryDb(fixture),
-        slackContext({ teamId: "T999", userId: "U456" }),
+        slackContext({
+          canonicalUserId: privateContext.userId,
+          teamId: "T999",
+          userId: "U456",
+        }),
         { now: () => nowMs },
       );
-      await expect(otherTeamStore.listMemories({})).resolves.toEqual([
+      await expect(linkedIdentityStore.listMemories({})).resolves.toEqual([
+        expect.objectContaining({ id: privateMemory.memory.id }),
         expect.objectContaining({ id: publicMemory.memory.id }),
       ]);
       await expect(
-        otherDomainStore.archiveMemory({ id: privateMemory.memory.id }),
+        otherUserStore.archiveMemory({ id: privateMemory.memory.id }),
       ).rejects.toThrow("Memory was not found in the current context.");
       await expect(
         publicStore.archiveMemory({ id: publicMemory.memory.id }),
@@ -2599,7 +2639,7 @@ describe("memory plugin storage", () => {
         automatic: 2,
         explicit: 1,
         knowledge: 3,
-        private: 0,
+        personal: 0,
         preference: 1,
         procedure: 0,
         public: 4,
@@ -2617,7 +2657,7 @@ describe("memory plugin storage", () => {
       });
       expect(dashboard.days.find((day) => day.date === "2026-06-19")).toEqual({
         date: "2026-06-19",
-        private: 0,
+        personal: 0,
         public: 4,
       });
 
@@ -2692,7 +2732,7 @@ WHERE id = '${superseded.memory.id}'
         "--scope",
         "private",
         "--scope-key",
-        "local:junior:memory-test",
+        context.userId,
         "--limit",
         "many",
       ]);
@@ -2711,7 +2751,7 @@ WHERE id = '${superseded.memory.id}'
         "--scope",
         "private",
         "--scope-key",
-        "local:junior:memory-test",
+        context.userId,
       ]);
       expect(search.exitCode).toBe(0);
       expect(search.stderr).toBe("");
@@ -2727,7 +2767,7 @@ WHERE id = '${superseded.memory.id}'
         "--scope",
         "private",
         "--scope-key",
-        "local:junior:memory-test",
+        context.userId,
         "--show-content",
       ]);
       expect(searchWithContent.exitCode).toBe(0);
@@ -2742,7 +2782,7 @@ WHERE id = '${superseded.memory.id}'
         "--scope",
         "private",
         "--scope-key",
-        "local:junior:memory-test",
+        context.userId,
       ]);
       expect(scopedList.exitCode).toBe(0);
       expect(scopedList.stderr).toBe("");
@@ -3589,6 +3629,7 @@ WHERE id = '${superseded.memory.id}'
         }),
         db: memoryDb(fixture),
         ...slackContext({ channelId: "D123" }),
+        users: memoryUsers(slackContext({ channelId: "D123" }).userId),
       };
       const tools = {
         createMemory: createMemoryCreateTool(context),
@@ -3791,6 +3832,7 @@ WHERE id = '${superseded.memory.id}'
           agent: rejectMemory,
           db: memoryDb(fixture),
           ...slackContext(),
+          users: memoryUsers(slackContext().userId),
         }).execute(
           {
             content: "I prefer rejected memories not to be stored.",
@@ -3804,6 +3846,11 @@ WHERE id = '${superseded.memory.id}'
           agent: allowMemory("actor"),
           db: memoryDb(fixture),
           source: slackContext().source,
+          users: {
+            async resolveActor() {
+              return undefined;
+            },
+          },
         }).execute(
           {
             content: "I prefer actor context failures to be visible.",
@@ -3881,6 +3928,7 @@ WHERE id = '${superseded.memory.id}'
       const result = await plugin.hooks?.userPrompt?.({
         ...context,
         destination: slackDestination(context),
+        users: memoryUsers(context.userId),
         db: memoryDb(fixture),
         embedder: createTestEmbedder({}, { costUsd: 0.0003 }),
         events: {
@@ -3910,14 +3958,14 @@ WHERE id = '${superseded.memory.id}'
               content: conversation.memory.content,
               kind: conversation.memory.kind,
               observedAtMs: conversation.memory.observedAtMs,
-              scope: "private",
+              scope: "personal",
             },
             {
               id: personal.memory.id,
               content: personal.memory.content,
               kind: personal.memory.kind,
               observedAtMs: personal.memory.observedAtMs,
-              scope: "private",
+              scope: "personal",
             },
           ],
         },
@@ -3972,6 +4020,7 @@ WHERE id = '${superseded.memory.id}'
       const result = await plugin.hooks?.userPrompt?.({
         ...context,
         destination: slackDestination(context),
+        users: memoryUsers(context.userId),
         db: memoryDb(fixture),
         embedder: createTestEmbedder(),
         events: {
@@ -4029,6 +4078,7 @@ WHERE id = '${superseded.memory.id}'
       const result = await plugin.hooks?.userPrompt?.({
         ...context,
         destination: slackDestination(context),
+        users: memoryUsers(context.userId),
         db: memoryDb(fixture),
         embedder: createTestEmbedder(),
         log: noopLogger,
@@ -4053,7 +4103,7 @@ WHERE id = '${superseded.memory.id}'
               content: conversation.memory.content,
               kind: conversation.memory.kind,
               observedAtMs: conversation.memory.observedAtMs,
-              scope: "public",
+              scope: "conversation",
             },
           ],
         },
@@ -4100,6 +4150,7 @@ WHERE id = '${superseded.memory.id}'
       const result = await plugin.hooks?.userPrompt?.({
         ...context,
         destination: slackDestination(context),
+        users: memoryUsers(context.userId),
         db: memoryDb(fixture),
         embedder: createTestEmbedder(),
         log: noopLogger,
@@ -4145,6 +4196,7 @@ WHERE id = '${superseded.memory.id}'
         plugin.hooks?.userPrompt?.({
           ...context,
           destination: slackDestination(context),
+          users: memoryUsers(context.userId),
           db: memoryDb(fixture),
           embedder: createTestEmbedder({}, { costUsd: 0.0002 }),
           events: {
@@ -4184,6 +4236,7 @@ WHERE id = '${superseded.memory.id}'
         plugin.hooks?.userPrompt?.({
           ...context,
           destination: slackDestination(context),
+          users: memoryUsers(context.userId),
           db: memoryDb(fixture),
           embedder: createTestEmbedder({}, { costUsd: 0.0002 }),
           events: {
@@ -4242,6 +4295,7 @@ WHERE id = '${superseded.memory.id}'
         plugin.hooks?.userPrompt?.({
           ...context,
           destination: slackDestination(context),
+          users: memoryUsers(context.userId),
           db: memoryDb(fixture),
           embedder: createTestEmbedder(),
           log,
@@ -4277,6 +4331,7 @@ WHERE id = '${superseded.memory.id}'
         plugin.hooks?.userPrompt?.({
           ...context,
           destination: slackDestination(context),
+          users: memoryUsers(context.userId),
           db: memoryDb(fixture),
           embedder: createTestEmbedder(),
           log: noopLogger,
@@ -4315,6 +4370,7 @@ WHERE id = '${superseded.memory.id}'
       const result = await plugin.hooks?.userPrompt?.({
         ...context,
         destination: slackDestination(context),
+        users: memoryUsers(context.userId),
         db: memoryDb(fixture),
         embedder,
         log: noopLogger,
@@ -4342,11 +4398,15 @@ WHERE id = '${superseded.memory.id}'
         agent: allowMemory("actor"),
         db: memoryDb(fixture),
         ...slackContext(),
+        users: memoryUsers(slackContext().userId),
       });
       const secondTool = createMemoryCreateTool({
         agent: allowMemory("actor"),
         db: memoryDb(fixture),
         ...slackContext({ threadTs: "1718800001.000000" }),
+        users: memoryUsers(
+          slackContext({ threadTs: "1718800001.000000" }).userId,
+        ),
       });
 
       await expect(
@@ -4383,7 +4443,7 @@ WHERE id = '${superseded.memory.id}'
     }
   }, 15_000);
 
-  it("keeps local memory in its local conversation domain", async () => {
+  it("keeps private local memory with its canonical user", async () => {
     const fixture = await createMemoryFixture();
 
     try {
@@ -4419,15 +4479,18 @@ WHERE id = '${superseded.memory.id}'
         localContext({ conversationId: "local:junior:other-memory-test" }),
         { now: () => nowMs },
       );
-      await expect(otherConversationStore.listMemories({})).resolves.toEqual(
-        [],
-      );
+      await expect(otherConversationStore.listMemories({})).resolves.toEqual([
+        expect.objectContaining({ id: conversation.memory.id }),
+        expect.objectContaining({ id: personal.memory.id }),
+      ]);
       await expect(
         otherConversationStore.archiveMemory({ id: conversation.memory.id }),
-      ).rejects.toThrow("Memory was not found in the current context.");
+      ).resolves.toMatchObject({ id: conversation.memory.id });
 
       nowMs = TEST_NOW_MS + 2;
-      const archived = await store.archiveMemory({ id: personal.memory.id });
+      const archived = await otherConversationStore.archiveMemory({
+        id: personal.memory.id,
+      });
       expect(archived).toMatchObject({
         archivedAtMs: TEST_NOW_MS + 2,
         id: personal.memory.id,
@@ -4442,11 +4505,10 @@ WHERE id = '${superseded.memory.id}'
 
     try {
       let nowMs = TEST_NOW_MS;
-      const store = createMemoryStore(
-        memoryDb(fixture),
-        slackContext({ channelId: "D123" }),
-        { now: () => nowMs },
-      );
+      const context = slackContext({ channelId: "D123" });
+      const store = createMemoryStore(memoryDb(fixture), context, {
+        now: () => nowMs,
+      });
 
       const created = await store.createMemory({
         content: "Different content with the same retry key.",
@@ -4489,10 +4551,10 @@ INSERT INTO junior_memory_memories (
           [
             "mem_duplicate_idempotency",
             "private",
-            "slack:T123:D123",
+            context.userId,
             "knowledge",
             "user",
-            "slack:T123:U123",
+            context.userId,
             "Duplicate raw insert with same retry key.",
             "slack",
             "slack:T123:C123:1718800000.000000",

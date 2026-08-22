@@ -248,8 +248,10 @@ export async function processMemorySession(
 
   const runtimeContext = memoryRuntimeContextSchema.parse({
     conversationId: run.conversationId,
+    ...(run.locationId ? { locationId: run.locationId } : undefined),
     ...(run.actor ? { actor: run.actor } : undefined),
     source: run.source,
+    ...(run.actorUserId ? { userId: run.actorUserId } : undefined),
   });
   const agent = createMemoryAgent(context.model);
   const store = createMemoryStore(context.db as MemoryDb, runtimeContext, {

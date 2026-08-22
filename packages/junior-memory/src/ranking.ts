@@ -9,7 +9,6 @@ export interface MemoryMatch {
     rank: number;
   };
   memory: MemoryRecord;
-  sourceKey: string;
   vector?: {
     rank: number;
   };
@@ -31,13 +30,6 @@ function matchScore(
       ? reciprocalRank(match.lexical.rank, weights.lexicalWeight)
       : 0)
   );
-}
-
-function currentChannel(
-  match: Pick<MemoryMatch, "sourceKey">,
-  channelPrefix: string | undefined,
-): boolean {
-  return channelPrefix ? match.sourceKey.startsWith(channelPrefix) : false;
 }
 
 function observedAgeRank(memory: MemoryRecord, nowMs: number): number {
@@ -64,7 +56,6 @@ function positiveWeight(value: number | undefined, fallback: number): number {
 export function rankMemoryMatches(
   matches: MemoryMatch[],
   options: {
-    channelPrefix?: string;
     /** Optional RRF weight for the lexical leg. Defaults to 1. */
     lexicalWeight?: number;
     nowMs: number;
@@ -107,12 +98,6 @@ export function rankMemoryMatches(
       Number(left.memory.scope === "private");
     if (privateDelta !== 0) {
       return privateDelta;
-    }
-    const channelDelta =
-      Number(currentChannel(right, options.channelPrefix)) -
-      Number(currentChannel(left, options.channelPrefix));
-    if (channelDelta !== 0) {
-      return channelDelta;
     }
     return (
       observedAgeRank(right.memory, options.nowMs) -

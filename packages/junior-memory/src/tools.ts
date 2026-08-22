@@ -7,6 +7,8 @@ import {
   type PluginToolOutput,
   type Source,
   type Actor,
+  type Identity,
+  type User,
   pluginToolOutputSchema,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
@@ -43,7 +45,8 @@ const KNOWN_TOOL_INPUT_ERROR_MESSAGES = new Set([
   "Memory id is required.",
   "Memory was not found in the current context.",
   "Memory id prefix is ambiguous.",
-  "User-subject memory requires actor context.",
+  "Private memory requires a linked user.",
+  "User-subject memory requires a linked user.",
 ]);
 
 /** Runtime-owned context used to bind memory tools to visible scopes. */
@@ -52,8 +55,12 @@ export interface MemoryToolContext {
   conversationId?: string;
   db: MemoryDb;
   embedder?: MemoryEmbeddingProvider;
+  locationId?: string;
   actor?: Actor;
   source: Source;
+  users: {
+    resolveActor(): Promise<{ identity: Identity; user?: User } | undefined>;
+  };
   userText?: string;
 }
 
@@ -78,23 +85,27 @@ function asToolInputError(error: unknown): never {
   throw error;
 }
 
-function memoryRuntimeContext(
+async function memoryRuntimeContext(
   context: MemoryToolContext,
-): MemoryRuntimeContext {
+): Promise<MemoryRuntimeContext> {
+  const actorUser = (await context.users.resolveActor())?.user;
   return memoryRuntimeContextSchema.parse({
     ...(context.conversationId
       ? { conversationId: context.conversationId }
       : undefined),
     ...(context.actor ? { actor: context.actor } : undefined),
+    ...(context.locationId ? { locationId: context.locationId } : undefined),
     source: context.source,
+    ...(actorUser ? { userId: actorUser.id } : undefined),
   });
 }
 
 function memoryStore(
   context: MemoryToolContext,
+  runtimeContext: MemoryRuntimeContext,
   options: { supersessionDecider?: MemorySupersessionDecider } = {},
 ) {
-  return createMemoryStore(context.db, memoryRuntimeContext(context), {
+  return createMemoryStore(context.db, runtimeContext, {
     embedder: context.embedder,
     ...(options.supersessionDecider
       ? { supersessionDecider: options.supersessionDecider }
@@ -399,7 +410,7 @@ export function createMemoryCreateTool(context: MemoryCreateToolContext) {
       readOnlyHint: false,
     },
     description:
-      "Explicit memory-write tool. Use only when the latest user message directly asks Junior to remember, store, save, or forget-and-replace a fact. Do not use for ordinary statements like 'I prefer X', 'I use Y', or 'X goes before Y' unless the user also asks you to remember/store/save it; passive memory learning handles those after the visible reply. Pass one self-contained natural-language candidate preserving the user's explicit memory intent. Do not ask the user to rephrase ordinary first-person facts, and do not rewrite them into display-name or third-person wording. Do not include secrets, private personal details, medical/legal/financial/sensitive facts, or another person's personal preference, opinion, habit, identity, relationship, workflow, or private life. Runtime context derives visibility, domain, source, and subject ids; the memory agent decides canonical stored content and memory kind.",
+      "Explicit memory-write tool. Use only when the latest user message directly asks Junior to remember, store, save, or forget-and-replace a fact. Do not use for ordinary statements like 'I prefer X', 'I use Y', or 'X goes before Y' unless the user also asks you to remember/store/save it; passive memory learning handles those after the visible reply. Pass one self-contained natural-language candidate preserving the user's explicit memory intent. Do not ask the user to rephrase ordinary first-person facts, and do not rewrite them into display-name or third-person wording. Do not include secrets, private personal details, medical/legal/financial/sensitive facts, or another person's personal preference, opinion, habit, identity, relationship, workflow, or private life. Runtime context derives visibility, Location, source, and subject ids; the memory agent decides canonical stored content and memory kind.",
     executionMode: "sequential",
     inputSchema: createMemoryInputSchema,
     outputSchema: memoryCreateOutputSchema,
@@ -407,8 +418,8 @@ export function createMemoryCreateTool(context: MemoryCreateToolContext) {
       const parsedInput = parseMemoryToolInput(createMemoryInputSchema, input);
       const toolCallId = requireToolCallId(options.toolCallId);
       const requestedExpiresAtMs = parseExpiresAt(parsedInput.expires_at);
-      const runtimeContext = memoryRuntimeContext(context);
-      const store = memoryStore(context, {
+      const runtimeContext = await memoryRuntimeContext(context);
+      const store = memoryStore(context, runtimeContext, {
         supersessionDecider: context.supersessionDecider,
       });
       const review = await (async () => {
@@ -491,15 +502,16 @@ export function createMemoryRemoveTool(context: MemoryToolContext) {
       readOnlyHint: false,
     },
     description:
-      "Forget one private memory owned by the active source domain. Public memories are read-only. Use only ids or short id prefixes returned by listMemories or searchMemories. Never remove memories by hidden actor, Slack, scope, or subject identifiers.",
+      "Forget one private memory owned by the active linked user. Public memories are read-only. Use only ids or short id prefixes returned by listMemories or searchMemories. Never remove memories by hidden actor, provider, scope, or subject identifiers.",
     executionMode: "sequential",
     inputSchema: removeMemoryInputSchema,
     outputSchema: memorySingleOutputSchema,
     execute: async (input) => {
       const parsedInput = parseMemoryToolInput(removeMemoryInputSchema, input);
+      const runtimeContext = await memoryRuntimeContext(context);
       const memory = await (async () => {
         try {
-          return await memoryStore(context).archiveMemory({
+          return await memoryStore(context, runtimeContext).archiveMemory({
             id: parsedInput.id,
             reason: "tool_removed",
           });
@@ -529,7 +541,8 @@ export function createMemoryListTool(context: MemoryToolContext) {
     outputSchema: memoryManyOutputSchema,
     execute: async (input) => {
       const parsedInput = parseMemoryToolInput(listMemoriesInputSchema, input);
-      const memories = await memoryStore(context).listMemories({
+      const runtimeContext = await memoryRuntimeContext(context);
+      const memories = await memoryStore(context, runtimeContext).listMemories({
         limit: boundedLimit(parsedInput.limit, DEFAULT_RESULT_LIMIT),
       });
       return memoryToolResult("listMemories", {
@@ -543,7 +556,7 @@ export function createMemoryListTool(context: MemoryToolContext) {
 export function createMemorySearchTool(context: MemoryToolContext) {
   return definePluginTool({
     description:
-      "Search active memories visible in the current context. Use when the model needs targeted memory recall. Public memories are visible everywhere; private memories are limited to the active source domain.",
+      "Search active memories visible in the current context. Use when the model needs targeted memory recall. Public memories are visible everywhere; private memories belong to the active linked user.",
     annotations: {
       destructiveHint: false,
       idempotentHint: true,
@@ -557,7 +570,11 @@ export function createMemorySearchTool(context: MemoryToolContext) {
         searchMemoriesInputSchema,
         input,
       );
-      const memories = await memoryStore(context).searchMemories({
+      const runtimeContext = await memoryRuntimeContext(context);
+      const memories = await memoryStore(
+        context,
+        runtimeContext,
+      ).searchMemories({
         query: parsedInput.query,
         limit: boundedLimit(parsedInput.limit, DEFAULT_SEARCH_LIMIT),
       });

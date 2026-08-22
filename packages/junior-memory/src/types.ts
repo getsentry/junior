@@ -26,8 +26,11 @@ const nonEmptyStringSchema = z.string().min(1);
 export const memoryRuntimeContextSchema = z
   .object({
     conversationId: nonEmptyStringSchema.optional(),
+    locationId: nonEmptyStringSchema.optional(),
     actor: actorSchema.optional(),
     source: sourceSchema,
+    /** Canonical user linked to the active actor. */
+    userId: nonEmptyStringSchema.optional(),
   })
   .strict();
 

@@ -53,6 +53,7 @@ function localContext() {
     conversationId: "local:junior:memory-report",
     actor: { platform: "local" as const, userId: "report-user" },
     source: createLocalSource("local:junior:memory-report"),
+    userId: "user:local:report-user",
   };
 }
 

@@ -2,7 +2,7 @@
  * SQL operations over memories visible to one authenticated viewer.
  *
  * Public memory is visible to every authenticated viewer. Private memory is
- * visible when the viewer participates in a conversation in its source domain.
+ * visible only to its linked canonical user.
  */
 import {
   and,
@@ -74,28 +74,11 @@ function publicScopePredicate() {
   );
 }
 
-/** Match private domains for conversations materialized for this user. */
+/** Match private memory owned by this canonical user. */
 function privateScopePredicate(userId: string) {
   return and(
     eq(juniorMemoryMemories.scope, "private"),
-    sql`exists (
-      select 1
-      from junior_conversations as viewer_conversation
-      inner join junior_conversation_participants as viewer_participant
-        on viewer_participant.root_conversation_id = viewer_conversation.root_conversation_id
-      left join junior_destinations as viewer_destination
-        on viewer_destination.id = viewer_conversation.destination_id
-      where viewer_participant.user_id = ${userId}
-        and (
-          ${juniorMemoryMemories.scopeKey} = viewer_conversation.conversation_id
-          or (
-            ${juniorMemoryMemories.sourcePlatform} = 'slack'
-            and viewer_destination.provider = 'slack'
-            and ${juniorMemoryMemories.scopeKey} =
-              'slack:' || viewer_destination.provider_tenant_id || ':' || viewer_destination.provider_destination_id
-          )
-        )
-    )`,
+    eq(juniorMemoryMemories.scopeKey, userId),
   );
 }
 

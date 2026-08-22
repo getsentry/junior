@@ -1,8 +1,8 @@
 /**
  * Authenticated REST resources for viewer-visible memories.
  *
- * HTTP identity authenticates the request and resolves the linked user used
- * for private source-domain access.
+ * HTTP identity authenticates the request and resolves the linked user that
+ * owns private memory.
  */
 import { z } from "zod";
 import {
@@ -44,7 +44,7 @@ export const memoryListResponseSchema = z
 const memoryDashboardDaySchema = z
   .object({
     date: z.iso.date(),
-    private: z.number().int().min(0),
+    personal: z.number().int().min(0),
     public: z.number().int().min(0),
   })
   .strict();
@@ -71,7 +71,7 @@ export const memoryDashboardResponseSchema = z
         embedded: z.number().int().min(0),
         explicit: z.number().int().min(0),
         knowledge: z.number().int().min(0),
-        private: z.number().int().min(0),
+        personal: z.number().int().min(0),
         preference: z.number().int().min(0),
         procedure: z.number().int().min(0),
         public: z.number().int().min(0),
@@ -172,12 +172,16 @@ export function createMemoryApi(options: MemoryApiOptions): PluginRouteApp {
               eventName: "memories_recalled",
             }),
           ]);
+          const { private: personal, ...dashboardStats } = stats;
           const body = memoryDashboardResponseSchema.parse({
-            days,
+            days: days.map(({ private: personal, ...day }) => ({
+              ...day,
+              personal,
+            })),
             extractionDays,
             generatedAt: new Date().toISOString(),
             recallDays,
-            stats,
+            stats: { ...dashboardStats, personal },
           });
           return request.method === "HEAD"
             ? new Response(null, {

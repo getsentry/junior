@@ -14,9 +14,8 @@ exported types, tools, and tests are authoritative.
 - The `memory` CLI namespace provides explicit administrative search and
   inspection.
 - The dashboard exposes a searchable, paginated **Memories** user page. It
-  includes public memory and private memory from conversation domains linked
-  to the authenticated user. The overview charts global passive-extraction
-  cost from the durable
+  includes public memory and private memory owned by the authenticated user.
+  The overview charts global passive-extraction cost from the durable
   `memory/memories_captured` events. The System plugin report uses the same
   event-cost feed.
 - Authenticated REST clients can list and search authorized memories through
@@ -29,16 +28,15 @@ exported types, tools, and tests are authoritative.
 
 - Memory visibility is derived from the Source, never from model-supplied
   ownership fields.
-- Public memory is visible in every source domain.
-- Private memory is visible only in the Slack channel, direct message, local
-  conversation, or web conversation that learned it.
-- Dashboard and REST access use the canonical user's durable conversation
-  participation. A linked identity grants access only after Junior records the
-  user as a participant in that private source domain.
+- Public memory is visible everywhere.
+- Private memory is owned by one canonical User. It is visible through every
+  Identity linked to that User.
+- Junior records the optional Location where it learned a memory. Location is
+  provenance only. It does not grant access.
 - Subject classification is independent from visibility. A user preference can
   be public or private based on its Source.
-- Recall filters candidates by domain, visibility, status, and relevance before
-  content reaches the model.
+- Recall filters candidates by visibility, status, and relevance before content
+  reaches the model.
 - Administrative reads require explicit selectors and safe output defaults.
 - Memory content, embeddings, source excerpts, and review prompts must not be
   logged or traced.
@@ -77,12 +75,12 @@ exported types, tools, and tests are authoritative.
   neighbors. Vector recall also applies the cosine distance cutoff in SQL, and
   embeddings use an HNSW cosine index (`vector_cosine_ops`).
 - Automatic recall also runs private-scope-only vector and lexical probes so
-  older domain memory is not buried when newer public memory fills the shared
+  older private memory is not buried when newer public memory fills the shared
   lexical recency window with common tokens. On RRF score ties, private matches
   rank ahead of public matches.
 - Automatic recall retrieves a bounded candidate window, then uses the
-  memory-owned relevance model to admit at most five directly useful memories.
-  An empty result contributes no filler prompt text.
+  memory-owned relevance model and prompt budget to admit directly useful
+  memories. An empty result contributes no filler prompt text.
 - Every completed automatic recall attempt emits an invisible, namespaced
   `memory/memories_recalled` conversation event with the admitted memory IDs
   and best-effort embedding and relevance-model cost, including retrievals that

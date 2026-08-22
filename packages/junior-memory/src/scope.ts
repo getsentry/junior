@@ -1,4 +1,3 @@
-import { type Actor, type Source } from "@sentry/junior-plugin-api";
 import type {
   MemoryRuntimeContext,
   MemoryScope,
@@ -19,38 +18,14 @@ export interface ResolvedMemorySubject {
   subjectType: MemorySubjectType;
 }
 
-/** Public memories are visible in every source domain. */
+/** Public memories are visible everywhere. */
 export const publicMemoryScope: ResolvedMemoryScope = {
   scope: "public",
   scopeKey: PUBLIC_SCOPE_KEY,
 };
 
-/** Stable domain that contains private memory learned from one Source. */
-function sourceDomainKey(source: Source): string {
-  switch (source.platform) {
-    case "web":
-    case "local":
-      return source.conversationId;
-    case "slack":
-      return `slack:${source.teamId}:${source.channelId}`;
-  }
-}
-
-/** Stable provider subject used only to classify what a memory is about. */
-function actorSubjectKey(actor: Actor | undefined): string | undefined {
-  if (!actor) return undefined;
-  switch (actor.platform) {
-    case "system":
-      return undefined;
-    case "slack":
-      return `slack:${actor.teamId}:${actor.userId}`;
-    case "local":
-      return `local:${actor.userId}`;
-    case "web": {
-      const email = actor.email?.trim().toLowerCase();
-      return email ? `junior:${email}` : `web:${actor.userId}`;
-    }
-  }
+function privateMemoryScope(userId: string): ResolvedMemoryScope {
+  return { scope: "private", scopeKey: userId };
 }
 
 /** Derive write visibility from the Source that supplied the evidence. */
@@ -60,10 +35,10 @@ export function deriveMemoryScope(
   if (ctx.source.visibility === "public") {
     return publicMemoryScope;
   }
-  return {
-    scope: "private",
-    scopeKey: sourceDomainKey(ctx.source),
-  };
+  if (!ctx.userId) {
+    throw new Error("Private memory requires a linked user.");
+  }
+  return privateMemoryScope(ctx.userId);
 }
 
 /** Derive what a memory is about independently from its visibility. */
@@ -72,24 +47,29 @@ export function deriveMemorySubject(
   subjectType: Extract<MemorySubjectType, "user" | "conversation">,
 ): ResolvedMemorySubject {
   if (subjectType === "user") {
-    const subjectKey = actorSubjectKey(ctx.actor);
-    if (!subjectKey) {
-      throw new Error("User-subject memory requires actor context.");
+    if (!ctx.userId) {
+      throw new Error("User-subject memory requires a linked user.");
     }
-    return { subjectType, subjectKey };
+    return { subjectType, subjectKey: ctx.userId };
+  }
+  const subjectKey = ctx.locationId ?? ctx.conversationId;
+  if (!subjectKey) {
+    throw new Error(
+      "Conversation-subject memory requires conversation context.",
+    );
   }
   return {
     subjectType,
-    subjectKey: sourceDomainKey(ctx.source),
+    subjectKey,
   };
 }
 
-/** Return every memory scope visible from the current Source. */
+/** Return every memory scope visible to the current linked user. */
 export function deriveVisibleMemoryScopes(
   ctx: MemoryRuntimeContext,
 ): ResolvedMemoryScope[] {
-  if (ctx.source.visibility === "public") {
+  if (!ctx.userId) {
     return [publicMemoryScope];
   }
-  return [publicMemoryScope, deriveMemoryScope(ctx)];
+  return [publicMemoryScope, privateMemoryScope(ctx.userId)];
 }

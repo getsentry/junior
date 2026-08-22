@@ -1,6 +1,7 @@
 import { expect } from "vitest";
 import { assistantMessages } from "vitest-evals";
-import { getDb } from "@/chat/db";
+import { getDb, getSqlExecutor } from "@/chat/db";
+import { upsertIdentity } from "@/chat/identities/sql";
 import { completeText, resolveGatewayModel } from "@/chat/pi/client";
 import { createPluginEmbedder } from "@/chat/plugins/model";
 import { createMemoryStore, type MemoryDb } from "@sentry/junior-memory";
@@ -35,6 +36,17 @@ export async function seedMemory(args: {
   subject?: "conversation" | "user";
   thread: MemoryThread;
 }) {
+  const identity = await upsertIdentity(getSqlExecutor(), {
+    email: "testuser@example.com",
+    emailVerified: true,
+    kind: "user",
+    provider: "slack",
+    providerSubjectId: actorUserId,
+    providerTenantId: memoryTeamId,
+  });
+  if (!identity.userId) {
+    throw new Error("Eval memory actor did not resolve to a canonical user");
+  }
   const store = createMemoryStore(
     memoryDb(),
     {
@@ -52,6 +64,7 @@ export async function seedMemory(args: {
         visibility:
           args.thread.channel_type === "channel" ? "public" : "private",
       }),
+      userId: identity.userId,
     },
     { embedder: evalMemoryEmbedder },
   );

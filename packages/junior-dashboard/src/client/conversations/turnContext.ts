@@ -2,7 +2,7 @@ import { z } from "zod";
 
 import type { TranscriptViewTurnContext } from "../types";
 
-/** Dashboard parser for persisted memory recall context version 1. */
+/** Dashboard parser for the first persisted memory recall context version. */
 export const memoryRecallContentSchema = z
   .object({
     memories: z.array(
@@ -11,15 +11,7 @@ export const memoryRecallContentSchema = z
           id: z.string(),
           content: z.string(),
           observedAtMs: z.number(),
-          scope: z
-            .enum(["personal", "conversation", "private", "public"])
-            .transform((scope) =>
-              scope === "personal"
-                ? "private"
-                : scope === "conversation"
-                  ? "public"
-                  : scope,
-            ),
+          scope: z.enum(["personal", "conversation"]),
           kind: z.enum(["preference", "procedure", "knowledge"]),
         })
         .strict(),
@@ -29,7 +21,7 @@ export const memoryRecallContentSchema = z
 
 export type MemoryRecallContent = z.output<typeof memoryRecallContentSchema>;
 
-/** Parse memory recall context version 1 and normalize stored scope values. */
+/** Parse the first native memory recall context version. */
 export function memoryRecallContent(context: TranscriptViewTurnContext) {
   if (
     context.pluginName !== "memory" ||

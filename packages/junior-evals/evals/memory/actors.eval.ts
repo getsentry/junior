@@ -1,6 +1,7 @@
 import { expect } from "vitest";
 import { describeEval } from "vitest-evals";
 import { getDb } from "@/chat/db";
+import { readActorIdentity } from "@/chat/plugins/viewer";
 import type { MemoryDb } from "@sentry/junior-memory";
 import {
   juniorMemoryEmbeddings,
@@ -80,15 +81,23 @@ async function clearMemories() {
   await memoryDb().delete(juniorMemoryMemories);
 }
 
-function actorMemoriesOwnedBy(
+async function actorMemoriesOwnedBy(
   rows: Awaited<ReturnType<typeof readMemories>>,
   slackUserId: string,
 ) {
+  const userId = (
+    await readActorIdentity({
+      platform: "slack",
+      teamId: memoryTeamId,
+      userId: slackUserId,
+    })
+  )?.user?.id;
+  if (!userId) return [];
   return rows.filter(
     (memory) =>
       memory.subjectType === "user" &&
       memory.archivedAtMs === null &&
-      memory.subjectKey === `slack:${memoryTeamId}:${slackUserId}`,
+      memory.subjectKey === userId,
   );
 }
 
@@ -155,7 +164,7 @@ describeEval("Memory Multi-Actor Provenance", slackEvals, (it) => {
     // words is an extraction-quality question this eval does not contract. The
     // provenance guarantee is only that Bob's preference content never lands in
     // Alice's user subject, no matter how the extractor phrases it.
-    const alicePersonal = actorMemoriesOwnedBy(rows, ALICE.user_id);
+    const alicePersonal = await actorMemoriesOwnedBy(rows, ALICE.user_id);
     for (const memory of alicePersonal) {
       const content = memory.content.toLowerCase();
       expect(content).not.toMatch(/emoji/);
@@ -214,7 +223,7 @@ describeEval("Memory Multi-Actor Provenance", slackEvals, (it) => {
     // Any personal memory owned by Alice must come from Alice's own words.
     // Bob's customer-impact-first preference must not appear in her
     // user subject, no matter how the extractor phrases it.
-    const alicePersonal = actorMemoriesOwnedBy(rows, ALICE.user_id);
+    const alicePersonal = await actorMemoriesOwnedBy(rows, ALICE.user_id);
     for (const memory of alicePersonal) {
       expect(memory.content.toLowerCase()).not.toMatch(/customer[ -]?impact/);
     }
@@ -222,7 +231,7 @@ describeEval("Memory Multi-Actor Provenance", slackEvals, (it) => {
     // request under someone else's turn: any personal row keyed to Bob must
     // have come from his own authored turn, which this scenario never gives
     // an active instruction.
-    const bobPersonal = actorMemoriesOwnedBy(rows, BOB.user_id);
+    const bobPersonal = await actorMemoriesOwnedBy(rows, BOB.user_id);
     for (const memory of bobPersonal) {
       expect(memory.content.toLowerCase()).not.toMatch(/risks?[ -]?first/);
     }
@@ -263,7 +272,7 @@ describeEval("Memory Multi-Actor Provenance", slackEvals, (it) => {
     const rows = await readMemories(batchedMentionThread);
     // Bob's first-person formatting preference must never land in Alice's
     // user subject just because he explicitly steered her active turn.
-    const alicePersonal = actorMemoriesOwnedBy(rows, ALICE.user_id);
+    const alicePersonal = await actorMemoriesOwnedBy(rows, ALICE.user_id);
     for (const memory of alicePersonal) {
       expect(memory.content.toLowerCase()).not.toMatch(/bullet/);
     }
@@ -338,7 +347,7 @@ describeEval("Memory Multi-Actor Provenance", slackEvals, (it) => {
     // Preferences are the only route into a user subject for passive
     // extraction, so the actor's user-subject memories must stay empty too.
     expect(
-      actorMemoriesOwnedBy(rows, ALICE.user_id).map((memory) => ({
+      (await actorMemoriesOwnedBy(rows, ALICE.user_id)).map((memory) => ({
         content: memory.content,
         kind: memory.kind,
         scope: memory.scope,
@@ -405,7 +414,7 @@ describeEval("Memory Multi-Actor Provenance", slackEvals, (it) => {
     // Guard against over-tightening: public operational knowledge from a
     // non-actor remains valid conversation-scope evidence. Only the
     // user subjects require actor-authored provenance.
-    expect(actorMemoriesOwnedBy(rows, ALICE.user_id)).toEqual([]);
+    expect(await actorMemoriesOwnedBy(rows, ALICE.user_id)).toEqual([]);
     const conversationRows = rows.filter(
       (memory) => memory.scope === "public" && memory.archivedAtMs === null,
     );

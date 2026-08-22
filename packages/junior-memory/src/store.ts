@@ -25,6 +25,7 @@ import { cosineDistance } from "drizzle-orm/sql/functions";
 import type { PgDatabase } from "drizzle-orm/pg-core";
 import type { PgQueryResultHKT } from "drizzle-orm/pg-core/session";
 import { z } from "zod";
+import { getSourceKey } from "@sentry/junior-plugin-api";
 import * as memorySqlSchema from "./db/schema";
 import { juniorMemoryEmbeddings, juniorMemoryMemories } from "./db/schema";
 import { rankMemoryMatches, type MemoryMatch } from "./ranking";
@@ -36,7 +37,6 @@ import {
   MEMORY_KINDS,
   memoryRuntimeContextSchema,
   type MemoryRuntimeContext,
-  type MemorySourcePlatform,
   type MemorySubjectType,
 } from "./types";
 import {
@@ -150,6 +150,7 @@ const memoryRowSchema = z
     expiresAtMs: optionalNumberSchema,
     id: z.string().min(1),
     idempotencyKey: optionalStringSchema,
+    locationId: optionalNonEmptyStringSchema,
     observedAtMs: z.coerce.number(),
     searchVector: z.string().optional(),
     scope: z.enum(MEMORY_SCOPES),
@@ -342,7 +343,7 @@ export interface MemoryStore {
   ): Promise<CreateMemoryResult>;
   /** List active memories visible in the current runtime context. */
   listMemories(input: ListMemoriesInput): Promise<MemoryRecord[]>;
-  /** List active private memories in the current source domain. */
+  /** List active private memories owned by the current linked user. */
   listPrivateMemories(input: ListMemoriesInput): Promise<MemoryRecord[]>;
   /**
    * Retrieve a broad relevance-ranked candidate window for automatic recall.
@@ -384,50 +385,15 @@ function boundedLimit(value: number | undefined, fallback: number): number {
   return Math.min(200, Math.max(1, Math.floor(value)));
 }
 
-/** Map runtime Source platform onto the durable memory source platform. */
-function memorySourcePlatform(
-  source: MemoryRuntimeContext["source"],
-): MemorySourcePlatform {
-  switch (source.platform) {
-    case "slack":
-      return "slack";
-    case "local":
-      return "local";
-    case "web":
-      return "web";
-  }
-}
-
 /** Build the durable source attribution key from runtime-owned source fields. */
 function sourceKey(ctx: MemoryRuntimeContext): string {
-  switch (ctx.source.platform) {
-    case "web":
-    case "local":
-      return ctx.source.conversationId;
-    case "slack": {
-      const threadKey = ctx.source.threadTs ?? ctx.source.messageTs;
-      if (!threadKey) {
-        throw new Error(
-          "Memory source requires a Slack message or thread timestamp.",
-        );
-      }
-      return `slack:${ctx.source.teamId}:${ctx.source.channelId}:${threadKey}`;
-    }
+  const key = getSourceKey(ctx.source);
+  if (!key) {
+    throw new Error("Memory source requires a durable source identity.");
   }
+  return key;
 }
 
-function sourceChannelPrefix(ctx: MemoryRuntimeContext): string | undefined {
-  switch (ctx.source.platform) {
-    case "slack":
-      // TODO(v0.82.0): Replace Slack source-key prefix matching with typed source proximity metadata.
-      return `slack:${ctx.source.teamId}:${ctx.source.channelId}:`;
-    case "web":
-    case "local":
-      return undefined;
-  }
-}
-
-/** Parse one SQL row into the public memory record projection. */
 /** Parse one SQL row into the public memory projection. */
 export function parseMemoryRow(row: unknown): MemoryRecord {
   const parsed = memoryRowSchema.parse(row);
@@ -806,11 +772,12 @@ async function rememberDuplicateIdempotency(args: {
         targetId: args.duplicate.id,
       }),
       idempotencyKey: args.idempotencyKey,
+      locationId: args.runtimeContext.locationId,
       observedAtMs: args.nowMs,
       scope: args.scope.scope,
       scopeKey: args.scope.scopeKey,
       sourceKey: sourceKey(args.runtimeContext),
-      sourcePlatform: memorySourcePlatform(args.runtimeContext.source),
+      sourcePlatform: args.runtimeContext.source.platform,
       subjectKey: args.subject.subjectKey,
       subjectType: args.subject.subjectType,
       supersededAtMs: args.nowMs,
@@ -1081,7 +1048,6 @@ async function searchVisibleLexicalMemories(args: {
   return rows.map((row, index) => ({
     lexical: { rank: ranks[index] },
     memory: parseMemoryRow(row.memory),
-    sourceKey: row.memory.sourceKey,
   }));
 }
 
@@ -1148,7 +1114,6 @@ async function searchVisibleVectorMemories(args: {
     return [
       {
         memory: parseMemoryRow(row.memory),
-        sourceKey: row.memory.sourceKey,
         vector: {
           rank: ranks[index],
         },
@@ -1323,11 +1288,12 @@ export function createMemoryStore(
           expiresAtMs: input.expiresAtMs,
           id,
           idempotencyKey: input.idempotencyKey,
+          locationId: runtimeContext.locationId,
           observedAtMs: nowMs,
           scope: scope.scope,
           scopeKey: scope.scopeKey,
           sourceKey: sourceKey(runtimeContext),
-          sourcePlatform: memorySourcePlatform(runtimeContext.source),
+          sourcePlatform: runtimeContext.source.platform,
           subjectKey: subject.subjectKey,
           subjectType: subject.subjectType,
           kind: input.kind,
@@ -1421,7 +1387,7 @@ export function createMemoryStore(
    *
    * Automatic recall also runs private-scope-only probes. Public memories
    * sharing common tokens (for example "time") can fill the shared lexical
-   * recency window before ranking, which buries older domain memory that
+   * recency window before ranking, which buries older private memory that
    * explicit search still finds.
    */
   async function retrieveVisibleMemories(
@@ -1500,14 +1466,12 @@ export function createMemoryStore(
           })
         : emptyMatches,
     ]);
-    const channelPrefix = sourceChannelPrefix(runtimeContext);
     return rankMemoryMatches(matches.flat(), {
       nowMs,
       // Slight lexical preference protects exact ids/names/timezones on ties.
       ...(vectorMaxDistance === undefined
         ? undefined
         : { lexicalWeight: 1, vectorWeight: 0.85 }),
-      ...(channelPrefix ? { channelPrefix } : undefined),
     })
       .slice(0, limit)
       .map(({ memory }) => memory);
@@ -1573,7 +1537,7 @@ export function createMemoryStore(
       input = archiveMemoryInputSchema.parse(input);
       const nowMs = getNowMs();
       const scope = deriveMemoryScope(runtimeContext);
-      // Public memory is shared and has no single source-domain owner.
+      // Public memory is shared and has no single user owner.
       const scopes = scope.scope === "private" ? [scope] : [];
       const predicate = activeVisiblePredicate({ nowMs, scopes });
       const idPrefix = input.id.trim();

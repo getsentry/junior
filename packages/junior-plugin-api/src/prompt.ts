@@ -6,7 +6,9 @@ import type {
   PluginEmbedder,
   PluginModel,
   Actor,
+  Identity,
   Source,
+  User,
 } from "./context";
 import type { PluginState } from "./state";
 import type { PluginConversationEvents } from "./conversation-events";
@@ -84,8 +86,14 @@ export type UserPromptContext = Pick<PluginContext, "db" | "log" | "plugin"> & {
   /** Conversation-bound event writer when the prompt belongs to a durable turn. */
   events?: PluginConversationEvents;
   model: PluginModel;
+  /** Junior-owned Location identity associated with this conversation. */
+  locationId?: string;
   actor?: Actor;
   source: Source;
   state: PluginState;
   text: string;
+  users: {
+    /** Resolve the current actor's stored identity and linked user. */
+    resolveActor(): Promise<{ identity: Identity; user?: User } | undefined>;
+  };
 };
