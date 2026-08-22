@@ -54,6 +54,23 @@ async function tryRecordWorkspaceSwitchStat(workspace: Workspace) {
   }
 }
 
+async function stopWorkspaceSnapshotWatch(input: {
+  conversationId: string;
+  subscriptionId: string;
+}): Promise<void> {
+  try {
+    await cancelResourceEventSubscription({
+      conversationId: input.conversationId,
+      id: input.subscriptionId,
+    });
+  } catch (error) {
+    logWarn("workspace.snapshot.watch.stop_failed", {
+      "exception.message":
+        error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
 const repoSchema = z.object({
   provider: z.string(),
   repo: z.string(),
@@ -354,9 +371,9 @@ export function createWorkspaceTools(
           build = await ensureWorkspaceSnapshotBuild({ workspace });
         } catch (error) {
           if (subscription && conversationId) {
-            await cancelResourceEventSubscription({
+            await stopWorkspaceSnapshotWatch({
               conversationId,
-              id: subscription.id,
+              subscriptionId: subscription.id,
             });
           }
           throw error;
@@ -369,9 +386,9 @@ export function createWorkspaceTools(
           };
         }
         if (subscription && conversationId) {
-          await cancelResourceEventSubscription({
+          await stopWorkspaceSnapshotWatch({
             conversationId,
-            id: subscription.id,
+            subscriptionId: subscription.id,
           });
         }
         if (build.status === "failed") {

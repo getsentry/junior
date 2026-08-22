@@ -662,10 +662,10 @@ export async function resolveWorkspaceSnapshot(params: {
       continue;
     }
     advanced = true;
+    if (snapshot) return snapshot;
     if (shouldStopForTimeLimit(current.shouldStop)) {
       throw new WorkspaceSnapshotNeedsMoreTimeError(workspace.name);
     }
-    if (snapshot) return snapshot;
     await sleep(WAIT_POLL_MS, params.signal);
   }
 }

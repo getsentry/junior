@@ -45,7 +45,7 @@ describe("Workspace snapshot completion", () => {
     await closeDb();
   });
 
-  it("stores a completed snapshot only in SQL and keeps its owner", async () => {
+  it("returns a completed snapshot before it stops for the request time limit", async () => {
     const workspace = await createWorkspace({
       name: `snapshot-cleanup-${randomUUID()}`,
       setupScript: "printf ready",
@@ -83,7 +83,7 @@ describe("Workspace snapshot completion", () => {
       resolveWorkspaceSnapshot({
         workspace,
         runtime: SANDBOX_RUNTIME,
-        shouldStop: () => false,
+        shouldStop: () => true,
         applyNetworkPolicy: async () => {},
         removeCredentialRoute: false,
       }),
