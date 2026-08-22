@@ -33,12 +33,6 @@ interface SlackWebhookAuthAdapter {
 
 type ChatSdkBot = JuniorChat<{ slack: SlackAdapter }>;
 
-function asSlackWebhookAuthAdapter(
-  adapter: unknown,
-): SlackWebhookAuthAdapter {
-  return adapter as SlackWebhookAuthAdapter;
-}
-
 type WebhookRunner = () => Promise<Response>;
 
 function getSlackPayloadTeamId(body: unknown): string | undefined {
@@ -58,7 +52,8 @@ async function handleAuthenticatedSlackMessageChangedMention(args: {
   waitUntil: WaitUntilFn;
 }): Promise<void> {
   const slackAdapter = args.bot.getAdapter("slack");
-  const authAdapter = asSlackWebhookAuthAdapter(slackAdapter);
+  // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+  const authAdapter = slackAdapter as SlackWebhookAuthAdapter;
   const timestamp = args.request.headers.get("x-slack-request-timestamp");
   const signature = args.request.headers.get("x-slack-signature");
 

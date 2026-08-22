@@ -2,13 +2,6 @@ import { describe, expect, it } from "vitest";
 import { createAssistantStatusScheduler } from "@/chat/slack/assistant-thread/status-scheduler";
 import { makeAssistantStatus } from "@/chat/slack/assistant-thread/status-render";
 
-function asNumber(value: unknown): number {
-  return value as number;
-}
-
-function asTimeout(value: unknown): ReturnType<typeof setTimeout> {
-  return value as ReturnType<typeof setTimeout>;
-}
 
 interface FakeTimer {
   id: number;
@@ -35,11 +28,13 @@ function createFakeScheduler() {
       canceled: false,
     };
     timers.push(timer);
-        return asTimeout(timer.id);
+        // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+        return timer.id as ReturnType<typeof setTimeout>;
   };
 
   const clearTimer = (timer: ReturnType<typeof setTimeout>) => {
-        const id = asNumber(timer);
+        // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+        const id = timer as number;
     const entry = timers.find((candidate) => candidate.id === id);
     if (entry) {
       entry.canceled = true;

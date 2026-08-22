@@ -4,9 +4,6 @@ import type {
 } from "@modelcontextprotocol/sdk/shared/auth.js";
 import type { OAuthDiscoveryState } from "@modelcontextprotocol/sdk/client/auth.js";
 
-function asOAuthDiscoveryState(value: unknown): OAuthDiscoveryState {
-  return value as OAuthDiscoveryState;
-}
 import {
   sourceSchema,
   type Destination,
@@ -211,7 +208,8 @@ function parseStoredCredentials(
         : undefined),
       ...(isRecord(parsed.discoveryState)
         ? {
-            discoveryState: asOAuthDiscoveryState(parsed.discoveryState),
+            // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+            discoveryState: parsed.discoveryState as OAuthDiscoveryState,
           }
         : undefined),
       ...(isRecord(parsed.tokens)

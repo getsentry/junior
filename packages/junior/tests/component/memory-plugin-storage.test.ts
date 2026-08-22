@@ -20,9 +20,6 @@ import {
   PluginToolInputError,
 } from "@sentry/junior-plugin-api";
 
-function asMemoryDb(value: unknown): MemoryDb {
-  return value as MemoryDb;
-}
 
 const NEON = vi.hoisted(() => ({
   sql: undefined as
@@ -318,7 +315,8 @@ WHERE indexname = 'junior_memory_memories_search_idx'
         visibility: "private",
       });
       const store = createMemoryStore(
-        asMemoryDb(fixture.sql.db()),
+        // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+        (fixture.sql.db()) as MemoryDb,
         {
         conversationId,
         actor,

@@ -14,25 +14,6 @@ import {
   createSlackSource,
 } from "@sentry/junior-plugin-api";
 
-function asDispatchDestination(value: unknown): typeof validOptions.destination {
-  return value as typeof validOptions.destination;
-}
-
-function asNonNullable(value: unknown): NonNullable<
-        Parameters<
-          typeof verifyDispatchCredentialSubjectAccess
-        >[0]["credentialSubject"]
-      > {
-  return value as NonNullable<
-        Parameters<
-          typeof verifyDispatchCredentialSubjectAccess
-        >[0]["credentialSubject"]
-      >;
-}
-
-function asStringRecord(value: unknown): Record<string, string> {
-  return value as Record<string, string>;
-}
 
 const validOptions = {
   idempotencyKey: "run-1",
@@ -140,7 +121,8 @@ describe("agent dispatch validation", () => {
       validateDispatchOptions({
         ...validOptions,
         destination: (() => {
-                    return asDispatchDestination(undefined);
+                    // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+                    return (undefined) as typeof validOptions.destination;
         })(),
       }),
     ).toThrow("Dispatch destination platform must be slack");
@@ -312,7 +294,8 @@ describe("agent dispatch validation", () => {
       validateDispatchOptions({
         ...validOptions,
         metadata: (() => {
-                    return asStringRecord(null);
+                    // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+                    return (null) as Record<string, string>;
         })(),
       }),
     ).toThrow("Dispatch metadata values must be strings");
@@ -446,11 +429,11 @@ describe("agent dispatch validation", () => {
       "Dispatch credentialSubject is not valid for this action",
     );
 
-        const unboundRuntimeSubject = asNonNullable({
+        const unboundRuntimeSubject = ({
       type: "user",
       userId: "U123",
       allowedWhen: "private-direct-conversation",
-    });
+    }) as NonNullable< Parameters< typeof verifyDispatchCredentialSubjectAccess >[0]["credentialSubject"] >;
 
     await expect(
       verifyDispatchCredentialSubjectAccess(

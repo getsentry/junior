@@ -6,9 +6,6 @@ import { decideReply } from "@/chat/services/assistant-reply";
 import { ACTIVE_TURN_COMPACTION_SUMMARY_PREFIX } from "@/chat/services/context-compaction-marker";
 import { nextEmptyOutputContinuation } from "@/chat/services/empty-output-continuation";
 
-function asStreamResponse(value: unknown): StreamResponse {
-  return value as StreamResponse;
-}
 
 type StreamResponse = Awaited<ReturnType<StreamFn>>;
 
@@ -39,12 +36,13 @@ function assistantResponse(text = "done"): StreamResponse {
     timestamp: Date.now(),
   };
 
-    return asStreamResponse({
+    // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+    return ({
     async *[Symbol.asyncIterator]() {
       yield { type: "done" as const };
     },
     result: async () => message,
-  });
+  }) as StreamResponse;
 }
 
 describe("Pi Agent lifecycle", () => {

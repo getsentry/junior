@@ -11,10 +11,6 @@ import type {
   UserTokenStore,
 } from "@/chat/credentials/user-token-store";
 
-function asFetch(value: unknown): typeof fetch {
-  return value as typeof fetch;
-}
-
 const ORIGINAL_ENV = { ...process.env };
 const ORIGINAL_FETCH = globalThis.fetch;
 const SENTRY_SCOPE = "event:read org:read project:read team:read";
@@ -204,13 +200,14 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
       },
     });
 
-        globalThis.fetch = asFetch(vi.fn(async () => ({
+        // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+        globalThis.fetch = (vi.fn(async () => ({
         ok: true,
         json: async () => ({
           access_token: "new-access-token",
           expires_in: 3600,
         }),
-      })));
+      }))) as typeof fetch;
 
     const broker = createBroker(tokenStore);
     const lease = await broker.issue({
@@ -259,7 +256,8 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
       },
     });
 
-        globalThis.fetch = asFetch(vi.fn(async () => ({
+        // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+        globalThis.fetch = (vi.fn(async () => ({
         ok: true,
         json: async () => ({
           access_token: "new-access-token",
@@ -267,7 +265,7 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
           expires_in: 3600,
           refresh_token_expires_in: 7200,
         }),
-      })));
+      }))) as typeof fetch;
 
     const broker = createBroker(tokenStore);
     await broker.issue({
@@ -307,7 +305,7 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
       delete: vi.fn(),
       withRefresh,
     };
-        globalThis.fetch = asFetch(vi.fn());
+        globalThis.fetch = (vi.fn()) as typeof fetch;
 
     const broker = createBroker(tokenStore);
     const lease = await broker.issue({
@@ -342,12 +340,12 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
       },
     });
 
-        globalThis.fetch = asFetch(vi.fn(
+        globalThis.fetch = (vi.fn(
         async () =>
           new Response(JSON.stringify({ error: "invalid_grant" }), {
             status: 400,
           }),
-      ));
+      )) as typeof fetch;
 
     const broker = createBroker(tokenStore);
     await expect(
@@ -372,12 +370,12 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
     });
 
     const providerText = "SENSITIVE_CANARY";
-        globalThis.fetch = asFetch(vi.fn(
+        globalThis.fetch = (vi.fn(
         async () =>
           new Response(JSON.stringify({ error: providerText }), {
             status: 500,
           }),
-      ));
+      )) as typeof fetch;
 
     const broker = createBroker(tokenStore);
     const error = await broker
@@ -422,7 +420,7 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
         cancelled = true;
       },
     });
-        globalThis.fetch = asFetch(vi.fn(async () => new Response(body, { status: 500 })));
+        globalThis.fetch = (vi.fn(async () => new Response(body, { status: 500 }))) as typeof fetch;
 
     const broker = createBroker(tokenStore);
     await expect(
@@ -453,7 +451,7 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
         controller.error(new Error(providerText));
       },
     });
-        globalThis.fetch = asFetch(vi.fn(async () => new Response(body, { status: 500 })));
+        globalThis.fetch = (vi.fn(async () => new Response(body, { status: 500 }))) as typeof fetch;
 
     const broker = createBroker(tokenStore);
     const error = await broker

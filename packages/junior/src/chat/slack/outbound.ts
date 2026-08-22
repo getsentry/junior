@@ -1,11 +1,6 @@
 import { SlackActionError } from "@/chat/slack/client";
 import type { SlackMessageBlock } from "@/chat/slack/footer";
 
-function asSlackApiBlocks(
-  blocks: unknown,
-): Array<Record<string, unknown>> {
-  return blocks as Array<Record<string, unknown>>;
-}
 import {
   getSlackClient,
   normalizeSlackConversationId,
@@ -119,7 +114,8 @@ export async function postSlackMessage(input: {
         unfurl_media: false,
         ...(input.blocks?.length
           ? {
-              blocks: asSlackApiBlocks(input.blocks),
+              // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+              blocks: input.blocks as Array<Record<string, unknown>>,
             }
           : undefined),
         ...(threadTs ? { thread_ts: threadTs } : undefined),

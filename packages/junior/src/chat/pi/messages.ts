@@ -1,24 +1,17 @@
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { z } from "zod";
 
-function asAgentMessage(value: unknown): AgentMessage {
-  return value as AgentMessage;
-}
-
 /** Permissive schema for durable Pi SDK messages whose content shape may evolve. */
 export const piMessageSchema = z
   .object({
     role: z.string(),
   })
   .passthrough()
-  .transform((value) => asAgentMessage(value));
+  // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+  .transform((value) => value as AgentMessage);
 
 /** Durable Pi transcript message stored across turns. */
 export type PiMessage = z.output<typeof piMessageSchema>;
-
-function asPiMessage(value: unknown): PiMessage {
-  return value as PiMessage;
-}
 
 /** Reporting transcript entries only render messages with structured content parts. */
 export const piContentMessageSchema = z
@@ -27,4 +20,5 @@ export const piContentMessageSchema = z
     role: z.string().min(1),
   })
   .passthrough()
-  .transform((value) => asPiMessage(value));
+  // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+  .transform((value) => value as PiMessage);

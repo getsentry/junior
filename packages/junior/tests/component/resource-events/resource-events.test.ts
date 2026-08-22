@@ -33,9 +33,6 @@ import {
 } from "../../fixtures/conversation-work";
 import { readProxyProperty } from "../../fixtures/proxy-property";
 
-function asStateAdapter(value: unknown): StateAdapter {
-  return value as StateAdapter;
-}
 
 function createRecordingStateAdapter() {
   const values = new Map<string, unknown>();
@@ -44,7 +41,8 @@ function createRecordingStateAdapter() {
     return undefined;
   });
   return {
-    state: asStateAdapter({
+    // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+    state: ({
     connect: async () => {},
     disconnect: async () => {},
     get: async (key: string) => values.get(key),
@@ -56,7 +54,7 @@ function createRecordingStateAdapter() {
     }),
     extendLock: async () => true,
     releaseLock: async () => {},
-  }),
+  }) as StateAdapter,
     set,
   };
 }

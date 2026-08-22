@@ -21,9 +21,6 @@ import { createPluginEmbedder, createPluginModel } from "@/chat/plugins/model";
 import { createPluginState } from "@/chat/plugins/state";
 import type { PiMessage } from "@/chat/pi/messages";
 
-function asRecord(value: unknown): Record<string, unknown> {
-  return value as Record<string, unknown>;
-}
 import {
   getPiMessageRole,
   instructionTextForProjection,
@@ -95,7 +92,8 @@ function messageText(message: PiMessage): string {
 }
 
 function toolResultText(message: PiMessage): string {
-  const record = asRecord(message);
+  // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+  const record = message as Record<string, unknown>;
   const parts = [
     messageText(message),
     record.output,

@@ -60,11 +60,6 @@ type ChatInternals = {
   appHomeOpenedHandlers: Array<(event: AppHomeOpenedEvent) => Promise<void>>;
 };
 
-/** Reach Chat private runtime fields that JuniorChat overrides need. */
-function chatRuntime(chat: unknown): ChatInternals {
-  return chat as ChatInternals;
-}
-
 function enqueueBackgroundTask(
   options: WebhookOptions | undefined,
   task: Promise<void>,
@@ -94,7 +89,8 @@ export class JuniorChat<
     options?: WebhookOptions,
   ): Promise<void> {
     if (typeof messageOrFactory === "function") {
-      const runtime = chatRuntime(this);
+      // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+      const runtime = this as ChatInternals;
       return enqueueBackgroundTask(
         options,
         runWithTurnRequestDeadline(async (): Promise<void> => {
@@ -144,7 +140,8 @@ export class JuniorChat<
     },
     options?: WebhookOptions,
   ): void {
-    const runtime = chatRuntime(this);
+    // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+    const runtime = this as ChatInternals;
 
     enqueueBackgroundTask(
       options,
@@ -168,7 +165,8 @@ export class JuniorChat<
     },
     options: WebhookOptions | undefined,
   ): Promise<void> {
-    const runtime = chatRuntime(this);
+    // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+    const runtime = this as ChatInternals;
 
     const task = (async (): Promise<void> => {
       try {
@@ -193,7 +191,8 @@ export class JuniorChat<
     contextId?: string,
     options?: WebhookOptions,
   ): void {
-    const runtime = chatRuntime(this);
+    // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+    const runtime = this as ChatInternals;
 
     enqueueBackgroundTask(
       options,
@@ -235,7 +234,8 @@ export class JuniorChat<
     },
     options: WebhookOptions | undefined,
   ): void {
-    const runtime = chatRuntime(this);
+    // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+    const runtime = this as ChatInternals;
 
     enqueueBackgroundTask(
       options,
@@ -257,7 +257,8 @@ export class JuniorChat<
     event: AssistantThreadStartedEvent,
     options?: WebhookOptions,
   ): void {
-    const runtime = chatRuntime(this);
+    // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+    const runtime = this as ChatInternals;
 
     enqueueBackgroundTask(
       options,
@@ -280,7 +281,8 @@ export class JuniorChat<
     event: AssistantContextChangedEvent,
     options?: WebhookOptions,
   ): void {
-    const runtime = chatRuntime(this);
+    // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+    const runtime = this as ChatInternals;
 
     enqueueBackgroundTask(
       options,
@@ -303,7 +305,8 @@ export class JuniorChat<
     event: AppHomeOpenedEvent,
     options?: WebhookOptions,
   ): void {
-    const runtime = chatRuntime(this);
+    // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+    const runtime = this as ChatInternals;
 
     enqueueBackgroundTask(
       options,

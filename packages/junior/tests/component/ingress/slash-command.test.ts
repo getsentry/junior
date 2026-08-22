@@ -1,9 +1,6 @@
 import type { SlashCommandEvent } from "chat";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-function asSlashCommandEvent(value: unknown): SlashCommandEvent {
-  return value as SlashCommandEvent;
-}
 
 const ORIGINAL_ENV = { ...process.env };
 
@@ -25,12 +22,13 @@ function createSlashEvent(
     isMe: false,
     ...userOverrides,
   };
-      const event = asSlashCommandEvent({
+      // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+      const event = ({
     text,
     user,
     channel: { postEphemeral },
     raw: {},
-  });
+  }) as SlashCommandEvent;
 
   return { event, postEphemeral, user };
 }

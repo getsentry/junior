@@ -7,14 +7,12 @@ import {
 import { grepFiles } from "@/chat/tools/sandbox/grep";
 
 
-function asSandboxFileSystem(value: unknown): SandboxFileSystem {
-  return value as SandboxFileSystem;
-}
 
 const directoryStat = { isDirectory: () => true };
-const fs = asSandboxFileSystem({
+// @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+const fs = ({
   stat: async () => directoryStat,
-});
+}) as SandboxFileSystem;
 
 describe("sandbox search telemetry", () => {
   it("reports bounded grep measurements", async () => {

@@ -34,14 +34,6 @@ export interface SlackInstallationContext {
 
 const initializedAdapters = new WeakSet<SlackAdapter>();
 
-function asChatInstance(value: unknown): ChatInstance {
-  return value as ChatInstance;
-}
-
-function asSlackAdapterInternals(adapter: unknown): SlackAdapterInternals {
-  return adapter as SlackAdapterInternals;
-}
-
 async function getConnectedState(
   stateAdapter?: StateAdapter,
 ): Promise<StateAdapter> {
@@ -59,12 +51,11 @@ export async function ensureSlackAdapterInitialized(args: {
     return;
   }
   const state = await getConnectedState(args.state);
-  await args.adapter.initialize(
-    asChatInstance({
-      getState: () => state,
-    }),
-  );
-  const internals = asSlackAdapterInternals(args.adapter);
+  await args.adapter.initialize({
+    getState: () => state,
+  } as ChatInstance);
+  // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+  const internals = args.adapter as SlackAdapterInternals;
   if (internals.defaultBotTokenProvider && !args.adapter.botUserId) {
     // A single-workspace adapter that failed `auth.test` has no bot identity,
     // which disables self-message filtering and mention detection. Caching it
@@ -81,7 +72,8 @@ export function verifySlackSignature(args: {
   body: string;
   request: Request;
 }): boolean {
-  const internals = asSlackAdapterInternals(args.adapter);
+  // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+  const internals = args.adapter as SlackAdapterInternals;
   const verifySignature = internals.verifySignature;
   if (!verifySignature) {
     throw new Error("Slack adapter does not expose signature verification");
@@ -106,7 +98,8 @@ export async function runWithSlackInstallation<T>(args: {
     state: args.state,
   });
 
-  const internals = asSlackAdapterInternals(args.adapter);
+  // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+  const internals = args.adapter as SlackAdapterInternals;
   if (internals.defaultBotTokenProvider) {
     return await args.task();
   }

@@ -1,109 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ConversationWorkerContext } from "@/chat/task-execution/worker";
 
-function asPluginQueueCall(value: unknown):
-  | [
-      (message: unknown, metadata: {
-        consumerGroup: string;
-        createdAt: Date;
-        deliveryCount: number;
-        expiresAt: Date;
-        messageId: string;
-        region: string;
-        topicName: string;
-      }) => Promise<void>,
-      {
-        retry?: (error: unknown, metadata: {
-          consumerGroup: string;
-          createdAt: Date;
-          deliveryCount: number;
-          expiresAt: Date;
-          messageId: string;
-          region: string;
-          topicName: string;
-        }) => unknown;
-      },
-    ]
-  | undefined {
-  return value as
-    | [
-        (message: unknown, metadata: {
-          consumerGroup: string;
-          createdAt: Date;
-          deliveryCount: number;
-          expiresAt: Date;
-          messageId: string;
-          region: string;
-          topicName: string;
-        }) => Promise<void>,
-        {
-          retry?: (error: unknown, metadata: {
-            consumerGroup: string;
-            createdAt: Date;
-            deliveryCount: number;
-            expiresAt: Date;
-            messageId: string;
-            region: string;
-            topicName: string;
-          }) => unknown;
-        },
-      ]
-    | undefined;
-}
-
-function asConversationQueueCall(value: unknown):
-  | [
-      (message: unknown, metadata: {
-        consumerGroup: string;
-        createdAt: Date;
-        deliveryCount: number;
-        expiresAt: Date;
-        messageId: string;
-        region: string;
-        topicName: string;
-      }) => Promise<void>,
-      {
-        retry?: (error: unknown, metadata: {
-          consumerGroup: string;
-          createdAt: Date;
-          deliveryCount: number;
-          expiresAt: Date;
-          messageId: string;
-          region: string;
-          topicName: string;
-        }) => unknown;
-        visibilityTimeoutSeconds?: number;
-      },
-    ]
-  | undefined {
-  return value as
-    | [
-        (message: unknown, metadata: {
-          consumerGroup: string;
-          createdAt: Date;
-          deliveryCount: number;
-          expiresAt: Date;
-          messageId: string;
-          region: string;
-          topicName: string;
-        }) => Promise<void>,
-        {
-          retry?: (error: unknown, metadata: {
-            consumerGroup: string;
-            createdAt: Date;
-            deliveryCount: number;
-            expiresAt: Date;
-            messageId: string;
-            region: string;
-            topicName: string;
-          }) => unknown;
-          visibilityTimeoutSeconds?: number;
-        },
-      ]
-    | undefined;
-}
-
-function asSignedConversationQueueCall(value: unknown):
+type PluginQueueCall =
   | [
       (
         message: unknown,
@@ -117,12 +15,9 @@ function asSignedConversationQueueCall(value: unknown):
           topicName: string;
         },
       ) => Promise<void>,
-    ]
-  | undefined {
-  return value as
-    | [
-        (
-          message: unknown,
+      {
+        retry?: (
+          error: unknown,
           metadata: {
             consumerGroup: string;
             createdAt: Date;
@@ -132,10 +27,43 @@ function asSignedConversationQueueCall(value: unknown):
             region: string;
             topicName: string;
           },
-        ) => Promise<void>,
-      ]
-    | undefined;
-}
+        ) => unknown;
+      },
+    ]
+  | undefined;
+
+type ConversationQueueCall =
+  | [
+      (
+        message: unknown,
+        metadata: {
+          consumerGroup: string;
+          createdAt: Date;
+          deliveryCount: number;
+          expiresAt: Date;
+          messageId: string;
+          region: string;
+          topicName: string;
+        },
+      ) => Promise<void>,
+      {
+        retry?: (
+          error: unknown,
+          metadata: {
+            consumerGroup: string;
+            createdAt: Date;
+            deliveryCount: number;
+            expiresAt: Date;
+            messageId: string;
+            region: string;
+            topicName: string;
+          },
+        ) => unknown;
+        visibilityTimeoutSeconds?: number;
+      },
+    ]
+  | undefined;
+
 
 const originalNodeEnv = process.env.NODE_ENV;
 const originalQueueTopic = process.env.JUNIOR_CONVERSATION_WORK_QUEUE_TOPIC;
@@ -206,7 +134,8 @@ describe("plugin task Vercel queue integration", () => {
       region: "iad1",
       topicName: "topic",
     };
-    const call = asPluginQueueCall(handleCallback.mock.calls[0]);
+    // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+    const call = handleCallback.mock.calls[0] as PluginQueueCall;
     const handler = call?.[0];
     const retry = call?.[1].retry;
     expect(handler).toEqual(expect.any(Function));
@@ -376,7 +305,8 @@ describe("registerVercelConversationWorkDevConsumer", () => {
       region: "iad1",
       topicName: "topic",
     };
-    const call = asConversationQueueCall(handleCallback.mock.calls[0]);
+    // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+    const call = handleCallback.mock.calls[0] as ConversationQueueCall;
     const handler = call?.[0];
     const retry = call?.[1].retry;
     expect(handler).toEqual(expect.any(Function));
@@ -485,7 +415,8 @@ describe("registerVercelConversationWorkDevConsumer", () => {
     });
     createVercelConversationWorkCallback({ run });
 
-    const call = asSignedConversationQueueCall(handleCallback.mock.calls[0]);
+    // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+    const call = (handleCallback.mock.calls[0]) as | [ ( message: unknown, metadata: { consumerGroup: string; createdAt: Date; deliveryCount: number; expiresAt: Date; messageId: string; region: string; topicName: string; }, ) => Promise<void>, ] | undefined;
     const handler = call?.[0];
     if (!handler) {
       throw new Error("Expected conversation queue handler");

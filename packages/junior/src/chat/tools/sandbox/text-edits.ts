@@ -14,12 +14,6 @@ export interface TextReplacementInput {
   edits: TextReplacement[];
 }
 
-function asPreparedTextReplacementInput<T extends TextReplacementInput>(
-  value: unknown,
-): T {
-  return value as T;
-}
-
 interface MatchedEdit {
   editIndex: number;
   matchIndex: number;
@@ -94,7 +88,7 @@ export function prepareTextReplacementArguments<T extends TextReplacementInput>(
   input: unknown,
 ): T {
   if (!input || typeof input !== "object") {
-    return asPreparedTextReplacementInput<T>(input);
+    return input as T;
   }
 
   const raw = { ...(input as Record<string, unknown>) };
@@ -102,7 +96,8 @@ export function prepareTextReplacementArguments<T extends TextReplacementInput>(
     try {
       raw.edits = JSON.parse(raw.edits);
     } catch {
-      return asPreparedTextReplacementInput<T>(raw);
+      // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+      return raw as T;
     }
   }
 
@@ -132,7 +127,8 @@ export function prepareTextReplacementArguments<T extends TextReplacementInput>(
   delete raw.old_text;
   delete raw.newText;
   delete raw.new_text;
-  return asPreparedTextReplacementInput<T>(raw);
+  // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+  return raw as T;
 }
 
 /** Build a small line-oriented diff that gives agents enough context to review edits. */

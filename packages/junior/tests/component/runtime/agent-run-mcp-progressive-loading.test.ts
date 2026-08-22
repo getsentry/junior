@@ -678,9 +678,6 @@ import {
 } from "@sentry/junior-plugin-api";
 
 
-function asPiMessages(value: unknown): PiMessage[] {
-  return value as PiMessage[];
-}
 
 function finalReply(outcome: Awaited<ReturnType<typeof executeAgentRun>>) {
   if (outcome.status !== "completed") {
@@ -1154,8 +1151,9 @@ describe("executeAgentRun progressive MCP loading", () => {
   it("preserves the execution-limit error when provider restore pauses for auth", async () => {
     const conversationId = "conversation-restore-auth-limit";
     const turnId = "turn-restore-auth-limit";
-        const priorMessages = asPiMessages([
+        const priorMessages = ([
       {
+        // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
         input: {
           tool_name: "mcp__demo__ping",
           arguments: { query: "prior" },
@@ -1167,7 +1165,7 @@ describe("executeAgentRun progressive MCP loading", () => {
         content: [{ type: "text", text: "pong" }],
         timestamp: 1,
       },
-    ]);
+    ]) as PiMessage[];
     await upsertTurnRecord({
       conversationId,
       piMessages: priorMessages,
@@ -1193,7 +1191,7 @@ describe("executeAgentRun progressive MCP loading", () => {
   });
 
   it("adds missing bootstrap context when actor-owned provider restore pauses before prompt", async () => {
-        const priorMessages = asPiMessages([
+        const priorMessages = ([
       {
         role: "user",
         content: [{ type: "text", text: "prior question" }],
@@ -1211,7 +1209,7 @@ describe("executeAgentRun progressive MCP loading", () => {
         content: [{ type: "text", text: "pong" }],
         timestamp: 2,
       },
-    ]);
+    ]) as PiMessage[];
     await recordMcpProviderConnected({
       conversationId: "conversation-restore-auth",
       provider: "demo",

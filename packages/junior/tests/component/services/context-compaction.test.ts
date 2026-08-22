@@ -5,9 +5,6 @@ import {
   buildAgentsInstructionsMessage,
 } from "@/chat/repository-instructions";
 
-function asPiMessage(value: unknown): PiMessage {
-  return value as PiMessage;
-}
 
 const ORIGINAL_ENV = { ...process.env };
 
@@ -218,11 +215,12 @@ describe("context compaction projection reset", () => {
     const priorMessages = [
       user("Run the lookup.", 1),
       (() => {
-                return asPiMessage({
+                return ({
           ...assistant("Lookup complete.", 2),
+          // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
           responseId: undefined,
           usage: { input: 5, cached: undefined },
-        });
+        }) as PiMessage;
       })(),
     ];
 

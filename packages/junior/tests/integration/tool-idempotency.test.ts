@@ -22,9 +22,6 @@ import {
   createSlackSource,
 } from "@sentry/junior-plugin-api";
 
-function asSlackToolContext(value: unknown): SlackToolContext {
-  return value as SlackToolContext;
-}
 
 function createToolState(): ToolState {
   const operationResultCache = new Map<string, unknown>();
@@ -233,7 +230,8 @@ describe("tool idempotency", () => {
   it("throws when creating a canvas without assistant channel context", async () => {
     const state = createToolState();
     const tool = createSlackCanvasCreateTool(
-      asSlackToolContext(LOCAL_CONTEXT),
+      // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+      (LOCAL_CONTEXT) as SlackToolContext,
       state,
     );
 

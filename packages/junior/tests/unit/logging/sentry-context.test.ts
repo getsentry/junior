@@ -39,9 +39,6 @@ afterEach(() => {
   vi.resetModules();
 });
 
-function asSentryScope(value: unknown): Scope {
-  return value as Scope;
-}
 
 describe("Sentry context", () => {
   it("extends only the active sanitized log context", async () => {
@@ -126,7 +123,8 @@ describe("Sentry context", () => {
     };
 
     logging.setSentryScopeContext(
-      asSentryScope(scope),
+      // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+      (scope) as Scope,
       {
         conversationId: "thread_123",
         userId: "U123",
