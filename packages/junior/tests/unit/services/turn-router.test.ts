@@ -67,6 +67,9 @@ describe("selectTurnRoute", () => {
         modelId: "openai/gpt-5.4-mini",
         thinkingLevel: "low",
         promptName: "junior.thinking_route",
+        system: expect.stringContaining(
+          "Do not assume that a non-default profile is more capable",
+        ),
       }),
     );
     expect(toPiReasoningLevel(profile.reasoningLevel)).toBe("off");
