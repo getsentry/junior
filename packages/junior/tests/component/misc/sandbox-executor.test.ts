@@ -2890,6 +2890,31 @@ describe("createTestSandbox", () => {
     });
   });
 
+  it("starts a build when a Workspace has no ready snapshot", async () => {
+    getReadyWorkspaceMock.mockRejectedValueOnce(
+      new WorkspaceSnapshotNotReadyError("snapshot-not-ready"),
+    );
+    const workspace = {
+      id: "workspace-snapshot-not-ready",
+      name: "snapshot-not-ready",
+      setupScript: "",
+      snapshot: null,
+      repos: [],
+    };
+    const runtime = createSandboxRuntime({
+      workspace,
+      skills: [],
+      referenceFiles: [],
+    });
+
+    await expect(runtime.acquire()).rejects.toSatisfy(
+      isWorkspaceSnapshotNotReadyError,
+    );
+
+    expect(ensureWorkspaceSnapshotBuildMock).toHaveBeenCalledWith({ workspace });
+    expect(sandboxCreateMock).not.toHaveBeenCalled();
+  });
+
   it("starts a new build when a Workspace snapshot is missing", async () => {
     getReadyWorkspaceMock
       .mockResolvedValueOnce({

@@ -377,6 +377,20 @@ export function createSandboxRuntime(
     throw new Error(`Failed to boot sandbox from snapshot ${snapshotId}`);
   };
 
+  const requireWorkspaceSnapshot = async (params: {
+    workspace: Workspace;
+    runtime: string;
+    staleSnapshotId?: string;
+  }): Promise<Snapshot> => {
+    try {
+      return await requireReadyWorkspaceSnapshot(params);
+    } catch (error) {
+      if (!isWorkspaceSnapshotNotReadyError(error)) throw error;
+      await ensureWorkspaceSnapshotBuild({ workspace: params.workspace });
+      throw error;
+    }
+  };
+
   const createSandboxFromResolvedSnapshot = async (params: {
     runtime: string;
     snapshot: Snapshot;
@@ -420,19 +434,11 @@ export function createSandboxRuntime(
       setSpanAttributes({ "app.sandbox.snapshot.rebuild_after_missing": true });
       let rebuilt: Snapshot;
       if (params.workspace) {
-        try {
-          rebuilt = await requireReadyWorkspaceSnapshot({
-            workspace: params.workspace,
-            runtime,
-            staleSnapshotId: snapshot.snapshotId,
-          });
-        } catch (rebuildError) {
-          if (!isWorkspaceSnapshotNotReadyError(rebuildError)) {
-            throw rebuildError;
-          }
-          await ensureWorkspaceSnapshotBuild({ workspace: params.workspace });
-          throw rebuildError;
-        }
+        rebuilt = await requireWorkspaceSnapshot({
+          workspace: params.workspace,
+          runtime,
+          staleSnapshotId: snapshot.snapshotId,
+        });
       } else {
         rebuilt = await resolveSnapshot({
           runtime,
@@ -487,7 +493,7 @@ export function createSandboxRuntime(
         },
         async () => {
           const snapshot = workspace
-            ? await requireReadyWorkspaceSnapshot({ workspace, runtime })
+            ? await requireWorkspaceSnapshot({ workspace, runtime })
             : await resolveSnapshot({
                 runtime,
                 timeoutMs,
