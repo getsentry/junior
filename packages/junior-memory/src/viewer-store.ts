@@ -75,7 +75,7 @@ export interface ViewerMemoryStats {
   embedded: number;
   explicit: number;
   knowledge: number;
-  private: number;
+  personal: number;
   preference: number;
   procedure: number;
   public: number;
@@ -84,7 +84,7 @@ export interface ViewerMemoryStats {
 /** Viewer-scoped memory creation totals for one UTC calendar day. */
 export interface ViewerMemoryDay {
   date: string;
-  private: number;
+  personal: number;
   public: number;
 }
 
@@ -337,7 +337,7 @@ export function createViewerMemoryCollection(
             sql<number>`count(*) filter (where ${juniorMemoryMemories.kind} = 'knowledge')`.mapWith(
               Number,
             ),
-          private:
+          personal:
             sql<number>`count(*) filter (where ${juniorMemoryMemories.scope} = 'private')`.mapWith(
               Number,
             ),
@@ -367,7 +367,7 @@ export function createViewerMemoryCollection(
         embedded: counts?.embedded ?? 0,
         explicit: counts?.explicit ?? 0,
         knowledge: counts?.knowledge ?? 0,
-        private: counts?.private ?? 0,
+        personal: counts?.personal ?? 0,
         preference: counts?.preference ?? 0,
         procedure: counts?.procedure ?? 0,
         public: counts?.public ?? 0,
@@ -383,7 +383,7 @@ export function createViewerMemoryCollection(
           date: sql<string>`to_char(to_timestamp(${juniorMemoryMemories.createdAtMs} / 1000.0) AT TIME ZONE 'UTC', 'YYYY-MM-DD')`.as(
             "date",
           ),
-          private:
+          personal:
             sql<number>`count(*) filter (where ${juniorMemoryMemories.scope} = 'private')`.mapWith(
               Number,
             ),
@@ -408,7 +408,7 @@ export function createViewerMemoryCollection(
         const row = byDate.get(date);
         return {
           date,
-          private: row?.private ?? 0,
+          personal: row?.personal ?? 0,
           public: row?.public ?? 0,
         };
       });

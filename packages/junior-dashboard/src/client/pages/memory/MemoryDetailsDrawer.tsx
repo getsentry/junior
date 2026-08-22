@@ -26,6 +26,8 @@ export function MemoryDetailsDrawer(props: {
   const openRecordId = props.record?.id;
 
   useEffect(() => {
+    // Forget leaves the shared mutation in success/error until the next open.
+    // Clear it here so the new drawer does not inherit stale action UI state.
     if (openRecordId) props.action.reset();
     // oxlint-disable-next-line react/exhaustive-deps -- reset only on open id change
   }, [openRecordId]);
@@ -43,11 +45,13 @@ export function MemoryDetailsDrawer(props: {
     learned === "Automatic"
       ? `Junior learned this from a ${source} conversation on ${shortDate(remembered)}.`
       : learned === "Explicit"
-        ? `Someone asked Junior to remember this on ${shortDate(remembered)}.`
+        ? isPublic
+          ? `Someone asked Junior to remember this on ${shortDate(remembered)}.`
+          : `You asked Junior to remember this on ${shortDate(remembered)}.`
         : `Junior recorded this on ${shortDate(remembered)}.`;
   const scopeCopy = isPublic
-    ? `It is stored as public ${kind.toLowerCase()} for authenticated viewers.`
-    : `It is stored as private ${kind.toLowerCase()} for participants in this source domain.`;
+    ? `It is stored as workspace ${kind.toLowerCase()} for future channels.`
+    : `It is stored as a ${kind.toLowerCase()} for future conversations.`;
   const visibleMetadata = (record.metadata ?? []).filter(
     (item) => !["Learned", "Source", "Memory ID"].includes(item.label),
   );

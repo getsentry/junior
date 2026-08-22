@@ -3,13 +3,13 @@ import { describe, expect, it } from "vitest";
 
 import { MemoryTimeline } from "../src/client/pages/memory/MemoryTimeline";
 
-function memoryDays(privateCount: number, publicCount: number) {
+function memoryDays(personal: number, publicCount: number) {
   const start = Date.parse("2026-05-02T00:00:00.000Z");
   return Array.from({ length: 90 }, (_, index) => ({
     date: new Date(start + index * 24 * 60 * 60 * 1_000)
       .toISOString()
       .slice(0, 10),
-    private: index === 89 ? privateCount : 0,
+    personal: index === 89 ? personal : 0,
     public: index === 89 ? publicCount : 0,
   }));
 }
@@ -21,7 +21,7 @@ describe("MemoryTimeline", () => {
     );
 
     expect(html).toContain(
-      'aria-label="Jul 30: 2 private, 3 public, 5 total memories"',
+      'aria-label="Jul 30: 2 personal, 3 public, 5 total memories"',
     );
     expect(html).toContain("Activity over time");
     expect(html).toContain(

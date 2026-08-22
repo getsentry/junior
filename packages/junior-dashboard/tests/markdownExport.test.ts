@@ -158,14 +158,14 @@ describe("dashboard canonical-event Markdown export", () => {
           turnId: "turn-context",
           pluginName: "memory",
           kind: "recall",
-          version: 2,
+          version: 1,
           content: {
             memories: [
               {
                 id: "memory-1",
                 content: "Release notes live in Notion.",
                 observedAtMs: Date.parse("2026-01-01T00:00:00.000Z"),
-                scope: "public",
+                scope: "conversation",
                 kind: "knowledge",
               },
             ],

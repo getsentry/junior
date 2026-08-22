@@ -58,7 +58,7 @@ describe("plugin event transcript projection", () => {
             details: [
               {
                 title: "Use pnpm.",
-                metadata: ["preference", "private"],
+                metadata: ["preference", "personal"],
               },
             ],
           },

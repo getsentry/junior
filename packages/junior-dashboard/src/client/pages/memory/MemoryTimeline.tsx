@@ -13,11 +13,11 @@ import { Tooltip } from "../../components/Tooltip";
 import type { MemoryDay } from "./memoryDashboard";
 
 const series = [
-  { color: "#67e8f9", key: "private", label: "Private" },
+  { color: "#67e8f9", key: "personal", label: "Personal" },
   { color: "#6ee7b7", key: "public", label: "Public" },
 ] as const;
 
-/** Render viewer memory creation as a stacked private/public timeline. */
+/** Render viewer memory creation as a stacked personal/public timeline. */
 export function MemoryTimeline(props: {
   days: MemoryDay[];
   range: TimeRangeDays;
@@ -27,7 +27,7 @@ export function MemoryTimeline(props: {
   const step =
     days.length > 0 ? layout.plotWidth / days.length : layout.plotWidth;
   const barWidth = Math.max(2, Math.min(13, step * 0.68));
-  const totals = days.map((day) => day.private + day.public);
+  const totals = days.map((day) => day.personal + day.public);
   const maximum = Math.max(1, ...totals);
   const hasMemories = totals.some((total) => total > 0);
 
@@ -38,7 +38,7 @@ export function MemoryTimeline(props: {
           Activity over time
         </h2>
         <p className="mt-1 mb-0 font-mono text-xs leading-relaxed text-dashboard-text-muted">
-          Stacked private + public memories created each day.
+          Stacked personal + public memories created each day.
         </p>
       </div>
 
@@ -60,7 +60,7 @@ export function MemoryTimeline(props: {
                 content={
                   <ActivityTooltipRows
                     rows={[
-                      ["private", day.private],
+                      ["personal", day.personal],
                       ["public", day.public],
                       ["total", total],
                     ]}
@@ -70,7 +70,7 @@ export function MemoryTimeline(props: {
                 label={formatActivityDate(day.date)}
               >
                 <g
-                  aria-label={`${formatActivityDate(day.date)}: ${day.private} private, ${day.public} public, ${total} total memories`}
+                  aria-label={`${formatActivityDate(day.date)}: ${day.personal} personal, ${day.public} public, ${total} total memories`}
                   tabIndex={0}
                 >
                   {series.map((item) => {
