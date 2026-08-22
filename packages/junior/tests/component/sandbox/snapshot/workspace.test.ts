@@ -319,15 +319,17 @@ describe("Workspace snapshot completion", () => {
     expect(sandboxCreateMock).not.toHaveBeenCalled();
   });
 
-  it("soft-waits when a hard turn abort interrupts setup polling", async () => {
+  it("reconnects to the same detached setup after a hard turn abort", async () => {
     const workspace = await createWorkspace({
-      name: `snapshot-abort-${randomUUID()}`,
+      name: `snapshot-abort-resume-${randomUUID()}`,
       setupScript: "printf ready",
       repos: [],
     });
     const value = profile.create(SANDBOX_RUNTIME, workspace);
     if (!value) throw new Error("Workspace snapshot profile is missing");
 
+    const builderName = "setup-poll-owner";
+    const commandId = "setup-command";
     await setWorkspaceSnapshotBuild(
       workspace.id,
       {
@@ -336,8 +338,8 @@ describe("Workspace snapshot completion", () => {
         phase: "repositories_prepared",
         profileHash: value.hash,
         startedAt: new Date(),
-        sandboxName: "setup-poll-owner",
-        commandId: "setup-command",
+        sandboxName: builderName,
+        commandId,
         error: null,
       },
       { insertIfMissing: true },
@@ -347,36 +349,43 @@ describe("Workspace snapshot completion", () => {
     const waitStarted = new Promise<void>((resolve) => {
       releaseWait = resolve;
     });
-    sandboxGetMock.mockResolvedValue({
-      getCommand: vi.fn(async () => ({
-        wait: vi.fn(async ({ signal }: { signal?: AbortSignal }) => {
-          releaseWait?.();
-          await new Promise<never>((_resolve, reject) => {
-            if (signal?.aborted) {
+    let waitCalls = 0;
+    const wait = vi.fn(async ({ signal }: { signal?: AbortSignal }) => {
+      waitCalls += 1;
+      if (waitCalls === 1) {
+        releaseWait?.();
+        await new Promise<never>((_resolve, reject) => {
+          if (signal?.aborted) {
+            reject(
+              signal.reason ??
+                new DOMException("This operation was aborted", "AbortError"),
+            );
+            return;
+          }
+          signal?.addEventListener(
+            "abort",
+            () => {
               reject(
                 signal.reason ??
                   new DOMException("This operation was aborted", "AbortError"),
               );
-              return;
-            }
-            signal?.addEventListener(
-              "abort",
-              () => {
-                reject(
-                  signal.reason ??
-                    new DOMException(
-                      "This operation was aborted",
-                      "AbortError",
-                    ),
-                );
-              },
-              { once: true },
-            );
-          });
-        }),
-      })),
-      snapshot: vi.fn(),
-      delete: vi.fn(),
+            },
+            { once: true },
+          );
+        });
+      }
+      return { exitCode: 0 };
+    });
+    const getCommand = vi.fn(async () => ({ wait }));
+    const snapshot = vi.fn(async () => ({ snapshotId: "snapshot-after-resume" }));
+    const deleteBuilder = vi.fn();
+    sandboxGetMock.mockImplementation(async ({ name }: { name: string }) => {
+      expect(name).toBe(builderName);
+      return {
+        getCommand,
+        snapshot,
+        delete: deleteBuilder,
+      };
     });
 
     const controller = new AbortController();
@@ -397,8 +406,42 @@ describe("Workspace snapshot completion", () => {
     await expect(
       loadSnapshotsForProfile(getDb(), workspace.id, value.hash),
     ).resolves.toMatchObject({
-      build: { status: "building", commandId: "setup-command" },
+      build: {
+        status: "building",
+        sandboxName: builderName,
+        commandId,
+      },
       ready: null,
+    });
+    expect(sandboxGetMock).toHaveBeenCalledWith(
+      expect.objectContaining({ name: builderName, resume: true }),
+    );
+    expect(getCommand).toHaveBeenCalledWith(
+      commandId,
+      expect.objectContaining({ signal: controller.signal }),
+    );
+    expect(snapshot).not.toHaveBeenCalled();
+    expect(deleteBuilder).not.toHaveBeenCalled();
+
+    // Next host slice reconnects to the same builder + command and finishes.
+    await expect(
+      resolveWorkspaceSnapshot({
+        workspace,
+        runtime: SANDBOX_RUNTIME,
+        shouldYield: () => false,
+        applyNetworkPolicy: async () => {},
+        removeCredentialRoute: false,
+      }),
+    ).resolves.toMatchObject({ snapshotId: "snapshot-after-resume" });
+
+    expect(waitCalls).toBe(2);
+    expect(getCommand).toHaveBeenCalledTimes(2);
+    expect(snapshot).toHaveBeenCalledTimes(1);
+    await expect(
+      loadSnapshotsForProfile(getDb(), workspace.id, value.hash),
+    ).resolves.toMatchObject({
+      build: null,
+      ready: { id: "snapshot-after-resume" },
     });
   });
 
