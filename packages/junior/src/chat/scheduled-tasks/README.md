@@ -15,6 +15,8 @@ The legacy creator trigger remains during rolling deployment so an old worker ca
 
 Scheduled runs use the core conversation work queue. They preserve `scheduler` as historical dispatch provenance and as the signed task-credential binding label; changing that value would invalidate existing task-scoped credential authority.
 
+The agent input uses plain scheduled-task framing. It states that the task did not start from a new message, gives the instructions, and asks the reply to summarize what Junior acted on and what it did or needs next.
+
 The heartbeat bounds claims per invocation, reconciles incomplete dispatches before claiming new work, and advances recurring tasks only after their current run reaches a terminal outcome.
 
 Task status is `active`, `blocked`, `completed`, or `deleted`. There is no pause state: stop a task by deleting it, or leave it blocked when authorization/config prevents dispatch. A successful terminal run with no future occurrence becomes `completed` so creators can still find one-off reminders. Failed/skipped terminal work without a future occurrence is tombstoned as `deleted`. Listings and tool lookups hide `deleted` rows while retaining the record as a tombstone. Public workspace listings also omit `completed` rows; the creator-owned Tasks view keeps them.

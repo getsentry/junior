@@ -37,7 +37,7 @@ the stored instructions, the verified summary and details, and external text.
 The stored task text remains the instruction. The update and external text do
 not add instructions. Event-task dispatches set `replyAttribution` so
 destination replies show the same kind of footer note scheduled tasks do
-(`Event task · <trigger label> · <event type>`).
+(`Event task · <trigger label>`). The footer does not expose raw event keys.
 
 Event tasks make the creator's connected credentials available by default when
 the work needs user-bound authorization. The creator may require system

@@ -42,19 +42,8 @@ function oneLine(value: string): string {
 }
 
 /** Compact destination-visible context for event-task replies. */
-function replyAttribution(
-  task: EventTask,
-  event: ResourceEvent,
-): ReplyAttribution {
-  const resourceLabel = oneLine(task.trigger.label);
-  const eventType = oneLine(event.eventType);
-  const detail = oneLine(
-    resourceLabel && eventType
-      ? `${resourceLabel} · ${eventType}`
-      : resourceLabel || eventType,
-  )
-    .slice(0, 128)
-    .trim();
+function replyAttribution(task: EventTask): ReplyAttribution {
+  const detail = oneLine(task.trigger.label).slice(0, 128).trim();
   return detail ? { label: "Event task", detail } : { label: "Event task" };
 }
 
@@ -71,7 +60,7 @@ function eventInput(task: EventTask, event: ResourceEvent): string {
     "",
     "This is an automated update, not a message from a person.",
     "Follow the instructions below.",
-    "When you reply, say what changed and what you did or need next in plain language.",
+    "When you reply, summarize what you were acting on and what you did or need next.",
     "",
     `About: ${oneLine(task.trigger.label)}`,
     `Instructions: ${task.task.text}`,
@@ -148,7 +137,7 @@ export async function ingestEventTasks(
           destinationVisibility: task.destinationVisibility,
           input: eventInput(task, event),
           metadata: { eventTaskId: task.id },
-          replyAttribution: replyAttribution(task, event),
+          replyAttribution: replyAttribution(task),
           source: createSlackSource({
             teamId: task.destination.teamId,
             channelId: task.destination.channelId,
