@@ -32,7 +32,9 @@ export async function resolveTurnSessionRouting(args: {
 
   return {
     destination: conversation.destination,
-    ...(conversation.location ? { locationId: conversation.location.id } : {}),
+    ...(conversation.location
+      ? { locationId: conversation.location.id }
+      : undefined),
     source: conversation.sessionSource,
   };
 }

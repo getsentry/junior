@@ -329,7 +329,9 @@ export async function wireAgentTools(
   );
   const commonToolRuntimeContext = {
     conversationId: args.run.conversationId,
-    ...(conversation?.location ? { locationId: conversation.location.id } : {}),
+    ...(conversation?.location
+      ? { locationId: conversation.location.id }
+      : undefined),
     userText: args.userInput,
     configuration: args.configurationValues,
     egress: createPluginEgress({

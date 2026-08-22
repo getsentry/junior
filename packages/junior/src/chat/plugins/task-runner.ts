@@ -377,13 +377,13 @@ async function loadPluginRun(
     (entry) => entry.type !== "message" || !runMessageTexts.has(entry.text),
   );
   return pluginRunContextSchema.parse({
-    ...(actorUser ? { actorUserId: actorUser.id } : {}),
+    ...(actorUser ? { actorUserId: actorUser.id } : undefined),
     completedAtMs: record.updatedAtMs,
     conversationId: record.conversationId,
     destination: routing.destination,
-    ...(routing.locationId ? { locationId: routing.locationId } : {}),
-    // Derived from the full run provenance on the record, not the sliced or
-    // stripped transcript, so it reflects every committed instruction actor.
+    ...(routing.locationId ? { locationId: routing.locationId } : undefined),
+    // Read Actors from the full run record, not the shorter transcript.
+    // This includes every Actor that supplied an instruction.
     actors: record.actors,
     ...(runActor ? { actor: runActor } : undefined),
     runId: record.turnId,
