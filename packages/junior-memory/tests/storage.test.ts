@@ -7,6 +7,21 @@ import {
   pgliteVectorExtension,
   type LocalPgliteFixture,
 } from "@sentry/junior-testing/pglite";
+import {
+  createWebSource,
+  createLocalSource,
+  createSlackSource,
+  pluginApiRouteRequestContextSchema,
+  pluginUserPageContentSchema,
+  PluginToolInputError,
+  type PluginConversationEventValue,
+  type PluginLogger,
+  type PluginModel,
+  type PluginRunTranscriptEntry,
+  type PluginState,
+  type PluginTaskContext,
+  type Actor,
+} from "@sentry/junior-plugin-api";
 import { Command, CommanderError } from "commander";
 import { eq } from "drizzle-orm";
 import { describe, expect, it, vi } from "vitest";
