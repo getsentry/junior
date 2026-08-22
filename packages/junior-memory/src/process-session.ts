@@ -235,9 +235,6 @@ export async function processMemorySession(
   if (!sourceKey || (run.source.visibility === "private" && !run.actorUserId)) {
     return;
   }
-  if (run.source.visibility === "private" && !run.actorUserId) {
-    return;
-  }
   const transcript = run.transcript
     .filter((entry) => entry.text?.trim())
     .map((entry) => ({ ...entry, text: entry.text!.trim() }));
