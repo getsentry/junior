@@ -64,7 +64,20 @@ describe("sidebar annotation badge projection", () => {
         annotation("a#2", "alpha", "git-merge"),
         annotation("b#1", "beta", "circle-dashed"),
       ]),
-    ).toMatchObject({
+    ).toEqual({
+      groups: [
+        {
+          label: "alpha",
+          annotations: [
+            annotation("a#1", "alpha", "circle-dot"),
+            annotation("a#2", "alpha", "git-merge"),
+          ],
+        },
+        {
+          label: "beta",
+          annotations: [annotation("b#1", "beta", "circle-dashed")],
+        },
+      ],
       labeledGroups: [
         {
           label: "alpha",
@@ -78,13 +91,11 @@ describe("sidebar annotation badge projection", () => {
           annotations: [annotation("b#1", "beta", "circle-dashed")],
         },
       ],
-      primaryGroup: null,
-      overflowAnnotations: [],
       overflowGroupCount: 0,
     });
   });
 
-  it("collapses extra labels behind +N while keeping overflow icons", () => {
+  it("keeps the first two labels and collapses the rest behind +N", () => {
     expect(
       projectSidebarAnnotationBadges([
         annotation("a#1", "alpha", "circle-dot"),
@@ -93,21 +104,41 @@ describe("sidebar annotation badge projection", () => {
         annotation("c#1", "gamma", "git-pull-request"),
         annotation("c#2", "gamma", "circle-x"),
       ]),
-    ).toMatchObject({
-      labeledGroups: [],
-      primaryGroup: {
-        label: "alpha",
-        annotations: [
-          annotation("a#1", "alpha", "circle-dot"),
-          annotation("a#2", "alpha", "git-merge"),
-        ],
-      },
-      overflowAnnotations: [
-        annotation("b#1", "beta", "circle-dashed"),
-        annotation("c#1", "gamma", "git-pull-request"),
-        annotation("c#2", "gamma", "circle-x"),
+    ).toEqual({
+      groups: [
+        {
+          label: "alpha",
+          annotations: [
+            annotation("a#1", "alpha", "circle-dot"),
+            annotation("a#2", "alpha", "git-merge"),
+          ],
+        },
+        {
+          label: "beta",
+          annotations: [annotation("b#1", "beta", "circle-dashed")],
+        },
+        {
+          label: "gamma",
+          annotations: [
+            annotation("c#1", "gamma", "git-pull-request"),
+            annotation("c#2", "gamma", "circle-x"),
+          ],
+        },
       ],
-      overflowGroupCount: 2,
+      labeledGroups: [
+        {
+          label: "alpha",
+          annotations: [
+            annotation("a#1", "alpha", "circle-dot"),
+            annotation("a#2", "alpha", "git-merge"),
+          ],
+        },
+        {
+          label: "beta",
+          annotations: [annotation("b#1", "beta", "circle-dashed")],
+        },
+      ],
+      overflowGroupCount: 1,
     });
   });
 });

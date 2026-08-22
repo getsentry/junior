@@ -652,15 +652,17 @@ describe("dashboard canonical-event components", () => {
         ]}
       />,
     );
+    // Desktop keeps two labeled chips, then plain +N for remaining groups.
     expect(stacked).toContain(">junior<");
-    expect(stacked).toContain(">+2<");
-    expect(stacked).not.toContain(">payments<");
+    expect(stacked).toContain(">payments<");
+    expect(stacked).toContain(">+1<");
     expect(stacked).not.toContain(">relay<");
     expect(stacked).toContain("getsentry/payments#2");
     expect(stacked).toContain("getsentry/relay#1");
-    // Overflow keeps every status icon, not one chip per label.
+    expect(stacked).toContain("lucide-circle-dashed");
     expect(stacked).toContain("lucide-circle-dot");
-    expect(stacked).toContain("lucide-git-merge");
+    // No desktop facepile cutout stack next to labeled chips.
+    expect(stacked).not.toContain("-ml-2");
 
     const sameLabel = renderToStaticMarkup(
       <ConversationSidebarAnnotations

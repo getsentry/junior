@@ -119,10 +119,12 @@ export function ConversationSidebarAnnotations(props: {
   // Group by shared label so one label can carry many status icons. Tooltip
   // still lists every work item.
   const badges = projectSidebarAnnotationBadges(annotations);
-  const mobileFacepileAnnotations =
-    badges.groups.length > 1
-      ? badges.groups.flatMap((group) => group.annotations)
-      : [];
+  // Mobile multi-label rows only: pure icon facepile. Desktop always uses
+  // labeled chips (+ plain +N when more than two labels).
+  const useMobileFacepile = isMobile && badges.groups.length > 1;
+  const mobileFacepileAnnotations = useMobileFacepile
+    ? badges.groups.flatMap((group) => group.annotations)
+    : [];
 
   return (
     <Tooltip
@@ -149,17 +151,11 @@ export function ConversationSidebarAnnotations(props: {
         aria-label={`Linked work, newest first: ${details.join(", ")}`}
         className="inline-flex min-w-0 max-w-full items-center"
       >
-        {isMobile && mobileFacepileAnnotations.length > 1 ? (
+        {useMobileFacepile ? (
           <SidebarAnnotationIconFacepile
             annotations={mobileFacepileAnnotations}
             // Discs sit on the sidebar panel / row surface (#09090b).
             cutoutColor="var(--color-dashboard-surface-panel)"
-          />
-        ) : badges.primaryGroup ? (
-          <SidebarAnnotationOverflowStack
-            overflowAnnotations={badges.overflowAnnotations}
-            overflowGroupCount={badges.overflowGroupCount}
-            primaryGroup={badges.primaryGroup}
           />
         ) : (
           <span className="inline-flex min-w-0 items-center gap-1">
@@ -169,6 +165,11 @@ export function ConversationSidebarAnnotations(props: {
                 key={group.label}
               />
             ))}
+            {badges.overflowGroupCount > 0 ? (
+              <span className="inline-flex h-5 min-w-7 shrink-0 items-center justify-center rounded-full border border-white/12 bg-dashboard-control px-1.5 font-mono text-2xs leading-none text-dashboard-text-muted">
+                +{badges.overflowGroupCount}
+              </span>
+            ) : null}
           </span>
         )}
       </span>
@@ -176,7 +177,7 @@ export function ConversationSidebarAnnotations(props: {
   );
 }
 
-/** Compact overlapping status chips used by mobile and overflow clusters. */
+/** Compact overlapping status chips for mobile multi-label rows only. */
 function SidebarAnnotationIconFacepile(props: {
   annotations: SidebarAnnotation[];
   /**
@@ -209,38 +210,6 @@ function SidebarAnnotationIconFacepile(props: {
   );
 }
 
-/** One continuous stack: labeled group, overflow icon chips, then +N groups. */
-function SidebarAnnotationOverflowStack(props: {
-  primaryGroup: SidebarAnnotationBadgeGroup;
-  overflowAnnotations: SidebarAnnotation[];
-  overflowGroupCount: number;
-}) {
-  if (props.overflowGroupCount === 0) return null;
-  return (
-    <span className="isolate inline-flex h-5 min-w-0 items-center pr-0.5">
-      <SidebarAnnotationGroupChip group={props.primaryGroup} />
-      {props.overflowAnnotations.map((annotation, index) => (
-        <SidebarAnnotationStatusChip
-          annotation={annotation}
-          cutoutColor="var(--color-dashboard-surface-panel)"
-          key={annotation.key}
-          stacked
-          zIndex={index + 1}
-        />
-      ))}
-      <span
-        className="relative -ml-1.5 inline-flex h-5 min-w-7 shrink-0 items-center justify-center rounded-full border border-white/12 bg-dashboard-control px-1.5 font-mono text-2xs leading-none text-dashboard-text-muted"
-        style={{
-          boxShadow: "0 0 0 2px var(--color-dashboard-surface-panel)",
-          zIndex: props.overflowAnnotations.length + 1,
-        }}
-      >
-        +{props.overflowGroupCount}
-      </span>
-    </span>
-  );
-}
-
 /** One shared label with every status icon for that label. */
 function SidebarAnnotationGroupChip(props: {
   group: SidebarAnnotationBadgeGroup;
@@ -264,7 +233,7 @@ function SidebarAnnotationGroupChip(props: {
   );
 }
 
-/** Icon-only chip that matches labeled-chip chrome and stacks like a facepile. */
+/** Icon-only chip used only by the mobile multi-label facepile. */
 function SidebarAnnotationStatusChip(props: {
   annotation: SidebarAnnotation;
   cutoutColor: string;

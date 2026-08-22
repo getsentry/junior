@@ -9,27 +9,14 @@ export type SidebarAnnotationBadgeGroup = {
   annotations: SidebarAnnotation[];
 };
 
-/** Labeled groups shown before the row collapses into overflow. */
+/** Labeled groups shown before the row collapses into +N. */
 export const MAX_LABELED_SIDEBAR_ANNOTATION_GROUPS = 2;
 
 export type SidebarAnnotationBadgeProjection = {
   /** Every label group in newest-first order. */
   groups: SidebarAnnotationBadgeGroup[];
-  /**
-   * Fully labeled groups for the compact row.
-   * Empty when the row uses the overflow layout.
-   */
+  /** Up to `MAX_LABELED_SIDEBAR_ANNOTATION_GROUPS` fully labeled groups. */
   labeledGroups: SidebarAnnotationBadgeGroup[];
-  /**
-   * Leading group kept fully labeled when more than
-   * `MAX_LABELED_SIDEBAR_ANNOTATION_GROUPS` groups are present.
-   */
-  primaryGroup: SidebarAnnotationBadgeGroup | null;
-  /**
-   * Remaining annotations after the primary group, newest-first.
-   * Shown as icon chips before the +N unit count.
-   */
-  overflowAnnotations: SidebarAnnotation[];
   /** Remaining label groups collapsed behind +N. */
   overflowGroupCount: number;
 };
@@ -59,31 +46,20 @@ export function groupSidebarAnnotationsByLabel(
 }
 
 /**
- * Project sidebar annotations into labeled badge groups with overflow.
- * Keeps every work item icon; only the shared label collapses per group.
+ * Project sidebar annotations into labeled badge groups with plain +N overflow.
+ * Desktop keeps spaced icons inside each label chip. Mobile facepile is a
+ * separate render path when more than one label is present.
  */
 export function projectSidebarAnnotationBadges(
   annotations: SidebarAnnotation[],
 ): SidebarAnnotationBadgeProjection {
   const groups = groupSidebarAnnotationsByLabel(annotations);
-  if (groups.length <= MAX_LABELED_SIDEBAR_ANNOTATION_GROUPS) {
-    return {
-      groups,
-      labeledGroups: groups,
-      primaryGroup: null,
-      overflowAnnotations: [],
-      overflowGroupCount: 0,
-    };
-  }
-
-  const [primaryGroup, ...overflowGroups] = groups;
   return {
     groups,
-    labeledGroups: [],
-    primaryGroup: primaryGroup ?? null,
-    overflowAnnotations: overflowGroups.flatMap(
-      (group) => group.annotations,
+    labeledGroups: groups.slice(0, MAX_LABELED_SIDEBAR_ANNOTATION_GROUPS),
+    overflowGroupCount: Math.max(
+      0,
+      groups.length - MAX_LABELED_SIDEBAR_ANNOTATION_GROUPS,
     ),
-    overflowGroupCount: overflowGroups.length,
   };
 }
