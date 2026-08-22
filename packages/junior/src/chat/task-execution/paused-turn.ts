@@ -97,7 +97,7 @@ export interface PausedTurnOptions {
   >;
   resumeTurn?: typeof resumeSlackTurn;
   wakePausedTurn?: (request: PausedTurnRequest) => Promise<void>;
-  scheduleSessionCompletedPluginTasks?: (params: {
+  scheduleSessionCompletedPluginJobs?: (params: {
     conversationId: string;
     sessionId: string;
   }) => Promise<void>;
@@ -397,8 +397,8 @@ async function runPausedTurnInContext(
     // Queue continue runs under the conversation work lease already.
     ownsConversationLease: true,
     agentRunner: options.agentRunner,
-    scheduleSessionCompletedPluginTasks:
-      options.scheduleSessionCompletedPluginTasks,
+    scheduleSessionCompletedPluginJobs:
+      options.scheduleSessionCompletedPluginJobs,
     beforeStart: async () => {
       let turn: TurnRecord | undefined;
       try {

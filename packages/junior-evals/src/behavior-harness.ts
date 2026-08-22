@@ -41,10 +41,10 @@ import {
   pluginCatalogConfigFromPluginSet,
 } from "@/plugins";
 import {
-  processPluginTask,
-  scheduleSessionCompletedPluginTasks,
-} from "@/chat/plugins/task-runner";
-import type { PluginTaskQueueMessage } from "@/chat/plugins/task-message";
+  runPluginJob,
+  scheduleSessionCompletedPluginJobs,
+} from "@/chat/plugins/job-runner";
+import type { PluginJobMessage } from "@/chat/plugins/job-message";
 import { buildSlackInboundMessage } from "@/chat/task-execution/slack-work";
 import { appendAndEnqueueInboundMessage } from "@/chat/task-execution/store";
 import { deleteConversationState } from "@/chat/task-execution/state";
@@ -146,56 +146,56 @@ interface NormalizedMessage {
   metadata?: Record<string, JsonValue>;
 }
 
-const EVAL_PLUGIN_TASK_DRAIN_TIMEOUT_MS = 5_000;
+const EVAL_PLUGIN_JOB_DRAIN_TIMEOUT_MS = 5_000;
 
-interface PendingEvalPluginTask {
+interface PendingEvalPluginJob {
   abort(): void;
   promise: Promise<void>;
 }
 
-const pendingEvalPluginTasks = new Set<PendingEvalPluginTask>();
+const pendingEvalPluginJobs = new Set<PendingEvalPluginJob>();
 
-async function processEvalPluginTask(
-  message: PluginTaskQueueMessage,
+async function processEvalPluginJob(
+  message: PluginJobMessage,
 ): Promise<void> {
   const controller = new AbortController();
-  let task!: PendingEvalPluginTask;
-  const promise = processPluginTask(message, {
+  let job!: PendingEvalPluginJob;
+  const promise = runPluginJob(message, {
     signal: controller.signal,
   }).finally(() => {
-    pendingEvalPluginTasks.delete(task);
+    pendingEvalPluginJobs.delete(job);
   });
-  task = {
+  job = {
     abort() {
-      controller.abort(new Error("Eval plugin task cleanup aborted task"));
+      controller.abort(new Error("Eval plugin job cleanup aborted job"));
     },
     promise,
   };
-  pendingEvalPluginTasks.add(task);
+  pendingEvalPluginJobs.add(job);
   await promise;
 }
 
-/** Drain plugin tasks started by the eval harness before shared state cleanup. */
-export async function drainPendingEvalPluginTasks(): Promise<void> {
-  if (pendingEvalPluginTasks.size === 0) {
+/** Drain plugin jobs started by the eval harness before shared state cleanup. */
+export async function drainPendingEvalPluginJobs(): Promise<void> {
+  if (pendingEvalPluginJobs.size === 0) {
     return;
   }
-  const tasks = [...pendingEvalPluginTasks];
-  for (const task of tasks) {
-    task.abort();
+  const jobs = [...pendingEvalPluginJobs];
+  for (const job of jobs) {
+    job.abort();
   }
   let timeout: ReturnType<typeof setTimeout> | undefined;
   try {
     await Promise.race([
-      Promise.allSettled(tasks.map((task) => task.promise)),
+      Promise.allSettled(jobs.map((job) => job.promise)),
       new Promise<never>((_, reject) => {
         timeout = setTimeout(() => {
           reject(
             new Error(
-              `Timed out waiting for ${tasks.length} eval plugin task(s) to settle`,
+              `Timed out waiting for ${jobs.length} eval plugin job(s) to settle`,
             ),
           );
-        }, EVAL_PLUGIN_TASK_DRAIN_TIMEOUT_MS);
+        }, EVAL_PLUGIN_JOB_DRAIN_TIMEOUT_MS);
       }),
     ]);
   } finally {
@@ -2027,10 +2027,10 @@ function buildRuntimeServices(
           state: env.stateAdapter,
         });
       },
-      scheduleSessionCompletedPluginTasks: async (params) => {
-        await scheduleSessionCompletedPluginTasks(params, {
+      scheduleSessionCompletedPluginJobs: async (params) => {
+        await scheduleSessionCompletedPluginJobs(params, {
           send: async (message) => {
-            await processEvalPluginTask(message);
+            await processEvalPluginJob(message);
           },
         });
       },
@@ -2167,10 +2167,10 @@ async function processEvents(args: {
               state: env.stateAdapter,
             });
           },
-          scheduleSessionCompletedPluginTasks: async (params) => {
-            await scheduleSessionCompletedPluginTasks(params, {
+          scheduleSessionCompletedPluginJobs: async (params) => {
+            await scheduleSessionCompletedPluginJobs(params, {
               send: async (message) => {
-                await processEvalPluginTask(message);
+                await processEvalPluginJob(message);
               },
             });
           },
@@ -2192,10 +2192,10 @@ async function processEvents(args: {
                 state: env.stateAdapter,
               });
             },
-            scheduleSessionCompletedPluginTasks: async (params) => {
-              await scheduleSessionCompletedPluginTasks(params, {
+            scheduleSessionCompletedPluginJobs: async (params) => {
+              await scheduleSessionCompletedPluginJobs(params, {
                 send: async (message) => {
-                  await processEvalPluginTask(message);
+                  await processEvalPluginJob(message);
                 },
               });
             },

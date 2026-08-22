@@ -186,7 +186,7 @@ export function pluginRuntimeRegistrationsFromPluginSet(
 ): PluginRegistration[] {
   return (
     pluginSet?.registrations.filter(
-      (plugin) => plugin.hooks || plugin.tasks || plugin.userPages?.length,
+      (plugin) => plugin.hooks || plugin.jobs || plugin.userPages?.length,
     ) ?? []
   );
 }

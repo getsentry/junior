@@ -375,7 +375,7 @@ describe("oauth resume slack integration", () => {
 
   it("schedules plugin tasks after a successful resumed turn", async () => {
     const { resumeSlackTurn } = await import("@/chat/runtime/slack-resume");
-    const scheduleSessionCompletedPluginTasks = vi.fn(async () => undefined);
+    const scheduleSessionCompletedPluginJobs = vi.fn(async () => undefined);
 
     await resumeSlackTurn({
       messageText: "continue this turn",
@@ -392,10 +392,10 @@ describe("oauth resume slack integration", () => {
         actor: { platform: "slack", teamId: "T123", userId: "U123" },
       },
       agentRunner: modelReply("Final resumed answer"),
-      scheduleSessionCompletedPluginTasks,
+      scheduleSessionCompletedPluginJobs,
     });
 
-    expect(scheduleSessionCompletedPluginTasks).toHaveBeenCalledWith({
+    expect(scheduleSessionCompletedPluginJobs).toHaveBeenCalledWith({
       conversationId: "slack:C123:1700000000.012",
       sessionId: "turn-resume-plugin-tasks",
     });

@@ -4,12 +4,12 @@ Shared helpers for signed background work on Vercel Queue.
 
 - `sign.ts` signs and checks messages
 - `callback.ts` builds the HTTP route and local-dev consumer
-- `job.ts` binds those for one simple job
+- `job.ts` binds those for one kind of work message
 
-Use `queueJob` when the message is the work unit. Keep each job's schema,
-context, version, signed parts, topic, id, and run local.
+Plugins register named jobs. Core uses these helpers to deliver and run them
+with one sign/retry path.
 
 Conversation work is different. It only wakes a conversation. Keep using
-`sign` + `callback` there, not `queueJob`.
+`sign` + `callback` there.
 
-Set `maxDeliveries` on every simple job.
+Set `maxDeliveries` on every simple work pipe.

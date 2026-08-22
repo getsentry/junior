@@ -19,7 +19,7 @@ import {
   type PluginModel,
   type PluginRunTranscriptEntry,
   type PluginState,
-  type PluginTaskContext,
+  type PluginJobContext,
   type Actor,
 } from "@sentry/junior-plugin-api";
 import { Command, CommanderError } from "commander";
@@ -461,7 +461,7 @@ function localContext(
   };
 }
 
-type MemoryTaskContext = PluginTaskContext;
+type MemoryTaskContext = PluginJobContext;
 
 function completedRun(
   overrides: Partial<
@@ -658,22 +658,22 @@ describe("memory plugin storage", () => {
   it("configures automatic recall and passive extraction independently", () => {
     const defaults = memoryPlugin();
     expect(defaults.hooks?.userPrompt).toBeTypeOf("function");
-    expect(defaults.tasks?.processSession).toBeDefined();
+    expect(defaults.jobs?.processSession).toBeDefined();
 
     const withoutRecall = memoryPlugin({ disableRecall: true });
     expect(withoutRecall.hooks?.userPrompt).toBeUndefined();
-    expect(withoutRecall.tasks?.processSession).toBeDefined();
+    expect(withoutRecall.jobs?.processSession).toBeDefined();
 
     const withoutExtraction = memoryPlugin({ disableExtraction: true });
     expect(withoutExtraction.hooks?.userPrompt).toBeTypeOf("function");
-    expect(withoutExtraction.tasks?.processSession).toBeUndefined();
+    expect(withoutExtraction.jobs?.processSession).toBeUndefined();
 
     const withoutEither = memoryPlugin({
       disableExtraction: true,
       disableRecall: true,
     });
     expect(withoutEither.hooks?.userPrompt).toBeUndefined();
-    expect(withoutEither.tasks?.processSession).toBeUndefined();
+    expect(withoutEither.jobs?.processSession).toBeUndefined();
   });
 
   it("parses canonical actor extraction into stored memory text", async () => {

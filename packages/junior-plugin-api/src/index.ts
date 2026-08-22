@@ -16,7 +16,7 @@ export {
 } from "./prompt";
 export * from "./dispatch";
 export * from "./resource-events";
-export * from "./tasks";
+export * from "./jobs";
 export * from "./tools";
 export * from "./operations";
 export * from "./credentials";

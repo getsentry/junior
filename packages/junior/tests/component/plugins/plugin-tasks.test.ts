@@ -7,7 +7,7 @@ import {
 } from "@sentry/junior-plugin-api";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PiMessage } from "@/chat/pi/messages";
-import type { PluginTaskQueueMessage } from "@/chat/plugins/task-message";
+import type { PluginJobMessage } from "@/chat/plugins/job-message";
 import type { ConversationMessage } from "@/chat/state/conversation";
 
 const ORIGINAL_ENV = { ...process.env };
@@ -52,13 +52,13 @@ function testPiMessages(messages: Array<Record<string, unknown>>): PiMessage[] {
 }
 
 class PluginTaskQueueTestAdapter {
-  #messages: PluginTaskQueueMessage[] = [];
+  #messages: PluginJobMessage[] = [];
 
-  async send(message: PluginTaskQueueMessage): Promise<void> {
+  async send(message: PluginJobMessage): Promise<void> {
     this.#messages.push(message);
   }
 
-  queuedMessages(): PluginTaskQueueMessage[] {
+  queuedMessages(): PluginJobMessage[] {
     return [...this.#messages];
   }
 }
@@ -135,8 +135,8 @@ afterEach(async () => {
   process.env = { ...ORIGINAL_ENV };
 });
 
-describe("plugin background tasks", () => {
-  it("schedules and runs session.completed tasks from durable session records", async () => {
+describe("plugin background jobs", () => {
+  it("schedules and runs session.completed jobs from durable session records", async () => {
     const runId = randomUUID();
     const runConversationId = `${conversationId}-${runId}`;
     const runSessionId = `${sessionId}:${runId}`;
@@ -148,8 +148,8 @@ describe("plugin background tasks", () => {
     const queue = new PluginTaskQueueTestAdapter();
     const loadedRuns: PluginRunContext[] = [];
     const { setPlugins } = await import("@/chat/plugins/agent-hooks");
-    const { processPluginTask, scheduleSessionCompletedPluginTasks } =
-      await import("@/chat/plugins/task-runner");
+    const { runPluginJob, scheduleSessionCompletedPluginJobs } =
+      await import("@/chat/plugins/job-runner");
     const { getTurnRecord, upsertTurnRecord } =
       await import("@/chat/task-execution/turn-cursor");
     setPlugins([
@@ -159,7 +159,7 @@ describe("plugin background tasks", () => {
           displayName: "Task Demo",
           description: "Task demo",
         },
-        tasks: {
+        jobs: {
           processSession: {
             async run(ctx) {
               loadedRuns.push(await ctx.run.load());
@@ -221,14 +221,14 @@ describe("plugin background tasks", () => {
     });
     expect(await getTurnRecord(runConversationId, runSessionId)).toBeDefined();
 
-    await scheduleSessionCompletedPluginTasks(
+    await scheduleSessionCompletedPluginJobs(
       { conversationId: runConversationId, sessionId: runSessionId },
       { send: (message) => queue.send(message) },
     );
     const messages = queue.queuedMessages();
     expect(messages).toHaveLength(1);
 
-    await processPluginTask(messages[0]!);
+    await runPluginJob(messages[0]!);
 
     expect(loadedRuns).toEqual([
       expect.objectContaining({
@@ -291,8 +291,8 @@ describe("plugin background tasks", () => {
     const queue = new PluginTaskQueueTestAdapter();
     const loadedRuns: PluginRunContext[] = [];
     const { setPlugins } = await import("@/chat/plugins/agent-hooks");
-    const { processPluginTask, scheduleSessionCompletedPluginTasks } =
-      await import("@/chat/plugins/task-runner");
+    const { runPluginJob, scheduleSessionCompletedPluginJobs } =
+      await import("@/chat/plugins/job-runner");
     const { upsertTurnRecord } =
       await import("@/chat/task-execution/turn-cursor");
     setPlugins([
@@ -302,7 +302,7 @@ describe("plugin background tasks", () => {
           displayName: "Task Embedded Demo",
           description: "Task embedded demo",
         },
-        tasks: {
+        jobs: {
           processSession: {
             async run(ctx) {
               loadedRuns.push(await ctx.run.load());
@@ -352,11 +352,11 @@ describe("plugin background tasks", () => {
       turnStartMessageIndex: 0,
     });
 
-    await scheduleSessionCompletedPluginTasks(
+    await scheduleSessionCompletedPluginJobs(
       { conversationId: runConversationId, sessionId: runSessionId },
       { send: (message) => queue.send(message) },
     );
-    await processPluginTask(queue.queuedMessages()[0]!);
+    await runPluginJob(queue.queuedMessages()[0]!);
 
     const transcript = loadedRuns[0]!.transcript;
     const instructionEntries = transcript.filter(
@@ -414,8 +414,8 @@ describe("plugin background tasks", () => {
     const loadedRuns: PluginRunContext[] = [];
     const queue = new PluginTaskQueueTestAdapter();
     const { setPlugins } = await import("@/chat/plugins/agent-hooks");
-    const { processPluginTask, scheduleSessionCompletedPluginTasks } =
-      await import("@/chat/plugins/task-runner");
+    const { runPluginJob, scheduleSessionCompletedPluginJobs } =
+      await import("@/chat/plugins/job-runner");
     const { upsertTurnRecord } =
       await import("@/chat/task-execution/turn-cursor");
     setPlugins([
@@ -425,7 +425,7 @@ describe("plugin background tasks", () => {
           displayName: "Task Context Demo",
           description: "Task context demo",
         },
-        tasks: {
+        jobs: {
           processSession: {
             async run(ctx) {
               loadedRuns.push(await ctx.run.load());
@@ -468,11 +468,11 @@ describe("plugin background tasks", () => {
       turnStartMessageIndex: 0,
     });
 
-    await scheduleSessionCompletedPluginTasks(
+    await scheduleSessionCompletedPluginJobs(
       { conversationId: slackConversationId, sessionId: slackSessionId },
       { send: (message) => queue.send(message) },
     );
-    await processPluginTask(queue.queuedMessages()[0]!);
+    await runPluginJob(queue.queuedMessages()[0]!);
 
     const transcript = loadedRuns[0]!.transcript;
     expect(transcript).toContainEqual({
@@ -525,8 +525,8 @@ describe("plugin background tasks", () => {
     const loadedRuns: PluginRunContext[] = [];
     const queue = new PluginTaskQueueTestAdapter();
     const { setPlugins } = await import("@/chat/plugins/agent-hooks");
-    const { processPluginTask, scheduleSessionCompletedPluginTasks } =
-      await import("@/chat/plugins/task-runner");
+    const { runPluginJob, scheduleSessionCompletedPluginJobs } =
+      await import("@/chat/plugins/job-runner");
     const { getTurnRecord, upsertTurnRecord } =
       await import("@/chat/task-execution/turn-cursor");
     setPlugins([
@@ -536,7 +536,7 @@ describe("plugin background tasks", () => {
           displayName: "Task Context Window Demo",
           description: "Task context window demo",
         },
-        tasks: {
+        jobs: {
           processSession: {
             async run(ctx) {
               loadedRuns.push(await ctx.run.load());
@@ -586,11 +586,11 @@ describe("plugin background tasks", () => {
       },
     ]);
 
-    await scheduleSessionCompletedPluginTasks(
+    await scheduleSessionCompletedPluginJobs(
       { conversationId: slackConversationId, sessionId: slackSessionId },
       { send: (message) => queue.send(message) },
     );
-    await processPluginTask(queue.queuedMessages()[0]!);
+    await runPluginJob(queue.queuedMessages()[0]!);
 
     const transcript = loadedRuns[0]!.transcript;
     expect(transcript).toContainEqual({
@@ -620,8 +620,8 @@ describe("plugin background tasks", () => {
     const loadedRuns: PluginRunContext[] = [];
     const queue = new PluginTaskQueueTestAdapter();
     const { setPlugins } = await import("@/chat/plugins/agent-hooks");
-    const { processPluginTask, scheduleSessionCompletedPluginTasks } =
-      await import("@/chat/plugins/task-runner");
+    const { runPluginJob, scheduleSessionCompletedPluginJobs } =
+      await import("@/chat/plugins/job-runner");
     const { upsertTurnRecord } =
       await import("@/chat/task-execution/turn-cursor");
     setPlugins([
@@ -631,7 +631,7 @@ describe("plugin background tasks", () => {
           displayName: "Task Actorless Demo",
           description: "Task actorless demo",
         },
-        tasks: {
+        jobs: {
           processSession: {
             async run(ctx) {
               loadedRuns.push(await ctx.run.load());
@@ -656,11 +656,11 @@ describe("plugin background tasks", () => {
       turnStartMessageIndex: 0,
     });
 
-    await scheduleSessionCompletedPluginTasks(
+    await scheduleSessionCompletedPluginJobs(
       { conversationId: runConversationId, sessionId: runSessionId },
       { send: (message) => queue.send(message) },
     );
-    await processPluginTask(queue.queuedMessages()[0]!);
+    await runPluginJob(queue.queuedMessages()[0]!);
 
     expect(loadedRuns).toHaveLength(1);
     expect(loadedRuns[0]).not.toHaveProperty("actor");
@@ -706,8 +706,8 @@ describe("plugin background tasks", () => {
     const loadedRuns: PluginRunContext[] = [];
     const queue = new PluginTaskQueueTestAdapter();
     const { setPlugins } = await import("@/chat/plugins/agent-hooks");
-    const { processPluginTask, scheduleSessionCompletedPluginTasks } =
-      await import("@/chat/plugins/task-runner");
+    const { runPluginJob, scheduleSessionCompletedPluginJobs } =
+      await import("@/chat/plugins/job-runner");
     const { upsertTurnRecord } =
       await import("@/chat/task-execution/turn-cursor");
     const { persistThreadStateById } =
@@ -721,7 +721,7 @@ describe("plugin background tasks", () => {
           displayName: "Task Private Demo",
           description: "Task private demo",
         },
-        tasks: {
+        jobs: {
           processSession: {
             async run(ctx) {
               loadedRuns.push(await ctx.run.load());
@@ -763,11 +763,11 @@ describe("plugin background tasks", () => {
       turnStartMessageIndex: 0,
     });
 
-    await scheduleSessionCompletedPluginTasks(
+    await scheduleSessionCompletedPluginJobs(
       { conversationId: slackConversationId, sessionId: slackSessionId },
       { send: (message) => queue.send(message) },
     );
-    await processPluginTask(queue.queuedMessages()[0]!);
+    await runPluginJob(queue.queuedMessages()[0]!);
 
     const transcript = loadedRuns[0]!.transcript;
     expect(
@@ -787,8 +787,8 @@ describe("plugin background tasks", () => {
 
   it("lets task failures bubble to the queue retry boundary", async () => {
     const { setPlugins } = await import("@/chat/plugins/agent-hooks");
-    const { processPluginTask, scheduleSessionCompletedPluginTasks } =
-      await import("@/chat/plugins/task-runner");
+    const { runPluginJob, scheduleSessionCompletedPluginJobs } =
+      await import("@/chat/plugins/job-runner");
     const queue = new PluginTaskQueueTestAdapter();
     setPlugins([
       defineJuniorPlugin({
@@ -797,7 +797,7 @@ describe("plugin background tasks", () => {
           displayName: "Task Failure Demo",
           description: "Task failure demo",
         },
-        tasks: {
+        jobs: {
           processSession: {
             run() {
               throw new Error("task failure marker");
@@ -811,22 +811,22 @@ describe("plugin background tasks", () => {
       sessionId: "turn-1",
     });
 
-    await scheduleSessionCompletedPluginTasks(
+    await scheduleSessionCompletedPluginJobs(
       { conversationId: "local:test:failure", sessionId: "turn-1" },
       { send: (message) => queue.send(message) },
     );
     const [message] = queue.queuedMessages();
 
-    await expect(processPluginTask(message!)).rejects.toThrow(
+    await expect(runPluginJob(message!)).rejects.toThrow(
       "task failure marker",
     );
   });
 
   it("attempts every plugin task send when one enqueue fails", async () => {
     const { setPlugins } = await import("@/chat/plugins/agent-hooks");
-    const { scheduleSessionCompletedPluginTasks } =
-      await import("@/chat/plugins/task-runner");
-    const attempted: PluginTaskQueueMessage[] = [];
+    const { scheduleSessionCompletedPluginJobs } =
+      await import("@/chat/plugins/job-runner");
+    const attempted: PluginJobMessage[] = [];
     setPlugins([
       defineJuniorPlugin({
         manifest: {
@@ -834,7 +834,7 @@ describe("plugin background tasks", () => {
           displayName: "Task Send Failure Demo",
           description: "Task send failure demo",
         },
-        tasks: {
+        jobs: {
           processSession: {
             run() {},
           },
@@ -846,7 +846,7 @@ describe("plugin background tasks", () => {
           displayName: "Task Send Success Demo",
           description: "Task send success demo",
         },
-        tasks: {
+        jobs: {
           processSession: {
             run() {},
           },
@@ -860,7 +860,7 @@ describe("plugin background tasks", () => {
     });
 
     await expect(
-      scheduleSessionCompletedPluginTasks(
+      scheduleSessionCompletedPluginJobs(
         { conversationId: "local:test:send-failure", sessionId: "turn-1" },
         {
           async send(message) {
@@ -879,10 +879,10 @@ describe("plugin background tasks", () => {
     ]);
   });
 
-  it("rejects task messages for unregistered plugin tasks", async () => {
+  it("rejects task messages for unregistered plugin jobs", async () => {
     const { setPlugins } = await import("@/chat/plugins/agent-hooks");
-    const { processPluginTask, scheduleSessionCompletedPluginTasks } =
-      await import("@/chat/plugins/task-runner");
+    const { runPluginJob, scheduleSessionCompletedPluginJobs } =
+      await import("@/chat/plugins/job-runner");
     const queue = new PluginTaskQueueTestAdapter();
     setPlugins([
       defineJuniorPlugin({
@@ -891,7 +891,7 @@ describe("plugin background tasks", () => {
           displayName: "Task Registration Demo",
           description: "Task registration demo",
         },
-        tasks: {
+        jobs: {
           processSession: {
             run() {},
           },
@@ -903,15 +903,15 @@ describe("plugin background tasks", () => {
       sessionId: "turn-1",
     });
 
-    await scheduleSessionCompletedPluginTasks(
+    await scheduleSessionCompletedPluginJobs(
       { conversationId: "local:test:missing", sessionId: "turn-1" },
       { send: (message) => queue.send(message) },
     );
     const [message] = queue.queuedMessages();
     setPlugins([]);
 
-    await expect(processPluginTask(message!)).rejects.toThrow(
-      'Plugin task "task-registration-demo.processSession" is not registered',
+    await expect(runPluginJob(message!)).rejects.toThrow(
+      'Plugin job "task-registration-demo.processSession" is not registered',
     );
   });
 });

@@ -192,7 +192,7 @@ describe("plugin conversation events", () => {
           return { title: "Event cost demo" };
         },
       },
-      tasks: {
+      jobs: {
         processSession: {
           async run(ctx) {
             await ctx.events.emit(completedEvent({ costUsd: 0.0042 }));
@@ -202,10 +202,10 @@ describe("plugin conversation events", () => {
     });
     const { getPluginOperationalReports, setPlugins } =
       await import("@/chat/plugins/agent-hooks");
-    const { processPluginTask } = await import("@/chat/plugins/task-runner");
+    const { runPluginJob } = await import("@/chat/plugins/job-runner");
     setPlugins([plugin]);
     await recordCompletedSession({ conversationId, sessionId });
-    await processPluginTask({
+    await runPluginJob({
       name: "processSession",
       params: { conversationId, sessionId },
       plugin: "event-cost-demo",
@@ -250,7 +250,7 @@ describe("plugin conversation events", () => {
           description: "Task event demo",
         },
         conversationEvents,
-        tasks: {
+        jobs: {
           processSession: {
             async run(ctx) {
               await ctx.events.emit(
@@ -269,7 +269,7 @@ describe("plugin conversation events", () => {
       });
     const { setPlugins } = await import("@/chat/plugins/agent-hooks");
     const { getConversationEventStore, getDb } = await import("@/chat/db");
-    const { processPluginTask } = await import("@/chat/plugins/task-runner");
+    const { runPluginJob } = await import("@/chat/plugins/job-runner");
     setPlugins([plugin([completedEventV1])]);
     await recordCompletedSession({ conversationId, sessionId });
     const db = getDb();
@@ -299,10 +299,10 @@ describe("plugin conversation events", () => {
       plugin: "task-event-demo",
     };
 
-    await processPluginTask(message);
+    await runPluginJob(message);
     emittedVersion = 2;
     setPlugins([plugin([completedEventV1, completedEventV2])]);
-    await processPluginTask(message);
+    await runPluginJob(message);
 
     expect(await readConversationState()).toEqual(conversationState);
     const events =

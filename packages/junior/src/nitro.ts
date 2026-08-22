@@ -10,7 +10,7 @@ import {
   injectVirtualConfig,
   type RuntimePluginModule,
 } from "@/build/virtual-config";
-import { PLUGIN_TASK_QUEUE_TOPIC } from "@/chat/plugins/task-queue";
+import { PLUGIN_TASK_QUEUE_TOPIC } from "@/chat/plugins/job-delivery";
 import { resolveConversationWorkQueueTopic } from "@/chat/task-execution/vercel-queue";
 import {
   JUNIOR_CONVERSATION_WORK_CALLBACK_ROUTE,

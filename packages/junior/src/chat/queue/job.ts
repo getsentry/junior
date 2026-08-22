@@ -1,4 +1,4 @@
-/** Bind sign, send, and callback wiring for one simple queue job. */
+/** Bind sign, send, and callback wiring for one kind of background work. */
 import type { MessageMetadata } from "@vercel/queue";
 import { z } from "zod";
 import { logWarn } from "@/chat/logging";
@@ -11,14 +11,14 @@ import {
   type QueueSignConfig,
 } from "./sign";
 
-export interface QueueJobOptions<
+export interface SignedWorkOptions<
   Message extends object,
   Version extends string,
 > {
   consumerGroup: string;
   context: string;
   id(message: Message): string;
-  /** Required. Simple jobs own this limit in the callback. */
+  /** Required. This work owns the delivery limit in the callback. */
   maxDeliveries: number;
   parts(message: Message): readonly string[];
   rejectedLog?: string;
@@ -28,10 +28,16 @@ export interface QueueJobOptions<
   version: Version;
 }
 
-/** Create one simple queue job with send + handle helpers. */
-export function queueJob<Message extends object, Version extends string>(
-  options: QueueJobOptions<Message, Version>,
-) {
+/**
+ * Create one signed background work pipe.
+ *
+ * Use this when the message is the work unit. Registration of named handlers
+ * stays with the caller (for example plugin jobs).
+ */
+export function defineSignedWork<
+  Message extends object,
+  Version extends string,
+>(options: SignedWorkOptions<Message, Version>) {
   const signConfig: QueueSignConfig<Message, Version> = {
     context: options.context,
     schema: options.schema,

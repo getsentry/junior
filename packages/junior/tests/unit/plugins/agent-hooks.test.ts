@@ -931,7 +931,7 @@ describe("agent plugin hooks", () => {
     }
   });
 
-  it("validates plugin task registration names", () => {
+  it("validates plugin job registration names", () => {
     const previous = setPlugins([]);
     try {
       expect(() =>
@@ -942,7 +942,7 @@ describe("agent plugin hooks", () => {
               displayName: "Agent Demo",
               description: "Agent demo",
             },
-            tasks: {
+            jobs: {
               processSession: {
                 run() {},
               },
@@ -959,14 +959,14 @@ describe("agent plugin hooks", () => {
               displayName: "Agent Demo",
               description: "Agent demo",
             },
-            tasks: {
+            jobs: {
               "bad-task": {
                 run() {},
               },
             },
           }),
         ]),
-      ).toThrow('Plugin task "bad-task"');
+      ).toThrow('Plugin job "bad-task"');
 
       expect(() =>
         setPlugins([
@@ -976,12 +976,12 @@ describe("agent plugin hooks", () => {
               displayName: "Agent Demo",
               description: "Agent demo",
             },
-            tasks: {
+            jobs: {
               processSession: {} as any,
             },
           }),
         ]),
-      ).toThrow('Plugin task "processSession"');
+      ).toThrow('Plugin job "processSession"');
     } finally {
       setPlugins(previous);
     }

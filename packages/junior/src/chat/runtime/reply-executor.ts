@@ -369,7 +369,7 @@ export interface ReplyExecutorServices {
   lookupSlackUser: typeof lookupSlackUser;
   turnLifecycle: ConversationTurnLifecycle;
   wakePausedTurn: (request: PausedTurnRequest) => Promise<void>;
-  scheduleSessionCompletedPluginTasks: (params: {
+  scheduleSessionCompletedPluginJobs: (params: {
     conversationId: string;
     sessionId: string;
   }) => Promise<void>;
@@ -1612,7 +1612,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           await notifyTurnCompleted();
           if (reply.diagnostics.outcome === "success" && conversationId) {
             try {
-              await deps.services.scheduleSessionCompletedPluginTasks({
+              await deps.services.scheduleSessionCompletedPluginJobs({
                 conversationId,
                 sessionId: turnId,
               });

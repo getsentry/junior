@@ -6,7 +6,7 @@ exported TypeScript types and runtime validators are authoritative.
 ## Registration
 
 Use
-`defineJuniorPlugin({ manifest, hooks, tasks, cli, model, conversationEvents })`.
+`defineJuniorPlugin({ manifest, hooks, jobs, cli, model, conversationEvents })`.
 A plugin name is a lowercase identifier and is unique within the enabled app
 plugin set.
 
@@ -73,7 +73,7 @@ reports, and other typed hook surfaces exported by this package.
 
 ## User Pages
 
-Register signed-in pages through `userPages` beside `hooks`, `tasks`, and `cli`.
+Register signed-in pages through `userPages` beside `hooks`, `jobs`, and `cli`.
 Each definition owns its navigation metadata and `read(ctx, input)` function,
 so a page cannot be advertised without an implementation. List readers receive
 validated search and cursor input and may return an opaque continuation cursor.
@@ -88,9 +88,9 @@ routing, response validation, rendering, confirmation, and query state.
 
 - Heartbeat hooks perform bounded periodic maintenance and must be safe to run
   repeatedly.
-- Background tasks are registered by name, receive validated parameters, and
+- Background jobs are registered by name, receive validated parameters, and
   execute through the host queue/callback lifecycle.
-- Conversation-bound background tasks may emit registered structured events
+- Conversation-bound background jobs may emit registered structured events
   through `ctx.events`. Define each version with `defineConversationEvent()`;
   the host supplies the plugin namespace, conversation, turn, ordering, and
   timestamps without treating background work as new conversation activity.

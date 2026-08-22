@@ -222,14 +222,14 @@ describe("bot handlers (integration)", () => {
   });
 
   it("handleNewMention: posts reply from executeAgentRun", async () => {
-    const scheduleSessionCompletedPluginTasks = vi.fn(async () => undefined);
+    const scheduleSessionCompletedPluginJobs = vi.fn(async () => undefined);
     const { slackRuntime } = createTestChatRuntime({
       services: {
         replyExecutor: {
           agentRunner: createModelAgentRunner(
             createModelStream([{ type: "text", text: "Hello from the bot!" }]),
           ),
-          scheduleSessionCompletedPluginTasks,
+          scheduleSessionCompletedPluginJobs,
         },
         visionContext: {
           listThreadReplies: async () => [],
@@ -265,7 +265,7 @@ describe("bot handlers (integration)", () => {
       return false;
     });
     expect(hasReply).toBe(true);
-    expect(scheduleSessionCompletedPluginTasks).toHaveBeenCalledWith({
+    expect(scheduleSessionCompletedPluginJobs).toHaveBeenCalledWith({
       conversationId: "slack:C0INT:1700000000.000",
       sessionId: "turn_msg-new-mention",
     });
