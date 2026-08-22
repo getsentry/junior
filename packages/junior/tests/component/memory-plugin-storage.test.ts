@@ -24,7 +24,6 @@ import {
   PluginToolInputError,
 } from "@sentry/junior-plugin-api";
 
-
 const NEON = vi.hoisted(() => ({
   sql: undefined as
     | Awaited<ReturnType<typeof createLocalJuniorSqlFixture>>["sql"]
@@ -385,6 +384,8 @@ WHERE indexname = 'junior_memory_memories_search_idx'
     try {
       await migrateSchema(fixture.sql);
       await migrateMemorySchema(fixture);
+      // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+      const db = fixture.sql.db() as MemoryDb;
       const viewerConversationId = "slack:D123:1718800001.000000";
       const viewer = await recordPrivateConversation(fixture, {
         channelId: "D123",
@@ -393,57 +394,48 @@ WHERE indexname = 'junior_memory_memories_search_idx'
         nowMs: Date.parse("2026-08-21T12:00:00.000Z"),
         userId: "U123",
       });
-      const publicMemory = await createMemoryStore(
-        fixture.sql.db() as unknown as MemoryDb,
-        {
-          conversationId: "slack:C123:1718800000.000000",
-          actor: { platform: "slack", teamId: "T123", userId: "U123" },
-          source: createSlackSource({
-            teamId: "T123",
-            channelId: "C123",
-            messageTs: "1718800000.000000",
-            visibility: "public",
-          }),
-        },
-      ).createConversationMemory({
+      const publicMemory = await createMemoryStore(db, {
+        conversationId: "slack:C123:1718800000.000000",
+        actor: { platform: "slack", teamId: "T123", userId: "U123" },
+        source: createSlackSource({
+          teamId: "T123",
+          channelId: "C123",
+          messageTs: "1718800000.000000",
+          visibility: "public",
+        }),
+      }).createConversationMemory({
         content: "Public runbooks live in Notion.",
         idempotencyKey: "component-public-memory",
         kind: "knowledge",
       });
-      const privateMemory = await createMemoryStore(
-        fixture.sql.db() as unknown as MemoryDb,
-        {
-          conversationId: viewerConversationId,
-          locationId: viewer.locationId,
-          actor: { platform: "slack", teamId: "T123", userId: "U123" },
-          source: createSlackSource({
-            teamId: "T123",
-            channelId: "D123",
-            messageTs: "1718800001.000000",
-            visibility: "private",
-          }),
-          userId: viewer.user.id,
-        },
-      ).createMemory({
+      const privateMemory = await createMemoryStore(db, {
+        conversationId: viewerConversationId,
+        locationId: viewer.locationId,
+        actor: { platform: "slack", teamId: "T123", userId: "U123" },
+        source: createSlackSource({
+          teamId: "T123",
+          channelId: "D123",
+          messageTs: "1718800001.000000",
+          visibility: "private",
+        }),
+        userId: viewer.user.id,
+      }).createMemory({
         content: "Prefers terse status updates in this DM.",
         idempotencyKey: "component-private-memory",
         kind: "preference",
       });
-      const otherPrivateMemory = await createMemoryStore(
-        fixture.sql.db() as unknown as MemoryDb,
-        {
-          conversationId: viewerConversationId,
-          locationId: viewer.locationId,
-          actor: { platform: "slack", teamId: "T123", userId: "U999" },
-          source: createSlackSource({
-            teamId: "T123",
-            channelId: "D123",
-            messageTs: "1718800002.000000",
-            visibility: "private",
-          }),
-          userId: "other-user",
-        },
-      ).createMemory({
+      const otherPrivateMemory = await createMemoryStore(db, {
+        conversationId: viewerConversationId,
+        locationId: viewer.locationId,
+        actor: { platform: "slack", teamId: "T123", userId: "U999" },
+        source: createSlackSource({
+          teamId: "T123",
+          channelId: "D123",
+          messageTs: "1718800002.000000",
+          visibility: "private",
+        }),
+        userId: "other-user",
+      }).createMemory({
         content: "Only the other User can read this.",
         idempotencyKey: "component-other-private-memory",
         kind: "knowledge",
@@ -521,7 +513,7 @@ WHERE indexname = 'junior_memory_memories_search_idx'
       });
       const store = createMemoryStore(
         // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
-        (fixture.sql.db()) as MemoryDb,
+        fixture.sql.db() as MemoryDb,
         {
           conversationId,
           locationId: userContext.locationId,
