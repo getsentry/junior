@@ -628,8 +628,9 @@ export function createSandboxRuntime(
         return null;
       }
       if (isSandboxUnavailableError(error)) {
+        sandboxRef = undefined;
         invalidateSession();
-        throw error;
+        return null;
       }
       throw new Error("sandbox restore failed", { cause: error });
     }
@@ -641,9 +642,10 @@ export function createSandboxRuntime(
       await persistSandboxRef({ ...ref, id: hintedSandbox.sandboxId });
       return rememberSandbox(hintedSandbox, networkPolicyKey);
     } catch (error) {
-      // Keep the durable VM alive so a later reacquire can reuse it.
       if (isSandboxUnavailableError(error)) {
-        throw error;
+        sandboxRef = undefined;
+        invalidateSession();
+        return null;
       }
       return failSetup(error);
     }
