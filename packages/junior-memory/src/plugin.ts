@@ -54,7 +54,9 @@ function memoryToolContext(ctx: {
 }): MemoryToolContext {
   return {
     agent: ctx.agent,
-    ...(ctx.conversationId ? { conversationId: ctx.conversationId } : undefined),
+    ...(ctx.conversationId
+      ? { conversationId: ctx.conversationId }
+      : undefined),
     ...(ctx.actor ? { actor: ctx.actor } : undefined),
     db: ctx.db,
     ...(ctx.embedder ? { embedder: ctx.embedder } : undefined),
@@ -168,7 +170,9 @@ export function memoryPlugin(options: MemoryPluginOptions = {}) {
                 db: ctx.db as MemoryDb,
                 embedder: ctx.embedder,
                 events: ctx.events,
-                ...(ctx.locationId ? { locationId: ctx.locationId } : {}),
+                ...(ctx.locationId
+                  ? { locationId: ctx.locationId }
+                  : undefined),
                 log: ctx.log,
                 source: ctx.source,
                 text: ctx.text,

@@ -159,10 +159,10 @@ function toViewerMemory(
 function cursorFilters(input: MemoryPageInput) {
   const query = input.query?.trim() || undefined;
   return {
-    ...(input.kind ? { kind: input.kind } : {}),
-    ...(input.origin ? { origin: input.origin } : {}),
-    ...(query ? { query } : {}),
-    ...(input.visibility ? { visibility: input.visibility } : {}),
+    ...(input.kind ? { kind: input.kind } : undefined),
+    ...(input.origin ? { origin: input.origin } : undefined),
+    ...(query ? { query } : undefined),
+    ...(input.visibility ? { visibility: input.visibility } : undefined),
   };
 }
 
@@ -305,7 +305,7 @@ export function createViewerMemories(db: MemoryDb, user: { id: string }) {
                 filters,
               ),
             }
-          : {}),
+          : undefined),
       };
     },
 
