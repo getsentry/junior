@@ -1,5 +1,6 @@
 import {
   createLocalSource,
+  createSlackSource,
   defineJuniorPlugin,
 } from "@sentry/junior-plugin-api";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -11,6 +12,7 @@ import {
   type LocalToolResult,
 } from "@/chat/local/runner";
 import { setPlugins } from "@/chat/plugins/agent-hooks";
+import { listResourceEventSubscriptions } from "@/chat/resource-events/store";
 import { juniorWorkspaceRepos, juniorWorkspaces } from "@/db/schema";
 import { createModelAgentRunner } from "../fixtures/agent-runner";
 import { createModelStream } from "../fixtures/model-stream";
@@ -29,7 +31,8 @@ vi.mock("@/chat/sandbox/snapshot/job-queue", () => ({
 
 describe("Workspace tools", () => {
   beforeEach(() => {
-    sendWorkspaceSnapshotJob.mockClear();
+    sendWorkspaceSnapshotJob.mockReset();
+    sendWorkspaceSnapshotJob.mockResolvedValue(undefined);
   });
 
   it("runs Workspace tools through the real agent tool path", async () => {
@@ -386,12 +389,21 @@ describe("Workspace tools", () => {
       ...workspace.repos[0]!,
     });
     const switchWorkspace = vi.fn();
+    const conversationId = "slack:CWORKSPACE:1700000000.100000";
     const context = {
+      conversationId,
       destination: {
-        platform: "local",
-        conversationId: "local:test:workspace-building",
+        platform: "slack",
+        teamId: "TWORKSPACE",
+        channelId: "CWORKSPACE",
       },
-      source: createLocalSource("local:test:workspace-building"),
+      source: createSlackSource({
+        teamId: "TWORKSPACE",
+        channelId: "CWORKSPACE",
+        threadTs: "1700000000.100000",
+        messageTs: "1700000000.100001",
+        visibility: "public",
+      }),
       egress: {
         async fetch() {
           return new Response("ok");
@@ -403,6 +415,12 @@ describe("Workspace tools", () => {
         switch: switchWorkspace,
       },
     } satisfies ToolRuntimeContext;
+
+    let subscribedBeforeSend = false;
+    sendWorkspaceSnapshotJob.mockImplementationOnce(async () => {
+      subscribedBeforeSend =
+        (await listResourceEventSubscriptions({ conversationId })).length === 1;
+    });
 
     const tools = createWorkspaceTools(context);
     await expect(
@@ -417,6 +435,7 @@ describe("Workspace tools", () => {
       },
     });
     expect(switchWorkspace).not.toHaveBeenCalled();
+    expect(subscribedBeforeSend).toBe(true);
     expect(sendWorkspaceSnapshotJob).toHaveBeenCalledWith({
       workspaceId: workspace.id,
       profileHash: expect.any(String),

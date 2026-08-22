@@ -9,7 +9,10 @@ import {
   workspaceSnapshotWatch,
 } from "@/chat/sandbox/snapshot/events";
 import { ensureWorkspaceSnapshotBuild } from "@/chat/sandbox/snapshot/job-runner";
-import { createResourceEventSubscription } from "@/chat/resource-events/store";
+import {
+  cancelResourceEventSubscription,
+  createResourceEventSubscription,
+} from "@/chat/resource-events/store";
 import {
   canUseResourceEventSubscriptionTools,
   RESOURCE_SUBSCRIPTION_DEFAULT_TTL_MS,
@@ -322,22 +325,15 @@ export function createWorkspaceTools(
         if (!workspace)
           throw new ToolInputError(`Workspace not found: ${name}`);
 
-        const build = await ensureWorkspaceSnapshotBuild({ workspace });
-        if (build.status === "failed") {
-          throw new Error(
-            `Workspace ${workspace.name} snapshot failed${
-              build.error ? `: ${build.error}` : ""
-            }`,
-          );
-        }
-        if (build.status === "building") {
-          const watch = workspaceSnapshotWatch({
-            workspaceId: workspace.id,
-            workspaceName: workspace.name,
-          });
-          if (canUseResourceEventSubscriptionTools(context)) {
-            const conversationId = requireResourceWatchConversation(context);
-            await createResourceEventSubscription({
+        const watch = workspaceSnapshotWatch({
+          workspaceId: workspace.id,
+          workspaceName: workspace.name,
+        });
+        const conversationId = canUseResourceEventSubscriptionTools(context)
+          ? requireResourceWatchConversation(context)
+          : undefined;
+        const subscription = conversationId
+          ? await createResourceEventSubscription({
               conversationId,
               destination: context.destination,
               events: [
@@ -350,13 +346,40 @@ export function createWorkspaceTools(
               namespace: watch.namespace,
               identifier: watch.identifier,
               resourceType: watch.type,
+            })
+          : undefined;
+
+        let build: Awaited<ReturnType<typeof ensureWorkspaceSnapshotBuild>>;
+        try {
+          build = await ensureWorkspaceSnapshotBuild({ workspace });
+        } catch (error) {
+          if (subscription && conversationId) {
+            await cancelResourceEventSubscription({
+              conversationId,
+              id: subscription.id,
             });
           }
+          throw error;
+        }
+        if (build.status === "building") {
           return {
             workspace: view(workspace),
             status: "building" as const,
             subscribable: watch,
           };
+        }
+        if (subscription && conversationId) {
+          await cancelResourceEventSubscription({
+            conversationId,
+            id: subscription.id,
+          });
+        }
+        if (build.status === "failed") {
+          throw new Error(
+            `Workspace ${workspace.name} snapshot failed${
+              build.error ? `: ${build.error}` : ""
+            }`,
+          );
         }
 
         await context.workspaces!.switch(workspace, options.signal);
