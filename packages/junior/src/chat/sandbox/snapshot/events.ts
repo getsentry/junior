@@ -21,10 +21,7 @@ export function workspaceSnapshotWatch(input: {
       WORKSPACE_SNAPSHOT_READY_EVENT,
       WORKSPACE_SNAPSHOT_FAILED_EVENT,
     ],
-    suggestedEvents: [
-      WORKSPACE_SNAPSHOT_READY_EVENT,
-      WORKSPACE_SNAPSHOT_FAILED_EVENT,
-    ],
+    suggestedEvents: [],
     type: WORKSPACE_SNAPSHOT_RESOURCE_TYPE,
   };
 }

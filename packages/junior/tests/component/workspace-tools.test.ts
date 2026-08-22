@@ -561,6 +561,7 @@ describe("Workspace tools", () => {
         namespace: "junior",
         type: "workspace_snapshot",
         identifier: workspace.id,
+        suggestedEvents: [],
       },
     });
     expect(switchWorkspace).not.toHaveBeenCalled();
