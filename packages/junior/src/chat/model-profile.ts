@@ -33,9 +33,9 @@ export function modelIdForProfile(
   return profileConfig(config, profile).modelId;
 }
 
-/** Resolve the standard execution profile's model. */
-export function standardModelId(config: BotConfig): string {
-  return modelIdForProfile(config, STANDARD_MODEL_PROFILE);
+/** Resolve the configured default profile's model. */
+export function defaultModelId(config: BotConfig): string {
+  return modelIdForProfile(config, config.defaultProfile);
 }
 
 /** Resolve a stable model profile through the host-owned profile catalog. */

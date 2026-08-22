@@ -4,7 +4,7 @@ import type {
   PluginModelConfig,
 } from "@sentry/junior-plugin-api";
 import { botConfig } from "@/chat/config";
-import { standardModelId } from "@/chat/model-profile";
+import { defaultModelId } from "@/chat/model-profile";
 import { completeObject, embedTexts } from "@/chat/pi/client";
 
 /** Create the host-owned structured model capability exposed to plugins. */
@@ -18,7 +18,7 @@ export function createPluginModel(
       const modelId =
         options.structuredModelId ??
         (options.structuredModel === "default"
-          ? standardModelId(botConfig)
+          ? defaultModelId(botConfig)
           : botConfig.fastModelId);
       const result = await completeObject({
         modelId,

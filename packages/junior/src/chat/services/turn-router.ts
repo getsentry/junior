@@ -114,7 +114,10 @@ function trimContextForRouter(text: string | undefined): TrimmedContext | null {
   };
 }
 
-function buildClassifierSystemPrompt(profileNames: string[]): string {
+function buildClassifierSystemPrompt(
+  profileNames: string[],
+  defaultProfile: ModelProfile,
+): string {
   return [
     "You choose the execution profile most likely to produce a complete, source-grounded answer.",
     "Choose exactly one bucket: none, low, medium, high, or xhigh.",
@@ -127,6 +130,7 @@ function buildClassifierSystemPrompt(profileNames: string[]): string {
     "Use high for research-heavy work, non-trivial drafting, or explicit requests to be thorough.",
     "Use xhigh for the most complex tasks: code changes, debugging/root-cause analysis, broad refactors, architecture decisions, multi-file implementation, or any task where deep reasoning across multiple systems or files is required.",
     "When unsure between two non-none buckets, choose the higher bucket. Do not use low as the default.",
+    `The default profile is ${defaultProfile}.`,
     "Choose a non-default profile when the task needs a more capable model: writing, editing, reviewing, debugging, or substantially reasoning about code; multi-file changes; root-cause analysis; research-heavy synthesis or complex planning; architecture decisions; or another task where a stronger model materially improves reliability. Otherwise keep the default profile.",
     "Any request for a software architecture or component-design decision must use a more capable profile, including advice-only requests with no implementation.",
     "",
@@ -210,6 +214,7 @@ export async function selectTurnRoute(args: {
     threadId?: string;
   };
   currentTurnBlocks?: string[];
+  defaultProfile: ModelProfile;
   fastModelId: string;
   messageText: string;
   profiles: Readonly<Record<string, ExecutionProfileConfig>>;
@@ -257,6 +262,7 @@ export async function selectTurnRoute(args: {
           actorId: args.context?.actorId ?? "",
           runId: args.context?.runId ?? "",
         },
+        defaultProfile: args.defaultProfile,
         profiles: args.profiles,
         prompt,
       });
@@ -322,6 +328,7 @@ function applyProfileReasoningOverride(
 
 async function classifyTurn(args: {
   completeObject: Parameters<typeof selectTurnRoute>[0]["completeObject"];
+  defaultProfile: ModelProfile;
   fastModelId: string;
   metadata: Record<string, string>;
   profiles: Readonly<Record<string, ExecutionProfileConfig>>;
@@ -336,7 +343,10 @@ async function classifyTurn(args: {
       metadata: args.metadata,
       prompt: args.prompt,
       thinkingLevel: "low",
-      system: buildClassifierSystemPrompt(Object.keys(args.profiles)),
+      system: buildClassifierSystemPrompt(
+        Object.keys(args.profiles),
+        args.defaultProfile,
+      ),
       temperature: 0,
       promptName: "junior.thinking_route",
     });

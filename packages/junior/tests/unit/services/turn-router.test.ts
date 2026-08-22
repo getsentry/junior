@@ -19,8 +19,11 @@ const profiles = {
   handoff: { modelId: "openai/gpt-5.6-sol" },
 };
 const routeTurn = (
-  args: Omit<Parameters<typeof selectTurnRoute>[0], "profiles">,
-) => selectTurnRoute({ ...args, profiles });
+  args: Omit<
+    Parameters<typeof selectTurnRoute>[0],
+    "defaultProfile" | "profiles"
+  >,
+) => selectTurnRoute({ ...args, defaultProfile: "standard", profiles });
 
 describe("selectTurnRoute", () => {
   beforeEach(() => {
@@ -160,6 +163,7 @@ describe("selectTurnRoute", () => {
 
     const profile = await selectTurnRoute({
       completeObject,
+      defaultProfile: "standard",
       fastModelId: "openai/gpt-5.4-mini",
       messageText: "research this architecture",
       profiles: {

@@ -7,7 +7,7 @@
  */
 import type { ReplyAttribution } from "@sentry/junior-plugin-api";
 import { botConfig } from "@/chat/config";
-import { standardModelId } from "@/chat/model-profile";
+import { defaultModelId } from "@/chat/model-profile";
 import { configValueSchema } from "@/chat/configuration/types";
 import type {
   ConfigValue,
@@ -251,7 +251,7 @@ function getResumeLogContext(
     userName: isUserActor(actor) ? actor.userName : undefined,
     destinationName: args.channelId,
     assistantUserName: botConfig.userName,
-    modelId: standardModelId(botConfig),
+    modelId: defaultModelId(botConfig),
   };
 }
 

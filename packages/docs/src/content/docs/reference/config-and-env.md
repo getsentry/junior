@@ -163,15 +163,15 @@ Pass named profiles to `createApp()`. The `handoff` tool can switch to any confi
 
 ```ts
 const app = await createApp({
+  defaultProfile: "gpt-5",
   profiles: {
-    standard: "xai/grok-4.5",
     "gpt-5": "openai/gpt-5.6-sol",
     "opus-5": "anthropic/claude-opus-5",
   },
 });
 ```
 
-App config merges over env defaults. `standard` is the default start profile. `handoff` remains the built-in stronger profile unless you replace or omit it via env / app config.
+App config merges over env defaults. `AI_MODEL` defines the `standard` profile. `AI_HANDOFF_MODEL` defines the `handoff` profile. `AI_MODEL_PROFILES` defines more named profiles. Set `defaultProfile` to declare which configured profile starts a new conversation. It defaults to `standard` for compatibility.
 
 ## Install-wide config defaults
 

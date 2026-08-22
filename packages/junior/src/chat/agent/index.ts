@@ -135,7 +135,6 @@ import { sleep } from "@/chat/sleep";
 import {
   modelIdForProfile,
   ModelProfileNotConfiguredError,
-  STANDARD_MODEL_PROFILE,
   profileConfig,
   type ModelProfile,
 } from "@/chat/model-profile";
@@ -377,12 +376,12 @@ async function executeAgentRunInPrivacyContext(
     policy.reasoningLevel ?? botConfig.reasoningLevel;
   let turnRoute: TurnRoute | undefined = configuredReasoningLevel
     ? configuredTurnRoute(
-        STANDARD_MODEL_PROFILE,
+        botConfig.defaultProfile,
         configuredReasoningLevel,
         policy.reasoningLevel ? "agent_config" : "default",
       )
     : undefined;
-  let activeModelProfile: ModelProfile = STANDARD_MODEL_PROFILE;
+  let activeModelProfile: ModelProfile = botConfig.defaultProfile;
   let activeModelId = modelIdForProfile(botConfig, activeModelProfile);
   const actor = actorFromRun(run);
   const surface = surfaceFromRun(run);
@@ -587,7 +586,7 @@ async function executeAgentRunInPrivacyContext(
     if (storedTurnRoute) {
       const resumedAfterHandoff =
         handoffEnabled &&
-        activeModelProfile !== STANDARD_MODEL_PROFILE &&
+        activeModelProfile !== botConfig.defaultProfile &&
         activeModelProfile !== storedTurnRoute.modelProfile;
       if (resumedAfterHandoff) {
         const activeProfileConfig = profileConfig(
@@ -615,7 +614,7 @@ async function executeAgentRunInPrivacyContext(
         };
       }
     } else if (
-      activeModelProfile === STANDARD_MODEL_PROFILE &&
+      activeModelProfile === botConfig.defaultProfile &&
       handoffEnabled
     ) {
       turnRoute = await selectTurnRoute({
@@ -628,6 +627,7 @@ async function executeAgentRunInPrivacyContext(
           runId,
         },
         currentTurnBlocks: routerBlocks,
+        defaultProfile: botConfig.defaultProfile,
         fastModelId: botConfig.fastModelId,
         messageText: userInput,
         profiles: botConfig.profiles,
@@ -1490,12 +1490,15 @@ async function executeAgentRunInPrivacyContext(
           };
 
           const requestedProfile =
-            activeModelProfile === STANDARD_MODEL_PROFILE
+            activeModelProfile === botConfig.defaultProfile
               ? turnRoute!.profile
               : undefined;
           let run: Promise<unknown>;
           let handoffApplied = false;
-          if (requestedProfile && requestedProfile !== STANDARD_MODEL_PROFILE) {
+          if (
+            requestedProfile &&
+            requestedProfile !== botConfig.defaultProfile
+          ) {
             const handoffAbortController = new AbortController();
             await runAgentStep(
               scheduleHandoff({

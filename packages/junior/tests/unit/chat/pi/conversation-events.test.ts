@@ -248,6 +248,12 @@ describe("projectConversationEvents", () => {
     );
   });
 
+  it("starts an event history on the declared default profile", () => {
+    expect(
+      projectConversationEvents([], { defaultProfile: "gpt-5" }).modelProfile,
+    ).toBe("gpt-5");
+  });
+
   it("omits volatile runtime bootstrap from durable agent history", () => {
     const projection = projectConversationEvents([
       event(20, {

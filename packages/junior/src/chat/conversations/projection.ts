@@ -22,6 +22,7 @@ import {
   authenticationUnlinkedEvent,
   JUNIOR_NATIVE_EVENT_NAMESPACE,
 } from "@/chat/conversations/structured-events";
+import { botConfig } from "@/chat/config";
 import { getConversationEventStore, getSqlExecutor } from "@/chat/db";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
@@ -227,7 +228,9 @@ export async function loadProjection(
   const events = await getConversationEventStore().loadCurrentHistory(
     args.conversationId,
   );
-  return projectConversationEvents(events).messages;
+  return projectConversationEvents(events, {
+    defaultProfile: botConfig.defaultProfile,
+  }).messages;
 }
 
 /** Load current Pi context with aligned provenance and source event sequences. */
@@ -237,7 +240,9 @@ export async function loadConversationProjection(
   const events = await getConversationEventStore().loadCurrentHistory(
     args.conversationId,
   );
-  return projectConversationEvents(events);
+  return projectConversationEvents(events, {
+    defaultProfile: botConfig.defaultProfile,
+  });
 }
 
 /** Load the active Pi projection before a conversation's next request. */
@@ -247,7 +252,9 @@ export async function openConversationProjection(
   const events = await getConversationEventStore().loadCurrentHistory(
     args.conversationId,
   );
-  return projectConversationEvents(events);
+  return projectConversationEvents(events, {
+    defaultProfile: botConfig.defaultProfile,
+  });
 }
 
 /**
@@ -272,6 +279,7 @@ export async function loadTurnProjection(args: {
   if (args.committedSeq < 0) {
     return projectConversationEvents(
       await eventStore.loadCurrentHistory(args.conversationId),
+      { defaultProfile: botConfig.defaultProfile },
     );
   }
   const historyEvents = await eventStore.loadHistoryContaining(
@@ -282,7 +290,9 @@ export async function loadTurnProjection(args: {
   if (!historyEvents) {
     return undefined;
   }
-  return projectConversationEvents(historyEvents);
+  return projectConversationEvents(historyEvents, {
+    defaultProfile: botConfig.defaultProfile,
+  });
 }
 
 /** Load MCP providers the credential subject connected in this conversation. */
@@ -407,7 +417,9 @@ async function commitMessagesLocked(
   const currentEvents = await eventStore.loadCurrentHistory(
     args.conversationId,
   );
-  const current = projectConversationEvents(currentEvents);
+  const current = projectConversationEvents(currentEvents, {
+    defaultProfile: botConfig.defaultProfile,
+  });
   // Runtime bootstrap is per-run input, not durable agent history. Session
   // records may retain it while a turn is live, but event replay must not need
   // a compensating history rewrite when that bootstrap changes.
@@ -464,7 +476,9 @@ async function commitMessagesLocked(
   const committedEvents = await eventStore.loadCurrentHistory(
     args.conversationId,
   );
-  const committed = projectConversationEvents(committedEvents);
+  const committed = projectConversationEvents(committedEvents, {
+    defaultProfile: botConfig.defaultProfile,
+  });
   return {
     committedSeq: committedEvents.at(-1)?.seq ?? -1,
     historyVersion: committedEvents.at(-1)?.historyVersion ?? 0,

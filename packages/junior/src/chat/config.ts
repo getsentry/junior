@@ -9,6 +9,7 @@ import {
 import {
   DEFAULT_HANDOFF_MODEL_PROFILE,
   type ExecutionProfileConfig,
+  type ModelProfile,
   modelProfileSchema,
   STANDARD_MODEL_PROFILE,
 } from "@/chat/model-profile";
@@ -47,6 +48,7 @@ const DEFAULT_ASSISTANT_LOADING_MESSAGES = [
 export interface BotConfig {
   contextWindowTokens: number;
   crossActorMidRunMode: CrossActorMidRunMode;
+  defaultProfile: ModelProfile;
   embeddingModelId: string;
   fastModelId: string;
   guardianModelId: string;
@@ -259,10 +261,7 @@ function parseProfileMap(
     if (!modelId) {
       throw new Error(`${configName}.${profile} must not be empty`);
     }
-    profiles[profile] =
-      profile === DEFAULT_HANDOFF_MODEL_PROFILE
-        ? { modelId, reasoningLevel: "high" }
-        : { modelId };
+    profiles[profile] = { modelId };
   }
   return profiles;
 }
@@ -331,6 +330,7 @@ function readBotConfig(
 
   return {
     userName: toOptionalTrimmed(env.JUNIOR_BOT_NAME) ?? "junior",
+    defaultProfile: STANDARD_MODEL_PROFILE,
     crossActorMidRunMode: parseCrossActorMidRunMode(
       env.JUNIOR_CROSS_ACTOR_MID_RUN_MODE,
     ),
@@ -526,14 +526,29 @@ export interface SlackReactionConfig {
   processingReactionEmoji: string;
 }
 
-/** Apply host profiles from createApp({ profiles }). */
-export function setProfiles(profiles: Readonly<Record<string, string>>): void {
-  botConfig.profiles = {
-    [STANDARD_MODEL_PROFILE]: botConfig.profiles[STANDARD_MODEL_PROFILE]!,
-    [DEFAULT_HANDOFF_MODEL_PROFILE]:
-      botConfig.profiles[DEFAULT_HANDOFF_MODEL_PROFILE]!,
-    ...parseProfileMap(profiles, "profiles"),
+/** Apply the host profile catalog and default profile from createApp(). */
+export function setProfiles(
+  profiles: Readonly<Record<string, string>> | undefined,
+  defaultProfile: string | undefined,
+): void {
+  if (profiles && !defaultProfile) {
+    throw new Error("defaultProfile is required when profiles are configured");
+  }
+  const configuredProfiles = {
+    ...botConfig.profiles,
+    ...(profiles ? parseProfileMap(profiles, "profiles") : {}),
   };
+  const selectedDefault = defaultProfile ?? botConfig.defaultProfile;
+  if (!modelProfileSchema.safeParse(selectedDefault).success) {
+    throw new Error(
+      `defaultProfile "${selectedDefault}" must match ^[a-z][a-z0-9_-]*$`,
+    );
+  }
+  if (!Object.hasOwn(configuredProfiles, selectedDefault)) {
+    throw new Error(`defaultProfile "${selectedDefault}" is not configured`);
+  }
+  botConfig.profiles = configuredProfiles;
+  botConfig.defaultProfile = selectedDefault;
 }
 
 /** Return the current Slack reaction emoji config. */

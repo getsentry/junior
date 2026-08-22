@@ -116,12 +116,12 @@ function historyItemProvenance(
  */
 export function projectConversationEvents(
   events: ConversationEvent[],
-  options?: { maxSeq?: number },
+  options?: { defaultProfile?: ModelProfile; maxSeq?: number },
 ): PiConversationEventProjection {
   const messages: PiMessage[] = [];
   const provenance: ConversationMessageProvenance[] = [];
   const seqs: number[] = [];
-  let modelProfile: ModelProfile = "standard";
+  let modelProfile: ModelProfile = options?.defaultProfile ?? "standard";
   let modelId: string | undefined;
 
   for (const event of events) {
