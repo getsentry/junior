@@ -25,8 +25,6 @@ const sendWorkspaceSnapshotJob = vi.hoisted(() =>
 
 vi.mock("@/chat/sandbox/snapshot/job-queue", () => ({
   sendWorkspaceSnapshotJob,
-  WORKSPACE_SNAPSHOT_JOB_QUEUE_TOPIC: "junior_workspace_snapshots",
-  WORKSPACE_SNAPSHOT_JOB_QUEUE_RETENTION_SECONDS: 3600,
 }));
 
 describe("Workspace tools", () => {

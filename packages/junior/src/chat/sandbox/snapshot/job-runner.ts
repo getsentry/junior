@@ -25,8 +25,10 @@ import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-que
 import { getWorkspace } from "@/chat/workspaces/store";
 import type { Workspace } from "@/chat/workspaces/types";
 import { workspaceSnapshotResourceEvent } from "./events";
-import type { WorkspaceSnapshotJobMessage } from "./job-message";
-import { sendWorkspaceSnapshotJob } from "./job-queue";
+import {
+  sendWorkspaceSnapshotJob,
+  type WorkspaceSnapshotJobMessage,
+} from "./job-queue";
 
 const SNAPSHOT_BUILD_SYSTEM_ACTOR = {
   platform: "system",

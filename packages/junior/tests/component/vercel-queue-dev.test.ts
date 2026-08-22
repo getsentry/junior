@@ -21,7 +21,82 @@ afterEach(async () => {
   }
   vi.doUnmock("@vercel/queue");
   vi.doUnmock("@/chat/plugins/task-runner");
+  vi.doUnmock("@/chat/sandbox/snapshot/job-runner");
+  vi.doUnmock("@/chat/vercel-queue-client");
   vi.resetModules();
+});
+
+describe("Workspace snapshot Vercel queue integration", () => {
+  it("runs only messages signed by the snapshot queue sender", async () => {
+    const routeHandler = vi.fn();
+    const handleCallback = vi.fn(() => routeHandler);
+    const send = vi.fn(async () => ({ messageId: "msg_snapshot" }));
+    const processWorkspaceSnapshotJob = vi.fn(async () => undefined);
+
+    vi.doMock("@vercel/queue", () => ({
+      QueueClient: vi.fn(),
+      handleCallback,
+      registerDevConsumer: vi.fn(),
+    }));
+    vi.doMock("@/chat/vercel-queue-client", () => ({
+      createVercelQueueClient: () => ({ send }),
+    }));
+    vi.doMock("@/chat/sandbox/snapshot/job-runner", () => ({
+      processWorkspaceSnapshotJob,
+    }));
+
+    const { createVercelWorkspaceSnapshotJobCallback } =
+      await import("@/chat/sandbox/snapshot/job-callback");
+    const { sendWorkspaceSnapshotJob } =
+      await import("@/chat/sandbox/snapshot/job-queue");
+
+    expect(createVercelWorkspaceSnapshotJobCallback()).toBe(routeHandler);
+    type TestQueueMetadata = {
+      consumerGroup: string;
+      createdAt: Date;
+      deliveryCount: number;
+      expiresAt: Date;
+      messageId: string;
+      region: string;
+      topicName: string;
+    };
+    const call = handleCallback.mock.calls[0] as unknown as
+      | [(message: unknown, metadata: TestQueueMetadata) => Promise<void>]
+      | undefined;
+    const handler = call?.[0];
+    if (!handler) throw new Error("Expected Workspace snapshot queue handler");
+    const metadata: TestQueueMetadata = {
+      consumerGroup: "workspace-snapshots",
+      createdAt: new Date(1_000),
+      deliveryCount: 1,
+      expiresAt: new Date(2_000),
+      messageId: "msg_snapshot",
+      region: "iad1",
+      topicName: "junior_workspace_snapshots",
+    };
+    const message = {
+      workspaceId: "11111111-1111-4111-8111-111111111111",
+      profileHash: "profile-hash",
+    };
+
+    await expect(handler(message, metadata)).resolves.toBeUndefined();
+    expect(processWorkspaceSnapshotJob).not.toHaveBeenCalled();
+
+    process.env.JUNIOR_SECRET = "workspace-snapshot-secret";
+    await sendWorkspaceSnapshotJob(message);
+    const sendCall = send.mock.calls[0] as unknown as
+      | [string, Record<string, unknown>]
+      | undefined;
+    const signedMessage = sendCall?.[1];
+    if (!signedMessage) throw new Error("Expected signed queue message");
+    await expect(handler(signedMessage, metadata)).resolves.toBeUndefined();
+    expect(processWorkspaceSnapshotJob).toHaveBeenCalledWith(message);
+
+    await expect(
+      handler({ ...signedMessage, profileHash: "tampered" }, metadata),
+    ).resolves.toBeUndefined();
+    expect(processWorkspaceSnapshotJob).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("plugin task Vercel queue integration", () => {
