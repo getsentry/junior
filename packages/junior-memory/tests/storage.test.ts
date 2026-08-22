@@ -4837,42 +4837,6 @@ INSERT INTO junior_memory_memories (
     }
   }, 15_000);
 
-  it("does not supersede public user preferences", async () => {
-    const fixture = await createMemoryFixture();
-
-    try {
-      let nowMs = TEST_NOW_MS;
-      const store = createMemoryStore(memoryDb(fixture), slackContext(), {
-        now: () => nowMs,
-        supersessionDecider: {
-          adjudicateSupersession() {
-            throw new Error("public preferences should not use supersession");
-          },
-        },
-      });
-
-      const oldMemory = await store.createMemory({
-        content: "Prefers Python for automation scripts.",
-        kind: "preference",
-        idempotencyKey: "memory-test:supersession-public-old",
-      });
-
-      nowMs = TEST_NOW_MS + 1;
-      const newMemory = await store.createMemory({
-        content: "Prefers TypeScript for automation scripts.",
-        kind: "preference",
-        idempotencyKey: "memory-test:supersession-public-new",
-      });
-
-      await expect(store.listMemories({})).resolves.toEqual([
-        expect.objectContaining({ id: newMemory.memory.id }),
-        expect.objectContaining({ id: oldMemory.memory.id }),
-      ]);
-    } finally {
-      await fixture.close();
-    }
-  }, 15_000);
-
   it("does not supersede conversation-scoped preference rows", async () => {
     const fixture = await createMemoryFixture();
 

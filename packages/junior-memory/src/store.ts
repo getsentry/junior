@@ -1280,7 +1280,6 @@ export function createMemoryStore(
     }
     let supersededIds: string[] = [];
     if (
-      scope.scope === "private" &&
       subjectType === "user" &&
       input.kind === "preference" &&
       supersessionDecider &&
