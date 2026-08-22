@@ -649,7 +649,9 @@ export async function resolveWorkspaceSnapshot(params: {
       await sleep(WAIT_POLL_MS, params.signal);
     }
   } catch (error) {
-    // Hard turn aborts must soft-wait so the next slice can resume the build.
+    // Any abort here is treated as host preemption of a durable build poll.
+    // Intentional cancel and turn-budget abort both leave the builder running;
+    // the next slice reconnects. Do not mark the build failed on abort.
     if (isAbortError(error)) {
       throw new WorkspaceSnapshotWaitingError(workspaceName);
     }

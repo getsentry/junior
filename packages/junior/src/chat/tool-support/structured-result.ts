@@ -20,6 +20,16 @@ export const juniorToolOutputSchema = z
     truncated: z.boolean().optional(),
     /** True when this attempt did not finish before its time budget. */
     timed_out: z.boolean().optional(),
+    /**
+     * True when durable work is still in progress and the host should re-enter
+     * this tool with `continuation.arguments`. Distinct from `timed_out`, which
+     * stays model-facing for dead attempts.
+     */
+    unfinished: z.boolean().optional(),
+    /**
+     * Next-call arguments. Alone this is model-facing (for example range reads).
+     * With `unfinished: true`, the host re-invokes the tool without a model turn.
+     */
     continuation: juniorToolContinuationSchema.optional(),
   })
   .passthrough();

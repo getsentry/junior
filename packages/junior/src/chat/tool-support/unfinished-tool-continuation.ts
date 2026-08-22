@@ -12,7 +12,7 @@ import {
   juniorToolContinuationSchema,
 } from "@/chat/tool-support/structured-result";
 
-export interface TimedOutToolContinuation {
+export interface UnfinishedToolContinuation {
   toolName: string;
   arguments: Record<string, unknown>;
   reason?: string;
@@ -23,19 +23,19 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /**
- * True when a tool result asks the host to re-invoke the same tool later.
- * Uses the shared timed_out + continuation envelope.
+ * True when a tool result asks the host to re-enter the same tool later.
+ * Uses unfinished + continuation, not timed_out.
  */
-export function isTimedOutToolContinuationResult(details: unknown): boolean {
-  return timedOutToolContinuationFromDetails(details) !== null;
+export function isUnfinishedToolContinuationResult(details: unknown): boolean {
+  return unfinishedToolContinuationFromDetails(details) !== null;
 }
 
 /** Parse host-continue metadata from structured tool details. */
-export function timedOutToolContinuationFromDetails(
+export function unfinishedToolContinuationFromDetails(
   details: unknown,
   fallbackToolName?: string,
-): TimedOutToolContinuation | null {
-  if (!isRecord(details) || details.timed_out !== true) {
+): UnfinishedToolContinuation | null {
+  if (!isRecord(details) || details.unfinished !== true) {
     return null;
   }
   if (!isRecord(details.continuation)) {
@@ -78,15 +78,15 @@ export function timedOutToolContinuationFromDetails(
  * Find a host-continue tool result in the trailing tool-result tail.
  * A later non-continue result for the same tool name blocks older waits.
  */
-export function pendingTimedOutToolContinuation(
+export function pendingUnfinishedToolContinuation(
   messages: readonly PiMessage[],
-): TimedOutToolContinuation | null {
+): UnfinishedToolContinuation | null {
   const terminalToolNames = new Set<string>();
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index];
     if (!isToolResultMessage(message)) break;
     const toolName = normalizeToolNameFromResult(message);
-    const pending = timedOutToolContinuationFromDetails(
+    const pending = unfinishedToolContinuationFromDetails(
       message.details,
       toolName,
     );
@@ -102,10 +102,10 @@ export function pendingTimedOutToolContinuation(
 }
 
 /**
- * Re-invoke a timed-out tool from its continuation payload without a model turn.
+ * Re-enter an unfinished tool from its continuation payload without a model turn.
  * Appends a complete assistant toolCall + toolResult boundary.
  */
-export async function continueTimedOutTool(args: {
+export async function continueUnfinishedTool(args: {
   messages: PiMessage[];
   tools: AgentTool[];
   signal?: AbortSignal;
@@ -116,7 +116,7 @@ export async function continueTimedOutTool(args: {
   | { kind: "failed"; error: unknown; messages: PiMessage[] }
 > {
   if (!isContinuablePiBoundary(args.messages)) return { kind: "none" };
-  const pending = pendingTimedOutToolContinuation(args.messages);
+  const pending = pendingUnfinishedToolContinuation(args.messages);
   if (!pending) return { kind: "none" };
 
   const tool = args.tools.find((entry) => entry.name === pending.toolName);
@@ -191,7 +191,7 @@ export async function continueTimedOutTool(args: {
     toolResultMessage,
   ] as PiMessage[];
 
-  return isTimedOutToolContinuationResult(details)
+  return isUnfinishedToolContinuationResult(details)
     ? { kind: "waiting", messages }
     : { kind: "ready", messages };
 }

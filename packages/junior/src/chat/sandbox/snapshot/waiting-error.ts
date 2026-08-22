@@ -1,7 +1,7 @@
 /**
  * Soft deadline hit while a Workspace snapshot is still building.
- * switchWorkspace maps this to timed_out + continuation so the host can
- * re-invoke the tool at a tool-result boundary.
+ * switchWorkspace maps this to unfinished + continuation so the host can
+ * re-enter the tool at a tool-result boundary.
  */
 export class WorkspaceSnapshotWaitingError extends Error {
   readonly code = "workspace_snapshot_waiting";

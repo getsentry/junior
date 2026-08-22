@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import type { PiMessage } from "@/chat/pi/messages";
 import {
-  continueTimedOutTool,
-  pendingTimedOutToolContinuation,
-} from "@/chat/tool-support/timed-out-tool-continuation";
+  continueUnfinishedTool,
+  pendingUnfinishedToolContinuation,
+} from "@/chat/tool-support/unfinished-tool-continuation";
 
 const usage = {
   input: 0,
@@ -42,7 +42,7 @@ function waitingMessages(name = "sentry"): PiMessage[] {
       timestamp: 2,
       details: {
         workspace: { name },
-        timed_out: true,
+        unfinished: true,
         continuation: {
           tool_name: "switchWorkspace",
           arguments: { name },
@@ -53,18 +53,57 @@ function waitingMessages(name = "sentry"): PiMessage[] {
   ];
 }
 
-describe("timed-out tool continuation", () => {
-  it("detects a timed_out continuation tool result", () => {
-    expect(pendingTimedOutToolContinuation(waitingMessages())).toEqual({
+describe("unfinished tool continuation", () => {
+  it("detects an unfinished continuation tool result", () => {
+    expect(pendingUnfinishedToolContinuation(waitingMessages())).toEqual({
       toolName: "switchWorkspace",
       arguments: { name: "sentry" },
       reason: "workspace snapshot still building",
     });
   });
 
+  it("ignores timed_out results that lack unfinished", () => {
+    expect(
+      pendingUnfinishedToolContinuation([
+        {
+          role: "toolResult",
+          toolCallId: "tool-1",
+          toolName: "bash",
+          content: [{ type: "text", text: "timed out" }],
+          isError: false,
+          timestamp: 1,
+          details: {
+            timed_out: true,
+            target: "pnpm test",
+          },
+        },
+      ]),
+    ).toBeNull();
+  });
+
+  it("ignores model-facing continuation without unfinished", () => {
+    expect(
+      pendingUnfinishedToolContinuation([
+        {
+          role: "toolResult",
+          toolCallId: "tool-1",
+          toolName: "readFile",
+          content: [{ type: "text", text: "partial" }],
+          isError: false,
+          timestamp: 1,
+          details: {
+            continuation: {
+              arguments: { path: "notes.txt", offset: 2, limit: 1 },
+            },
+          },
+        },
+      ]),
+    ).toBeNull();
+  });
+
   it("detects a wait before sibling tool results", () => {
     expect(
-      pendingTimedOutToolContinuation([
+      pendingUnfinishedToolContinuation([
         ...waitingMessages(),
         {
           role: "toolResult",
@@ -85,7 +124,7 @@ describe("timed-out tool continuation", () => {
 
   it("does not revive an older wait after a newer call of the same tool succeeds", () => {
     expect(
-      pendingTimedOutToolContinuation([
+      pendingUnfinishedToolContinuation([
         ...waitingMessages("old-workspace"),
         {
           role: "toolResult",
@@ -109,7 +148,7 @@ describe("timed-out tool continuation", () => {
         content: [{ type: "text", text: "still building" }],
         details: {
           workspace: { name: "sentry" },
-          timed_out: true,
+          unfinished: true,
           continuation: {
             arguments: { name: "sentry" },
             reason: "workspace snapshot still building",
@@ -130,7 +169,7 @@ describe("timed-out tool continuation", () => {
       },
     ];
 
-    const first = await continueTimedOutTool({
+    const first = await continueUnfinishedTool({
       messages: waitingMessages(),
       tools: tools as never,
     });
@@ -142,7 +181,7 @@ describe("timed-out tool continuation", () => {
       undefined,
     );
 
-    const second = await continueTimedOutTool({
+    const second = await continueUnfinishedTool({
       messages: first.kind === "none" ? waitingMessages() : first.messages,
       tools: tools as never,
     });
@@ -152,7 +191,7 @@ describe("timed-out tool continuation", () => {
 
   it("keeps a valid tool-result boundary when host continuation fails", async () => {
     const error = new Error("Workspace was deleted");
-    const failed = await continueTimedOutTool({
+    const failed = await continueUnfinishedTool({
       messages: waitingMessages(),
       tools: [
         {

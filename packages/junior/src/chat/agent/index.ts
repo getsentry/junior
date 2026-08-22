@@ -85,7 +85,7 @@ import {
 } from "@/chat/services/provider-error";
 import { nextProviderRetry } from "@/chat/services/provider-retry";
 import { nextEmptyOutputContinuation } from "@/chat/services/empty-output-continuation";
-import { continueTimedOutTool } from "@/chat/tool-support/timed-out-tool-continuation";
+import { continueUnfinishedTool } from "@/chat/tool-support/unfinished-tool-continuation";
 import { getDiscardedRetryUsage } from "@/chat/agent/retry-usage";
 import { projectTimedOutToolResult } from "@/chat/tool-support/timed-out-tool-result";
 import {
@@ -1219,27 +1219,27 @@ async function executeAgentRunInPrivacyContext(
       },
       prepareNextTurnWithContext: async (nextTurn, hookSignal) => {
         try {
-          let continuedTimedOutTool = false;
-          // Continue host-owned timed_out tools before the model sees them.
+          let continuedUnfinishedTool = false;
+          // Continue host-owned unfinished tools before the model sees them.
           // Each pass ends on a valid tool-result tail.
           for (;;) {
-            const timedOutTool = await continueTimedOutTool({
+            const unfinishedTool = await continueUnfinishedTool({
               messages: currentAgentMessages(),
               tools: toolsForActiveProfile(),
               signal: hookSignal,
             });
-            if (timedOutTool.kind === "none") break;
-            if (timedOutTool.kind === "failed") {
-              agent!.state.messages = timedOutTool.messages;
-              await runResume.persistSafeBoundary(timedOutTool.messages);
-              throw timedOutTool.error;
+            if (unfinishedTool.kind === "none") break;
+            if (unfinishedTool.kind === "failed") {
+              agent!.state.messages = unfinishedTool.messages;
+              await runResume.persistSafeBoundary(unfinishedTool.messages);
+              throw unfinishedTool.error;
             }
-            continuedTimedOutTool = true;
-            agent!.state.messages = timedOutTool.messages;
-            await runResume.persistSafeBoundary(timedOutTool.messages);
-            if (timedOutTool.kind === "ready") break;
+            continuedUnfinishedTool = true;
+            agent!.state.messages = unfinishedTool.messages;
+            await runResume.persistSafeBoundary(unfinishedTool.messages);
+            if (unfinishedTool.kind === "ready") break;
             const yieldError = runResume.prepareYieldIfDue(
-              timedOutTool.messages,
+              unfinishedTool.messages,
             );
             if (yieldError) throw yieldError;
             await sleep(5_000, hookSignal);
@@ -1248,8 +1248,8 @@ async function executeAgentRunInPrivacyContext(
           const handoffUpdate = applyPendingHandoff();
           // Pi's in-flight context is a snapshot. Replacing Agent state alone
           // does not add the host continuation to the next provider request.
-          const timedOutToolUpdate: AgentLoopTurnUpdate | undefined =
-            continuedTimedOutTool
+          const unfinishedToolUpdate: AgentLoopTurnUpdate | undefined =
+            continuedUnfinishedTool
               ? {
                   context: {
                     ...nextTurn.context,
@@ -1260,7 +1260,7 @@ async function executeAgentRunInPrivacyContext(
               : undefined;
           const pendingMessages = await drainSteeringMessages();
           const capacityUpdate = await applyActiveContextCompaction(
-            handoffUpdate || continuedTimedOutTool
+            handoffUpdate || continuedUnfinishedTool
               ? currentAgentMessages()
               : (nextTurn.context.messages as PiMessage[]),
             hookSignal,
@@ -1268,8 +1268,8 @@ async function executeAgentRunInPrivacyContext(
             true,
           );
           const handoffOrWaitUpdate = handoffUpdate
-            ? { ...timedOutToolUpdate, ...handoffUpdate }
-            : timedOutToolUpdate;
+            ? { ...unfinishedToolUpdate, ...handoffUpdate }
+            : unfinishedToolUpdate;
           const combinedUpdate = capacityUpdate
             ? { ...handoffOrWaitUpdate, ...capacityUpdate }
             : handoffOrWaitUpdate;
