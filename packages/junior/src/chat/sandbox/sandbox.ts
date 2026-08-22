@@ -97,8 +97,6 @@ export interface SandboxOptions {
   skills: SkillMetadata[];
   referenceFiles: string[];
   timeoutMs?: number;
-  /** Durable-worker soft yield for long Workspace snapshot waits. */
-  shouldYield?: () => boolean;
   traceContext?: LogContext;
   tracePropagation?: SandboxEgressTracePropagationConfig;
   credentialEgress?: CredentialContext;
@@ -218,7 +216,6 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
     skills: options.skills,
     referenceFiles: options.referenceFiles,
     timeoutMs: options.timeoutMs,
-    shouldYield: options.shouldYield,
     traceContext,
     commandEnv: credentialEgress ? resolveSandboxCommandEnvironment : undefined,
     createNetworkPolicy:

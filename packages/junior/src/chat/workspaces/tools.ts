@@ -14,6 +14,7 @@ import {
   cancelResourceEventSubscription,
   createResourceEventSubscription,
 } from "@/chat/resource-events/store";
+import { canRouteResourceEvents } from "@/chat/resource-events/workspace";
 import {
   canUseResourceEventSubscriptionTools,
   RESOURCE_SUBSCRIPTION_DEFAULT_TTL_MS,
@@ -347,9 +348,11 @@ export function createWorkspaceTools(
           workspaceId: workspace.id,
           workspaceName: workspace.name,
         });
-        const conversationId = canUseResourceEventSubscriptionTools(context)
-          ? requireResourceWatchConversation(context)
-          : undefined;
+        const conversationId =
+          canRouteResourceEvents() &&
+          canUseResourceEventSubscriptionTools(context)
+            ? requireResourceWatchConversation(context)
+            : undefined;
         const subscription = conversationId
           ? await createResourceEventSubscription({
               conversationId,

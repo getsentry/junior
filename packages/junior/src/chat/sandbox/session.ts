@@ -19,6 +19,8 @@ import {
 import { buildNonInteractiveShellScript } from "@/chat/sandbox/noninteractive-command";
 import { prepareWorkspaceSnapshot } from "@/chat/sandbox/prepare-workspace";
 import { getSandboxResources } from "@/chat/sandbox/resources";
+import { ensureWorkspaceSnapshotBuild } from "@/chat/sandbox/snapshot/job-runner";
+import { isWorkspaceSnapshotNotReadyError } from "@/chat/sandbox/snapshot/not-ready-error";
 import { hash as profileHash } from "@/chat/sandbox/snapshot/profile";
 import { SANDBOX_RUNTIME } from "@/chat/sandbox/snapshot/runtime";
 import { setSnapshotSpanAttributes } from "@/chat/sandbox/snapshot/span";
@@ -126,8 +128,6 @@ interface SandboxRuntimeOptions {
   skills: SkillMetadata[];
   referenceFiles: string[];
   timeoutMs?: number;
-  /** Durable-worker soft yield for long Workspace snapshot waits. */
-  shouldYield?: () => boolean;
   traceContext?: LogContext;
   commandEnv?: () => Promise<Record<string, string>>;
   createNetworkPolicy?: (
@@ -418,20 +418,31 @@ export function createSandboxRuntime(
     } catch (error) {
       if (!isMissingError(error)) throw error;
       setSpanAttributes({ "app.sandbox.snapshot.rebuild_after_missing": true });
-      const rebuilt = params.workspace
-        ? await requireReadyWorkspaceSnapshot({
+      let rebuilt: Snapshot;
+      if (params.workspace) {
+        try {
+          rebuilt = await requireReadyWorkspaceSnapshot({
             workspace: params.workspace,
             runtime,
             staleSnapshotId: snapshot.snapshotId,
-          })
-        : await resolveSnapshot({
-            runtime,
-            timeoutMs,
-            forceRebuild: true,
-            staleSnapshotId: snapshot.snapshotId,
-            signal,
-            prepareWorkspace: params.prepareWorkspace,
           });
+        } catch (rebuildError) {
+          if (!isWorkspaceSnapshotNotReadyError(rebuildError)) {
+            throw rebuildError;
+          }
+          await ensureWorkspaceSnapshotBuild({ workspace: params.workspace });
+          throw error;
+        }
+      } else {
+        rebuilt = await resolveSnapshot({
+          runtime,
+          timeoutMs,
+          forceRebuild: true,
+          staleSnapshotId: snapshot.snapshotId,
+          signal,
+          prepareWorkspace: params.prepareWorkspace,
+        });
+      }
       if (!rebuilt.snapshotId) throw error;
       signal?.throwIfAborted();
       const session = await createSandboxFromSnapshot(
