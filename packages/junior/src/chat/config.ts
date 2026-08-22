@@ -2,6 +2,7 @@ import { getModel } from "@earendil-works/pi-ai/compat";
 import { toOptionalTrimmed } from "@/chat/optional-string";
 import { resolveGatewayModel } from "@/chat/pi/client";
 import { normalizeSlackEmojiName } from "@/chat/slack/emoji";
+import { logWarn } from "@/chat/logging";
 import {
   parseTurnReasoningLevel,
   type TurnReasoningLevel,
@@ -313,10 +314,26 @@ function parseReactionEmoji(
   return normalized;
 }
 
+function warnDeprecatedProfileEnv(env: NodeJS.ProcessEnv): void {
+  for (const envName of [
+    "AI_MODEL",
+    "AI_HANDOFF_MODEL",
+    "AI_MODEL_PROFILES",
+  ] as const) {
+    if (toOptionalTrimmed(env[envName]) !== undefined) {
+      logWarn("config.profile_env.deprecated", {
+        "app.config.env_name": envName,
+        "app.config.replacement": "createApp({ defaultProfile, profiles })",
+      });
+    }
+  }
+}
+
 function readBotConfig(
   env: NodeJS.ProcessEnv,
   functionMaxDurationSeconds: number,
 ): BotConfig {
+  warnDeprecatedProfileEnv(env);
   const maxTurnTimeoutMs = resolveMaxTurnTimeoutMs(functionMaxDurationSeconds);
   const modelId = validateGatewayModelId(env.AI_MODEL) ?? DEFAULT_MODEL_ID;
   const reasoningLevel = toOptionalTrimmed(env.AI_REASONING_LEVEL);

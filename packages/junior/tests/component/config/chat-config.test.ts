@@ -1,5 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+const mocks = vi.hoisted(() => ({ logWarn: vi.fn() }));
+
+vi.mock("@/chat/logging", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/chat/logging")>()),
+  logWarn: mocks.logWarn,
+}));
+
 const ORIGINAL_ENV = { ...process.env };
 const TEST_DATABASE_URL = "postgres://user:pass@pooled.example.test/neon";
 
@@ -10,6 +17,7 @@ async function loadConfig() {
 
 describe("chat config", () => {
   beforeEach(() => {
+    mocks.logWarn.mockClear();
     process.env.DATABASE_URL = TEST_DATABASE_URL;
     delete process.env.JUNIOR_DATABASE_DRIVER;
     delete process.env.JUNIOR_SQL_STATEMENT_TIMEOUT_MS;
@@ -18,6 +26,29 @@ describe("chat config", () => {
   afterEach(() => {
     process.env = { ...ORIGINAL_ENV };
     vi.resetModules();
+  });
+
+  it("warns for deprecated profile environment variables", async () => {
+    process.env.AI_MODEL = "xai/grok-4.5";
+    process.env.AI_HANDOFF_MODEL = "openai/gpt-5.6-sol";
+    process.env.AI_MODEL_PROFILES = JSON.stringify({
+      coding: "openai/gpt-5.4",
+    });
+
+    await loadConfig();
+
+    expect(mocks.logWarn.mock.calls).toEqual(
+      ["AI_MODEL", "AI_HANDOFF_MODEL", "AI_MODEL_PROFILES"].map(
+        (envName) => [
+          "config.profile_env.deprecated",
+          {
+            "app.config.env_name": envName,
+            "app.config.replacement":
+              "createApp({ defaultProfile, profiles })",
+          },
+        ],
+      ),
+    );
   });
 
   it("uses AI_MODEL for fastModelId when AI_FAST_MODEL is unset", async () => {
