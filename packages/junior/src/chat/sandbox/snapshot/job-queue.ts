@@ -1,9 +1,4 @@
-/**
- * Vercel Queue transport and wire format for Workspace snapshot builds.
- *
- * The public callback accepts only recent messages signed with JUNIOR_SECRET.
- * SQL owns durable build state; the queue message only wakes the builder.
- */
+/** Send and check Workspace snapshot build messages. */
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 import { createVercelQueueClient } from "@/chat/vercel-queue-client";
@@ -95,7 +90,7 @@ function jobId(message: WorkspaceSnapshotJobMessage): string {
   return `workspace-snapshot_${digest}`;
 }
 
-/** Verify a message before the public queue callback starts snapshot work. */
+/** Check that a recent queue message came from Junior. */
 export function verifyWorkspaceSnapshotJobMessage(
   value: unknown,
   nowMs = Date.now(),
@@ -121,7 +116,7 @@ export function verifyWorkspaceSnapshotJobMessage(
   };
 }
 
-/** Enqueue one Workspace snapshot build wakeup. */
+/** Send a job to build one Workspace snapshot. */
 export async function sendWorkspaceSnapshotJob(
   message: WorkspaceSnapshotJobMessage,
 ): Promise<void> {

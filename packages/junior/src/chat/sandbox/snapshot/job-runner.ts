@@ -1,9 +1,4 @@
-/**
- * Background Workspace snapshot builder.
- *
- * Runs outside the agent tool loop. Each queue delivery advances durable build
- * phases until ready/failed or the host request deadline requires requeue.
- */
+/** Build Workspace snapshots in a background job. */
 import type { ResourceEvent } from "@sentry/junior-plugin-api";
 import { credentialContextForActor } from "@/chat/credentials/context";
 import { getDb } from "@/chat/db";
@@ -18,13 +13,13 @@ import { createSandboxEgressCredentialToken } from "@/chat/sandbox/egress/sessio
 import * as profile from "@/chat/sandbox/snapshot/profile";
 import { SANDBOX_RUNTIME } from "@/chat/sandbox/snapshot/runtime";
 import { loadSnapshotsForProfile } from "@/chat/sandbox/snapshot/store";
-import { isWorkspaceSnapshotWaitingError } from "@/chat/sandbox/snapshot/waiting-error";
+import { isWorkspaceSnapshotNeedsMoreTimeError } from "@/chat/sandbox/snapshot/needs-more-time-error";
 import { resolveWorkspaceSnapshot } from "@/chat/sandbox/snapshot/workspace";
 import type { SandboxSession } from "@/chat/sandbox/workspace";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
 import { getWorkspace } from "@/chat/workspaces/store";
 import type { Workspace } from "@/chat/workspaces/types";
-import { workspaceSnapshotResourceEvent } from "./events";
+import { workspaceSnapshotFinishedEvent } from "./events";
 import {
   sendWorkspaceSnapshotJob,
   type WorkspaceSnapshotJobMessage,
@@ -35,8 +30,8 @@ const SNAPSHOT_BUILD_SYSTEM_ACTOR = {
   name: "workspace-snapshot",
 } as const;
 
-/** Leave time to requeue and acknowledge the queue message. */
-const JOB_YIELD_BUFFER_MS = 40_000;
+/** Leave time to send the next job before this request ends. */
+const JOB_STOP_BUFFER_MS = 40_000;
 
 const resolveResourceEventTeamId = createResourceEventTeamIdResolver();
 
@@ -57,20 +52,20 @@ async function publishSnapshotEvent(event: ResourceEvent): Promise<void> {
   ]);
 }
 
-async function publishTerminalEvent(input: {
+async function publishFinishedEvent(input: {
   workspace: Workspace;
   profileHash: string;
   buildId: string;
-  outcome: "ready" | "failed";
+  status: "ready" | "failed";
   error?: string | null;
 }): Promise<void> {
   await publishSnapshotEvent(
-    workspaceSnapshotResourceEvent({
+    workspaceSnapshotFinishedEvent({
       workspaceId: input.workspace.id,
       workspaceName: input.workspace.name,
       buildId: input.buildId,
       profileHash: input.profileHash,
-      outcome: input.outcome,
+      status: input.status,
       error: input.error,
     }),
   );
@@ -109,18 +104,15 @@ function createSnapshotBuildHelpers() {
   return { applyNetworkPolicy, prepareRepositories };
 }
 
-function shouldYieldJob(): boolean {
+function shouldStopJob(): boolean {
   const deadlineAtMs = getTurnRequestDeadline()?.deadlineAtMs;
   return (
     deadlineAtMs !== undefined &&
-    Date.now() >= deadlineAtMs - JOB_YIELD_BUFFER_MS
+    Date.now() >= deadlineAtMs - JOB_STOP_BUFFER_MS
   );
 }
 
-/**
- * Advance one Workspace snapshot build outside the agent loop.
- * Soft host yields requeue the same job; terminal outcomes publish events.
- */
+/** Run a snapshot build and send another job if it needs more time. */
 export async function processWorkspaceSnapshotJob(
   message: WorkspaceSnapshotJobMessage,
   options: { signal?: AbortSignal } = {},
@@ -147,20 +139,20 @@ export async function processWorkspaceSnapshotJob(
     value.hash,
   );
   if (before.ready) {
-    await publishTerminalEvent({
+    await publishFinishedEvent({
       workspace,
       profileHash: value.hash,
       buildId: before.build?.id ?? before.ready.id,
-      outcome: "ready",
+      status: "ready",
     });
     return;
   }
   if (before.build?.status === "failed") {
-    await publishTerminalEvent({
+    await publishFinishedEvent({
       workspace,
       profileHash: value.hash,
       buildId: before.build.id,
-      outcome: "failed",
+      status: "failed",
       error: before.build.error,
     });
     return;
@@ -174,13 +166,13 @@ export async function processWorkspaceSnapshotJob(
       workspace,
       runtime: SANDBOX_RUNTIME,
       signal: options.signal,
-      shouldYield: shouldYieldJob,
+      shouldStop: shouldStopJob,
       applyNetworkPolicy,
       prepareRepositories,
       removeCredentialRoute: true,
     });
   } catch (error) {
-    if (isWorkspaceSnapshotWaitingError(error)) {
+    if (isWorkspaceSnapshotNeedsMoreTimeError(error)) {
       await sendWorkspaceSnapshotJob(message);
       return;
     }
@@ -190,11 +182,11 @@ export async function processWorkspaceSnapshotJob(
       value.hash,
     );
     if (afterFailure.build?.status === "failed") {
-      await publishTerminalEvent({
+      await publishFinishedEvent({
         workspace,
         profileHash: value.hash,
         buildId: afterFailure.build.id,
-        outcome: "failed",
+        status: "failed",
         error: afterFailure.build.error,
       });
       return;
@@ -208,20 +200,20 @@ export async function processWorkspaceSnapshotJob(
     value.hash,
   );
   if (after.ready) {
-    await publishTerminalEvent({
+    await publishFinishedEvent({
       workspace,
       profileHash: value.hash,
       buildId: before.build?.id ?? after.build?.id ?? after.ready.id,
-      outcome: "ready",
+      status: "ready",
     });
     return;
   }
   if (after.build?.status === "failed") {
-    await publishTerminalEvent({
+    await publishFinishedEvent({
       workspace,
       profileHash: value.hash,
       buildId: after.build.id,
-      outcome: "failed",
+      status: "failed",
       error: after.build.error,
     });
     return;
@@ -230,7 +222,7 @@ export async function processWorkspaceSnapshotJob(
   await sendWorkspaceSnapshotJob(message);
 }
 
-/** Ensure a durable snapshot build job is queued for one Workspace profile. */
+/** Start a snapshot build when no ready snapshot exists. */
 export async function ensureWorkspaceSnapshotBuild(input: {
   workspace: Workspace;
 }): Promise<{

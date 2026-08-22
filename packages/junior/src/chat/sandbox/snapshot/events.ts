@@ -3,15 +3,15 @@ import type {
   SubscribableResource,
 } from "@sentry/junior-plugin-api";
 
-/** Core resource-event namespace for Workspace snapshot builds. */
+/** Event group for Workspace snapshot builds. */
 export const WORKSPACE_SNAPSHOT_NAMESPACE = "junior";
-/** Resource type published for one Workspace snapshot build. */
+/** Event source for one Workspace snapshot build. */
 export const WORKSPACE_SNAPSHOT_RESOURCE_TYPE = "workspace_snapshot";
 export const WORKSPACE_SNAPSHOT_READY_EVENT = "workspace_snapshot.ready";
 export const WORKSPACE_SNAPSHOT_FAILED_EVENT = "workspace_snapshot.failed";
 
-/** Build the model-facing subscribable handle for one Workspace snapshot. */
-export function workspaceSnapshotSubscribable(input: {
+/** Describe the events that report when a snapshot build ends. */
+export function workspaceSnapshotWatch(input: {
   workspaceId: string;
   workspaceName: string;
 }): SubscribableResource {
@@ -31,29 +31,29 @@ export function workspaceSnapshotSubscribable(input: {
   };
 }
 
-/** Build a terminal ready/failed event for one Workspace snapshot build. */
-export function workspaceSnapshotResourceEvent(input: {
+/** Report that a Workspace snapshot build is ready or failed. */
+export function workspaceSnapshotFinishedEvent(input: {
   workspaceId: string;
   workspaceName: string;
   buildId: string;
   profileHash: string;
-  outcome: "ready" | "failed";
+  status: "ready" | "failed";
   error?: string | null;
   occurredAtMs?: number;
 }): ResourceEvent {
   const occurredAtMs = input.occurredAtMs ?? Date.now();
   const eventType =
-    input.outcome === "ready"
+    input.status === "ready"
       ? WORKSPACE_SNAPSHOT_READY_EVENT
       : WORKSPACE_SNAPSHOT_FAILED_EVENT;
   const trustedSummary =
-    input.outcome === "ready"
+    input.status === "ready"
       ? `Workspace ${input.workspaceName} snapshot is ready.`
       : `Workspace ${input.workspaceName} snapshot failed${
           input.error ? `: ${input.error}` : "."
         }`;
   return {
-    eventKey: `${WORKSPACE_SNAPSHOT_NAMESPACE}:${input.workspaceId}:${input.buildId}:${input.outcome}`,
+    eventKey: `${WORKSPACE_SNAPSHOT_NAMESPACE}:${input.workspaceId}:${input.buildId}:${input.status}`,
     eventType,
     identifier: input.workspaceId,
     namespace: WORKSPACE_SNAPSHOT_NAMESPACE,
@@ -65,7 +65,7 @@ export function workspaceSnapshotResourceEvent(input: {
       workspaceName: input.workspaceName,
       buildId: input.buildId,
       profileHash: input.profileHash,
-      outcome: input.outcome,
+      status: input.status,
       ...(input.error ? { error: input.error } : {}),
     },
   };

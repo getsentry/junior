@@ -26,7 +26,7 @@ import {
   loadSnapshotsForProfile,
   setWorkspaceSnapshotBuild,
 } from "@/chat/sandbox/snapshot/store";
-import { isWorkspaceSnapshotWaitingError } from "@/chat/sandbox/snapshot/waiting-error";
+import { isWorkspaceSnapshotNeedsMoreTimeError } from "@/chat/sandbox/snapshot/needs-more-time-error";
 import { resolveWorkspaceSnapshot } from "@/chat/sandbox/snapshot/workspace";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { createWorkspace } from "@/chat/workspaces/store";
@@ -83,7 +83,7 @@ describe("Workspace snapshot completion", () => {
       resolveWorkspaceSnapshot({
         workspace,
         runtime: SANDBOX_RUNTIME,
-        shouldYield: () => false,
+        shouldStop: () => false,
         applyNetworkPolicy: async () => {},
         removeCredentialRoute: false,
       }),
@@ -134,11 +134,11 @@ describe("Workspace snapshot completion", () => {
       resolveWorkspaceSnapshot({
         workspace,
         runtime: SANDBOX_RUNTIME,
-        shouldYield: () => true,
+        shouldStop: () => true,
         applyNetworkPolicy: async () => {},
         removeCredentialRoute: false,
       }),
-    ).rejects.toSatisfy(isWorkspaceSnapshotWaitingError);
+    ).rejects.toSatisfy(isWorkspaceSnapshotNeedsMoreTimeError);
 
     await expect(
       loadSnapshotsForProfile(getDb(), workspace.id, value.hash),
@@ -183,7 +183,7 @@ describe("Workspace snapshot completion", () => {
         workspace,
         runtime: SANDBOX_RUNTIME,
         signal: controller.signal,
-        shouldYield: () => false,
+        shouldStop: () => false,
         applyNetworkPolicy: async () => {},
         removeCredentialRoute: false,
       }),
@@ -260,7 +260,7 @@ describe("Workspace snapshot completion", () => {
       const result = resolveWorkspaceSnapshot({
         workspace,
         runtime: SANDBOX_RUNTIME,
-        shouldYield: () => false,
+        shouldStop: () => false,
         applyNetworkPolicy: async () => {},
         removeCredentialRoute: false,
       });
@@ -284,7 +284,7 @@ describe("Workspace snapshot completion", () => {
     }
   });
 
-  it("advances one slice before yielding near the host deadline", async () => {
+  it("does some work before it stops for the request time limit", async () => {
     const workspace = await createWorkspace({
       name: `snapshot-deadline-${randomUUID()}`,
       setupScript: "printf ready",
@@ -304,13 +304,13 @@ describe("Workspace snapshot completion", () => {
           resolveWorkspaceSnapshot({
             workspace,
             runtime: SANDBOX_RUNTIME,
-            shouldYield: () => false,
+            shouldStop: () => false,
             applyNetworkPolicy: async () => {},
             removeCredentialRoute: false,
           }),
         requestStartedAtMs,
       ),
-    ).rejects.toSatisfy(isWorkspaceSnapshotWaitingError);
+    ).rejects.toSatisfy(isWorkspaceSnapshotNeedsMoreTimeError);
     expect(sandboxCreateMock).toHaveBeenCalledTimes(1);
   });
 

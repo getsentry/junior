@@ -6,7 +6,7 @@ import { getPlugins } from "@/chat/plugins/agent-hooks";
 import {
   WORKSPACE_SNAPSHOT_FAILED_EVENT,
   WORKSPACE_SNAPSHOT_READY_EVENT,
-  workspaceSnapshotSubscribable,
+  workspaceSnapshotWatch,
 } from "@/chat/sandbox/snapshot/events";
 import { ensureWorkspaceSnapshotBuild } from "@/chat/sandbox/snapshot/job-runner";
 import { createResourceEventSubscription } from "@/chat/resource-events/store";
@@ -306,7 +306,7 @@ export function createWorkspaceTools(
         readOnlyHint: false,
       },
       description:
-        "Replace the current sandbox with a named preconfigured repository workspace. Files in the prior sandbox do not carry over. When the Workspace snapshot is still building, returns building status plus a subscribable handle and starts an internal watch when possible.",
+        "Replace the current sandbox with a named repository Workspace. Files in the old sandbox do not carry over. If the snapshot is not ready, start the build and watch for the result.",
       inputSchema: z
         .object({
           name: z.string().trim().min(1).describe("Exact workspace name."),
@@ -314,10 +314,7 @@ export function createWorkspaceTools(
         .strict(),
       outputSchema: juniorToolOutputSchema.extend({
         workspace: workspaceSchema,
-        status: z.enum(["ready", "building"]).optional(),
-        build_id: z.string().optional(),
-        profile_hash: z.string().optional(),
-        subscription_id: z.string().optional(),
+        status: z.enum(["ready", "building"]),
         subscribable: subscribableResourceSchema.optional(),
       }),
       async execute({ name }, options) {
@@ -334,14 +331,13 @@ export function createWorkspaceTools(
           );
         }
         if (build.status === "building") {
-          const subscribable = workspaceSnapshotSubscribable({
+          const watch = workspaceSnapshotWatch({
             workspaceId: workspace.id,
             workspaceName: workspace.name,
           });
-          let subscriptionId: string | undefined;
           if (canUseResourceEventSubscriptionTools(context)) {
             const conversationId = requireResourceWatchConversation(context);
-            const subscription = await createResourceEventSubscription({
+            await createResourceEventSubscription({
               conversationId,
               destination: context.destination,
               events: [
@@ -350,20 +346,16 @@ export function createWorkspaceTools(
               ],
               expiresAtMs: Date.now() + RESOURCE_SUBSCRIPTION_DEFAULT_TTL_MS,
               intent: `Switch to Workspace ${workspace.name} when its snapshot is ready.`,
-              label: subscribable.label,
-              namespace: subscribable.namespace,
-              identifier: subscribable.identifier,
-              resourceType: subscribable.type,
+              label: watch.label,
+              namespace: watch.namespace,
+              identifier: watch.identifier,
+              resourceType: watch.type,
             });
-            subscriptionId = subscription.id;
           }
           return {
             workspace: view(workspace),
             status: "building" as const,
-            profile_hash: build.profileHash,
-            ...(build.buildId ? { build_id: build.buildId } : {}),
-            ...(subscriptionId ? { subscription_id: subscriptionId } : {}),
-            subscribable,
+            subscribable: watch,
           };
         }
 
@@ -372,7 +364,6 @@ export function createWorkspaceTools(
         return {
           workspace: view(workspace),
           status: "ready" as const,
-          profile_hash: build.profileHash,
         };
       },
     }),

@@ -20,8 +20,8 @@ function sandboxCredentialsReady(): boolean {
   if (process.env.VERCEL_OIDC_TOKEN?.trim()) return true;
   return Boolean(
     process.env.VERCEL_TOKEN?.trim() &&
-      process.env.VERCEL_TEAM_ID?.trim() &&
-      process.env.VERCEL_PROJECT_ID?.trim(),
+    process.env.VERCEL_TEAM_ID?.trim() &&
+    process.env.VERCEL_PROJECT_ID?.trim(),
   );
 }
 
@@ -40,8 +40,8 @@ function profileHash(workspace: Workspace): string {
 }
 
 /**
- * Use the real Vercel provider for the durable Workspace snapshot boundary.
- * The test skips for local and fork runs that do not have provider credentials.
+ * Build a Workspace snapshot with Vercel, then start a Sandbox from it.
+ * Skip this test when Vercel credentials are not available.
  */
 describe.skipIf(!sandboxCredentialsReady())(
   "Workspace snapshot lifecycle",
@@ -76,11 +76,7 @@ describe.skipIf(!sandboxCredentialsReady())(
           profileHash: hash,
         });
 
-        const state = await loadSnapshotsForProfile(
-          getDb(),
-          workspaceId,
-          hash,
-        );
+        const state = await loadSnapshotsForProfile(getDb(), workspaceId, hash);
         expect(state.build).toBeNull();
         expect(state.ready?.id).toBeTruthy();
 

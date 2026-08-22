@@ -1,9 +1,4 @@
-/**
- * Vercel Queue callback for Workspace snapshot builds.
- *
- * The queue payload is a bounded job request. Vercel retries thrown failures,
- * while malformed payloads are acknowledged without executing builder code.
- */
+/** Receive Vercel Queue messages for Workspace snapshot builds. */
 import {
   handleCallback,
   registerDevConsumer,
@@ -33,7 +28,7 @@ function logWorkspaceSnapshotJobRejected(
   });
 }
 
-/** Parse the queue payload and run only the referenced snapshot build. */
+/** Check a queue message before it starts a snapshot build. */
 async function handleWorkspaceSnapshotJobMessage(
   message: unknown,
   metadata: MessageMetadata,
@@ -48,7 +43,7 @@ async function handleWorkspaceSnapshotJobMessage(
   );
 }
 
-/** Create the Vercel Queue push callback for Workspace snapshot builds. */
+/** Create the HTTP route for snapshot build messages. */
 export function createVercelWorkspaceSnapshotJobCallback(): (
   request: Request,
 ) => Promise<Response> {
@@ -57,7 +52,7 @@ export function createVercelWorkspaceSnapshotJobCallback(): (
   );
 }
 
-/** Register the Vercel Queue local-dev consumer for Workspace snapshot builds. */
+/** Receive snapshot build messages during local development. */
 export function registerVercelWorkspaceSnapshotJobDevConsumer():
   | (() => void)
   | undefined {
