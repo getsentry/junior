@@ -549,7 +549,9 @@ function shortDate(value: string): string {
   return value.split(",").slice(0, 2).join(",");
 }
 
-function memoryKindTone(kind: string): "accent" | "info" | "warning" {
+function memoryKindTone(
+  kind: string,
+): "accent" | "info" | "warning" {
   if (kind === "Preference") return "info";
   if (kind === "Procedure") return "warning";
   return "accent";
