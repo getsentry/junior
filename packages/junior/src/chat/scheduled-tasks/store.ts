@@ -2,8 +2,6 @@ import {
   destinationSchema,
   isSlackDestination,
   slackActorSchema,
-  type PluginReadState,
-  type PluginState,
 } from "@sentry/junior-plugin-api";
 import {
   and,
@@ -37,12 +35,8 @@ import {
 } from "./types";
 
 const SCHEDULER_KEY_PREFIX = "junior:scheduler";
-const SCHEDULER_RECORD_TTL_MS = 5 * 365 * 24 * 60 * 60 * 1000;
-const SCHEDULED_RUN_TTL_MS = 90 * 24 * 60 * 60 * 1000;
-const CLAIM_TTL_MS = 6 * 60 * 60 * 1000;
 const PENDING_CLAIM_STALE_MS = 60_000;
 const MISSED_RUN_MAX_AGE_MS = 24 * 60 * 60 * 1000;
-const LOCK_TTL_MS = 10_000;
 const SQL_INCOMPLETE_RUN_STATUSES = ["pending", "running"] as const;
 export type SchedulerDb = PgDatabase<
   PgQueryResultHKT,
@@ -210,191 +204,20 @@ export interface ListTasksCreatedByInput {
   query?: string;
 }
 
-export interface SchedulerOperationalStore {
-  listIncompleteRunsForTasks(tasks: ScheduledTask[]): Promise<ScheduledRun[]>;
-  listTasks(): Promise<ScheduledTask[]>;
-}
-
 function normalizedTaskQuery(query: string | undefined): string | undefined {
   return query?.trim().toLowerCase() || undefined;
 }
 
-function listedAfter(
-  task: ScheduledTask,
-  before: { createdAtMs: number; id: string },
-): boolean {
-  return (
-    task.createdAtMs < before.createdAtMs ||
-    (task.createdAtMs === before.createdAtMs && task.id < before.id)
-  );
-}
-
-function taskMatchesQuery(task: ScheduledTask, query: string): boolean {
-  return [
-    task.title,
-    task.task.text,
-    task.schedule.description,
-    task.schedule.timezone,
-    task.status,
-  ].some((value) => value?.toLowerCase().includes(query));
-}
-
-function listCreatedTasks(
-  tasks: ScheduledTask[],
-  input: ListTasksCreatedByInput,
-): ScheduledTask[] {
-  const identityIds = new Set(input.identityIds);
-  const query = normalizedTaskQuery(input.query);
-  return tasks
-    .filter((task) => identityIds.has(task.creatorIdentityId))
-    .filter((task) => !query || taskMatchesQuery(task, query))
-    .sort(
-      (left, right) =>
-        right.createdAtMs - left.createdAtMs || right.id.localeCompare(left.id),
-    )
-    .filter((task) => !input.before || listedAfter(task, input.before))
-    .slice(0, input.limit);
-}
-
-function taskKey(taskId: string): string {
-  return `${SCHEDULER_KEY_PREFIX}:task:${taskId}`;
-}
-
 function taskLockKey(taskId: string): string {
-  return `${taskKey(taskId)}:lock`;
+  return `${SCHEDULER_KEY_PREFIX}:task:${taskId}:lock`;
 }
 
-function runKey(runId: string): string {
-  return `${SCHEDULER_KEY_PREFIX}:run:${runId}`;
-}
-
-function claimKey(taskId: string, scheduledForMs: number): string {
-  return `${SCHEDULER_KEY_PREFIX}:claim:${taskId}:${scheduledForMs}`;
-}
-
-function activeRunKey(taskId: string): string {
-  return `${SCHEDULER_KEY_PREFIX}:active:${taskId}`;
-}
-
-function globalTaskIndexKey(): string {
-  return `${SCHEDULER_KEY_PREFIX}:tasks`;
-}
-
-function teamTaskIndexKey(teamId: string): string {
-  return `${SCHEDULER_KEY_PREFIX}:team:${teamId}:tasks`;
-}
-
-function indexLockKey(indexKey: string): string {
-  return `${indexKey}:lock`;
+function runLockKey(runId: string): string {
+  return `${SCHEDULER_KEY_PREFIX}:run:${runId}:lock`;
 }
 
 function buildRunId(taskId: string, scheduledForMs: number): string {
   return `${taskId}:${scheduledForMs}`;
-}
-
-function unique(values: string[]): string[] {
-  return [...new Set(values.filter(Boolean))];
-}
-
-const schedulerTaskIndexSchema = z.array(z.string().min(1));
-
-/** Parse the persisted scheduler task index without repairing malformed state. */
-function parseStringIndex(value: unknown): string[] {
-  return value === undefined ? [] : schedulerTaskIndexSchema.parse(value);
-}
-
-async function withLock<T>(
-  state: PluginState,
-  key: string,
-  callback: () => Promise<T>,
-): Promise<T> {
-  return await state.withLock(key, LOCK_TTL_MS, callback);
-}
-
-async function addToIndex(
-  state: PluginState,
-  key: string,
-  taskId: string,
-): Promise<void> {
-  await withLock(state, indexLockKey(key), async () => {
-    const current = unique(parseStringIndex(await state.get(key)));
-    await state.set(key, unique([...current, taskId]), SCHEDULER_RECORD_TTL_MS);
-  });
-}
-
-async function removeFromIndex(
-  state: PluginState,
-  key: string,
-  taskId: string,
-): Promise<void> {
-  await withLock(state, indexLockKey(key), async () => {
-    const current = unique(parseStringIndex(await state.get(key)));
-    const next = current.filter((value) => value !== taskId);
-    if (next.length === current.length) {
-      return;
-    }
-    if (next.length === 0) {
-      await state.delete(key);
-      return;
-    }
-    await state.set(key, next, SCHEDULER_RECORD_TTL_MS);
-  });
-}
-
-async function getIndex(
-  state: PluginReadState,
-  key: string,
-): Promise<string[]> {
-  return unique(parseStringIndex(await state.get(key)));
-}
-
-async function clearActiveRun(
-  state: PluginState,
-  taskId: string,
-  runId: string,
-): Promise<void> {
-  await withLock(state, indexLockKey(activeRunKey(taskId)), async () => {
-    const current = await state.get<{ runId?: unknown }>(activeRunKey(taskId));
-    if (current?.runId === runId) {
-      await state.delete(activeRunKey(taskId));
-    }
-  });
-}
-
-async function clearStaleActiveRun(
-  state: PluginState,
-  taskId: string,
-  nowMs: number,
-): Promise<boolean> {
-  const active = await state.get<{
-    claimedAtMs?: unknown;
-    runId?: unknown;
-    scheduledForMs?: unknown;
-  }>(activeRunKey(taskId));
-  if (typeof active?.runId !== "string") {
-    await state.delete(activeRunKey(taskId));
-    return true;
-  }
-
-  const activeRun = parseStoredRun(await state.get(runKey(active.runId)));
-  if (!isStaleActiveRun(active, activeRun, nowMs)) {
-    return false;
-  }
-
-  await clearActiveRun(state, taskId, active.runId);
-  if (typeof active.scheduledForMs === "number") {
-    await state.delete(claimKey(taskId, active.scheduledForMs));
-  }
-  return true;
-}
-
-function isFinishedRun(run: ScheduledRun): boolean {
-  return (
-    run.status === "completed" ||
-    run.status === "failed" ||
-    run.status === "blocked" ||
-    run.status === "skipped"
-  );
 }
 
 /**
@@ -421,21 +244,6 @@ function statusAfterTerminalOccurrence(args: {
   return "deleted";
 }
 
-function isStaleActiveRun(
-  active: { claimedAtMs?: unknown },
-  run: ScheduledRun | undefined,
-  nowMs: number,
-): boolean {
-  if (run) {
-    return isFinishedRun(run) || isStalePendingRun(run, nowMs);
-  }
-
-  return (
-    typeof active.claimedAtMs === "number" &&
-    active.claimedAtMs + PENDING_CLAIM_STALE_MS <= nowMs
-  );
-}
-
 function isStalePendingRun(
   run: ScheduledRun | undefined,
   nowMs: number,
@@ -443,24 +251,6 @@ function isStalePendingRun(
   return (
     run?.status === "pending" &&
     run.claimedAtMs + PENDING_CLAIM_STALE_MS <= nowMs
-  );
-}
-
-function isDueTask(
-  task: ScheduledTask,
-  nowMs: number,
-): task is ScheduledTask & {
-  nextRunAtMs?: number;
-  runNowAtMs?: number;
-} {
-  return (
-    task.status === "active" &&
-    ((typeof task.runNowAtMs === "number" &&
-      Number.isFinite(task.runNowAtMs) &&
-      task.runNowAtMs <= nowMs) ||
-      (typeof task.nextRunAtMs === "number" &&
-        Number.isFinite(task.nextRunAtMs) &&
-        task.nextRunAtMs <= nowMs))
   );
 }
 
@@ -585,12 +375,6 @@ function parseStoredTask(
   return stripLegacyTaskFields(parsed.data, storedTitle);
 }
 
-/** Decode retained scheduler run state, skipping invalid legacy records. */
-function parseStoredRun(value: unknown): ScheduledRun | undefined {
-  const parsed = runRecordSchema.safeParse(parseJsonRecord(value));
-  return parsed.success ? stripLegacyRunFields(parsed.data) : undefined;
-}
-
 type StoredScheduledTask = z.infer<typeof taskRecordSchema>;
 
 /** Coerce legacy paused rows to deleted tombstones during rolling deploy. */
@@ -673,560 +457,6 @@ function requireStoredTask(task: ScheduledTask): ScheduledTask {
     throw new Error("Scheduled task routing context is invalid.");
   }
   return parsed;
-}
-
-async function getTaskFromState(
-  state: PluginReadState,
-  taskId: string,
-): Promise<ScheduledTask | undefined> {
-  return parseStoredTask(await state.get(taskKey(taskId)));
-}
-
-async function listTasksFromState(
-  state: PluginReadState,
-  indexKey: string,
-): Promise<ScheduledTask[]> {
-  const ids = await getIndex(state, indexKey);
-  const tasks = await Promise.all(ids.map((id) => getTaskFromState(state, id)));
-  return tasks
-    .filter((task): task is ScheduledTask => Boolean(task))
-    .filter((task) => task.status !== "deleted")
-    .sort((a, b) => a.createdAtMs - b.createdAtMs);
-}
-
-async function getRunFromState(
-  state: PluginReadState,
-  runId: string,
-): Promise<ScheduledRun | undefined> {
-  return parseStoredRun(await state.get(runKey(runId)));
-}
-
-async function listIncompleteRunsForTasksFromState(
-  state: PluginReadState,
-  tasks: ScheduledTask[],
-): Promise<ScheduledRun[]> {
-  const runs: ScheduledRun[] = [];
-  for (const task of tasks) {
-    const active = await state.get<{ runId?: unknown }>(activeRunKey(task.id));
-    if (typeof active?.runId !== "string") {
-      continue;
-    }
-    const run = await getRunFromState(state, active.runId);
-    if (run && !isFinishedRun(run)) {
-      runs.push(run);
-    }
-  }
-  return runs;
-}
-
-class PluginStateSchedulerOperationalStore implements SchedulerOperationalStore {
-  private readonly state: PluginReadState;
-
-  constructor(state: PluginReadState) {
-    this.state = state;
-  }
-
-  async listTasks(): Promise<ScheduledTask[]> {
-    return await listTasksFromState(this.state, globalTaskIndexKey());
-  }
-
-  async listIncompleteRunsForTasks(
-    tasks: ScheduledTask[],
-  ): Promise<ScheduledRun[]> {
-    return await listIncompleteRunsForTasksFromState(this.state, tasks);
-  }
-}
-
-class PluginStateSchedulerStore implements SchedulerStore {
-  private readonly state: PluginState;
-
-  constructor(state: PluginState) {
-    this.state = state;
-  }
-
-  async createTask(task: ScheduledTask): Promise<ScheduledTask> {
-    const next = requireStoredTask(task);
-    return await withLock(this.state, taskLockKey(task.id), async () => {
-      const current = await getTaskFromState(this.state, task.id);
-      if (current) {
-        return current;
-      }
-      await this.saveTaskRecord(next, undefined);
-      return next;
-    });
-  }
-
-  async saveTask(task: ScheduledTask): Promise<void> {
-    const next = requireStoredTask(task);
-    await withLock(this.state, taskLockKey(task.id), async () => {
-      const current = await getTaskFromState(this.state, task.id);
-      await this.saveTaskRecord(next, current);
-    });
-  }
-
-  private async saveTaskRecord(
-    task: ScheduledTask,
-    current: ScheduledTask | undefined,
-  ): Promise<void> {
-    if (
-      current?.status === "blocked" &&
-      task.status === "active" &&
-      typeof task.nextRunAtMs === "number" &&
-      Number.isFinite(task.nextRunAtMs)
-    ) {
-      await this.state.delete(claimKey(task.id, task.nextRunAtMs));
-    }
-    // Plugin-state has no title column, so the full task record stays intact.
-    await this.state.set(taskKey(task.id), task, SCHEDULER_RECORD_TTL_MS);
-
-    if (task.status === "deleted") {
-      await removeFromIndex(this.state, globalTaskIndexKey(), task.id);
-      await removeFromIndex(
-        this.state,
-        teamTaskIndexKey(task.destination.teamId),
-        task.id,
-      );
-      if (current && current.destination.teamId !== task.destination.teamId) {
-        await removeFromIndex(
-          this.state,
-          teamTaskIndexKey(current.destination.teamId),
-          task.id,
-        );
-      }
-      return;
-    }
-
-    await addToIndex(this.state, globalTaskIndexKey(), task.id);
-    await addToIndex(
-      this.state,
-      teamTaskIndexKey(task.destination.teamId),
-      task.id,
-    );
-    if (current && current.destination.teamId !== task.destination.teamId) {
-      await removeFromIndex(
-        this.state,
-        teamTaskIndexKey(current.destination.teamId),
-        task.id,
-      );
-    }
-  }
-
-  async getTask(taskId: string): Promise<ScheduledTask | undefined> {
-    return await getTaskFromState(this.state, taskId);
-  }
-
-  async listTasks(): Promise<ScheduledTask[]> {
-    return await listTasksFromState(this.state, globalTaskIndexKey());
-  }
-
-  async listTasksCreatedBy(
-    input: ListTasksCreatedByInput,
-  ): Promise<ScheduledTask[]> {
-    return listCreatedTasks(await this.listTasks(), input);
-  }
-
-  async listTasksForTeam(teamId: string): Promise<ScheduledTask[]> {
-    return await listTasksFromState(this.state, teamTaskIndexKey(teamId));
-  }
-
-  async claimDueRun(args: {
-    nowMs: number;
-  }): Promise<ScheduledRun | undefined> {
-    const ids = await getIndex(this.state, globalTaskIndexKey());
-
-    for (const id of ids) {
-      const task = await this.getTask(id);
-      if (!task || !isDueTask(task, args.nowMs)) {
-        continue;
-      }
-
-      const scheduledForMs = getDueRunAtMs(task, args.nowMs);
-      if (scheduledForMs === undefined) {
-        continue;
-      }
-      const runId = buildRunId(task.id, scheduledForMs);
-      const tryClaimActiveRun = async (): Promise<boolean> =>
-        await this.state.setIfNotExists(
-          activeRunKey(task.id),
-          { claimedAtMs: args.nowMs, runId, scheduledForMs },
-          CLAIM_TTL_MS,
-        );
-
-      let activeClaimed = await tryClaimActiveRun();
-      if (!activeClaimed) {
-        if (await clearStaleActiveRun(this.state, task.id, args.nowMs)) {
-          activeClaimed = await tryClaimActiveRun();
-        }
-        if (!activeClaimed) {
-          continue;
-        }
-      }
-
-      if (isMissedRunTooOld({ nowMs: args.nowMs, scheduledForMs })) {
-        const skipped = await this.skipMissedRun({
-          nowMs: args.nowMs,
-          scheduledForMs,
-          task,
-        });
-        if (skipped) {
-          logScheduledTaskRunSkipped(skipped.task, skipped.run, {
-            "app.task.run.error": skipped.errorMessage,
-          });
-        }
-        await clearActiveRun(this.state, task.id, runId);
-        continue;
-      }
-
-      const tryClaimScheduledSlot = async (): Promise<boolean> =>
-        await this.state.setIfNotExists(
-          claimKey(task.id, scheduledForMs),
-          { claimedAtMs: args.nowMs },
-          CLAIM_TTL_MS,
-        );
-
-      let claimed = await tryClaimScheduledSlot();
-      if (!claimed) {
-        const existingRun = await this.getRun(runId);
-        if (isStalePendingRun(existingRun, args.nowMs)) {
-          await clearActiveRun(this.state, task.id, runId);
-          await this.state.delete(claimKey(task.id, scheduledForMs));
-          activeClaimed = await tryClaimActiveRun();
-          claimed = activeClaimed ? await tryClaimScheduledSlot() : false;
-        }
-        if (!claimed) {
-          await clearActiveRun(this.state, task.id, runId);
-          continue;
-        }
-      }
-
-      const run = buildScheduledRun({
-        claimedAtMs: args.nowMs,
-        scheduledForMs,
-        task,
-      });
-      await this.state.set(runKey(run.id), run, SCHEDULED_RUN_TTL_MS);
-      return run;
-    }
-
-    return undefined;
-  }
-
-  private async skipMissedRun(args: {
-    nowMs: number;
-    scheduledForMs: number;
-    task: ScheduledTask;
-  }): Promise<SkippedRunTelemetry | undefined> {
-    return await withLock(this.state, taskLockKey(args.task.id), async () => {
-      const current =
-        (await getTaskFromState(this.state, args.task.id)) ?? undefined;
-      if (
-        !current ||
-        current.status !== "active" ||
-        getDueRunAtMs(current, args.nowMs) !== args.scheduledForMs
-      ) {
-        return undefined;
-      }
-
-      const duplicateOf = await this.findStaleRecoveryCanonicalTask(current);
-      const errorMessage = duplicateOf
-        ? `Duplicate stale scheduled task was skipped without dispatch. Canonical task: ${duplicateOf.id}.`
-        : "Scheduled occurrence was more than 24 hours late and was skipped without dispatch.";
-      const skipped = buildSkippedScheduledRun({
-        completedAtMs: args.nowMs,
-        errorMessage,
-        scheduledForMs: args.scheduledForMs,
-        task: current,
-      });
-      await this.state.set(runKey(skipped.id), skipped, SCHEDULED_RUN_TTL_MS);
-
-      const isRunNow = current.runNowAtMs === args.scheduledForMs;
-      let nextRunAtMs: number | undefined;
-      if (!duplicateOf) {
-        nextRunAtMs =
-          isRunNow && current.nextRunAtMs !== args.scheduledForMs
-            ? current.nextRunAtMs
-            : current.schedule.kind === "recurring"
-              ? getNextRunAtMs(current, args.scheduledForMs, args.nowMs)
-              : undefined;
-      }
-      const nextStatus = statusAfterTerminalOccurrence({ nextRunAtMs });
-
-      await this.saveTaskRecord(
-        {
-          ...current,
-          nextRunAtMs,
-          runNowAtMs: isRunNow ? undefined : current.runNowAtMs,
-          status: nextStatus,
-          statusReason: nextStatus === "deleted" ? errorMessage : undefined,
-          updatedAtMs: args.nowMs,
-        },
-        current,
-      );
-      return { errorMessage, run: skipped, task: current };
-    });
-  }
-
-  private async findStaleRecoveryCanonicalTask(
-    task: ScheduledTask,
-  ): Promise<ScheduledTask | undefined> {
-    const fingerprint = taskDedupeFingerprint(task);
-    const ids = await getIndex(
-      this.state,
-      teamTaskIndexKey(task.destination.teamId),
-    );
-    const tasks = await Promise.all(
-      ids.filter((id) => id !== task.id).map((id) => this.getTask(id)),
-    );
-    return tasks
-      .filter((candidate): candidate is ScheduledTask => Boolean(candidate))
-      .filter(
-        (candidate) =>
-          candidate.status === "active" &&
-          isEarlierTask(candidate, task) &&
-          taskDedupeFingerprint(candidate) === fingerprint,
-      )
-      .sort((a, b) => a.createdAtMs - b.createdAtMs || a.id.localeCompare(b.id))
-      .at(0);
-  }
-
-  async getRun(runId: string): Promise<ScheduledRun | undefined> {
-    return await getRunFromState(this.state, runId);
-  }
-
-  async listIncompleteRuns(): Promise<ScheduledRun[]> {
-    const tasks = await this.listTasks();
-    return await listIncompleteRunsForTasksFromState(this.state, tasks);
-  }
-
-  async listIncompleteRunsForTasks(
-    tasks: ScheduledTask[],
-  ): Promise<ScheduledRun[]> {
-    return await listIncompleteRunsForTasksFromState(this.state, tasks);
-  }
-
-  async markRunDispatched(args: {
-    claimedAtMs: number;
-    dispatchId: string;
-    nowMs: number;
-    runId: string;
-  }): Promise<ScheduledRun | undefined> {
-    return await this.updateRun(args.runId, (run) =>
-      run.status === "pending" && run.claimedAtMs === args.claimedAtMs
-        ? {
-            ...run,
-            dispatchId: args.dispatchId,
-            startedAtMs: args.nowMs,
-            status: "running",
-          }
-        : undefined,
-    );
-  }
-
-  async markRunCompleted(args: {
-    completedAtMs: number;
-    resultMessageTs?: string;
-    runId: string;
-    startedAtMs: number;
-  }): Promise<ScheduledRun | undefined> {
-    const next = await this.updateRun(args.runId, (run) =>
-      canFinishRun(run, args.startedAtMs)
-        ? {
-            ...run,
-            completedAtMs: args.completedAtMs,
-            resultMessageTs: args.resultMessageTs,
-            status: "completed",
-          }
-        : undefined,
-    );
-    if (next) {
-      await clearActiveRun(this.state, next.taskId, next.id);
-    }
-    return next;
-  }
-
-  async markRunFailed(args: {
-    completedAtMs: number;
-    errorMessage: string;
-    startedAtMs?: number;
-    runId: string;
-  }): Promise<ScheduledRun | undefined> {
-    const next = await this.updateRun(args.runId, (run) =>
-      canFinishRun(run, args.startedAtMs)
-        ? {
-            ...run,
-            completedAtMs: args.completedAtMs,
-            errorMessage: args.errorMessage,
-            status: "failed",
-          }
-        : undefined,
-    );
-    if (next) {
-      await clearActiveRun(this.state, next.taskId, next.id);
-    }
-    return next;
-  }
-
-  async markRunSkipped(args: {
-    completedAtMs: number;
-    errorMessage: string;
-    runId: string;
-  }): Promise<ScheduledRun | undefined> {
-    const next = await this.updateRun(args.runId, (run) =>
-      run.status === "pending"
-        ? {
-            ...run,
-            completedAtMs: args.completedAtMs,
-            errorMessage: args.errorMessage,
-            status: "skipped",
-          }
-        : undefined,
-    );
-    if (next) {
-      await clearActiveRun(this.state, next.taskId, next.id);
-    }
-    return next;
-  }
-
-  async markRunBlocked(args: {
-    completedAtMs: number;
-    errorMessage: string;
-    runId: string;
-    startedAtMs?: number;
-  }): Promise<ScheduledRun | undefined> {
-    const next = await this.updateRun(args.runId, (run) =>
-      canFinishRun(run, args.startedAtMs)
-        ? {
-            ...run,
-            completedAtMs: args.completedAtMs,
-            errorMessage: args.errorMessage,
-            status: "blocked",
-          }
-        : undefined,
-    );
-    if (next) {
-      await clearActiveRun(this.state, next.taskId, next.id);
-    }
-    return next;
-  }
-
-  async updateTaskAfterRun(args: {
-    errorMessage?: string;
-    nowMs: number;
-    run: ScheduledRun;
-    status: "blocked" | "completed" | "failed";
-  }): Promise<void> {
-    await withLock(this.state, taskLockKey(args.run.taskId), async () => {
-      const current =
-        (await getTaskFromState(this.state, args.run.taskId)) ?? undefined;
-      if (
-        !current ||
-        current.status === "deleted" ||
-        current.status === "completed"
-      ) {
-        return;
-      }
-
-      const isRunNow = current.runNowAtMs === args.run.scheduledForMs;
-      if (isRunNow) {
-        let nextRunAtMs = current.nextRunAtMs;
-        if (
-          args.status !== "blocked" &&
-          typeof current.nextRunAtMs === "number" &&
-          current.nextRunAtMs <= args.run.scheduledForMs
-        ) {
-          nextRunAtMs = getNextRunAtMs(
-            current,
-            current.nextRunAtMs,
-            args.nowMs,
-          );
-        }
-        await this.saveTaskRecord(
-          {
-            ...current,
-            lastRunAtMs: args.run.scheduledForMs,
-            nextRunAtMs,
-            runNowAtMs: undefined,
-            status: statusAfterTerminalOccurrence({
-              nextRunAtMs,
-              outcome: args.status,
-              previousStatus: current.status,
-            }),
-            statusReason:
-              args.status === "blocked" ? args.errorMessage : undefined,
-            updatedAtMs: args.nowMs,
-          },
-          current,
-        );
-        return;
-      }
-
-      if (
-        current.status !== "active" ||
-        current.nextRunAtMs !== args.run.scheduledForMs
-      ) {
-        await this.saveTaskRecord(
-          {
-            ...current,
-            lastRunAtMs: args.run.scheduledForMs,
-            updatedAtMs: args.nowMs,
-          },
-          current,
-        );
-        return;
-      }
-
-      const nextRunAtMs =
-        args.status === "blocked"
-          ? undefined
-          : getNextRunAtMs(current, args.run.scheduledForMs, args.nowMs);
-
-      await this.saveTaskRecord(
-        {
-          ...current,
-          lastRunAtMs: args.run.scheduledForMs,
-          nextRunAtMs,
-          status: statusAfterTerminalOccurrence({
-            nextRunAtMs,
-            outcome: args.status,
-          }),
-          statusReason:
-            args.status === "blocked" ? args.errorMessage : undefined,
-          updatedAtMs: args.nowMs,
-        },
-        current,
-      );
-    });
-  }
-
-  private async updateRun(
-    runId: string,
-    update: (run: ScheduledRun) => ScheduledRun | undefined,
-  ): Promise<ScheduledRun | undefined> {
-    return await withLock(this.state, indexLockKey(runKey(runId)), async () => {
-      const current = await this.getRun(runId);
-      if (!current) {
-        return undefined;
-      }
-      const next = update(current);
-      if (!next) {
-        return undefined;
-      }
-      await this.state.set(runKey(runId), next, SCHEDULED_RUN_TTL_MS);
-      return next;
-    });
-  }
-}
-
-/** Create a scheduler store backed by this plugin's durable state namespace. */
-export function createSchedulerStore(state: PluginState): SchedulerStore {
-  return new PluginStateSchedulerStore(state);
-}
-
-/** Create a read-only scheduler store for operational reporting. */
-export function createSchedulerOperationalStore(
-  state: PluginReadState,
-): SchedulerOperationalStore {
-  return new PluginStateSchedulerOperationalStore(state);
 }
 
 type SchedulerTaskRow = {
@@ -1530,7 +760,7 @@ async function listIncompleteRunsForTasksFromSql(
   return rows.map(parseSqlRunRow).filter(present);
 }
 
-class SqlSchedulerStore implements SchedulerStore, SchedulerOperationalStore {
+class SqlSchedulerStore implements SchedulerStore {
   constructor(private readonly db: SchedulerDb) {}
 
   async createTask(task: ScheduledTask): Promise<ScheduledTask> {
@@ -1976,33 +1206,22 @@ class SqlSchedulerStore implements SchedulerStore, SchedulerOperationalStore {
     runId: string,
     update: (run: ScheduledRun) => ScheduledRun | undefined,
   ): Promise<ScheduledRun | undefined> {
-    return await withSqlLock(
-      this.db,
-      indexLockKey(runKey(runId)),
-      async (db) => {
-        const current = await getRunFromSql(db, runId);
-        if (!current) {
-          return undefined;
-        }
-        const next = update(current);
-        if (!next) {
-          return undefined;
-        }
-        await upsertSqlRun(db, next);
-        return next;
-      },
-    );
+    return await withSqlLock(this.db, runLockKey(runId), async (db) => {
+      const current = await getRunFromSql(db, runId);
+      if (!current) {
+        return undefined;
+      }
+      const next = update(current);
+      if (!next) {
+        return undefined;
+      }
+      await upsertSqlRun(db, next);
+      return next;
+    });
   }
 }
 
 /** Create a scheduler store backed by the plugin SQL database. */
 export function createSchedulerSqlStore(db: SchedulerDb): SchedulerStore {
-  return new SqlSchedulerStore(db);
-}
-
-/** Create a read-only scheduler operational store backed by SQL. */
-export function createSchedulerOperationalSqlStore(
-  db: SchedulerDb,
-): SchedulerOperationalStore {
   return new SqlSchedulerStore(db);
 }
