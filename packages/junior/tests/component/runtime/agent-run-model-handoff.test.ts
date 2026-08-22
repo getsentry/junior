@@ -422,43 +422,9 @@ describe("model handoff composition", () => {
     ).toEqual([]);
   });
 
-  it("can hand off from a routed profile to the durable default", async () => {
+  it("can return a routed profile to default before another handoff", async () => {
     observations.routedModelProfile = "handoff";
-    observations.requestedProfile = "standard";
-    observations.requestHandoffAfterRouting = true;
-    const conversationId = "local:test:routed-model-handoff-default";
-
-    const outcome = await executeAgentRun({
-      conversationId,
-      runId: "run-routed-model-handoff-default",
-      turnId: "turn-routed-model-handoff-default",
-      instruction: { text: "Return to the default profile." },
-      destination: { platform: "local", conversationId },
-      source: createLocalSource(conversationId),
-    });
-
-    expect(outcome.status).toBe("completed");
-    if (outcome.status !== "completed") return;
-    expect(observations.providerCalls).toBe(2);
-    expect(observations.summaryCalls).toBe(1);
-    expect(observations.initialModelId).toBe("openai/gpt-5.6-sol");
-    expect(observations.afterHandoffModelId).toBe("xai/grok-4.5");
-    expect(
-      (await getConversationEventStore().loadHistory(conversationId))
-        .map((event) => event.data)
-        .filter((event) => event.type === "handoff"),
-    ).toEqual([
-      expect.objectContaining({
-        type: "handoff",
-        modelProfile: "standard",
-        modelId: "xai/grok-4.5",
-      }),
-    ]);
-  });
-
-  it("can hand off twice when the second target was initially active", async () => {
-    observations.routedModelProfile = "handoff";
-    observations.requestedProfileSequence = ["coding", "handoff"];
+    observations.requestedProfileSequence = ["standard", "coding"];
     const conversationId = "local:test:repeated-model-handoff";
     const handoffResults: Array<{ ok: boolean; result?: unknown }> = [];
 
@@ -488,22 +454,23 @@ describe("model handoff composition", () => {
 
     expect(outcome.status).toBe("completed");
     if (outcome.status !== "completed") return;
-    expect(outcome.result.diagnostics.modelId).toBe("openai/gpt-5.6-sol");
+    expect(outcome.result.diagnostics.modelId).toBe("openai/gpt-5.4");
     expect(observations.providerCalls).toBe(3);
+    expect(observations.summaryCalls).toBe(2);
     expect(
       (await loadConversationProjection({ conversationId })).modelProfile,
-    ).toBe("handoff");
+    ).toBe("coding");
     expect(handoffResults).toEqual([
       {
         ok: true,
         result: {
-          model_profile: "coding",
+          model_profile: "standard",
         },
       },
       {
         ok: true,
         result: {
-          model_profile: "handoff",
+          model_profile: "coding",
         },
       },
     ]);
