@@ -13,11 +13,6 @@ import { modelProfileSchema } from "@/chat/model-profile";
 import { TURN_REASONING_LEVELS } from "@/chat/reasoning-level";
 import { conversationMessageProvenanceSchema } from "./provenance";
 
-const handoffModelProfileSchema = modelProfileSchema.refine(
-  (profile) => profile !== "standard",
-  "handoff profile must not be standard",
-);
-
 const userMessageEventDataSchema = z
   .object({
     type: z.literal("user_message"),
@@ -87,7 +82,7 @@ const historyReplacementEventDataSchema = z.discriminatedUnion("type", [
   z
     .object({
       type: z.literal("handoff"),
-      modelProfile: handoffModelProfileSchema,
+      modelProfile: modelProfileSchema,
       modelId: z.string().min(1),
       reasoningLevel: z.string().min(1).optional(),
       triggeringToolCallId: z.string().min(1).optional(),

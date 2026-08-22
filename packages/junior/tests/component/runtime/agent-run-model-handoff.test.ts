@@ -303,12 +303,12 @@ describe("model handoff composition", () => {
       instruction: {
         text: "Recommend the architecture and test strategy.",
         attachments: [
-                  {
-                    data: Buffer.from("architecture-diagram"),
-                    filename: "architecture.png",
-                    mediaType: "image/png",
-                  },
-                ],
+          {
+            data: Buffer.from("architecture-diagram"),
+            filename: "architecture.png",
+            mediaType: "image/png",
+          },
+        ],
       },
       conversationId,
       runId: "run-router-model-handoff",
@@ -437,13 +437,15 @@ describe("model handoff composition", () => {
       onEvent: async (event) => {
         if (event.type === "tool_finished") {
           await ((result) => {
-          if (result.toolName === "handoff") {
-            handoffResults.push({
-              ok: result.ok,
-              ...(result.result !== undefined ? { result: result.result } : {}),
-            });
-          }
-        })(event.report);
+            if (result.toolName === "handoff") {
+              handoffResults.push({
+                ok: result.ok,
+                ...(result.result !== undefined
+                  ? { result: result.result }
+                  : {}),
+              });
+            }
+          })(event.report);
           return;
         }
       },
@@ -485,8 +487,8 @@ describe("model handoff composition", () => {
       onEvent: async (event) => {
         if (event.type === "status") {
           await (({ text }) => {
-          observations.statuses.push(text);
-        })({ text: event.text });
+            observations.statuses.push(text);
+          })({ text: event.text });
           return;
         }
       },
@@ -510,13 +512,13 @@ describe("model handoff composition", () => {
       observations.initialToolNames,
     );
     expect(observations.initialHandoffDescription).toContain(
-      "Profiles: `handoff`, `coding`.",
+      "Profiles: `coding`, `handoff`.",
     );
     expect(observations.afterHandoffDescription).toContain(
-      "Profiles: `coding`.",
+      "Profiles: `coding`, `standard`.",
     );
-    expect(observations.initialHandoffProfiles).toEqual(["handoff", "coding"]);
-    expect(observations.afterHandoffProfiles).toEqual(["coding"]);
+    expect(observations.initialHandoffProfiles).toEqual(["coding", "handoff"]);
+    expect(observations.afterHandoffProfiles).toEqual(["coding", "standard"]);
     expect(observations.summaryCalls).toBe(1);
     expect(observations.handoffStatusBeforeSummary).toBe(true);
     expect(
@@ -685,8 +687,8 @@ describe("model handoff composition", () => {
         onEvent: async (event) => {
           if (event.type === "status") {
             await (({ text }) => {
-            observations.statuses.push(text);
-          })({ text: event.text });
+              observations.statuses.push(text);
+            })({ text: event.text });
             return;
           }
         },

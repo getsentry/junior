@@ -232,7 +232,7 @@ function validateEmbeddingModelId(raw: string | undefined): string | undefined {
   return toOptionalTrimmed(raw);
 }
 
-function parseAdditionalProfiles(
+function parseProfileMap(
   rawProfiles: unknown,
   configName: string,
 ): Readonly<Record<string, ExecutionProfileConfig>> {
@@ -252,12 +252,6 @@ function parseAdditionalProfiles(
         `${configName} profile "${profile}" must match ^[a-z][a-z0-9_-]*$`,
       );
     }
-    if (
-      profile === STANDARD_MODEL_PROFILE ||
-      profile === DEFAULT_HANDOFF_MODEL_PROFILE
-    ) {
-      throw new Error(`${configName} profile "${profile}" is reserved`);
-    }
     if (typeof rawModelId !== "string") {
       throw new Error(`${configName}.${profile} must be a model id string`);
     }
@@ -265,7 +259,10 @@ function parseAdditionalProfiles(
     if (!modelId) {
       throw new Error(`${configName}.${profile} must not be empty`);
     }
-    profiles[profile] = { modelId };
+    profiles[profile] =
+      profile === DEFAULT_HANDOFF_MODEL_PROFILE
+        ? { modelId, reasoningLevel: "high" }
+        : { modelId };
   }
   return profiles;
 }
@@ -295,7 +292,7 @@ function parseProfiles(
   }
   return {
     ...profiles,
-    ...parseAdditionalProfiles(parsed, "AI_MODEL_PROFILES"),
+    ...parseProfileMap(parsed, "AI_MODEL_PROFILES"),
   };
 }
 
@@ -529,13 +526,13 @@ export interface SlackReactionConfig {
   processingReactionEmoji: string;
 }
 
-/** Apply additional host profiles from createApp({ profiles }). */
+/** Apply host profiles from createApp({ profiles }). */
 export function setProfiles(profiles: Readonly<Record<string, string>>): void {
   botConfig.profiles = {
     [STANDARD_MODEL_PROFILE]: botConfig.profiles[STANDARD_MODEL_PROFILE]!,
     [DEFAULT_HANDOFF_MODEL_PROFILE]:
       botConfig.profiles[DEFAULT_HANDOFF_MODEL_PROFILE]!,
-    ...parseAdditionalProfiles(profiles, "profiles"),
+    ...parseProfileMap(profiles, "profiles"),
   };
 }
 

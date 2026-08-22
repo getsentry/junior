@@ -133,7 +133,6 @@ import { wireAgentTools } from "@/chat/agent/tools";
 import { createResumeState, type ResumeState } from "@/chat/agent/resume";
 import { sleep } from "@/chat/sleep";
 import {
-  DEFAULT_HANDOFF_MODEL_PROFILE,
   modelIdForProfile,
   ModelProfileNotConfiguredError,
   STANDARD_MODEL_PROFILE,
@@ -714,15 +713,13 @@ async function executeAgentRunInPrivacyContext(
       | undefined;
     const currentAgentMessages = (): PiMessage[] =>
       agent ? [...agent.state.messages] : [];
-    const handoffProfiles: [ModelProfile, ...ModelProfile[]] = [
-      DEFAULT_HANDOFF_MODEL_PROFILE,
-      ...Object.keys(botConfig.profiles)
-        .filter(
-          (profile) =>
-            profile !== STANDARD_MODEL_PROFILE &&
-            profile !== DEFAULT_HANDOFF_MODEL_PROFILE,
-        )
-        .sort(),
+    const configuredProfiles = Object.keys(botConfig.profiles).sort();
+    if (configuredProfiles.length === 0) {
+      throw new Error("At least one model profile must be configured");
+    }
+    const handoffProfiles = configuredProfiles as [
+      ModelProfile,
+      ...ModelProfile[],
     ];
     const usageSinceCurrentBoundary = (
       messages: PiMessage[],

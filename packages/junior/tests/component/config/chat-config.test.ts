@@ -142,6 +142,22 @@ describe("chat config", () => {
     });
   });
 
+  it("lets AI_MODEL_PROFILES override standard and handoff", async () => {
+    process.env.AI_MODEL_PROFILES = JSON.stringify({
+      standard: "openai/gpt-5.4",
+      handoff: "anthropic/claude-opus-4.6",
+    });
+
+    const { botConfig } = await loadConfig();
+    expect(botConfig.profiles).toEqual({
+      standard: { modelId: "openai/gpt-5.4" },
+      handoff: {
+        modelId: "anthropic/claude-opus-4.6",
+        reasoningLevel: "high",
+      },
+    });
+  });
+
   it("fails when a durable profile is no longer configured", async () => {
     delete process.env.AI_MODEL_PROFILES;
 
@@ -155,8 +171,6 @@ describe("chat config", () => {
 
   it.each([
     ["[]", "must be a JSON object"],
-    ['{"standard":"openai/gpt-5.4"}', 'profile "standard" is reserved'],
-    ['{"handoff":"openai/gpt-5.4"}', 'profile "handoff" is reserved'],
     ['{"Coding":"openai/gpt-5.4"}', "must match"],
     ['{"coding":""}', "must not be empty"],
   ])("rejects invalid AI_MODEL_PROFILES %s", async (value, message) => {

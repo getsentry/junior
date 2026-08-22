@@ -9,9 +9,11 @@ afterEach(() => {
 });
 
 describe("createApp profiles", () => {
-  it("configures named handoff profiles", async () => {
+  it("configures named profiles including standard and handoff", async () => {
     await createApp({
       profiles: {
+        standard: "xai/grok-4.5",
+        handoff: "openai/gpt-5.6-sol",
         "gpt-5": "openai/gpt-5.6-sol",
         "opus-5": "anthropic/claude-opus-5",
       },
@@ -19,17 +21,19 @@ describe("createApp profiles", () => {
     });
 
     expect(botConfig.profiles).toMatchObject({
+      standard: { modelId: "xai/grok-4.5" },
+      handoff: { modelId: "openai/gpt-5.6-sol", reasoningLevel: "high" },
       "gpt-5": { modelId: "openai/gpt-5.6-sol" },
       "opus-5": { modelId: "anthropic/claude-opus-5" },
     });
   });
 
-  it("rejects reserved profile names", async () => {
+  it("rejects invalid profile names", async () => {
     await expect(
       createApp({
-        profiles: { handoff: "openai/gpt-5.6-sol" },
+        profiles: { Coding: "openai/gpt-5.6-sol" },
         plugins: defineJuniorPlugins([]),
       }),
-    ).rejects.toThrow('profiles profile "handoff" is reserved');
+    ).rejects.toThrow('profiles profile "Coding" must match');
   });
 });
