@@ -10,14 +10,12 @@ import {
 import { getVercelSandboxCredentials } from "@/chat/sandbox/credentials";
 import { ensureDockerDaemon } from "@/chat/sandbox/docker";
 import {
-  isAbortError,
   isAlreadyExistsError,
   isSandboxMissingError,
   isSandboxUnavailableError,
   isSnapshottingError,
   wrapSandboxSetupError,
 } from "@/chat/sandbox/errors";
-import { WorkspaceSnapshotWaitingError } from "@/chat/sandbox/snapshot/waiting-error";
 import { buildNonInteractiveShellScript } from "@/chat/sandbox/noninteractive-command";
 import { prepareWorkspaceSnapshot } from "@/chat/sandbox/prepare-workspace";
 import { getSandboxResources } from "@/chat/sandbox/resources";
@@ -260,11 +258,7 @@ export function createSandboxRuntime(
     return nextSandbox;
   };
 
-  const failSetup = (error: unknown, workspace?: Workspace): never => {
-    // Hard turn aborts during Workspace snapshot setup are soft waits.
-    if (workspace && isAbortError(error)) {
-      throw new WorkspaceSnapshotWaitingError(workspace.name);
-    }
+  const failSetup = (error: unknown): never => {
     throw wrapSandboxSetupError(error);
   };
 
@@ -517,7 +511,7 @@ export function createSandboxRuntime(
         },
       );
     } catch (error) {
-      return failSetup(error, workspace);
+      return failSetup(error);
     }
 
     const ref = sandboxReference(createdSandbox, workspace, hash);
@@ -540,7 +534,7 @@ export function createSandboxRuntime(
     } catch (error) {
       // A Workspace candidate has no durable owner until preparation succeeds.
       if (workspace) await stopSession(createdSandbox);
-      return failSetup(error, workspace);
+      return failSetup(error);
     }
 
     return {

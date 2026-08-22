@@ -345,37 +345,22 @@ describe("Workspace snapshot completion", () => {
       { insertIfMissing: true },
     );
 
-    let releaseWait: (() => void) | undefined;
-    const waitStarted = new Promise<void>((resolve) => {
-      releaseWait = resolve;
+    let waitStarted: (() => void) | undefined;
+    const firstWaitStarted = new Promise<void>((resolve) => {
+      waitStarted = resolve;
     });
-    let waitCalls = 0;
-    const wait = vi.fn(async ({ signal }: { signal?: AbortSignal }) => {
-      waitCalls += 1;
-      if (waitCalls === 1) {
-        releaseWait?.();
-        await new Promise<never>((_resolve, reject) => {
-          if (signal?.aborted) {
-            reject(
-              signal.reason ??
-                new DOMException("This operation was aborted", "AbortError"),
-            );
-            return;
-          }
-          signal?.addEventListener(
-            "abort",
-            () => {
-              reject(
-                signal.reason ??
-                  new DOMException("This operation was aborted", "AbortError"),
-              );
-            },
-            { once: true },
-          );
-        });
-      }
-      return { exitCode: 0 };
-    });
+    const wait = vi
+      .fn()
+      .mockImplementationOnce(async ({ signal }: { signal: AbortSignal }) => {
+        waitStarted?.();
+        await new Promise<void>((_resolve, reject) =>
+          signal.addEventListener("abort", () => reject(signal.reason), {
+            once: true,
+          }),
+        );
+        return { exitCode: 0 };
+      })
+      .mockResolvedValueOnce({ exitCode: 0 });
     const getCommand = vi.fn(async () => ({ wait }));
     const snapshot = vi.fn(async () => ({ snapshotId: "snapshot-after-resume" }));
     const deleteBuilder = vi.fn();
@@ -397,7 +382,7 @@ describe("Workspace snapshot completion", () => {
       applyNetworkPolicy: async () => {},
       removeCredentialRoute: false,
     });
-    await waitStarted;
+    await firstWaitStarted;
     controller.abort(
       new DOMException("This operation was aborted", "AbortError"),
     );
@@ -413,10 +398,10 @@ describe("Workspace snapshot completion", () => {
       },
       ready: null,
     });
-    expect(sandboxGetMock).toHaveBeenCalledWith(
+    expect(sandboxGetMock).toHaveBeenLastCalledWith(
       expect.objectContaining({ name: builderName, resume: true }),
     );
-    expect(getCommand).toHaveBeenCalledWith(
+    expect(getCommand).toHaveBeenLastCalledWith(
       commandId,
       expect.objectContaining({ signal: controller.signal }),
     );
@@ -434,7 +419,7 @@ describe("Workspace snapshot completion", () => {
       }),
     ).resolves.toMatchObject({ snapshotId: "snapshot-after-resume" });
 
-    expect(waitCalls).toBe(2);
+    expect(wait).toHaveBeenCalledTimes(2);
     expect(getCommand).toHaveBeenCalledTimes(2);
     expect(snapshot).toHaveBeenCalledTimes(1);
     await expect(
