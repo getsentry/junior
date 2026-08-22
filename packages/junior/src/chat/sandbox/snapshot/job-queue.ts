@@ -64,13 +64,14 @@ async function send(
   message: WorkspaceSnapshotJobMessage,
   idempotencyKey?: string,
 ): Promise<void> {
+  const options: { idempotencyKey?: string; retentionSeconds: number } = {
+    retentionSeconds: QUEUE_SIGNATURE_MAX_AGE_MS / 1000,
+  };
+  if (idempotencyKey) options.idempotencyKey = idempotencyKey;
   await createVercelQueueClient().send(
     WORKSPACE_SNAPSHOT_JOB_QUEUE_TOPIC,
     signWorkspaceSnapshotJobMessage(message),
-    {
-      ...(idempotencyKey ? { idempotencyKey } : {}),
-      retentionSeconds: QUEUE_SIGNATURE_MAX_AGE_MS / 1000,
-    },
+    options,
   );
 }
 

@@ -54,7 +54,7 @@ export function workspaceSnapshotFinishedEvent(
       ? "Workspace snapshot is ready."
       : "Workspace snapshot build failed.";
   const eventId = input.buildId ?? input.profileHash;
-  return {
+  const event: ResourceEvent = {
     eventKey: `${WORKSPACE_SNAPSHOT_NAMESPACE}:${input.workspaceId}:${eventId}:${input.status}`,
     eventType,
     identifier: input.workspaceId,
@@ -66,8 +66,9 @@ export function workspaceSnapshotFinishedEvent(
       workspaceId: input.workspaceId,
       status: input.status,
     },
-    ...(input.status === "failed" && input.error
-      ? { untrustedText: input.error }
-      : {}),
   };
+  if (input.status === "failed" && input.error) {
+    event.untrustedText = input.error;
+  }
+  return event;
 }
