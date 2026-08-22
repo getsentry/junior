@@ -2,10 +2,11 @@
 
 Junior exposes ACP v1 Streamable HTTP at `/api/acp` when the app sets
 `experimental: { acp: true }`. The route accepts `GET`, `POST`, and `DELETE`.
-The client must support ACP URL elicitation. Junior advertises browser sign-in
-as its ACP authentication method. The dashboard completes Google OAuth and
-binds the verified Junior user to the ACP connection after the user enters the
-verification code shown by the client. Personal tokens do not grant ACP access.
+The app must also enable the dashboard. The client must support ACP URL
+elicitation. Junior advertises browser sign-in as its ACP authentication method.
+The dashboard completes Google OAuth and binds the verified Junior user to the
+ACP connection after the user enters the verification code shown by the client.
+Personal tokens do not grant ACP access.
 
 The adapter maps an ACP session to a private Conversation. It uses the existing
 web Actor, API Turn mailbox, worker, event store, and Conversation access rules.

@@ -96,6 +96,9 @@ importers:
       '@sentry/junior':
         specifier: workspace:*
         version: file:packages/junior
+      '@sentry/junior-acp':
+        specifier: workspace:*
+        version: link:../../packages/junior-acp
       '@sentry/junior-agent-browser':
         specifier: workspace:*
         version: link:../../packages/junior-agent-browser
@@ -355,8 +358,8 @@ importers:
         specifier: ^25.9.1
         version: 25.9.1
       oxlint:
-        specifier: ^1.66.0
-        version: 1.66.0
+        specifier: ^1.79.0
+        version: 1.79.0
       tsup:
         specifier: ^8.5.1
         version: 8.5.1(tsx@4.22.3)(typescript@6.0.3)

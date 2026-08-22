@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import path from "node:path";
 import * as acp from "@agentclientprotocol/sdk";
 import type { StateAdapter } from "chat";
@@ -22,6 +23,7 @@ import {
   createIndependentConversationWork,
   initializeAndAuthenticate,
   initializeRequest,
+  mockAcpDashboardConfig,
   openAuthenticatedAcpConnection,
   readAcpSseMessage,
   verificationCodeFromElicitation,
@@ -33,7 +35,10 @@ import {
   createPluginAppFixture,
   type PluginAppFixture,
 } from "../fixtures/plugin-app";
+import { readProxyProperty } from "../fixtures/proxy-property";
 import { testViewer } from "../fixtures/user";
+
+mockAcpDashboardConfig();
 
 const EVAL_MCP_PLUGIN_ROOT = path.resolve(
   import.meta.dirname,
@@ -417,7 +422,7 @@ describe("remote ACP recovery", () => {
     let pendingReadObserved = false;
     let sessionStateKey: string | undefined;
     const observedState = new Proxy(harness.state, {
-      get(target, property, receiver) {
+      get(target, property) {
         if (property === "get") {
           return async (key: string) => {
             const value = await target.get(key);
@@ -438,7 +443,7 @@ describe("remote ACP recovery", () => {
             return value;
           };
         }
-        const value = Reflect.get(target, property, receiver) as unknown;
+        const value = readProxyProperty(target, property);
         return typeof value === "function" ? value.bind(target) : value;
       },
     }) as StateAdapter;
@@ -646,5 +651,73 @@ describe("remote ACP recovery", () => {
       "Recover this prompt.",
       "Recovered queue reply.",
     ]);
+  }, 20_000);
+
+  it("rejects a prompt before admission when its output stream is full", async () => {
+    const harness = await createConversationWorkWebHarness();
+    const app = await createApp({
+      conversationWork: harness.conversationWork,
+      experimental: { acp: true, subagents: true },
+    });
+    const sessionId = await withAcpClient({
+      app,
+      email: harness.actor.email,
+      run: async (context) => {
+        await initializeAndAuthenticate(context);
+        const session = await context.request(acp.methods.agent.session.new, {
+          cwd: "/client/workspace",
+          mcpServers: [],
+        });
+        return session.sessionId;
+      },
+      state: harness.state,
+    });
+    const { connectionId, cookie } = await openAuthenticatedAcpConnection({
+      app,
+      email: harness.actor.email,
+      state: harness.state,
+    });
+    const sessionHash = createHash("sha256")
+      .update(sessionId)
+      .digest("hex")
+      .slice(0, 32);
+    const streamItemsKey =
+      `junior:acp:v1:connection:${connectionId}:stream:` +
+      `session:${sessionHash}:items`;
+    for (let index = 0; index < 1_024; index += 1) {
+      await harness.state.appendToList(streamItemsKey, {
+        id: `pending-${index}`,
+        output: {
+          kind: "message",
+          message: { jsonrpc: "2.0", id: index, result: {} },
+        },
+      });
+    }
+
+    const response = await app.request(ACP_TEST_URL, {
+      method: "POST",
+      headers: {
+        "Acp-Connection-Id": connectionId,
+        "Acp-Session-Id": sessionId,
+        "Content-Type": "application/json",
+        Cookie: cookie,
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: "full-stream-prompt",
+        method: acp.methods.agent.session.prompt,
+        params: {
+          sessionId,
+          prompt: [{ type: "text", text: "Do not admit this prompt." }],
+        },
+      }),
+    });
+
+    expect(response.status).toBe(503);
+    await expect(response.text()).resolves.toBe(
+      "ACP stream has too much undelivered output",
+    );
+    expect(harness.queue.hasQueuedMessages()).toBe(false);
+    await expect(harness.historyTexts(sessionId)).resolves.toEqual([]);
   }, 20_000);
 });

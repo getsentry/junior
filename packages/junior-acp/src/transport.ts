@@ -9,7 +9,11 @@ import type { Lock, StateAdapter } from "chat";
 import * as acp from "@agentclientprotocol/sdk";
 import { userSchema, type User } from "@sentry/junior-plugin-api";
 import { z } from "zod";
-import type { ConversationPort, ReportAcpError } from "./conversations";
+import type {
+  AcpErrorContext,
+  ConversationPort,
+  ReportAcpError,
+} from "./conversations";
 import { sleep } from "./sleep";
 import { fenceLock, MUTATION_LOCK_TTL_MS, withLock } from "./state";
 
@@ -21,6 +25,11 @@ const EVENT_POLL_INTERVAL_MS = 100;
 const LOCK_WAIT_MS = 5_000;
 // Bound undelivered transport output without truncating Conversation history.
 const MAX_STREAM_ITEMS = 1_024;
+const MUTATION_LOCK_OPTIONS = {
+  keepAlive: true,
+  ttlMs: MUTATION_LOCK_TTL_MS,
+  waitMs: LOCK_WAIT_MS,
+} as const;
 const SSE_KEEP_ALIVE_MS = 15_000;
 
 const jsonRpcIdSchema = z.union([z.string(), z.number().finite(), z.null()]);
@@ -300,11 +309,7 @@ export async function bindAcpConnectionUser(args: {
       );
       return "completed" as const;
     },
-    {
-      keepAlive: true,
-      ttlMs: MUTATION_LOCK_TTL_MS,
-      waitMs: LOCK_WAIT_MS,
-    },
+    MUTATION_LOCK_OPTIONS,
   );
   if (!result.acquired) {
     throw new Error("Timed out acquiring ACP connection control");
@@ -312,7 +317,80 @@ export async function bindAcpConnectionUser(args: {
   return result.value;
 }
 
+async function prepareStreamAppend(args: {
+  id?: string;
+  lock: Lock;
+  route: AcpStreamRoute;
+  state: StateAdapter;
+}): Promise<StoredAcpStreamItem[] | string> {
+  const existing = await readStreamItems(args.state, args.route);
+  const cursor = await readStreamCursor(args.state, args.route);
+  const cursorIndex = cursor
+    ? existing.findIndex((item) => item.id === cursor)
+    : -1;
+  if (args.id) {
+    const pending = existing.slice(cursorIndex >= 0 ? cursorIndex + 1 : 0);
+    const pendingItem = pending.find(
+      (item) =>
+        item.id === args.id || item.id.startsWith(`${args.id}:delivery:`),
+    );
+    if (pendingItem) return pendingItem.id;
+  }
+  if (existing.length < MAX_STREAM_ITEMS) return existing;
+
+  if (cursorIndex !== existing.length - 1) {
+    throw new AcpStreamFullError();
+  }
+  await fenceLock(args.state, args.lock, MUTATION_LOCK_TTL_MS);
+  await args.state.delete(streamListKey(args.route));
+  await args.state.delete(streamCursorKey(args.route));
+  return [];
+}
+
 /** Reuse pending output IDs and fence stream capacity before each new delivery. */
+async function appendStreamOutputWithLock(args: {
+  id: string;
+  lock: Lock;
+  output: AcpStreamOutput;
+  route: AcpStreamRoute;
+  state: StateAdapter;
+}): Promise<string> {
+  const route = acpStreamRouteSchema.parse(args.route);
+  const output = acpStreamOutputSchema.parse(args.output);
+  const existing = await prepareStreamAppend({
+    id: args.id,
+    lock: args.lock,
+    route,
+    state: args.state,
+  });
+  if (typeof existing === "string") return existing;
+  const existingIds = new Set(existing.map((item) => item.id));
+  let id = args.id;
+  for (let delivery = 1; existingIds.has(id); delivery += 1) {
+    id = `${args.id}:delivery:${delivery}`;
+  }
+  await fenceLock(args.state, args.lock, MUTATION_LOCK_TTL_MS);
+  if (output.kind === "replay") {
+    const sessionId = route.sessionId;
+    if (!sessionId) {
+      throw new Error("ACP replay output requires a session stream");
+    }
+    await args.state.delete(
+      streamItemCompletionKey(route.connectionId, {
+        itemId: id,
+        sessionId,
+      }),
+    );
+    await fenceLock(args.state, args.lock, MUTATION_LOCK_TTL_MS);
+  }
+  await args.state.appendToList(
+    streamListKey(route),
+    { id, output } satisfies StoredAcpStreamItem,
+    { ttlMs: ACP_STATE_TTL_MS },
+  );
+  return id;
+}
+
 async function appendStreamOutput(args: {
   id: string;
   output: AcpStreamOutput;
@@ -320,63 +398,11 @@ async function appendStreamOutput(args: {
   state: StateAdapter;
 }): Promise<string> {
   const route = acpStreamRouteSchema.parse(args.route);
-  const output = acpStreamOutputSchema.parse(args.output);
   const result = await withLock(
     args.state,
     streamAppendLockKey(route),
-    async (lock) => {
-      let existing = await readStreamItems(args.state, route);
-      const cursor = await readStreamCursor(args.state, route);
-      const cursorIndex = cursor
-        ? existing.findIndex((item) => item.id === cursor)
-        : -1;
-      const pending = existing.slice(cursorIndex >= 0 ? cursorIndex + 1 : 0);
-      const sameReceiptItem = (item: StoredAcpStreamItem): boolean =>
-        item.id === args.id || item.id.startsWith(`${args.id}:delivery:`);
-      const pendingItem = pending.find(sameReceiptItem);
-      if (pendingItem) return pendingItem.id;
-
-      if (existing.length >= MAX_STREAM_ITEMS) {
-        if (cursorIndex !== existing.length - 1) {
-          throw new AcpStreamFullError();
-        }
-        await fenceLock(args.state, lock, MUTATION_LOCK_TTL_MS);
-        await args.state.delete(streamListKey(route));
-        await args.state.delete(streamCursorKey(route));
-        existing = [];
-      }
-
-      const existingIds = new Set(existing.map((item) => item.id));
-      let id = args.id;
-      for (let delivery = 1; existingIds.has(id); delivery += 1) {
-        id = `${args.id}:delivery:${delivery}`;
-      }
-      await fenceLock(args.state, lock, MUTATION_LOCK_TTL_MS);
-      if (output.kind === "replay") {
-        const sessionId = route.sessionId;
-        if (!sessionId) {
-          throw new Error("ACP replay output requires a session stream");
-        }
-        await args.state.delete(
-          streamItemCompletionKey(route.connectionId, {
-            itemId: id,
-            sessionId,
-          }),
-        );
-        await fenceLock(args.state, lock, MUTATION_LOCK_TTL_MS);
-      }
-      await args.state.appendToList(
-        streamListKey(route),
-        { id, output } satisfies StoredAcpStreamItem,
-        { ttlMs: ACP_STATE_TTL_MS },
-      );
-      return id;
-    },
-    {
-      keepAlive: true,
-      ttlMs: MUTATION_LOCK_TTL_MS,
-      waitMs: LOCK_WAIT_MS,
-    },
+    async (lock) => await appendStreamOutputWithLock({ ...args, lock, route }),
+    MUTATION_LOCK_OPTIONS,
   );
   if (!result.acquired) {
     throw new Error("Timed out acquiring ACP stream append control");
@@ -425,6 +451,7 @@ async function streamSessionReplay(args: {
 
 /** Queue one request receipt on its connection and session streams. */
 async function queueReceipt(args: {
+  append?: typeof appendStreamOutput;
   connectionId: string;
   receipt: AcpRequestReceipt;
   requestKey: string;
@@ -432,11 +459,12 @@ async function queueReceipt(args: {
 }): Promise<void> {
   const receipt = parseReceipt(args.receipt);
   const deliveryKey = receipt.deliveryKey ?? args.requestKey;
+  const append = args.append ?? appendStreamOutput;
   let dependency: AcpStreamDependency | undefined;
   for (const [index, output] of receipt.outputs.entries()) {
     const id = requestStreamItemId(deliveryKey, index);
     if (output.kind === "replay") {
-      const itemId = await appendStreamOutput({
+      const itemId = await append({
         id,
         output: { kind: "replay" },
         route: { connectionId: args.connectionId, sessionId: output.sessionId },
@@ -446,23 +474,23 @@ async function queueReceipt(args: {
       continue;
     }
     if (output.kind === "message") {
-      await appendStreamOutput({
+      const streamOutput: Extract<AcpStreamOutput, { kind: "message" }> = {
+        kind: "message",
+        message: output.message,
+      };
+      if (dependency) streamOutput.afterStreamItem = dependency;
+      const route: AcpStreamRoute = { connectionId: args.connectionId };
+      if (output.sessionId) route.sessionId = output.sessionId;
+      await append({
         id,
-        output: {
-          ...(dependency ? { afterStreamItem: dependency } : {}),
-          kind: "message",
-          message: output.message,
-        },
-        route: {
-          connectionId: args.connectionId,
-          ...(output.sessionId ? { sessionId: output.sessionId } : {}),
-        },
+        output: streamOutput,
+        route,
         state: args.state,
       });
       dependency = undefined;
       continue;
     }
-    await appendStreamOutput({
+    await append({
       id,
       output: output.output,
       route: { connectionId: args.connectionId, sessionId: output.sessionId },
@@ -502,11 +530,7 @@ export async function completeAcpRequest(args: {
         });
         return "completed" as const;
       },
-      {
-        keepAlive: true,
-        ttlMs: MUTATION_LOCK_TTL_MS,
-        waitMs: LOCK_WAIT_MS,
-      },
+      MUTATION_LOCK_OPTIONS,
     );
     if (!result.acquired) {
       throw new Error("Timed out acquiring ACP request completion control");
@@ -518,10 +542,11 @@ export async function completeAcpRequest(args: {
   }
 }
 
-/** Store a receipt once and redeliver it when a client retries after delivery. */
+/** Store a receipt once and reserve output before side-effecting creation. */
 export async function acceptAcpRequest(args: {
   connectionId: string;
   createReceipt: () => Promise<AcpRequestReceipt>;
+  reserveRoute?: AcpStreamRoute;
   requestKey: string;
   state: StateAdapter;
 }): Promise<"accepted" | "busy" | "full"> {
@@ -533,18 +558,62 @@ export async function acceptAcpRequest(args: {
         const stored = await args.state.get(
           receiptKey(args.connectionId, args.requestKey),
         );
-        let receipt =
+        const receipt =
           stored === null || stored === undefined
             ? undefined
             : parseReceipt(stored);
         if (!receipt) {
-          receipt = parseReceipt(await args.createReceipt());
-          await fenceLock(args.state, lock, MUTATION_LOCK_TTL_MS);
-          await args.state.set(
-            receiptKey(args.connectionId, args.requestKey),
-            receipt,
-            ACP_STATE_TTL_MS,
+          const createAndQueue = async (append?: typeof appendStreamOutput) => {
+            const created = parseReceipt(await args.createReceipt());
+            await fenceLock(args.state, lock, MUTATION_LOCK_TTL_MS);
+            await args.state.set(
+              receiptKey(args.connectionId, args.requestKey),
+              created,
+              ACP_STATE_TTL_MS,
+            );
+            await fenceLock(args.state, lock, MUTATION_LOCK_TTL_MS);
+            const queue: Parameters<typeof queueReceipt>[0] = {
+              connectionId: args.connectionId,
+              receipt: created,
+              requestKey: args.requestKey,
+              state: args.state,
+            };
+            if (append) queue.append = append;
+            await queueReceipt(queue);
+          };
+          if (!args.reserveRoute) {
+            await createAndQueue();
+            return;
+          }
+          const route = acpStreamRouteSchema.parse(args.reserveRoute);
+          const stream = await withLock(
+            args.state,
+            streamAppendLockKey(route),
+            async (streamLock) => {
+              await prepareStreamAppend({
+                lock: streamLock,
+                route,
+                state: args.state,
+              });
+              await createAndQueue(async (input) => {
+                if (
+                  streamAppendLockKey(input.route) !==
+                  streamAppendLockKey(route)
+                ) {
+                  throw new Error("Reserved ACP output changed streams");
+                }
+                return await appendStreamOutputWithLock({
+                  ...input,
+                  lock: streamLock,
+                });
+              });
+            },
+            MUTATION_LOCK_OPTIONS,
           );
+          if (!stream.acquired) {
+            throw new Error("Timed out acquiring ACP stream append control");
+          }
+          return;
         }
         await fenceLock(args.state, lock, MUTATION_LOCK_TTL_MS);
         await queueReceipt({
@@ -554,11 +623,7 @@ export async function acceptAcpRequest(args: {
           state: args.state,
         });
       },
-      {
-        keepAlive: true,
-        ttlMs: MUTATION_LOCK_TTL_MS,
-        waitMs: LOCK_WAIT_MS,
-      },
+      MUTATION_LOCK_OPTIONS,
     );
     return result.acquired ? "accepted" : "busy";
   } catch (error) {
@@ -727,11 +792,11 @@ function createSseBody(args: {
   let leaseExpiresAt = args.lock.expiresAt;
   let retainingLease: Promise<void> | undefined;
 
-  const correlation = {
+  const correlation: AcpErrorContext = {
     connectionId: args.route.connectionId,
-    ...(args.route.sessionId ? { conversationId: args.route.sessionId } : {}),
-    ...(args.userId ? { userId: args.userId } : {}),
   };
+  if (args.route.sessionId) correlation.conversationId = args.route.sessionId;
+  if (args.userId) correlation.userId = args.userId;
   const cleanup = async (): Promise<void> => {
     if (cleaned) return;
     cleaned = true;

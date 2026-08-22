@@ -587,14 +587,15 @@ function dashboardRouteRegistrations(args: {
 }): HostRouteRegistration[] {
   let app: DashboardApp | undefined;
   const fetch = (request: Request) => {
-    app ??= args.createDashboardApp({
+    const dashboardOptions: JuniorDashboardRuntimeOptions = {
       ...args.dashboard,
-      ...(args.acpAuthorization
-        ? { acpAuthorization: args.acpAuthorization }
-        : {}),
       agentName: botConfig.userName,
       pluginRoutes: args.pluginRoutes,
-    });
+    };
+    if (args.acpAuthorization) {
+      dashboardOptions.acpAuthorization = args.acpAuthorization;
+    }
+    app ??= args.createDashboardApp(dashboardOptions);
     if (!app || typeof app.fetch !== "function") {
       throw new Error("createDashboardApp() must return an app with fetch()");
     }
@@ -653,6 +654,14 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     );
   }
   const dashboard = options?.dashboard ?? virtualConfig?.dashboard;
+  if (
+    options?.experimental?.acp === true &&
+    (!dashboard || dashboard.disabled)
+  ) {
+    throw new Error(
+      "createApp({ experimental: { acp: true } }) requires an enabled dashboard",
+    );
+  }
   const configuredPlugins = options?.plugins ?? virtualConfig?.pluginSet;
   const plugins = pluginRuntimeRegistrationsFromPluginSet(configuredPlugins);
   const pluginConfig = configuredPlugins

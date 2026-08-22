@@ -15,11 +15,15 @@ import {
   createIndependentConversationWork,
   initializeAndAuthenticate,
   initializeRequest,
+  mockAcpDashboardConfig,
   withAcpClient,
   withRawAcpConnection,
 } from "../fixtures/acp-http";
 import { deferred, streamReplies } from "../fixtures/conversation-work";
 import { createModelStream } from "../fixtures/model-stream";
+import { readProxyProperty } from "../fixtures/proxy-property";
+
+mockAcpDashboardConfig();
 
 describe("remote ACP HTTP", () => {
   afterEach(async () => {
@@ -554,7 +558,7 @@ describe("remote ACP HTTP", () => {
   it("terminates an SSE stream after it loses its shared lease", async () => {
     const harness = await createConversationWorkWebHarness();
     const state = new Proxy(harness.state, {
-      get(target, property, receiver) {
+      get(target, property) {
         if (property === "extendLock") {
           return async (
             lock: Parameters<StateAdapter["extendLock"]>[0],
@@ -564,7 +568,7 @@ describe("remote ACP HTTP", () => {
               ? false
               : await target.extendLock(lock, ttlMs);
         }
-        const value = Reflect.get(target, property, receiver) as unknown;
+        const value = readProxyProperty(target, property);
         return typeof value === "function" ? value.bind(target) : value;
       },
     });

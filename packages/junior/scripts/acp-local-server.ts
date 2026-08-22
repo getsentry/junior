@@ -5,6 +5,7 @@
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import type { AddressInfo } from "node:net";
+import path from "node:path";
 import { serve } from "@hono/node-server";
 import { createApp } from "@/app";
 import { completeAcpAuthorization } from "@sentry/junior-acp";
@@ -19,6 +20,7 @@ import { streamScript } from "../tests/fixtures/conversation-work";
 
 const DEFAULT_PORT = 3099;
 const DEFAULT_REPLY = "Local Junior ACP completed this Turn.";
+const JUNIOR_PACKAGE_ROOT = path.resolve(import.meta.dirname, "..");
 
 function localPort(): number {
   const raw = process.env.JUNIOR_ACP_LOCAL_PORT?.trim();
@@ -40,6 +42,7 @@ const harness = await createConversationWorkWebHarness({
 delete process.env.JUNIOR_BASE_URL;
 const app = await createApp({
   conversationWork: harness.conversationWork,
+  dashboard: { authRequired: false },
   experimental: { acp: true, subagents: true },
 });
 let drainActive = false;
@@ -130,7 +133,7 @@ console.log("Running the official SDK smoke client...");
 let smokeExitCode = 1;
 try {
   smoke = spawn(process.execPath, ["--import", "tsx", "scripts/acp-smoke.ts"], {
-    cwd: process.cwd(),
+    cwd: JUNIOR_PACKAGE_ROOT,
     env: {
       ...process.env,
       JUNIOR_ACP_FOLLOW_UP:

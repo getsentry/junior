@@ -56,16 +56,21 @@ describe("ACP transport", () => {
       acceptAcpRequest({
         connectionId: CONNECTION_ID,
         createReceipt,
+        reserveRoute: {
+          connectionId: CONNECTION_ID,
+          sessionId: SESSION_ID,
+        },
         requestKey: REQUEST_KEY,
         state,
       });
 
     await expect(accept()).resolves.toBe("full");
+    expect(createReceipt).not.toHaveBeenCalled();
     await expect(
       completeAcpRequest({
         connectionId: CONNECTION_ID,
         receipt: replayReceipt(),
-        requestKey: REQUEST_KEY,
+        requestKey: `${REQUEST_KEY}-completion`,
         state,
       }),
     ).resolves.toBe("full");

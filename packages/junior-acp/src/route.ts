@@ -10,7 +10,11 @@ import type { StateAdapter } from "chat";
 import type { User } from "@sentry/junior-plugin-api";
 import * as acp from "@agentclientprotocol/sdk";
 import { z } from "zod";
-import type { ConversationPort, ReportAcpError } from "./conversations";
+import type {
+  AcpErrorContext,
+  ConversationPort,
+  ReportAcpError,
+} from "./conversations";
 import {
   ACP_AUTH_METHOD,
   ACP_AUTH_METHOD_ID,
@@ -28,6 +32,7 @@ import {
   readAcpConnection,
   type AcpConnection,
   type AcpPromptStreamOutput,
+  type AcpReceiptOutput,
   type AcpRequestReceipt,
   type AcpStreamRoute,
 } from "./transport";
@@ -492,7 +497,7 @@ async function handleConnectedPost(args: {
 
   const identifiedCall = { ...args.call, id: requestId };
   const identifiedRequestKey = requestKey(identifiedCall);
-  const status = await acceptAcpRequest({
+  const acceptance: Parameters<typeof acceptAcpRequest>[0] = {
     connectionId: args.connectionId,
     requestKey: identifiedRequestKey,
     state: args.state,
@@ -543,18 +548,19 @@ async function handleConnectedPost(args: {
       } catch (error) {
         if (!(error instanceof acp.RequestError)) throw error;
         const sessionId = responseSessionId(args.call, args.route);
-        return {
-          outputs: [
-            {
-              kind: "message",
-              message: errorMessage(requestId, error),
-              ...(sessionId ? { sessionId } : {}),
-            },
-          ],
+        const output: AcpReceiptOutput = {
+          kind: "message",
+          message: errorMessage(requestId, error),
         };
+        if (sessionId) output.sessionId = sessionId;
+        return { outputs: [output] };
       }
     },
-  });
+  };
+  if (identifiedCall.method === acp.methods.agent.session.prompt) {
+    acceptance.reserveRoute = args.route;
+  }
+  const status = await acceptAcpRequest(acceptance);
   if (status === "busy") {
     return textResponse("ACP request is already being accepted", 503);
   }
@@ -705,14 +711,17 @@ export function createAcpHttpHandler(
         if (!accept?.includes(ACP_EVENT_STREAM_MIME_TYPE)) {
           return textResponse("Not Acceptable", 406);
         }
-        return await openAcpSse({
+        const route: AcpStreamRoute = { connectionId };
+        if (sessionId) route.sessionId = sessionId;
+        const stream: Parameters<typeof openAcpSse>[0] = {
           conversations: options.conversations,
           onError: options.onError,
           requestSignal: request.signal,
-          route: { connectionId, ...(sessionId ? { sessionId } : {}) },
+          route,
           state,
-          ...(authenticated ? { userId: authenticated.id } : {}),
-        });
+        };
+        if (authenticated) stream.userId = authenticated.id;
+        return await openAcpSse(stream);
       }
 
       if (request.method === "DELETE") {
@@ -728,11 +737,11 @@ export function createAcpHttpHandler(
       return textResponse("Method Not Allowed", 405);
     } catch (error) {
       const conversationId = sessionIdFromCall(call) ?? sessionId;
-      options.onError?.(error, "acp.transport.exception", {
-        ...(authenticated ? { userId: authenticated.id } : {}),
-        ...(connectionId ? { connectionId } : {}),
-        ...(conversationId ? { conversationId } : {}),
-      });
+      const context: AcpErrorContext = {};
+      if (authenticated) context.userId = authenticated.id;
+      if (connectionId) context.connectionId = connectionId;
+      if (conversationId) context.conversationId = conversationId;
+      options.onError?.(error, "acp.transport.exception", context);
       return textResponse("ACP transport failed", 500);
     }
   };

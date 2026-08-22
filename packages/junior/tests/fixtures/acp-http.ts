@@ -3,12 +3,28 @@ import { createHttpStream } from "@agentclientprotocol/sdk/experimental/http-cli
 import type { StateAdapter } from "chat";
 import type { Hono } from "hono";
 import { completeAcpAuthorization } from "@sentry/junior-acp";
+import { vi } from "vitest";
 import { createConversationWork } from "@/chat/app/conversation-work";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
 import type { ConversationWorkWebHarness } from "./api-turn";
 import { createSlackAdapterFixture } from "./conversation-work";
 
 export const ACP_TEST_URL = "http://junior.test/api/acp";
+
+/** Supply the enabled dashboard contract required by ACP integration apps. */
+export function mockAcpDashboardConfig(): void {
+  vi.doMock("#junior/config", () => ({
+    createDashboardApp: () => ({
+      fetch: () => new Response("Not Found", { status: 404 }),
+    }),
+    dashboard: { authRequired: false },
+    functionMaxDurationSeconds: undefined,
+    loadAcp: undefined,
+    pluginSet: undefined,
+    plugins: undefined,
+    pluginRuntimeRegistrations: [],
+  }));
+}
 
 /** Read the browser verification code shown by an ACP URL elicitation. */
 export function verificationCodeFromElicitation(

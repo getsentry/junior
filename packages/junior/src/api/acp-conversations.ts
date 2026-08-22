@@ -7,6 +7,7 @@
 import type { StateAdapter } from "chat";
 import type {
   ConversationPort,
+  ConversationTurnPage,
   ConversationTurnTerminal,
 } from "@sentry/junior-acp";
 import type { User } from "@sentry/junior-plugin-api";
@@ -241,7 +242,9 @@ export function createAcpConversationPort(
           terminal = { failureCode: data.failureCode, status: "failed" };
         }
       }
-      return { cursor, messages, ...(terminal ? { terminal } : {}) };
+      const turnPage: ConversationTurnPage = { cursor, messages };
+      if (terminal) turnPage.terminal = terminal;
+      return turnPage;
     },
   };
 }

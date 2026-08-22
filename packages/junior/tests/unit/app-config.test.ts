@@ -76,6 +76,21 @@ afterEach(async () => {
 });
 
 describe("createApp plugin config", () => {
+  it("requires an enabled dashboard for ACP browser authentication", async () => {
+    const expected =
+      "createApp({ experimental: { acp: true } }) requires an enabled dashboard";
+
+    await expect(createApp({ experimental: { acp: true } })).rejects.toThrow(
+      expected,
+    );
+    await expect(
+      createApp({
+        dashboard: { disabled: true },
+        experimental: { acp: true },
+      }),
+    ).rejects.toThrow(expected);
+  });
+
   it("routes Slack webhooks through the production Slack handler", async () => {
     const app = await createApp({
       plugins: defineJuniorPlugins([]),
