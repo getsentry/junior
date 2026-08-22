@@ -1,10 +1,10 @@
 import {
+  type PluginEgress,
   definePluginTool,
   PluginToolInputError,
   pluginToolOutputSchema,
   type PluginToolOutput,
   type SubscribableResource,
-  type ToolRegistrationHookContext,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import { subscribableResourceSchema } from "@sentry/junior-plugin-api";
@@ -58,7 +58,7 @@ async function readJson(response: Response): Promise<unknown> {
 
 /** Read one PR and expose its stable subscription identity when webhooks are enabled. */
 export function createGitHubGetPullRequestTool(
-  ctx: ToolRegistrationHookContext,
+  ctx: { egress: PluginEgress; resourceEvents: { canSubscribe: boolean } },
 ) {
   return definePluginTool({
     annotations: {

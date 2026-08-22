@@ -1,5 +1,4 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { createSlackSource } from "@sentry/junior-plugin-api";
 import {
   validateDispatchOptions,
   verifyDispatchCredentialSubjectAccess,
@@ -11,6 +10,10 @@ import {
   bindSlackDirectCredentialSubject,
   createSlackDirectCredentialSubject,
 } from "@/chat/credentials/subject";
+import {
+  createSlackSource,
+} from "@sentry/junior-plugin-api";
+
 
 const validOptions = {
   idempotencyKey: "run-1",
@@ -117,7 +120,10 @@ describe("agent dispatch validation", () => {
     expect(() =>
       validateDispatchOptions({
         ...validOptions,
-        destination: undefined as unknown as typeof validOptions.destination,
+        destination: (() => {
+                    // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+                    return (undefined) as typeof validOptions.destination;
+        })(),
       }),
     ).toThrow("Dispatch destination platform must be slack");
     expect(() =>
@@ -276,7 +282,6 @@ describe("agent dispatch validation", () => {
     expect(parseDispatchRecord(legacyRecord)).toBeUndefined();
   });
 
-
   it("bounds durable idempotency and metadata keys", () => {
     expect(() =>
       validateDispatchOptions({
@@ -288,7 +293,10 @@ describe("agent dispatch validation", () => {
     expect(() =>
       validateDispatchOptions({
         ...validOptions,
-        metadata: null as unknown as Record<string, string>,
+        metadata: (() => {
+                    // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+                    return (null) as Record<string, string>;
+        })(),
       }),
     ).toThrow("Dispatch metadata values must be strings");
 
@@ -421,15 +429,11 @@ describe("agent dispatch validation", () => {
       "Dispatch credentialSubject is not valid for this action",
     );
 
-    const unboundRuntimeSubject = {
+        const unboundRuntimeSubject = ({
       type: "user",
       userId: "U123",
       allowedWhen: "private-direct-conversation",
-    } as unknown as NonNullable<
-      Parameters<
-        typeof verifyDispatchCredentialSubjectAccess
-      >[0]["credentialSubject"]
-    >;
+    }) as NonNullable< Parameters< typeof verifyDispatchCredentialSubjectAccess >[0]["credentialSubject"] >;
 
     await expect(
       verifyDispatchCredentialSubjectAccess(

@@ -1,7 +1,7 @@
 import type {
   Actor,
   Identity,
-  ToolRegistrationHookContext,
+  PluginLogger,
   User,
 } from "@sentry/junior-plugin-api";
 
@@ -92,7 +92,13 @@ function applyAttribution(body: string, label: string | undefined): string {
  */
 export async function appendGitHubRequesterAttribution(
   body: string,
-  ctx: Pick<ToolRegistrationHookContext, "actor" | "log" | "users">,
+  ctx: {
+    actor?: Actor;
+    log: PluginLogger;
+    users: {
+      resolveActor(): Promise<{ identity?: Identity; user?: User } | undefined>;
+    };
+  },
 ): Promise<string> {
   let resolved:
     | {

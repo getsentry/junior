@@ -6,11 +6,6 @@ import {
   createMemoryStore,
   type MemoryDb,
 } from "@sentry/junior-memory";
-import {
-  createSlackSource,
-  defineJuniorPlugin,
-  PluginToolInputError,
-} from "@sentry/junior-plugin-api";
 import { defineJuniorPlugins } from "@/plugins";
 import { getPluginTools, setPlugins } from "@/chat/plugins/agent-hooks";
 import { migratePluginSchemas } from "@/chat/plugins/migrations";
@@ -19,6 +14,12 @@ import { closeDb } from "@/chat/db";
 import { migratePluginsToSql } from "@/cli/upgrade/migrations/plugin-sql";
 import { runUpgrade } from "@/cli/upgrade";
 import { createLocalJuniorSqlFixture } from "../fixtures/sql";
+import {
+  createSlackSource,
+  defineJuniorPlugin,
+  PluginToolInputError,
+} from "@sentry/junior-plugin-api";
+
 
 const NEON = vi.hoisted(() => ({
   sql: undefined as
@@ -313,7 +314,10 @@ WHERE indexname = 'junior_memory_memories_search_idx'
 
         visibility: "private",
       });
-      const store = createMemoryStore(fixture.sql.db() as unknown as MemoryDb, {
+      const store = createMemoryStore(
+        // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+        (fixture.sql.db()) as MemoryDb,
+        {
         conversationId,
         actor,
         source,

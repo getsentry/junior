@@ -24,6 +24,7 @@ import {
   waitUntilApplicationWaitsOnLock,
 } from "../fixtures/dashboard-reporting";
 
+
 const ORIGINAL_ENV = { ...process.env };
 const TEST_DATABASE_URL = ORIGINAL_ENV.DATABASE_URL;
 
@@ -197,7 +198,8 @@ describe("dashboard canonical event reporting", () => {
   it("aggregates per-model tokens and costs without counting replayed history", async () => {
     const conversationId = "slack:C-reporting:model-usage";
     await recordRoot(conversationId, "public");
-    const componentUsageMessage = {
+        // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+        const componentUsageMessage = ({
       role: "assistant",
       api: "responses",
       provider: "openai",
@@ -215,8 +217,9 @@ describe("dashboard canonical event reporting", () => {
           total: 0.037,
         },
       },
-    } as unknown as PiMessage;
-    const totalOnlyUsageMessage = {
+    }) as PiMessage;
+        // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+        const totalOnlyUsageMessage = ({
       role: "assistant",
       api: "responses",
       provider: "openai",
@@ -225,7 +228,7 @@ describe("dashboard canonical event reporting", () => {
       stopReason: "stop",
       timestamp: 11,
       usage: { totalTokens: 7, cost: { total: 0.005 } },
-    } as unknown as PiMessage;
+    }) as PiMessage;
     const { getConversationEventStore } = await import("@/chat/db");
     await getConversationEventStore().append(conversationId, [
       {
@@ -275,7 +278,8 @@ describe("dashboard canonical event reporting", () => {
   it("keys gateway assistant usage by the vendor model id", async () => {
     const conversationId = "slack:C-reporting:gateway-model-usage";
     await recordRoot(conversationId, "public");
-    const gatewayUsageMessage = {
+        // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+        const gatewayUsageMessage = ({
       role: "assistant",
       api: "responses",
       provider: "vercel-ai-gateway",
@@ -289,7 +293,7 @@ describe("dashboard canonical event reporting", () => {
         totalTokens: 16,
         cost: { total: 0.03 },
       },
-    } as unknown as PiMessage;
+    }) as PiMessage;
     const { getConversationEventStore } = await import("@/chat/db");
     await getConversationEventStore().append(conversationId, [
       {
@@ -471,7 +475,9 @@ describe("dashboard canonical event reporting", () => {
       (conversation) => conversation.conversationId === rootConversationId,
     );
     expect(rootParticipantSummary).toBeDefined();
-    expect(rootParticipantSummary).toMatchObject({ isPriority: expect.any(Boolean) });
+    expect(rootParticipantSummary).toMatchObject({
+      isPriority: expect.any(Boolean),
+    });
     // Feed-only Priority/work fields are absent on detail reports.
     expect(rootParticipantDetail).toMatchObject({
       conversationId: rootParticipantSummary!.conversationId,

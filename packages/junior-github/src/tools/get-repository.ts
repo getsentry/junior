@@ -1,11 +1,11 @@
 import {
+  type PluginEgress,
   definePluginTool,
   PluginToolInputError,
   pluginToolOutputSchema,
   subscribableResourceSchema,
   type PluginToolOutput,
   type SubscribableResource,
-  type ToolRegistrationHookContext,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import { gitHubRepositorySubscribable } from "../resource-events/repository.js";
@@ -54,7 +54,7 @@ async function readJson(response: Response): Promise<unknown> {
 
 /** Read one repository and expose its stable subscription identity. */
 export function createGitHubGetRepositoryTool(
-  ctx: ToolRegistrationHookContext,
+  ctx: { egress: PluginEgress; resourceEvents: { canSubscribe: boolean } },
 ) {
   return definePluginTool({
     annotations: {

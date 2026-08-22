@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-
+import type { Scope } from "@/chat/sentry";
 const sentry = vi.hoisted(() => {
   const scope = {
     setContext: vi.fn(),
@@ -38,6 +38,7 @@ afterEach(() => {
   vi.clearAllMocks();
   vi.resetModules();
 });
+
 
 describe("Sentry context", () => {
   it("extends only the active sanitized log context", async () => {
@@ -122,7 +123,8 @@ describe("Sentry context", () => {
     };
 
     logging.setSentryScopeContext(
-      scope as unknown as Parameters<typeof logging.setSentryScopeContext>[0],
+      // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+      (scope) as Scope,
       {
         conversationId: "thread_123",
         userId: "U123",

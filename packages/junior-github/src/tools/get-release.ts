@@ -1,11 +1,11 @@
 import {
+  type PluginEgress,
   definePluginTool,
   PluginToolInputError,
   pluginToolOutputSchema,
   subscribableResourceSchema,
   type PluginToolOutput,
   type SubscribableResource,
-  type ToolRegistrationHookContext,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import { gitHubReleaseSourceSubscribable } from "../resource-events/release.js";
@@ -109,7 +109,7 @@ function mapRelease(
 }
 
 /** Read release metadata and expose its stable subscription identity. */
-export function createGitHubGetReleaseTool(ctx: ToolRegistrationHookContext) {
+export function createGitHubGetReleaseTool(ctx: { egress: PluginEgress; resourceEvents: { canSubscribe: boolean } }) {
   return definePluginTool({
     annotations: {
       destructiveHint: false,
