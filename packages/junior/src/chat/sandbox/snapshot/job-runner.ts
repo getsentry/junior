@@ -119,11 +119,6 @@ export async function processWorkspaceSnapshotJob(
       "app.workspace.id": workspace.id,
       "app.workspace.snapshot.profile_hash": message.profileHash,
     });
-    await publishFinishedEvent({
-      workspaceId: workspace.id,
-      profileHash: message.profileHash,
-      status: "failed",
-    });
     return;
   }
 
