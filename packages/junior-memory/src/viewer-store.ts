@@ -4,7 +4,6 @@
  * Public memory is visible to every authenticated viewer. Private memory is
  * visible when the viewer participates in a conversation in its source domain.
  */
-import type { User } from "@sentry/junior-plugin-api";
 import {
   and,
   asc,
@@ -49,14 +48,7 @@ const viewerMemoryTimelineInputSchema = z
   .strict();
 const DAY_MS = 24 * 60 * 60 * 1_000;
 
-type ViewerMemoryCursor = z.output<typeof viewerMemoryCursorSchema>;
-
 type ViewerMemoryPageInput = z.output<typeof viewerMemoryPageInputSchema>;
-
-interface ViewerMemoryPage {
-  memories: ViewerMemory[];
-  nextCursor?: ViewerMemoryCursor;
-}
 
 /** Safe provenance attached to one viewer-visible memory. */
 export type ViewerMemory = MemoryRecord & {
@@ -67,47 +59,12 @@ export type ViewerMemory = MemoryRecord & {
 
 export type MemoryVisibility = z.output<typeof memoryVisibilitySchema>;
 
-/** Viewer-scoped active memory totals used by the dashboard. */
-export interface ViewerMemoryStats {
-  active: number;
-  automatic: number;
-  createdThirtyDays: number;
-  embedded: number;
-  explicit: number;
-  knowledge: number;
-  private: number;
-  preference: number;
-  procedure: number;
-  public: number;
-}
-
-/** Viewer-scoped memory creation totals for one UTC calendar day. */
-export interface ViewerMemoryDay {
-  date: string;
-  private: number;
-  public: number;
-}
-
 /** Expected failure when a viewer cannot read the requested memory. */
 export class ViewerMemoryNotFoundError extends Error {
   constructor() {
     super("Memory was not found for the authenticated viewer.");
     this.name = "ViewerMemoryNotFoundError";
   }
-}
-
-/** Viewer-scoped memory operations shared by dashboard and REST. */
-interface ViewerMemoryCollection {
-  /** Archive one exact private memory visible to the viewer. */
-  archive(id: string): Promise<MemoryRecord>;
-  /** Read one exact memory visible to the authorized scopes. */
-  get(id: string): Promise<ViewerMemory>;
-  /** List one stable page across every authorized viewer scope. */
-  list(input: ViewerMemoryPageInput): Promise<ViewerMemoryPage>;
-  /** Summarize active memories across every authorized viewer scope. */
-  stats(): Promise<ViewerMemoryStats>;
-  /** Read memory creation history across every authorized viewer scope. */
-  timeline(input: { days: number }): Promise<ViewerMemoryDay[]>;
 }
 
 function publicScopePredicate() {
@@ -202,13 +159,13 @@ function viewerMemory(
 /** Build storage operations for memory visible to one authenticated viewer. */
 export function createViewerMemoryCollection(
   db: MemoryDb,
-  viewer: Pick<User, "id">,
+  viewer: { id: string },
   options: { now?: () => number } = {},
-): ViewerMemoryCollection {
+) {
   const getNowMs = () => options.now?.() ?? Date.now();
 
   return {
-    async archive(id) {
+    async archive(id: string) {
       const memoryId = nonEmptyStringSchema.parse(id);
       const nowMs = getNowMs();
       const updated = await db
@@ -233,7 +190,7 @@ export function createViewerMemoryCollection(
       return parseMemoryRow(updated[0]);
     },
 
-    async get(id) {
+    async get(id: string) {
       const memoryId = nonEmptyStringSchema.parse(id);
       const nowMs = getNowMs();
       const rows = await db
@@ -252,7 +209,7 @@ export function createViewerMemoryCollection(
       return viewerMemory(rows[0]);
     },
 
-    async list(input) {
+    async list(input: ViewerMemoryPageInput) {
       input = viewerMemoryPageInputSchema.parse(input);
       const nowMs = getNowMs();
       const active = activeViewerPredicate(viewer.id, nowMs, input.visibility);
@@ -374,7 +331,7 @@ export function createViewerMemoryCollection(
       };
     },
 
-    async timeline(input) {
+    async timeline(input: { days: number }) {
       input = viewerMemoryTimelineInputSchema.parse(input);
       const todayMs = Date.parse(`${utcDate(getNowMs())}T00:00:00.000Z`);
       const startMs = todayMs - (input.days - 1) * DAY_MS;

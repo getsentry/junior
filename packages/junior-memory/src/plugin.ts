@@ -17,7 +17,6 @@ import { buildMemoryOperationalReport } from "./operational-report";
 import {
   memoriesCapturedEvent,
   memoriesCapturedEventV1,
-  memoriesCapturedEventV2,
   memoriesRecalledEvent,
 } from "./events";
 import type { MemoryDb } from "./store";
@@ -93,7 +92,6 @@ export function memoryPlugin(options: MemoryPluginOptions = {}) {
     packageName: "@sentry/junior-memory",
     conversationEvents: [
       memoriesCapturedEventV1,
-      memoriesCapturedEventV2,
       memoriesCapturedEvent,
       memoriesRecalledEvent,
     ],

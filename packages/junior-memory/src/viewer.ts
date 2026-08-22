@@ -5,13 +5,12 @@
  * source domains where their linked user participated.
  */
 import { z } from "zod";
-import type { User } from "@sentry/junior-plugin-api";
 import {
   createViewerMemoryCollection,
   type MemoryVisibility,
   type ViewerMemory,
 } from "./viewer-store";
-import type { MemoryDb, MemoryRecord } from "./store";
+import type { MemoryDb } from "./store";
 import type { MemoryKind } from "./types";
 
 const cursorSchema = z
@@ -97,15 +96,11 @@ function encodeCursor(
 }
 
 /** Build memory operations authorized for one linked viewer. */
-export function createViewerMemories(db: MemoryDb, viewer: User) {
+export function createViewerMemories(db: MemoryDb, viewer: { id: string }) {
   const collection = createViewerMemoryCollection(db, viewer);
   return {
-    async archive(id: string): Promise<MemoryRecord> {
-      return await collection.archive(id);
-    },
-    async get(id: string): Promise<ViewerMemory> {
-      return await collection.get(id);
-    },
+    archive: collection.archive,
+    get: collection.get,
     async list(input: ViewerMemoryPageInput): Promise<ViewerMemoryPage> {
       const query = input.query?.trim() || undefined;
       const filters = {
@@ -126,11 +121,7 @@ export function createViewerMemories(db: MemoryDb, viewer: User) {
           : undefined),
       };
     },
-    async stats() {
-      return await collection.stats();
-    },
-    async timeline(input: { days: number }) {
-      return await collection.timeline(input);
-    },
+    stats: collection.stats,
+    timeline: collection.timeline,
   };
 }

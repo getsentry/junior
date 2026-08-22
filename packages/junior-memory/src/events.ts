@@ -1,9 +1,7 @@
 import { defineConversationEvent } from "@sentry/junior-plugin-api";
 import { z } from "zod";
-import { MEMORY_KINDS, MEMORY_SCOPES } from "./types";
+import { MEMORY_KINDS } from "./types";
 import type { MemoryRecord } from "./store";
-
-const LEGACY_MEMORY_SCOPES = ["personal", "conversation"] as const;
 
 const capturedMemoryFields = {
   content: z.string().min(1),
@@ -15,27 +13,21 @@ const capturedMemoryFields = {
 const capturedMemorySchema = z
   .object({
     ...capturedMemoryFields,
-    scope: z.enum(MEMORY_SCOPES),
-  })
-  .strict();
-
-const legacyCapturedMemorySchema = z
-  .object({
-    ...capturedMemoryFields,
-    scope: z.enum(LEGACY_MEMORY_SCOPES),
+    scope: z
+      .enum(["personal", "conversation", "private", "public"])
+      .transform((scope) =>
+        scope === "personal"
+          ? "private"
+          : scope === "conversation"
+            ? "public"
+            : scope,
+      ),
   })
   .strict();
 
 const capturedMemoriesSchema = z
   .object({
     memories: z.array(capturedMemorySchema).max(100),
-    costUsd: z.number().finite().nonnegative().optional(),
-  })
-  .strict();
-
-const legacyCapturedMemoriesSchema = z
-  .object({
-    memories: z.array(legacyCapturedMemorySchema).max(100),
     costUsd: z.number().finite().nonnegative().optional(),
   })
   .strict();
@@ -49,10 +41,7 @@ const recalledMemoriesSchema = z
   .strict();
 
 function renderCapturedMemories(event: {
-  memories: Array<
-    | z.output<typeof capturedMemorySchema>
-    | z.output<typeof legacyCapturedMemorySchema>
-  >;
+  memories: Array<z.output<typeof capturedMemorySchema>>;
 }) {
   const count = event.memories.length;
   if (count === 0) return undefined;
@@ -72,24 +61,16 @@ export const memoriesCapturedEventV1 = defineConversationEvent({
   version: 1,
   schema: z
     .object({
-      memories: z.array(legacyCapturedMemorySchema).min(1).max(100),
+      memories: z.array(capturedMemorySchema).min(1).max(100),
     })
     .strict(),
-  renderEvent: renderCapturedMemories,
-});
-
-/** Previous cost-bearing capture event retained for transcript rendering. */
-export const memoriesCapturedEventV2 = defineConversationEvent({
-  name: "memories_captured",
-  version: 2,
-  schema: legacyCapturedMemoriesSchema,
   renderEvent: renderCapturedMemories,
 });
 
 /** Durable outcome emitted after every completed passive memory extraction. */
 export const memoriesCapturedEvent = defineConversationEvent({
   name: "memories_captured",
-  version: 3,
+  version: 2,
   schema: capturedMemoriesSchema,
   renderEvent: renderCapturedMemories,
 });

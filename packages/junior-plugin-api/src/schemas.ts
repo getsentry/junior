@@ -149,8 +149,6 @@ export const systemActorSchema = z
   })
   .strict();
 
-// TODO(dcramer): Separate actor kind from provider platform.
-// System actors should not use `platform: "system"`.
 /** Runtime-provided actor identity visible to plugin hooks. */
 export const actorSchema = z.discriminatedUnion("platform", [
   slackActorSchema,
