@@ -1,4 +1,5 @@
 import { http, HttpResponse } from "msw";
+import { TEST_USER_ID } from "../../fixtures/slack/factories/ids";
 import {
   slackOk,
   authTestOk,
@@ -469,8 +470,12 @@ export const slackApiHandlers = [
       },
     });
 
+    const email =
+      userId === TEST_USER_ID
+        ? undefined
+        : `${userId.toLowerCase()}@example.com`;
     const response = dequeueResponse("users.info") ?? {
-      body: usersInfoOk({ userId }),
+      body: usersInfoOk({ userId, email }),
     };
 
     return toHttpResponse(response);
