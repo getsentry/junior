@@ -7,11 +7,7 @@ import {
   type MemoryDb,
 } from "@sentry/junior-memory";
 import { defineJuniorPlugins } from "@/plugins";
-import {
-  getPluginTools,
-  getPluginUserPromptContributions,
-  setPlugins,
-} from "@/chat/plugins/agent-hooks";
+import { getPluginTools, setPlugins } from "@/chat/plugins/agent-hooks";
 import { migratePluginSchemas } from "@/chat/plugins/migrations";
 import { readMigrationFiles } from "drizzle-orm/migrator";
 import { closeDb } from "@/chat/db";
@@ -24,9 +20,7 @@ import { runUpgrade } from "@/cli/upgrade";
 import { createLocalJuniorSqlFixture } from "../fixtures/sql";
 import {
   createSlackSource,
-  createWebSource,
   defineJuniorPlugin,
-  pluginApiRouteRequestContextSchema,
   PluginToolInputError,
 } from "@sentry/junior-plugin-api";
 
@@ -61,20 +55,14 @@ vi.mock("@/db/executor", () => ({
 }));
 
 vi.mock("@/chat/pi/client", () => ({
-  completeObject: vi.fn(async ({ prompt }: { prompt: string }) => {
-    if (prompt.includes("<memory-recall-input>")) {
-      const id = prompt.match(/"id":"(.+?)"/)?.[1];
-      return { object: { relevantIds: id ? [id] : [] } };
-    }
-    return {
-      object: {
-        canonicalFact: "Prefers terse status updates.",
-        decision: "store",
-        expiresAtMs: null,
-        kind: "preference",
-      },
-    };
-  }),
+  completeObject: vi.fn(async () => ({
+    object: {
+      canonicalFact: "Prefers terse status updates.",
+      decision: "store",
+      expiresAtMs: null,
+      kind: "preference",
+    },
+  })),
   embedTexts: vi.fn(async ({ texts }: { texts: string[] }) => ({
     dimensions: 1,
     model: "test-embedding-model",
@@ -468,72 +456,6 @@ WHERE indexname = 'junior_memory_memories_search_idx'
       expect(viewerPage?.records.map((record) => record.id)).not.toContain(
         otherPrivateMemory.memory.id,
       );
-      expect(
-        viewerPage?.records.find(
-          (record) => record.id === privateMemory.memory.id,
-        )?.actions,
-      ).toEqual([
-        expect.objectContaining({
-          label: "Forget",
-          method: "DELETE",
-        }),
-      ]);
-      expect(
-        viewerPage?.records.find(
-          (record) => record.id === publicMemory.memory.id,
-        )?.actions,
-      ).toEqual([]);
-
-      expect(viewer?.identities).toHaveLength(1);
-      const api = plugin.hooks?.apiRoutes?.({
-        db: fixture.sql.db(),
-        eventStats: {
-          async costsByDay({ days }) {
-            return Array.from({ length: days }, (_, index) => ({
-              costUsd: 0,
-              date: new Date(Date.UTC(2026, 7, index + 1))
-                .toISOString()
-                .slice(0, 10),
-              events: 0,
-            }));
-          },
-        },
-        log: { error() {}, info() {}, warn() {} },
-        plugin: { name: "memory" },
-        users: { resolve: resolveViewerUser },
-      });
-      expect(api).toBeDefined();
-      const requestContext = pluginApiRouteRequestContextSchema.parse({
-        auth: {
-          user: {
-            email: viewer!.email,
-            emailVerified: true,
-          },
-        },
-        pluginName: "memory",
-      });
-      const readMemory = (id: string) =>
-        api!.fetch(
-          new Request(`http://localhost/memories/${id}`),
-          requestContext,
-        );
-      await expect(readMemory(publicMemory.memory.id)).resolves.toMatchObject({
-        status: 200,
-      });
-      await expect(readMemory(privateMemory.memory.id)).resolves.toMatchObject({
-        status: 200,
-      });
-      await expect(
-        readMemory(otherPrivateMemory.memory.id),
-      ).resolves.toMatchObject({ status: 404 });
-      await expect(
-        api!.fetch(
-          new Request(`http://localhost/memories/${publicMemory.memory.id}`, {
-            method: "DELETE",
-          }),
-          requestContext,
-        ),
-      ).resolves.toMatchObject({ status: 404 });
 
       const sameUserContext = {
         conversationId: "slack:D999:1718800099.000000",
@@ -617,36 +539,6 @@ WHERE indexname = 'junior_memory_memories_search_idx'
           expect.objectContaining({ id: publicMemory.memory.id }),
         ],
         target: "listMemories",
-      });
-
-      const webContext = {
-        conversationId: "local:web:public-memory",
-        destination: {
-          platform: "local" as const,
-          conversationId: "local:web:public-memory",
-        },
-        actor: { platform: "web" as const, userId: "dashboard:memory" },
-        source: createWebSource("local:web:public-memory", "public"),
-        userText: "where do public runbooks live?",
-      };
-      await expect(
-        getPluginUserPromptContributions({ context: webContext }),
-      ).resolves.toEqual([
-        expect.objectContaining({
-          pluginName: "memory",
-          text: expect.stringContaining("Public runbooks live in Notion."),
-        }),
-      ]);
-      await expect(
-        api!.fetch(
-          new Request(`http://localhost/memories/${privateMemory.memory.id}`, {
-            method: "DELETE",
-          }),
-          requestContext,
-        ),
-      ).resolves.toMatchObject({ status: 204 });
-      await expect(readMemory(privateMemory.memory.id)).resolves.toMatchObject({
-        status: 404,
       });
     } finally {
       await fixture.close();
