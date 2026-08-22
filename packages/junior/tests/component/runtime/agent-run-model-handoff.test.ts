@@ -919,6 +919,35 @@ describe("model handoff composition", () => {
     ]);
   });
 
+  it("resumes a stored non-default route without a handoff", async () => {
+    observations.requestedProfile = null;
+    const conversationId = "local:test:model-route-resume";
+    const turnId = "turn-model-route-resume";
+    await recordTurnRoute({
+      conversationId,
+      turnId,
+      modelProfile: "coding",
+      modelId: "openai/gpt-5.4",
+      reasoningLevel: "high",
+      source: "router",
+    });
+
+    const resumed = await executeAgentRun({
+      conversationId,
+      runId: "run-model-route-resume",
+      turnId,
+      instruction: { text: "Continue the refactor." },
+      destination: { platform: "local", conversationId },
+      source: createLocalSource(conversationId),
+    });
+
+    expect(resumed.status).toBe("completed");
+    if (resumed.status !== "completed") return;
+    expect(resumed.result.diagnostics.modelId).toBe("openai/gpt-5.4");
+    expect(observations.initialModelId).toBe("openai/gpt-5.4");
+    expect(observations.routerCalls).toBe(0);
+  });
+
   it("resumes a stored route after handoff to the default profile", async () => {
     observations.requestedProfile = null;
     const conversationId = "local:test:model-handoff-default-resume";
