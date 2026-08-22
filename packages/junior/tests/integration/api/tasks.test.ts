@@ -14,7 +14,7 @@ import {
   resolveViewerUser,
   resolveViewerUserFromSql,
 } from "@/chat/plugins/viewer";
-import { createSchedulerSqlStore } from "@/chat/scheduled-tasks/store";
+import { saveScheduledTask } from "@/chat/scheduled-tasks/tasks";
 import type { ScheduledTask } from "@/chat/scheduled-tasks/types";
 import { recordTaskExecution } from "@/chat/tasks/execution-stats";
 import { createConfiguredJuniorSqlFixture } from "../../fixtures/sql";
@@ -141,9 +141,8 @@ describe("Tasks API", () => {
         task: { text: "" },
         updatedAtMs: nowMs,
       };
-      const scheduledStore = createSchedulerSqlStore(fixture.sql.db());
-      await scheduledStore.saveTask(scheduledTask);
-      await scheduledStore.saveTask({
+      await saveScheduledTask(fixture.sql.db(), scheduledTask);
+      await saveScheduledTask(fixture.sql.db(), {
         ...scheduledTask,
         id: "sched_public_tasks_api",
         createdAtMs: nowMs + 2,
@@ -413,7 +412,7 @@ describe("Tasks API", () => {
       expect(deniedExecutions.status).toBe(404);
 
       for (let index = 0; index <= 100; index += 1) {
-        await scheduledStore.saveTask({
+        await saveScheduledTask(fixture.sql.db(), {
           ...scheduledTask,
           id: `sched_public_crowding_${index}`,
           createdAtMs: nowMs + 1_000 + index,
@@ -485,9 +484,12 @@ describe("Tasks API", () => {
         method: "DELETE",
       });
       expect(deletedScheduled.status).toBe(204);
-      await expect(
-        scheduledStore.getTask("sched_tasks_api"),
-      ).resolves.toMatchObject({ status: "deleted" });
+      const [deletedScheduledTask] = await fixture.sql.query<{
+        status: string;
+      }>("SELECT status FROM junior_scheduler_tasks WHERE id = $1", [
+        "sched_tasks_api",
+      ]);
+      expect(deletedScheduledTask).toMatchObject({ status: "deleted" });
 
       const deletedEvent = await authenticatedApi("viewer@example.com").request(
         "http://localhost/api/tasks/event/event_tasks_api",

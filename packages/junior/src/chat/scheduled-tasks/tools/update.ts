@@ -3,6 +3,10 @@ import { completeText } from "@/chat/pi/client";
 import { generateShortTitle } from "@/chat/services/short-title";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { z } from "zod";
+import { and, eq, inArray } from "drizzle-orm";
+import { getDb } from "@/chat/db";
+import { juniorSchedulerRuns } from "@/db/schema/scheduled-tasks";
+import { readScheduledTask, saveScheduledTask } from "../tasks";
 import {
   compileScheduleIntent,
   ScheduleIntentError,
@@ -20,7 +24,6 @@ import {
   sameDestination,
   scheduleTaskToolResult,
   scheduleTaskToolResultSchema,
-  schedulerStore,
   throwToolInputError,
   type SchedulerToolContext,
 } from "../tool-support";
@@ -77,8 +80,8 @@ export function createSlackScheduleUpdateTaskTool(
     execute: async (input) => {
       const activeDestination = requireActiveConversation(context);
       const actor = requireActor(context, activeDestination);
-      const store = schedulerStore(context);
-      const lookup = await store.getTask(input.task_id);
+      const db = getDb();
+      const lookup = await readScheduledTask(db, input.task_id);
       if (!lookup || lookup.status === "deleted") {
         throwToolInputError("Scheduled task was not found.");
       }
@@ -118,7 +121,16 @@ export function createSlackScheduleUpdateTaskTool(
 
       const changingDestination = moveHere && !alreadyHere;
       if (changingDestination) {
-        const incompleteRuns = await store.listIncompleteRunsForTasks([lookup]);
+        const incompleteRuns = await db
+          .select({ id: juniorSchedulerRuns.id })
+          .from(juniorSchedulerRuns)
+          .where(
+            and(
+              eq(juniorSchedulerRuns.taskId, lookup.id),
+              inArray(juniorSchedulerRuns.status, ["pending", "running"]),
+            ),
+          )
+          .limit(1);
         if (incompleteRuns.length > 0) {
           throwToolInputError(
             "Scheduled task cannot be moved while an occurrence is already running. Try again after the current run finishes.",
@@ -213,15 +225,8 @@ export function createSlackScheduleUpdateTaskTool(
         );
       }
 
-      await store.saveTask(next);
-      const committed = await store.getTask(input.task_id);
-      if (!committed) {
-        throwToolInputError("Scheduled task update did not complete.");
-      }
+      const committed = await saveScheduledTask(db, next);
       if (changingDestination) {
-        if (!sameDestination(committed, activeDestination)) {
-          throwToolInputError("Scheduled task move did not complete.");
-        }
         logInfo(
           "scheduled_task.move.completed",
           scheduledTaskAttributes(committed),

@@ -7,12 +7,13 @@ import {
   type SlackSource,
   type User,
 } from "@sentry/junior-plugin-api";
+import { getDb } from "@/chat/db";
 import { getDashboardTaskLink } from "@/chat/slack/dashboard-link";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import { z } from "zod";
 import { sanitizeScheduledTaskPrincipal } from "./identity";
-import { type SchedulerStore } from "./store";
+import { readScheduledTask } from "./tasks";
 import type {
   ScheduledTask,
   ScheduledTaskConversationAccess,
@@ -24,7 +25,6 @@ export interface SchedulerToolContext {
   actor?: SlackActor;
   now?: () => number;
   source?: SlackSource;
-  store: SchedulerStore;
   users: {
     resolveActor(): Promise<{ identity: Identity; user?: User } | undefined>;
   };
@@ -190,7 +190,7 @@ export async function getWritableTask(args: {
 }): Promise<ScheduledTask> {
   const destination = requireActiveConversation(args.context);
 
-  const task = await schedulerStore(args.context).getTask(args.taskId);
+  const task = await readScheduledTask(getDb(), args.taskId);
   if (!task || task.status === "deleted") {
     throwToolInputError(
       "Scheduled task was not found in the active Slack conversation.",
@@ -291,11 +291,6 @@ export function buildTaskId(args: {
     .digest("hex")
     .slice(0, 32);
   return `${TASK_ID_PREFIX}_${digest}`;
-}
-
-/** Keep concrete scheduler tools coupled to the injected store, not global state. */
-export function schedulerStore(context: SchedulerToolContext): SchedulerStore {
-  return context.store;
 }
 
 /** Accept only persisted scheduler statuses from model-facing update input. */

@@ -1,10 +1,7 @@
 import { describeEval } from "vitest-evals";
 import { expect } from "vitest";
 import { getDb } from "@/chat/db";
-import {
-  createSchedulerSqlStore,
-  type SchedulerDb,
-} from "@/chat/scheduled-tasks";
+import { readScheduledTask } from "@/chat/scheduled-tasks/tasks";
 import { mention, rubric, slackEvals } from "../../../src/helpers";
 import {
   scheduledTaskCreateCalls,
@@ -144,9 +141,7 @@ describeEval("Schedule Destination Updates", slackEvals, (it) => {
     expect(scheduledTaskCreateCalls(result.session)).toEqual([]);
     expect(scheduledTaskDeleteCalls(result.session)).toEqual([]);
 
-    const stored = await createSchedulerSqlStore(
-      getDb() as unknown as SchedulerDb,
-    ).getTask(taskId);
+    const stored = await readScheduledTask(getDb(), taskId);
     expect(stored).toMatchObject({
       id: taskId,
       credentialMode: "creator",

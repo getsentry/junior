@@ -8,14 +8,16 @@ import {
 } from "node:fs";
 import path from "node:path";
 import { tmpdir } from "node:os";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { claimDueScheduledRun } from "@/chat/scheduled-tasks/runs";
 import {
-  createSchedulerSqlStore,
-  type ScheduledTask,
-  type SchedulerDb,
-} from "@/chat/scheduled-tasks";
+  readScheduledTask as readTask,
+  saveScheduledTask,
+} from "@/chat/scheduled-tasks/tasks";
+import type { ScheduledTask } from "@/chat/scheduled-tasks/types";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { upsertIdentity } from "@/chat/identities/sql";
+import { deferred } from "../fixtures/conversation-work";
 import { createLocalJuniorSqlFixture } from "../fixtures/sql";
 
 const TEST_RUN_AT_MS = Date.parse("2026-05-26T12:00:00.000Z");
@@ -240,19 +242,44 @@ describe("scheduled-task SQL storage", () => {
       await fixture.sql.execute(
         `INSERT INTO junior_scheduler_tasks (
           id, team_id, creator_slack_user_id, status, next_run_at_ms,
-          run_now_at_ms, created_at_ms, record
+          run_now_at_ms, created_at_ms, title, record
         ) SELECT $2, team_id, creator_slack_user_id, status, next_run_at_ms,
-                 run_now_at_ms, created_at_ms,
-                 (record - 'creatorIdentityId') || jsonb_build_object('id', $2::text)
+                 run_now_at_ms, created_at_ms, '',
+                 (record - 'creatorIdentityId') || jsonb_build_object(
+                   'id', $2::text,
+                   'creatorIdentityId', 42,
+                   'title', jsonb_build_object('invalid', true)
+                 )
           FROM junior_scheduler_tasks WHERE id = $1`,
         [legacyTask.id, rollingTaskId],
       );
-      const store = createSchedulerSqlStore(
-        fixture.sql.db() as unknown as SchedulerDb,
-      );
-      await expect(store.getTask(rollingTaskId)).resolves.toMatchObject({
+      const rollingTask = await readTask(fixture.sql.db(), rollingTaskId);
+      expect(rollingTask).toMatchObject({
         creatorIdentityId: identity.id,
         id: rollingTaskId,
+      });
+      expect(rollingTask).not.toHaveProperty("title");
+
+      const legacyTitleTaskId = `${legacyTask.id}_legacy_title`;
+      await fixture.sql.execute(
+        `INSERT INTO junior_scheduler_tasks (
+          id, team_id, creator_slack_user_id, status, next_run_at_ms,
+          run_now_at_ms, created_at_ms, title, record
+        ) SELECT $2, team_id, creator_slack_user_id, status, next_run_at_ms,
+                 run_now_at_ms, created_at_ms, NULL,
+                 (record - 'creatorIdentityId') || jsonb_build_object(
+                   'id', $2::text,
+                   'title', 'Legacy null title'
+                 )
+          FROM junior_scheduler_tasks WHERE id = $1`,
+        [legacyTask.id, legacyTitleTaskId],
+      );
+      await expect(
+        readTask(fixture.sql.db(), legacyTitleTaskId),
+      ).resolves.toMatchObject({
+        creatorIdentityId: identity.id,
+        id: legacyTitleTaskId,
+        title: "Legacy null title",
       });
     } finally {
       rmSync(oldCoreMigrations, { force: true, recursive: true });
@@ -265,22 +292,93 @@ describe("scheduled-task SQL storage", () => {
 
     try {
       await migrateSchema(fixture.sql);
-      const store = createSchedulerSqlStore(
-        fixture.sql.db() as unknown as SchedulerDb,
-      );
+      const db = fixture.sql.db();
       const task = createTask();
-      await store.saveTask(task);
+      await saveScheduledTask(db, task);
 
-      await expect(store.getTask(task.id)).resolves.toMatchObject(task);
-      const run = await store.claimDueRun({ nowMs: TEST_NOW_MS });
+      await expect(readTask(db, task.id)).resolves.toMatchObject(task);
+      const [first, second] = await Promise.all([
+        claimDueScheduledRun(db, { nowMs: TEST_NOW_MS }),
+        claimDueScheduledRun(db, { nowMs: TEST_NOW_MS }),
+      ]);
+      const run = first ?? second;
+      expect([first, second].filter(Boolean)).toHaveLength(1);
       expect(run).toMatchObject({
         id: `${task.id}:${TEST_RUN_AT_MS}`,
         scheduledForMs: TEST_RUN_AT_MS,
         status: "pending",
       });
-      await expect(store.claimDueRun({ nowMs: TEST_NOW_MS })).resolves.toBe(
-        undefined,
-      );
+      const reclaimedAtMs = TEST_NOW_MS + 60_000;
+      const reclaimed = await Promise.all([
+        claimDueScheduledRun(db, { nowMs: reclaimedAtMs }),
+        claimDueScheduledRun(db, { nowMs: reclaimedAtMs }),
+      ]);
+      expect(reclaimed.filter(Boolean)).toHaveLength(1);
+      expect(reclaimed.find(Boolean)).toMatchObject({
+        attempt: 2,
+        claimedAtMs: reclaimedAtMs,
+      });
+    } finally {
+      await fixture.close();
+    }
+  }, 30_000);
+
+  it("does not overwrite a concurrent task save while skipping missed work", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+
+    try {
+      await migrateSchema(fixture.sql);
+      const db = fixture.sql.db();
+      const task = createTask({
+        id: "sched_concurrent_missed_save",
+        title: "Original title",
+      });
+      await saveScheduledTask(db, task);
+      const missedNowMs = TEST_RUN_AT_MS + 24 * 60 * 60 * 1000 + 1;
+      const savedNextRunAtMs = missedNowMs + 60_000;
+      const saveCanCommit = deferred();
+      const saveWritten = deferred();
+      const saving = db.transaction(async (tx) => {
+        await saveScheduledTask(tx, {
+          ...task,
+          nextRunAtMs: savedNextRunAtMs,
+          title: "Concurrent edit",
+          updatedAtMs: missedNowMs,
+        });
+        saveWritten.resolve();
+        await saveCanCommit.promise;
+      });
+      await saveWritten.promise;
+
+      const claiming = claimDueScheduledRun(db, { nowMs: missedNowMs });
+      try {
+        await vi.waitFor(
+          async () => {
+            const [row] = await fixture.sql.query<{ waiting: boolean }>(
+              `SELECT EXISTS (
+                 SELECT 1
+                 FROM pg_stat_activity
+                 WHERE datname = current_database()
+                   AND pid <> pg_backend_pid()
+                   AND wait_event_type = 'Lock'
+               ) AS waiting`,
+            );
+            expect(row?.waiting).toBe(true);
+          },
+          { interval: 10, timeout: 5_000 },
+        );
+      } finally {
+        saveCanCommit.resolve();
+      }
+
+      await saving;
+      await expect(claiming).resolves.toBeUndefined();
+      await expect(readTask(db, task.id)).resolves.toMatchObject({
+        nextRunAtMs: savedNextRunAtMs,
+        status: "active",
+        title: "Concurrent edit",
+        updatedAtMs: missedNowMs,
+      });
     } finally {
       await fixture.close();
     }
@@ -291,9 +389,7 @@ describe("scheduled-task SQL storage", () => {
 
     try {
       await migrateSchema(fixture.sql);
-      const store = createSchedulerSqlStore(
-        fixture.sql.db() as unknown as SchedulerDb,
-      );
+      const db = fixture.sql.db();
       const task = createTask({ id: "sched_valid_after_bad_record" });
       await fixture.sql.execute(
         `INSERT INTO junior_scheduler_tasks (
@@ -311,11 +407,11 @@ describe("scheduled-task SQL storage", () => {
           JSON.stringify({ id: "sched_bad_record" }),
         ],
       );
-      await store.saveTask(task);
+      await saveScheduledTask(db, task);
 
-      await expect(store.getTask("sched_bad_record")).resolves.toBeUndefined();
+      await expect(readTask(db, "sched_bad_record")).resolves.toBeUndefined();
       await expect(
-        store.claimDueRun({ nowMs: TEST_NOW_MS }),
+        claimDueScheduledRun(db, { nowMs: TEST_NOW_MS }),
       ).resolves.toMatchObject({ taskId: task.id });
     } finally {
       await fixture.close();
