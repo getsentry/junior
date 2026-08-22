@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import type { PiMessage } from "@/chat/pi/messages";
 import {
-  continueWorkspaceSnapshotWait,
-  pendingWorkspaceSnapshotWait,
-} from "@/chat/services/workspace-snapshot-wait";
+  continueTimedOutTool,
+  pendingTimedOutToolContinuation,
+} from "@/chat/tool-support/timed-out-tool-continuation";
 
 const usage = {
   input: 0,
@@ -42,23 +42,29 @@ function waitingMessages(name = "sentry"): PiMessage[] {
       timestamp: 2,
       details: {
         workspace: { name },
-        waiting: "workspace_snapshot",
         timed_out: true,
+        continuation: {
+          tool_name: "switchWorkspace",
+          arguments: { name },
+          reason: "workspace snapshot still building",
+        },
       },
     },
   ];
 }
 
-describe("Workspace snapshot wait continuation", () => {
-  it("detects a soft-wait tool result", () => {
-    expect(pendingWorkspaceSnapshotWait(waitingMessages())).toEqual({
-      name: "sentry",
+describe("timed-out tool continuation", () => {
+  it("detects a timed_out continuation tool result", () => {
+    expect(pendingTimedOutToolContinuation(waitingMessages())).toEqual({
+      toolName: "switchWorkspace",
+      arguments: { name: "sentry" },
+      reason: "workspace snapshot still building",
     });
   });
 
   it("detects a wait before sibling tool results", () => {
     expect(
-      pendingWorkspaceSnapshotWait([
+      pendingTimedOutToolContinuation([
         ...waitingMessages(),
         {
           role: "toolResult",
@@ -70,12 +76,16 @@ describe("Workspace snapshot wait continuation", () => {
           details: { status: "building" },
         },
       ]),
-    ).toEqual({ name: "sentry" });
+    ).toEqual({
+      toolName: "switchWorkspace",
+      arguments: { name: "sentry" },
+      reason: "workspace snapshot still building",
+    });
   });
 
-  it("does not revive an older wait after a newer Workspace switch succeeds", () => {
+  it("does not revive an older wait after a newer call of the same tool succeeds", () => {
     expect(
-      pendingWorkspaceSnapshotWait([
+      pendingTimedOutToolContinuation([
         ...waitingMessages("old-workspace"),
         {
           role: "toolResult",
@@ -92,15 +102,18 @@ describe("Workspace snapshot wait continuation", () => {
     ).toBeNull();
   });
 
-  it("continues switchWorkspace from tool-result boundaries until ready", async () => {
+  it("continues the same tool from tool-result boundaries until ready", async () => {
     const execute = vi
       .fn()
       .mockResolvedValueOnce({
         content: [{ type: "text", text: "still building" }],
         details: {
           workspace: { name: "sentry" },
-          waiting: "workspace_snapshot",
           timed_out: true,
+          continuation: {
+            arguments: { name: "sentry" },
+            reason: "workspace snapshot still building",
+          },
         },
       })
       .mockResolvedValueOnce({
@@ -117,14 +130,19 @@ describe("Workspace snapshot wait continuation", () => {
       },
     ];
 
-    const first = await continueWorkspaceSnapshotWait({
+    const first = await continueTimedOutTool({
       messages: waitingMessages(),
       tools: tools as never,
     });
     expect(first.kind).toBe("waiting");
     expect(execute).toHaveBeenCalledTimes(1);
+    expect(execute).toHaveBeenLastCalledWith(
+      expect.any(String),
+      { name: "sentry" },
+      undefined,
+    );
 
-    const second = await continueWorkspaceSnapshotWait({
+    const second = await continueTimedOutTool({
       messages: first.kind === "none" ? waitingMessages() : first.messages,
       tools: tools as never,
     });
@@ -134,7 +152,7 @@ describe("Workspace snapshot wait continuation", () => {
 
   it("keeps a valid tool-result boundary when host continuation fails", async () => {
     const error = new Error("Workspace was deleted");
-    const failed = await continueWorkspaceSnapshotWait({
+    const failed = await continueTimedOutTool({
       messages: waitingMessages(),
       tools: [
         {

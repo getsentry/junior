@@ -384,8 +384,11 @@ describe("Workspace tools", () => {
       tools.switchWorkspace!.execute!({ name: workspace.name }, {}),
     ).resolves.toMatchObject({
       workspace: { id: workspace.id },
-      waiting: "workspace_snapshot",
       timed_out: true,
+      continuation: {
+        arguments: { name: workspace.name },
+        reason: "workspace snapshot still building",
+      },
     });
   });
 });

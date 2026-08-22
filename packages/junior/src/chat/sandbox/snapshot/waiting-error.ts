@@ -1,6 +1,7 @@
 /**
  * Soft deadline hit while a Workspace snapshot is still building.
- * The tool returns timed_out so the host can yield at a tool-result boundary.
+ * switchWorkspace maps this to timed_out + continuation so the host can
+ * re-invoke the tool at a tool-result boundary.
  */
 export class WorkspaceSnapshotWaitingError extends Error {
   readonly code = "workspace_snapshot_waiting";
@@ -13,33 +14,6 @@ export class WorkspaceSnapshotWaitingError extends Error {
     this.name = "WorkspaceSnapshotWaitingError";
     this.workspaceName = workspaceName;
   }
-}
-
-/** True when a structured tool result is a soft Workspace snapshot wait. */
-export function isWorkspaceSnapshotWaitingResult(details: unknown): boolean {
-  if (!details || typeof details !== "object" || Array.isArray(details)) {
-    return false;
-  }
-  const record = details as {
-    timed_out?: unknown;
-    waiting?: unknown;
-    workspace?: { name?: unknown };
-  };
-  return (
-    record.timed_out === true &&
-    record.waiting === "workspace_snapshot" &&
-    typeof record.workspace?.name === "string" &&
-    record.workspace.name.length > 0
-  );
-}
-
-/** Workspace name from a soft-wait tool result, if present. */
-export function workspaceNameFromWaitingResult(
-  details: unknown,
-): string | undefined {
-  if (!isWorkspaceSnapshotWaitingResult(details)) return undefined;
-  const name = (details as { workspace?: { name?: unknown } }).workspace?.name;
-  return typeof name === "string" ? name : undefined;
 }
 
 /** True when an error chain contains the Workspace snapshot wait signal. */

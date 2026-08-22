@@ -85,7 +85,7 @@ import {
 } from "@/chat/services/provider-error";
 import { nextProviderRetry } from "@/chat/services/provider-retry";
 import { nextEmptyOutputContinuation } from "@/chat/services/empty-output-continuation";
-import { continueWorkspaceSnapshotWait } from "@/chat/services/workspace-snapshot-wait";
+import { continueTimedOutTool } from "@/chat/tool-support/timed-out-tool-continuation";
 import { getDiscardedRetryUsage } from "@/chat/agent/retry-usage";
 import { projectTimedOutToolResult } from "@/chat/tool-support/timed-out-tool-result";
 import {
@@ -1219,27 +1219,27 @@ async function executeAgentRunInPrivacyContext(
       },
       prepareNextTurnWithContext: async (nextTurn, hookSignal) => {
         try {
-          let continuedSnapshotWait = false;
-          // Continue a Workspace snapshot wait before the model sees its
-          // timed-out tool result. Each pass ends on a valid tool-result tail.
+          let continuedTimedOutTool = false;
+          // Continue host-owned timed_out tools before the model sees them.
+          // Each pass ends on a valid tool-result tail.
           for (;;) {
-            const snapshotWait = await continueWorkspaceSnapshotWait({
+            const timedOutTool = await continueTimedOutTool({
               messages: currentAgentMessages(),
               tools: toolsForActiveProfile(),
               signal: hookSignal,
             });
-            if (snapshotWait.kind === "none") break;
-            if (snapshotWait.kind === "failed") {
-              agent!.state.messages = snapshotWait.messages;
-              await runResume.persistSafeBoundary(snapshotWait.messages);
-              throw snapshotWait.error;
+            if (timedOutTool.kind === "none") break;
+            if (timedOutTool.kind === "failed") {
+              agent!.state.messages = timedOutTool.messages;
+              await runResume.persistSafeBoundary(timedOutTool.messages);
+              throw timedOutTool.error;
             }
-            continuedSnapshotWait = true;
-            agent!.state.messages = snapshotWait.messages;
-            await runResume.persistSafeBoundary(snapshotWait.messages);
-            if (snapshotWait.kind === "ready") break;
+            continuedTimedOutTool = true;
+            agent!.state.messages = timedOutTool.messages;
+            await runResume.persistSafeBoundary(timedOutTool.messages);
+            if (timedOutTool.kind === "ready") break;
             const yieldError = runResume.prepareYieldIfDue(
-              snapshotWait.messages,
+              timedOutTool.messages,
             );
             if (yieldError) throw yieldError;
             await sleep(5_000, hookSignal);
@@ -1248,8 +1248,8 @@ async function executeAgentRunInPrivacyContext(
           const handoffUpdate = applyPendingHandoff();
           // Pi's in-flight context is a snapshot. Replacing Agent state alone
           // does not add the host continuation to the next provider request.
-          const snapshotWaitUpdate: AgentLoopTurnUpdate | undefined =
-            continuedSnapshotWait
+          const timedOutToolUpdate: AgentLoopTurnUpdate | undefined =
+            continuedTimedOutTool
               ? {
                   context: {
                     ...nextTurn.context,
@@ -1260,7 +1260,7 @@ async function executeAgentRunInPrivacyContext(
               : undefined;
           const pendingMessages = await drainSteeringMessages();
           const capacityUpdate = await applyActiveContextCompaction(
-            handoffUpdate || continuedSnapshotWait
+            handoffUpdate || continuedTimedOutTool
               ? currentAgentMessages()
               : (nextTurn.context.messages as PiMessage[]),
             hookSignal,
@@ -1268,8 +1268,8 @@ async function executeAgentRunInPrivacyContext(
             true,
           );
           const handoffOrWaitUpdate = handoffUpdate
-            ? { ...snapshotWaitUpdate, ...handoffUpdate }
-            : snapshotWaitUpdate;
+            ? { ...timedOutToolUpdate, ...handoffUpdate }
+            : timedOutToolUpdate;
           const combinedUpdate = capacityUpdate
             ? { ...handoffOrWaitUpdate, ...capacityUpdate }
             : handoffOrWaitUpdate;

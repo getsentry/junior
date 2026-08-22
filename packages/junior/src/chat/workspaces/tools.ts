@@ -313,8 +313,11 @@ export function createWorkspaceTools(
           if (isWorkspaceSnapshotWaitingError(error)) {
             return {
               workspace: view(workspace),
-              waiting: "workspace_snapshot" as const,
               timed_out: true as const,
+              continuation: {
+                arguments: { name: workspace.name },
+                reason: "workspace snapshot still building",
+              },
             };
           }
           throw error;
