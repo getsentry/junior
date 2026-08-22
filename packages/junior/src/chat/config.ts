@@ -44,13 +44,6 @@ const DEFAULT_ASSISTANT_LOADING_MESSAGES = [
   "Rattling the command line",
 ] as const;
 
-export interface ModelConfig {
-  /** Model ID for the built-in handoff profile. */
-  handoff?: string;
-  /** Additional named model profiles available to handoff. */
-  profiles?: Readonly<Record<string, string>>;
-}
-
 export interface BotConfig {
   contextWindowTokens: number;
   crossActorMidRunMode: CrossActorMidRunMode;
@@ -536,28 +529,14 @@ export interface SlackReactionConfig {
   processingReactionEmoji: string;
 }
 
-/** Apply host model profile overrides from createApp() options. */
-export function setModelConfig(config: ModelConfig): void {
-  const handoffModelId =
-    validateGatewayModelId(config.handoff) ??
-    botConfig.profiles[DEFAULT_HANDOFF_MODEL_PROFILE]!.modelId;
+/** Apply additional host profiles from createApp({ profiles }). */
+export function setProfiles(profiles: Readonly<Record<string, string>>): void {
   botConfig.profiles = {
     [STANDARD_MODEL_PROFILE]: botConfig.profiles[STANDARD_MODEL_PROFILE]!,
-    [DEFAULT_HANDOFF_MODEL_PROFILE]: {
-      modelId: handoffModelId,
-      reasoningLevel: "high",
-    },
-    ...(config.profiles
-      ? parseAdditionalProfiles(config.profiles, "models.profiles")
-      : {}),
+    [DEFAULT_HANDOFF_MODEL_PROFILE]:
+      botConfig.profiles[DEFAULT_HANDOFF_MODEL_PROFILE]!,
+    ...parseAdditionalProfiles(profiles, "profiles"),
   };
-}
-
-/** Replace model profiles with a previously validated configuration. */
-export function restoreModelProfiles(
-  profiles: Readonly<Record<string, ExecutionProfileConfig>>,
-): void {
-  botConfig.profiles = profiles;
 }
 
 /** Return the current Slack reaction emoji config. */

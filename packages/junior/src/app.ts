@@ -12,10 +12,8 @@ import {
   botConfig,
   configureFunctionMaxDurationSeconds,
   getSlackReactionConfig,
-  restoreModelProfiles,
-  setModelConfig,
+  setProfiles,
   setSlackReactionConfig,
-  type ModelConfig,
 } from "@/chat/config";
 import { getDb } from "@/chat/db";
 import { logException, logWarn } from "@/chat/logging";
@@ -112,8 +110,8 @@ export interface JuniorAppOptions {
    * you are deliberately dogfooding a pre-stable surface.
    */
   experimental?: ExperimentalFeaturesConfig;
-  /** Host-owned model profile configuration applied after env parsing. */
-  models?: ModelConfig;
+  /** Additional named profiles available to handoff, applied after env parsing. */
+  profiles?: Readonly<Record<string, string>>;
   /** Slack-specific overrides applied after env parsing. */
   slack?: {
     /** Slack emoji shown while Junior is processing. Defaults to `eyes`. */
@@ -677,8 +675,8 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     setExperimentalFeatures(options?.experimental);
     setConfigDefaults(options?.configDefaults);
     warnUnregisteredConfigDefaults(options?.configDefaults);
-    if (options?.models) {
-      setModelConfig(options.models);
+    if (options?.profiles) {
+      setProfiles(options.profiles);
     }
     if (options?.slack) {
       setSlackReactionConfig(options.slack);
@@ -699,7 +697,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     pluginCatalogRuntime.setConfig(previousPluginCatalogConfig);
     setPlugins(previousPlugins);
     setConfigDefaults(previousConfigDefaults);
-    restoreModelProfiles(previousModelProfiles);
+    botConfig.profiles = previousModelProfiles;
     setSlackReactionConfig(previousSlackReactionConfig);
     setSandboxResourceConfig(previousSandboxResources);
     setExperimentalFeatures(previousExperimentalFeatures);
