@@ -20,6 +20,13 @@ function isConstAssertion(node: TypeAssertion): boolean {
   );
 }
 
+function isExportWrapper(node: ESTree.Node): boolean {
+  return (
+    node.type === "ExportNamedDeclaration" ||
+    node.type === "ExportDefaultDeclaration"
+  );
+}
+
 function hasSafetyComment(sourceCode: SourceCode, node: TypeAssertion): boolean {
   let current: ESTree.Node = node;
   while (true) {
@@ -30,7 +37,16 @@ function hasSafetyComment(sourceCode: SourceCode, node: TypeAssertion): boolean 
     ) {
       return true;
     }
-    if (commentOwnerKinds.has(current.type) || current.parent.type === "Program") return false;
+    // Leading comments on `export const` / `export let` attach to the export
+    // wrapper, not the inner VariableDeclaration (the export token blocks them).
+    if (commentOwnerKinds.has(current.type)) {
+      if (isExportWrapper(current.parent)) {
+        current = current.parent;
+        continue;
+      }
+      return false;
+    }
+    if (current.parent.type === "Program") return false;
     current = current.parent;
   }
 }
