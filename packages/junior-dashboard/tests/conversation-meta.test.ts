@@ -1,7 +1,10 @@
 import type { ConversationDetailReport } from "@sentry/junior/api/schema";
 import { describe, expect, it } from "vitest";
 
-import { collapseSidebarAnnotationStack } from "../src/client/conversations/ConversationMeta";
+import {
+  groupSidebarAnnotationsByLabel,
+  projectSidebarAnnotationBadges,
+} from "../src/client/conversations/sidebarAnnotationBadges";
 
 type SidebarAnnotation = NonNullable<
   ConversationDetailReport["sidebarAnnotations"]
@@ -15,10 +18,10 @@ function annotation(
   return { icon, key, label };
 }
 
-describe("conversation sidebar annotation stack", () => {
-  it("prefers unfinished work when a label has finished and unfinished work", () => {
+describe("sidebar annotation badge projection", () => {
+  it("groups every status icon under one shared label", () => {
     expect(
-      collapseSidebarAnnotationStack([
+      groupSidebarAnnotationsByLabel([
         annotation("getsentry/getsentry#21571", "getsentry", "git-merge"),
         annotation(
           "getsentry/getsentry#21572",
@@ -29,8 +32,82 @@ describe("conversation sidebar annotation stack", () => {
         annotation("getsentry/sentry#121727", "sentry", "git-merge"),
       ]),
     ).toEqual([
-      annotation("getsentry/getsentry#21572", "getsentry", "git-pull-request"),
-      annotation("getsentry/sentry#121727", "sentry", "git-merge"),
+      {
+        label: "getsentry",
+        annotations: [
+          annotation("getsentry/getsentry#21571", "getsentry", "git-merge"),
+          annotation(
+            "getsentry/getsentry#21572",
+            "getsentry",
+            "git-pull-request",
+          ),
+          annotation(
+            "getsentry/getsentry#21569",
+            "getsentry",
+            "circle-dashed",
+          ),
+        ],
+      },
+      {
+        label: "sentry",
+        annotations: [
+          annotation("getsentry/sentry#121727", "sentry", "git-merge"),
+        ],
+      },
     ]);
+  });
+
+  it("keeps up to two labels fully expanded", () => {
+    expect(
+      projectSidebarAnnotationBadges([
+        annotation("a#1", "alpha", "circle-dot"),
+        annotation("a#2", "alpha", "git-merge"),
+        annotation("b#1", "beta", "circle-dashed"),
+      ]),
+    ).toMatchObject({
+      labeledGroups: [
+        {
+          label: "alpha",
+          annotations: [
+            annotation("a#1", "alpha", "circle-dot"),
+            annotation("a#2", "alpha", "git-merge"),
+          ],
+        },
+        {
+          label: "beta",
+          annotations: [annotation("b#1", "beta", "circle-dashed")],
+        },
+      ],
+      primaryGroup: null,
+      overflowAnnotations: [],
+      overflowGroupCount: 0,
+    });
+  });
+
+  it("collapses extra labels behind +N while keeping overflow icons", () => {
+    expect(
+      projectSidebarAnnotationBadges([
+        annotation("a#1", "alpha", "circle-dot"),
+        annotation("a#2", "alpha", "git-merge"),
+        annotation("b#1", "beta", "circle-dashed"),
+        annotation("c#1", "gamma", "git-pull-request"),
+        annotation("c#2", "gamma", "circle-x"),
+      ]),
+    ).toMatchObject({
+      labeledGroups: [],
+      primaryGroup: {
+        label: "alpha",
+        annotations: [
+          annotation("a#1", "alpha", "circle-dot"),
+          annotation("a#2", "alpha", "git-merge"),
+        ],
+      },
+      overflowAnnotations: [
+        annotation("b#1", "beta", "circle-dashed"),
+        annotation("c#1", "gamma", "git-pull-request"),
+        annotation("c#2", "gamma", "circle-x"),
+      ],
+      overflowGroupCount: 2,
+    });
   });
 });

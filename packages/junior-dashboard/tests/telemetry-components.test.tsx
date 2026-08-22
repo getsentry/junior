@@ -658,8 +658,11 @@ describe("dashboard canonical-event components", () => {
     expect(stacked).not.toContain(">relay<");
     expect(stacked).toContain("getsentry/payments#2");
     expect(stacked).toContain("getsentry/relay#1");
+    // Overflow keeps every status icon, not one chip per label.
+    expect(stacked).toContain("lucide-circle-dot");
+    expect(stacked).toContain("lucide-git-merge");
 
-    const sameRepo = renderToStaticMarkup(
+    const sameLabel = renderToStaticMarkup(
       <ConversationSidebarAnnotations
         annotations={[
           {
@@ -675,10 +678,12 @@ describe("dashboard canonical-event components", () => {
         ]}
       />,
     );
-    expect(sameRepo).toContain(">junior<");
-    expect(sameRepo.match(/>junior</g)).toHaveLength(1);
-    expect(sameRepo).not.toContain(">+1<");
-    expect(sameRepo).toContain("getsentry/junior#1");
+    expect(sameLabel).toContain(">junior<");
+    expect(sameLabel.match(/>junior</g)).toHaveLength(1);
+    expect(sameLabel).not.toContain(">+1<");
+    expect(sameLabel).toContain("getsentry/junior#1");
+    expect(sameLabel).toContain("lucide-circle-dot");
+    expect(sameLabel).toContain("lucide-git-merge");
   });
 
   it("distinguishes initial detail failures from stale refresh failures", () => {

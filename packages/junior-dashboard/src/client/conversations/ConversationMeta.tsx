@@ -26,6 +26,11 @@ import { MetricList, type MetricListItem } from "../components/Metric";
 import { cn } from "../styles";
 import { CostMetric, DurationMetric, TokenMetric } from "./TelemetryMetrics";
 import type { Conversation } from "../types";
+import {
+  projectSidebarAnnotationBadges,
+  type SidebarAnnotation,
+  type SidebarAnnotationBadgeGroup,
+} from "./sidebarAnnotationBadges";
 
 const MOBILE_MEDIA_QUERY = "(max-width: 767px)";
 
@@ -111,9 +116,13 @@ export function ConversationSidebarAnnotations(props: {
   const details = annotations.map((annotation) =>
     sidebarAnnotationDetail(annotation),
   );
-  // Collapse same-label scopes for the stack so one repo doesn't become two
-  // chips. The tooltip still lists every annotation.
-  const stack = collapseSidebarAnnotationStack(annotations);
+  // Group by shared label so one label can carry many status icons. Tooltip
+  // still lists every work item.
+  const badges = projectSidebarAnnotationBadges(annotations);
+  const mobileFacepileAnnotations =
+    badges.groups.length > 1
+      ? badges.groups.flatMap((group) => group.annotations)
+      : [];
 
   return (
     <Tooltip
@@ -140,23 +149,27 @@ export function ConversationSidebarAnnotations(props: {
         aria-label={`Linked work, newest first: ${details.join(", ")}`}
         className="inline-flex min-w-0 max-w-full items-center"
       >
-        {isMobile && stack.length > 1 ? (
+        {isMobile && mobileFacepileAnnotations.length > 1 ? (
           <SidebarAnnotationIconFacepile
-            annotations={stack}
+            annotations={mobileFacepileAnnotations}
             // Discs sit on the sidebar panel / row surface (#09090b).
             cutoutColor="var(--color-dashboard-surface-panel)"
           />
-        ) : stack.length <= 2 ? (
+        ) : badges.primaryGroup ? (
+          <SidebarAnnotationOverflowStack
+            overflowAnnotations={badges.overflowAnnotations}
+            overflowGroupCount={badges.overflowGroupCount}
+            primaryGroup={badges.primaryGroup}
+          />
+        ) : (
           <span className="inline-flex min-w-0 items-center gap-1">
-            {stack.map((annotation) => (
-              <SidebarAnnotationChip
-                annotation={annotation}
-                key={annotation.key}
+            {badges.labeledGroups.map((group) => (
+              <SidebarAnnotationGroupChip
+                group={group}
+                key={group.label}
               />
             ))}
           </span>
-        ) : (
-          <SidebarAnnotationOverflowStack annotations={stack} />
         )}
       </span>
     </Tooltip>
@@ -165,7 +178,7 @@ export function ConversationSidebarAnnotations(props: {
 
 /** Compact overlapping status chips used by mobile and overflow clusters. */
 function SidebarAnnotationIconFacepile(props: {
-  annotations: NonNullable<ConversationDetailReport["sidebarAnnotations"]>;
+  annotations: SidebarAnnotation[];
   /**
    * CSS color for the avatar-stack cutout ring. Must match the surface under
    * the facepile so lower chips read as clean silhouettes.
@@ -196,16 +209,17 @@ function SidebarAnnotationIconFacepile(props: {
   );
 }
 
-/** One continuous stack: labeled chip, icon chips, then the count chip. */
+/** One continuous stack: labeled group, overflow icon chips, then +N groups. */
 function SidebarAnnotationOverflowStack(props: {
-  annotations: NonNullable<ConversationDetailReport["sidebarAnnotations"]>;
+  primaryGroup: SidebarAnnotationBadgeGroup;
+  overflowAnnotations: SidebarAnnotation[];
+  overflowGroupCount: number;
 }) {
-  const [primary, ...overflow] = props.annotations;
-  if (!primary || overflow.length === 0) return null;
+  if (props.overflowGroupCount === 0) return null;
   return (
     <span className="isolate inline-flex h-5 min-w-0 items-center pr-0.5">
-      <SidebarAnnotationChip annotation={primary} />
-      {overflow.map((annotation, index) => (
+      <SidebarAnnotationGroupChip group={props.primaryGroup} />
+      {props.overflowAnnotations.map((annotation, index) => (
         <SidebarAnnotationStatusChip
           annotation={annotation}
           cutoutColor="var(--color-dashboard-surface-panel)"
@@ -218,31 +232,33 @@ function SidebarAnnotationOverflowStack(props: {
         className="relative -ml-1.5 inline-flex h-5 min-w-7 shrink-0 items-center justify-center rounded-full border border-white/12 bg-dashboard-control px-1.5 font-mono text-2xs leading-none text-dashboard-text-muted"
         style={{
           boxShadow: "0 0 0 2px var(--color-dashboard-surface-panel)",
-          zIndex: overflow.length + 1,
+          zIndex: props.overflowAnnotations.length + 1,
         }}
       >
-        +{overflow.length}
+        +{props.overflowGroupCount}
       </span>
     </span>
   );
 }
 
-function SidebarAnnotationChip(props: {
-  annotation: NonNullable<
-    ConversationDetailReport["sidebarAnnotations"]
-  >[number];
+/** One shared label with every status icon for that label. */
+function SidebarAnnotationGroupChip(props: {
+  group: SidebarAnnotationBadgeGroup;
 }) {
   return (
-    <span className="inline-flex h-5 min-w-0 max-w-28 shrink-0 items-center gap-1 truncate rounded-full border border-white/10 bg-dashboard-control px-1.5 font-sans text-2xs leading-none text-dashboard-text-muted">
-      {props.annotation.icon ? (
-        <SidebarAnnotationIcon
-          decorative
-          icon={props.annotation.icon}
-          size={11}
-        />
-      ) : null}
+    <span className="inline-flex h-5 min-w-0 max-w-36 shrink-0 items-center gap-1 truncate rounded-full border border-white/10 bg-dashboard-control px-1.5 font-sans text-2xs leading-none text-dashboard-text-muted">
+      {props.group.annotations.map((annotation) =>
+        annotation.icon ? (
+          <SidebarAnnotationIcon
+            decorative
+            icon={annotation.icon}
+            key={annotation.key}
+            size={11}
+          />
+        ) : null,
+      )}
       <span className="min-w-0 truncate whitespace-nowrap">
-        {props.annotation.label}
+        {props.group.label}
       </span>
     </span>
   );
@@ -250,9 +266,7 @@ function SidebarAnnotationChip(props: {
 
 /** Icon-only chip that matches labeled-chip chrome and stacks like a facepile. */
 function SidebarAnnotationStatusChip(props: {
-  annotation: NonNullable<
-    ConversationDetailReport["sidebarAnnotations"]
-  >[number];
+  annotation: SidebarAnnotation;
   cutoutColor: string;
   stacked?: boolean;
   zIndex: number;
@@ -304,44 +318,6 @@ function useIsMobileViewport(): boolean {
       typeof window !== "undefined" &&
       window.matchMedia(MOBILE_MEDIA_QUERY).matches,
     () => false,
-  );
-}
-
-const UNFINISHED_SIDEBAR_ICONS = new Set<SidebarAnnotationIconName>([
-  "circle-dashed",
-  "circle-dot",
-  "git-pull-request",
-  "triangle-alert",
-]);
-
-/** Collapse each label to one annotation and prefer unfinished work. */
-export function collapseSidebarAnnotationStack(
-  annotations: NonNullable<ConversationDetailReport["sidebarAnnotations"]>,
-): NonNullable<ConversationDetailReport["sidebarAnnotations"]> {
-  const selected = new Map<
-    string,
-    NonNullable<ConversationDetailReport["sidebarAnnotations"]>[number]
-  >();
-  for (const annotation of annotations) {
-    const current = selected.get(annotation.label);
-    if (
-      !current ||
-      (!isUnfinishedSidebarAnnotation(current) &&
-        isUnfinishedSidebarAnnotation(annotation))
-    ) {
-      selected.set(annotation.label, annotation);
-    }
-  }
-  return [...selected.values()];
-}
-
-function isUnfinishedSidebarAnnotation(
-  annotation: NonNullable<
-    ConversationDetailReport["sidebarAnnotations"]
-  >[number],
-): boolean {
-  return Boolean(
-    annotation.icon && UNFINISHED_SIDEBAR_ICONS.has(annotation.icon),
   );
 }
 
