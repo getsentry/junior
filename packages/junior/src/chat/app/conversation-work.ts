@@ -127,6 +127,7 @@ export function createConversationWork(
       apiTurnWorker: createApiTurnWorker({
         agentRunner: options.agentRunner,
         cancellation: apiTurnCancellation,
+        turnLifecycle: services.replyExecutor?.turnLifecycle,
       }),
       fallbackWorker: routeAgentInvocationWork({
         invocationWorker: createAgentInvocationWorker({

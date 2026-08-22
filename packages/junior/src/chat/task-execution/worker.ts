@@ -15,6 +15,7 @@ import {
   beginConversationResume,
   checkInConversationWork,
   clearConsumedConversationWake,
+  completeConversationStop,
   completeConversationWork,
   CONVERSATION_WORK_CHECK_IN_INTERVAL_MS,
   CONVERSATION_WORK_MAX_RETRIES,
@@ -36,6 +37,7 @@ import {
 } from "./store";
 
 export const CONVERSATION_WORK_DEFER_DELAY_MS = 15_000;
+const CONVERSATION_STOP_CHECK_INTERVAL_MS = 500;
 
 export interface ConversationWorkerContext {
   attempt: InboxAttempt;
@@ -45,6 +47,8 @@ export interface ConversationWorkerContext {
   publishExternally: boolean;
   /** True when the current execution slice must stop at its next safe boundary. */
   shouldYield(): boolean;
+  /** Return an AbortSignal backed by the durable Conversation stop request. */
+  stopSignal?(): AbortSignal;
 }
 
 export interface InboxAttempt {
@@ -59,7 +63,8 @@ export interface InboxAttempt {
 }
 
 export interface ConversationWorkerResult {
-  status: "completed" | "deferred" | "lost_lease" | "yielded";
+  /** `paused` waits for an external wake but must resume if a stop raced it. */
+  status: "completed" | "deferred" | "lost_lease" | "paused" | "yielded";
 }
 
 export interface ConversationWorkProcessResult {
@@ -281,6 +286,73 @@ function startLeaseCheckIn(args: {
   return timer;
 }
 
+/** Poll shared state only when a worker adapter asks to observe remote stops. */
+function createConversationStopSignal(args: {
+  conversationId: string;
+  initialStopRunId?: string;
+  options: ProcessConversationWorkOptions;
+  runId: string;
+}) {
+  const controller = new AbortController();
+  let checking = false;
+  let failureCaptured = false;
+  let listening = false;
+  let timer: ReturnType<typeof setInterval> | undefined;
+
+  const requestStop = (): void => {
+    if (!controller.signal.aborted) {
+      controller.abort(new Error("Conversation work stopped"));
+    }
+  };
+  if (args.initialStopRunId === args.runId) {
+    requestStop();
+  }
+
+  const check = async (): Promise<void> => {
+    if (checking || controller.signal.aborted) return;
+    checking = true;
+    try {
+      const current = await getConversationWorkState({
+        conversationId: args.conversationId,
+        state: args.options.state,
+      });
+      if (current?.execution.stop?.runId === args.runId) {
+        requestStop();
+      }
+    } catch (error) {
+      if (!failureCaptured) {
+        failureCaptured = true;
+        logException(error, "conversation.work.stop_check.failed");
+      }
+    } finally {
+      checking = false;
+    }
+  };
+
+  return {
+    close(): void {
+      if (timer) clearInterval(timer);
+    },
+    isEnabled(): boolean {
+      return listening;
+    },
+    wasObserved(): boolean {
+      return listening && controller.signal.aborted;
+    },
+    signal(): AbortSignal {
+      listening = true;
+      if (!timer && !controller.signal.aborted) {
+        timer = setInterval(
+          () => void check(),
+          CONVERSATION_STOP_CHECK_INTERVAL_MS,
+        );
+        timer.unref?.();
+      }
+      return controller.signal;
+    },
+  };
+}
+
 /** Process one queue wake-up for a conversation. */
 export async function processConversationWork(
   message: ConversationQueueMessage,
@@ -470,6 +542,7 @@ async function processConversationWorkInContext(
 
   try {
     let hasRun = false;
+    let resumeIfStopped = false;
     while (true) {
       attemptMessageIds = [];
       const leasedWork = await getConversationWorkState({
@@ -494,6 +567,10 @@ async function processConversationWorkInContext(
 
       const resumePending = leasedWork.execution.status === "paused";
       const attemptMessages = selectAttemptMessages(leasedWork);
+      const runId = leasedWork.execution.runId;
+      if (!runId) {
+        throw new Error(`Conversation run is missing for ${conversationId}`);
+      }
       attemptStartMessageIds = new Set(
         leasedWork.messages.map((message) => message.inboundMessageId),
       );
@@ -549,6 +626,12 @@ async function processConversationWorkInContext(
           );
         }
       };
+      const stop = createConversationStopSignal({
+        conversationId,
+        initialStopRunId: leasedWork.execution.stop?.runId,
+        options,
+        runId,
+      });
       const workerContext: ConversationWorkerContext = {
         attempt: {
           ack,
@@ -564,10 +647,17 @@ async function processConversationWorkInContext(
         destination,
         publishExternally,
         shouldYield,
+        stopSignal: stop.signal,
         checkIn,
       };
 
-      const result = await options.run(workerContext);
+      let result: ConversationWorkerResult;
+      try {
+        result = await options.run(workerContext);
+      } finally {
+        stop.close();
+      }
+      resumeIfStopped ||= stop.isEnabled();
       hasRun = true;
       if (result.status === "lost_lease") {
         await requestLostLeaseRecovery({
@@ -588,6 +678,27 @@ async function processConversationWorkInContext(
           options,
         });
         return { status: "lost_lease" };
+      }
+      if (result.status === "completed" && stop.wasObserved()) {
+        const stopped = await completeConversationStop({
+          conversationId,
+          conversationStore: options.conversationStore,
+          leaseToken: lease.leaseToken,
+          nowMs: now(options),
+          runId,
+          state: options.state,
+        });
+        if (stopped.status === "lost_lease") {
+          markLeaseLost();
+          await requestLostLeaseRecovery({
+            conversationId,
+            destination,
+            leaseToken: lease.leaseToken,
+            nowMs: now(options),
+            options,
+          });
+          return { status: "lost_lease" };
+        }
       }
       if (result.status === "yielded") {
         const sliceRequested = await requestAnotherSlice({
@@ -671,6 +782,10 @@ async function processConversationWorkInContext(
         }
       }
 
+      if (result.status === "paused") {
+        break;
+      }
+
       const next = await getConversationWorkState({
         conversationId,
         state: options.state,
@@ -690,6 +805,8 @@ async function processConversationWorkInContext(
       conversationId,
       leaseToken: lease.leaseToken,
       madeProgress: !failedWithoutProgress,
+      // A stop that raced an external pause must reach the paused Turn.
+      resumeIfStopped,
       conversationStore: options.conversationStore,
       nowMs: now(options),
       state: options.state,

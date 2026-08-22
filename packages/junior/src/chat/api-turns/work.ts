@@ -158,7 +158,8 @@ export function createApiConversationId(args: {
   )}`;
 }
 
-function apiMessageId(args: {
+/** Build the retry-stable Message id used by one API mailbox request. */
+export function apiConversationMessageId(args: {
   conversationId: string;
   idempotencyKey: string;
 }): string {
@@ -372,7 +373,7 @@ export async function appendAndEnqueueApiConversationMessage(
     throw new Error("API conversation actor requires a verified email");
   }
   const nowMs = options.nowMs ?? Date.now();
-  const messageId = apiMessageId({
+  const messageId = apiConversationMessageId({
     conversationId: input.conversationId,
     idempotencyKey: input.idempotencyKey,
   });
@@ -540,6 +541,40 @@ export function createApiTurnWorker(options: {
         let sandboxRef: SandboxRef | undefined =
           getPersistedSandboxState(persisted);
         const initialSandboxRef = sandboxRef;
+        const appSignal = options.cancellation?.signal(context.conversationId);
+        const stopSignal = context.stopSignal?.();
+        const cancellationSignal =
+          appSignal && stopSignal
+            ? AbortSignal.any([appSignal, stopSignal])
+            : (appSignal ?? stopSignal);
+        const finishCancellation = (): void => {
+          if (appSignal) {
+            options.cancellation?.finish(context.conversationId, appSignal);
+          }
+        };
+        const completeCancelledTurn =
+          async (): Promise<ConversationWorkerResult> => {
+            try {
+              await completeCancelledApiTurn({
+                acknowledge,
+                actorId: actor.userId,
+                cancellation: options.cancellation,
+                conversation,
+                conversationId: context.conversationId,
+                lifecycle,
+                sandboxRef,
+                signal: appSignal,
+                turnId,
+                userMessageId,
+              });
+            } catch (error) {
+              if (hasLostTurnInputCommit(error)) {
+                return { status: "lost_lease" };
+              }
+              throw error;
+            }
+            return { status: "completed" };
+          };
 
         if (isResume) {
           const userMessage = getTurnUserMessage(conversation, turnId);
@@ -552,43 +587,10 @@ export function createApiTurnWorker(options: {
           text = userMessage.text;
           startedAtMs = userMessage.createdAtMs;
           inputMessageIds = [userMessageId];
+          if (cancellationSignal?.aborted) {
+            return await completeCancelledTurn();
+          }
         } else {
-          // Match Slack: a newer user message supersedes an auth-parked turn
-          // instead of leaving two active API turns or letting a late OAuth
-          // wake resume stale work.
-          const authParked = (
-            await listTurnSummaries(context.conversationId)
-          ).filter(
-            (summary) =>
-              summary.surface === "api" &&
-              !summary.dispatchId &&
-              summary.state === "paused" &&
-              summary.resumeReason === "auth",
-          );
-          for (const parked of authParked) {
-            await abandonTurnRecord({
-              conversationId: context.conversationId,
-              turnId: parked.turnId,
-              errorMessage:
-                "Auth-parked session superseded by a new user message",
-            });
-            // Keep pendingAuth: MCP OAuth still needs it to accept an in-flight
-            // connect and store credentials. The abandoned turn record makes a
-            // late callback a resume no-op, matching Slack supersede behavior.
-            markTurnClosed({
-              conversation,
-              nowMs: Date.now(),
-              sessionId: parked.turnId,
-            });
-          }
-          if (authParked.length > 0) {
-            // Drop the dashboard connect prompt so a superseded OAuth flow
-            // cannot leave a stale banner after the user moves on.
-            await deleteWebAuthorization({
-              actorId: actor.userId,
-              conversationId: context.conversationId,
-            });
-          }
           upsertConversationMessage(conversation, {
             id: userMessageId,
             role: "user",
@@ -617,6 +619,9 @@ export function createApiTurnWorker(options: {
             surface: "api",
             turnId,
           });
+          if (cancellationSignal?.aborted) {
+            return await completeCancelledTurn();
+          }
           startActiveTurn({
             conversation,
             nextTurnId: turnId,
@@ -629,41 +634,6 @@ export function createApiTurnWorker(options: {
         let modelFailureEventId: string | undefined;
         let modelFailureCaptureAttempted = false;
         let reply: AgentRunResult | undefined;
-        const cancellationSignal = options.cancellation?.signal(
-          context.conversationId,
-        );
-        const finishCancellation = (): void => {
-          if (cancellationSignal) {
-            options.cancellation?.finish(
-              context.conversationId,
-              cancellationSignal,
-            );
-          }
-        };
-
-        const completeCancelledTurn =
-          async (): Promise<ConversationWorkerResult> => {
-            try {
-              await completeCancelledApiTurn({
-                acknowledge,
-                actorId: actor.userId,
-                cancellation: options.cancellation,
-                conversation,
-                conversationId: context.conversationId,
-                lifecycle,
-                sandboxRef,
-                signal: cancellationSignal,
-                turnId,
-                userMessageId,
-              });
-            } catch (error) {
-              if (hasLostTurnInputCommit(error)) {
-                return { status: "lost_lease" };
-              }
-              throw error;
-            }
-            return { status: "completed" };
-          };
 
         const deliverAssistantMessage = async (
           value: AssistantMessage | string,
@@ -705,6 +675,50 @@ export function createApiTurnWorker(options: {
         };
 
         try {
+          if (cancellationSignal?.aborted) {
+            return await completeCancelledTurn();
+          }
+          if (!isResume) {
+            // Match Slack: a newer user message supersedes an auth-parked turn
+            // instead of leaving two active API turns or letting a late OAuth
+            // wake resume stale work.
+            const authParked = (
+              await listTurnSummaries(context.conversationId)
+            ).filter(
+              (summary) =>
+                summary.surface === "api" &&
+                !summary.dispatchId &&
+                summary.state === "paused" &&
+                summary.resumeReason === "auth",
+            );
+            for (const parked of authParked) {
+              if (cancellationSignal?.aborted) {
+                return await completeCancelledTurn();
+              }
+              await abandonTurnRecord({
+                conversationId: context.conversationId,
+                turnId: parked.turnId,
+                errorMessage:
+                  "Auth-parked session superseded by a new user message",
+              });
+              // Keep pendingAuth: MCP OAuth still needs it to accept an in-flight
+              // connect and store credentials. The abandoned turn record makes a
+              // late callback a resume no-op, matching Slack supersede behavior.
+              markTurnClosed({
+                conversation,
+                nowMs: Date.now(),
+                sessionId: parked.turnId,
+              });
+            }
+            if (authParked.length > 0) {
+              // Drop the dashboard connect prompt so a superseded OAuth flow
+              // cannot leave a stale banner after the user moves on.
+              await deleteWebAuthorization({
+                actorId: actor.userId,
+                conversationId: context.conversationId,
+              });
+            }
+          }
           await persistThreadStateById(context.conversationId, {
             conversation,
           });
@@ -784,14 +798,11 @@ export function createApiTurnWorker(options: {
               conversation,
               sandboxRef,
             });
-            if (cancellationSignal) {
-              options.cancellation?.park(
-                context.conversationId,
-                cancellationSignal,
-              );
+            if (appSignal) {
+              options.cancellation?.park(context.conversationId, appSignal);
             }
             await acknowledge();
-            return { status: "completed" };
+            return { status: "paused" };
           }
           finishCancellation();
           reply = outcome.result;
