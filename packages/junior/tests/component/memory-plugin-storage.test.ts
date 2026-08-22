@@ -1,6 +1,6 @@
 import path from "node:path";
 import { readdirSync } from "node:fs";
-import { afterAll, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import {
   memoryPlugin,
   createMemoryStore,
@@ -83,6 +83,12 @@ vi.mock("@/chat/pi/client", () => ({
   })),
   resolveGatewayModel: vi.fn((modelId: string) => modelId),
 }));
+
+afterEach(async () => {
+  setPlugins([]);
+  await closeDb();
+  NEON.sql = undefined;
+});
 
 afterAll(() => {
   if (NEON.originalDatabaseUrl === undefined) {
@@ -258,7 +264,6 @@ WHERE indexname = 'junior_memory_memories_search_idx'
         "USING gin (scope, scope_key, search_vector)",
       );
     } finally {
-      NEON.sql = undefined;
       await fixture.close();
     }
   }, 15_000);
@@ -304,7 +309,6 @@ WHERE indexname = 'junior_memory_memories_search_idx'
         `Database is up to date (${totalMigrationCount} migrations).`,
       ]);
     } finally {
-      NEON.sql = undefined;
       await fixture.close();
     }
   }, 15_000);
@@ -312,7 +316,7 @@ WHERE indexname = 'junior_memory_memories_search_idx'
   it("reads public memory everywhere and private memory only in its source domain", async () => {
     const fixture = await createLocalJuniorSqlFixture();
     const plugin = memoryPlugin();
-    const previousPlugins = setPlugins([plugin]);
+    setPlugins([plugin]);
     NEON.sql = fixture.sql;
 
     try {
@@ -607,16 +611,13 @@ WHERE indexname = 'junior_memory_memories_search_idx'
         status: 404,
       });
     } finally {
-      setPlugins(previousPlugins);
-      await closeDb();
-      NEON.sql = undefined;
       await fixture.close();
     }
   }, 15_000);
 
   it("registers memory tools with runtime-provided plugin DB access", async () => {
     const fixture = await createLocalJuniorSqlFixture();
-    const previousPlugins = setPlugins([memoryPlugin()]);
+    setPlugins([memoryPlugin()]);
     NEON.sql = fixture.sql;
 
     try {
@@ -704,9 +705,6 @@ WHERE indexname = 'junior_memory_memories_search_idx'
         ),
       ).rejects.toThrow(PluginToolInputError);
     } finally {
-      setPlugins(previousPlugins);
-      await closeDb();
-      NEON.sql = undefined;
       await fixture.close();
     }
   }, 15_000);
