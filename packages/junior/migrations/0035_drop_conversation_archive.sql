@@ -1,0 +1,1 @@
+ALTER TABLE "junior_conversations" DROP COLUMN "archived_at";
