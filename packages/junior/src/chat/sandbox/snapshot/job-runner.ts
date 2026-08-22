@@ -146,17 +146,6 @@ export async function processWorkspaceSnapshotJob(
     });
     return;
   }
-  if (before.build?.status === "failed") {
-    await publishFinishedEvent({
-      workspace,
-      profileHash: value.hash,
-      buildId: before.build.id,
-      status: "failed",
-      error: before.build.error,
-    });
-    return;
-  }
-
   const { applyNetworkPolicy, prepareRepositories } =
     createSnapshotBuildHelpers();
 
@@ -172,7 +161,7 @@ export async function processWorkspaceSnapshotJob(
     });
   } catch (error) {
     if (isWorkspaceSnapshotNeedsMoreTimeError(error)) {
-      await sendWorkspaceSnapshotJob(message);
+      await sendWorkspaceSnapshotJob(message, { deduplicate: false });
       return;
     }
     const afterFailure = await loadSnapshotsForProfile(
@@ -218,17 +207,17 @@ export async function processWorkspaceSnapshotJob(
     return;
   }
 
-  await sendWorkspaceSnapshotJob(message);
+  await sendWorkspaceSnapshotJob(message, { deduplicate: false });
 }
 
 /** Start a snapshot build when no ready snapshot exists. */
 export async function ensureWorkspaceSnapshotBuild(input: {
   workspace: Workspace;
+  deduplicate?: boolean;
 }): Promise<{
-  status: "ready" | "building" | "failed";
+  status: "ready" | "building";
   profileHash: string;
   buildId?: string;
-  error?: string | null;
 }> {
   const value = profile.create(SANDBOX_RUNTIME, input.workspace);
   if (!value) {
@@ -244,19 +233,15 @@ export async function ensureWorkspaceSnapshotBuild(input: {
   if (current.ready) {
     return { status: "ready", profileHash: value.hash };
   }
-  if (current.build?.status === "failed") {
-    return {
-      status: "failed",
-      profileHash: value.hash,
-      buildId: current.build.id,
-      error: current.build.error,
-    };
-  }
-
-  await sendWorkspaceSnapshotJob({
+  const message = {
     workspaceId: input.workspace.id,
     profileHash: value.hash,
-  });
+  };
+  if (input.deduplicate === false || current.build?.status === "failed") {
+    await sendWorkspaceSnapshotJob(message, { deduplicate: false });
+  } else {
+    await sendWorkspaceSnapshotJob(message);
+  }
 
   return {
     status: "building",

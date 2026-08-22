@@ -1,13 +1,7 @@
 /** Receive Vercel Queue messages for Workspace snapshot builds. */
-import {
-  handleCallback,
-  registerDevConsumer,
-  type MessageMetadata,
-  type RetryDirective,
-} from "@vercel/queue";
+import type { MessageMetadata } from "@vercel/queue";
 import { logWarn } from "@/chat/logging";
-import { runWithTurnRequestDeadline } from "@/chat/runtime/request-deadline";
-import { createVercelQueueClient } from "@/chat/vercel-queue-client";
+import { queueCallback } from "@/chat/queue/callback";
 import { processWorkspaceSnapshotJob } from "./job-runner";
 import {
   verifyWorkspaceSnapshotJobMessage,
@@ -19,7 +13,7 @@ export const WORKSPACE_SNAPSHOT_JOB_DEV_CONSUMER_GROUP =
 const WORKSPACE_SNAPSHOT_JOB_MAX_DELIVERIES = 5;
 
 function logWorkspaceSnapshotJobRejected(
-  reason: "expired" | "malformed" | "signature_mismatch",
+  reason: string,
   metadata: MessageMetadata,
 ): void {
   logWarn("workspace.snapshot.job.queue_message.rejected", {
@@ -31,56 +25,27 @@ function logWorkspaceSnapshotJobRejected(
   });
 }
 
-/** Check a queue message before it starts a snapshot build. */
-async function handleWorkspaceSnapshotJobMessage(
-  message: unknown,
-  metadata: MessageMetadata,
-): Promise<void> {
-  const verification = verifyWorkspaceSnapshotJobMessage(message);
-  if (verification.status === "rejected") {
-    logWorkspaceSnapshotJobRejected(verification.reason, metadata);
-    return;
-  }
-  await runWithTurnRequestDeadline(() =>
-    processWorkspaceSnapshotJob(verification.message),
-  );
-}
-
-/** Stop repeated delivery when a snapshot job keeps failing. */
-function handleWorkspaceSnapshotJobRetry(
-  _error: unknown,
-  metadata: MessageMetadata,
-): RetryDirective | undefined {
-  if (metadata.deliveryCount >= WORKSPACE_SNAPSHOT_JOB_MAX_DELIVERIES) {
-    return { acknowledge: true };
-  }
-  return undefined;
+function workspaceSnapshotJobCallback() {
+  return queueCallback({
+    consumerGroup: WORKSPACE_SNAPSHOT_JOB_DEV_CONSUMER_GROUP,
+    maxDeliveries: WORKSPACE_SNAPSHOT_JOB_MAX_DELIVERIES,
+    onRejected: logWorkspaceSnapshotJobRejected,
+    run: async (message) => await processWorkspaceSnapshotJob(message),
+    topic: WORKSPACE_SNAPSHOT_JOB_QUEUE_TOPIC,
+    verify: verifyWorkspaceSnapshotJobMessage,
+  });
 }
 
 /** Create the HTTP route for snapshot build messages. */
 export function createVercelWorkspaceSnapshotJobCallback(): (
   request: Request,
 ) => Promise<Response> {
-  return handleCallback(
-    (message, metadata) =>
-      handleWorkspaceSnapshotJobMessage(message, metadata),
-    { retry: handleWorkspaceSnapshotJobRetry },
-  );
+  return workspaceSnapshotJobCallback().create();
 }
 
 /** Receive snapshot build messages during local development. */
 export function registerVercelWorkspaceSnapshotJobDevConsumer():
   | (() => void)
   | undefined {
-  if (process.env.NODE_ENV !== "development") {
-    return undefined;
-  }
-  return registerDevConsumer({
-    client: createVercelQueueClient(),
-    consumerGroup: WORKSPACE_SNAPSHOT_JOB_DEV_CONSUMER_GROUP,
-    handler: (message, metadata) =>
-      handleWorkspaceSnapshotJobMessage(message, metadata),
-    retry: handleWorkspaceSnapshotJobRetry,
-    topic: WORKSPACE_SNAPSHOT_JOB_QUEUE_TOPIC,
-  });
+  return workspaceSnapshotJobCallback().registerDev();
 }

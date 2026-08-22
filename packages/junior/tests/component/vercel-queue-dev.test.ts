@@ -117,6 +117,13 @@ describe("Workspace snapshot Vercel queue integration", () => {
     ).resolves.toBeUndefined();
     expect(processWorkspaceSnapshotJob).toHaveBeenCalledTimes(1);
 
+    await sendWorkspaceSnapshotJob(message, { deduplicate: false });
+    expect(send).toHaveBeenLastCalledWith(
+      "junior_workspace_snapshots",
+      expect.objectContaining(message),
+      { retentionSeconds: 3_600 },
+    );
+
     expect(retry(new Error("build failed"), metadata)).toBeUndefined();
     expect(
       retry(new Error("build failed"), { ...metadata, deliveryCount: 5 }),
@@ -124,13 +131,24 @@ describe("Workspace snapshot Vercel queue integration", () => {
 
     process.env.NODE_ENV = "development";
     expect(registerVercelWorkspaceSnapshotJobDevConsumer()).toBe(unregister);
-    expect(registerDevConsumer).toHaveBeenCalledWith({
+    const registered = (registerDevConsumer.mock.calls as unknown as Array<
+      [unknown]
+    >)[0]?.[0] as
+      | {
+          client: { send: typeof send };
+          consumerGroup: string;
+          handler: unknown;
+          retry: unknown;
+          topic: string;
+        }
+      | undefined;
+    expect(registered).toMatchObject({
       client: { send },
       consumerGroup: "junior_workspace_snapshots_dev",
-      handler: expect.any(Function),
-      retry,
       topic: "junior_workspace_snapshots",
     });
+    expect(typeof registered?.handler).toBe("function");
+    expect(typeof registered?.retry).toBe("function");
   });
 });
 

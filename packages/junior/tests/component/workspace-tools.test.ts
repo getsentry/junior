@@ -5,6 +5,10 @@ import {
 } from "@sentry/junior-plugin-api";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { getDb } from "@/chat/db";
+import { WorkspaceSnapshotNeedsMoreTimeError } from "@/chat/sandbox/snapshot/needs-more-time-error";
+import * as snapshotProfile from "@/chat/sandbox/snapshot/profile";
+import { SANDBOX_RUNTIME } from "@/chat/sandbox/snapshot/runtime";
+import { setWorkspaceSnapshotBuild } from "@/chat/sandbox/snapshot/store";
 import { normalizeLocalConversationId } from "@/chat/local/conversation";
 import {
   runLocalAgentTurn,
@@ -365,6 +369,117 @@ describe("Workspace tools", () => {
     } finally {
       ensureReady.mockRestore();
     }
+  });
+
+  it("starts a new snapshot job when a ready snapshot cannot boot", async () => {
+    const ensureSnapshot = vi
+      .spyOn(
+        await import("@/chat/sandbox/snapshot/job-runner"),
+        "ensureWorkspaceSnapshotBuild",
+      )
+      .mockResolvedValueOnce({ status: "ready", profileHash: "profile-ready" })
+      .mockResolvedValueOnce({ status: "building", profileHash: "profile-ready" });
+    try {
+      const now = new Date();
+      const workspace = {
+        id: "33333333-3333-4333-8333-333333333333",
+        name: "sentry-missing-snapshot",
+        setupScript: "devenv sync",
+        repos: [],
+      };
+      await getDb().insert(juniorWorkspaces).values({
+        id: workspace.id,
+        name: workspace.name,
+        setupScript: workspace.setupScript,
+        createdAt: now,
+        updatedAt: now,
+      });
+      const switchWorkspace = vi.fn(async () => {
+        throw new Error("Sandbox setup failed", {
+          cause: new WorkspaceSnapshotNeedsMoreTimeError(workspace.name),
+        });
+      });
+      const conversationId = "local:test:workspace-missing-snapshot";
+      const context = {
+        destination: { platform: "local", conversationId },
+        source: createLocalSource(conversationId),
+        egress: {
+          async fetch() {
+            return new Response("ok");
+          },
+        },
+        workspace: {} as ToolRuntimeContext["workspace"],
+        workspaces: {
+          activeWorkspaceId: () => undefined,
+          switch: switchWorkspace,
+        },
+      } satisfies ToolRuntimeContext;
+
+      const tools = createWorkspaceTools(context);
+      await expect(
+        tools.switchWorkspace!.execute!({ name: workspace.name }, {}),
+      ).resolves.toMatchObject({ status: "building" });
+      expect(ensureSnapshot).toHaveBeenNthCalledWith(2, {
+        workspace: expect.objectContaining({ id: workspace.id }),
+        deduplicate: false,
+      });
+    } finally {
+      ensureSnapshot.mockRestore();
+    }
+  });
+
+  it("starts a new snapshot job after a failed build", async () => {
+    const now = new Date();
+    const workspace = {
+      id: "44444444-4444-4444-8444-444444444444",
+      name: "sentry-retry-snapshot",
+      setupScript: "devenv sync",
+      snapshot: null,
+      repos: [],
+    };
+    await getDb().insert(juniorWorkspaces).values({
+      id: workspace.id,
+      name: workspace.name,
+      setupScript: workspace.setupScript,
+      createdAt: now,
+      updatedAt: now,
+    });
+    const value = snapshotProfile.create(SANDBOX_RUNTIME, workspace);
+    if (!value) throw new Error("Workspace snapshot profile is missing");
+    await setWorkspaceSnapshotBuild(
+      workspace.id,
+      {
+        id: "55555555-5555-4555-8555-555555555555",
+        status: "failed",
+        phase: "created",
+        profileHash: value.hash,
+        startedAt: now,
+        sandboxName: "failed-builder",
+        commandId: null,
+        error: "setup failed",
+      },
+      { insertIfMissing: true },
+    );
+    const conversationId = "local:test:workspace-retry-snapshot";
+    const context = {
+      destination: { platform: "local", conversationId },
+      source: createLocalSource(conversationId),
+      egress: { async fetch() { return new Response("ok"); } },
+      workspace: {} as ToolRuntimeContext["workspace"],
+      workspaces: {
+        activeWorkspaceId: () => undefined,
+        switch: vi.fn(),
+      },
+    } satisfies ToolRuntimeContext;
+
+    const tools = createWorkspaceTools(context);
+    await expect(
+      tools.switchWorkspace!.execute!({ name: workspace.name }, {}),
+    ).resolves.toMatchObject({ status: "building" });
+    expect(sendWorkspaceSnapshotJob).toHaveBeenCalledWith(
+      { workspaceId: workspace.id, profileHash: value.hash },
+      { deduplicate: false },
+    );
   });
 
   it("returns building status and enqueues a snapshot job when cold", async () => {

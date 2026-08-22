@@ -9,6 +9,7 @@ import {
   workspaceSnapshotWatch,
 } from "@/chat/sandbox/snapshot/events";
 import { ensureWorkspaceSnapshotBuild } from "@/chat/sandbox/snapshot/job-runner";
+import { isWorkspaceSnapshotNeedsMoreTimeError } from "@/chat/sandbox/snapshot/needs-more-time-error";
 import {
   cancelResourceEventSubscription,
   createResourceEventSubscription,
@@ -385,21 +386,34 @@ export function createWorkspaceTools(
             subscribable: watch,
           };
         }
+        try {
+          await context.workspaces!.switch(workspace, options.signal);
+        } catch (error) {
+          if (isWorkspaceSnapshotNeedsMoreTimeError(error)) {
+            await ensureWorkspaceSnapshotBuild({
+              workspace,
+              deduplicate: false,
+            });
+            return {
+              workspace: view(workspace),
+              status: "building" as const,
+              subscribable: watch,
+            };
+          }
+          if (subscription && conversationId) {
+            await stopWorkspaceSnapshotWatch({
+              conversationId,
+              subscriptionId: subscription.id,
+            });
+          }
+          throw error;
+        }
         if (subscription && conversationId) {
           await stopWorkspaceSnapshotWatch({
             conversationId,
             subscriptionId: subscription.id,
           });
         }
-        if (build.status === "failed") {
-          throw new Error(
-            `Workspace ${workspace.name} snapshot failed${
-              build.error ? `: ${build.error}` : ""
-            }`,
-          );
-        }
-
-        await context.workspaces!.switch(workspace, options.signal);
         await tryRecordWorkspaceSwitchStat(workspace);
         return {
           workspace: view(workspace),

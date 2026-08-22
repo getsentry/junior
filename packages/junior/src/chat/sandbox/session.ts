@@ -27,6 +27,7 @@ import {
   resolve as resolveSnapshot,
   type Snapshot,
 } from "@/chat/sandbox/snapshot/resolve";
+import { WorkspaceSnapshotNeedsMoreTimeError } from "@/chat/sandbox/snapshot/needs-more-time-error";
 import { getReadyWorkspaceSnapshot } from "@/chat/sandbox/snapshot/workspace";
 import { syncSkillsToSandbox } from "@/chat/sandbox/skill-sync";
 import {
@@ -425,8 +426,8 @@ export function createSandboxRuntime(
             staleSnapshotId: snapshot.snapshotId,
           }).then((ready) => {
             if (!ready) {
-              throw new Error(
-                `Workspace ${params.workspace!.name} snapshot is still building`,
+              throw new WorkspaceSnapshotNeedsMoreTimeError(
+                params.workspace!.name,
               );
             }
             return ready;
@@ -488,9 +489,7 @@ export function createSandboxRuntime(
                 runtime,
               }).then((ready) => {
                 if (!ready) {
-                  throw new Error(
-                    `Workspace ${workspace.name} snapshot is still building`,
-                  );
+                  throw new WorkspaceSnapshotNeedsMoreTimeError(workspace.name);
                 }
                 return ready;
               })
