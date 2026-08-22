@@ -1,0 +1,49 @@
+{
+  "commitSha": "4aa0f43946c547c64161de4d91f13eb944178389",
+  "mode": "path",
+  "reasons": [
+    "packages/junior-dashboard/.oxlintrc.json",
+    "packages/junior-dashboard/e2e/user-pages.spec.ts",
+    "packages/junior-dashboard/package.json",
+    "packages/junior-dashboard/src/app.ts",
+    "packages/junior-dashboard/src/client/api.ts",
+    "packages/junior-dashboard/src/client/conversations/eventTranscript.ts",
+    "packages/junior-dashboard/src/client/http.ts",
+    "packages/junior-dashboard/src/mock-reporting/fixtures.ts",
+    "packages/junior-dashboard/tests/conversation-transcript.test.ts",
+    "packages/junior-dashboard/tests/conversationSections.test.ts"
+  ],
+  "scenarioIds": [
+    "gallery-index",
+    "conversations",
+    "conversation-detail",
+    "conversation-detail-focused"
+  ],
+  "shots": [
+    {
+      "file": "gallery-index__desktop.png",
+      "label": "Component gallery index · desktop"
+    },
+    {
+      "file": "conversations__desktop.png",
+      "label": "Conversations · desktop"
+    },
+    {
+      "file": "conversations__mobile.png",
+      "label": "Conversations · mobile"
+    },
+    {
+      "file": "conversation-detail__desktop.png",
+      "label": "Conversation detail · desktop"
+    },
+    {
+      "file": "conversation-detail__mobile.png",
+      "label": "Conversation detail · mobile"
+    },
+    {
+      "file": "conversation-detail-focused__mobile.png",
+      "label": "Conversation detail · focused composer · mobile"
+    }
+  ],
+  "skipped": false
+}
