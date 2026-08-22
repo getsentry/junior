@@ -32,11 +32,13 @@ describe("Workspace snapshot Vercel queue integration", () => {
     const handleCallback = vi.fn(() => routeHandler);
     const send = vi.fn(async () => ({ messageId: "msg_snapshot" }));
     const processWorkspaceSnapshotJob = vi.fn(async () => undefined);
+    const unregister = vi.fn();
+    const registerDevConsumer = vi.fn(() => unregister);
 
     vi.doMock("@vercel/queue", () => ({
       QueueClient: vi.fn(),
       handleCallback,
-      registerDevConsumer: vi.fn(),
+      registerDevConsumer,
     }));
     vi.doMock("@/chat/vercel-queue-client", () => ({
       createVercelQueueClient: () => ({ send }),
@@ -45,8 +47,10 @@ describe("Workspace snapshot Vercel queue integration", () => {
       processWorkspaceSnapshotJob,
     }));
 
-    const { createVercelWorkspaceSnapshotJobCallback } =
-      await import("@/chat/sandbox/snapshot/job-callback");
+    const {
+      createVercelWorkspaceSnapshotJobCallback,
+      registerVercelWorkspaceSnapshotJobDevConsumer,
+    } = await import("@/chat/sandbox/snapshot/job-callback");
     const { sendWorkspaceSnapshotJob } =
       await import("@/chat/sandbox/snapshot/job-queue");
 
@@ -61,10 +65,18 @@ describe("Workspace snapshot Vercel queue integration", () => {
       topicName: string;
     };
     const call = handleCallback.mock.calls[0] as unknown as
-      | [(message: unknown, metadata: TestQueueMetadata) => Promise<void>]
+      | [
+          (message: unknown, metadata: TestQueueMetadata) => Promise<void>,
+          {
+            retry?: (error: unknown, metadata: TestQueueMetadata) => unknown;
+          },
+        ]
       | undefined;
     const handler = call?.[0];
-    if (!handler) throw new Error("Expected Workspace snapshot queue handler");
+    const retry = call?.[1].retry;
+    if (!handler || !retry) {
+      throw new Error("Expected Workspace snapshot queue handler and retry hook");
+    }
     const metadata: TestQueueMetadata = {
       consumerGroup: "workspace-snapshots",
       createdAt: new Date(1_000),
@@ -96,6 +108,21 @@ describe("Workspace snapshot Vercel queue integration", () => {
       handler({ ...signedMessage, profileHash: "tampered" }, metadata),
     ).resolves.toBeUndefined();
     expect(processWorkspaceSnapshotJob).toHaveBeenCalledTimes(1);
+
+    expect(retry(new Error("build failed"), metadata)).toBeUndefined();
+    expect(
+      retry(new Error("build failed"), { ...metadata, deliveryCount: 5 }),
+    ).toEqual({ acknowledge: true });
+
+    process.env.NODE_ENV = "development";
+    expect(registerVercelWorkspaceSnapshotJobDevConsumer()).toBe(unregister);
+    expect(registerDevConsumer).toHaveBeenCalledWith({
+      client: { send },
+      consumerGroup: "junior_workspace_snapshots_dev",
+      handler: expect.any(Function),
+      retry,
+      topic: "junior_workspace_snapshots",
+    });
   });
 });
 

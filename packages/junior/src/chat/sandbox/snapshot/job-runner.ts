@@ -141,7 +141,7 @@ export async function processWorkspaceSnapshotJob(
     await publishFinishedEvent({
       workspace,
       profileHash: value.hash,
-      buildId: before.build?.id ?? before.ready.id,
+      buildId: before.ready.id,
       status: "ready",
     });
     return;
@@ -202,7 +202,7 @@ export async function processWorkspaceSnapshotJob(
     await publishFinishedEvent({
       workspace,
       profileHash: value.hash,
-      buildId: before.build?.id ?? after.build?.id ?? after.ready.id,
+      buildId: after.ready.id,
       status: "ready",
     });
     return;

@@ -3,6 +3,7 @@ import {
   handleCallback,
   registerDevConsumer,
   type MessageMetadata,
+  type RetryDirective,
 } from "@vercel/queue";
 import { logWarn } from "@/chat/logging";
 import { runWithTurnRequestDeadline } from "@/chat/runtime/request-deadline";
@@ -15,6 +16,8 @@ import {
 
 export const WORKSPACE_SNAPSHOT_JOB_DEV_CONSUMER_GROUP =
   "junior_workspace_snapshots_dev";
+const WORKSPACE_SNAPSHOT_JOB_MAX_DELIVERIES = 5;
+
 function logWorkspaceSnapshotJobRejected(
   reason: "expired" | "malformed" | "signature_mismatch",
   metadata: MessageMetadata,
@@ -43,12 +46,25 @@ async function handleWorkspaceSnapshotJobMessage(
   );
 }
 
+/** Stop repeated delivery when a snapshot job keeps failing. */
+function handleWorkspaceSnapshotJobRetry(
+  _error: unknown,
+  metadata: MessageMetadata,
+): RetryDirective | undefined {
+  if (metadata.deliveryCount >= WORKSPACE_SNAPSHOT_JOB_MAX_DELIVERIES) {
+    return { acknowledge: true };
+  }
+  return undefined;
+}
+
 /** Create the HTTP route for snapshot build messages. */
 export function createVercelWorkspaceSnapshotJobCallback(): (
   request: Request,
 ) => Promise<Response> {
-  return handleCallback((message, metadata) =>
-    handleWorkspaceSnapshotJobMessage(message, metadata),
+  return handleCallback(
+    (message, metadata) =>
+      handleWorkspaceSnapshotJobMessage(message, metadata),
+    { retry: handleWorkspaceSnapshotJobRetry },
   );
 }
 
@@ -64,6 +80,7 @@ export function registerVercelWorkspaceSnapshotJobDevConsumer():
     consumerGroup: WORKSPACE_SNAPSHOT_JOB_DEV_CONSUMER_GROUP,
     handler: (message, metadata) =>
       handleWorkspaceSnapshotJobMessage(message, metadata),
+    retry: handleWorkspaceSnapshotJobRetry,
     topic: WORKSPACE_SNAPSHOT_JOB_QUEUE_TOPIC,
   });
 }
