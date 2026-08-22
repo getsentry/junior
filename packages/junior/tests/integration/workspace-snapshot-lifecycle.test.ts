@@ -7,7 +7,7 @@ import { deleteWorkspaceSnapshotBuilders } from "@/chat/sandbox/snapshot/builder
 import { hash as workspaceProfileHash } from "@/chat/sandbox/snapshot/profile";
 import { SANDBOX_RUNTIME } from "@/chat/sandbox/snapshot/runtime";
 import { loadSnapshotsForProfile } from "@/chat/sandbox/snapshot/store";
-import { isWorkspaceSnapshotWaitingError } from "@/chat/sandbox/snapshot/waiting-error";
+import { UnfinishedToolError } from "@/chat/tool-support/unfinished-tool-error";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { createWorkspace, getWorkspace } from "@/chat/workspaces/store";
 import type {
@@ -76,8 +76,8 @@ async function startUntilBuildingCheckpoint(
       })(),
     });
     try {
-      await expect(runtime.acquire()).rejects.toSatisfy(
-        isWorkspaceSnapshotWaitingError,
+      await expect(runtime.acquire()).rejects.toBeInstanceOf(
+        UnfinishedToolError,
       );
     } finally {
       runtime.close();

@@ -2,7 +2,7 @@ import { z } from "zod";
 import { getDb } from "@/chat/db";
 import { logWarn } from "@/chat/logging";
 import { getPlugins } from "@/chat/plugins/agent-hooks";
-import { isWorkspaceSnapshotWaitingError } from "@/chat/sandbox/snapshot/waiting-error";
+import { UnfinishedToolError } from "@/chat/tool-support/unfinished-tool-error";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
@@ -310,14 +310,11 @@ export function createWorkspaceTools(
         try {
           await context.workspaces!.switch(workspace, options.signal);
         } catch (error) {
-          if (isWorkspaceSnapshotWaitingError(error)) {
+          if (error instanceof UnfinishedToolError) {
             return {
               workspace: view(workspace),
               unfinished: true as const,
-              continuation: {
-                arguments: { name: workspace.name },
-                reason: "workspace snapshot still building",
-              },
+              continuation: error.continuation,
             };
           }
           throw error;

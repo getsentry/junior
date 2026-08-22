@@ -336,9 +336,9 @@ describe("Workspace tools", () => {
     });
   });
 
-  it("returns a timed-out result when snapshot preparation soft-yields", async () => {
-    const { WorkspaceSnapshotWaitingError } =
-      await import("@/chat/sandbox/snapshot/waiting-error");
+  it("returns an unfinished result when snapshot preparation yields", async () => {
+    const { UnfinishedToolError } =
+      await import("@/chat/tool-support/unfinished-tool-error");
     const now = new Date();
     const workspace = {
       id: "22222222-2222-4222-8222-222222222222",
@@ -375,7 +375,12 @@ describe("Workspace tools", () => {
         activeWorkspaceId: () => undefined,
         switch: vi
           .fn()
-          .mockRejectedValue(new WorkspaceSnapshotWaitingError(workspace.name)),
+          .mockRejectedValue(
+            new UnfinishedToolError({
+              arguments: { name: workspace.name },
+              reason: "workspace snapshot still building",
+            }),
+          ),
       },
     } satisfies ToolRuntimeContext;
 

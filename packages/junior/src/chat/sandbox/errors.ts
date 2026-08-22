@@ -1,6 +1,6 @@
 import { setSpanAttributes, setSpanStatus } from "@/chat/logging";
 import { extractHttpErrorDetails } from "@/chat/sandbox/http-error-details";
-import { isWorkspaceSnapshotWaitingError } from "@/chat/sandbox/snapshot/waiting-error";
+import { UnfinishedToolError } from "@/chat/tool-support/unfinished-tool-error";
 
 const SANDBOX_ERROR_FIELDS = [
   {
@@ -208,9 +208,7 @@ export function isSandboxCommandStreamInterruptedError(
 
 /** Wrap raw sandbox setup failures into one stable user-facing error contract. */
 export function wrapSandboxSetupError(error: unknown): Error {
-  if (isWorkspaceSnapshotWaitingError(error)) {
-    return error instanceof Error ? error : new Error(String(error));
-  }
+  if (error instanceof UnfinishedToolError) return error;
   try {
     const details = getSandboxErrorDetails(error);
     if (details.summary) {

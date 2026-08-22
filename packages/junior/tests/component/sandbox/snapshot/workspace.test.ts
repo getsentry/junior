@@ -26,7 +26,7 @@ import {
   loadSnapshotsForProfile,
   setWorkspaceSnapshotBuild,
 } from "@/chat/sandbox/snapshot/store";
-import { isWorkspaceSnapshotWaitingError } from "@/chat/sandbox/snapshot/waiting-error";
+import { UnfinishedToolError } from "@/chat/tool-support/unfinished-tool-error";
 import { resolveWorkspaceSnapshot } from "@/chat/sandbox/snapshot/workspace";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { createWorkspace } from "@/chat/workspaces/store";
@@ -143,7 +143,7 @@ describe("Workspace snapshot completion", () => {
         applyNetworkPolicy: async () => {},
         removeCredentialRoute: false,
       }),
-    ).rejects.toSatisfy(isWorkspaceSnapshotWaitingError);
+    ).rejects.toBeInstanceOf(UnfinishedToolError);
 
     await expect(
       loadSnapshotsForProfile(getDb(), workspace.id, value.hash),
@@ -368,7 +368,7 @@ describe("Workspace snapshot completion", () => {
         expect(error).toMatchObject({
           message: "Workspace snapshot build phase timed out after 10 minutes",
         });
-        expect(isWorkspaceSnapshotWaitingError(error)).toBe(false);
+        expect(error).not.toBeInstanceOf(UnfinishedToolError);
         return true;
       });
       await expect(
@@ -412,7 +412,7 @@ describe("Workspace snapshot completion", () => {
           }),
         requestStartedAtMs,
       ),
-    ).rejects.toSatisfy(isWorkspaceSnapshotWaitingError);
+    ).rejects.toBeInstanceOf(UnfinishedToolError);
     expect(sandboxCreateMock).not.toHaveBeenCalled();
   });
 
@@ -484,7 +484,7 @@ describe("Workspace snapshot completion", () => {
       new DOMException("This operation was aborted", "AbortError"),
     );
 
-    await expect(pending).rejects.toSatisfy(isWorkspaceSnapshotWaitingError);
+    await expect(pending).rejects.toBeInstanceOf(UnfinishedToolError);
     await expect(
       loadSnapshotsForProfile(getDb(), workspace.id, value.hash),
     ).resolves.toMatchObject({

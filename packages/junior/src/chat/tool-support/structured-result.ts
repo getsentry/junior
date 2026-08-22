@@ -8,6 +8,10 @@ export const juniorToolContinuationSchema = z
   })
   .strict();
 
+export type JuniorToolContinuation = z.output<
+  typeof juniorToolContinuationSchema
+>;
+
 export const juniorToolBoundContinuationSchema =
   juniorToolContinuationSchema.extend({
     tool_name: z.string().min(1),

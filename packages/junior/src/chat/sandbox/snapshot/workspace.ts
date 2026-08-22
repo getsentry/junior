@@ -26,7 +26,7 @@ import {
   setWorkspaceSnapshot,
   setWorkspaceSnapshotBuild,
 } from "@/chat/sandbox/snapshot/store";
-import { WorkspaceSnapshotWaitingError } from "@/chat/sandbox/snapshot/waiting-error";
+import { UnfinishedToolError } from "@/chat/tool-support/unfinished-tool-error";
 import {
   createSandboxSession,
   type SandboxSession,
@@ -591,6 +591,13 @@ async function advanceWorkspaceSnapshot(params: {
   return locked.acquired ? (locked.value ?? null) : null;
 }
 
+function unfinishedWorkspaceSwitch(workspaceName: string): UnfinishedToolError {
+  return new UnfinishedToolError({
+    arguments: { name: workspaceName },
+    reason: "workspace snapshot still building",
+  });
+}
+
 /** Reserve enough host time to persist the waiting tool-result boundary. */
 function shouldYieldWait(shouldYield?: () => boolean): boolean {
   if (shouldYield?.()) return true;
@@ -628,7 +635,7 @@ export async function resolveWorkspaceSnapshot(params: {
       if (!workspace) throw workspaceDeletedError(params.workspace);
       const slice = { ...params, workspace };
       if (shouldYieldWait(slice.shouldYield)) {
-        throw new WorkspaceSnapshotWaitingError(workspace.name);
+        throw unfinishedWorkspaceSwitch(workspace.name);
       }
 
       let snapshot: Snapshot | null;
@@ -637,13 +644,13 @@ export async function resolveWorkspaceSnapshot(params: {
       } catch (error) {
         if (!isSandboxApiTransientError(error)) throw error;
         if (shouldYieldWait(slice.shouldYield)) {
-          throw new WorkspaceSnapshotWaitingError(workspace.name);
+          throw unfinishedWorkspaceSwitch(workspace.name);
         }
         await sleep(TRANSIENT_API_RETRY_MS, params.signal);
         continue;
       }
       if (shouldYieldWait(slice.shouldYield)) {
-        throw new WorkspaceSnapshotWaitingError(workspace.name);
+        throw unfinishedWorkspaceSwitch(workspace.name);
       }
       if (snapshot) return snapshot;
       await sleep(WAIT_POLL_MS, params.signal);
@@ -662,7 +669,7 @@ export async function resolveWorkspaceSnapshot(params: {
     // turn-budget abort both leave the builder running; the next slice
     // reconnects. Do not mark the build failed on abort.
     if (isAbortError(error)) {
-      throw new WorkspaceSnapshotWaitingError(workspaceName);
+      throw unfinishedWorkspaceSwitch(workspaceName);
     }
     throw error;
   }
