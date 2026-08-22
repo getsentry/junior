@@ -1,9 +1,10 @@
 import {
+  castThroughUnknown,
   missingToolAnnotationKeys,
   normalizeResourceEventIdentifier,
+  pluginResourceEventsSchema,
   promptContextSchema,
   promptMessageSchema,
-  pluginResourceEventsSchema,
   resourceEventInputSchema,
 } from "@sentry/junior-plugin-api";
 import type {
@@ -742,7 +743,7 @@ export function getPluginTools(
           `Duplicate plugin tool "${name}" from plugin "${pluginName}"`,
         );
       }
-      const definition = tool as unknown as AnyToolDefinition;
+      const definition = castThroughUnknown<AnyToolDefinition>(tool);
       const missingAnnotationKeys = missingToolAnnotationKeys(
         definition.annotations,
       );

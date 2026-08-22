@@ -2,10 +2,15 @@ import { describe, expect, it, vi } from "vitest";
 import type { StateAdapter } from "chat";
 import { StateAdapterTokenStore } from "@/chat/credentials/state-adapter-token-store";
 import { ACTIVE_LOCK_TTL_MS } from "@/chat/state/locks";
+import { castThroughUnknown } from "@sentry/junior-plugin-api";
 
 describe("StateAdapterTokenStore", () => {
   function createAdapter(overrides: Partial<StateAdapter> = {}) {
-    return {
+    return castThroughUnknown<
+      StateAdapter & {
+        set: ReturnType<typeof vi.fn>;
+      }
+    >({
       get: async () => null,
       set: vi.fn(async () => {}),
       delete: async () => {},
@@ -18,9 +23,7 @@ describe("StateAdapterTokenStore", () => {
       releaseLock: async () => {},
       setWithTtl: async () => {},
       ...overrides,
-    } as unknown as StateAdapter & {
-      set: ReturnType<typeof vi.fn>;
-    };
+    });
   }
 
   it("uses a long-lived ttl for tokens without expiresAt", async () => {

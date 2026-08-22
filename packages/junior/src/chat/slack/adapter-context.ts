@@ -2,6 +2,7 @@ import type { SlackAdapter } from "@chat-adapter/slack";
 import type { ChatInstance, StateAdapter } from "chat";
 import { runWithSlackInstallationToken } from "@/chat/slack/client";
 import { getStateAdapter } from "@/chat/state/adapter";
+import { castThroughUnknown } from "@sentry/junior-plugin-api";
 
 interface SlackAdapterInternals {
   defaultBotTokenProvider?: () => string | Promise<string>;
@@ -51,10 +52,12 @@ export async function ensureSlackAdapterInitialized(args: {
     return;
   }
   const state = await getConnectedState(args.state);
-  await args.adapter.initialize({
-    getState: () => state,
-  } as unknown as ChatInstance);
-  const internals = args.adapter as unknown as SlackAdapterInternals;
+  await args.adapter.initialize(
+    castThroughUnknown<ChatInstance>({
+      getState: () => state,
+    }),
+  );
+  const internals = castThroughUnknown<SlackAdapterInternals>(args.adapter);
   if (internals.defaultBotTokenProvider && !args.adapter.botUserId) {
     // A single-workspace adapter that failed `auth.test` has no bot identity,
     // which disables self-message filtering and mention detection. Caching it
@@ -71,7 +74,7 @@ export function verifySlackSignature(args: {
   body: string;
   request: Request;
 }): boolean {
-  const internals = args.adapter as unknown as SlackAdapterInternals;
+  const internals = castThroughUnknown<SlackAdapterInternals>(args.adapter);
   const verifySignature = internals.verifySignature;
   if (!verifySignature) {
     throw new Error("Slack adapter does not expose signature verification");
@@ -96,7 +99,7 @@ export async function runWithSlackInstallation<T>(args: {
     state: args.state,
   });
 
-  const internals = args.adapter as unknown as SlackAdapterInternals;
+  const internals = castThroughUnknown<SlackAdapterInternals>(args.adapter);
   if (internals.defaultBotTokenProvider) {
     return await args.task();
   }

@@ -1,5 +1,6 @@
 import type { SlashCommandEvent } from "chat";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { castThroughUnknown } from "@sentry/junior-plugin-api";
 
 const ORIGINAL_ENV = { ...process.env };
 
@@ -21,12 +22,12 @@ function createSlashEvent(
     isMe: false,
     ...userOverrides,
   };
-  const event = {
+  const event = castThroughUnknown<SlashCommandEvent>({
     text,
     user,
     channel: { postEphemeral },
     raw: {},
-  } as unknown as SlashCommandEvent;
+  });
 
   return { event, postEphemeral, user };
 }

@@ -10,6 +10,7 @@ import type {
   StoredTokens,
   UserTokenStore,
 } from "@/chat/credentials/user-token-store";
+import { castThroughUnknown } from "@sentry/junior-plugin-api";
 
 const ORIGINAL_ENV = { ...process.env };
 const ORIGINAL_FETCH = globalThis.fetch;
@@ -200,13 +201,15 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
       },
     });
 
-    globalThis.fetch = vi.fn(async () => ({
-      ok: true,
-      json: async () => ({
-        access_token: "new-access-token",
-        expires_in: 3600,
-      }),
-    })) as unknown as typeof fetch;
+    globalThis.fetch = castThroughUnknown<typeof fetch>(
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => ({
+          access_token: "new-access-token",
+          expires_in: 3600,
+        }),
+      })),
+    );
 
     const broker = createBroker(tokenStore);
     const lease = await broker.issue({
@@ -255,15 +258,17 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
       },
     });
 
-    globalThis.fetch = vi.fn(async () => ({
-      ok: true,
-      json: async () => ({
-        access_token: "new-access-token",
-        refresh_token: "new-refresh-token",
-        expires_in: 3600,
-        refresh_token_expires_in: 7200,
-      }),
-    })) as unknown as typeof fetch;
+    globalThis.fetch = castThroughUnknown<typeof fetch>(
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => ({
+          access_token: "new-access-token",
+          refresh_token: "new-refresh-token",
+          expires_in: 3600,
+          refresh_token_expires_in: 7200,
+        }),
+      })),
+    );
 
     const broker = createBroker(tokenStore);
     await broker.issue({
@@ -303,7 +308,7 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
       delete: vi.fn(),
       withRefresh,
     };
-    globalThis.fetch = vi.fn() as unknown as typeof fetch;
+    globalThis.fetch = castThroughUnknown<typeof fetch>(vi.fn());
 
     const broker = createBroker(tokenStore);
     const lease = await broker.issue({
@@ -338,12 +343,14 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
       },
     });
 
-    globalThis.fetch = vi.fn(
-      async () =>
-        new Response(JSON.stringify({ error: "invalid_grant" }), {
-          status: 400,
-        }),
-    ) as unknown as typeof fetch;
+    globalThis.fetch = castThroughUnknown<typeof fetch>(
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ error: "invalid_grant" }), {
+            status: 400,
+          }),
+      ),
+    );
 
     const broker = createBroker(tokenStore);
     await expect(
@@ -368,12 +375,14 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
     });
 
     const providerText = "SENSITIVE_CANARY";
-    globalThis.fetch = vi.fn(
-      async () =>
-        new Response(JSON.stringify({ error: providerText }), {
-          status: 500,
-        }),
-    ) as unknown as typeof fetch;
+    globalThis.fetch = castThroughUnknown<typeof fetch>(
+      vi.fn(
+        async () =>
+          new Response(JSON.stringify({ error: providerText }), {
+            status: 500,
+          }),
+      ),
+    );
 
     const broker = createBroker(tokenStore);
     const error = await broker
@@ -418,9 +427,9 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
         cancelled = true;
       },
     });
-    globalThis.fetch = vi.fn(
-      async () => new Response(body, { status: 500 }),
-    ) as unknown as typeof fetch;
+    globalThis.fetch = castThroughUnknown<typeof fetch>(
+      vi.fn(async () => new Response(body, { status: 500 })),
+    );
 
     const broker = createBroker(tokenStore);
     await expect(
@@ -451,9 +460,9 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
         controller.error(new Error(providerText));
       },
     });
-    globalThis.fetch = vi.fn(
-      async () => new Response(body, { status: 500 }),
-    ) as unknown as typeof fetch;
+    globalThis.fetch = castThroughUnknown<typeof fetch>(
+      vi.fn(async () => new Response(body, { status: 500 })),
+    );
 
     const broker = createBroker(tokenStore);
     const error = await broker

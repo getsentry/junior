@@ -14,6 +14,7 @@ import {
 import { normalizeIncomingSlackThreadId } from "@/chat/ingress/message-router";
 import { isExternalSlackUser } from "@/chat/ingress/workspace-membership";
 import { runWithTurnRequestDeadline } from "@/chat/runtime/request-deadline";
+import { castThroughUnknown } from "@sentry/junior-plugin-api";
 
 type ChatInternals = {
   logger?: {
@@ -87,7 +88,7 @@ export class JuniorChat<
     options?: WebhookOptions,
   ): Promise<void> {
     if (typeof messageOrFactory === "function") {
-      const runtime = this as unknown as ChatInternals;
+      const runtime = castThroughUnknown<ChatInternals>(this);
       return enqueueBackgroundTask(
         options,
         runWithTurnRequestDeadline(async (): Promise<void> => {
@@ -106,7 +107,7 @@ export class JuniorChat<
           }
           const normalized = normalizeIncomingSlackThreadId(threadId, message);
           if (normalized !== threadId && "threadId" in message) {
-            (message as unknown as Record<string, unknown>).threadId =
+            castThroughUnknown<Record<string, unknown>>(message).threadId =
               normalized;
           }
           await super.processMessage(adapter, normalized, message, options);
@@ -121,7 +122,8 @@ export class JuniorChat<
 
     const normalized = normalizeIncomingSlackThreadId(threadId, message);
     if (normalized !== threadId && "threadId" in message) {
-      (message as unknown as Record<string, unknown>).threadId = normalized;
+      castThroughUnknown<Record<string, unknown>>(message).threadId =
+        normalized;
     }
     return runWithTurnRequestDeadline(() =>
       super.processMessage(adapter, normalized, message, options),
@@ -134,7 +136,7 @@ export class JuniorChat<
     },
     options?: WebhookOptions,
   ): void {
-    const runtime = this as unknown as ChatInternals;
+    const runtime = castThroughUnknown<ChatInternals>(this);
 
     enqueueBackgroundTask(
       options,
@@ -158,7 +160,7 @@ export class JuniorChat<
     },
     options: WebhookOptions | undefined,
   ): Promise<void> {
-    const runtime = this as unknown as ChatInternals;
+    const runtime = castThroughUnknown<ChatInternals>(this);
 
     const task = (async (): Promise<void> => {
       try {
@@ -183,7 +185,7 @@ export class JuniorChat<
     contextId?: string,
     options?: WebhookOptions,
   ): void {
-    const runtime = this as unknown as ChatInternals;
+    const runtime = castThroughUnknown<ChatInternals>(this);
 
     enqueueBackgroundTask(
       options,
@@ -225,7 +227,7 @@ export class JuniorChat<
     },
     options: WebhookOptions | undefined,
   ): void {
-    const runtime = this as unknown as ChatInternals;
+    const runtime = castThroughUnknown<ChatInternals>(this);
 
     enqueueBackgroundTask(
       options,
@@ -247,7 +249,7 @@ export class JuniorChat<
     event: AssistantThreadStartedEvent,
     options?: WebhookOptions,
   ): void {
-    const runtime = this as unknown as ChatInternals;
+    const runtime = castThroughUnknown<ChatInternals>(this);
 
     enqueueBackgroundTask(
       options,
@@ -270,7 +272,7 @@ export class JuniorChat<
     event: AssistantContextChangedEvent,
     options?: WebhookOptions,
   ): void {
-    const runtime = this as unknown as ChatInternals;
+    const runtime = castThroughUnknown<ChatInternals>(this);
 
     enqueueBackgroundTask(
       options,
@@ -293,7 +295,7 @@ export class JuniorChat<
     event: AppHomeOpenedEvent,
     options?: WebhookOptions,
   ): void {
-    const runtime = this as unknown as ChatInternals;
+    const runtime = castThroughUnknown<ChatInternals>(this);
 
     enqueueBackgroundTask(
       options,

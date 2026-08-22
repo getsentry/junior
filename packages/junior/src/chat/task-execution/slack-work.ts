@@ -44,6 +44,7 @@ import {
 } from "@/chat/destination";
 import { stripLeadingSteeringOverride } from "@/chat/slack/message-control";
 import { botConfig, type CrossActorMidRunMode } from "@/chat/config";
+import { castThroughUnknown } from "@sentry/junior-plugin-api";
 
 const slackConversationRouteSchema = z.enum(["mention", "subscribed"]);
 export type SlackConversationRoute = z.output<
@@ -706,7 +707,7 @@ function restoreThread(args: {
     args.message,
   );
   if (args.message.threadId !== threadId) {
-    (args.message as unknown as { threadId: string }).threadId = threadId;
+    castThroughUnknown<{ threadId: string }>(args.message).threadId = threadId;
   }
   return new ThreadImpl({
     adapter: args.adapter,
@@ -855,7 +856,8 @@ export function createSlackConversationWorker(
           await context.attempt.drain(async (pendingRecords) => {
             const candidates = pendingRecords
               .filter(
-                (record) => record.publishExternally === context.publishExternally,
+                (record) =>
+                  record.publishExternally === context.publishExternally,
               )
               .map((record) => ({
                 inboundMessageId: record.inboundMessageId,

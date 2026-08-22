@@ -7,6 +7,7 @@ import {
   type MemoryDb,
 } from "@sentry/junior-memory";
 import {
+  castThroughUnknown,
   createSlackSource,
   defineJuniorPlugin,
   PluginToolInputError,
@@ -313,11 +314,14 @@ WHERE indexname = 'junior_memory_memories_search_idx'
 
         visibility: "private",
       });
-      const store = createMemoryStore(fixture.sql.db() as unknown as MemoryDb, {
-        conversationId,
-        actor,
-        source,
-      });
+      const store = createMemoryStore(
+        castThroughUnknown<MemoryDb>(fixture.sql.db()),
+        {
+          conversationId,
+          actor,
+          source,
+        },
+      );
       await store.createMemory({
         content: "I prefer host-wired personal recall.",
         idempotencyKey: "component-memory-personal",

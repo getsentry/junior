@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { createSlackSource } from "@sentry/junior-plugin-api";
+import {
+  castThroughUnknown,
+  createSlackSource,
+} from "@sentry/junior-plugin-api";
 import {
   validateDispatchOptions,
   verifyDispatchCredentialSubjectAccess,
@@ -117,7 +120,8 @@ describe("agent dispatch validation", () => {
     expect(() =>
       validateDispatchOptions({
         ...validOptions,
-        destination: undefined as unknown as typeof validOptions.destination,
+        destination:
+          castThroughUnknown<typeof validOptions.destination>(undefined),
       }),
     ).toThrow("Dispatch destination platform must be slack");
     expect(() =>
@@ -276,7 +280,6 @@ describe("agent dispatch validation", () => {
     expect(parseDispatchRecord(legacyRecord)).toBeUndefined();
   });
 
-
   it("bounds durable idempotency and metadata keys", () => {
     expect(() =>
       validateDispatchOptions({
@@ -288,7 +291,7 @@ describe("agent dispatch validation", () => {
     expect(() =>
       validateDispatchOptions({
         ...validOptions,
-        metadata: null as unknown as Record<string, string>,
+        metadata: castThroughUnknown<Record<string, string>>(null),
       }),
     ).toThrow("Dispatch metadata values must be strings");
 
@@ -421,15 +424,17 @@ describe("agent dispatch validation", () => {
       "Dispatch credentialSubject is not valid for this action",
     );
 
-    const unboundRuntimeSubject = {
+    const unboundRuntimeSubject = castThroughUnknown<
+      NonNullable<
+        Parameters<
+          typeof verifyDispatchCredentialSubjectAccess
+        >[0]["credentialSubject"]
+      >
+    >({
       type: "user",
       userId: "U123",
       allowedWhen: "private-direct-conversation",
-    } as unknown as NonNullable<
-      Parameters<
-        typeof verifyDispatchCredentialSubjectAccess
-      >[0]["credentialSubject"]
-    >;
+    });
 
     await expect(
       verifyDispatchCredentialSubjectAccess(

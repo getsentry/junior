@@ -38,7 +38,7 @@ vi.mock("@vercel/sandbox", () => ({
     };
 
     constructor(session: { fs: MockSandbox["fs"] }) {
-      this.fs = session.fs as unknown as typeof this.fs;
+      this.fs = castThroughUnknown<typeof this.fs>(session.fs);
     }
 
     readFile(
@@ -167,6 +167,7 @@ import { createSandboxSession } from "@/chat/sandbox/workspace";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { castThroughUnknown } from "@sentry/junior-plugin-api";
 
 interface SandboxFixtureOptions {
   sandboxId?: string;

@@ -10,6 +10,7 @@ import {
   getCapturedSlackApiCalls,
   resetSlackApiMockState,
 } from "../../msw/handlers/slack-api";
+import { castThroughUnknown } from "@sentry/junior-plugin-api";
 
 const SIGNING_SECRET = "test-signing-secret";
 const DEFAULT_BOT_TOKEN = "xoxb-default";
@@ -44,11 +45,11 @@ function createFakeScheduler() {
       canceled: false,
     };
     timers.push(timer);
-    return timer.id as unknown as ReturnType<typeof setTimeout>;
+    return castThroughUnknown<ReturnType<typeof setTimeout>>(timer.id);
   };
 
   const clearTimer = (timer: ReturnType<typeof setTimeout>) => {
-    const id = timer as unknown as number;
+    const id = castThroughUnknown<number>(timer);
     const entry = timers.find((candidate) => candidate.id === id);
     if (entry) {
       entry.canceled = true;

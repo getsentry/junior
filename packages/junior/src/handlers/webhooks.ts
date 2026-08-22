@@ -16,6 +16,7 @@ import {
   withSpan,
 } from "@/chat/logging";
 import type { WaitUntilFn } from "@/handlers/types";
+import { castThroughUnknown } from "@sentry/junior-plugin-api";
 
 interface SlackWebhookAuthAdapter {
   botUserId?: string;
@@ -52,7 +53,7 @@ async function handleAuthenticatedSlackMessageChangedMention(args: {
   waitUntil: WaitUntilFn;
 }): Promise<void> {
   const slackAdapter = args.bot.getAdapter("slack");
-  const authAdapter = slackAdapter as unknown as SlackWebhookAuthAdapter;
+  const authAdapter = castThroughUnknown<SlackWebhookAuthAdapter>(slackAdapter);
   const timestamp = args.request.headers.get("x-slack-request-timestamp");
   const signature = args.request.headers.get("x-slack-signature");
 

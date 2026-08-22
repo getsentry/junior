@@ -4,13 +4,14 @@ import type {
   SandboxCommandInput,
   SandboxSession,
 } from "@/chat/sandbox/workspace";
+import { castThroughUnknown } from "@sentry/junior-plugin-api";
 
 function session(
   run: (
     input: SandboxCommandInput,
   ) => Promise<{ exitCode: number; stderr: string; stdout: string }>,
 ): SandboxSession {
-  return { runCommand: vi.fn(run) } as unknown as SandboxSession;
+  return castThroughUnknown<SandboxSession>({ runCommand: vi.fn(run) });
 }
 
 function script(input: SandboxCommandInput): string {

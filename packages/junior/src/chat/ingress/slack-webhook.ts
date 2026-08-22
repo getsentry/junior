@@ -47,6 +47,7 @@ import {
   type LogContext,
 } from "@/chat/logging";
 import type { WaitUntilFn } from "@/handlers/types";
+import { castThroughUnknown } from "@sentry/junior-plugin-api";
 
 type SlackMessageEvent = {
   bot_id?: string;
@@ -180,7 +181,7 @@ function shouldIgnoreMessageSubtype(event: SlackMessageEvent): boolean {
 function normalizeMessageThreadId(message: Message): string {
   const normalized = normalizeIncomingSlackThreadId(message.threadId, message);
   if (normalized !== message.threadId) {
-    (message as unknown as { threadId: string }).threadId = normalized;
+    castThroughUnknown<{ threadId: string }>(message).threadId = normalized;
   }
   return normalized;
 }

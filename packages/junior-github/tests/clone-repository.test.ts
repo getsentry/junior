@@ -1,4 +1,5 @@
 import {
+  castThroughUnknown,
   PluginToolInputError,
   type ToolRegistrationHookContext,
 } from "@sentry/junior-plugin-api";
@@ -9,7 +10,7 @@ function context(
   run: ReturnType<typeof vi.fn>,
   findByRepository = vi.fn().mockResolvedValue([]),
 ): ToolRegistrationHookContext {
-  return {
+  return castThroughUnknown<ToolRegistrationHookContext>({
     log: { error: vi.fn(), info: vi.fn(), warn: vi.fn() },
     sandbox: {
       root: "/vercel/sandbox",
@@ -19,7 +20,7 @@ function context(
       writeFile: vi.fn(),
     },
     workspaces: { findByRepository },
-  } as unknown as ToolRegistrationHookContext;
+  });
 }
 
 describe("cloneRepository", () => {

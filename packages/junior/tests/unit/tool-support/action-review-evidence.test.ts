@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { PiMessage } from "@/chat/pi/messages";
 import { buildToolActionEvidence } from "@/chat/tool-support/action-review-evidence";
+import { castThroughUnknown } from "@sentry/junior-plugin-api";
 
 describe("tool action review evidence", () => {
   it("keeps user, assistant, tool-call, and tool-result evidence without reasoning", () => {
@@ -54,10 +55,10 @@ describe("tool action review evidence", () => {
 
   it("preserves first and latest user anchors while retaining recent tool evidence", () => {
     const messages: PiMessage[] = [
-      {
+      castThroughUnknown<PiMessage>({
         role: "user",
         content: [{ type: "text", text: "first-request" }],
-      } as unknown as PiMessage,
+      }),
       ...Array.from(
         { length: 12 },
         (_, index) =>
@@ -66,7 +67,7 @@ describe("tool action review evidence", () => {
             content: [{ type: "text", text: `${index}-${"x".repeat(8_000)}` }],
           }) as PiMessage,
       ),
-      {
+      castThroughUnknown<PiMessage>({
         role: "assistant",
         content: [
           {
@@ -76,7 +77,7 @@ describe("tool action review evidence", () => {
             arguments: { target: "preview-73" },
           },
         ],
-      } as unknown as PiMessage,
+      }),
       {
         role: "toolResult",
         toolCallId: "call-latest",

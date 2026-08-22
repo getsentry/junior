@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createAssistantStatusScheduler } from "@/chat/slack/assistant-thread/status-scheduler";
 import { makeAssistantStatus } from "@/chat/slack/assistant-thread/status-render";
+import { castThroughUnknown } from "@sentry/junior-plugin-api";
 
 interface FakeTimer {
   id: number;
@@ -27,11 +28,11 @@ function createFakeScheduler() {
       canceled: false,
     };
     timers.push(timer);
-    return timer.id as unknown as ReturnType<typeof setTimeout>;
+    return castThroughUnknown<ReturnType<typeof setTimeout>>(timer.id);
   };
 
   const clearTimer = (timer: ReturnType<typeof setTimeout>) => {
-    const id = timer as unknown as number;
+    const id = castThroughUnknown<number>(timer);
     const entry = timers.find((candidate) => candidate.id === id);
     if (entry) {
       entry.canceled = true;

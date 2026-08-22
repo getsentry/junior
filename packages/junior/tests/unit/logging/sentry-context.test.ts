@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { castThroughUnknown } from "@sentry/junior-plugin-api";
 
 const sentry = vi.hoisted(() => {
   const scope = {
@@ -122,7 +123,9 @@ describe("Sentry context", () => {
     };
 
     logging.setSentryScopeContext(
-      scope as unknown as Parameters<typeof logging.setSentryScopeContext>[0],
+      castThroughUnknown<Parameters<typeof logging.setSentryScopeContext>[0]>(
+        scope,
+      ),
       {
         conversationId: "thread_123",
         userId: "U123",

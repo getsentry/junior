@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createSlackSource } from "@sentry/junior-plugin-api";
+import {
+  castThroughUnknown,
+  createSlackSource,
+} from "@sentry/junior-plugin-api";
 import { renderCurrentInstruction } from "@/chat/current-instruction";
 import { getConversationEventStore } from "@/chat/db";
 import { McpProviderError } from "@/chat/mcp/errors";
@@ -243,10 +246,14 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
           throw new Error("searchMcpTools missing");
         }
         try {
-          await this.executeTool(searchMcpTools, "tool-search-provider-failure", {
-            provider: "demo",
-            query: "ping query",
-          });
+          await this.executeTool(
+            searchMcpTools,
+            "tool-search-provider-failure",
+            {
+              provider: "demo",
+              query: "ping query",
+            },
+          );
         } catch {
           if (!this.aborted) {
             this.state.messages.push(
@@ -414,8 +421,12 @@ vi.mock("@/chat/mcp/oauth", () => ({
       userMessage: input.userMessage,
       ...(input.channelId ? { channelId: input.channelId } : undefined),
       ...(input.threadTs ? { threadTs: input.threadTs } : undefined),
-      ...(input.toolChannelId ? { toolChannelId: input.toolChannelId } : undefined),
-      ...(input.configuration ? { configuration: input.configuration } : undefined),
+      ...(input.toolChannelId
+        ? { toolChannelId: input.toolChannelId }
+        : undefined),
+      ...(input.configuration
+        ? { configuration: input.configuration }
+        : undefined),
       createdAtMs: Date.now(),
       updatedAtMs: Date.now(),
     });
@@ -1140,7 +1151,7 @@ describe("executeAgentRun progressive MCP loading", () => {
   it("preserves the execution-limit error when provider restore pauses for auth", async () => {
     const conversationId = "conversation-restore-auth-limit";
     const turnId = "turn-restore-auth-limit";
-    const priorMessages = [
+    const priorMessages = castThroughUnknown<PiMessage[]>([
       {
         input: {
           tool_name: "mcp__demo__ping",
@@ -1153,7 +1164,7 @@ describe("executeAgentRun progressive MCP loading", () => {
         content: [{ type: "text", text: "pong" }],
         timestamp: 1,
       },
-    ] as unknown as PiMessage[];
+    ]);
     await upsertTurnRecord({
       conversationId,
       piMessages: priorMessages,
@@ -1179,7 +1190,7 @@ describe("executeAgentRun progressive MCP loading", () => {
   });
 
   it("adds missing bootstrap context when actor-owned provider restore pauses before prompt", async () => {
-    const priorMessages = [
+    const priorMessages = castThroughUnknown<PiMessage[]>([
       {
         role: "user",
         content: [{ type: "text", text: "prior question" }],
@@ -1197,7 +1208,7 @@ describe("executeAgentRun progressive MCP loading", () => {
         content: [{ type: "text", text: "pong" }],
         timestamp: 2,
       },
-    ] as unknown as PiMessage[];
+    ]);
     await recordMcpProviderConnected({
       conversationId: "conversation-restore-auth",
       provider: "demo",

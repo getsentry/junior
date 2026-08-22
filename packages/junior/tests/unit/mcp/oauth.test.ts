@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { castThroughUnknown } from "@sentry/junior-plugin-api";
 
 const ORIGINAL_ENV = { ...process.env };
 const ORIGINAL_FETCH = globalThis.fetch;
@@ -157,9 +158,9 @@ describe("createMcpOAuthClientProvider", () => {
         cancelled = true;
       },
     });
-    globalThis.fetch = vi.fn(
-      async () => new Response(body, { status: 502 }),
-    ) as unknown as typeof fetch;
+    globalThis.fetch = castThroughUnknown<typeof fetch>(
+      vi.fn(async () => new Response(body, { status: 502 })),
+    );
     finishAuthMock.mockImplementation(
       async (_code: string, options: { fetch?: typeof fetch } | undefined) => {
         const response = await options?.fetch?.(

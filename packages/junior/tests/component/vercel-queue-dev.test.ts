@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ConversationWorkerContext } from "@/chat/task-execution/worker";
+import { castThroughUnknown } from "@sentry/junior-plugin-api";
 
 const originalNodeEnv = process.env.NODE_ENV;
 const originalQueueTopic = process.env.JUNIOR_CONVERSATION_WORK_QUEUE_TOPIC;
@@ -47,10 +48,8 @@ describe("plugin task Vercel queue integration", () => {
       processPluginTask,
     }));
 
-    const {
-      createVercelPluginTaskCallback,
-      signPluginTaskQueueMessage,
-    } = await import("@/chat/plugins/task-queue");
+    const { createVercelPluginTaskCallback, signPluginTaskQueueMessage } =
+      await import("@/chat/plugins/task-queue");
 
     expect(createVercelPluginTaskCallback()).toBe(routeHandler);
 
@@ -72,14 +71,15 @@ describe("plugin task Vercel queue integration", () => {
       region: "iad1",
       topicName: "topic",
     };
-    const call = handleCallback.mock.calls[0] as unknown as
+    const call = castThroughUnknown<
       | [
           (message: unknown, metadata: TestQueueMetadata) => Promise<void>,
           {
             retry?: (error: unknown, metadata: TestQueueMetadata) => unknown;
           },
         ]
-      | undefined;
+      | undefined
+    >(handleCallback.mock.calls[0]);
     const handler = call?.[0];
     const retry = call?.[1].retry;
     expect(handler).toEqual(expect.any(Function));
@@ -138,9 +138,8 @@ describe("plugin task Vercel queue integration", () => {
 
     process.env.JUNIOR_SECRET = "plugin-task-secret";
 
-    const { PLUGIN_TASK_QUEUE_TOPIC, pluginTaskId, sendVercelPluginTask } = await import(
-      "@/chat/plugins/task-queue"
-    );
+    const { PLUGIN_TASK_QUEUE_TOPIC, pluginTaskId, sendVercelPluginTask } =
+      await import("@/chat/plugins/task-queue");
     const message = {
       name: "extractMemories",
       params: {
@@ -250,7 +249,7 @@ describe("registerVercelConversationWorkDevConsumer", () => {
       region: "iad1",
       topicName: "topic",
     };
-    const call = handleCallback.mock.calls[0] as unknown as
+    const call = castThroughUnknown<
       | [
           (message: unknown, metadata: TestQueueMetadata) => Promise<void>,
           {
@@ -258,7 +257,8 @@ describe("registerVercelConversationWorkDevConsumer", () => {
             visibilityTimeoutSeconds?: number;
           },
         ]
-      | undefined;
+      | undefined
+    >(handleCallback.mock.calls[0]);
     const handler = call?.[0];
     const retry = call?.[1].retry;
     expect(handler).toEqual(expect.any(Function));
@@ -367,7 +367,7 @@ describe("registerVercelConversationWorkDevConsumer", () => {
     });
     createVercelConversationWorkCallback({ run });
 
-    const call = handleCallback.mock.calls[0] as unknown as
+    const call = castThroughUnknown<
       | [
           (
             message: unknown,
@@ -382,7 +382,8 @@ describe("registerVercelConversationWorkDevConsumer", () => {
             },
           ) => Promise<void>,
         ]
-      | undefined;
+      | undefined
+    >(handleCallback.mock.calls[0]);
     const handler = call?.[0];
     if (!handler) {
       throw new Error("Expected conversation queue handler");

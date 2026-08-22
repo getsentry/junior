@@ -1,5 +1,6 @@
 import type { PiMessage } from "@/chat/pi/messages";
 import { z } from "zod";
+import { castThroughUnknown } from "@sentry/junior-plugin-api";
 
 const MAX_VISIBLE_HISTORY_CHARS = 12_000;
 const priorRejectionSchema = z
@@ -117,7 +118,7 @@ export function restoreToolActionRejections(
   const priorRejections: ToolActionPriorRejection[] = [];
 
   for (const message of messages) {
-    const record = message as unknown as Record<string, unknown>;
+    const record = castThroughUnknown<Record<string, unknown>>(message);
     if (record.role !== "toolResult" || record.isError !== true) {
       continue;
     }

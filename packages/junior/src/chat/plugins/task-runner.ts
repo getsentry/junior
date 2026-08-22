@@ -13,7 +13,10 @@ import type {
   PluginRunTranscriptProvenance,
   PluginTaskContext,
 } from "@sentry/junior-plugin-api";
-import { pluginRunContextSchema } from "@sentry/junior-plugin-api";
+import {
+  castThroughUnknown,
+  pluginRunContextSchema,
+} from "@sentry/junior-plugin-api";
 import { getDb } from "@/chat/db";
 import { createPluginLogger } from "@/chat/plugins/logging";
 import { createPluginConversationEvents } from "@/chat/plugins/conversation-events";
@@ -91,7 +94,7 @@ function messageText(message: PiMessage): string {
 }
 
 function toolResultText(message: PiMessage): string {
-  const record = message as unknown as Record<string, unknown>;
+  const record = castThroughUnknown<Record<string, unknown>>(message);
   const parts = [
     messageText(message),
     record.output,
@@ -214,8 +217,12 @@ function slackContextAuthor(
     platform: "slack",
     teamId: source.teamId,
     userId,
-    ...(message.author?.userName ? { userName: message.author.userName } : undefined),
-    ...(message.author?.fullName ? { fullName: message.author.fullName } : undefined),
+    ...(message.author?.userName
+      ? { userName: message.author.userName }
+      : undefined),
+    ...(message.author?.fullName
+      ? { fullName: message.author.fullName }
+      : undefined),
   };
 }
 

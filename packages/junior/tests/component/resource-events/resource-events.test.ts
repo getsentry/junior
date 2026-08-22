@@ -32,6 +32,7 @@ import {
   createConversationWorkQueueTestAdapter,
 } from "../../fixtures/conversation-work";
 import { readProxyProperty } from "../../fixtures/proxy-property";
+import { castThroughUnknown } from "@sentry/junior-plugin-api";
 
 function createRecordingStateAdapter() {
   const values = new Map<string, unknown>();
@@ -40,7 +41,7 @@ function createRecordingStateAdapter() {
     return undefined;
   });
   return {
-    state: {
+    state: castThroughUnknown<StateAdapter>({
       connect: async () => {},
       disconnect: async () => {},
       get: async (key: string) => values.get(key),
@@ -52,7 +53,7 @@ function createRecordingStateAdapter() {
       }),
       extendLock: async () => true,
       releaseLock: async () => {},
-    } as unknown as StateAdapter,
+    }),
     set,
   };
 }

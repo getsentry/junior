@@ -2,15 +2,16 @@ import type { ToolRegistrationHookContext } from "@sentry/junior-plugin-api";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createGitHubGetDeploymentTool } from "../src/tools/get-deployment";
 import { createGitHubApiTestAdapter } from "./github-api-adapter";
+import { castThroughUnknown } from "@sentry/junior-plugin-api";
 
 const COMMIT_SHA = "c610b5d6a88c9da5d65627a1cdb3829b05c14f75";
 
 function toolContext(responses: Array<{ body?: unknown; status?: number }>) {
   const adapter = createGitHubApiTestAdapter(responses);
-  const ctx = {
+  const ctx = castThroughUnknown<ToolRegistrationHookContext>({
     egress: adapter.egress,
     resourceEvents: { canSubscribe: true },
-  } as unknown as ToolRegistrationHookContext;
+  });
   return { adapter, tool: createGitHubGetDeploymentTool(ctx) };
 }
 

@@ -2,13 +2,14 @@ import type { ToolRegistrationHookContext } from "@sentry/junior-plugin-api";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createGitHubGetRepositoryTool } from "../src/tools/get-repository";
 import { createGitHubApiTestAdapter } from "./github-api-adapter";
+import { castThroughUnknown } from "@sentry/junior-plugin-api";
 
 function toolContext(responses: Array<{ body?: unknown; status?: number }>) {
   const adapter = createGitHubApiTestAdapter(responses);
-  const ctx = {
+  const ctx = castThroughUnknown<ToolRegistrationHookContext>({
     egress: adapter.egress,
     resourceEvents: { canSubscribe: true },
-  } as unknown as ToolRegistrationHookContext;
+  });
   return { adapter, tool: createGitHubGetRepositoryTool(ctx) };
 }
 

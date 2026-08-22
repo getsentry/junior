@@ -1,6 +1,7 @@
 import type { Adapter, WebhookOptions } from "chat";
 import { describe, expect, it, vi } from "vitest";
 import { JuniorChat } from "@/chat/ingress/junior-chat";
+import { castThroughUnknown } from "@sentry/junior-plugin-api";
 
 function createWebhookOptions() {
   const tasks: Promise<unknown>[] = [];
@@ -16,10 +17,10 @@ function createWebhookOptions() {
 describe("JuniorChat ingress overrides", () => {
   it("forwards webhook options to action handling", async () => {
     const handleActionEvent = vi.fn(async () => {});
-    const runtime = {
+    const runtime = castThroughUnknown<JuniorChat>({
       handleActionEvent,
       logger: { error: vi.fn() },
-    } as unknown as JuniorChat;
+    });
     const { options, tasks } = createWebhookOptions();
     const event = {
       actionId: "approve",
@@ -41,10 +42,10 @@ describe("JuniorChat ingress overrides", () => {
 
   it("forwards webhook options to slash command handling", async () => {
     const handleSlashCommandEvent = vi.fn(async () => {});
-    const runtime = {
+    const runtime = castThroughUnknown<JuniorChat>({
       handleSlashCommandEvent,
       logger: { error: vi.fn() },
-    } as unknown as JuniorChat;
+    });
     const { options, tasks } = createWebhookOptions();
     const event = {
       adapter: { name: "slack" } as Adapter,

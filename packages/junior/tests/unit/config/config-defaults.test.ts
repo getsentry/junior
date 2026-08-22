@@ -13,6 +13,7 @@ import {
   getConfigDefaults,
   setConfigDefaults,
 } from "@/chat/configuration/defaults";
+import { castThroughUnknown } from "@sentry/junior-plugin-api";
 
 afterEach(() => {
   setConfigDefaults(undefined);
@@ -45,13 +46,13 @@ describe("install config defaults", () => {
 
   it("rejects null defaults", () => {
     expect(() =>
-      setConfigDefaults(null as unknown as Record<string, unknown>),
+      setConfigDefaults(castThroughUnknown<Record<string, unknown>>(null)),
     ).toThrow("configDefaults must be an object keyed by plugin config key");
   });
 
   it("rejects array defaults", () => {
     expect(() =>
-      setConfigDefaults([] as unknown as Record<string, unknown>),
+      setConfigDefaults(castThroughUnknown<Record<string, unknown>>([])),
     ).toThrow("configDefaults must be an object keyed by plugin config key");
   });
 

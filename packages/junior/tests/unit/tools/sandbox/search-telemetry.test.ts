@@ -5,11 +5,12 @@ import {
   type SandboxFileSystem,
 } from "@/chat/tools/sandbox/file-utils";
 import { grepFiles } from "@/chat/tools/sandbox/grep";
+import { castThroughUnknown } from "@sentry/junior-plugin-api";
 
 const directoryStat = { isDirectory: () => true };
-const fs = {
+const fs = castThroughUnknown<SandboxFileSystem>({
   stat: async () => directoryStat,
-} as unknown as SandboxFileSystem;
+});
 
 describe("sandbox search telemetry", () => {
   it("reports bounded grep measurements", async () => {

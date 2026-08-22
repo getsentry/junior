@@ -11,6 +11,7 @@ import {
   parseSlackMessageTs,
   type SlackMessageTs,
 } from "@/chat/slack/timestamp";
+import { castThroughUnknown } from "@sentry/junior-plugin-api";
 
 const MAX_SLACK_MESSAGE_TEXT_CHARS = 40_000;
 
@@ -113,7 +114,9 @@ export async function postSlackMessage(input: {
         unfurl_media: false,
         ...(input.blocks?.length
           ? {
-              blocks: input.blocks as unknown as Array<Record<string, unknown>>,
+              blocks: castThroughUnknown<Array<Record<string, unknown>>>(
+                input.blocks,
+              ),
             }
           : undefined),
         ...(threadTs ? { thread_ts: threadTs } : undefined),

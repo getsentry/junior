@@ -4,6 +4,7 @@ import {
   AGENTS_REPLACEMENT_NOTICE,
   buildAgentsInstructionsMessage,
 } from "@/chat/repository-instructions";
+import { castThroughUnknown } from "@sentry/junior-plugin-api";
 
 const ORIGINAL_ENV = { ...process.env };
 
@@ -213,11 +214,11 @@ describe("context compaction projection reset", () => {
     const conversationId = "conversation-json-normalization";
     const priorMessages = [
       user("Run the lookup.", 1),
-      {
+      castThroughUnknown<PiMessage>({
         ...assistant("Lookup complete.", 2),
         responseId: undefined,
         usage: { input: 5, cached: undefined },
-      } as unknown as PiMessage,
+      }),
     ];
 
     const firstCommit = await commitMessages({

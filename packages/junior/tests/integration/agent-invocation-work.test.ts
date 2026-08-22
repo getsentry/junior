@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createLocalSource } from "@sentry/junior-plugin-api";
+import {
+  castThroughUnknown,
+  createLocalSource,
+} from "@sentry/junior-plugin-api";
 import type { PiMessage } from "@/chat/pi/messages";
 import {
   completeAgentInvocation,
@@ -463,7 +466,7 @@ describe("agent invocation conversation work", () => {
         actor: invocationInput.actor,
         conversationId: created.childConversationId,
         destination,
-        piMessages: [
+        piMessages: castThroughUnknown<PiMessage[]>([
           {
             role: "user",
             content: [{ type: "text", text: invocationInput.input }],
@@ -491,7 +494,7 @@ describe("agent invocation conversation work", () => {
             role: "assistant",
             content: [{ type: "text", text: "Recovered visible result" }],
           },
-        ] as unknown as PiMessage[],
+        ]),
         turnId: getAgentInvocationTurnId(created.invocationId),
         sliceId: 1,
         source: invocationInput.source,

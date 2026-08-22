@@ -5,6 +5,7 @@ import { isAssistantMessage } from "@/chat/pi/transcript";
 import { decideReply } from "@/chat/services/assistant-reply";
 import { ACTIVE_TURN_COMPACTION_SUMMARY_PREFIX } from "@/chat/services/context-compaction-marker";
 import { nextEmptyOutputContinuation } from "@/chat/services/empty-output-continuation";
+import { castThroughUnknown } from "@sentry/junior-plugin-api";
 
 type StreamResponse = Awaited<ReturnType<StreamFn>>;
 
@@ -35,12 +36,12 @@ function assistantResponse(text = "done"): StreamResponse {
     timestamp: Date.now(),
   };
 
-  return {
+  return castThroughUnknown<StreamResponse>({
     async *[Symbol.asyncIterator]() {
       yield { type: "done" as const };
     },
     result: async () => message,
-  } as unknown as StreamResponse;
+  });
 }
 
 describe("Pi Agent lifecycle", () => {

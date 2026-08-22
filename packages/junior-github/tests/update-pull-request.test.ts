@@ -1,6 +1,7 @@
 import type { ToolRegistrationHookContext } from "@sentry/junior-plugin-api";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createGitHubUpdatePullRequestTool } from "../src/tools/update-pull-request";
+import { castThroughUnknown } from "@sentry/junior-plugin-api";
 
 const ORIGINAL_WEBHOOK_SECRET = process.env.GITHUB_WEBHOOK_SECRET;
 
@@ -21,7 +22,7 @@ function toolContext(response?: Response) {
         { status: 200 },
       ),
   );
-  const ctx = {
+  const ctx = castThroughUnknown<ToolRegistrationHookContext>({
     actor: {
       platform: "slack",
       fullName: "David Cramer",
@@ -37,7 +38,7 @@ function toolContext(response?: Response) {
     users: {
       resolveActor: async () => undefined,
     },
-  } as unknown as ToolRegistrationHookContext;
+  });
   return { fetch, tool: createGitHubUpdatePullRequestTool(ctx) };
 }
 

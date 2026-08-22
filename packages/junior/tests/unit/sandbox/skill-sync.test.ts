@@ -6,6 +6,7 @@ import { syncSkillsToSandbox } from "@/chat/sandbox/skill-sync";
 import { sandboxSkillFile } from "@/chat/sandbox/paths";
 import type { SandboxSession } from "@/chat/sandbox/workspace";
 import { discoverSkills, resetSkillDiscoveryCache } from "@/chat/skills";
+import { castThroughUnknown } from "@sentry/junior-plugin-api";
 
 const temporaryDirectories: string[] = [];
 
@@ -52,7 +53,7 @@ describe("sandbox skill sync", () => {
     }
 
     const writtenPaths: string[] = [];
-    const sandbox = {
+    const sandbox = castThroughUnknown<SandboxSession>({
       async mkDir() {},
       async readFileToBuffer() {
         return null;
@@ -60,7 +61,7 @@ describe("sandbox skill sync", () => {
       async writeFiles(files: Array<{ path: string }>) {
         writtenPaths.push(...files.map((file) => file.path));
       },
-    } as unknown as SandboxSession;
+    });
 
     await syncSkillsToSandbox({
       sandbox,
@@ -84,7 +85,7 @@ describe("sandbox skill sync", () => {
     const siblingsStarted = new Promise<void>((resolve) => {
       releaseSiblings = resolve;
     });
-    const sandbox = {
+    const sandbox = castThroughUnknown<SandboxSession>({
       async mkDir(directory: string) {
         const parent = path.posix.dirname(directory);
         if (
@@ -109,7 +110,7 @@ describe("sandbox skill sync", () => {
         return null;
       },
       async writeFiles() {},
-    } as unknown as SandboxSession;
+    });
 
     const sync = syncSkillsToSandbox({
       sandbox,

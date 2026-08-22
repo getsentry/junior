@@ -60,6 +60,7 @@ import { getActiveSpan } from "@/chat/sentry";
 import * as Sentry from "@/chat/sentry";
 import type { AgentTurnCost, AgentTurnUsage } from "@/chat/usage";
 import { getDeploymentTelemetryAttributes } from "@/deployment";
+import { castThroughUnknown } from "@sentry/junior-plugin-api";
 
 type Primitive = string | number | boolean;
 type AttributeValue = Primitive | string[];
@@ -467,7 +468,7 @@ function contextToAttributes(context: LogContext): LogAttributes {
 }
 
 function getTraceCorrelationAttributes(): LogAttributes {
-  const sentry = Sentry as unknown as SentryLike;
+  const sentry = castThroughUnknown<SentryLike>(Sentry);
   if (
     typeof sentry.getActiveSpan !== "function" ||
     typeof sentry.spanToJSON !== "function"
@@ -660,26 +661,22 @@ function emitSentry(
     return;
   }
 
-  const sentry = Sentry as unknown as SentryLike;
+  const sentry = castThroughUnknown<SentryLike>(Sentry);
   const loggerFn = sentry.logger?.[level];
   if (typeof loggerFn === "function") {
     loggerFn(body, attributes);
     return;
   }
 
-  const sentryWithScope = (
-    sentry as unknown as {
-      withScope?: (callback: (scope: Sentry.Scope) => void) => void;
-    }
-  ).withScope;
-  const sentryCaptureMessage = (
-    sentry as unknown as {
-      captureMessage?: (
-        message: string,
-        level?: "debug" | "info" | "warning" | "error",
-      ) => void;
-    }
-  ).captureMessage;
+  const sentryWithScope = castThroughUnknown<{
+    withScope?: (callback: (scope: Sentry.Scope) => void) => void;
+  }>(sentry).withScope;
+  const sentryCaptureMessage = castThroughUnknown<{
+    captureMessage?: (
+      message: string,
+      level?: "debug" | "info" | "warning" | "error",
+    ) => void;
+  }>(sentry).captureMessage;
   const sentryLevel = level === "warn" ? "warning" : level;
 
   if (
@@ -1244,16 +1241,12 @@ export const log = {
     );
 
     let eventId: string | undefined;
-    const sentryWithScope = (
-      Sentry as unknown as {
-        withScope?: (callback: (scope: Sentry.Scope) => void) => void;
-      }
-    ).withScope;
-    const sentryCaptureException = (
-      Sentry as unknown as {
-        captureException?: (error: unknown) => string | undefined;
-      }
-    ).captureException;
+    const sentryWithScope = castThroughUnknown<{
+      withScope?: (callback: (scope: Sentry.Scope) => void) => void;
+    }>(Sentry).withScope;
+    const sentryCaptureException = castThroughUnknown<{
+      captureException?: (error: unknown) => string | undefined;
+    }>(Sentry).captureException;
 
     if (
       typeof sentryWithScope === "function" &&
@@ -1722,11 +1715,11 @@ export async function withSpan<T>(
 
 /** Return Sentry-standard trace propagation headers for the active span. */
 export function getTracePropagationHeaders(): TracePropagationHeaders {
-  const sentry = Sentry as unknown as {
+  const sentry = castThroughUnknown<{
     getTraceData?: (options?: {
       propagateTraceparent?: boolean;
     }) => Record<string, unknown>;
-  };
+  }>(Sentry);
   const traceData = sentry.getTraceData?.({ propagateTraceparent: true });
   if (!traceData) {
     return {};
@@ -1767,16 +1760,12 @@ export function captureExceptionInScope(
   error: unknown,
   context: LogContext = {},
 ): void {
-  const sentryWithScope = (
-    Sentry as unknown as {
-      withScope?: (callback: (scope: Sentry.Scope) => void) => void;
-    }
-  ).withScope;
-  const sentryCaptureException = (
-    Sentry as unknown as {
-      captureException?: (error: unknown) => unknown;
-    }
-  ).captureException;
+  const sentryWithScope = castThroughUnknown<{
+    withScope?: (callback: (scope: Sentry.Scope) => void) => void;
+  }>(Sentry).withScope;
+  const sentryCaptureException = castThroughUnknown<{
+    captureException?: (error: unknown) => unknown;
+  }>(Sentry).captureException;
   const normalizedError =
     error instanceof Error ? error : new Error(String(error));
 
@@ -1799,10 +1788,10 @@ export function captureExceptionInScope(
 
 /** Return the trace ID from the active Sentry span, if any. */
 export function getActiveTraceId(): string | undefined {
-  const sentry = Sentry as unknown as {
+  const sentry = castThroughUnknown<{
     getActiveSpan?: () => unknown;
     spanToJSON?: (span: unknown) => { trace_id?: string };
-  };
+  }>(Sentry);
   if (
     typeof sentry.getActiveSpan !== "function" ||
     typeof sentry.spanToJSON !== "function"
@@ -2106,7 +2095,9 @@ export function extractGenAiUsageAttributes(
     ...(reasoningTokens !== undefined
       ? { "gen_ai.usage.reasoning.output_tokens": reasoningTokens }
       : undefined),
-    ...(cost?.input !== undefined ? { "app.cost.input_usd": cost.input } : undefined),
+    ...(cost?.input !== undefined
+      ? { "app.cost.input_usd": cost.input }
+      : undefined),
     ...(cost?.output !== undefined
       ? { "app.cost.output_usd": cost.output }
       : undefined),
@@ -2116,6 +2107,8 @@ export function extractGenAiUsageAttributes(
     ...(cost?.cacheWrite !== undefined
       ? { "app.cost.cache_write_usd": cost.cacheWrite }
       : undefined),
-    ...(cost?.total !== undefined ? { "app.cost.total_usd": cost.total } : undefined),
+    ...(cost?.total !== undefined
+      ? { "app.cost.total_usd": cost.total }
+      : undefined),
   };
 }

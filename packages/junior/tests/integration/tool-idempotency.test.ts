@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { createSlackSource } from "@sentry/junior-plugin-api";
+import {
+  castThroughUnknown,
+  createSlackSource,
+} from "@sentry/junior-plugin-api";
 import { createSlackCanvasCreateTool } from "@/chat/slack/tools/canvas/create";
 import { createOperationKey } from "@/chat/tools/idempotency";
 import { createSlackListAddItemsTool } from "@/chat/slack/tools/list/add-items";
@@ -227,7 +230,7 @@ describe("tool idempotency", () => {
   it("throws when creating a canvas without assistant channel context", async () => {
     const state = createToolState();
     const tool = createSlackCanvasCreateTool(
-      LOCAL_CONTEXT as unknown as SlackToolContext,
+      castThroughUnknown<SlackToolContext>(LOCAL_CONTEXT),
       state,
     );
 

@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
+import {
+  castThroughUnknown,
+  defineJuniorPlugin,
+} from "@sentry/junior-plugin-api";
 import { githubPlugin } from "@sentry/junior-github";
 import { createPluginEgress } from "@/chat/egress/plugin";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
@@ -79,7 +82,7 @@ describe("plugin egress", () => {
     );
     const egress = createPluginEgress({
       credentialContext: { actor: { type: "user", userId: "U123" } },
-      fetch: vi.fn() as unknown as typeof fetch,
+      fetch: castThroughUnknown<typeof fetch>(vi.fn()),
       pluginAuth,
     });
 
@@ -129,7 +132,7 @@ describe("plugin egress", () => {
     const fetchMock = vi.fn();
     const egress = createPluginEgress({
       credentialContext: { actor: { type: "user", userId: "U123" } },
-      fetch: fetchMock as unknown as typeof fetch,
+      fetch: castThroughUnknown<typeof fetch>(fetchMock),
       pluginAuth: authOrchestration(),
     });
 
@@ -194,7 +197,7 @@ describe("plugin egress", () => {
     const fetchMock = vi.fn();
     const egress = createPluginEgress({
       credentialContext: { actor: { type: "user", userId: "U123" } },
-      fetch: fetchMock as unknown as typeof fetch,
+      fetch: castThroughUnknown<typeof fetch>(fetchMock),
       pluginAuth: authOrchestration(),
     });
 
