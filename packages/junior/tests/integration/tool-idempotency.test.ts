@@ -1,8 +1,4 @@
 import { describe, expect, it } from "vitest";
-import {
-  castThroughUnknown,
-  createSlackSource,
-} from "@sentry/junior-plugin-api";
 import { createSlackCanvasCreateTool } from "@/chat/slack/tools/canvas/create";
 import { createOperationKey } from "@/chat/tools/idempotency";
 import { createSlackListAddItemsTool } from "@/chat/slack/tools/list/add-items";
@@ -22,6 +18,15 @@ import {
   queueSlackApiError,
   queueSlackApiResponse,
 } from "../msw/handlers/slack-api";
+import {
+  createSlackSource,
+} from "@sentry/junior-plugin-api";
+
+
+/** Test-only bridge for intentionally incomplete doubles. */
+function asTestDouble<T>(value: unknown): T {
+  return value as T;
+}
 
 function createToolState(): ToolState {
   const operationResultCache = new Map<string, unknown>();
@@ -230,7 +235,7 @@ describe("tool idempotency", () => {
   it("throws when creating a canvas without assistant channel context", async () => {
     const state = createToolState();
     const tool = createSlackCanvasCreateTool(
-      castThroughUnknown<SlackToolContext>(LOCAL_CONTEXT),
+      asTestDouble<SlackToolContext>(LOCAL_CONTEXT),
       state,
     );
 

@@ -1,7 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ConversationWorkerContext } from "@/chat/task-execution/worker";
-import { castThroughUnknown } from "@sentry/junior-plugin-api";
 
+
+/** Test-only bridge for intentionally incomplete doubles. */
+function asTestDouble<T>(value: unknown): T {
+  return value as T;
+}
 const originalNodeEnv = process.env.NODE_ENV;
 const originalQueueTopic = process.env.JUNIOR_CONVERSATION_WORK_QUEUE_TOPIC;
 const originalConversationWorkEnabled =
@@ -71,7 +75,7 @@ describe("plugin task Vercel queue integration", () => {
       region: "iad1",
       topicName: "topic",
     };
-    const call = castThroughUnknown<
+    const call = asTestDouble<
       | [
           (message: unknown, metadata: TestQueueMetadata) => Promise<void>,
           {
@@ -249,7 +253,7 @@ describe("registerVercelConversationWorkDevConsumer", () => {
       region: "iad1",
       topicName: "topic",
     };
-    const call = castThroughUnknown<
+    const call = asTestDouble<
       | [
           (message: unknown, metadata: TestQueueMetadata) => Promise<void>,
           {
@@ -367,7 +371,7 @@ describe("registerVercelConversationWorkDevConsumer", () => {
     });
     createVercelConversationWorkCallback({ run });
 
-    const call = castThroughUnknown<
+    const call = asTestDouble<
       | [
           (
             message: unknown,

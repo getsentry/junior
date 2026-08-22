@@ -10,7 +10,12 @@ import {
   getCapturedSlackApiCalls,
   resetSlackApiMockState,
 } from "../../msw/handlers/slack-api";
-import { castThroughUnknown } from "@sentry/junior-plugin-api";
+
+
+/** Test-only bridge for intentionally incomplete doubles. */
+function asTestDouble<T>(value: unknown): T {
+  return value as T;
+}
 
 const SIGNING_SECRET = "test-signing-secret";
 const DEFAULT_BOT_TOKEN = "xoxb-default";
@@ -45,11 +50,11 @@ function createFakeScheduler() {
       canceled: false,
     };
     timers.push(timer);
-    return castThroughUnknown<ReturnType<typeof setTimeout>>(timer.id);
+    return asTestDouble<ReturnType<typeof setTimeout>>(timer.id);
   };
 
   const clearTimer = (timer: ReturnType<typeof setTimeout>) => {
-    const id = castThroughUnknown<number>(timer);
+    const id = asTestDouble<number>(timer);
     const entry = timers.find((candidate) => candidate.id === id);
     if (entry) {
       entry.canceled = true;

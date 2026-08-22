@@ -18,7 +18,10 @@ import {
   isTurnInputCommitLostError,
   TurnInputCommitLostError,
 } from "@/chat/runtime/turn";
-import { normalizeIncomingSlackThreadId } from "@/chat/ingress/message-router";
+import {
+  normalizeIncomingSlackThreadId,
+  withNormalizedThreadId,
+} from "@/chat/ingress/message-router";
 import { rehydrateAttachmentFetchers } from "@/chat/slack/attachment-fetchers";
 import { getStateAdapter } from "@/chat/state/adapter";
 import type { ConversationStore } from "@/chat/conversations/store";
@@ -44,7 +47,6 @@ import {
 } from "@/chat/destination";
 import { stripLeadingSteeringOverride } from "@/chat/slack/message-control";
 import { botConfig, type CrossActorMidRunMode } from "@/chat/config";
-import { castThroughUnknown } from "@sentry/junior-plugin-api";
 
 const slackConversationRouteSchema = z.enum(["mention", "subscribed"]);
 export type SlackConversationRoute = z.output<
@@ -706,17 +708,15 @@ function restoreThread(args: {
     args.threadJson.id,
     args.message,
   );
-  if (args.message.threadId !== threadId) {
-    castThroughUnknown<{ threadId: string }>(args.message).threadId = threadId;
-  }
+  const message = withNormalizedThreadId(args.message, threadId);
   return new ThreadImpl({
     adapter: args.adapter,
     stateAdapter: args.state,
     id: threadId,
     channelId: args.threadJson.channelId,
     channelVisibility: args.threadJson.channelVisibility,
-    currentMessage: args.message,
-    initialMessage: args.message,
+    currentMessage: message,
+    initialMessage: message,
     isDM: args.threadJson.isDM,
     isSubscribedContext: args.isSubscribedContext,
   });

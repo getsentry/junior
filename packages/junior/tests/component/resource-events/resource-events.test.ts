@@ -32,7 +32,12 @@ import {
   createConversationWorkQueueTestAdapter,
 } from "../../fixtures/conversation-work";
 import { readProxyProperty } from "../../fixtures/proxy-property";
-import { castThroughUnknown } from "@sentry/junior-plugin-api";
+
+
+/** Test-only bridge for intentionally incomplete doubles. */
+function asTestDouble<T>(value: unknown): T {
+  return value as T;
+}
 
 function createRecordingStateAdapter() {
   const values = new Map<string, unknown>();
@@ -41,7 +46,7 @@ function createRecordingStateAdapter() {
     return undefined;
   });
   return {
-    state: castThroughUnknown<StateAdapter>({
+    state: asTestDouble<StateAdapter>({
       connect: async () => {},
       disconnect: async () => {},
       get: async (key: string) => values.get(key),

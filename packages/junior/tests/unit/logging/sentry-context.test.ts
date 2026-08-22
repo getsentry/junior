@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { castThroughUnknown } from "@sentry/junior-plugin-api";
 
+
+/** Test-only bridge for intentionally incomplete doubles. */
+function asTestDouble<T>(value: unknown): T {
+  return value as T;
+}
 const sentry = vi.hoisted(() => {
   const scope = {
     setContext: vi.fn(),
@@ -123,7 +127,7 @@ describe("Sentry context", () => {
     };
 
     logging.setSentryScopeContext(
-      castThroughUnknown<Parameters<typeof logging.setSentryScopeContext>[0]>(
+      asTestDouble<Parameters<typeof logging.setSentryScopeContext>[0]>(
         scope,
       ),
       {

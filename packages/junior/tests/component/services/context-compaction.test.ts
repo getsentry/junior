@@ -4,7 +4,12 @@ import {
   AGENTS_REPLACEMENT_NOTICE,
   buildAgentsInstructionsMessage,
 } from "@/chat/repository-instructions";
-import { castThroughUnknown } from "@sentry/junior-plugin-api";
+
+
+/** Test-only bridge for intentionally incomplete doubles. */
+function asTestDouble<T>(value: unknown): T {
+  return value as T;
+}
 
 const ORIGINAL_ENV = { ...process.env };
 
@@ -214,7 +219,7 @@ describe("context compaction projection reset", () => {
     const conversationId = "conversation-json-normalization";
     const priorMessages = [
       user("Run the lookup.", 1),
-      castThroughUnknown<PiMessage>({
+      asTestDouble<PiMessage>({
         ...assistant("Lookup complete.", 2),
         responseId: undefined,
         usage: { input: 5, cached: undefined },

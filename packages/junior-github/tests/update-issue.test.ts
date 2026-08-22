@@ -1,7 +1,12 @@
 import type { ToolRegistrationHookContext } from "@sentry/junior-plugin-api";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createGitHubUpdateIssueTool } from "../src/tools/update-issue";
-import { castThroughUnknown } from "@sentry/junior-plugin-api";
+
+
+/** Test-only bridge for intentionally incomplete doubles. */
+function asTestDouble<T>(value: unknown): T {
+  return value as T;
+}
 
 const ORIGINAL_WEBHOOK_SECRET = process.env.GITHUB_WEBHOOK_SECRET;
 
@@ -20,7 +25,7 @@ function toolContext(response?: Response) {
         { status: 200 },
       ),
   );
-  const ctx = castThroughUnknown<ToolRegistrationHookContext>({
+  const ctx = asTestDouble<ToolRegistrationHookContext>({
     actor: {
       platform: "slack",
       fullName: "David Cramer",

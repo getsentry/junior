@@ -6,8 +6,12 @@ import { syncSkillsToSandbox } from "@/chat/sandbox/skill-sync";
 import { sandboxSkillFile } from "@/chat/sandbox/paths";
 import type { SandboxSession } from "@/chat/sandbox/workspace";
 import { discoverSkills, resetSkillDiscoveryCache } from "@/chat/skills";
-import { castThroughUnknown } from "@sentry/junior-plugin-api";
 
+
+/** Test-only bridge for intentionally incomplete doubles. */
+function asTestDouble<T>(value: unknown): T {
+  return value as T;
+}
 const temporaryDirectories: string[] = [];
 
 async function makeSkill(): Promise<string> {
@@ -53,7 +57,7 @@ describe("sandbox skill sync", () => {
     }
 
     const writtenPaths: string[] = [];
-    const sandbox = castThroughUnknown<SandboxSession>({
+    const sandbox = asTestDouble<SandboxSession>({
       async mkDir() {},
       async readFileToBuffer() {
         return null;
@@ -85,7 +89,7 @@ describe("sandbox skill sync", () => {
     const siblingsStarted = new Promise<void>((resolve) => {
       releaseSiblings = resolve;
     });
-    const sandbox = castThroughUnknown<SandboxSession>({
+    const sandbox = asTestDouble<SandboxSession>({
       async mkDir(directory: string) {
         const parent = path.posix.dirname(directory);
         if (

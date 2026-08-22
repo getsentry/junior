@@ -7,22 +7,6 @@ import {
   pgliteVectorExtension,
   type LocalPgliteFixture,
 } from "@sentry/junior-testing/pglite";
-import {
-  castThroughUnknown,
-  createLocalSource,
-  createSlackSource,
-  createWebSource,
-  pluginApiRouteRequestContextSchema,
-  PluginToolInputError,
-  pluginUserPageContentSchema,
-  type Actor,
-  type PluginConversationEventValue,
-  type PluginLogger,
-  type PluginModel,
-  type PluginRunTranscriptEntry,
-  type PluginState,
-  type PluginTaskContext,
-} from "@sentry/junior-plugin-api";
 import { Command, CommanderError } from "commander";
 import { eq } from "drizzle-orm";
 import { describe, expect, it, vi } from "vitest";
@@ -50,6 +34,12 @@ import type {
   MemorySupersessionDecider,
   MemorySupersessionInput,
 } from "../src/store";
+
+
+/** Test-only bridge for intentionally incomplete doubles. */
+function asTestDouble<T>(value: unknown): T {
+  return value as T;
+}
 
 const TEST_NOW_MS = Date.parse("2026-06-19T12:00:00.000Z");
 const TEST_EMBEDDING_DIMENSIONS = 1536;
@@ -5267,7 +5257,7 @@ INSERT INTO junior_memory_memories (
 
       await expect(
         store.createMemory(
-          castThroughUnknown<Parameters<typeof store.createMemory>[0]>({
+          asTestDouble<Parameters<typeof store.createMemory>[0]>({
             content: "Prefers short PR summaries.",
             kind: "preference",
             idempotencyKey: "memory-test:smuggle",
@@ -5279,7 +5269,7 @@ INSERT INTO junior_memory_memories (
       ).rejects.toThrow(/Invalid input|Unrecognized key/);
       await expect(
         store.listMemories(
-          castThroughUnknown<Parameters<typeof store.listMemories>[0]>({
+          asTestDouble<Parameters<typeof store.listMemories>[0]>({
             actor: { platform: "local", userId: "local-user" },
           }),
         ),

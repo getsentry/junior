@@ -2,7 +2,6 @@ import type { SlackAdapter } from "@chat-adapter/slack";
 import type { ChatInstance, StateAdapter } from "chat";
 import { runWithSlackInstallationToken } from "@/chat/slack/client";
 import { getStateAdapter } from "@/chat/state/adapter";
-import { castThroughUnknown } from "@sentry/junior-plugin-api";
 
 interface SlackAdapterInternals {
   defaultBotTokenProvider?: () => string | Promise<string>;
@@ -35,6 +34,14 @@ export interface SlackInstallationContext {
 
 const initializedAdapters = new WeakSet<SlackAdapter>();
 
+function asChatInstance(value: unknown): ChatInstance {
+  return value as ChatInstance;
+}
+
+function asSlackAdapterInternals(adapter: unknown): SlackAdapterInternals {
+  return adapter as SlackAdapterInternals;
+}
+
 async function getConnectedState(
   stateAdapter?: StateAdapter,
 ): Promise<StateAdapter> {
@@ -53,11 +60,11 @@ export async function ensureSlackAdapterInitialized(args: {
   }
   const state = await getConnectedState(args.state);
   await args.adapter.initialize(
-    castThroughUnknown<ChatInstance>({
+    asChatInstance({
       getState: () => state,
     }),
   );
-  const internals = castThroughUnknown<SlackAdapterInternals>(args.adapter);
+  const internals = asSlackAdapterInternals(args.adapter);
   if (internals.defaultBotTokenProvider && !args.adapter.botUserId) {
     // A single-workspace adapter that failed `auth.test` has no bot identity,
     // which disables self-message filtering and mention detection. Caching it
@@ -74,7 +81,7 @@ export function verifySlackSignature(args: {
   body: string;
   request: Request;
 }): boolean {
-  const internals = castThroughUnknown<SlackAdapterInternals>(args.adapter);
+  const internals = asSlackAdapterInternals(args.adapter);
   const verifySignature = internals.verifySignature;
   if (!verifySignature) {
     throw new Error("Slack adapter does not expose signature verification");
@@ -99,7 +106,7 @@ export async function runWithSlackInstallation<T>(args: {
     state: args.state,
   });
 
-  const internals = castThroughUnknown<SlackAdapterInternals>(args.adapter);
+  const internals = asSlackAdapterInternals(args.adapter);
   if (internals.defaultBotTokenProvider) {
     return await args.task();
   }

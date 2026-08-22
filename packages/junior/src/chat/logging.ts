@@ -56,11 +56,18 @@ import {
   type LogContext,
 } from "@/chat/log-context";
 import { normalizeIdentityEmail } from "@/chat/identities/identity";
-import { getActiveSpan } from "@/chat/sentry";
 import * as Sentry from "@/chat/sentry";
+import {
+  captureException as captureSentryException,
+  captureMessage,
+  getActiveSpan,
+  getTraceData,
+  logger as sentryLogger,
+  spanToJSON,
+  withScope,
+} from "@/chat/sentry";
 import type { AgentTurnCost, AgentTurnUsage } from "@/chat/usage";
 import { getDeploymentTelemetryAttributes } from "@/deployment";
-import { castThroughUnknown } from "@sentry/junior-plugin-api";
 
 type Primitive = string | number | boolean;
 type AttributeValue = Primitive | string[];
@@ -76,19 +83,6 @@ export interface EmittedLogRecord {
 export type TracePropagationHeaders = Partial<
   Record<"baggage" | "sentry-trace" | "traceparent", string>
 >;
-
-interface SentryLoggerApi {
-  debug?: (message: string, attributes?: Record<string, unknown>) => void;
-  info?: (message: string, attributes?: Record<string, unknown>) => void;
-  warn?: (message: string, attributes?: Record<string, unknown>) => void;
-  error?: (message: string, attributes?: Record<string, unknown>) => void;
-}
-
-interface SentryLike {
-  logger?: SentryLoggerApi;
-  getActiveSpan?: () => unknown;
-  spanToJSON?: (span: unknown) => { trace_id?: string; span_id?: string };
-}
 
 interface SentryUserIdentity {
   id: string | number;
@@ -468,18 +462,10 @@ function contextToAttributes(context: LogContext): LogAttributes {
 }
 
 function getTraceCorrelationAttributes(): LogAttributes {
-  const sentry = castThroughUnknown<SentryLike>(Sentry);
-  if (
-    typeof sentry.getActiveSpan !== "function" ||
-    typeof sentry.spanToJSON !== "function"
-  ) {
-    return {};
-  }
-
   try {
-    const span = sentry.getActiveSpan();
+    const span = getActiveSpan();
     if (!span) return {};
-    const json = sentry.spanToJSON(span);
+    const json = spanToJSON(span);
     const attrs: LogAttributes = {};
     if (json.trace_id) attrs.trace_id = json.trace_id;
     if (json.span_id) attrs.span_id = json.span_id;
@@ -661,40 +647,19 @@ function emitSentry(
     return;
   }
 
-  const sentry = castThroughUnknown<SentryLike>(Sentry);
-  const loggerFn = sentry.logger?.[level];
+  const loggerFn = sentryLogger?.[level];
   if (typeof loggerFn === "function") {
     loggerFn(body, attributes);
     return;
   }
 
-  const sentryWithScope = castThroughUnknown<{
-    withScope?: (callback: (scope: Sentry.Scope) => void) => void;
-  }>(sentry).withScope;
-  const sentryCaptureMessage = castThroughUnknown<{
-    captureMessage?: (
-      message: string,
-      level?: "debug" | "info" | "warning" | "error",
-    ) => void;
-  }>(sentry).captureMessage;
   const sentryLevel = level === "warn" ? "warning" : level;
-
-  if (
-    typeof sentryWithScope === "function" &&
-    typeof sentryCaptureMessage === "function"
-  ) {
-    sentryWithScope((scope) => {
-      for (const [key, value] of Object.entries(attributes)) {
-        scope.setExtra(key, value);
-      }
-      sentryCaptureMessage(body, sentryLevel);
-    });
-    return;
-  }
-
-  if (typeof sentryCaptureMessage === "function") {
-    sentryCaptureMessage(body, sentryLevel);
-  }
+  withScope((scope) => {
+    for (const [key, value] of Object.entries(attributes)) {
+      scope.setExtra(key, value);
+    }
+    captureMessage(body, sentryLevel);
+  });
 }
 
 function formatConsoleLevel(level: LogLevel): "DBG" | "INF" | "WRN" | "ERR" {
@@ -1241,42 +1206,23 @@ export const log = {
     );
 
     let eventId: string | undefined;
-    const sentryWithScope = castThroughUnknown<{
-      withScope?: (callback: (scope: Sentry.Scope) => void) => void;
-    }>(Sentry).withScope;
-    const sentryCaptureException = castThroughUnknown<{
-      captureException?: (error: unknown) => string | undefined;
-    }>(Sentry).captureException;
-
-    if (
-      typeof sentryWithScope === "function" &&
-      typeof sentryCaptureException === "function"
-    ) {
-      sentryWithScope((scope) => {
-        setSentryScopeContext(scope, getBoundLogContext());
-        const mergedAttributes = mergeAttributes(
-          getBoundLogAttributes(),
-          attrs,
-        );
-        for (const [key, value] of Object.entries(mergedAttributes)) {
-          scope.setExtra(key, value);
-          if (
-            SENTRY_TAG_ATTRIBUTE_KEYS.has(key) &&
-            typeof value === "string" &&
-            value.length > 0
-          ) {
-            scope.setTag(key, value);
-          }
+    withScope((scope) => {
+      setSentryScopeContext(scope, getBoundLogContext());
+      const mergedAttributes = mergeAttributes(getBoundLogAttributes(), attrs);
+      for (const [key, value] of Object.entries(mergedAttributes)) {
+        scope.setExtra(key, value);
+        if (
+          SENTRY_TAG_ATTRIBUTE_KEYS.has(key) &&
+          typeof value === "string" &&
+          value.length > 0
+        ) {
+          scope.setTag(key, value);
         }
-        eventId = sentryCaptureException(normalizedError);
-      });
-      return eventId;
-    }
-
-    if (typeof sentryCaptureException === "function") {
-      setSentryUser(sentryUserIdentityFromContext(getBoundLogContext()));
-      eventId = sentryCaptureException(normalizedError);
-    }
+      }
+      const capturedEventId = captureSentryException(normalizedError);
+      eventId =
+        typeof capturedEventId === "string" ? capturedEventId : undefined;
+    });
     return eventId;
   },
 };
@@ -1715,12 +1661,7 @@ export async function withSpan<T>(
 
 /** Return Sentry-standard trace propagation headers for the active span. */
 export function getTracePropagationHeaders(): TracePropagationHeaders {
-  const sentry = castThroughUnknown<{
-    getTraceData?: (options?: {
-      propagateTraceparent?: boolean;
-    }) => Record<string, unknown>;
-  }>(Sentry);
-  const traceData = sentry.getTraceData?.({ propagateTraceparent: true });
+  const traceData = getTraceData({ propagateTraceparent: true });
   if (!traceData) {
     return {};
   }
@@ -1760,51 +1701,23 @@ export function captureExceptionInScope(
   error: unknown,
   context: LogContext = {},
 ): void {
-  const sentryWithScope = castThroughUnknown<{
-    withScope?: (callback: (scope: Sentry.Scope) => void) => void;
-  }>(Sentry).withScope;
-  const sentryCaptureException = castThroughUnknown<{
-    captureException?: (error: unknown) => unknown;
-  }>(Sentry).captureException;
   const normalizedError =
     error instanceof Error ? error : new Error(String(error));
 
-  if (
-    typeof sentryWithScope === "function" &&
-    typeof sentryCaptureException === "function"
-  ) {
-    sentryWithScope((scope) => {
-      setSentryScopeContext(scope, context);
-      sentryCaptureException(normalizedError);
-    });
-    return;
-  }
-
-  if (typeof sentryCaptureException === "function") {
-    setSentryUser(sentryUserIdentityFromContext(context));
-    sentryCaptureException(normalizedError);
-  }
+  withScope((scope) => {
+    setSentryScopeContext(scope, context);
+    captureSentryException(normalizedError);
+  });
 }
 
 /** Return the trace ID from the active Sentry span, if any. */
 export function getActiveTraceId(): string | undefined {
-  const sentry = castThroughUnknown<{
-    getActiveSpan?: () => unknown;
-    spanToJSON?: (span: unknown) => { trace_id?: string };
-  }>(Sentry);
-  if (
-    typeof sentry.getActiveSpan !== "function" ||
-    typeof sentry.spanToJSON !== "function"
-  ) {
-    return undefined;
-  }
-
   try {
-    const span = sentry.getActiveSpan();
+    const span = getActiveSpan();
     if (!span) {
       return undefined;
     }
-    return toOptionalString(sentry.spanToJSON(span).trace_id);
+    return toOptionalString(spanToJSON(span).trace_id);
   } catch {
     return undefined;
   }

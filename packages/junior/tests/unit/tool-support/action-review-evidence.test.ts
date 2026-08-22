@@ -1,8 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { PiMessage } from "@/chat/pi/messages";
 import { buildToolActionEvidence } from "@/chat/tool-support/action-review-evidence";
-import { castThroughUnknown } from "@sentry/junior-plugin-api";
 
+
+/** Test-only bridge for intentionally incomplete doubles. */
+function asTestDouble<T>(value: unknown): T {
+  return value as T;
+}
 describe("tool action review evidence", () => {
   it("keeps user, assistant, tool-call, and tool-result evidence without reasoning", () => {
     const evidence = buildToolActionEvidence([
@@ -55,7 +59,7 @@ describe("tool action review evidence", () => {
 
   it("preserves first and latest user anchors while retaining recent tool evidence", () => {
     const messages: PiMessage[] = [
-      castThroughUnknown<PiMessage>({
+      asTestDouble<PiMessage>({
         role: "user",
         content: [{ type: "text", text: "first-request" }],
       }),
@@ -67,7 +71,7 @@ describe("tool action review evidence", () => {
             content: [{ type: "text", text: `${index}-${"x".repeat(8_000)}` }],
           }) as PiMessage,
       ),
-      castThroughUnknown<PiMessage>({
+      asTestDouble<PiMessage>({
         role: "assistant",
         content: [
           {

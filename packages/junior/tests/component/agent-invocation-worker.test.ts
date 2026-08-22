@@ -1,8 +1,4 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  castThroughUnknown,
-  createLocalSource,
-} from "@sentry/junior-plugin-api";
 import type { PiMessage } from "@/chat/pi/messages";
 import {
   createAgentInvocation,
@@ -24,6 +20,15 @@ import {
 import type { ConversationWorkerContext } from "@/chat/task-execution/worker";
 import { neverRunAgentRunner } from "../fixtures/agent-runner";
 import { createConfiguredJuniorSqlFixture } from "../fixtures/sql";
+import {
+  createLocalSource,
+} from "@sentry/junior-plugin-api";
+
+
+/** Test-only bridge for intentionally incomplete doubles. */
+function asTestDouble<T>(value: unknown): T {
+  return value as T;
+}
 
 const PARENT_CONVERSATION_ID = "local:test:component-parent-agent";
 const DESTINATION = {
@@ -78,7 +83,7 @@ describe("agent invocation worker", () => {
         actor: INVOCATION_INPUT.actor,
         conversationId: created.childConversationId,
         destination: DESTINATION,
-        piMessages: castThroughUnknown<PiMessage[]>([
+        piMessages: asTestDouble<PiMessage[]>([
           {
             role: "assistant",
             content: [{ type: "text", text: "partial output" }],

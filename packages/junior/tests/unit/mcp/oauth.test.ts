@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { castThroughUnknown } from "@sentry/junior-plugin-api";
+
+
+/** Test-only bridge for intentionally incomplete doubles. */
+function asTestDouble<T>(value: unknown): T {
+  return value as T;
+}
 
 const ORIGINAL_ENV = { ...process.env };
 const ORIGINAL_FETCH = globalThis.fetch;
@@ -158,7 +163,7 @@ describe("createMcpOAuthClientProvider", () => {
         cancelled = true;
       },
     });
-    globalThis.fetch = castThroughUnknown<typeof fetch>(
+    globalThis.fetch = asTestDouble<typeof fetch>(
       vi.fn(async () => new Response(body, { status: 502 })),
     );
     finishAuthMock.mockImplementation(

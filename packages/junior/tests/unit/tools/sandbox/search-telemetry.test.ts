@@ -5,10 +5,15 @@ import {
   type SandboxFileSystem,
 } from "@/chat/tools/sandbox/file-utils";
 import { grepFiles } from "@/chat/tools/sandbox/grep";
-import { castThroughUnknown } from "@sentry/junior-plugin-api";
+
+
+/** Test-only bridge for intentionally incomplete doubles. */
+function asTestDouble<T>(value: unknown): T {
+  return value as T;
+}
 
 const directoryStat = { isDirectory: () => true };
-const fs = castThroughUnknown<SandboxFileSystem>({
+const fs = asTestDouble<SandboxFileSystem>({
   stat: async () => directoryStat,
 });
 

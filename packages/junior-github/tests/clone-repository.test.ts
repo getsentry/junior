@@ -1,16 +1,17 @@
-import {
-  castThroughUnknown,
-  PluginToolInputError,
-  type ToolRegistrationHookContext,
-} from "@sentry/junior-plugin-api";
 import { describe, expect, it, vi } from "vitest";
 import { createGitHubCloneRepositoryTool } from "../src/tools/clone-repository.js";
+
+
+/** Test-only bridge for intentionally incomplete doubles. */
+function asTestDouble<T>(value: unknown): T {
+  return value as T;
+}
 
 function context(
   run: ReturnType<typeof vi.fn>,
   findByRepository = vi.fn().mockResolvedValue([]),
 ): ToolRegistrationHookContext {
-  return castThroughUnknown<ToolRegistrationHookContext>({
+  return asTestDouble<ToolRegistrationHookContext>({
     log: { error: vi.fn(), info: vi.fn(), warn: vi.fn() },
     sandbox: {
       root: "/vercel/sandbox",

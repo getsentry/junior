@@ -1,7 +1,11 @@
 import type { SlashCommandEvent } from "chat";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { castThroughUnknown } from "@sentry/junior-plugin-api";
 
+
+/** Test-only bridge for intentionally incomplete doubles. */
+function asTestDouble<T>(value: unknown): T {
+  return value as T;
+}
 const ORIGINAL_ENV = { ...process.env };
 
 async function loadHandler() {
@@ -22,7 +26,7 @@ function createSlashEvent(
     isMe: false,
     ...userOverrides,
   };
-  const event = castThroughUnknown<SlashCommandEvent>({
+  const event = asTestDouble<SlashCommandEvent>({
     text,
     user,
     channel: { postEphemeral },

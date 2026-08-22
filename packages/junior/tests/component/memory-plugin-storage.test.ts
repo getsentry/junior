@@ -6,12 +6,6 @@ import {
   createMemoryStore,
   type MemoryDb,
 } from "@sentry/junior-memory";
-import {
-  castThroughUnknown,
-  createSlackSource,
-  defineJuniorPlugin,
-  PluginToolInputError,
-} from "@sentry/junior-plugin-api";
 import { defineJuniorPlugins } from "@/plugins";
 import { getPluginTools, setPlugins } from "@/chat/plugins/agent-hooks";
 import { migratePluginSchemas } from "@/chat/plugins/migrations";
@@ -20,6 +14,17 @@ import { closeDb } from "@/chat/db";
 import { migratePluginsToSql } from "@/cli/upgrade/migrations/plugin-sql";
 import { runUpgrade } from "@/cli/upgrade";
 import { createLocalJuniorSqlFixture } from "../fixtures/sql";
+import {
+  createSlackSource,
+  defineJuniorPlugin,
+  PluginToolInputError,
+} from "@sentry/junior-plugin-api";
+
+
+/** Test-only bridge for intentionally incomplete doubles. */
+function asTestDouble<T>(value: unknown): T {
+  return value as T;
+}
 
 const NEON = vi.hoisted(() => ({
   sql: undefined as
@@ -315,7 +320,7 @@ WHERE indexname = 'junior_memory_memories_search_idx'
         visibility: "private",
       });
       const store = createMemoryStore(
-        castThroughUnknown<MemoryDb>(fixture.sql.db()),
+        asTestDouble<MemoryDb>(fixture.sql.db()),
         {
           conversationId,
           actor,

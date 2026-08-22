@@ -1,5 +1,11 @@
 import { SlackActionError } from "@/chat/slack/client";
 import type { SlackMessageBlock } from "@/chat/slack/footer";
+
+function asSlackApiBlocks(
+  blocks: unknown,
+): Array<Record<string, unknown>> {
+  return blocks as Array<Record<string, unknown>>;
+}
 import {
   getSlackClient,
   normalizeSlackConversationId,
@@ -11,7 +17,6 @@ import {
   parseSlackMessageTs,
   type SlackMessageTs,
 } from "@/chat/slack/timestamp";
-import { castThroughUnknown } from "@sentry/junior-plugin-api";
 
 const MAX_SLACK_MESSAGE_TEXT_CHARS = 40_000;
 
@@ -114,9 +119,7 @@ export async function postSlackMessage(input: {
         unfurl_media: false,
         ...(input.blocks?.length
           ? {
-              blocks: castThroughUnknown<Array<Record<string, unknown>>>(
-                input.blocks,
-              ),
+              blocks: asSlackApiBlocks(input.blocks),
             }
           : undefined),
         ...(threadTs ? { thread_ts: threadTs } : undefined),

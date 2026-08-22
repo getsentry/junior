@@ -10,7 +10,12 @@ import type {
   StoredTokens,
   UserTokenStore,
 } from "@/chat/credentials/user-token-store";
-import { castThroughUnknown } from "@sentry/junior-plugin-api";
+
+
+/** Test-only bridge for intentionally incomplete doubles. */
+function asTestDouble<T>(value: unknown): T {
+  return value as T;
+}
 
 const ORIGINAL_ENV = { ...process.env };
 const ORIGINAL_FETCH = globalThis.fetch;
@@ -201,7 +206,7 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
       },
     });
 
-    globalThis.fetch = castThroughUnknown<typeof fetch>(
+    globalThis.fetch = asTestDouble<typeof fetch>(
       vi.fn(async () => ({
         ok: true,
         json: async () => ({
@@ -258,7 +263,7 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
       },
     });
 
-    globalThis.fetch = castThroughUnknown<typeof fetch>(
+    globalThis.fetch = asTestDouble<typeof fetch>(
       vi.fn(async () => ({
         ok: true,
         json: async () => ({
@@ -308,7 +313,7 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
       delete: vi.fn(),
       withRefresh,
     };
-    globalThis.fetch = castThroughUnknown<typeof fetch>(vi.fn());
+    globalThis.fetch = asTestDouble<typeof fetch>(vi.fn());
 
     const broker = createBroker(tokenStore);
     const lease = await broker.issue({
@@ -343,7 +348,7 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
       },
     });
 
-    globalThis.fetch = castThroughUnknown<typeof fetch>(
+    globalThis.fetch = asTestDouble<typeof fetch>(
       vi.fn(
         async () =>
           new Response(JSON.stringify({ error: "invalid_grant" }), {
@@ -375,7 +380,7 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
     });
 
     const providerText = "SENSITIVE_CANARY";
-    globalThis.fetch = castThroughUnknown<typeof fetch>(
+    globalThis.fetch = asTestDouble<typeof fetch>(
       vi.fn(
         async () =>
           new Response(JSON.stringify({ error: providerText }), {
@@ -427,7 +432,7 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
         cancelled = true;
       },
     });
-    globalThis.fetch = castThroughUnknown<typeof fetch>(
+    globalThis.fetch = asTestDouble<typeof fetch>(
       vi.fn(async () => new Response(body, { status: 500 })),
     );
 
@@ -460,7 +465,7 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
         controller.error(new Error(providerText));
       },
     });
-    globalThis.fetch = castThroughUnknown<typeof fetch>(
+    globalThis.fetch = asTestDouble<typeof fetch>(
       vi.fn(async () => new Response(body, { status: 500 })),
     );
 

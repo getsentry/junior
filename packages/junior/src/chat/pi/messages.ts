@@ -1,6 +1,9 @@
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { z } from "zod";
-import { castThroughUnknown } from "@sentry/junior-plugin-api";
+
+function asAgentMessage(value: unknown): AgentMessage {
+  return value as AgentMessage;
+}
 
 /** Permissive schema for durable Pi SDK messages whose content shape may evolve. */
 export const piMessageSchema = z
@@ -8,10 +11,14 @@ export const piMessageSchema = z
     role: z.string(),
   })
   .passthrough()
-  .transform((value) => castThroughUnknown<AgentMessage>(value));
+  .transform((value) => asAgentMessage(value));
 
 /** Durable Pi transcript message stored across turns. */
 export type PiMessage = z.output<typeof piMessageSchema>;
+
+function asPiMessage(value: unknown): PiMessage {
+  return value as PiMessage;
+}
 
 /** Reporting transcript entries only render messages with structured content parts. */
 export const piContentMessageSchema = z
@@ -20,4 +27,4 @@ export const piContentMessageSchema = z
     role: z.string().min(1),
   })
   .passthrough()
-  .transform((value) => castThroughUnknown<PiMessage>(value));
+  .transform((value) => asPiMessage(value));

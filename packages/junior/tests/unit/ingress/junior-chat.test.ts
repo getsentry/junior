@@ -1,8 +1,12 @@
 import type { Adapter, WebhookOptions } from "chat";
 import { describe, expect, it, vi } from "vitest";
 import { JuniorChat } from "@/chat/ingress/junior-chat";
-import { castThroughUnknown } from "@sentry/junior-plugin-api";
 
+
+/** Test-only bridge for intentionally incomplete doubles. */
+function asTestDouble<T>(value: unknown): T {
+  return value as T;
+}
 function createWebhookOptions() {
   const tasks: Promise<unknown>[] = [];
   const options: WebhookOptions = {
@@ -17,7 +21,7 @@ function createWebhookOptions() {
 describe("JuniorChat ingress overrides", () => {
   it("forwards webhook options to action handling", async () => {
     const handleActionEvent = vi.fn(async () => {});
-    const runtime = castThroughUnknown<JuniorChat>({
+    const runtime = asTestDouble<JuniorChat>({
       handleActionEvent,
       logger: { error: vi.fn() },
     });
@@ -42,7 +46,7 @@ describe("JuniorChat ingress overrides", () => {
 
   it("forwards webhook options to slash command handling", async () => {
     const handleSlashCommandEvent = vi.fn(async () => {});
-    const runtime = castThroughUnknown<JuniorChat>({
+    const runtime = asTestDouble<JuniorChat>({
       handleSlashCommandEvent,
       logger: { error: vi.fn() },
     });

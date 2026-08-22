@@ -1,9 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  castThroughUnknown,
-  createSlackSource,
-} from "@sentry/junior-plugin-api";
-import {
   createSlackScheduleCreateTaskTool,
   createSlackScheduleDeleteTaskTool,
   createSlackScheduleListTasksTool,
@@ -31,6 +27,15 @@ import {
   createLocalJuniorSqlFixture,
   type LocalJuniorSqlFixture,
 } from "../fixtures/sql";
+import {
+  createSlackSource,
+} from "@sentry/junior-plugin-api";
+
+
+/** Test-only bridge for intentionally incomplete doubles. */
+function asTestDouble<T>(value: unknown): T {
+  return value as T;
+}
 
 vi.hoisted(() => {
   process.env.JUNIOR_STATE_ADAPTER = "memory";
@@ -733,7 +738,7 @@ describe("Slack schedule tools", () => {
     await expect(
       executeTool(
         tool,
-        castThroughUnknown<Parameters<NonNullable<typeof tool.execute>>[0]>({
+        asTestDouble<Parameters<NonNullable<typeof tool.execute>>[0]>({
           task_id: created.task.id,
           next_run_at: "2026-06-01T16:00:00.000Z",
         }),
@@ -754,7 +759,7 @@ describe("Slack schedule tools", () => {
     await expect(
       executeTool(
         updateTool,
-        castThroughUnknown<
+        asTestDouble<
           Parameters<NonNullable<typeof updateTool.execute>>[0]
         >({
           task_id: created.task.id,

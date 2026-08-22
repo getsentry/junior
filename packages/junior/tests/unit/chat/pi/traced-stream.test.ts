@@ -5,7 +5,12 @@ import {
   type AssistantMessage,
   type Model,
 } from "@earendil-works/pi-ai";
-import { castThroughUnknown } from "@sentry/junior-plugin-api";
+
+
+/** Test-only bridge for intentionally incomplete doubles. */
+function asTestDouble<T>(value: unknown): T {
+  return value as T;
+}
 
 const { startInactiveSpan, withActiveSpan } = vi.hoisted(() => {
   const span = {
@@ -26,7 +31,7 @@ vi.mock("@/chat/sentry", () => ({
 }));
 
 function fakeModel(id: string): Model<"anthropic-messages"> {
-  return castThroughUnknown<Model<"anthropic-messages">>({ id });
+  return asTestDouble<Model<"anthropic-messages">>({ id });
 }
 
 function fakeMessage(): AssistantMessage {
@@ -71,7 +76,7 @@ describe("createTracedStreamFn", () => {
     const stream = createAssistantMessageEventStream();
     const base = vi.fn(() => stream);
 
-    const traced = createTracedStreamFn(castThroughUnknown<StreamFn>(base));
+    const traced = createTracedStreamFn(asTestDouble<StreamFn>(base));
     const returned = await traced(
       fakeModel("openai/gpt-5.4"),
       { messages: [{ role: "user", content: "hi", timestamp: 0 }] },
@@ -80,7 +85,7 @@ describe("createTracedStreamFn", () => {
 
     expect(returned).toBe(stream);
     expect(startInactiveSpan).toHaveBeenCalledTimes(1);
-    const opts = castThroughUnknown<{
+    const opts = asTestDouble<{
       name: string;
       op: string;
     }>(startInactiveSpan.mock.calls[0]?.[0]);
@@ -93,7 +98,7 @@ describe("createTracedStreamFn", () => {
     const stream = createAssistantMessageEventStream();
     const base = vi.fn(() => stream);
 
-    const traced = createTracedStreamFn(castThroughUnknown<StreamFn>(base));
+    const traced = createTracedStreamFn(asTestDouble<StreamFn>(base));
     await traced(
       fakeModel("openai/gpt-5.4"),
       {
@@ -103,7 +108,7 @@ describe("createTracedStreamFn", () => {
       undefined,
     );
 
-    const opts = castThroughUnknown<{
+    const opts = asTestDouble<{
       attributes: Record<string, unknown>;
     }>(startInactiveSpan.mock.calls[0]?.[0]);
     expect(opts.attributes["gen_ai.provider.name"]).toBe("vercel-ai-gateway");
@@ -133,7 +138,7 @@ describe("createTracedStreamFn", () => {
       "private prompt\nslack.conversation.type: private_channel\nslack.conversation.name: #private-roadmap";
 
     const traced = createTracedStreamFn({
-      base: castThroughUnknown<StreamFn>(base),
+      base: asTestDouble<StreamFn>(base),
       conversationPrivacy: "private",
     });
     await traced(
@@ -145,7 +150,7 @@ describe("createTracedStreamFn", () => {
       undefined,
     );
 
-    const opts = castThroughUnknown<{
+    const opts = asTestDouble<{
       attributes: Record<string, unknown>;
     }>(startInactiveSpan.mock.calls[0]?.[0]);
     expect(opts.attributes["app.conversation.privacy"]).toBe("private");
@@ -179,7 +184,7 @@ describe("createTracedStreamFn", () => {
     const base = vi.fn(() => stream);
 
     const traced = createTracedStreamFn({
-      base: castThroughUnknown<StreamFn>(base),
+      base: asTestDouble<StreamFn>(base),
       conversationPrivacy: "public",
     });
     const returned = await traced(
@@ -215,7 +220,7 @@ describe("createTracedStreamFn", () => {
     const base = vi.fn(() => stream);
 
     const traced = createTracedStreamFn({
-      base: castThroughUnknown<StreamFn>(base),
+      base: asTestDouble<StreamFn>(base),
       conversationPrivacy: "public",
     });
     await traced(
@@ -271,7 +276,7 @@ describe("createTracedStreamFn", () => {
     expect(msg).not.toHaveProperty("usage");
 
     // input messages should also be in canonical format
-    const startOpts = castThroughUnknown<{
+    const startOpts = asTestDouble<{
       attributes: Record<string, unknown>;
     }>(startInactiveSpan.mock.calls[0]?.[0]);
     const inputMessages = JSON.parse(
@@ -288,7 +293,7 @@ describe("createTracedStreamFn", () => {
     const stream = createAssistantMessageEventStream();
     const base = vi.fn(() => stream);
 
-    const traced = createTracedStreamFn(castThroughUnknown<StreamFn>(base));
+    const traced = createTracedStreamFn(asTestDouble<StreamFn>(base));
     await traced(
       fakeModel("openai/gpt-5.4"),
       { messages: [{ role: "user", content: "hi", timestamp: 0 }] },
@@ -313,7 +318,7 @@ describe("createTracedStreamFn", () => {
     const { createTracedStreamFn } = await import("@/chat/pi/traced-stream");
     const stream = createAssistantMessageEventStream();
     const base = vi.fn(() => stream);
-    const traced = createTracedStreamFn(castThroughUnknown<StreamFn>(base));
+    const traced = createTracedStreamFn(asTestDouble<StreamFn>(base));
 
     await withLogContext(
       { conversationId: "conv_123", runId: "run_456" },
@@ -340,7 +345,7 @@ describe("createTracedStreamFn", () => {
     const { createTracedStreamFn } = await import("@/chat/pi/traced-stream");
     const stream = createAssistantMessageEventStream();
     const base = vi.fn(() => stream);
-    const traced = createTracedStreamFn(castThroughUnknown<StreamFn>(base));
+    const traced = createTracedStreamFn(asTestDouble<StreamFn>(base));
 
     await traced(
       fakeModel("openai/gpt-5.4"),
@@ -372,7 +377,7 @@ describe("createTracedStreamFn", () => {
     const stream = createAssistantMessageEventStream();
     const base = vi.fn(() => stream);
 
-    const traced = createTracedStreamFn(castThroughUnknown<StreamFn>(base));
+    const traced = createTracedStreamFn(asTestDouble<StreamFn>(base));
     await traced(
       fakeModel("openai/gpt-5.4"),
       { messages: [{ role: "user", content: "hi", timestamp: 0 }] },
@@ -404,7 +409,7 @@ describe("createTracedStreamFn", () => {
       throw new Error("gateway down");
     });
 
-    const traced = createTracedStreamFn(castThroughUnknown<StreamFn>(base));
+    const traced = createTracedStreamFn(asTestDouble<StreamFn>(base));
     await expect(
       traced(
         fakeModel("openai/gpt-5.4"),
@@ -428,7 +433,7 @@ describe("createTracedStreamFn", () => {
     };
     const base = vi.fn(() => fakeStream);
 
-    const traced = createTracedStreamFn(castThroughUnknown<StreamFn>(base));
+    const traced = createTracedStreamFn(asTestDouble<StreamFn>(base));
     await traced(
       fakeModel("openai/gpt-5.4"),
       { messages: [{ role: "user", content: "hi", timestamp: 0 }] },
@@ -450,7 +455,7 @@ describe("createTracedStreamFn", () => {
     const stream = createAssistantMessageEventStream();
     const base = vi.fn(() => stream);
 
-    const traced = createTracedStreamFn(castThroughUnknown<StreamFn>(base));
+    const traced = createTracedStreamFn(asTestDouble<StreamFn>(base));
     await traced(
       fakeModel("openai/gpt-5.4"),
       { messages: [{ role: "user", content: "hi", timestamp: 0 }] },

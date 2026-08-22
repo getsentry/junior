@@ -1,13 +1,18 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  castThroughUnknown,
-  defineJuniorPlugin,
-} from "@sentry/junior-plugin-api";
 import { githubPlugin } from "@sentry/junior-github";
 import { createPluginEgress } from "@/chat/egress/plugin";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import { setPlugins } from "@/chat/plugins/agent-hooks";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
+import {
+  defineJuniorPlugin,
+} from "@sentry/junior-plugin-api";
+
+
+/** Test-only bridge for intentionally incomplete doubles. */
+function asTestDouble<T>(value: unknown): T {
+  return value as T;
+}
 
 function githubManifest() {
   return {
@@ -82,7 +87,7 @@ describe("plugin egress", () => {
     );
     const egress = createPluginEgress({
       credentialContext: { actor: { type: "user", userId: "U123" } },
-      fetch: castThroughUnknown<typeof fetch>(vi.fn()),
+      fetch: asTestDouble<typeof fetch>(vi.fn()),
       pluginAuth,
     });
 
@@ -132,7 +137,7 @@ describe("plugin egress", () => {
     const fetchMock = vi.fn();
     const egress = createPluginEgress({
       credentialContext: { actor: { type: "user", userId: "U123" } },
-      fetch: castThroughUnknown<typeof fetch>(fetchMock),
+      fetch: asTestDouble<typeof fetch>(fetchMock),
       pluginAuth: authOrchestration(),
     });
 
@@ -197,7 +202,7 @@ describe("plugin egress", () => {
     const fetchMock = vi.fn();
     const egress = createPluginEgress({
       credentialContext: { actor: { type: "user", userId: "U123" } },
-      fetch: castThroughUnknown<typeof fetch>(fetchMock),
+      fetch: asTestDouble<typeof fetch>(fetchMock),
       pluginAuth: authOrchestration(),
     });
 

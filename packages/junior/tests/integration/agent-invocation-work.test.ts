@@ -1,8 +1,4 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  castThroughUnknown,
-  createLocalSource,
-} from "@sentry/junior-plugin-api";
 import type { PiMessage } from "@/chat/pi/messages";
 import {
   completeAgentInvocation,
@@ -35,6 +31,15 @@ import {
   neverRunAgentRunner,
 } from "../fixtures/agent-runner";
 import { createModelStream } from "../fixtures/model-stream";
+import {
+  createLocalSource,
+} from "@sentry/junior-plugin-api";
+
+
+/** Test-only bridge for intentionally incomplete doubles. */
+function asTestDouble<T>(value: unknown): T {
+  return value as T;
+}
 
 const parentConversationId = "local:test:parent-agent";
 const destination = {
@@ -466,7 +471,7 @@ describe("agent invocation conversation work", () => {
         actor: invocationInput.actor,
         conversationId: created.childConversationId,
         destination,
-        piMessages: castThroughUnknown<PiMessage[]>([
+        piMessages: asTestDouble<PiMessage[]>([
           {
             role: "user",
             content: [{ type: "text", text: invocationInput.input }],

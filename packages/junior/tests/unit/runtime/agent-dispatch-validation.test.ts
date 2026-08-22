@@ -1,9 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
 import {
-  castThroughUnknown,
-  createSlackSource,
-} from "@sentry/junior-plugin-api";
-import {
   validateDispatchOptions,
   verifyDispatchCredentialSubjectAccess,
 } from "@/chat/agent-dispatch/validation";
@@ -14,6 +10,15 @@ import {
   bindSlackDirectCredentialSubject,
   createSlackDirectCredentialSubject,
 } from "@/chat/credentials/subject";
+import {
+  createSlackSource,
+} from "@sentry/junior-plugin-api";
+
+
+/** Test-only bridge for intentionally incomplete doubles. */
+function asTestDouble<T>(value: unknown): T {
+  return value as T;
+}
 
 const validOptions = {
   idempotencyKey: "run-1",
@@ -121,7 +126,7 @@ describe("agent dispatch validation", () => {
       validateDispatchOptions({
         ...validOptions,
         destination:
-          castThroughUnknown<typeof validOptions.destination>(undefined),
+          asTestDouble<typeof validOptions.destination>(undefined),
       }),
     ).toThrow("Dispatch destination platform must be slack");
     expect(() =>
@@ -291,7 +296,7 @@ describe("agent dispatch validation", () => {
     expect(() =>
       validateDispatchOptions({
         ...validOptions,
-        metadata: castThroughUnknown<Record<string, string>>(null),
+        metadata: asTestDouble<Record<string, string>>(null),
       }),
     ).toThrow("Dispatch metadata values must be strings");
 
@@ -424,7 +429,7 @@ describe("agent dispatch validation", () => {
       "Dispatch credentialSubject is not valid for this action",
     );
 
-    const unboundRuntimeSubject = castThroughUnknown<
+    const unboundRuntimeSubject = asTestDouble<
       NonNullable<
         Parameters<
           typeof verifyDispatchCredentialSubjectAccess

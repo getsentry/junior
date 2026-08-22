@@ -4,7 +4,6 @@ import {
   truncateText,
 } from "@/chat/tools/sandbox/file-utils";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
-import { castThroughUnknown } from "@sentry/junior-plugin-api";
 
 export interface TextReplacement {
   oldText: string;
@@ -13,6 +12,12 @@ export interface TextReplacement {
 
 export interface TextReplacementInput {
   edits: TextReplacement[];
+}
+
+function asPreparedTextReplacementInput<T extends TextReplacementInput>(
+  value: unknown,
+): T {
+  return value as T;
 }
 
 interface MatchedEdit {
@@ -89,7 +94,7 @@ export function prepareTextReplacementArguments<T extends TextReplacementInput>(
   input: unknown,
 ): T {
   if (!input || typeof input !== "object") {
-    return input as T;
+    return asPreparedTextReplacementInput<T>(input);
   }
 
   const raw = { ...(input as Record<string, unknown>) };
@@ -97,7 +102,7 @@ export function prepareTextReplacementArguments<T extends TextReplacementInput>(
     try {
       raw.edits = JSON.parse(raw.edits);
     } catch {
-      return castThroughUnknown<T>(raw);
+      return asPreparedTextReplacementInput<T>(raw);
     }
   }
 
@@ -127,7 +132,7 @@ export function prepareTextReplacementArguments<T extends TextReplacementInput>(
   delete raw.old_text;
   delete raw.newText;
   delete raw.new_text;
-  return castThroughUnknown<T>(raw);
+  return asPreparedTextReplacementInput<T>(raw);
 }
 
 /** Build a small line-oriented diff that gives agents enough context to review edits. */

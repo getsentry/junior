@@ -5,8 +5,12 @@ import { isAssistantMessage } from "@/chat/pi/transcript";
 import { decideReply } from "@/chat/services/assistant-reply";
 import { ACTIVE_TURN_COMPACTION_SUMMARY_PREFIX } from "@/chat/services/context-compaction-marker";
 import { nextEmptyOutputContinuation } from "@/chat/services/empty-output-continuation";
-import { castThroughUnknown } from "@sentry/junior-plugin-api";
 
+
+/** Test-only bridge for intentionally incomplete doubles. */
+function asTestDouble<T>(value: unknown): T {
+  return value as T;
+}
 type StreamResponse = Awaited<ReturnType<StreamFn>>;
 
 const usage = {
@@ -36,7 +40,7 @@ function assistantResponse(text = "done"): StreamResponse {
     timestamp: Date.now(),
   };
 
-  return castThroughUnknown<StreamResponse>({
+  return asTestDouble<StreamResponse>({
     async *[Symbol.asyncIterator]() {
       yield { type: "done" as const };
     },

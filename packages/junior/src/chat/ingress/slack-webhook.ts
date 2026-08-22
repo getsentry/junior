@@ -25,7 +25,10 @@ import {
   extractMessageChangedMention,
   isMessageChangedEnvelope,
 } from "@/chat/ingress/message-changed";
-import { normalizeIncomingSlackThreadId } from "@/chat/ingress/message-router";
+import {
+  normalizeIncomingSlackThreadId,
+  withNormalizedThreadId,
+} from "@/chat/ingress/message-router";
 import { isExternalSlackUser } from "@/chat/ingress/workspace-membership";
 import {
   getWorkspaceTeamId,
@@ -47,7 +50,6 @@ import {
   type LogContext,
 } from "@/chat/logging";
 import type { WaitUntilFn } from "@/handlers/types";
-import { castThroughUnknown } from "@sentry/junior-plugin-api";
 
 type SlackMessageEvent = {
   bot_id?: string;
@@ -178,12 +180,15 @@ function shouldIgnoreMessageSubtype(event: SlackMessageEvent): boolean {
   return Boolean(event.subtype && IGNORED_MESSAGE_SUBTYPES.has(event.subtype));
 }
 
-function normalizeMessageThreadId(message: Message): string {
-  const normalized = normalizeIncomingSlackThreadId(message.threadId, message);
-  if (normalized !== message.threadId) {
-    castThroughUnknown<{ threadId: string }>(message).threadId = normalized;
-  }
-  return normalized;
+function normalizeMessageThreadId(message: Message): {
+  message: Message;
+  threadId: string;
+} {
+  const threadId = normalizeIncomingSlackThreadId(message.threadId, message);
+  return {
+    message: withNormalizedThreadId(message, threadId),
+    threadId,
+  };
 }
 
 async function buildThread(args: {
@@ -192,16 +197,16 @@ async function buildThread(args: {
   route: SlackConversationRoute;
   state: StateAdapter;
 }): Promise<ThreadImpl> {
-  const threadId = normalizeMessageThreadId(args.message);
+  const normalized = normalizeMessageThreadId(args.message);
   return new ThreadImpl({
     adapter: args.adapter,
     stateAdapter: args.state,
-    id: threadId,
-    channelId: args.adapter.channelIdFromThreadId(threadId),
-    channelVisibility: args.adapter.getChannelVisibility(threadId),
-    currentMessage: args.message,
-    initialMessage: args.message,
-    isDM: args.adapter.isDM(threadId),
+    id: normalized.threadId,
+    channelId: args.adapter.channelIdFromThreadId(normalized.threadId),
+    channelVisibility: args.adapter.getChannelVisibility(normalized.threadId),
+    currentMessage: normalized.message,
+    initialMessage: normalized.message,
+    isDM: args.adapter.isDM(normalized.threadId),
     isSubscribedContext: args.route === "subscribed",
   });
 }
@@ -293,7 +298,9 @@ async function routeParsedMessage(args: {
     return;
   }
 
-  const canonicalThreadId = normalizeMessageThreadId(args.message);
+  const normalized = normalizeMessageThreadId(args.message);
+  const message = normalized.message;
+  const canonicalThreadId = normalized.threadId;
   const conversationId = await resolveSlackConversationId({
     canonicalThreadId,
     conversationStore: args.conversationStore,
@@ -306,7 +313,7 @@ async function routeParsedMessage(args: {
     botUserId && textMentionsBot(args.event.text ?? "", botUserId),
   );
   if (isMention) {
-    args.message.isMention = true;
+    message.isMention = true;
   }
 
   const route: SlackConversationRoute | undefined =
@@ -322,7 +329,7 @@ async function routeParsedMessage(args: {
   await persistSlackMessage({
     adapter: args.adapter,
     installation: args.installation,
-    message: args.message,
+    message,
     conversationId,
     conversationStore: args.conversationStore,
     queue: args.queue,

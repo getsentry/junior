@@ -1,5 +1,4 @@
 import {
-  castThroughUnknown,
   missingToolAnnotationKeys,
   normalizeResourceEventIdentifier,
   pluginResourceEventsSchema,
@@ -743,7 +742,7 @@ export function getPluginTools(
           `Duplicate plugin tool "${name}" from plugin "${pluginName}"`,
         );
       }
-      const definition = castThroughUnknown<AnyToolDefinition>(tool);
+      const definition = tool as AnyToolDefinition;
       const missingAnnotationKeys = missingToolAnnotationKeys(
         definition.annotations,
       );

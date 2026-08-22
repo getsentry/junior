@@ -58,7 +58,12 @@ import {
   observeConversationMutationLock,
 } from "../../fixtures/conversation-work";
 import { readProxyProperty } from "../../fixtures/proxy-property";
-import { castThroughUnknown } from "@sentry/junior-plugin-api";
+
+
+/** Test-only bridge for intentionally incomplete doubles. */
+function asTestDouble<T>(value: unknown): T {
+  return value as T;
+}
 
 const OTHER_SLACK_DESTINATION = {
   platform: "slack",
@@ -214,7 +219,7 @@ describe("conversation work execution", () => {
     const state = getStateAdapter();
     await state.connect();
     const legacyMessage = {
-      ...castThroughUnknown<Record<string, unknown>>(inboundMessage("legacy")),
+      ...asTestDouble<Record<string, unknown>>(inboundMessage("legacy")),
     };
     delete legacyMessage.destination;
     const legacyWork = {

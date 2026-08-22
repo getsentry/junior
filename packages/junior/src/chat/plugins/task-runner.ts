@@ -13,16 +13,17 @@ import type {
   PluginRunTranscriptProvenance,
   PluginTaskContext,
 } from "@sentry/junior-plugin-api";
-import {
-  castThroughUnknown,
-  pluginRunContextSchema,
-} from "@sentry/junior-plugin-api";
+import { pluginRunContextSchema } from "@sentry/junior-plugin-api";
 import { getDb } from "@/chat/db";
 import { createPluginLogger } from "@/chat/plugins/logging";
 import { createPluginConversationEvents } from "@/chat/plugins/conversation-events";
 import { createPluginEmbedder, createPluginModel } from "@/chat/plugins/model";
 import { createPluginState } from "@/chat/plugins/state";
 import type { PiMessage } from "@/chat/pi/messages";
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value as Record<string, unknown>;
+}
 import {
   getPiMessageRole,
   instructionTextForProjection,
@@ -94,7 +95,7 @@ function messageText(message: PiMessage): string {
 }
 
 function toolResultText(message: PiMessage): string {
-  const record = castThroughUnknown<Record<string, unknown>>(message);
+  const record = asRecord(message);
   const parts = [
     messageText(message),
     record.output,

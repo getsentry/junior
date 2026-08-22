@@ -1,14 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  castThroughUnknown,
-  createSlackSource,
-} from "@sentry/junior-plugin-api";
 import { renderCurrentInstruction } from "@/chat/current-instruction";
 import { getConversationEventStore } from "@/chat/db";
 import { McpProviderError } from "@/chat/mcp/errors";
 import type { PiMessage } from "@/chat/pi/messages";
 import type { ConversationPendingAuthState } from "@/chat/state/conversation";
 
+
+/** Test-only bridge for intentionally incomplete doubles. */
+function asTestDouble<T>(value: unknown): T {
+  return value as T;
+}
 const {
   DEMO_SKILL,
   agentAfterToolResults,
@@ -678,6 +679,9 @@ import {
   upsertTurnRecord,
 } from "@/chat/task-execution/turn-cursor";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
+import {
+  createSlackSource,
+} from "@sentry/junior-plugin-api";
 
 function finalReply(outcome: Awaited<ReturnType<typeof executeAgentRun>>) {
   if (outcome.status !== "completed") {
@@ -1151,7 +1155,7 @@ describe("executeAgentRun progressive MCP loading", () => {
   it("preserves the execution-limit error when provider restore pauses for auth", async () => {
     const conversationId = "conversation-restore-auth-limit";
     const turnId = "turn-restore-auth-limit";
-    const priorMessages = castThroughUnknown<PiMessage[]>([
+    const priorMessages = asTestDouble<PiMessage[]>([
       {
         input: {
           tool_name: "mcp__demo__ping",
@@ -1190,7 +1194,7 @@ describe("executeAgentRun progressive MCP loading", () => {
   });
 
   it("adds missing bootstrap context when actor-owned provider restore pauses before prompt", async () => {
-    const priorMessages = castThroughUnknown<PiMessage[]>([
+    const priorMessages = asTestDouble<PiMessage[]>([
       {
         role: "user",
         content: [{ type: "text", text: "prior question" }],

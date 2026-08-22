@@ -3,8 +3,11 @@ import type {
   OAuthTokens,
 } from "@modelcontextprotocol/sdk/shared/auth.js";
 import type { OAuthDiscoveryState } from "@modelcontextprotocol/sdk/client/auth.js";
+
+function asOAuthDiscoveryState(value: unknown): OAuthDiscoveryState {
+  return value as OAuthDiscoveryState;
+}
 import {
-  castThroughUnknown,
   sourceSchema,
   type Destination,
   type Source,
@@ -208,9 +211,7 @@ function parseStoredCredentials(
         : undefined),
       ...(isRecord(parsed.discoveryState)
         ? {
-            discoveryState: castThroughUnknown<OAuthDiscoveryState>(
-              parsed.discoveryState,
-            ),
+            discoveryState: asOAuthDiscoveryState(parsed.discoveryState),
           }
         : undefined),
       ...(isRecord(parsed.tokens)
