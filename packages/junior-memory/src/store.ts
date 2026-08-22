@@ -1510,8 +1510,9 @@ export function createMemoryStore(
     async listPrivateMemories(input) {
       input = listMemoriesInputSchema.parse(input);
       const nowMs = getNowMs();
-      const scope = deriveMemoryScope(runtimeContext);
-      const scopes = scope.scope === "private" ? [scope] : [];
+      const scopes = deriveVisibleMemoryScopes(runtimeContext).filter(
+        (scope) => scope.scope === "private",
+      );
       await archiveExpiredMemoryBatch({
         db,
         nowMs,
@@ -1536,9 +1537,10 @@ export function createMemoryStore(
     async archiveMemory(input) {
       input = archiveMemoryInputSchema.parse(input);
       const nowMs = getNowMs();
-      const scope = deriveMemoryScope(runtimeContext);
       // Public memory is shared and has no single user owner.
-      const scopes = scope.scope === "private" ? [scope] : [];
+      const scopes = deriveVisibleMemoryScopes(runtimeContext).filter(
+        (scope) => scope.scope === "private",
+      );
       const predicate = activeVisiblePredicate({ nowMs, scopes });
       const idPrefix = input.id.trim();
       if (!idPrefix) {

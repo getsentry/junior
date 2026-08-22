@@ -135,7 +135,7 @@ function citedEntries(
 function routeExtractedMemory(
   memory: ExtractedMemory,
   transcript: PluginRunTranscriptEntry[],
-  run: Pick<PluginRunContext, "actor" | "actors">,
+  run: Pick<PluginRunContext, "actor" | "actors" | "actorUserId">,
 ): MemorySubjectTarget {
   const cited = citedEntries(memory.evidenceMessageIndices, transcript);
   if (!cited.valid) {
@@ -144,6 +144,7 @@ function routeExtractedMemory(
   if (memory.kind === "preference") {
     // Only a run attributed to exactly one human run actor may store a preference.
     const exactlyOneHumanRunActor =
+      run.actorUserId !== undefined &&
       run.actor !== undefined &&
       run.actor.platform !== "system" &&
       run.actors.length === 1 &&
@@ -231,7 +232,7 @@ export async function processMemorySession(
     return;
   }
   const sourceKey = getSourceKey(run.source);
-  if (!sourceKey) {
+  if (!sourceKey || (run.source.visibility === "private" && !run.actorUserId)) {
     return;
   }
   const transcript = run.transcript

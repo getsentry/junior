@@ -1883,7 +1883,7 @@ describe("memory plugin storage", () => {
     }
   });
 
-  it("stores conversation memories without actor context", async () => {
+  it("skips private passive extraction without a linked user", async () => {
     const fixture = await createMemoryFixture();
     const { model } = extractionModel([
       {
@@ -1911,6 +1911,7 @@ describe("memory plugin storage", () => {
                   conversationId: runtime.conversationId,
                 },
                 actor: undefined,
+                actorUserId: undefined,
                 transcript: [
                   contextMessage(
                     "For release triage, check deployment markers first.",
@@ -1930,14 +1931,7 @@ describe("memory plugin storage", () => {
 
       await expect(
         memoryDb(fixture).select().from(memorySqlSchema.juniorMemoryMemories),
-      ).resolves.toEqual([
-        expect.objectContaining({
-          content: "Release triage checks deployment markers first.",
-          scope: "private",
-          subjectType: "conversation",
-          kind: "procedure",
-        }),
-      ]);
+      ).resolves.toEqual([]);
     } finally {
       await fixture.close();
     }
@@ -2372,7 +2366,7 @@ describe("memory plugin storage", () => {
         expect.objectContaining({ id: privateMemory.memory.id }),
         expect.objectContaining({ id: publicMemory.memory.id }),
       ]);
-      await expect(privateStore.listPrivateMemories({})).resolves.toEqual([
+      await expect(publicStore.listPrivateMemories({})).resolves.toEqual([
         expect.objectContaining({ id: privateMemory.memory.id }),
       ]);
 
@@ -2423,7 +2417,7 @@ describe("memory plugin storage", () => {
       ).rejects.toThrow("Memory was not found in the current context.");
 
       nowMs += 1;
-      const archived = await privateStore.archiveMemory({
+      const archived = await publicStore.archiveMemory({
         id: privateMemory.memory.id.slice(0, 12),
       });
       expect(archived).toMatchObject({
