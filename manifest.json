@@ -1,0 +1,17 @@
+{
+  "commitSha": "f240b16a1ce5c1d862d38bd388dc5cb323eaf475",
+  "mode": "path",
+  "reasons": [
+    "packages/junior-dashboard/.oxlintrc.json"
+  ],
+  "scenarioIds": [
+    "gallery-index"
+  ],
+  "shots": [
+    {
+      "file": "gallery-index__desktop.png",
+      "label": "Component gallery index · desktop"
+    }
+  ],
+  "skipped": false
+}
