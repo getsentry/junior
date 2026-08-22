@@ -1808,8 +1808,8 @@ describe("conversation work execution", () => {
             return target.acquireLock(key, ttlMs);
           };
         }
-        const value = Reflect.get(target, prop, receiver);
-        return typeof value === "function" ? value.bind(target) : value;
+        const value = (target as Record<string | symbol, unknown>)[prop];
+        return typeof value === "function" ? (value as (...args: unknown[]) => unknown).bind(target) : value;
       },
     }) as StateAdapter;
 
