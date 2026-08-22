@@ -196,10 +196,10 @@ function executionSummaryFields(stats: TaskExecutionSummary | undefined) {
   return {
     ...(stats?.lastConversationId
       ? { lastConversationId: stats.lastConversationId }
-      : {}),
+      : undefined),
     ...(stats?.lastExecutedAtMs
       ? { lastRunAt: new Date(stats.lastExecutedAtMs).toISOString() }
-      : {}),
+      : undefined),
     runsLast7Days: stats?.runsLast7Days ?? 0,
     totalRuns: stats?.totalRuns ?? 0,
   };
@@ -220,7 +220,7 @@ function scheduledTaskSummary(
   return {
     createdAt: new Date(task.createdAtMs).toISOString(),
     createdBy: creatorLabel(task.createdBy),
-    ...(createdByEmail ? { createdByEmail } : {}),
+    ...(createdByEmail ? { createdByEmail } : undefined),
     destination: {
       channelId: task.destination.channelId,
       label: destination.label,
@@ -233,7 +233,7 @@ function scheduledTaskSummary(
     ...executionSummaryFields(stats),
     ...(nextRunAtMs !== undefined
       ? { nextRunAt: new Date(nextRunAtMs).toISOString() }
-      : {}),
+      : undefined),
     ownedByViewer,
     schedule: displayText(task.schedule.description, "Schedule unavailable"),
     status: task.status,
@@ -252,7 +252,7 @@ function eventTaskSummary(
   return {
     createdAt: new Date(task.createdAtMs).toISOString(),
     createdBy: creatorLabel(task.createdBy),
-    ...(createdByEmail ? { createdByEmail } : {}),
+    ...(createdByEmail ? { createdByEmail } : undefined),
     destination: {
       channelId: task.destination.channelId,
       label: destination.label,

@@ -115,7 +115,7 @@ export function normalizeSentryResourceEvents(input: {
     eventType,
     occurredAtMs,
     trustedSummary: `${issueResource.label} was created.`,
-    ...(untrustedText ? { untrustedText } : {}),
+    ...(untrustedText ? { untrustedText } : undefined),
   } satisfies Omit<ResourceEventInput, "identifier">;
 
   return [

@@ -58,7 +58,7 @@ export class ProviderError extends Error {
   }
 }
 
-type ErrorShape = Error & {
+type ProviderErrorFields = Error & {
   cause?: unknown;
   code?: unknown;
   response?: { headers?: unknown };
@@ -122,19 +122,19 @@ function extractTransportKind(
 ): ProviderErrorKind | undefined {
   if (!(error instanceof Error) || depth > 4) return undefined;
 
-  const shaped = error as ErrorShape;
+  const providerError = error as ProviderErrorFields;
   const code =
-    typeof shaped.code === "string" ? shaped.code.toUpperCase() : undefined;
+    typeof providerError.code === "string" ? providerError.code.toUpperCase() : undefined;
   if (code && TIMEOUT_ERROR_CODES.has(code)) return "timeout";
   if (code && NETWORK_ERROR_CODES.has(code)) return "network";
-  return extractTransportKind(shaped.cause, depth + 1);
+  return extractTransportKind(providerError.cause, depth + 1);
 }
 
 function extractStatus(error: unknown, message: string): number | undefined {
   if (error instanceof Error) {
-    const shaped = error as ErrorShape;
-    if (typeof shaped.status === "number") return shaped.status;
-    if (typeof shaped.statusCode === "number") return shaped.statusCode;
+    const providerError = error as ProviderErrorFields;
+    if (typeof providerError.status === "number") return providerError.status;
+    if (typeof providerError.statusCode === "number") return providerError.statusCode;
   }
 
   const match = message.match(
@@ -150,8 +150,8 @@ function extractRetryAfterMs(
 ): number | undefined {
   const headers =
     error instanceof Error
-      ? ((error as ErrorShape).responseHeaders ??
-        (error as ErrorShape).response?.headers)
+      ? ((error as ProviderErrorFields).responseHeaders ??
+        (error as ProviderErrorFields).response?.headers)
       : undefined;
   const retryAfter =
     headers instanceof Headers
@@ -289,10 +289,10 @@ export function getProviderErrorAttributes(
     "app.ai.provider_error.retryable": error.retryable,
     ...(error.status !== undefined
       ? { "app.ai.provider_error.status": error.status }
-      : {}),
+      : undefined),
     ...(error.retryAfterMs !== undefined
       ? { "app.ai.provider_error.retry_after_ms": error.retryAfterMs }
-      : {}),
-    ...(error.modelId ? { "gen_ai.request.model": error.modelId } : {}),
+      : undefined),
+    ...(error.modelId ? { "gen_ai.request.model": error.modelId } : undefined),
   };
 }

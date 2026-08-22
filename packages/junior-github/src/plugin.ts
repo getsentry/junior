@@ -241,7 +241,7 @@ function parseGitHubGraphqlRequest(
   ).trim();
   return {
     normalized,
-    ...(operationName ? { operationName } : {}),
+    ...(operationName ? { operationName } : undefined),
   };
 }
 
@@ -540,7 +540,7 @@ function applyGitHubEgressPolicy(input: {
   upstreamUrl: URL;
 }): void {
   assertGitHubPullRequestApprovalDenied({
-    ...(input.bodyText !== undefined ? { bodyText: input.bodyText } : {}),
+    ...(input.bodyText !== undefined ? { bodyText: input.bodyText } : undefined),
     method: input.method,
     upstreamUrl: input.upstreamUrl,
   });
@@ -575,9 +575,9 @@ function grantForAccess(
   return {
     name,
     access,
-    ...(leaseScope ? { leaseScope } : {}),
+    ...(leaseScope ? { leaseScope } : undefined),
     reason,
-    ...(name === "user-write" ? { requirements: USER_WRITE_REQUIREMENTS } : {}),
+    ...(name === "user-write" ? { requirements: USER_WRITE_REQUIREMENTS } : undefined),
   };
 }
 
@@ -599,9 +599,9 @@ async function githubGrantForEgress(
   applyGitHubEgressPolicy({
     ...(ctx.request.bodyText !== undefined
       ? { bodyText: ctx.request.bodyText }
-      : {}),
+      : undefined),
     method,
-    ...(ctx.request.operation ? { operation: ctx.request.operation } : {}),
+    ...(ctx.request.operation ? { operation: ctx.request.operation } : undefined),
     upstreamUrl,
   });
   if (isGitHubAssetUploadRequest(method, upstreamUrl)) {
@@ -724,7 +724,7 @@ export function githubPlugin(
           suggestedEvents: [...GITHUB_PULL_REQUEST_SUGGESTED_EVENTS],
           ...(options.pullRequestEvents?.guidance
             ? { guidance: options.pullRequestEvents.guidance }
-            : {}),
+            : undefined),
         },
         {
           type: "release_source",
@@ -772,7 +772,7 @@ export function githubPlugin(
         // GitHub App user-to-server tokens always return scope: "" regardless
         // of what was requested; treat empty response scope as unreported.
         treatEmptyScopeAsUnreported: true,
-        ...(userScope ? { scope: userScope } : {}),
+        ...(userScope ? { scope: userScope } : undefined),
       },
       commandEnv: {
         [GITHUB_AUTH_TOKEN_ENV]: GITHUB_AUTH_TOKEN_PLACEHOLDER,

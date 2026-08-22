@@ -246,8 +246,8 @@ export function createSandboxRuntime(
     hash: string | undefined,
   ): SandboxRef => ({
     id: session.sandboxId,
-    ...(hash ? { profileHash: hash } : {}),
-    ...(workspace?.id ? { workspaceId: workspace.id } : {}),
+    ...(hash ? { profileHash: hash } : undefined),
+    ...(workspace?.id ? { workspaceId: workspace.id } : undefined),
   });
 
   const rememberSandbox = (
@@ -353,12 +353,12 @@ export function createSandboxRuntime(
             timeout: timeoutMs,
             ...(networkPolicy
               ? { name: sandboxName, persistent: false, networkPolicy }
-              : {}),
+              : undefined),
             source: {
               type: "snapshot",
               snapshotId,
             },
-            ...(resources ? { resources } : {}),
+            ...(resources ? { resources } : undefined),
             ...(sandboxCredentials ?? {}),
             ...sandboxFetchOptions(signal),
           }),
@@ -398,8 +398,8 @@ export function createSandboxRuntime(
           runtime,
           ...(networkPolicy
             ? { name: sandboxName, persistent: false, networkPolicy }
-            : {}),
-          ...(resources ? { resources } : {}),
+            : undefined),
+          ...(resources ? { resources } : undefined),
           ...(sandboxCredentials ?? {}),
           ...sandboxFetchOptions(signal),
         }),
@@ -574,10 +574,10 @@ export function createSandboxRuntime(
     const attrs = {
       ...(sandboxRef.profileHash
         ? { "app.sandbox.previous_profile_hash": sandboxRef.profileHash }
-        : {}),
+        : undefined),
       ...(dependencyProfileHash
         ? { "app.sandbox.current_profile_hash": dependencyProfileHash }
-        : {}),
+        : undefined),
     };
     setSpanAttributes({
       "app.sandbox.reused": false,

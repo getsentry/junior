@@ -56,7 +56,7 @@ export async function maybeSyncAssistantTitle(args: {
           ? {
               "app.slack.assistant_title.error_code": slackErrorCode,
             }
-          : {}),
+          : undefined),
       };
       setSpanAttributes(assistantTitleErrorAttributes);
       logError(

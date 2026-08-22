@@ -64,7 +64,7 @@ function historyPage(
     eventHistory: { status: "available" },
     generatedAt,
     requestedBefore,
-    ...(previousCursor ? { previousCursor } : {}),
+    ...(previousCursor ? { previousCursor } : undefined),
   };
 }
 

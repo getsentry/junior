@@ -96,7 +96,7 @@ function decodeConversationEventRow(
     schemaVersion: row.schemaVersion,
     seq: row.seq,
     historyVersion: row.historyVersion,
-    ...(row.idempotencyKey ? { idempotencyKey: row.idempotencyKey } : {}),
+    ...(row.idempotencyKey ? { idempotencyKey: row.idempotencyKey } : undefined),
     createdAtMs: row.createdAt.getTime(),
     type: row.type,
     payload: row.payload,
@@ -202,6 +202,6 @@ export async function readConversationEventPage(
     events,
     ...(projected.length > events.length && events[0]
       ? { previousSeq: events[0].seq }
-      : {}),
+      : undefined),
   };
 }

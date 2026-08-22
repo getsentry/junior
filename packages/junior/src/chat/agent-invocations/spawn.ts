@@ -30,22 +30,22 @@ export function bindSpawnAgent(
     const invocation = await createAndEnqueueAgentInvocation(
       {
         actor,
-        ...(input.name ? { agentName: input.name } : {}),
+        ...(input.name ? { agentName: input.name } : undefined),
         ...(run.credentialContext
           ? { credentialContext: run.credentialContext }
-          : {}),
+          : undefined),
         destination: toolInvocationDestination(run),
         ...(run.destinationVisibility
           ? {
               destinationVisibility: run.destinationVisibility,
             }
-          : {}),
+          : undefined),
         idempotencyKey: `${run.turnId}:${call.toolCallId}`,
         input: input.task,
         parentConversationId: run.conversationId,
         ...(input.reasoningLevel
           ? { reasoningLevel: input.reasoningLevel }
-          : {}),
+          : undefined),
         source: run.source,
       },
       { ...options, queue },

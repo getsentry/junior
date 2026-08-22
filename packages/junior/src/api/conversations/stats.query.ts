@@ -175,16 +175,16 @@ function metricDays(
       ...(row?.cachedInputTokens !== null &&
       row?.cachedInputTokens !== undefined
         ? { cachedInputTokens: row.cachedInputTokens }
-        : {}),
+        : undefined),
       ...(row?.costUsd !== null && row?.costUsd !== undefined
         ? { costUsd: addUsd(undefined, row.costUsd) }
-        : {}),
+        : undefined),
       ...(row?.inputTokens !== null && row?.inputTokens !== undefined
         ? { inputTokens: row.inputTokens }
-        : {}),
+        : undefined),
       ...(row?.tokens !== null && row?.tokens !== undefined
         ? { tokens: row.tokens }
-        : {}),
+        : undefined),
     });
   }
   return days;
@@ -235,7 +235,7 @@ function guardianStats(
       requests: row?.requests ?? 0,
       ...(row?.costUsd !== null && row?.costUsd !== undefined
         ? { costUsd: row.costUsd }
-        : {}),
+        : undefined),
     });
   }
 
@@ -245,7 +245,7 @@ function guardianStats(
     deny,
     metricDays,
     requests,
-    ...(costUsd !== undefined ? { costUsd } : {}),
+    ...(costUsd !== undefined ? { costUsd } : undefined),
   };
 }
 
@@ -414,7 +414,7 @@ export async function readConversationStatsFromSql(): Promise<ConversationStatsR
     ...(totals?.cachedInputTokens !== null &&
     totals?.cachedInputTokens !== undefined
       ? { cachedInputTokens: totals.cachedInputTokens }
-      : {}),
+      : undefined),
     conversations: totals?.conversations ?? 0,
     durationMs: totals?.durationMs ?? 0,
     failed: totals?.failed ?? 0,
@@ -426,13 +426,13 @@ export async function readConversationStatsFromSql(): Promise<ConversationStatsR
     source: "conversation_index",
     ...(totals?.costUsd !== null && totals?.costUsd !== undefined
       ? { costUsd: addUsd(undefined, totals.costUsd) }
-      : {}),
+      : undefined),
     ...(totals?.inputTokens !== null && totals?.inputTokens !== undefined
       ? { inputTokens: totals.inputTokens }
-      : {}),
+      : undefined),
     ...(totals?.tokens !== null && totals?.tokens !== undefined
       ? { tokens: totals.tokens }
-      : {}),
+      : undefined),
     windowEnd: end.toISOString(),
     windowStart: start.toISOString(),
   };

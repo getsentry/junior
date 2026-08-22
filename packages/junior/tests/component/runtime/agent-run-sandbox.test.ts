@@ -323,7 +323,7 @@ vi.mock("@/chat/task-execution/checkpoint", () => ({
                   turnStartMessageIndex:
                     sessionRecordTurnStartMessageIndex.value,
                 }
-              : {}),
+              : undefined),
           }
         : undefined,
   }),

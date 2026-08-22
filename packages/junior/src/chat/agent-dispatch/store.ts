@@ -189,8 +189,8 @@ function toDispatchProjection(record: DispatchRecord): DispatchProjection {
     status: record.status,
     ...(record.resultMessageTs
       ? { resultMessageTs: record.resultMessageTs }
-      : {}),
-    ...(record.errorMessage ? { errorMessage: record.errorMessage } : {}),
+      : undefined),
+    ...(record.errorMessage ? { errorMessage: record.errorMessage } : undefined),
   };
 }
 
@@ -307,17 +307,17 @@ export async function createOrGetDispatch(args: {
       createdAtMs: args.nowMs,
       ...(args.options.credentialSubject
         ? { credentialSubject: args.options.credentialSubject }
-        : {}),
+        : undefined),
       destination: args.options.destination,
       destinationVisibility: args.options.destinationVisibility,
       id,
       idempotencyKey: args.options.idempotencyKey,
       input: args.options.input,
-      ...(metadata ? { metadata } : {}),
+      ...(metadata ? { metadata } : undefined),
       plugin: args.plugin,
       ...(args.options.replyAttribution
         ? { replyAttribution: args.options.replyAttribution }
-        : {}),
+        : undefined),
       status: "pending",
       source: args.options.source,
       updatedAtMs: args.nowMs,
@@ -396,7 +396,7 @@ async function recordEventTaskExecution(
   const conversationId = getDispatchConversationId(next);
   const conversation = await getConversationStore().get({ conversationId });
   await recordTaskExecution("event", eventTaskId, {
-    ...(conversation ? { conversationId } : {}),
+    ...(conversation ? { conversationId } : undefined),
     executionId: next.id,
     nowMs: next.updatedAtMs,
     status,
@@ -416,7 +416,7 @@ export async function markDispatchBlocked(
       : {
           ...record,
           errorMessage,
-          ...(resultMessageTs ? { resultMessageTs } : {}),
+          ...(resultMessageTs ? { resultMessageTs } : undefined),
           status: "blocked",
         },
   );
@@ -436,7 +436,7 @@ export async function markDispatchCompleted(
       : {
           ...record,
           errorMessage: undefined,
-          ...(resultMessageTs ? { resultMessageTs } : {}),
+          ...(resultMessageTs ? { resultMessageTs } : undefined),
           status: "completed",
         },
   );
@@ -457,7 +457,7 @@ export async function markDispatchFailed(
       : {
           ...record,
           errorMessage,
-          ...(resultMessageTs ? { resultMessageTs } : {}),
+          ...(resultMessageTs ? { resultMessageTs } : undefined),
           status: "failed",
         },
   );

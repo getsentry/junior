@@ -90,8 +90,8 @@ export function rankMemoryMatches(
       ...existing,
       ...(!existing.lexical && match.lexical
         ? { lexical: match.lexical }
-        : {}),
-      ...(!existing.vector && match.vector ? { vector: match.vector } : {}),
+        : undefined),
+      ...(!existing.vector && match.vector ? { vector: match.vector } : undefined),
     });
   }
   return [...byId.values()].sort((left, right) => {

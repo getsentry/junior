@@ -81,7 +81,7 @@ export class ConversationTurnLifecycleService implements ConversationTurnLifecyc
           type: "turn_failed",
           turnId: input.turnId,
           failureCode: input.failureCode,
-          ...(input.eventId ? { eventId: input.eventId } : {}),
+          ...(input.eventId ? { eventId: input.eventId } : undefined),
         },
       },
     ]);

@@ -119,7 +119,7 @@ async function emitRecallOutcome(args: {
   await args.events?.emit(
     memoriesRecalledEvent({
       memories: args.memories,
-      ...(args.costUsd !== undefined ? { costUsd: args.costUsd } : {}),
+      ...(args.costUsd !== undefined ? { costUsd: args.costUsd } : undefined),
     }),
   );
 }
@@ -141,8 +141,8 @@ export async function createMemoryPromptContributions(
   const runtimeContext = memoryRuntimeContextSchema.parse({
     ...(context.conversationId
       ? { conversationId: context.conversationId }
-      : {}),
-    ...(context.actor ? { actor: context.actor } : {}),
+      : undefined),
+    ...(context.actor ? { actor: context.actor } : undefined),
     source: context.source,
   });
   let embeddingCostUsd: number | undefined;
@@ -164,7 +164,7 @@ export async function createMemoryPromptContributions(
   });
   if (candidates.length === 0) {
     await emitRecallOutcome({
-      ...(embeddingCostUsd !== undefined ? { costUsd: embeddingCostUsd } : {}),
+      ...(embeddingCostUsd !== undefined ? { costUsd: embeddingCostUsd } : undefined),
       events: context.events,
       memories: [],
     });
@@ -191,7 +191,7 @@ export async function createMemoryPromptContributions(
   const selected = selectPromptMemories(relevant);
   const costUsd = addUsd(embeddingCostUsd, recall.costUsd);
   await emitRecallOutcome({
-    ...(costUsd !== undefined ? { costUsd } : {}),
+    ...(costUsd !== undefined ? { costUsd } : undefined),
     events: context.events,
     memories: selected.map(({ id }) => id),
   });

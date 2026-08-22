@@ -73,7 +73,7 @@ function encodeCursor(
     JSON.stringify({
       createdAtMs: task.createdAtMs,
       id: task.id,
-      ...(query ? { query } : {}),
+      ...(query ? { query } : undefined),
       version: 1,
     }),
     "utf8",
@@ -171,6 +171,6 @@ export async function listViewerScheduledTasks(
     tasks: page,
     ...(tasks.length > input.limit && page.length > 0
       ? { nextCursor: encodeCursor(page.at(-1)!, query) }
-      : {}),
+      : undefined),
   };
 }

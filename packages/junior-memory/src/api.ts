@@ -117,7 +117,7 @@ function apiMemory(
     createdAt: new Date(memory.createdAtMs).toISOString(),
     ...(memory.expiresAtMs !== undefined
       ? { expiresAt: new Date(memory.expiresAtMs).toISOString() }
-      : {}),
+      : undefined),
     id: memory.id,
     kind: memory.kind,
     observedAt: new Date(memory.observedAtMs).toISOString(),
@@ -198,11 +198,11 @@ export function createMemoryApi(options: MemoryApiOptions): PluginRouteApp {
           const page = await memories.list({
             cursor: query.cursor,
             limit: query.limit,
-            ...(query.q ? { query: query.q } : {}),
+            ...(query.q ? { query: query.q } : undefined),
           });
           const body = memoryListResponseSchema.parse({
             memories: page.memories.map(apiMemory),
-            ...(page.nextCursor ? { nextCursor: page.nextCursor } : {}),
+            ...(page.nextCursor ? { nextCursor: page.nextCursor } : undefined),
           });
           return request.method === "HEAD"
             ? new Response(null, {

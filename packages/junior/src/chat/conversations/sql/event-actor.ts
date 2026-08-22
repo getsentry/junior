@@ -28,15 +28,15 @@ function readAuthor(meta: unknown): {
   }
   const author = meta.author;
   return {
-    ...(typeof author.email === "string" ? { email: author.email } : {}),
+    ...(typeof author.email === "string" ? { email: author.email } : undefined),
     ...(typeof author.fullName === "string"
       ? { fullName: author.fullName }
-      : {}),
-    ...(typeof author.isBot === "boolean" ? { isBot: author.isBot } : {}),
-    ...(typeof author.userId === "string" ? { userId: author.userId } : {}),
+      : undefined),
+    ...(typeof author.isBot === "boolean" ? { isBot: author.isBot } : undefined),
+    ...(typeof author.userId === "string" ? { userId: author.userId } : undefined),
     ...(typeof author.userName === "string"
       ? { userName: author.userName }
-      : {}),
+      : undefined),
   };
 }
 
@@ -200,12 +200,12 @@ export async function resolveEventActorIdentityId(
       kind: "user",
       provider: "slack",
       providerSubjectId: userId,
-      ...(tenantId ? { providerTenantId: tenantId } : {}),
-      ...(author.fullName ? { displayName: author.fullName } : {}),
-      ...(author.userName ? { handle: author.userName } : {}),
+      ...(tenantId ? { providerTenantId: tenantId } : undefined),
+      ...(author.fullName ? { displayName: author.fullName } : undefined),
+      ...(author.userName ? { handle: author.userName } : undefined),
       ...(author.email
         ? { email: author.email, emailVerified: true }
-        : {}),
+        : undefined),
     };
     // Prefer an exact tenant match when known; otherwise create/update without
     // inventing a tenant for multi-workspace Slack subjects.
@@ -236,7 +236,7 @@ export async function resolveEventActorIdentityId(
         providerSubjectId: email,
         email,
         emailVerified: true,
-        ...(author.fullName ? { displayName: author.fullName } : {}),
+        ...(author.fullName ? { displayName: author.fullName } : undefined),
         metadata: { platform: "web" },
       },
       args.nowMs,

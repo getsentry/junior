@@ -55,12 +55,12 @@ export function createMemoryUserPage(): PluginUserPageDefinition {
         cursor: input.cursor,
         ...pageFilter(input.filter),
         limit: input.limit,
-        ...(input.query ? { query: input.query } : {}),
+        ...(input.query ? { query: input.query } : undefined),
       });
       return {
         type: "list",
         emptyText: pageEmptyText(input),
-        ...(page.nextCursor ? { nextCursor: page.nextCursor } : {}),
+        ...(page.nextCursor ? { nextCursor: page.nextCursor } : undefined),
         searchPlaceholder: "Search memories",
         records: page.memories.map((memory) => ({
           actions:

@@ -107,8 +107,8 @@ export async function findFiles(params: {
       truncated: limitReached || bounded.truncated,
       files: relativePaths,
       file_count: relativePaths.length,
-      ...(notices.length > 0 ? { truncation_reasons: notices } : {}),
-      ...(limitReached ? { result_limit_reached: limit } : {}),
+      ...(notices.length > 0 ? { truncation_reasons: notices } : undefined),
+      ...(limitReached ? { result_limit_reached: limit } : undefined),
     },
     { content: [{ type: "text", text }] },
   ) as FindFilesResult;
@@ -219,8 +219,8 @@ async function findFilesWithRipgrep(params: {
       truncated: limitReached || bounded.truncated,
       files: relativePaths,
       file_count: relativePaths.length,
-      ...(notices.length > 0 ? { truncation_reasons: notices } : {}),
-      ...(limitReached ? { result_limit_reached: params.limit } : {}),
+      ...(notices.length > 0 ? { truncation_reasons: notices } : undefined),
+      ...(limitReached ? { result_limit_reached: params.limit } : undefined),
     },
     { content: [{ type: "text", text }] },
   ) as FindFilesResult;

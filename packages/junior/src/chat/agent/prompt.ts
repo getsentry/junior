@@ -615,7 +615,7 @@ export async function assemblePrompt(args: {
     inputMessagesAttribute,
     ...(trimmedPrompt.promptTimestamp !== undefined
       ? { promptTimestamp: trimmedPrompt.promptTimestamp }
-      : {}),
+      : undefined),
     promptHistoryMessages,
     shouldPromptAgent,
     turnContexts: pluginUserPromptContributions.flatMap((contribution) =>

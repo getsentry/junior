@@ -333,7 +333,7 @@ export function findVisibleAgentsInstructions(
       }
       return {
         active: true,
-        ...(match[1] ? { directory: match[1] } : {}),
+        ...(match[1] ? { directory: match[1] } : undefined),
         text,
       };
     }

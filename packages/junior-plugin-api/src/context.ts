@@ -128,8 +128,8 @@ export function createSlackSource(input: {
     visibility: input.visibility,
     teamId: input.teamId,
     channelId: input.channelId,
-    ...(input.messageTs ? { messageTs: input.messageTs } : {}),
-    ...(input.threadTs ? { threadTs: input.threadTs } : {}),
+    ...(input.messageTs ? { messageTs: input.messageTs } : undefined),
+    ...(input.threadTs ? { threadTs: input.threadTs } : undefined),
   };
 }
 

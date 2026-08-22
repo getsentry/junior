@@ -141,13 +141,13 @@ export function createEventTaskTool(
         createdAtMs: Date.now(),
         createdBy: {
           slackUserId: actor.userId,
-          ...(actor.fullName ? { fullName: actor.fullName } : {}),
-          ...(actor.userName ? { userName: actor.userName } : {}),
+          ...(actor.fullName ? { fullName: actor.fullName } : undefined),
+          ...(actor.userName ? { userName: actor.userName } : undefined),
         },
         credentialMode: input.credentialMode ?? "creator",
         destination,
         task: { text: input.task },
-        ...(title ? { title } : {}),
+        ...(title ? { title } : undefined),
         trigger: {
           namespace: input.trigger.namespace,
           identifier: normalizeEventIdentifier(

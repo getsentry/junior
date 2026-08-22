@@ -51,7 +51,7 @@ async function handleLink(
   );
   const result = await startOAuthFlow(provider, {
     actorId,
-    ...(actor ? { actor } : {}),
+    ...(actor ? { actor } : undefined),
     channelId: raw.channel_id,
   });
 

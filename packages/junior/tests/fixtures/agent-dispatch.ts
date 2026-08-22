@@ -52,10 +52,10 @@ export async function createAgentDispatchTestRecord(
       options: {
         destination: agentDispatchTestDestination,
         destinationVisibility: "private",
-        ...(credentialSubject ? { credentialSubject } : {}),
+        ...(credentialSubject ? { credentialSubject } : undefined),
         idempotencyKey,
         input,
-        ...(replyAttribution ? { replyAttribution } : {}),
+        ...(replyAttribution ? { replyAttribution } : undefined),
         source:
           source ??
           createSlackSource({

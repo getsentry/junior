@@ -37,7 +37,7 @@ function sanitizeMessage(msg: SlackThreadReply) {
     subtype: msg.subtype,
     bot_id: msg.bot_id,
     type: msg.type,
-    ...(attachmentText ? { attachment_text: attachmentText } : {}),
+    ...(attachmentText ? { attachment_text: attachmentText } : undefined),
     ...(msg.files?.length
       ? {
           files: msg.files.map((f) => ({
@@ -47,7 +47,7 @@ function sanitizeMessage(msg: SlackThreadReply) {
             size: f.size,
           })),
         }
-      : {}),
+      : undefined),
   };
 }
 
@@ -235,14 +235,14 @@ export function createSlackThreadReadTool(context: SlackToolContext) {
 
       return {
         channel_id: channelId,
-        ...(channelName ? { channel_name: channelName } : {}),
-        ...(joined ? { joined_channel: true } : {}),
+        ...(channelName ? { channel_name: channelName } : undefined),
+        ...(joined ? { joined_channel: true } : undefined),
         target_message_ts: messageTs,
         thread_ts: resolvedThreadTs,
         count: messages.length,
         fetched_count: replies.length,
         truncated: omitted > 0,
-        ...(omitted > 0 ? { omitted_message_count: omitted } : {}),
+        ...(omitted > 0 ? { omitted_message_count: omitted } : undefined),
         messages,
       };
     },

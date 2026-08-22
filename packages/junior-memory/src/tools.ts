@@ -85,8 +85,8 @@ function memoryRuntimeContext(
   return memoryRuntimeContextSchema.parse({
     ...(context.conversationId
       ? { conversationId: context.conversationId }
-      : {}),
-    ...(context.actor ? { actor: context.actor } : {}),
+      : undefined),
+    ...(context.actor ? { actor: context.actor } : undefined),
     source: context.source,
   });
 }
@@ -99,7 +99,7 @@ function memoryStore(
     embedder: context.embedder,
     ...(options.supersessionDecider
       ? { supersessionDecider: options.supersessionDecider }
-      : {}),
+      : undefined),
   });
 }
 
@@ -355,7 +355,7 @@ function createInput(
     kind: input.kind,
     ...(input.expiresAtMs !== undefined
       ? { expiresAtMs: input.expiresAtMs }
-      : {}),
+      : undefined),
   } satisfies CreateMemoryInput;
 }
 
@@ -375,7 +375,7 @@ function compactMemory(memory: MemoryRecord): MemoryToolProjection {
     observedAtMs: memory.observedAtMs,
     ...(memory.expiresAtMs !== undefined
       ? { expiresAtMs: memory.expiresAtMs }
-      : {}),
+      : undefined),
   });
 }
 
@@ -420,7 +420,7 @@ export function createMemoryCreateTool(context: MemoryCreateToolContext) {
                 content: requireMemoryContent(parsedInput.content),
                 ...(requestedExpiresAtMs !== undefined
                   ? { expiresAtMs: requestedExpiresAtMs }
-                  : {}),
+                  : undefined),
                 runtimeContext,
                 ...(context.userText?.trim()
                   ? {
@@ -428,7 +428,7 @@ export function createMemoryCreateTool(context: MemoryCreateToolContext) {
                         currentUserText: context.userText.trim(),
                       },
                     }
-                  : {}),
+                  : undefined),
               }),
             ),
           );

@@ -92,7 +92,7 @@ function beforeToolContext(actor: TestActor, actors?: TestActor[]) {
       plugin: { name: "github" },
       db,
       actor,
-      ...(actors ? { actors } : {}),
+      ...(actors ? { actors } : undefined),
       tool: {
         input: { command: "git commit -m test" },
         name: "bash",
@@ -191,7 +191,7 @@ async function captureRequest(request: Request): Promise<CapturedRequest> {
     url: request.url,
     method: request.method,
     headers: Object.fromEntries(request.headers.entries()),
-    ...(text ? { body } : {}),
+    ...(text ? { body } : undefined),
   };
 }
 
@@ -281,9 +281,9 @@ async function grantForEgress(input: {
     log: pluginLog,
     plugin: { name: "github" },
     request: {
-      ...(input.bodyText !== undefined ? { bodyText: input.bodyText } : {}),
+      ...(input.bodyText !== undefined ? { bodyText: input.bodyText } : undefined),
       method: input.method,
-      ...(input.operation ? { operation: input.operation } : {}),
+      ...(input.operation ? { operation: input.operation } : undefined),
       url: input.url,
     },
   });
@@ -317,7 +317,7 @@ function githubToolsContext(input?: {
     db,
     log: pluginLog,
     plugin: { name: "github" },
-    ...(input?.actor ? { actor: input.actor } : {}),
+    ...(input?.actor ? { actor: input.actor } : undefined),
     annotations: {
       async upsert(annotation: ConversationAnnotationInput) {
         await input?.annotationUpsert?.(annotation);
@@ -334,7 +334,7 @@ function githubToolsContext(input?: {
     embedder: {},
     ...(input?.conversationLink
       ? { slack: { conversationLink: { url: input.conversationLink } } }
-      : {}),
+      : undefined),
     egress: {
       async fetch(request: {
         operation: string;
@@ -465,14 +465,14 @@ function githubIssueCredentialContext(input: {
     actor,
     ...(input.credentialSubjectToken
       ? { credentialSubject: { type: "user" as const, userId: "U456" } }
-      : {}),
+      : undefined),
     grant: input.grant,
     db,
     log: pluginLog,
     plugin: { name: "github" },
     tokens: {
-      ...(actor.platform !== "system" ? { currentUser } : {}),
-      ...(input.credentialSubjectToken ? { credentialSubject } : {}),
+      ...(actor.platform !== "system" ? { currentUser } : undefined),
+      ...(input.credentialSubjectToken ? { credentialSubject } : undefined),
     },
   };
 }

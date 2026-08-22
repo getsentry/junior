@@ -440,7 +440,7 @@ describe("model handoff composition", () => {
           if (result.toolName === "handoff") {
             handoffResults.push({
               ok: result.ok,
-              ...(result.result !== undefined ? { result: result.result } : {}),
+              ...(result.result !== undefined ? { result: result.result } : undefined),
             });
           }
         })(event.report);

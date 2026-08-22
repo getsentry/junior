@@ -258,7 +258,7 @@ export async function extractWebFetchResponse(
   return {
     url: url.toString(),
     content: extracted.content,
-    ...(extracted.title ? { title: extracted.title } : {}),
+    ...(extracted.title ? { title: extracted.title } : undefined),
     content_type: contentType || "unknown",
     source_bytes: Buffer.byteLength(body, "utf8"),
     extracted_chars: extracted.extractedChars,

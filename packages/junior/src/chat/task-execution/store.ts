@@ -297,7 +297,7 @@ export async function appendAndEnqueueInboundMessage(args: {
     ...appendResult,
     ...(wake.status === "enqueued"
       ? { queueMessageId: wake.queueMessageId }
-      : {}),
+      : undefined),
   };
 }
 

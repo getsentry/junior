@@ -411,7 +411,7 @@ function mockViewerFromSession(session: DashboardSession) {
     email,
     id: `mock-user:${email}`,
     identities: [],
-    ...(displayName ? { displayName } : {}),
+    ...(displayName ? { displayName } : undefined),
   };
 }
 

@@ -626,7 +626,7 @@ async function writeCompactedThreadContext(
             message,
             replacementProvenance[index]!,
           ),
-          ...(sourceEventSeq === undefined ? {} : { sourceEventSeq }),
+          ...(sourceEventSeq === undefined ? undefined : { sourceEventSeq }),
         };
       }),
     },
@@ -638,7 +638,7 @@ async function writeCompactedThreadContext(
     "app.compaction.summary_chars": summary.length,
     ...(context.triggerTokens !== undefined
       ? { "app.compaction.trigger_tokens": context.triggerTokens }
-      : {}),
+      : undefined),
     "app.context_tokens_estimated": context.estimatedTokens,
   });
 
@@ -684,10 +684,10 @@ export async function compactContextForHandoff(
       modelId: args.target.modelId,
       ...(args.target.reasoningLevel
         ? { reasoningLevel: args.target.reasoningLevel }
-        : {}),
+        : undefined),
       ...(args.triggeringToolCallId
         ? { triggeringToolCallId: args.triggeringToolCallId }
-        : {}),
+        : undefined),
       summary: generatedSummary,
       replacementHistory: replacementMessages.map((replacementMessage) => ({
         item: historyItemFromPiMessage(replacementMessage, contextProvenance),
@@ -812,7 +812,7 @@ export async function compactActiveContextIfNeeded(
           item: historyItemFromPiMessage(message, provenance),
           ...(index === 0 && retainedInstruction
             ? { sourceEventSeq: retainedInstruction.sourceEventSeq }
-            : {}),
+            : undefined),
         };
       }),
     },

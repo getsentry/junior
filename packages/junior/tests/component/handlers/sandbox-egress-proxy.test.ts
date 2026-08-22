@@ -160,7 +160,7 @@ function setSandboxEgressSystemActor(input?: {
   activeCredentialToken = createSandboxEgressCredentialToken({
     credentials: {
       actor: { platform: "system", name: input?.name ?? "scheduler" },
-      ...(input?.subject ? { subject: input.subject } : {}),
+      ...(input?.subject ? { subject: input.subject } : undefined),
     },
     egressId: EGRESS_ID,
     ttlMs: 60_000,
@@ -208,16 +208,16 @@ function egressRequest(
     headers: {
       "vercel-forwarded-host": input.host ?? "sentry.io",
       ...(input.scheme === null
-        ? {}
+        ? undefined
         : { "vercel-forwarded-scheme": input.scheme ?? "https" }),
       "vercel-sandbox-oidc-token": "signed-token",
       ...(forwardedPath !== null
         ? { "vercel-forwarded-path": forwardedPath }
-        : {}),
-      ...(input.port ? { "vercel-forwarded-port": input.port } : {}),
+        : undefined),
+      ...(input.port ? { "vercel-forwarded-port": input.port } : undefined),
       ...(input.headers ?? {}),
     },
-    ...(input.body === undefined ? {} : { body: input.body }),
+    ...(input.body === undefined ? undefined : { body: input.body }),
   });
 }
 

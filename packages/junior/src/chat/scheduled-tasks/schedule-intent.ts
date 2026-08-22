@@ -335,14 +335,14 @@ export function compileScheduleIntent(args: {
             ),
           ].sort((left, right) => left - right),
         }
-      : {}),
+      : undefined),
     ...(args.intent.frequency === "monthly" ||
     args.intent.frequency === "yearly"
       ? { dayOfMonth: args.intent.day_of_month ?? undefined }
-      : {}),
+      : undefined),
     ...(args.intent.frequency === "yearly"
       ? { month: args.intent.month ?? undefined }
-      : {}),
+      : undefined),
   };
   const searchRecurrence = args.intent.start_date
     ? recurrence

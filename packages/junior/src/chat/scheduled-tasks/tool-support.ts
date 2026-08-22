@@ -144,8 +144,8 @@ export function requireActor(
 
   return sanitizeScheduledTaskPrincipal({
     slackUserId: userId,
-    ...(context.actor?.userName ? { userName: context.actor.userName } : {}),
-    ...(context.actor?.fullName ? { fullName: context.actor.fullName } : {}),
+    ...(context.actor?.userName ? { userName: context.actor.userName } : undefined),
+    ...(context.actor?.fullName ? { fullName: context.actor.fullName } : undefined),
   });
 }
 

@@ -56,14 +56,14 @@ export async function createMcpOAuthClientProvider(input: {
       provider: input.provider,
       userId: input.userId,
       conversationId: input.conversationId,
-      ...(input.destination ? { destination: input.destination } : {}),
-      ...(input.source ? { source: input.source } : {}),
+      ...(input.destination ? { destination: input.destination } : undefined),
+      ...(input.source ? { source: input.source } : undefined),
       sessionId: input.sessionId,
       userMessage: input.userMessage,
-      ...(input.channelId ? { channelId: input.channelId } : {}),
-      ...(input.threadTs ? { threadTs: input.threadTs } : {}),
-      ...(input.toolChannelId ? { toolChannelId: input.toolChannelId } : {}),
-      ...(input.configuration ? { configuration: input.configuration } : {}),
+      ...(input.channelId ? { channelId: input.channelId } : undefined),
+      ...(input.threadTs ? { threadTs: input.threadTs } : undefined),
+      ...(input.toolChannelId ? { toolChannelId: input.toolChannelId } : undefined),
+      ...(input.configuration ? { configuration: input.configuration } : undefined),
     },
   );
 }
@@ -110,7 +110,7 @@ export async function finalizeMcpAuthorization(
   }
   let providerStatus: number | undefined;
   const transport = new StreamableHTTPClientTransport(new URL(mcp.url), {
-    ...(Object.keys(requestInit).length > 0 ? { requestInit } : {}),
+    ...(Object.keys(requestInit).length > 0 ? { requestInit } : undefined),
     authProvider,
     fetch: fetchWithBoundedOAuthErrorBodies(undefined, (status) => {
       providerStatus = status;

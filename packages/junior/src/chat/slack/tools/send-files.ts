@@ -56,8 +56,8 @@ function normalizeFiles(
 ): SandboxFileMaterializationInput[] {
   return files.map((file) => ({
     path: file.path,
-    ...(file.filename ? { filename: file.filename } : {}),
-    ...(file.mimeType ? { mimeType: file.mimeType } : {}),
+    ...(file.filename ? { filename: file.filename } : undefined),
+    ...(file.mimeType ? { mimeType: file.mimeType } : undefined),
   }));
 }
 
@@ -134,7 +134,7 @@ export function createSendFilesTool(
           await recordAttachmentsDelivered({
             attachments: cached.delivered,
             conversationId: attachments.conversationId,
-            ...(cached.toolCallId ? { toolCallId: cached.toolCallId } : {}),
+            ...(cached.toolCallId ? { toolCallId: cached.toolCallId } : undefined),
           });
         }
         return sendFilesResultSchema.parse({
@@ -183,13 +183,13 @@ export function createSendFilesTool(
       state.setOperationResult(operationKey, {
         delivered,
         result: response,
-        ...(options.toolCallId ? { toolCallId: options.toolCallId } : {}),
+        ...(options.toolCallId ? { toolCallId: options.toolCallId } : undefined),
       } satisfies CachedSendFiles);
       if (attachments && delivered.length > 0) {
         await recordAttachmentsDelivered({
           attachments: delivered,
           conversationId: attachments.conversationId,
-          ...(options.toolCallId ? { toolCallId: options.toolCallId } : {}),
+          ...(options.toolCallId ? { toolCallId: options.toolCallId } : undefined),
         });
       }
       return response;

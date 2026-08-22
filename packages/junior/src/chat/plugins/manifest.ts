@@ -677,11 +677,11 @@ function normalizeCredentials(
   return {
     type: "oauth-bearer",
     domains,
-    ...(apiHeaders ? { apiHeaders } : {}),
+    ...(apiHeaders ? { apiHeaders } : undefined),
     authTokenEnv: result.data["auth-token-env"],
     ...(result.data["auth-token-placeholder"]
       ? { authTokenPlaceholder: result.data["auth-token-placeholder"] }
-      : {}),
+      : undefined),
   } satisfies OAuthBearerCredentials;
 }
 
@@ -831,10 +831,10 @@ function normalizeRuntimePostinstall(
       cmd: result.data.cmd,
       ...(normalizedArgs && normalizedArgs.length > 0
         ? { args: normalizedArgs }
-        : {}),
+        : undefined),
       ...(typeof result.data.sudo === "boolean"
         ? { sudo: result.data.sudo }
-        : {}),
+        : undefined),
     });
   }
 
@@ -948,13 +948,13 @@ function normalizeMcp(
   return {
     transport: "http",
     url: result.data.url,
-    ...(headers ? { headers } : {}),
+    ...(headers ? { headers } : undefined),
     ...(result.data["allowed-tools"]
       ? { allowedTools: result.data["allowed-tools"] }
-      : {}),
+      : undefined),
     ...(result.data["wrapped-tools"]
       ? { wrappedTools: result.data["wrapped-tools"] }
-      : {}),
+      : undefined),
   } satisfies PluginMcpConfig;
 }
 
@@ -1089,14 +1089,14 @@ function parseManifestSource(
     displayName: data["display-name"],
     description: data.description,
     configKeys,
-    ...(domains ? { domains } : {}),
-    ...(apiHeaders ? { apiHeaders } : {}),
-    ...(commandEnv ? { commandEnv } : {}),
-    ...(Object.keys(envVars).length > 0 ? { envVars } : {}),
-    ...(credentials ? { credentials } : {}),
-    ...(runtimeDependencies ? { runtimeDependencies } : {}),
-    ...(runtimePostinstall ? { runtimePostinstall } : {}),
-    ...(mcp ? { mcp } : {}),
+    ...(domains ? { domains } : undefined),
+    ...(apiHeaders ? { apiHeaders } : undefined),
+    ...(commandEnv ? { commandEnv } : undefined),
+    ...(Object.keys(envVars).length > 0 ? { envVars } : undefined),
+    ...(credentials ? { credentials } : undefined),
+    ...(runtimeDependencies ? { runtimeDependencies } : undefined),
+    ...(runtimePostinstall ? { runtimePostinstall } : undefined),
+    ...(mcp ? { mcp } : undefined),
   };
 
   if (data.oauth) {
@@ -1133,15 +1133,15 @@ function parseManifestSource(
       clientSecretEnv: result.data["client-secret-env"],
       authorizeEndpoint: result.data["authorize-endpoint"],
       tokenEndpoint: result.data["token-endpoint"],
-      ...(result.data.scope ? { scope: result.data.scope } : {}),
-      ...(authorizeParams ? { authorizeParams } : {}),
+      ...(result.data.scope ? { scope: result.data.scope } : undefined),
+      ...(authorizeParams ? { authorizeParams } : undefined),
       ...(result.data["token-auth-method"]
         ? { tokenAuthMethod: result.data["token-auth-method"] }
-        : {}),
-      ...(tokenExtraHeaders ? { tokenExtraHeaders } : {}),
+        : undefined),
+      ...(tokenExtraHeaders ? { tokenExtraHeaders } : undefined),
       ...(result.data["treat-empty-scope-as-unreported"]
         ? { treatEmptyScopeAsUnreported: true }
-        : {}),
+        : undefined),
     };
   }
 
@@ -1186,7 +1186,7 @@ function parseManifestSource(
     manifest.target = {
       type: result.data.type,
       configKey: qualifiedKey,
-      ...(commandFlags ? { commandFlags } : {}),
+      ...(commandFlags ? { commandFlags } : undefined),
     };
   }
 

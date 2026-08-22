@@ -52,7 +52,7 @@ export function createUserPageRoutes(): Hono<JuniorApiEnv> {
         email: viewer.email,
         pageId: context.req.param("pageId"),
         pluginName: context.req.param("pluginName"),
-        query: { ...query, ...(q === undefined ? {} : { query: q }) },
+        query: { ...query, ...(q === undefined ? undefined : { query: q }) },
       });
       return page
         ? jsonResponse(pluginUserPageContentSchema, page)

@@ -67,7 +67,7 @@ export function gitHubPullRequestSubscribable(input: {
   );
   return {
     ...gitHubPullRequestResource(input),
-    ...(suggestedEvents.length > 0 ? { suggestedEvents: [...suggestedEvents] } : {}),
+    ...(suggestedEvents.length > 0 ? { suggestedEvents: [...suggestedEvents] } : undefined),
     supportedEvents: [...GITHUB_PULL_REQUEST_EVENTS],
     type: "pull_request",
   };

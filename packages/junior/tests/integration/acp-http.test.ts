@@ -24,7 +24,7 @@ function initializeRequest(token?: string): Request {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(token ? { Authorization: `Bearer ${token}` } : undefined),
     },
     body: JSON.stringify({
       jsonrpc: "2.0",

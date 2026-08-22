@@ -233,15 +233,15 @@ export async function grepFiles(params: {
     path: params.path ?? ".",
     truncated: matchLimitReached || lineTruncated || bounded.truncated,
     context,
-    ...(params.glob ? { glob: params.glob } : {}),
+    ...(params.glob ? { glob: params.glob } : undefined),
     line_count: output.length,
     lines:
       bounded.content === "No matches found" ? [] : bounded.content.split("\n"),
     match_count: matchCount,
     pattern: params.pattern,
-    ...(notices.length > 0 ? { truncation_reasons: notices } : {}),
-    ...(matchLimitReached ? { match_limit_reached: limit } : {}),
-    ...(lineTruncated ? { line_truncated: true } : {}),
+    ...(notices.length > 0 ? { truncation_reasons: notices } : undefined),
+    ...(matchLimitReached ? { match_limit_reached: limit } : undefined),
+    ...(lineTruncated ? { line_truncated: true } : undefined),
   });
 }
 
@@ -453,15 +453,15 @@ async function grepFilesWithRipgrep(params: {
     path: params.path ?? ".",
     truncated: matchLimitReached || lineTruncated || bounded.truncated,
     context: params.context,
-    ...(params.glob ? { glob: params.glob } : {}),
+    ...(params.glob ? { glob: params.glob } : undefined),
     line_count: output.length,
     lines:
       bounded.content === "No matches found" ? [] : bounded.content.split("\n"),
     match_count: matchCount,
     pattern: params.pattern,
-    ...(notices.length > 0 ? { truncation_reasons: notices } : {}),
-    ...(matchLimitReached ? { match_limit_reached: params.limit } : {}),
-    ...(lineTruncated ? { line_truncated: true } : {}),
+    ...(notices.length > 0 ? { truncation_reasons: notices } : undefined),
+    ...(matchLimitReached ? { match_limit_reached: params.limit } : undefined),
+    ...(lineTruncated ? { line_truncated: true } : undefined),
   });
   params.onTelemetry?.({
     emittedLineCount: output.length,
