@@ -385,7 +385,7 @@ export async function commitAcceptedReply(args: {
           conversation: args.conversation,
           conversationId: args.conversationId,
           ...(args.repliedAtMs === undefined
-            ? {}
+            ? undefined
             : { repliedAtMs: args.repliedAtMs }),
         },
       );
@@ -422,13 +422,13 @@ async function commitMessagesLocked(
     existing: current,
     nextMessages: nextLocalMessages,
     matchingPrefix,
-    ...(args.provenance ? { explicitProvenance: args.provenance } : {}),
+    ...(args.provenance ? { explicitProvenance: args.provenance } : undefined),
     ...(args.trailingMessageProvenance
       ? { trailingMessageProvenance: args.trailingMessageProvenance }
-      : {}),
+      : undefined),
     ...(args.newMessageProvenance
       ? { newMessageProvenance: args.newMessageProvenance }
-      : {}),
+      : undefined),
   });
   if (matchingPrefix === current.messages.length) {
     const newMessages = nextLocalMessages.slice(matchingPrefix);
@@ -605,9 +605,9 @@ async function recordAuthenticationAccountChange(
   const content = definition.parse({
     actorId: args.actorId,
     provider: args.provider,
-    ...(args.accountLabel ? { accountLabel: args.accountLabel } : {}),
-    ...(args.authorizationId ? { authorizationId: args.authorizationId } : {}),
-    ...(args.providerLabel ? { providerLabel: args.providerLabel } : {}),
+    ...(args.accountLabel ? { accountLabel: args.accountLabel } : undefined),
+    ...(args.authorizationId ? { authorizationId: args.authorizationId } : undefined),
+    ...(args.providerLabel ? { providerLabel: args.providerLabel } : undefined),
   });
   await getConversationEventStore().append(args.conversationId, [
     {
@@ -623,7 +623,7 @@ async function recordAuthenticationAccountChange(
         namespace: JUNIOR_NATIVE_EVENT_NAMESPACE,
         name: definition.eventName,
         version: definition.version,
-        ...(args.turnId ? { turnId: args.turnId } : {}),
+        ...(args.turnId ? { turnId: args.turnId } : undefined),
         content,
       },
     },
@@ -716,10 +716,10 @@ export async function recordAgentsInstructionsUpdated(
     action,
     fingerprint,
     sources: instructions?.sources ?? [],
-    ...(instructions ? { directory: instructions.directory } : {}),
+    ...(instructions ? { directory: instructions.directory } : undefined),
     ...(instructions
       ? { textBytes: Buffer.byteLength(instructions.text, "utf8") }
-      : {}),
+      : undefined),
   });
   await getConversationEventStore().append(args.conversationId, [
     {
@@ -766,7 +766,7 @@ export async function recordSubscribedReplyRoute(args: {
           shouldReply: args.shouldReply,
           ...(args.shouldUnsubscribe !== undefined
             ? { shouldUnsubscribe: args.shouldUnsubscribe }
-            : {}),
+            : undefined),
         },
       },
     },
@@ -813,11 +813,11 @@ export async function recordTurnRoute(args: {
         turnId: args.turnId,
         modelProfile: args.modelProfile,
         modelId: args.modelId,
-        ...(args.costUsd !== undefined ? { costUsd: args.costUsd } : {}),
+        ...(args.costUsd !== undefined ? { costUsd: args.costUsd } : undefined),
         reasoningLevel: args.reasoningLevel,
         ...(args.confidence !== undefined
           ? { confidence: args.confidence }
-          : {}),
+          : undefined),
         source: args.source,
       },
     },
@@ -891,8 +891,8 @@ export async function recordAttachmentsDelivered(args: {
       idempotencyKey: attachmentsDeliveredIdempotencyKey({
         attachments: args.attachments,
         conversationId: args.conversationId,
-        ...(args.toolCallId ? { toolCallId: args.toolCallId } : {}),
-        ...(args.turnId ? { turnId: args.turnId } : {}),
+        ...(args.toolCallId ? { toolCallId: args.toolCallId } : undefined),
+        ...(args.turnId ? { turnId: args.turnId } : undefined),
       }),
       data: {
         type: "attachments_delivered",
@@ -902,8 +902,8 @@ export async function recordAttachmentsDelivered(args: {
           contentType: attachment.contentType,
           bytes: attachment.bytes,
         })),
-        ...(args.toolCallId ? { toolCallId: args.toolCallId } : {}),
-        ...(args.turnId ? { turnId: args.turnId } : {}),
+        ...(args.toolCallId ? { toolCallId: args.toolCallId } : undefined),
+        ...(args.turnId ? { turnId: args.turnId } : undefined),
       },
       createdAtMs: args.createdAtMs ?? Date.now(),
     },
@@ -928,7 +928,7 @@ export async function recordGuardianActionReviewed(args: {
         turnId: args.turnId,
         toolCallId: args.toolCallId,
         toolName: args.toolName,
-        ...(args.costUsd !== undefined ? { costUsd: args.costUsd } : {}),
+        ...(args.costUsd !== undefined ? { costUsd: args.costUsd } : undefined),
         decision: args.decision,
         riskLevel: args.riskLevel,
         userAuthorization: args.userAuthorization,

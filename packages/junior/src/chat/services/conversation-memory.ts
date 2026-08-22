@@ -177,7 +177,7 @@ export function recordDeliveredAssistantMessage(args: {
     },
     meta: {
       replied: true,
-      ...(args.source ? { source: args.source } : {}),
+      ...(args.source ? { source: args.source } : undefined),
     },
   });
   return messageId;

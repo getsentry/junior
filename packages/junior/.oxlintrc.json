@@ -9,7 +9,27 @@
     "node",
     "vitest"
   ],
-  "ignorePatterns": ["dist/**"],
+  "jsPlugins": [
+    {
+      "name": "anti-slop",
+      "specifier": "../../tools/oxlint/anti-slop/index.ts"
+    }
+  ],
+  "ignorePatterns": [
+    "dist/**",
+    ".agent/**",
+    ".agents/**",
+    ".claude/**",
+    ".codex/**",
+    ".continue/**",
+    ".cursor/**",
+    ".gemini/**",
+    ".opencode/**",
+    ".pi/**",
+    ".roo/**",
+    ".windsurf/**",
+    "tools/oxlint/anti-slop/**"
+  ],
   "rules": {
     "no-restricted-imports": [
       "error",
@@ -33,8 +53,24 @@
       }
     ],
     "unicorn/no-useless-fallback-in-spread": "off",
+    "vitest/expect-expect": "off",
     "vitest/hoisted-apis-on-top": "off",
-    "vitest/require-mock-type-parameters": "off"
+    "vitest/require-mock-type-parameters": "off",
+    "anti-slop/no-conditional-empty-object-spread": "error",
+    "anti-slop/no-object-parameters": "error",
+    "anti-slop/no-reflect-apply": "error",
+    "anti-slop/no-unknown-type-aliases": "error",
+    "anti-slop/no-widen-then-assert": "error",
+    "anti-slop/no-chained-type-assertions": "off",
+    "anti-slop/no-known-value-widening": "off",
+    "anti-slop/no-module-mocking": "off",
+    "anti-slop/no-reflect-get": "off",
+    "anti-slop/no-runtime-typeof": "off",
+    "anti-slop/no-shape-in-symbol-names": "off",
+    "anti-slop/no-unknown-parameters": "off",
+    "anti-slop/no-unknown-returns": "off",
+    "anti-slop/no-unsafe-dictionary-type": "off",
+    "anti-slop/require-safety-comment-for-type-assertion": "off"
   },
   "overrides": [
     {

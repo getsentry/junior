@@ -52,12 +52,12 @@ function memoryToolContext(ctx: {
 }): MemoryToolContext {
   return {
     agent: ctx.agent,
-    ...(ctx.conversationId ? { conversationId: ctx.conversationId } : {}),
-    ...(ctx.actor ? { actor: ctx.actor } : {}),
+    ...(ctx.conversationId ? { conversationId: ctx.conversationId } : undefined),
+    ...(ctx.actor ? { actor: ctx.actor } : undefined),
     db: ctx.db,
-    ...(ctx.embedder ? { embedder: ctx.embedder } : {}),
+    ...(ctx.embedder ? { embedder: ctx.embedder } : undefined),
     source: ctx.source,
-    ...(ctx.userText ? { userText: ctx.userText } : {}),
+    ...(ctx.userText ? { userText: ctx.userText } : undefined),
   };
 }
 
@@ -157,8 +157,8 @@ export function memoryPlugin(options: MemoryPluginOptions = {}) {
                 agent: createMemoryAgent(ctx.model),
                 ...(ctx.conversationId
                   ? { conversationId: ctx.conversationId }
-                  : {}),
-                ...(ctx.actor ? { actor: ctx.actor } : {}),
+                  : undefined),
+                ...(ctx.actor ? { actor: ctx.actor } : undefined),
                 db: ctx.db as MemoryDb,
                 embedder: ctx.embedder,
                 events: ctx.events,
@@ -168,7 +168,7 @@ export function memoryPlugin(options: MemoryPluginOptions = {}) {
               });
             },
           }
-        : {}),
+        : undefined),
     },
   });
 }

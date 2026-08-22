@@ -1124,7 +1124,7 @@ describe("agent plugin hooks", () => {
     async ({ resourceEvents, error }) => {
       const previous = setPlugins([
         defineJuniorPlugin({
-          ...(resourceEvents ? { resourceEvents } : {}),
+          ...(resourceEvents ? { resourceEvents } : undefined),
           manifest: {
             name: "agent-demo",
             displayName: "Agent Demo",

@@ -93,7 +93,7 @@ async function createEditedDmBot(args: {
                 });
               },
             }
-          : {}),
+          : undefined),
       },
     },
   });

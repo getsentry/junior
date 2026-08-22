@@ -20,9 +20,9 @@ function identityFromRow(row: IdentityRow): Identity {
     id: row.id,
     provider: row.provider,
     providerSubjectId: row.providerSubjectId,
-    ...(row.providerTenantId ? { providerTenantId: row.providerTenantId } : {}),
-    ...(row.displayName ? { displayName: row.displayName } : {}),
-    ...(row.handle ? { handle: row.handle } : {}),
+    ...(row.providerTenantId ? { providerTenantId: row.providerTenantId } : undefined),
+    ...(row.displayName ? { displayName: row.displayName } : undefined),
+    ...(row.handle ? { handle: row.handle } : undefined),
   });
 }
 
@@ -48,7 +48,7 @@ async function readUserById(
     email: userRow.primaryEmail,
     id: userRow.id,
     identities: identityRows.map(identityFromRow),
-    ...(userRow.displayName ? { displayName: userRow.displayName } : {}),
+    ...(userRow.displayName ? { displayName: userRow.displayName } : undefined),
   });
 }
 
@@ -165,7 +165,7 @@ export async function readActorIdentityFromSql(
   if (!row) return undefined;
   return {
     identity: identityFromRow(row.identity),
-    ...(row.user ? { user: await readUserById(db, row.user) } : {}),
+    ...(row.user ? { user: await readUserById(db, row.user) } : undefined),
   };
 }
 

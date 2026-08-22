@@ -47,7 +47,7 @@ export async function sendSlackReply(args: {
       channelId: args.channelId,
       threadTs: args.threadTs,
       text: fallbackText,
-      ...(blocks ? { blocks } : {}),
+      ...(blocks ? { blocks } : undefined),
     });
     if (response.ts) {
       messageTs.push(response.ts);

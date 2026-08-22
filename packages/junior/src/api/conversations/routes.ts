@@ -58,9 +58,9 @@ export function createConversationRoutes(options: {
       return jsonResponse(
         conversationFeedSchema,
         await readConversationFeed({
-          ...(actorEmail ? { actorEmail } : {}),
+          ...(actorEmail ? { actorEmail } : undefined),
           status,
-          ...(viewer ? { viewer } : {}),
+          ...(viewer ? { viewer } : undefined),
         }),
       );
     },
@@ -154,7 +154,7 @@ export function createConversationRoutes(options: {
       const viewer = context.get("viewer");
       const report = await readConversationEvents(conversationId, before, {
         limit,
-        ...(viewer ? { viewer } : {}),
+        ...(viewer ? { viewer } : undefined),
       });
       if (!report) throwApiError(404, "Conversation not found.");
       return jsonResponse(conversationEventPageSchema, report);
@@ -222,7 +222,7 @@ export function createConversationRoutes(options: {
         attachmentId,
         conversationId,
         storage: options.attachmentStorage,
-        ...(viewer ? { viewer } : {}),
+        ...(viewer ? { viewer } : undefined),
       });
       return new Response(opened.body, {
         headers: conversationAttachmentHeaders({
@@ -252,7 +252,7 @@ export function createConversationRoutes(options: {
       const viewer = context.get("viewer");
       const report = await readConversationDetail(conversationId, {
         ...query,
-        ...(viewer ? { viewer } : {}),
+        ...(viewer ? { viewer } : undefined),
       });
       if (!report) throwApiError(404, "Conversation not found.");
       return jsonResponse(conversationDetailReportSchema, report);

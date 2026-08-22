@@ -154,7 +154,7 @@ export async function dispatchEventTask(args: {
   }
   const options: BoundDispatchOptions = {
     ...unboundOptions,
-    ...(boundSubject ? { credentialSubject: boundSubject } : {}),
+    ...(boundSubject ? { credentialSubject: boundSubject } : undefined),
   };
   return await dispatch({
     conversationWorkQueue: args.conversationWorkQueue,
@@ -191,7 +191,7 @@ export async function dispatchScheduledTask(args: {
   }
   const options: BoundDispatchOptions = {
     ...unboundOptions,
-    ...(boundSubject ? { credentialSubject: boundSubject } : {}),
+    ...(boundSubject ? { credentialSubject: boundSubject } : undefined),
   };
   return await dispatch({
     conversationWorkQueue: args.conversationWorkQueue,

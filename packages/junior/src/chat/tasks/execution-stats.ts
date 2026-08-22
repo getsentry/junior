@@ -94,7 +94,7 @@ export async function recordTaskExecution(
       .values({
         ...(options.conversationId
           ? { conversationId: options.conversationId }
-          : {}),
+          : undefined),
         executedAtMs: nowMs,
         executionId: options.executionId,
         kind: type,
@@ -171,10 +171,10 @@ export async function readTaskExecutionSummaries(
       {
         ...(row.lastConversationId
           ? { lastConversationId: row.lastConversationId }
-          : {}),
+          : undefined),
         ...(row.lastExecutedAtMs !== null
           ? { lastExecutedAtMs: row.lastExecutedAtMs }
-          : {}),
+          : undefined),
         runsLast7Days: row.runsLast7Days,
         totalRuns: row.totalRuns,
       },
@@ -293,11 +293,11 @@ export async function readTaskExecutions(args: {
   return rows.map((row) => {
     const title = row.title?.trim();
     return {
-      ...(row.conversationId ? { conversationId: row.conversationId } : {}),
+      ...(row.conversationId ? { conversationId: row.conversationId } : undefined),
       executedAt: new Date(row.executedAtMs).toISOString(),
       executionId: row.executionId,
       status: row.status,
-      ...(title ? { title } : {}),
+      ...(title ? { title } : undefined),
     };
   });
 }
@@ -345,13 +345,13 @@ export async function readTaskRuns(args: {
     const title = row.title?.trim();
     return [
       {
-        ...(row.conversationId ? { conversationId: row.conversationId } : {}),
+        ...(row.conversationId ? { conversationId: row.conversationId } : undefined),
         executedAt: new Date(row.executedAtMs).toISOString(),
         executionId: row.executionId,
         kind: row.kind,
         status: row.status,
         taskId: row.taskId,
-        ...(title ? { title } : {}),
+        ...(title ? { title } : undefined),
       },
     ];
   });

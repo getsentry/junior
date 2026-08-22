@@ -308,7 +308,7 @@ async function seedConversation(
         conversationId,
         ...(parentConversationId
           ? { parentConversationId, rootConversationId: parentConversationId }
-          : {}),
+          : undefined),
       }),
     );
 }
@@ -349,7 +349,7 @@ function userMessageEvent(
                       userId: "user-1",
                     },
           }
-        : {}),
+        : undefined),
     },
   };
 }

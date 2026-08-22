@@ -253,8 +253,8 @@ export function createResumeState(args: ResumeStateArgs) {
         return {
           status: "awaiting_auth",
           providerDisplayName: pause.providerDisplayName,
-          ...(pause.requestText ? { requestText: pause.requestText } : {}),
-          ...(usage ? { usage } : {}),
+          ...(pause.requestText ? { requestText: pause.requestText } : undefined),
+          ...(usage ? { usage } : undefined),
         };
       } catch (error) {
         if (
@@ -351,7 +351,7 @@ export function createResumeState(args: ResumeStateArgs) {
           status: "suspended",
           reason,
           resumeVersion: record.version,
-          ...(usage ? { usage } : {}),
+          ...(usage ? { usage } : undefined),
         };
       }
       throw new TurnSliceLimitExceededError(botConfig.maxSlicesPerTurn);

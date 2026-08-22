@@ -30,7 +30,7 @@ export function scheduledTaskAttributes(
     "messaging.destination.name": task.destination.channelId,
     ...(typeof task.nextRunAtMs === "number"
       ? { "app.task.next_run_at": new Date(task.nextRunAtMs).toISOString() }
-      : {}),
+      : undefined),
     ...extras,
   };
 }
@@ -57,10 +57,10 @@ export function scheduledTaskRunAttributes(
     "app.task.run.id": run.id,
     "app.task.run.status": run.status,
     "app.task.run.scheduled_for": new Date(run.scheduledForMs).toISOString(),
-    ...(run.dispatchId ? { "app.dispatch.id": run.dispatchId } : {}),
+    ...(run.dispatchId ? { "app.dispatch.id": run.dispatchId } : undefined),
     ...(run.resultMessageTs
       ? { "app.task.result_message_ts": run.resultMessageTs }
-      : {}),
+      : undefined),
     ...extras,
   });
 }

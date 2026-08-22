@@ -72,8 +72,8 @@ export function createLocalSandboxEgressSignalTransport(
       const authRequired = value.data.auth_required;
       const permissionDenied = value.data.permission_denied;
       return {
-        ...(authRequired ? { authRequired } : {}),
-        ...(permissionDenied ? { permissionDenied } : {}),
+        ...(authRequired ? { authRequired } : undefined),
+        ...(permissionDenied ? { permissionDenied } : undefined),
       };
     },
   };

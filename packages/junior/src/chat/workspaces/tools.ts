@@ -154,7 +154,7 @@ type WorkspaceWriteInput = z.infer<
 function writeInput(input: WorkspaceWriteInput) {
   return {
     name: input.name,
-    ...(input.setup_script == null ? {} : { setupScript: input.setup_script }),
+    ...(input.setup_script == null ? undefined : { setupScript: input.setup_script }),
     repos: input.repos.map((repo) => ({
       provider: repo.provider,
       repo: repo.repo,
@@ -296,7 +296,7 @@ export function createWorkspaceTools(
   if (!context.workspaces) return {};
   const providers = workspaceProviderNames();
   return {
-    ...(providers ? createWorkspaceWriteTools(providers) : {}),
+    ...(providers ? createWorkspaceWriteTools(providers) : undefined),
     listWorkspaces: zodTool({
       annotations: {
         destructiveHint: false,

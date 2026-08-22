@@ -102,7 +102,7 @@ function oauthAuthorizationForProvider(
     ? {
         type: "oauth",
         provider,
-        ...(oauth.scope ? { scope: oauth.scope } : {}),
+        ...(oauth.scope ? { scope: oauth.scope } : undefined),
       }
     : undefined;
 }
@@ -146,8 +146,8 @@ export async function selectSandboxEgressGrant(input: {
   }
 
   const pluginGrant = await selectPluginGrant({
-    ...(input.bodyText !== undefined ? { bodyText: input.bodyText } : {}),
-    ...(input.operation ? { operation: input.operation } : {}),
+    ...(input.bodyText !== undefined ? { bodyText: input.bodyText } : undefined),
+    ...(input.operation ? { operation: input.operation } : undefined),
     provider: input.provider,
     method: input.method,
     upstreamUrl: input.upstreamUrl,
@@ -218,7 +218,7 @@ export async function sandboxEgressCredentialLease(
       provider,
       grant,
       actor: context.credentials.actor,
-      ...(credentialSubject ? { credentialSubject } : {}),
+      ...(credentialSubject ? { credentialSubject } : undefined),
       userTokenStore: createUserTokenStore(),
     });
     if (pluginResult.type === "needed") {
@@ -284,8 +284,8 @@ export async function sandboxEgressCredentialLease(
   const cachedLease: SandboxEgressCredentialLease = {
     provider,
     grant,
-    ...(lease.account ? { account: lease.account } : {}),
-    ...(authorization ? { authorization } : {}),
+    ...(lease.account ? { account: lease.account } : undefined),
+    ...(authorization ? { authorization } : undefined),
     expiresAt: lease.expiresAt,
     headerTransforms,
   };

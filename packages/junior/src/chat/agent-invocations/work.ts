@@ -458,7 +458,7 @@ export function createAgentInvocationWorker(options: {
               errorMessage:
                 result.diagnostics.errorMessage ?? "Agent invocation failed",
             }
-          : {}),
+          : undefined),
         messages: result.piMessages,
         actor: invocation.actor,
         source: invocation.source,

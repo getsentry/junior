@@ -228,7 +228,7 @@ describe("conversation cancel pending messages API", () => {
         conversationId: created.conversationId,
         createdAtMs: Date.now(),
         delivery: "defer",
-        ...(existing?.destination ? { destination: existing.destination } : {}),
+        ...(existing?.destination ? { destination: existing.destination } : undefined),
         inboundMessageId: "internal:keep-me",
         input: {
           authorId: "system",

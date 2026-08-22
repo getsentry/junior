@@ -132,7 +132,7 @@ export function create(runtime: string, workspace?: Workspace): Profile | null {
         rebuildEpoch,
         dependencies,
         postinstall,
-        ...(workspace ? { workspace: workspaceRecipe(workspace) } : {}),
+        ...(workspace ? { workspace: workspaceRecipe(workspace) } : undefined),
       }),
     )
     .digest("hex");

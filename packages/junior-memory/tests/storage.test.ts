@@ -230,7 +230,7 @@ function createTestEmbedder(
       return {
         ...(overrides.costUsd !== undefined
           ? { costUsd: overrides.costUsd }
-          : {}),
+          : undefined),
         dimensions: overrides.dimensions ?? TEST_EMBEDDING_DIMENSIONS,
         model: overrides.model ?? "test-embedding-model",
         provider: overrides.provider ?? "test-embedding-provider",
@@ -260,7 +260,7 @@ function recallModel(
         id: string;
       }>;
       return {
-        ...(costUsd !== undefined ? { costUsd } : {}),
+        ...(costUsd !== undefined ? { costUsd } : undefined),
         object: {
           relevantIds: select(candidates.map(({ content }) => content)).map(
             (content) =>
@@ -294,7 +294,7 @@ function extractionModel(
         evidenceMessageIndices: memory.evidenceMessageIndices ?? [0],
       });
       return {
-        ...(costUsd !== undefined ? { costUsd } : {}),
+        ...(costUsd !== undefined ? { costUsd } : undefined),
         object: {
           memories: memories.map(toResponseMemory),
         },
@@ -343,7 +343,7 @@ function contextMessage(text: string, actor?: Actor): PluginRunTranscriptEntry {
     type: "message",
     role: "user",
     text,
-    provenance: { authority: "context", ...(actor ? { actor } : {}) },
+    provenance: { authority: "context", ...(actor ? { actor } : undefined) },
     isRunActor: false,
   };
 }
@@ -418,7 +418,7 @@ function viewerUser(actors: Actor[], email = "person@example.com") {
           providerSubjectId: actor.userId,
           ...(actor.platform === "slack"
             ? { providerTenantId: actor.teamId }
-            : {}),
+            : undefined),
         },
       ];
     }),
@@ -545,7 +545,7 @@ function allowMemory(
         content: testCanonicalContent(candidate.content),
         ...(candidate.expiresAtMs !== undefined
           ? { expiresAtMs: candidate.expiresAtMs }
-          : {}),
+          : undefined),
       };
     },
   };

@@ -348,7 +348,7 @@ async function resolveUserAttachmentsWithDeps(
           "exception.message":
             error instanceof Error ? error.message : String(error),
           "app.file.mime_type": mediaType,
-          ...(attachment.name ? { "file.name": attachment.name } : {}),
+          ...(attachment.name ? { "file.name": attachment.name } : undefined),
         });
         results.push({
           mediaType,

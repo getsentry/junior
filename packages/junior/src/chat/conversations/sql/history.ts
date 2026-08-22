@@ -126,7 +126,7 @@ function eventFromRow(row: ConversationEventRow): ConversationEvent {
     schemaVersion: row.schemaVersion,
     seq: row.seq,
     historyVersion: row.historyVersion,
-    ...(row.idempotencyKey ? { idempotencyKey: row.idempotencyKey } : {}),
+    ...(row.idempotencyKey ? { idempotencyKey: row.idempotencyKey } : undefined),
     createdAtMs: row.createdAt.getTime(),
     type: row.type,
     payload,

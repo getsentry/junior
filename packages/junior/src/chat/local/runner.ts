@@ -132,7 +132,7 @@ function captureLocalBoundaryFailure(args: {
 }): string | undefined {
   setTags({
     conversationId: args.conversationId,
-    ...(args.runId ? { runId: args.runId } : {}),
+    ...(args.runId ? { runId: args.runId } : undefined),
   });
   const eventId = args.capture(
     args.error,
@@ -327,7 +327,7 @@ async function runLocalAgentTurnInContext(
         surface: "internal",
         authorization,
         ...(deps.authorization
-          ? {}
+          ? undefined
           : { disabledFeatures: ["interactive-auth"] as const }),
         environment: {
           sandboxEgressSignals: deps.sandboxEgressSignals,
@@ -465,7 +465,7 @@ async function runLocalAgentTurnInContext(
       await lifecycle.fail({
         conversationId: input.conversationId,
         createdAtMs: Date.now(),
-        ...(persistenceEventId ? { eventId: persistenceEventId } : {}),
+        ...(persistenceEventId ? { eventId: persistenceEventId } : undefined),
         failureCode: "persistence_failed",
         turnId,
       });
@@ -477,7 +477,7 @@ async function runLocalAgentTurnInContext(
     await lifecycle.fail({
       conversationId: input.conversationId,
       createdAtMs: Date.now(),
-      ...(failureEventId ? { eventId: failureEventId } : {}),
+      ...(failureEventId ? { eventId: failureEventId } : undefined),
       failureCode,
       turnId,
     });
@@ -519,7 +519,7 @@ async function runLocalAgentTurnInContext(
     await lifecycle.fail({
       conversationId: input.conversationId,
       createdAtMs: Date.now(),
-      ...(persistenceEventId ? { eventId: persistenceEventId } : {}),
+      ...(persistenceEventId ? { eventId: persistenceEventId } : undefined),
       failureCode: "persistence_failed",
       turnId,
     });
@@ -537,7 +537,7 @@ async function runLocalAgentTurnInContext(
     await lifecycle.fail({
       conversationId: input.conversationId,
       createdAtMs: Date.now(),
-      ...(modelFailureEventId ? { eventId: modelFailureEventId } : {}),
+      ...(modelFailureEventId ? { eventId: modelFailureEventId } : undefined),
       failureCode: "model_execution_failed",
       turnId,
     });

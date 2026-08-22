@@ -84,26 +84,26 @@ function invocationFromRow(
 ): AgentInvocation {
   return agentInvocationSchema.parse({
     actor: row.actor,
-    ...(row.agentName ? { agentName: row.agentName } : {}),
+    ...(row.agentName ? { agentName: row.agentName } : undefined),
     childConversationId: row.childConversationId,
     createdAtMs: row.createdAt.getTime(),
     ...(row.credentialContext
       ? { credentialContext: row.credentialContext }
-      : {}),
+      : undefined),
     destination: row.destination,
     ...(row.destinationVisibility
       ? { destinationVisibility: row.destinationVisibility }
-      : {}),
-    ...(row.errorMessage !== null ? { errorMessage: row.errorMessage } : {}),
+      : undefined),
+    ...(row.errorMessage !== null ? { errorMessage: row.errorMessage } : undefined),
     input: row.input,
     invocationId: row.invocationId,
     mailboxStatus: row.mailboxStatus,
     parentConversationId: row.parentConversationId,
-    ...(row.reasoningLevel ? { reasoningLevel: row.reasoningLevel } : {}),
-    ...(row.result !== null ? { result: row.result } : {}),
+    ...(row.reasoningLevel ? { reasoningLevel: row.reasoningLevel } : undefined),
+    ...(row.result !== null ? { result: row.result } : undefined),
     source: row.source,
     status: row.status,
-    ...(row.terminalAt ? { terminalAtMs: row.terminalAt.getTime() } : {}),
+    ...(row.terminalAt ? { terminalAtMs: row.terminalAt.getTime() } : undefined),
     updatedAtMs: row.updatedAt.getTime(),
   });
 }

@@ -412,10 +412,10 @@ vi.mock("@/chat/mcp/oauth", () => ({
       conversationId: input.conversationId,
       sessionId: input.sessionId,
       userMessage: input.userMessage,
-      ...(input.channelId ? { channelId: input.channelId } : {}),
-      ...(input.threadTs ? { threadTs: input.threadTs } : {}),
-      ...(input.toolChannelId ? { toolChannelId: input.toolChannelId } : {}),
-      ...(input.configuration ? { configuration: input.configuration } : {}),
+      ...(input.channelId ? { channelId: input.channelId } : undefined),
+      ...(input.threadTs ? { threadTs: input.threadTs } : undefined),
+      ...(input.toolChannelId ? { toolChannelId: input.toolChannelId } : undefined),
+      ...(input.configuration ? { configuration: input.configuration } : undefined),
       createdAtMs: Date.now(),
       updatedAtMs: Date.now(),
     });
@@ -722,7 +722,7 @@ function makeAgentRun(
       text: messageText,
       ...(instructionOverrides ?? {}),
     },
-    ...(history ? { history } : {}),
+    ...(history ? { history } : undefined),
     destinationVisibility: "private",
     credentialContext: {
       actor: { type: "user" as const, userId: "U123" },
@@ -736,8 +736,8 @@ function makeAgentRun(
     }),
     actor: TEST_ACTOR,
     ...runOverrides,
-    ...(state ? { state } : {}),
-    ...(onEvent ? { onEvent } : {}),
+    ...(state ? { state } : undefined),
+    ...(onEvent ? { onEvent } : undefined),
     durability: {
       recordPendingAuth: async (pendingAuth) => {
         if (pendingAuth) {

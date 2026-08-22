@@ -168,14 +168,14 @@ const slackSearchMessageWireSchema = z
       message_ts: value.message_ts,
       content: value.content,
       permalink: value.permalink,
-      ...(value.author_name ? { author_name: value.author_name } : {}),
+      ...(value.author_name ? { author_name: value.author_name } : undefined),
       ...(value.author_user_id
         ? { author_user_id: value.author_user_id }
-        : {}),
-      ...(value.channel_name ? { channel_name: value.channel_name } : {}),
+        : undefined),
+      ...(value.channel_name ? { channel_name: value.channel_name } : undefined),
       ...(value.is_author_bot !== undefined
         ? { is_author_bot: value.is_author_bot }
-        : {}),
+        : undefined),
     }),
   );
 
@@ -205,23 +205,23 @@ const slackSearchFileWireSchema = z
     }
     return {
       file_id: fileId,
-      ...(value.title ? { title: value.title } : {}),
-      ...(value.name ? { name: value.name } : {}),
+      ...(value.title ? { title: value.title } : undefined),
+      ...(value.name ? { name: value.name } : undefined),
       ...((value.filetype ?? value.file_type)
         ? { filetype: value.filetype ?? value.file_type }
-        : {}),
+        : undefined),
       ...((value.user_id ?? value.user)
         ? { user_id: value.user_id ?? value.user }
-        : {}),
+        : undefined),
       ...((value.user_name ?? value.username)
         ? { user_name: value.user_name ?? value.username }
-        : {}),
-      ...(value.channel_id ? { channel_id: value.channel_id } : {}),
-      ...(value.channel_name ? { channel_name: value.channel_name } : {}),
-      ...(value.permalink ? { permalink: value.permalink } : {}),
+        : undefined),
+      ...(value.channel_id ? { channel_id: value.channel_id } : undefined),
+      ...(value.channel_name ? { channel_name: value.channel_name } : undefined),
+      ...(value.permalink ? { permalink: value.permalink } : undefined),
       ...((value.content ?? value.preview)
         ? { content: value.content ?? value.preview }
-        : {}),
+        : undefined),
     };
   });
 
@@ -247,14 +247,14 @@ const slackSearchChannelWireSchema = z
       channel_id: channelId,
       ...((value.channel_name ?? value.name)
         ? { channel_name: value.channel_name ?? value.name }
-        : {}),
+        : undefined),
       ...(value.is_private !== undefined
         ? { is_private: value.is_private }
-        : {}),
-      ...(value.is_member !== undefined ? { is_member: value.is_member } : {}),
-      ...(value.topic ? { topic: value.topic } : {}),
-      ...(value.purpose ? { purpose: value.purpose } : {}),
-      ...(value.permalink ? { permalink: value.permalink } : {}),
+        : undefined),
+      ...(value.is_member !== undefined ? { is_member: value.is_member } : undefined),
+      ...(value.topic ? { topic: value.topic } : undefined),
+      ...(value.purpose ? { purpose: value.purpose } : undefined),
+      ...(value.permalink ? { permalink: value.permalink } : undefined),
     };
   });
 
@@ -280,11 +280,11 @@ const slackSearchUserWireSchema = z
       user_id: userId,
       ...((value.user_name ?? value.name ?? value.username)
         ? { user_name: value.user_name ?? value.name ?? value.username }
-        : {}),
-      ...(value.real_name ? { real_name: value.real_name } : {}),
-      ...(value.display_name ? { display_name: value.display_name } : {}),
-      ...(value.title ? { title: value.title } : {}),
-      ...(value.permalink ? { permalink: value.permalink } : {}),
+        : undefined),
+      ...(value.real_name ? { real_name: value.real_name } : undefined),
+      ...(value.display_name ? { display_name: value.display_name } : undefined),
+      ...(value.title ? { title: value.title } : undefined),
+      ...(value.permalink ? { permalink: value.permalink } : undefined),
     };
   });
 
@@ -422,13 +422,13 @@ export function createSlackPublicSearchTool(actionToken?: SlackActionToken) {
                 limit: limit ?? DEFAULT_LIMIT,
                 ...(normalizedAfter !== undefined
                   ? { after: normalizedAfter }
-                  : {}),
+                  : undefined),
                 ...(normalizedBefore !== undefined
                   ? { before: normalizedBefore }
-                  : {}),
-                ...(cursor ? { cursor } : {}),
-                ...(sort ? { sort } : {}),
-                ...(sort_dir ? { sort_dir } : {}),
+                  : undefined),
+                ...(cursor ? { cursor } : undefined),
+                ...(sort ? { sort } : undefined),
+                ...(sort_dir ? { sort_dir } : undefined),
               }),
             3,
             {
@@ -466,7 +466,7 @@ export function createSlackPublicSearchTool(actionToken?: SlackActionToken) {
           users,
           ...(response.results.next_cursor
             ? { next_cursor: response.results.next_cursor }
-            : {}),
+            : undefined),
         };
       } catch (error) {
         if (error instanceof SlackActionError) {

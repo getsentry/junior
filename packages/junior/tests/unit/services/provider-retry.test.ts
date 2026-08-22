@@ -14,7 +14,7 @@ import { nextProviderRetry } from "@/chat/services/provider-retry";
 function assistantError(errorMessage: string | undefined): AssistantMessage {
   return fauxAssistantMessage([], {
     stopReason: "error",
-    ...(errorMessage ? { errorMessage } : {}),
+    ...(errorMessage ? { errorMessage } : undefined),
   });
 }
 

@@ -511,7 +511,7 @@ export async function withSlackRetries<T>(
           "app.retry.max_attempts": maxAttempts,
           ...(attemptNumber > 1
             ? { "http.request.resend_count": attemptNumber - 1 }
-            : {}),
+            : undefined),
           ...(context.attributes ?? {}),
           ...(context.spanAttributes ?? {}),
         },
@@ -528,20 +528,20 @@ export async function withSlackRetries<T>(
       const baseLogAttributes: Record<string, string | number | boolean> = {
         "app.slack.action": action,
         "app.slack.error_code": mapped.code,
-        ...(mapped.apiError ? { "app.slack.api_error": mapped.apiError } : {}),
-        ...(mapped.detail ? { "app.slack.detail": mapped.detail } : {}),
+        ...(mapped.apiError ? { "app.slack.api_error": mapped.apiError } : undefined),
+        ...(mapped.detail ? { "app.slack.detail": mapped.detail } : undefined),
         ...(mapped.detailLine !== undefined
           ? { "app.slack.detail_line": mapped.detailLine }
-          : {}),
+          : undefined),
         ...(mapped.detailRule
           ? { "app.slack.detail_rule": mapped.detailRule }
-          : {}),
+          : undefined),
         ...(mapped.requestId
           ? { "app.slack.request_id": mapped.requestId }
-          : {}),
+          : undefined),
         ...(mapped.statusCode !== undefined
           ? { "http.response.status_code": mapped.statusCode }
-          : {}),
+          : undefined),
         ...(context.attributes ?? {}),
       };
 
@@ -554,7 +554,7 @@ export async function withSlackRetries<T>(
           ...baseLogAttributes,
           ...(mapped.errorData
             ? { "app.slack.error_data": mapped.errorData }
-            : {}),
+            : undefined),
         });
         throw mapped;
       }

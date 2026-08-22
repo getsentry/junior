@@ -108,7 +108,7 @@ export function createGitHubUpdateIssueTool(ctx: ToolRegistrationHookContext) {
       const update = parsedInput.data;
       const repo = parseRepo(update.repo);
       const payload = {
-        ...(update.title !== undefined ? { title: update.title } : {}),
+        ...(update.title !== undefined ? { title: update.title } : undefined),
         ...(update.body !== undefined
           ? {
               body: appendGitHubFooter(
@@ -117,8 +117,8 @@ export function createGitHubUpdateIssueTool(ctx: ToolRegistrationHookContext) {
                 ctx.slack?.conversationLink?.url,
               ),
             }
-          : {}),
-        ...(update.state !== undefined ? { state: update.state } : {}),
+          : undefined),
+        ...(update.state !== undefined ? { state: update.state } : undefined),
       };
       const response = await ctx.egress.fetch({
         provider: "github",
@@ -162,7 +162,7 @@ export function createGitHubUpdateIssueTool(ctx: ToolRegistrationHookContext) {
         body: providerResult.body,
         number: providerResult.number,
         state: providerResult.state,
-        ...(subscribable ? { subscribable } : {}),
+        ...(subscribable ? { subscribable } : undefined),
         title: providerResult.title,
         url: providerResult.html_url,
       };

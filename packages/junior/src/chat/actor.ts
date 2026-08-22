@@ -182,13 +182,13 @@ export function createActor(
   const actor = {
     ...(canUseInputProfile && cleanActorEmail(input?.email)
       ? { email: cleanActorEmail(input?.email) }
-      : {}),
+      : undefined),
     ...(canUseInputProfile &&
     cleanActorDisplayName(input?.fullName, actorUserId)
       ? {
           fullName: cleanActorDisplayName(input?.fullName, actorUserId),
         }
-      : {}),
+      : undefined),
     platform,
     userId: actorUserId,
     ...(canUseInputProfile &&
@@ -196,7 +196,7 @@ export function createActor(
       ? {
           userName: cleanActorDisplayName(input?.userName, actorUserId),
         }
-      : {}),
+      : undefined),
   };
   if (platform === "slack") {
     return { ...actor, platform, teamId: actorTeamId! };
@@ -264,11 +264,11 @@ export function parseStoredSlackActor(
 /** Convert a runtime Slack actor into its durable session shape. */
 export function toStoredSlackActor(actor: SlackActor): StoredSlackActor {
   return {
-    ...(actor.email ? { email: actor.email } : {}),
-    ...(actor.fullName ? { fullName: actor.fullName } : {}),
+    ...(actor.email ? { email: actor.email } : undefined),
+    ...(actor.fullName ? { fullName: actor.fullName } : undefined),
     platform: actor.platform,
     slackUserId: actor.userId,
-    ...(actor.userName ? { slackUserName: actor.userName } : {}),
+    ...(actor.userName ? { slackUserName: actor.userName } : undefined),
     teamId: actor.teamId,
   };
 }

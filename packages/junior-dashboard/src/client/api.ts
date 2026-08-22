@@ -287,12 +287,12 @@ export function useSystemData(coreData: DashboardCoreData) {
           conversationStatsError: Boolean(conversationStatsQuery.error),
           ...(conversationStatsQuery.data
             ? { conversationStats: conversationStatsQuery.data }
-            : {}),
+            : undefined),
           conversationStatsLoading: conversationStatsQuery.isPending,
           pluginReportsError: Boolean(pluginReportsQuery.error),
           ...(pluginReportsQuery.data
             ? { pluginReports: pluginReportsQuery.data }
-            : {}),
+            : undefined),
           pluginReportsLoading: pluginReportsQuery.isPending,
           plugins: pluginsQuery.data,
           skills: skillsQuery.data,

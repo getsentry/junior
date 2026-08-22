@@ -92,7 +92,7 @@ export function createTools(
   const resourceEventCatalog = getResourceEventCatalog();
   const tools: ToolRegistry = {
     ...(options.includeLoadSkill === false
-      ? {}
+      ? undefined
       : {
           loadSkill: createLoadSkillTool(availableSkills, {
             onSkillLoaded: hooks.onSkillLoaded,

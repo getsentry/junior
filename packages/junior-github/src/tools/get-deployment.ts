@@ -254,7 +254,7 @@ export function createGitHubGetDeploymentTool(
         deployment,
         environment: input.environment ?? null,
         repo: repo.ref,
-        ...(subscribable ? { subscribable } : {}),
+        ...(subscribable ? { subscribable } : undefined),
       };
       return {
         target: "getDeployment",

@@ -12,7 +12,7 @@ export function locationFromRow(row: LocationRow | null): Location | undefined {
   return locationSchema.parse({
     id: row.id,
     provider: row.provider,
-    ...(row.providerTenantId ? { tenantId: row.providerTenantId } : {}),
+    ...(row.providerTenantId ? { tenantId: row.providerTenantId } : undefined),
     providerId: row.providerDestinationId,
   });
 }

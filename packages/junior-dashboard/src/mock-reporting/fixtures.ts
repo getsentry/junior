@@ -1139,7 +1139,7 @@ function actor(
   fullName: string,
   slackUserName: string,
 ): ActorIdentity {
-  return { ...(email ? { email } : {}), fullName, slackUserName };
+  return { ...(email ? { email } : undefined), fullName, slackUserName };
 }
 
 function usage(cost: number) {
@@ -1349,7 +1349,7 @@ function mockGuardianStats(nowMs: number): ConversationStatsReport["guardian"] {
     return {
       allow,
       ask,
-      ...(requests ? { costUsd: requests * 0.0009 } : {}),
+      ...(requests ? { costUsd: requests * 0.0009 } : undefined),
       date: date.toISOString().slice(0, 10),
       deny,
       requests,
@@ -1602,14 +1602,14 @@ export function readMockConversationStats(): ConversationStatsReport {
   return {
     active: total.active,
     actors: [...actorItems.values()],
-    ...(cachedInputTokens ? { cachedInputTokens } : {}),
+    ...(cachedInputTokens ? { cachedInputTokens } : undefined),
     conversations: total.conversations,
     costUsd: total.costUsd,
     durationMs: total.durationMs,
     failed: total.failed,
     generatedAt: iso(nowMs),
     guardian: mockGuardianStats(nowMs),
-    ...(inputTokens ? { inputTokens } : {}),
+    ...(inputTokens ? { inputTokens } : undefined),
     locations: [...locationItems.values()],
     metricDays: conversationMetricDays(nowMs, summaries),
     source: "conversation_index",
@@ -2217,7 +2217,7 @@ export function readMockTaskExecutions(
                 : ACTIVE_CONVERSATION_ID,
             title: titles[index % titles.length],
           }
-        : {}),
+        : undefined),
       executedAt: new Date(
         nowMs - index * 86_400_000 - 3_600_000,
       ).toISOString(),

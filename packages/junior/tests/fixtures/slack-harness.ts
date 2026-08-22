@@ -103,8 +103,8 @@ export function createTestMessage(args: {
     metadata: { dateSent: args.dateSent ?? new Date(), edited: false },
     formatted: args.formatted ?? { type: "root", children: [] },
     raw: args.raw ?? {
-      ...(inferredChannel ? { channel: inferredChannel } : {}),
-      ...(inferredTs ? { ts: inferredTs, thread_ts: inferredTs } : {}),
+      ...(inferredChannel ? { channel: inferredChannel } : undefined),
+      ...(inferredTs ? { ts: inferredTs, thread_ts: inferredTs } : undefined),
     },
   });
 }
@@ -230,7 +230,7 @@ export class FakeSlackAdapter extends SlackAdapter {
             botToken: "xoxb-test-token",
             botUserId: options.botUserId,
           }
-        : {}),
+        : undefined),
     });
   }
 

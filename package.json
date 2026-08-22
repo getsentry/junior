@@ -58,9 +58,11 @@
   },
   "devDependencies": {
     "@ast-grep/cli": "^0.43.0",
+    "@oxlint/plugins": "1.79.0",
     "@playwright/test": "^1.60.0",
     "agent-browser": "^0.27.0",
     "lint-staged": "^17.0.5",
+    "oxlint": "1.79.0",
     "prettier": "^3.8.3",
     "publint": "^0.3.21",
     "sentry": "0.38.0",

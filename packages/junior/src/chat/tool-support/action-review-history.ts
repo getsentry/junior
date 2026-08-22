@@ -99,9 +99,9 @@ export function projectToolActionRejection<
     ...result,
     details: {
       ...safeDetails,
-      ...(rejection ? { guardianActionRejection: rejection } : {}),
+      ...(rejection ? { guardianActionRejection: rejection } : undefined),
     },
-    ...(rejection ? { isError: true } : {}),
+    ...(rejection ? { isError: true } : undefined),
   };
 }
 

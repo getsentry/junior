@@ -121,8 +121,8 @@ function registerPluginManifest(
   const definition: PluginDefinition = {
     manifest,
     dir: pluginDir,
-    ...(migrationsDir ? { migrationsDir } : {}),
-    ...(skillsDir ? { skillsDir } : {}),
+    ...(migrationsDir ? { migrationsDir } : undefined),
+    ...(skillsDir ? { skillsDir } : undefined),
   };
 
   state.pluginDefinitions.push(definition);
@@ -232,7 +232,7 @@ function normalizePluginCatalogConfig(
     packages: normalizePluginPackageNames(config.packages),
     ...(config.manifests
       ? { manifests: structuredClone(config.manifests) }
-      : {}),
+      : undefined),
   };
 }
 
@@ -246,11 +246,11 @@ function clonePluginCatalogConfig(
   return {
     ...(config.inlineManifests
       ? { inlineManifests: structuredClone(config.inlineManifests) }
-      : {}),
+      : undefined),
     packages: [...(config.packages ?? [])],
     ...(config.manifests
       ? { manifests: structuredClone(config.manifests) }
-      : {}),
+      : undefined),
   };
 }
 
@@ -411,7 +411,7 @@ function logLoadedPlugins(state: LoadedPluginState): void {
       "file.directory": plugin.dir,
       ...(plugin.skillsDir
         ? { "app.file.skill_directory": plugin.skillsDir }
-        : {}),
+        : undefined),
     });
   }
 }
@@ -510,8 +510,8 @@ export function createPluginCatalogRuntime(): PluginCatalogRuntime {
         for (const command of plugin.manifest.runtimePostinstall ?? []) {
           commands.push({
             cmd: command.cmd,
-            ...(command.args ? { args: [...command.args] } : {}),
-            ...(command.sudo !== undefined ? { sudo: command.sudo } : {}),
+            ...(command.args ? { args: [...command.args] } : undefined),
+            ...(command.sudo !== undefined ? { sudo: command.sudo } : undefined),
           });
         }
       }
@@ -527,19 +527,19 @@ export function createPluginCatalogRuntime(): PluginCatalogRuntime {
         clientSecretEnv: oauth.clientSecretEnv,
         authorizeEndpoint: oauth.authorizeEndpoint,
         tokenEndpoint: oauth.tokenEndpoint,
-        ...(oauth.scope ? { scope: oauth.scope } : {}),
+        ...(oauth.scope ? { scope: oauth.scope } : undefined),
         ...(oauth.authorizeParams
           ? { authorizeParams: { ...oauth.authorizeParams } }
-          : {}),
+          : undefined),
         ...(oauth.tokenAuthMethod
           ? { tokenAuthMethod: oauth.tokenAuthMethod }
-          : {}),
+          : undefined),
         ...(oauth.tokenExtraHeaders
           ? { tokenExtraHeaders: { ...oauth.tokenExtraHeaders } }
-          : {}),
+          : undefined),
         ...(oauth.treatEmptyScopeAsUnreported
           ? { treatEmptyScopeAsUnreported: true }
-          : {}),
+          : undefined),
         callbackPath: `/api/oauth/callback/${plugin.manifest.name}`,
       };
     },

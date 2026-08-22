@@ -309,7 +309,7 @@ export function juniorNitro(options: JuniorNitroOptions = {}): {
                 pluginModule:
                   runtimeModuleForResolvedPluginModule(pluginModule),
               }
-            : {}),
+            : undefined),
           plugins: pluginCatalogConfig,
           pluginRuntimeRegistrations,
           dashboard: options.dashboard,

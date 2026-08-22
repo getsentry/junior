@@ -370,7 +370,7 @@ async function recordConversationActivityMetadata(args: {
     nowMs: args.nowMs,
     actor: sessionLogActor(args.actor),
     ...definedProps({ source: activitySource }),
-    ...(args.source ? { sessionSource: args.source } : {}),
+    ...(args.source ? { sessionSource: args.source } : undefined),
     visibility: isChild ? undefined : args.destinationVisibility,
   });
   await conversationStore.recordExecution({
@@ -384,7 +384,7 @@ async function recordConversationActivityMetadata(args: {
       durationMs: args.summary.cumulativeDurationMs,
       ...(args.summary.cumulativeUsage
         ? { usage: args.summary.cumulativeUsage }
-        : {}),
+        : undefined),
     },
     actor: sessionLogActor(args.actor),
     ...definedProps({ source: activitySource }),
@@ -834,10 +834,10 @@ async function upsertTurnRecordLocked(
     messages: args.piMessages,
     ...(instructionActor
       ? { newMessageProvenance: instructionProvenanceFor(instructionActor) }
-      : {}),
+      : undefined),
     ...(args.trailingMessageProvenance
       ? { trailingMessageProvenance: args.trailingMessageProvenance }
-      : {}),
+      : undefined),
     ...(args.turnContexts && args.turnContexts.length > 0
       ? {
           turnContext: {
@@ -845,7 +845,7 @@ async function upsertTurnRecordLocked(
             turnId: args.turnId,
           },
         }
-      : {}),
+      : undefined),
   });
   const durableTurnStartMessageIndex =
     args.turnStartMessageIndex === undefined

@@ -36,10 +36,10 @@ export async function cancelConversationPendingMessagesForViewer(
       conversationId,
       ...(body.inboundMessageIds
         ? { inboundMessageIds: body.inboundMessageIds }
-        : {}),
+        : undefined),
       ...(body.receivedBefore
         ? { receivedBeforeMs: Date.parse(body.receivedBefore) }
-        : {}),
+        : undefined),
       conversationStore: getConversationStore(),
     });
     return {

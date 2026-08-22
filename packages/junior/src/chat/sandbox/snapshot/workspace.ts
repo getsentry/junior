@@ -302,7 +302,7 @@ async function startBuild(params: {
       runtime: params.runtime,
       signal,
       ...(credentials ?? {}),
-      ...(resources ? { resources } : {}),
+      ...(resources ? { resources } : undefined),
     });
     await params.beforeWrite();
     const written = await setWorkspaceSnapshotBuild(

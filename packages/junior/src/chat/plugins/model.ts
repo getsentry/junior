@@ -24,10 +24,10 @@ export function createPluginModel(
         modelId,
         schema: input.schema,
         prompt: input.prompt,
-        ...(input.system !== undefined ? { system: input.system } : {}),
+        ...(input.system !== undefined ? { system: input.system } : undefined),
         ...(input.maxTokens !== undefined
           ? { maxTokens: input.maxTokens }
-          : {}),
+          : undefined),
         signal: runtime.signal,
         promptName: `${pluginName}.structured_completion`,
         metadata: {
@@ -37,7 +37,7 @@ export function createPluginModel(
       });
       return {
         object: result.object,
-        ...(result.costUsd !== undefined ? { costUsd: result.costUsd } : {}),
+        ...(result.costUsd !== undefined ? { costUsd: result.costUsd } : undefined),
       };
     },
   };

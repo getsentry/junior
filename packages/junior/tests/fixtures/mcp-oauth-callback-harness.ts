@@ -28,7 +28,7 @@ export async function runMcpOauthCallbackRoute(args: {
       agentRunner: args.agentRunner ?? realAgentRunner,
       ...(args.conversationWorkQueue
         ? { conversationWorkQueue: args.conversationWorkQueue }
-        : {}),
+        : undefined),
     },
   );
   const callbacks = waitUntilCallbacks.splice(0, waitUntilCallbacks.length);
@@ -83,13 +83,13 @@ export async function completeMcpOauthCallbackRoute(args: {
     provider: args.provider,
     state,
     code,
-    ...(args.agentRunner ? { agentRunner: args.agentRunner } : {}),
+    ...(args.agentRunner ? { agentRunner: args.agentRunner } : undefined),
     ...(args.conversationWorkQueue
       ? { conversationWorkQueue: args.conversationWorkQueue }
-      : {}),
+      : undefined),
     ...(args.expectBackgroundWork === false
       ? { expectBackgroundWork: false }
-      : {}),
-    ...(args.relayed ? { relayed: true } : {}),
+      : undefined),
+    ...(args.relayed ? { relayed: true } : undefined),
   });
 }

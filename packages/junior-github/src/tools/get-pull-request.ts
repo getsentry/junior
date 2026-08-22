@@ -120,7 +120,7 @@ export function createGitHubGetPullRequestTool(
         merged: providerResult.merged,
         number: providerResult.number,
         state: providerResult.state,
-        ...(subscribable ? { subscribable } : {}),
+        ...(subscribable ? { subscribable } : undefined),
         title: providerResult.title,
         url: providerResult.html_url,
       };

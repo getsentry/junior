@@ -22,7 +22,7 @@ export function createEventTaskTools(
   return {
     ...(canCreate
       ? { createEventTask: createEventTaskTool(context, catalog) }
-      : {}),
+      : undefined),
     listEventTasks: createListEventTasksTool(context, catalog),
     updateEventTask: createUpdateEventTaskTool(context, catalog),
     deleteEventTask: createDeleteEventTaskTool(context, catalog),

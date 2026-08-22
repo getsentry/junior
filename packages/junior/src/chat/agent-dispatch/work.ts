@@ -297,9 +297,9 @@ async function readDispatchTurnResult(
   const errorMessage = storedSession?.errorMessage;
   if (dispatchOutcome) {
     return {
-      ...(errorMessage ? { errorMessage } : {}),
+      ...(errorMessage ? { errorMessage } : undefined),
       outcome: dispatchOutcome,
-      ...(resultMessageTs ? { resultMessageTs } : {}),
+      ...(resultMessageTs ? { resultMessageTs } : undefined),
     };
   }
   if (resultMessageTs) {
@@ -324,7 +324,7 @@ async function readDispatchTurnResult(
   }
   return {
     outcome: "completed",
-    ...(resultMessageTs ? { resultMessageTs } : {}),
+    ...(resultMessageTs ? { resultMessageTs } : undefined),
   };
 }
 

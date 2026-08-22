@@ -43,7 +43,7 @@ function searchableResourceTypes(catalog: ResourceEventCatalog) {
         supportedEvents: [...resourceType.supportedEvents].sort(),
         ...(resourceType.suggestedEvents
           ? { suggestedEvents: [...resourceType.suggestedEvents].sort() }
-          : {}),
+          : undefined),
       })),
     )
     .sort(

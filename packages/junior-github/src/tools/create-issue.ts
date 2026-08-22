@@ -129,7 +129,7 @@ function gitHubIssueToolResult(
         repo: `${repo.owner}/${repo.name}`,
       })
     : undefined;
-  const data = { ...result, ...(subscribable ? { subscribable } : {}) };
+  const data = { ...result, ...(subscribable ? { subscribable } : undefined) };
   return {
     target: "createIssue",
     ...data,
@@ -236,7 +236,7 @@ async function createGitHubIssueRequest(
       conversationId,
       dashboardUrl,
     ),
-    ...(labels?.length ? { labels } : {}),
+    ...(labels?.length ? { labels } : undefined),
   };
   return new Request(
     `https://api.github.com/repos/${encodeURIComponent(

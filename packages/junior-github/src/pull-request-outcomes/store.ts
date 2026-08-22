@@ -66,7 +66,7 @@ function projectionValues(input: GitHubPullRequestOutcomeInput) {
     closedAt: input.closedAt ?? null,
     ...(input.commitComposition
       ? { commitComposition: input.commitComposition }
-      : {}),
+      : undefined),
     mergedAt: input.mergedAt ?? null,
     number: input.number,
     openedAt: input.openedAt,

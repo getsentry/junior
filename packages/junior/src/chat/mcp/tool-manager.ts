@@ -500,8 +500,8 @@ export class McpToolManager {
       ? await this.options.authProviderFactory(plugin)
       : undefined;
     const client = new PluginMcpClient(plugin, {
-      ...(authProvider ? { authProvider } : {}),
-      ...(this.options.fetch ? { fetch: this.options.fetch } : {}),
+      ...(authProvider ? { authProvider } : undefined),
+      ...(this.options.fetch ? { fetch: this.options.fetch } : undefined),
     });
     this.clientsByProvider.set(plugin.manifest.name, client);
     return client;
@@ -528,9 +528,9 @@ export class McpToolManager {
       parameters: tool.inputSchema as Record<string, unknown>,
       provider: plugin.manifest.name,
       rawName: tool.name,
-      ...(tool.title?.trim() ? { title: tool.title.trim() } : {}),
-      ...(outputSchema ? { outputSchema } : {}),
-      ...(annotations ? { annotations } : {}),
+      ...(tool.title?.trim() ? { title: tool.title.trim() } : undefined),
+      ...(outputSchema ? { outputSchema } : undefined),
+      ...(annotations ? { annotations } : undefined),
       execute: async (args, options) => {
         const resolvedArgs =
           typeof args === "object" && args !== null ? args : {};
@@ -551,7 +551,7 @@ export class McpToolManager {
           "app.plugin.name": plugin.manifest.name,
           ...(options?.toolCallId
             ? { "gen_ai.tool.call.id": options.toolCallId }
-            : {}),
+            : undefined),
         };
         // Intentional OTel deviation: private traces put Junior's safe metadata
         // projection here because it is more useful than omitting the attribute.
@@ -591,14 +591,14 @@ export class McpToolManager {
                 providerContent,
                 ...(result.structuredContent !== undefined
                   ? { structuredContent: result.structuredContent }
-                  : {}),
+                  : undefined),
               };
               await this.options.onToolSuccess?.({
                 arguments: resolvedArgs,
                 provider: plugin.manifest.name,
                 ...(result.structuredContent !== undefined
                   ? { structuredContent: result.structuredContent }
-                  : {}),
+                  : undefined),
                 toolName: tool.name,
               });
               return successResult;
@@ -643,7 +643,7 @@ export class McpToolManager {
             ...baseAttributes,
             ...(argumentAttribute
               ? { "gen_ai.tool.call.arguments": argumentAttribute }
-              : {}),
+              : undefined),
           },
         );
       },
@@ -725,7 +725,7 @@ export class McpToolManager {
     try {
       result = await tool.execute(args, {
         conversationPrivacy: "private",
-        ...(options?.toolCallId ? { toolCallId: options.toolCallId } : {}),
+        ...(options?.toolCallId ? { toolCallId: options.toolCallId } : undefined),
       });
     } catch (error) {
       if (error instanceof McpToolError) {
@@ -741,7 +741,7 @@ export class McpToolManager {
       content: result.providerContent ?? result.content,
       ...(result.structuredContent !== undefined
         ? { structuredContent: result.structuredContent }
-        : {}),
+        : undefined),
     };
   }
 
@@ -749,11 +749,11 @@ export class McpToolManager {
     return {
       name: tool.name,
       rawName: tool.rawName,
-      ...(tool.title ? { title: tool.title } : {}),
+      ...(tool.title ? { title: tool.title } : undefined),
       description: tool.description,
       parameters: tool.parameters,
-      ...(tool.outputSchema ? { outputSchema: tool.outputSchema } : {}),
-      ...(tool.annotations ? { annotations: tool.annotations } : {}),
+      ...(tool.outputSchema ? { outputSchema: tool.outputSchema } : undefined),
+      ...(tool.annotations ? { annotations: tool.annotations } : undefined),
       provider: tool.provider,
     };
   }

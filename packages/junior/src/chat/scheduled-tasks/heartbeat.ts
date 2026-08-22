@@ -82,7 +82,7 @@ function buildDispatchMetadata(args: {
           recurrenceInterval: String(args.task.schedule.recurrence.interval),
           recurrenceStartDate: args.task.schedule.recurrence.startDate,
         }
-      : {}),
+      : undefined),
   };
 }
 
@@ -139,7 +139,7 @@ async function recordScheduledExecution(args: {
   await recordTaskExecution("scheduled", args.run.taskId, {
     ...(dispatchId
       ? { conversationId: getDispatchConversationId({ id: dispatchId }) }
-      : {}),
+      : undefined),
     executionId: args.run.id,
     nowMs: args.nowMs,
     status: args.status,
@@ -169,10 +169,10 @@ async function logRunOutcome(args: {
       ).toISOString(),
       ...(args.run.dispatchId
         ? { "app.dispatch.id": args.run.dispatchId }
-        : {}),
+        : undefined),
       ...(args.run.resultMessageTs
         ? { "app.task.result_message_ts": args.run.resultMessageTs }
-        : {}),
+        : undefined),
       ...args.extras,
     });
     return;
@@ -429,7 +429,7 @@ export async function runScheduledTaskHeartbeat(args: {
                   taskId: task.id,
                 },
               }
-            : {}),
+            : undefined),
           destination: task.destination,
           destinationVisibility: task.conversationAccess.visibility,
           input: buildDispatchInput(task),

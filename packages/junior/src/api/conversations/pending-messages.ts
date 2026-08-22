@@ -60,7 +60,7 @@ function actorIdentityFromApiMetadata(
 ): ActorIdentity {
   return {
     email: metadata.authorEmail.trim().toLowerCase(),
-    ...(metadata.authorFullName ? { fullName: metadata.authorFullName } : {}),
+    ...(metadata.authorFullName ? { fullName: metadata.authorFullName } : undefined),
   };
 }
 
@@ -79,9 +79,9 @@ async function actorIdentityFromSlackMetadata(
   const email = profile?.email?.trim().toLowerCase();
   return {
     slackUserId,
-    ...(slackUserName ? { slackUserName } : {}),
-    ...(fullName ? { fullName } : {}),
-    ...(email ? { email } : {}),
+    ...(slackUserName ? { slackUserName } : undefined),
+    ...(fullName ? { fullName } : undefined),
+    ...(email ? { email } : undefined),
   };
 }
 
@@ -147,7 +147,7 @@ async function projectPendingMessage(
       receivedAt: isoFromMs(message.receivedAtMs),
       role: "user",
       source: "slack",
-      ...(actorIdentity ? { actorIdentity } : {}),
+      ...(actorIdentity ? { actorIdentity } : undefined),
       text,
     };
   }
@@ -204,7 +204,7 @@ export async function readConversationPendingMessages(
             label: authorization.label,
           },
         }
-      : {}),
+      : undefined),
     conversationId,
     generatedAt: new Date().toISOString(),
     messages,

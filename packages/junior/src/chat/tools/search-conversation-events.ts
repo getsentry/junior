@@ -189,9 +189,9 @@ export function createSearchConversationEventsTool(
 
       const page = await getConversationEventStore().query(conversationId, {
         limit,
-        ...(afterSeq === undefined ? {} : { afterSeq }),
-        ...(beforeSeq === undefined ? {} : { beforeSeq }),
-        ...(types === undefined ? {} : { types }),
+        ...(afterSeq === undefined ? undefined : { afterSeq }),
+        ...(beforeSeq === undefined ? undefined : { beforeSeq }),
+        ...(types === undefined ? undefined : { types }),
       });
       const newestFirst = afterSeq === undefined;
       const projected = projectEventsForTool(page, { newestFirst });
@@ -206,7 +206,7 @@ export function createSearchConversationEventsTool(
         truncated: projected.omittedEventCount > 0,
         ...(projected.omittedEventCount > 0
           ? { omitted_event_count: projected.omittedEventCount }
-          : {}),
+          : undefined),
       };
     },
   });
@@ -369,7 +369,7 @@ function projectEvent(event: ConversationEvent) {
     seq: event.seq,
     history_version: event.historyVersion,
     created_at: new Date(event.createdAtMs).toISOString(),
-    ...(event.idempotencyKey ? { idempotency_key: event.idempotencyKey } : {}),
+    ...(event.idempotencyKey ? { idempotency_key: event.idempotencyKey } : undefined),
     data,
   };
 }

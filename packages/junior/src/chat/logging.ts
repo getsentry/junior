@@ -1145,7 +1145,7 @@ function emitRecord(
     traceAttributes,
     {
       "event.name": normalizedEventName,
-      ...(source ? { "app.log.source": source } : {}),
+      ...(source ? { "app.log.source": source } : undefined),
       ...attrs,
     },
     // Deployment identity is process-owned and must win over event-local attrs.
@@ -1480,8 +1480,8 @@ function sentryUserIdentityFromContext(
     const email = normalizeIdentityEmail(context.userEmail);
     return {
       id: context.userId,
-      ...(context.userName ? { username: context.userName } : {}),
-      ...(email ? { email } : {}),
+      ...(context.userName ? { username: context.userName } : undefined),
+      ...(email ? { email } : undefined),
     };
   }
   return undefined;
@@ -1491,8 +1491,8 @@ function sentryUserFromIdentity(identity: SentryUserIdentity): Sentry.User {
   return {
     id: identity.id,
     ip_address: null,
-    ...(identity.username ? { username: identity.username } : {}),
-    ...(identity.email ? { email: identity.email } : {}),
+    ...(identity.username ? { username: identity.username } : undefined),
+    ...(identity.email ? { email: identity.email } : undefined),
   };
 }
 
@@ -2092,30 +2092,30 @@ export function extractGenAiUsageAttributes(
   return {
     ...(semanticInputTokens !== undefined
       ? { "gen_ai.usage.input_tokens": semanticInputTokens }
-      : {}),
+      : undefined),
     ...(outputTokens !== undefined
       ? { "gen_ai.usage.output_tokens": outputTokens }
-      : {}),
+      : undefined),
     // OTel has no monetary cost attributes, so report accounting generically.
     ...(cachedInputTokens !== undefined
       ? { "gen_ai.usage.cache_read.input_tokens": cachedInputTokens }
-      : {}),
+      : undefined),
     ...(cacheCreationTokens !== undefined
       ? { "gen_ai.usage.cache_creation.input_tokens": cacheCreationTokens }
-      : {}),
+      : undefined),
     ...(reasoningTokens !== undefined
       ? { "gen_ai.usage.reasoning.output_tokens": reasoningTokens }
-      : {}),
-    ...(cost?.input !== undefined ? { "app.cost.input_usd": cost.input } : {}),
+      : undefined),
+    ...(cost?.input !== undefined ? { "app.cost.input_usd": cost.input } : undefined),
     ...(cost?.output !== undefined
       ? { "app.cost.output_usd": cost.output }
-      : {}),
+      : undefined),
     ...(cost?.cacheRead !== undefined
       ? { "app.cost.cache_read_usd": cost.cacheRead }
-      : {}),
+      : undefined),
     ...(cost?.cacheWrite !== undefined
       ? { "app.cost.cache_write_usd": cost.cacheWrite }
-      : {}),
-    ...(cost?.total !== undefined ? { "app.cost.total_usd": cost.total } : {}),
+      : undefined),
+    ...(cost?.total !== undefined ? { "app.cost.total_usd": cost.total } : undefined),
   };
 }

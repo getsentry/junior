@@ -49,9 +49,9 @@ export function toConversationMessage(
     text: resolveMessageText(args),
     createdAtMs: args.entry.metadata.dateSent.getTime(),
     author: {
-      ...(actor?.userId ? { userId: actor.userId } : {}),
-      ...(actor?.userName ? { userName: actor.userName } : {}),
-      ...(actor?.fullName ? { fullName: actor.fullName } : {}),
+      ...(actor?.userId ? { userId: actor.userId } : undefined),
+      ...(actor?.userName ? { userName: actor.userName } : undefined),
+      ...(actor?.fullName ? { fullName: actor.fullName } : undefined),
       isBot:
         typeof args.entry.author.isBot === "boolean"
           ? args.entry.author.isBot
@@ -65,7 +65,7 @@ export function toConversationMessage(
         imageAttachmentCount > 0 ? imageAttachmentCount : undefined,
       imagesHydrated: !messageHasPotentialImageAttachment,
       source: "slack",
-      ...(slackTs ? { slackTs } : {}),
+      ...(slackTs ? { slackTs } : undefined),
     },
   };
 }
