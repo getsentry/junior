@@ -34,7 +34,6 @@ export function workspaceSnapshotWatch(input: {
 /** Report that a Workspace snapshot build is ready or failed. */
 export function workspaceSnapshotFinishedEvent(input: {
   workspaceId: string;
-  workspaceName: string;
   buildId: string;
   profileHash: string;
   status: "ready" | "failed";
@@ -48,10 +47,8 @@ export function workspaceSnapshotFinishedEvent(input: {
       : WORKSPACE_SNAPSHOT_FAILED_EVENT;
   const trustedSummary =
     input.status === "ready"
-      ? `Workspace ${input.workspaceName} snapshot is ready.`
-      : `Workspace ${input.workspaceName} snapshot failed${
-          input.error ? `: ${input.error}` : "."
-        }`;
+      ? "Workspace snapshot is ready."
+      : "Workspace snapshot build failed.";
   return {
     eventKey: `${WORKSPACE_SNAPSHOT_NAMESPACE}:${input.workspaceId}:${input.buildId}:${input.status}`,
     eventType,
@@ -62,11 +59,10 @@ export function workspaceSnapshotFinishedEvent(input: {
     trustedSummary,
     data: {
       workspaceId: input.workspaceId,
-      workspaceName: input.workspaceName,
       buildId: input.buildId,
       profileHash: input.profileHash,
       status: input.status,
-      ...(input.error ? { error: input.error } : {}),
     },
+    ...(input.error ? { untrustedText: input.error } : {}),
   };
 }

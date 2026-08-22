@@ -62,7 +62,6 @@ async function publishFinishedEvent(input: {
   await publishSnapshotEvent(
     workspaceSnapshotFinishedEvent({
       workspaceId: input.workspace.id,
-      workspaceName: input.workspace.name,
       buildId: input.buildId,
       profileHash: input.profileHash,
       status: input.status,
