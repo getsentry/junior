@@ -151,10 +151,7 @@ describe("chat config", () => {
     const { botConfig } = await loadConfig();
     expect(botConfig.profiles).toEqual({
       standard: { modelId: "openai/gpt-5.4" },
-      handoff: {
-        modelId: "anthropic/claude-opus-4.6",
-        reasoningLevel: "high",
-      },
+      handoff: { modelId: "anthropic/claude-opus-4.6" },
     });
   });
 
