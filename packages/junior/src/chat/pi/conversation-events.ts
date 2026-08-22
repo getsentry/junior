@@ -25,7 +25,7 @@ export interface PiConversationProjection {
   messages: PiMessage[];
   provenance: ConversationMessageProvenance[];
   modelProfile: ModelProfile;
-  historyReplacementType: "compaction" | "handoff" | undefined;
+  historyReplacementSeq: number | undefined;
 }
 
 /** Pi context with the source event sequence for every projected message. */
@@ -122,7 +122,7 @@ export function projectConversationEvents(
   const provenance: ConversationMessageProvenance[] = [];
   const seqs: number[] = [];
   let modelProfile: ModelProfile = options.defaultProfile;
-  let historyReplacementType: "compaction" | "handoff" | undefined;
+  let historyReplacementSeq: number | undefined;
 
   for (const event of events) {
     if (options.maxSeq !== undefined && event.seq > options.maxSeq) break;
@@ -135,7 +135,7 @@ export function projectConversationEvents(
     }
     if (event.data.type === "compaction" || event.data.type === "handoff") {
       modelProfile = event.data.modelProfile;
-      historyReplacementType = event.data.type;
+      historyReplacementSeq = event.seq;
       for (const replacement of event.data.replacementHistory) {
         for (const message of durableMessages(
           piMessageFromHistoryItem(replacement.item),
@@ -175,6 +175,6 @@ export function projectConversationEvents(
     provenance,
     seqs,
     modelProfile,
-    historyReplacementType,
+    historyReplacementSeq,
   };
 }

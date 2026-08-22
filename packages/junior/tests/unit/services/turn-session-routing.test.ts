@@ -32,8 +32,8 @@ function conversation(args: {
     updatedAtMs: 1,
     schemaVersion: 1,
     execution: { status: "paused" },
-    ...(args.destination ? { destination: args.destination } : {}),
-    ...(args.sessionSource ? { sessionSource: args.sessionSource } : {}),
+    ...(args.destination ? { destination: args.destination } : undefined),
+    ...(args.sessionSource ? { sessionSource: args.sessionSource } : undefined),
   };
 }
 

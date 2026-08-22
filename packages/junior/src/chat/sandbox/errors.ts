@@ -256,7 +256,7 @@ export function throwSandboxOperationError(
             details.searchableText.includes("no such file") ||
             details.searchableText.includes("enoent"),
         }
-      : {}),
+      : undefined),
     "app.sandbox.success": false,
   });
   setSpanStatus("error");

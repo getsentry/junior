@@ -119,9 +119,9 @@ export function createSlackDispatchTurnRunner(options: {
       skipBackfill: true,
     });
     return {
-      ...(errorMessage ? { errorMessage } : {}),
-      ...(outcome ? { outcome } : {}),
-      ...(resultMessageTs ? { resultMessageTs } : {}),
+      ...(errorMessage ? { errorMessage } : undefined),
+      ...(outcome ? { outcome } : undefined),
+      ...(resultMessageTs ? { resultMessageTs } : undefined),
     };
   };
 }

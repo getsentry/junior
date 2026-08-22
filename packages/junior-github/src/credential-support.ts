@@ -277,9 +277,9 @@ export async function githubRequest(
       Accept: "application/vnd.github+json",
       Authorization: `Bearer ${params.token}`,
       "X-GitHub-Api-Version": "2022-11-28",
-      ...(params.body ? { "Content-Type": "application/json" } : {}),
+      ...(params.body ? { "Content-Type": "application/json" } : undefined),
     },
-    ...(params.body ? { body: JSON.stringify(params.body) } : {}),
+    ...(params.body ? { body: JSON.stringify(params.body) } : undefined),
   });
 
   const text = await response.text();
@@ -364,7 +364,7 @@ function parseOAuthTokenResponse(
   const result: PluginStoredTokens = {
     accessToken: data.access_token,
     refreshToken: data.refresh_token,
-    ...(scope ? { scope } : {}),
+    ...(scope ? { scope } : undefined),
   };
   if (data.expires_in !== undefined) {
     if (
@@ -460,8 +460,8 @@ function createCredentialLease(
   return {
     type: "lease",
     lease: {
-      ...(input.account ? { account: input.account } : {}),
-      ...(input.authorization ? { authorization: input.authorization } : {}),
+      ...(input.account ? { account: input.account } : undefined),
+      ...(input.authorization ? { authorization: input.authorization } : undefined),
       expiresAt: new Date(input.expiresAtMs).toISOString(),
       headerTransforms: (
         input.domains ??
@@ -484,7 +484,7 @@ function githubUserAuthorization(
   return {
     type: "oauth",
     provider: "github",
-    ...(scope ? { scope } : {}),
+    ...(scope ? { scope } : undefined),
   };
 }
 
@@ -498,7 +498,7 @@ function credentialNeeded(
     message,
     ...(allowAuthorization
       ? { authorization: githubUserAuthorization(scope) }
-      : {}),
+      : undefined),
   };
 }
 
@@ -616,7 +616,7 @@ export async function resolveUserAccount(
     handle: login.trim(),
     id: String(id),
     label: login.trim(),
-    ...(url ? { url } : {}),
+    ...(url ? { url } : undefined),
   };
 }
 
@@ -726,9 +726,9 @@ async function refreshUserTokensWithLock(
     const refreshedTokens = {
       ...(latest.refreshTokenExpiresAt
         ? { refreshTokenExpiresAt: latest.refreshTokenExpiresAt }
-        : {}),
+        : undefined),
       ...refreshed,
-      ...(latest.account ? { account: latest.account } : {}),
+      ...(latest.account ? { account: latest.account } : undefined),
     };
     await tokenSlot.set(refreshedTokens);
     return { ok: true, tokens: refreshedTokens };
@@ -828,10 +828,10 @@ export async function issueInstallationToken(
         ? await options.loadPermissions({ appJwt, installationId })
         : undefined;
   const body = {
-    ...(permissions ? { permissions } : {}),
+    ...(permissions ? { permissions } : undefined),
     ...("repositories" in options
       ? { repositories: options.repositories }
-      : {}),
+      : undefined),
   };
   const accessTokenResponse = await githubRequest(
     "https://api.github.com",

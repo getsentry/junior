@@ -1,8 +1,8 @@
 /**
  * Public plugin background-task contracts.
  *
- * Plugins register small task handlers, while Junior core owns durable
- * scheduling, queue delivery, retries, and the bounded run projection.
+ * Plugins register small task handlers. Junior core owns scheduling, delivery,
+ * retries, and the bounded run projection.
  */
 import { z } from "zod";
 import type { PluginConversationEvents } from "./conversation-events";

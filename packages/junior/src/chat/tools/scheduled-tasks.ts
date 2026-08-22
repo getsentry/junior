@@ -24,7 +24,7 @@ function scheduledTaskToolContext(
     actor: context.actor,
     source: context.source,
     users: { resolveActor: context.resolveActorIdentity },
-    ...(context.userText ? { userText: context.userText } : {}),
+    ...(context.userText ? { userText: context.userText } : undefined),
   };
 }
 

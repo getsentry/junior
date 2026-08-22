@@ -614,7 +614,7 @@ export async function GET(
           sessionId: authSession.sessionId,
         }),
         turnId: authSession.sessionId,
-        ...(providerLabel ? { providerLabel } : {}),
+        ...(providerLabel ? { providerLabel } : undefined),
       });
     } catch (error) {
       logException(error, "mcp.oauth_callback.authentication_event.failed", {

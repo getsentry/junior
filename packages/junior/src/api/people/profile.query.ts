@@ -213,22 +213,22 @@ export async function readPeopleProfileFromSql(
 
   const actor: ActorIdentity & { email: string } = {
     email: totalsRow.email,
-    ...(totalsRow.fullName ? { fullName: totalsRow.fullName } : {}),
-    ...(totalsRow.slackUserId ? { slackUserId: totalsRow.slackUserId } : {}),
+    ...(totalsRow.fullName ? { fullName: totalsRow.fullName } : undefined),
+    ...(totalsRow.slackUserId ? { slackUserId: totalsRow.slackUserId } : undefined),
     ...(totalsRow.slackUserName
       ? { slackUserName: totalsRow.slackUserName }
-      : {}),
+      : undefined),
   };
   const days = new Map<string, ActorActivityDayReport>();
   for (const row of dayRows) {
     days.set(row.date, {
       active: row.active,
       conversations: row.conversations,
-      ...(row.costUsd !== null ? { costUsd: row.costUsd } : {}),
+      ...(row.costUsd !== null ? { costUsd: row.costUsd } : undefined),
       date: row.date,
       durationMs: row.durationMs,
       failed: row.failed,
-      ...(row.tokens !== null ? { tokens: row.tokens } : {}),
+      ...(row.tokens !== null ? { tokens: row.tokens } : undefined),
     });
   }
   const locations = new Map<string, ConversationStatsItem>();
@@ -272,7 +272,7 @@ export async function readPeopleProfileFromSql(
       conversations: totalsRow.conversations,
       durationMs: totalsRow.durationMs,
       failed: totalsRow.failed,
-      ...(totalsRow.tokens !== null ? { tokens: totalsRow.tokens } : {}),
+      ...(totalsRow.tokens !== null ? { tokens: totalsRow.tokens } : undefined),
     },
     windowEnd: end.toISOString(),
     windowStart: start.toISOString(),

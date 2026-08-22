@@ -147,14 +147,14 @@ export function extractMessageChangedMention(
 
   const raw: Record<string, unknown> = {
     channel: channelId,
-    ...(channelType ? { channel_type: channelType } : {}),
+    ...(channelType ? { channel_type: channelType } : undefined),
     ts: messageTs,
     thread_ts: threadTs,
     user: userId,
-    ...(teamId ? { team_id: teamId } : {}),
-    ...(userTeam ? { user_team: userTeam } : {}),
-    ...(sourceTeam ? { source_team: sourceTeam } : {}),
-    ...(botId ? { bot_id: botId } : {}),
+    ...(teamId ? { team_id: teamId } : undefined),
+    ...(userTeam ? { user_team: userTeam } : undefined),
+    ...(sourceTeam ? { source_team: sourceTeam } : undefined),
+    ...(botId ? { bot_id: botId } : undefined),
   };
 
   const message = new Message({

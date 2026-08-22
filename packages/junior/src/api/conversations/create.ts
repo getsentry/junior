@@ -18,7 +18,7 @@ import { readConversationAccessFromSql } from "./access";
 function actorFromViewer(viewer: User): WebActor {
   const normalized = viewer.email.trim().toLowerCase();
   return webActorFromEmail(normalized, {
-    ...(viewer.displayName ? { fullName: viewer.displayName } : {}),
+    ...(viewer.displayName ? { fullName: viewer.displayName } : undefined),
     userName: normalized.split("@")[0] || normalized,
   });
 }
@@ -34,7 +34,7 @@ export async function createConversationForViewer(
         actor: actorFromViewer(viewer),
         idempotencyKey: body.idempotencyKey,
         message: body.message,
-        ...(body.visibility ? { visibility: body.visibility } : {}),
+        ...(body.visibility ? { visibility: body.visibility } : undefined),
       },
       {
         conversationStore: getConversationStore(),

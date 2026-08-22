@@ -47,10 +47,10 @@ import { getPlugins } from "./agent-hooks";
 import {
   pluginTaskId,
   pluginTaskParamsSchema,
+  sendVercelPluginTask,
   type PluginTaskParams,
   type PluginTaskQueueMessage,
-} from "./task-message";
-import { sendVercelPluginTask } from "./task-queue";
+} from "./task-queue";
 import { getStateAdapter } from "@/chat/state/adapter";
 import type { Lock } from "chat";
 
@@ -125,7 +125,7 @@ function messageProvenance(
 ): PluginRunTranscriptProvenance {
   return {
     authority: provenance.authority,
-    ...(provenance.actor ? { actor: provenance.actor } : {}),
+    ...(provenance.actor ? { actor: provenance.actor } : undefined),
   };
 }
 
@@ -170,7 +170,7 @@ function runTranscriptEntry(
     type: "toolResult",
     toolName,
     isError: isToolResultError(message),
-    ...(text ? { text } : {}),
+    ...(text ? { text } : undefined),
   };
 }
 
@@ -214,8 +214,8 @@ function slackContextAuthor(
     platform: "slack",
     teamId: source.teamId,
     userId,
-    ...(message.author?.userName ? { userName: message.author.userName } : {}),
-    ...(message.author?.fullName ? { fullName: message.author.fullName } : {}),
+    ...(message.author?.userName ? { userName: message.author.userName } : undefined),
+    ...(message.author?.fullName ? { fullName: message.author.fullName } : undefined),
   };
 }
 
@@ -296,7 +296,7 @@ async function loadConversationContextTranscriptEntries(
       text,
       provenance: {
         authority: "context",
-        ...(author ? { actor: author } : {}),
+        ...(author ? { actor: author } : undefined),
       },
       isRunActor: sameActorIdentity(author, runActor),
     });
@@ -373,7 +373,7 @@ async function loadPluginRun(
     // Derived from the full run provenance on the record, not the sliced or
     // stripped transcript, so it reflects every committed instruction actor.
     actors: record.actors,
-    ...(runActor ? { actor: runActor } : {}),
+    ...(runActor ? { actor: runActor } : undefined),
     runId: record.turnId,
     source: routing.source,
     transcript: [...contextEntries, ...runEntries],

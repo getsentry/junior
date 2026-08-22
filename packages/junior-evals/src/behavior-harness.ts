@@ -44,7 +44,7 @@ import {
   processPluginTask,
   scheduleSessionCompletedPluginTasks,
 } from "@/chat/plugins/task-runner";
-import type { PluginTaskQueueMessage } from "@/chat/plugins/task-message";
+import type { PluginTaskQueueMessage } from "@/chat/plugins/task-queue";
 import { buildSlackInboundMessage } from "@/chat/task-execution/slack-work";
 import { appendAndEnqueueInboundMessage } from "@/chat/task-execution/store";
 import { deleteConversationState } from "@/chat/task-execution/state";

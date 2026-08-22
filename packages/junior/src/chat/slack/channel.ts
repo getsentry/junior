@@ -180,14 +180,14 @@ export async function getConversationInfo(
     id: channelId,
     ...(typeof record.name === "string" && record.name
       ? { name: record.name }
-      : {}),
+      : undefined),
     isChannel: record.is_channel === true,
     isPrivate: record.is_private === true,
     isIm: record.is_im === true,
     isMpim: record.is_mpim === true,
     ...(typeof record.is_member === "boolean"
       ? { isMember: record.is_member }
-      : {}),
+      : undefined),
   };
 }
 

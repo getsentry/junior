@@ -18,16 +18,17 @@ import {
   slackEnvelope,
   slackWebhookRequest,
 } from "../../fixtures/conversation-work";
+import { readProxyProperty } from "../../fixtures/proxy-property";
 
 function failIsSubscribed(state: StateAdapter): StateAdapter {
   return new Proxy(state, {
-    get(target, prop, receiver) {
+    get(target, prop) {
       if (prop === "isSubscribed") {
         return async () => {
           throw new Error("transient state read failure");
         };
       }
-      const value = Reflect.get(target, prop, receiver);
+      const value = readProxyProperty(target, prop);
       return typeof value === "function" ? value.bind(target) : value;
     },
   }) as StateAdapter;

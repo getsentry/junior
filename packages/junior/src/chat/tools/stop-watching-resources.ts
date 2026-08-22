@@ -20,11 +20,7 @@ const resultDataSchema = z
   })
   .strict();
 
-const outputSchema = juniorToolOutputSchema
-  .extend({
-    ...resultDataSchema.shape,
-  })
-  .strict();
+const outputSchema = juniorToolOutputSchema.merge(resultDataSchema);
 
 /** Create the tool that stops resource watches for this conversation. */
 export function createStopWatchingResourcesTool(context: ToolRuntimeContext) {

@@ -254,9 +254,9 @@ function queuedInstructionActor(
   const authorName = actor?.fullName ?? actor?.userName;
   const slackTs = getMessageTimestamp(queued.message);
   return {
-    ...(authorId ? { authorId } : {}),
-    ...(authorName ? { authorName } : {}),
-    ...(slackTs ? { slackTs } : {}),
+    ...(authorId ? { authorId } : undefined),
+    ...(authorName ? { authorName } : undefined),
+    ...(slackTs ? { slackTs } : undefined),
   };
 }
 
@@ -605,7 +605,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           } catch (error) {
             logException(error, "slack.auth_pause.notice_post.failed", {
               "app.slack.reply_stage": "thread_reply_auth_pause_notice",
-              ...(messageTs ? { "messaging.message.id": messageTs } : {}),
+              ...(messageTs ? { "messaging.message.id": messageTs } : undefined),
               ...getSlackErrorObservabilityAttributes(error),
             });
           }
@@ -785,7 +785,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               logException(error, "agent.continue.schedule.failed", {
                 "app.ai.resume_session_version": pausedTurn.expectedVersion,
                 "app.ai.resume_session_id": pausedTurn.turnId,
-                ...(messageTs ? { "messaging.message.id": messageTs } : {}),
+                ...(messageTs ? { "messaging.message.id": messageTs } : undefined),
               });
               throw error;
             }
@@ -933,7 +933,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
         if (shouldEmitDevAgentTrace()) {
           logInfo("agent.turn.started", {
             "app.message.id": message.id,
-            ...(messageTs ? { "messaging.message.id": messageTs } : {}),
+            ...(messageTs ? { "messaging.message.id": messageTs } : undefined),
           });
         }
         await persistThreadState(thread, {
@@ -944,8 +944,8 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
         if (actor) {
           setSentryUser({
             id: actor.userId,
-            ...(actor.userName ? { username: actor.userName } : {}),
-            ...(actor.email ? { email: actor.email } : {}),
+            ...(actor.userName ? { username: actor.userName } : undefined),
+            ...(actor.email ? { email: actor.email } : undefined),
           });
         }
         if (actor?.userName) {
@@ -1004,7 +1004,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             dispatchOutcome,
             ...(acceptedDeliveryId
               ? { resultMessageId: acceptedDeliveryId }
-              : {}),
+              : undefined),
             turnId: turnId,
             sliceId: 1,
             source,
@@ -1050,7 +1050,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                   replyAttribution:
                     options.execution?.dispatch?.replyAttribution,
                   text,
-                  ...(threadTs ? { threadTs } : {}),
+                  ...(threadTs ? { threadTs } : undefined),
                 });
               } else {
                 for (const part of splitSlackReplyText(text)) {
@@ -1069,12 +1069,12 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             }
             const eventId = logException(error, "slack.thread.post.failed", {
               "app.slack.reply_stage": "thread_reply",
-              ...(messageTs ? { "messaging.message.id": messageTs } : {}),
+              ...(messageTs ? { "messaging.message.id": messageTs } : undefined),
               ...getSlackErrorObservabilityAttributes(error),
             });
             throw new ConversationTurnBoundaryError({
               cause: error,
-              ...(eventId ? { eventId } : {}),
+              ...(eventId ? { eventId } : undefined),
               failureCode: "delivery_failed",
             });
           }
@@ -1102,7 +1102,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               : slackMessageTs;
             await persistWithRetry(() =>
               commitAcceptedReply({
-                ...(agentMessage ? { agentMessage } : {}),
+                ...(agentMessage ? { agentMessage } : undefined),
                 conversation: preparedState.conversation,
                 conversationMessageId: recordedMessageId,
                 conversationId,
@@ -1118,7 +1118,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                         }),
                       ),
                     }
-                  : {}),
+                  : undefined),
               }),
             );
             await options.onTurnStatePersisted?.();
@@ -1148,7 +1148,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                   startedAtMs: message.metadata.dateSent.getTime(),
                   ...(terminalDispatchOutcome
                     ? { dispatchOutcome: terminalDispatchOutcome }
-                    : {}),
+                    : undefined),
                   state: terminalDispatchOutcome ? "failed" : "running",
                   surface: options.execution?.surface ?? "slack",
                 }),
@@ -1293,16 +1293,16 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           const outcome = await deps.services.agentRunner.run({
             conversationId,
             turnId,
-            ...(runId ? { runId } : {}),
+            ...(runId ? { runId } : undefined),
             instruction: {
               actor: {
                 ...(activeInstructionAuthorId
                   ? { authorId: activeInstructionAuthorId }
-                  : {}),
+                  : undefined),
                 ...(activeInstructionAuthorName
                   ? { authorName: activeInstructionAuthorName }
-                  : {}),
-                ...(slackMessageTs ? { slackTs: slackMessageTs } : {}),
+                  : undefined),
+                ...(slackMessageTs ? { slackTs: slackMessageTs } : undefined),
               },
               includeConversationContextWithHistory: hasDurablePromptHistory,
               text: effectiveUserText,
@@ -1322,7 +1322,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             publishExternally: shouldPublishExternally(
               options.publishExternally,
             ),
-            ...(destinationVisibility ? { destinationVisibility } : {}),
+            ...(destinationVisibility ? { destinationVisibility } : undefined),
             surface: options.execution?.surface ?? "slack",
             dispatch: options.execution?.dispatch,
             toolChannelId,
@@ -1398,7 +1398,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                   createdAtMs: Date.now(),
                   ...(authFailureEventId
                     ? { eventId: authFailureEventId }
-                    : {}),
+                    : undefined),
                   failureCode: "agent_run_failed",
                   turnId,
                 });
@@ -1451,7 +1451,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               shouldPersistFailureState = false;
             } catch (scheduleError) {
               logException(scheduleError, "agent.continue.schedule.failed", {
-                ...(messageTs ? { "messaging.message.id": messageTs } : {}),
+                ...(messageTs ? { "messaging.message.id": messageTs } : undefined),
                 "app.ai.resume_session_version": outcome.resumeVersion,
               });
               shouldPersistFailureState = true;
@@ -1516,10 +1516,10 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                     : "failed",
                 ...(options.execution?.dispatch && turnResult.errorMessage
                   ? { errorMessage: turnResult.errorMessage }
-                  : {}),
+                  : undefined),
                 ...(acceptedDeliveryId
                   ? { resultMessageId: acceptedDeliveryId }
-                  : {}),
+                  : undefined),
                 messages: reply.piMessages,
                 actor: executionActor,
                 surface: options.execution?.surface ?? "slack",
@@ -1547,7 +1547,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                     : "failed",
                 ...(acceptedDeliveryId
                   ? { resultMessageId: acceptedDeliveryId }
-                  : {}),
+                  : undefined),
                 traceId: getActiveTraceId(),
               });
             }
@@ -1570,7 +1570,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               await deps.services.turnLifecycle.fail({
                 conversationId,
                 createdAtMs: Date.now(),
-                ...(persistenceEventId ? { eventId: persistenceEventId } : {}),
+                ...(persistenceEventId ? { eventId: persistenceEventId } : undefined),
                 failureCode: "persistence_failed",
                 turnId,
               });
@@ -1594,7 +1594,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                 createdAtMs: Date.now(),
                 ...(finalizedFailureEventId
                   ? { eventId: finalizedFailureEventId }
-                  : {}),
+                  : undefined),
                 failureCode: "model_execution_failed",
                 turnId,
               });
@@ -1676,7 +1676,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             });
           throw new ConversationTurnBoundaryError({
             cause: failureCause,
-            ...(failureEventId ? { eventId: failureEventId } : {}),
+            ...(failureEventId ? { eventId: failureEventId } : undefined),
             failureCode,
           });
         } finally {
@@ -1710,7 +1710,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                     ? {
                         dispatchOutcome: terminalDispatchFailureOutcome,
                       }
-                    : {}),
+                    : undefined),
                   traceId: getActiveTraceId(),
                 });
                 const sessionRecord = await getTurnRecord(

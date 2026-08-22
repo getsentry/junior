@@ -1,9 +1,8 @@
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { stopApiConversationTurn } from "@/chat/api-turns/stop";
 import { apiTurnIdForMessage } from "@/chat/api-turns/work";
-import {
-  getLatestMcpAuthSessionForUserProvider,
-} from "@/chat/mcp/auth-store";
+import { getLatestMcpAuthSessionForUserProvider } from "@/chat/mcp/auth-store";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { listTurnSummaries } from "@/chat/task-execution/checkpoint";
 import {
@@ -93,9 +92,9 @@ describe("web auth orchestration", () => {
       q.pendingMessages(started.conversationId),
     ).resolves.not.toHaveProperty("authorization");
     const history = await q.historyTexts(started.conversationId);
-    expect(history.some((text) => text.includes("Eval Auth tool completed"))).toBe(
-      true,
-    );
+    expect(
+      history.some((text) => text.includes("Eval Auth tool completed")),
+    ).toBe(true);
     await expect(listTurnSummaries(started.conversationId)).resolves.toEqual(
       expect.arrayContaining([
         expect.objectContaining({ state: "completed", surface: "api" }),
@@ -154,8 +153,78 @@ describe("web auth orchestration", () => {
     });
     const history = await q.historyTexts(started.conversationId);
     expect(
-      history.some((text) => text.includes("Answered without waiting for auth")),
+      history.some((text) =>
+        text.includes("Answered without waiting for auth"),
+      ),
     ).toBe(true);
+  });
+
+  it("stops queued and auth-paused web Turns without process state", async () => {
+    const q = await createConversationWorkWebHarness({
+      modelStream: streamMcpSearch("This response must not run."),
+    });
+    const started = await q.start({
+      idempotencyKey: "web-auth-stop-1",
+      message: "connect eval-auth first",
+    });
+    await q.drain();
+    await expectWebMcpAuthParked({
+      harness: q,
+      conversationId: started.conversationId,
+    });
+    const parkedTurnId = apiTurnIdForMessage(started.messageId);
+
+    await q.continue({
+      conversationId: started.conversationId,
+      idempotencyKey: "web-auth-stop-2",
+      message: "cancel this queued follow-up",
+    });
+    await expect(
+      stopApiConversationTurn({
+        conversationId: started.conversationId,
+        conversationStore: q.conversationStore,
+        queue: q.queue,
+        state: q.state,
+      }),
+    ).resolves.toMatchObject({ status: "requested" });
+    await q.drain();
+
+    await expect(listTurnSummaries(started.conversationId)).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          turnId: parkedTurnId,
+          state: "paused",
+          resumeReason: "auth",
+        }),
+      ]),
+    );
+    await expect(
+      q.pendingMessages(started.conversationId),
+    ).resolves.toHaveProperty("authorization");
+
+    await expect(
+      stopApiConversationTurn({
+        conversationId: started.conversationId,
+        conversationStore: q.conversationStore,
+        queue: q.queue,
+        state: q.state,
+      }),
+    ).resolves.toMatchObject({ status: "requested" });
+    await q.drain();
+
+    await expect(listTurnSummaries(started.conversationId)).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          turnId: parkedTurnId,
+          state: "abandoned",
+        }),
+      ]),
+    );
+    await expect(
+      q.pendingMessages(started.conversationId),
+    ).resolves.not.toHaveProperty("authorization");
+    await expectMcpAuthCleared(started.conversationId);
+    expect(q.agentRuns).toHaveLength(1);
   });
 
   it("does not resume a superseded web auth turn after a late OAuth callback", async () => {

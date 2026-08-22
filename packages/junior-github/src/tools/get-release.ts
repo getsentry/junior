@@ -49,12 +49,11 @@ interface Result extends PluginToolOutput, ReleaseSource {
   subscribable?: SubscribableResource;
   target: "getRelease";
 }
-const outputSchema = pluginToolOutputSchema
-  .extend({
+const outputSchema = pluginToolOutputSchema.merge(
+  releaseSourceSchema.extend({
     target: z.literal("getRelease"),
-    ...releaseSourceSchema.shape,
-  })
-  .strict();
+  }),
+);
 
 const providerReleaseSchema = z
   .object({
@@ -187,7 +186,7 @@ export function createGitHubGetReleaseTool(ctx: ToolRegistrationHookContext) {
         release,
         repo: repo.ref,
         tag: tag ?? null,
-        ...(subscribable ? { subscribable } : {}),
+        ...(subscribable ? { subscribable } : undefined),
       };
       return {
         target: "getRelease",

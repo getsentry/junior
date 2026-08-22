@@ -80,7 +80,7 @@ export function pendingTranscriptMessage(
     // Keep pending rows after history without colliding with real event seqs.
     sourceSeq: Number.MAX_SAFE_INTEGER - 1_000_000 + index,
     timestamp: Date.parse(message.createdAt),
-    ...(message.actorIdentity ? { actorIdentity: message.actorIdentity } : {}),
+    ...(message.actorIdentity ? { actorIdentity: message.actorIdentity } : undefined),
   };
 }
 
@@ -167,10 +167,10 @@ export function transcriptMessagesFromEvents(
       id: call.toolCallId,
       name: call.name,
       status: call.status,
-      ...(call.input === undefined ? {} : { input: call.input }),
-      ...(output === undefined ? {} : { output }),
+      ...(call.input === undefined ? undefined : { input: call.input }),
+      ...(output === undefined ? undefined : { output }),
       ...(call.status === "running"
-        ? {}
+        ? undefined
         : { resultTimestamp: eventTimestamp(event) }),
     };
     const message = {
@@ -197,12 +197,12 @@ export function transcriptMessagesFromEvents(
             : { type: "text", text: data.text! },
         ]),
         messageId: data.messageId,
-        ...(data.actorIdentity ? { actorIdentity: data.actorIdentity } : {}),
-        ...(data.eventType ? { eventType: data.eventType } : {}),
+        ...(data.actorIdentity ? { actorIdentity: data.actorIdentity } : undefined),
+        ...(data.eventType ? { eventType: data.eventType } : undefined),
         ...(data.explicitMention !== undefined
           ? { explicitMention: data.explicitMention }
-          : {}),
-        ...(data.source ? { source: data.source } : {}),
+          : undefined),
+        ...(data.source ? { source: data.source } : undefined),
       };
       messages.push(message);
       messagesById.set(message.messageId, message);
@@ -271,7 +271,7 @@ export function transcriptMessagesFromEvents(
           reasoningLevel: data.reasoningLevel,
           ...(data.confidence !== undefined
             ? { confidence: data.confidence }
-            : {}),
+            : undefined),
           source: data.source,
         };
       }
@@ -390,20 +390,20 @@ export function transcriptMessagesFromEvents(
                     createdAt: event.createdAt,
                     modelId: data.modelId,
                     modelProfile: data.modelProfile,
-                    ...(data.summary ? { summary: data.summary } : {}),
+                    ...(data.summary ? { summary: data.summary } : undefined),
                     ...(data.reasoningLevel
                       ? { reasoningLevel: data.reasoningLevel }
-                      : {}),
+                      : undefined),
                   }
                 : {
                     type: data.type,
                     createdAt: event.createdAt,
-                    ...(data.modelId ? { modelId: data.modelId } : {}),
+                    ...(data.modelId ? { modelId: data.modelId } : undefined),
                     ...(data.modelProfile
                       ? { modelProfile: data.modelProfile }
-                      : {}),
-                    ...(data.summary ? { summary: data.summary } : {}),
-                    ...(data.details ? { details: data.details } : {}),
+                      : undefined),
+                    ...(data.summary ? { summary: data.summary } : undefined),
+                    ...(data.details ? { details: data.details } : undefined),
                   },
           },
         ]),

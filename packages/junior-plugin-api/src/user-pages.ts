@@ -86,13 +86,26 @@ export const pluginUserPageLinksSchema = z.array(pluginUserPageLinkSchema);
 /** Safe navigation metadata for one registered plugin user page. */
 export type PluginUserPageLink = z.output<typeof pluginUserPageLinkSchema>;
 
+/** Optional cursor token for one plugin user page reader. */
+export const pluginUserPageCursorSchema = nonBlankStringSchema
+  .max(1_000)
+  .optional();
+
+/** Optional filter token for one plugin user page reader. */
+export const pluginUserPageFilterSchema = nonBlankStringSchema
+  .max(64)
+  .optional();
+
+/** Optional free-text query for one plugin user page reader. */
+export const pluginUserPageQuerySchema = z.string().trim().max(200).optional();
+
 /** Validated query state passed to one plugin user page reader. */
 export const pluginUserPageInputSchema = z
   .object({
-    cursor: nonBlankStringSchema.max(1_000).optional(),
-    filter: nonBlankStringSchema.max(64).optional(),
+    cursor: pluginUserPageCursorSchema,
+    filter: pluginUserPageFilterSchema,
     limit: z.number().int().min(1).max(50),
-    query: z.string().trim().max(200).optional(),
+    query: pluginUserPageQuerySchema,
   })
   .strict();
 

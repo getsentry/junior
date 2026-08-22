@@ -298,7 +298,7 @@ export async function purgeConversationTree(
               transcriptPurgedAt: new Date(args.nowMs),
               ...((args.retention ? !isPublic : resolvedScrubMetadata)
                 ? { title: null, channelName: null, actor: null }
-                : {}),
+                : undefined),
             })
             .where(inArray(juniorConversations.conversationId, ids));
           return { purged: true, conversations: ids.length };

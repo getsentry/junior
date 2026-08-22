@@ -282,7 +282,7 @@ it("keeps actor-owned MCP connections across history replacement", async () => {
   ).resolves.toMatchObject({
     messages: [],
     modelProfile: "standard",
-    historyReplacementType: "compaction",
+    historyReplacementSeq: 1,
   });
   await expect(
     loadConnectedMcpProviders({
@@ -308,7 +308,7 @@ async function seedConversation(
         conversationId,
         ...(parentConversationId
           ? { parentConversationId, rootConversationId: parentConversationId }
-          : {}),
+          : undefined),
       }),
     );
 }
@@ -349,7 +349,7 @@ function userMessageEvent(
                       userId: "user-1",
                     },
           }
-        : {}),
+        : undefined),
     },
   };
 }

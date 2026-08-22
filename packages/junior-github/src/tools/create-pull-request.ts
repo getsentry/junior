@@ -129,10 +129,11 @@ const gitHubPullRequestDataSchema = z.object({
   subscription: resourceEventSubscriptionResultSchema.optional(),
 });
 
-const gitHubPullRequestOutputSchema = pluginToolOutputSchema.extend({
-  target: z.literal("createPullRequest"),
-  ...gitHubPullRequestDataSchema.shape,
-});
+const gitHubPullRequestOutputSchema = pluginToolOutputSchema.merge(
+  gitHubPullRequestDataSchema.extend({
+    target: z.literal("createPullRequest"),
+  }),
+);
 
 function parseCreatePullRequestInput(
   input: unknown,
@@ -179,9 +180,10 @@ async function readJsonResponse(response: Response): Promise<unknown> {
 
 function githubApiErrorMessage(payload: unknown): string {
   if (payload && typeof payload === "object" && !Array.isArray(payload)) {
-    const message = (payload as { message?: unknown }).message;
+    const record = payload as Record<string, unknown>;
+    const message = record.message;
     if (typeof message === "string") {
-      const details = githubApiErrorDetails(payload);
+      const details = githubApiErrorDetails(record);
       return details ? `${message}: ${details}` : message;
     }
   }
@@ -191,8 +193,10 @@ function githubApiErrorMessage(payload: unknown): string {
   return "GitHub request failed";
 }
 
-function githubApiErrorDetails(payload: object): string | undefined {
-  const errors = (payload as { errors?: unknown }).errors;
+function githubApiErrorDetails(
+  payload: Record<string, unknown>,
+): string | undefined {
+  const errors = payload.errors;
   if (!Array.isArray(errors)) {
     return undefined;
   }
@@ -263,7 +267,7 @@ async function createGitHubPullRequestRequest(
       conversationId,
       dashboardUrl,
     ),
-    ...(input.draft !== undefined ? { draft: input.draft } : {}),
+    ...(input.draft !== undefined ? { draft: input.draft } : undefined),
   };
   return new Request(
     `https://api.github.com/repos/${encodeURIComponent(
@@ -330,10 +334,10 @@ function gitHubPullRequestToolResult(
     ? gitHubPullRequestSubscribable({
         number: result.number,
         repo: `${repo.owner}/${repo.name}`,
-        ...(omitSuggestedEvents ? { omitSuggestedEvents } : {}),
+        ...(omitSuggestedEvents ? { omitSuggestedEvents } : undefined),
       })
     : undefined;
-  return { ...result, ...(subscribable ? { subscribable } : {}) };
+  return { ...result, ...(subscribable ? { subscribable } : undefined) };
 }
 
 async function annotatePullRequest(

@@ -564,7 +564,7 @@ export function createMemoryAgent(model: PluginModel): MemoryAgent {
         relevantIds: [...new Set(decision.relevantIds)].filter((id) =>
           candidateIds.has(id),
         ),
-        ...(result.costUsd !== undefined ? { costUsd: result.costUsd } : {}),
+        ...(result.costUsd !== undefined ? { costUsd: result.costUsd } : undefined),
       };
     },
     async adjudicateSupersession(rawRequest) {
@@ -589,7 +589,7 @@ export function createMemoryAgent(model: PluginModel): MemoryAgent {
         memories: extractedMemoriesFromResponse(
           extractMemoriesResponseSchema.parse(result.object),
         ),
-        ...(result.costUsd !== undefined ? { costUsd: result.costUsd } : {}),
+        ...(result.costUsd !== undefined ? { costUsd: result.costUsd } : undefined),
       };
     },
     async reviewCreateRequest(rawRequest) {
@@ -616,7 +616,7 @@ function memoryReviewFromResponse(
       content: response.canonicalFact,
       ...(response.expiresAtMs !== null
         ? { expiresAtMs: response.expiresAtMs }
-        : {}),
+        : undefined),
     });
   }
   return parseMemoryReview({

@@ -5,12 +5,14 @@ const slackConversationIdSchema = z.string().regex(/^(C|G|D)[A-Z0-9]+$/);
 const localConversationIdSchema = z
   .string()
   .regex(/^local:[a-z0-9_-]+:[a-z0-9][a-z0-9_-]*$/);
-const exactActorUserIdSchema = z
+/** Exact non-blank actor user id that rejects the sentinel "unknown". */
+export const actorUserIdSchema = z
   .string()
   .min(1)
   .refine(
     (value) => value === value.trim() && value.toLowerCase() !== "unknown",
   );
+const exactActorUserIdSchema = actorUserIdSchema;
 
 export const nonBlankStringSchema = z
   .string()

@@ -55,19 +55,19 @@ function buildChatStartAttributes(
     "server.port": GEN_AI_SERVER_PORT,
     ...(options?.temperature !== undefined
       ? { "gen_ai.request.temperature": options.temperature }
-      : {}),
+      : undefined),
     ...(options?.maxTokens !== undefined
       ? { "gen_ai.request.max_tokens": options.maxTokens }
-      : {}),
+      : undefined),
     ...(options?.reasoning
       ? { "gen_ai.request.reasoning.level": options.reasoning }
-      : {}),
+      : undefined),
     ...(hasCompactedConversationContext(context.messages)
       ? { "gen_ai.conversation.compacted": true }
-      : {}),
+      : undefined),
     ...(conversationPrivacy
       ? { "app.conversation.privacy": conversationPrivacy }
-      : {}),
+      : undefined),
     ...toGenAiMessagesTraceAttributes("gen_ai.input", context.messages),
   };
 

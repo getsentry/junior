@@ -36,9 +36,9 @@ function createProductionSlackAdapter(): SlackAdapter {
   return createJuniorSlackAdapter({
     logger: createChatSdkLogger().child("slack"),
     signingSecret,
-    ...(botToken ? { botToken } : {}),
-    ...(clientId ? { clientId } : {}),
-    ...(clientSecret ? { clientSecret } : {}),
+    ...(botToken ? { botToken } : undefined),
+    ...(clientId ? { clientId } : undefined),
+    ...(clientSecret ? { clientSecret } : undefined),
   });
 }
 

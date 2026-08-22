@@ -336,7 +336,7 @@ export async function wireAgentTools(
             auth_required: {
               ...(signal.authorization
                 ? { authorization: signal.authorization }
-                : {}),
+                : undefined),
               createdAtMs: Date.now(),
               grant: signal.grant,
               kind: signal.kind,
@@ -356,11 +356,11 @@ export async function wireAgentTools(
           resolveActorIdentity: async () =>
             await readActorIdentity(args.currentActor!),
         }
-      : {}),
+      : undefined),
     ...(args.durability.spawnAgent
       ? { spawnAgent: args.durability.spawnAgent }
-      : {}),
-    ...(args.requestHandoff ? { handoff: args.requestHandoff } : {}),
+      : undefined),
+    ...(args.requestHandoff ? { handoff: args.requestHandoff } : undefined),
   };
   const toolRoute = resolveToolRuntimeRoute({
     actor: args.currentActor,

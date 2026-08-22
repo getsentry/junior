@@ -88,7 +88,7 @@ export function toGenAiPayloadMetadata(
   const keys = payloadKeys(payload);
   return {
     ...base,
-    ...(keys ? { keys } : {}),
+    ...(keys ? { keys } : undefined),
   };
 }
 
@@ -267,7 +267,7 @@ export function toGenAiMessagesTraceAttributes(
     [`${prefix}.message_count`]: messages.length,
     [`${prefix}.content_chars`]: contentChars,
     [`${prefix}.messages.size`]: contentChars,
-    ...(roles.size > 0 ? { [`${prefix}.roles`]: [...roles] } : {}),
-    ...(partTypes.size > 0 ? { [`${prefix}.part_types`]: [...partTypes] } : {}),
+    ...(roles.size > 0 ? { [`${prefix}.roles`]: [...roles] } : undefined),
+    ...(partTypes.size > 0 ? { [`${prefix}.part_types`]: [...partTypes] } : undefined),
   };
 }

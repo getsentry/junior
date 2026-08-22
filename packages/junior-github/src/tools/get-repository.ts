@@ -28,10 +28,11 @@ interface Result extends PluginToolOutput, Repository {
   target: "getRepository";
   subscribable?: SubscribableResource;
 }
-const outputSchema = pluginToolOutputSchema.extend({
-  target: z.literal("getRepository"),
-  ...repositorySchema.shape,
-});
+const outputSchema = pluginToolOutputSchema.merge(
+  repositorySchema.extend({
+    target: z.literal("getRepository"),
+  }),
+);
 
 function parseRepo(value: string) {
   const parts = value.split("/").map((part) => part.trim());
@@ -106,7 +107,7 @@ export function createGitHubGetRepositoryTool(
         description: providerResult.description,
         fullName: providerResult.full_name,
         private: providerResult.private,
-        ...(subscribable ? { subscribable } : {}),
+        ...(subscribable ? { subscribable } : undefined),
         url: providerResult.html_url,
       };
       return {

@@ -37,7 +37,7 @@ describe("conversation message search", () => {
           nowMs: 1_750_000_000_000,
           source: "slack",
           visibility: args.visibility,
-          ...(args.channelName ? { channelName: args.channelName } : {}),
+          ...(args.channelName ? { channelName: args.channelName } : undefined),
         });
         await events.append(args.conversationId, [
           {

@@ -510,7 +510,7 @@ export async function decideSubscribedThreadReply(args: {
     if (parsed.should_unsubscribe) {
       if (parsed.confidence < ROUTER_CONFIDENCE_THRESHOLD) {
         return {
-          ...(result.costUsd !== undefined ? { costUsd: result.costUsd } : {}),
+          ...(result.costUsd !== undefined ? { costUsd: result.costUsd } : undefined),
           shouldReply: false,
           reason: SubscribedReplyReason.LowConfidence,
           reasonDetail: `${parsed.confidence.toFixed(2)}: ${reason}`,
@@ -518,7 +518,7 @@ export async function decideSubscribedThreadReply(args: {
       }
 
       return {
-        ...(result.costUsd !== undefined ? { costUsd: result.costUsd } : {}),
+        ...(result.costUsd !== undefined ? { costUsd: result.costUsd } : undefined),
         shouldReply: false,
         shouldUnsubscribe: true,
         reason: SubscribedReplyReason.ThreadOptOut,
@@ -528,7 +528,7 @@ export async function decideSubscribedThreadReply(args: {
 
     if (!parsed.should_reply) {
       return {
-        ...(result.costUsd !== undefined ? { costUsd: result.costUsd } : {}),
+        ...(result.costUsd !== undefined ? { costUsd: result.costUsd } : undefined),
         shouldReply: false,
         reason: SubscribedReplyReason.SideConversation,
         reasonDetail: reason,
@@ -537,7 +537,7 @@ export async function decideSubscribedThreadReply(args: {
 
     if (parsed.confidence < ROUTER_CONFIDENCE_THRESHOLD) {
       return {
-        ...(result.costUsd !== undefined ? { costUsd: result.costUsd } : {}),
+        ...(result.costUsd !== undefined ? { costUsd: result.costUsd } : undefined),
         shouldReply: false,
         reason: SubscribedReplyReason.LowConfidence,
         reasonDetail: `${parsed.confidence.toFixed(2)}: ${reason}`,
@@ -545,7 +545,7 @@ export async function decideSubscribedThreadReply(args: {
     }
 
     return {
-      ...(result.costUsd !== undefined ? { costUsd: result.costUsd } : {}),
+      ...(result.costUsd !== undefined ? { costUsd: result.costUsd } : undefined),
       shouldReply: true,
       reason: SubscribedReplyReason.Classifier,
       reasonDetail: reason,

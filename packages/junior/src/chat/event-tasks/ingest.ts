@@ -133,7 +133,7 @@ export async function ingestEventTasks(
         nowMs,
         options: {
           idempotencyKey,
-          ...(credentialSubject ? { credentialSubject } : {}),
+          ...(credentialSubject ? { credentialSubject } : undefined),
           destination: task.destination,
           destinationVisibility: task.destinationVisibility,
           input: eventInput(task, event),

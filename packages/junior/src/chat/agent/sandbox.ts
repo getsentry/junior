@@ -103,10 +103,10 @@ export function createPluginToolSandbox(
         toolName: "bash",
         input: {
           command: `${input.sudo ? "sudo -- " : ""}${buildCommandScript(input)}`,
-          ...(input.cwd ? { cwd: input.cwd } : {}),
-          ...(input.env ? { env: input.env } : {}),
+          ...(input.cwd ? { cwd: input.cwd } : undefined),
+          ...(input.env ? { env: input.env } : undefined),
         },
-        ...(input.signal ? { signal: input.signal } : {}),
+        ...(input.signal ? { signal: input.signal } : undefined),
       });
       const normalized = normalizeToolResult(result, { toolName: "bash" });
       await options.handleAuthSignal(normalized.details);
@@ -128,7 +128,7 @@ export function createPluginToolSandbox(
         {
           path: input.path,
           content: input.content,
-          ...(input.mode !== undefined ? { mode: input.mode } : {}),
+          ...(input.mode !== undefined ? { mode: input.mode } : undefined),
         },
       ]);
     },

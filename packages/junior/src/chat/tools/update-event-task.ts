@@ -79,9 +79,9 @@ export function createUpdateEventTaskTool(
       const { credentialMode, task, trigger, ...prepared } = input;
       return {
         ...prepared,
-        ...(task != null ? { task } : {}),
-        ...(trigger != null ? { trigger } : {}),
-        ...(credentialMode != null ? { credentialMode } : {}),
+        ...(task != null ? { task } : undefined),
+        ...(trigger != null ? { trigger } : undefined),
+        ...(credentialMode != null ? { credentialMode } : undefined),
       };
     },
     outputSchema: eventTaskToolResultSchema,

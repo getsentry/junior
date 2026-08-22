@@ -25,11 +25,11 @@ export function toExposedToolSummary(
     tool_name: toolDef.name,
     mcp_tool_name: toolDef.rawName,
     provider: toolDef.provider,
-    ...(toolDef.title ? { title: toolDef.title } : {}),
+    ...(toolDef.title ? { title: toolDef.title } : undefined),
     description: toolDef.description,
     input_schema: toolDef.parameters,
-    ...(toolDef.outputSchema ? { output_schema: toolDef.outputSchema } : {}),
-    ...(toolDef.annotations ? { annotations: toolDef.annotations } : {}),
+    ...(toolDef.outputSchema ? { output_schema: toolDef.outputSchema } : undefined),
+    ...(toolDef.annotations ? { annotations: toolDef.annotations } : undefined),
   };
 }
 

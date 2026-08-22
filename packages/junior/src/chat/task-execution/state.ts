@@ -132,6 +132,12 @@ export interface Lease {
   token: string;
 }
 
+/** Durable request to stop the current Conversation run. */
+export interface ConversationStop {
+  inboundMessageIds: string[];
+  runId: string;
+}
+
 export interface ConversationExecution {
   inboundMessageIds: string[];
   lastCheckpointAtMs?: number;
@@ -143,6 +149,7 @@ export interface ConversationExecution {
   pendingMessages: InboundMessage[];
   runId?: string;
   status: ExecutionStatus;
+  stop?: ConversationStop;
   updatedAtMs?: number;
 }
 
@@ -201,6 +208,27 @@ export interface AppendInboundMessageResult {
 export interface AppendAndEnqueueInboundMessageResult extends AppendInboundMessageResult {
   queueMessageId?: string;
 }
+
+/** Result of requesting that the current Conversation run stop. */
+export type StopConversationWorkResult =
+  | { status: "no_work" }
+  | { runId: string; status: "requested" };
+
+/** Result of clearing one stop observed by the matching leased run. */
+export interface CompleteConversationStopResult {
+  status: "cleared" | "lost_lease" | "none";
+  removedInboundMessageIds: string[];
+}
+
+/** Result of an append that rejects new work while a Conversation is runnable. */
+export type AppendExclusiveInboundMessageResult =
+  | AppendInboundMessageResult
+  | { status: "active" };
+
+/** Exclusive append result with an optional queue delivery id. */
+export type AppendAndEnqueueExclusiveInboundMessageResult =
+  | AppendAndEnqueueInboundMessageResult
+  | { status: "active" };
 
 export interface RequestConversationWorkResult {
   status: "created" | "updated";
@@ -276,7 +304,7 @@ function upgradedPendingMessage(
         ...duplicate.input,
         ...(inputHasAttachments(duplicate.input) ||
         !inputHasAttachments(stored.input)
-          ? {}
+          ? undefined
           : { attachments: stored.input.attachments }),
       }
     : inputHasAttachments(duplicate.input) && !inputHasAttachments(stored.input)
@@ -374,6 +402,21 @@ function normalizeLease(value: unknown): Lease | undefined {
   };
 }
 
+function normalizeStop(value: unknown): ConversationStop | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const inboundMessageIds = Array.isArray(value.inboundMessageIds)
+    ? uniqueStrings(
+        value.inboundMessageIds.filter(
+          (id): id is string => typeof id === "string",
+        ),
+      )
+    : [];
+  const runId = toOptionalString(value.runId);
+  return runId ? { inboundMessageIds, runId } : undefined;
+}
+
 /** Decode execution state and repair idle records that still own work. */
 function normalizeExecution(
   conversationId: string,
@@ -409,6 +452,9 @@ function normalizeExecution(
     : [];
 
   const lease = normalizeLease(value.lease);
+  const runId = toOptionalString(value.runId);
+  const normalizedStop = normalizeStop(value.stop);
+  const stop = normalizedStop?.runId === runId ? normalizedStop : undefined;
   const normalizedStatus =
     status === "idle" && lease
       ? "running"
@@ -429,7 +475,8 @@ function normalizeExecution(
     lastEnqueuedAtMs: toOptionalNumber(value.lastEnqueuedAtMs),
     lastProgressAtMs: toOptionalNumber(value.lastProgressAtMs),
     retryCount: toOptionalNumber(value.retryCount),
-    runId: toOptionalString(value.runId),
+    runId,
+    stop,
     updatedAtMs: toOptionalNumber(value.updatedAtMs),
   };
 }
@@ -478,19 +525,19 @@ function normalizeConversation(
     lastActivityAtMs,
     updatedAtMs,
     execution,
-    ...(destination ? { destination } : {}),
+    ...(destination ? { destination } : undefined),
     ...(toOptionalString(value.title)
       ? { title: toOptionalString(value.title) }
-      : {}),
+      : undefined),
     ...(toOptionalString(value.channelName)
       ? { channelName: toOptionalString(value.channelName) }
-      : {}),
+      : undefined),
     ...(normalizeActor(value.actor)
       ? { actor: normalizeActor(value.actor) }
-      : {}),
+      : undefined),
     ...(normalizeSource(value.source)
       ? { source: normalizeSource(value.source) }
-      : {}),
+      : undefined),
   };
 }
 
@@ -506,8 +553,8 @@ function emptyConversation(args: {
     createdAtMs: args.nowMs,
     lastActivityAtMs: args.nowMs,
     updatedAtMs: args.nowMs,
-    ...(args.destination ? { destination: args.destination } : {}),
-    ...(args.source ? { source: args.source } : {}),
+    ...(args.destination ? { destination: args.destination } : undefined),
+    ...(args.source ? { source: args.source } : undefined),
     execution: {
       status: "idle",
       inboundMessageIds: [],
@@ -1024,7 +1071,7 @@ function conversationWorkState(
             leaseToken: lease.token,
           },
         }
-      : {}),
+      : undefined),
     messages: pendingMessages(conversation),
     needsRun: hasRunnableWork(conversation),
   };
@@ -1062,12 +1109,12 @@ export function hasRunnableConversationWork(
   return hasRunnableWork(conversation);
 }
 
-/** Persist one inbound message idempotently in its conversation mailbox. */
-export async function appendInboundMessage(args: {
+async function appendInboundMessageWithAdmission(args: {
+  exclusive: boolean;
   message: InboundMessage;
   nowMs?: number;
   state?: StateAdapter;
-}): Promise<AppendInboundMessageResult> {
+}): Promise<AppendExclusiveInboundMessageResult> {
   const nowMs = args.nowMs ?? now();
   return await withConversationMutation(
     { conversationId: args.message.conversationId, state: args.state },
@@ -1125,6 +1172,9 @@ export async function appendInboundMessage(args: {
         );
         return { status: "duplicate" };
       }
+      if (args.exclusive && hasRunnableWork(current)) {
+        return { status: "active" };
+      }
 
       const status =
         current.execution.lease && current.execution.status === "running"
@@ -1161,6 +1211,34 @@ export async function appendInboundMessage(args: {
       return { status: "appended" };
     },
   );
+}
+
+/** Persist one inbound message idempotently in its conversation mailbox. */
+export async function appendInboundMessage(args: {
+  message: InboundMessage;
+  nowMs?: number;
+  state?: StateAdapter;
+}): Promise<AppendInboundMessageResult> {
+  const result = await appendInboundMessageWithAdmission({
+    ...args,
+    exclusive: false,
+  });
+  if (result.status === "active") {
+    throw new Error("Non-exclusive mailbox append returned active");
+  }
+  return result;
+}
+
+/** Append only when the Conversation has no other runnable work. */
+export async function appendExclusiveInboundMessage(args: {
+  message: InboundMessage;
+  nowMs?: number;
+  state?: StateAdapter;
+}): Promise<AppendExclusiveInboundMessageResult> {
+  return await appendInboundMessageWithAdmission({
+    ...args,
+    exclusive: true,
+  });
 }
 
 /** Mark a conversation runnable when there is no new mailbox message. */
@@ -1242,19 +1320,19 @@ export async function recordConversationActivity(args: {
       ...current,
       ...((current.destination ?? args.destination)
         ? { destination: current.destination ?? args.destination }
-        : {}),
+        : undefined),
       ...((current.source ?? args.source)
         ? { source: current.source ?? args.source }
-        : {}),
+        : undefined),
       ...((current.channelName ?? args.channelName)
         ? { channelName: current.channelName ?? args.channelName }
-        : {}),
+        : undefined),
       ...((current.actor ?? args.actor)
         ? { actor: current.actor ?? args.actor }
-        : {}),
+        : undefined),
       ...((current.title ?? args.title)
         ? { title: current.title ?? args.title }
-        : {}),
+        : undefined),
       lastActivityAtMs: Math.max(current.lastActivityAtMs, activityAtMs),
       updatedAtMs: nowMs,
       execution: executionWithPendingMessages(
@@ -1311,19 +1389,19 @@ export async function recordConversationExecution(args: {
           ...current,
           ...((current.destination ?? args.destination)
             ? { destination: current.destination ?? args.destination }
-            : {}),
+            : undefined),
           ...((current.source ?? args.source)
             ? { source: current.source ?? args.source }
-            : {}),
+            : undefined),
           ...((current.channelName ?? args.channelName)
             ? { channelName: current.channelName ?? args.channelName }
-            : {}),
+            : undefined),
           ...((current.actor ?? args.actor)
             ? { actor: current.actor ?? args.actor }
-            : {}),
+            : undefined),
           ...((current.title ?? args.title)
             ? { title: current.title ?? args.title }
-            : {}),
+            : undefined),
           createdAtMs: Math.min(current.createdAtMs, args.createdAtMs),
           lastActivityAtMs: Math.max(
             current.lastActivityAtMs,
@@ -1612,6 +1690,97 @@ export async function ackMessages(args: {
   });
 }
 
+function isHumanFacingMessage(message: InboundMessage): boolean {
+  return message.source === "web" || message.source === "slack";
+}
+
+/** Persist a stop request for the current run without process affinity. */
+export async function stopConversationWork(args: {
+  conversationId: string;
+  nowMs?: number;
+  state?: StateAdapter;
+}): Promise<StopConversationWorkResult> {
+  const nowMs = args.nowMs ?? now();
+  return await withConversationMutation(args, async (state, lock) => {
+    const current = await readConversation(state, args.conversationId);
+    if (!current || !hasRunnableWork(current)) {
+      return { status: "no_work" };
+    }
+
+    const runId = current.execution.runId ?? randomUUID();
+    const inboundMessageIds = current.execution.pendingMessages
+      .filter(isHumanFacingMessage)
+      .map((message) => message.inboundMessageId);
+    await writeConversation(
+      state,
+      lock,
+      withExecutionUpdate(
+        current,
+        {
+          ...current.execution,
+          runId,
+          stop: { inboundMessageIds, runId },
+        },
+        nowMs,
+      ),
+    );
+    return { runId, status: "requested" };
+  });
+}
+
+/** Clear one observed stop request and discard older human-facing mailbox work. */
+export async function completeConversationStop(args: {
+  conversationId: string;
+  leaseToken: string;
+  nowMs?: number;
+  runId: string;
+  state?: StateAdapter;
+}): Promise<CompleteConversationStopResult> {
+  const nowMs = args.nowMs ?? now();
+  return await withConversationMutation(args, async (state, lock) => {
+    const current = await readConversation(state, args.conversationId);
+    if (!current || current.execution.lease?.token !== args.leaseToken) {
+      return { status: "lost_lease", removedInboundMessageIds: [] };
+    }
+    const stop = current.execution.stop;
+    if (!stop || stop.runId !== args.runId) {
+      return { status: "none", removedInboundMessageIds: [] };
+    }
+
+    const stoppedInboundMessageIds = new Set(stop.inboundMessageIds);
+    const removedInboundMessageIds: string[] = [];
+    const pendingMessages = current.execution.pendingMessages.filter(
+      (message) => {
+        const shouldStop = stoppedInboundMessageIds.has(
+          message.inboundMessageId,
+        );
+        if (shouldStop) {
+          removedInboundMessageIds.push(message.inboundMessageId);
+        }
+        return !shouldStop;
+      },
+    );
+    await writeConversation(
+      state,
+      lock,
+      withExecutionUpdate(
+        current,
+        {
+          ...current.execution,
+          lastEnqueuedAtMs:
+            pendingMessages.length === 0
+              ? undefined
+              : current.execution.lastEnqueuedAtMs,
+          pendingMessages,
+          stop: undefined,
+        },
+        nowMs,
+      ),
+    );
+    return { status: "cleared", removedInboundMessageIds };
+  });
+}
+
 /** Cancel human-facing pending mailbox rows without requiring a worker lease. */
 export async function cancelHumanFacingPendingMessages(args: {
   conversationId: string;
@@ -1634,15 +1803,13 @@ export async function cancelHumanFacingPendingMessages(args: {
     const cancelledInboundMessageIds: string[] = [];
     const pendingMessages: InboundMessage[] = [];
     for (const message of current.execution.pendingMessages) {
-      const isHumanFacing =
-        message.source === "web" || message.source === "slack";
       const isRequested =
         requestedIds === undefined ||
         requestedIds.has(message.inboundMessageId);
       const isInSnapshot =
         args.receivedBeforeMs === undefined ||
         message.receivedAtMs <= args.receivedBeforeMs;
-      if (isHumanFacing && isRequested && isInSnapshot) {
+      if (isHumanFacingMessage(message) && isRequested && isInSnapshot) {
         cancelledInboundMessageIds.push(message.inboundMessageId);
         continue;
       }
@@ -1671,6 +1838,7 @@ export async function cancelHumanFacingPendingMessages(args: {
           retryCount: becomesIdle ? 0 : current.execution.retryCount,
           runId: becomesIdle ? undefined : current.execution.runId,
           status: becomesIdle ? "idle" : current.execution.status,
+          stop: becomesIdle ? undefined : current.execution.stop,
         },
         nowMs,
       ),
@@ -1809,6 +1977,7 @@ export async function recordConversationRetry(args: {
           pendingMessages: stopped ? [] : current.execution.pendingMessages,
           runId: stopped ? undefined : current.execution.runId,
           status: stopped ? "failed" : "paused",
+          stop: stopped ? undefined : current.execution.stop,
         },
         nowMs,
       ),
@@ -1823,6 +1992,8 @@ export async function completeConversationWork(args: {
   leaseToken: string;
   madeProgress?: boolean;
   nowMs?: number;
+  /** Keep a raced stop runnable after a stop-aware adapter returns. */
+  resumeIfStopped?: boolean;
   state?: StateAdapter;
 }): Promise<"completed" | "lost_lease" | "pending"> {
   const nowMs = args.nowMs ?? now();
@@ -1832,7 +2003,9 @@ export async function completeConversationWork(args: {
       return "lost_lease";
     }
     const hasPending = pendingMessages(current).length > 0;
-    const needsRun = current.execution.status === "paused";
+    const needsRun =
+      current.execution.status === "paused" ||
+      (args.resumeIfStopped === true && current.execution.stop !== undefined);
     const runnable = needsRun || hasPending;
     await writeConversation(
       state,
@@ -1852,6 +2025,7 @@ export async function completeConversationWork(args: {
               ? current.execution.retryCount
               : 0,
           runId: runnable ? current.execution.runId : undefined,
+          stop: runnable ? current.execution.stop : undefined,
         },
         nowMs,
       ),
@@ -1986,6 +2160,7 @@ export async function deadLetterAttempt(args: {
           lease: undefined,
           status: runnable ? "pending" : "failed",
           runId: runnable ? current.execution.runId : undefined,
+          stop: runnable ? current.execution.stop : undefined,
         },
         nowMs,
       ),
@@ -2024,6 +2199,7 @@ export async function clearExpiredConversationLease(args: {
           pendingMessages: stopped ? [] : current.execution.pendingMessages,
           runId: stopped ? undefined : current.execution.runId,
           status: stopped ? "failed" : "paused",
+          stop: stopped ? undefined : current.execution.stop,
         },
         nowMs,
       ),

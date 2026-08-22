@@ -441,15 +441,15 @@ export function parseMemoryRow(row: unknown): MemoryRecord {
     createdAtMs: parsed.createdAtMs,
     ...(parsed.expiresAtMs !== undefined
       ? { expiresAtMs: parsed.expiresAtMs }
-      : {}),
+      : undefined),
     ...(parsed.supersededAtMs !== undefined
       ? { supersededAtMs: parsed.supersededAtMs }
-      : {}),
-    ...(parsed.supersededById ? { supersededById: parsed.supersededById } : {}),
+      : undefined),
+    ...(parsed.supersededById ? { supersededById: parsed.supersededById } : undefined),
     ...(parsed.archivedAtMs !== undefined
       ? { archivedAtMs: parsed.archivedAtMs }
-      : {}),
-    ...(parsed.archiveReason ? { archiveReason: parsed.archiveReason } : {}),
+      : undefined),
+    ...(parsed.archiveReason ? { archiveReason: parsed.archiveReason } : undefined),
   });
 }
 
@@ -1287,7 +1287,7 @@ export function createMemoryStore(
     ) {
       const preferenceCandidates = await listPreferenceAdjudicationCandidates({
         db,
-        ...(candidateEmbedding ? { embedding: candidateEmbedding } : {}),
+        ...(candidateEmbedding ? { embedding: candidateEmbedding } : undefined),
         nowMs,
         scope,
         subject,
@@ -1386,7 +1386,7 @@ export function createMemoryStore(
         memory,
         ...(write.supersededIds.length > 0
           ? { supersededIds: write.supersededIds }
-          : {}),
+          : undefined),
       };
     }
 
@@ -1474,7 +1474,7 @@ export function createMemoryStore(
             limit: candidateLimit,
             ...(vectorMaxDistance !== undefined
               ? { maxDistance: vectorMaxDistance }
-              : {}),
+              : undefined),
             nowMs,
             scopes,
           })
@@ -1505,9 +1505,9 @@ export function createMemoryStore(
       nowMs,
       // Slight lexical preference protects exact ids/names/timezones on ties.
       ...(vectorMaxDistance === undefined
-        ? {}
+        ? undefined
         : { lexicalWeight: 1, vectorWeight: 0.85 }),
-      ...(channelPrefix ? { channelPrefix } : {}),
+      ...(channelPrefix ? { channelPrefix } : undefined),
     })
       .slice(0, limit)
       .map(({ memory }) => memory);

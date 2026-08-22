@@ -46,7 +46,7 @@ export async function GET(request: Request): Promise<Response> {
     consumeSandboxEgressPermissionDeniedSignal(context.egressId),
   ]);
   return Response.json({
-    ...(authRequired ? { auth_required: authRequired } : {}),
-    ...(permissionDenied ? { permission_denied: permissionDenied } : {}),
+    ...(authRequired ? { auth_required: authRequired } : undefined),
+    ...(permissionDenied ? { permission_denied: permissionDenied } : undefined),
   });
 }

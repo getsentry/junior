@@ -39,7 +39,7 @@ export function toStoredConversationMessage(
     messageId: message.id,
     role: message.role,
     text: message.text,
-    ...(Object.keys(meta).length > 0 ? { meta } : {}),
+    ...(Object.keys(meta).length > 0 ? { meta } : undefined),
     createdAtMs: message.createdAtMs,
   };
 }
@@ -137,8 +137,8 @@ export async function appendConversationMessages(
                 text: stored.text,
                 ...(stored.authorIdentityId
                   ? { authorIdentityId: stored.authorIdentityId }
-                  : {}),
-                ...(stored.meta ? { meta: stored.meta } : {}),
+                  : undefined),
+                ...(stored.meta ? { meta: stored.meta } : undefined),
               },
             },
           ]
@@ -154,8 +154,8 @@ export async function appendConversationMessages(
               text: stored.text,
               ...(stored.authorIdentityId
                 ? { authorIdentityId: stored.authorIdentityId }
-                : {}),
-              ...(stored.meta ? { meta: stored.meta } : {}),
+                : undefined),
+              ...(stored.meta ? { meta: stored.meta } : undefined),
             },
           },
         ];

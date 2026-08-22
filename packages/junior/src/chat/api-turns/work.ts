@@ -158,7 +158,8 @@ export function createApiConversationId(args: {
   )}`;
 }
 
-function apiMessageId(args: {
+/** Build the retry-stable Message id used by one API mailbox request. */
+export function apiConversationMessageId(args: {
   conversationId: string;
   idempotencyKey: string;
 }): string {
@@ -208,16 +209,16 @@ function actorFromMetadata(metadata: ApiTurnMailboxMetadata): WebActor {
     platform: "web",
     userId: metadata.authorUserId,
     email: normalizeEmail(metadata.authorEmail),
-    ...(metadata.authorFullName ? { fullName: metadata.authorFullName } : {}),
-    ...(metadata.authorUserName ? { userName: metadata.authorUserName } : {}),
+    ...(metadata.authorFullName ? { fullName: metadata.authorFullName } : undefined),
+    ...(metadata.authorUserName ? { userName: metadata.authorUserName } : undefined),
   };
 }
 
 /** Durable conversation actor fields for web/dashboard participants. */
 function storedActorFromApi(actor: WebActor): StoredSlackActor {
   return {
-    ...(actor.email ? { email: normalizeEmail(actor.email) } : {}),
-    ...(actor.fullName ? { fullName: actor.fullName } : {}),
+    ...(actor.email ? { email: normalizeEmail(actor.email) } : undefined),
+    ...(actor.fullName ? { fullName: actor.fullName } : undefined),
   };
 }
 
@@ -231,8 +232,8 @@ export function webActorFromEmail(
     platform: "web",
     userId: `dashboard:${stableHex(normalized)}`,
     email: normalized,
-    ...(profile?.fullName ? { fullName: profile.fullName } : {}),
-    ...(profile?.userName ? { userName: profile.userName } : {}),
+    ...(profile?.fullName ? { fullName: profile.fullName } : undefined),
+    ...(profile?.userName ? { userName: profile.userName } : undefined),
   };
 }
 
@@ -283,9 +284,9 @@ export function buildApiTurnInboundMessage(args: {
       text,
       metadata: {
         authorEmail: normalizeEmail(args.actor.email),
-        ...(args.actor.fullName ? { authorFullName: args.actor.fullName } : {}),
+        ...(args.actor.fullName ? { authorFullName: args.actor.fullName } : undefined),
         authorUserId: args.actor.userId,
-        ...(args.actor.userName ? { authorUserName: args.actor.userName } : {}),
+        ...(args.actor.userName ? { authorUserName: args.actor.userName } : undefined),
         kind: "api_turn",
         messageId: args.messageId,
       } satisfies ApiTurnMailboxMetadata,
@@ -328,9 +329,9 @@ export async function recordApiConversationActivity(args: {
     actor: storedActorFromApi(args.actor),
     // Do not rewrite a Slack root's origin source when a dashboard participant
     // continues it. Mailbox entries still carry source "web" per turn.
-    ...(isNewRoot ? { source: "web" as const } : {}),
-    ...(source ? { sessionSource: source } : {}),
-    ...(isNewRoot ? { visibility } : {}),
+    ...(isNewRoot ? { source: "web" as const } : undefined),
+    ...(source ? { sessionSource: source } : undefined),
+    ...(isNewRoot ? { visibility } : undefined),
   });
   return destination;
 }
@@ -372,7 +373,7 @@ export async function appendAndEnqueueApiConversationMessage(
     throw new Error("API conversation actor requires a verified email");
   }
   const nowMs = options.nowMs ?? Date.now();
-  const messageId = apiMessageId({
+  const messageId = apiConversationMessageId({
     conversationId: input.conversationId,
     idempotencyKey: input.idempotencyKey,
   });
@@ -381,7 +382,7 @@ export async function appendAndEnqueueApiConversationMessage(
     conversationId: input.conversationId,
     conversationStore: options.conversationStore,
     nowMs,
-    ...(input.rootVisibility ? { rootVisibility: input.rootVisibility } : {}),
+    ...(input.rootVisibility ? { rootVisibility: input.rootVisibility } : undefined),
   });
   const result = await appendAndEnqueueInboundMessage({
     message: buildApiTurnInboundMessage({
@@ -413,7 +414,7 @@ function captureApiBoundaryFailure(args: {
 }): string | undefined {
   const eventId = logException(args.error, `api.turn.${args.failureCode}`, {
     conversationId: args.conversationId,
-    ...(args.runId ? { runId: args.runId } : {}),
+    ...(args.runId ? { runId: args.runId } : undefined),
     turnId: args.turnId,
   });
   return typeof eventId === "string" ? eventId : undefined;
@@ -513,7 +514,7 @@ export function createApiTurnWorker(options: {
         conversationId: context.conversationId,
         platform: "web",
         userId: actor.userId,
-        ...(actor.userName ? { userName: actor.userName } : {}),
+        ...(actor.userName ? { userName: actor.userName } : undefined),
       },
       async () => {
         let acknowledged = isResume || context.attempt.messages.length === 0;
@@ -540,6 +541,40 @@ export function createApiTurnWorker(options: {
         let sandboxRef: SandboxRef | undefined =
           getPersistedSandboxState(persisted);
         const initialSandboxRef = sandboxRef;
+        const appSignal = options.cancellation?.signal(context.conversationId);
+        const stopSignal = context.stopSignal?.();
+        const cancellationSignal =
+          appSignal && stopSignal
+            ? AbortSignal.any([appSignal, stopSignal])
+            : (appSignal ?? stopSignal);
+        const finishCancellation = (): void => {
+          if (appSignal) {
+            options.cancellation?.finish(context.conversationId, appSignal);
+          }
+        };
+        const completeCancelledTurn =
+          async (): Promise<ConversationWorkerResult> => {
+            try {
+              await completeCancelledApiTurn({
+                acknowledge,
+                actorId: actor.userId,
+                cancellation: options.cancellation,
+                conversation,
+                conversationId: context.conversationId,
+                lifecycle,
+                sandboxRef,
+                signal: appSignal,
+                turnId,
+                userMessageId,
+              });
+            } catch (error) {
+              if (hasLostTurnInputCommit(error)) {
+                return { status: "lost_lease" };
+              }
+              throw error;
+            }
+            return { status: "completed" };
+          };
 
         if (isResume) {
           const userMessage = getTurnUserMessage(conversation, turnId);
@@ -552,53 +587,20 @@ export function createApiTurnWorker(options: {
           text = userMessage.text;
           startedAtMs = userMessage.createdAtMs;
           inputMessageIds = [userMessageId];
+          if (cancellationSignal?.aborted) {
+            return await completeCancelledTurn();
+          }
         } else {
-          // Match Slack: a newer user message supersedes an auth-parked turn
-          // instead of leaving two active API turns or letting a late OAuth
-          // wake resume stale work.
-          const authParked = (
-            await listTurnSummaries(context.conversationId)
-          ).filter(
-            (summary) =>
-              summary.surface === "api" &&
-              !summary.dispatchId &&
-              summary.state === "paused" &&
-              summary.resumeReason === "auth",
-          );
-          for (const parked of authParked) {
-            await abandonTurnRecord({
-              conversationId: context.conversationId,
-              turnId: parked.turnId,
-              errorMessage:
-                "Auth-parked session superseded by a new user message",
-            });
-            // Keep pendingAuth: MCP OAuth still needs it to accept an in-flight
-            // connect and store credentials. The abandoned turn record makes a
-            // late callback a resume no-op, matching Slack supersede behavior.
-            markTurnClosed({
-              conversation,
-              nowMs: Date.now(),
-              sessionId: parked.turnId,
-            });
-          }
-          if (authParked.length > 0) {
-            // Drop the dashboard connect prompt so a superseded OAuth flow
-            // cannot leave a stale banner after the user moves on.
-            await deleteWebAuthorization({
-              actorId: actor.userId,
-              conversationId: context.conversationId,
-            });
-          }
           upsertConversationMessage(conversation, {
             id: userMessageId,
             role: "user",
             text: normalizeConversationText(text),
             createdAtMs: startedAtMs,
             author: {
-              ...(actor.email ? { email: actor.email } : {}),
-              ...(actor.fullName ? { fullName: actor.fullName } : {}),
+              ...(actor.email ? { email: actor.email } : undefined),
+              ...(actor.fullName ? { fullName: actor.fullName } : undefined),
               userId: actor.userId,
-              ...(actor.userName ? { userName: actor.userName } : {}),
+              ...(actor.userName ? { userName: actor.userName } : undefined),
             },
             meta: {
               explicitMention: true,
@@ -617,6 +619,9 @@ export function createApiTurnWorker(options: {
             surface: "api",
             turnId,
           });
+          if (cancellationSignal?.aborted) {
+            return await completeCancelledTurn();
+          }
           startActiveTurn({
             conversation,
             nextTurnId: turnId,
@@ -629,41 +634,6 @@ export function createApiTurnWorker(options: {
         let modelFailureEventId: string | undefined;
         let modelFailureCaptureAttempted = false;
         let reply: AgentRunResult | undefined;
-        const cancellationSignal = options.cancellation?.signal(
-          context.conversationId,
-        );
-        const finishCancellation = (): void => {
-          if (cancellationSignal) {
-            options.cancellation?.finish(
-              context.conversationId,
-              cancellationSignal,
-            );
-          }
-        };
-
-        const completeCancelledTurn =
-          async (): Promise<ConversationWorkerResult> => {
-            try {
-              await completeCancelledApiTurn({
-                acknowledge,
-                actorId: actor.userId,
-                cancellation: options.cancellation,
-                conversation,
-                conversationId: context.conversationId,
-                lifecycle,
-                sandboxRef,
-                signal: cancellationSignal,
-                turnId,
-                userMessageId,
-              });
-            } catch (error) {
-              if (hasLostTurnInputCommit(error)) {
-                return { status: "lost_lease" };
-              }
-              throw error;
-            }
-            return { status: "completed" };
-          };
 
         const deliverAssistantMessage = async (
           value: AssistantMessage | string,
@@ -705,6 +675,50 @@ export function createApiTurnWorker(options: {
         };
 
         try {
+          if (cancellationSignal?.aborted) {
+            return await completeCancelledTurn();
+          }
+          if (!isResume) {
+            // Match Slack: a newer user message supersedes an auth-parked turn
+            // instead of leaving two active API turns or letting a late OAuth
+            // wake resume stale work.
+            const authParked = (
+              await listTurnSummaries(context.conversationId)
+            ).filter(
+              (summary) =>
+                summary.surface === "api" &&
+                !summary.dispatchId &&
+                summary.state === "paused" &&
+                summary.resumeReason === "auth",
+            );
+            for (const parked of authParked) {
+              if (cancellationSignal?.aborted) {
+                return await completeCancelledTurn();
+              }
+              await abandonTurnRecord({
+                conversationId: context.conversationId,
+                turnId: parked.turnId,
+                errorMessage:
+                  "Auth-parked session superseded by a new user message",
+              });
+              // Keep pendingAuth: MCP OAuth still needs it to accept an in-flight
+              // connect and store credentials. The abandoned turn record makes a
+              // late callback a resume no-op, matching Slack supersede behavior.
+              markTurnClosed({
+                conversation,
+                nowMs: Date.now(),
+                sessionId: parked.turnId,
+              });
+            }
+            if (authParked.length > 0) {
+              // Drop the dashboard connect prompt so a superseded OAuth flow
+              // cannot leave a stale banner after the user moves on.
+              await deleteWebAuthorization({
+                actorId: actor.userId,
+                conversationId: context.conversationId,
+              });
+            }
+          }
           await persistThreadStateById(context.conversationId, {
             conversation,
           });
@@ -735,7 +749,7 @@ export function createApiTurnWorker(options: {
             publishExternally: false,
             source,
             surface: "api",
-            ...(cancellationSignal ? { signal: cancellationSignal } : {}),
+            ...(cancellationSignal ? { signal: cancellationSignal } : undefined),
             authorization: createWebAuthorization({
               actorId: actor.userId,
               conversationId: context.conversationId,
@@ -784,14 +798,11 @@ export function createApiTurnWorker(options: {
               conversation,
               sandboxRef,
             });
-            if (cancellationSignal) {
-              options.cancellation?.park(
-                context.conversationId,
-                cancellationSignal,
-              );
+            if (appSignal) {
+              options.cancellation?.park(context.conversationId, appSignal);
             }
             await acknowledge();
-            return { status: "completed" };
+            return { status: "paused" };
           }
           finishCancellation();
           reply = outcome.result;
@@ -879,7 +890,7 @@ export function createApiTurnWorker(options: {
             await lifecycle.fail({
               conversationId: context.conversationId,
               createdAtMs: Date.now(),
-              ...(modelFailureEventId ? { eventId: modelFailureEventId } : {}),
+              ...(modelFailureEventId ? { eventId: modelFailureEventId } : undefined),
               failureCode: "model_execution_failed",
               turnId,
             });
@@ -932,7 +943,7 @@ export function createApiTurnWorker(options: {
           await lifecycle.fail({
             conversationId: context.conversationId,
             createdAtMs: Date.now(),
-            ...(failureEventId ? { eventId: failureEventId } : {}),
+            ...(failureEventId ? { eventId: failureEventId } : undefined),
             failureCode,
             turnId,
           });

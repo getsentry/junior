@@ -443,7 +443,7 @@ describe("model handoff composition", () => {
                 ok: result.ok,
                 ...(result.result !== undefined
                   ? { result: result.result }
-                  : {}),
+                  : undefined),
               });
             }
           })(event.report);
@@ -968,16 +968,16 @@ describe("model handoff composition", () => {
         modelId: "xai/grok-4.5",
         reasoningLevel: "high",
         triggeringToolCallId: "handoff-call-default",
-        replacementHistory: [
-          {
-            item: {
-              type: "user_message",
-              timestamp: Date.now(),
-              content: [{ type: "text", text: "Continue the refactor." }],
-              provenance: { authority: "context" },
-            },
-          },
-        ],
+        replacementHistory: [],
+      },
+    });
+    await getConversationEventStore().replaceHistory(conversationId, {
+      createdAtMs: Date.now(),
+      data: {
+        type: "compaction",
+        modelProfile: "standard",
+        modelId: "xai/grok-4.5",
+        replacementHistory: [],
       },
     });
 

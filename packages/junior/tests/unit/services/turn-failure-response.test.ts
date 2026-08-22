@@ -20,8 +20,8 @@ function providerErrorReply(args: {
       toolResultCount: 0,
       toolErrorCount: 0,
       usedPrimaryText: false,
-      ...(args.errorMessage ? { errorMessage: args.errorMessage } : {}),
-      ...(args.providerError ? { providerError: args.providerError } : {}),
+      ...(args.errorMessage ? { errorMessage: args.errorMessage } : undefined),
+      ...(args.providerError ? { providerError: args.providerError } : undefined),
     },
   };
 }

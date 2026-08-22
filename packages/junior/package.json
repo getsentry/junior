@@ -1,6 +1,6 @@
 {
   "name": "@sentry/junior",
-  "version": "0.178.0",
+  "version": "0.179.0",
   "private": false,
   "publishConfig": {
     "access": "public"
@@ -104,9 +104,10 @@
     "zod": "catalog:"
   },
   "devDependencies": {
-    "@hono/node-server": "1.19.14",
     "@emnapi/core": "^1.10.0",
     "@emnapi/runtime": "^1.10.0",
+    "@hono/node-server": "1.19.14",
+    "@oxlint/plugins": "1.79.0",
     "@sentry/junior-github": "workspace:*",
     "@sentry/junior-memory": "workspace:*",
     "@sentry/junior-testing": "workspace:*",
@@ -117,7 +118,7 @@
     "drizzle-kit": "catalog:",
     "msw": "^2.14.6",
     "nitro": "3.0.260522-beta",
-    "oxlint": "^1.66.0",
+    "oxlint": "^1.79.0",
     "tsup": "^8.5.1",
     "typescript": "^6.0.3",
     "vercel": "^54.4.0",

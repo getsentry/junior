@@ -140,7 +140,7 @@ async function build(
           runtime,
           signal,
           ...(sandboxCredentials ?? {}),
-          ...(resources ? { resources } : {}),
+          ...(resources ? { resources } : undefined),
         }),
       );
 
@@ -418,7 +418,7 @@ export async function resolve(params: {
         ),
         createdAtMs: lockResult.createdAtMs,
         buildDurationMs: lockResult.buildDurationMs,
-        ...(rebuildReason ? { rebuildReason } : {}),
+        ...(rebuildReason ? { rebuildReason } : undefined),
       };
     },
   );

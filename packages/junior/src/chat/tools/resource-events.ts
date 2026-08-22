@@ -29,7 +29,7 @@ export function createResourceEventTools(
       ? {
           watchResourceEvents: createWatchResourceEventsTool(context, catalog),
         }
-      : {}),
+      : undefined),
     listResourceEventSubscriptions:
       createListResourceEventSubscriptionsTool(context),
     stopWatchingResources: createStopWatchingResourcesTool(context),

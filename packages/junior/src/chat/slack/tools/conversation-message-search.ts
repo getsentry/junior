@@ -97,11 +97,11 @@ async function resolveSearchFilters(input: {
   }
 
   return {
-    ...(afterMs !== undefined ? { afterMs } : {}),
-    ...(annotation ? { annotation } : {}),
-    ...(beforeMs !== undefined ? { beforeMs } : {}),
-    ...(channelId ? { channelId } : {}),
-    ...(query ? { query } : {}),
+    ...(afterMs !== undefined ? { afterMs } : undefined),
+    ...(annotation ? { annotation } : undefined),
+    ...(beforeMs !== undefined ? { beforeMs } : undefined),
+    ...(channelId ? { channelId } : undefined),
+    ...(query ? { query } : undefined),
   };
 }
 
@@ -205,8 +205,8 @@ export function createSlackConversationMessageSearchTool(
             message_timestamp: new Date(match.messageCreatedAtMs).toISOString(),
             excerpt: match.excerpt,
             channel_id: match.providerDestinationId,
-            ...(match.channelName ? { channel_name: match.channelName } : {}),
-            ...(permalink ? { permalink } : {}),
+            ...(match.channelName ? { channel_name: match.channelName } : undefined),
+            ...(permalink ? { permalink } : undefined),
           };
         }),
       );
@@ -214,13 +214,13 @@ export function createSlackConversationMessageSearchTool(
       return {
         ...(filters.afterMs !== undefined
           ? { after: new Date(filters.afterMs).toISOString() }
-          : {}),
-        ...(filters.annotation ? { annotation: filters.annotation } : {}),
+          : undefined),
+        ...(filters.annotation ? { annotation: filters.annotation } : undefined),
         ...(filters.beforeMs !== undefined
           ? { before: new Date(filters.beforeMs).toISOString() }
-          : {}),
-        ...(filters.query ? { query: filters.query } : {}),
-        ...(filters.channelId ? { channel_id: filters.channelId } : {}),
+          : undefined),
+        ...(filters.query ? { query: filters.query } : undefined),
+        ...(filters.channelId ? { channel_id: filters.channelId } : undefined),
         count: matchesOutput.length,
         matches: matchesOutput,
       };

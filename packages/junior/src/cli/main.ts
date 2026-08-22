@@ -73,7 +73,7 @@ export async function runMain(
     runSnapshotCreate,
     runCheck,
     runUpgrade: async () => await runUpgrade(pluginSet),
-    ...(pluginCommands ? { runPluginCommand: pluginCommands.run } : {}),
+    ...(pluginCommands ? { runPluginCommand: pluginCommands.run } : undefined),
   });
   if (instrument) {
     await flushSentry();

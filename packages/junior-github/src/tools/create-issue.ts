@@ -112,10 +112,11 @@ const gitHubIssueDataSchema = z.object({
   url: z.string(),
 });
 
-const gitHubIssueOutputSchema = pluginToolOutputSchema.extend({
-  target: z.literal("createIssue"),
-  ...gitHubIssueDataSchema.shape,
-});
+const gitHubIssueOutputSchema = pluginToolOutputSchema.merge(
+  gitHubIssueDataSchema.extend({
+    target: z.literal("createIssue"),
+  }),
+);
 
 function gitHubIssueToolResult(
   input: CreateGitHubIssueInput,
@@ -129,7 +130,7 @@ function gitHubIssueToolResult(
         repo: `${repo.owner}/${repo.name}`,
       })
     : undefined;
-  const data = { ...result, ...(subscribable ? { subscribable } : {}) };
+  const data = { ...result, ...(subscribable ? { subscribable } : undefined) };
   return {
     target: "createIssue",
     ...data,
@@ -236,7 +237,7 @@ async function createGitHubIssueRequest(
       conversationId,
       dashboardUrl,
     ),
-    ...(labels?.length ? { labels } : {}),
+    ...(labels?.length ? { labels } : undefined),
   };
   return new Request(
     `https://api.github.com/repos/${encodeURIComponent(

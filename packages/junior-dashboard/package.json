@@ -1,6 +1,6 @@
 {
   "name": "@sentry/junior-dashboard",
-  "version": "0.178.0",
+  "version": "0.179.0",
   "private": false,
   "publishConfig": {
     "access": "public"
@@ -50,6 +50,7 @@
     "zod": "catalog:"
   },
   "devDependencies": {
+    "@oxlint/plugins": "1.79.0",
     "@tailwindcss/cli": "^4.3.0",
     "@tanstack/eslint-plugin-query": "^5.101.4",
     "@types/node": "^25.9.1",
@@ -57,7 +58,7 @@
     "@types/react-dom": "^19.2.3",
     "@vitest/coverage-v8": "4.1.7",
     "eslint": "^10.8.0",
-    "oxlint": "^1.66.0",
+    "oxlint": "^1.79.0",
     "tailwindcss": "^4.3.0",
     "tsup": "^8.5.1",
     "typescript": "^6.0.3",

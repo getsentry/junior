@@ -499,8 +499,10 @@ async function executeAgentRunInPrivacyContext(
       destination: routing.destination,
       ...(routing.destinationVisibility
         ? { destinationVisibility: routing.destinationVisibility }
-        : {}),
-      ...(routing.dispatch?.id ? { dispatchId: routing.dispatch.id } : {}),
+        : undefined),
+      ...(routing.dispatch?.id
+        ? { dispatchId: routing.dispatch.id }
+        : undefined),
       durability,
       recordActiveMcpProviders,
       publishExternally:
@@ -586,15 +588,16 @@ async function executeAgentRunInPrivacyContext(
     if (storedTurnRoute) {
       const resumedAfterHandoff =
         handoffEnabled &&
-        projection.historyReplacementType === "handoff" &&
+        projection.historyReplacementSeq !== undefined &&
+        projection.historyReplacementSeq > storedTurnRoute.seq &&
         activeModelProfile !== storedTurnRoute.modelProfile;
       if (resumedAfterHandoff) {
         const activeProfileConfig = profileConfig(
           botConfig,
           activeModelProfile,
         );
-        // After handoff, profile config (else inherited old route) is authority.
-        // Handoff does not write a new turn_routed event.
+        // A replacement committed after routing is authority. This includes
+        // compaction after handoff because handoff does not rewrite the route.
         turnRoute = {
           profile: activeModelProfile,
           reasoningLevel:
@@ -608,7 +611,7 @@ async function executeAgentRunInPrivacyContext(
           reasoningLevel: storedTurnRoute.reasoningLevel,
           ...(storedTurnRoute.confidence !== undefined
             ? { confidence: storedTurnRoute.confidence }
-            : {}),
+            : undefined),
           reason: `persisted:${storedTurnRoute.source}`,
           source: storedTurnRoute.source,
         };
@@ -689,11 +692,11 @@ async function executeAgentRunInPrivacyContext(
         modelId: routedModelId,
         ...(turnRoute.costUsd !== undefined
           ? { costUsd: turnRoute.costUsd }
-          : {}),
+          : undefined),
         reasoningLevel: turnRoute.reasoningLevel,
         ...(turnRoute.confidence !== undefined
           ? { confidence: turnRoute.confidence }
-          : {}),
+          : undefined),
         source: turnRoute.source ?? "configured",
       });
     }
@@ -1040,7 +1043,7 @@ async function executeAgentRunInPrivacyContext(
                   ...pendingMessages.map((entry) => entry.message),
                 ],
               }
-            : {}),
+            : undefined),
           signal: hookSignal,
         },
         {
@@ -1167,7 +1170,7 @@ async function executeAgentRunInPrivacyContext(
       getApiKey: getGatewayApiKey,
       streamFn: createTracedStreamFn({
         conversationPrivacy,
-        ...(streamFn ? { base: streamFn } : {}),
+        ...(streamFn ? { base: streamFn } : undefined),
       }),
       steeringMode: "all",
       beforeToolCall: async ({ assistantMessage }) => {
@@ -1444,7 +1447,7 @@ async function executeAgentRunInPrivacyContext(
                         "gen_ai.request.reasoning.level":
                           turnRoute.reasoningLevel,
                       }
-                    : {}),
+                    : undefined),
                   "app.ai.turn_timeout_ms": turnTimeoutBudgetMs,
                   "app.ai.turn_deadline_remaining_ms": Math.max(
                     0,
@@ -1584,7 +1587,7 @@ async function executeAgentRunInPrivacyContext(
               setSpanAttributes({
                 ...(outputMessagesAttribute
                   ? { "gen_ai.output.messages": outputMessagesAttribute }
-                  : {}),
+                  : undefined),
                 ...toGenAiMessagesTraceAttributes(
                   "gen_ai.output",
                   outputMessages,
@@ -1595,7 +1598,7 @@ async function executeAgentRunInPrivacyContext(
                         normalizeGenAiFinishReason(lastAssistant.stopReason),
                       ],
                     }
-                  : {}),
+                  : undefined),
                 ...extractGenAiUsageAttributes(currentPhaseUsage),
               });
               const pendingAuthPause = getPendingAuthPause();
@@ -1670,18 +1673,20 @@ async function executeAgentRunInPrivacyContext(
             ? {
                 "gen_ai.agent.reasoning.level_confidence": turnRoute.confidence,
               }
-            : {}),
+            : undefined),
           "gen_ai.output.type": "text",
           ...(conversationPrivacy
             ? { "app.conversation.privacy": conversationPrivacy }
-            : {}),
+            : undefined),
           "app.ai.session.conversation_id": conversationId,
           "app.ai.turn.session_id": turnId,
-          ...(currentSliceId ? { "app.ai.turn.slice_id": currentSliceId } : {}),
+          ...(currentSliceId
+            ? { "app.ai.turn.slice_id": currentSliceId }
+            : undefined),
           ...toGenAiMessagesTraceAttributes("gen_ai.input", inputMessages),
           ...(inputMessagesAttribute
             ? { "gen_ai.input.messages": inputMessagesAttribute }
-            : {}),
+            : undefined),
         },
       );
       if (authPauseOutcome) {
@@ -1818,7 +1823,7 @@ async function executeAgentRunInPrivacyContext(
             ? {
                 reasoningLevel: turnRoute.reasoningLevel,
               }
-            : {}),
+            : undefined),
           toolCalls: [],
           toolResultCount: 0,
           toolErrorCount: 0,

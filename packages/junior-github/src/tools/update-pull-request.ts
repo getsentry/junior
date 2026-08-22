@@ -64,10 +64,11 @@ interface Result extends PluginToolOutput, PullRequest {
   target: "updatePullRequest";
   subscribable?: SubscribableResource;
 }
-const outputSchema = pluginToolOutputSchema.extend({
-  target: z.literal("updatePullRequest"),
-  ...pullRequestSchema.shape,
-});
+const outputSchema = pluginToolOutputSchema.merge(
+  pullRequestSchema.extend({
+    target: z.literal("updatePullRequest"),
+  }),
+);
 
 function nonEmptyString(value: string | undefined, name: string): string {
   if (!value?.trim()) {
@@ -129,7 +130,7 @@ export function createGitHubUpdatePullRequestTool(
       const update = parsedInput.data;
       const repo = parseRepo(update.repo);
       const payload = {
-        ...(update.title !== undefined ? { title: update.title } : {}),
+        ...(update.title !== undefined ? { title: update.title } : undefined),
         ...(update.body !== undefined
           ? {
               body: appendGitHubFooter(
@@ -138,9 +139,9 @@ export function createGitHubUpdatePullRequestTool(
                 ctx.slack?.conversationLink?.url,
               ),
             }
-          : {}),
-        ...(update.base !== undefined ? { base: update.base } : {}),
-        ...(update.state !== undefined ? { state: update.state } : {}),
+          : undefined),
+        ...(update.base !== undefined ? { base: update.base } : undefined),
+        ...(update.state !== undefined ? { state: update.state } : undefined),
       };
       const response = await ctx.egress.fetch({
         provider: "github",
@@ -187,7 +188,7 @@ export function createGitHubUpdatePullRequestTool(
         draft: providerResult.draft,
         number: providerResult.number,
         state: providerResult.state,
-        ...(subscribable ? { subscribable } : {}),
+        ...(subscribable ? { subscribable } : undefined),
         title: providerResult.title,
         url: providerResult.html_url,
       };

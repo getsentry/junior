@@ -1,4 +1,17 @@
 # Changelog
+## 0.179.0
+
+### Bug Fixes 🐛
+
+- (tasks) Frame automated agent input plainly by @sentry-junior in [#1653](https://github.com/getsentry/junior/pull/1653)
+
+### Internal Changes 🔧
+
+#### Scheduler
+
+- Remove SQL store facade by @dcramer in [#1652](https://github.com/getsentry/junior/pull/1652)
+- Remove dead state backend by @dcramer in [#1648](https://github.com/getsentry/junior/pull/1648)
+
 ## 0.178.0
 
 ### New Features ✨

@@ -109,7 +109,7 @@ export async function completeLatestMcpAuth(args: {
     agentRunner: args.agentRunner,
     ...(args.conversationWorkQueue
       ? { conversationWorkQueue: args.conversationWorkQueue }
-      : {}),
+      : undefined),
   });
 }
 

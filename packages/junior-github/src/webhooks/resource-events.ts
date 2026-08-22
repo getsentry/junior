@@ -176,7 +176,7 @@ function normalizeDeploymentStatusEvent(
       eventType,
       occurredAtMs: providerTime(parsed.statusCreatedAt) ?? Date.now(),
       identifier: resource.identifier,
-      ...(terminal && completeOnTerminalEvent ? { terminal: true } : {}),
+      ...(terminal && completeOnTerminalEvent ? { terminal: true } : undefined),
       trustedSummary: `${resource.label} ${outcome} (deployment ${parsed.deploymentId}).`,
       untrustedText: parsed.description ?? undefined,
     }),
@@ -305,7 +305,7 @@ export function buildCheckSuiteResourceEvent(args: {
   if (args.eventType === "pull_request.checks.failed" && failingCount > 0) {
     data.failingChecks = failingChecks.map((check) => ({
       conclusion: check.conclusion,
-      ...(check.htmlUrl ? { htmlUrl: check.htmlUrl } : {}),
+      ...(check.htmlUrl ? { htmlUrl: check.htmlUrl } : undefined),
       checkRunId: check.checkRunId,
     }));
   }
@@ -337,7 +337,7 @@ export function buildCheckSuiteResourceEvent(args: {
     identifier: resource.identifier,
     trustedSummary,
     data,
-    ...(untrustedText ? { untrustedText } : {}),
+    ...(untrustedText ? { untrustedText } : undefined),
   };
 }
 
@@ -380,7 +380,7 @@ export function selectFailingChecks(
     failing.push({
       checkRunId,
       conclusion,
-      ...(htmlUrl ? { htmlUrl } : {}),
+      ...(htmlUrl ? { htmlUrl } : undefined),
       name,
     });
   }
@@ -562,7 +562,7 @@ function normalizeIssueEvents(
       occurredAtMs,
       identifier: issue.identifier,
       trustedSummary: `${issue.label} was ${state}.`,
-      ...(untrustedText ? { untrustedText } : {}),
+      ...(untrustedText ? { untrustedText } : undefined),
     },
     {
       eventKey: gitHubEventKey(deliveryId, `issue.${state}`),
@@ -570,7 +570,7 @@ function normalizeIssueEvents(
       occurredAtMs,
       identifier: repository.identifier,
       trustedSummary: `${issue.label} was ${state}.`,
-      ...(untrustedText ? { untrustedText } : {}),
+      ...(untrustedText ? { untrustedText } : undefined),
     },
   ];
 }
@@ -715,9 +715,9 @@ function pullRequestLifecycleEvents(input: {
       eventType: input.eventType,
       occurredAtMs: input.occurredAtMs,
       identifier: input.resource.identifier,
-      ...(input.terminal ? { terminal: true } : {}),
+      ...(input.terminal ? { terminal: true } : undefined),
       trustedSummary: input.trustedSummary,
-      ...(input.untrustedText ? { untrustedText: input.untrustedText } : {}),
+      ...(input.untrustedText ? { untrustedText: input.untrustedText } : undefined),
     },
     input.repo,
   );
@@ -863,9 +863,9 @@ function normalizeReleaseEvent(
       occurredAtMs:
         providerTime(parsed.data.release.published_at) ?? Date.now(),
       identifier: resource.identifier,
-      ...(completeOnTerminalEvent ? { terminal: true } : {}),
+      ...(completeOnTerminalEvent ? { terminal: true } : undefined),
       trustedSummary: `${resource.label} was published (release ${parsed.data.release.id}).`,
-      ...(untrustedText ? { untrustedText } : {}),
+      ...(untrustedText ? { untrustedText } : undefined),
     }),
   );
 }

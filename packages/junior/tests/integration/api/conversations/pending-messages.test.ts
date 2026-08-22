@@ -51,7 +51,7 @@ describe("conversation pending messages API", () => {
       {
         actorIdentity: {
           email: actor.email,
-          ...(actor.fullName ? { fullName: actor.fullName } : {}),
+          ...(actor.fullName ? { fullName: actor.fullName } : undefined),
         },
         createdAt: expect.any(String),
         delivery: "defer",

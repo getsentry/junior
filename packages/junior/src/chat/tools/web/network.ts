@@ -176,11 +176,11 @@ async function fetchWithPinnedLookup(
       {
         protocol: url.protocol,
         hostname: url.hostname,
-        ...(url.port ? { port: url.port } : {}),
+        ...(url.port ? { port: url.port } : undefined),
         path: `${url.pathname}${url.search}`,
         method: "GET",
         lookup,
-        ...(url.protocol === "https:" ? { servername: url.hostname } : {}),
+        ...(url.protocol === "https:" ? { servername: url.hostname } : undefined),
         headers: {
           "user-agent": USER_AGENT,
           "accept-encoding": "identity",

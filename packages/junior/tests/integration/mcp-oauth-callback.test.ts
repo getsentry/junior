@@ -170,7 +170,7 @@ async function createAwaitingMcpTurnRecord(args: {
     destination: SLACK_DESTINATION,
     destinationVisibility: "public",
     ...(args.includeSource === false
-      ? {}
+      ? undefined
       : { source: args.source ?? slackSource(args.threadTs) }),
     piMessages: [
       {

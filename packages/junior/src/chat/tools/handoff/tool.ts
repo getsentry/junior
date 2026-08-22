@@ -39,7 +39,7 @@ export function createHandoffTool(
         throw new ToolInputError("Handoff requires an active tool call ID");
       }
       await handoff.execute(profile, {
-        ...(options.signal ? { signal: options.signal } : {}),
+        ...(options.signal ? { signal: options.signal } : undefined),
         toolCallId: options.toolCallId,
       });
       return {

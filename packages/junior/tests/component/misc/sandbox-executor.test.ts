@@ -199,7 +199,7 @@ function createTestSandboxRuntime(options: SandboxFixtureOptions = {}) {
             id: options.sandboxId,
             ...(options.sandboxDependencyProfileHash
               ? { profileHash: options.sandboxDependencyProfileHash }
-              : {}),
+              : undefined),
           }
         : undefined,
       skills,
@@ -214,7 +214,7 @@ function createTestSandboxRuntime(options: SandboxFixtureOptions = {}) {
           sandboxId: ref.id,
           ...(ref.profileHash
             ? { sandboxDependencyProfileHash: ref.profileHash }
-            : {}),
+            : undefined),
         });
       },
     }));
@@ -249,7 +249,7 @@ function createTestSandbox(options: SandboxFixtureOptions = {}) {
             id: options.sandboxId,
             ...(options.sandboxDependencyProfileHash
               ? { profileHash: options.sandboxDependencyProfileHash }
-              : {}),
+              : undefined),
           }
         : undefined,
       skills,
@@ -267,7 +267,7 @@ function createTestSandbox(options: SandboxFixtureOptions = {}) {
           sandboxId: ref.id,
           ...(ref.profileHash
             ? { sandboxDependencyProfileHash: ref.profileHash }
-            : {}),
+            : undefined),
         });
       },
     }));
