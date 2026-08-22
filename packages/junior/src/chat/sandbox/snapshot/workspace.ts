@@ -602,9 +602,29 @@ function shouldYieldWait(shouldYield?: () => boolean): boolean {
   );
 }
 
+/** Return a ready Workspace snapshot without starting or waiting on a build. */
+export async function getReadyWorkspaceSnapshot(params: {
+  workspace: Workspace;
+  runtime: string;
+  staleSnapshotId?: string;
+}): Promise<Snapshot | null> {
+  const value = profile.create(params.runtime, params.workspace);
+  if (!value) {
+    throw new Error(
+      `Workspace ${params.workspace.name} has no snapshot profile`,
+    );
+  }
+  return await snapshotFromSql(
+    params.workspace.id,
+    value,
+    params.staleSnapshotId,
+  );
+}
+
 /**
  * Resolve a Workspace snapshot through resumable execution slices.
  * Cold builds have one shared one-hour budget across every execution slice.
+ * Callers outside the background job should use getReadyWorkspaceSnapshot.
  */
 export async function resolveWorkspaceSnapshot(params: {
   workspace: Workspace;
@@ -620,12 +640,15 @@ export async function resolveWorkspaceSnapshot(params: {
   ): Promise<void>;
   removeCredentialRoute: boolean;
 }): Promise<Snapshot> {
+  // Always complete at least one slice before soft-yield so a fresh wake cannot
+  // spin without progress near the host deadline.
+  let advanced = false;
   for (;;) {
     params.signal?.throwIfAborted();
     const workspace = await getWorkspace(getDb(), params.workspace.id);
     if (!workspace) throw workspaceDeletedError(params.workspace);
     const slice = { ...params, workspace };
-    if (shouldYieldWait(slice.shouldYield)) {
+    if (advanced && shouldYieldWait(slice.shouldYield)) {
       throw new WorkspaceSnapshotWaitingError(workspace.name);
     }
 
@@ -634,12 +657,14 @@ export async function resolveWorkspaceSnapshot(params: {
       snapshot = await advanceWorkspaceSnapshot(slice);
     } catch (error) {
       if (!isSandboxApiTransientError(error)) throw error;
+      advanced = true;
       if (shouldYieldWait(slice.shouldYield)) {
         throw new WorkspaceSnapshotWaitingError(workspace.name);
       }
       await sleep(TRANSIENT_API_RETRY_MS, params.signal);
       continue;
     }
+    advanced = true;
     if (shouldYieldWait(slice.shouldYield)) {
       throw new WorkspaceSnapshotWaitingError(workspace.name);
     }

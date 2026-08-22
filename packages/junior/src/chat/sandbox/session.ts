@@ -27,7 +27,7 @@ import {
   resolve as resolveSnapshot,
   type Snapshot,
 } from "@/chat/sandbox/snapshot/resolve";
-import { resolveWorkspaceSnapshot } from "@/chat/sandbox/snapshot/workspace";
+import { getReadyWorkspaceSnapshot } from "@/chat/sandbox/snapshot/workspace";
 import { syncSkillsToSandbox } from "@/chat/sandbox/skill-sync";
 import {
   createSandboxSession,
@@ -419,15 +419,17 @@ export function createSandboxRuntime(
       if (!isMissingError(error)) throw error;
       setSpanAttributes({ "app.sandbox.snapshot.rebuild_after_missing": true });
       const rebuilt = params.workspace
-        ? await resolveWorkspaceSnapshot({
+        ? await getReadyWorkspaceSnapshot({
             workspace: params.workspace,
             runtime,
             staleSnapshotId: snapshot.snapshotId,
-            signal,
-            shouldYield: options.shouldYield,
-            applyNetworkPolicy,
-            prepareRepositories: options.onWorkspacePrepare,
-            removeCredentialRoute: Boolean(options.createNetworkPolicy),
+          }).then((ready) => {
+            if (!ready) {
+              throw new Error(
+                `Workspace ${params.workspace!.name} snapshot is still building`,
+              );
+            }
+            return ready;
           })
         : await resolveSnapshot({
             runtime,
@@ -481,14 +483,16 @@ export function createSandboxRuntime(
         },
         async () => {
           const snapshot = workspace
-            ? await resolveWorkspaceSnapshot({
+            ? await getReadyWorkspaceSnapshot({
                 workspace,
                 runtime,
-                signal,
-                shouldYield: options.shouldYield,
-                applyNetworkPolicy,
-                prepareRepositories: options.onWorkspacePrepare,
-                removeCredentialRoute: Boolean(options.createNetworkPolicy),
+              }).then((ready) => {
+                if (!ready) {
+                  throw new Error(
+                    `Workspace ${workspace.name} snapshot is still building`,
+                  );
+                }
+                return ready;
               })
             : await resolveSnapshot({
                 runtime,

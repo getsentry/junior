@@ -1,8 +1,20 @@
 import { z } from "zod";
+import { subscribableResourceSchema } from "@sentry/junior-plugin-api";
 import { getDb } from "@/chat/db";
 import { logWarn } from "@/chat/logging";
 import { getPlugins } from "@/chat/plugins/agent-hooks";
-import { isWorkspaceSnapshotWaitingError } from "@/chat/sandbox/snapshot/waiting-error";
+import {
+  WORKSPACE_SNAPSHOT_FAILED_EVENT,
+  WORKSPACE_SNAPSHOT_READY_EVENT,
+  workspaceSnapshotSubscribable,
+} from "@/chat/sandbox/snapshot/events";
+import { ensureWorkspaceSnapshotBuild } from "@/chat/sandbox/snapshot/job-runner";
+import { createResourceEventSubscription } from "@/chat/resource-events/store";
+import {
+  canUseResourceEventSubscriptionTools,
+  RESOURCE_SUBSCRIPTION_DEFAULT_TTL_MS,
+  requireResourceWatchConversation,
+} from "@/chat/resource-events/tool-support";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
@@ -294,7 +306,7 @@ export function createWorkspaceTools(
         readOnlyHint: false,
       },
       description:
-        "Replace the current sandbox with a named preconfigured repository workspace. Files in the prior sandbox do not carry over.",
+        "Replace the current sandbox with a named preconfigured repository workspace. Files in the prior sandbox do not carry over. When the Workspace snapshot is still building, returns building status plus a subscribable handle and starts an internal watch when possible.",
       inputSchema: z
         .object({
           name: z.string().trim().min(1).describe("Exact workspace name."),
@@ -302,25 +314,66 @@ export function createWorkspaceTools(
         .strict(),
       outputSchema: juniorToolOutputSchema.extend({
         workspace: workspaceSchema,
+        status: z.enum(["ready", "building"]).optional(),
+        build_id: z.string().optional(),
+        profile_hash: z.string().optional(),
+        subscription_id: z.string().optional(),
+        subscribable: subscribableResourceSchema.optional(),
       }),
       async execute({ name }, options) {
         const workspace = await getWorkspaceByName(getDb(), name);
         if (!workspace)
           throw new ToolInputError(`Workspace not found: ${name}`);
-        try {
-          await context.workspaces!.switch(workspace, options.signal);
-        } catch (error) {
-          if (isWorkspaceSnapshotWaitingError(error)) {
-            return {
-              workspace: view(workspace),
-              waiting: "workspace_snapshot" as const,
-              timed_out: true as const,
-            };
-          }
-          throw error;
+
+        const build = await ensureWorkspaceSnapshotBuild({ workspace });
+        if (build.status === "failed") {
+          throw new Error(
+            `Workspace ${workspace.name} snapshot failed${
+              build.error ? `: ${build.error}` : ""
+            }`,
+          );
         }
+        if (build.status === "building") {
+          const subscribable = workspaceSnapshotSubscribable({
+            workspaceId: workspace.id,
+            workspaceName: workspace.name,
+          });
+          let subscriptionId: string | undefined;
+          if (canUseResourceEventSubscriptionTools(context)) {
+            const conversationId = requireResourceWatchConversation(context);
+            const subscription = await createResourceEventSubscription({
+              conversationId,
+              destination: context.destination,
+              events: [
+                WORKSPACE_SNAPSHOT_READY_EVENT,
+                WORKSPACE_SNAPSHOT_FAILED_EVENT,
+              ],
+              expiresAtMs: Date.now() + RESOURCE_SUBSCRIPTION_DEFAULT_TTL_MS,
+              intent: `Switch to Workspace ${workspace.name} when its snapshot is ready.`,
+              label: subscribable.label,
+              namespace: subscribable.namespace,
+              identifier: subscribable.identifier,
+              resourceType: subscribable.type,
+            });
+            subscriptionId = subscription.id;
+          }
+          return {
+            workspace: view(workspace),
+            status: "building" as const,
+            profile_hash: build.profileHash,
+            ...(build.buildId ? { build_id: build.buildId } : {}),
+            ...(subscriptionId ? { subscription_id: subscriptionId } : {}),
+            subscribable,
+          };
+        }
+
+        await context.workspaces!.switch(workspace, options.signal);
         await tryRecordWorkspaceSwitchStat(workspace);
-        return { workspace: view(workspace) };
+        return {
+          workspace: view(workspace),
+          status: "ready" as const,
+          profile_hash: build.profileHash,
+        };
       },
     }),
   };
