@@ -1,3 +1,8 @@
+import {
+  credentialTokenFromAuthorizationHeader,
+  fingerprintCredentialToken,
+  fingerprintLeaseAuthorization,
+} from "@/chat/credentials/token-fingerprint";
 import { logInfo, logWarn } from "@/chat/logging";
 import { onPluginEgressResponse } from "@/chat/plugins/credential-hooks";
 import { matchesSandboxEgressDomain } from "@/chat/sandbox/egress/policy";
@@ -505,15 +510,30 @@ function responseHeaders(upstream: Response): Headers {
   return headers;
 }
 
+function leaseTokenFingerprint(
+  lease: SandboxEgressCredentialLease,
+): string | undefined {
+  return fingerprintLeaseAuthorization(lease.headerTransforms);
+}
+
+function injectedTokenFingerprint(headers: Headers): string | undefined {
+  const token = credentialTokenFromAuthorizationHeader(
+    headers.get("authorization") ?? undefined,
+  );
+  return token ? fingerprintCredentialToken(token) : undefined;
+}
+
 function leaseLogAttributes(input: {
   egressId: string;
+  injectedTokenFingerprint?: string;
   lease: SandboxEgressCredentialLease;
   provider: string;
   request: Request;
-  status: number;
+  status?: number;
   upstream?: Response;
   upstreamUrl: URL;
 }): Record<string, unknown> {
+  const leaseFingerprint = leaseTokenFingerprint(input.lease);
   return {
     ...egressAttributes({
       egressId: input.egressId,
@@ -524,9 +544,21 @@ function leaseLogAttributes(input: {
       method: input.request.method,
       path: input.upstreamUrl.pathname,
       provider: input.provider,
-      status: input.status,
+      ...(input.status !== undefined ? { status: input.status } : {}),
     }),
     ...routingAttributes(input.request, input.upstreamUrl),
+    ...(input.lease.grant.leaseScope
+      ? { "app.grant.lease_scope": input.lease.grant.leaseScope }
+      : {}),
+    ...(leaseFingerprint
+      ? { "app.credential.token_fingerprint": leaseFingerprint }
+      : {}),
+    ...(input.injectedTokenFingerprint
+      ? {
+          "app.credential.injected_token_fingerprint":
+            input.injectedTokenFingerprint,
+        }
+      : {}),
     ...(input.upstream
       ? upstreamPermissionAttributes(input.provider, input.upstream)
       : {}),
@@ -694,20 +726,16 @@ export async function executeCredentialedEgressRequest(input: {
     throw error;
   }
 
-  const attributes = (status: number, upstream?: Response) =>
-    leaseLogAttributes({
-      egressId: activeEgressId,
-      lease,
-      provider,
-      request,
-      status,
-      ...(upstream ? { upstream } : {}),
-      upstreamUrl,
-    });
-
   if (!hasSandboxEgressLeaseTransformForHost(lease, upstreamUrl.hostname)) {
     logWarn("sandbox.egress.transform.missing", {
-      ...attributes(403),
+      ...leaseLogAttributes({
+        egressId: activeEgressId,
+        lease,
+        provider,
+        request,
+        status: 403,
+        upstreamUrl,
+      }),
       "app.sandbox.egress.transform_domains": lease.headerTransforms.map(
         (transform) => transform.domain,
       ),
@@ -725,6 +753,21 @@ export async function executeCredentialedEgressRequest(input: {
     upstreamUrl.hostname,
     deps.tracePropagation ?? {},
   );
+  const injectedFingerprint = injectedTokenFingerprint(headers);
+  const attributes = (status?: number, upstream?: Response) =>
+    leaseLogAttributes({
+      egressId: activeEgressId,
+      lease,
+      provider,
+      request,
+      ...(status !== undefined ? { status } : {}),
+      ...(injectedFingerprint
+        ? { injectedTokenFingerprint: injectedFingerprint }
+        : {}),
+      ...(upstream ? { upstream } : {}),
+      upstreamUrl,
+    });
+  logInfo("sandbox.egress.credential.injected", attributes());
   const body = bodyForGrantSelection ?? (await requestBodyBytes(request));
   const intercepted = await deps.interceptHttp?.({
     provider,

@@ -248,17 +248,32 @@ conversation, use `app.dispatch.id` or `agent-dispatch:<dispatch_id>` as
 A turn parked for auth, resumed late, or failed after callback.
 
 Events: `sandbox.egress.credential.needed`,
-`sandbox.egress.credential.unavailable`, `plugin.credential.rejected`,
+`sandbox.egress.credential.unavailable`, `sandbox.egress.credential_lease.stored`,
+`sandbox.egress.credential_lease.reused`, `sandbox.egress.credential.injected`,
+`sandbox.egress.upstream_auth.rejected`, `plugin.credential.rejected`,
+`plugin.log.info` (GitHub mint: `app.log.message=github.installation_token.issued`),
 `subscribed_message.authorization.required`, `agent.continue.schedule.failed`,
 `agent.continue.lock.busy`, `agent.continue.lock.retrying`,
 `oauth.callback.resume.completed`, `oauth.callback.resume.busy`,
 `mcp.oauth_callback.failed`
 
-Spans: resumed `chat.turn`, `chat.reply`
+Spans: resumed `chat.turn`, `chat.reply`, sandbox egress `http.server`
 
 Attributes: `app.credential.provider`, `app.credential.delivery`,
+`app.credential.token_fingerprint`,
+`app.credential.injected_token_fingerprint`, `app.github.accepted_permissions`,
+`app.github.sso`, `app.github.token_permissions`,
+`app.github.token_repositories`, `app.github.token_expires_at`,
+`app.grant.name`, `app.grant.access`, `app.grant.lease_scope`,
 `app.ai.retryable_reason`, `app.ai.session_id`,
 `app.ai.resume_session_version`
+
+Correlate intermittent GitHub write 403s by matching
+`app.credential.token_fingerprint` across mint (`github.installation_token.issued`),
+lease store/reuse, injection, and `sandbox.egress.upstream_auth.rejected`.
+Compare that value with `app.credential.injected_token_fingerprint` on the
+rejected hop. Include `app.github.accepted_permissions` and mint
+`app.github.token_permissions` / `app.github.token_repositories` when present.
 
 ### Skills And Plugins
 

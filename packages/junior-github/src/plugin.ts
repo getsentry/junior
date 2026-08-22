@@ -956,27 +956,33 @@ export function githubPlugin(
       async issueCredential(ctx) {
         try {
           if (ctx.grant.name === "installation-read") {
-            return await issueInstallationCredential({
-              appIdEnv,
-              privateKeyEnv,
-              installationIdEnv,
-              ...(declaredReadPermissions
-                ? { permissions: declaredReadPermissions }
-                : { loadPermissions: loadReadPermissions }),
-            });
+            return await issueInstallationCredential(
+              {
+                appIdEnv,
+                privateKeyEnv,
+                installationIdEnv,
+                ...(declaredReadPermissions
+                  ? { permissions: declaredReadPermissions }
+                  : { loadPermissions: loadReadPermissions }),
+              },
+              { grantName: ctx.grant.name, log: ctx.log },
+            );
           }
           if (ctx.grant.name === "installation-write") {
             const repository = githubRepositoryFromLeaseScope(
               ctx.grant.leaseScope,
             );
-            return await issueInstallationCredential({
-              appIdEnv,
-              privateKeyEnv,
-              installationIdEnv,
-              // This repository-only variant cannot downscope the installed
-              // App envelope with an operation-specific permission body.
-              repositories: [repository.name],
-            });
+            return await issueInstallationCredential(
+              {
+                appIdEnv,
+                privateKeyEnv,
+                installationIdEnv,
+                // This repository-only variant cannot downscope the installed
+                // App envelope with an operation-specific permission body.
+                repositories: [repository.name],
+              },
+              { grantName: ctx.grant.name, log: ctx.log },
+            );
           }
           if (USER_TOKEN_GRANTS.has(ctx.grant.name)) {
             return await issueUserCredential(ctx, {

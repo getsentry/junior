@@ -3,6 +3,8 @@ import {
   issueProviderCredentialLease,
 } from "@/chat/capabilities/factory";
 import { CredentialUnavailableError } from "@/chat/credentials/broker";
+import { fingerprintLeaseAuthorization } from "@/chat/credentials/token-fingerprint";
+import { logInfo } from "@/chat/logging";
 import type {
   PluginAuthorization,
   PluginGrant,
@@ -182,6 +184,30 @@ export function authorizationForSandboxEgressGrant(
  * domains, and reused only while both the provider lease and sandbox context are
  * still valid.
  */
+function leaseCredentialAttributes(input: {
+  context: SandboxEgressCredentialContext;
+  grant: PluginGrant;
+  lease: Pick<SandboxEgressCredentialLease, "headerTransforms">;
+  provider: string;
+}): Record<string, unknown> {
+  const tokenFingerprint = fingerprintLeaseAuthorization(
+    input.lease.headerTransforms,
+  );
+  return {
+    "app.sandbox.egress_id": input.context.egressId,
+    "app.provider.name": input.provider,
+    "app.grant.name": input.grant.name,
+    "app.grant.access": input.grant.access,
+    ...(input.grant.reason ? { "app.grant.reason": input.grant.reason } : {}),
+    ...(input.grant.leaseScope
+      ? { "app.grant.lease_scope": input.grant.leaseScope }
+      : {}),
+    ...(tokenFingerprint
+      ? { "app.credential.token_fingerprint": tokenFingerprint }
+      : {}),
+  };
+}
+
 export async function sandboxEgressCredentialLease(
   provider: string,
   selection: SandboxEgressGrantSelection,
@@ -199,10 +225,19 @@ export async function sandboxEgressCredentialLease(
         `Cached credential lease for ${provider}/${grant.name} has ${cached.grant.access} access, but ${grant.access} was selected`,
       );
     }
-    return {
+    const reused = {
       ...cached,
       grant,
     };
+    logInfo("sandbox.egress.credential_lease.reused", {
+      ...leaseCredentialAttributes({
+        context,
+        grant,
+        lease: reused,
+        provider,
+      }),
+    });
+    return reused;
   }
 
   let lease: {
@@ -291,6 +326,14 @@ export async function sandboxEgressCredentialLease(
   };
   assertLeaseTransformsOwnedByProvider(provider, cachedLease);
   await setSandboxEgressCredentialLease(context, cachedLease);
+  logInfo("sandbox.egress.credential_lease.stored", {
+    ...leaseCredentialAttributes({
+      context,
+      grant,
+      lease: cachedLease,
+      provider,
+    }),
+  });
   return cachedLease;
 }
 

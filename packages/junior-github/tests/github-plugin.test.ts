@@ -105,9 +105,10 @@ function beforeToolContext(actor: TestActor, actors?: TestActor[]) {
   };
 }
 
+const pluginLogInfo = vi.fn();
 const pluginLog = {
   error() {},
-  info() {},
+  info: pluginLogInfo,
   warn() {},
 };
 
@@ -220,10 +221,25 @@ function mockGitHubInstallationApi(): CapturedRequest[] {
     http.post(
       "https://api.github.com/app/installations/:installationId/access_tokens",
       async ({ request }) => {
-        requests.push(await captureRequest(request));
+        const captured = await captureRequest(request);
+        requests.push(captured);
+        const body =
+          captured.body &&
+          typeof captured.body === "object" &&
+          !Array.isArray(captured.body)
+            ? (captured.body as { repositories?: string[] })
+            : {};
         return HttpResponse.json({
           token: "installation-token",
           expires_at: new Date(Date.now() + 60_000).toISOString(),
+          permissions: {
+            contents: "write",
+            metadata: "read",
+          },
+          repositories: (body.repositories ?? ["junior"]).map((name) => ({
+            full_name: `getsentry/${name}`,
+            name,
+          })),
         });
       },
     ),
@@ -2232,6 +2248,7 @@ Conversation: \`local:test:old-conversation\`
     process.env.GITHUB_APP_ID = "123";
     process.env.GITHUB_INSTALLATION_ID = "456";
     process.env.GITHUB_APP_PRIVATE_KEY = privateKey;
+    pluginLogInfo.mockClear();
     const requests = mockGitHubInstallationApi();
     const plugin = githubPlugin({
       appPermissions: {
@@ -2263,6 +2280,15 @@ Conversation: \`local:test:old-conversation\`
       },
       headers: expect.any(Object),
     });
+    expect(pluginLogInfo).toHaveBeenCalledWith(
+      "github.installation_token.issued",
+      expect.objectContaining({
+        "app.grant.name": "installation-write",
+        "app.credential.token_fingerprint": expect.any(String),
+        "app.github.token_permissions": "contents:write,metadata:read",
+        "app.github.token_repositories": ["getsentry/junior"],
+      }),
+    );
   });
 
   it("issues read-only GitHub App installation credentials from plugin hooks", async () => {
