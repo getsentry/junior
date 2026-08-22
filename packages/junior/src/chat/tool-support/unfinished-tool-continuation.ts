@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { AgentTool, AgentToolResult } from "@earendil-works/pi-agent-core";
-import type { PiMessage } from "@/chat/pi/messages";
+import { isRecord } from "@/chat/coerce";
+import { piMessageSchema, type PiMessage } from "@/chat/pi/messages";
 import {
   isContinuablePiBoundary,
   isToolResultMessage,
@@ -16,18 +17,6 @@ export interface UnfinishedToolContinuation {
   toolName: string;
   arguments: Record<string, unknown>;
   reason?: string;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value && typeof value === "object" && !Array.isArray(value));
-}
-
-/**
- * True when a tool result asks the host to re-enter the same tool later.
- * Uses unfinished + continuation, not timed_out.
- */
-export function isUnfinishedToolContinuationResult(details: unknown): boolean {
-  return unfinishedToolContinuationFromDetails(details) !== null;
 }
 
 /** Parse host-continue metadata from structured tool details. */
@@ -123,7 +112,7 @@ export async function continueUnfinishedTool(args: {
   if (!tool) return { kind: "none" };
 
   const toolCallId = randomUUID();
-  const assistantMessage = {
+  const assistantMessage = piMessageSchema.parse({
     role: "assistant",
     api: "openai-responses",
     provider: "openai",
@@ -152,14 +141,14 @@ export async function continueUnfinishedTool(args: {
     },
     timestamp: Date.now(),
     stopReason: "toolUse",
-  } as PiMessage;
+  });
 
   let result: AgentToolResult<unknown>;
   try {
     result = await tool.execute(toolCallId, pending.arguments, args.signal);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    const toolResultMessage = {
+    const toolResultMessage = piMessageSchema.parse({
       role: "toolResult",
       toolCallId,
       toolName: pending.toolName,
@@ -167,7 +156,7 @@ export async function continueUnfinishedTool(args: {
       details: { error: message },
       isError: true,
       timestamp: Date.now(),
-    } as PiMessage;
+    });
     return {
       kind: "failed",
       error,
@@ -176,7 +165,7 @@ export async function continueUnfinishedTool(args: {
   }
 
   const details = injectContinuationToolName(result.details, pending.toolName);
-  const toolResultMessage = {
+  const toolResultMessage = piMessageSchema.parse({
     role: "toolResult",
     toolCallId,
     toolName: pending.toolName,
@@ -184,14 +173,10 @@ export async function continueUnfinishedTool(args: {
     details,
     isError: false,
     timestamp: Date.now(),
-  } as PiMessage;
-  const messages = [
-    ...args.messages,
-    assistantMessage,
-    toolResultMessage,
-  ] as PiMessage[];
+  });
+  const messages = [...args.messages, assistantMessage, toolResultMessage];
 
-  return isUnfinishedToolContinuationResult(details)
+  return unfinishedToolContinuationFromDetails(details, pending.toolName)
     ? { kind: "waiting", messages }
     : { kind: "ready", messages };
 }
