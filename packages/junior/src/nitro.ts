@@ -10,7 +10,7 @@ import {
   injectVirtualConfig,
   type RuntimePluginModule,
 } from "@/build/virtual-config";
-import { PLUGIN_JOB_TOPIC } from "@/chat/plugins/job-delivery";
+import { PLUGIN_TASK_QUEUE_TOPIC } from "@/chat/plugins/task-queue";
 import { resolveConversationWorkQueueTopic } from "@/chat/task-execution/vercel-queue";
 import {
   JUNIOR_CONVERSATION_WORK_CALLBACK_ROUTE,
@@ -223,7 +223,7 @@ function configureVercelDeployment(
       ...otherPluginTaskTriggers,
       {
         type: VERCEL_QUEUE_TRIGGER_TYPE,
-        topic: PLUGIN_JOB_TOPIC,
+        topic: PLUGIN_TASK_QUEUE_TOPIC,
       },
     ],
   };

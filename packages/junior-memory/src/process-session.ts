@@ -3,7 +3,7 @@ import {
   getSourceKey,
   type PluginRunContext,
   type PluginRunTranscriptEntry,
-  type PluginJobContext,
+  type PluginTaskContext,
   type Source,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
@@ -208,7 +208,7 @@ function passiveInput(
 }
 
 async function getTaskExtraction(
-  context: PluginJobContext,
+  context: PluginTaskContext,
   extract: () => Promise<MemoryExtractionResult>,
 ): Promise<MemoryExtractionResult> {
   const cacheKey = `memory-extraction:${context.id}`;
@@ -226,15 +226,15 @@ async function getTaskExtraction(
 }
 
 /**
- * Extract and store memories from a completed session plugin job.
+ * Extract and store memories from a completed session plugin task.
  *
- * Memory owns post-session extraction and consumes only the bounded plugin job
+ * Memory owns post-session extraction and consumes only the bounded plugin task
  * projection. Explicit memory tools and private non-local sources remain hard
  * boundaries so background retries cannot reinterpret user-directed mutations
  * or private conversations.
  */
 export async function processMemorySession(
-  context: PluginJobContext,
+  context: PluginTaskContext,
 ): Promise<void> {
   const run = await context.run.load();
   // Memory tool turns already own memory management or recall; do not reinterpret

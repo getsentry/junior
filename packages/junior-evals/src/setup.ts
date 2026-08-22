@@ -38,8 +38,8 @@ beforeEach(async () => {
 
 afterEach(async () => {
   // Keep stateful runtime modules behind the invocation-provided Redis env.
-  const { drainPendingEvalPluginJobs } = await import("./behavior-harness");
-  await drainPendingEvalPluginJobs();
+  const { drainPendingEvalPluginTasks } = await import("./behavior-harness");
+  await drainPendingEvalPluginTasks();
   const { closeDb } = await import("@/chat/db");
   await closeDb();
 });

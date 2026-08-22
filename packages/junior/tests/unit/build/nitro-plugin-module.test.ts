@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
 import { afterEach, describe, expect, it } from "vitest";
-import { PLUGIN_JOB_TOPIC } from "@/chat/plugins/job-delivery";
+import { PLUGIN_TASK_QUEUE_TOPIC } from "@/chat/plugins/task-queue";
 import { DEFAULT_CONVERSATION_WORK_QUEUE_TOPIC } from "@/chat/task-execution/vercel-queue";
 import {
   JUNIOR_CONVERSATION_WORK_CALLBACK_ROUTE,
@@ -123,7 +123,7 @@ describe("juniorNitro plugin modules", () => {
       experimentalTriggers: [
         {
           type: "queue/v2beta",
-          topic: PLUGIN_JOB_TOPIC,
+          topic: PLUGIN_TASK_QUEUE_TOPIC,
         },
       ],
     });
@@ -169,7 +169,7 @@ describe("juniorNitro plugin modules", () => {
               experimentalTriggers: [
                 {
                   type: "queue/v2beta",
-                  topic: PLUGIN_JOB_TOPIC,
+                  topic: PLUGIN_TASK_QUEUE_TOPIC,
                 },
               ],
             },
@@ -214,7 +214,7 @@ describe("juniorNitro plugin modules", () => {
       experimentalTriggers: [
         {
           type: "queue/v2beta",
-          topic: PLUGIN_JOB_TOPIC,
+          topic: PLUGIN_TASK_QUEUE_TOPIC,
         },
       ],
     });
@@ -307,7 +307,7 @@ describe("juniorNitro plugin modules", () => {
     ).toEqual([
       {
         type: "queue/v2beta",
-        topic: PLUGIN_JOB_TOPIC,
+        topic: PLUGIN_TASK_QUEUE_TOPIC,
       },
     ]);
   });
@@ -523,7 +523,7 @@ describe("juniorNitro plugin modules", () => {
     );
   });
 
-  it("rejects direct plugin sets with jobs because jobs need a runtime import", () => {
+  it("rejects direct plugin sets with tasks because tasks need a runtime import", () => {
     const virtual: Record<string, (() => Promise<string>) | string> = {};
     const nitro = {
       hooks: {
@@ -548,7 +548,7 @@ describe("juniorNitro plugin modules", () => {
               displayName: "Tasked",
               description: "Runtime plugin",
             },
-            jobs: {
+            tasks: {
               processSession: {
                 run() {},
               },

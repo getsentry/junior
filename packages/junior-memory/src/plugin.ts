@@ -98,7 +98,7 @@ export function memoryPlugin(options: MemoryPluginOptions = {}) {
     cli: {
       commands: [createMemoryCliCommand()],
     },
-    jobs: options.disableExtraction
+    tasks: options.disableExtraction
       ? {}
       : {
           processSession: {

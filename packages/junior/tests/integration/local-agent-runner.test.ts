@@ -515,7 +515,7 @@ describe("local agent runner", () => {
           displayName: "Local Task Demo",
           description: "Local task demo",
         },
-        jobs: {
+        tasks: {
           captureSession: {
             async run(ctx) {
               loadedRuns.push(await ctx.run.load());
@@ -737,7 +737,7 @@ describe("local agent runner", () => {
           displayName: "Local Task Failure",
           description: "Local task failure fixture",
         },
-        jobs: {
+        tasks: {
           processSession: {
             run() {
               taskRuns += 1;

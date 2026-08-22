@@ -17,14 +17,14 @@ This directory loads explicitly configured plugins and adapts their public
 - Validate names, manifests, duplicate registrations, and capability conflicts
   before serving traffic.
 - The host owns credential brokering, SQL connection resolution, queue signing,
-  job callbacks, model/embedder access, logging, and lifecycle invocation.
+  task callbacks, model/embedder access, logging, and lifecycle invocation.
 - Plugin hooks receive bounded invocation context and app-owned capabilities.
-- Plugin background jobs receive a conversation-bound event writer. It accepts
+- Plugin background tasks receive a conversation-bound event writer. It accepts
   only definitions registered by that plugin; core owns namespace binding,
   durable ordering, and read-time transcript projection.
 - Plugin-specific prompt text and tools enter the model only through registered
   hooks, skills, or MCP discovery.
-- Plugin failures propagate through the owning hook, job, CLI, migration, or
+- Plugin failures propagate through the owning hook, task, CLI, migration, or
   request boundary; do not silently disable part of a plugin.
 
 The public contract and authoring guidance live in

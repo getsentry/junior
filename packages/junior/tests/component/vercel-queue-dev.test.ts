@@ -28,7 +28,7 @@ afterEach(async () => {
     process.env.JUNIOR_SECRET = originalJuniorSecret;
   }
   vi.doUnmock("@vercel/queue");
-  vi.doUnmock("@/chat/plugins/job-runner");
+  vi.doUnmock("@/chat/plugins/task-runner");
   vi.resetModules();
 });
 
@@ -36,23 +36,23 @@ describe("plugin task Vercel queue integration", () => {
   it("passes parsed plugin task payloads through the Vercel callback", async () => {
     const routeHandler = vi.fn();
     const handleCallback = vi.fn(() => routeHandler);
-    const runPluginJob = vi.fn(async () => undefined);
+    const processPluginTask = vi.fn(async () => undefined);
 
     vi.doMock("@vercel/queue", () => ({
       QueueClient: vi.fn(),
       handleCallback,
       registerDevConsumer: vi.fn(),
     }));
-    vi.doMock("@/chat/plugins/job-runner", () => ({
-      runPluginJob,
+    vi.doMock("@/chat/plugins/task-runner", () => ({
+      processPluginTask,
     }));
 
     const {
-      createPluginJobCallback,
-      signPluginJobMessage,
-    } = await import("@/chat/plugins/job-delivery");
+      createVercelPluginTaskCallback,
+      signPluginTaskQueueMessage,
+    } = await import("@/chat/plugins/task-queue");
 
-    expect(createPluginJobCallback()).toBe(routeHandler);
+    expect(createVercelPluginTaskCallback()).toBe(routeHandler);
 
     type TestQueueMetadata = {
       consumerGroup: string;
@@ -91,7 +91,7 @@ describe("plugin task Vercel queue integration", () => {
     await expect(
       handler({ malformed: true }, metadata),
     ).resolves.toBeUndefined();
-    expect(runPluginJob).not.toHaveBeenCalled();
+    expect(processPluginTask).not.toHaveBeenCalled();
 
     const message = {
       name: "extractMemories",
@@ -102,19 +102,19 @@ describe("plugin task Vercel queue integration", () => {
       plugin: "memory",
     };
     await expect(handler(message, metadata)).resolves.toBeUndefined();
-    expect(runPluginJob).not.toHaveBeenCalled();
+    expect(processPluginTask).not.toHaveBeenCalled();
 
     process.env.JUNIOR_SECRET = "plugin-task-secret";
-    const signedMessage = signPluginJobMessage(message);
+    const signedMessage = signPluginTaskQueueMessage(message);
     await expect(handler(signedMessage, metadata)).resolves.toBeUndefined();
-    expect(runPluginJob).toHaveBeenCalledWith(message);
+    expect(processPluginTask).toHaveBeenCalledWith(message);
 
     await expect(
       handler({ ...signedMessage, unexpected: true }, metadata),
     ).resolves.toBeUndefined();
-    expect(runPluginJob).toHaveBeenCalledTimes(1);
+    expect(processPluginTask).toHaveBeenCalledTimes(1);
 
-    runPluginJob.mockRejectedValueOnce(new Error("task failed"));
+    processPluginTask.mockRejectedValueOnce(new Error("task failed"));
     await expect(handler(signedMessage, metadata)).rejects.toThrow(
       "task failed",
     );
@@ -138,8 +138,8 @@ describe("plugin task Vercel queue integration", () => {
 
     process.env.JUNIOR_SECRET = "plugin-task-secret";
 
-    const { PLUGIN_JOB_TOPIC, pluginJobId, sendPluginJob } = await import(
-      "@/chat/plugins/job-delivery"
+    const { PLUGIN_TASK_QUEUE_TOPIC, pluginTaskId, sendVercelPluginTask } = await import(
+      "@/chat/plugins/task-queue"
     );
     const message = {
       name: "extractMemories",
@@ -150,10 +150,10 @@ describe("plugin task Vercel queue integration", () => {
       plugin: "memory",
     };
 
-    await sendPluginJob(message);
+    await sendVercelPluginTask(message);
 
     expect(send).toHaveBeenCalledWith(
-      PLUGIN_JOB_TOPIC,
+      PLUGIN_TASK_QUEUE_TOPIC,
       {
         ...message,
         signedAtMs: expect.any(Number),
@@ -161,7 +161,7 @@ describe("plugin task Vercel queue integration", () => {
         signature: expect.any(String),
       },
       {
-        idempotencyKey: pluginJobId(message),
+        idempotencyKey: pluginTaskId(message),
         retentionSeconds: 3600,
       },
     );

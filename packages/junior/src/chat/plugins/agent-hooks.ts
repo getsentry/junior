@@ -371,15 +371,15 @@ export function validatePlugins(plugins: PluginRegistration[]): void {
     ) {
       throw new Error(`Plugin "${name}" resourceEvents is invalid`);
     }
-    for (const [jobName, job] of Object.entries(plugin.jobs ?? {})) {
-      if (!PLUGIN_TOOL_NAME_RE.test(jobName)) {
+    for (const [taskName, task] of Object.entries(plugin.tasks ?? {})) {
+      if (!PLUGIN_TOOL_NAME_RE.test(taskName)) {
         throw new Error(
-          `Plugin job "${jobName}" from plugin "${name}" must be a camelCase identifier`,
+          `Plugin task "${taskName}" from plugin "${name}" must be a camelCase identifier`,
         );
       }
-      if (typeof job.run !== "function") {
+      if (typeof task.run !== "function") {
         throw new Error(
-          `Plugin job "${jobName}" from plugin "${name}" must define a run function`,
+          `Plugin task "${taskName}" from plugin "${name}" must define a run function`,
         );
       }
     }

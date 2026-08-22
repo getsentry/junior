@@ -74,9 +74,9 @@ import {
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
 import { bindSpawnAgent } from "@/chat/agent-invocations/spawn";
 import {
-  createPluginJobCallback,
-  registerPluginJobDevConsumer,
-} from "@/chat/plugins/job-delivery";
+  createVercelPluginTaskCallback,
+  registerVercelPluginTaskDevConsumer,
+} from "@/chat/plugins/task-queue";
 import {
   createProductionConversationWorkOptions,
   createProductionSlackWebhookServices,
@@ -781,7 +781,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     | ReturnType<typeof createVercelConversationWorkCallback>
     | undefined;
   let pluginTaskPOST:
-    | ReturnType<typeof createPluginJobCallback>
+    | ReturnType<typeof createVercelPluginTaskCallback>
     | undefined;
   let conversationWorkOptions: ConversationWorkCallbackOptions | undefined;
   const getConversationWorkOptions = () => {
@@ -811,7 +811,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   }
   if (process.env.NODE_ENV === "development") {
     registerVercelConversationWorkDevConsumer(getConversationWorkOptions());
-    registerPluginJobDevConsumer();
+    registerVercelPluginTaskDevConsumer();
   }
   app.post("/api/internal/agent/continue", (c) => {
     agentContinuePOST ??= createVercelConversationWorkCallback(
@@ -820,7 +820,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     return agentContinuePOST(c.req.raw);
   });
   app.post(JUNIOR_PLUGIN_TASK_CALLBACK_ROUTE, (c) => {
-    pluginTaskPOST ??= createPluginJobCallback();
+    pluginTaskPOST ??= createVercelPluginTaskCallback();
     return pluginTaskPOST(c.req.raw);
   });
 

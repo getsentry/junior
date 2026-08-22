@@ -1,7 +1,7 @@
 /**
- * Plugin background-job orchestration.
+ * Plugin background-task orchestration.
  *
- * Core schedules jobs from completed sessions and exposes plugins only a
+ * Core schedules tasks from completed sessions and exposes plugins only a
  * bounded run projection rather than live runtime internals or queue
  * payloads.
  */
@@ -11,7 +11,7 @@ import type {
   PluginRunContext,
   PluginRunTranscriptEntry,
   PluginRunTranscriptProvenance,
-  PluginJobContext,
+  PluginTaskContext,
 } from "@sentry/junior-plugin-api";
 import { pluginRunContextSchema } from "@sentry/junior-plugin-api";
 import { getDb } from "@/chat/db";
@@ -45,22 +45,22 @@ import {
 } from "@/chat/task-execution/checkpoint";
 import { getPlugins } from "./agent-hooks";
 import {
-  pluginJobId,
-  pluginJobParamsSchema,
-  sendPluginJob,
-  type PluginJobParams,
-  type PluginJobMessage,
-} from "./job-delivery";
+  pluginTaskId,
+  pluginTaskParamsSchema,
+  sendVercelPluginTask,
+  type PluginTaskParams,
+  type PluginTaskQueueMessage,
+} from "./task-queue";
 import { getStateAdapter } from "@/chat/state/adapter";
 import type { Lock } from "chat";
 
-const PLUGIN_JOB_LOCK_TTL_MS = 5 * 60 * 1000;
+const PLUGIN_TASK_LOCK_TTL_MS = 5 * 60 * 1000;
 
-export interface ScheduleSessionCompletedPluginJobsOptions {
-  send?: (message: PluginJobMessage) => Promise<void>;
+export interface ScheduleSessionCompletedPluginTasksOptions {
+  send?: (message: PluginTaskQueueMessage) => Promise<void>;
 }
 
-interface ProcessPluginJobOptions {
+interface ProcessPluginTaskOptions {
   signal?: AbortSignal;
 }
 
@@ -304,18 +304,18 @@ async function loadConversationContextTranscriptEntries(
   return entries;
 }
 
-async function withPluginJobLock<T>(
+async function withPluginTaskLock<T>(
   taskId: string,
   callback: () => Promise<T>,
 ): Promise<T> {
   const state = getStateAdapter();
   await state.connect();
   const lock: Lock | null = await state.acquireLock(
-    `plugin:job:${taskId}`,
-    PLUGIN_JOB_LOCK_TTL_MS,
+    `plugin:task:${taskId}`,
+    PLUGIN_TASK_LOCK_TTL_MS,
   );
   if (!lock) {
-    throw new Error(`Could not acquire plugin job lock for ${taskId}`);
+    throw new Error(`Could not acquire plugin task lock for ${taskId}`);
   }
 
   try {
@@ -325,16 +325,16 @@ async function withPluginJobLock<T>(
   }
 }
 
-/** Load the bounded completed-run projection exposed to plugin jobs. */
+/** Load the bounded completed-run projection exposed to plugin tasks. */
 async function loadPluginRun(
-  params: PluginJobParams,
+  params: PluginTaskParams,
 ): Promise<PluginRunContext> {
   const record = await getTurnRecord(params.conversationId, params.sessionId);
   if (!record) {
-    throw new Error("Completed plugin job session record is unavailable");
+    throw new Error("Completed plugin task session record is unavailable");
   }
   if (record.state !== "completed") {
-    throw new Error("Completed plugin job session record is not completed");
+    throw new Error("Completed plugin task session record is not completed");
   }
   const routing = await resolveTurnSessionRouting({
     conversationId: params.conversationId,
@@ -380,14 +380,14 @@ async function loadPluginRun(
   });
 }
 
-/** Build the plugin-facing context for one claimed job attempt. */
-function jobPluginContext(
+/** Build the plugin-facing context for one claimed task attempt. */
+function taskPluginContext(
   plugin: PluginRegistration,
-  message: PluginJobMessage,
-  options: ProcessPluginJobOptions = {},
-): PluginJobContext {
+  message: PluginTaskQueueMessage,
+  options: ProcessPluginTaskOptions = {},
+): PluginTaskContext {
   const pluginName = plugin.manifest.name;
-  const sessionParams = pluginJobParamsSchema.parse(message.params);
+  const sessionParams = pluginTaskParamsSchema.parse(message.params);
   return {
     db: getDb(),
     embedder: createPluginEmbedder(pluginName, {
@@ -395,11 +395,11 @@ function jobPluginContext(
     }),
     events: createPluginConversationEvents({
       conversationId: sessionParams.conversationId,
-      operationId: pluginJobId(message),
+      operationId: pluginTaskId(message),
       plugin,
       turnId: sessionParams.sessionId,
     }),
-    id: pluginJobId(message),
+    id: pluginTaskId(message),
     log: createPluginLogger(pluginName),
     model: createPluginModel(pluginName, plugin.model, {
       signal: options.signal,
@@ -415,27 +415,27 @@ function jobPluginContext(
   };
 }
 
-function findPluginJob(message: PluginJobMessage) {
+function findPluginTask(message: PluginTaskQueueMessage) {
   const plugin = getPlugins().find(
     (candidate) => candidate.manifest.name === message.plugin,
   );
-  if (!plugin?.jobs || !Object.hasOwn(plugin.jobs, message.name)) {
+  if (!plugin?.tasks || !Object.hasOwn(plugin.tasks, message.name)) {
     return undefined;
   }
-  const job = plugin.jobs[message.name];
-  return { plugin, job };
+  const task = plugin.tasks[message.name];
+  return { plugin, task };
 }
 
-/** Schedule all plugin jobs interested in a completed agent-run session. */
-export async function scheduleSessionCompletedPluginJobs(
-  params: PluginJobParams,
-  options: ScheduleSessionCompletedPluginJobsOptions = {},
+/** Schedule all plugin tasks interested in a completed agent-run session. */
+export async function scheduleSessionCompletedPluginTasks(
+  params: PluginTaskParams,
+  options: ScheduleSessionCompletedPluginTasksOptions = {},
 ): Promise<void> {
-  const coreParams = pluginJobParamsSchema.parse(params);
-  const jobRegistrations = getPlugins().flatMap((plugin) =>
-    Object.keys(plugin.jobs ?? {}).map((name) => ({ name, plugin })),
+  const coreParams = pluginTaskParamsSchema.parse(params);
+  const taskRegistrations = getPlugins().flatMap((plugin) =>
+    Object.keys(plugin.tasks ?? {}).map((name) => ({ name, plugin })),
   );
-  if (jobRegistrations.length === 0) {
+  if (taskRegistrations.length === 0) {
     return;
   }
   const record = await getTurnRecord(
@@ -443,10 +443,10 @@ export async function scheduleSessionCompletedPluginJobs(
     coreParams.sessionId,
   );
   if (!record || record.state !== "completed") {
-    throw new Error("Completed plugin job session record is not ready");
+    throw new Error("Completed plugin task session record is not ready");
   }
-  const send = options.send ?? sendPluginJob;
-  const messages = jobRegistrations.map(({ name, plugin }) => ({
+  const send = options.send ?? sendVercelPluginTask;
+  const messages = taskRegistrations.map(({ name, plugin }) => ({
     name,
     params: coreParams,
     plugin: plugin.manifest.name,
@@ -458,20 +458,20 @@ export async function scheduleSessionCompletedPluginJobs(
   );
 }
 
-/** Execute one parsed plugin job request. */
-export async function runPluginJob(
-  message: PluginJobMessage,
-  options: ProcessPluginJobOptions = {},
+/** Execute one parsed plugin task request. */
+export async function processPluginTask(
+  message: PluginTaskQueueMessage,
+  options: ProcessPluginTaskOptions = {},
 ): Promise<void> {
-  await withPluginJobLock(pluginJobId(message), async () => {
-    const resolved = findPluginJob(message);
+  await withPluginTaskLock(pluginTaskId(message), async () => {
+    const resolved = findPluginTask(message);
     if (!resolved) {
       throw new Error(
-        `Plugin job "${message.plugin}.${message.name}" is not registered`,
+        `Plugin task "${message.plugin}.${message.name}" is not registered`,
       );
     }
-    await resolved.job.run(
-      jobPluginContext(resolved.plugin, message, options),
+    await resolved.task.run(
+      taskPluginContext(resolved.plugin, message, options),
     );
   });
 }

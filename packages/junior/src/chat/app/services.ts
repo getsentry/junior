@@ -5,7 +5,7 @@ import {
   getPausedTurnRequest,
   wakePausedTurn,
 } from "@/chat/task-execution/turn-wake";
-import { scheduleSessionCompletedPluginJobs } from "@/chat/plugins/job-runner";
+import { scheduleSessionCompletedPluginTasks } from "@/chat/plugins/task-runner";
 import {
   createConversationMemoryService,
   type ConversationMemoryDeps,
@@ -93,10 +93,10 @@ export function createJuniorRuntimeServices(
       lookupSlackUser:
         overrides.replyExecutor?.lookupSlackUser ?? lookupSlackUser,
       wakePausedTurn: overrides.replyExecutor?.wakePausedTurn ?? wakePausedTurn,
-      scheduleSessionCompletedPluginJobs:
-        overrides.replyExecutor?.scheduleSessionCompletedPluginJobs ??
+      scheduleSessionCompletedPluginTasks:
+        overrides.replyExecutor?.scheduleSessionCompletedPluginTasks ??
         (async (params) => {
-          await scheduleSessionCompletedPluginJobs(params);
+          await scheduleSessionCompletedPluginTasks(params);
         }),
       turnLifecycle:
         overrides.replyExecutor?.turnLifecycle ??

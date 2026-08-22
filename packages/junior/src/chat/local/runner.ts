@@ -19,9 +19,9 @@ import {
 } from "@sentry/junior-plugin-api";
 import { logException, setTags, withLogContext } from "@/chat/logging";
 import {
-  runPluginJob,
-  scheduleSessionCompletedPluginJobs,
-} from "@/chat/plugins/job-runner";
+  processPluginTask,
+  scheduleSessionCompletedPluginTasks,
+} from "@/chat/plugins/task-runner";
 import type { ToolExecutionReport } from "@/chat/tool-support/tool-execution-report";
 import { stripRuntimeTurnContext } from "@/chat/pi/transcript";
 import { buildDeliveredTurnStatePatch } from "@/chat/runtime/delivered-turn-state";
@@ -544,7 +544,7 @@ async function runLocalAgentTurnInContext(
   }
   if (reply.diagnostics.outcome === "success") {
     try {
-      await scheduleSessionCompletedPluginJobs(
+      await scheduleSessionCompletedPluginTasks(
         {
           conversationId: input.conversationId,
           sessionId: turnId,
@@ -552,7 +552,7 @@ async function runLocalAgentTurnInContext(
         {
           send: async (message) => {
             try {
-              await runPluginJob(message);
+              await processPluginTask(message);
             } catch (error) {
               logException(
                 error,

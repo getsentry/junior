@@ -89,8 +89,8 @@ export function createConversationWork(
         conversationId,
         {
           agentRunner: options.agentRunner,
-          scheduleSessionCompletedPluginJobs:
-            services.replyExecutor?.scheduleSessionCompletedPluginJobs,
+          scheduleSessionCompletedPluginTasks:
+            services.replyExecutor?.scheduleSessionCompletedPluginTasks,
           wakePausedTurn: services.replyExecutor?.wakePausedTurn,
         },
         runOptions,
@@ -106,8 +106,8 @@ export function createConversationWork(
           agentRunner: options.agentRunner,
           inputMessageIds: [getDispatchInputMessageId(dispatch.id)],
           routingContext: buildDispatchRoutingContext(dispatch),
-          scheduleSessionCompletedPluginJobs:
-            services.replyExecutor?.scheduleSessionCompletedPluginJobs,
+          scheduleSessionCompletedPluginTasks:
+            services.replyExecutor?.scheduleSessionCompletedPluginTasks,
           wakePausedTurn: services.replyExecutor?.wakePausedTurn,
         },
         { shouldYield: hooks.shouldYield },

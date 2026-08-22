@@ -78,9 +78,9 @@ import type {
   ConversationWorkerResult,
 } from "@/chat/task-execution/worker";
 import {
-  runPluginJob,
-  scheduleSessionCompletedPluginJobs,
-} from "@/chat/plugins/job-runner";
+  processPluginTask,
+  scheduleSessionCompletedPluginTasks,
+} from "@/chat/plugins/task-runner";
 import type { SandboxRef } from "@/chat/sandbox/ref";
 import type { AgentRunResult } from "@/chat/services/turn-result";
 import type { StoredSlackActor } from "@/chat/actor";
@@ -845,7 +845,7 @@ export function createApiTurnWorker(options: {
               turnId,
             });
             try {
-              await scheduleSessionCompletedPluginJobs(
+              await scheduleSessionCompletedPluginTasks(
                 {
                   conversationId: context.conversationId,
                   sessionId: turnId,
@@ -853,7 +853,7 @@ export function createApiTurnWorker(options: {
                 {
                   send: async (message) => {
                     try {
-                      await runPluginJob(message);
+                      await processPluginTask(message);
                     } catch (error) {
                       logException(
                         error,

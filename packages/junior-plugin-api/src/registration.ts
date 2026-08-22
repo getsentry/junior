@@ -2,7 +2,7 @@ import type { PluginCliDefinition } from "./cli";
 import type { PluginConversationEventDefinition } from "./conversation-events";
 import type { PluginHooks } from "./hooks";
 import type { PluginManifest } from "./manifest";
-import type { PluginJobs } from "./jobs";
+import type { PluginTasks } from "./tasks";
 import type { PluginUserPageDefinition } from "./user-pages";
 import {
   pluginResourceEventsSchema,
@@ -24,7 +24,7 @@ export type PluginRegistrationInput = {
   model?: PluginModelConfig;
   packageName?: string;
   resourceEvents?: PluginResourceEvents;
-  jobs?: PluginJobs;
+  tasks?: PluginTasks;
   userPages?: PluginUserPageDefinition[];
 };
 

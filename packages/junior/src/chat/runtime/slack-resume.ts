@@ -25,7 +25,7 @@ import {
   runAgentWithTimeout,
   type AgentRunner,
 } from "@/chat/runtime/agent-runner";
-import { scheduleSessionCompletedPluginJobs } from "@/chat/plugins/job-runner";
+import { scheduleSessionCompletedPluginTasks } from "@/chat/plugins/task-runner";
 import {
   buildTurnFailureResponse,
   logException,
@@ -195,7 +195,7 @@ interface ResumeSlackTurnArgs {
   agentRunner: AgentRunner;
   inputMessageIds?: string[];
   turnLifecycle?: ConversationTurnLifecycle;
-  scheduleSessionCompletedPluginJobs?: (params: {
+  scheduleSessionCompletedPluginTasks?: (params: {
     conversationId: string;
     sessionId: string;
   }) => Promise<void>;
@@ -844,10 +844,10 @@ async function resumeSlackTurnInContext(
             conversationId: runArgs.conversationId,
             sessionId: runArgs.turnId,
           };
-          if (runArgs.scheduleSessionCompletedPluginJobs) {
-            await runArgs.scheduleSessionCompletedPluginJobs(params);
+          if (runArgs.scheduleSessionCompletedPluginTasks) {
+            await runArgs.scheduleSessionCompletedPluginTasks(params);
           } else {
-            await scheduleSessionCompletedPluginJobs(params);
+            await scheduleSessionCompletedPluginTasks(params);
           }
         } catch (scheduleError) {
           logException(

@@ -1,7 +1,7 @@
 /**
- * Public plugin background-job contracts.
+ * Public plugin background-task contracts.
  *
- * Plugins register small job handlers. Junior core owns scheduling, delivery,
+ * Plugins register small task handlers. Junior core owns scheduling, delivery,
  * retries, and the bounded run projection.
  */
 import { z } from "zod";
@@ -22,7 +22,7 @@ export const pluginRunTranscriptProvenanceSchema = z
   })
   .strict();
 
-/** One normalized transcript entry from the completed run exposed to plugin jobs. */
+/** One normalized transcript entry from the completed run exposed to plugin tasks. */
 export const pluginRunTranscriptEntrySchema = z.discriminatedUnion("type", [
   z
     .object({
@@ -47,7 +47,7 @@ export type PluginRunTranscriptProvenance = z.output<
   typeof pluginRunTranscriptProvenanceSchema
 >;
 
-/** Runtime-owned completed-run projection exposed to plugin jobs. */
+/** Runtime-owned completed-run projection exposed to plugin tasks. */
 export const pluginRunContextSchema = z
   .object({
     completedAtMs: z.number().finite(),
@@ -79,8 +79,8 @@ export type PluginRunTranscriptEntry = z.output<
 
 export type PluginRunContext = z.output<typeof pluginRunContextSchema>;
 
-/** Runtime context passed to a plugin-owned background job. */
-export interface PluginJobContext extends PluginContext {
+/** Runtime context passed to a plugin-owned background task. */
+export interface PluginTaskContext extends PluginContext {
   embedder: PluginEmbedder;
   events: PluginConversationEvents;
   id: string;
@@ -92,10 +92,10 @@ export interface PluginJobContext extends PluginContext {
   state: PluginState;
 }
 
-/** Plugin job handler registered by name in a plugin manifest module. */
-export interface PluginJobDefinition {
-  run(ctx: PluginJobContext): Promise<void> | void;
+/** Plugin task handler registered by name in a plugin manifest module. */
+export interface PluginTaskDefinition {
+  run(ctx: PluginTaskContext): Promise<void> | void;
 }
 
-/** Job handlers keyed by the plugin-owned job name. */
-export type PluginJobs = Record<string, PluginJobDefinition>;
+/** Task handlers keyed by the plugin-owned task name. */
+export type PluginTasks = Record<string, PluginTaskDefinition>;
