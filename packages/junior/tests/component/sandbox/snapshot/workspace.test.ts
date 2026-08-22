@@ -289,6 +289,103 @@ describe("Workspace snapshot completion", () => {
     }
   });
 
+  it("keeps phase timeout permanent when the rejection cause is AbortError", async () => {
+    const workspace = await createWorkspace({
+      name: `snap-phase-to-abort-${randomUUID()}`,
+      setupScript: "printf ready",
+      repos: [],
+    });
+    const value = profile.create(SANDBOX_RUNTIME, workspace);
+    if (!value) throw new Error("Workspace snapshot profile is missing");
+
+    await setWorkspaceSnapshotBuild(
+      workspace.id,
+      {
+        id: randomUUID(),
+        status: "building",
+        phase: "created",
+        profileHash: value.hash,
+        startedAt: new Date(),
+        sandboxName: "timed-out-abort-cause-builder",
+        commandId: null,
+        error: null,
+      },
+      { insertIfMissing: true },
+    );
+    await getStateAdapter().connect();
+
+    const timeoutSpy = vi
+      .spyOn(AbortSignal, "timeout")
+      .mockImplementation((delay) =>
+        abortSignalTimeout(delay === 10 * 60 * 1000 ? 50 : delay),
+      );
+    try {
+      let commandStarted!: () => void;
+      const started = new Promise<void>((resolve) => {
+        commandStarted = resolve;
+      });
+      const deleteBuilder = vi.fn();
+      sandboxGetMock.mockImplementation(
+        async ({ resume }: { resume: boolean }) => {
+          if (!resume) return { delete: deleteBuilder };
+          return {
+            currentSession: () => ({
+              sessionId: "timed-out-abort-cause-session",
+              runCommand: vi.fn(
+                async ({ signal }: { signal?: AbortSignal }) => {
+                  commandStarted();
+                  signal?.throwIfAborted();
+                  return await new Promise((_, reject) => {
+                    signal?.addEventListener(
+                      "abort",
+                      () =>
+                        reject(
+                          new DOMException(
+                            "This operation was aborted",
+                            "AbortError",
+                          ),
+                        ),
+                      { once: true },
+                    );
+                  });
+                },
+              ),
+            }),
+          };
+        },
+      );
+
+      const result = resolveWorkspaceSnapshot({
+        workspace,
+        runtime: SANDBOX_RUNTIME,
+        shouldYield: () => false,
+        applyNetworkPolicy: async () => {},
+        removeCredentialRoute: false,
+      });
+      await started;
+
+      await expect(result).rejects.toSatisfy((error: unknown) => {
+        expect(error).toMatchObject({
+          message: "Workspace snapshot build phase timed out after 10 minutes",
+        });
+        expect(isWorkspaceSnapshotWaitingError(error)).toBe(false);
+        return true;
+      });
+      await expect(
+        loadSnapshotsForProfile(getDb(), workspace.id, value.hash),
+      ).resolves.toMatchObject({
+        build: {
+          status: "failed",
+          error: "Workspace snapshot build phase timed out after 10 minutes",
+        },
+        ready: null,
+      });
+      expect(deleteBuilder).toHaveBeenCalledTimes(1);
+    } finally {
+      timeoutSpy.mockRestore();
+    }
+  });
+
   it("keeps the host deadline buffer when the caller can continue", async () => {
     const workspace = await createWorkspace({
       name: `snapshot-deadline-${randomUUID()}`,
