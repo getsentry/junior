@@ -2,34 +2,25 @@ import { z } from "zod";
 
 import type { TranscriptViewTurnContext } from "../types";
 
-const recalledMemoryFields = {
-  id: z.string(),
-  content: z.string(),
-  observedAtMs: z.number(),
-  kind: z.enum(["preference", "procedure", "knowledge"]),
-};
-
-const legacyMemoryRecallContentSchema = z
-  .object({
-    memories: z.array(
-      z
-        .object({
-          ...recalledMemoryFields,
-          scope: z.enum(["personal", "conversation"]),
-        })
-        .strict(),
-    ),
-  })
-  .strict();
-
-/** Dashboard parser for the current persisted memory recall context. */
+/** Dashboard parser for persisted memory recall context version 1. */
 export const memoryRecallContentSchema = z
   .object({
     memories: z.array(
       z
         .object({
-          ...recalledMemoryFields,
-          scope: z.enum(["private", "public"]),
+          id: z.string(),
+          content: z.string(),
+          observedAtMs: z.number(),
+          scope: z
+            .enum(["personal", "conversation", "private", "public"])
+            .transform((scope) =>
+              scope === "personal"
+                ? "private"
+                : scope === "conversation"
+                  ? "public"
+                  : scope,
+            ),
+          kind: z.enum(["preference", "procedure", "knowledge"]),
         })
         .strict(),
     ),
@@ -38,7 +29,7 @@ export const memoryRecallContentSchema = z
 
 export type MemoryRecallContent = z.output<typeof memoryRecallContentSchema>;
 
-/** Parse current recall context and normalize its previous stored values. */
+/** Parse memory recall context version 1 and normalize stored scope values. */
 export function memoryRecallContent(context: TranscriptViewTurnContext) {
   if (
     context.pluginName !== "memory" ||
@@ -47,16 +38,6 @@ export function memoryRecallContent(context: TranscriptViewTurnContext) {
   ) {
     return undefined;
   }
-  const current = memoryRecallContentSchema.safeParse(context.content);
-  if (current.success) return current.data;
-  const legacy = legacyMemoryRecallContentSchema.safeParse(context.content);
-  if (legacy.success) {
-    return {
-      memories: legacy.data.memories.map((memory) => ({
-        ...memory,
-        scope: memory.scope === "personal" ? "private" : "public",
-      })),
-    } satisfies MemoryRecallContent;
-  }
-  return undefined;
+  const parsed = memoryRecallContentSchema.safeParse(context.content);
+  return parsed.success ? parsed.data : undefined;
 }
