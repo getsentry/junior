@@ -32,6 +32,24 @@ type PluginQueueCall =
     ]
   | undefined;
 
+type WorkspaceQueueMetadata = Parameters<
+  NonNullable<PluginQueueCall>[0]
+>[1];
+
+type WorkspaceDevConsumer = {
+  client: {
+    send(
+      topic: string,
+      message: Record<string, unknown>,
+      options?: { idempotencyKey?: string; retentionSeconds: number },
+    ): Promise<{ messageId: string }>;
+  };
+  consumerGroup: string;
+  handler: (message: unknown, metadata: WorkspaceQueueMetadata) => Promise<void>;
+  retry: (error: unknown, metadata: WorkspaceQueueMetadata) => unknown;
+  topic: string;
+};
+
 type ConversationQueueCall =
   | [
       (
@@ -101,11 +119,21 @@ afterEach(async () => {
 describe("Workspace snapshot Vercel queue integration", () => {
   it("runs only messages signed by the snapshot queue sender", async () => {
     const routeHandler = vi.fn();
-    const handleCallback = vi.fn(() => routeHandler);
-    const send = vi.fn(async () => ({ messageId: "msg_snapshot" }));
+    const handleCallback = vi.fn(
+      (..._args: NonNullable<PluginQueueCall>) => routeHandler,
+    );
+    const send = vi.fn(
+      async (
+        _topic: string,
+        _message: Record<string, unknown>,
+        _options?: { idempotencyKey?: string; retentionSeconds: number },
+      ) => ({ messageId: "msg_snapshot" }),
+    );
     const processWorkspaceSnapshotJob = vi.fn(async () => undefined);
     const unregister = vi.fn();
-    const registerDevConsumer = vi.fn(() => unregister);
+    const registerDevConsumer = vi.fn(
+      (_input: WorkspaceDevConsumer) => unregister,
+    );
 
     vi.doMock("@vercel/queue", () => ({
       QueueClient: vi.fn(),
@@ -127,23 +155,7 @@ describe("Workspace snapshot Vercel queue integration", () => {
       await import("@/chat/sandbox/snapshot/job-queue");
 
     expect(createVercelWorkspaceSnapshotJobCallback()).toBe(routeHandler);
-    type TestQueueMetadata = {
-      consumerGroup: string;
-      createdAt: Date;
-      deliveryCount: number;
-      expiresAt: Date;
-      messageId: string;
-      region: string;
-      topicName: string;
-    };
-    const call = handleCallback.mock.calls[0] as unknown as
-      | [
-          (message: unknown, metadata: TestQueueMetadata) => Promise<void>,
-          {
-            retry?: (error: unknown, metadata: TestQueueMetadata) => unknown;
-          },
-        ]
-      | undefined;
+    const call = handleCallback.mock.calls[0];
     const handler = call?.[0];
     const retry = call?.[1].retry;
     if (!handler || !retry) {
@@ -151,7 +163,7 @@ describe("Workspace snapshot Vercel queue integration", () => {
         "Expected Workspace snapshot queue handler and retry hook",
       );
     }
-    const metadata: TestQueueMetadata = {
+    const metadata: WorkspaceQueueMetadata = {
       consumerGroup: "workspace-snapshots",
       createdAt: new Date(1_000),
       deliveryCount: 1,
@@ -170,9 +182,7 @@ describe("Workspace snapshot Vercel queue integration", () => {
 
     process.env.JUNIOR_SECRET = "workspace-snapshot-secret";
     await sendWorkspaceSnapshotJob(message);
-    const sendCall = send.mock.calls[0] as unknown as
-      | [string, Record<string, unknown>]
-      | undefined;
+    const sendCall = send.mock.calls[0];
     const signedMessage = sendCall?.[1];
     if (!signedMessage) throw new Error("Expected signed queue message");
     await expect(handler(signedMessage, metadata)).resolves.toBeUndefined();
@@ -197,17 +207,7 @@ describe("Workspace snapshot Vercel queue integration", () => {
 
     process.env.NODE_ENV = "development";
     expect(registerVercelWorkspaceSnapshotJobDevConsumer()).toBe(unregister);
-    const registered = (
-      registerDevConsumer.mock.calls as unknown as Array<[unknown]>
-    )[0]?.[0] as
-      | {
-          client: { send: typeof send };
-          consumerGroup: string;
-          handler: unknown;
-          retry: unknown;
-          topic: string;
-        }
-      | undefined;
+    const registered = registerDevConsumer.mock.calls[0]?.[0];
     expect(registered).toMatchObject({
       client: { send },
       consumerGroup: "junior_workspace_snapshots_dev",
