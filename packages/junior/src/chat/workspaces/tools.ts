@@ -367,70 +367,42 @@ export function createWorkspaceTools(
             })
           : undefined;
 
-        let snapshotStatus: Awaited<
-          ReturnType<typeof ensureWorkspaceSnapshotBuild>
-        >;
+        let keepWatch = false;
         try {
-          snapshotStatus = await ensureWorkspaceSnapshotBuild({ workspace });
-        } catch (error) {
-          if (subscription && conversationId) {
-            await stopWorkspaceSnapshotWatch({
-              conversationId,
-              subscriptionId: subscription.id,
-            });
+          const status = await ensureWorkspaceSnapshotBuild({ workspace });
+          if (status === "building") {
+            keepWatch = true;
+            return {
+              workspace: view(workspace),
+              status,
+              subscribable: watch,
+            };
           }
-          throw error;
-        }
-        if (snapshotStatus === "building") {
-          return {
-            workspace: view(workspace),
-            status: "building" as const,
-            subscribable: watch,
-          };
-        }
-        try {
-          await context.workspaces!.switch(workspace, options.signal);
-        } catch (error) {
-          if (isWorkspaceSnapshotNotReadyError(error)) {
-            try {
-              await ensureWorkspaceSnapshotBuild({
-                workspace,
-                startNewJob: true,
-              });
-            } catch (jobError) {
-              if (subscription && conversationId) {
-                await stopWorkspaceSnapshotWatch({
-                  conversationId,
-                  subscriptionId: subscription.id,
-                });
-              }
-              throw jobError;
-            }
+          try {
+            await context.workspaces!.switch(workspace, options.signal);
+          } catch (error) {
+            if (!isWorkspaceSnapshotNotReadyError(error)) throw error;
+            await ensureWorkspaceSnapshotBuild({ workspace, sendAgain: true });
+            keepWatch = true;
             return {
               workspace: view(workspace),
               status: "building" as const,
               subscribable: watch,
             };
           }
-          if (subscription && conversationId) {
+          await tryRecordWorkspaceSwitchStat(workspace);
+          return {
+            workspace: view(workspace),
+            status: "ready" as const,
+          };
+        } finally {
+          if (!keepWatch && subscription && conversationId) {
             await stopWorkspaceSnapshotWatch({
               conversationId,
               subscriptionId: subscription.id,
             });
           }
-          throw error;
         }
-        if (subscription && conversationId) {
-          await stopWorkspaceSnapshotWatch({
-            conversationId,
-            subscriptionId: subscription.id,
-          });
-        }
-        await tryRecordWorkspaceSwitchStat(workspace);
-        return {
-          workspace: view(workspace),
-          status: "ready" as const,
-        };
       },
     }),
   };

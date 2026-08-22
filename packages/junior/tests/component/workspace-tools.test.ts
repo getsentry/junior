@@ -428,7 +428,7 @@ describe("Workspace tools", () => {
       ).rejects.toBe(enqueueError);
       expect(ensureSnapshot).toHaveBeenNthCalledWith(2, {
         workspace: expect.objectContaining({ id: workspace.id }),
-        startNewJob: true,
+        sendAgain: true,
       });
       await expect(
         listResourceEventSubscriptions({ conversationId }),

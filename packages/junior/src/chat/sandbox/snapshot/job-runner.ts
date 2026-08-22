@@ -3,7 +3,6 @@ import { credentialContextForActor } from "@/chat/credentials/context";
 import { getDb } from "@/chat/db";
 import { logInfo } from "@/chat/logging";
 import { createPluginHookRunner } from "@/chat/plugins/agent-hooks";
-import { ingestEventTasks } from "@/chat/event-tasks/ingest";
 import { ingestResourceEvent } from "@/chat/resource-events/ingest";
 import { createResourceEventTeamIdResolver } from "@/chat/resource-events/workspace";
 import { getTurnRequestDeadline } from "@/chat/runtime/request-deadline";
@@ -49,31 +48,19 @@ async function publishFinishedEvent(
     return;
   }
   const queue = getVercelConversationWorkQueue();
-  await Promise.all([
-    ingestResourceEvent(event, { queue, teamId }),
-    ingestEventTasks(event, { queue, teamId }),
-  ]);
+  await ingestResourceEvent(event, { queue, teamId });
 }
 
 function createSnapshotBuildHelpers() {
   const credentials = credentialContextForActor(SNAPSHOT_BUILD_SYSTEM_ACTOR);
   const pluginHooks = createPluginHookRunner();
-  const tokens = new Map<string, { expiresAtMs: number; token: string }>();
-  const tokenFor = (egressId: string): string => {
-    const cached = tokens.get(egressId);
-    if (cached && cached.expiresAtMs > Date.now()) return cached.token;
-    const now = Date.now();
-    const token = createSandboxEgressCredentialToken({
-      credentials,
-      egressId,
-      ttlMs: 60 * 60 * 1000,
-    });
-    tokens.set(egressId, { expiresAtMs: now + 60 * 60 * 1000, token });
-    return token;
-  };
   const applyNetworkPolicy = async (sandbox: SandboxSession) => {
     const networkPolicy = buildSandboxEgressNetworkPolicy({
-      credentialToken: tokenFor(sandbox.sessionId),
+      credentialToken: createSandboxEgressCredentialToken({
+        credentials,
+        egressId: sandbox.sessionId,
+        ttlMs: 60 * 60 * 1000,
+      }),
     });
     await sandbox.update({ networkPolicy });
     return networkPolicy;
@@ -108,7 +95,7 @@ export async function processWorkspaceSnapshotJob(
     });
     await publishFinishedEvent({
       workspaceId: message.workspaceId,
-      profileHash: message.profileHash,
+      resultId: message.profileHash,
       status: "failed",
     });
     return;
@@ -130,8 +117,7 @@ export async function processWorkspaceSnapshotJob(
   if (before.ready) {
     await publishFinishedEvent({
       workspaceId: workspace.id,
-      profileHash: value.hash,
-      buildId: before.ready.id,
+      resultId: before.ready.id,
       status: "ready",
     });
     return;
@@ -162,8 +148,7 @@ export async function processWorkspaceSnapshotJob(
     if (afterFailure.build?.status === "failed") {
       await publishFinishedEvent({
         workspaceId: workspace.id,
-        profileHash: value.hash,
-        buildId: afterFailure.build.id,
+        resultId: afterFailure.build.id,
         status: "failed",
         error: afterFailure.build.error,
       });
@@ -180,8 +165,7 @@ export async function processWorkspaceSnapshotJob(
   if (after.ready) {
     await publishFinishedEvent({
       workspaceId: workspace.id,
-      profileHash: value.hash,
-      buildId: after.ready.id,
+      resultId: after.ready.id,
       status: "ready",
     });
     return;
@@ -189,8 +173,7 @@ export async function processWorkspaceSnapshotJob(
   if (after.build?.status === "failed") {
     await publishFinishedEvent({
       workspaceId: workspace.id,
-      profileHash: value.hash,
-      buildId: after.build.id,
+      resultId: after.build.id,
       status: "failed",
       error: after.build.error,
     });
@@ -203,7 +186,7 @@ export async function processWorkspaceSnapshotJob(
 /** Start a snapshot build when no ready snapshot exists. */
 export async function ensureWorkspaceSnapshotBuild(input: {
   workspace: Workspace;
-  startNewJob?: boolean;
+  sendAgain?: boolean;
 }): Promise<"ready" | "building"> {
   const value = profile.create(SANDBOX_RUNTIME, input.workspace);
   if (!value) {
@@ -221,7 +204,7 @@ export async function ensureWorkspaceSnapshotBuild(input: {
     workspaceId: input.workspace.id,
     profileHash: value.hash,
   };
-  if (input.startNewJob || current.build) {
+  if (input.sendAgain || current.build) {
     await sendNextWorkspaceSnapshotJob(message);
   } else {
     await sendWorkspaceSnapshotJob(message);

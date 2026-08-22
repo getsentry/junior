@@ -3,9 +3,7 @@ import type {
   SubscribableResource,
 } from "@sentry/junior-plugin-api";
 
-/** Event group for Workspace snapshot builds. */
 export const WORKSPACE_SNAPSHOT_NAMESPACE = "junior";
-/** Event source for one Workspace snapshot build. */
 export const WORKSPACE_SNAPSHOT_RESOURCE_TYPE = "workspace_snapshot";
 export const WORKSPACE_SNAPSHOT_READY_EVENT = "workspace_snapshot.ready";
 export const WORKSPACE_SNAPSHOT_FAILED_EVENT = "workspace_snapshot.failed";
@@ -33,12 +31,13 @@ export function workspaceSnapshotWatch(input: {
 
 type WorkspaceSnapshotResult = {
   workspaceId: string;
-  profileHash: string;
+  resultId: string;
   occurredAtMs?: number;
-} & (
-  | { status: "ready"; buildId: string }
-  | { status: "failed"; buildId?: string; error?: string | null }
-);
+} &
+  (
+    | { status: "ready" }
+    | { status: "failed"; error?: string | null }
+  );
 
 /** Report that a Workspace snapshot build is ready or failed. */
 export function workspaceSnapshotFinishedEvent(
@@ -53,9 +52,8 @@ export function workspaceSnapshotFinishedEvent(
     input.status === "ready"
       ? "Workspace snapshot is ready."
       : "Workspace snapshot build failed.";
-  const eventId = input.buildId ?? input.profileHash;
   const event: ResourceEvent = {
-    eventKey: `${WORKSPACE_SNAPSHOT_NAMESPACE}:${input.workspaceId}:${eventId}:${input.status}`,
+    eventKey: `${WORKSPACE_SNAPSHOT_NAMESPACE}:${input.workspaceId}:${input.resultId}:${input.status}`,
     eventType,
     identifier: input.workspaceId,
     namespace: WORKSPACE_SNAPSHOT_NAMESPACE,

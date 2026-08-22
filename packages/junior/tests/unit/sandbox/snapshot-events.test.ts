@@ -5,7 +5,7 @@ describe("Workspace snapshot events", () => {
   it("creates a failed event before a build row exists", () => {
     const event = workspaceSnapshotFinishedEvent({
       workspaceId: "11111111-1111-4111-8111-111111111111",
-      profileHash: "profile-1",
+      resultId: "profile-1",
       status: "failed",
       occurredAtMs: 1_000,
     });
@@ -24,8 +24,7 @@ describe("Workspace snapshot events", () => {
 
     const event = workspaceSnapshotFinishedEvent({
       workspaceId: "11111111-1111-4111-8111-111111111111",
-      buildId: "build-1",
-      profileHash: "profile-1",
+      resultId: "build-1",
       status: "failed",
       error,
       occurredAtMs: 1_000,
