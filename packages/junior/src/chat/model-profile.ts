@@ -2,9 +2,6 @@ import { z } from "zod";
 import type { BotConfig } from "@/chat/config";
 import type { TurnReasoningLevel } from "@/chat/reasoning-level";
 
-export const STANDARD_MODEL_PROFILE = "standard";
-export const DEFAULT_HANDOFF_MODEL_PROFILE = "handoff";
-
 /** Keep durable profile names stable and safe to expose in tool schemas. */
 export const modelProfileSchema = z.string().regex(/^[a-z][a-z0-9_-]*$/);
 

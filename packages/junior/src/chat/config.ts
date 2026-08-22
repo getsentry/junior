@@ -8,11 +8,9 @@ import {
   type TurnReasoningLevel,
 } from "@/chat/reasoning-level";
 import {
-  DEFAULT_HANDOFF_MODEL_PROFILE,
   type ExecutionProfileConfig,
   type ModelProfile,
   modelProfileSchema,
-  STANDARD_MODEL_PROFILE,
 } from "@/chat/model-profile";
 
 const MIN_AGENT_TURN_TIMEOUT_MS = 10 * 1000;
@@ -273,11 +271,8 @@ function parseProfiles(
   handoffModelId: string,
 ): Readonly<Record<string, ExecutionProfileConfig>> {
   const profiles: Record<string, ExecutionProfileConfig> = {
-    [STANDARD_MODEL_PROFILE]: { modelId: standardModelId },
-    [DEFAULT_HANDOFF_MODEL_PROFILE]: {
-      modelId: handoffModelId,
-      reasoningLevel: "high",
-    },
+    standard: { modelId: standardModelId },
+    handoff: { modelId: handoffModelId, reasoningLevel: "high" },
   };
   const trimmed = toOptionalTrimmed(rawValue);
   if (trimmed === undefined) {
@@ -347,7 +342,7 @@ function readBotConfig(
 
   return {
     userName: toOptionalTrimmed(env.JUNIOR_BOT_NAME) ?? "junior",
-    defaultProfile: STANDARD_MODEL_PROFILE,
+    defaultProfile: "standard",
     crossActorMidRunMode: parseCrossActorMidRunMode(
       env.JUNIOR_CROSS_ACTOR_MID_RUN_MODE,
     ),
@@ -551,10 +546,9 @@ export function setProfiles(
   if (profiles && !defaultProfile) {
     throw new Error("defaultProfile is required when profiles are configured");
   }
-  const configuredProfiles = {
-    ...botConfig.profiles,
-    ...(profiles ? parseProfileMap(profiles, "profiles") : {}),
-  };
+  const configuredProfiles = profiles
+    ? parseProfileMap(profiles, "profiles")
+    : botConfig.profiles;
   const selectedDefault = defaultProfile ?? botConfig.defaultProfile;
   if (!modelProfileSchema.safeParse(selectedDefault).success) {
     throw new Error(

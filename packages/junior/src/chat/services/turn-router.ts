@@ -9,7 +9,6 @@ import {
   type ModelProfile,
   type ExecutionProfileConfig,
   modelProfileSchema,
-  STANDARD_MODEL_PROFILE,
 } from "@/chat/model-profile";
 import { renderCurrentInstruction } from "@/chat/current-instruction";
 import {
@@ -358,7 +357,7 @@ async function classifyTurn(args: {
       return {
         confidence: parsed.confidence,
         ...(result.costUsd !== undefined ? { costUsd: result.costUsd } : {}),
-        profile: STANDARD_MODEL_PROFILE,
+        profile: args.defaultProfile,
         reasoningLevel: CLASSIFIER_FALLBACK_REASONING_LEVEL,
         reason: `low_confidence_medium_default:${reason}`,
         source: "router",
@@ -379,7 +378,7 @@ async function classifyTurn(args: {
         error instanceof Error ? error.message : String(error),
     });
     return {
-      profile: STANDARD_MODEL_PROFILE,
+      profile: args.defaultProfile,
       reasoningLevel: CLASSIFIER_FALLBACK_REASONING_LEVEL,
       reason: "classifier_error_default",
       source: "router",

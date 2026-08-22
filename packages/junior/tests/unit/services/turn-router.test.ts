@@ -209,18 +209,52 @@ describe("selectTurnRoute", () => {
     expect(toPiReasoningLevel(profile.reasoningLevel)).toBe("medium");
   });
 
+  it("falls back to the configured default profile when confidence is low", async () => {
+    const completeObject = vi.fn(async () => ({
+      object: {
+        reasoning_level: "high",
+        profile: "coding",
+        confidence: 0.4,
+        reason: "not confident",
+      },
+    }));
+
+    const profile = await selectTurnRoute({
+      completeObject,
+      defaultProfile: "expert",
+      fastModelId: "openai/gpt-5.4-mini",
+      messageText: "can you confirm this repo plan?",
+      profiles: {
+        expert: { modelId: "anthropic/claude-opus-5" },
+        coding: { modelId: "openai/gpt-5.6-sol" },
+      },
+    });
+
+    expect(profile).toMatchObject({
+      reasoningLevel: "medium",
+      profile: "expert",
+      reason: "low_confidence_medium_default:not confident",
+    });
+  });
+
   it("falls back to medium effort when the classifier fails", async () => {
     const completeObject = vi.fn(async () => {
       throw new Error("router failed");
     });
 
-    const profile = await routeTurn({
+    const profile = await selectTurnRoute({
       completeObject,
+      defaultProfile: "expert",
       fastModelId: "openai/gpt-5.4-mini",
       messageText: "can you confirm this repo plan?",
+      profiles: {
+        expert: { modelId: "anthropic/claude-opus-5" },
+        coding: { modelId: "openai/gpt-5.6-sol" },
+      },
     });
 
     expect(profile).toMatchObject({
+      profile: "expert",
       reasoningLevel: "medium",
       reason: "classifier_error_default",
     });

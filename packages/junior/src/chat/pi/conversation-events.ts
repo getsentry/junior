@@ -116,16 +116,16 @@ function historyItemProvenance(
  */
 export function projectConversationEvents(
   events: ConversationEvent[],
-  options?: { defaultProfile?: ModelProfile; maxSeq?: number },
+  options: { defaultProfile: ModelProfile; maxSeq?: number },
 ): PiConversationEventProjection {
   const messages: PiMessage[] = [];
   const provenance: ConversationMessageProvenance[] = [];
   const seqs: number[] = [];
-  let modelProfile: ModelProfile = options?.defaultProfile ?? "standard";
+  let modelProfile: ModelProfile = options.defaultProfile;
   let modelId: string | undefined;
 
   for (const event of events) {
-    if (options?.maxSeq !== undefined && event.seq > options.maxSeq) break;
+    if (options.maxSeq !== undefined && event.seq > options.maxSeq) break;
     // Skipping an unknown active-history fact could silently change model
     // context; an upgrade migration must normalize it before replay.
     if (event.data.type === "unknown") {

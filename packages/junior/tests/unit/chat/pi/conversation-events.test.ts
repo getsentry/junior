@@ -53,7 +53,11 @@ describe("projectConversationEvents", () => {
       triggeringToolCallId: "handoff-call",
       replacementHistory: [],
     }),
-    event(1, { type: "mcp_provider_connected", provider: "github", credentialSubjectId: "U123" }),
+    event(1, {
+      type: "mcp_provider_connected",
+      provider: "github",
+      credentialSubjectId: "U123",
+    }),
     event(2, {
       type: "user_message",
       content: firstMessage.content,
@@ -106,7 +110,9 @@ describe("projectConversationEvents", () => {
   ];
 
   it("projects messages, authorization observations, provenance, and model binding", () => {
-    const projection = projectConversationEvents(events);
+    const projection = projectConversationEvents(events, {
+      defaultProfile: "default",
+    });
 
     expect(projection).toEqual({
       messages: [
@@ -135,7 +141,10 @@ describe("projectConversationEvents", () => {
   });
 
   it("stops at maxSeq while retaining the epoch model binding", () => {
-    const projection = projectConversationEvents(events, { maxSeq: 3 });
+    const projection = projectConversationEvents(events, {
+      defaultProfile: "default",
+      maxSeq: 3,
+    });
 
     expect(projection).toMatchObject({
       seqs: [2, 3],
@@ -162,38 +171,41 @@ describe("projectConversationEvents", () => {
       timestamp: 2_002,
     };
 
-    const projection = projectConversationEvents([
-      event(10, {
-        type: "compaction",
-        modelProfile: "standard",
-        modelId: "openai/gpt-5.4",
-        replacementHistory: [
-          {
-            item: {
-              type: "user_message",
-              content: retained.content,
-              timestamp: retained.timestamp,
-              provenance: instructionProvenance,
+    const projection = projectConversationEvents(
+      [
+        event(10, {
+          type: "compaction",
+          modelProfile: "standard",
+          modelId: "openai/gpt-5.4",
+          replacementHistory: [
+            {
+              item: {
+                type: "user_message",
+                content: retained.content,
+                timestamp: retained.timestamp,
+                provenance: instructionProvenance,
+              },
+              sourceEventSeq: 4,
             },
-            sourceEventSeq: 4,
-          },
-          {
-            item: {
-              type: "user_message",
-              content: summary.content,
-              timestamp: summary.timestamp,
-              provenance: { authority: "context" },
+            {
+              item: {
+                type: "user_message",
+                content: summary.content,
+                timestamp: summary.timestamp,
+                provenance: { authority: "context" },
+              },
             },
-          },
-        ],
-      }),
-      event(11, {
-        type: "user_message",
-        content: later.content,
-        timestamp: later.timestamp,
-        provenance: { authority: "context" },
-      }),
-    ]);
+          ],
+        }),
+        event(11, {
+          type: "user_message",
+          content: later.content,
+          timestamp: later.timestamp,
+          provenance: { authority: "context" },
+        }),
+      ],
+      { defaultProfile: "default" },
+    );
 
     expect(projection.messages).toEqual([retained, summary, later]);
     expect(projection.seqs).toEqual([4, 10, 11]);
@@ -243,7 +255,9 @@ describe("projectConversationEvents", () => {
       payload: { reason: "old-runtime-behavior" },
     });
 
-    expect(() => projectConversationEvents([unsupported])).toThrow(
+    expect(() =>
+      projectConversationEvents([unsupported], { defaultProfile: "default" }),
+    ).toThrow(
       'Unsupported conversation event "old_context_marker" at seq 12 (schema version 1)',
     );
   });
@@ -255,20 +269,23 @@ describe("projectConversationEvents", () => {
   });
 
   it("omits volatile runtime bootstrap from durable agent history", () => {
-    const projection = projectConversationEvents([
-      event(20, {
-        type: "user_message",
-        content: [
-          {
-            type: "text",
-            text: "<runtime-turn-context>\nvolatile\n</runtime-turn-context>",
-          },
-          { type: "text", text: "Keep this instruction." },
-        ],
-        timestamp: 2_000,
-        provenance: { authority: "instruction" },
-      }),
-    ]);
+    const projection = projectConversationEvents(
+      [
+        event(20, {
+          type: "user_message",
+          content: [
+            {
+              type: "text",
+              text: "<runtime-turn-context>\nvolatile\n</runtime-turn-context>",
+            },
+            { type: "text", text: "Keep this instruction." },
+          ],
+          timestamp: 2_000,
+          provenance: { authority: "instruction" },
+        }),
+      ],
+      { defaultProfile: "default" },
+    );
 
     expect(projection.messages).toEqual([
       {

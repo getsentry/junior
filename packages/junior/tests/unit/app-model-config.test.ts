@@ -15,8 +15,6 @@ describe("createApp profiles", () => {
     await createApp({
       defaultProfile: "gpt-5",
       profiles: {
-        standard: "xai/grok-4.5",
-        handoff: "openai/gpt-5.6-sol",
         "gpt-5": "openai/gpt-5.6-sol",
         "opus-5": "anthropic/claude-opus-5",
       },
@@ -24,9 +22,7 @@ describe("createApp profiles", () => {
     });
 
     expect(botConfig.defaultProfile).toBe("gpt-5");
-    expect(botConfig.profiles).toMatchObject({
-      standard: { modelId: "xai/grok-4.5" },
-      handoff: { modelId: "openai/gpt-5.6-sol" },
+    expect(botConfig.profiles).toEqual({
       "gpt-5": { modelId: "openai/gpt-5.6-sol" },
       "opus-5": { modelId: "anthropic/claude-opus-5" },
     });
