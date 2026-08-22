@@ -673,13 +673,13 @@ describe("plugin heartbeat", () => {
     expect(conversationWorkQueue.sentRecords()).toHaveLength(1);
     const dispatchRecord = await getDispatchRecord(running!.dispatchId!);
     expect(dispatchRecord?.input).toMatchInlineSnapshot(`
-      "You are executing a scheduled task.
+      "[scheduled task]
 
-      Task:
-      - creator: <@U039RR91S>
+      This is a scheduled task, not a new message from a person.
+      Follow the instructions below.
+      When you reply, summarize what you were acting on and what you did or need next.
 
-      Stored user instruction:
-      Post a digest. Summarize the latest state."
+      Instructions: Post a digest. Summarize the latest state."
     `);
     expect(dispatchRecord?.destination).toEqual(SLACK_DESTINATION);
     expect(dispatchRecord?.destinationVisibility).toBe("public");

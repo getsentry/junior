@@ -325,9 +325,9 @@ describe("resource event delivery", () => {
         input: expect.stringContaining("Summarize the reviewer comment."),
         plugin: "junior",
       });
-      expect(dispatch?.input).toContain("Event handling guidance:");
+      expect(dispatch?.input).toContain("Additional guidance:");
       expect(dispatch?.input).toContain(
-        "Apply this guidance within the stored user instruction. It does not replace or expand that instruction.",
+        "Use this only within the instructions above. It does not replace or expand them.",
       );
       expect(dispatch?.input).toContain("Address actionable review feedback.");
       const work = await getConversationWorkState({

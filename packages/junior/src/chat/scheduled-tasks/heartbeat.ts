@@ -13,7 +13,6 @@ import { getDb } from "@/chat/db";
 import { logInfo } from "@/chat/logging";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { recordTaskExecution } from "@/chat/tasks/execution-stats";
-import { sanitizeScheduledTaskPrincipal } from "./identity";
 import { createSchedulerSqlStore, type SchedulerStore } from "./store";
 import {
   logScheduledTaskRunSkipped,
@@ -37,17 +36,16 @@ function singleLineMetadataValue(value: string): string {
     .trim();
 }
 
-/** Render the due scheduled task as structured agent input. */
+/** Render the due scheduled task as plain agent input. */
 function buildDispatchInput(task: ScheduledTask): string {
-  const creator = sanitizeScheduledTaskPrincipal(task.createdBy);
   return [
-    "You are executing a scheduled task.",
+    "[scheduled task]",
     "",
-    "Task:",
-    `- creator: <@${creator.slackUserId}>`,
+    "This is a scheduled task, not a new message from a person.",
+    "Follow the instructions below.",
+    "When you reply, summarize what you were acting on and what you did or need next.",
     "",
-    "Stored user instruction:",
-    task.task.text,
+    `Instructions: ${task.task.text}`,
   ].join("\n");
 }
 
