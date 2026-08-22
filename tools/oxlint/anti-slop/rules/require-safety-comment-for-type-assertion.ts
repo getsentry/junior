@@ -39,6 +39,7 @@ function hasSafetyComment(sourceCode: SourceCode, node: TypeAssertion): boolean 
     }
     // Leading comments on `export const` / `export let` attach to the export
     // wrapper, not the inner VariableDeclaration (the export token blocks them).
+    // Hop once to that wrapper, then stop — do not accept a distant ancestor.
     if (commentOwnerKinds.has(current.type)) {
       if (isExportWrapper(current.parent)) {
         current = current.parent;
@@ -46,7 +47,9 @@ function hasSafetyComment(sourceCode: SourceCode, node: TypeAssertion): boolean 
       }
       return false;
     }
-    if (current.parent.type === "Program") return false;
+    if (isExportWrapper(current) || current.parent.type === "Program") {
+      return false;
+    }
     current = current.parent;
   }
 }
