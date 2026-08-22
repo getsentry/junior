@@ -109,7 +109,7 @@ describe("projectConversationEvents", () => {
     }),
   ];
 
-  it("projects messages, authorization observations, provenance, and model binding", () => {
+  it("projects messages, authorization observations, provenance, and model profile", () => {
     const projection = projectConversationEvents(events, {
       defaultProfile: "default",
     });
@@ -136,11 +136,11 @@ describe("projectConversationEvents", () => {
       ],
       seqs: [2, 3, 6],
       modelProfile: "coding",
-      historyReplacementSeq: 0,
+      replacementSeq: 0,
     });
   });
 
-  it("stops at maxSeq while retaining the epoch model binding", () => {
+  it("stops at maxSeq while retaining the model profile", () => {
     const projection = projectConversationEvents(events, {
       defaultProfile: "default",
       maxSeq: 3,
@@ -149,7 +149,7 @@ describe("projectConversationEvents", () => {
     expect(projection).toMatchObject({
       seqs: [2, 3],
       modelProfile: "coding",
-      historyReplacementSeq: 0,
+      replacementSeq: 0,
     });
     expect(projection.messages).toHaveLength(2);
   });
@@ -209,7 +209,7 @@ describe("projectConversationEvents", () => {
 
     expect(projection.messages).toEqual([retained, summary, later]);
     expect(projection.seqs).toEqual([4, 10, 11]);
-    expect(projection.historyReplacementSeq).toBe(10);
+    expect(projection.replacementSeq).toBe(10);
   });
 
   it("round-trips native Pi message roles without leaking provenance", () => {

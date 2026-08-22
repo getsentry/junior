@@ -8,7 +8,7 @@ import {
   type TurnReasoningLevel,
 } from "@/chat/reasoning-level";
 import {
-  type ExecutionProfileConfig,
+  type ModelProfileConfig,
   type ModelProfile,
   modelProfileSchema,
 } from "@/chat/model-profile";
@@ -53,7 +53,7 @@ export interface BotConfig {
   guardianModelId: string;
   imageGenerationModelId: string;
   loadingMessages: string[];
-  profiles: Readonly<Record<string, ExecutionProfileConfig>>;
+  profiles: Readonly<Record<string, ModelProfileConfig>>;
   reasoningLevel?: TurnReasoningLevel;
   visionModelId?: string;
   maxSlicesPerTurn: number;
@@ -236,7 +236,7 @@ function validateEmbeddingModelId(raw: string | undefined): string | undefined {
 function parseProfileMap(
   rawProfiles: unknown,
   configName: string,
-): Readonly<Record<string, ExecutionProfileConfig>> {
+): Readonly<Record<string, ModelProfileConfig>> {
   if (
     !rawProfiles ||
     typeof rawProfiles !== "object" ||
@@ -246,7 +246,7 @@ function parseProfileMap(
       configName === "AI_MODEL_PROFILES" ? "a JSON object" : "an object";
     throw new Error(`${configName} must be ${objectType}`);
   }
-  const profiles: Record<string, ExecutionProfileConfig> = {};
+  const profiles: Record<string, ModelProfileConfig> = {};
   for (const [profile, rawModelId] of Object.entries(rawProfiles)) {
     if (!modelProfileSchema.safeParse(profile).success) {
       throw new Error(
@@ -265,12 +265,13 @@ function parseProfileMap(
   return profiles;
 }
 
+// TODO(v0.180.0): Remove env profile settings after the deprecation window.
 function parseProfiles(
   rawValue: string | undefined,
   standardModelId: string,
   handoffModelId: string,
-): Readonly<Record<string, ExecutionProfileConfig>> {
-  const profiles: Record<string, ExecutionProfileConfig> = {
+): Readonly<Record<string, ModelProfileConfig>> {
+  const profiles: Record<string, ModelProfileConfig> = {
     standard: { modelId: standardModelId },
     handoff: { modelId: handoffModelId, reasoningLevel: "high" },
   };
@@ -538,18 +539,16 @@ export interface SlackReactionConfig {
   processingReactionEmoji: string;
 }
 
-/** Apply the host profile catalog and default profile from createApp(). */
+/** Apply profiles from createApp(). */
 export function setProfiles(
   profiles: Readonly<Record<string, string>> | undefined,
   defaultProfile: string | undefined,
 ): void {
-  if (profiles && !defaultProfile) {
-    throw new Error("defaultProfile is required when profiles are configured");
+  if (!profiles || !defaultProfile) {
+    throw new Error("profiles and defaultProfile must be configured together");
   }
-  const configuredProfiles = profiles
-    ? parseProfileMap(profiles, "profiles")
-    : botConfig.profiles;
-  const selectedDefault = defaultProfile ?? botConfig.defaultProfile;
+  const configuredProfiles = parseProfileMap(profiles, "profiles");
+  const selectedDefault = defaultProfile;
   if (!modelProfileSchema.safeParse(selectedDefault).success) {
     throw new Error(
       `defaultProfile "${selectedDefault}" must match ^[a-z][a-z0-9_-]*$`,

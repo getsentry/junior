@@ -7,7 +7,7 @@ import {
 } from "@/chat/reasoning-level";
 import {
   type ModelProfile,
-  type ExecutionProfileConfig,
+  type ModelProfileConfig,
   modelProfileSchema,
 } from "@/chat/model-profile";
 import { renderCurrentInstruction } from "@/chat/current-instruction";
@@ -48,7 +48,7 @@ function coerceClassifierConfidence(value: unknown): unknown {
 }
 
 function createTurnRouteSchema(
-  profiles: Readonly<Record<string, ExecutionProfileConfig>>,
+  profiles: Readonly<Record<string, ModelProfileConfig>>,
 ) {
   return z.object({
     reasoning_level: z.enum(TURN_REASONING_LEVELS),
@@ -118,7 +118,7 @@ function buildClassifierSystemPrompt(
   defaultProfile: ModelProfile,
 ): string {
   return [
-    "You choose the execution profile most likely to produce a complete, source-grounded answer.",
+    "You choose the model profile most likely to produce a complete, source-grounded answer.",
     "Choose exactly one bucket: none, low, medium, high, or xhigh.",
     `Choose profile from the configured profiles: ${profileNames.join(", ")}.`,
     "Choose profile independently from the reasoning bucket.",
@@ -130,7 +130,7 @@ function buildClassifierSystemPrompt(
     "Use xhigh for the most complex tasks: code changes, debugging/root-cause analysis, broad refactors, architecture decisions, multi-file implementation, or any task where deep reasoning across multiple systems or files is required.",
     "When unsure between two non-none buckets, choose the higher bucket. Do not use low as the default.",
     `The default profile is ${defaultProfile}.`,
-    "Profile names are host-defined labels. Do not assume that a non-default profile is more capable than the default profile.",
+    "Profile names are configured labels. Do not assume that a non-default profile is more capable than the default profile.",
     "Choose a non-default profile only when its label clearly matches the task. Otherwise keep the default profile.",
     "",
     "Classify based on the substance of the task, not the length of the current message. When the current instruction is a short affirmation (for example: 'go', 'do it', 'yes please', 'proceed') and prior thread context contains a pending task, classify the pending task — not the affirmation.",
@@ -216,7 +216,7 @@ export async function selectTurnRoute(args: {
   defaultProfile: ModelProfile;
   fastModelId: string;
   messageText: string;
-  profiles: Readonly<Record<string, ExecutionProfileConfig>>;
+  profiles: Readonly<Record<string, ModelProfileConfig>>;
 }): Promise<TurnRoute> {
   const trimmedContext = trimContextForRouter(args.conversationContext);
   const instructionLength = args.messageText.trim().length;
@@ -312,7 +312,7 @@ function applyReasoningFloor(
 
 function applyProfileReasoningOverride(
   route: TurnRoute,
-  profiles: Readonly<Record<string, ExecutionProfileConfig>>,
+  profiles: Readonly<Record<string, ModelProfileConfig>>,
 ): TurnRoute {
   const reasoningLevel = profiles[route.profile]?.reasoningLevel;
   if (!reasoningLevel || reasoningLevel === route.reasoningLevel) {
@@ -330,7 +330,7 @@ async function classifyTurn(args: {
   defaultProfile: ModelProfile;
   fastModelId: string;
   metadata: Record<string, string>;
-  profiles: Readonly<Record<string, ExecutionProfileConfig>>;
+  profiles: Readonly<Record<string, ModelProfileConfig>>;
   prompt: string;
 }): Promise<TurnRoute> {
   try {
@@ -356,7 +356,9 @@ async function classifyTurn(args: {
     if (parsed.confidence < CLASSIFIER_CONFIDENCE_THRESHOLD) {
       return {
         confidence: parsed.confidence,
-        ...(result.costUsd !== undefined ? { costUsd: result.costUsd } : undefined),
+        ...(result.costUsd !== undefined
+          ? { costUsd: result.costUsd }
+          : undefined),
         profile: args.defaultProfile,
         reasoningLevel: CLASSIFIER_FALLBACK_REASONING_LEVEL,
         reason: `low_confidence_medium_default:${reason}`,
@@ -366,7 +368,9 @@ async function classifyTurn(args: {
 
     return {
       confidence: parsed.confidence,
-      ...(result.costUsd !== undefined ? { costUsd: result.costUsd } : undefined),
+      ...(result.costUsd !== undefined
+        ? { costUsd: result.costUsd }
+        : undefined),
       profile: parsed.profile,
       reasoningLevel: parsed.reasoning_level,
       reason,

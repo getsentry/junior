@@ -516,10 +516,10 @@ describe("model handoff composition", () => {
       "Profiles: `coding`, `handoff`.",
     );
     expect(observations.afterHandoffDescription).toContain(
-      "Profiles: `coding`, `standard`.",
+      "Profiles: `standard`, `coding`.",
     );
     expect(observations.initialHandoffProfiles).toEqual(["coding", "handoff"]);
-    expect(observations.afterHandoffProfiles).toEqual(["coding", "standard"]);
+    expect(observations.afterHandoffProfiles).toEqual(["standard", "coding"]);
     expect(observations.summaryCalls).toBe(1);
     expect(observations.handoffStatusBeforeSummary).toBe(true);
     expect(

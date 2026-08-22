@@ -38,16 +38,13 @@ describe("chat config", () => {
     await loadConfig();
 
     expect(mocks.logWarn.mock.calls).toEqual(
-      ["AI_MODEL", "AI_HANDOFF_MODEL", "AI_MODEL_PROFILES"].map(
-        (envName) => [
-          "config.profile_env.deprecated",
-          {
-            "app.config.env_name": envName,
-            "app.config.replacement":
-              "createApp({ defaultProfile, profiles })",
-          },
-        ],
-      ),
+      ["AI_MODEL", "AI_HANDOFF_MODEL", "AI_MODEL_PROFILES"].map((envName) => [
+        "config.profile_env.deprecated",
+        {
+          "app.config.env_name": envName,
+          "app.config.replacement": "createApp({ defaultProfile, profiles })",
+        },
+      ]),
     );
   });
 
@@ -131,7 +128,7 @@ describe("chat config", () => {
     await expect(loadConfig()).rejects.toThrow("Invalid option");
   });
 
-  it("uses gpt-5.6-sol for the default handoff profile", async () => {
+  it("uses gpt-5.6-sol for the env handoff profile", async () => {
     delete process.env.AI_HANDOFF_MODEL;
     delete process.env.AI_MODEL_PROFILES;
 
@@ -145,7 +142,7 @@ describe("chat config", () => {
     });
   });
 
-  it("uses AI_HANDOFF_MODEL for the default handoff profile", async () => {
+  it("uses AI_HANDOFF_MODEL for the env handoff profile", async () => {
     process.env.AI_HANDOFF_MODEL = "openai/gpt-5.4";
 
     const { botConfig } = await loadConfig();

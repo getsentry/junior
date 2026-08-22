@@ -44,7 +44,20 @@ describe("createApp profiles", () => {
         profiles: { coding: "openai/gpt-5.6-sol" },
         plugins: defineJuniorPlugins([]),
       }),
-    ).rejects.toThrow("defaultProfile is required");
+    ).rejects.toThrow(
+      "profiles and defaultProfile must be configured together",
+    );
+  });
+
+  it("requires profiles with a declared default", async () => {
+    await expect(
+      createApp({
+        defaultProfile: "coding",
+        plugins: defineJuniorPlugins([]),
+      }),
+    ).rejects.toThrow(
+      "profiles and defaultProfile must be configured together",
+    );
   });
 
   it("rejects invalid profile names", async () => {

@@ -5,11 +5,11 @@ import type { TurnReasoningLevel } from "@/chat/reasoning-level";
 /** Keep durable profile names stable and safe to expose in tool schemas. */
 export const modelProfileSchema = z.string().regex(/^[a-z][a-z0-9_-]*$/);
 
-/** A configured model role rather than a provider-specific model id. */
+/** A configured name for a model. */
 export type ModelProfile = z.output<typeof modelProfileSchema>;
 
-/** Runtime configuration for one named execution profile. */
-export interface ExecutionProfileConfig {
+/** Runtime configuration for one named model profile. */
+export interface ModelProfileConfig {
   modelId: string;
   reasoningLevel?: TurnReasoningLevel;
 }
@@ -22,7 +22,7 @@ export class ModelProfileNotConfiguredError extends Error {
   }
 }
 
-/** Resolve a stable model profile through the host-owned model catalog. */
+/** Resolve a model id from a configured profile. */
 export function modelIdForProfile(
   config: BotConfig,
   profile: ModelProfile,
@@ -35,11 +35,11 @@ export function defaultModelId(config: BotConfig): string {
   return modelIdForProfile(config, config.defaultProfile);
 }
 
-/** Resolve a stable model profile through the host-owned profile catalog. */
+/** Return one configured profile. */
 export function profileConfig(
   config: BotConfig,
   profile: ModelProfile,
-): ExecutionProfileConfig {
+): ModelProfileConfig {
   const profileConfig = Object.hasOwn(config.profiles, profile)
     ? config.profiles[profile]
     : undefined;

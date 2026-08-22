@@ -500,9 +500,7 @@ async function executeAgentRunInPrivacyContext(
       ...(routing.destinationVisibility
         ? { destinationVisibility: routing.destinationVisibility }
         : undefined),
-      ...(routing.dispatch?.id
-        ? { dispatchId: routing.dispatch.id }
-        : undefined),
+      ...(routing.dispatch?.id ? { dispatchId: routing.dispatch.id } : undefined),
       durability,
       recordActiveMcpProviders,
       publishExternally:
@@ -586,12 +584,11 @@ async function executeAgentRunInPrivacyContext(
     );
     const storedTurnRoute = await loadTurnRoute({ conversationId, turnId });
     if (storedTurnRoute) {
-      const resumedAfterHandoff =
-        handoffEnabled &&
-        projection.historyReplacementSeq !== undefined &&
-        projection.historyReplacementSeq > storedTurnRoute.seq &&
+      const replacementOverridesRoute =
+        projection.replacementSeq !== undefined &&
+        projection.replacementSeq > storedTurnRoute.seq &&
         activeModelProfile !== storedTurnRoute.modelProfile;
-      if (resumedAfterHandoff) {
+      if (replacementOverridesRoute) {
         const activeProfileConfig = profileConfig(
           botConfig,
           activeModelProfile,
@@ -716,10 +713,11 @@ async function executeAgentRunInPrivacyContext(
       | undefined;
     const currentAgentMessages = (): PiMessage[] =>
       agent ? [...agent.state.messages] : [];
-    // Config validation guarantees that the declared default is in this catalog.
-    const handoffProfiles = Object.keys(botConfig.profiles).sort() as [
-      ModelProfile,
-      ...ModelProfile[],
+    const handoffProfiles: [ModelProfile, ...ModelProfile[]] = [
+      botConfig.defaultProfile,
+      ...Object.keys(botConfig.profiles)
+        .filter((profile) => profile !== botConfig.defaultProfile)
+        .sort(),
     ];
     const usageSinceCurrentBoundary = (
       messages: PiMessage[],
@@ -1680,9 +1678,7 @@ async function executeAgentRunInPrivacyContext(
             : undefined),
           "app.ai.session.conversation_id": conversationId,
           "app.ai.turn.session_id": turnId,
-          ...(currentSliceId
-            ? { "app.ai.turn.slice_id": currentSliceId }
-            : undefined),
+          ...(currentSliceId ? { "app.ai.turn.slice_id": currentSliceId } : undefined),
           ...toGenAiMessagesTraceAttributes("gen_ai.input", inputMessages),
           ...(inputMessagesAttribute
             ? { "gen_ai.input.messages": inputMessagesAttribute }

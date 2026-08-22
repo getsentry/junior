@@ -282,7 +282,7 @@ it("keeps actor-owned MCP connections across history replacement", async () => {
   ).resolves.toMatchObject({
     messages: [],
     modelProfile: "standard",
-    historyReplacementSeq: 1,
+    replacementSeq: 1,
   });
   await expect(
     loadConnectedMcpProviders({

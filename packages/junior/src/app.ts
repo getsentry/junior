@@ -110,9 +110,9 @@ export interface JuniorAppOptions {
    * you are deliberately dogfooding a pre-stable surface.
    */
   experimental?: ExperimentalFeaturesConfig;
-  /** Profile used for new conversations. Required when `profiles` is set. */
+  /** Profile used for new conversations. Configure with `profiles`. */
   defaultProfile?: string;
-  /** Named profiles available to the router and handoff tool. */
+  /** Named profiles available to the router and handoff tool. Configure with `defaultProfile`. */
   profiles?: Readonly<Record<string, string>>;
   /** Slack-specific overrides applied after env parsing. */
   slack?: {

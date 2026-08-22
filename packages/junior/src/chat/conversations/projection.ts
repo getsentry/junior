@@ -620,9 +620,7 @@ async function recordAuthenticationAccountChange(
     actorId: args.actorId,
     provider: args.provider,
     ...(args.accountLabel ? { accountLabel: args.accountLabel } : undefined),
-    ...(args.authorizationId
-      ? { authorizationId: args.authorizationId }
-      : undefined),
+    ...(args.authorizationId ? { authorizationId: args.authorizationId } : undefined),
     ...(args.providerLabel ? { providerLabel: args.providerLabel } : undefined),
   });
   await getConversationEventStore().append(args.conversationId, [
@@ -789,7 +787,7 @@ export async function recordSubscribedReplyRoute(args: {
   ]);
 }
 
-/** Load a previously selected execution profile for a resumed turn. */
+/** Load a previously selected model profile for a resumed turn. */
 export async function loadTurnRoute(args: {
   conversationId: string;
   turnId: string;
@@ -812,7 +810,7 @@ export async function loadTurnRoute(args: {
   return { ...event.data, seq: event.seq };
 }
 
-/** Record the execution profile selected for one turn without changing agent history. */
+/** Record the model profile selected for one turn without changing agent history. */
 export async function recordTurnRoute(args: {
   conversationId: string;
   turnId: string;
