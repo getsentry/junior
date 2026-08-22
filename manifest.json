@@ -1,0 +1,58 @@
+{
+  "commitSha": "f981d02dfa59e4d21a146fc6cd44a06c994b3232",
+  "mode": "path",
+  "reasons": [
+    "packages/junior-dashboard/e2e/conversations-mobile.spec.ts",
+    "packages/junior-dashboard/e2e/conversations.spec.ts",
+    "packages/junior-dashboard/e2e/harness.ts",
+    "packages/junior-dashboard/package.json",
+    "packages/junior-dashboard/src/client/conversations/ConversationPage.tsx",
+    "packages/junior-dashboard/src/client/conversations/ConversationWorkspace.tsx",
+    "packages/junior-dashboard/src/client/conversations/queries.ts",
+    "packages/junior-dashboard/src/client/conversations/turnContext.ts",
+    "packages/junior-dashboard/src/client/mobileViewport.ts",
+    "packages/junior-dashboard/src/client/pages/memory/MemoryPage.tsx",
+    "packages/junior-dashboard/src/client/pages/memory/MemoryTimeline.tsx",
+    "packages/junior-dashboard/src/client/pages/memory/memoryDashboard.ts",
+    "packages/junior-dashboard/src/client/types.ts",
+    "packages/junior-dashboard/src/mock-reporting/fixtures.ts",
+    "packages/junior-dashboard/tests/dashboard-mock-routes.test.ts",
+    "packages/junior-dashboard/tests/markdownExport.test.ts",
+    "packages/junior-dashboard/tests/memory-timeline.test.tsx",
+    "packages/junior-dashboard/tests/mobileViewport.test.ts",
+    "packages/junior-dashboard/visual/capture.ts"
+  ],
+  "scenarioIds": [
+    "gallery-index",
+    "conversations",
+    "conversation-detail",
+    "conversation-detail-focused"
+  ],
+  "shots": [
+    {
+      "file": "gallery-index__desktop.png",
+      "label": "Component gallery index · desktop"
+    },
+    {
+      "file": "conversations__desktop.png",
+      "label": "Conversations · desktop"
+    },
+    {
+      "file": "conversations__mobile.png",
+      "label": "Conversations · mobile"
+    },
+    {
+      "file": "conversation-detail__desktop.png",
+      "label": "Conversation detail · desktop"
+    },
+    {
+      "file": "conversation-detail__mobile.png",
+      "label": "Conversation detail · mobile"
+    },
+    {
+      "file": "conversation-detail-focused__mobile.png",
+      "label": "Conversation detail · focused composer · mobile"
+    }
+  ],
+  "skipped": false
+}
