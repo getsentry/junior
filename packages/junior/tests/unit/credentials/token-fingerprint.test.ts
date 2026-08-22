@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHmac } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
   credentialTokenFromAuthorizationHeader,
@@ -6,12 +6,17 @@ import {
   fingerprintLeaseAuthorization,
 } from "@/chat/credentials/token-fingerprint";
 
+function expectedFingerprint(token: string): string {
+  return createHmac("sha256", "junior.credential-fingerprint.v1")
+    .update(token, "utf8")
+    .digest("hex")
+    .slice(0, 12);
+}
+
 describe("token fingerprint helpers", () => {
   it("hashes tokens to a stable short fingerprint", () => {
     const token = "installation-token";
-    expect(fingerprintCredentialToken(token)).toBe(
-      createHash("sha256").update(token, "utf8").digest("hex").slice(0, 12),
-    );
+    expect(fingerprintCredentialToken(token)).toBe(expectedFingerprint(token));
   });
 
   it("recovers bearer and git smart-http basic tokens", () => {
@@ -34,6 +39,6 @@ describe("token fingerprint helpers", () => {
         },
       },
     ]);
-    expect(fingerprint).toBe(fingerprintCredentialToken("installation-token"));
+    expect(fingerprint).toBe(expectedFingerprint("installation-token"));
   });
 });

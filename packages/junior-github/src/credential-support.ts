@@ -4,7 +4,7 @@
  * This module owns OAuth refresh, installation tokens, credential leases, and
  * repository-scoped credential parsing.
  */
-import { createHash, createPrivateKey, createSign } from "node:crypto";
+import { createHmac, createPrivateKey, createSign } from "node:crypto";
 import type {
   PluginCredentialResult,
   PluginGrant,
@@ -512,7 +512,10 @@ export function credentialUnavailable(message: string): PluginCredentialResult {
 }
 
 function fingerprintCredentialToken(token: string): string {
-  return createHash("sha256").update(token, "utf8").digest("hex").slice(0, 12);
+  return createHmac("sha256", "junior.credential-fingerprint.v1")
+    .update(token, "utf8")
+    .digest("hex")
+    .slice(0, 12);
 }
 
 function parseTokenPermissions(

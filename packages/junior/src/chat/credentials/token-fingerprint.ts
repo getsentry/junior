@@ -1,11 +1,17 @@
-import { createHash } from "node:crypto";
+import { createHmac } from "node:crypto";
+
+/** Domain separator so fingerprints are correlation ids, not secret digests. */
+const CREDENTIAL_FINGERPRINT_DOMAIN = "junior.credential-fingerprint.v1";
 
 /**
  * Build a short non-reversible fingerprint for correlating a credential across
  * mint, lease cache, and outbound injection without logging the secret.
  */
 export function fingerprintCredentialToken(token: string): string {
-  return createHash("sha256").update(token, "utf8").digest("hex").slice(0, 12);
+  return createHmac("sha256", CREDENTIAL_FINGERPRINT_DOMAIN)
+    .update(token, "utf8")
+    .digest("hex")
+    .slice(0, 12);
 }
 
 /**
@@ -39,8 +45,9 @@ export function credentialTokenFromAuthorizationHeader(
     if (separator < 0) {
       return undefined;
     }
-    const password = decoded.slice(separator + 1);
-    return password || undefined;
+    // Git smart-HTTP uses x-access-token:<installation-token>.
+    const credential = decoded.slice(separator + 1);
+    return credential || undefined;
   } catch {
     return undefined;
   }
