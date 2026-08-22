@@ -136,7 +136,7 @@ describe("projectConversationEvents", () => {
       ],
       seqs: [2, 3, 6],
       modelProfile: "coding",
-      modelId: "openai/gpt-5.4",
+      historyReplacementType: "handoff",
     });
   });
 
@@ -149,7 +149,7 @@ describe("projectConversationEvents", () => {
     expect(projection).toMatchObject({
       seqs: [2, 3],
       modelProfile: "coding",
-      modelId: "openai/gpt-5.4",
+      historyReplacementType: "handoff",
     });
     expect(projection.messages).toHaveLength(2);
   });
@@ -209,6 +209,7 @@ describe("projectConversationEvents", () => {
 
     expect(projection.messages).toEqual([retained, summary, later]);
     expect(projection.seqs).toEqual([4, 10, 11]);
+    expect(projection.historyReplacementType).toBe("compaction");
   });
 
   it("round-trips native Pi message roles without leaking provenance", () => {

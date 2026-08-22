@@ -171,7 +171,7 @@ const app = await createApp({
 });
 ```
 
-App config merges over env defaults. `AI_MODEL` defines the `standard` profile. `AI_HANDOFF_MODEL` defines the `handoff` profile. `AI_MODEL_PROFILES` defines more named profiles. When you pass `profiles`, you must also set `defaultProfile` to declare which profile starts a new conversation. Without app profiles, the default profile remains `standard` for compatibility.
+When you pass `profiles`, you must also set `defaultProfile`. App profiles replace the env profile catalog. Without app profiles, the deprecated env settings create `standard` and `handoff` profiles for compatibility. `AI_MODEL_PROFILES` can add or replace profiles in that env-only catalog.
 
 ## Install-wide config defaults
 

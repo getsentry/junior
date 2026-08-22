@@ -586,7 +586,7 @@ async function executeAgentRunInPrivacyContext(
     if (storedTurnRoute) {
       const resumedAfterHandoff =
         handoffEnabled &&
-        projection.modelId !== undefined &&
+        projection.historyReplacementType === "handoff" &&
         activeModelProfile !== storedTurnRoute.modelProfile;
       if (resumedAfterHandoff) {
         const activeProfileConfig = profileConfig(
@@ -713,11 +713,8 @@ async function executeAgentRunInPrivacyContext(
       | undefined;
     const currentAgentMessages = (): PiMessage[] =>
       agent ? [...agent.state.messages] : [];
-    const configuredProfiles = Object.keys(botConfig.profiles).sort();
-    if (configuredProfiles.length === 0) {
-      throw new Error("At least one model profile must be configured");
-    }
-    const handoffProfiles = configuredProfiles as [
+    // Config validation guarantees that the declared default is in this catalog.
+    const handoffProfiles = Object.keys(botConfig.profiles).sort() as [
       ModelProfile,
       ...ModelProfile[],
     ];
