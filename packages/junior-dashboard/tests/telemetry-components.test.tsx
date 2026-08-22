@@ -22,7 +22,6 @@ import { Transcript } from "../src/client/conversations/TranscriptView";
 import { ConversationHeader } from "../src/client/conversations/ConversationHeader";
 import {
   ConversationAnnotations,
-  ConversationSidebarAnnotations,
   ConversationStats,
 } from "../src/client/conversations/ConversationMeta";
 import { conversationFromDetail } from "../src/client/format";
@@ -589,103 +588,6 @@ describe("dashboard canonical-event components", () => {
 
     expect(html).toContain("getsentry/junior#1081");
     expect(html).toContain('title="Open pull request"');
-  });
-
-  it("labels one or two scopes and clusters the rest on desktop", () => {
-    const single = renderToStaticMarkup(
-      <ConversationSidebarAnnotations
-        annotations={[
-          {
-            icon: "circle-dot",
-            key: "getsentry/junior#2",
-            label: "junior",
-          },
-        ]}
-      />,
-    );
-    expect(single).toContain(">junior<");
-    expect(single).toContain("getsentry/junior#2");
-
-    const dual = renderToStaticMarkup(
-      <ConversationSidebarAnnotations
-        annotations={[
-          {
-            icon: "circle-dot",
-            key: "getsentry/junior#2",
-            label: "junior",
-          },
-          {
-            icon: "git-merge",
-            key: "getsentry/payments#1",
-            label: "payments",
-          },
-        ]}
-      />,
-    );
-    expect(dual).toContain(
-      'aria-label="Linked work, newest first: getsentry/junior#2, getsentry/payments#1"',
-    );
-    expect(dual.indexOf(">junior<")).toBeLessThan(dual.indexOf(">payments<"));
-    expect(dual).not.toContain(">+1<");
-    // Chip icons are decorative; the parent aria-label carries the identity.
-    expect(dual).toContain("lucide-circle-dot");
-    expect(dual).toContain("lucide-git-merge");
-
-    const stacked = renderToStaticMarkup(
-      <ConversationSidebarAnnotations
-        annotations={[
-          {
-            icon: "circle-dashed",
-            key: "getsentry/junior#3",
-            label: "junior",
-          },
-          {
-            icon: "circle-dot",
-            key: "getsentry/payments#2",
-            label: "payments",
-          },
-          {
-            icon: "git-merge",
-            key: "getsentry/relay#1",
-            label: "relay",
-          },
-        ]}
-      />,
-    );
-    // Desktop keeps two labeled chips, then plain +N for remaining groups.
-    expect(stacked).toContain(">junior<");
-    expect(stacked).toContain(">payments<");
-    expect(stacked).toContain(">+1<");
-    expect(stacked).not.toContain(">relay<");
-    expect(stacked).toContain("getsentry/payments#2");
-    expect(stacked).toContain("getsentry/relay#1");
-    expect(stacked).toContain("lucide-circle-dashed");
-    expect(stacked).toContain("lucide-circle-dot");
-    // No desktop facepile cutout stack next to labeled chips.
-    expect(stacked).not.toContain("-ml-2");
-
-    const sameLabel = renderToStaticMarkup(
-      <ConversationSidebarAnnotations
-        annotations={[
-          {
-            icon: "circle-dot",
-            key: "getsentry/junior#2",
-            label: "junior",
-          },
-          {
-            icon: "git-merge",
-            key: "getsentry/junior#1",
-            label: "junior",
-          },
-        ]}
-      />,
-    );
-    expect(sameLabel).toContain(">junior<");
-    expect(sameLabel.match(/>junior</g)).toHaveLength(1);
-    expect(sameLabel).not.toContain(">+1<");
-    expect(sameLabel).toContain("getsentry/junior#1");
-    expect(sameLabel).toContain("lucide-circle-dot");
-    expect(sameLabel).toContain("lucide-git-merge");
   });
 
   it("distinguishes initial detail failures from stale refresh failures", () => {

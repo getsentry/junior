@@ -21,11 +21,8 @@ export type SidebarAnnotationBadgeProjection = {
   overflowGroupCount: number;
 };
 
-/**
- * Group sidebar annotations by shared label and keep every status icon.
- * Label order follows first appearance (newest-first input).
- */
-export function groupSidebarAnnotationsByLabel(
+/** Group annotations by shared label and keep every status icon. */
+function groupSidebarAnnotationsByLabel(
   annotations: SidebarAnnotation[],
 ): SidebarAnnotationBadgeGroup[] {
   const groups = new Map<string, SidebarAnnotation[]>();
@@ -45,11 +42,7 @@ export function groupSidebarAnnotationsByLabel(
   }));
 }
 
-/**
- * Project sidebar annotations into labeled badge groups with plain +N overflow.
- * Desktop keeps spaced icons inside each label chip. Mobile facepile is a
- * separate render path when more than one label is present.
- */
+/** Project annotations into newest-first label groups with bounded labels. */
 export function projectSidebarAnnotationBadges(
   annotations: SidebarAnnotation[],
 ): SidebarAnnotationBadgeProjection {
