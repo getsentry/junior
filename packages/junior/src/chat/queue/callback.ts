@@ -1,4 +1,4 @@
-/** Shared Vercel Queue callback wiring for signed jobs. */
+/** Shared Vercel Queue callback wiring for signed messages. */
 import {
   handleCallback,
   registerDevConsumer,
@@ -30,7 +30,7 @@ export interface QueueCallbackOptions<Message> {
   visibilityTimeoutSeconds?: number;
 }
 
-/** Build the HTTP callback and local-dev consumer for one queue job. */
+/** Build the HTTP callback and local-dev consumer for one signed queue. */
 export function queueCallback<Message>(options: QueueCallbackOptions<Message>) {
   const handler = async (
     value: unknown,

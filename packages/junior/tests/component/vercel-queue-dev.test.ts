@@ -138,13 +138,9 @@ describe("plugin task Vercel queue integration", () => {
 
     process.env.JUNIOR_SECRET = "plugin-task-secret";
 
-    const [
-      { PLUGIN_TASK_QUEUE_TOPIC, sendPluginJob },
-      { pluginJobId },
-    ] = await Promise.all([
-      import("@/chat/plugins/job-delivery"),
-      import("@/chat/plugins/job-message"),
-    ]);
+    const { PLUGIN_JOB_TOPIC, pluginJobId, sendPluginJob } = await import(
+      "@/chat/plugins/job-delivery"
+    );
     const message = {
       name: "extractMemories",
       params: {
@@ -157,7 +153,7 @@ describe("plugin task Vercel queue integration", () => {
     await sendPluginJob(message);
 
     expect(send).toHaveBeenCalledWith(
-      PLUGIN_TASK_QUEUE_TOPIC,
+      PLUGIN_JOB_TOPIC,
       {
         ...message,
         signedAtMs: expect.any(Number),

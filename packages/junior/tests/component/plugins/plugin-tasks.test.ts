@@ -7,7 +7,7 @@ import {
 } from "@sentry/junior-plugin-api";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PiMessage } from "@/chat/pi/messages";
-import type { PluginJobMessage } from "@/chat/plugins/job-message";
+import type { PluginJobMessage } from "@/chat/plugins/job-delivery";
 import type { ConversationMessage } from "@/chat/state/conversation";
 
 const ORIGINAL_ENV = { ...process.env };

@@ -44,7 +44,7 @@ import {
   runPluginJob,
   scheduleSessionCompletedPluginJobs,
 } from "@/chat/plugins/job-runner";
-import type { PluginJobMessage } from "@/chat/plugins/job-message";
+import type { PluginJobMessage } from "@/chat/plugins/job-delivery";
 import { buildSlackInboundMessage } from "@/chat/task-execution/slack-work";
 import { appendAndEnqueueInboundMessage } from "@/chat/task-execution/store";
 import { deleteConversationState } from "@/chat/task-execution/state";

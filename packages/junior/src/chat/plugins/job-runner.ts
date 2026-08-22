@@ -47,10 +47,10 @@ import { getPlugins } from "./agent-hooks";
 import {
   pluginJobId,
   pluginJobParamsSchema,
+  sendPluginJob,
   type PluginJobParams,
   type PluginJobMessage,
-} from "./job-message";
-import { sendPluginJob } from "./job-delivery";
+} from "./job-delivery";
 import { getStateAdapter } from "@/chat/state/adapter";
 import type { Lock } from "chat";
 

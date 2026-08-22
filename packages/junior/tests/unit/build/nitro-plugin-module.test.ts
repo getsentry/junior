@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
 import { afterEach, describe, expect, it } from "vitest";
-import { PLUGIN_TASK_QUEUE_TOPIC } from "@/chat/plugins/job-delivery";
+import { PLUGIN_JOB_TOPIC } from "@/chat/plugins/job-delivery";
 import { DEFAULT_CONVERSATION_WORK_QUEUE_TOPIC } from "@/chat/task-execution/vercel-queue";
 import {
   JUNIOR_CONVERSATION_WORK_CALLBACK_ROUTE,
@@ -123,7 +123,7 @@ describe("juniorNitro plugin modules", () => {
       experimentalTriggers: [
         {
           type: "queue/v2beta",
-          topic: PLUGIN_TASK_QUEUE_TOPIC,
+          topic: PLUGIN_JOB_TOPIC,
         },
       ],
     });
@@ -169,7 +169,7 @@ describe("juniorNitro plugin modules", () => {
               experimentalTriggers: [
                 {
                   type: "queue/v2beta",
-                  topic: PLUGIN_TASK_QUEUE_TOPIC,
+                  topic: PLUGIN_JOB_TOPIC,
                 },
               ],
             },
@@ -214,7 +214,7 @@ describe("juniorNitro plugin modules", () => {
       experimentalTriggers: [
         {
           type: "queue/v2beta",
-          topic: PLUGIN_TASK_QUEUE_TOPIC,
+          topic: PLUGIN_JOB_TOPIC,
         },
       ],
     });
@@ -307,7 +307,7 @@ describe("juniorNitro plugin modules", () => {
     ).toEqual([
       {
         type: "queue/v2beta",
-        topic: PLUGIN_TASK_QUEUE_TOPIC,
+        topic: PLUGIN_JOB_TOPIC,
       },
     ]);
   });
