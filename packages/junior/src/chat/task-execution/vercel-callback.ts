@@ -2,7 +2,7 @@ import type { MessageMetadata } from "@vercel/queue";
 import type { StateAdapter } from "chat";
 import { getChatConfig } from "@/chat/config";
 import { logWarn, withLogContext } from "@/chat/logging";
-import { createQueueJobCallback } from "@/chat/queue-jobs/callback";
+import { queueCallback } from "@/chat/queue/callback";
 import type { ConversationStore } from "@/chat/conversations/store";
 import {
   conversationQueueMessageSchema,
@@ -81,7 +81,7 @@ export async function processConversationQueueMessage(
 }
 
 function logConversationQueueMessageRejected(
-  reason: ConversationQueueMessageRejectedError["reason"],
+  reason: ConversationQueueMessageRejectedError["reason"] | string,
   metadata: MessageMetadata,
   error?: unknown,
 ): void {
@@ -102,12 +102,9 @@ function logConversationQueueMessageRejected(
 function conversationWorkCallback(
   options: VercelConversationWorkCallbackOptions,
 ) {
-  return createQueueJobCallback<
-    ConversationQueueMessage,
-    ConversationQueueMessageRejectedError["reason"]
-  >({
+  return queueCallback<ConversationQueueMessage>({
     consumerGroup: CONVERSATION_WORK_DEV_CONSUMER_GROUP,
-    // Conversation execution stores and limits failed attempts in durable state.
+    // Conversation work stores and limits failed attempts in durable state.
     maxDeliveries: null,
     onRejected: logConversationQueueMessageRejected,
     permanentError: (error) =>

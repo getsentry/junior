@@ -1,16 +1,16 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { z } from "zod";
-import { createQueueMessageCodec } from "@/chat/queue-jobs/message";
+import { signQueueMessage, verifyQueueMessage } from "@/chat/queue/sign";
 
 const originalJuniorSecret = process.env.JUNIOR_SECRET;
-const messageSchema = z.object({ id: z.string().min(1) }).strict();
-const codec = createQueueMessageCodec({
+const schema = z.object({ id: z.string().min(1) }).strict();
+const config = {
   context: "test.queue.v1",
   maxAgeMs: 100,
-  schema: messageSchema,
-  signatureVersion: "v1",
-  signingParts: (message) => [message.id],
-});
+  schema,
+  signatureVersion: "v1" as const,
+  parts: (message: { id: string }) => [message.id],
+};
 
 afterEach(() => {
   if (originalJuniorSecret === undefined) {
@@ -20,24 +20,28 @@ afterEach(() => {
   }
 });
 
-describe("queue message codec", () => {
+describe("queue sign", () => {
   it("signs valid messages and rejects changed, expired, or malformed messages", () => {
     process.env.JUNIOR_SECRET = "test-secret";
-    const signed = codec.sign({ id: "job-1" }, 1_000);
+    const signed = signQueueMessage(config, { id: "job-1" }, 1_000);
 
-    expect(codec.verify(signed, 1_050)).toEqual({
+    expect(verifyQueueMessage(config, signed, 1_050)).toEqual({
       status: "verified",
       message: { id: "job-1" },
     });
-    expect(codec.verify({ ...signed, id: "job-2" }, 1_050)).toEqual({
+    expect(
+      verifyQueueMessage(config, { ...signed, id: "job-2" }, 1_050),
+    ).toEqual({
       status: "rejected",
       reason: "signature_mismatch",
     });
-    expect(codec.verify(signed, 1_101)).toEqual({
+    expect(verifyQueueMessage(config, signed, 1_101)).toEqual({
       status: "rejected",
       reason: "expired",
     });
-    expect(codec.verify({ ...signed, unexpected: true }, 1_050)).toEqual({
+    expect(
+      verifyQueueMessage(config, { ...signed, unexpected: true }, 1_050),
+    ).toEqual({
       status: "rejected",
       reason: "malformed",
     });
@@ -45,14 +49,14 @@ describe("queue message codec", () => {
 
   it("reports unavailable verification dependencies", () => {
     process.env.JUNIOR_SECRET = "test-secret";
-    const signed = codec.sign({ id: "job-1" }, 1_000);
+    const signed = signQueueMessage(config, { id: "job-1" }, 1_000);
 
-    expect(codec.verify(signed, Number.NaN)).toEqual({
+    expect(verifyQueueMessage(config, signed, Number.NaN)).toEqual({
       status: "unavailable",
       reason: "invalid_clock",
     });
     delete process.env.JUNIOR_SECRET;
-    expect(codec.verify(signed, 1_050)).toEqual({
+    expect(verifyQueueMessage(config, signed, 1_050)).toEqual({
       status: "unavailable",
       reason: "missing_secret",
     });

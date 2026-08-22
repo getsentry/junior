@@ -1,4 +1,4 @@
-/** Shared verification, retry, and local delivery rules for Vercel Queue jobs. */
+/** Shared Vercel Queue callback wiring for signed jobs. */
 import {
   handleCallback,
   registerDevConsumer,
@@ -7,56 +7,43 @@ import {
 } from "@vercel/queue";
 import { runWithTurnRequestDeadline } from "@/chat/runtime/request-deadline";
 import { createVercelQueueClient } from "@/chat/vercel-queue-client";
-import type {
-  QueueMessageRejectReason,
-  QueueMessageVerificationResult,
-} from "./message";
+import type { QueueRejectReason, QueueVerifyResult } from "./sign";
 
-interface QueueJobCallbackOptions<Message, PermanentReason extends string> {
+export interface QueueCallbackOptions<Message> {
   consumerGroup: string;
-  /** Null keeps provider redelivery unbounded. Use only when durable state owns the limit. */
+  /** Use `null` when durable state already owns the attempt limit. */
   maxDeliveries: number | null;
   onRejected(
-    reason: QueueMessageRejectReason | PermanentReason,
+    reason: QueueRejectReason | string,
     metadata: MessageMetadata,
     error?: unknown,
   ): void;
-  permanentError?: (error: unknown) => PermanentReason | undefined;
+  permanentError?: (error: unknown) => string | undefined;
   run(message: Message, metadata: MessageMetadata): Promise<void>;
   topic: string;
-  verify(value: unknown): QueueMessageVerificationResult<Message>;
+  verify(value: unknown): QueueVerifyResult<Message>;
   visibilityTimeoutSeconds?: number;
 }
 
-interface QueueJobCallback {
-  create(): (request: Request) => Promise<Response>;
-  registerDev(): (() => void) | undefined;
-}
-
-/** Create one queue callback with explicit verification and delivery limits. */
-export function createQueueJobCallback<
-  Message,
-  PermanentReason extends string = never,
->(
-  options: QueueJobCallbackOptions<Message, PermanentReason>,
-): QueueJobCallback {
+/** Build the HTTP callback and local-dev consumer for one queue job. */
+export function queueCallback<Message>(options: QueueCallbackOptions<Message>) {
   const handler = async (
     value: unknown,
     metadata: MessageMetadata,
   ): Promise<void> => {
-    const verification = options.verify(value);
-    if (verification.status === "rejected") {
-      options.onRejected(verification.reason, metadata);
+    const checked = options.verify(value);
+    if (checked.status === "rejected") {
+      options.onRejected(checked.reason, metadata);
       return;
     }
-    if (verification.status === "unavailable") {
+    if (checked.status === "unavailable") {
       throw new Error(
-        `Queue message verification unavailable: ${verification.reason}`,
+        `Queue message verification unavailable: ${checked.reason}`,
       );
     }
     try {
       await runWithTurnRequestDeadline(() =>
-        options.run(verification.message, metadata),
+        options.run(checked.message, metadata),
       );
     } catch (error) {
       const reason = options.permanentError?.(error);
@@ -85,14 +72,13 @@ export function createQueueJobCallback<
     return undefined;
   };
 
+  const visibility =
+    options.visibilityTimeoutSeconds === undefined
+      ? {}
+      : { visibilityTimeoutSeconds: options.visibilityTimeoutSeconds };
+
   return {
-    create: () =>
-      handleCallback(handler, {
-        retry,
-        ...(options.visibilityTimeoutSeconds === undefined
-          ? {}
-          : { visibilityTimeoutSeconds: options.visibilityTimeoutSeconds }),
-      }),
+    create: () => handleCallback(handler, { retry, ...visibility }),
     registerDev: () => {
       if (process.env.NODE_ENV !== "development") {
         return undefined;
@@ -103,9 +89,7 @@ export function createQueueJobCallback<
         handler,
         retry,
         topic: options.topic,
-        ...(options.visibilityTimeoutSeconds === undefined
-          ? {}
-          : { visibilityTimeoutSeconds: options.visibilityTimeoutSeconds }),
+        ...visibility,
       });
     },
   };

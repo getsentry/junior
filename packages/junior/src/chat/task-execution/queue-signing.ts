@@ -1,30 +1,33 @@
-import { createQueueMessageCodec } from "@/chat/queue-jobs/message";
+import {
+  QUEUE_SIGNATURE_MAX_AGE_MS,
+  signQueueMessage,
+  verifyQueueMessage,
+  type QueueVerifyResult,
+} from "@/chat/queue/sign";
 import {
   conversationQueueMessageSchema,
   type ConversationQueueMessage,
 } from "./queue";
 
-const conversationQueueMessageCodec =
-  createQueueMessageCodec<ConversationQueueMessage, "v2">({
-    context: "junior.conversation_work_queue.v2",
-    schema: conversationQueueMessageSchema,
-    separator: ":",
-    signatureVersion: "v2",
-    signingParts: (message) => [message.conversationId],
-  });
+const conversationQueueSign = {
+  context: "junior.conversation_work_queue.v2",
+  schema: conversationQueueMessageSchema,
+  separator: ":",
+  signatureVersion: "v2" as const,
+  parts: (message: ConversationQueueMessage) => [message.conversationId],
+};
 
 export const CONVERSATION_WORK_QUEUE_SIGNATURE_MAX_SKEW_MS =
-  conversationQueueMessageCodec.maxAgeMs;
-export type ConversationQueueMessageVerificationResult = ReturnType<
-  typeof conversationQueueMessageCodec.verify
->;
+  QUEUE_SIGNATURE_MAX_AGE_MS;
+export type ConversationQueueMessageVerificationResult =
+  QueueVerifyResult<ConversationQueueMessage>;
 
 /** Sign a conversation queue payload before it crosses the public callback route. */
 export function signConversationQueueMessage(
   message: ConversationQueueMessage,
   nowMs = Date.now(),
 ) {
-  return conversationQueueMessageCodec.sign(message, nowMs);
+  return signQueueMessage(conversationQueueSign, message, nowMs);
 }
 
 /** Explain whether a queue payload is verified, rejected, or unavailable. */
@@ -32,7 +35,7 @@ export function verifyConversationQueueMessage(
   value: unknown,
   nowMs = Date.now(),
 ): ConversationQueueMessageVerificationResult {
-  return conversationQueueMessageCodec.verify(value, nowMs);
+  return verifyQueueMessage(conversationQueueSign, value, nowMs);
 }
 
 /** Verify a signed conversation queue payload from the Vercel Queue callback. */

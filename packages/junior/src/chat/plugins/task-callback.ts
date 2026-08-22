@@ -1,7 +1,7 @@
 /** Vercel Queue callback for plugin background tasks. */
 import type { MessageMetadata } from "@vercel/queue";
 import { logWarn } from "@/chat/logging";
-import { createQueueJobCallback } from "@/chat/queue-jobs/callback";
+import { queueCallback } from "@/chat/queue/callback";
 import { processPluginTask } from "./task-runner";
 import { PLUGIN_TASK_QUEUE_TOPIC } from "./task-queue";
 import {
@@ -13,7 +13,7 @@ export const PLUGIN_TASK_DEV_CONSUMER_GROUP = "junior_plugin_tasks_dev";
 const PLUGIN_TASK_MAX_DELIVERIES = 5;
 
 function logPluginTaskQueueMessageRejected(
-  reason: PluginTaskQueueRejectReason,
+  reason: PluginTaskQueueRejectReason | string,
   metadata: MessageMetadata,
 ): void {
   logWarn("plugin.task.queue_message.rejected", {
@@ -26,7 +26,7 @@ function logPluginTaskQueueMessageRejected(
 }
 
 function pluginTaskCallback() {
-  return createQueueJobCallback({
+  return queueCallback({
     consumerGroup: PLUGIN_TASK_DEV_CONSUMER_GROUP,
     maxDeliveries: PLUGIN_TASK_MAX_DELIVERIES,
     onRejected: logPluginTaskQueueMessageRejected,
