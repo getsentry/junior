@@ -53,15 +53,15 @@ async function publishSnapshotEvent(event: ResourceEvent): Promise<void> {
 }
 
 async function publishFinishedEvent(input: {
-  workspace: Workspace;
+  workspaceId: string;
   profileHash: string;
-  buildId: string;
+  buildId?: string;
   status: "ready" | "failed";
   error?: string | null;
 }): Promise<void> {
   await publishSnapshotEvent(
     workspaceSnapshotFinishedEvent({
-      workspaceId: input.workspace.id,
+      workspaceId: input.workspaceId,
       buildId: input.buildId,
       profileHash: input.profileHash,
       status: input.status,
@@ -121,6 +121,11 @@ export async function processWorkspaceSnapshotJob(
     logInfo("workspace.snapshot.job.workspace_missing", {
       "app.workspace.id": message.workspaceId,
     });
+    await publishFinishedEvent({
+      workspaceId: message.workspaceId,
+      profileHash: message.profileHash,
+      status: "failed",
+    });
     return;
   }
   const value = profile.create(SANDBOX_RUNTIME, workspace);
@@ -128,6 +133,11 @@ export async function processWorkspaceSnapshotJob(
     logInfo("workspace.snapshot.job.profile_mismatch", {
       "app.workspace.id": workspace.id,
       "app.workspace.snapshot.profile_hash": message.profileHash,
+    });
+    await publishFinishedEvent({
+      workspaceId: workspace.id,
+      profileHash: message.profileHash,
+      status: "failed",
     });
     return;
   }
@@ -139,7 +149,7 @@ export async function processWorkspaceSnapshotJob(
   );
   if (before.ready) {
     await publishFinishedEvent({
-      workspace,
+      workspaceId: workspace.id,
       profileHash: value.hash,
       buildId: before.ready.id,
       status: "ready",
@@ -171,7 +181,7 @@ export async function processWorkspaceSnapshotJob(
     );
     if (afterFailure.build?.status === "failed") {
       await publishFinishedEvent({
-        workspace,
+        workspaceId: workspace.id,
         profileHash: value.hash,
         buildId: afterFailure.build.id,
         status: "failed",
@@ -189,7 +199,7 @@ export async function processWorkspaceSnapshotJob(
   );
   if (after.ready) {
     await publishFinishedEvent({
-      workspace,
+      workspaceId: workspace.id,
       profileHash: value.hash,
       buildId: after.ready.id,
       status: "ready",
@@ -198,7 +208,7 @@ export async function processWorkspaceSnapshotJob(
   }
   if (after.build?.status === "failed") {
     await publishFinishedEvent({
-      workspace,
+      workspaceId: workspace.id,
       profileHash: value.hash,
       buildId: after.build.id,
       status: "failed",
