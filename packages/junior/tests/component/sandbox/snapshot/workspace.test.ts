@@ -130,16 +130,11 @@ describe("Workspace snapshot completion", () => {
     );
     sandboxGetMock.mockRejectedValue(new Error("Vercel cleanup failed"));
     sandboxCreateMock.mockResolvedValue({});
-    let yieldChecks = 0;
-
     await expect(
       resolveWorkspaceSnapshot({
         workspace,
         runtime: SANDBOX_RUNTIME,
-        shouldYield: () => {
-          yieldChecks += 1;
-          return yieldChecks > 1;
-        },
+        shouldYield: () => true,
         applyNetworkPolicy: async () => {},
         removeCredentialRoute: false,
       }),
@@ -289,7 +284,7 @@ describe("Workspace snapshot completion", () => {
     }
   });
 
-  it("keeps the host deadline buffer when the caller can continue", async () => {
+  it("advances one slice before yielding near the host deadline", async () => {
     const workspace = await createWorkspace({
       name: `snapshot-deadline-${randomUUID()}`,
       setupScript: "printf ready",
@@ -316,7 +311,7 @@ describe("Workspace snapshot completion", () => {
         requestStartedAtMs,
       ),
     ).rejects.toSatisfy(isWorkspaceSnapshotWaitingError);
-    expect(sandboxCreateMock).not.toHaveBeenCalled();
+    expect(sandboxCreateMock).toHaveBeenCalledTimes(1);
   });
 
   it("attempts every builder cleanup after a provider failure", async () => {

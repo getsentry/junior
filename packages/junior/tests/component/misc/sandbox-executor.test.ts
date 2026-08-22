@@ -106,7 +106,7 @@ vi.mock("@/chat/plugins/catalog-runtime", () => ({
   },
 }));
 
-const { resolveMock, resolveWorkspaceMock, missingErrorMock, hashMock } =
+const { resolveMock, getReadyWorkspaceMock, missingErrorMock, hashMock } =
   vi.hoisted(() => ({
     resolveMock: vi.fn<
       (...args: any[]) => Promise<{
@@ -122,7 +122,7 @@ const { resolveMock, resolveWorkspaceMock, missingErrorMock, hashMock } =
       cacheHit: false,
       resolveOutcome: "no_profile",
     })),
-    resolveWorkspaceMock: vi.fn<
+    getReadyWorkspaceMock: vi.fn<
       (...args: any[]) => Promise<{
         snapshotId?: string;
         profileHash?: string;
@@ -148,7 +148,7 @@ vi.mock("@/chat/sandbox/snapshot/resolve", () => ({
   isMissingError: missingErrorMock,
 }));
 vi.mock("@/chat/sandbox/snapshot/workspace", () => ({
-  resolveWorkspaceSnapshot: resolveWorkspaceMock,
+  getReadyWorkspaceSnapshot: getReadyWorkspaceMock,
 }));
 
 vi.mock("@/chat/sandbox/docker", () => ({
@@ -522,8 +522,8 @@ describe("createTestSandbox", () => {
       cacheHit: false,
       resolveOutcome: "no_profile",
     });
-    resolveWorkspaceMock.mockReset();
-    resolveWorkspaceMock.mockResolvedValue({
+    getReadyWorkspaceMock.mockReset();
+    getReadyWorkspaceMock.mockResolvedValue({
       dependencyCount: 0,
       cacheHit: false,
       resolveOutcome: "no_profile",
@@ -1148,41 +1148,17 @@ describe("createTestSandbox", () => {
     ]);
   });
 
-  it("limits credential egress to Workspace provider preparation", async () => {
-    const buildSandbox = makeSandbox("sbx_workspace_build");
+  it("prepares the active sandbox after loading a ready Workspace snapshot", async () => {
     const activeSandbox = makeSandbox("sbx_workspace_active");
-    const policy = {
-      allow: {
-        "*": [],
-        "github.com": [
-          {
-            forwardURL:
-              "https://junior.example.com/api/internal/sandbox-egress/token",
-          },
-        ],
-      },
-    };
-    const createNetworkPolicy = vi.fn(() => policy);
     const onWorkspacePrepare = vi.fn(
       async (_sandbox: SandboxSession, _workspace: unknown) => {},
     );
-    resolveWorkspaceMock.mockImplementationOnce(async (params: any) => {
-      await params.applyNetworkPolicy(buildSandbox);
-      await params.prepareRepositories?.(buildSandbox, params.workspace);
-      if (params.removeCredentialRoute) {
-        await (
-          buildSandbox.update as (input: {
-            networkPolicy: string;
-          }) => Promise<void>
-        )({ networkPolicy: "allow-all" });
-      }
-      return {
-        snapshotId: "snap_workspace",
-        profileHash: "profile-workspace",
-        dependencyCount: 0,
-        cacheHit: false,
-        resolveOutcome: "rebuilt",
-      };
+    getReadyWorkspaceMock.mockResolvedValueOnce({
+      snapshotId: "snap_workspace",
+      profileHash: "profile-workspace",
+      dependencyCount: 0,
+      cacheHit: true,
+      resolveOutcome: "cache_hit",
     });
     hashMock.mockReturnValue("profile-workspace");
     sandboxCreateMock.mockResolvedValueOnce(activeSandbox);
@@ -1196,34 +1172,23 @@ describe("createTestSandbox", () => {
       },
       skills: [],
       referenceFiles: [],
-      createNetworkPolicy,
       onWorkspacePrepare,
     });
 
     await runtime.acquire();
 
-    expect(onWorkspacePrepare).toHaveBeenCalledTimes(2);
-    expect(onWorkspacePrepare.mock.calls[0]?.[0]).toBe(buildSandbox);
+    expect(onWorkspacePrepare).toHaveBeenCalledOnce();
+    expect(onWorkspacePrepare.mock.calls[0]?.[0]).toEqual(
+      expect.objectContaining({ sandboxId: "sbx_workspace_active" }),
+    );
     expect(onWorkspacePrepare.mock.calls[0]?.[1]).toEqual(
       expect.objectContaining({ id: "workspace-1" }),
     );
-    expect(onWorkspacePrepare.mock.calls[1]?.[0]).toEqual(
-      expect.objectContaining({ sandboxId: "sbx_workspace_active" }),
-    );
-    expect(onWorkspacePrepare.mock.calls[1]?.[1]).toEqual(
-      expect.objectContaining({ id: "workspace-1" }),
-    );
-    expect(buildSandbox.update).toHaveBeenNthCalledWith(1, {
-      networkPolicy: policy,
-    });
-    expect(buildSandbox.update).toHaveBeenNthCalledWith(2, {
-      networkPolicy: "allow-all",
-    });
   });
 
-  it("routes Workspace setup through the resumable snapshot builder", async () => {
+  it("loads a ready Workspace snapshot without starting a build", async () => {
     const controller = new AbortController();
-    resolveWorkspaceMock.mockResolvedValueOnce({
+    getReadyWorkspaceMock.mockResolvedValueOnce({
       snapshotId: "snap_workspace_setup",
       profileHash: "profile-workspace-setup",
       dependencyCount: 0,
@@ -1247,11 +1212,10 @@ describe("createTestSandbox", () => {
 
     await runtime.acquire(controller.signal);
 
-    expect(resolveWorkspaceMock).toHaveBeenCalledTimes(1);
-    const call = resolveWorkspaceMock.mock.calls[0]?.[0];
-    expect(call?.workspace.id).toBe(workspace.id);
-    expect(call?.signal).toBeInstanceOf(AbortSignal);
-    expect(call?.signal?.aborted).toBe(false);
+    expect(getReadyWorkspaceMock).toHaveBeenCalledWith({
+      workspace,
+      runtime: "node22",
+    });
     expect(resolveMock).not.toHaveBeenCalled();
   });
 
@@ -1263,7 +1227,7 @@ describe("createTestSandbox", () => {
     const providerStarted = new Promise<void>((resolve) => {
       markProviderStarted = resolve;
     });
-    resolveWorkspaceMock.mockImplementationOnce(async (params: any) => {
+    getReadyWorkspaceMock.mockImplementationOnce(async (params: any) => {
       await params.prepareRepositories?.(
         buildSandbox,
         params.workspace,
@@ -2914,7 +2878,7 @@ describe("createTestSandbox", () => {
 
   it("rebuilds a missing Workspace snapshot through its resumable owner", async () => {
     const rebuiltSandbox = makeSandbox("sbx_workspace_rebuilt");
-    resolveWorkspaceMock
+    getReadyWorkspaceMock
       .mockResolvedValueOnce({
         snapshotId: "snap_workspace_missing",
         profileHash: "hash_workspace",
@@ -2951,8 +2915,8 @@ describe("createTestSandbox", () => {
 
     await runtime.acquire();
 
-    expect(resolveWorkspaceMock).toHaveBeenCalledTimes(2);
-    expect(resolveWorkspaceMock).toHaveBeenNthCalledWith(
+    expect(getReadyWorkspaceMock).toHaveBeenCalledTimes(2);
+    expect(getReadyWorkspaceMock).toHaveBeenNthCalledWith(
       2,
       expect.objectContaining({
         runtime: "node22",

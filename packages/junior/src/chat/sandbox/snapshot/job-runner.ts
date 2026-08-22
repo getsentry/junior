@@ -74,7 +74,7 @@ async function publishTerminalEvent(input: {
   );
 }
 
-function createSnapshotBuildHelpers(workspace: Workspace) {
+function createSnapshotBuildHelpers() {
   const credentials = credentialContextForActor(SNAPSHOT_BUILD_SYSTEM_ACTOR);
   const pluginHooks = createPluginHookRunner();
   const tokens = new Map<string, { expiresAtMs: number; token: string }>();
@@ -110,7 +110,8 @@ function createSnapshotBuildHelpers(workspace: Workspace) {
 function shouldYieldJob(): boolean {
   const deadlineAtMs = getTurnRequestDeadline()?.deadlineAtMs;
   return (
-    deadlineAtMs !== undefined && Date.now() >= deadlineAtMs - JOB_YIELD_BUFFER_MS
+    deadlineAtMs !== undefined &&
+    Date.now() >= deadlineAtMs - JOB_YIELD_BUFFER_MS
   );
 }
 
@@ -164,7 +165,7 @@ export async function processWorkspaceSnapshotJob(
   }
 
   const { applyNetworkPolicy, prepareRepositories } =
-    createSnapshotBuildHelpers(workspace);
+    createSnapshotBuildHelpers();
 
   try {
     await resolveWorkspaceSnapshot({

@@ -1,5 +1,4 @@
 import type {
-  PluginResourceEvents,
   ResourceEvent,
   SubscribableResource,
 } from "@sentry/junior-plugin-api";
@@ -10,29 +9,6 @@ export const WORKSPACE_SNAPSHOT_NAMESPACE = "junior";
 export const WORKSPACE_SNAPSHOT_RESOURCE_TYPE = "workspace_snapshot";
 export const WORKSPACE_SNAPSHOT_READY_EVENT = "workspace_snapshot.ready";
 export const WORKSPACE_SNAPSHOT_FAILED_EVENT = "workspace_snapshot.failed";
-
-/** Register core Workspace snapshot resource events in the runtime catalog. */
-export const workspaceSnapshotResourceEvents: PluginResourceEvents = {
-  resourceTypes: [
-    {
-      type: WORKSPACE_SNAPSHOT_RESOURCE_TYPE,
-      supportedEvents: [
-        WORKSPACE_SNAPSHOT_READY_EVENT,
-        WORKSPACE_SNAPSHOT_FAILED_EVENT,
-      ],
-      suggestedEvents: [
-        WORKSPACE_SNAPSHOT_READY_EVENT,
-        WORKSPACE_SNAPSHOT_FAILED_EVENT,
-      ],
-      guidance: {
-        [WORKSPACE_SNAPSHOT_READY_EVENT]:
-          "The Workspace snapshot is ready. Call switchWorkspace again with the same name.",
-        [WORKSPACE_SNAPSHOT_FAILED_EVENT]:
-          "The Workspace snapshot build failed. Inspect the trusted summary, then retry switchWorkspace only after fixing the cause.",
-      },
-    },
-  ],
-};
 
 /** Build the model-facing subscribable handle for one Workspace snapshot. */
 export function workspaceSnapshotSubscribable(input: {
