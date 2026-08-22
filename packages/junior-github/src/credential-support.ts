@@ -511,63 +511,9 @@ export function credentialUnavailable(message: string): PluginCredentialResult {
   };
 }
 
-function fingerprintCredentialToken(token: string): string {
-  return createHmac("sha256", "junior.credential-fingerprint.v1")
-    .update(token, "utf8")
-    .digest("hex")
-    .slice(0, 12);
-}
-
-function parseTokenPermissions(
-  value: unknown,
-): Record<string, string> | undefined {
-  if (!isRecord(value)) return undefined;
-  const permissions: Record<string, string> = {};
-  for (const [scope, level] of Object.entries(value)) {
-    if (typeof level === "string" && scope.trim() && level.trim()) {
-      permissions[scope.trim()] = level.trim();
-    }
-  }
-  return Object.keys(permissions).length > 0 ? permissions : undefined;
-}
-
-function parseTokenRepositories(value: unknown): string[] | undefined {
-  if (!Array.isArray(value)) return undefined;
-  const repositories: string[] = [];
-  for (const entry of value) {
-    if (typeof entry === "string" && entry.trim()) {
-      repositories.push(entry.trim());
-      continue;
-    }
-    if (!isRecord(entry)) continue;
-    const fullName =
-      typeof entry.full_name === "string" ? entry.full_name.trim() : "";
-    if (fullName) {
-      repositories.push(fullName);
-      continue;
-    }
-    const name = typeof entry.name === "string" ? entry.name.trim() : "";
-    if (name) repositories.push(name);
-  }
-  return repositories.length > 0 ? repositories : undefined;
-}
-
-function serializeTokenPermissions(
-  permissions: Record<string, string> | undefined,
-): string | undefined {
-  if (!permissions) return undefined;
-  const entries = Object.entries(permissions)
-    .map(([scope, level]) => `${scope}:${level}`)
-    .sort();
-  return entries.length > 0 ? entries.join(",") : undefined;
-}
-
 function parseInstallationTokenResponse(data: unknown): {
   expiresAtMs: number;
-  permissions?: Record<string, string>;
-  repositories?: string[];
   token: string;
-  tokenFingerprint: string;
 } {
   if (!isRecord(data)) {
     throw new Error("GitHub installation token response is invalid");
@@ -584,15 +530,7 @@ function parseInstallationTokenResponse(data: unknown): {
       "GitHub installation token response returned invalid expires_at",
     );
   }
-  const permissions = parseTokenPermissions(data.permissions);
-  const repositories = parseTokenRepositories(data.repositories);
-  return {
-    token,
-    tokenFingerprint: fingerprintCredentialToken(token),
-    expiresAtMs,
-    ...(permissions ? { permissions } : {}),
-    ...(repositories ? { repositories } : {}),
-  };
+  return { token, expiresAtMs };
 }
 
 function readInstallationPermissions(
@@ -872,23 +810,10 @@ export async function issueUserCredential(
   return credentialNeeded("Your GitHub authorization has expired.", scope);
 }
 
-export interface IssuedInstallationToken {
-  expiresAtMs: number;
-  permissions?: Record<string, string>;
-  repositories?: string[];
-  token: string;
-  tokenFingerprint: string;
-}
-
-interface IssueInstallationCredentialTelemetry {
-  grantName?: string;
-  log?: Pick<PluginLogger, "info">;
-}
-
 /** Issue a bounded raw token for plugin-owned GitHub API calls. */
 export async function issueInstallationToken(
   options: InstallationCredentialOptions,
-): Promise<IssuedInstallationToken> {
+): Promise<{ expiresAtMs: number; token: string }> {
   const appId = requireEnv(options.appIdEnv);
   const installationIdRaw = requireEnv(options.installationIdEnv);
   const installationId = Number(installationIdRaw);
@@ -922,29 +847,24 @@ export async function issueInstallationToken(
   return {
     expiresAtMs: Math.min(parsedToken.expiresAtMs, Date.now() + MAX_LEASE_MS),
     token: parsedToken.token,
-    tokenFingerprint: parsedToken.tokenFingerprint,
-    ...(parsedToken.permissions ? { permissions: parsedToken.permissions } : {}),
-    ...(parsedToken.repositories
-      ? { repositories: parsedToken.repositories }
-      : {}),
   };
+}
+
+function fingerprintInstallationToken(token: string): string {
+  return createHmac("sha256", "junior.credential-fingerprint.v1")
+    .update(token, "utf8")
+    .digest("hex")
+    .slice(0, 12);
 }
 
 /** Issue a bounded GitHub App installation credential. */
 export async function issueInstallationCredential(
   options: InstallationCredentialOptions,
-  telemetry?: IssueInstallationCredentialTelemetry,
+  log?: Pick<PluginLogger, "info">,
 ): Promise<PluginCredentialResult> {
   const token = await issueInstallationToken(options);
-  const permissions = serializeTokenPermissions(token.permissions);
-  telemetry?.log?.info("github.installation_token.issued", {
-    "app.credential.token_fingerprint": token.tokenFingerprint,
-    ...(telemetry.grantName ? { "app.grant.name": telemetry.grantName } : {}),
-    ...(permissions ? { "app.github.token_permissions": permissions } : {}),
-    ...(token.repositories
-      ? { "app.github.token_repositories": token.repositories }
-      : {}),
-    "app.github.token_expires_at": new Date(token.expiresAtMs).toISOString(),
+  log?.info("github.installation_token.issued", {
+    "app.credential.token_fingerprint": fingerprintInstallationToken(token.token),
   });
   return createCredentialLease({
     token: token.token,

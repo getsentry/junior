@@ -954,7 +954,6 @@ export function githubPlugin(
         return await resolveUserAccount(ctx.tokens);
       },
       async issueCredential(ctx) {
-        const mintTelemetry = { grantName: ctx.grant.name, log: ctx.log };
         try {
           if (ctx.grant.name === "installation-read") {
             return await issueInstallationCredential(
@@ -966,7 +965,7 @@ export function githubPlugin(
                   ? { permissions: declaredReadPermissions }
                   : { loadPermissions: loadReadPermissions }),
               },
-              mintTelemetry,
+              ctx.log,
             );
           }
           if (ctx.grant.name === "installation-write") {
@@ -974,7 +973,7 @@ export function githubPlugin(
             const repository = githubRepositoryFromLeaseScope(ctx.grant.leaseScope);
             return await issueInstallationCredential(
               { appIdEnv, privateKeyEnv, installationIdEnv, repositories: [repository.name] },
-              mintTelemetry,
+              ctx.log,
             );
           }
           if (USER_TOKEN_GRANTS.has(ctx.grant.name)) {

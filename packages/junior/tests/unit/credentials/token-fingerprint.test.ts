@@ -15,8 +15,9 @@ function expectedFingerprint(token: string): string {
 
 describe("token fingerprint helpers", () => {
   it("hashes tokens to a stable short fingerprint", () => {
-    const token = "installation-token";
-    expect(fingerprintCredentialToken(token)).toBe(expectedFingerprint(token));
+    expect(fingerprintCredentialToken("installation-token")).toBe(
+      expectedFingerprint("installation-token"),
+    );
   });
 
   it("recovers bearer and git smart-http basic tokens", () => {
@@ -31,14 +32,11 @@ describe("token fingerprint helpers", () => {
     );
   });
 
-  it("fingerprints the first authorization header on a lease", () => {
-    const fingerprint = fingerprintLeaseAuthorization([
-      {
-        headers: {
-          Authorization: "Bearer installation-token",
-        },
-      },
-    ]);
-    expect(fingerprint).toBe(expectedFingerprint("installation-token"));
+  it("fingerprints lease authorization headers", () => {
+    expect(
+      fingerprintLeaseAuthorization([
+        { headers: { Authorization: "Bearer installation-token" } },
+      ]),
+    ).toBe(expectedFingerprint("installation-token"));
   });
 });

@@ -1,12 +1,8 @@
 import { createHmac } from "node:crypto";
 
-/** Domain separator so fingerprints are correlation ids, not secret digests. */
 const CREDENTIAL_FINGERPRINT_DOMAIN = "junior.credential-fingerprint.v1";
 
-/**
- * Build a short non-reversible fingerprint for correlating a credential across
- * mint, lease cache, and outbound injection without logging the secret.
- */
+/** Short non-reversible id for correlating a credential without logging the secret. */
 export function fingerprintCredentialToken(token: string): string {
   return createHmac("sha256", CREDENTIAL_FINGERPRINT_DOMAIN)
     .update(token, "utf8")
@@ -14,38 +10,20 @@ export function fingerprintCredentialToken(token: string): string {
     .slice(0, 12);
 }
 
-/**
- * Recover the credential token from a lease Authorization header value.
- *
- * Supports `Bearer <token>` and Git smart-HTTP
- * `Basic base64(x-access-token:<token>)`.
- */
+/** Recover a token from Bearer or git smart-HTTP Basic Authorization values. */
 export function credentialTokenFromAuthorizationHeader(
   value: string | undefined,
 ): string | undefined {
-  if (!value) {
-    return undefined;
-  }
+  if (!value?.trim()) return undefined;
   const trimmed = value.trim();
-  if (!trimmed) {
-    return undefined;
-  }
   const bearer = /^Bearer\s+(.+)$/i.exec(trimmed);
-  if (bearer?.[1]) {
-    const token = bearer[1].trim();
-    return token || undefined;
-  }
+  if (bearer?.[1]?.trim()) return bearer[1].trim();
   const basic = /^Basic\s+(.+)$/i.exec(trimmed);
-  if (!basic?.[1]) {
-    return undefined;
-  }
+  if (!basic?.[1]) return undefined;
   try {
     const decoded = Buffer.from(basic[1].trim(), "base64").toString("utf8");
     const separator = decoded.indexOf(":");
-    if (separator < 0) {
-      return undefined;
-    }
-    // Git smart-HTTP uses x-access-token:<installation-token>.
+    if (separator < 0) return undefined;
     const credential = decoded.slice(separator + 1);
     return credential || undefined;
   } catch {
@@ -53,19 +31,15 @@ export function credentialTokenFromAuthorizationHeader(
   }
 }
 
-/** Fingerprint the first Authorization token found in lease header transforms. */
+/** Fingerprint the first Authorization token on lease header transforms. */
 export function fingerprintLeaseAuthorization(
   headerTransforms: Array<{ headers: Record<string, string> }>,
 ): string | undefined {
   for (const transform of headerTransforms) {
     for (const [key, value] of Object.entries(transform.headers)) {
-      if (key.toLowerCase() !== "authorization") {
-        continue;
-      }
+      if (key.toLowerCase() !== "authorization") continue;
       const token = credentialTokenFromAuthorizationHeader(value);
-      if (token) {
-        return fingerprintCredentialToken(token);
-      }
+      if (token) return fingerprintCredentialToken(token);
     }
   }
   return undefined;

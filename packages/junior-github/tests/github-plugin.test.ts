@@ -221,25 +221,10 @@ function mockGitHubInstallationApi(): CapturedRequest[] {
     http.post(
       "https://api.github.com/app/installations/:installationId/access_tokens",
       async ({ request }) => {
-        const captured = await captureRequest(request);
-        requests.push(captured);
-        const body =
-          captured.body &&
-          typeof captured.body === "object" &&
-          !Array.isArray(captured.body)
-            ? (captured.body as { repositories?: string[] })
-            : {};
+        requests.push(await captureRequest(request));
         return HttpResponse.json({
           token: "installation-token",
           expires_at: new Date(Date.now() + 60_000).toISOString(),
-          permissions: {
-            contents: "write",
-            metadata: "read",
-          },
-          repositories: (body.repositories ?? ["junior"]).map((name) => ({
-            full_name: `getsentry/${name}`,
-            name,
-          })),
         });
       },
     ),
@@ -2283,10 +2268,7 @@ Conversation: \`local:test:old-conversation\`
     expect(pluginLogInfo).toHaveBeenCalledWith(
       "github.installation_token.issued",
       expect.objectContaining({
-        "app.grant.name": "installation-write",
         "app.credential.token_fingerprint": expect.any(String),
-        "app.github.token_permissions": "contents:write,metadata:read",
-        "app.github.token_repositories": ["getsentry/junior"],
       }),
     );
   });
