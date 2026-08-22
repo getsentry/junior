@@ -106,11 +106,7 @@ const resultDataSchema = z
   })
   .strict();
 
-const outputSchema = juniorToolOutputSchema
-  .extend({
-    ...resultDataSchema.shape,
-  })
-  .strict();
+const outputSchema = juniorToolOutputSchema.merge(resultDataSchema);
 
 function cleanStrings(values: string[]): string[] {
   return [...new Set(values.map((value) => value.trim()).filter(Boolean))];

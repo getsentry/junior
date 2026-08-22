@@ -341,7 +341,7 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
     unfinishedWork: true,
     isPriority: true,
     // Newest-first GitHub sidebar order with mixed finished/unfinished work for
-    // the same repo label. Collapse must prefer unfinished over merged.
+    // the same label. Badges keep every status icon under one shared label.
     sidebarAnnotations: [
       {
         icon: "git-merge",

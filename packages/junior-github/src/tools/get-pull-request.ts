@@ -34,10 +34,11 @@ interface Result extends PluginToolOutput, PullRequest {
   target: "getPullRequest";
   subscribable?: SubscribableResource;
 }
-const outputSchema = pluginToolOutputSchema.extend({
-  target: z.literal("getPullRequest"),
-  ...pullRequestSchema.shape,
-});
+const outputSchema = pluginToolOutputSchema.merge(
+  pullRequestSchema.extend({
+    target: z.literal("getPullRequest"),
+  }),
+);
 function parseRepo(value: string) {
   const parts = value.split("/").map((part) => part.trim());
   if (parts.length !== 2 || !parts[0] || !parts[1]) {

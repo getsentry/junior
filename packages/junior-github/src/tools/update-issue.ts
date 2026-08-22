@@ -16,7 +16,12 @@ const inputSchema = z
   .object({
     repo: z.string().describe('Repository in "owner/name" format.'),
     number: z.number().int().positive().describe("Issue number."),
-    title: z.string().trim().min(1).optional().describe("Replacement issue title."),
+    title: z
+      .string()
+      .trim()
+      .min(1)
+      .optional()
+      .describe("Replacement issue title."),
     body: z
       .string()
       .optional()
@@ -48,10 +53,11 @@ interface Result extends PluginToolOutput, Issue {
   target: "updateIssue";
   subscribable?: SubscribableResource;
 }
-const outputSchema = pluginToolOutputSchema.extend({
-  target: z.literal("updateIssue"),
-  ...issueSchema.shape,
-});
+const outputSchema = pluginToolOutputSchema.merge(
+  issueSchema.extend({
+    target: z.literal("updateIssue"),
+  }),
+);
 
 function nonEmptyString(value: string | undefined, name: string): string {
   if (!value?.trim()) throw new PluginToolInputError(`${name} is required`);

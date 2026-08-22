@@ -21,6 +21,47 @@ export type ApiTurnMailboxMetadata = z.output<
   typeof apiTurnMailboxMetadataSchema
 >;
 
+/** Return the active root API Turn for one Conversation, if it has one. */
+export async function getActiveApiTurnId(
+  conversationId: string,
+): Promise<string | undefined> {
+  const summaries = await listTurnSummaries(conversationId);
+  // Agent dispatch also writes surface "api". Those Turns own a dispatchId
+  // and must stay on the dispatch router.
+  const active = summaries.filter(
+    (summary) =>
+      summary.surface === "api" &&
+      !summary.dispatchId &&
+      (summary.state === "paused" || summary.state === "running"),
+  );
+  if (active.length > 1) {
+    throw new Error(
+      `Conversation ${conversationId} has multiple active web turns`,
+    );
+  }
+  const turnId = active[0]?.turnId;
+  if (!turnId) return undefined;
+  const record = await getTurnRecord(conversationId, turnId);
+  return record &&
+    record.surface === "api" &&
+    !record.dispatchId &&
+    (record.state === "paused" || record.state === "running")
+    ? turnId
+    : undefined;
+}
+
+/** Return the idle auth-paused root API Turn for one Conversation. */
+export async function getAuthPausedApiTurnId(
+  conversationId: string,
+): Promise<string | undefined> {
+  const turnId = await getActiveApiTurnId(conversationId);
+  if (!turnId) return undefined;
+  const record = await getTurnRecord(conversationId, turnId);
+  return record?.state === "paused" && record.resumeReason === "auth"
+    ? turnId
+    : undefined;
+}
+
 function parseApiTurnMessages(
   messages: readonly InboundMessage[],
 ): Array<{ message: InboundMessage; metadata: ApiTurnMailboxMetadata }> {
@@ -72,34 +113,8 @@ export async function resolveApiTurnWork(
     return undefined;
   }
 
-  const summaries = await listTurnSummaries(context.conversationId);
-  // Agent dispatch also writes surface "api". Those Turns own a dispatchId
-  // and must stay on the dispatch router, which runs after this route.
-  const active = summaries.filter(
-    (summary) =>
-      summary.surface === "api" &&
-      !summary.dispatchId &&
-      (summary.state === "paused" || summary.state === "running"),
-  );
-  if (active.length > 1) {
-    throw new Error(
-      `Conversation ${context.conversationId} has multiple active web turns`,
-    );
-  }
-  const turnId = active[0]?.turnId;
-  if (!turnId) {
-    return undefined;
-  }
-  const record = await getTurnRecord(context.conversationId, turnId);
-  if (
-    !record ||
-    record.surface !== "api" ||
-    Boolean(record.dispatchId) ||
-    (record.state !== "paused" && record.state !== "running")
-  ) {
-    return undefined;
-  }
-  return { kind: "resume", turnId };
+  const turnId = await getActiveApiTurnId(context.conversationId);
+  return turnId ? { kind: "resume", turnId } : undefined;
 }
 
 /** Return whether the leased attempt belongs to an API Turn. */

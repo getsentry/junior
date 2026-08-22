@@ -31,6 +31,7 @@ import {
   SLACK_DESTINATION,
   createConversationWorkQueueTestAdapter,
 } from "../../fixtures/conversation-work";
+import { readProxyProperty } from "../../fixtures/proxy-property";
 
 function createRecordingStateAdapter() {
   const values = new Map<string, unknown>();
@@ -713,7 +714,7 @@ describe("resource event delivery", () => {
     await baseState.connect();
     let extendAttempts = 0;
     const state = new Proxy(baseState, {
-      get(target, property, receiver) {
+      get(target, property) {
         if (property === "extendLock") {
           return async (
             lock: Parameters<StateAdapter["extendLock"]>[0],
@@ -726,7 +727,7 @@ describe("resource event delivery", () => {
             return await target.extendLock(lock, ttlMs);
           };
         }
-        const value = Reflect.get(target, property, receiver);
+        const value = readProxyProperty(target, property);
         return typeof value === "function" ? value.bind(target) : value;
       },
     }) as StateAdapter;

@@ -47,10 +47,11 @@ interface Result extends PluginToolOutput, Deployment {
   target: "deployment";
 }
 
-const outputSchema = pluginToolOutputSchema.extend({
-  target: z.literal("deployment"),
-  ...deploymentSchema.shape,
-});
+const outputSchema = pluginToolOutputSchema.merge(
+  deploymentSchema.extend({
+    target: z.literal("deployment"),
+  }),
+);
 
 async function readJson(response: Response): Promise<unknown> {
   const text = await response.text();
