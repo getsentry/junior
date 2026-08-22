@@ -66,12 +66,11 @@ interface Result extends PluginToolOutput, DeploymentSource {
   subscribable?: SubscribableResource;
   target: "getDeployment";
 }
-const outputSchema = pluginToolOutputSchema
-  .extend({
+const outputSchema = pluginToolOutputSchema.merge(
+  deploymentSourceSchema.extend({
     target: z.literal("getDeployment"),
-    ...deploymentSourceSchema.shape,
-  })
-  .strict();
+  }),
+);
 
 const providerCreatorSchema = z
   .object({ login: z.string() })

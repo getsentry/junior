@@ -42,10 +42,11 @@ type Clone = z.output<typeof cloneSchema>;
 interface Result extends PluginToolOutput, Clone {
   target: "cloneRepository";
 }
-const outputSchema = pluginToolOutputSchema.extend({
-  target: z.literal("cloneRepository"),
-  ...cloneSchema.shape,
-});
+const outputSchema = pluginToolOutputSchema.merge(
+  cloneSchema.extend({
+    target: z.literal("cloneRepository"),
+  }),
+);
 
 function parseRepo(value: string): { name: string; owner: string } {
   const parts = value.split("/").map((part) => part.trim());

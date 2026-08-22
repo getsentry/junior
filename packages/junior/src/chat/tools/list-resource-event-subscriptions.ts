@@ -25,11 +25,7 @@ const resultDataSchema = z
   .object({ subscriptions: z.array(listedResourceWatchSchema) })
   .strict();
 
-const outputSchema = juniorToolOutputSchema
-  .extend({
-    ...resultDataSchema.shape,
-  })
-  .strict();
+const outputSchema = juniorToolOutputSchema.merge(resultDataSchema);
 
 /** Create the tool that lists active resource watches for this conversation. */
 export function createListResourceEventSubscriptionsTool(

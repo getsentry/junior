@@ -12,6 +12,7 @@ import type {
 import { isPostableObject, Message } from "chat";
 import { SlackAdapter } from "@chat-adapter/slack";
 import type { Destination } from "@sentry/junior-plugin-api";
+import { readProxyProperty } from "./proxy-property";
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
@@ -282,11 +283,11 @@ export class FakeSlackAdapter extends SlackAdapter {
 function createThreadAdapter(): Adapter {
   const adapter = new FakeSlackAdapter();
   return new Proxy(adapter, {
-    get(target, property, receiver) {
+    get(target, property) {
       if (property === "name") {
         return "test";
       }
-      const value = Reflect.get(target, property, receiver);
+      const value = readProxyProperty(target, property);
       return typeof value === "function" ? value.bind(target) : value;
     },
   });
