@@ -4,6 +4,8 @@ import {
   ChevronRight,
   CircleAlert,
   Database,
+  Globe2,
+  LockKeyhole,
   Sparkles,
   UserRound,
 } from "lucide-react";
@@ -11,6 +13,8 @@ import { useEffect, useState } from "react";
 import { Navigate, useLocation, useNavigate, useParams } from "react-router";
 import type { PluginUserPageLink } from "@sentry/junior-plugin-api";
 
+import { FilterTabList } from "../../components/FilterBar";
+import { InlineError } from "../../components/InlineError";
 import { LoadingView } from "../../components/LoadingView";
 import { LoadMorePagination } from "../../components/Pagination";
 import { SearchInput } from "../../components/SearchInput";
@@ -118,8 +122,19 @@ function MemoryLibrary(props: {
   libraryPath: string;
   page: PluginUserPageLink;
 }) {
-  const { content, query, records, searchQuery, searchText, setSearchText } =
-    usePluginUserPageData(props.page);
+  const {
+    action,
+    content,
+    filter,
+    query,
+    records,
+    runAction,
+    searchQuery,
+    searchText,
+    setFilter,
+    setSearchText,
+  } = usePluginUserPageData(props.page);
+  const dashboardQuery = useMemoryDashboardData();
   const navigate = useNavigate();
   const location = useLocation();
   const { memoryId } = useParams();
@@ -130,7 +145,8 @@ function MemoryLibrary(props: {
     pathWithSearch(pathname, location.search);
 
   useEffect(() => {
-    // Drop a stale or unknown permalink after the direct read settles.
+    // Drop stale permalinks after a forget/archive or unknown id once the
+    // direct memory read has settled without a record.
     if (
       !memoryId ||
       selectedRecord ||
@@ -183,6 +199,29 @@ function MemoryLibrary(props: {
         ) : null}
       </div>
 
+      <FilterTabList
+        ariaLabel="Memory collections"
+        items={[
+          {
+            count: dashboardQuery.data?.stats?.active,
+            label: "All",
+            value: "",
+          },
+          {
+            count: dashboardQuery.data?.stats?.private,
+            label: "Private",
+            value: "private",
+          },
+          {
+            count: dashboardQuery.data?.stats?.public,
+            label: "Public",
+            value: "public",
+          },
+        ]}
+        onChange={setFilter}
+        value={filter}
+      />
+
       {query.error ? (
         <Card className="flex items-center gap-3 border-rose-300/20 p-5 text-sm text-rose-200">
           <CircleAlert aria-hidden="true" size={18} />
@@ -229,9 +268,16 @@ function MemoryLibrary(props: {
             loading={query.isFetchingNextPage}
             onLoadMore={() => void query.fetchNextPage()}
           />
+          {action.error ? (
+            <InlineError className="text-center">
+              Could not complete this action. Try again.
+            </InlineError>
+          ) : null}
         </div>
       )}
       <MemoryDetailsDrawer
+        action={action}
+        onAction={runAction}
         onClose={() => navigate(memoryPath(props.libraryPath))}
         record={selectedRecord}
       />
@@ -243,9 +289,10 @@ function MemoryListHeader() {
   return (
     <div
       aria-hidden="true"
-      className="hidden grid-cols-[minmax(0,1fr)_7rem_9rem_auto] items-center gap-3 border-b border-white/[0.07] px-4 py-2.5 text-left font-mono text-xs uppercase tracking-[0.12em] text-dashboard-text-muted sm:grid"
+      className="hidden grid-cols-[minmax(0,1fr)_7rem_7rem_9rem_auto] items-center gap-3 border-b border-white/[0.07] px-4 py-2.5 text-left font-mono text-xs uppercase tracking-[0.12em] text-dashboard-text-muted sm:grid"
     >
       <span>Memory</span>
+      <span>Visibility</span>
       <span>Type</span>
       <span>Learned</span>
       <span aria-hidden="true" className="size-4" />
@@ -257,26 +304,31 @@ function MemorySummary(props: { data: MemoryDashboardData }) {
   const { stats } = props.data;
   const items = [
     {
-      detail: "available in every domain",
-      label: "Public memories",
+      detail: "private + public",
+      label: "Total active",
       value: stats.active.toLocaleString("en-US"),
+    },
+    {
+      detail: "linked conversations",
+      label: "Private",
+      value: stats.private.toLocaleString("en-US"),
+    },
+    {
+      detail: "all authenticated viewers",
+      label: "Public",
+      tone: "text-cyan-100",
+      value: stats.public.toLocaleString("en-US"),
     },
     {
       detail: "in the last 30 days",
       label: "Added · 30d",
       value: `+${stats.createdThirtyDays.toLocaleString("en-US")}`,
     },
-    {
-      detail: "ready for semantic recall",
-      label: "Embedded",
-      tone: "text-cyan-100",
-      value: stats.embedded.toLocaleString("en-US"),
-    },
   ];
   return (
     <section
       aria-label="Memory summary"
-      className="grid grid-cols-1 gap-px border-y border-white/[0.06] bg-white/[0.06] sm:grid-cols-3"
+      className="grid grid-cols-2 gap-px border-y border-white/[0.06] bg-white/[0.06] lg:grid-cols-4"
     >
       {items.map((item) => (
         <div className="bg-[#050507] px-4 py-4 sm:px-5" key={item.label}>
@@ -308,7 +360,7 @@ function MemoryKindPanel(props: { data: MemoryDashboardData }) {
         What Junior remembers
       </h2>
       <p className="mt-1 mb-0 font-mono text-xs leading-relaxed text-dashboard-text-muted">
-        Across globally public memory.
+        Across private and public memory.
       </p>
       <div className="mt-5 grid gap-px overflow-hidden rounded border border-white/[0.06] bg-white/[0.055]">
         <OverviewBreakdownRow
@@ -405,6 +457,8 @@ function MemoryRow(props: {
   const kind = metadataValue(props.record, "Type");
   const remembered = metadataValue(props.record, "Remembered");
   const source = metadataValue(props.record, "Source");
+  const visibility = metadataValue(props.record, "Visibility");
+  const isPublic = visibility === "Public";
   return (
     <SelectableRow
       className={cn(
@@ -417,7 +471,7 @@ function MemoryRow(props: {
       <button
         aria-expanded={props.selected}
         aria-label={`View memory details: ${props.record.title}`}
-        className="grid min-w-0 flex-1 cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-0 bg-transparent px-4 py-3 text-left sm:grid-cols-[minmax(0,1fr)_7rem_9rem_auto]"
+        className="grid min-w-0 flex-1 cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-0 bg-transparent px-4 py-3 text-left sm:grid-cols-[minmax(0,1fr)_7rem_7rem_9rem_auto]"
         onClick={props.onSelect}
         type="button"
       >
@@ -445,11 +499,23 @@ function MemoryRow(props: {
                 ·
               </span>
               <span className="truncate sm:hidden">
-                {kind} · {shortDate(remembered)}
+                {kind} · {visibility} · {shortDate(remembered)}
               </span>
             </div>
           </div>
         </div>
+        <StatusChip
+          className="max-sm:hidden"
+          size="compact"
+          tone={isPublic ? "success" : "neutral"}
+        >
+          {isPublic ? (
+            <Globe2 aria-hidden="true" size={11} />
+          ) : (
+            <LockKeyhole aria-hidden="true" size={11} />
+          )}
+          {visibility}
+        </StatusChip>
         <StatusChip
           className="max-sm:hidden"
           size="compact"

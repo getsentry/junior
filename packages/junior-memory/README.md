@@ -13,15 +13,17 @@ exported types, tools, and tests are authoritative.
   learning.
 - The `memory` CLI namespace provides explicit administrative search and
   inspection.
-- The dashboard exposes a searchable, paginated **Memories** user page for
-  public memory. Private memory stays in its source domain. The overview charts
-  global passive-extraction cost from the durable
+- The dashboard exposes a searchable, paginated **Memories** user page. It
+  includes public memory and private memory from conversation domains linked
+  to the authenticated user. The overview charts global passive-extraction
+  cost from the durable
   `memory/memories_captured` events. The System plugin report uses the same
   event-cost feed.
-- Authenticated REST clients can list and search public memories through
+- Authenticated REST clients can list and search authorized memories through
   `GET /api/plugins/memory/memories`, read one through
-  `GET /api/plugins/memory/memories/:id`. Public memory is read-only on these
-  viewer surfaces.
+  `GET /api/plugins/memory/memories/:id`, and forget an authorized private
+  memory through `DELETE /api/plugins/memory/memories/:id`. Public memory is
+  read-only on these viewer surfaces.
 
 ## Scope And Visibility
 
@@ -30,6 +32,9 @@ exported types, tools, and tests are authoritative.
 - Public memory is visible in every source domain.
 - Private memory is visible only in the Slack channel, direct message, local
   conversation, or web conversation that learned it.
+- Dashboard and REST access use the canonical user's durable conversation
+  participation. A linked identity grants access only after Junior records the
+  user as a participant in that private source domain.
 - Subject classification is independent from visibility. A user preference can
   be public or private based on its Source.
 - Recall filters candidates by domain, visibility, status, and relevance before

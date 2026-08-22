@@ -126,6 +126,7 @@ export function memoryPlugin(options: MemoryPluginOptions = {}) {
         return createMemoryApi({
           db: ctx.db as MemoryDb,
           eventStats: ctx.eventStats,
+          users: ctx.users,
         });
       },
       tools(ctx) {

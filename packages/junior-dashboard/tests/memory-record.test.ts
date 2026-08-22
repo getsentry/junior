@@ -13,11 +13,19 @@ describe("memory permalink record", () => {
         observedAt: "2026-08-05T00:00:00.000Z",
         origin: "explicit",
         sourcePlatform: "slack",
+        visibility: "private",
       }),
     ).toMatchObject({
+      actions: [
+        {
+          href: "/api/plugins/memory/memories/memory%2F1",
+          tone: "danger",
+        },
+      ],
       id: "memory/1",
       metadata: expect.arrayContaining([
         { label: "Learned", value: "Explicit" },
+        { label: "Visibility", value: "Private" },
       ]),
       title: "Use pnpm.",
     });
@@ -33,6 +41,7 @@ describe("memory permalink record", () => {
         observedAt: "2026-08-05T00:00:00.000Z",
         origin: "automatic",
         sourcePlatform: "web",
+        visibility: "private",
       }),
     ).toMatchObject({
       id: "memory/api-1",

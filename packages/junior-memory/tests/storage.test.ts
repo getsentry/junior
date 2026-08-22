@@ -198,6 +198,26 @@ async function createMemoryFixture(): Promise<MemoryFixture> {
   return fixture;
 }
 
+async function installViewerCoreTables(fixture: MemoryFixture): Promise<void> {
+  await fixture.execute(`
+CREATE TABLE junior_destinations (
+  id TEXT PRIMARY KEY,
+  provider TEXT NOT NULL,
+  provider_tenant_id TEXT NOT NULL,
+  provider_destination_id TEXT NOT NULL
+);
+CREATE TABLE junior_conversations (
+  conversation_id TEXT PRIMARY KEY,
+  root_conversation_id TEXT,
+  destination_id TEXT
+);
+CREATE TABLE junior_conversation_participants (
+  user_id TEXT NOT NULL,
+  root_conversation_id TEXT NOT NULL
+)
+`);
+}
+
 function unitEmbedding(index: number): number[] {
   const embedding = Array.from({ length: TEST_EMBEDDING_DIMENSIONS }, () => 0);
   embedding[index] = 1;
@@ -1692,11 +1712,12 @@ describe("memory plugin storage", () => {
     }
   });
 
-  it("stores explicit web personal memory under the junior identity scope", async () => {
+  it("stores explicit web memory as public when its source is public", async () => {
     const fixture = await createMemoryFixture();
     const runtime = apiContext({ email: "dashboard@example.com" });
 
     try {
+      await installViewerCoreTables(fixture);
       const store = createMemoryStore(memoryDb(fixture), runtime, {
         now: () => TEST_NOW_MS,
       });
@@ -1724,9 +1745,11 @@ describe("memory plugin storage", () => {
         },
       ]);
 
-      const listed = await createViewerMemories(memoryDb(fixture)).list({
-        limit: 10,
-      });
+      const listed = await createViewerMemories(memoryDb(fixture), {
+        email: "dashboard@example.com",
+        id: "dashboard-viewer",
+        identities: [],
+      }).list({ limit: 10 });
       expect(listed.memories.map((memory) => memory.id)).toEqual([
         created.memory.id,
       ]);
@@ -2374,6 +2397,7 @@ describe("memory plugin storage", () => {
     const now = vi.spyOn(Date, "now").mockReturnValue(TEST_NOW_MS);
 
     try {
+      await installViewerCoreTables(fixture);
       const firstContext = slackContext({ teamId: "T123", userId: "U123" });
       const secondContext = slackContext({ teamId: "T456", userId: "U456" });
       const hiddenContext = slackContext({ teamId: "T999", userId: "U999" });
@@ -2443,6 +2467,11 @@ describe("memory plugin storage", () => {
                     : 1
                   : 0,
             }));
+          },
+        },
+        users: {
+          async resolve(email) {
+            return { email, id: "api-viewer", identities: [] };
           },
         },
       });
@@ -2555,7 +2584,7 @@ describe("memory plugin storage", () => {
         }),
         requestContext,
       );
-      expect(publicDeleteResponse.status).toBe(405);
+      expect(publicDeleteResponse.status).toBe(404);
 
       const dashboardResponse = await api.fetch(
         new Request("http://localhost/dashboard"),
@@ -2570,8 +2599,10 @@ describe("memory plugin storage", () => {
         automatic: 2,
         explicit: 1,
         knowledge: 3,
+        private: 0,
         preference: 1,
         procedure: 0,
+        public: 4,
       });
       expect(dashboard.days).toHaveLength(90);
       expect(dashboard.extractionDays.at(-1)).toEqual({
@@ -2586,7 +2617,8 @@ describe("memory plugin storage", () => {
       });
       expect(dashboard.days.find((day) => day.date === "2026-06-19")).toEqual({
         date: "2026-06-19",
-        memories: 4,
+        private: 0,
+        public: 4,
       });
 
       const deleteResponse = await api.fetch(
@@ -2595,7 +2627,7 @@ describe("memory plugin storage", () => {
         }),
         requestContext,
       );
-      expect(deleteResponse.status).toBe(405);
+      expect(deleteResponse.status).toBe(404);
       await expect(secondStore.listPrivateMemories({})).resolves.toEqual([]);
 
       const hiddenDeleteResponse = await api.fetch(
@@ -2604,7 +2636,7 @@ describe("memory plugin storage", () => {
         }),
         requestContext,
       );
-      expect(hiddenDeleteResponse.status).toBe(405);
+      expect(hiddenDeleteResponse.status).toBe(404);
       await expect(hiddenStore.listPrivateMemories({})).resolves.toEqual([]);
     } finally {
       now.mockRestore();

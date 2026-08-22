@@ -14,6 +14,7 @@ const memoryRecordSchema = z
     observedAt: z.iso.datetime(),
     origin: z.enum(["automatic", "explicit", "other"]),
     sourcePlatform: z.enum(["local", "slack", "web"]),
+    visibility: z.enum(["private", "public"]),
   })
   .strict();
 
@@ -40,11 +41,24 @@ export function memoryPageRecord(memory: MemoryRecord): PluginUserPageRecord {
         ? "Explicit"
         : "Other";
   return {
+    actions:
+      memory.visibility === "private"
+        ? [
+            {
+              confirmation: "Forget this memory?",
+              href: `/api/plugins/memory/memories/${encodeURIComponent(memory.id)}`,
+              label: "Forget",
+              method: "DELETE",
+              tone: "danger",
+            },
+          ]
+        : [],
     id: memory.id,
     metadata: [
       { label: "Type", value: titleCase(memory.kind) },
       { label: "Learned", value: learned },
       { label: "Source", value: titleCase(memory.sourcePlatform) },
+      { label: "Visibility", value: titleCase(memory.visibility) },
       { label: "Remembered", value: formattedDate(memory.createdAt) },
       { label: "Observed", value: formattedDate(memory.observedAt) },
       {

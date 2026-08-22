@@ -1,14 +1,15 @@
 /**
  * Authenticated REST resources for viewer-visible memories.
  *
- * HTTP identity authenticates the request. It does not grant access to a
- * private source domain.
+ * HTTP identity authenticates the request and resolves the linked user used
+ * for private source-domain access.
  */
 import { z } from "zod";
 import {
   pluginApiRouteRequestContextSchema,
   type PluginConversationEventStats,
   type PluginRouteApp,
+  type User,
 } from "@sentry/junior-plugin-api";
 import type { MemoryDb } from "./store";
 import {
@@ -29,6 +30,7 @@ export const memoryApiSchema = z
     observedAt: z.iso.datetime(),
     origin: z.enum(["automatic", "explicit", "other"]),
     sourcePlatform: z.enum(MEMORY_SOURCE_PLATFORMS),
+    visibility: z.enum(["private", "public"]),
   })
   .strict();
 
@@ -42,7 +44,8 @@ export const memoryListResponseSchema = z
 const memoryDashboardDaySchema = z
   .object({
     date: z.iso.date(),
-    memories: z.number().int().min(0),
+    private: z.number().int().min(0),
+    public: z.number().int().min(0),
   })
   .strict();
 
@@ -68,8 +71,10 @@ export const memoryDashboardResponseSchema = z
         embedded: z.number().int().min(0),
         explicit: z.number().int().min(0),
         knowledge: z.number().int().min(0),
+        private: z.number().int().min(0),
         preference: z.number().int().min(0),
         procedure: z.number().int().min(0),
+        public: z.number().int().min(0),
       })
       .strict(),
   })
@@ -92,6 +97,9 @@ const memoryListQuerySchema = z
 interface MemoryApiOptions {
   db: MemoryDb;
   eventStats: PluginConversationEventStats;
+  users: {
+    resolve(email: string): Promise<User | undefined>;
+  };
 }
 
 function json(body: unknown, status = 200): Response {
@@ -113,6 +121,7 @@ function apiMemory(memory: ViewerMemory): z.output<typeof memoryApiSchema> {
     observedAt: new Date(memory.observedAtMs).toISOString(),
     origin: memory.origin,
     sourcePlatform: memory.sourcePlatform,
+    visibility: memory.visibility,
   };
 }
 
@@ -141,11 +150,14 @@ export function createMemoryApi(options: MemoryApiOptions): PluginRouteApp {
         return json({ error: "Not found." }, 404);
       }
       const isRead = request.method === "GET" || request.method === "HEAD";
-      if (!isRead) {
+      if (!isRead && !(memoryPath && request.method === "DELETE")) {
         return json({ error: "Method not allowed." }, 405);
       }
 
-      const memories = createViewerMemories(options.db);
+      const viewer = await options.users.resolve(email);
+      if (!viewer) return json({ error: "Authentication required." }, 401);
+
+      const memories = createViewerMemories(options.db, viewer);
       try {
         if (isDashboard && isRead) {
           const [stats, days, extractionDays, recallDays] = await Promise.all([
@@ -208,6 +220,14 @@ export function createMemoryApi(options: MemoryApiOptions): PluginRouteApp {
                 status: 200,
               })
             : json(memory);
+        }
+
+        if (memoryPath && request.method === "DELETE") {
+          await memories.archive(decodeURIComponent(memoryPath[1]!));
+          return new Response(null, {
+            headers: { "cache-control": "no-store" },
+            status: 204,
+          });
         }
       } catch (error) {
         if (

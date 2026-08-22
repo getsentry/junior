@@ -36,7 +36,7 @@ test("opens a registered plugin page from primary navigation", async ({
   await expect(
     page
       .getByRole("region", { name: "Memory summary" })
-      .getByText("Public memories", { exact: true }),
+      .getByText("Total active", { exact: true }),
   ).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "Activity over time" }),
@@ -88,7 +88,11 @@ test("opens a registered plugin page from primary navigation", async ({
       name: /^View memory details: I prefer concise summaries/,
     }),
   ).toBeVisible();
-  await expect(page.getByRole("tab")).toHaveCount(0);
+  await expect(page.getByText("Private").last()).toBeVisible();
+  const privateTab = page.getByRole("tab", { name: "Private 24" });
+  await privateTab.click();
+  await expect(privateTab).toHaveAttribute("aria-selected", "true");
+  await expect(page).toHaveURL(/filter=private/);
   const navLinks = await page.locator("header nav a").allTextContents();
   expect(navLinks.at(-1)?.trim()).toBe("System");
 });
@@ -253,11 +257,11 @@ test("opens memory details in a slide-out drawer", async ({ page }) => {
   });
   await expect(closeMemoryDetails).toBeFocused();
   await page.keyboard.press("Shift+Tab");
-  await expect(closeMemoryDetails).toBeFocused();
+  await expect(closeMemoryDetails).not.toBeFocused();
   await page.keyboard.press("Tab");
   await expect(closeMemoryDetails).toBeFocused();
   await expect(details.getByText("Why Junior remembers this")).toBeVisible();
-  await expect(details.getByText(/Preference · Jul 29/)).toBeVisible();
+  await expect(details.getByText(/Preference · Private ·/)).toBeVisible();
   await expect(
     details.getByText(/Junior learned this from a Slack conversation/),
   ).toBeVisible();
@@ -314,7 +318,16 @@ test("shows the memory overview error state", async ({ page }) => {
   await expect(page.getByText("Loading memory summary")).not.toBeVisible();
 });
 
-test("searches and paginates plugin page records", async ({ page }) => {
+test("searches, paginates, and forgets plugin page records", async ({
+  page,
+}) => {
+  let forgotMemory = false;
+  let forgetRequests = 0;
+  let dashboardRequestCount = 0;
+  await page.route("**/api/plugins/memory/dashboard", async (route) => {
+    dashboardRequestCount += 1;
+    await route.fallback();
+  });
   await page.route("**/api/user-pages/memory/memories*", async (route) => {
     const url = new URL(route.request().url());
     const query = url.searchParams.get("q");
@@ -322,16 +335,27 @@ test("searches and paginates plugin page records", async ({ page }) => {
     if (query) {
       await new Promise((resolve) => setTimeout(resolve, 400));
     }
-    const records = query
-      ? [
-          {
-            id: "memory-search",
-            title: "Deploy runbooks live in Notion.",
-          },
-        ]
-      : cursor
-        ? [{ id: "memory-2", title: "Second page memory." }]
-        : [{ id: "memory-1", title: "First page memory." }];
+    const records = forgotMemory
+      ? []
+      : query
+        ? [
+            {
+              actions: [
+                {
+                  confirmation: "Forget this memory?",
+                  href: "/api/plugins/memory/memories/memory-search",
+                  label: "Forget",
+                  method: "DELETE",
+                  tone: "danger",
+                },
+              ],
+              id: "memory-search",
+              title: "Deploy runbooks live in Notion.",
+            },
+          ]
+        : cursor
+          ? [{ id: "memory-2", title: "Second page memory." }]
+          : [{ id: "memory-1", title: "First page memory." }];
     await route.fulfill({
       json: {
         type: "list",
@@ -347,18 +371,32 @@ test("searches and paginates plugin page records", async ({ page }) => {
   await page.route(
     "**/api/plugins/memory/memories/memory-search",
     async (route) => {
-      expect(route.request().method()).toBe("GET");
-      await route.fulfill({
-        json: {
-          content: "Deploy runbooks live in Notion.",
-          createdAt: "2026-07-30T12:00:00.000Z",
-          id: "memory-search",
-          kind: "knowledge",
-          observedAt: "2026-07-30T12:00:00.000Z",
-          origin: "explicit",
-          sourcePlatform: "slack",
-        },
-      });
+      if (route.request().method() === "GET") {
+        if (forgotMemory) {
+          await route.fulfill({
+            json: { error: "Memory was not found." },
+            status: 404,
+          });
+          return;
+        }
+        await route.fulfill({
+          json: {
+            content: "Deploy runbooks live in Notion.",
+            createdAt: "2026-07-30T12:00:00.000Z",
+            id: "memory-search",
+            kind: "knowledge",
+            observedAt: "2026-07-30T12:00:00.000Z",
+            origin: "explicit",
+            sourcePlatform: "slack",
+            visibility: "private",
+          },
+        });
+        return;
+      }
+      forgetRequests += 1;
+      expect(route.request().method()).toBe("DELETE");
+      forgotMemory = true;
+      await route.fulfill({ status: 204 });
     },
   );
 
@@ -370,6 +408,9 @@ test("searches and paginates plugin page records", async ({ page }) => {
   ).toBeVisible();
   const searchbox = page.getByRole("searchbox", { name: "Search memories" });
   await searchbox.fill("runbook");
+  const privateTab = page.getByRole("tab", { name: /^Private/ });
+  await privateTab.click();
+  await expect(page).toHaveURL(/filter=private/);
   await expect(page).toHaveURL(/q=runbook/);
   await expect(
     page.getByRole("button", { name: "Load more" }),
@@ -382,6 +423,8 @@ test("searches and paginates plugin page records", async ({ page }) => {
 
   await searchbox.fill("");
   await expect(page).not.toHaveURL(/q=/);
+  await page.getByRole("tab", { name: /^All/ }).click();
+  await expect(page).not.toHaveURL(/filter=/);
   await expect(
     page.getByRole("button", {
       name: /^View memory details: First page memory/,
@@ -403,12 +446,26 @@ test("searches and paginates plugin page records", async ({ page }) => {
     }),
   ).toBeVisible();
 
+  page.once("dialog", (dialog) => dialog.accept());
   await page
     .getByRole("button", {
       name: /^View memory details: Deploy runbooks live in Notion/,
     })
     .click();
+  await page
+    .getByRole("dialog", { name: "What Junior remembers" })
+    .getByRole("button", { name: "Forget this memory" })
+    .evaluate((button) => {
+      button.click();
+      button.click();
+    });
   await expect(
-    page.getByRole("dialog", { name: "What Junior remembers" }),
+    page.getByText("No memories matched your search."),
   ).toBeVisible();
+  expect(forgetRequests).toBe(1);
+  await expect.poll(() => dashboardRequestCount).toBeGreaterThan(1);
+
+  await searchbox.fill("");
+  await expect(page).not.toHaveURL(/q=/);
+  await expect(page.getByText("No memories yet.")).toBeVisible();
 });

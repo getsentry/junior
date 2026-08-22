@@ -1,15 +1,35 @@
-import { BrainCircuit } from "lucide-react";
+import type { UseMutationResult } from "@tanstack/react-query";
+import { BrainCircuit, Globe2, Trash2 } from "lucide-react";
+import { useEffect } from "react";
 
 import { Detail, DetailList } from "../../components/DetailList";
 import { Drawer } from "../../components/Drawer";
 import { TranscriptText } from "../../conversations/TranscriptText";
-import type { PluginUserPageRecord } from "../user/pluginUserPageData";
+import type {
+  PluginUserPageRecord,
+  PluginUserPageRecordAction,
+} from "../user/pluginUserPageData";
+
+type MemoryActionMutation = UseMutationResult<
+  void,
+  Error,
+  PluginUserPageRecordAction
+>;
 
 /** Show one memory's content and metadata in a right-side slide-out. */
 export function MemoryDetailsDrawer(props: {
+  action: MemoryActionMutation;
+  onAction(action: PluginUserPageRecordAction): void;
   onClose(): void;
   record: PluginUserPageRecord | undefined;
 }) {
+  const openRecordId = props.record?.id;
+
+  useEffect(() => {
+    if (openRecordId) props.action.reset();
+    // oxlint-disable-next-line react/exhaustive-deps -- reset only on open id change
+  }, [openRecordId]);
+
   if (!props.record) return null;
 
   const { record } = props;
@@ -17,15 +37,22 @@ export function MemoryDetailsDrawer(props: {
   const learned = metadataValue(record, "Learned");
   const remembered = metadataValue(record, "Remembered");
   const source = metadataValue(record, "Source");
+  const visibility = metadataValue(record, "Visibility");
+  const isPublic = visibility === "Public";
   const story =
     learned === "Automatic"
       ? `Junior learned this from a ${source} conversation on ${shortDate(remembered)}.`
       : learned === "Explicit"
         ? `Someone asked Junior to remember this on ${shortDate(remembered)}.`
         : `Junior recorded this on ${shortDate(remembered)}.`;
-  const scopeCopy = `It is stored as workspace ${kind.toLowerCase()} for future channels.`;
+  const scopeCopy = isPublic
+    ? `It is stored as public ${kind.toLowerCase()} for authenticated viewers.`
+    : `It is stored as private ${kind.toLowerCase()} for participants in this source domain.`;
   const visibleMetadata = (record.metadata ?? []).filter(
     (item) => !["Learned", "Source", "Memory ID"].includes(item.label),
+  );
+  const forgetAction = record.actions?.find(
+    (recordAction) => recordAction.tone === "danger",
   );
   const titleId = "memory-details-drawer-title";
 
@@ -42,7 +69,7 @@ export function MemoryDetailsDrawer(props: {
             What Junior remembers
           </h2>
           <div className="mt-1 break-words font-mono text-xs leading-snug text-dashboard-text-muted">
-            {kind} · {shortDate(remembered)}
+            {kind} · {visibility} · {shortDate(remembered)}
           </div>
         </>
       }
@@ -91,6 +118,35 @@ export function MemoryDetailsDrawer(props: {
               </Detail>
             ))}
           </DetailList>
+        ) : null}
+
+        {forgetAction ? (
+          <button
+            className="inline-flex w-fit cursor-pointer items-center gap-2 rounded border border-rose-300/15 bg-rose-300/[0.035] px-3 py-2 font-mono text-xs uppercase tracking-[0.08em] text-rose-200/75 transition-colors hover:border-rose-300/30 hover:bg-rose-300/[0.07] hover:text-rose-100"
+            disabled={props.action.isPending}
+            onClick={() => {
+              if (
+                forgetAction.confirmation &&
+                !window.confirm(forgetAction.confirmation)
+              ) {
+                return;
+              }
+              props.onClose();
+              props.onAction({
+                ...forgetAction,
+                confirmation: undefined,
+              });
+            }}
+            type="button"
+          >
+            <Trash2 aria-hidden="true" size={13} />
+            Forget this memory
+          </button>
+        ) : isPublic ? (
+          <div className="inline-flex w-fit items-center gap-2 rounded border border-white/[0.08] px-3 py-2 font-mono text-xs uppercase tracking-[0.08em] text-dashboard-text-muted">
+            <Globe2 aria-hidden="true" size={13} />
+            View only · public memories can&apos;t be deleted
+          </div>
         ) : null}
       </section>
     </Drawer>

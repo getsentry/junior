@@ -1,23 +1,31 @@
 /**
  * SQL operations over memories visible to one authenticated viewer.
  *
- * Authenticated viewer surfaces expose global public memory only. Private
- * memory stays inside the source domain that learned it.
+ * Public memory is visible to every authenticated viewer. Private memory is
+ * visible when the viewer participates in a conversation in its source domain.
  */
-import { and, asc, desc, eq, gt, ilike, like, lt, or, sql } from "drizzle-orm";
+import type { User } from "@sentry/junior-plugin-api";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  gt,
+  ilike,
+  isNull,
+  like,
+  lt,
+  or,
+  sql,
+} from "drizzle-orm";
 import { z } from "zod";
 import { juniorMemoryEmbeddings, juniorMemoryMemories } from "./db/schema";
 import { publicMemoryScope } from "./scope";
-import {
-  activeVisiblePredicate,
-  archiveExpiredMemoryBatch,
-  parseMemoryRow,
-  type MemoryDb,
-  type MemoryRecord,
-} from "./store";
+import { parseMemoryRow, type MemoryDb, type MemoryRecord } from "./store";
 import { MEMORY_KINDS, type MemorySourcePlatform } from "./types";
 
 const nonEmptyStringSchema = z.string().min(1);
+const memoryVisibilitySchema = z.enum(["private", "public"]);
 const viewerMemoryCursorSchema = z
   .object({
     createdAtMs: z.number().finite(),
@@ -31,6 +39,7 @@ const viewerMemoryPageInputSchema = z
     limit: z.number().int().min(1).max(50),
     origin: z.enum(["automatic", "explicit"]).optional(),
     query: z.string().max(200).optional(),
+    visibility: memoryVisibilitySchema.optional(),
   })
   .strict();
 const viewerMemoryTimelineInputSchema = z
@@ -53,7 +62,10 @@ interface ViewerMemoryPage {
 export type ViewerMemory = MemoryRecord & {
   origin: "automatic" | "explicit" | "other";
   sourcePlatform: MemorySourcePlatform;
+  visibility: MemoryVisibility;
 };
+
+export type MemoryVisibility = z.output<typeof memoryVisibilitySchema>;
 
 /** Viewer-scoped active memory totals used by the dashboard. */
 export interface ViewerMemoryStats {
@@ -63,14 +75,17 @@ export interface ViewerMemoryStats {
   embedded: number;
   explicit: number;
   knowledge: number;
+  private: number;
   preference: number;
   procedure: number;
+  public: number;
 }
 
 /** Viewer-scoped memory creation totals for one UTC calendar day. */
 export interface ViewerMemoryDay {
   date: string;
-  memories: number;
+  private: number;
+  public: number;
 }
 
 /** Expected failure when a viewer cannot read the requested memory. */
@@ -83,6 +98,8 @@ export class ViewerMemoryNotFoundError extends Error {
 
 /** Viewer-scoped memory operations shared by dashboard and REST. */
 interface ViewerMemoryCollection {
+  /** Archive one exact private memory visible to the viewer. */
+  archive(id: string): Promise<MemoryRecord>;
   /** Read one exact memory visible to the authorized scopes. */
   get(id: string): Promise<ViewerMemory>;
   /** List one stable page across every authorized viewer scope. */
@@ -97,6 +114,54 @@ function publicScopePredicate() {
   return and(
     eq(juniorMemoryMemories.scope, publicMemoryScope.scope),
     eq(juniorMemoryMemories.scopeKey, publicMemoryScope.scopeKey),
+  );
+}
+
+/** Match private domains for conversations materialized for this user. */
+function privateScopePredicate(userId: string) {
+  return and(
+    eq(juniorMemoryMemories.scope, "private"),
+    sql`exists (
+      select 1
+      from junior_conversations as viewer_conversation
+      inner join junior_conversation_participants as viewer_participant
+        on viewer_participant.root_conversation_id = viewer_conversation.root_conversation_id
+      left join junior_destinations as viewer_destination
+        on viewer_destination.id = viewer_conversation.destination_id
+      where viewer_participant.user_id = ${userId}
+        and (
+          ${juniorMemoryMemories.scopeKey} = viewer_conversation.conversation_id
+          or (
+            ${juniorMemoryMemories.sourcePlatform} = 'slack'
+            and viewer_destination.provider = 'slack'
+            and ${juniorMemoryMemories.scopeKey} =
+              'slack:' || viewer_destination.provider_tenant_id || ':' || viewer_destination.provider_destination_id
+          )
+        )
+    )`,
+  );
+}
+
+function viewerScopePredicate(userId: string, visibility?: MemoryVisibility) {
+  if (visibility === "public") return publicScopePredicate();
+  if (visibility === "private") return privateScopePredicate(userId);
+  return or(publicScopePredicate(), privateScopePredicate(userId));
+}
+
+function activeViewerPredicate(
+  userId: string,
+  nowMs: number,
+  visibility?: MemoryVisibility,
+) {
+  return and(
+    viewerScopePredicate(userId, visibility),
+    isNull(juniorMemoryMemories.archivedAtMs),
+    isNull(juniorMemoryMemories.supersededAtMs),
+    isNull(juniorMemoryMemories.supersededById),
+    or(
+      isNull(juniorMemoryMemories.expiresAtMs),
+      gt(juniorMemoryMemories.expiresAtMs, nowMs),
+    ),
   );
 }
 
@@ -130,42 +195,56 @@ function viewerMemory(
     ...memory,
     origin: memoryOrigin(row.idempotencyKey),
     sourcePlatform: row.sourcePlatform,
+    visibility: memory.scope,
   };
 }
 
-function emptyStats(): ViewerMemoryStats {
-  return {
-    active: 0,
-    automatic: 0,
-    createdThirtyDays: 0,
-    embedded: 0,
-    explicit: 0,
-    knowledge: 0,
-    preference: 0,
-    procedure: 0,
-  };
-}
-
-/** Build public-memory storage operations for authenticated viewer surfaces. */
+/** Build storage operations for memory visible to one authenticated viewer. */
 export function createViewerMemoryCollection(
   db: MemoryDb,
+  viewer: Pick<User, "id">,
   options: { now?: () => number } = {},
 ): ViewerMemoryCollection {
-  const scopes = [publicMemoryScope];
   const getNowMs = () => options.now?.() ?? Date.now();
 
   return {
+    async archive(id) {
+      const memoryId = nonEmptyStringSchema.parse(id);
+      const nowMs = getNowMs();
+      const updated = await db
+        .update(juniorMemoryMemories)
+        .set({
+          archivedAtMs: nowMs,
+          archiveReason: "user_removed",
+        })
+        .where(
+          and(
+            activeViewerPredicate(viewer.id, nowMs, "private"),
+            eq(juniorMemoryMemories.id, memoryId),
+          ),
+        )
+        .returning();
+      if (!updated[0]) {
+        throw new ViewerMemoryNotFoundError();
+      }
+      await db
+        .delete(juniorMemoryEmbeddings)
+        .where(eq(juniorMemoryEmbeddings.memoryId, memoryId));
+      return parseMemoryRow(updated[0]);
+    },
+
     async get(id) {
       const memoryId = nonEmptyStringSchema.parse(id);
       const nowMs = getNowMs();
-      const predicate = activeVisiblePredicate({ nowMs, scopes });
-      if (!predicate) {
-        throw new ViewerMemoryNotFoundError();
-      }
       const rows = await db
         .select()
         .from(juniorMemoryMemories)
-        .where(and(predicate, eq(juniorMemoryMemories.id, memoryId)))
+        .where(
+          and(
+            activeViewerPredicate(viewer.id, nowMs),
+            eq(juniorMemoryMemories.id, memoryId),
+          ),
+        )
         .limit(1);
       if (!rows[0]) {
         throw new ViewerMemoryNotFoundError();
@@ -176,11 +255,7 @@ export function createViewerMemoryCollection(
     async list(input) {
       input = viewerMemoryPageInputSchema.parse(input);
       const nowMs = getNowMs();
-      await archiveExpiredMemoryBatch({ db, nowMs, scopes });
-      const active = activeVisiblePredicate({ nowMs, scopes });
-      if (!active) {
-        return { memories: [] };
-      }
+      const active = activeViewerPredicate(viewer.id, nowMs, input.visibility);
 
       const cursor = input.cursor
         ? or(
@@ -238,11 +313,7 @@ export function createViewerMemoryCollection(
 
     async stats() {
       const nowMs = getNowMs();
-      await archiveExpiredMemoryBatch({ db, nowMs, scopes });
-      const active = activeVisiblePredicate({ nowMs, scopes });
-      if (!active) {
-        return emptyStats();
-      }
+      const active = activeViewerPredicate(viewer.id, nowMs);
       const [counts] = await db
         .select({
           active: sql<number>`count(*)`.mapWith(Number),
@@ -266,12 +337,20 @@ export function createViewerMemoryCollection(
             sql<number>`count(*) filter (where ${juniorMemoryMemories.kind} = 'knowledge')`.mapWith(
               Number,
             ),
+          private:
+            sql<number>`count(*) filter (where ${juniorMemoryMemories.scope} = 'private')`.mapWith(
+              Number,
+            ),
           preference:
             sql<number>`count(*) filter (where ${juniorMemoryMemories.kind} = 'preference')`.mapWith(
               Number,
             ),
           procedure:
             sql<number>`count(*) filter (where ${juniorMemoryMemories.kind} = 'procedure')`.mapWith(
+              Number,
+            ),
+          public:
+            sql<number>`count(*) filter (where ${juniorMemoryMemories.scope} = 'public')`.mapWith(
               Number,
             ),
         })
@@ -288,8 +367,10 @@ export function createViewerMemoryCollection(
         embedded: counts?.embedded ?? 0,
         explicit: counts?.explicit ?? 0,
         knowledge: counts?.knowledge ?? 0,
+        private: counts?.private ?? 0,
         preference: counts?.preference ?? 0,
         procedure: counts?.procedure ?? 0,
+        public: counts?.public ?? 0,
       };
     },
 
@@ -302,12 +383,19 @@ export function createViewerMemoryCollection(
           date: sql<string>`to_char(to_timestamp(${juniorMemoryMemories.createdAtMs} / 1000.0) AT TIME ZONE 'UTC', 'YYYY-MM-DD')`.as(
             "date",
           ),
-          memories: sql<number>`count(*)`.mapWith(Number),
+          private:
+            sql<number>`count(*) filter (where ${juniorMemoryMemories.scope} = 'private')`.mapWith(
+              Number,
+            ),
+          public:
+            sql<number>`count(*) filter (where ${juniorMemoryMemories.scope} = 'public')`.mapWith(
+              Number,
+            ),
         })
         .from(juniorMemoryMemories)
         .where(
           and(
-            publicScopePredicate(),
+            viewerScopePredicate(viewer.id),
             gt(juniorMemoryMemories.createdAtMs, startMs - 1),
           ),
         )
@@ -320,7 +408,8 @@ export function createViewerMemoryCollection(
         const row = byDate.get(date);
         return {
           date,
-          memories: row?.memories ?? 0,
+          private: row?.private ?? 0,
+          public: row?.public ?? 0,
         };
       });
     },

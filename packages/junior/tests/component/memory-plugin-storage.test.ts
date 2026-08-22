@@ -15,6 +15,10 @@ import {
 import { migratePluginSchemas } from "@/chat/plugins/migrations";
 import { readMigrationFiles } from "drizzle-orm/migrator";
 import { closeDb } from "@/chat/db";
+import { migrateSchema } from "@/chat/conversations/sql/migrations";
+import { createSqlStore } from "@/chat/conversations/sql/store";
+import { resolveViewerUser } from "@/chat/plugins/viewer";
+import { readPluginUserPage } from "@/chat/plugins/user-pages";
 import { migratePluginsToSql } from "@/cli/upgrade/migrations/plugin-sql";
 import { runUpgrade } from "@/cli/upgrade";
 import { createLocalJuniorSqlFixture } from "../fixtures/sql";
@@ -22,6 +26,7 @@ import {
   createSlackSource,
   createWebSource,
   defineJuniorPlugin,
+  pluginApiRouteRequestContextSchema,
   PluginToolInputError,
 } from "@sentry/junior-plugin-api";
 
@@ -306,11 +311,50 @@ WHERE indexname = 'junior_memory_memories_search_idx'
 
   it("reads public memory everywhere and private memory only in its source domain", async () => {
     const fixture = await createLocalJuniorSqlFixture();
-    const previousPlugins = setPlugins([memoryPlugin()]);
+    const plugin = memoryPlugin();
+    const previousPlugins = setPlugins([plugin]);
     NEON.sql = fixture.sql;
 
     try {
+      await migrateSchema(fixture.sql);
       await migrateMemorySchema(fixture);
+      const viewerConversationId = "slack:D123:1718800001.000000";
+      const otherConversationId = "slack:D999:1718800002.000000";
+      const conversationStore = createSqlStore(fixture.sql);
+      await conversationStore.recordActivity({
+        actor: {
+          email: "memory-viewer@example.com",
+          platform: "slack",
+          slackUserId: "U123",
+          teamId: "T123",
+        },
+        conversationId: viewerConversationId,
+        destination: {
+          channelId: "D123",
+          platform: "slack",
+          teamId: "T123",
+        },
+        nowMs: Date.parse("2026-08-21T12:00:00.000Z"),
+        source: "slack",
+        visibility: "private",
+      });
+      await conversationStore.recordActivity({
+        actor: {
+          email: "other-memory-viewer@example.com",
+          platform: "slack",
+          slackUserId: "U999",
+          teamId: "T123",
+        },
+        conversationId: otherConversationId,
+        destination: {
+          channelId: "D999",
+          platform: "slack",
+          teamId: "T123",
+        },
+        nowMs: Date.parse("2026-08-21T12:00:01.000Z"),
+        source: "slack",
+        visibility: "private",
+      });
       const publicSource = createSlackSource({
         teamId: "T123",
         channelId: "C123",
@@ -350,6 +394,107 @@ WHERE indexname = 'junior_memory_memories_search_idx'
         idempotencyKey: "component-private-memory",
         kind: "preference",
       });
+      const otherPrivateStore = createMemoryStore(
+        fixture.sql.db() as unknown as MemoryDb,
+        {
+          conversationId: otherConversationId,
+          actor: { platform: "slack", teamId: "T123", userId: "U999" },
+          source: createSlackSource({
+            teamId: "T123",
+            channelId: "D999",
+            messageTs: "1718800002.000000",
+            visibility: "private",
+          }),
+        },
+      );
+      const otherPrivateMemory = await otherPrivateStore.createMemory({
+        content: "Only the other DM can read this.",
+        idempotencyKey: "component-other-private-memory",
+        kind: "knowledge",
+      });
+
+      const viewerPage = await readPluginUserPage({
+        email: "memory-viewer@example.com",
+        pageId: "memories",
+        pluginName: "memory",
+        query: { limit: 25 },
+      });
+      expect(viewerPage?.records.map((record) => record.id)).toEqual(
+        expect.arrayContaining([
+          publicMemory.memory.id,
+          privateMemory.memory.id,
+        ]),
+      );
+      expect(viewerPage?.records.map((record) => record.id)).not.toContain(
+        otherPrivateMemory.memory.id,
+      );
+      expect(
+        viewerPage?.records.find(
+          (record) => record.id === privateMemory.memory.id,
+        )?.actions,
+      ).toEqual([
+        expect.objectContaining({
+          label: "Forget",
+          method: "DELETE",
+        }),
+      ]);
+      expect(
+        viewerPage?.records.find(
+          (record) => record.id === publicMemory.memory.id,
+        )?.actions,
+      ).toEqual([]);
+
+      const viewer = await resolveViewerUser("memory-viewer@example.com");
+      expect(viewer?.identities).toHaveLength(1);
+      const api = plugin.hooks?.apiRoutes?.({
+        db: fixture.sql.db(),
+        eventStats: {
+          async costsByDay({ days }) {
+            return Array.from({ length: days }, (_, index) => ({
+              costUsd: 0,
+              date: new Date(Date.UTC(2026, 7, index + 1))
+                .toISOString()
+                .slice(0, 10),
+              events: 0,
+            }));
+          },
+        },
+        log: { error() {}, info() {}, warn() {} },
+        plugin: { name: "memory" },
+        users: { resolve: resolveViewerUser },
+      });
+      expect(api).toBeDefined();
+      const requestContext = pluginApiRouteRequestContextSchema.parse({
+        auth: {
+          user: {
+            email: viewer!.email,
+            emailVerified: true,
+          },
+        },
+        pluginName: "memory",
+      });
+      const readMemory = (id: string) =>
+        api!.fetch(
+          new Request(`http://localhost/memories/${id}`),
+          requestContext,
+        );
+      await expect(readMemory(publicMemory.memory.id)).resolves.toMatchObject({
+        status: 200,
+      });
+      await expect(readMemory(privateMemory.memory.id)).resolves.toMatchObject({
+        status: 200,
+      });
+      await expect(
+        readMemory(otherPrivateMemory.memory.id),
+      ).resolves.toMatchObject({ status: 404 });
+      await expect(
+        api!.fetch(
+          new Request(`http://localhost/memories/${publicMemory.memory.id}`, {
+            method: "DELETE",
+          }),
+          requestContext,
+        ),
+      ).resolves.toMatchObject({ status: 404 });
 
       const sameDomainContext = {
         conversationId: "slack:D123:1718800099.000000",
@@ -413,7 +558,10 @@ WHERE indexname = 'junior_memory_memories_search_idx'
       await expect(
         otherDomainTools.memory_listMemories.execute!({}, {}),
       ).resolves.toEqual({
-        memories: [expect.objectContaining({ id: publicMemory.memory.id })],
+        memories: [
+          expect.objectContaining({ id: otherPrivateMemory.memory.id }),
+          expect.objectContaining({ id: publicMemory.memory.id }),
+        ],
         target: "listMemories",
       });
 
@@ -435,6 +583,17 @@ WHERE indexname = 'junior_memory_memories_search_idx'
           text: expect.stringContaining("Public runbooks live in Notion."),
         }),
       ]);
+      await expect(
+        api!.fetch(
+          new Request(`http://localhost/memories/${privateMemory.memory.id}`, {
+            method: "DELETE",
+          }),
+          requestContext,
+        ),
+      ).resolves.toMatchObject({ status: 204 });
+      await expect(readMemory(privateMemory.memory.id)).resolves.toMatchObject({
+        status: 404,
+      });
     } finally {
       setPlugins(previousPlugins);
       await closeDb();
