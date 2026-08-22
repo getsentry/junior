@@ -1788,6 +1788,87 @@ describe("conversation work execution", () => {
     });
   });
 
+  it("resumes a stop written after the adapter returns", async () => {
+    const queue = createConversationWorkQueueTestAdapter();
+    const state = getStateAdapter();
+    const completionBlocked = deferred<void>();
+    const releaseCompletion = deferred<void>();
+    const mutationLockKey = `junior:conversation:v2:mutation:${CONVERSATION_ID}`;
+    let holdCompletion = false;
+    const workerState = new Proxy(state, {
+      get(target, prop, receiver) {
+        if (prop === "acquireLock") {
+          return async (key: string, ttlMs: number) => {
+            if (holdCompletion && key === mutationLockKey) {
+              holdCompletion = false;
+              completionBlocked.resolve();
+              await releaseCompletion.promise;
+            }
+            return target.acquireLock(key, ttlMs);
+          };
+        }
+        const value = Reflect.get(target, prop, receiver);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    }) as StateAdapter;
+
+    await requestConversationWork({
+      conversationId: CONVERSATION_ID,
+      destination: SLACK_DESTINATION,
+      nowMs: 1_000,
+      state,
+    });
+    const running = processConversationWork(conversationQueueMessage(), {
+      queue,
+      state: workerState,
+      run: async (context) => {
+        const signal = context.stopSignal?.();
+        if (!signal) throw new Error("Expected a Conversation stop signal");
+        expect(signal.aborted).toBe(false);
+        holdCompletion = true;
+        return { status: "completed" };
+      },
+    });
+
+    await completionBlocked.promise;
+    await expect(
+      stopConversationWork({
+        conversationId: CONVERSATION_ID,
+        nowMs: 2_000,
+        state,
+      }),
+    ).resolves.toMatchObject({ status: "requested" });
+    releaseCompletion.resolve();
+
+    await expect(running).resolves.toEqual({ status: "pending_requeued" });
+    await expect(
+      getConversationWorkState({ conversationId: CONVERSATION_ID, state }),
+    ).resolves.toMatchObject({
+      execution: {
+        status: "paused",
+        stop: expect.objectContaining({ runId: expect.any(String) }),
+      },
+    });
+
+    await expect(
+      processConversationWork(queue.takeMessage(), {
+        queue,
+        state: workerState,
+        run: async (context) => {
+          const signal = context.stopSignal?.();
+          if (!signal) throw new Error("Expected a Conversation stop signal");
+          expect(signal.aborted).toBe(true);
+          return { status: "completed" };
+        },
+      }),
+    ).resolves.toEqual({ status: "completed" });
+    await expect(
+      getConversationWorkState({ conversationId: CONVERSATION_ID, state }),
+    ).resolves.toMatchObject({
+      execution: { status: "idle", stop: undefined },
+    });
+  });
+
   it("reports lost lease after periodic check-in loses ownership", async () => {
     vi.useFakeTimers({ now: 1_000 });
     const queue = createConversationWorkQueueTestAdapter();

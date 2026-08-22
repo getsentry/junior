@@ -1992,7 +1992,7 @@ export async function completeConversationWork(args: {
   leaseToken: string;
   madeProgress?: boolean;
   nowMs?: number;
-  /** Keep a raced stop runnable after the adapter pauses a Turn. */
+  /** Keep a raced stop runnable after a stop-aware adapter returns. */
   resumeIfStopped?: boolean;
   state?: StateAdapter;
 }): Promise<"completed" | "lost_lease" | "pending"> {

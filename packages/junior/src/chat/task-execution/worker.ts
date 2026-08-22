@@ -333,6 +333,9 @@ function createConversationStopSignal(args: {
     close(): void {
       if (timer) clearInterval(timer);
     },
+    isEnabled(): boolean {
+      return listening;
+    },
     wasObserved(): boolean {
       return listening && controller.signal.aborted;
     },
@@ -654,6 +657,7 @@ async function processConversationWorkInContext(
       } finally {
         stop.close();
       }
+      resumeIfStopped ||= stop.isEnabled();
       hasRun = true;
       if (result.status === "lost_lease") {
         await requestLostLeaseRecovery({
@@ -779,7 +783,6 @@ async function processConversationWorkInContext(
       }
 
       if (result.status === "paused") {
-        resumeIfStopped = true;
         break;
       }
 

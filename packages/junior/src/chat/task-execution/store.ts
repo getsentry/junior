@@ -554,7 +554,7 @@ export async function completeConversationWork(args: {
   madeProgress?: boolean;
   conversationStore?: ConversationStore;
   nowMs?: number;
-  /** Keep a raced stop runnable after the adapter pauses a Turn. */
+  /** Keep a raced stop runnable after a stop-aware adapter returns. */
   resumeIfStopped?: boolean;
   state?: StateAdapter;
 }) {
