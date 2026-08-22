@@ -7,13 +7,12 @@ import {
 import { grepFiles } from "@/chat/tools/sandbox/grep";
 
 
-/** Test-only bridge for intentionally incomplete doubles. */
-function asTestDouble<T>(value: unknown): T {
-  return value as T;
+function asSandboxFileSystem(value: unknown): SandboxFileSystem {
+  return value as SandboxFileSystem;
 }
 
 const directoryStat = { isDirectory: () => true };
-const fs = asTestDouble<SandboxFileSystem>({
+const fs = asSandboxFileSystem({
   stat: async () => directoryStat,
 });
 

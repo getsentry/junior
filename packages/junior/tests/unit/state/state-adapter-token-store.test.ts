@@ -3,18 +3,15 @@ import type { StateAdapter } from "chat";
 import { StateAdapterTokenStore } from "@/chat/credentials/state-adapter-token-store";
 import { ACTIVE_LOCK_TTL_MS } from "@/chat/state/locks";
 
-
-/** Test-only bridge for intentionally incomplete doubles. */
-function asTestDouble<T>(value: unknown): T {
-  return value as T;
+function asTokenStoreAdapter(
+  value: unknown,
+): StateAdapter & { set: ReturnType<typeof vi.fn> } {
+  return value as StateAdapter & { set: ReturnType<typeof vi.fn> };
 }
+
 describe("StateAdapterTokenStore", () => {
   function createAdapter(overrides: Partial<StateAdapter> = {}) {
-    return asTestDouble<
-      StateAdapter & {
-        set: ReturnType<typeof vi.fn>;
-      }
-    >({
+    const adapter = {
       get: async () => null,
       set: vi.fn(async () => {}),
       delete: async () => {},
@@ -27,7 +24,8 @@ describe("StateAdapterTokenStore", () => {
       releaseLock: async () => {},
       setWithTtl: async () => {},
       ...overrides,
-    });
+    };
+    return asTokenStoreAdapter(adapter);
   }
 
   it("uses a long-lived ttl for tokens without expiresAt", async () => {

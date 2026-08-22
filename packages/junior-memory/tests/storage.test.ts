@@ -34,13 +34,6 @@ import type {
   MemorySupersessionDecider,
   MemorySupersessionInput,
 } from "../src/store";
-
-
-/** Test-only bridge for intentionally incomplete doubles. */
-function asTestDouble<T>(value: unknown): T {
-  return value as T;
-}
-
 const TEST_NOW_MS = Date.parse("2026-06-19T12:00:00.000Z");
 const TEST_EMBEDDING_DIMENSIONS = 1536;
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -5257,21 +5250,21 @@ INSERT INTO junior_memory_memories (
 
       await expect(
         store.createMemory(
-          asTestDouble<Parameters<typeof store.createMemory>[0]>({
+          ({
             content: "Prefers short PR summaries.",
             kind: "preference",
             idempotencyKey: "memory-test:smuggle",
             scope: "conversation",
             subjectKey: "slack:T123:U999",
             subjectType: "general",
-          }),
+          } as Parameters<typeof store.createMemory>[0]),
         ),
       ).rejects.toThrow(/Invalid input|Unrecognized key/);
       await expect(
         store.listMemories(
-          asTestDouble<Parameters<typeof store.listMemories>[0]>({
+          ({
             actor: { platform: "local", userId: "local-user" },
-          }),
+          } as Parameters<typeof store.listMemories>[0]),
         ),
       ).rejects.toThrow(/Invalid input|Unrecognized key/);
 

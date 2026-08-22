@@ -1,11 +1,11 @@
 import {
+  type PluginEgress,
   definePluginTool,
   PluginToolInputError,
   pluginToolOutputSchema,
   subscribableResourceSchema,
   type PluginToolOutput,
   type SubscribableResource,
-  type ToolRegistrationHookContext,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import { gitHubDeploymentSourceSubscribable } from "../resource-events/deployment.js";
@@ -147,7 +147,7 @@ function repositoryUrl(repo: { name: string; owner: string }, path: string) {
 
 /** Read deployment metadata and expose its stable subscription identity. */
 export function createGitHubGetDeploymentTool(
-  ctx: ToolRegistrationHookContext,
+  ctx: { egress: PluginEgress; resourceEvents: { canSubscribe: boolean } },
 ) {
   return definePluginTool({
     annotations: {

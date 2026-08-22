@@ -14,10 +14,24 @@ import {
   createSlackSource,
 } from "@sentry/junior-plugin-api";
 
+function asDispatchDestination(value: unknown): typeof validOptions.destination {
+  return value as typeof validOptions.destination;
+}
 
-/** Test-only bridge for intentionally incomplete doubles. */
-function asTestDouble<T>(value: unknown): T {
-  return value as T;
+function asNonNullable(value: unknown): NonNullable<
+        Parameters<
+          typeof verifyDispatchCredentialSubjectAccess
+        >[0]["credentialSubject"]
+      > {
+  return value as NonNullable<
+        Parameters<
+          typeof verifyDispatchCredentialSubjectAccess
+        >[0]["credentialSubject"]
+      >;
+}
+
+function asStringRecord(value: unknown): Record<string, string> {
+  return value as Record<string, string>;
 }
 
 const validOptions = {
@@ -125,8 +139,9 @@ describe("agent dispatch validation", () => {
     expect(() =>
       validateDispatchOptions({
         ...validOptions,
-        destination:
-          asTestDouble<typeof validOptions.destination>(undefined),
+        destination: (() => {
+                    return asDispatchDestination(undefined);
+        })(),
       }),
     ).toThrow("Dispatch destination platform must be slack");
     expect(() =>
@@ -296,7 +311,9 @@ describe("agent dispatch validation", () => {
     expect(() =>
       validateDispatchOptions({
         ...validOptions,
-        metadata: asTestDouble<Record<string, string>>(null),
+        metadata: (() => {
+                    return asStringRecord(null);
+        })(),
       }),
     ).toThrow("Dispatch metadata values must be strings");
 
@@ -429,13 +446,7 @@ describe("agent dispatch validation", () => {
       "Dispatch credentialSubject is not valid for this action",
     );
 
-    const unboundRuntimeSubject = asTestDouble<
-      NonNullable<
-        Parameters<
-          typeof verifyDispatchCredentialSubjectAccess
-        >[0]["credentialSubject"]
-      >
-    >({
+        const unboundRuntimeSubject = asNonNullable({
       type: "user",
       userId: "U123",
       allowedWhen: "private-direct-conversation",

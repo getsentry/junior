@@ -1,11 +1,10 @@
 import type { SlashCommandEvent } from "chat";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-
-/** Test-only bridge for intentionally incomplete doubles. */
-function asTestDouble<T>(value: unknown): T {
-  return value as T;
+function asSlashCommandEvent(value: unknown): SlashCommandEvent {
+  return value as SlashCommandEvent;
 }
+
 const ORIGINAL_ENV = { ...process.env };
 
 async function loadHandler() {
@@ -26,7 +25,7 @@ function createSlashEvent(
     isMe: false,
     ...userOverrides,
   };
-  const event = asTestDouble<SlashCommandEvent>({
+      const event = asSlashCommandEvent({
     text,
     user,
     channel: { postEphemeral },

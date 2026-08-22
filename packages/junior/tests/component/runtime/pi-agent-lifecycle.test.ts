@@ -6,11 +6,10 @@ import { decideReply } from "@/chat/services/assistant-reply";
 import { ACTIVE_TURN_COMPACTION_SUMMARY_PREFIX } from "@/chat/services/context-compaction-marker";
 import { nextEmptyOutputContinuation } from "@/chat/services/empty-output-continuation";
 
-
-/** Test-only bridge for intentionally incomplete doubles. */
-function asTestDouble<T>(value: unknown): T {
-  return value as T;
+function asStreamResponse(value: unknown): StreamResponse {
+  return value as StreamResponse;
 }
+
 type StreamResponse = Awaited<ReturnType<StreamFn>>;
 
 const usage = {
@@ -40,7 +39,7 @@ function assistantResponse(text = "done"): StreamResponse {
     timestamp: Date.now(),
   };
 
-  return asTestDouble<StreamResponse>({
+    return asStreamResponse({
     async *[Symbol.asyncIterator]() {
       yield { type: "done" as const };
     },

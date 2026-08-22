@@ -1,14 +1,6 @@
-import type { ToolRegistrationHookContext } from "@sentry/junior-plugin-api";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createGitHubGetPullRequestTool } from "../src/tools/get-pull-request";
 import { createGitHubApiTestAdapter } from "./github-api-adapter";
-
-
-/** Test-only bridge for intentionally incomplete doubles. */
-function asTestDouble<T>(value: unknown): T {
-  return value as T;
-}
-
 const HEAD_SHA = "c610b5d6a88c9da5d65627a1cdb3829b05c14f75";
 
 function toolContext(
@@ -29,10 +21,10 @@ function toolContext(
   ],
 ) {
   const adapter = createGitHubApiTestAdapter(responses);
-  const ctx = asTestDouble<ToolRegistrationHookContext>({
+  const ctx = {
     egress: adapter.egress,
     resourceEvents: { canSubscribe },
-  });
+  };
   return { adapter, tool: createGitHubGetPullRequestTool(ctx) };
 }
 

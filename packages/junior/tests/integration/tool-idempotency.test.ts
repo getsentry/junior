@@ -22,10 +22,8 @@ import {
   createSlackSource,
 } from "@sentry/junior-plugin-api";
 
-
-/** Test-only bridge for intentionally incomplete doubles. */
-function asTestDouble<T>(value: unknown): T {
-  return value as T;
+function asSlackToolContext(value: unknown): SlackToolContext {
+  return value as SlackToolContext;
 }
 
 function createToolState(): ToolState {
@@ -235,7 +233,7 @@ describe("tool idempotency", () => {
   it("throws when creating a canvas without assistant channel context", async () => {
     const state = createToolState();
     const tool = createSlackCanvasCreateTool(
-      asTestDouble<SlackToolContext>(LOCAL_CONTEXT),
+      asSlackToolContext(LOCAL_CONTEXT),
       state,
     );
 

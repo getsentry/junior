@@ -1,14 +1,6 @@
-import type { ToolRegistrationHookContext } from "@sentry/junior-plugin-api";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createGitHubGetReleaseTool } from "../src/tools/get-release";
 import { createGitHubApiTestAdapter } from "./github-api-adapter";
-
-
-/** Test-only bridge for intentionally incomplete doubles. */
-function asTestDouble<T>(value: unknown): T {
-  return value as T;
-}
-
 const RELEASE = {
   created_at: "2026-08-04T05:15:00Z",
   draft: false,
@@ -23,10 +15,10 @@ const RELEASE = {
 
 function toolContext(responses: Array<{ body?: unknown; status?: number }>) {
   const adapter = createGitHubApiTestAdapter(responses);
-  const ctx = asTestDouble<ToolRegistrationHookContext>({
+  const ctx = {
     egress: adapter.egress,
     resourceEvents: { canSubscribe: true },
-  });
+  };
   return { adapter, tool: createGitHubGetReleaseTool(ctx) };
 }
 

@@ -30,13 +30,6 @@ import {
 import {
   createSlackSource,
 } from "@sentry/junior-plugin-api";
-
-
-/** Test-only bridge for intentionally incomplete doubles. */
-function asTestDouble<T>(value: unknown): T {
-  return value as T;
-}
-
 vi.hoisted(() => {
   process.env.JUNIOR_STATE_ADAPTER = "memory";
 });
@@ -738,10 +731,10 @@ describe("Slack schedule tools", () => {
     await expect(
       executeTool(
         tool,
-        asTestDouble<Parameters<NonNullable<typeof tool.execute>>[0]>({
+        ({
           task_id: created.task.id,
           next_run_at: "2026-06-01T16:00:00.000Z",
-        }),
+        } as Parameters<NonNullable<typeof tool.execute>>[0]),
       ),
     ).rejects.toThrow("Unrecognized key");
     await expect(readScheduledTask(created.task.id)).resolves.toMatchObject({
@@ -759,16 +752,14 @@ describe("Slack schedule tools", () => {
     await expect(
       executeTool(
         updateTool,
-        asTestDouble<
-          Parameters<NonNullable<typeof updateTool.execute>>[0]
-        >({
+        ({
           task_id: created.task.id,
           schedule: {
             kind: "recurring",
             frequency: "hourly",
             time: "09:00",
           },
-        }),
+        } as Parameters<NonNullable<typeof updateTool.execute>>[0]),
       ),
     ).rejects.toThrow("Invalid tool arguments: schedule");
     await expect(readScheduledTask(created.task.id)).resolves.toMatchObject({

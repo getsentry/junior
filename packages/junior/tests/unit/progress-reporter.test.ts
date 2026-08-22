@@ -2,11 +2,14 @@ import { describe, expect, it } from "vitest";
 import { createAssistantStatusScheduler } from "@/chat/slack/assistant-thread/status-scheduler";
 import { makeAssistantStatus } from "@/chat/slack/assistant-thread/status-render";
 
-
-/** Test-only bridge for intentionally incomplete doubles. */
-function asTestDouble<T>(value: unknown): T {
-  return value as T;
+function asNumber(value: unknown): number {
+  return value as number;
 }
+
+function asTimeout(value: unknown): ReturnType<typeof setTimeout> {
+  return value as ReturnType<typeof setTimeout>;
+}
+
 interface FakeTimer {
   id: number;
   runAt: number;
@@ -32,11 +35,11 @@ function createFakeScheduler() {
       canceled: false,
     };
     timers.push(timer);
-    return asTestDouble<ReturnType<typeof setTimeout>>(timer.id);
+        return asTimeout(timer.id);
   };
 
   const clearTimer = (timer: ReturnType<typeof setTimeout>) => {
-    const id = asTestDouble<number>(timer);
+        const id = asNumber(timer);
     const entry = timers.find((candidate) => candidate.id === id);
     if (entry) {
       entry.canceled = true;

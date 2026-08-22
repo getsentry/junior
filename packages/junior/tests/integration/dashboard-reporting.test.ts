@@ -24,10 +24,8 @@ import {
   waitUntilApplicationWaitsOnLock,
 } from "../fixtures/dashboard-reporting";
 
-
-/** Test-only bridge for intentionally incomplete doubles. */
-function asTestDouble<T>(value: unknown): T {
-  return value as T;
+function asPiMessage(value: unknown): PiMessage {
+  return value as PiMessage;
 }
 
 const ORIGINAL_ENV = { ...process.env };
@@ -203,7 +201,7 @@ describe("dashboard canonical event reporting", () => {
   it("aggregates per-model tokens and costs without counting replayed history", async () => {
     const conversationId = "slack:C-reporting:model-usage";
     await recordRoot(conversationId, "public");
-    const componentUsageMessage = asTestDouble<PiMessage>({
+        const componentUsageMessage = asPiMessage({
       role: "assistant",
       api: "responses",
       provider: "openai",
@@ -222,7 +220,7 @@ describe("dashboard canonical event reporting", () => {
         },
       },
     });
-    const totalOnlyUsageMessage = asTestDouble<PiMessage>({
+        const totalOnlyUsageMessage = asPiMessage({
       role: "assistant",
       api: "responses",
       provider: "openai",
@@ -281,7 +279,7 @@ describe("dashboard canonical event reporting", () => {
   it("keys gateway assistant usage by the vendor model id", async () => {
     const conversationId = "slack:C-reporting:gateway-model-usage";
     await recordRoot(conversationId, "public");
-    const gatewayUsageMessage = asTestDouble<PiMessage>({
+        const gatewayUsageMessage = asPiMessage({
       role: "assistant",
       api: "responses",
       provider: "vercel-ai-gateway",

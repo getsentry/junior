@@ -34,13 +34,6 @@ import { createModelStream } from "../fixtures/model-stream";
 import {
   createLocalSource,
 } from "@sentry/junior-plugin-api";
-
-
-/** Test-only bridge for intentionally incomplete doubles. */
-function asTestDouble<T>(value: unknown): T {
-  return value as T;
-}
-
 const parentConversationId = "local:test:parent-agent";
 const destination = {
   conversationId: parentConversationId,
@@ -471,7 +464,7 @@ describe("agent invocation conversation work", () => {
         actor: invocationInput.actor,
         conversationId: created.childConversationId,
         destination,
-        piMessages: asTestDouble<PiMessage[]>([
+        piMessages: ([
           {
             role: "user",
             content: [{ type: "text", text: invocationInput.input }],
@@ -499,7 +492,7 @@ describe("agent invocation conversation work", () => {
             role: "assistant",
             content: [{ type: "text", text: "Recovered visible result" }],
           },
-        ]),
+        ] as PiMessage[]),
         turnId: getAgentInvocationTurnId(created.invocationId),
         sliceId: 1,
         source: invocationInput.source,

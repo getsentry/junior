@@ -58,13 +58,6 @@ import {
   observeConversationMutationLock,
 } from "../../fixtures/conversation-work";
 import { readProxyProperty } from "../../fixtures/proxy-property";
-
-
-/** Test-only bridge for intentionally incomplete doubles. */
-function asTestDouble<T>(value: unknown): T {
-  return value as T;
-}
-
 const OTHER_SLACK_DESTINATION = {
   platform: "slack",
   teamId: "T123",
@@ -219,7 +212,7 @@ describe("conversation work execution", () => {
     const state = getStateAdapter();
     await state.connect();
     const legacyMessage = {
-      ...asTestDouble<Record<string, unknown>>(inboundMessage("legacy")),
+      ...(inboundMessage("legacy") as Record<string, unknown>),
     };
     delete legacyMessage.destination;
     const legacyWork = {

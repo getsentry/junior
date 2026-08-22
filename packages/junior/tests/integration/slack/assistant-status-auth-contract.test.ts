@@ -11,10 +11,12 @@ import {
   resetSlackApiMockState,
 } from "../../msw/handlers/slack-api";
 
+function asNumber(value: unknown): number {
+  return value as number;
+}
 
-/** Test-only bridge for intentionally incomplete doubles. */
-function asTestDouble<T>(value: unknown): T {
-  return value as T;
+function asTimeout(value: unknown): ReturnType<typeof setTimeout> {
+  return value as ReturnType<typeof setTimeout>;
 }
 
 const SIGNING_SECRET = "test-signing-secret";
@@ -50,11 +52,11 @@ function createFakeScheduler() {
       canceled: false,
     };
     timers.push(timer);
-    return asTestDouble<ReturnType<typeof setTimeout>>(timer.id);
+        return asTimeout(timer.id);
   };
 
   const clearTimer = (timer: ReturnType<typeof setTimeout>) => {
-    const id = asTestDouble<number>(timer);
+        const id = asNumber(timer);
     const entry = timers.find((candidate) => candidate.id === id);
     if (entry) {
       entry.canceled = true;

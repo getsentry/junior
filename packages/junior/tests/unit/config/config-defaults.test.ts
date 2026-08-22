@@ -1,10 +1,4 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-
-
-/** Test-only bridge for intentionally incomplete doubles. */
-function asTestDouble<T>(value: unknown): T {
-  return value as T;
-}
 vi.mock("@/chat/plugins/catalog-runtime", () => ({
   pluginCatalogRuntime: {
     isConfigKey: (key: string) =>
@@ -50,13 +44,13 @@ describe("install config defaults", () => {
 
   it("rejects null defaults", () => {
     expect(() =>
-      setConfigDefaults(asTestDouble<Record<string, unknown>>(null)),
+      setConfigDefaults(null),
     ).toThrow("configDefaults must be an object keyed by plugin config key");
   });
 
   it("rejects array defaults", () => {
     expect(() =>
-      setConfigDefaults(asTestDouble<Record<string, unknown>>([])),
+      setConfigDefaults([]),
     ).toThrow("configDefaults must be an object keyed by plugin config key");
   });
 

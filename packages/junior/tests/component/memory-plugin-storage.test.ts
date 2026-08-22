@@ -20,10 +20,8 @@ import {
   PluginToolInputError,
 } from "@sentry/junior-plugin-api";
 
-
-/** Test-only bridge for intentionally incomplete doubles. */
-function asTestDouble<T>(value: unknown): T {
-  return value as T;
+function asMemoryDb(value: unknown): MemoryDb {
+  return value as MemoryDb;
 }
 
 const NEON = vi.hoisted(() => ({
@@ -320,13 +318,12 @@ WHERE indexname = 'junior_memory_memories_search_idx'
         visibility: "private",
       });
       const store = createMemoryStore(
-        asTestDouble<MemoryDb>(fixture.sql.db()),
+        asMemoryDb(fixture.sql.db()),
         {
-          conversationId,
-          actor,
-          source,
-        },
-      );
+        conversationId,
+        actor,
+        source,
+      });
       await store.createMemory({
         content: "I prefer host-wired personal recall.",
         idempotencyKey: "component-memory-personal",

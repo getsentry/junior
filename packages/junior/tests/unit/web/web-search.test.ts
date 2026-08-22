@@ -3,13 +3,6 @@ import { createWebSearchTool } from "@/chat/tools/web/search";
 import { generateText } from "ai";
 import { createGatewayProvider } from "@ai-sdk/gateway";
 import { resolveGatewayCredential } from "@/chat/pi/gateway-auth";
-
-
-/** Test-only bridge for intentionally incomplete doubles. */
-function asTestDouble<T>(value: unknown): T {
-  return value as T;
-}
-
 vi.mock("ai", () => ({
   generateText: vi.fn(),
 }));
@@ -230,7 +223,7 @@ describe("createWebSearchTool", () => {
     globalThis.AbortController = class extends originalAC {
       constructor() {
         super();
-        return asTestDouble<AbortController>(brokenController);
+        return (brokenController as AbortController);
       }
     } as typeof AbortController;
 

@@ -5,10 +5,8 @@ import type {
   SandboxSession,
 } from "@/chat/sandbox/workspace";
 
-
-/** Test-only bridge for intentionally incomplete doubles. */
-function asTestDouble<T>(value: unknown): T {
-  return value as T;
+function asSandboxSession(value: unknown): SandboxSession {
+  return value as SandboxSession;
 }
 
 function session(
@@ -16,7 +14,7 @@ function session(
     input: SandboxCommandInput,
   ) => Promise<{ exitCode: number; stderr: string; stdout: string }>,
 ): SandboxSession {
-  return asTestDouble<SandboxSession>({ runCommand: vi.fn(run) });
+      return asSandboxSession({ runCommand: vi.fn(run) });
 }
 
 function script(input: SandboxCommandInput): string {

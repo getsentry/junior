@@ -4,14 +4,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { syncSkillsToSandbox } from "@/chat/sandbox/skill-sync";
 import { sandboxSkillFile } from "@/chat/sandbox/paths";
-import type { SandboxSession } from "@/chat/sandbox/workspace";
 import { discoverSkills, resetSkillDiscoveryCache } from "@/chat/skills";
-
-
-/** Test-only bridge for intentionally incomplete doubles. */
-function asTestDouble<T>(value: unknown): T {
-  return value as T;
-}
 const temporaryDirectories: string[] = [];
 
 async function makeSkill(): Promise<string> {
@@ -57,7 +50,7 @@ describe("sandbox skill sync", () => {
     }
 
     const writtenPaths: string[] = [];
-    const sandbox = asTestDouble<SandboxSession>({
+    const sandbox = {
       async mkDir() {},
       async readFileToBuffer() {
         return null;
@@ -65,7 +58,7 @@ describe("sandbox skill sync", () => {
       async writeFiles(files: Array<{ path: string }>) {
         writtenPaths.push(...files.map((file) => file.path));
       },
-    });
+    };
 
     await syncSkillsToSandbox({
       sandbox,
@@ -89,7 +82,7 @@ describe("sandbox skill sync", () => {
     const siblingsStarted = new Promise<void>((resolve) => {
       releaseSiblings = resolve;
     });
-    const sandbox = asTestDouble<SandboxSession>({
+    const sandbox = {
       async mkDir(directory: string) {
         const parent = path.posix.dirname(directory);
         if (
@@ -114,7 +107,7 @@ describe("sandbox skill sync", () => {
         return null;
       },
       async writeFiles() {},
-    });
+    };
 
     const sync = syncSkillsToSandbox({
       sandbox,

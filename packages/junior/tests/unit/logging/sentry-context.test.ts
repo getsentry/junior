@@ -1,10 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-
-
-/** Test-only bridge for intentionally incomplete doubles. */
-function asTestDouble<T>(value: unknown): T {
-  return value as T;
-}
+import type { Scope } from "@/chat/sentry";
 const sentry = vi.hoisted(() => {
   const scope = {
     setContext: vi.fn(),
@@ -43,6 +38,10 @@ afterEach(() => {
   vi.clearAllMocks();
   vi.resetModules();
 });
+
+function asSentryScope(value: unknown): Scope {
+  return value as Scope;
+}
 
 describe("Sentry context", () => {
   it("extends only the active sanitized log context", async () => {
@@ -127,9 +126,7 @@ describe("Sentry context", () => {
     };
 
     logging.setSentryScopeContext(
-      asTestDouble<Parameters<typeof logging.setSentryScopeContext>[0]>(
-        scope,
-      ),
+      asSentryScope(scope),
       {
         conversationId: "thread_123",
         userId: "U123",

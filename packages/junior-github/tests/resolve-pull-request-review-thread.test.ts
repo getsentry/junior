@@ -1,13 +1,5 @@
-import type { ToolRegistrationHookContext } from "@sentry/junior-plugin-api";
 import { describe, expect, it, vi } from "vitest";
 import { createGitHubResolvePullRequestReviewThreadTool } from "../src/tools/resolve-pull-request-review-thread";
-
-
-/** Test-only bridge for intentionally incomplete doubles. */
-function asTestDouble<T>(value: unknown): T {
-  return value as T;
-}
-
 const BOT_EMAIL = "123+junior[bot]@users.noreply.github.com";
 const BOT_USER_ID = 123;
 
@@ -25,9 +17,9 @@ function toolContext(responses: Response[]) {
     if (!next) throw new Error("unexpected GitHub request");
     return next;
   });
-  const ctx = asTestDouble<ToolRegistrationHookContext>({
+  const ctx = {
     egress: { fetch },
-  });
+  };
   return {
     fetch,
     tool: createGitHubResolvePullRequestReviewThreadTool(ctx, BOT_EMAIL),

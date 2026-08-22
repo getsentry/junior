@@ -5,10 +5,8 @@ import {
   buildAgentsInstructionsMessage,
 } from "@/chat/repository-instructions";
 
-
-/** Test-only bridge for intentionally incomplete doubles. */
-function asTestDouble<T>(value: unknown): T {
-  return value as T;
+function asPiMessage(value: unknown): PiMessage {
+  return value as PiMessage;
 }
 
 const ORIGINAL_ENV = { ...process.env };
@@ -219,11 +217,13 @@ describe("context compaction projection reset", () => {
     const conversationId = "conversation-json-normalization";
     const priorMessages = [
       user("Run the lookup.", 1),
-      asTestDouble<PiMessage>({
-        ...assistant("Lookup complete.", 2),
-        responseId: undefined,
-        usage: { input: 5, cached: undefined },
-      }),
+      (() => {
+                return asPiMessage({
+          ...assistant("Lookup complete.", 2),
+          responseId: undefined,
+          usage: { input: 5, cached: undefined },
+        });
+      })(),
     ];
 
     const firstCommit = await commitMessages({

@@ -38,7 +38,7 @@ vi.mock("@vercel/sandbox", () => ({
     };
 
     constructor(session: { fs: MockSandbox["fs"] }) {
-      this.fs = asTestDouble<typeof this.fs>(session.fs);
+      this.fs = (session.fs as typeof this.fs);
     }
 
     readFile(
@@ -167,13 +167,6 @@ import { createSandboxSession } from "@/chat/sandbox/workspace";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
-
-
-/** Test-only bridge for intentionally incomplete doubles. */
-function asTestDouble<T>(value: unknown): T {
-  return value as T;
-}
-
 interface SandboxFixtureOptions {
   sandboxId?: string;
   sandboxDependencyProfileHash?: string;

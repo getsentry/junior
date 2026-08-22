@@ -7,13 +7,6 @@ import { disconnectStateAdapter } from "@/chat/state/adapter";
 import {
   defineJuniorPlugin,
 } from "@sentry/junior-plugin-api";
-
-
-/** Test-only bridge for intentionally incomplete doubles. */
-function asTestDouble<T>(value: unknown): T {
-  return value as T;
-}
-
 function githubManifest() {
   return {
     name: "github",
@@ -87,7 +80,7 @@ describe("plugin egress", () => {
     );
     const egress = createPluginEgress({
       credentialContext: { actor: { type: "user", userId: "U123" } },
-      fetch: asTestDouble<typeof fetch>(vi.fn()),
+      fetch: (vi.fn() as typeof fetch),
       pluginAuth,
     });
 
@@ -137,7 +130,7 @@ describe("plugin egress", () => {
     const fetchMock = vi.fn();
     const egress = createPluginEgress({
       credentialContext: { actor: { type: "user", userId: "U123" } },
-      fetch: asTestDouble<typeof fetch>(fetchMock),
+      fetch: (fetchMock as typeof fetch),
       pluginAuth: authOrchestration(),
     });
 
@@ -202,7 +195,7 @@ describe("plugin egress", () => {
     const fetchMock = vi.fn();
     const egress = createPluginEgress({
       credentialContext: { actor: { type: "user", userId: "U123" } },
-      fetch: asTestDouble<typeof fetch>(fetchMock),
+      fetch: (fetchMock as typeof fetch),
       pluginAuth: authOrchestration(),
     });
 

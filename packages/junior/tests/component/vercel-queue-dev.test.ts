@@ -1,11 +1,142 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ConversationWorkerContext } from "@/chat/task-execution/worker";
 
-
-/** Test-only bridge for intentionally incomplete doubles. */
-function asTestDouble<T>(value: unknown): T {
-  return value as T;
+function asPluginQueueCall(value: unknown):
+  | [
+      (message: unknown, metadata: {
+        consumerGroup: string;
+        createdAt: Date;
+        deliveryCount: number;
+        expiresAt: Date;
+        messageId: string;
+        region: string;
+        topicName: string;
+      }) => Promise<void>,
+      {
+        retry?: (error: unknown, metadata: {
+          consumerGroup: string;
+          createdAt: Date;
+          deliveryCount: number;
+          expiresAt: Date;
+          messageId: string;
+          region: string;
+          topicName: string;
+        }) => unknown;
+      },
+    ]
+  | undefined {
+  return value as
+    | [
+        (message: unknown, metadata: {
+          consumerGroup: string;
+          createdAt: Date;
+          deliveryCount: number;
+          expiresAt: Date;
+          messageId: string;
+          region: string;
+          topicName: string;
+        }) => Promise<void>,
+        {
+          retry?: (error: unknown, metadata: {
+            consumerGroup: string;
+            createdAt: Date;
+            deliveryCount: number;
+            expiresAt: Date;
+            messageId: string;
+            region: string;
+            topicName: string;
+          }) => unknown;
+        },
+      ]
+    | undefined;
 }
+
+function asConversationQueueCall(value: unknown):
+  | [
+      (message: unknown, metadata: {
+        consumerGroup: string;
+        createdAt: Date;
+        deliveryCount: number;
+        expiresAt: Date;
+        messageId: string;
+        region: string;
+        topicName: string;
+      }) => Promise<void>,
+      {
+        retry?: (error: unknown, metadata: {
+          consumerGroup: string;
+          createdAt: Date;
+          deliveryCount: number;
+          expiresAt: Date;
+          messageId: string;
+          region: string;
+          topicName: string;
+        }) => unknown;
+        visibilityTimeoutSeconds?: number;
+      },
+    ]
+  | undefined {
+  return value as
+    | [
+        (message: unknown, metadata: {
+          consumerGroup: string;
+          createdAt: Date;
+          deliveryCount: number;
+          expiresAt: Date;
+          messageId: string;
+          region: string;
+          topicName: string;
+        }) => Promise<void>,
+        {
+          retry?: (error: unknown, metadata: {
+            consumerGroup: string;
+            createdAt: Date;
+            deliveryCount: number;
+            expiresAt: Date;
+            messageId: string;
+            region: string;
+            topicName: string;
+          }) => unknown;
+          visibilityTimeoutSeconds?: number;
+        },
+      ]
+    | undefined;
+}
+
+function asSignedConversationQueueCall(value: unknown):
+  | [
+      (
+        message: unknown,
+        metadata: {
+          consumerGroup: string;
+          createdAt: Date;
+          deliveryCount: number;
+          expiresAt: Date;
+          messageId: string;
+          region: string;
+          topicName: string;
+        },
+      ) => Promise<void>,
+    ]
+  | undefined {
+  return value as
+    | [
+        (
+          message: unknown,
+          metadata: {
+            consumerGroup: string;
+            createdAt: Date;
+            deliveryCount: number;
+            expiresAt: Date;
+            messageId: string;
+            region: string;
+            topicName: string;
+          },
+        ) => Promise<void>,
+      ]
+    | undefined;
+}
+
 const originalNodeEnv = process.env.NODE_ENV;
 const originalQueueTopic = process.env.JUNIOR_CONVERSATION_WORK_QUEUE_TOPIC;
 const originalConversationWorkEnabled =
@@ -75,15 +206,7 @@ describe("plugin task Vercel queue integration", () => {
       region: "iad1",
       topicName: "topic",
     };
-    const call = asTestDouble<
-      | [
-          (message: unknown, metadata: TestQueueMetadata) => Promise<void>,
-          {
-            retry?: (error: unknown, metadata: TestQueueMetadata) => unknown;
-          },
-        ]
-      | undefined
-    >(handleCallback.mock.calls[0]);
+    const call = asPluginQueueCall(handleCallback.mock.calls[0]);
     const handler = call?.[0];
     const retry = call?.[1].retry;
     expect(handler).toEqual(expect.any(Function));
@@ -253,16 +376,7 @@ describe("registerVercelConversationWorkDevConsumer", () => {
       region: "iad1",
       topicName: "topic",
     };
-    const call = asTestDouble<
-      | [
-          (message: unknown, metadata: TestQueueMetadata) => Promise<void>,
-          {
-            retry?: (error: unknown, metadata: TestQueueMetadata) => unknown;
-            visibilityTimeoutSeconds?: number;
-          },
-        ]
-      | undefined
-    >(handleCallback.mock.calls[0]);
+    const call = asConversationQueueCall(handleCallback.mock.calls[0]);
     const handler = call?.[0];
     const retry = call?.[1].retry;
     expect(handler).toEqual(expect.any(Function));
@@ -371,23 +485,7 @@ describe("registerVercelConversationWorkDevConsumer", () => {
     });
     createVercelConversationWorkCallback({ run });
 
-    const call = asTestDouble<
-      | [
-          (
-            message: unknown,
-            metadata: {
-              consumerGroup: string;
-              createdAt: Date;
-              deliveryCount: number;
-              expiresAt: Date;
-              messageId: string;
-              region: string;
-              topicName: string;
-            },
-          ) => Promise<void>,
-        ]
-      | undefined
-    >(handleCallback.mock.calls[0]);
+    const call = asSignedConversationQueueCall(handleCallback.mock.calls[0]);
     const handler = call?.[0];
     if (!handler) {
       throw new Error("Expected conversation queue handler");

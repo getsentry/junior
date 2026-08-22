@@ -12,13 +12,6 @@ import {
   hasJuniorPostgresTestDatabase,
 } from "./postgres/fixture";
 import { closeDb, getSqlExecutor } from "@/chat/db";
-
-
-/** Test-only bridge for intentionally incomplete doubles. */
-function asTestDouble<T>(value: unknown): T {
-  return value as T;
-}
-
 export type JuniorSqlConversationInsert =
   typeof juniorConversations.$inferInsert;
 
@@ -47,7 +40,7 @@ export async function createLocalJuniorSqlFixture(): Promise<LocalJuniorSqlFixtu
 
   const sql: JuniorSqlExecutor = {
     close: () => fixture.close(),
-    db: () => asTestDouble<JuniorDatabase>(fixture.db()),
+    db: () => (fixture.db() as JuniorDatabase),
     execute: (statement, params) => fixture.execute(statement, params),
     migrate: (config) => migrate(fixture.db(), config),
     query: <T = unknown>(statement: string, params?: readonly unknown[]) =>

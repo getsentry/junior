@@ -1,13 +1,5 @@
-import type { ToolRegistrationHookContext } from "@sentry/junior-plugin-api";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createGitHubUpdatePullRequestTool } from "../src/tools/update-pull-request";
-
-
-/** Test-only bridge for intentionally incomplete doubles. */
-function asTestDouble<T>(value: unknown): T {
-  return value as T;
-}
-
 const ORIGINAL_WEBHOOK_SECRET = process.env.GITHUB_WEBHOOK_SECRET;
 
 function toolContext(response?: Response) {
@@ -27,7 +19,7 @@ function toolContext(response?: Response) {
         { status: 200 },
       ),
   );
-  const ctx = asTestDouble<ToolRegistrationHookContext>({
+  const ctx = {
     actor: {
       platform: "slack",
       fullName: "David Cramer",
@@ -36,6 +28,7 @@ function toolContext(response?: Response) {
     },
     conversationId: "slack:C123:123.456",
     egress: { fetch },
+    log: { error: vi.fn(), info: vi.fn(), warn: vi.fn() },
     resourceEvents: { canSubscribe: true },
     slack: {
       conversationLink: { url: "https://example.com/session" },
@@ -43,7 +36,7 @@ function toolContext(response?: Response) {
     users: {
       resolveActor: async () => undefined,
     },
-  });
+  };
   return { fetch, tool: createGitHubUpdatePullRequestTool(ctx) };
 }
 

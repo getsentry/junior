@@ -33,10 +33,8 @@ import {
 } from "../../fixtures/conversation-work";
 import { readProxyProperty } from "../../fixtures/proxy-property";
 
-
-/** Test-only bridge for intentionally incomplete doubles. */
-function asTestDouble<T>(value: unknown): T {
-  return value as T;
+function asStateAdapter(value: unknown): StateAdapter {
+  return value as StateAdapter;
 }
 
 function createRecordingStateAdapter() {
@@ -46,19 +44,19 @@ function createRecordingStateAdapter() {
     return undefined;
   });
   return {
-    state: asTestDouble<StateAdapter>({
-      connect: async () => {},
-      disconnect: async () => {},
-      get: async (key: string) => values.get(key),
-      set,
-      acquireLock: async (threadId: string) => ({
-        threadId,
-        token: `lock:${threadId}`,
-        expiresAt: Date.now() + 10_000,
-      }),
-      extendLock: async () => true,
-      releaseLock: async () => {},
+    state: asStateAdapter({
+    connect: async () => {},
+    disconnect: async () => {},
+    get: async (key: string) => values.get(key),
+    set,
+    acquireLock: async (threadId: string) => ({
+      threadId,
+      token: `lock:${threadId}`,
+      expiresAt: Date.now() + 10_000,
     }),
+    extendLock: async () => true,
+    releaseLock: async () => {},
+  }),
     set,
   };
 }
