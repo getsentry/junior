@@ -374,6 +374,10 @@ WHERE indexname = 'junior_memory_memories_search_idx'
         idempotencyKey: "component-public-memory",
         kind: "knowledge",
       });
+      expect(publicMemory.memory).toMatchObject({
+        scope: "public",
+        subjectType: "conversation",
+      });
 
       const privateSource = createSlackSource({
         teamId: "T123",
@@ -394,6 +398,10 @@ WHERE indexname = 'junior_memory_memories_search_idx'
         idempotencyKey: "component-private-memory",
         kind: "preference",
       });
+      expect(privateMemory.memory).toMatchObject({
+        scope: "private",
+        subjectType: "user",
+      });
       const otherPrivateStore = createMemoryStore(
         fixture.sql.db() as unknown as MemoryDb,
         {
@@ -411,6 +419,10 @@ WHERE indexname = 'junior_memory_memories_search_idx'
         content: "Only the other DM can read this.",
         idempotencyKey: "component-other-private-memory",
         kind: "knowledge",
+      });
+      expect(otherPrivateMemory.memory).toMatchObject({
+        scope: "private",
+        subjectType: "user",
       });
 
       const viewerPage = await readPluginUserPage({

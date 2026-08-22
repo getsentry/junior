@@ -56,6 +56,7 @@ describeEval("Personal Memory", slackEvals, (it) => {
       expect.objectContaining({
         archivedAtMs: null,
         scope: "public",
+        scopeKey: "public",
         subjectType: "user",
       }),
     ]);
@@ -137,6 +138,8 @@ describeEval("Personal Memory", slackEvals, (it) => {
         expect.objectContaining({
           content: timezoneMemoryContent,
           scope: "public",
+          scopeKey: "public",
+          subjectType: "user",
         }),
       ]),
     );
@@ -203,6 +206,7 @@ describeEval("Personal Memory", slackEvals, (it) => {
       expect.objectContaining({
         archivedAtMs: null,
         scope: "public",
+        scopeKey: "public",
         subjectType: "user",
       }),
     ]);
@@ -256,6 +260,8 @@ describeEval("Personal Memory", slackEvals, (it) => {
       expect.objectContaining({
         content: "Prefers PR summaries with risks first.",
         scope: "public",
+        scopeKey: "public",
+        subjectType: "user",
       }),
     ]);
   });

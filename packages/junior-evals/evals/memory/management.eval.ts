@@ -53,6 +53,8 @@ describeEval("Memory Management", slackEvals, (it) => {
         archivedAtMs: null,
         content: "Prefers PR summaries with risks first.",
         scope: "public",
+        scopeKey: "public",
+        subjectType: "user",
       }),
     );
   });
@@ -98,6 +100,8 @@ describeEval("Memory Management", slackEvals, (it) => {
         archivedAtMs: null,
         content: "Prefers PR summaries with risks first.",
         scope: "public",
+        scopeKey: "public",
+        subjectType: "user",
       }),
     ]);
   });
