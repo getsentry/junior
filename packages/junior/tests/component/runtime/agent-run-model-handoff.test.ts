@@ -227,6 +227,7 @@ import { getPausedTurnRequest } from "@/chat/task-execution/turn-wake";
 import {
   loadConversationProjection,
   loadProjection,
+  recordTurnRoute,
 } from "@/chat/conversations/projection";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { getTurnRecord } from "@/chat/task-execution/turn-cursor";
@@ -918,46 +919,52 @@ describe("model handoff composition", () => {
     ]);
   });
 
-  it("parks an immediate post-handoff yield on the replacement context", async () => {
-    const conversationId = "local:test:model-handoff-yield";
-    const sessionId = "turn-model-handoff-yield";
-    const outcome = await executeAgentRun({
+  it("resumes a stored route after handoff to the default profile", async () => {
+    observations.requestedProfile = null;
+    const conversationId = "local:test:model-handoff-default-resume";
+    const turnId = "turn-model-handoff-default-resume";
+    await recordTurnRoute({
       conversationId,
-      runId: "run-model-handoff-yield",
-      turnId: sessionId,
-      instruction: { text: "Implement the risky refactor." },
-      destination: { platform: "local", conversationId },
-      source: createLocalSource(conversationId),
-      durability: {
-        shouldYield: () => true,
+      turnId,
+      modelProfile: "coding",
+      modelId: "openai/gpt-5.4",
+      reasoningLevel: "high",
+      source: "router",
+    });
+    await getConversationEventStore().replaceHistory(conversationId, {
+      createdAtMs: Date.now(),
+      data: {
+        type: "handoff",
+        modelProfile: "standard",
+        modelId: "xai/grok-4.5",
+        reasoningLevel: "high",
+        triggeringToolCallId: "handoff-call-default",
+        replacementHistory: [
+          {
+            item: {
+              type: "user_message",
+              timestamp: Date.now(),
+              content: [{ type: "text", text: "Continue the refactor." }],
+              provenance: { authority: "context" },
+            },
+          },
+        ],
       },
     });
 
-    expect(outcome.status).toBe("suspended");
-    const record = await getTurnRecord(conversationId, sessionId);
-    expect(record).toMatchObject({ state: "paused" });
-    expect(JSON.stringify(record?.piMessages)).toContain(
-      "Implement the requested change and verify it.",
-    );
-    expect(JSON.stringify(record?.piMessages)).not.toContain(
-      "Implement the risky refactor.",
-    );
-
     const resumed = await executeAgentRun({
       conversationId,
-      runId: "run-model-handoff-yield-resumed",
-      turnId: sessionId,
+      runId: "run-model-handoff-default-resume",
+      turnId,
       instruction: { text: "Implement the risky refactor." },
       destination: { platform: "local", conversationId },
       source: createLocalSource(conversationId),
-      durability: {
-        shouldYield: () => false,
-      },
     });
 
     expect(resumed.status).toBe("completed");
     if (resumed.status !== "completed") return;
-    expect(resumed.result.diagnostics.modelId).toBe("openai/gpt-5.6-sol");
-    expect(observations.afterHandoffModelId).toBe("openai/gpt-5.6-sol");
+    expect(resumed.result.diagnostics.modelId).toBe("xai/grok-4.5");
+    expect(observations.initialModelId).toBe("xai/grok-4.5");
+    expect(observations.routerCalls).toBe(0);
   });
 });

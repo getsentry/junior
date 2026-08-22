@@ -585,9 +585,7 @@ async function executeAgentRunInPrivacyContext(
     const storedTurnRoute = await loadTurnRoute({ conversationId, turnId });
     if (storedTurnRoute) {
       const resumedAfterHandoff =
-        handoffEnabled &&
-        activeModelProfile !== botConfig.defaultProfile &&
-        activeModelProfile !== storedTurnRoute.modelProfile;
+        handoffEnabled && activeModelProfile !== storedTurnRoute.modelProfile;
       if (resumedAfterHandoff) {
         const activeProfileConfig = profileConfig(
           botConfig,
