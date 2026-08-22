@@ -50,9 +50,9 @@ function cloneInlineManifests(
                         : `${plugin.manifest.name}.${plugin.manifest.target.configKey}`,
                     },
                   }
-                : {}),
+                : undefined),
             },
-            ...(plugin.packageName ? { packageName: plugin.packageName } : {}),
+            ...(plugin.packageName ? { packageName: plugin.packageName } : undefined),
           },
         ]
       : [],
@@ -109,7 +109,7 @@ export function defineJuniorPlugins(
   return {
     packageNames,
     registrations: registrations.map((plugin) => ({ ...plugin })),
-    ...(manifests ? { manifests } : {}),
+    ...(manifests ? { manifests } : undefined),
   };
 }
 
@@ -137,9 +137,9 @@ export function pluginCatalogConfigFromPluginSet(
   }
 
   return {
-    ...(inlineManifests ? { inlineManifests } : {}),
-    ...(packages.length > 0 ? { packages } : {}),
-    ...(manifests ? { manifests } : {}),
+    ...(inlineManifests ? { inlineManifests } : undefined),
+    ...(packages.length > 0 ? { packages } : undefined),
+    ...(manifests ? { manifests } : undefined),
   };
 }
 

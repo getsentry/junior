@@ -71,14 +71,14 @@ export function parseScheduledTaskRow(
       ...retained,
       creatorIdentityId,
       status: "deleted",
-      ...(title ? { title } : {}),
+      ...(title ? { title } : undefined),
     } satisfies ScheduledTask;
   }
   return {
     ...task,
     creatorIdentityId,
     status,
-    ...(title ? { title } : {}),
+    ...(title ? { title } : undefined),
   } satisfies ScheduledTask;
 }
 
@@ -115,7 +115,7 @@ function requireStoredTask(task: ScheduledTask): ScheduledTask {
   }
   const { title, ...current } = parsed.data;
   const normalizedTitle = title?.trim() || undefined;
-  return { ...current, ...(normalizedTitle ? { title: normalizedTitle } : {}) };
+  return { ...current, ...(normalizedTitle ? { title: normalizedTitle } : undefined) };
 }
 
 function scheduledTaskJsonRecord(task: ScheduledTask): ScheduledTaskRecord {

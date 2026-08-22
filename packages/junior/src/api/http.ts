@@ -36,7 +36,7 @@ export function throwApiError(
   cause?: unknown,
 ): never {
   throw new HTTPException(status, {
-    ...(cause === undefined ? {} : { cause }),
+    ...(cause === undefined ? undefined : { cause }),
     message,
     res: jsonResponse(apiErrorSchema, { error: message }, { status }),
   });

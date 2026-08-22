@@ -172,7 +172,7 @@ function createAwaitingContinuationState(args: {
             userId: "U-test",
           },
           ...(args.replied === undefined
-            ? {}
+            ? undefined
             : { meta: { replied: args.replied } }),
         },
       ],

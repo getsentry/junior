@@ -232,11 +232,11 @@ export function createSlackChannelListMessagesTool(context: SlackToolContext) {
 
       return {
         channel_id: targetChannelId,
-        ...(channelName ? { channel_name: channelName } : {}),
-        ...(joined ? { joined_channel: true } : {}),
+        ...(channelName ? { channel_name: channelName } : undefined),
+        ...(joined ? { joined_channel: true } : undefined),
         count: result.messages.length,
         messages: result.messages,
-        ...(result.nextCursor ? { next_cursor: result.nextCursor } : {}),
+        ...(result.nextCursor ? { next_cursor: result.nextCursor } : undefined),
       };
     },
   });

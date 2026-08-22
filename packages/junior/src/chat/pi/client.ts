@@ -150,35 +150,35 @@ export async function completeText(params: {
     "gen_ai.operation.name": GEN_AI_OPERATION_CHAT,
     "gen_ai.request.model": params.modelId,
     "gen_ai.output.type": "text",
-    ...(params.promptName ? { "gen_ai.prompt.name": params.promptName } : {}),
+    ...(params.promptName ? { "gen_ai.prompt.name": params.promptName } : undefined),
     "server.address": GEN_AI_SERVER_ADDRESS,
     "server.port": GEN_AI_SERVER_PORT,
     ...(hasCompactedConversationContext(params.messages)
       ? { "gen_ai.conversation.compacted": true }
-      : {}),
+      : undefined),
     "app.conversation.privacy": effectivePrivacy,
     ...(params.thinkingLevel
       ? { "gen_ai.request.reasoning.level": params.thinkingLevel }
-      : {}),
+      : undefined),
     ...(params.temperature !== undefined
       ? { "gen_ai.request.temperature": params.temperature }
-      : {}),
+      : undefined),
     ...(params.maxTokens !== undefined
       ? { "gen_ai.request.max_tokens": params.maxTokens }
-      : {}),
+      : undefined),
   };
   const startAttributes = {
     ...baseAttributes,
     ...toGenAiMessagesTraceAttributes("gen_ai.input", params.messages),
     ...(params.system
       ? { "gen_ai.system_instructions.content_chars": params.system.length }
-      : {}),
+      : undefined),
     ...(systemInstructionsAttribute
       ? { "gen_ai.system_instructions": systemInstructionsAttribute }
-      : {}),
+      : undefined),
     ...(requestMessagesAttribute
       ? { "gen_ai.input.messages": requestMessagesAttribute }
-      : {}),
+      : undefined),
     "gen_ai.provider.auth_mode": authMode,
   };
   return withSpan(
@@ -195,7 +195,7 @@ export async function completeText(params: {
             messages: params.messages,
           },
           {
-            ...(apiKey ? { apiKey } : {}),
+            ...(apiKey ? { apiKey } : undefined),
             temperature: params.temperature,
             maxTokens: params.maxTokens,
             reasoning: params.thinkingLevel,
@@ -223,7 +223,7 @@ export async function completeText(params: {
         ]),
         ...(outputMessagesAttribute
           ? { "gen_ai.output.messages": outputMessagesAttribute }
-          : {}),
+          : undefined),
         ...usageAttributes,
         ...(message.stopReason
           ? {
@@ -231,8 +231,8 @@ export async function completeText(params: {
                 normalizeGenAiFinishReason(message.stopReason),
               ],
             }
-          : {}),
-        ...(message.model ? { "gen_ai.response.model": message.model } : {}),
+          : undefined),
+        ...(message.model ? { "gen_ai.response.model": message.model } : undefined),
       };
       setSpanAttributes(endAttributes);
       if (message.stopReason === "error") {
@@ -273,10 +273,10 @@ function logContextFromMetadata(
 
   return {
     modelId,
-    ...(conversationId ? { conversationId } : {}),
-    ...(messageConversationId ? { messageConversationId } : {}),
-    ...(destinationName ? { destinationName } : {}),
-    ...(runId ? { runId } : {}),
+    ...(conversationId ? { conversationId } : undefined),
+    ...(messageConversationId ? { messageConversationId } : undefined),
+    ...(destinationName ? { destinationName } : undefined),
+    ...(runId ? { runId } : undefined),
   };
 }
 
@@ -307,7 +307,7 @@ function objectCompletionCost(
     cacheWrite: cacheWrite ?? 0,
     ...(usage.outputTokenDetails.reasoningTokens !== undefined
       ? { reasoning: usage.outputTokenDetails.reasoningTokens }
-      : {}),
+      : undefined),
     totalTokens:
       usage.totalTokens ??
       (input ?? 0) +
@@ -368,13 +368,13 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
           model: provider.chat(params.modelId),
           schema: params.schema,
           prompt: params.prompt,
-          ...(params.system !== undefined ? { system: params.system } : {}),
+          ...(params.system !== undefined ? { system: params.system } : undefined),
           ...(params.temperature !== undefined
             ? { temperature: params.temperature }
-            : {}),
+            : undefined),
           ...(params.maxTokens !== undefined
             ? { maxOutputTokens: params.maxTokens }
-            : {}),
+            : undefined),
           ...(params.recordTelemetryPayloads === false
             ? {
                 experimental_telemetry: {
@@ -383,10 +383,10 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
                   recordOutputs: false,
                 },
               }
-            : {}),
+            : undefined),
           ...(params.signal !== undefined
             ? { abortSignal: params.signal }
-            : {}),
+            : undefined),
         });
         setSpanAttributes({
           "gen_ai.response.finish_reasons": [result.finishReason],
@@ -401,26 +401,26 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
         "gen_ai.output.type": "json",
         ...(params.promptName
           ? { "gen_ai.prompt.name": params.promptName }
-          : {}),
+          : undefined),
         "server.address": GEN_AI_SERVER_ADDRESS,
         "server.port": GEN_AI_SERVER_PORT,
         "gen_ai.provider.auth_mode": credential?.mode ?? "api_key",
         ...(params.thinkingLevel
           ? { "gen_ai.request.reasoning.level": params.thinkingLevel }
-          : {}),
+          : undefined),
         ...(params.temperature !== undefined
           ? { "gen_ai.request.temperature": params.temperature }
-          : {}),
+          : undefined),
         ...(params.maxTokens !== undefined
           ? { "gen_ai.request.max_tokens": params.maxTokens }
-          : {}),
+          : undefined),
       },
     );
   } catch (error) {
     const providerError = createProviderError(error, {
       ...(NoObjectGeneratedError.isInstance(error)
         ? { kind: "invalid_response" }
-        : {}),
+        : undefined),
       modelId: params.modelId,
     });
     throw providerError;
@@ -428,7 +428,7 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
   const costUsd = bestEffortObjectCompletionCost(params.modelId, result.usage);
   return {
     object: result.object as z.infer<TSchema>,
-    ...(costUsd !== undefined ? { costUsd } : {}),
+    ...(costUsd !== undefined ? { costUsd } : undefined),
   };
 }
 
@@ -464,7 +464,7 @@ export async function embedTexts(params: {
           values: texts,
           ...(params.signal !== undefined
             ? { abortSignal: params.signal }
-            : {}),
+            : undefined),
         });
         const dimensions = result.embeddings[0]?.length;
         if (
@@ -489,7 +489,7 @@ export async function embedTexts(params: {
             inputTokens: result.usage.tokens,
             ...(costUsd !== undefined
               ? { cost: { input: costUsd, total: costUsd } }
-              : {}),
+              : undefined),
           }),
         });
         return { costUsd, dimensions, result };
@@ -504,7 +504,7 @@ export async function embedTexts(params: {
       },
     );
     return {
-      ...(result.costUsd !== undefined ? { costUsd: result.costUsd } : {}),
+      ...(result.costUsd !== undefined ? { costUsd: result.costUsd } : undefined),
       dimensions: result.dimensions,
       model: params.modelId,
       provider: GEN_AI_PROVIDER_NAME,

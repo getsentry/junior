@@ -302,7 +302,7 @@ export function createPersonalMemoryCollection(
                 id: last.id,
               },
             }
-          : {}),
+          : undefined),
       };
     },
 

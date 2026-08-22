@@ -362,7 +362,7 @@ test("searches, paginates, and forgets plugin page records", async ({
         emptyText: query
           ? "No memories matched your search."
           : "No memories yet.",
-        ...(!query && !cursor ? { nextCursor: "page-2" } : {}),
+        ...(!query && !cursor ? { nextCursor: "page-2" } : undefined),
         records,
         searchPlaceholder: "Search memories",
       },

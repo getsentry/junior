@@ -392,7 +392,7 @@ async function runPausedTurnInContext(
     conversationId: payload.conversationId,
     turnId: payload.turnId,
     channelId: thread?.channelId ?? destination.channelId,
-    ...(thread?.threadTs ? { threadTs: thread.threadTs } : {}),
+    ...(thread?.threadTs ? { threadTs: thread.threadTs } : undefined),
     lockKey: payload.conversationId,
     // Queue continue runs under the conversation work lease already.
     ownsConversationLease: true,
@@ -517,7 +517,7 @@ async function runPausedTurnInContext(
           initialStatus: latestReportedProgress(turnMessages),
           replyContext: {
             instruction: {
-              ...(conversationContext ? { context: conversationContext } : {}),
+              ...(conversationContext ? { context: conversationContext } : undefined),
               // Attachment fields come from the turn user message context helper.
               ...getTurnUserReplyAttachmentContext(userMessage),
               text: userMessage.text,
@@ -679,7 +679,7 @@ async function failStrandedTurnWithFallback(args: {
       .channelId;
   await postSlackMessage({
     channelId,
-    ...(thread?.threadTs ? { threadTs: thread.threadTs } : {}),
+    ...(thread?.threadTs ? { threadTs: thread.threadTs } : undefined),
     text: buildTurnFailureResponse(
       requireTurnFailureEventId(eventId, eventName),
     ),

@@ -166,7 +166,7 @@ export function createSlackScheduleCreateTaskTool(
         task: {
           text: input.task,
         },
-        ...(title ? { title } : {}),
+        ...(title ? { title } : undefined),
       };
 
       const committed = await createScheduledTask(db, task);

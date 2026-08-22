@@ -78,8 +78,8 @@ export function getPersistedSandboxState(
   const workspaceId = toOptionalString(state.app_sandbox_workspace_id);
   return {
     id,
-    ...(profileHash ? { profileHash } : {}),
-    ...(workspaceId ? { workspaceId } : {}),
+    ...(profileHash ? { profileHash } : undefined),
+    ...(workspaceId ? { workspaceId } : undefined),
   };
 }
 

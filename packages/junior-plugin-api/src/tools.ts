@@ -455,7 +455,7 @@ function createZodTool<
             return outputSchema.parse(result);
           },
         }
-      : {}),
+      : undefined),
   } as PluginToolDefinition<
     z.output<TInputSchema>,
     z.output<TOutputSchema>,

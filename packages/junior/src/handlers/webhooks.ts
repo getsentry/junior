@@ -202,7 +202,7 @@ export async function handleWebhookRequest(
                   request.headers.get("x-slack-request-timestamp") ?? undefined,
                 ...(responseBodySnippet
                   ? { "app.webhook.response_body": responseBodySnippet }
-                  : {}),
+                  : undefined),
               });
             }
 

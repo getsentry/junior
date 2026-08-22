@@ -106,7 +106,7 @@ export function createGitHubGetRepositoryTool(
         description: providerResult.description,
         fullName: providerResult.full_name,
         private: providerResult.private,
-        ...(subscribable ? { subscribable } : {}),
+        ...(subscribable ? { subscribable } : undefined),
         url: providerResult.html_url,
       };
       return {

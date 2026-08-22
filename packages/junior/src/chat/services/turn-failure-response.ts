@@ -94,16 +94,16 @@ export function getAgentTurnDiagnosticsAttributes(
       ? {
           "gen_ai.request.reasoning.level": reply.diagnostics.reasoningLevel,
         }
-      : {}),
+      : undefined),
     ...(reply.diagnostics.stopReason
       ? {
           "gen_ai.response.finish_reasons": [reply.diagnostics.stopReason],
         }
-      : {}),
+      : undefined),
     ...(reply.diagnostics.errorMessage &&
     reply.diagnostics.outcome !== "provider_error"
       ? { "exception.message": reply.diagnostics.errorMessage }
-      : {}),
+      : undefined),
   };
 }
 

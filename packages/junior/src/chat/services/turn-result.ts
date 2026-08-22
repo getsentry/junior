@@ -164,7 +164,7 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
       "app.message.output": summarizeMessageText(primaryText),
       "app.ai.outcome": resolvedOutcome,
       "app.ai.assistant_messages": assistantMessages.length,
-      ...(stopReason ? { "gen_ai.response.finish_reasons": [stopReason] } : {}),
+      ...(stopReason ? { "gen_ai.response.finish_reasons": [stopReason] } : undefined),
     });
   }
 

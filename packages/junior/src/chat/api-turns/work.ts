@@ -208,16 +208,16 @@ function actorFromMetadata(metadata: ApiTurnMailboxMetadata): WebActor {
     platform: "web",
     userId: metadata.authorUserId,
     email: normalizeEmail(metadata.authorEmail),
-    ...(metadata.authorFullName ? { fullName: metadata.authorFullName } : {}),
-    ...(metadata.authorUserName ? { userName: metadata.authorUserName } : {}),
+    ...(metadata.authorFullName ? { fullName: metadata.authorFullName } : undefined),
+    ...(metadata.authorUserName ? { userName: metadata.authorUserName } : undefined),
   };
 }
 
 /** Durable conversation actor fields for web/dashboard participants. */
 function storedActorFromApi(actor: WebActor): StoredSlackActor {
   return {
-    ...(actor.email ? { email: normalizeEmail(actor.email) } : {}),
-    ...(actor.fullName ? { fullName: actor.fullName } : {}),
+    ...(actor.email ? { email: normalizeEmail(actor.email) } : undefined),
+    ...(actor.fullName ? { fullName: actor.fullName } : undefined),
   };
 }
 
@@ -231,8 +231,8 @@ export function webActorFromEmail(
     platform: "web",
     userId: `dashboard:${stableHex(normalized)}`,
     email: normalized,
-    ...(profile?.fullName ? { fullName: profile.fullName } : {}),
-    ...(profile?.userName ? { userName: profile.userName } : {}),
+    ...(profile?.fullName ? { fullName: profile.fullName } : undefined),
+    ...(profile?.userName ? { userName: profile.userName } : undefined),
   };
 }
 
@@ -283,9 +283,9 @@ export function buildApiTurnInboundMessage(args: {
       text,
       metadata: {
         authorEmail: normalizeEmail(args.actor.email),
-        ...(args.actor.fullName ? { authorFullName: args.actor.fullName } : {}),
+        ...(args.actor.fullName ? { authorFullName: args.actor.fullName } : undefined),
         authorUserId: args.actor.userId,
-        ...(args.actor.userName ? { authorUserName: args.actor.userName } : {}),
+        ...(args.actor.userName ? { authorUserName: args.actor.userName } : undefined),
         kind: "api_turn",
         messageId: args.messageId,
       } satisfies ApiTurnMailboxMetadata,
@@ -328,9 +328,9 @@ export async function recordApiConversationActivity(args: {
     actor: storedActorFromApi(args.actor),
     // Do not rewrite a Slack root's origin source when a dashboard participant
     // continues it. Mailbox entries still carry source "web" per turn.
-    ...(isNewRoot ? { source: "web" as const } : {}),
-    ...(source ? { sessionSource: source } : {}),
-    ...(isNewRoot ? { visibility } : {}),
+    ...(isNewRoot ? { source: "web" as const } : undefined),
+    ...(source ? { sessionSource: source } : undefined),
+    ...(isNewRoot ? { visibility } : undefined),
   });
   return destination;
 }
@@ -381,7 +381,7 @@ export async function appendAndEnqueueApiConversationMessage(
     conversationId: input.conversationId,
     conversationStore: options.conversationStore,
     nowMs,
-    ...(input.rootVisibility ? { rootVisibility: input.rootVisibility } : {}),
+    ...(input.rootVisibility ? { rootVisibility: input.rootVisibility } : undefined),
   });
   const result = await appendAndEnqueueInboundMessage({
     message: buildApiTurnInboundMessage({
@@ -413,7 +413,7 @@ function captureApiBoundaryFailure(args: {
 }): string | undefined {
   const eventId = logException(args.error, `api.turn.${args.failureCode}`, {
     conversationId: args.conversationId,
-    ...(args.runId ? { runId: args.runId } : {}),
+    ...(args.runId ? { runId: args.runId } : undefined),
     turnId: args.turnId,
   });
   return typeof eventId === "string" ? eventId : undefined;
@@ -513,7 +513,7 @@ export function createApiTurnWorker(options: {
         conversationId: context.conversationId,
         platform: "web",
         userId: actor.userId,
-        ...(actor.userName ? { userName: actor.userName } : {}),
+        ...(actor.userName ? { userName: actor.userName } : undefined),
       },
       async () => {
         let acknowledged = isResume || context.attempt.messages.length === 0;
@@ -595,10 +595,10 @@ export function createApiTurnWorker(options: {
             text: normalizeConversationText(text),
             createdAtMs: startedAtMs,
             author: {
-              ...(actor.email ? { email: actor.email } : {}),
-              ...(actor.fullName ? { fullName: actor.fullName } : {}),
+              ...(actor.email ? { email: actor.email } : undefined),
+              ...(actor.fullName ? { fullName: actor.fullName } : undefined),
               userId: actor.userId,
-              ...(actor.userName ? { userName: actor.userName } : {}),
+              ...(actor.userName ? { userName: actor.userName } : undefined),
             },
             meta: {
               explicitMention: true,
@@ -735,7 +735,7 @@ export function createApiTurnWorker(options: {
             publishExternally: false,
             source,
             surface: "api",
-            ...(cancellationSignal ? { signal: cancellationSignal } : {}),
+            ...(cancellationSignal ? { signal: cancellationSignal } : undefined),
             authorization: createWebAuthorization({
               actorId: actor.userId,
               conversationId: context.conversationId,
@@ -879,7 +879,7 @@ export function createApiTurnWorker(options: {
             await lifecycle.fail({
               conversationId: context.conversationId,
               createdAtMs: Date.now(),
-              ...(modelFailureEventId ? { eventId: modelFailureEventId } : {}),
+              ...(modelFailureEventId ? { eventId: modelFailureEventId } : undefined),
               failureCode: "model_execution_failed",
               turnId,
             });
@@ -932,7 +932,7 @@ export function createApiTurnWorker(options: {
           await lifecycle.fail({
             conversationId: context.conversationId,
             createdAtMs: Date.now(),
-            ...(failureEventId ? { eventId: failureEventId } : {}),
+            ...(failureEventId ? { eventId: failureEventId } : undefined),
             failureCode,
             turnId,
           });

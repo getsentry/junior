@@ -120,11 +120,11 @@ describe("reporting support", () => {
               channelId: testCase.channelId,
             },
           }
-        : {}),
+        : undefined),
       nowMs: Date.now(),
       source: "slack",
       title: testCase.title,
-      ...(testCase.visibility ? { visibility: testCase.visibility } : {}),
+      ...(testCase.visibility ? { visibility: testCase.visibility } : undefined),
     });
 
     const summaries = (await readConversationFeed()).conversations;

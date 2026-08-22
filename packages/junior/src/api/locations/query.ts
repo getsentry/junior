@@ -459,7 +459,7 @@ export async function readLocationDetailFromSql(
       date: row.date,
       durationMs: row.durationMs,
       failed: row.failed,
-      ...(row.tokens !== null ? { tokens: row.tokens } : {}),
+      ...(row.tokens !== null ? { tokens: row.tokens } : undefined),
     });
   }
   const actors: LocationActorSummaryReport[] = [];
@@ -468,12 +468,12 @@ export async function readLocationDetailFromSql(
     const actor: ActorIdentity = {
       ...((row.email ?? row.identityEmail)
         ? { email: row.email ?? row.identityEmail ?? undefined }
-        : {}),
-      ...(row.fullName ? { fullName: row.fullName } : {}),
+        : undefined),
+      ...(row.fullName ? { fullName: row.fullName } : undefined),
       ...(row.identityProvider === "slack" && row.providerSubjectId
         ? { slackUserId: row.providerSubjectId }
-        : {}),
-      ...(row.handle ? { slackUserName: row.handle } : {}),
+        : undefined),
+      ...(row.handle ? { slackUserName: row.handle } : undefined),
     };
     if (!actor.email && !actor.slackUserId) continue;
     const item = emptyActor(actor);

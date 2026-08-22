@@ -29,7 +29,7 @@ function writePackage(
     path.join(packageDir, "package.json"),
     JSON.stringify({
       name: packageName,
-      ...(entryPoint ? { main: "index.js" } : {}),
+      ...(entryPoint ? { main: "index.js" } : undefined),
     }),
     "utf8",
   );

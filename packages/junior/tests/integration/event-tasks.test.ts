@@ -69,7 +69,7 @@ function context(
     channelId,
   };
   return {
-    ...(threadTs ? { conversationId: `slack:${channelId}:${threadTs}` } : {}),
+    ...(threadTs ? { conversationId: `slack:${channelId}:${threadTs}` } : undefined),
     actor: {
       platform: "slack",
       teamId: workspaceTeamId,
@@ -79,7 +79,7 @@ function context(
     source: createSlackSource({
       teamId: destination.teamId,
       channelId: destination.channelId,
-      ...(threadTs ? { threadTs } : {}),
+      ...(threadTs ? { threadTs } : undefined),
       visibility: sourceVisibility,
     }),
     userText: "Create a task for review feedback.",

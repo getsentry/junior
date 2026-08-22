@@ -276,7 +276,7 @@ export async function selectTurnRoute(args: {
               "gen_ai.request.reasoning.level_confidence":
                 normalizedSelection.confidence,
             }
-          : {}),
+          : undefined),
       });
 
       return { ...normalizedSelection, source: "router" };
@@ -347,7 +347,7 @@ async function classifyTurn(args: {
     if (parsed.confidence < CLASSIFIER_CONFIDENCE_THRESHOLD) {
       return {
         confidence: parsed.confidence,
-        ...(result.costUsd !== undefined ? { costUsd: result.costUsd } : {}),
+        ...(result.costUsd !== undefined ? { costUsd: result.costUsd } : undefined),
         profile: STANDARD_MODEL_PROFILE,
         reasoningLevel: CLASSIFIER_FALLBACK_REASONING_LEVEL,
         reason: `low_confidence_medium_default:${reason}`,
@@ -357,7 +357,7 @@ async function classifyTurn(args: {
 
     return {
       confidence: parsed.confidence,
-      ...(result.costUsd !== undefined ? { costUsd: result.costUsd } : {}),
+      ...(result.costUsd !== undefined ? { costUsd: result.costUsd } : undefined),
       profile: parsed.profile,
       reasoningLevel: parsed.reasoning_level,
       reason,

@@ -448,7 +448,7 @@ export async function storeAttachments(args: {
         conversationId: args.conversationId,
         db: args.db,
         file,
-        ...(args.nowMs !== undefined ? { nowMs: args.nowMs } : {}),
+        ...(args.nowMs !== undefined ? { nowMs: args.nowMs } : undefined),
         storage: args.storage,
       }),
     );

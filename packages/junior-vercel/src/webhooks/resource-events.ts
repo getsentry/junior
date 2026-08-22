@@ -160,7 +160,7 @@ export function normalizeVercelResourceEvents(args: {
     eventType,
     occurredAtMs: envelope.data.createdAt,
     identifier: resource.identifier,
-    ...(completeOnTerminalEvent ? { terminal: true } : {}),
+    ...(completeOnTerminalEvent ? { terminal: true } : undefined),
     trustedSummary: `${resource.label} (${deploymentId}) ${outcome}.`,
     untrustedText,
   }));

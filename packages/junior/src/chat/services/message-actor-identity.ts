@@ -53,7 +53,7 @@ export function bindMessageActorIdentity(
   const userId = canonicalUserId(message.author, actor);
   const currentActor = createActor(actor, {
     platform: actor.platform,
-    ...(actor.platform === "slack" ? { teamId: actor.teamId } : {}),
+    ...(actor.platform === "slack" ? { teamId: actor.teamId } : undefined),
     userId,
   });
   if (!currentActor) {

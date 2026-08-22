@@ -125,8 +125,8 @@ export function resolveSlackConversationContext(input: {
 
   return {
     type,
-    ...(name ? { name } : {}),
-    ...(visibility ? { visibility } : {}),
+    ...(name ? { name } : undefined),
+    ...(visibility ? { visibility } : undefined),
   };
 }
 

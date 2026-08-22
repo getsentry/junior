@@ -289,7 +289,7 @@ export async function postinstall(
           pathPrefix: `${SANDBOX_WORKSPACE_ROOT}/.junior/bin:$PATH`,
           signal,
           timeoutMs,
-          ...(command.sudo !== undefined ? { sudo: command.sudo } : {}),
+          ...(command.sudo !== undefined ? { sudo: command.sudo } : undefined),
         });
         if (result.exitCode !== 0) {
           const detail =

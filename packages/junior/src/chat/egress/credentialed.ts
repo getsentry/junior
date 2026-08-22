@@ -170,15 +170,15 @@ function egressAttributes(input: {
   status?: number;
 }): Record<string, unknown> {
   return {
-    ...(input.egressId ? { "app.sandbox.egress_id": input.egressId } : {}),
-    ...(input.provider ? { "app.provider.name": input.provider } : {}),
-    ...(input.grantName ? { "app.grant.name": input.grantName } : {}),
-    ...(input.grantAccess ? { "app.grant.access": input.grantAccess } : {}),
-    ...(input.grantReason ? { "app.grant.reason": input.grantReason } : {}),
-    ...(input.host ? { "server.address": input.host } : {}),
-    ...(input.method ? { "http.request.method": input.method } : {}),
-    ...(input.path ? { "url.path": input.path } : {}),
-    ...(input.status ? { "http.response.status_code": input.status } : {}),
+    ...(input.egressId ? { "app.sandbox.egress_id": input.egressId } : undefined),
+    ...(input.provider ? { "app.provider.name": input.provider } : undefined),
+    ...(input.grantName ? { "app.grant.name": input.grantName } : undefined),
+    ...(input.grantAccess ? { "app.grant.access": input.grantAccess } : undefined),
+    ...(input.grantReason ? { "app.grant.reason": input.grantReason } : undefined),
+    ...(input.host ? { "server.address": input.host } : undefined),
+    ...(input.method ? { "http.request.method": input.method } : undefined),
+    ...(input.path ? { "url.path": input.path } : undefined),
+    ...(input.status ? { "http.response.status_code": input.status } : undefined),
   };
 }
 
@@ -244,8 +244,8 @@ function githubPermissionHeaders(upstream: Response): {
   );
   const sso = upstream.headers.get("x-github-sso");
   return {
-    ...(acceptedPermissions ? { acceptedPermissions } : {}),
-    ...(sso ? { sso } : {}),
+    ...(acceptedPermissions ? { acceptedPermissions } : undefined),
+    ...(sso ? { sso } : undefined),
   };
 }
 
@@ -529,7 +529,7 @@ function leaseLogAttributes(input: {
     ...routingAttributes(input.request, input.upstreamUrl),
     ...(input.upstream
       ? upstreamPermissionAttributes(input.provider, input.upstream)
-      : {}),
+      : undefined),
   };
 }
 
@@ -545,7 +545,7 @@ async function recordSandboxAuthRequired(input: {
     provider: input.provider,
     grant: input.grant,
     kind: input.kind ?? "auth_required",
-    ...(input.authorization ? { authorization: input.authorization } : {}),
+    ...(input.authorization ? { authorization: input.authorization } : undefined),
     message: input.message,
   });
 }
@@ -561,7 +561,7 @@ async function recordSandboxPermissionDenied(input: {
   await setSandboxEgressPermissionDeniedSignal(input.credentialContext, {
     provider: input.provider,
     grant: input.lease.grant,
-    ...(input.lease.account ? { account: input.lease.account } : {}),
+    ...(input.lease.account ? { account: input.lease.account } : undefined),
     message: input.message,
     source: "upstream",
     status: input.upstream.status,
@@ -569,7 +569,7 @@ async function recordSandboxPermissionDenied(input: {
     upstreamPath: displayedUpstreamPath(input.upstreamUrl),
     ...(input.provider === "github"
       ? githubPermissionHeaders(input.upstream)
-      : {}),
+      : undefined),
   });
 }
 
@@ -616,7 +616,7 @@ export async function executeCredentialedEgressRequest(input: {
         request,
         upstreamUrl,
       }),
-      ...(operation ? { operation } : {}),
+      ...(operation ? { operation } : undefined),
       provider,
       method: request.method,
       upstreamUrl,
@@ -701,7 +701,7 @@ export async function executeCredentialedEgressRequest(input: {
       provider,
       request,
       status,
-      ...(upstream ? { upstream } : {}),
+      ...(upstream ? { upstream } : undefined),
       upstreamUrl,
     });
 
@@ -731,7 +731,7 @@ export async function executeCredentialedEgressRequest(input: {
     request: new Request(upstreamUrl, {
       method: request.method,
       headers,
-      ...(body !== undefined ? { body } : {}),
+      ...(body !== undefined ? { body } : undefined),
     }),
     upstreamUrl,
   });
@@ -742,7 +742,7 @@ export async function executeCredentialedEgressRequest(input: {
   const upstream = await fetchImpl(upstreamUrl, {
     method: request.method,
     headers,
-    ...(body !== undefined ? { body } : {}),
+    ...(body !== undefined ? { body } : undefined),
     redirect: "manual",
   });
   try {
@@ -750,7 +750,7 @@ export async function executeCredentialedEgressRequest(input: {
       provider,
       grant: lease.grant,
       method: request.method,
-      ...(operation ? { operation } : {}),
+      ...(operation ? { operation } : undefined),
       upstreamUrl,
       response: {
         headers: new Headers(upstream.headers),
@@ -821,7 +821,7 @@ export async function executeCredentialedEgressRequest(input: {
             "app.sandbox.egress.www_authenticate":
               upstream.headers.get("www-authenticate") ?? undefined,
           }
-        : {}),
+        : undefined),
     });
     if (upstream.status === UPSTREAM_TOKEN_REJECTION_STATUS) {
       await clearCredentialLease(provider, lease.grant, credentialContext);

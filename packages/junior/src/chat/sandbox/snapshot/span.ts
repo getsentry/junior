@@ -9,11 +9,11 @@ export function setSnapshotSpanAttributes(snapshot: Snapshot): void {
     "app.sandbox.snapshot.resolve_outcome": snapshot.resolveOutcome,
     ...(snapshot.profileHash
       ? { "app.sandbox.snapshot.profile_hash": snapshot.profileHash }
-      : {}),
+      : undefined),
     "app.sandbox.snapshot.dependency_count": snapshot.dependencyCount,
     ...(snapshot.rebuildReason
       ? { "app.sandbox.snapshot.rebuild_reason": snapshot.rebuildReason }
-      : {}),
+      : undefined),
   });
 }
 

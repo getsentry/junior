@@ -121,7 +121,7 @@ function coercePendingAuthState(
   const base = {
     provider,
     actorId,
-    ...(scope ? { scope } : {}),
+    ...(scope ? { scope } : undefined),
     sessionId,
     linkSentAtMs,
   };

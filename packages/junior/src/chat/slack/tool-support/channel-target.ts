@@ -60,7 +60,7 @@ export async function resolveSlackChannelRef(input: {
   if (known && knownChannelId) {
     return {
       channelId: knownChannelId,
-      ...(known.channelName ? { channelName: known.channelName } : {}),
+      ...(known.channelName ? { channelName: known.channelName } : undefined),
     };
   }
 

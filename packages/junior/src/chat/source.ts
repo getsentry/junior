@@ -38,7 +38,7 @@ export function normalizeSessionSource(
     visibility: value.visibility,
     teamId: value.teamId,
     channelId: value.channelId,
-    ...(threadTs ? { threadTs } : {}),
+    ...(threadTs ? { threadTs } : undefined),
   };
 }
 

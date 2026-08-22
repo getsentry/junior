@@ -149,11 +149,11 @@ export function createPiAgentTools(
               typeof toolInput.env === "object" &&
               !Array.isArray(toolInput.env)
                 ? toolInput.env
-                : {}),
+                : undefined),
               ...beforeTool.env,
             },
           }
-        : {}),
+        : undefined),
     };
     await onToolCall?.(toolCallId, toolName, toolInput);
     try {
@@ -178,12 +178,12 @@ export function createPiAgentTools(
           "app.guardian.decision": error.decision,
           ...(error.riskLevel
             ? { "app.guardian.risk_level": error.riskLevel }
-            : {}),
+            : undefined),
           ...(error.userAuthorization
             ? {
                 "app.guardian.user_authorization": error.userAuthorization,
               }
-            : {}),
+            : undefined),
         });
       }
       throw error;
@@ -194,14 +194,14 @@ export function createPiAgentTools(
       ? await sandboxTools!.execute({
           toolName,
           input: sandboxInput,
-          ...(signal ? { signal } : {}),
+          ...(signal ? { signal } : undefined),
           ...(toolName === "grep" || toolName === "findFiles"
             ? { setToolCallSpanAttributes: setSpanAttributes }
-            : {}),
+            : undefined),
         })
       : await toolDef.execute(executionInput, {
           experimental_context: sandbox,
-          ...(signal ? { signal } : {}),
+          ...(signal ? { signal } : undefined),
           conversationPrivacy: effectiveConversationPrivacy,
           toolCallId,
         });
@@ -252,7 +252,7 @@ export function createPiAgentTools(
     if (toolResultAttribute) {
       setSpanAttributes({
         "gen_ai.tool.call.result": toolResultAttribute,
-        ...(hasProjectedPrivateResult ? privateTraceResultAttributes() : {}),
+        ...(hasProjectedPrivateResult ? privateTraceResultAttributes() : undefined),
         ...toGenAiPayloadTraceAttributes(
           "gen_ai.tool.call.result",
           resultAttributeValue,
@@ -391,7 +391,7 @@ export function createPiAgentTools(
           "gen_ai.tool.call.id": toolCallId,
           ...(toolArgumentsAttribute
             ? { "gen_ai.tool.call.arguments": toolArgumentsAttribute }
-            : {}),
+            : undefined),
         },
       );
       if (result instanceof ToolActionRejectedError) {

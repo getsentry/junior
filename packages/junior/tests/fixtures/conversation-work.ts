@@ -315,7 +315,7 @@ export function slackEnvelope(input: {
       ts,
       event_ts: ts,
       channel_type: channel.startsWith("D") ? "im" : "channel",
-      ...(input.threadTs ? { thread_ts: input.threadTs } : {}),
+      ...(input.threadTs ? { thread_ts: input.threadTs } : undefined),
     },
   };
 }

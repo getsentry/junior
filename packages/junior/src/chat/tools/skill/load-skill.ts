@@ -45,8 +45,8 @@ function toLoadedSkill(
     skillPath: metadata?.skillPath ?? result.skill_dir,
     ...(metadata?.pluginProvider
       ? { pluginProvider: metadata.pluginProvider }
-      : {}),
-    ...(metadata?.allowedTools ? { allowedTools: metadata.allowedTools } : {}),
+      : undefined),
+    ...(metadata?.allowedTools ? { allowedTools: metadata.allowedTools } : undefined),
     body: result.instructions,
   };
 }

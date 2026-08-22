@@ -367,8 +367,8 @@ export function queueSlackApiError(
     headers: input.headers,
     body: slackError({
       error: input.error,
-      ...(input.needed ? { needed: input.needed } : {}),
-      ...(input.provided ? { provided: input.provided } : {}),
+      ...(input.needed ? { needed: input.needed } : undefined),
+      ...(input.provided ? { provided: input.provided } : undefined),
     }),
   });
 }

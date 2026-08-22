@@ -163,7 +163,7 @@ function destinationUpsertFromDestination(args: {
       providerDestinationId: channelId,
       refreshVisibility: args.visibility !== undefined,
       visibility: args.visibility ?? "unknown",
-      ...(args.channelName ? { displayName: args.channelName } : {}),
+      ...(args.channelName ? { displayName: args.channelName } : undefined),
       metadata: { platform: "slack" },
     };
   }
@@ -262,7 +262,7 @@ function conversationFromRow(readRow: ConversationReadRow): Conversation {
     status: executionStatusFromValue(row.executionStatus),
     lastCheckpointAtMs: msFromDate(row.lastCheckpointAt),
     lastEnqueuedAtMs: msFromDate(row.lastEnqueuedAt),
-    ...(row.runId ? { runId: row.runId } : {}),
+    ...(row.runId ? { runId: row.runId } : undefined),
     updatedAtMs:
       msFromDate(row.executionUpdatedAt) ?? requiredMsFromDate(row.updatedAt),
   };
@@ -277,8 +277,8 @@ function conversationFromRow(readRow: ConversationReadRow): Conversation {
     execution,
     executionMetrics: {
       durationMs: row.executionDurationMs,
-      ...(row.metricRunId ? { runId: row.metricRunId } : {}),
-      ...(row.executionUsage ? { usage: row.executionUsage } : {}),
+      ...(row.metricRunId ? { runId: row.metricRunId } : undefined),
+      ...(row.executionUsage ? { usage: row.executionUsage } : undefined),
     },
     ...(row.parentConversationId
       ? {
@@ -286,18 +286,18 @@ function conversationFromRow(readRow: ConversationReadRow): Conversation {
             parentConversationId: row.parentConversationId,
           },
         }
-      : {}),
-    ...(destination ? { destination } : {}),
-    ...(location ? { location } : {}),
-    ...(actor ? { actor } : {}),
-    ...(row.channelName ? { channelName: row.channelName } : {}),
-    ...(source ? { source } : {}),
-    ...(sessionSource ? { sessionSource } : {}),
-    ...(row.title ? { title: row.title } : {}),
+      : undefined),
+    ...(destination ? { destination } : undefined),
+    ...(location ? { location } : undefined),
+    ...(actor ? { actor } : undefined),
+    ...(row.channelName ? { channelName: row.channelName } : undefined),
+    ...(source ? { source } : undefined),
+    ...(sessionSource ? { sessionSource } : undefined),
+    ...(row.title ? { title: row.title } : undefined),
     ...(msFromDate(row.transcriptPurgedAt) !== undefined
       ? { transcriptPurgedAtMs: msFromDate(row.transcriptPurgedAt) }
-      : {}),
-    ...(visibility ? { visibility } : {}),
+      : undefined),
+    ...(visibility ? { visibility } : undefined),
   };
 }
 
@@ -314,9 +314,9 @@ function emptyConversation(args: {
     createdAtMs: args.nowMs,
     lastActivityAtMs: args.nowMs,
     updatedAtMs: args.nowMs,
-    ...(args.destination ? { destination: args.destination } : {}),
-    ...(args.source ? { source: args.source } : {}),
-    ...(args.sessionSource ? { sessionSource: args.sessionSource } : {}),
+    ...(args.destination ? { destination: args.destination } : undefined),
+    ...(args.source ? { source: args.source } : undefined),
+    ...(args.sessionSource ? { sessionSource: args.sessionSource } : undefined),
     execution: {
       status: "idle",
       updatedAtMs: args.nowMs,
@@ -507,7 +507,7 @@ export class SqlStore implements ConversationStore {
           destination: args.destination,
           nowMs,
           source: args.source,
-          ...(sessionSource ? { sessionSource } : {}),
+          ...(sessionSource ? { sessionSource } : undefined),
         });
       // Persist visibility only from the current event's live signal; the
       // previously stored confirmation must not be replayed as a new signal.
@@ -521,7 +521,7 @@ export class SqlStore implements ConversationStore {
           ...currentWithoutPersistedSignals,
           destination: current.destination ?? args.destination,
           source: current.source ?? args.source,
-          ...(sessionSource ? { sessionSource } : {}),
+          ...(sessionSource ? { sessionSource } : undefined),
           channelName: current.channelName ?? args.channelName,
           actor: mergeActor(current.actor, args.actor),
           title: current.title ?? args.title,
@@ -531,7 +531,7 @@ export class SqlStore implements ConversationStore {
             ...current.execution,
             updatedAtMs: current.execution.updatedAtMs ?? nowMs,
           },
-          ...(args.visibility ? { visibility: args.visibility } : {}),
+          ...(args.visibility ? { visibility: args.visibility } : undefined),
         },
       });
     });
@@ -576,12 +576,12 @@ export class SqlStore implements ConversationStore {
           createdAtMs: args.createdAtMs,
           lastActivityAtMs: args.lastActivityAtMs,
           updatedAtMs: args.updatedAtMs,
-          ...(args.channelName ? { channelName: args.channelName } : {}),
-          ...(args.destination ? { destination: args.destination } : {}),
-          ...(args.actor ? { actor: args.actor } : {}),
-          ...(args.source ? { source: args.source } : {}),
-          ...(args.title ? { title: args.title } : {}),
-          ...(args.visibility ? { visibility: args.visibility } : {}),
+          ...(args.channelName ? { channelName: args.channelName } : undefined),
+          ...(args.destination ? { destination: args.destination } : undefined),
+          ...(args.actor ? { actor: args.actor } : undefined),
+          ...(args.source ? { source: args.source } : undefined),
+          ...(args.title ? { title: args.title } : undefined),
+          ...(args.visibility ? { visibility: args.visibility } : undefined),
           execution,
         },
       });
@@ -725,7 +725,7 @@ export class SqlStore implements ConversationStore {
     }
     return {
       channelId: row.channelId,
-      ...(row.channelName ? { channelName: row.channelName } : {}),
+      ...(row.channelName ? { channelName: row.channelName } : undefined),
     };
   }
 
@@ -781,7 +781,7 @@ export class SqlStore implements ConversationStore {
         destination: conversation.destination,
         ...(conversation.visibility
           ? { visibility: conversation.visibility }
-          : {}),
+          : undefined),
       }),
       conversation.updatedAtMs,
     );

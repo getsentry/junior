@@ -89,7 +89,7 @@ function createContext(
     now: () => Date.parse("2026-05-24T12:00:00.000Z"),
     userText: "schedule this weekly",
     users: {
-      resolveActor: async () => ({ identity, ...(user ? { user } : {}) }),
+      resolveActor: async () => ({ identity, ...(user ? { user } : undefined) }),
     },
     ...contextOverrides,
   };

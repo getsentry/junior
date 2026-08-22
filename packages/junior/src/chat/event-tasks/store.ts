@@ -62,7 +62,7 @@ export async function createEventTask(
       task: parsed,
     })
     .onConflictDoNothing();
-  return (await getEventTask(db, parsed.id)) ?? { ...parsed, ...(title ? { title } : {}) };
+  return (await getEventTask(db, parsed.id)) ?? { ...parsed, ...(title ? { title } : undefined) };
 }
 
 /** Replace an existing event task. */

@@ -168,7 +168,7 @@ export function createSlackRuntime(options: CreateSlackRuntimeOptions) {
           shouldReply: decision.shouldReply,
           ...(decision.shouldUnsubscribe !== undefined
             ? { shouldUnsubscribe: decision.shouldUnsubscribe }
-            : {}),
+            : undefined),
         });
       }
       return decision;

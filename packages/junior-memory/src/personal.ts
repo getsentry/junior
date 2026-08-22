@@ -87,10 +87,10 @@ function encodeCursor(
   return Buffer.from(
     JSON.stringify({
       ...cursor,
-      ...(input.query ? { query: input.query } : {}),
-      ...(input.kind ? { kind: input.kind } : {}),
-      ...(input.origin ? { origin: input.origin } : {}),
-      ...(input.visibility ? { visibility: input.visibility } : {}),
+      ...(input.query ? { query: input.query } : undefined),
+      ...(input.kind ? { kind: input.kind } : undefined),
+      ...(input.origin ? { origin: input.origin } : undefined),
+      ...(input.visibility ? { visibility: input.visibility } : undefined),
       version: 1,
     }),
     "utf8",
@@ -113,10 +113,10 @@ export function createViewerMemories(db: MemoryDb, user: User) {
     async list(input: ViewerMemoryPageInput): Promise<ViewerMemoryPage> {
       const query = input.query?.trim() || undefined;
       const filters = {
-        ...(input.kind ? { kind: input.kind } : {}),
-        ...(input.origin ? { origin: input.origin } : {}),
-        ...(query ? { query } : {}),
-        ...(input.visibility ? { visibility: input.visibility } : {}),
+        ...(input.kind ? { kind: input.kind } : undefined),
+        ...(input.origin ? { origin: input.origin } : undefined),
+        ...(query ? { query } : undefined),
+        ...(input.visibility ? { visibility: input.visibility } : undefined),
       };
       const page = await collection.list({
         cursor: decodeCursor(input.cursor, filters),
@@ -127,7 +127,7 @@ export function createViewerMemories(db: MemoryDb, user: User) {
         memories: page.memories,
         ...(page.nextCursor
           ? { nextCursor: encodeCursor(page.nextCursor, filters) }
-          : {}),
+          : undefined),
       };
     },
     async stats() {

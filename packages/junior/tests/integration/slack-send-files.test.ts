@@ -107,7 +107,7 @@ function createContext(
     messageTs,
     sourceChannelId,
     teamId,
-    ...(threadTs ? { threadTs } : {}),
+    ...(threadTs ? { threadTs } : undefined),
     ...rest,
   };
 }

@@ -112,7 +112,7 @@ function proxiedRequest(input: {
 
   return new Request(url, {
     method: input.method ?? "GET",
-    ...(input.body !== undefined ? { body: input.body } : {}),
+    ...(input.body !== undefined ? { body: input.body } : undefined),
     headers: {
       "vercel-forwarded-host": input.upstreamHost ?? PROVIDER_HOST,
       "vercel-forwarded-path": upstreamPath,
@@ -120,7 +120,7 @@ function proxiedRequest(input: {
       "vercel-sandbox-oidc-token": "signed-vercel-token",
       ...(input.body !== undefined
         ? { "content-type": "application/json" }
-        : {}),
+        : undefined),
       ...(input.headers ?? {}),
     },
   });
@@ -177,8 +177,8 @@ async function registerManagedEgressPlugin(input?: {
             })),
           ...(input?.onEgressResponse
             ? { onEgressResponse: input.onEgressResponse }
-            : {}),
-          ...(input?.tools ? { tools: input.tools } : {}),
+            : undefined),
+          ...(input?.tools ? { tools: input.tools } : undefined),
         },
       }),
     ]),

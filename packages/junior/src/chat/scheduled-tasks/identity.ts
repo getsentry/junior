@@ -42,8 +42,8 @@ export function sanitizeScheduledTaskPrincipal(
   const userName = cleanDisplay(principal.userName, slackUserId);
   return {
     slackUserId,
-    ...(fullName ? { fullName } : {}),
-    ...(userName ? { userName } : {}),
+    ...(fullName ? { fullName } : undefined),
+    ...(userName ? { userName } : undefined),
   };
 }
 

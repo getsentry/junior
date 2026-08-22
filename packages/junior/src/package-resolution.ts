@@ -160,7 +160,7 @@ function resolvePackageWithNode(
       const nodeModulesDir = findPackageNodeModulesDir(dir, packageName);
       return {
         dir,
-        ...(nodeModulesDir ? { nodeModulesDir } : {}),
+        ...(nodeModulesDir ? { nodeModulesDir } : undefined),
       };
     } catch {
       // Try the next Node resolution form.

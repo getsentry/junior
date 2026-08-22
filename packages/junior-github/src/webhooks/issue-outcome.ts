@@ -175,7 +175,7 @@ const issueConversationSchema = z
       },
       ...(provider.sender
         ? { sender: { login: provider.sender.login } }
-        : {}),
+        : undefined),
     }),
   );
 

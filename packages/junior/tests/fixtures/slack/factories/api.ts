@@ -323,9 +323,9 @@ export function filesInfoOk(
             url_private: input.urlPrivate,
             url_private_download: input.urlPrivate,
           }
-        : {}),
-      ...(input.title ? { title: input.title } : {}),
-      ...(input.name ? { name: input.name } : {}),
+        : undefined),
+      ...(input.title ? { title: input.title } : undefined),
+      ...(input.name ? { name: input.name } : undefined),
       filetype: input.filetype ?? "quip",
       mimetype: input.mimetype ?? "text/plain",
     },
@@ -387,7 +387,7 @@ export function conversationsInfoOk(
   return slackOk({
     channel: {
       id: input.channelId ?? TEST_CHANNEL_ID,
-      ...(input.name ? { name: input.name } : {}),
+      ...(input.name ? { name: input.name } : undefined),
       is_channel: !isPrivate && !isIm && !isMpim && !isGroup,
       is_private: isPrivate,
       is_im: isIm,
@@ -395,7 +395,7 @@ export function conversationsInfoOk(
       is_group: isGroup,
       ...(typeof input.isMember === "boolean"
         ? { is_member: input.isMember }
-        : {}),
+        : undefined),
     },
   });
 }
@@ -409,7 +409,7 @@ export function conversationsJoinOk(
   return slackOk({
     channel: {
       id: input.channelId ?? TEST_CHANNEL_ID,
-      ...(input.name ? { name: input.name } : {}),
+      ...(input.name ? { name: input.name } : undefined),
     },
   });
 }
@@ -443,7 +443,7 @@ export function conversationsListPage(
     channels,
     ...(input.nextCursor
       ? { response_metadata: { next_cursor: input.nextCursor } }
-      : {}),
+      : undefined),
   });
 }
 
@@ -481,7 +481,7 @@ export function usersInfoOk(
         email: input.email ?? "testuser@example.com",
         status_text: input.statusText ?? "",
         status_emoji: input.statusEmoji ?? "",
-        ...(input.fields ? { fields: input.fields } : {}),
+        ...(input.fields ? { fields: input.fields } : undefined),
       },
     },
   });
@@ -537,7 +537,7 @@ export function usersListPage(
       email: "",
       status_text: "",
       status_emoji: "",
-      ...(m.fields ? { fields: m.fields } : {}),
+      ...(m.fields ? { fields: m.fields } : undefined),
     },
   }));
 

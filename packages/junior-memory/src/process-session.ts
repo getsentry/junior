@@ -203,7 +203,7 @@ function passiveInput(
     content: memory.content,
     idempotencyKey: `session:${sourceKey}:${sessionId}:${memoryIdempotencySuffix(memory, target)}`,
     kind: memory.kind,
-    ...(memory.expiresAtMs !== null ? { expiresAtMs: memory.expiresAtMs } : {}),
+    ...(memory.expiresAtMs !== null ? { expiresAtMs: memory.expiresAtMs } : undefined),
   };
 }
 
@@ -270,7 +270,7 @@ export async function processMemorySession(
 
   const runtimeContext = memoryRuntimeContextSchema.parse({
     conversationId: run.conversationId,
-    ...(run.actor ? { actor: run.actor } : {}),
+    ...(run.actor ? { actor: run.actor } : undefined),
     source: run.source,
   });
   const agent = createMemoryAgent(context.model);
@@ -317,7 +317,7 @@ export async function processMemorySession(
       memories: captured,
       ...(extraction.costUsd !== undefined
         ? { costUsd: extraction.costUsd }
-        : {}),
+        : undefined),
     }),
   );
 }

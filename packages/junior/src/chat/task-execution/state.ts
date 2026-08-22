@@ -276,7 +276,7 @@ function upgradedPendingMessage(
         ...duplicate.input,
         ...(inputHasAttachments(duplicate.input) ||
         !inputHasAttachments(stored.input)
-          ? {}
+          ? undefined
           : { attachments: stored.input.attachments }),
       }
     : inputHasAttachments(duplicate.input) && !inputHasAttachments(stored.input)
@@ -478,19 +478,19 @@ function normalizeConversation(
     lastActivityAtMs,
     updatedAtMs,
     execution,
-    ...(destination ? { destination } : {}),
+    ...(destination ? { destination } : undefined),
     ...(toOptionalString(value.title)
       ? { title: toOptionalString(value.title) }
-      : {}),
+      : undefined),
     ...(toOptionalString(value.channelName)
       ? { channelName: toOptionalString(value.channelName) }
-      : {}),
+      : undefined),
     ...(normalizeActor(value.actor)
       ? { actor: normalizeActor(value.actor) }
-      : {}),
+      : undefined),
     ...(normalizeSource(value.source)
       ? { source: normalizeSource(value.source) }
-      : {}),
+      : undefined),
   };
 }
 
@@ -506,8 +506,8 @@ function emptyConversation(args: {
     createdAtMs: args.nowMs,
     lastActivityAtMs: args.nowMs,
     updatedAtMs: args.nowMs,
-    ...(args.destination ? { destination: args.destination } : {}),
-    ...(args.source ? { source: args.source } : {}),
+    ...(args.destination ? { destination: args.destination } : undefined),
+    ...(args.source ? { source: args.source } : undefined),
     execution: {
       status: "idle",
       inboundMessageIds: [],
@@ -1024,7 +1024,7 @@ function conversationWorkState(
             leaseToken: lease.token,
           },
         }
-      : {}),
+      : undefined),
     messages: pendingMessages(conversation),
     needsRun: hasRunnableWork(conversation),
   };
@@ -1242,19 +1242,19 @@ export async function recordConversationActivity(args: {
       ...current,
       ...((current.destination ?? args.destination)
         ? { destination: current.destination ?? args.destination }
-        : {}),
+        : undefined),
       ...((current.source ?? args.source)
         ? { source: current.source ?? args.source }
-        : {}),
+        : undefined),
       ...((current.channelName ?? args.channelName)
         ? { channelName: current.channelName ?? args.channelName }
-        : {}),
+        : undefined),
       ...((current.actor ?? args.actor)
         ? { actor: current.actor ?? args.actor }
-        : {}),
+        : undefined),
       ...((current.title ?? args.title)
         ? { title: current.title ?? args.title }
-        : {}),
+        : undefined),
       lastActivityAtMs: Math.max(current.lastActivityAtMs, activityAtMs),
       updatedAtMs: nowMs,
       execution: executionWithPendingMessages(
@@ -1311,19 +1311,19 @@ export async function recordConversationExecution(args: {
           ...current,
           ...((current.destination ?? args.destination)
             ? { destination: current.destination ?? args.destination }
-            : {}),
+            : undefined),
           ...((current.source ?? args.source)
             ? { source: current.source ?? args.source }
-            : {}),
+            : undefined),
           ...((current.channelName ?? args.channelName)
             ? { channelName: current.channelName ?? args.channelName }
-            : {}),
+            : undefined),
           ...((current.actor ?? args.actor)
             ? { actor: current.actor ?? args.actor }
-            : {}),
+            : undefined),
           ...((current.title ?? args.title)
             ? { title: current.title ?? args.title }
-            : {}),
+            : undefined),
           createdAtMs: Math.min(current.createdAtMs, args.createdAtMs),
           lastActivityAtMs: Math.max(
             current.lastActivityAtMs,

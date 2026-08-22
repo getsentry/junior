@@ -297,7 +297,7 @@ async function handleResumeFailure(args: {
         turnId: args.resumeArgs.turnId,
         createdAtMs: Date.now(),
         failureCode: "persistence_failed",
-        ...(persistEventId ? { eventId: persistEventId } : {}),
+        ...(persistEventId ? { eventId: persistEventId } : undefined),
       });
     } catch (lifecycleError) {
       logException(
@@ -327,7 +327,7 @@ async function handleResumeFailure(args: {
         turnId: args.resumeArgs.turnId,
         createdAtMs: Date.now(),
         failureCode: "delivery_failed",
-        ...(deliveryEventId ? { eventId: deliveryEventId } : {}),
+        ...(deliveryEventId ? { eventId: deliveryEventId } : undefined),
       });
     } catch (lifecycleError) {
       logException(
@@ -389,7 +389,7 @@ function createResumeReplyContext(
         ? {
             ...source,
             channelId: args.channelId,
-            ...(args.threadTs ? { threadTs: args.threadTs } : {}),
+            ...(args.threadTs ? { threadTs: args.threadTs } : undefined),
           }
         : source,
     deadlineAtMs: replyContext.deadlineAtMs ?? requestDeadline?.deadlineAtMs,
@@ -549,7 +549,7 @@ async function resumeSlackTurnInContext(
         return {
           conversation: deliveryConversation,
           sessionId,
-          ...(userMessageId ? { userMessageId } : {}),
+          ...(userMessageId ? { userMessageId } : undefined),
         };
       }
       const persistedState = await getPersistedThreadState(
@@ -565,7 +565,7 @@ async function resumeSlackTurnInContext(
       return {
         conversation,
         sessionId,
-        ...(userMessageId ? { userMessageId } : {}),
+        ...(userMessageId ? { userMessageId } : undefined),
       };
     };
     /** Post and record one completed assistant message for the resumed turn. */
@@ -619,7 +619,7 @@ async function resumeSlackTurnInContext(
           : slackMessageTs;
         await persistWithRetry(() =>
           commitAcceptedReply({
-            ...(message ? { agentMessage: message } : {}),
+            ...(message ? { agentMessage: message } : undefined),
             conversation: deliveryState.conversation,
             conversationMessageId: recordedMessageId,
             conversationId,
@@ -636,7 +636,7 @@ async function resumeSlackTurnInContext(
                     }),
                   ),
                 }
-              : {}),
+              : undefined),
           }),
         );
       } catch (error) {
@@ -705,7 +705,7 @@ async function resumeSlackTurnInContext(
         deferredAuthInfo = {
           providerDisplayName: outcome.providerDisplayName,
           actorId: isUserActor(resumeActor) ? resumeActor.userId : undefined,
-          ...(outcome.requestText ? { requestText: outcome.requestText } : {}),
+          ...(outcome.requestText ? { requestText: outcome.requestText } : undefined),
         };
         deferredPauseHandler = async () => {
           await onAuthPause({
@@ -793,10 +793,10 @@ async function resumeSlackTurnInContext(
             reply.diagnostics.outcome === "success" ? "completed" : "failed",
           ...(dispatchErrorMessage
             ? { errorMessage: dispatchErrorMessage }
-            : {}),
+            : undefined),
           ...(acceptedDeliveryId
             ? { resultMessageId: acceptedDeliveryId }
-            : {}),
+            : undefined),
           source: replyContext.source,
           actor: resumeActor,
           surface: replyContext.surface ?? "slack",
@@ -812,7 +812,7 @@ async function resumeSlackTurnInContext(
             reply.diagnostics.outcome === "success" ? "completed" : "failed",
           ...(acceptedDeliveryId
             ? { resultMessageId: acceptedDeliveryId }
-            : {}),
+            : undefined),
           turnId: runArgs.turnId,
           sliceId: runArgs.sliceId ?? 1,
           source: replyContext.source,
@@ -835,7 +835,7 @@ async function resumeSlackTurnInContext(
           turnId: runArgs.turnId,
           createdAtMs: Date.now(),
           failureCode: "model_execution_failed",
-          ...(finalized.eventId ? { eventId: finalized.eventId } : {}),
+          ...(finalized.eventId ? { eventId: finalized.eventId } : undefined),
         });
       }
       if (reply.diagnostics.outcome === "success") {
@@ -914,7 +914,7 @@ async function resumeSlackTurnInContext(
       turnId: runArgs.turnId,
       createdAtMs: Date.now(),
       failureCode: "persistence_failed",
-      ...(eventId ? { eventId } : {}),
+      ...(eventId ? { eventId } : undefined),
     });
     throw postDeliveryCommitError;
   }

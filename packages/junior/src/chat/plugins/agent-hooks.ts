@@ -224,7 +224,7 @@ function invocationPluginContext(
             turnId,
           }),
         }
-      : {}),
+      : undefined),
     model: createPluginModel(plugin.manifest.name, plugin.model),
     source: context.source,
     text: context.userText ?? "",
@@ -604,8 +604,8 @@ export function getPluginTools(
             ),
             ...(dashboardConversationUrl
               ? { conversationLink: { url: dashboardConversationUrl } }
-              : {}),
-            ...(credentialSubject ? { credentialSubject } : {}),
+              : undefined),
+            ...(credentialSubject ? { credentialSubject } : undefined),
           }
         : undefined;
     const annotations = context.conversationId
@@ -671,12 +671,12 @@ export function getPluginTools(
       context.resolveActorIdentity ?? (async () => undefined);
     const common = {
       ...basePluginContext(plugin),
-      ...(annotations ? { annotations } : {}),
+      ...(annotations ? { annotations } : undefined),
       conversationId: context.conversationId,
       userText: context.userText,
       embedder: createPluginEmbedder(pluginName),
       egress: context.egress,
-      ...(mcp ? { mcp } : {}),
+      ...(mcp ? { mcp } : undefined),
       model: createPluginModel(pluginName, plugin.model),
       resourceEvents,
       sandbox,
@@ -1388,7 +1388,7 @@ function createSandboxCapability(
       const signal = preparationSignal(input.signal, ownerSignal);
       const result = await runNonInteractiveCommand(workspace, {
         ...input,
-        ...(signal ? { signal } : {}),
+        ...(signal ? { signal } : undefined),
       });
       return {
         exitCode: result.exitCode,
@@ -1401,7 +1401,7 @@ function createSandboxCapability(
         {
           path: input.path,
           content: input.content,
-          ...(input.mode !== undefined ? { mode: input.mode } : {}),
+          ...(input.mode !== undefined ? { mode: input.mode } : undefined),
         },
       ]);
     },
@@ -1440,8 +1440,8 @@ export function createPluginHookRunner(
             ...basePluginContext(plugin),
             ...(tool.conversationId
               ? { conversationId: tool.conversationId }
-              : {}),
-            ...(annotations ? { annotations } : {}),
+              : undefined),
+            ...(annotations ? { annotations } : undefined),
             result:
               tool.structuredContent !== undefined
                 ? { structuredContent: tool.structuredContent }

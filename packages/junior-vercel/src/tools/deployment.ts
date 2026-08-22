@@ -120,7 +120,7 @@ export function createVercelDeploymentTool(ctx: ToolRegistrationHookContext) {
         commitSha: commitSha ?? null,
         deploymentTarget: deploymentTarget ?? null,
         projectId,
-        ...(subscribable ? { subscribable } : {}),
+        ...(subscribable ? { subscribable } : undefined),
       };
       return {
         target: "deployment",

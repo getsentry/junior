@@ -24,15 +24,14 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function readObjectField(value: object, key: string): unknown {
-  return (value as Record<string, unknown>)[key];
-}
-
 function readOptionalStringField(
-  value: object,
+  value: Thread | Message,
   key: string,
 ): string | undefined {
-  return toOptionalString(readObjectField(value, key));
+  if (!(key in value)) {
+    return undefined;
+  }
+  return toOptionalString(value[key as keyof typeof value]);
 }
 
 interface StripLeadingBotMentionOptions {

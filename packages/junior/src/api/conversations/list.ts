@@ -128,13 +128,13 @@ function conversationFromRow(row: ConversationRow): Conversation {
     row.identityProvider === "slack"
       ? {
           platform: "slack" as const,
-          ...(row.identityEmail ? { email: row.identityEmail } : {}),
-          ...(actorFullName ? { fullName: actorFullName } : {}),
+          ...(row.identityEmail ? { email: row.identityEmail } : undefined),
+          ...(actorFullName ? { fullName: actorFullName } : undefined),
           ...(row.identitySubjectId
             ? { slackUserId: row.identitySubjectId }
-            : {}),
-          ...(row.identityHandle ? { slackUserName: row.identityHandle } : {}),
-          ...(row.identityTenantId ? { teamId: row.identityTenantId } : {}),
+            : undefined),
+          ...(row.identityHandle ? { slackUserName: row.identityHandle } : undefined),
+          ...(row.identityTenantId ? { teamId: row.identityTenantId } : undefined),
         }
       : undefined;
   const location = locationFromRow(row.destination);
@@ -146,20 +146,20 @@ function conversationFromRow(row: ConversationRow): Conversation {
     updatedAtMs: value.updatedAt.getTime(),
     execution: {
       status: value.executionStatus,
-      ...(value.runId ? { runId: value.runId } : {}),
+      ...(value.runId ? { runId: value.runId } : undefined),
       ...(value.executionUpdatedAt
         ? { updatedAtMs: value.executionUpdatedAt.getTime() }
-        : {}),
+        : undefined),
     },
-    ...(actor ? { actor } : {}),
-    ...(location ? { location } : {}),
-    ...(value.channelName ? { channelName: value.channelName } : {}),
-    ...(value.source ? { source: value.source } : {}),
-    ...(sessionSource ? { sessionSource } : {}),
-    ...(value.title ? { title: value.title } : {}),
+    ...(actor ? { actor } : undefined),
+    ...(location ? { location } : undefined),
+    ...(value.channelName ? { channelName: value.channelName } : undefined),
+    ...(value.source ? { source: value.source } : undefined),
+    ...(sessionSource ? { sessionSource } : undefined),
+    ...(value.title ? { title: value.title } : undefined),
     ...(value.transcriptPurgedAt
       ? { transcriptPurgedAtMs: value.transcriptPurgedAt.getTime() }
-      : {}),
+      : undefined),
   };
 }
 
@@ -208,7 +208,7 @@ export async function readConversationRecordFromSql(
         durationMs: row.conversation.durationMs,
         ...(row.destination?.visibility === "public"
           ? { locationId: row.destination.id }
-          : {}),
+          : undefined),
         usage: row.conversation.usage,
         rootConversationId: row.conversation.rootConversationId,
       }
@@ -320,7 +320,7 @@ export async function readConversationFeedFromSql(
         conversation.conversationId,
       );
       const summary = conversationSummaryFromStoredConversation({
-        ...(archivedAtMs === undefined ? {} : { archivedAtMs }),
+        ...(archivedAtMs === undefined ? undefined : { archivedAtMs }),
         conversation,
         access,
         auxiliaryCosts: auxiliaryCostsByRoot.get(conversation.conversationId),
@@ -328,22 +328,22 @@ export async function readConversationFeedFromSql(
         teamDomainByTeamId,
         ...(row.destination?.visibility === "public"
           ? { locationId: row.destination.id }
-          : {}),
+          : undefined),
         usage: metrics?.usage ?? row.conversation.usage ?? undefined,
       });
       const work = {
         ...(assignedWork.has(conversation.conversationId)
           ? { assignedWork: true as const }
-          : {}),
+          : undefined),
         ...(conversationWork.finishedAtById[conversation.conversationId]
           ? {
               finishedWorkAt:
                 conversationWork.finishedAtById[conversation.conversationId],
             }
-          : {}),
+          : undefined),
         ...(unfinishedWork.has(conversation.conversationId)
           ? { unfinishedWork: true as const }
-          : {}),
+          : undefined),
       };
       const annotations = access?.canViewPrivateContent
         ? (annotationsByConversation.get(conversation.conversationId) ?? [])
@@ -351,13 +351,13 @@ export async function readConversationFeedFromSql(
       return {
         ...summary,
         ...work,
-        ...(annotations.length > 0 ? { annotations } : {}),
+        ...(annotations.length > 0 ? { annotations } : undefined),
         ...(sidebarAnnotationsByConversation[conversation.conversationId]
           ? {
               sidebarAnnotations:
                 sidebarAnnotationsByConversation[conversation.conversationId],
             }
-          : {}),
+          : undefined),
         isPriority: isConversationPriority(
           {
             lastSeenAt: summary.lastSeenAt,

@@ -187,7 +187,7 @@ export function createGitHubGetReleaseTool(ctx: ToolRegistrationHookContext) {
         release,
         repo: repo.ref,
         tag: tag ?? null,
-        ...(subscribable ? { subscribable } : {}),
+        ...(subscribable ? { subscribable } : undefined),
       };
       return {
         target: "getRelease",
