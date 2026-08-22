@@ -129,10 +129,11 @@ const gitHubPullRequestDataSchema = z.object({
   subscription: resourceEventSubscriptionResultSchema.optional(),
 });
 
-const gitHubPullRequestOutputSchema = pluginToolOutputSchema.extend({
-  target: z.literal("createPullRequest"),
-  ...gitHubPullRequestDataSchema.shape,
-});
+const gitHubPullRequestOutputSchema = pluginToolOutputSchema.merge(
+  gitHubPullRequestDataSchema.extend({
+    target: z.literal("createPullRequest"),
+  }),
+);
 
 function parseCreatePullRequestInput(
   input: unknown,

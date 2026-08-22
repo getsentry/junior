@@ -112,10 +112,11 @@ const gitHubIssueDataSchema = z.object({
   url: z.string(),
 });
 
-const gitHubIssueOutputSchema = pluginToolOutputSchema.extend({
-  target: z.literal("createIssue"),
-  ...gitHubIssueDataSchema.shape,
-});
+const gitHubIssueOutputSchema = pluginToolOutputSchema.merge(
+  gitHubIssueDataSchema.extend({
+    target: z.literal("createIssue"),
+  }),
+);
 
 function gitHubIssueToolResult(
   input: CreateGitHubIssueInput,

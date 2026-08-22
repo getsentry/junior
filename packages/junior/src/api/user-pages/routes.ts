@@ -2,8 +2,10 @@ import { Hono } from "hono";
 import { z } from "zod";
 import {
   pluginUserPageContentSchema,
-  pluginUserPageInputSchema,
+  pluginUserPageCursorSchema,
+  pluginUserPageFilterSchema,
   pluginUserPageLinksSchema,
+  pluginUserPageQuerySchema,
 } from "@sentry/junior-plugin-api";
 import {
   readPluginUserPage,
@@ -18,20 +20,17 @@ import { requireViewer } from "../viewer";
 const userPageQuerySchema = z.object({
   cursor: z.preprocess(
     (value) => value || undefined,
-    pluginUserPageInputSchema.shape.cursor,
+    pluginUserPageCursorSchema,
   ),
   filter: z.preprocess(
     (value) => value || undefined,
-    pluginUserPageInputSchema.shape.filter,
+    pluginUserPageFilterSchema,
   ),
   limit: z.preprocess(
     (value) => (value === "" ? undefined : value),
     z.coerce.number().int().min(1).max(50).default(20),
   ),
-  q: z.preprocess(
-    (value) => value || undefined,
-    pluginUserPageInputSchema.shape.query,
-  ),
+  q: z.preprocess((value) => value || undefined, pluginUserPageQuerySchema),
 });
 
 /** Create authenticated discovery and read routes for plugin user pages. */

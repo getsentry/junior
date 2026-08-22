@@ -1,6 +1,6 @@
 /** Durable scheduled-task domain types owned by Junior core. */
 import {
-  slackActorSchema,
+  actorUserIdSchema,
   slackDestinationSchema,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
@@ -29,7 +29,7 @@ export type ScheduledRunStatus = z.output<typeof scheduledRunStatusSchema>;
 
 const scheduledTaskPrincipalSchema = z
   .object({
-    slackUserId: slackActorSchema.shape.userId,
+    slackUserId: actorUserIdSchema,
     fullName: z.string().optional(),
     userName: z.string().optional(),
   })
