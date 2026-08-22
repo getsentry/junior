@@ -20,6 +20,11 @@ export interface QueueCallbackOptions<Message> {
   ): void;
   permanentError?: (error: unknown) => string | undefined;
   run(message: Message, metadata: MessageMetadata): Promise<void>;
+  /**
+   * Acknowledge without checking or running the message.
+   * Use for kill switches that must not depend on signing secrets.
+   */
+  skip?: (metadata: MessageMetadata) => boolean;
   topic: string;
   verify(value: unknown): QueueVerifyResult<Message>;
   visibilityTimeoutSeconds?: number;
@@ -31,6 +36,9 @@ export function queueCallback<Message>(options: QueueCallbackOptions<Message>) {
     value: unknown,
     metadata: MessageMetadata,
   ): Promise<void> => {
+    if (options.skip?.(metadata)) {
+      return;
+    }
     const checked = options.verify(value);
     if (checked.status === "rejected") {
       options.onRejected(checked.reason, metadata);

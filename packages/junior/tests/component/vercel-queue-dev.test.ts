@@ -3,6 +3,8 @@ import type { ConversationWorkerContext } from "@/chat/task-execution/worker";
 
 const originalNodeEnv = process.env.NODE_ENV;
 const originalQueueTopic = process.env.JUNIOR_CONVERSATION_WORK_QUEUE_TOPIC;
+const originalConversationWorkEnabled =
+  process.env.JUNIOR_CONVERSATION_WORK_ENABLED;
 const originalJuniorSecret = process.env.JUNIOR_SECRET;
 
 afterEach(async () => {
@@ -13,6 +15,12 @@ afterEach(async () => {
     delete process.env.JUNIOR_CONVERSATION_WORK_QUEUE_TOPIC;
   } else {
     process.env.JUNIOR_CONVERSATION_WORK_QUEUE_TOPIC = originalQueueTopic;
+  }
+  if (originalConversationWorkEnabled === undefined) {
+    delete process.env.JUNIOR_CONVERSATION_WORK_ENABLED;
+  } else {
+    process.env.JUNIOR_CONVERSATION_WORK_ENABLED =
+      originalConversationWorkEnabled;
   }
   if (originalJuniorSecret === undefined) {
     delete process.env.JUNIOR_SECRET;
@@ -339,6 +347,72 @@ describe("registerVercelConversationWorkDevConsumer", () => {
     });
     expect(retry(missingSecretError, metadata)).toBeUndefined();
     expect(retry(new Error("runner failed"), metadata)).toBeUndefined();
+  });
+
+  it("acks disabled conversation work before sign checks", async () => {
+    const routeHandler = vi.fn();
+    const handleCallback = vi.fn(() => routeHandler);
+
+    vi.doMock("@vercel/queue", () => ({
+      QueueClient: vi.fn(),
+      handleCallback,
+      registerDevConsumer: vi.fn(),
+    }));
+
+    process.env.JUNIOR_CONVERSATION_WORK_ENABLED = "false";
+    delete process.env.JUNIOR_SECRET;
+
+    const { createVercelConversationWorkCallback } =
+      await import("@/chat/task-execution/vercel-callback");
+
+    const run = vi.fn(async (context: ConversationWorkerContext) => {
+      await context.attempt.ack();
+      return { status: "completed" as const };
+    });
+    createVercelConversationWorkCallback({ run });
+
+    const call = handleCallback.mock.calls[0] as unknown as
+      | [
+          (
+            message: unknown,
+            metadata: {
+              consumerGroup: string;
+              createdAt: Date;
+              deliveryCount: number;
+              expiresAt: Date;
+              messageId: string;
+              region: string;
+              topicName: string;
+            },
+          ) => Promise<void>,
+        ]
+      | undefined;
+    const handler = call?.[0];
+    if (!handler) {
+      throw new Error("Expected conversation queue handler");
+    }
+
+    await expect(
+      handler(
+        {
+          schemaVersion: 2,
+          conversationId: "slack:C123:1712345.0001",
+          signature: "signature",
+          signatureVersion: "v2",
+          signedAtMs: 1_000,
+        },
+        {
+          consumerGroup: "consumer",
+          createdAt: new Date(1_000),
+          deliveryCount: 3,
+          expiresAt: new Date(2_000),
+          messageId: "msg_disabled",
+          region: "iad1",
+          topicName: "topic",
+        },
+      ),
+    ).resolves.toBeUndefined();
+    expect(run).not.toHaveBeenCalled();
   });
 
   it("does not register outside local development", async () => {

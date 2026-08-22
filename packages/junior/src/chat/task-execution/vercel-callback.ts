@@ -109,16 +109,20 @@ function conversationWorkCallback(
     onRejected: logConversationQueueMessageRejected,
     permanentError: (error) =>
       isConversationQueueMessageRejectedError(error) ? error.reason : undefined,
-    run: async (message, metadata) => {
-      if (!getChatConfig().conversationWorkEnabled) {
-        logWarn("conversation.work.processing.disabled", {
-          "app.queue.consumer_group": metadata.consumerGroup,
-          "app.queue.delivery_count": metadata.deliveryCount,
-          "app.queue.message_id": metadata.messageId,
-          "app.queue.topic_name": metadata.topicName,
-        });
-        return;
+    // Kill switch must ack before sign checks so a missing secret cannot retry.
+    skip: (metadata) => {
+      if (getChatConfig().conversationWorkEnabled) {
+        return false;
       }
+      logWarn("conversation.work.processing.disabled", {
+        "app.queue.consumer_group": metadata.consumerGroup,
+        "app.queue.delivery_count": metadata.deliveryCount,
+        "app.queue.message_id": metadata.messageId,
+        "app.queue.topic_name": metadata.topicName,
+      });
+      return true;
+    },
+    run: async (message) => {
       await processConversationQueueMessage(message, options);
     },
     topic: resolveConversationWorkQueueTopic(options),
