@@ -225,7 +225,7 @@ function activeConversation(nowMs: number): ConversationDetailReport {
               content:
                 "Checkout latency investigations start with the deployment comparison dashboard.",
               observedAtMs: Date.parse(startedAt) - 86_400_000,
-              scope: "conversation",
+              scope: "public",
               kind: "procedure",
             },
           ],

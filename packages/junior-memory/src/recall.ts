@@ -50,7 +50,7 @@ const recalledMemorySchema = z
     id: z.string().min(1),
     content: z.string().min(1).max(MAX_MEMORY_LINE_CHARS),
     observedAtMs: z.number().finite(),
-    scope: z.enum(["personal", "conversation"]),
+    scope: z.enum(["private", "public"]),
     kind: z.enum(["preference", "procedure", "knowledge"]),
   })
   .strict();
@@ -64,12 +64,6 @@ export const memoryRecallContextSchema = z
   .strict();
 
 type RecalledMemory = z.output<typeof recalledMemorySchema>;
-
-function recallViewScope(
-  scope: MemoryRecord["scope"],
-): RecalledMemory["scope"] {
-  return scope === "private" ? "personal" : "conversation";
-}
 
 function selectPromptMemories(memories: MemoryRecord[]): RecalledMemory[] {
   const header = "Relevant memories for this request:";
@@ -88,7 +82,7 @@ function selectPromptMemories(memories: MemoryRecord[]): RecalledMemory[] {
       id: memory.id,
       content,
       observedAtMs: memory.observedAtMs,
-      scope: recallViewScope(memory.scope),
+      scope: memory.scope,
       kind: memory.kind,
     });
     totalChars += line.length + 1;

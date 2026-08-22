@@ -43,7 +43,6 @@ const KNOWN_TOOL_INPUT_ERROR_MESSAGES = new Set([
   "Memory id is required.",
   "Memory was not found in the current context.",
   "Memory id prefix is ambiguous.",
-  "Personal memory requires actor context.",
   "User-subject memory requires actor context.",
 ]);
 

@@ -48,7 +48,7 @@ export function createMemoryUserPage(): PluginUserPageDefinition {
     label: "Memories",
     navigation: "primary",
     description:
-      "Personal and public memories Junior can use across conversations.",
+      "Public memories and private memories available to your linked identities.",
     async read(ctx, input) {
       const memories = createViewerMemories(ctx.db as MemoryDb, ctx.viewer);
       const page = await memories.list({

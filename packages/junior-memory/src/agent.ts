@@ -349,7 +349,7 @@ function existingMemoriesContext(request: ExtractSessionRequest): string {
 
 /**
  * Passive extraction offers personal preferences only on single-actor runs.
- * Multi-actor runs restrict extraction to conversation-scoped kinds.
+ * Multi-actor runs restrict extraction to conversation-subject kinds.
  */
 function allowedExtractionKinds(actorCount: number): Set<MemoryKind> {
   return actorCount === 1

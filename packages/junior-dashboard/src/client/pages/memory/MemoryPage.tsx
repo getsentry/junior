@@ -208,7 +208,7 @@ function MemoryLibrary(props: {
             value: "",
           },
           {
-            count: dashboardQuery.data?.stats?.personal,
+            count: dashboardQuery.data?.stats?.private,
             label: "Private",
             value: "private",
           },
@@ -304,14 +304,14 @@ function MemorySummary(props: { data: MemoryDashboardData }) {
   const { stats } = props.data;
   const items = [
     {
-      detail: "personal + public",
+      detail: "private + public",
       label: "Total active",
       value: stats.active.toLocaleString("en-US"),
     },
     {
-      detail: "private to you",
-      label: "Personal",
-      value: stats.personal.toLocaleString("en-US"),
+      detail: "not visible to others",
+      label: "Private",
+      value: stats.private.toLocaleString("en-US"),
     },
     {
       detail: "workspace shareable",
@@ -360,11 +360,11 @@ function MemoryKindPanel(props: { data: MemoryDashboardData }) {
         What Junior remembers
       </h2>
       <p className="mt-1 mb-0 font-mono text-xs leading-relaxed text-dashboard-text-muted">
-        Across personal and public scopes.
+        Across private and public scopes.
       </p>
       <div className="mt-5 grid gap-px overflow-hidden rounded border border-white/[0.06] bg-white/[0.055]">
         <OverviewBreakdownRow
-          detail="Almost entirely personal"
+          detail="Actor preferences and habits"
           icon={UserRound}
           label="Preferences"
           value={stats.preference}
@@ -549,9 +549,7 @@ function shortDate(value: string): string {
   return value.split(",").slice(0, 2).join(",");
 }
 
-function memoryKindTone(
-  kind: string,
-): "accent" | "info" | "warning" {
+function memoryKindTone(kind: string): "accent" | "info" | "warning" {
   if (kind === "Preference") return "info";
   if (kind === "Procedure") return "warning";
   return "accent";

@@ -6,7 +6,7 @@ import { fetchDashboardJson } from "../../http";
 const memoryDaySchema = z
   .object({
     date: z.iso.date(),
-    personal: z.number().int().min(0),
+    private: z.number().int().min(0),
     public: z.number().int().min(0),
   })
   .strict();
@@ -33,7 +33,7 @@ export const memoryDashboardSchema = z
         embedded: z.number().int().min(0),
         explicit: z.number().int().min(0),
         knowledge: z.number().int().min(0),
-        personal: z.number().int().min(0),
+        private: z.number().int().min(0),
         preference: z.number().int().min(0),
         procedure: z.number().int().min(0),
         public: z.number().int().min(0),

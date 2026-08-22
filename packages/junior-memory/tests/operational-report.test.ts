@@ -105,8 +105,8 @@ describe("memory operational report", () => {
         id: "2026-07-28",
         label: "2026-07-28",
         values: {
-          conversation: 0,
-          personal: 1,
+          private: 1,
+          public: 0,
         },
       });
     } finally {
@@ -133,8 +133,8 @@ describe("memory operational report", () => {
           },
           { label: "extraction cost · 30d", value: "$0.00" },
           { label: "created · 30d", value: "0" },
-          { label: "personal", value: "0" },
-          { label: "conversation", value: "0" },
+          { label: "private", value: "0" },
+          { label: "public", value: "0" },
           {
             label: "embedding coverage",
             tone: "neutral",
@@ -153,8 +153,8 @@ describe("memory operational report", () => {
         expect.objectContaining({
           id: "memories-created",
           series: [
-            { key: "personal", label: "Personal" },
-            { key: "conversation", label: "Conversation" },
+            { key: "private", label: "Private" },
+            { key: "public", label: "Public" },
           ],
           timeRangeDays: [7, 30, 90],
           title: "Memories created",
@@ -164,7 +164,7 @@ describe("memory operational report", () => {
       expect(report.widgets?.[0]?.categories).toHaveLength(90);
       expect(
         report.widgets?.[1]?.categories.every((day) => {
-          return day.values.personal === 0 && day.values.conversation === 0;
+          return day.values.private === 0 && day.values.public === 0;
         }),
       ).toBe(true);
     } finally {
@@ -182,7 +182,7 @@ describe("memory operational report", () => {
       });
       await store.createMemory({
         content: "Use compact pull request summaries.",
-        idempotencyKey: "report-personal",
+        idempotencyKey: "report-private",
         kind: "preference",
       });
       await store.createConversationMemory({
@@ -221,16 +221,16 @@ describe("memory operational report", () => {
         { label: "active memories", tone: "good", value: "2" },
         { label: "extraction cost · 30d", value: "$0.0042" },
         { label: "created · 30d", value: "3" },
-        { label: "personal", value: "2" },
-        { label: "conversation", value: "0" },
+        { label: "private", value: "2" },
+        { label: "public", value: "0" },
         { label: "embedding coverage", tone: "good", value: "100%" },
       ]);
       expect(report.widgets?.[1]?.categories.at(-1)).toEqual({
         id: "2026-07-28",
         label: "2026-07-28",
         values: {
-          conversation: 0,
-          personal: 3,
+          private: 3,
+          public: 0,
         },
       });
       expect(report.widgets?.[0]?.categories.at(-1)).toEqual({

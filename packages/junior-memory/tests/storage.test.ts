@@ -2599,7 +2599,7 @@ describe("memory plugin storage", () => {
         automatic: 2,
         explicit: 1,
         knowledge: 3,
-        personal: 0,
+        private: 0,
         preference: 1,
         procedure: 0,
         public: 4,
@@ -2617,7 +2617,7 @@ describe("memory plugin storage", () => {
       });
       expect(dashboard.days.find((day) => day.date === "2026-06-19")).toEqual({
         date: "2026-06-19",
-        personal: 0,
+        private: 0,
         public: 4,
       });
 
@@ -3910,14 +3910,14 @@ WHERE id = '${superseded.memory.id}'
               content: conversation.memory.content,
               kind: conversation.memory.kind,
               observedAtMs: conversation.memory.observedAtMs,
-              scope: "personal",
+              scope: "private",
             },
             {
               id: personal.memory.id,
               content: personal.memory.content,
               kind: personal.memory.kind,
               observedAtMs: personal.memory.observedAtMs,
-              scope: "personal",
+              scope: "private",
             },
           ],
         },
@@ -4053,7 +4053,7 @@ WHERE id = '${superseded.memory.id}'
               content: conversation.memory.content,
               kind: conversation.memory.kind,
               observedAtMs: conversation.memory.observedAtMs,
-              scope: "conversation",
+              scope: "public",
             },
           ],
         },

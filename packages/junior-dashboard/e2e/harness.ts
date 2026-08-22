@@ -108,7 +108,8 @@ export async function mockDashboardApis(page: Page) {
     await route.fulfill({
       json: [
         {
-          description: "Personal facts Junior remembers about you.",
+          description:
+            "Public memories and private memories available to your linked identities.",
           id: "memories",
           label: "Memories",
           navigation: "primary",
@@ -506,7 +507,7 @@ export async function mockDashboardApis(page: Page) {
       const date = new Date(start + index * 24 * 60 * 60 * 1_000);
       return {
         date: date.toISOString().slice(0, 10),
-        personal: index % 9 === 0 ? 2 : index % 5 === 0 ? 1 : 0,
+        private: index % 9 === 0 ? 2 : index % 5 === 0 ? 1 : 0,
         public:
           index % 13 === 0 ? 3 : index % 4 === 0 ? 2 : index % 3 === 0 ? 1 : 0,
       };
@@ -532,7 +533,7 @@ export async function mockDashboardApis(page: Page) {
           embedded: 201,
           explicit: 20,
           knowledge: 154,
-          personal: 24,
+          private: 24,
           preference: 12,
           procedure: 44,
           public: 186,

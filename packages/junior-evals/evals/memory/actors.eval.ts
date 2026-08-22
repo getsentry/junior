@@ -18,7 +18,7 @@ import {
  * Multi-actor provenance evals for passive memory extraction.
  *
  * Contract under test (packages/junior-memory/README.md, issue #773): a
- * personal-scope memory may only be created from statements authored by the
+ * user-subject memory may only be created from statements authored by the
  * actor who will own it. Another participant's first-person statements in
  * a shared thread are evidence for conversation-scoped knowledge at most,
  * never for the actor's personal memories.
@@ -154,7 +154,7 @@ describeEval("Memory Multi-Actor Provenance", slackEvals, (it) => {
     // whether Alice happens to own a well-phrased personal memory of her own
     // words is an extraction-quality question this eval does not contract. The
     // provenance guarantee is only that Bob's preference content never lands in
-    // Alice's personal scope, no matter how the extractor phrases it.
+    // Alice's user subject, no matter how the extractor phrases it.
     const alicePersonal = actorMemoriesOwnedBy(rows, ALICE.user_id);
     for (const memory of alicePersonal) {
       const content = memory.content.toLowerCase();
@@ -213,7 +213,7 @@ describeEval("Memory Multi-Actor Provenance", slackEvals, (it) => {
     const rows = await readMemories(conflictingPreferencesThread);
     // Any personal memory owned by Alice must come from Alice's own words.
     // Bob's customer-impact-first preference must not appear in her
-    // personal scope, no matter how the extractor phrases it.
+    // user subject, no matter how the extractor phrases it.
     const alicePersonal = actorMemoriesOwnedBy(rows, ALICE.user_id);
     for (const memory of alicePersonal) {
       expect(memory.content.toLowerCase()).not.toMatch(/customer[ -]?impact/);
@@ -262,7 +262,7 @@ describeEval("Memory Multi-Actor Provenance", slackEvals, (it) => {
 
     const rows = await readMemories(batchedMentionThread);
     // Bob's first-person formatting preference must never land in Alice's
-    // personal scope just because he explicitly steered her active turn.
+    // user subject just because he explicitly steered her active turn.
     const alicePersonal = actorMemoriesOwnedBy(rows, ALICE.user_id);
     for (const memory of alicePersonal) {
       expect(memory.content.toLowerCase()).not.toMatch(/bullet/);
@@ -335,8 +335,8 @@ describeEval("Memory Multi-Actor Provenance", slackEvals, (it) => {
         scopeKey: memory.scopeKey,
       })),
     ).toEqual([]);
-    // Preferences are the only route into personal scope for passive
-    // extraction, so the actor's personal scope must stay empty too.
+    // Preferences are the only route into a user subject for passive
+    // extraction, so the actor's user-subject memories must stay empty too.
     expect(
       actorMemoriesOwnedBy(rows, ALICE.user_id).map((memory) => ({
         content: memory.content,
@@ -404,7 +404,7 @@ describeEval("Memory Multi-Actor Provenance", slackEvals, (it) => {
     const rows = await readMemories(sharedKnowledgeThread);
     // Guard against over-tightening: public operational knowledge from a
     // non-actor remains valid conversation-scope evidence. Only the
-    // personal scope requires actor-authored provenance.
+    // user subjects require actor-authored provenance.
     expect(actorMemoriesOwnedBy(rows, ALICE.user_id)).toEqual([]);
     const conversationRows = rows.filter(
       (memory) => memory.scope === "public" && memory.archivedAtMs === null,
