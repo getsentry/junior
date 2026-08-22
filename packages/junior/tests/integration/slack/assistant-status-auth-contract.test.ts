@@ -11,6 +11,7 @@ import {
   resetSlackApiMockState,
 } from "../../msw/handlers/slack-api";
 
+
 const SIGNING_SECRET = "test-signing-secret";
 const DEFAULT_BOT_TOKEN = "xoxb-default";
 const TEAM_BOT_TOKEN = "xoxb-team";
@@ -44,11 +45,13 @@ function createFakeScheduler() {
       canceled: false,
     };
     timers.push(timer);
-    return timer.id as unknown as ReturnType<typeof setTimeout>;
+        // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+        return timer.id as ReturnType<typeof setTimeout>;
   };
 
   const clearTimer = (timer: ReturnType<typeof setTimeout>) => {
-    const id = timer as unknown as number;
+        // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+        const id = timer as number;
     const entry = timers.find((candidate) => candidate.id === id);
     if (entry) {
       entry.canceled = true;

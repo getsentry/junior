@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { createSlackSource } from "@sentry/junior-plugin-api";
 import { createSlackCanvasCreateTool } from "@/chat/slack/tools/canvas/create";
 import { createOperationKey } from "@/chat/tools/idempotency";
 import { createSlackListAddItemsTool } from "@/chat/slack/tools/list/add-items";
@@ -19,6 +18,10 @@ import {
   queueSlackApiError,
   queueSlackApiResponse,
 } from "../msw/handlers/slack-api";
+import {
+  createSlackSource,
+} from "@sentry/junior-plugin-api";
+
 
 function createToolState(): ToolState {
   const operationResultCache = new Map<string, unknown>();
@@ -227,7 +230,8 @@ describe("tool idempotency", () => {
   it("throws when creating a canvas without assistant channel context", async () => {
     const state = createToolState();
     const tool = createSlackCanvasCreateTool(
-      LOCAL_CONTEXT as unknown as SlackToolContext,
+      // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+      (LOCAL_CONTEXT) as SlackToolContext,
       state,
     );
 

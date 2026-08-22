@@ -1,6 +1,70 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ConversationWorkerContext } from "@/chat/task-execution/worker";
 
+type PluginQueueCall =
+  | [
+      (
+        message: unknown,
+        metadata: {
+          consumerGroup: string;
+          createdAt: Date;
+          deliveryCount: number;
+          expiresAt: Date;
+          messageId: string;
+          region: string;
+          topicName: string;
+        },
+      ) => Promise<void>,
+      {
+        retry?: (
+          error: unknown,
+          metadata: {
+            consumerGroup: string;
+            createdAt: Date;
+            deliveryCount: number;
+            expiresAt: Date;
+            messageId: string;
+            region: string;
+            topicName: string;
+          },
+        ) => unknown;
+      },
+    ]
+  | undefined;
+
+type ConversationQueueCall =
+  | [
+      (
+        message: unknown,
+        metadata: {
+          consumerGroup: string;
+          createdAt: Date;
+          deliveryCount: number;
+          expiresAt: Date;
+          messageId: string;
+          region: string;
+          topicName: string;
+        },
+      ) => Promise<void>,
+      {
+        retry?: (
+          error: unknown,
+          metadata: {
+            consumerGroup: string;
+            createdAt: Date;
+            deliveryCount: number;
+            expiresAt: Date;
+            messageId: string;
+            region: string;
+            topicName: string;
+          },
+        ) => unknown;
+        visibilityTimeoutSeconds?: number;
+      },
+    ]
+  | undefined;
+
+
 const originalNodeEnv = process.env.NODE_ENV;
 const originalQueueTopic = process.env.JUNIOR_CONVERSATION_WORK_QUEUE_TOPIC;
 const originalConversationWorkEnabled =
@@ -47,10 +111,8 @@ describe("plugin task Vercel queue integration", () => {
       processPluginTask,
     }));
 
-    const {
-      createVercelPluginTaskCallback,
-      signPluginTaskQueueMessage,
-    } = await import("@/chat/plugins/task-queue");
+    const { createVercelPluginTaskCallback, signPluginTaskQueueMessage } =
+      await import("@/chat/plugins/task-queue");
 
     expect(createVercelPluginTaskCallback()).toBe(routeHandler);
 
@@ -72,14 +134,8 @@ describe("plugin task Vercel queue integration", () => {
       region: "iad1",
       topicName: "topic",
     };
-    const call = handleCallback.mock.calls[0] as unknown as
-      | [
-          (message: unknown, metadata: TestQueueMetadata) => Promise<void>,
-          {
-            retry?: (error: unknown, metadata: TestQueueMetadata) => unknown;
-          },
-        ]
-      | undefined;
+    // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+    const call = handleCallback.mock.calls[0] as PluginQueueCall;
     const handler = call?.[0];
     const retry = call?.[1].retry;
     expect(handler).toEqual(expect.any(Function));
@@ -138,9 +194,8 @@ describe("plugin task Vercel queue integration", () => {
 
     process.env.JUNIOR_SECRET = "plugin-task-secret";
 
-    const { PLUGIN_TASK_QUEUE_TOPIC, pluginTaskId, sendVercelPluginTask } = await import(
-      "@/chat/plugins/task-queue"
-    );
+    const { PLUGIN_TASK_QUEUE_TOPIC, pluginTaskId, sendVercelPluginTask } =
+      await import("@/chat/plugins/task-queue");
     const message = {
       name: "extractMemories",
       params: {
@@ -250,15 +305,8 @@ describe("registerVercelConversationWorkDevConsumer", () => {
       region: "iad1",
       topicName: "topic",
     };
-    const call = handleCallback.mock.calls[0] as unknown as
-      | [
-          (message: unknown, metadata: TestQueueMetadata) => Promise<void>,
-          {
-            retry?: (error: unknown, metadata: TestQueueMetadata) => unknown;
-            visibilityTimeoutSeconds?: number;
-          },
-        ]
-      | undefined;
+    // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+    const call = handleCallback.mock.calls[0] as ConversationQueueCall;
     const handler = call?.[0];
     const retry = call?.[1].retry;
     expect(handler).toEqual(expect.any(Function));
@@ -367,22 +415,8 @@ describe("registerVercelConversationWorkDevConsumer", () => {
     });
     createVercelConversationWorkCallback({ run });
 
-    const call = handleCallback.mock.calls[0] as unknown as
-      | [
-          (
-            message: unknown,
-            metadata: {
-              consumerGroup: string;
-              createdAt: Date;
-              deliveryCount: number;
-              expiresAt: Date;
-              messageId: string;
-              region: string;
-              topicName: string;
-            },
-          ) => Promise<void>,
-        ]
-      | undefined;
+    // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+    const call = (handleCallback.mock.calls[0]) as | [ ( message: unknown, metadata: { consumerGroup: string; createdAt: Date; deliveryCount: number; expiresAt: Date; messageId: string; region: string; topicName: string; }, ) => Promise<void>, ] | undefined;
     const handler = call?.[0];
     if (!handler) {
       throw new Error("Expected conversation queue handler");

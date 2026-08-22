@@ -1,9 +1,9 @@
 import {
+  type PluginEgress,
   definePluginTool,
   PluginToolInputError,
   pluginToolOutputSchema,
   type PluginToolOutput,
-  type ToolRegistrationHookContext,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import { botUserIdFromEmail } from "../webhooks/ownership.js";
@@ -81,7 +81,7 @@ function githubError(payload: unknown): string {
 
 /** Resolve one review thread after GitHub proves it belongs to a Junior-authored PR. */
 export function createGitHubResolvePullRequestReviewThreadTool(
-  ctx: ToolRegistrationHookContext,
+  ctx: { egress: PluginEgress },
   botEmail: string | undefined,
 ) {
   return definePluginTool({

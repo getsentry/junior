@@ -2,8 +2,10 @@ import {
   definePluginTool,
   PluginToolInputError,
   pluginToolOutputSchema,
+  type PluginLogger,
+  type PluginSandbox,
   type PluginToolOutput,
-  type ToolRegistrationHookContext,
+  type PluginWorkspaceToolContext,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import { isReservedSandboxDirectory } from "../sandbox-paths.js";
@@ -87,7 +89,10 @@ function commandSignal(
 }
 
 async function removePartialClone(
-  ctx: ToolRegistrationHookContext,
+  ctx: {
+    log: PluginLogger;
+    sandbox: PluginSandbox;
+  },
   path: string,
 ): Promise<void> {
   try {
@@ -112,9 +117,11 @@ async function removePartialClone(
 }
 
 /** Clone one GitHub repository into the sandbox as an ad-hoc checkout. */
-export function createGitHubCloneRepositoryTool(
-  ctx: ToolRegistrationHookContext,
-) {
+export function createGitHubCloneRepositoryTool(ctx: {
+  log: PluginLogger;
+  sandbox: PluginSandbox;
+  workspaces: PluginWorkspaceToolContext;
+}) {
   return definePluginTool({
     annotations: {
       // Remote GitHub effect is contents-read only. Sandbox checkout creation is

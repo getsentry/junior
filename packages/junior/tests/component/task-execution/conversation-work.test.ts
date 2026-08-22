@@ -58,7 +58,6 @@ import {
   observeConversationMutationLock,
 } from "../../fixtures/conversation-work";
 import { readProxyProperty } from "../../fixtures/proxy-property";
-
 const OTHER_SLACK_DESTINATION = {
   platform: "slack",
   teamId: "T123",
@@ -213,7 +212,7 @@ describe("conversation work execution", () => {
     const state = getStateAdapter();
     await state.connect();
     const legacyMessage = {
-      ...(inboundMessage("legacy") as unknown as Record<string, unknown>),
+      ...(inboundMessage("legacy") as Record<string, unknown>),
     };
     delete legacyMessage.destination;
     const legacyWork = {
@@ -1797,7 +1796,7 @@ describe("conversation work execution", () => {
     const mutationLockKey = `junior:conversation:v2:mutation:${CONVERSATION_ID}`;
     let holdCompletion = false;
     const workerState = new Proxy(state, {
-      get(target, prop, receiver) {
+      get(target, prop) {
         if (prop === "acquireLock") {
           return async (key: string, ttlMs: number) => {
             if (holdCompletion && key === mutationLockKey) {
@@ -1808,7 +1807,7 @@ describe("conversation work execution", () => {
             return target.acquireLock(key, ttlMs);
           };
         }
-        const value = Reflect.get(target, prop, receiver);
+        const value = readProxyProperty(target, prop);
         return typeof value === "function" ? value.bind(target) : value;
       },
     }) as StateAdapter;

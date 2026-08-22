@@ -33,6 +33,7 @@ import {
 } from "../../fixtures/conversation-work";
 import { readProxyProperty } from "../../fixtures/proxy-property";
 
+
 function createRecordingStateAdapter() {
   const values = new Map<string, unknown>();
   const set = vi.fn(async (key: string, value: unknown, _ttlMs?: number) => {
@@ -40,19 +41,20 @@ function createRecordingStateAdapter() {
     return undefined;
   });
   return {
-    state: {
-      connect: async () => {},
-      disconnect: async () => {},
-      get: async (key: string) => values.get(key),
-      set,
-      acquireLock: async (threadId: string) => ({
-        threadId,
-        token: `lock:${threadId}`,
-        expiresAt: Date.now() + 10_000,
-      }),
-      extendLock: async () => true,
-      releaseLock: async () => {},
-    } as unknown as StateAdapter,
+    // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+    state: ({
+    connect: async () => {},
+    disconnect: async () => {},
+    get: async (key: string) => values.get(key),
+    set,
+    acquireLock: async (threadId: string) => ({
+      threadId,
+      token: `lock:${threadId}`,
+      expiresAt: Date.now() + 10_000,
+    }),
+    extendLock: async () => true,
+    releaseLock: async () => {},
+  }) as StateAdapter,
     set,
   };
 }

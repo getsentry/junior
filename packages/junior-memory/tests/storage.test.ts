@@ -49,7 +49,6 @@ import type {
   MemorySupersessionDecider,
   MemorySupersessionInput,
 } from "../src/store";
-
 const TEST_NOW_MS = Date.parse("2026-06-19T12:00:00.000Z");
 const TEST_EMBEDDING_DIMENSIONS = 1536;
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -1791,9 +1790,11 @@ describe("memory plugin storage", () => {
       ]);
 
       const viewer = viewerUser([runtime.actor], "dashboard@example.com");
-      const listed = await createViewerMemories(memoryDb(fixture), viewer).list({
-        limit: 10,
-      });
+      const listed = await createViewerMemories(memoryDb(fixture), viewer).list(
+        {
+          limit: 10,
+        },
+      );
       expect(listed.memories.map((memory) => memory.id)).toEqual([
         created.memory.id,
       ]);
@@ -5263,19 +5264,23 @@ INSERT INTO junior_memory_memories (
       });
 
       await expect(
-        store.createMemory({
-          content: "Prefers short PR summaries.",
-          kind: "preference",
-          idempotencyKey: "memory-test:smuggle",
-          scope: "conversation",
-          subjectKey: "slack:T123:U999",
-          subjectType: "general",
-        } as unknown as Parameters<typeof store.createMemory>[0]),
+        store.createMemory(
+          ({
+            content: "Prefers short PR summaries.",
+            kind: "preference",
+            idempotencyKey: "memory-test:smuggle",
+            scope: "conversation",
+            subjectKey: "slack:T123:U999",
+            subjectType: "general",
+          } as Parameters<typeof store.createMemory>[0]),
+        ),
       ).rejects.toThrow(/Invalid input|Unrecognized key/);
       await expect(
-        store.listMemories({
-          actor: { platform: "local", userId: "local-user" },
-        } as unknown as Parameters<typeof store.listMemories>[0]),
+        store.listMemories(
+          ({
+            actor: { platform: "local", userId: "local-user" },
+          } as Parameters<typeof store.listMemories>[0]),
+        ),
       ).rejects.toThrow(/Invalid input|Unrecognized key/);
 
       await expect(store.listMemories({})).resolves.toEqual([]);

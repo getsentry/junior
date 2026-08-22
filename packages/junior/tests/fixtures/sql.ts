@@ -12,7 +12,6 @@ import {
   hasJuniorPostgresTestDatabase,
 } from "./postgres/fixture";
 import { closeDb, getSqlExecutor } from "@/chat/db";
-
 export type JuniorSqlConversationInsert =
   typeof juniorConversations.$inferInsert;
 
@@ -41,7 +40,7 @@ export async function createLocalJuniorSqlFixture(): Promise<LocalJuniorSqlFixtu
 
   const sql: JuniorSqlExecutor = {
     close: () => fixture.close(),
-    db: () => fixture.db() as unknown as JuniorDatabase,
+    db: () => (fixture.db() as JuniorDatabase),
     execute: (statement, params) => fixture.execute(statement, params),
     migrate: (config) => migrate(fixture.db(), config),
     query: <T = unknown>(statement: string, params?: readonly unknown[]) =>

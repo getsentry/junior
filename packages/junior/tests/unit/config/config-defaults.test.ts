@@ -1,5 +1,4 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-
 vi.mock("@/chat/plugins/catalog-runtime", () => ({
   pluginCatalogRuntime: {
     isConfigKey: (key: string) =>
@@ -45,13 +44,13 @@ describe("install config defaults", () => {
 
   it("rejects null defaults", () => {
     expect(() =>
-      setConfigDefaults(null as unknown as Record<string, unknown>),
+      setConfigDefaults(null),
     ).toThrow("configDefaults must be an object keyed by plugin config key");
   });
 
   it("rejects array defaults", () => {
     expect(() =>
-      setConfigDefaults([] as unknown as Record<string, unknown>),
+      setConfigDefaults([]),
     ).toThrow("configDefaults must be an object keyed by plugin config key");
   });
 
