@@ -335,8 +335,7 @@ describe("registerVercelConversationWorkDevConsumer", () => {
       missingSecretError = error;
     });
     expect(missingSecretError).toMatchObject({
-      message:
-        "Conversation queue message verification unavailable: missing_secret",
+      message: "Queue message verification unavailable: missing_secret",
     });
     expect(retry(missingSecretError, metadata)).toBeUndefined();
     expect(retry(new Error("runner failed"), metadata)).toBeUndefined();
