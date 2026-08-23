@@ -11,9 +11,8 @@ import type { SlackAdapter } from "@chat-adapter/slack";
 import { createSlackSource, type Destination } from "@sentry/junior-plugin-api";
 import { botConfig } from "@/chat/config";
 import {
+  defaultModelId,
   modelIdForProfile,
-  STANDARD_MODEL_PROFILE,
-  standardModelId,
   type ModelProfile,
 } from "@/chat/model-profile";
 import { getMessageTimestamp } from "@/chat/slack/message/identity";
@@ -488,7 +487,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
         destinationName: channelId,
         runId,
         assistantUserName: botConfig.userName,
-        modelId: standardModelId(botConfig),
+        modelId: defaultModelId(botConfig),
       },
       async () => {
         const content = parseContent(message);
@@ -1187,7 +1186,7 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
                 piMessages,
                 modelId: modelIdForProfile(
                   botConfig,
-                  loadedPiMessages.modelProfile ?? STANDARD_MODEL_PROFILE,
+                  loadedPiMessages.modelProfile ?? botConfig.defaultProfile,
                 ),
               });
             if (compaction.compacted) {

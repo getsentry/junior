@@ -53,7 +53,11 @@ describe("projectConversationEvents", () => {
       triggeringToolCallId: "handoff-call",
       replacementHistory: [],
     }),
-    event(1, { type: "mcp_provider_connected", provider: "github", credentialSubjectId: "U123" }),
+    event(1, {
+      type: "mcp_provider_connected",
+      provider: "github",
+      credentialSubjectId: "U123",
+    }),
     event(2, {
       type: "user_message",
       content: firstMessage.content,
@@ -105,8 +109,10 @@ describe("projectConversationEvents", () => {
     }),
   ];
 
-  it("projects messages, authorization observations, provenance, and model binding", () => {
-    const projection = projectConversationEvents(events);
+  it("projects messages, authorization observations, provenance, and model profile", () => {
+    const projection = projectConversationEvents(events, {
+      defaultProfile: "default",
+    });
 
     expect(projection).toEqual({
       messages: [
@@ -130,17 +136,20 @@ describe("projectConversationEvents", () => {
       ],
       seqs: [2, 3, 6],
       modelProfile: "coding",
-      modelId: "openai/gpt-5.4",
+      replacementSeq: 0,
     });
   });
 
-  it("stops at maxSeq while retaining the epoch model binding", () => {
-    const projection = projectConversationEvents(events, { maxSeq: 3 });
+  it("stops at maxSeq while retaining the model profile", () => {
+    const projection = projectConversationEvents(events, {
+      defaultProfile: "default",
+      maxSeq: 3,
+    });
 
     expect(projection).toMatchObject({
       seqs: [2, 3],
       modelProfile: "coding",
-      modelId: "openai/gpt-5.4",
+      replacementSeq: 0,
     });
     expect(projection.messages).toHaveLength(2);
   });
@@ -162,41 +171,45 @@ describe("projectConversationEvents", () => {
       timestamp: 2_002,
     };
 
-    const projection = projectConversationEvents([
-      event(10, {
-        type: "compaction",
-        modelProfile: "standard",
-        modelId: "openai/gpt-5.4",
-        replacementHistory: [
-          {
-            item: {
-              type: "user_message",
-              content: retained.content,
-              timestamp: retained.timestamp,
-              provenance: instructionProvenance,
+    const projection = projectConversationEvents(
+      [
+        event(10, {
+          type: "compaction",
+          modelProfile: "standard",
+          modelId: "openai/gpt-5.4",
+          replacementHistory: [
+            {
+              item: {
+                type: "user_message",
+                content: retained.content,
+                timestamp: retained.timestamp,
+                provenance: instructionProvenance,
+              },
+              sourceEventSeq: 4,
             },
-            sourceEventSeq: 4,
-          },
-          {
-            item: {
-              type: "user_message",
-              content: summary.content,
-              timestamp: summary.timestamp,
-              provenance: { authority: "context" },
+            {
+              item: {
+                type: "user_message",
+                content: summary.content,
+                timestamp: summary.timestamp,
+                provenance: { authority: "context" },
+              },
             },
-          },
-        ],
-      }),
-      event(11, {
-        type: "user_message",
-        content: later.content,
-        timestamp: later.timestamp,
-        provenance: { authority: "context" },
-      }),
-    ]);
+          ],
+        }),
+        event(11, {
+          type: "user_message",
+          content: later.content,
+          timestamp: later.timestamp,
+          provenance: { authority: "context" },
+        }),
+      ],
+      { defaultProfile: "default" },
+    );
 
     expect(projection.messages).toEqual([retained, summary, later]);
     expect(projection.seqs).toEqual([4, 10, 11]);
+    expect(projection.replacementSeq).toBe(10);
   });
 
   it("round-trips native Pi message roles without leaking provenance", () => {
@@ -243,26 +256,37 @@ describe("projectConversationEvents", () => {
       payload: { reason: "old-runtime-behavior" },
     });
 
-    expect(() => projectConversationEvents([unsupported])).toThrow(
+    expect(() =>
+      projectConversationEvents([unsupported], { defaultProfile: "default" }),
+    ).toThrow(
       'Unsupported conversation event "old_context_marker" at seq 12 (schema version 1)',
     );
   });
 
+  it("starts an event history on the declared default profile", () => {
+    expect(
+      projectConversationEvents([], { defaultProfile: "gpt-5" }).modelProfile,
+    ).toBe("gpt-5");
+  });
+
   it("omits volatile runtime bootstrap from durable agent history", () => {
-    const projection = projectConversationEvents([
-      event(20, {
-        type: "user_message",
-        content: [
-          {
-            type: "text",
-            text: "<runtime-turn-context>\nvolatile\n</runtime-turn-context>",
-          },
-          { type: "text", text: "Keep this instruction." },
-        ],
-        timestamp: 2_000,
-        provenance: { authority: "instruction" },
-      }),
-    ]);
+    const projection = projectConversationEvents(
+      [
+        event(20, {
+          type: "user_message",
+          content: [
+            {
+              type: "text",
+              text: "<runtime-turn-context>\nvolatile\n</runtime-turn-context>",
+            },
+            { type: "text", text: "Keep this instruction." },
+          ],
+          timestamp: 2_000,
+          provenance: { authority: "instruction" },
+        }),
+      ],
+      { defaultProfile: "default" },
+    );
 
     expect(projection.messages).toEqual([
       {

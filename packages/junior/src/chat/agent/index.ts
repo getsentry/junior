@@ -132,10 +132,8 @@ import { wireAgentTools } from "@/chat/agent/tools";
 import { createResumeState, type ResumeState } from "@/chat/agent/resume";
 import { sleep } from "@/chat/sleep";
 import {
-  DEFAULT_HANDOFF_MODEL_PROFILE,
   modelIdForProfile,
   ModelProfileNotConfiguredError,
-  STANDARD_MODEL_PROFILE,
   profileConfig,
   type ModelProfile,
 } from "@/chat/model-profile";
@@ -377,12 +375,12 @@ async function executeAgentRunInPrivacyContext(
     policy.reasoningLevel ?? botConfig.reasoningLevel;
   let turnRoute: TurnRoute | undefined = configuredReasoningLevel
     ? configuredTurnRoute(
-        STANDARD_MODEL_PROFILE,
+        botConfig.defaultProfile,
         configuredReasoningLevel,
         policy.reasoningLevel ? "agent_config" : "default",
       )
     : undefined;
-  let activeModelProfile: ModelProfile = STANDARD_MODEL_PROFILE;
+  let activeModelProfile: ModelProfile = botConfig.defaultProfile;
   let activeModelId = modelIdForProfile(botConfig, activeModelProfile);
   const actor = actorFromRun(run);
   const surface = surfaceFromRun(run);
@@ -422,7 +420,6 @@ async function executeAgentRunInPrivacyContext(
     const projection = await openConversationProjection({ conversationId });
     activeModelProfile = projection.modelProfile;
     activeModelId = modelIdForProfile(botConfig, activeModelProfile);
-    let durableModelProfile = projection.modelProfile;
     shouldTrace = shouldEmitDevAgentTrace();
     const spanContext: LogContext = { modelId: activeModelId };
 
@@ -585,17 +582,17 @@ async function executeAgentRunInPrivacyContext(
     );
     const storedTurnRoute = await loadTurnRoute({ conversationId, turnId });
     if (storedTurnRoute) {
-      const resumedAfterHandoff =
-        handoffEnabled &&
-        activeModelProfile !== STANDARD_MODEL_PROFILE &&
+      const replacementOverridesRoute =
+        projection.replacementSeq !== undefined &&
+        projection.replacementSeq > storedTurnRoute.seq &&
         activeModelProfile !== storedTurnRoute.modelProfile;
-      if (resumedAfterHandoff) {
+      if (replacementOverridesRoute) {
         const activeProfileConfig = profileConfig(
           botConfig,
           activeModelProfile,
         );
-        // After handoff, profile config (else inherited old route) is authority.
-        // Handoff does not write a new turn_routed event.
+        // A replacement committed after routing is authority. This includes
+        // compaction after handoff because handoff does not rewrite the route.
         turnRoute = {
           profile: activeModelProfile,
           reasoningLevel:
@@ -615,7 +612,7 @@ async function executeAgentRunInPrivacyContext(
         };
       }
     } else if (
-      activeModelProfile === STANDARD_MODEL_PROFILE &&
+      activeModelProfile === botConfig.defaultProfile &&
       handoffEnabled
     ) {
       turnRoute = await selectTurnRoute({
@@ -628,6 +625,7 @@ async function executeAgentRunInPrivacyContext(
           runId,
         },
         currentTurnBlocks: routerBlocks,
+        defaultProfile: botConfig.defaultProfile,
         fastModelId: botConfig.fastModelId,
         messageText: userInput,
         profiles: botConfig.profiles,
@@ -714,13 +712,9 @@ async function executeAgentRunInPrivacyContext(
     const currentAgentMessages = (): PiMessage[] =>
       agent ? [...agent.state.messages] : [];
     const handoffProfiles: [ModelProfile, ...ModelProfile[]] = [
-      DEFAULT_HANDOFF_MODEL_PROFILE,
+      botConfig.defaultProfile,
       ...Object.keys(botConfig.profiles)
-        .filter(
-          (profile) =>
-            profile !== STANDARD_MODEL_PROFILE &&
-            profile !== DEFAULT_HANDOFF_MODEL_PROFILE,
-        )
+        .filter((profile) => profile !== botConfig.defaultProfile)
         .sort(),
     ];
     const usageSinceCurrentBoundary = (
@@ -741,7 +735,7 @@ async function executeAgentRunInPrivacyContext(
       sourceMessages: PiMessage[];
       triggeringToolCallId?: string;
     }) => {
-      if (args.profile === durableModelProfile) {
+      if (args.profile === activeModelProfile) {
         return;
       }
       const runtimeContext = retainRuntimeTurnContext(
@@ -786,7 +780,6 @@ async function executeAgentRunInPrivacyContext(
           completeText: (args) => completeText(args),
         },
       );
-      durableModelProfile = args.profile;
       if (handoffReasoningLevel !== turnRoute!.reasoningLevel) {
         turnRoute = {
           ...turnRoute!,
@@ -1451,12 +1444,15 @@ async function executeAgentRunInPrivacyContext(
           };
 
           const requestedProfile =
-            activeModelProfile === STANDARD_MODEL_PROFILE
+            activeModelProfile === botConfig.defaultProfile
               ? turnRoute!.profile
               : undefined;
           let run: Promise<unknown>;
           let handoffApplied = false;
-          if (requestedProfile && requestedProfile !== STANDARD_MODEL_PROFILE) {
+          if (
+            requestedProfile &&
+            requestedProfile !== botConfig.defaultProfile
+          ) {
             const handoffAbortController = new AbortController();
             await runAgentStep(
               scheduleHandoff({

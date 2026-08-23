@@ -26,6 +26,7 @@ import { projectConversationEvents } from "@/chat/pi/conversation-events";
 import type { AgentTurnUsage } from "@/chat/usage";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { fenceLock, MUTATION_LOCK_TTL_MS, withLock } from "@/chat/state/locks";
+import { botConfig } from "@/chat/config";
 import { getConversationEventStore, getConversationStore } from "@/chat/db";
 import { isAgentsInstructionsMessage } from "@/chat/repository-instructions";
 import {
@@ -535,7 +536,9 @@ async function materializeStoredTurnRecord(
     parsed.historyVersion !== undefined &&
     parsed.historyVersion !== currentHistoryVersion;
   const piProjection = followsReplacement
-    ? projectConversationEvents(currentHistory)
+    ? projectConversationEvents(currentHistory, {
+        defaultProfile: botConfig.defaultProfile,
+      })
     : pinnedProjection;
   const turnStartMessageIndex = followsReplacement
     ? 0

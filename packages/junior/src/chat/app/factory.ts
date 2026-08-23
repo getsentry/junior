@@ -36,7 +36,7 @@ import {
 } from "@/chat/services/conversation-memory";
 import type { SubscribedReplyDecision } from "@/chat/services/subscribed-reply-policy";
 import { botConfig } from "@/chat/config";
-import { standardModelId } from "@/chat/model-profile";
+import { defaultModelId } from "@/chat/model-profile";
 import { cancelSubscriptions as cancelEventSubscriptions } from "@/chat/resource-events/store";
 import { recordSubscribedReplyRoute } from "@/chat/conversations/projection";
 import { createSlackDispatchTurnRunner } from "@/chat/slack/dispatch-turn";
@@ -130,7 +130,7 @@ export function createSlackRuntime(options: CreateSlackRuntimeOptions) {
   >({
     assistantUserName: botConfig.userName,
     cancelEventSubscriptions,
-    modelId: standardModelId(botConfig),
+    modelId: defaultModelId(botConfig),
     now: options.now ?? (() => Date.now()),
     getThreadId,
     getChannelId,

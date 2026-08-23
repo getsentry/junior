@@ -12,6 +12,7 @@ import {
   botConfig,
   configureFunctionMaxDurationSeconds,
   getSlackReactionConfig,
+  setProfiles,
   setSlackReactionConfig,
 } from "@/chat/config";
 import { getDb } from "@/chat/db";
@@ -116,6 +117,10 @@ export interface JuniorAppOptions {
    * you are deliberately dogfooding a pre-stable surface.
    */
   experimental?: ExperimentalFeaturesConfig;
+  /** Profile used for new conversations. Configure with `profiles`. */
+  defaultProfile?: string;
+  /** Named profiles available to the router and handoff tool. Configure with `defaultProfile`. */
+  profiles?: Readonly<Record<string, string>>;
   /** Slack-specific overrides applied after env parsing. */
   slack?: {
     /** Slack emoji shown while Junior is processing. Defaults to `eyes`. */
@@ -631,6 +636,8 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     hasConfiguredPluginCatalog(pluginConfig) ||
     Boolean(configuredPlugins?.registrations.length) ||
     Boolean(Object.keys(options?.configDefaults ?? {}).length);
+  const previousDefaultProfile = botConfig.defaultProfile;
+  const previousModelProfiles = botConfig.profiles;
   const previousPluginCatalogConfig =
     pluginCatalogRuntime.setConfig(pluginConfig);
   const previousPlugins = setPlugins(plugins);
@@ -678,6 +685,9 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     setExperimentalFeatures(options?.experimental);
     setConfigDefaults(options?.configDefaults);
     warnUnregisteredConfigDefaults(options?.configDefaults);
+    if (options?.profiles || options?.defaultProfile) {
+      setProfiles(options.profiles, options.defaultProfile);
+    }
     if (options?.slack) {
       setSlackReactionConfig(options.slack);
     }
@@ -697,6 +707,8 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     pluginCatalogRuntime.setConfig(previousPluginCatalogConfig);
     setPlugins(previousPlugins);
     setConfigDefaults(previousConfigDefaults);
+    botConfig.defaultProfile = previousDefaultProfile;
+    botConfig.profiles = previousModelProfiles;
     setSlackReactionConfig(previousSlackReactionConfig);
     setSandboxResourceConfig(previousSandboxResources);
     setExperimentalFeatures(previousExperimentalFeatures);

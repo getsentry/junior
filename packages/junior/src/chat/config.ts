@@ -2,15 +2,15 @@ import { getModel } from "@earendil-works/pi-ai/compat";
 import { toOptionalTrimmed } from "@/chat/optional-string";
 import { resolveGatewayModel } from "@/chat/pi/client";
 import { normalizeSlackEmojiName } from "@/chat/slack/emoji";
+import { logWarn } from "@/chat/logging";
 import {
   parseTurnReasoningLevel,
   type TurnReasoningLevel,
 } from "@/chat/reasoning-level";
 import {
-  DEFAULT_HANDOFF_MODEL_PROFILE,
-  type ExecutionProfileConfig,
+  type ModelProfileConfig,
+  type ModelProfile,
   modelProfileSchema,
-  STANDARD_MODEL_PROFILE,
 } from "@/chat/model-profile";
 
 const MIN_AGENT_TURN_TIMEOUT_MS = 10 * 1000;
@@ -47,12 +47,13 @@ const DEFAULT_ASSISTANT_LOADING_MESSAGES = [
 export interface BotConfig {
   contextWindowTokens: number;
   crossActorMidRunMode: CrossActorMidRunMode;
+  defaultProfile: ModelProfile;
   embeddingModelId: string;
   fastModelId: string;
   guardianModelId: string;
   imageGenerationModelId: string;
   loadingMessages: string[];
-  profiles: Readonly<Record<string, ExecutionProfileConfig>>;
+  profiles: Readonly<Record<string, ModelProfileConfig>>;
   reasoningLevel?: TurnReasoningLevel;
   visionModelId?: string;
   maxSlicesPerTurn: number;
@@ -232,17 +233,47 @@ function validateEmbeddingModelId(raw: string | undefined): string | undefined {
   return toOptionalTrimmed(raw);
 }
 
+function parseProfileMap(
+  rawProfiles: unknown,
+  configName: string,
+): Readonly<Record<string, ModelProfileConfig>> {
+  if (
+    !rawProfiles ||
+    typeof rawProfiles !== "object" ||
+    Array.isArray(rawProfiles)
+  ) {
+    const objectType =
+      configName === "AI_MODEL_PROFILES" ? "a JSON object" : "an object";
+    throw new Error(`${configName} must be ${objectType}`);
+  }
+  const profiles: Record<string, ModelProfileConfig> = {};
+  for (const [profile, rawModelId] of Object.entries(rawProfiles)) {
+    if (!modelProfileSchema.safeParse(profile).success) {
+      throw new Error(
+        `${configName} profile "${profile}" must match ^[a-z][a-z0-9_-]*$`,
+      );
+    }
+    if (typeof rawModelId !== "string") {
+      throw new Error(`${configName}.${profile} must be a model id string`);
+    }
+    const modelId = validateGatewayModelId(rawModelId);
+    if (!modelId) {
+      throw new Error(`${configName}.${profile} must not be empty`);
+    }
+    profiles[profile] = { modelId };
+  }
+  return profiles;
+}
+
+// TODO(v0.180.0): Remove env profile settings after the deprecation window.
 function parseProfiles(
   rawValue: string | undefined,
   standardModelId: string,
   handoffModelId: string,
-): Readonly<Record<string, ExecutionProfileConfig>> {
-  const profiles: Record<string, ExecutionProfileConfig> = {
-    [STANDARD_MODEL_PROFILE]: { modelId: standardModelId },
-    [DEFAULT_HANDOFF_MODEL_PROFILE]: {
-      modelId: handoffModelId,
-      reasoningLevel: "high",
-    },
+): Readonly<Record<string, ModelProfileConfig>> {
+  const profiles: Record<string, ModelProfileConfig> = {
+    standard: { modelId: standardModelId },
+    handoff: { modelId: handoffModelId, reasoningLevel: "high" },
   };
   const trimmed = toOptionalTrimmed(rawValue);
   if (trimmed === undefined) {
@@ -255,31 +286,10 @@ function parseProfiles(
   } catch {
     throw new Error("AI_MODEL_PROFILES must be a JSON object");
   }
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    throw new Error("AI_MODEL_PROFILES must be a JSON object");
-  }
-  for (const [profile, rawModelId] of Object.entries(parsed)) {
-    if (!modelProfileSchema.safeParse(profile).success) {
-      throw new Error(
-        `AI_MODEL_PROFILES profile "${profile}" must match ^[a-z][a-z0-9_-]*$`,
-      );
-    }
-    if (
-      profile === STANDARD_MODEL_PROFILE ||
-      profile === DEFAULT_HANDOFF_MODEL_PROFILE
-    ) {
-      throw new Error(`AI_MODEL_PROFILES profile "${profile}" is reserved`);
-    }
-    if (typeof rawModelId !== "string") {
-      throw new Error(`AI_MODEL_PROFILES.${profile} must be a model id string`);
-    }
-    const modelId = validateGatewayModelId(rawModelId);
-    if (!modelId) {
-      throw new Error(`AI_MODEL_PROFILES.${profile} must not be empty`);
-    }
-    profiles[profile] = { modelId };
-  }
-  return profiles;
+  return {
+    ...profiles,
+    ...parseProfileMap(parsed, "AI_MODEL_PROFILES"),
+  };
 }
 
 function parseReactionEmoji(
@@ -300,10 +310,26 @@ function parseReactionEmoji(
   return normalized;
 }
 
+function warnDeprecatedProfileEnv(env: NodeJS.ProcessEnv): void {
+  for (const envName of [
+    "AI_MODEL",
+    "AI_HANDOFF_MODEL",
+    "AI_MODEL_PROFILES",
+  ] as const) {
+    if (toOptionalTrimmed(env[envName]) !== undefined) {
+      logWarn("config.profile_env.deprecated", {
+        "app.config.env_name": envName,
+        "app.config.replacement": "createApp({ defaultProfile, profiles })",
+      });
+    }
+  }
+}
+
 function readBotConfig(
   env: NodeJS.ProcessEnv,
   functionMaxDurationSeconds: number,
 ): BotConfig {
+  warnDeprecatedProfileEnv(env);
   const maxTurnTimeoutMs = resolveMaxTurnTimeoutMs(functionMaxDurationSeconds);
   const modelId = validateGatewayModelId(env.AI_MODEL) ?? DEFAULT_MODEL_ID;
   const reasoningLevel = toOptionalTrimmed(env.AI_REASONING_LEVEL);
@@ -317,6 +343,7 @@ function readBotConfig(
 
   return {
     userName: toOptionalTrimmed(env.JUNIOR_BOT_NAME) ?? "junior",
+    defaultProfile: "standard",
     crossActorMidRunMode: parseCrossActorMidRunMode(
       env.JUNIOR_CROSS_ACTOR_MID_RUN_MODE,
     ),
@@ -510,6 +537,28 @@ export function getRuntimeMetadata(): RuntimeMetadata {
 export interface SlackReactionConfig {
   completedReactionEmoji: string;
   processingReactionEmoji: string;
+}
+
+/** Apply profiles from createApp(). */
+export function setProfiles(
+  profiles: Readonly<Record<string, string>> | undefined,
+  defaultProfile: string | undefined,
+): void {
+  if (!profiles || !defaultProfile) {
+    throw new Error("profiles and defaultProfile must be configured together");
+  }
+  const configuredProfiles = parseProfileMap(profiles, "profiles");
+  const selectedDefault = defaultProfile;
+  if (!modelProfileSchema.safeParse(selectedDefault).success) {
+    throw new Error(
+      `defaultProfile "${selectedDefault}" must match ^[a-z][a-z0-9_-]*$`,
+    );
+  }
+  if (!Object.hasOwn(configuredProfiles, selectedDefault)) {
+    throw new Error(`defaultProfile "${selectedDefault}" is not configured`);
+  }
+  botConfig.profiles = configuredProfiles;
+  botConfig.defaultProfile = selectedDefault;
 }
 
 /** Return the current Slack reaction emoji config. */

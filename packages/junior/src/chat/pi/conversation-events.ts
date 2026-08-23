@@ -25,7 +25,7 @@ export interface PiConversationProjection {
   messages: PiMessage[];
   provenance: ConversationMessageProvenance[];
   modelProfile: ModelProfile;
-  modelId: string | undefined;
+  replacementSeq: number | undefined;
 }
 
 /** Pi context with the source event sequence for every projected message. */
@@ -116,16 +116,16 @@ function historyItemProvenance(
  */
 export function projectConversationEvents(
   events: ConversationEvent[],
-  options?: { maxSeq?: number },
+  options: { defaultProfile: ModelProfile; maxSeq?: number },
 ): PiConversationEventProjection {
   const messages: PiMessage[] = [];
   const provenance: ConversationMessageProvenance[] = [];
   const seqs: number[] = [];
-  let modelProfile: ModelProfile = "standard";
-  let modelId: string | undefined;
+  let modelProfile: ModelProfile = options.defaultProfile;
+  let replacementSeq: number | undefined;
 
   for (const event of events) {
-    if (options?.maxSeq !== undefined && event.seq > options.maxSeq) break;
+    if (options.maxSeq !== undefined && event.seq > options.maxSeq) break;
     // Skipping an unknown active-history fact could silently change model
     // context; an upgrade migration must normalize it before replay.
     if (event.data.type === "unknown") {
@@ -135,7 +135,7 @@ export function projectConversationEvents(
     }
     if (event.data.type === "compaction" || event.data.type === "handoff") {
       modelProfile = event.data.modelProfile;
-      modelId = event.data.modelId;
+      replacementSeq = event.seq;
       for (const replacement of event.data.replacementHistory) {
         for (const message of durableMessages(
           piMessageFromHistoryItem(replacement.item),
@@ -170,5 +170,11 @@ export function projectConversationEvents(
     }
   }
 
-  return { messages, provenance, seqs, modelProfile, modelId };
+  return {
+    messages,
+    provenance,
+    seqs,
+    modelProfile,
+    replacementSeq,
+  };
 }
