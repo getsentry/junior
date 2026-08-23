@@ -1,6 +1,6 @@
 import { defineConversationEvent } from "@sentry/junior-plugin-api";
 import { z } from "zod";
-import { MEMORY_KINDS, MEMORY_SCOPES } from "./types";
+import { MEMORY_KINDS } from "./types";
 import type { MemoryRecord } from "./store";
 
 const capturedMemoryFields = {
@@ -17,10 +17,20 @@ const legacyCapturedMemorySchema = z
   })
   .strict();
 
+// v2 was written before personal/conversation renamed to private/public.
+// Accept both labels on read and normalize to the current access words.
 const capturedMemorySchema = z
   .object({
     ...capturedMemoryFields,
-    scope: z.enum(MEMORY_SCOPES),
+    scope: z
+      .enum(["personal", "conversation", "private", "public"])
+      .transform((scope) =>
+        scope === "personal"
+          ? "private"
+          : scope === "conversation"
+            ? "public"
+            : scope,
+      ),
   })
   .strict();
 
