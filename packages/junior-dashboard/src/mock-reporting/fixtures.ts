@@ -589,7 +589,7 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
         type: "structured_event",
         namespace: "memory",
         name: "memories_captured",
-        version: 2,
+        version: 1,
         turnId: "qa-turn",
         presentation: {
           icon: "brain",
@@ -597,11 +597,11 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
           details: [
             {
               title: "Use pnpm for repository commands.",
-              metadata: ["preference", "private"],
+              metadata: ["preference", "personal"],
             },
             {
               title: "Dashboard transcript events should remain expandable.",
-              metadata: ["knowledge", "public"],
+              metadata: ["knowledge", "conversation"],
             },
           ],
         },

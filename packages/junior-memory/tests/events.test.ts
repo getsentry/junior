@@ -1,8 +1,27 @@
 import { describe, expect, it } from "vitest";
-import { memoriesCapturedEvent, memoriesRecalledEvent } from "../src/events";
+import {
+  memoriesCapturedEvent,
+  memoriesCapturedEventV1,
+  memoriesRecalledEvent,
+} from "../src/events";
 
 describe("memory conversation events", () => {
-  it("rejects pre-rename scope labels on the current capture schema", () => {
+  it("renders stored capture events with legacy scope values", () => {
+    const legacy = memoriesCapturedEventV1.parse({
+      memories: [
+        {
+          content: "Use pnpm.",
+          id: "memory-v1",
+          kind: "preference",
+          observedAtMs: 1,
+          scope: "personal",
+        },
+      ],
+    });
+    expect(
+      memoriesCapturedEventV1.renderEvent(legacy)?.details?.[0]?.metadata,
+    ).toEqual(["preference", "private"]);
+
     expect(() =>
       memoriesCapturedEvent.parse({
         costUsd: 0.0042,
