@@ -39,6 +39,7 @@ function snapshotView(workspace: Workspace) {
     id: recorded.id,
     generatedAt: recorded.generatedAt.toISOString(),
     buildDurationMs: recorded.buildDurationMs,
+    sizeBytes: recorded.sizeBytes,
   };
 }
 

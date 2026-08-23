@@ -36,6 +36,7 @@ async function insertReadySnapshot(
     status: "ready",
     snapshotId: snapshot.id,
     buildDurationMs: snapshot.buildDurationMs,
+    sizeBytes: snapshot.sizeBytes,
     generatedAt: snapshot.generatedAt,
     createdAt: now,
     updatedAt: now,
@@ -245,6 +246,7 @@ describe("workspace admin API", () => {
       id: "snap_duration",
       generatedAt: new Date("2026-03-01T00:00:00.000Z"),
       buildDurationMs: 12_345,
+      sizeBytes: 2_097_152,
       profileHash: profileHash!,
     });
 
@@ -258,6 +260,7 @@ describe("workspace admin API", () => {
         id: "snap_duration",
         generatedAt: "2026-03-01T00:00:00.000Z",
         buildDurationMs: 12_345,
+        sizeBytes: 2_097_152,
       },
     });
   });
@@ -286,6 +289,7 @@ describe("workspace admin API", () => {
       id: "snap_old",
       generatedAt: new Date("2026-03-01T00:00:00.000Z"),
       buildDurationMs: 9_000,
+      sizeBytes: null,
       profileHash: profileHash!,
     });
 
@@ -306,7 +310,7 @@ describe("workspace admin API", () => {
     );
     expect(workspaceSchema.parse(await renamedDetail.json())).toMatchObject({
       name: "snapshot-renamed",
-      snapshot: { id: "snap_old", buildDurationMs: 9_000 },
+      snapshot: { id: "snap_old", buildDurationMs: 9_000, sizeBytes: null },
     });
 
     const updateResponse = await app.request(
@@ -342,6 +346,7 @@ describe("workspace admin API", () => {
       id: "snap_new",
       generatedAt: new Date("2026-03-02T00:00:00.000Z"),
       buildDurationMs: 10_000,
+      sizeBytes: null,
       profileHash: changedProfileHash!,
     });
 

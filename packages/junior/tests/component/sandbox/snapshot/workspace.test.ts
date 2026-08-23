@@ -75,7 +75,10 @@ describe("Workspace snapshot completion", () => {
       getCommand: vi.fn(async () => ({
         wait: vi.fn(async () => ({ exitCode: 0 })),
       })),
-      snapshot: vi.fn(async () => ({ snapshotId: "snapshot-ready" })),
+      snapshot: vi.fn(async () => ({
+        snapshotId: "snapshot-ready",
+        sizeBytes: 4_194_304,
+      })),
     };
     sandboxGetMock.mockResolvedValue(builder);
 
@@ -93,7 +96,7 @@ describe("Workspace snapshot completion", () => {
       loadSnapshotsForProfile(getDb(), workspace.id, value.hash),
     ).resolves.toMatchObject({
       build: null,
-      ready: { id: "snapshot-ready" },
+      ready: { id: "snapshot-ready", sizeBytes: 4_194_304 },
     });
     await expect(getCachedSnapshot(value.hash)).resolves.toBeNull();
     await expect(

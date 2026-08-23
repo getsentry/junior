@@ -590,6 +590,7 @@ export async function mockDashboardApis(page: Page) {
         buildDurationMs: 45_000,
         generatedAt: "2026-08-15T05:40:21.000Z",
         id: "snap_workspace_123",
+        sizeBytes: 4_194_304,
       },
     };
     const url = new URL(route.request().url());

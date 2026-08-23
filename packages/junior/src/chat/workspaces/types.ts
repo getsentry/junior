@@ -9,6 +9,8 @@ export interface WorkspaceSnapshot {
   id: string;
   generatedAt: Date;
   buildDurationMs: number;
+  /** Provider snapshot size in bytes when capture reported it. */
+  sizeBytes: number | null;
   profileHash: string;
 }
 
