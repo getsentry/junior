@@ -1,4 +1,21 @@
 # Changelog
+## 0.181.0
+
+### New Features ✨
+
+- (workspaces) Store snapshot sizeBytes on ready SQL rows by @sentry-junior in [#1666](https://github.com/getsentry/junior/pull/1666)
+
+### Bug Fixes 🐛
+
+- (workspaces) Align building switch with forced subscription contract by @sentry-junior in [#1665](https://github.com/getsentry/junior/pull/1665)
+
+### Internal Changes 🔧
+
+#### Memory
+
+- Remove viewer collection facade by @dcramer in [#1649](https://github.com/getsentry/junior/pull/1649)
+- Make private memory user-owned by @sentry-junior in [#1637](https://github.com/getsentry/junior/pull/1637)
+
 ## 0.180.0
 
 ### New Features ✨
