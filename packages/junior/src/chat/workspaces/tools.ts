@@ -101,21 +101,22 @@ function view(workspace: Workspace) {
   };
 }
 
-/** Return building status and the forced snapshot subscription when present. */
+/** Return building status and any already-created snapshot subscription. */
 function buildingWorkspaceResult(input: {
   workspace: z.infer<typeof workspaceSchema>;
-  subscription?: ResourceEventSubscriptionResult | null;
+  subscription?: Pick<ResourceEventSubscriptionResult, "id" | "events"> | null;
 }) {
-  const subscription = input.subscription
-    ? {
-        id: input.subscription.id,
-        events: [...input.subscription.events],
-      }
-    : undefined;
   return {
     workspace: input.workspace,
     status: "building" as const,
-    ...(subscription ? { subscription } : undefined),
+    ...(input.subscription
+      ? {
+          subscription: {
+            id: input.subscription.id,
+            events: [...input.subscription.events],
+          },
+        }
+      : undefined),
   };
 }
 
@@ -349,7 +350,7 @@ export function createWorkspaceTools(
         readOnlyHint: false,
       },
       description:
-        "Replace the current sandbox with a named repository Workspace. Files in the old sandbox do not carry over. If the snapshot is not ready, start the build and return status building. When a subscription is returned, the runtime already watches for the snapshot result; do not call watchResourceEvents. Report building status and wait for the ready or failed event before retrying the switch.",
+        "Replace the current sandbox with a named repository Workspace. Files in the old sandbox do not carry over. Returns ready after the switch, or building when the snapshot is still being prepared.",
       inputSchema: z
         .object({
           name: z.string().trim().min(1).describe("Exact workspace name."),
@@ -358,7 +359,11 @@ export function createWorkspaceTools(
       outputSchema: juniorToolOutputSchema.extend({
         workspace: workspaceSchema,
         status: z.enum(["ready", "building"]),
-        subscription: resourceEventSubscriptionResultSchema.optional(),
+        subscription: resourceEventSubscriptionResultSchema
+          .optional()
+          .describe(
+            "Present when the snapshot ready and failed events are already watched for this conversation.",
+          ),
       }),
       async execute({ name }, options) {
         const workspace = await getWorkspaceByName(getDb(), name);
