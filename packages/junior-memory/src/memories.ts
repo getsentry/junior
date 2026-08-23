@@ -1,13 +1,11 @@
-/** Memory row validation, visibility, list, archive, and expired cleanup. */
+/** Memory row validation, access filters, and expired cleanup. */
 import {
   and,
   asc,
-  desc,
   eq,
   gt,
   inArray,
   isNull,
-  like,
   lte,
   or,
   type SQL,
@@ -17,14 +15,12 @@ import type { PgQueryResultHKT } from "drizzle-orm/pg-core/session";
 import { z } from "zod";
 import * as memorySqlSchema from "./db/schema";
 import { juniorMemoryEmbeddings, juniorMemoryMemories } from "./db/schema";
-import { deriveVisibleMemoryScopes, type ResolvedMemoryScope } from "./scope";
+import type { ResolvedMemoryScope } from "./scope";
 import {
   MEMORY_KINDS,
   MEMORY_SCOPES,
   MEMORY_SOURCE_PLATFORMS,
   MEMORY_SUBJECT_TYPES,
-  memoryRuntimeContextSchema,
-  type MemoryRuntimeContext,
 } from "./types";
 
 export type MemoryDb = PgDatabase<PgQueryResultHKT, typeof memorySqlSchema>;
@@ -108,16 +104,6 @@ const memorySchema = z
   .strict();
 
 export type Memory = z.output<typeof memorySchema>;
-
-const listInputSchema = z
-  .object({ limit: z.number().finite().optional() })
-  .strict();
-const archiveInputSchema = z
-  .object({ id: z.string().min(1), reason: z.string().min(1).optional() })
-  .strict();
-
-type ListMemoriesInput = z.output<typeof listInputSchema>;
-type ArchiveMemoryInput = z.output<typeof archiveInputSchema>;
 
 /** Parse one SQL row into the public memory projection. */
 export function parseMemoryRow(row: unknown): Memory {
@@ -238,81 +224,4 @@ export async function archiveExpiredMemoryBatch(args: {
     return idsToClean;
   });
   return { archivedCount: archivedIds.length };
-}
-
-/** List active memories visible to the current User. */
-export async function listMemories(args: {
-  context: MemoryRuntimeContext;
-  db: MemoryDb;
-  input: ListMemoriesInput;
-  now?: () => number;
-}): Promise<Memory[]> {
-  const context = memoryRuntimeContextSchema.parse(args.context);
-  const input = listInputSchema.parse(args.input);
-  const nowMs = numberSchema.parse(args.now?.() ?? Date.now());
-  const scopes = deriveVisibleMemoryScopes(context);
-  await archiveExpiredMemoryBatch({ db: args.db, nowMs, scopes });
-  const predicate = activeVisiblePredicate({ nowMs, scopes });
-  if (!predicate) return [];
-  const rows = await args.db
-    .select()
-    .from(juniorMemoryMemories)
-    .where(predicate)
-    .orderBy(
-      desc(juniorMemoryMemories.createdAtMs),
-      asc(juniorMemoryMemories.id),
-    )
-    .limit(boundedLimit(input.limit, 50));
-  return rows.map(parseMemoryRow);
-}
-
-/** Archive one active private memory visible to the current User. */
-export async function archiveMemory(args: {
-  context: MemoryRuntimeContext;
-  db: MemoryDb;
-  input: ArchiveMemoryInput;
-  now?: () => number;
-}): Promise<Memory> {
-  const context = memoryRuntimeContextSchema.parse(args.context);
-  const input = archiveInputSchema.parse(args.input);
-  const nowMs = numberSchema.parse(args.now?.() ?? Date.now());
-  const scopes = deriveVisibleMemoryScopes(context).filter(
-    (scope) => scope.scope === "private",
-  );
-  const predicate = activeVisiblePredicate({ nowMs, scopes });
-  const idPrefix = input.id.trim();
-  if (!idPrefix) throw new Error("Memory id is required.");
-  const rows = predicate
-    ? await args.db
-        .select()
-        .from(juniorMemoryMemories)
-        .where(
-          and(
-            predicate,
-            or(
-              eq(juniorMemoryMemories.id, idPrefix),
-              like(juniorMemoryMemories.id, `${idPrefix}%`),
-            ),
-          ),
-        )
-        .orderBy(asc(juniorMemoryMemories.id))
-        .limit(2)
-    : [];
-  if (rows.length === 0) {
-    throw new Error("Memory was not found in the current context.");
-  }
-  if (rows.length > 1) throw new Error("Memory id prefix is ambiguous.");
-  const memory = parseMemoryRow(rows[0]);
-  const updated = await args.db
-    .update(juniorMemoryMemories)
-    .set({
-      archivedAtMs: nowMs,
-      archiveReason: input.reason ?? "user_removed",
-    })
-    .where(eq(juniorMemoryMemories.id, memory.id))
-    .returning();
-  await args.db
-    .delete(juniorMemoryEmbeddings)
-    .where(eq(juniorMemoryEmbeddings.memoryId, memory.id));
-  return parseMemoryRow(updated[0]);
 }

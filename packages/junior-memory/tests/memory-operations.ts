@@ -1,11 +1,13 @@
 import { createMemory, type CreateMemoryInput } from "../src/create";
-import * as memories from "../src/memories";
-import { retrieveMemories, type RetrieveMemoriesInput } from "../src/retrieval";
+import type { MemoryDb } from "../src/memories";
+import { retrieveMemories } from "../src/retrieval";
 import type { MemoryRuntimeContext } from "../src/types";
+
+type RetrieveMemoriesInput = Parameters<typeof retrieveMemories>[0]["input"];
 
 interface MemoryFixture {
   context: MemoryRuntimeContext;
-  db: memories.MemoryDb;
+  db: MemoryDb;
   options: Pick<
     Parameters<typeof createMemory>[0],
     "embedder" | "now" | "supersessionDecider"
@@ -14,24 +16,11 @@ interface MemoryFixture {
 
 /** Bind the database, memory context, and optional test controls. */
 export function memoryFixture(
-  db: memories.MemoryDb,
+  db: MemoryDb,
   context: MemoryRuntimeContext,
   options: MemoryFixture["options"] = {},
 ): MemoryFixture {
   return { context, db, options };
-}
-
-/** Archive with the production access and validation rules. */
-export async function archiveMemory(
-  test: MemoryFixture,
-  input: { id: string; reason?: string },
-) {
-  return await memories.archiveMemory({
-    context: test.context,
-    db: test.db,
-    input,
-    now: test.options.now,
-  });
 }
 
 /** Create a memory about the Conversation. */
@@ -59,19 +48,6 @@ export async function createUserMemory(
     ...test.options,
     input,
     subjectType: "user",
-  });
-}
-
-/** List active memories visible from a test runtime context. */
-export async function listMemories(
-  test: MemoryFixture,
-  input: { limit?: number },
-) {
-  return await memories.listMemories({
-    context: test.context,
-    db: test.db,
-    input,
-    now: test.options.now,
   });
 }
 

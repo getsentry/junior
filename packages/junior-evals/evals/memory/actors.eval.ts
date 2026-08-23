@@ -1,12 +1,6 @@
 import { expect } from "vitest";
 import { describeEval } from "vitest-evals";
-import { getDb } from "@/chat/db";
 import { readActorIdentity } from "@/chat/plugins/viewer";
-import type { MemoryDb } from "../../../junior-memory/src/memories";
-import {
-  juniorMemoryEmbeddings,
-  juniorMemoryMemories,
-} from "../../../junior-memory/src/db/schema";
 import {
   mention,
   rubric,
@@ -14,6 +8,7 @@ import {
   steer,
   threadMessage,
 } from "../../src/helpers";
+import { clearMemories, readMemories, type MemoryThread } from "./helpers";
 
 /**
  * Passive memory learning when a run has more than one Actor.
@@ -45,34 +40,6 @@ const CAROL = {
   user_name: "carol",
   full_name: "Carol Example",
 };
-
-interface MemoryThread {
-  channel_type?: "channel" | "group" | "im" | "mpim";
-  channel_id: string;
-  id: string;
-  thread_ts: string;
-}
-
-function memoryDb(): MemoryDb {
-  return getDb() as unknown as MemoryDb;
-}
-
-function memorySourceKey(thread: MemoryThread): string {
-  return `slack:${memoryTeamId}:${thread.channel_id}:${thread.thread_ts}`;
-}
-
-async function readMemories(thread: MemoryThread) {
-  const rows = await memoryDb()
-    .select()
-    .from(juniorMemoryMemories)
-    .orderBy(juniorMemoryMemories.createdAtMs, juniorMemoryMemories.id);
-  return rows.filter((memory) => memory.sourceKey === memorySourceKey(thread));
-}
-
-async function clearMemories() {
-  await memoryDb().delete(juniorMemoryEmbeddings);
-  await memoryDb().delete(juniorMemoryMemories);
-}
 
 async function memoriesForActor(
   rows: Awaited<ReturnType<typeof readMemories>>,

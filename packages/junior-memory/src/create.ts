@@ -26,7 +26,6 @@ import {
   embedMemoryText,
   hashEmbeddedContent,
   normalizeMemoryContent,
-  storeMemoryEmbedding,
   type MemoryEmbedding,
   type MemoryEmbeddingProvider,
 } from "./embeddings";
@@ -155,6 +154,56 @@ function sourceKey(ctx: MemoryRuntimeContext): string {
     throw new Error("Memory Source has no stable key.");
   }
   return key;
+}
+
+/** Add the embedding without failing memory creation. */
+async function storeMemoryEmbedding(args: {
+  content: string;
+  db: MemoryDb;
+  embedder?: MemoryEmbeddingProvider;
+  embedding?: MemoryEmbedding;
+  memoryId: string;
+  nowMs: number;
+}): Promise<void> {
+  if (!args.embedder && !args.embedding) return;
+  try {
+    const existing = await args.db
+      .select({ memoryId: juniorMemoryEmbeddings.memoryId })
+      .from(juniorMemoryEmbeddings)
+      .where(eq(juniorMemoryEmbeddings.memoryId, args.memoryId))
+      .limit(1);
+    if (existing[0]) return;
+  } catch {
+    return;
+  }
+  let embedding: MemoryEmbedding;
+  if (args.embedding) {
+    embedding = args.embedding;
+  } else {
+    if (!args.embedder) return;
+    try {
+      embedding = await embedMemoryText(args.embedder, args.content);
+    } catch {
+      return;
+    }
+  }
+  try {
+    await args.db
+      .insert(juniorMemoryEmbeddings)
+      .values({
+        contentHash: hashEmbeddedContent(args.content),
+        createdAtMs: args.nowMs,
+        dimensions: MEMORY_EMBEDDING_DIMENSIONS,
+        embedding: embedding.vector,
+        memoryId: args.memoryId,
+        metric: EMBEDDING_METRIC,
+        model: embedding.model,
+        provider: embedding.provider,
+      })
+      .onConflictDoNothing();
+  } catch {
+    return;
+  }
 }
 
 function activeScopedSubjectPredicate(args: {

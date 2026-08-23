@@ -4,13 +4,14 @@ import { getDb, getSqlExecutor } from "@/chat/db";
 import { upsertIdentity } from "@/chat/identities/sql";
 import { completeText, resolveGatewayModel } from "@/chat/pi/client";
 import { createPluginEmbedder } from "@/chat/plugins/model";
-import { createMemory } from "../../../junior-memory/src/create";
-import type { MemoryDb } from "../../../junior-memory/src/memories";
-import { createSlackSource } from "@sentry/junior-plugin-api";
 import {
-  juniorMemoryEmbeddings,
-  juniorMemoryMemories,
-} from "../../../junior-memory/src/db/schema";
+  clearAll,
+  countEmbeddings,
+  createMemory,
+  listBySource,
+  type MemoryDb,
+} from "@sentry/junior-memory/testing";
+import { createSlackSource } from "@sentry/junior-plugin-api";
 import { TEST_USER_ID } from "@junior-tests/fixtures/slack/factories/ids";
 
 export const memoryPluginOverrides = {
@@ -87,24 +88,16 @@ function memorySourceKey(thread: MemoryThread): string {
 }
 
 export async function readMemories(thread: MemoryThread) {
-  const rows = await memoryDb()
-    .select()
-    .from(juniorMemoryMemories)
-    .orderBy(juniorMemoryMemories.createdAtMs, juniorMemoryMemories.id);
-  return rows.filter((memory) => memory.sourceKey === memorySourceKey(thread));
+  return listBySource(memoryDb(), memorySourceKey(thread));
 }
 
-/** Count vector rows for memories seeded in one eval thread. */
+/** Count embeddings for memories from one eval thread. */
 export async function countMemoryEmbeddings(thread: MemoryThread) {
   const memories = await readMemories(thread);
-  if (memories.length === 0) {
-    return 0;
-  }
-  const memoryIds = new Set(memories.map((memory) => memory.id));
-  const rows = await memoryDb()
-    .select({ memoryId: juniorMemoryEmbeddings.memoryId })
-    .from(juniorMemoryEmbeddings);
-  return rows.filter((row) => memoryIds.has(row.memoryId)).length;
+  return countEmbeddings(
+    memoryDb(),
+    memories.map((memory) => memory.id),
+  );
 }
 
 /** Read the durable memories currently eligible for recall in one eval thread. */
@@ -122,8 +115,7 @@ export async function readActiveMemories(
 }
 
 export async function clearMemories() {
-  await memoryDb().delete(juniorMemoryEmbeddings);
-  await memoryDb().delete(juniorMemoryMemories);
+  await clearAll(memoryDb());
 }
 
 export function visibleAssistantText(result: {

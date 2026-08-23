@@ -44,9 +44,7 @@ const retrieveMemoriesInputSchema = z
     query: z.string().min(1),
   })
   .strict();
-export type RetrieveMemoriesInput = z.output<
-  typeof retrieveMemoriesInputSchema
->;
+type RetrieveMemoriesInput = z.output<typeof retrieveMemoriesInputSchema>;
 
 function boundedLimit(value: number | undefined, fallback: number): number {
   if (typeof value !== "number" || !Number.isFinite(value)) return fallback;

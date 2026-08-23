@@ -22,7 +22,7 @@ import {
   type Actor,
 } from "@sentry/junior-plugin-api";
 import { Command, CommanderError } from "commander";
-import { eq } from "drizzle-orm";
+import { and, asc, desc, eq, gt, isNull, or } from "drizzle-orm";
 import { describe, expect, it, vi } from "vitest";
 import * as memorySqlSchema from "../src/db/schema";
 import {
@@ -49,10 +49,8 @@ import type {
 } from "../src/create";
 import type { MemoryDb } from "../src/memories";
 import {
-  archiveMemory,
   createConversationMemory,
   createUserMemory,
-  listMemories as listStoredMemories,
   memoryFixture,
   recallMemories,
   searchMemories,
@@ -112,6 +110,31 @@ const defaultEmbedding = unitEmbedding(0);
 
 function memoryDb(fixture: MemoryFixture): MemoryDb {
   return fixture.db();
+}
+
+/** Read active rows for storage assertions without applying access rules. */
+async function readActiveMemoryRows(
+  fixture: MemoryFixture,
+  nowMs = Date.now(),
+) {
+  return memoryDb(fixture)
+    .select()
+    .from(memorySqlSchema.juniorMemoryMemories)
+    .where(
+      and(
+        isNull(memorySqlSchema.juniorMemoryMemories.archivedAtMs),
+        isNull(memorySqlSchema.juniorMemoryMemories.supersededAtMs),
+        isNull(memorySqlSchema.juniorMemoryMemories.supersededById),
+        or(
+          isNull(memorySqlSchema.juniorMemoryMemories.expiresAtMs),
+          gt(memorySqlSchema.juniorMemoryMemories.expiresAtMs, nowMs),
+        ),
+      ),
+    )
+    .orderBy(
+      desc(memorySqlSchema.juniorMemoryMemories.createdAtMs),
+      asc(memorySqlSchema.juniorMemoryMemories.id),
+    );
 }
 
 async function runMemoryCli(fixture: MemoryFixture, argv: string[]) {
@@ -2329,11 +2352,12 @@ describe("memory plugin storage", () => {
     }
   }, 15_000);
 
-  it("persists, recalls, and archives visible memories", async () => {
+  it("lists and archives visible memories through tools", async () => {
     const fixture = await createMemoryFixture();
+    let nowMs = TEST_NOW_MS;
+    const now = vi.spyOn(Date, "now").mockImplementation(() => nowMs);
 
     try {
-      let nowMs = TEST_NOW_MS;
       const publicStore = memoryFixture(memoryDb(fixture), slackContext(), {
         now: () => nowMs,
       });
@@ -2345,6 +2369,7 @@ describe("memory plugin storage", () => {
       nowMs += 1;
       const privateContext = slackContext({ channelId: "D123" });
       const privateStore = memoryFixture(memoryDb(fixture), privateContext, {
+        embedder: createTestEmbedder(),
         now: () => nowMs,
       });
       const privateMemory = await createUserMemory(privateStore, {
@@ -2361,67 +2386,66 @@ describe("memory plugin storage", () => {
         scope: "private",
         subjectType: "user",
       });
-      await expect(listStoredMemories(privateStore, {})).resolves.toEqual([
-        expect.objectContaining({ id: privateMemory.memory.id }),
-        expect.objectContaining({ id: publicMemory.memory.id }),
-      ]);
-      const sameUserStore = memoryFixture(
-        memoryDb(fixture),
-        slackContext({
-          ownerUserId: privateContext.userId,
-          channelId: "D999",
-          userId: "U456",
-        }),
-        { now: () => nowMs },
-      );
-      await expect(listStoredMemories(sameUserStore, {})).resolves.toEqual([
-        expect.objectContaining({ id: privateMemory.memory.id }),
-        expect.objectContaining({ id: publicMemory.memory.id }),
-      ]);
-
-      const otherUserStore = memoryFixture(
-        memoryDb(fixture),
-        slackContext({
-          channelId: "D123",
-          threadTs: "1718800001.000000",
-          userId: "U456",
-        }),
-        { now: () => nowMs },
-      );
-      await expect(listStoredMemories(otherUserStore, {})).resolves.toEqual([
-        expect.objectContaining({ id: publicMemory.memory.id }),
-      ]);
-      const linkedIdentityStore = memoryFixture(
-        memoryDb(fixture),
-        slackContext({
-          ownerUserId: privateContext.userId,
-          teamId: "T999",
-          userId: "U456",
-        }),
-        { now: () => nowMs },
-      );
+      const listFor = (runtime: ReturnType<typeof slackContext>) =>
+        createMemoryListTool({
+          agent: allowMemory("actor"),
+          db: memoryDb(fixture),
+          ...runtime,
+          users: memoryUsers(runtime.userId),
+        });
+      const removeFor = (runtime: ReturnType<typeof slackContext>) =>
+        createMemoryRemoveTool({
+          agent: allowMemory("actor"),
+          db: memoryDb(fixture),
+          ...runtime,
+          users: memoryUsers(runtime.userId),
+        });
+      const otherUserContext = slackContext({
+        channelId: "D123",
+        threadTs: "1718800001.000000",
+        userId: "U456",
+      });
       await expect(
-        listStoredMemories(linkedIdentityStore, {}),
-      ).resolves.toEqual([
-        expect.objectContaining({ id: privateMemory.memory.id }),
-        expect.objectContaining({ id: publicMemory.memory.id }),
-      ]);
+        listFor(otherUserContext).execute({}, {}),
+      ).resolves.toMatchObject({
+        memories: [expect.objectContaining({ id: publicMemory.memory.id })],
+      });
+      const linkedIdentityContext = slackContext({
+        ownerUserId: privateContext.userId,
+        teamId: "T999",
+        userId: "U456",
+      });
       await expect(
-        archiveMemory(otherUserStore, { id: privateMemory.memory.id }),
+        listFor(linkedIdentityContext).execute({}, {}),
+      ).resolves.toMatchObject({
+        memories: [
+          expect.objectContaining({ id: privateMemory.memory.id }),
+          expect.objectContaining({ id: publicMemory.memory.id }),
+        ],
+      });
+      await expect(
+        removeFor(otherUserContext).execute(
+          { id: privateMemory.memory.id },
+          {},
+        ),
       ).rejects.toThrow("Memory was not found in the current context.");
       await expect(
-        archiveMemory(publicStore, { id: publicMemory.memory.id }),
+        removeFor(slackContext()).execute({ id: publicMemory.memory.id }, {}),
       ).rejects.toThrow("Memory was not found in the current context.");
 
       nowMs += 1;
-      const archived = await archiveMemory(publicStore, {
-        id: privateMemory.memory.id.slice(0, 12),
-      });
+      const archived = await removeFor(linkedIdentityContext).execute(
+        { id: privateMemory.memory.id.slice(0, 12) },
+        {},
+      );
       expect(archived).toMatchObject({
-        id: privateMemory.memory.id,
-        archivedAtMs: nowMs,
+        memory: { id: privateMemory.memory.id },
       });
+      await expect(
+        memoryDb(fixture).select().from(memorySqlSchema.juniorMemoryEmbeddings),
+      ).resolves.toEqual([]);
     } finally {
+      now.mockRestore();
       await fixture.close();
     }
   }, 15_000);
@@ -3251,14 +3275,16 @@ WHERE id = '${superseded.memory.id}'
         memory: { content: created.memory.content, kind: "preference" },
       });
 
-      await expect(listStoredMemories(store, {})).resolves.toEqual(
+      await expect(readActiveMemoryRows(fixture, nowMs)).resolves.toEqual(
         expect.arrayContaining([
           expect.objectContaining({ id: otherScope.memory.id }),
           expect.objectContaining({ id: otherKind.memory.id }),
           expect.objectContaining({ id: created.memory.id }),
         ]),
       );
-      await expect(listStoredMemories(store, {})).resolves.toHaveLength(3);
+      await expect(readActiveMemoryRows(fixture, nowMs)).resolves.toHaveLength(
+        3,
+      );
     } finally {
       await fixture.close();
     }
@@ -3306,7 +3332,9 @@ WHERE id = '${superseded.memory.id}'
         memory: { id: second.memory.id, content: duplicateContent },
       });
 
-      await expect(listStoredMemories(store, {})).resolves.toHaveLength(2);
+      await expect(
+        readActiveMemoryRows(fixture, TEST_NOW_MS),
+      ).resolves.toHaveLength(2);
     } finally {
       await fixture.close();
     }
@@ -3344,7 +3372,9 @@ WHERE id = '${superseded.memory.id}'
       });
       expect(neighbor.memory.id).not.toBe(created.memory.id);
 
-      await expect(listStoredMemories(store, {})).resolves.toHaveLength(2);
+      await expect(
+        readActiveMemoryRows(fixture, TEST_NOW_MS),
+      ).resolves.toHaveLength(2);
       await expect(
         memoryDb(fixture).select().from(memorySqlSchema.juniorMemoryEmbeddings),
       ).resolves.toHaveLength(2);
@@ -3399,6 +3429,8 @@ WHERE id = '${superseded.memory.id}'
 
   it("archives expired visible memories during reads", async () => {
     const fixture = await createMemoryFixture();
+    let nowMs = TEST_NOW_MS;
+    const now = vi.spyOn(Date, "now").mockImplementation(() => nowMs);
 
     try {
       const expiredContent = "Temporary CLI memory should expire cleanly.";
@@ -3409,8 +3441,8 @@ WHERE id = '${superseded.memory.id}'
         [activeContent]: unitEmbedding(2),
         [supersededContent]: unitEmbedding(3),
       });
-      let nowMs = TEST_NOW_MS;
-      const store = memoryFixture(memoryDb(fixture), slackContext(), {
+      const runtime = slackContext();
+      const store = memoryFixture(memoryDb(fixture), runtime, {
         embedder,
         now: () => nowMs,
       });
@@ -3443,9 +3475,16 @@ WHERE id = '${superseded.memory.id}'
       ).resolves.toHaveLength(3);
 
       nowMs = TEST_NOW_MS + 11;
-      await expect(listStoredMemories(store, {})).resolves.toEqual([
-        expect.objectContaining({ id: active.memory.id }),
-      ]);
+      await expect(
+        createMemoryListTool({
+          agent: allowMemory("actor"),
+          db: memoryDb(fixture),
+          ...runtime,
+          users: memoryUsers(runtime.userId),
+        }).execute({}, {}),
+      ).resolves.toMatchObject({
+        memories: [expect.objectContaining({ id: active.memory.id })],
+      });
       await expect(
         memoryDb(fixture)
           .select()
@@ -3485,6 +3524,7 @@ WHERE id = '${superseded.memory.id}'
         }),
       ]);
     } finally {
+      now.mockRestore();
       await fixture.close();
     }
   }, 15_000);
@@ -4345,12 +4385,7 @@ WHERE id = '${superseded.memory.id}'
         ),
       ).resolves.toMatchObject({ created: true });
 
-      await expect(
-        listStoredMemories(
-          memoryFixture(memoryDb(fixture), slackContext()),
-          {},
-        ),
-      ).resolves.toEqual([
+      await expect(readActiveMemoryRows(fixture)).resolves.toEqual([
         expect.objectContaining({
           content: "Prefers the second remembered fact.",
         }),
@@ -4363,60 +4398,24 @@ WHERE id = '${superseded.memory.id}'
     }
   }, 15_000);
 
-  it("keeps private local memory with its User", async () => {
+  it("searches memory created in a local conversation", async () => {
     const fixture = await createMemoryFixture();
 
     try {
-      let nowMs = TEST_NOW_MS;
       const store = memoryFixture(memoryDb(fixture), localContext(), {
-        now: () => nowMs,
+        now: () => TEST_NOW_MS,
       });
-
-      const personal = await createUserMemory(store, {
-        content: "Prefers local CLI memory checks.",
-        kind: "preference",
-        idempotencyKey: "memory-test:local-personal",
-      });
-      nowMs = TEST_NOW_MS + 1;
       const conversation = await createConversationMemory(store, {
         content: "Memory plugin validation is tracked in this local session.",
         kind: "knowledge",
         idempotencyKey: "memory-test:local-conversation",
       });
 
-      await expect(listStoredMemories(store, {})).resolves.toEqual([
-        expect.objectContaining({ id: conversation.memory.id }),
-        expect.objectContaining({ id: personal.memory.id }),
-      ]);
       await expect(
         searchMemories(store, { query: "validation" }),
       ).resolves.toEqual([
         expect.objectContaining({ id: conversation.memory.id }),
       ]);
-
-      const otherConversationStore = memoryFixture(
-        memoryDb(fixture),
-        localContext({ conversationId: "local:junior:other-memory-test" }),
-        { now: () => nowMs },
-      );
-      await expect(
-        listStoredMemories(otherConversationStore, {}),
-      ).resolves.toEqual([
-        expect.objectContaining({ id: conversation.memory.id }),
-        expect.objectContaining({ id: personal.memory.id }),
-      ]);
-      await expect(
-        archiveMemory(otherConversationStore, { id: conversation.memory.id }),
-      ).resolves.toMatchObject({ id: conversation.memory.id });
-
-      nowMs = TEST_NOW_MS + 2;
-      const archived = await archiveMemory(otherConversationStore, {
-        id: personal.memory.id,
-      });
-      expect(archived).toMatchObject({
-        archivedAtMs: TEST_NOW_MS + 2,
-        id: personal.memory.id,
-      });
     } finally {
       await fixture.close();
     }
@@ -4532,9 +4531,9 @@ INSERT INTO junior_memory_memories (
           id: existing.memory.id,
         },
       });
-      await expect(listStoredMemories(store, {})).resolves.toEqual([
-        expect.objectContaining({ id: existing.memory.id }),
-      ]);
+      await expect(readActiveMemoryRows(fixture, TEST_NOW_MS)).resolves.toEqual(
+        [expect.objectContaining({ id: existing.memory.id })],
+      );
     } finally {
       await fixture.close();
     }
@@ -4673,7 +4672,7 @@ INSERT INTO junior_memory_memories (
         content: oldContent,
         id: oldMemory.memory.id,
       });
-      const activeMemories = await listStoredMemories(store, {});
+      const activeMemories = await readActiveMemoryRows(fixture, nowMs);
       expect(activeMemories).toContainEqual(
         expect.objectContaining({
           content: newContent,
@@ -4749,7 +4748,7 @@ INSERT INTO junior_memory_memories (
         idempotencyKey: "memory-test:supersession-distinct-new",
       });
 
-      await expect(listStoredMemories(store, {})).resolves.toEqual([
+      await expect(readActiveMemoryRows(fixture, nowMs)).resolves.toEqual([
         expect.objectContaining({ id: newMemory.memory.id }),
         expect.objectContaining({ id: oldMemory.memory.id }),
       ]);
@@ -4800,7 +4799,7 @@ INSERT INTO junior_memory_memories (
         idempotencyKey: "memory-test:supersession-expired-new",
       });
 
-      await expect(listStoredMemories(store, {})).resolves.toEqual([
+      await expect(readActiveMemoryRows(fixture, nowMs)).resolves.toEqual([
         expect.objectContaining({ id: oldMemory.memory.id }),
       ]);
       await expect(
@@ -4850,7 +4849,7 @@ INSERT INTO junior_memory_memories (
         idempotencyKey: "memory-test:supersession-conversation-new",
       });
 
-      await expect(listStoredMemories(store, {})).resolves.toEqual([
+      await expect(readActiveMemoryRows(fixture, nowMs)).resolves.toEqual([
         expect.objectContaining({ id: newMemory.memory.id }),
         expect.objectContaining({ id: oldMemory.memory.id }),
       ]);
@@ -4886,7 +4885,7 @@ INSERT INTO junior_memory_memories (
         idempotencyKey: "memory-test:supersession-knowledge-new",
       });
 
-      await expect(listStoredMemories(store, {})).resolves.toEqual([
+      await expect(readActiveMemoryRows(fixture, nowMs)).resolves.toEqual([
         expect.objectContaining({ id: newMemory.memory.id }),
         expect.objectContaining({ id: oldMemory.memory.id }),
       ]);
@@ -4913,7 +4912,18 @@ INSERT INTO junior_memory_memories (
       });
 
       nowMs = TEST_NOW_MS + 1;
-      await archiveMemory(store, { id: archived.memory.id });
+      await memoryDb(fixture)
+        .update(memorySqlSchema.juniorMemoryMemories)
+        .set({ archivedAtMs: nowMs, archiveReason: "user_removed" })
+        .where(eq(memorySqlSchema.juniorMemoryMemories.id, archived.memory.id));
+      await memoryDb(fixture)
+        .delete(memorySqlSchema.juniorMemoryEmbeddings)
+        .where(
+          eq(
+            memorySqlSchema.juniorMemoryEmbeddings.memoryId,
+            archived.memory.id,
+          ),
+        );
 
       nowMs = TEST_NOW_MS + 2;
       const recreated = await createUserMemory(store, {
@@ -4941,7 +4951,7 @@ INSERT INTO junior_memory_memories (
           content: recreated.memory.content,
         },
       });
-      await expect(listStoredMemories(store, {})).resolves.toEqual([
+      await expect(readActiveMemoryRows(fixture, nowMs)).resolves.toEqual([
         expect.objectContaining({ id: recreated.memory.id }),
       ]);
     } finally {
@@ -4949,7 +4959,7 @@ INSERT INTO junior_memory_memories (
     }
   }, 15_000);
 
-  it("treats expired memories as inactive for archive and recreate", async () => {
+  it("treats expired memories as inactive when recreating", async () => {
     const fixture = await createMemoryFixture();
 
     try {
@@ -4967,11 +4977,6 @@ INSERT INTO junior_memory_memories (
         expiresAtMs: TEST_NOW_MS + 10,
         idempotencyKey: "memory-test:expires",
       });
-
-      nowMs = TEST_NOW_MS + 11;
-      await expect(
-        archiveMemory(store, { id: expired.memory.id }),
-      ).rejects.toThrow("Memory was not found in the current context.");
 
       nowMs = TEST_NOW_MS + 12;
       const recreated = await createUserMemory(store, {
@@ -5092,13 +5097,9 @@ INSERT INTO junior_memory_memories (
           subjectType: "general",
         } as Parameters<typeof createUserMemory>[1]),
       ).rejects.toThrow(/Invalid input|Unrecognized key/);
-      await expect(
-        listStoredMemories(store, {
-          actor: { platform: "local", userId: "local-user" },
-        } as Parameters<typeof listStoredMemories>[1]),
-      ).rejects.toThrow(/Invalid input|Unrecognized key/);
-
-      await expect(listStoredMemories(store, {})).resolves.toEqual([]);
+      await expect(readActiveMemoryRows(fixture, TEST_NOW_MS)).resolves.toEqual(
+        [],
+      );
     } finally {
       await fixture.close();
     }
@@ -5119,7 +5120,9 @@ INSERT INTO junior_memory_memories (
           idempotencyKey: "memory-test:empty-content",
         }),
       ).rejects.toThrow("Memory content is required.");
-      await expect(listStoredMemories(store, {})).resolves.toEqual([]);
+      await expect(readActiveMemoryRows(fixture, TEST_NOW_MS)).resolves.toEqual(
+        [],
+      );
     } finally {
       await fixture.close();
     }

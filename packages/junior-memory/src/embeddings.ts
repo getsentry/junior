@@ -1,9 +1,6 @@
-/** Derived embedding index rules for memory create and retrieval operations. */
+/** Shared memory embedding normalization and provider validation. */
 import { createHash } from "node:crypto";
-import { eq } from "drizzle-orm";
 import { z } from "zod";
-import { juniorMemoryEmbeddings } from "./db/schema";
-import type { MemoryDb } from "./memories";
 import { MEMORY_EMBEDDING_DIMENSIONS } from "./types";
 
 const numberSchema = z.number().finite();
@@ -69,61 +66,4 @@ export async function embedMemoryText(
     provider: result.provider,
     vector: result.vectors[0],
   };
-}
-
-/** Store a best-effort derived embedding without blocking memory persistence. */
-export async function storeMemoryEmbedding(args: {
-  content: string;
-  db: MemoryDb;
-  embedder?: MemoryEmbeddingProvider;
-  embedding?: MemoryEmbedding;
-  memoryId: string;
-  nowMs: number;
-}): Promise<void> {
-  if (!args.embedder && !args.embedding) {
-    return;
-  }
-  try {
-    const existing = await args.db
-      .select({ memoryId: juniorMemoryEmbeddings.memoryId })
-      .from(juniorMemoryEmbeddings)
-      .where(eq(juniorMemoryEmbeddings.memoryId, args.memoryId))
-      .limit(1);
-    if (existing[0]) {
-      return;
-    }
-  } catch {
-    return;
-  }
-  let embedding: MemoryEmbedding;
-  if (args.embedding) {
-    embedding = args.embedding;
-  } else {
-    const embedder = args.embedder;
-    if (!embedder) {
-      return;
-    }
-    try {
-      embedding = await embedMemoryText(embedder, args.content);
-    } catch {
-      return;
-    }
-  }
-  try {
-    await args.db
-      .insert(juniorMemoryEmbeddings)
-      .values({
-        contentHash: hashEmbeddedContent(args.content),
-        createdAtMs: args.nowMs,
-        dimensions: MEMORY_EMBEDDING_DIMENSIONS,
-        embedding: embedding.vector,
-        memoryId: args.memoryId,
-        metric: EMBEDDING_METRIC,
-        model: embedding.model,
-        provider: embedding.provider,
-      })
-      .onConflictDoNothing();
-  } catch {
-    return;
-  }
 }

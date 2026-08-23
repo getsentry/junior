@@ -47,6 +47,10 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(juniorPackageRoot, "src"),
+      "@sentry/junior-memory/testing": path.resolve(
+        memoryPackageRoot,
+        "src/testing.ts",
+      ),
       "@sentry/junior-memory": path.resolve(memoryPackageRoot, "src/index.ts"),
       "@sentry/junior-plugin-api": path.resolve(
         pluginApiPackageRoot,
