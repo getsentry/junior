@@ -381,7 +381,7 @@ function buildOutputSection(platform: PromptPlatform): string {
     return [
       `<output format="markdown">`,
       "- Start with the answer or result, not internal process narration.",
-      "- Use concise Markdown suitable for terminal output: short paragraphs, bullets, links, and fenced code blocks when helpful.",
+      "- Use concise Markdown suitable for terminal and web output: short paragraphs, bullets, links, fenced code blocks, and GFM tables when a grid is clearer than bullets.",
       "- End every turn with a final user-facing response.",
       "</output>",
     ].join("\n");

@@ -98,6 +98,14 @@ line three
 1. first
 2. second
 
+## Table
+
+| Service | Status | p95 |
+| --- | :---: | ---: |
+| **relay** | healthy | 42ms |
+| snuba | degraded | 180ms |
+| \`ingest\` | healthy | 31ms |
+
 Paragraph after a blank line stays a paragraph.`;
 
 const MIXED_ASSISTANT = `I checked the PR.
