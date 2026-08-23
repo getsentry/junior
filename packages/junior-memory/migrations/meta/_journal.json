@@ -71,6 +71,13 @@
       "when": 1787417688130,
       "tag": "0009_faithful_whizzer",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1787458882949,
+      "tag": "0010_memories_captured_scope_labels",
+      "breakpoints": true
     }
   ]
 }

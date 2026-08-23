@@ -22,38 +22,21 @@ describe("memory conversation events", () => {
       memoriesCapturedEventV1.renderEvent(legacy)?.details?.[0]?.metadata,
     ).toEqual(["preference", "private"]);
 
-    // v2 rows written before the scope rename still use personal/conversation.
-    const renamed = memoriesCapturedEvent.parse({
-      costUsd: 0.0042,
-      memories: [
-        {
-          content: "Release notes live in Notion.",
-          id: "memory-v2",
-          kind: "knowledge",
-          observedAtMs: 2,
-          scope: "conversation",
-        },
-        {
-          content: "Prefer short replies.",
-          id: "memory-v2-private",
-          kind: "preference",
-          observedAtMs: 3,
-          scope: "personal",
-        },
-      ],
-    });
-    expect(renamed.memories.map((memory) => memory.scope)).toEqual([
-      "public",
-      "private",
-    ]);
-    expect(
-      memoriesCapturedEvent.renderEvent(renamed)?.details?.map(
-        (detail) => detail.metadata,
-      ),
-    ).toEqual([
-      ["knowledge", "public"],
-      ["preference", "private"],
-    ]);
+    // v2 rows keep private/public only; migration rewrites pre-rename labels.
+    expect(() =>
+      memoriesCapturedEvent.parse({
+        costUsd: 0.0042,
+        memories: [
+          {
+            content: "Release notes live in Notion.",
+            id: "memory-v2",
+            kind: "knowledge",
+            observedAtMs: 2,
+            scope: "conversation",
+          },
+        ],
+      }),
+    ).toThrow(/scope/);
   });
 
   it("omits empty extraction results from transcript presentation", () => {
