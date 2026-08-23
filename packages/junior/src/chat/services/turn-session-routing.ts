@@ -9,6 +9,7 @@ import type { ConversationStore } from "@/chat/conversations/store";
 
 export interface TurnSessionRouting {
   destination: Destination;
+  locationId?: string;
   source: Source;
 }
 
@@ -31,6 +32,9 @@ export async function resolveTurnSessionRouting(args: {
 
   return {
     destination: conversation.destination,
+    ...(conversation.location
+      ? { locationId: conversation.location.id }
+      : undefined),
     source: conversation.sessionSource,
   };
 }

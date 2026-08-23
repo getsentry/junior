@@ -84,6 +84,8 @@ interface BaseToolRuntimeContext {
    * Do not parse as Slack unless the value starts with `slack:`.
    */
   conversationId?: string;
+  /** Location associated with this Conversation. */
+  locationId?: string;
 
   /** Runtime-owned default outbound destination for this invocation. */
   destination: Destination;

@@ -3,7 +3,7 @@ import { z } from "zod";
 
 export const MEMORY_KINDS = ["preference", "procedure", "knowledge"] as const;
 
-export const MEMORY_SCOPES = ["personal", "conversation"] as const;
+export const MEMORY_SCOPES = ["private", "public"] as const;
 export const MEMORY_SUBJECT_TYPES = [
   "user",
   "conversation",
@@ -22,12 +22,15 @@ export type MemoryEmbeddingMetric = (typeof MEMORY_EMBEDDING_METRICS)[number];
 
 const nonEmptyStringSchema = z.string().min(1);
 
-/** Runtime-owned memory invocation fields used for scope and source authority. */
+/** Host data used to set memory access, subject, and source. */
 export const memoryRuntimeContextSchema = z
   .object({
     conversationId: nonEmptyStringSchema.optional(),
+    locationId: nonEmptyStringSchema.optional(),
     actor: actorSchema.optional(),
     source: sourceSchema,
+    /** User linked to the active Actor. */
+    userId: nonEmptyStringSchema.optional(),
   })
   .strict();
 

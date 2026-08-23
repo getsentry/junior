@@ -1,8 +1,7 @@
 /**
- * Authenticated REST resources for viewer-visible memories.
+ * Authenticated REST access to memory.
  *
- * HTTP identity is one verified user whose linked identities authorize
- * personal and public workspace scopes.
+ * The signed-in User can read public memory and private memory that they own.
  */
 import { z } from "zod";
 import {
@@ -15,9 +14,9 @@ import type { MemoryDb } from "./store";
 import {
   createViewerMemories,
   InvalidMemoryCursorError,
-  PersonalMemoryNotFoundError,
-  type PersonalMemoryRecord,
-} from "./personal";
+  MemoryNotFoundError,
+  type ViewerMemory,
+} from "./viewer";
 import { MEMORY_SOURCE_PLATFORMS } from "./types";
 
 export const memoryApiSchema = z
@@ -109,9 +108,7 @@ function json(body: unknown, status = 200): Response {
   });
 }
 
-function apiMemory(
-  memory: PersonalMemoryRecord,
-): z.output<typeof memoryApiSchema> {
+function apiMemory(memory: ViewerMemory): z.output<typeof memoryApiSchema> {
   return {
     content: memory.content,
     createdAt: new Date(memory.createdAtMs).toISOString(),
@@ -156,10 +153,10 @@ export function createMemoryApi(options: MemoryApiOptions): PluginRouteApp {
         return json({ error: "Method not allowed." }, 405);
       }
 
-      const user = await options.users.resolve(email);
-      if (!user) return json({ error: "Authentication required." }, 401);
+      const viewer = await options.users.resolve(email);
+      if (!viewer) return json({ error: "Authentication required." }, 401);
 
-      const memories = createViewerMemories(options.db, user);
+      const memories = createViewerMemories(options.db, viewer);
       try {
         if (isDashboard && isRead) {
           const [stats, days, extractionDays, recallDays] = await Promise.all([
@@ -174,12 +171,16 @@ export function createMemoryApi(options: MemoryApiOptions): PluginRouteApp {
               eventName: "memories_recalled",
             }),
           ]);
+          const { private: personal, ...dashboardStats } = stats;
           const body = memoryDashboardResponseSchema.parse({
-            days,
+            days: days.map(({ private: personal, ...day }) => ({
+              ...day,
+              personal,
+            })),
             extractionDays,
             generatedAt: new Date().toISOString(),
             recallDays,
-            stats,
+            stats: { ...dashboardStats, personal },
           });
           return request.method === "HEAD"
             ? new Response(null, {
@@ -238,7 +239,7 @@ export function createMemoryApi(options: MemoryApiOptions): PluginRouteApp {
         ) {
           return json({ error: "Invalid memory request." }, 400);
         }
-        if (error instanceof PersonalMemoryNotFoundError) {
+        if (error instanceof MemoryNotFoundError) {
           return json({ error: error.message }, 404);
         }
         throw error;

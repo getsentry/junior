@@ -25,6 +25,7 @@ import { cosineDistance } from "drizzle-orm/sql/functions";
 import type { PgDatabase } from "drizzle-orm/pg-core";
 import type { PgQueryResultHKT } from "drizzle-orm/pg-core/session";
 import { z } from "zod";
+import { getSourceKey } from "@sentry/junior-plugin-api";
 import * as memorySqlSchema from "./db/schema";
 import { juniorMemoryEmbeddings, juniorMemoryMemories } from "./db/schema";
 import { rankMemoryMatches, type MemoryMatch } from "./ranking";
@@ -36,8 +37,6 @@ import {
   MEMORY_KINDS,
   memoryRuntimeContextSchema,
   type MemoryRuntimeContext,
-  type MemoryScope,
-  type MemorySourcePlatform,
 } from "./types";
 import {
   deriveMemoryScope,
@@ -150,6 +149,7 @@ const memoryRowSchema = z
     expiresAtMs: optionalNumberSchema,
     id: z.string().min(1),
     idempotencyKey: optionalStringSchema,
+    locationId: optionalNonEmptyStringSchema,
     observedAtMs: z.coerce.number(),
     searchVector: z.string().optional(),
     scope: z.enum(MEMORY_SCOPES),
@@ -334,16 +334,14 @@ export interface MemoryStore {
   ): Promise<ArchiveExpiredMemoriesResult>;
   /** Archive a visible memory in the current runtime context. */
   archiveMemory(input: ArchiveMemoryInput): Promise<MemoryRecord>;
-  /** Store a personal memory for the current actor. */
+  /** Store a memory about the current User. The Source sets access. */
   createMemory(input: CreateMemoryInput): Promise<CreateMemoryResult>;
-  /** Store a conversation memory for the current source conversation. */
+  /** Store a memory about the current Conversation. The Source sets access. */
   createConversationMemory(
     input: CreateMemoryInput,
   ): Promise<CreateMemoryResult>;
   /** List active memories visible in the current runtime context. */
   listMemories(input: ListMemoriesInput): Promise<MemoryRecord[]>;
-  /** List active personal memories owned by the current actor. */
-  listPersonalMemories(input: ListMemoriesInput): Promise<MemoryRecord[]>;
   /**
    * Retrieve a broad relevance-ranked candidate window for automatic recall.
    * Prompt admission remains owned by the recall boundary.
@@ -384,50 +382,15 @@ function boundedLimit(value: number | undefined, fallback: number): number {
   return Math.min(200, Math.max(1, Math.floor(value)));
 }
 
-/** Map runtime Source platform onto the durable memory source platform. */
-function memorySourcePlatform(
-  source: MemoryRuntimeContext["source"],
-): MemorySourcePlatform {
-  switch (source.platform) {
-    case "slack":
-      return "slack";
-    case "local":
-      return "local";
-    case "web":
-      return "web";
-  }
-}
-
-/** Build the durable source attribution key from runtime-owned source fields. */
+/** Build the stored key for the Source. */
 function sourceKey(ctx: MemoryRuntimeContext): string {
-  switch (ctx.source.platform) {
-    case "web":
-    case "local":
-      return ctx.source.conversationId;
-    case "slack": {
-      const threadKey = ctx.source.threadTs ?? ctx.source.messageTs;
-      if (!threadKey) {
-        throw new Error(
-          "Memory source requires a Slack message or thread timestamp.",
-        );
-      }
-      return `slack:${ctx.source.teamId}:${ctx.source.channelId}:${threadKey}`;
-    }
+  const key = getSourceKey(ctx.source);
+  if (!key) {
+    throw new Error("Memory Source has no stable key.");
   }
+  return key;
 }
 
-function sourceChannelPrefix(ctx: MemoryRuntimeContext): string | undefined {
-  switch (ctx.source.platform) {
-    case "slack":
-      // TODO(v0.82.0): Replace Slack source-key prefix matching with typed source proximity metadata.
-      return `slack:${ctx.source.teamId}:${ctx.source.channelId}:`;
-    case "web":
-    case "local":
-      return undefined;
-  }
-}
-
-/** Parse one SQL row into the public memory record projection. */
 /** Parse one SQL row into the public memory projection. */
 export function parseMemoryRow(row: unknown): MemoryRecord {
   const parsed = memoryRowSchema.parse(row);
@@ -739,9 +702,7 @@ function activeScopedSubjectPredicate(args: {
     eq(juniorMemoryMemories.scopeKey, args.scope.scopeKey),
     eq(juniorMemoryMemories.kind, args.kind),
     eq(juniorMemoryMemories.subjectType, args.subject.subjectType),
-    args.subject.subjectKey === undefined
-      ? isNull(juniorMemoryMemories.subjectKey)
-      : eq(juniorMemoryMemories.subjectKey, args.subject.subjectKey),
+    eq(juniorMemoryMemories.subjectKey, args.subject.subjectKey),
     isNull(juniorMemoryMemories.archivedAtMs),
     isNull(juniorMemoryMemories.supersededAtMs),
     isNull(juniorMemoryMemories.supersededById),
@@ -806,11 +767,12 @@ async function rememberDuplicateIdempotency(args: {
         targetId: args.duplicate.id,
       }),
       idempotencyKey: args.idempotencyKey,
+      locationId: args.runtimeContext.locationId,
       observedAtMs: args.nowMs,
       scope: args.scope.scope,
       scopeKey: args.scope.scopeKey,
       sourceKey: sourceKey(args.runtimeContext),
-      sourcePlatform: memorySourcePlatform(args.runtimeContext.source),
+      sourcePlatform: args.runtimeContext.source.platform,
       subjectKey: args.subject.subjectKey,
       subjectType: args.subject.subjectType,
       supersededAtMs: args.nowMs,
@@ -1081,7 +1043,6 @@ async function searchVisibleLexicalMemories(args: {
   return rows.map((row, index) => ({
     lexical: { rank: ranks[index] },
     memory: parseMemoryRow(row.memory),
-    sourceKey: row.memory.sourceKey,
   }));
 }
 
@@ -1148,7 +1109,6 @@ async function searchVisibleVectorMemories(args: {
     return [
       {
         memory: parseMemoryRow(row.memory),
-        sourceKey: row.memory.sourceKey,
         vector: {
           rank: ranks[index],
         },
@@ -1208,13 +1168,13 @@ export function createMemoryStore(
   /** Persist a memory under the plugin-derived scope and subject. */
   async function createScopedMemory(
     rawInput: CreateMemoryInput,
-    scopeKind: MemoryScope,
+    subjectType: ResolvedMemorySubject["subjectType"],
   ): Promise<CreateMemoryResult> {
     const input = createMemoryInputSchema.parse(rawInput);
     const nowMs = getNowMs();
     const content = normalizeContent(input.content);
-    const scope = deriveMemoryScope(runtimeContext, scopeKind);
-    const subject = deriveMemorySubject(runtimeContext, scope);
+    const scope = deriveMemoryScope(runtimeContext);
+    const subject = deriveMemorySubject(runtimeContext, subjectType);
     if (content.length > MAX_MEMORY_CONTENT_CHARS) {
       throw new Error("Memory content exceeds the maximum length.");
     }
@@ -1280,7 +1240,7 @@ export function createMemoryStore(
     }
     let supersededIds: string[] = [];
     if (
-      scopeKind === "personal" &&
+      subjectType === "user" &&
       input.kind === "preference" &&
       supersessionDecider &&
       (input.expiresAtMs === undefined || input.expiresAtMs > nowMs)
@@ -1323,11 +1283,12 @@ export function createMemoryStore(
           expiresAtMs: input.expiresAtMs,
           id,
           idempotencyKey: input.idempotencyKey,
+          locationId: runtimeContext.locationId,
           observedAtMs: nowMs,
           scope: scope.scope,
           scopeKey: scope.scopeKey,
           sourceKey: sourceKey(runtimeContext),
-          sourcePlatform: memorySourcePlatform(runtimeContext.source),
+          sourcePlatform: runtimeContext.source.platform,
           subjectKey: subject.subjectKey,
           subjectType: subject.subjectType,
           kind: input.kind,
@@ -1419,10 +1380,8 @@ export function createMemoryStore(
    * miss path. Each leg is a hard-capped top-k probe so Postgres work stays
    * bounded even on broad queries.
    *
-   * Automatic recall also runs personal-scope-only probes. Workspace
-   * conversation memories sharing common tokens (for example "time") can fill
-   * the shared lexical recency window before ranking, which buries older actor
-   * preferences that explicit search still finds.
+   * Automatic recall also searches private memory by itself. This keeps newer
+   * public memory with common words from hiding older private memory.
    */
   async function retrieveVisibleMemories(
     rawInput: SearchMemoriesInput,
@@ -1442,11 +1401,11 @@ export function createMemoryStore(
         ? SEARCH_RETRIEVAL_OVERFETCH
         : RECALL_RETRIEVAL_OVERFETCH;
     const candidateLimit = retrievalLegLimit(limit, overfetch);
-    const personalScopes = scopes.filter((scope) => scope.scope === "personal");
-    // Automatic recall only: keep a personal-scope probe so workspace noise
-    // cannot monopolize the shared lexical recency window.
-    const probePersonal =
-      vectorMaxDistance !== undefined && personalScopes.length > 0;
+    const privateScopes = scopes.filter((scope) => scope.scope === "private");
+    // Search private memory by itself during recall so public results cannot
+    // fill both search windows.
+    const probePrivate =
+      vectorMaxDistance !== undefined && privateScopes.length > 0;
     const query = normalizeRetrievalQuery(input.query);
     let queryEmbedding: MemoryEmbedding | undefined;
     if (embedder && query) {
@@ -1483,31 +1442,29 @@ export function createMemoryStore(
         ...lexicalArgs,
         scopes,
       }),
-      queryEmbedding && probePersonal
+      queryEmbedding && probePrivate
         ? searchVisibleVectorMemories({
             db,
             embedding: queryEmbedding,
             limit: candidateLimit,
             maxDistance: vectorMaxDistance,
             nowMs,
-            scopes: personalScopes,
+            scopes: privateScopes,
           })
         : emptyMatches,
-      probePersonal
+      probePrivate
         ? searchVisibleLexicalMemories({
             ...lexicalArgs,
-            scopes: personalScopes,
+            scopes: privateScopes,
           })
         : emptyMatches,
     ]);
-    const channelPrefix = sourceChannelPrefix(runtimeContext);
     return rankMemoryMatches(matches.flat(), {
       nowMs,
       // Slight lexical preference protects exact ids/names/timezones on ties.
       ...(vectorMaxDistance === undefined
         ? undefined
         : { lexicalWeight: 1, vectorWeight: 0.85 }),
-      ...(channelPrefix ? { channelPrefix } : undefined),
     })
       .slice(0, limit)
       .map(({ memory }) => memory);
@@ -1519,7 +1476,7 @@ export function createMemoryStore(
     },
 
     async createMemory(input) {
-      return await createScopedMemory(input, "personal");
+      return await createScopedMemory(input, "user");
     },
 
     async createConversationMemory(input) {
@@ -1530,23 +1487,6 @@ export function createMemoryStore(
       input = listMemoriesInputSchema.parse(input);
       const nowMs = getNowMs();
       const scopes = deriveVisibleMemoryScopes(runtimeContext);
-      await archiveExpiredMemoryBatch({
-        db,
-        nowMs,
-        scopes,
-      });
-      return await listVisibleMemories({
-        db,
-        limit: input.limit,
-        nowMs,
-        scopes,
-      });
-    },
-
-    async listPersonalMemories(input) {
-      input = listMemoriesInputSchema.parse(input);
-      const nowMs = getNowMs();
-      const scopes = [deriveMemoryScope(runtimeContext, "personal")];
       await archiveExpiredMemoryBatch({
         db,
         nowMs,
@@ -1571,7 +1511,10 @@ export function createMemoryStore(
     async archiveMemory(input) {
       input = archiveMemoryInputSchema.parse(input);
       const nowMs = getNowMs();
-      const scopes = deriveVisibleMemoryScopes(runtimeContext);
+      // Public memory is shared and has no single user owner.
+      const scopes = deriveVisibleMemoryScopes(runtimeContext).filter(
+        (scope) => scope.scope === "private",
+      );
       const predicate = activeVisiblePredicate({ nowMs, scopes });
       const idPrefix = input.id.trim();
       if (!idPrefix) {

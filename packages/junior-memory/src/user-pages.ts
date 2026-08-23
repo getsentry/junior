@@ -1,7 +1,10 @@
-/** Project viewer-visible memories into Junior's core-rendered user page. */
+/** Render memory in Junior's User page format. */
 import type { PluginUserPageDefinition } from "@sentry/junior-plugin-api";
-import { createViewerMemories } from "./personal";
-import type { MemoryVisibility, PersonalMemoryRecord } from "./personal-store";
+import {
+  createViewerMemories,
+  type MemoryVisibility,
+  type ViewerMemory,
+} from "./viewer";
 import type { MemoryDb } from "./store";
 
 function titleCase(value: string): string {
@@ -16,7 +19,7 @@ function rememberedDate(createdAtMs: number): string {
   }).format(new Date(createdAtMs));
 }
 
-function originLabel(origin: PersonalMemoryRecord["origin"]): string {
+function originLabel(origin: ViewerMemory["origin"]): string {
   if (origin === "automatic") return "Automatic";
   if (origin === "explicit") return "Explicit";
   return "Other";

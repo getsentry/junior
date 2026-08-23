@@ -83,6 +83,8 @@ interface BaseInvocationContext {
    * Interactive Slack turns use `slack:{channelId}:{threadTs}`.
    */
   conversationId?: string;
+  /** Location associated with this Conversation. */
+  locationId?: string;
 }
 
 export interface SlackInvocationContext extends BaseInvocationContext {

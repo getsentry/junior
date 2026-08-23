@@ -165,10 +165,13 @@ function systemPromptPluginContext(plugin: PluginRegistration) {
 function pluginInvocationContext(
   context: Pick<
     ToolRuntimeContext,
-    "conversationId" | "destination" | "actor" | "source"
+    "conversationId" | "locationId" | "destination" | "actor" | "source"
   >,
 ): InvocationContext {
-  const common = { conversationId: context.conversationId };
+  const common = {
+    conversationId: context.conversationId,
+    locationId: context.locationId,
+  };
   switch (context.source.platform) {
     case "slack": {
       if (context.destination.platform !== "slack") {
@@ -206,7 +209,13 @@ function invocationPluginContext(
   plugin: PluginRegistration,
   context: Pick<
     ToolRuntimeContext,
-    "conversationId" | "destination" | "actor" | "source" | "userText"
+    | "conversationId"
+    | "locationId"
+    | "destination"
+    | "actor"
+    | "resolveActorIdentity"
+    | "source"
+    | "userText"
   >,
   turnId?: string,
 ): UserPromptContext {
@@ -214,6 +223,7 @@ function invocationPluginContext(
   const common = {
     ...base,
     conversationId: context.conversationId,
+    locationId: context.locationId,
     embedder: createPluginEmbedder(plugin.manifest.name),
     ...(context.conversationId && turnId
       ? {
@@ -229,6 +239,9 @@ function invocationPluginContext(
     source: context.source,
     text: context.userText ?? "",
     state: createPluginState(plugin.manifest.name),
+    users: {
+      resolveActor: context.resolveActorIdentity ?? (async () => undefined),
+    },
   };
   return {
     ...common,
@@ -492,7 +505,13 @@ export async function getPluginSystemPromptContributions(
 export async function getPluginUserPromptContributions(args: {
   context: Pick<
     ToolRuntimeContext,
-    "conversationId" | "destination" | "actor" | "source" | "userText"
+    | "conversationId"
+    | "locationId"
+    | "destination"
+    | "actor"
+    | "resolveActorIdentity"
+    | "source"
+    | "userText"
   >;
   turnId?: string;
 }): Promise<PluginPromptContributionContext[]> {
@@ -673,6 +692,7 @@ export function getPluginTools(
       ...basePluginContext(plugin),
       ...(annotations ? { annotations } : undefined),
       conversationId: context.conversationId,
+      locationId: context.locationId,
       userText: context.userText,
       embedder: createPluginEmbedder(pluginName),
       egress: context.egress,

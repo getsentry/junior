@@ -187,7 +187,7 @@ const extractMemoriesResponseSchema = z
       .array(extractedMemorySchema)
       .max(5)
       .describe(
-        "Accepted public/shareable durable memories from the completed run. Return one object per distinct source assertion and classify it with kind.",
+        "Accepted durable memories from the completed run. Return one object per distinct source assertion and classify it with kind.",
       ),
   })
   .strict();
@@ -235,7 +235,7 @@ export interface MemoryAgent {
 const MEMORY_REVIEW_SYSTEM = [
   "You are Junior's memory review agent.",
   "Review one memory candidate and return one structured review decision.",
-  "Store only public/shareable, self-contained facts that are useful beyond this turn.",
+  "Store only self-contained facts that are useful beyond this turn and safe for the current Source.",
   "Reject secrets, credentials, private or sensitive personal details, gossip, speculative claims about other people, assistant/system implementation details, vague references, and low-durability chatter.",
   "Use the runtime context only for authority and scope; do not accept model-provided actor ids, scope ids, aliases, or arbitrary subjects.",
 ].join("\n");
@@ -244,7 +244,7 @@ const MEMORY_EXTRACTION_SYSTEM = [
   "Use the completed run transcript as source evidence, including user-authored messages and tool results.",
   "Assistant text is context for interpreting the run, not independent evidence for new facts.",
   "Reject secrets, credentials, private or sensitive personal details, gossip, speculative claims about other people, assistant/system implementation details, vague references, and low-durability chatter.",
-  "If no public, durable, self-contained memory remains after rewriting, return an empty memories array.",
+  "If no durable, self-contained memory remains after rewriting, return an empty memories array.",
 ].join("\n");
 const MEMORY_RECALL_SYSTEM = [
   "You are Junior's memory recall relevance agent.",
@@ -277,9 +277,7 @@ function escapeXml(value: string): string {
     .replaceAll(">", "&gt;");
 }
 
-function actorLabel(
-  actor: z.output<typeof actorSchema> | undefined,
-): string {
+function actorLabel(actor: z.output<typeof actorSchema> | undefined): string {
   if (!actor) {
     return "none";
   }
@@ -351,7 +349,7 @@ function existingMemoriesContext(request: ExtractSessionRequest): string {
 
 /**
  * Passive extraction offers personal preferences only on single-actor runs.
- * Multi-actor runs restrict extraction to conversation-scoped kinds.
+ * Multi-actor runs restrict extraction to conversation-subject kinds.
  */
 function allowedExtractionKinds(actorCount: number): Set<MemoryKind> {
   return actorCount === 1
@@ -388,7 +386,7 @@ function reviewPrompt(request: CreateMemoryRequest): string {
     "</candidate>",
     "",
     "<rules>",
-    "- Return store only when the candidate is public/shareable, durable, and self-contained.",
+    "- Return store only when the candidate is durable, self-contained, and safe for the current Source.",
     "- First classify the memory kind: preference, procedure, or knowledge.",
     "- Use kind=preference only for first-person facts authored by the current actor about their own preference, opinion, habit, identity, or workflow.",
     "- Reject named third-person personal facts such as another person's preference, opinion, habit, identity, relationship, or workflow. Do not assume a named person is the current actor.",

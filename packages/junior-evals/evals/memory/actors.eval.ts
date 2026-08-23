@@ -1,6 +1,7 @@
 import { expect } from "vitest";
 import { describeEval } from "vitest-evals";
 import { getDb } from "@/chat/db";
+import { readActorIdentity } from "@/chat/plugins/viewer";
 import type { MemoryDb } from "@sentry/junior-memory";
 import {
   juniorMemoryEmbeddings,
@@ -15,18 +16,11 @@ import {
 } from "../../src/helpers";
 
 /**
- * Multi-actor provenance evals for passive memory extraction.
+ * Passive memory learning when a run has more than one Actor.
  *
- * Contract under test (packages/junior-memory/README.md, issue #773): a
- * personal-scope memory may only be created from statements authored by the
- * actor who will own it. Another participant's first-person statements in
- * a shared thread are evidence for conversation-scoped knowledge at most,
- * never for the actor's personal memories.
- *
- * Issue #776 tightens this further: a run with more than one run actor never
- * stores a preference from passive extraction at all — not even the run
- * actor's own well-cited first-person preference. A personal preference waits
- * for a single-actor run.
+ * User memory can use only statements from its owning Actor. A statement from
+ * another Actor can support shared knowledge, but not user memory. A run with
+ * more than one Actor does not store any preference.
  */
 
 const memoryPluginOverrides = {
@@ -80,19 +74,27 @@ async function clearMemories() {
   await memoryDb().delete(juniorMemoryMemories);
 }
 
-function personalMemoriesOwnedBy(
+async function memoriesForActor(
   rows: Awaited<ReturnType<typeof readMemories>>,
   slackUserId: string,
 ) {
+  const userId = (
+    await readActorIdentity({
+      platform: "slack",
+      teamId: memoryTeamId,
+      userId: slackUserId,
+    })
+  )?.user?.id;
+  if (!userId) return [];
   return rows.filter(
     (memory) =>
-      memory.scope === "personal" &&
+      memory.subjectType === "user" &&
       memory.archivedAtMs === null &&
-      memory.scopeKey.includes(slackUserId),
+      memory.subjectKey === userId,
   );
 }
 
-describeEval("Memory Multi-Actor Provenance", slackEvals, (it) => {
+describeEval("Memory with Multiple Actors", slackEvals, (it) => {
   const bystanderPreferenceThread = {
     channel_type: "channel",
     id: "thread-memory-bystander-preference",
@@ -100,7 +102,7 @@ describeEval("Memory Multi-Actor Provenance", slackEvals, (it) => {
     thread_ts: "1700000000.000001",
   } satisfies MemoryThread;
 
-  it("when a non-actor states a first-person preference in a shared thread, store no personal memory for the actor", async ({
+  it("when a non-Actor states a first-person preference in a shared thread, store no user memory for the Actor", async ({
     run,
   }) => {
     await clearMemories();
@@ -142,21 +144,17 @@ describeEval("Memory Multi-Actor Provenance", slackEvals, (it) => {
           "The assistant does not present the summary-style preference as belonging to the current actor or as saved for the current actor. Mentioning that another participant stated the preference, or that it will be kept in mind for the write-up, is acceptable and expected.",
         ],
         fail: [
-          "Do not tell the actor that the emoji-heavy summary preference is their own stated preference or that it was saved as their personal preference. Applying or acknowledging the preference as thread feedback without claiming the actor stated it is acceptable.",
+          "Do not tell the Actor that the emoji-heavy summary preference is their own stated preference or that Junior saved it for them. Applying or acknowledging the preference as thread feedback without claiming the Actor stated it is acceptable.",
         ],
       }),
     });
 
     const rows = await readMemories(bystanderPreferenceThread);
-    // The invariant: Bob's first-person preference (short, emoji-heavy
-    // summaries) must never become a personal memory owned by Alice, the run
-    // actor. Content-exclusion is the right deterministic boundary here:
-    // whether Alice happens to own a well-phrased personal memory of her own
-    // words is an extraction-quality question this eval does not contract. The
-    // provenance guarantee is only that Bob's preference content never lands in
-    // Alice's personal scope, no matter how the extractor phrases it.
-    const alicePersonal = personalMemoriesOwnedBy(rows, ALICE.user_id);
-    for (const memory of alicePersonal) {
+    // Bob's first-person preference must never become user memory owned by
+    // Alice, the run Actor. This check only protects ownership. Whether Alice
+    // gets a useful memory from her own words belongs to a different eval.
+    const aliceMemories = await memoriesForActor(rows, ALICE.user_id);
+    for (const memory of aliceMemories) {
       const content = memory.content.toLowerCase();
       expect(content).not.toMatch(/emoji/);
       expect(content).not.toMatch(/short|brief/);
@@ -170,7 +168,7 @@ describeEval("Memory Multi-Actor Provenance", slackEvals, (it) => {
     thread_ts: "1700000000.000002",
   } satisfies MemoryThread;
 
-  it("when the actor and a bystander state conflicting first-person preferences, personal memories only reflect the actor's own statements", async ({
+  it("when the Actor and a bystander state conflicting first-person preferences, user memories only reflect the Actor's own statements", async ({
     run,
   }) => {
     await clearMemories();
@@ -211,19 +209,16 @@ describeEval("Memory Multi-Actor Provenance", slackEvals, (it) => {
     });
 
     const rows = await readMemories(conflictingPreferencesThread);
-    // Any personal memory owned by Alice must come from Alice's own words.
+    // Any user memory owned by Alice must come from Alice's own words.
     // Bob's customer-impact-first preference must not appear in her
-    // personal scope, no matter how the extractor phrases it.
-    const alicePersonal = personalMemoriesOwnedBy(rows, ALICE.user_id);
-    for (const memory of alicePersonal) {
+    // user subject, no matter how the extractor phrases it.
+    const aliceMemories = await memoriesForActor(rows, ALICE.user_id);
+    for (const memory of aliceMemories) {
       expect(memory.content.toLowerCase()).not.toMatch(/customer[ -]?impact/);
     }
-    // And Bob must never own personal memories created from a run he did not
-    // request under someone else's turn: any personal row keyed to Bob must
-    // have come from his own authored turn, which this scenario never gives
-    // an active instruction.
-    const bobPersonal = personalMemoriesOwnedBy(rows, BOB.user_id);
-    for (const memory of bobPersonal) {
+    // Bob must not own user memory created by someone else's turn.
+    const bobMemories = await memoriesForActor(rows, BOB.user_id);
+    for (const memory of bobMemories) {
       expect(memory.content.toLowerCase()).not.toMatch(/risks?[ -]?first/);
     }
   }, 120_000);
@@ -235,7 +230,7 @@ describeEval("Memory Multi-Actor Provenance", slackEvals, (it) => {
     thread_ts: "1700000000.000003",
   } satisfies MemoryThread;
 
-  it("when another user steers a preference into the active turn, do not store it as the actor's personal memory", async ({
+  it("when another User steers a preference into the active turn, do not store it as the Actor's user memory", async ({
     run,
   }) => {
     await clearMemories();
@@ -262,9 +257,9 @@ describeEval("Memory Multi-Actor Provenance", slackEvals, (it) => {
 
     const rows = await readMemories(batchedMentionThread);
     // Bob's first-person formatting preference must never land in Alice's
-    // personal scope just because he explicitly steered her active turn.
-    const alicePersonal = personalMemoriesOwnedBy(rows, ALICE.user_id);
-    for (const memory of alicePersonal) {
+    // user subject just because he explicitly steered her active turn.
+    const aliceMemories = await memoriesForActor(rows, ALICE.user_id);
+    for (const memory of aliceMemories) {
       expect(memory.content.toLowerCase()).not.toMatch(/bullet/);
     }
     // Multi-actor runs never store any preference from passive extraction, no
@@ -289,9 +284,9 @@ describeEval("Memory Multi-Actor Provenance", slackEvals, (it) => {
   } satisfies MemoryThread;
 
   // Issue #776: the case the citation router alone cannot cover. Alice's own
-  // durable first-person preference cites only her own run-actor instruction —
-  // exactly the shape a single-actor run stores as personal memory — but Bob's
-  // explicit steering makes this a multi-actor run, so no preference may be stored.
+  // durable first-person preference cites only her own run-Actor instruction.
+  // A single-Actor run can store this as user memory, but Bob's steering makes
+  // this a multi-Actor run, so no preference may be stored.
   it("when the actor states their own durable preference in a multi-actor turn, store no preference memory at all", async ({
     run,
   }) => {
@@ -335,10 +330,10 @@ describeEval("Memory Multi-Actor Provenance", slackEvals, (it) => {
         scopeKey: memory.scopeKey,
       })),
     ).toEqual([]);
-    // Preferences are the only route into personal scope for passive
-    // extraction, so the actor's personal scope must stay empty too.
+    // Preferences are the only route into a user subject for passive
+    // extraction, so the actor's user-subject memories must stay empty too.
     expect(
-      personalMemoriesOwnedBy(rows, ALICE.user_id).map((memory) => ({
+      (await memoriesForActor(rows, ALICE.user_id)).map((memory) => ({
         content: memory.content,
         kind: memory.kind,
         scope: memory.scope,
@@ -404,11 +399,10 @@ describeEval("Memory Multi-Actor Provenance", slackEvals, (it) => {
     const rows = await readMemories(sharedKnowledgeThread);
     // Guard against over-tightening: public operational knowledge from a
     // non-actor remains valid conversation-scope evidence. Only the
-    // personal scope requires actor-authored provenance.
-    expect(personalMemoriesOwnedBy(rows, ALICE.user_id)).toEqual([]);
+    // user subjects require evidence written by the Actor.
+    expect(await memoriesForActor(rows, ALICE.user_id)).toEqual([]);
     const conversationRows = rows.filter(
-      (memory) =>
-        memory.scope === "conversation" && memory.archivedAtMs === null,
+      (memory) => memory.scope === "public" && memory.archivedAtMs === null,
     );
     const freezeKnowledge = conversationRows.filter((memory) =>
       /freeze/i.test(memory.content),

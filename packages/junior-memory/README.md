@@ -1,6 +1,6 @@
 # @sentry/junior-memory
 
-The memory plugin stores durable, actor-scoped facts, recalls relevant facts
+The memory plugin stores durable facts, recalls relevant facts
 into prompts, and learns candidates from completed sessions. SQL schemas,
 exported types, tools, and tests are authoritative.
 
@@ -13,27 +13,29 @@ exported types, tools, and tests are authoritative.
   learning.
 - The `memory` CLI namespace provides explicit administrative search and
   inspection.
-- The dashboard exposes a searchable, paginated **Memories** user page for
-  personal memories owned by actors linked to the signed-in viewer. Its
-  **Forget** action archives the selected memory. The overview charts global
-  passive-extraction cost from the durable `memory/memories_captured` events;
-  the System plugin report uses the same event-cost feed.
-- Authenticated REST clients can list and search personal memories through
+- The dashboard exposes a searchable, paginated **Memories** user page. It
+  includes public memory and private memory owned by the authenticated user.
+  The overview charts global passive-extraction cost from the durable
+  `memory/memories_captured` events. The System plugin report uses the same
+  event-cost feed.
+- Authenticated REST clients can list and search authorized memories through
   `GET /api/plugins/memory/memories`, read one through
-  `GET /api/plugins/memory/memories/:id`, and archive one through
-  `DELETE /api/plugins/memory/memories/:id`. Personal bearer tokens remain
-  read-only, so mutations require a dashboard browser session.
+  `GET /api/plugins/memory/memories/:id`, and forget an authorized private
+  memory through `DELETE /api/plugins/memory/memories/:id`. Public memory is
+  read-only in the dashboard and REST API.
 
 ## Scope And Visibility
 
-- Memory scope is derived from the active actor and source, never from
-  model-supplied ownership fields.
-- Dashboard and REST requests authorize one verified viewer, then derive access
-  from every linked provider identity so no arbitrary identity is treated as
-  the canonical user.
-- Private conversations and local sources remain private by default.
-- Recall filters candidates by actor, source, visibility, status, and relevance
-  before content reaches the model.
+- The Source sets memory visibility. Model output cannot set it.
+- Public memory is visible everywhere.
+- Private memory belongs to one User. Every Identity linked to that User can
+  access it.
+- Junior records the optional Location where it learned a memory. Location is
+  a record of where Junior learned it. It does not grant access.
+- The subject says what a memory is about. It does not set access. A user
+  preference can be public or private based on its Source.
+- Recall filters candidates by visibility, status, and relevance before content
+  reaches the model.
 - Administrative reads require explicit selectors and safe output defaults.
 - Memory content, embeddings, source excerpts, and review prompts must not be
   logged or traced.
@@ -71,13 +73,12 @@ exported types, tools, and tests are authoritative.
   and slightly prefers lexical ranks so exact tokens survive soft semantic
   neighbors. Vector recall also applies the cosine distance cutoff in SQL, and
   embeddings use an HNSW cosine index (`vector_cosine_ops`).
-- Automatic recall also runs personal-scope-only vector and lexical probes so
-  older actor preferences are not buried when newer workspace conversation
-  memories fill the shared lexical recency window with common tokens. On RRF
-  score ties, personal-scope matches rank ahead of conversation matches.
+- Automatic recall also searches private memory by itself. This keeps newer
+  public memory with common words from hiding older private memory. On equal
+  RRF scores, private memory ranks first.
 - Automatic recall retrieves a bounded candidate window, then uses the
-  memory-owned relevance model to admit at most five directly useful memories.
-  An empty result contributes no filler prompt text.
+  memory relevance model and prompt limit to select useful memories. An empty
+  result adds no prompt text.
 - Every completed automatic recall attempt emits an invisible, namespaced
   `memory/memories_recalled` conversation event with the admitted memory IDs
   and best-effort embedding and relevance-model cost, including retrievals that

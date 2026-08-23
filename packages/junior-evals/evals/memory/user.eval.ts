@@ -14,14 +14,15 @@ import {
   visibleAssistantText,
 } from "./helpers";
 
-describeEval("Personal Memory", slackEvals, (it) => {
+describeEval("User Memory", slackEvals, (it) => {
   const explicitRememberThread = {
     id: "thread-memory-explicit-remember",
-    channel_id: "CMEMORYEXPLICIT",
+    channel_type: "im",
+    channel_id: "DMEMORYEXPLICIT",
     thread_ts: "17000000.000001",
-  };
+  } satisfies MemoryThread;
 
-  it("when explicitly asked to remember a public first-person preference, store one personal memory", async ({
+  it("when explicitly asked to remember a first-person preference, store one private memory", async ({
     run,
   }) => {
     await clearMemories();
@@ -54,7 +55,8 @@ describeEval("Personal Memory", slackEvals, (it) => {
     expect(rows).toEqual([
       expect.objectContaining({
         archivedAtMs: null,
-        scope: "personal",
+        scope: "private",
+        scopeKey: expect.any(String),
         subjectType: "user",
       }),
     ]);
@@ -77,9 +79,14 @@ describeEval("Personal Memory", slackEvals, (it) => {
     });
   });
 
+  const timezoneMemoryThread = {
+    id: "thread-memory-timezone-private",
+    channel_type: "im",
+    channel_id: "DMEMORYTIMEZONE",
+    thread_ts: "17000000.000011",
+  } satisfies MemoryThread;
   const timezoneRecallThread = {
-    id: "thread-memory-timezone-recall",
-    // Public channel so conversation noise is workspace-scoped like production.
+    id: "thread-memory-timezone-public",
     channel_type: "channel",
     channel_id: "CMEMORYTIMEZONE",
     thread_ts: "17000000.000012",
@@ -89,27 +96,26 @@ describeEval("Personal Memory", slackEvals, (it) => {
     run,
   }) => {
     await clearMemories();
-    // Production-shaped personal pref: terse SF/PT wording without an IANA token
-    // or "current time" phrasing. Host embedder still writes the vector row.
+    // Use short SF/PT wording without an IANA token or "current time" phrase.
     const timezoneMemoryContent =
       "Located in San Francisco and uses Pacific Time (PT).";
     await seedMemory({
       content: timezoneMemoryContent,
       idempotencyKey: "eval-memory-timezone-recall",
-      thread: timezoneRecallThread,
+      thread: timezoneMemoryThread,
     });
-    // Workspace conversation noise sharing the common token "time" fills the
-    // shared lexical recency window the way production burial did.
+    // New public memory with the word "time" fills the public search window.
     for (let index = 0; index < 50; index += 1) {
       await seedMemory({
         content: `Recent workspace time note ${index} about deploy time windows`,
         idempotencyKey: `eval-memory-timezone-noise-${index}`,
         kind: "knowledge",
-        scope: "conversation",
+        subject: "conversation",
         thread: timezoneRecallThread,
       });
     }
-    await expect(countMemoryEmbeddings(timezoneRecallThread)).resolves.toBe(51);
+    await expect(countMemoryEmbeddings(timezoneMemoryThread)).resolves.toBe(1);
+    await expect(countMemoryEmbeddings(timezoneRecallThread)).resolves.toBe(50);
 
     const result = await run({
       overrides: memoryPluginOverrides,
@@ -131,11 +137,13 @@ describeEval("Personal Memory", slackEvals, (it) => {
       }),
     });
 
-    await expect(readActiveMemories(timezoneRecallThread)).resolves.toEqual(
+    await expect(readActiveMemories(timezoneMemoryThread)).resolves.toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           content: timezoneMemoryContent,
-          scope: "personal",
+          scope: "private",
+          scopeKey: expect.any(String),
+          subjectType: "user",
         }),
       ]),
     );
@@ -162,9 +170,10 @@ describeEval("Personal Memory", slackEvals, (it) => {
 
   const firstPersonRewrittenThread = {
     id: "thread-memory-first-person-rewritten",
-    channel_id: "CMEMORYFIRSTPERSON",
+    channel_type: "im",
+    channel_id: "DMEMORYFIRSTPERSON",
     thread_ts: "17000000.000002",
-  };
+  } satisfies MemoryThread;
 
   it("when the actor states a first-person opinion, store it even if candidate wording is rewritten", async ({
     run,
@@ -200,7 +209,8 @@ describeEval("Personal Memory", slackEvals, (it) => {
     expect(rows).toEqual([
       expect.objectContaining({
         archivedAtMs: null,
-        scope: "personal",
+        scope: "private",
+        scopeKey: expect.any(String),
         subjectType: "user",
       }),
     ]);
@@ -215,9 +225,10 @@ describeEval("Personal Memory", slackEvals, (it) => {
 
   const explicitDuplicateThread = {
     id: "thread-memory-explicit-duplicate",
-    channel_id: "CMEMORYEXPLICITDUPLICATE",
+    channel_type: "im",
+    channel_id: "DMEMORYEXPLICITDUPLICATE",
     thread_ts: "17000000.000004",
-  };
+  } satisfies MemoryThread;
 
   it("when explicitly asked to remember an existing preference, acknowledge the existing memory", async ({
     run,
@@ -252,7 +263,9 @@ describeEval("Personal Memory", slackEvals, (it) => {
     await expect(readActiveMemories(explicitDuplicateThread)).resolves.toEqual([
       expect.objectContaining({
         content: "Prefers PR summaries with risks first.",
-        scope: "personal",
+        scope: "private",
+        scopeKey: expect.any(String),
+        subjectType: "user",
       }),
     ]);
   });
