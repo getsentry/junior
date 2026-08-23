@@ -5,7 +5,7 @@ import type { MemoryRecord } from "./store";
 
 function currentScope(
   scope: "personal" | "conversation" | "private" | "public",
-) {
+): "private" | "public" {
   if (scope === "personal") return "private";
   if (scope === "conversation") return "public";
   return scope;
@@ -28,7 +28,17 @@ const legacyCapturedMemorySchema = z
 const capturedMemorySchema = z
   .object({
     ...capturedMemoryFields,
-    scope: z.preprocess((val) => currentScope(val as any), z.enum(MEMORY_SCOPES)),
+    scope: z.preprocess((val) => {
+      if (
+        val === "personal" ||
+        val === "conversation" ||
+        val === "private" ||
+        val === "public"
+      ) {
+        return currentScope(val);
+      }
+      return val;
+    }, z.enum(MEMORY_SCOPES)),
   })
   .strict();
 
