@@ -1,0 +1,2 @@
+ALTER TABLE "junior_snapshots" ADD COLUMN "size_bytes" bigint;--> statement-breakpoint
+ALTER TABLE "junior_snapshots" ADD CONSTRAINT "junior_snapshots_size_bytes_check" CHECK ("junior_snapshots"."size_bytes" is null or "junior_snapshots"."size_bytes" >= 0);

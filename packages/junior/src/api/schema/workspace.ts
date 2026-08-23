@@ -20,6 +20,7 @@ const workspaceSnapshotSchema = z
     id: z.string(),
     generatedAt: z.iso.datetime(),
     buildDurationMs: z.number().int().nonnegative(),
+    sizeBytes: z.number().int().nonnegative().nullable(),
   })
   .strict();
 

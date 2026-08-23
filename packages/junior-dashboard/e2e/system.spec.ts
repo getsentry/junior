@@ -128,7 +128,8 @@ test("shows Workspace snapshot details on its direct route", async ({ page }) =>
         snapshot: {
           id: "snap_workspace_123",
           generatedAt: new Date(Date.now() - 60_000).toISOString(),
-          buildDurationMs: 45_000
+          buildDurationMs: 45_000,
+          sizeBytes: 4_194_304,
         },
         repos: [
           {

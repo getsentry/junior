@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  bigint,
   check,
   index,
   integer,
@@ -30,6 +31,8 @@ export const juniorSnapshots = pgTable(
     // Ready artifact facts.
     snapshotId: text("snapshot_id"),
     buildDurationMs: integer("build_duration_ms"),
+    // Provider snapshot size when the capture response includes it.
+    sizeBytes: bigint("size_bytes", { mode: "number" }),
     generatedAt: timestamptz("generated_at"),
     // Builder references for check-in and snapshot-owner cleanup.
     buildStartedAt: timestamptz("build_started_at"),
@@ -60,6 +63,10 @@ export const juniorSnapshots = pgTable(
     check(
       "junior_snapshots_build_duration_check",
       sql`${table.buildDurationMs} is null or ${table.buildDurationMs} >= 0`,
+    ),
+    check(
+      "junior_snapshots_size_bytes_check",
+      sql`${table.sizeBytes} is null or ${table.sizeBytes} >= 0`,
     ),
     // Provider snapshot ids are unique. Nulls stay allowed for in-flight rows.
     uniqueIndex("junior_snapshots_snapshot_id_uidx").on(table.snapshotId),

@@ -31,6 +31,7 @@ async function insertReadySnapshot(
     status: "ready",
     snapshotId: snapshot.id,
     buildDurationMs: snapshot.buildDurationMs,
+    sizeBytes: snapshot.sizeBytes,
     generatedAt: snapshot.generatedAt,
     createdAt: now,
     updatedAt: now,
@@ -96,6 +97,7 @@ describe("Workspace snapshot store", () => {
       id: "snapshot-independent",
       generatedAt: new Date(),
       buildDurationMs: 50,
+      sizeBytes: null,
       profileHash: build.profileHash,
     });
     await expect(
@@ -111,6 +113,7 @@ describe("Workspace snapshot store", () => {
           id: "snapshot-wrong-owner",
           generatedAt: new Date(),
           buildDurationMs: 100,
+          sizeBytes: null,
           profileHash: build.profileHash,
         },
         { buildId: randomUUID() },
@@ -123,6 +126,7 @@ describe("Workspace snapshot store", () => {
           id: "snapshot-failed-owner",
           generatedAt: new Date(),
           buildDurationMs: 100,
+          sizeBytes: null,
           profileHash: build.profileHash,
         },
         { buildId: failedBuildId },
@@ -135,6 +139,7 @@ describe("Workspace snapshot store", () => {
           id: "snapshot-one",
           generatedAt: new Date(),
           buildDurationMs: 100,
+          sizeBytes: 1_048_576,
           profileHash: build.profileHash,
         },
         { buildId: build.id },
@@ -150,7 +155,10 @@ describe("Workspace snapshot store", () => {
       build.profileHash,
     );
     expect(state.build).toBeNull();
-    expect(state.ready?.id).toBe("snapshot-one");
+    expect(state.ready).toMatchObject({
+      id: "snapshot-one",
+      sizeBytes: 1_048_576,
+    });
     const nextBuild = {
       ...build,
       id: randomUUID(),
@@ -168,6 +176,7 @@ describe("Workspace snapshot store", () => {
           id: "snapshot-two",
           generatedAt: new Date(),
           buildDurationMs: 200,
+          sizeBytes: null,
           profileHash: build.profileHash,
         },
         { buildId: nextBuild.id },
@@ -201,6 +210,7 @@ describe("Workspace snapshot store", () => {
           id: "snapshot-three",
           generatedAt: new Date(),
           buildDurationMs: 300,
+          sizeBytes: null,
           profileHash: build.profileHash,
         },
         { buildId: finalBuild.id },

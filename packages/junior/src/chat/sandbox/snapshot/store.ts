@@ -70,6 +70,7 @@ function snapshotFromRow(row: SnapshotRow): WorkspaceSnapshot {
     id: row.snapshotId,
     generatedAt: row.generatedAt,
     buildDurationMs: row.buildDurationMs,
+    sizeBytes: row.sizeBytes,
     profileHash: row.profileHash,
   };
 }
@@ -184,6 +185,7 @@ export async function setWorkspaceSnapshot(
         status: "ready",
         snapshotId: snapshot.id,
         buildDurationMs: snapshot.buildDurationMs,
+        sizeBytes: snapshot.sizeBytes,
         generatedAt: snapshot.generatedAt,
         buildStartedAt: null,
         buildPhase: null,
@@ -294,6 +296,7 @@ export async function setWorkspaceSnapshotBuild(
         status: build.status,
         snapshotId: null,
         buildDurationMs: null,
+        sizeBytes: null,
         generatedAt: null,
         buildStartedAt: build.startedAt,
         buildPhase: build.phase,

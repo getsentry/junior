@@ -239,6 +239,12 @@ async function finishBuild(
       0,
       createdAtMs - build.startedAt.getTime(),
     );
+    const sizeBytes =
+      typeof snapshot.sizeBytes === "number" &&
+      Number.isFinite(snapshot.sizeBytes) &&
+      snapshot.sizeBytes >= 0
+        ? snapshot.sizeBytes
+        : null;
     await beforeWrite();
     const result = await setWorkspaceSnapshot(
       workspace.id,
@@ -246,6 +252,7 @@ async function finishBuild(
         id: snapshot.snapshotId,
         generatedAt: new Date(createdAtMs),
         buildDurationMs,
+        sizeBytes,
         profileHash: value.hash,
       },
       { buildId: build.id },
