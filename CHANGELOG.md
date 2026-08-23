@@ -1,4 +1,10 @@
 # Changelog
+## 0.181.1
+
+### Bug Fixes 🐛
+
+- (memory) Migrate legacy memories_captured v2 scopes by @sentry-junior in [#1667](https://github.com/getsentry/junior/pull/1667)
+
 ## 0.181.0
 
 ### New Features ✨
