@@ -557,11 +557,12 @@ describe("Workspace tools", () => {
     ).resolves.toMatchObject({
       workspace: { id: workspace.id, name: workspace.name },
       status: "building",
-      subscribable: {
-        namespace: "junior",
-        type: "workspace_snapshot",
-        identifier: workspace.id,
-        suggestedEvents: [],
+      subscription: {
+        id: expect.any(String),
+        events: [
+          "workspace_snapshot.ready",
+          "workspace_snapshot.failed",
+        ],
       },
     });
     expect(switchWorkspace).not.toHaveBeenCalled();
@@ -569,6 +570,16 @@ describe("Workspace tools", () => {
     expect(sendWorkspaceSnapshotJob).toHaveBeenCalledWith({
       workspaceId: workspace.id,
       profileHash: expect.any(String),
+    });
+    const subscriptions = await listResourceEventSubscriptions({
+      conversationId,
+    });
+    expect(subscriptions).toHaveLength(1);
+    expect(subscriptions[0]).toMatchObject({
+      namespace: "junior",
+      resourceType: "workspace_snapshot",
+      identifier: workspace.id,
+      events: ["workspace_snapshot.ready", "workspace_snapshot.failed"],
     });
   });
 });

@@ -1,5 +1,8 @@
 import { z } from "zod";
-import { subscribableResourceSchema } from "@sentry/junior-plugin-api";
+import {
+  resourceEventSubscriptionResultSchema,
+  type ResourceEventSubscriptionResult,
+} from "@sentry/junior-plugin-api";
 import { getDb } from "@/chat/db";
 import { logWarn } from "@/chat/logging";
 import { getPlugins } from "@/chat/plugins/agent-hooks";
@@ -95,6 +98,25 @@ function view(workspace: Workspace) {
       repo: repo.repo,
       checkout_path: workspaceRepoCheckoutPath(repo.repo),
     })),
+  };
+}
+
+/** Return building status and any already-created snapshot subscription. */
+function buildingWorkspaceResult(input: {
+  workspace: z.infer<typeof workspaceSchema>;
+  subscription?: Pick<ResourceEventSubscriptionResult, "id" | "events"> | null;
+}) {
+  return {
+    workspace: input.workspace,
+    status: "building" as const,
+    ...(input.subscription
+      ? {
+          subscription: {
+            id: input.subscription.id,
+            events: [...input.subscription.events],
+          },
+        }
+      : undefined),
   };
 }
 
@@ -328,7 +350,7 @@ export function createWorkspaceTools(
         readOnlyHint: false,
       },
       description:
-        "Replace the current sandbox with a named repository Workspace. Files in the old sandbox do not carry over. If the snapshot is not ready, start the build and watch for the result.",
+        "Replace the current sandbox with a named repository Workspace. Files in the old sandbox do not carry over. Returns ready after the switch, or building when the snapshot is still being prepared.",
       inputSchema: z
         .object({
           name: z.string().trim().min(1).describe("Exact workspace name."),
@@ -337,7 +359,11 @@ export function createWorkspaceTools(
       outputSchema: juniorToolOutputSchema.extend({
         workspace: workspaceSchema,
         status: z.enum(["ready", "building"]),
-        subscribable: subscribableResourceSchema.optional(),
+        subscription: resourceEventSubscriptionResultSchema
+          .optional()
+          .describe(
+            "Present when the snapshot ready and failed events are already watched for this conversation.",
+          ),
       }),
       async execute({ name }, options) {
         const workspace = await getWorkspaceByName(getDb(), name);
@@ -375,11 +401,10 @@ export function createWorkspaceTools(
           const status = await ensureWorkspaceSnapshotBuild({ workspace });
           if (status === "building") {
             keepWatch = true;
-            return {
+            return buildingWorkspaceResult({
               workspace: view(workspace),
-              status,
-              subscribable: watch,
-            };
+              subscription,
+            });
           }
           try {
             await context.workspaces!.switch(workspace, options.signal);
@@ -387,11 +412,10 @@ export function createWorkspaceTools(
             if (!isWorkspaceSnapshotNotReadyError(error)) throw error;
             await ensureWorkspaceSnapshotBuild({ workspace, sendAgain: true });
             keepWatch = true;
-            return {
+            return buildingWorkspaceResult({
               workspace: view(workspace),
-              status: "building" as const,
-              subscribable: watch,
-            };
+              subscription,
+            });
           }
           await tryRecordWorkspaceSwitchStat(workspace);
           return {
