@@ -1,4 +1,28 @@
 # Changelog
+## 0.180.0
+
+### New Features ✨
+
+- (api-turns) Stop active turns across workers by @gricha in [#1643](https://github.com/getsentry/junior/pull/1643)
+- (config) Peer model profiles via createApp by @sentry-junior in [#1657](https://github.com/getsentry/junior/pull/1657)
+- (dashboard) Group sidebar work badges by label by @sentry-junior in [#1660](https://github.com/getsentry/junior/pull/1660)
+- (workspaces) Build snapshots on a background job by @sentry-junior in [#1656](https://github.com/getsentry/junior/pull/1656)
+
+### Bug Fixes 🐛
+
+- (lint) Enable the chained type assertion rule by @sentry-junior in [#1663](https://github.com/getsentry/junior/pull/1663)
+
+### Internal Changes 🔧
+
+#### Lint
+
+- Enable more clean anti-slop rules by @sentry-junior in [#1662](https://github.com/getsentry/junior/pull/1662)
+- Vendor anti-slop oxlint rules by @sentry-junior in [#1661](https://github.com/getsentry/junior/pull/1661)
+
+#### Other
+
+- (queue) Share sign and callback for background work by @sentry-junior in [#1659](https://github.com/getsentry/junior/pull/1659)
+
 ## 0.179.0
 
 ### Bug Fixes 🐛
