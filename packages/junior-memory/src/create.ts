@@ -11,7 +11,6 @@ import {
   eq,
   gt,
   inArray,
-  isNotNull,
   isNull,
   or,
   sql,
@@ -237,13 +236,14 @@ type IdempotencyMatch = {
   outcome: "created" | "duplicate";
 };
 
+/** Resolve same-scope replacement links or fail on broken retry history. */
 async function findByIdempotencyKey(args: {
   db: MemoryDb;
   idempotencyKey: string;
   nowMs: number;
   scope: ResolvedMemoryScope;
 }): Promise<IdempotencyMatch | undefined> {
-  const activeRows = await args.db
+  const histories = await args.db
     .select()
     .from(juniorMemoryMemories)
     .where(
@@ -252,30 +252,6 @@ async function findByIdempotencyKey(args: {
         eq(juniorMemoryMemories.scopeKey, args.scope.scopeKey),
         eq(juniorMemoryMemories.idempotencyKey, args.idempotencyKey),
         isNull(juniorMemoryMemories.archivedAtMs),
-        isNull(juniorMemoryMemories.supersededAtMs),
-        isNull(juniorMemoryMemories.supersededById),
-        or(
-          isNull(juniorMemoryMemories.expiresAtMs),
-          gt(juniorMemoryMemories.expiresAtMs, args.nowMs),
-        ),
-      ),
-    )
-    .limit(1);
-  if (activeRows[0]) {
-    return { memory: parseMemoryRow(activeRows[0]), outcome: "created" };
-  }
-
-  const aliases = await args.db
-    .select({ supersededById: juniorMemoryMemories.supersededById })
-    .from(juniorMemoryMemories)
-    .where(
-      and(
-        eq(juniorMemoryMemories.scope, args.scope.scope),
-        eq(juniorMemoryMemories.scopeKey, args.scope.scopeKey),
-        eq(juniorMemoryMemories.idempotencyKey, args.idempotencyKey),
-        isNull(juniorMemoryMemories.archivedAtMs),
-        isNotNull(juniorMemoryMemories.supersededAtMs),
-        isNotNull(juniorMemoryMemories.supersededById),
         or(
           isNull(juniorMemoryMemories.expiresAtMs),
           gt(juniorMemoryMemories.expiresAtMs, args.nowMs),
@@ -286,29 +262,46 @@ async function findByIdempotencyKey(args: {
       desc(juniorMemoryMemories.createdAtMs),
       asc(juniorMemoryMemories.id),
     );
-  for (const alias of aliases) {
-    if (!alias.supersededById) continue;
-    const rows = await args.db
-      .select()
-      .from(juniorMemoryMemories)
-      .where(
-        and(
-          eq(juniorMemoryMemories.id, alias.supersededById),
-          eq(juniorMemoryMemories.scope, args.scope.scope),
-          eq(juniorMemoryMemories.scopeKey, args.scope.scopeKey),
-          isNull(juniorMemoryMemories.archivedAtMs),
-          isNull(juniorMemoryMemories.supersededAtMs),
-          isNull(juniorMemoryMemories.supersededById),
-          or(
-            isNull(juniorMemoryMemories.expiresAtMs),
-            gt(juniorMemoryMemories.expiresAtMs, args.nowMs),
+  const active = histories.find(
+    (row) => row.supersededAtMs === null && row.supersededById === null,
+  );
+  if (active) {
+    return { memory: parseMemoryRow(active), outcome: "created" };
+  }
+
+  for (const history of histories) {
+    if (history.supersededAtMs === null || !history.supersededById) continue;
+    const visited = new Set<string>();
+    let id: string | undefined = history.supersededById;
+    while (id && !visited.has(id)) {
+      const targetId: string = id;
+      visited.add(targetId);
+      const [row]: (typeof juniorMemoryMemories.$inferSelect)[] = await args.db
+        .select()
+        .from(juniorMemoryMemories)
+        .where(
+          and(
+            eq(juniorMemoryMemories.id, targetId),
+            eq(juniorMemoryMemories.scope, args.scope.scope),
+            eq(juniorMemoryMemories.scopeKey, args.scope.scopeKey),
+            isNull(juniorMemoryMemories.archivedAtMs),
+            or(
+              isNull(juniorMemoryMemories.expiresAtMs),
+              gt(juniorMemoryMemories.expiresAtMs, args.nowMs),
+            ),
           ),
-        ),
-      )
-      .limit(1);
-    if (rows[0]) {
-      return { memory: parseMemoryRow(rows[0]), outcome: "duplicate" };
+        )
+        .limit(1);
+      if (!row) break;
+      if (row.supersededAtMs === null && row.supersededById === null) {
+        return { memory: parseMemoryRow(row), outcome: "duplicate" };
+      }
+      if (row.supersededAtMs === null || row.supersededById === null) break;
+      id = row.supersededById;
     }
+  }
+  if (histories.length > 0) {
+    throw new Error("Memory idempotency conflict did not resolve.");
   }
   return undefined;
 }
