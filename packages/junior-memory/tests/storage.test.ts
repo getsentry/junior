@@ -322,15 +322,16 @@ function extractionModel(
   return { calls, model };
 }
 
-const localInstructionActor: Actor = {
-  platform: "local",
-  userId: "local-user",
+const defaultInstructionActor: Actor = {
+  platform: "slack",
+  teamId: "T123",
+  userId: "U123",
 };
 
 /** A run-actor instruction transcript message. */
 function instructionMessage(
   text: string,
-  actor: Actor = localInstructionActor,
+  actor: Actor = defaultInstructionActor,
 ): PluginRunTranscriptEntry {
   return {
     type: "message",
@@ -479,15 +480,12 @@ function completedRun(
     Awaited<ReturnType<MemoryTaskContext["run"]["load"]>>
   > = {},
 ): NonNullable<Awaited<ReturnType<MemoryTaskContext["run"]["load"]>>> {
-  const runtime = localContext();
+  const runtime = slackContext({ channelId: "D123" });
   return {
     actorUserId: runtime.userId,
     completedAtMs: TEST_NOW_MS,
     conversationId: runtime.conversationId,
-    destination: {
-      platform: "local",
-      conversationId: runtime.conversationId,
-    },
+    destination: slackDestination(runtime),
     transcript: [
       instructionMessage("I prefer terse PR summaries."),
       {
@@ -498,7 +496,7 @@ function completedRun(
     ],
     actor: runtime.actor,
     actors: [runtime.actor],
-    runId: "local-turn-1",
+    runId: "slack-turn-1",
     source: runtime.source,
     ...overrides,
   };
@@ -927,14 +925,14 @@ describe("memory plugin storage", () => {
           expect.objectContaining({
             content: "Prefers QA notes that mention database row checks.",
             scope: "private",
-            sourcePlatform: "local",
+            sourcePlatform: "slack",
             subjectType: "user",
             kind: "preference",
           }),
           expect.objectContaining({
             content: "Deploy runbooks live in Notion.",
             scope: "private",
-            sourcePlatform: "local",
+            sourcePlatform: "slack",
             subjectType: "conversation",
             kind: "knowledge",
           }),
@@ -1011,9 +1009,11 @@ describe("memory plugin storage", () => {
     const fixture = await createMemoryFixture();
 
     try {
-      const store = createMemoryStore(memoryDb(fixture), localContext(), {
-        now: () => TEST_NOW_MS,
-      });
+      const store = createMemoryStore(
+        memoryDb(fixture),
+        slackContext({ channelId: "D123" }),
+        { now: () => TEST_NOW_MS },
+      );
       const oldMemory = await store.createMemory({
         content: "Prefers Python for automation scripts.",
         kind: "preference",
@@ -1438,9 +1438,11 @@ describe("memory plugin storage", () => {
     const fixture = await createMemoryFixture();
     try {
       const duplicateContent = "Deployment runbooks live in Notion.";
-      const store = createMemoryStore(memoryDb(fixture), localContext(), {
-        now: () => TEST_NOW_MS,
-      });
+      const store = createMemoryStore(
+        memoryDb(fixture),
+        slackContext({ channelId: "D123" }),
+        { now: () => TEST_NOW_MS },
+      );
       await store.createConversationMemory({
         content: duplicateContent,
         idempotencyKey: "memory-test:existing-conversation-fact",
@@ -1714,7 +1716,10 @@ describe("memory plugin storage", () => {
                   conversationId: runtime.conversationId,
                 },
                 transcript: [
-                  instructionMessage("I prefer short dashboard answers."),
+                  instructionMessage(
+                    "I prefer short dashboard answers.",
+                    runtime.actor,
+                  ),
                 ],
                 actor: runtime.actor,
                 actors: [runtime.actor],
@@ -1834,33 +1839,33 @@ describe("memory plugin storage", () => {
     }
   });
 
-  it("stores actor memories from local completed sessions", async () => {
+  it("skips passive extraction for local completed sessions", async () => {
     const fixture = await createMemoryFixture();
-    const { model } = extractionModel([
-      {
-        kind: "preference",
-        content: "Prefers local passive memory QA.",
-      },
-    ]);
     const runtime = localContext();
 
     try {
       await processMemorySession(
         processSessionContext({
           db: memoryDb(fixture),
-          model,
+          model: throwingExtractionModel,
           run: {
             async load() {
               return completedRun({
+                actorUserId: runtime.userId,
                 conversationId: runtime.conversationId,
                 destination: {
                   platform: "local",
                   conversationId: runtime.conversationId,
                 },
                 transcript: [
-                  instructionMessage("I prefer local passive memory QA."),
+                  instructionMessage(
+                    "I prefer local passive memory QA.",
+                    runtime.actor,
+                  ),
                 ],
                 actor: runtime.actor,
+                actors: [runtime.actor],
+                runId: "local-turn-1",
                 source: runtime.source,
               });
             },
@@ -1870,14 +1875,7 @@ describe("memory plugin storage", () => {
 
       await expect(
         memoryDb(fixture).select().from(memorySqlSchema.juniorMemoryMemories),
-      ).resolves.toMatchObject([
-        {
-          content: "Prefers local passive memory QA.",
-          scope: "private",
-          subjectKey: runtime.userId,
-          kind: "preference",
-        },
-      ]);
+      ).resolves.toEqual([]);
     } finally {
       await fixture.close();
     }
@@ -1895,7 +1893,7 @@ describe("memory plugin storage", () => {
         content: "Prefers actor-only memory.",
       },
     ]);
-    const runtime = localContext();
+    const runtime = slackContext({ channelId: "D123" });
 
     try {
       await processMemorySession(
@@ -1906,10 +1904,7 @@ describe("memory plugin storage", () => {
             async load() {
               return completedRun({
                 conversationId: runtime.conversationId,
-                destination: {
-                  platform: "local",
-                  conversationId: runtime.conversationId,
-                },
+                destination: slackDestination(runtime),
                 actor: undefined,
                 actorUserId: undefined,
                 transcript: [
@@ -2042,8 +2037,9 @@ describe("memory plugin storage", () => {
     try {
       const state = createMemoryState();
       const secondActor: Actor = {
-        platform: "local",
-        userId: "local-user-2",
+        platform: "slack",
+        teamId: "T123",
+        userId: "U456",
       };
       // Seed the extraction cache with a preference proposed before the
       // multi-actor gate existed. The routing gate must still drop it on replay.
@@ -2064,7 +2060,7 @@ describe("memory plugin storage", () => {
           run: {
             async load() {
               return completedRun({
-                actors: [localInstructionActor, secondActor],
+                actors: [defaultInstructionActor, secondActor],
                 transcript: [
                   instructionMessage("I prefer concise standup notes."),
                 ],
@@ -5063,23 +5059,19 @@ INSERT INTO junior_memory_memories (
       });
 
       await expect(
-        store.createMemory(
-          ({
-            content: "Prefers short PR summaries.",
-            kind: "preference",
-            idempotencyKey: "memory-test:smuggle",
-            scope: "public",
-            subjectKey: "slack:T123:U999",
-            subjectType: "general",
-          } as Parameters<typeof store.createMemory>[0]),
-        ),
+        store.createMemory({
+          content: "Prefers short PR summaries.",
+          kind: "preference",
+          idempotencyKey: "memory-test:smuggle",
+          scope: "public",
+          subjectKey: "slack:T123:U999",
+          subjectType: "general",
+        } as Parameters<typeof store.createMemory>[0]),
       ).rejects.toThrow(/Invalid input|Unrecognized key/);
       await expect(
-        store.listMemories(
-          ({
-            actor: { platform: "local", userId: "local-user" },
-          } as Parameters<typeof store.listMemories>[0]),
-        ),
+        store.listMemories({
+          actor: { platform: "local", userId: "local-user" },
+        } as Parameters<typeof store.listMemories>[0]),
       ).rejects.toThrow(/Invalid input|Unrecognized key/);
 
       await expect(store.listMemories({})).resolves.toEqual([]);

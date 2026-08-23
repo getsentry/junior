@@ -188,7 +188,9 @@ function passiveInput(
     content: memory.content,
     idempotencyKey: `session:${sourceKey}:${sessionId}:${memoryIdempotencySuffix(memory, target)}`,
     kind: memory.kind,
-    ...(memory.expiresAtMs !== null ? { expiresAtMs: memory.expiresAtMs } : undefined),
+    ...(memory.expiresAtMs !== null
+      ? { expiresAtMs: memory.expiresAtMs }
+      : undefined),
   };
 }
 
@@ -221,6 +223,9 @@ export async function processMemorySession(
   context: PluginTaskContext,
 ): Promise<void> {
   const run = await context.run.load();
+  if (run.source.platform === "local") {
+    return;
+  }
   // Memory tool turns already own memory management or recall; do not reinterpret
   // recalled memory output as fresh passive-learning evidence.
   if (
