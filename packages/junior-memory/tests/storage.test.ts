@@ -4600,16 +4600,18 @@ INSERT INTO junior_memory_memories (
     }
   }, 15_000);
 
-  it("supersedes old actor preferences when adjudication is confident", async () => {
+  it("supersedes old User preferences when adjudication is confident", async () => {
     const fixture = await createMemoryFixture();
 
     try {
       let nowMs = TEST_NOW_MS;
       const oldContent = "Prefers Python for automation scripts.";
       const newContent = "Prefers TypeScript for automation scripts.";
+      const finalContent = "Prefers Rust for automation scripts.";
       const vectors: Record<string, number[]> = {
         [oldContent]: unitEmbedding(0),
         [newContent]: cosineEmbedding(0.98),
+        [finalContent]: cosineEmbedding(0.97),
       };
       const unrelatedContents = Array.from(
         { length: 12 },
@@ -4626,12 +4628,21 @@ INSERT INTO junior_memory_memories (
         supersessionDecider: {
           adjudicateSupersession(input) {
             preferenceAdjudicationCalls.push(input);
-            if (input.candidate.content !== newContent) {
+            let replacedContent: string | undefined;
+            if (input.candidate.content === newContent) {
+              replacedContent = oldContent;
+            } else if (input.candidate.content === finalContent) {
+              replacedContent = newContent;
+            }
+            const replaced = input.existingMemories.find(
+              (memory) => memory.content === replacedContent,
+            );
+            if (!replaced) {
               return { decision: "distinct" };
             }
             return {
               decision: "supersedes_old",
-              supersededIds: [input.existingMemories[0].id],
+              supersededIds: [replaced.id],
             };
           },
         },
@@ -4716,6 +4727,35 @@ INSERT INTO junior_memory_memories (
         created: false,
         memory: { id: newMemory.memory.id },
       });
+
+      nowMs = TEST_NOW_MS + 21;
+      const finalMemory = await createUserMemory(store, {
+        content: finalContent,
+        kind: "preference",
+        idempotencyKey: "memory-test:supersession-final",
+      });
+      nowMs = TEST_NOW_MS + 22;
+      await expect(
+        createUserMemory(store, {
+          content: oldContent,
+          kind: "preference",
+          idempotencyKey: "memory-test:supersession-old",
+        }),
+      ).resolves.toMatchObject({
+        created: false,
+        memory: { id: finalMemory.memory.id },
+      });
+      await expect(
+        memoryDb(fixture)
+          .select()
+          .from(memorySqlSchema.juniorMemoryMemories)
+          .where(eq(memorySqlSchema.juniorMemoryMemories.content, oldContent)),
+      ).resolves.toEqual([
+        expect.objectContaining({
+          id: oldMemory.memory.id,
+          supersededById: newMemory.memory.id,
+        }),
+      ]);
     } finally {
       await fixture.close();
     }
