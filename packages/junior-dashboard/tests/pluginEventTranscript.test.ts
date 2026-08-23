@@ -50,7 +50,7 @@ describe("plugin event transcript projection", () => {
           type: "structured_event",
           namespace: "memory",
           name: "memories_captured",
-          version: 1,
+          version: 2,
           turnId: "turn-1",
           presentation: {
             icon: "brain",
@@ -58,7 +58,7 @@ describe("plugin event transcript projection", () => {
             details: [
               {
                 title: "Use pnpm.",
-                metadata: ["preference", "personal"],
+                metadata: ["preference", "private"],
               },
             ],
           },
