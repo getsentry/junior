@@ -7,7 +7,7 @@ INSERT INTO junior_code_repositories (
   updated_at
 )
 SELECT DISTINCT ON (repository_id)
-  gen_random_uuid()::text,
+  gen_random_uuid(),
   repository_full_name,
   'github',
   repository_id,
@@ -36,7 +36,7 @@ INSERT INTO junior_code_changes (
   url
 )
 SELECT
-  gen_random_uuid()::text,
+  gen_random_uuid(),
   github_change.closed_at,
   github_change.conversation_ids,
   github_change.merged_at,

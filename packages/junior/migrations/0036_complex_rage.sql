@@ -1,5 +1,5 @@
 CREATE TABLE "junior_code_changes" (
-	"id" text PRIMARY KEY NOT NULL,
+	"id" uuid PRIMARY KEY NOT NULL,
 	"closed_at" timestamp with time zone,
 	"conversation_ids" text[] DEFAULT ARRAY[]::text[] NOT NULL,
 	"merged_at" timestamp with time zone,
@@ -7,7 +7,7 @@ CREATE TABLE "junior_code_changes" (
 	"opened_at" timestamp with time zone NOT NULL,
 	"provider" text NOT NULL,
 	"provider_id" text NOT NULL,
-	"repository_id" text NOT NULL,
+	"repository_id" uuid NOT NULL,
 	"state" text NOT NULL,
 	"title" text,
 	"updated_at" timestamp with time zone NOT NULL,
@@ -15,7 +15,7 @@ CREATE TABLE "junior_code_changes" (
 );
 --> statement-breakpoint
 CREATE TABLE "junior_code_repositories" (
-	"id" text PRIMARY KEY NOT NULL,
+	"id" uuid PRIMARY KEY NOT NULL,
 	"name" text NOT NULL,
 	"provider" text NOT NULL,
 	"provider_id" text NOT NULL,

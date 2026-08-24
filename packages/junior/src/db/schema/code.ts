@@ -5,6 +5,7 @@ import {
   pgTable,
   text,
   uniqueIndex,
+  uuid,
 } from "drizzle-orm/pg-core";
 import type { CodeChangeState } from "@sentry/junior-plugin-api";
 import { timestamptz } from "./timestamps";
@@ -13,7 +14,7 @@ import { timestamptz } from "./timestamps";
 export const juniorCodeRepositories = pgTable(
   "junior_code_repositories",
   {
-    id: text("id").primaryKey(),
+    id: uuid("id").primaryKey(),
     name: text("name").notNull(),
     provider: text("provider").notNull(),
     providerId: text("provider_id").notNull(),
@@ -32,7 +33,7 @@ export const juniorCodeRepositories = pgTable(
 export const juniorCodeChanges = pgTable(
   "junior_code_changes",
   {
-    id: text("id").primaryKey(),
+    id: uuid("id").primaryKey(),
     closedAt: timestamptz("closed_at"),
     conversationIds: text("conversation_ids")
       .array()
@@ -43,7 +44,7 @@ export const juniorCodeChanges = pgTable(
     openedAt: timestamptz("opened_at").notNull(),
     provider: text("provider").notNull(),
     providerId: text("provider_id").notNull(),
-    repositoryId: text("repository_id")
+    repositoryId: uuid("repository_id")
       .notNull()
       .references(() => juniorCodeRepositories.id, { onDelete: "cascade" }),
     state: text("state").$type<CodeChangeState>().notNull(),
