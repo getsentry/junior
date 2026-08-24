@@ -25,7 +25,7 @@ import {
   normalizeGitHubPullRequestLinkedIssues,
   normalizeGitHubPullRequestOutcome,
 } from "./pull-request-outcome.js";
-import { loadCheckSuiteEnrichment } from "./check-suite-enrichment.js";
+import { loadCheckSuiteFacts } from "./check-suite.js";
 import { normalizeGitHubResourceEvents } from "./resource-events.js";
 
 /** Verify GitHub's SHA-256 signature against the untouched request body. */
@@ -224,9 +224,9 @@ export function createGitHubWebhookRoute(args: {
           )
         : false;
 
-      const checkSuiteEnrichment =
+      const checkSuiteFacts =
         eventName === "check_suite"
-          ? await loadCheckSuiteEnrichment({
+          ? await loadCheckSuiteFacts({
               appIdEnv: args.appIdEnv,
               body,
               installationIdEnv: args.installationIdEnv,
@@ -236,8 +236,8 @@ export function createGitHubWebhookRoute(args: {
           : undefined;
       const resourceEvents = normalizeGitHubResourceEvents({
         body,
-        ...(checkSuiteEnrichment
-          ? { checkSuiteEnrichment }
+        ...(checkSuiteFacts
+          ? { checkSuiteFacts }
           : undefined),
         deliveryId,
         eventName,

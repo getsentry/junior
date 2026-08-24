@@ -657,7 +657,7 @@ describe("GitHub webhook resource events", () => {
     }
   });
 
-  it("uses enriched draft facts when check suite pull requests omit draft", () => {
+  it("uses loaded draft facts when check suite pull requests omit draft", () => {
     vi.setSystemTime(1_000);
     expect(
       normalizeGitHubResourceEvents({
@@ -672,7 +672,7 @@ describe("GitHub webhook resource events", () => {
             pull_requests: [{ number: 10 }, { number: 11 }],
           },
         },
-        checkSuiteEnrichment: {
+        checkSuiteFacts: {
           pullRequestFactsByNumber: {
             10: {
               authorUsername: "octocat",
@@ -684,12 +684,12 @@ describe("GitHub webhook resource events", () => {
             },
           },
         },
-        deliveryId: "delivery-draft-enrichment",
+        deliveryId: "delivery-draft-facts",
         eventName: "check_suite",
       }),
     ).toEqual([
       {
-        eventKey: "github:delivery-draft-enrichment:pull_request.checks.recovered:10",
+        eventKey: "github:delivery-draft-facts:pull_request.checks.recovered:10",
         eventType: "pull_request.checks.recovered",
         occurredAtMs: 1_000,
         identifier: "getsentry/junior#10",
@@ -710,7 +710,7 @@ describe("GitHub webhook resource events", () => {
         },
       },
       {
-        eventKey: "github:delivery-draft-enrichment:pull_request.checks.recovered:10",
+        eventKey: "github:delivery-draft-facts:pull_request.checks.recovered:10",
         eventType: "pull_request.checks.recovered",
         occurredAtMs: 1_000,
         identifier: "getsentry/junior",
@@ -731,7 +731,7 @@ describe("GitHub webhook resource events", () => {
         },
       },
       {
-        eventKey: "github:delivery-draft-enrichment:pull_request.checks.recovered:11",
+        eventKey: "github:delivery-draft-facts:pull_request.checks.recovered:11",
         eventType: "pull_request.checks.recovered",
         occurredAtMs: 1_000,
         identifier: "getsentry/junior#11",
@@ -752,7 +752,7 @@ describe("GitHub webhook resource events", () => {
         },
       },
       {
-        eventKey: "github:delivery-draft-enrichment:pull_request.checks.recovered:11",
+        eventKey: "github:delivery-draft-facts:pull_request.checks.recovered:11",
         eventType: "pull_request.checks.recovered",
         occurredAtMs: 1_000,
         identifier: "getsentry/junior",
@@ -775,7 +775,7 @@ describe("GitHub webhook resource events", () => {
     ]);
   });
 
-  it("attaches failing check-run handles when enrichment data is provided", () => {
+  it("attaches failing check-run handles when check suite facts are provided", () => {
     vi.setSystemTime(1_000);
     expect(
       normalizeGitHubResourceEvents({
@@ -790,7 +790,7 @@ describe("GitHub webhook resource events", () => {
             pull_requests: [{ number: 691 }],
           },
         },
-        checkSuiteEnrichment: {
+        checkSuiteFacts: {
           failingChecks: [
             {
               checkRunId: 11,
@@ -806,12 +806,12 @@ describe("GitHub webhook resource events", () => {
           ],
           pullRequestFactsByNumber: { 691: { isDraft: false } },
         },
-        deliveryId: "delivery-enriched",
+        deliveryId: "delivery-check-suite-facts",
         eventName: "check_suite",
       }),
     ).toEqual([
       {
-        eventKey: "github:delivery-enriched:pull_request.checks.failed:691",
+        eventKey: "github:delivery-check-suite-facts:pull_request.checks.failed:691",
         eventType: "pull_request.checks.failed",
         occurredAtMs: 1_000,
         identifier: "getsentry/junior#691",
@@ -847,7 +847,7 @@ describe("GitHub webhook resource events", () => {
         ].join("\n"),
       },
       {
-        eventKey: "github:delivery-enriched:pull_request.checks.failed:691",
+        eventKey: "github:delivery-check-suite-facts:pull_request.checks.failed:691",
         eventType: "pull_request.checks.failed",
         occurredAtMs: 1_000,
         identifier: "getsentry/junior",

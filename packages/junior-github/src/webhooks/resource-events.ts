@@ -7,20 +7,21 @@ import { gitHubReleaseSourceResource } from "../resource-events/release.js";
 import { gitHubRepositoryResource } from "../resource-events/repository.js";
 import {
   normalizeCheckSuiteEvents,
-  type GitHubCheckSuiteEnrichment,
-} from "./check-suite-resource-events.js";
+  type GitHubCheckSuiteFacts,
+} from "./check-suite.js";
 
 export type {
-  GitHubCheckSuiteEnrichment,
+  GitHubCheckSuiteFacts,
   GitHubCheckSuitePullRequestFacts,
   GitHubFailingCheck,
-} from "./check-suite-resource-events.js";
+} from "./check-suite.js";
 export {
   buildCheckSuiteResourceEvent,
   buildCheckSuiteUrl,
-  parseCheckSuiteEnrichmentTarget,
+  loadCheckSuiteFacts,
+  parseCheckSuiteFactsTarget,
   selectFailingChecks,
-} from "./check-suite-resource-events.js";
+} from "./check-suite.js";
 
 function gitHubEventKey(deliveryId: string, eventType: string): string {
   return `github:${deliveryId}:${eventType}`;
@@ -765,7 +766,7 @@ function normalizeReleaseEvent(
 /** Normalize one verified GitHub delivery into conversation resource events. */
 export function normalizeGitHubResourceEvents(args: {
   body: unknown;
-  checkSuiteEnrichment?: GitHubCheckSuiteEnrichment;
+  checkSuiteFacts?: GitHubCheckSuiteFacts;
   deliveryId: string;
   eventName: string;
 }): ResourceEventInput[] {
@@ -788,7 +789,7 @@ export function normalizeGitHubResourceEvents(args: {
       return normalizeCheckSuiteEvents(
         args.deliveryId,
         args.body,
-        args.checkSuiteEnrichment,
+        args.checkSuiteFacts,
       );
     case "release":
       return normalizeReleaseEvent(args.deliveryId, args.body);
