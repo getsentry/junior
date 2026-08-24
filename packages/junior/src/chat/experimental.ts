@@ -1,3 +1,5 @@
+import { logWarn } from "@/chat/logging";
+
 /**
  * Known unstable product features that must be opted into explicitly.
  * Add new keys here as features graduate from private experiments; remove them
@@ -8,14 +10,20 @@ export const EXPERIMENTAL_FEATURES = ["passive-routing", "subagents"] as const;
 /** One known experimental feature name. */
 export type ExperimentalFeature = (typeof EXPERIMENTAL_FEATURES)[number];
 
-/** App-level opt-ins for unstable product features. */
+/**
+ * App-level opt-ins for unstable product features.
+ * Known keys stay suggested in TypeScript. Unknown keys are ignored at runtime
+ * with a warning so stale or mistyped names do not fail app startup.
+ */
 export type ExperimentalFeaturesConfig = Readonly<
-  Partial<Record<ExperimentalFeature, boolean>>
+  Partial<Record<ExperimentalFeature | (string & {}), boolean>>
 >;
 
 const EXPERIMENTAL_FEATURE_SET = new Set<string>(EXPERIMENTAL_FEATURES);
 
-let configuredExperimental: ExperimentalFeaturesConfig = {};
+let configuredExperimental: Readonly<
+  Partial<Record<ExperimentalFeature, boolean>>
+> = {};
 
 function isExperimentalFeature(value: string): value is ExperimentalFeature {
   return EXPERIMENTAL_FEATURE_SET.has(value);
@@ -42,9 +50,11 @@ export function setExperimentalFeatures(
       );
     }
     if (!isExperimentalFeature(rawName)) {
-      throw new Error(
-        `experimental.${rawName} is not a known experimental feature. Known features: ${EXPERIMENTAL_FEATURES.join(", ")}`,
-      );
+      logWarn("experimental.feature.unknown", {
+        "app.experimental.feature": rawName,
+        "app.experimental.known_features": EXPERIMENTAL_FEATURES.join(", "),
+      });
+      continue;
     }
     next[rawName] = enabled;
   }
