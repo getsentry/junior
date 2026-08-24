@@ -307,7 +307,6 @@ export function parseCheckSuiteFactsTarget(body: unknown): {
   loadFailingChecks: boolean;
   owner: string;
   pullRequestNumbers: number[];
-  pullRequestNumbersMissingDraft: number[];
   repoName: string;
 } | undefined {
   const parsed = checkSuiteWebhookSchema.safeParse(body);
@@ -338,13 +337,6 @@ export function parseCheckSuiteFactsTarget(body: unknown): {
       ),
     ),
   ];
-  const pullRequestNumbersMissingDraft = [
-    ...new Set(
-      parsed.data.check_suite.pull_requests
-        .filter((pullRequest) => typeof pullRequest.draft !== "boolean")
-        .map((pullRequest) => pullRequest.number),
-    ),
-  ];
   const loadFailingChecks =
     conclusion === "failure" || conclusion === "timed_out";
   // Check suite PR objects omit author; load PR values whenever a PR is attached.
@@ -360,7 +352,6 @@ export function parseCheckSuiteFactsTarget(body: unknown): {
     loadFailingChecks,
     owner,
     pullRequestNumbers,
-    pullRequestNumbersMissingDraft,
     repoName,
   };
 }
