@@ -33,10 +33,7 @@ function removeExampleOnlyServerConfig(source: string): string {
     source
       .replace("  { acpAdapter },\n", "")
       .replace('  import("@sentry/junior-acp"),\n', "")
-      .replace(
-        '  adapters: process.env.NODE_ENV === "development" ? [acpAdapter()] : [],\n',
-        "",
-      )
+      .replace("  adapters: [acpAdapter()],\n", "")
       .replace(
         /  \{\n    exampleDashboardAuthRequired,\n    exampleDashboardComponentGallery,\n    exampleDashboardMockConversations,\n  \},\n/,
         "",
