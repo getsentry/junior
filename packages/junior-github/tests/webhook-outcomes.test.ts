@@ -621,6 +621,111 @@ describe("GitHub webhook resource events", () => {
     }
   });
 
+  it("uses enriched draft facts when check suite pull requests omit draft", () => {
+    vi.setSystemTime(1_000);
+    expect(
+      normalizeGitHubResourceEvents({
+        body: {
+          action: "completed",
+          repository: { full_name: "getsentry/junior" },
+          check_suite: {
+            app: { name: "GitHub Actions" },
+            conclusion: "success",
+            head_sha: "abcdef1234567890",
+            id: 7,
+            pull_requests: [{ number: 10 }, { number: 11 }],
+          },
+        },
+        checkSuiteEnrichment: {
+          pullRequestDraftByNumber: { 10: false, 11: true },
+        },
+        deliveryId: "delivery-draft-enrichment",
+        eventName: "check_suite",
+      }),
+    ).toEqual([
+      {
+        eventKey: "github:delivery-draft-enrichment:pull_request.checks.recovered:10",
+        eventType: "pull_request.checks.recovered",
+        occurredAtMs: 1_000,
+        identifier: "getsentry/junior#10",
+        trustedSummary:
+          "GitHub PR getsentry/junior#10 check suite recovered for abcdef123456.",
+        data: {
+          repo: "getsentry/junior",
+          pullRequest: 10,
+          scope: "check_suite",
+          suiteConclusion: "success",
+          isDraft: false,
+          headSha: "abcdef1234567890",
+          checkSuiteId: 7,
+          checkSuiteUrl:
+            "https://github.com/getsentry/junior/commit/abcdef1234567890/checks?check_suite_id=7",
+          appName: "GitHub Actions",
+        },
+      },
+      {
+        eventKey: "github:delivery-draft-enrichment:pull_request.checks.recovered:10",
+        eventType: "pull_request.checks.recovered",
+        occurredAtMs: 1_000,
+        identifier: "getsentry/junior",
+        trustedSummary:
+          "GitHub PR getsentry/junior#10 check suite recovered for abcdef123456.",
+        data: {
+          repo: "getsentry/junior",
+          pullRequest: 10,
+          scope: "check_suite",
+          suiteConclusion: "success",
+          isDraft: false,
+          headSha: "abcdef1234567890",
+          checkSuiteId: 7,
+          checkSuiteUrl:
+            "https://github.com/getsentry/junior/commit/abcdef1234567890/checks?check_suite_id=7",
+          appName: "GitHub Actions",
+        },
+      },
+      {
+        eventKey: "github:delivery-draft-enrichment:pull_request.checks.recovered:11",
+        eventType: "pull_request.checks.recovered",
+        occurredAtMs: 1_000,
+        identifier: "getsentry/junior#11",
+        trustedSummary:
+          "GitHub PR getsentry/junior#11 check suite recovered for abcdef123456.",
+        data: {
+          repo: "getsentry/junior",
+          pullRequest: 11,
+          scope: "check_suite",
+          suiteConclusion: "success",
+          isDraft: true,
+          headSha: "abcdef1234567890",
+          checkSuiteId: 7,
+          checkSuiteUrl:
+            "https://github.com/getsentry/junior/commit/abcdef1234567890/checks?check_suite_id=7",
+          appName: "GitHub Actions",
+        },
+      },
+      {
+        eventKey: "github:delivery-draft-enrichment:pull_request.checks.recovered:11",
+        eventType: "pull_request.checks.recovered",
+        occurredAtMs: 1_000,
+        identifier: "getsentry/junior",
+        trustedSummary:
+          "GitHub PR getsentry/junior#11 check suite recovered for abcdef123456.",
+        data: {
+          repo: "getsentry/junior",
+          pullRequest: 11,
+          scope: "check_suite",
+          suiteConclusion: "success",
+          isDraft: true,
+          headSha: "abcdef1234567890",
+          checkSuiteId: 7,
+          checkSuiteUrl:
+            "https://github.com/getsentry/junior/commit/abcdef1234567890/checks?check_suite_id=7",
+          appName: "GitHub Actions",
+        },
+      },
+    ]);
+  });
+
   it("attaches failing check-run handles when enrichment data is provided", () => {
     vi.setSystemTime(1_000);
     expect(
@@ -636,21 +741,24 @@ describe("GitHub webhook resource events", () => {
             pull_requests: [{ number: 691 }],
           },
         },
+        checkSuiteEnrichment: {
+          failingChecks: [
+            {
+              checkRunId: 11,
+              conclusion: "failure",
+              htmlUrl: "https://github.com/getsentry/junior/actions/runs/11",
+              name: "test",
+            },
+            {
+              checkRunId: 12,
+              conclusion: "timed_out",
+              name: "lint",
+            },
+          ],
+          pullRequestDraftByNumber: { 691: false },
+        },
         deliveryId: "delivery-enriched",
         eventName: "check_suite",
-        failingChecks: [
-          {
-            checkRunId: 11,
-            conclusion: "failure",
-            htmlUrl: "https://github.com/getsentry/junior/actions/runs/11",
-            name: "test",
-          },
-          {
-            checkRunId: 12,
-            conclusion: "timed_out",
-            name: "lint",
-          },
-        ],
       }),
     ).toEqual([
       {
@@ -665,6 +773,7 @@ describe("GitHub webhook resource events", () => {
           pullRequest: 691,
           scope: "check_suite",
           suiteConclusion: "failure",
+          isDraft: false,
           headSha: "abcdef1234567890abcdef1234567890abcdef12",
           checkSuiteId: 42,
           checkSuiteUrl:
@@ -700,6 +809,7 @@ describe("GitHub webhook resource events", () => {
           pullRequest: 691,
           scope: "check_suite",
           suiteConclusion: "failure",
+          isDraft: false,
           headSha: "abcdef1234567890abcdef1234567890abcdef12",
           checkSuiteId: 42,
           checkSuiteUrl:

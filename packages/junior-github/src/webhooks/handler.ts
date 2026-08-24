@@ -27,7 +27,7 @@ import {
 } from "./pull-request-outcome.js";
 import {
   normalizeGitHubResourceEvents,
-  type GitHubFailingCheck,
+  type GitHubCheckSuiteEnrichment,
 } from "./resource-events.js";
 
 /** Verify GitHub's SHA-256 signature against the untouched request body. */
@@ -90,7 +90,7 @@ export function createGitHubWebhookRoute(args: {
   }): Promise<GitHubPullRequestCommitComposition | undefined>;
   db: GitHubDb;
   installationId(): string | undefined;
-  loadFailingChecks?(body: unknown): Promise<GitHubFailingCheck[] | undefined>;
+  loadCheckSuiteEnrichment?(body: unknown): Promise<GitHubCheckSuiteEnrichment | undefined>;
   log?: Pick<PluginLogger, "error">;
   resourceEvents: ResourceEventPublisher;
   webhookSecret(): string | undefined;
@@ -224,15 +224,17 @@ export function createGitHubWebhookRoute(args: {
           )
         : false;
 
-      const failingChecks =
-        eventName === "check_suite" && args.loadFailingChecks
-          ? await args.loadFailingChecks(body)
+      const checkSuiteEnrichment =
+        eventName === "check_suite" && args.loadCheckSuiteEnrichment
+          ? await args.loadCheckSuiteEnrichment(body)
           : undefined;
       const resourceEvents = normalizeGitHubResourceEvents({
         body,
+        ...(checkSuiteEnrichment
+          ? { checkSuiteEnrichment }
+          : undefined),
         deliveryId,
         eventName,
-        failingChecks,
       });
       for (const event of resourceEvents) {
         await args.resourceEvents.publish(event);

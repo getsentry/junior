@@ -247,6 +247,13 @@ export type GitHubFailingCheck = {
   name: string;
 };
 
+/** Extra check-suite facts loaded when the webhook body omits them. */
+export type GitHubCheckSuiteEnrichment = {
+  failingChecks?: GitHubFailingCheck[];
+  /** Draft state by pull request number when GitHub omitted draft on the suite. */
+  pullRequestDraftByNumber?: Record<number, boolean>;
+};
+
 /** Build a browser URL for one check suite. GitHub does not send html_url. */
 export function buildCheckSuiteUrl(args: {
   checkSuiteId: number;
@@ -402,7 +409,7 @@ export function selectFailingChecks(
 function normalizeCheckSuiteEvents(
   deliveryId: string,
   body: unknown,
-  options?: { failingChecks?: GitHubFailingCheck[] },
+  options?: GitHubCheckSuiteEnrichment,
 ): ResourceEventInput[] {
   const parsed = checkSuiteWebhookSchema.safeParse(body);
   if (!parsed.success || parsed.data.action !== "completed") return [];
@@ -423,6 +430,13 @@ function normalizeCheckSuiteEvents(
       : undefined;
   return suite.pull_requests.flatMap((pullRequest) => {
     const repo = parsed.data.repository.full_name;
+    const enrichedDraft = options?.pullRequestDraftByNumber?.[pullRequest.number];
+    const draft =
+      typeof pullRequest.draft === "boolean"
+        ? pullRequest.draft
+        : typeof enrichedDraft === "boolean"
+          ? enrichedDraft
+          : undefined;
     return pullRequestTargets(
       buildCheckSuiteResourceEvent({
         appName,
@@ -434,9 +448,7 @@ function normalizeCheckSuiteEvents(
             ? options?.failingChecks
             : undefined,
         headSha,
-        ...(typeof pullRequest.draft === "boolean"
-          ? { isDraft: pullRequest.draft }
-          : undefined),
+        ...(typeof draft === "boolean" ? { isDraft: draft } : undefined),
         latestCheckRunsCount:
           typeof suite.latest_check_runs_count === "number"
             ? suite.latest_check_runs_count
@@ -900,17 +912,25 @@ function normalizeReleaseEvent(
   );
 }
 
-/** Read the check suite target used to load failed check runs. */
+/** Read the check suite target used to load missing suite facts. */
 export function parseCheckSuiteEnrichmentTarget(body: unknown): {
   checkSuiteId: number;
   headSha: string;
+  loadFailingChecks: boolean;
   owner: string;
+  pullRequestNumbersMissingDraft: number[];
   repoName: string;
 } | undefined {
   const parsed = checkSuiteWebhookSchema.safeParse(body);
   if (!parsed.success || parsed.data.action !== "completed") return undefined;
   const conclusion = parsed.data.check_suite.conclusion;
-  if (conclusion !== "failure" && conclusion !== "timed_out") return undefined;
+  if (
+    conclusion !== "failure" &&
+    conclusion !== "timed_out" &&
+    conclusion !== "success"
+  ) {
+    return undefined;
+  }
   const headSha = parsed.data.check_suite.head_sha;
   const checkSuiteId = parsed.data.check_suite.id;
   if (
@@ -922,42 +942,56 @@ export function parseCheckSuiteEnrichmentTarget(body: unknown): {
   }
   const [owner, repoName, ...extra] = parsed.data.repository.full_name.split("/");
   if (!owner || !repoName || extra.length > 0) return undefined;
-  return { checkSuiteId, headSha, owner, repoName };
+  const pullRequestNumbersMissingDraft = [
+    ...new Set(
+      parsed.data.check_suite.pull_requests
+        .filter((pullRequest) => typeof pullRequest.draft !== "boolean")
+        .map((pullRequest) => pullRequest.number),
+    ),
+  ];
+  const loadFailingChecks =
+    conclusion === "failure" || conclusion === "timed_out";
+  if (!loadFailingChecks && pullRequestNumbersMissingDraft.length === 0) {
+    return undefined;
+  }
+  return {
+    checkSuiteId,
+    headSha,
+    loadFailingChecks,
+    owner,
+    pullRequestNumbersMissingDraft,
+    repoName,
+  };
 }
 
 /** Normalize one verified GitHub delivery into conversation resource events. */
 export function normalizeGitHubResourceEvents(args: {
   body: unknown;
+  checkSuiteEnrichment?: GitHubCheckSuiteEnrichment;
   deliveryId: string;
   eventName: string;
-  failingChecks?: GitHubFailingCheck[];
 }): ResourceEventInput[] {
   switch (args.eventName) {
-    case "deployment": {
+    case "deployment":
       return normalizeDeploymentEvent(args.deliveryId, args.body);
-    }
-    case "deployment_status": {
+    case "deployment_status":
       return normalizeDeploymentStatusEvent(args.deliveryId, args.body);
-    }
-    case "pull_request": {
+    case "pull_request":
       return normalizePullRequestEvent(args.deliveryId, args.body);
-    }
-    case "issues": {
+    case "issues":
       return normalizeIssueEvents(args.deliveryId, args.body);
-    }
-    case "pull_request_review": {
+    case "pull_request_review":
       return normalizePullRequestReviewEvent(args.deliveryId, args.body);
-    }
-    case "issue_comment": {
+    case "issue_comment":
       return normalizeIssueCommentEvents(args.deliveryId, args.body);
-    }
-    case "pull_request_review_comment": {
+    case "pull_request_review_comment":
       return normalizePullRequestReviewCommentEvent(args.deliveryId, args.body);
-    }
     case "check_suite":
-      return normalizeCheckSuiteEvents(args.deliveryId, args.body, {
-        failingChecks: args.failingChecks,
-      });
+      return normalizeCheckSuiteEvents(
+        args.deliveryId,
+        args.body,
+        args.checkSuiteEnrichment,
+      );
     case "release":
       return normalizeReleaseEvent(args.deliveryId, args.body);
     default:

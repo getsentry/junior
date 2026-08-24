@@ -42,7 +42,7 @@ import {
   listGitHubFinishedWork,
   listGitHubUnfinishedWork,
 } from "./pull-request-outcomes/store.js";
-import { loadFailingChecksForSuite } from "./webhooks/check-suite-enrichment.js";
+import { loadCheckSuiteEnrichment } from "./webhooks/check-suite-enrichment.js";
 import {
   additionalActorCoauthorTrailers,
   configureGit,
@@ -301,8 +301,8 @@ export function githubPlugin(
             },
             db: ctx.db as GitHubDb,
             installationId: () => readEnv(installationIdEnv),
-            loadFailingChecks: async (body) =>
-              await loadFailingChecksForSuite({
+            loadCheckSuiteEnrichment: async (body) =>
+              await loadCheckSuiteEnrichment({
                 appIdEnv,
                 body,
                 installationIdEnv,
