@@ -112,7 +112,7 @@ export function createEventTaskTool(
     async execute(input, options) {
       const { actor, destination, source } =
         requireEventTaskSlackContext(context);
-      requireSupportedEventTaskTrigger(catalog, input.trigger);
+      const match = requireSupportedEventTaskTrigger(catalog, input.trigger);
       const id = buildEventTaskId({
         channelId: destination.channelId,
         teamId: destination.teamId,
@@ -158,6 +158,7 @@ export function createEventTaskTool(
           resourceType: input.trigger.resourceType,
           label: input.trigger.label,
           events: [...new Set(input.trigger.events)],
+          ...(match ? { match } : undefined),
         },
       };
       return eventTaskSuccess(await createEventTask(db, task), catalog);

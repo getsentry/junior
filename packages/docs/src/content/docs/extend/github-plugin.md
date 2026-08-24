@@ -406,7 +406,7 @@ One pull request: `owner/repo#number`.
 <details class="resource-event">
 <summary><code>pull_request.checks.failed</code></summary>
 
-A check suite finished with failure or timeout. Trusted data includes the PR, full head SHA, suite id/url, and failed check-run ids/urls when enrichment works. Failed check names are untrusted provider content.
+A check suite finished with failure or timeout. Trusted data includes the PR, full head SHA, suite id/url, and failed check-run ids/urls when Junior can load them. Failed check names are untrusted provider content.
 
 </details>
 

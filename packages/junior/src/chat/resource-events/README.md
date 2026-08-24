@@ -24,9 +24,11 @@ conversation.
   event publisher; core binds the plugin namespace and never needs the raw
   provider webhook. Publication requires an active registration that declares
   the event type.
-- Plugins declare resource types, supported and suggested event types, and
-  ingress readiness on their registration. Core builds one enabled runtime
-  catalog for search, tool schemas, and validation.
+- Plugins declare resource types, supported and suggested event types, optional
+  match keys, and whether inbound events are ready on their registration. Core
+  builds one enabled runtime catalog for search, tool schemas, and validation.
+  Prefer match keys the plugin always sets. If a listed key is missing on an
+  event, core does not match.
 - `searchResourceEventTypes` discovers that catalog without creating anything.
   `watchResourceEvents` creates a temporary resource subscription for the
   current Slack thread. Concrete identifiers still come from plugin tool
@@ -35,7 +37,7 @@ conversation.
   storing a subscription.
 - Normalized events contain a stable namespace and identifier plus a short safe
   summary. They do not include the raw webhook payload. Plugins may also attach
-  small trusted `data` with ids, urls, and other facts the agent should not look
+  small trusted `data` with ids, urls, and other values the agent should not look
   up again. Keep `data` small. Leave deep investigation for tools.
 - Ingestion appends a system-authored conversation message and sends a normal
   task-execution wake-up. Resource-event identity constants and detection live
@@ -47,8 +49,10 @@ conversation.
   on and what it did or needs next. Stable handling rules live in runtime and
   docs, not a long per-event prompt (`notification.ts`).
 - A subscription selector is one Slack workspace, one namespace, one
-  identifier, and one or more event types. `resourceType` and `label` are
-  presentation metadata, not match keys.
+  identifier, and one or more event types. Optional `match` requires exact
+  trusted values from the resource type `matchFields`. Core drops events that
+  do not match before any wake. `resourceType` and `label` are display metadata,
+  not match keys.
 - Duplicate provider deliveries must not create duplicate conversation work.
 - A plugin cannot use a resource event to widen conversation visibility or
   credential authority.
@@ -61,7 +65,7 @@ conversation.
 - Resource types may declare optional app guidance per event type. Core inserts
   that text only for the matching resource type. The prompt applies it within
   the subscription intent or stored event task instruction. Keep it separate
-  from trusted facts and untrusted provider content.
+  from trusted data and untrusted provider content.
 
 The plugin-facing types and publisher contract live in
 `packages/junior-plugin-api/src/resource-events.ts`; subscription storage and

@@ -4,7 +4,9 @@ import {
   normalizeEventIdentifier,
   pluginSupportsEvent,
   registeredEventTypeSchema,
+  registeredResourceEventMatchSchema,
   registeredResourceTypeSchema,
+  requireSupportedResourceEventMatch,
   type ResourceEventCatalog,
 } from "@/chat/resource-events/catalog";
 import { createResourceEventSubscription } from "@/chat/resource-events/store";
@@ -45,6 +47,7 @@ function inputSchema(catalog: ResourceEventCatalog) {
         .describe(
           "High-signal event names to deliver to this conversation when they occur.",
         ),
+      match: registeredResourceEventMatchSchema(),
       intent: z
         .string()
         .trim()
@@ -101,6 +104,7 @@ const resultDataSchema = z
     subscription_status: z.enum(["active", "cancelled", "completed"]),
     identifier: z.string().min(1),
     events: z.array(z.string().min(1)).min(1),
+    match: z.record(z.string(), z.unknown()).optional(),
     expiresAtMs: z.number().finite(),
     stop_watching: stopWatchingActionSchema,
   })
@@ -158,6 +162,11 @@ export function createWatchResourceEventsTool(
       }
       const intent = input.intent.trim();
       if (!intent) throw new ToolInputError("intent is required");
+      const match = requireSupportedResourceEventMatch(catalog, {
+        match: input.match,
+        namespace: input.namespace,
+        resourceType: input.resourceType,
+      });
       const nowMs = Date.now();
       const subscription = await createResourceEventSubscription({
         conversationId,
@@ -166,6 +175,7 @@ export function createWatchResourceEventsTool(
         expiresAtMs: nowMs + ttlMs(input),
         intent,
         label: input.label.trim(),
+        ...(match ? { match } : undefined),
         namespace: input.namespace.trim(),
         identifier: normalizeEventIdentifier(
           catalog,
@@ -179,6 +189,7 @@ export function createWatchResourceEventsTool(
         subscription_status: subscription.status,
         identifier: subscription.identifier,
         events: subscription.events,
+        ...(subscription.match ? { match: subscription.match } : undefined),
         expiresAtMs: subscription.expiresAtMs,
         stop_watching: {
           execution_tool: "executeTool" as const,

@@ -1,6 +1,7 @@
 import {
   actorUserIdSchema,
   destinationVisibilitySchema,
+  resourceEventMatchSchema,
   resourceEventTypeSchema,
   slackDestinationSchema,
 } from "@sentry/junior-plugin-api";
@@ -23,6 +24,7 @@ const eventTaskTriggerSchema = z
   .object({
     events: z.array(resourceEventTypeSchema).min(1),
     label: z.string().min(1),
+    match: resourceEventMatchSchema.optional(),
     namespace: z.string().min(1),
     identifier: z.string().min(1).max(EVENT_TASK_IDENTIFIER_MAX_LENGTH),
     resourceType: z.string().min(1),

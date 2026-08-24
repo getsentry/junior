@@ -63,6 +63,7 @@ function createGithubPrSubscription(input: {
   events: string[];
   expiresAtMs?: number;
   intent?: string;
+  match?: { isDraft: boolean };
   nowMs?: number;
   state?: StateAdapter;
 }) {
@@ -74,6 +75,7 @@ function createGithubPrSubscription(input: {
       expiresAtMs: input.expiresAtMs ?? 2_000_000,
       intent: input.intent ?? "Watch the PR Junior opened.",
       label: "GitHub PR getsentry/junior#691",
+      ...(input.match ? { match: input.match } : undefined),
       namespace: "github",
       identifier: "getsentry/junior#691",
       resourceType: "pull_request",
@@ -544,6 +546,46 @@ describe("resource event delivery", () => {
         nowMs: 1_300,
       }),
     ).resolves.toEqual([]);
+  });
+
+  it("drops events that do not satisfy subscription match facts", async () => {
+    const queue = createConversationWorkQueueTestAdapter();
+    await createGithubPrSubscription({
+      events: ["pull_request.opened"],
+      match: { isDraft: false },
+    });
+
+    await expect(
+      ingestResourceEvent(
+        {
+          eventKey: "delivery-draft",
+          eventType: "pull_request.opened",
+          occurredAtMs: 1_500,
+          namespace: "github",
+          identifier: "getsentry/junior#691",
+          trustedSummary: "GitHub PR getsentry/junior#691 was opened.",
+          data: { isDraft: true },
+        },
+        { nowMs: 1_500, queue, teamId: SLACK_DESTINATION.teamId },
+      ),
+    ).resolves.toEqual({ enqueued: 0 });
+    expect(queue.sentRecords()).toEqual([]);
+
+    await expect(
+      ingestResourceEvent(
+        {
+          eventKey: "delivery-ready",
+          eventType: "pull_request.opened",
+          occurredAtMs: 1_600,
+          namespace: "github",
+          identifier: "getsentry/junior#691",
+          trustedSummary: "GitHub PR getsentry/junior#691 was opened.",
+          data: { isDraft: false },
+        },
+        { nowMs: 1_600, queue, teamId: SLACK_DESTINATION.teamId },
+      ),
+    ).resolves.toEqual({ enqueued: 1 });
+    expect(queue.sentRecords()).toHaveLength(1);
   });
 
   it("does not deliver from a stale match after cancellation", async () => {

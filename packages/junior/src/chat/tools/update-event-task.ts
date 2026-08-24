@@ -1,3 +1,4 @@
+import { stableResourceEventMatchKey } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import { getDb } from "@/chat/db";
 import { saveEventTask } from "@/chat/event-tasks/store";
@@ -31,7 +32,9 @@ function changesEventTaskTrigger(
     current.namespace !== next.namespace ||
     current.identifier !== next.identifier ||
     currentEvents.length !== nextEvents.length ||
-    currentEvents.some((event, index) => event !== nextEvents[index])
+    currentEvents.some((event, index) => event !== nextEvents[index]) ||
+    stableResourceEventMatchKey(current.match) !==
+      stableResourceEventMatchKey(next.match)
   );
 }
 
@@ -87,9 +90,9 @@ export function createUpdateEventTaskTool(
     outputSchema: eventTaskToolResultSchema,
     async execute(input) {
       const current = await writableEventTask(context, input.taskId);
-      if (input.trigger) {
-        requireSupportedEventTaskTrigger(catalog, input.trigger);
-      }
+      const match = input.trigger
+        ? requireSupportedEventTaskTrigger(catalog, input.trigger)
+        : undefined;
       const { actor } = requireEventTaskSlackContext(context);
       const isCreator = actor.userId === current.createdBy.slackUserId;
       if (input.credentialMode === "creator" && !isCreator) {
@@ -115,6 +118,7 @@ export function createUpdateEventTaskTool(
             resourceType: input.trigger.resourceType,
             label: input.trigger.label,
             events: [...new Set(input.trigger.events)],
+            ...(match ? { match } : undefined),
           }
         : current.trigger;
       const nextInstruction =

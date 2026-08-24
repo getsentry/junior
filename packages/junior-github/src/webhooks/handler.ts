@@ -25,10 +25,8 @@ import {
   normalizeGitHubPullRequestLinkedIssues,
   normalizeGitHubPullRequestOutcome,
 } from "./pull-request-outcome.js";
-import {
-  normalizeGitHubResourceEvents,
-  type GitHubFailingCheck,
-} from "./resource-events.js";
+import { loadCheckSuiteFacts } from "./check-suite.js";
+import { normalizeGitHubResourceEvents } from "./resource-events.js";
 
 /** Verify GitHub's SHA-256 signature against the untouched request body. */
 function verifyGitHubSignature(
@@ -83,6 +81,7 @@ function webhookInstallationId(body: unknown): number | undefined {
 /** Create the public, signed GitHub webhook route owned by the plugin. */
 export function createGitHubWebhookRoute(args: {
   annotations: PluginConversationAnnotations;
+  appIdEnv: string;
   botEmail(): string | undefined;
   classifyPullRequestCommits?(input: {
     number: number;
@@ -90,8 +89,9 @@ export function createGitHubWebhookRoute(args: {
   }): Promise<GitHubPullRequestCommitComposition | undefined>;
   db: GitHubDb;
   installationId(): string | undefined;
-  loadFailingChecks?(body: unknown): Promise<GitHubFailingCheck[] | undefined>;
+  installationIdEnv: string;
   log?: Pick<PluginLogger, "error">;
+  privateKeyEnv: string;
   resourceEvents: ResourceEventPublisher;
   webhookSecret(): string | undefined;
 }): PluginRoute {
@@ -224,15 +224,23 @@ export function createGitHubWebhookRoute(args: {
           )
         : false;
 
-      const failingChecks =
-        eventName === "check_suite" && args.loadFailingChecks
-          ? await args.loadFailingChecks(body)
+      const checkSuiteFacts =
+        eventName === "check_suite"
+          ? await loadCheckSuiteFacts({
+              appIdEnv: args.appIdEnv,
+              body,
+              installationIdEnv: args.installationIdEnv,
+              log: args.log,
+              privateKeyEnv: args.privateKeyEnv,
+            })
           : undefined;
       const resourceEvents = normalizeGitHubResourceEvents({
         body,
+        ...(checkSuiteFacts
+          ? { checkSuiteFacts }
+          : undefined),
         deliveryId,
         eventName,
-        failingChecks,
       });
       for (const event of resourceEvents) {
         await args.resourceEvents.publish(event);

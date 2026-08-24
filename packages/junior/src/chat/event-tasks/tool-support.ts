@@ -10,7 +10,9 @@ import {
   eventNamespaceSchema,
   pluginSupportsEvent,
   registeredEventTypeSchema,
+  registeredResourceEventMatchSchema,
   registeredResourceTypeSchema,
+  requireSupportedResourceEventMatch,
   type ResourceEventCatalog,
 } from "@/chat/resource-events/catalog";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
@@ -26,6 +28,7 @@ const compactEventTaskResultSchema = z
     resourceType: z.string().min(1),
     label: z.string().min(1),
     events: z.array(z.string().min(1)).min(1),
+    match: z.record(z.string(), z.unknown()).optional(),
     credentialMode: z.enum(["system", "creator"]),
     createdBy: eventTaskPrincipalSchema,
     triggerAvailable: z.boolean(),
@@ -62,6 +65,7 @@ export function registeredEventTaskTriggerSchema(
       resourceType: registeredResourceTypeSchema(catalog),
       label: z.string().trim().min(1).max(500),
       events: z.array(registeredEventTypeSchema(catalog)).min(1),
+      match: registeredResourceEventMatchSchema(),
     })
     .strict();
 }
@@ -69,8 +73,13 @@ export function registeredEventTaskTriggerSchema(
 /** Reject an event-task trigger that is no longer supported by the catalog. */
 export function requireSupportedEventTaskTrigger(
   catalog: ResourceEventCatalog,
-  trigger: { events: string[]; namespace: string; resourceType: string },
-): void {
+  trigger: {
+    events: string[];
+    match?: EventTask["trigger"]["match"];
+    namespace: string;
+    resourceType: string;
+  },
+): EventTask["trigger"]["match"] | undefined {
   for (const eventType of trigger.events) {
     if (
       !pluginSupportsEvent(
@@ -85,6 +94,11 @@ export function requireSupportedEventTaskTrigger(
       );
     }
   }
+  return requireSupportedResourceEventMatch(catalog, {
+    match: trigger.match,
+    namespace: trigger.namespace,
+    resourceType: trigger.resourceType,
+  });
 }
 
 /** Require the active Slack authority used for event-task management. */
@@ -166,6 +180,7 @@ export function compactEventTask(
     resourceType: task.trigger.resourceType,
     label: task.trigger.label,
     events: task.trigger.events,
+    ...(task.trigger.match ? { match: task.trigger.match } : undefined),
     credentialMode: task.credentialMode,
     createdBy: task.createdBy,
     triggerAvailable: eventTaskTriggerAvailable(task, catalog),

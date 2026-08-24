@@ -16,6 +16,7 @@ const listedResourceWatchSchema = z
     namespace: z.string().min(1),
     resourceType: z.string().min(1),
     events: z.array(z.string().min(1)).min(1),
+    match: z.record(z.string(), z.unknown()).optional(),
     intent: z.string().min(1),
     expiresAtMs: z.number().finite(),
   })
@@ -57,6 +58,7 @@ export function createListResourceEventSubscriptionsTool(
           namespace: subscription.namespace,
           resourceType: subscription.resourceType,
           events: subscription.events,
+          ...(subscription.match ? { match: subscription.match } : undefined),
           intent: subscription.intent,
           expiresAtMs: subscription.expiresAtMs,
         })),
