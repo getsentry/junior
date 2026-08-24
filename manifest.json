@@ -1,0 +1,20 @@
+{
+  "commitSha": "e2d72813d4c31f2cbe583a524d2000c2c1ff4f25",
+  "mode": "path",
+  "reasons": [
+    "packages/junior-dashboard/src/app.ts",
+    "packages/junior-dashboard/src/auth.ts",
+    "packages/junior-dashboard/src/authenticated-routes.ts",
+    "packages/junior-dashboard/tests/dashboard-routes.test.ts"
+  ],
+  "scenarioIds": [
+    "gallery-index"
+  ],
+  "shots": [
+    {
+      "file": "gallery-index__desktop.png",
+      "label": "Component gallery index · desktop"
+    }
+  ],
+  "skipped": false
+}
