@@ -12,6 +12,7 @@ import {
 import { apiErrorSchema } from "@sentry/junior/api/schema";
 import { initSentry } from "@sentry/junior/instrumentation";
 import { JUNIOR_VERSION } from "@sentry/junior/version";
+import type { JuniorAuthenticatedRoute } from "@sentry/junior";
 import type {
   PluginApiRouteRequestContext,
   PluginRouteApp,
@@ -40,12 +41,7 @@ import {
   type DashboardSession,
 } from "./auth";
 import { dashboardRainbowProgressClass } from "./dashboardLoader";
-import {
-  ACP_AUTHORIZATION_PATH_PREFIX,
-  handleDashboardAcpAuthorization,
-  isAcpAuthorizationPath,
-  type DashboardAcpAuthorization,
-} from "./acp-authorization";
+import { isAuthenticatedPath } from "./authenticated-routes";
 import { createMockReportingApi } from "./mock-reporting/routes";
 import { resolveDashboardBaseURL } from "./url";
 
@@ -79,7 +75,7 @@ export interface JuniorDashboardOptions {
 }
 
 interface DashboardRuntimeOptions extends JuniorDashboardOptions {
-  acpAuthorization?: DashboardAcpAuthorization;
+  authenticatedRoutes?: readonly JuniorAuthenticatedRoute[];
   pluginRoutes?: DashboardPluginRoute[];
 }
 
@@ -210,14 +206,19 @@ function isDashboardPagePath(
   return false;
 }
 
+interface DashboardReturnPathOptions {
+  authenticatedRoutes?: readonly JuniorAuthenticatedRoute[];
+  componentGallery?: boolean;
+}
+
 function dashboardReturnPath(
   url: URL,
   basePath: string,
-  options: { acpAuthorization?: boolean; componentGallery?: boolean } = {},
+  options: DashboardReturnPathOptions = {},
 ): string | undefined {
   if (
     !isDashboardPagePath(url.pathname, basePath, options) &&
-    !(options.acpAuthorization && isAcpAuthorizationPath(url.pathname))
+    !isAuthenticatedPath(url.pathname, options.authenticatedRoutes ?? [])
   ) {
     return undefined;
   }
@@ -229,7 +230,7 @@ function dashboardReturnPath(
 function requestedReturnPath(
   url: URL,
   basePath: string,
-  options: { acpAuthorization?: boolean; componentGallery?: boolean } = {},
+  options: DashboardReturnPathOptions = {},
 ): string | undefined {
   const next = url.searchParams.get(LOGIN_NEXT_PARAM);
   if (!next?.startsWith("/") || next.startsWith("//")) {
@@ -240,7 +241,10 @@ function requestedReturnPath(
   if (
     returnUrl.origin !== url.origin ||
     (!isDashboardPagePath(returnUrl.pathname, basePath, options) &&
-      !(options.acpAuthorization && isAcpAuthorizationPath(returnUrl.pathname)))
+      !isAuthenticatedPath(
+        returnUrl.pathname,
+        options.authenticatedRoutes ?? [],
+      ))
   ) {
     return undefined;
   }
@@ -252,7 +256,7 @@ function dashboardLoginUrl(
   request: Request,
   basePath: string,
   canonicalBaseURL?: string,
-  options: { acpAuthorization?: boolean; componentGallery?: boolean } = {},
+  options: DashboardReturnPathOptions = {},
 ): string {
   const requestUrl = new URL(request.url);
   const url = canonicalBaseURL
@@ -267,7 +271,7 @@ function dashboardLoginUrl(
   return url.toString();
 }
 
-function canonicalLoginUrl(
+function canonicalRequestUrl(
   request: Request,
   canonicalBaseURL: string | undefined,
 ): string | undefined {
@@ -293,7 +297,7 @@ function dashboardLoginPath(basePath: string): string {
 function callbackUrl(
   request: Request,
   basePath: string,
-  options: { acpAuthorization?: boolean; componentGallery?: boolean } = {},
+  options: DashboardReturnPathOptions = {},
 ): string {
   const requestUrl = new URL(request.url);
   const returnPath = requestedReturnPath(requestUrl, basePath, options);
@@ -313,7 +317,7 @@ function unauthorized(
   request: Request,
   basePath: string,
   canonicalBaseURL?: string,
-  options: { componentGallery?: boolean } = {},
+  options: DashboardReturnPathOptions = {},
 ): Response {
   if (isJsonRoute(new URL(request.url).pathname)) {
     return jsonResponse(
@@ -725,14 +729,13 @@ export function createDashboardApp(
       }))
     : undefined;
   const app = new Hono<{ Variables: Variables }>();
+  const authenticatedRoutes = options.authenticatedRoutes ?? [];
 
   app.get(dashboardLoginPath(basePath), async (c) => {
-    const canonicalUrl = canonicalLoginUrl(c.req.raw, canonicalBaseURL);
-    if (canonicalUrl) {
-      return Response.redirect(canonicalUrl, 302);
-    }
+    const canonicalUrl = canonicalRequestUrl(c.req.raw, canonicalBaseURL);
+    if (canonicalUrl) return Response.redirect(canonicalUrl, 302);
     const returnUrl = callbackUrl(c.req.raw, basePath, {
-      acpAuthorization: Boolean(options.acpAuthorization),
+      authenticatedRoutes,
       componentGallery: options.componentGallery,
     });
     if (!auth) {
@@ -752,28 +755,6 @@ export function createDashboardApp(
     app.on(["GET", "POST"], `${authPath}/*`, (c) => auth.handler(c.req.raw));
   }
 
-  const acpAuthorization = options.acpAuthorization;
-  if (acpAuthorization) {
-    app.on(
-      ["GET", "POST"],
-      `${ACP_AUTHORIZATION_PATH_PREFIX}:transactionId`,
-      (c) =>
-        handleDashboardAcpAuthorization({
-          agentName,
-          allowedDomains,
-          allowedEmails,
-          auth,
-          authRequired,
-          authorization: acpAuthorization,
-          basePath,
-          canonicalBaseURL,
-          localViewerEmail: LOCAL_VIEWER_EMAIL,
-          request: c.req.raw,
-          transactionId: c.req.param("transactionId"),
-        }),
-    );
-  }
-
   app.get("/favicon.ico", () => renderFavicon());
   app.get(DASHBOARD_MANIFEST_PATH, () => renderManifest(basePath, agentName));
   app.get(DASHBOARD_INSTALL_ICON_PATH, () => renderInstallIcon());
@@ -788,10 +769,15 @@ export function createDashboardApp(
     next: Next,
   ) => {
     const pathname = new URL(c.req.url).pathname;
+    const appRoute = isAuthenticatedPath(pathname, authenticatedRoutes);
+    if (appRoute) {
+      const canonicalUrl = canonicalRequestUrl(c.req.raw, canonicalBaseURL);
+      if (canonicalUrl) return Response.redirect(canonicalUrl, 302);
+    }
     if (!authRequired) {
       const session = localAuthBypassSession();
       c.set("authSession", session);
-      if (pathname.startsWith("/api/")) {
+      if (pathname.startsWith("/api/") || appRoute) {
         const viewer = options.mockConversations
           ? mockViewerFromSession(session)
           : await resolveViewerUser(LOCAL_VIEWER_EMAIL);
@@ -806,12 +792,14 @@ export function createDashboardApp(
 
     if (!auth) {
       return unauthorized(c.req.raw, basePath, canonicalBaseURL, {
+        authenticatedRoutes,
         componentGallery: options.componentGallery,
       });
     }
     const browserSession = await auth.getSession(c.req.raw);
     const token = dashboardPersonalBearerToken(c.req.raw);
     const tokenEmail =
+      !appRoute &&
       !browserSession &&
       token &&
       (c.req.method === "GET" || c.req.method === "HEAD") &&
@@ -824,6 +812,7 @@ export function createDashboardApp(
       (tokenEmail ? dashboardBearerSession(tokenEmail) : null);
     if (!session) {
       return unauthorized(c.req.raw, basePath, canonicalBaseURL, {
+        authenticatedRoutes,
         componentGallery: options.componentGallery,
       });
     }
@@ -833,7 +822,7 @@ export function createDashboardApp(
     const sanitizedSession = sanitizeDashboardSession(session);
     c.set("authSession", sanitizedSession);
     // Resolve the canonical user only for authenticated API requests.
-    if (pathname.startsWith("/api/")) {
+    if (pathname.startsWith("/api/") || appRoute) {
       const email = verifiedDashboardSessionEmail(sanitizedSession);
       if (!email) {
         throw new Error(
@@ -853,6 +842,26 @@ export function createDashboardApp(
   };
 
   app.use("*", requireAuth);
+
+  for (const route of authenticatedRoutes) {
+    const handler = (c: Context<{ Variables: Variables }>) => {
+      const viewer = c.get("viewer");
+      if (!viewer) {
+        throw new Error("Authenticated app route has no resolved user");
+      }
+      return route.handler(c.req.raw, viewer);
+    };
+    const methods =
+      typeof route.method === "string"
+        ? [route.method]
+        : (route.method ?? ["ALL"]);
+    const explicitMethods = methods.filter((method) => method !== "ALL");
+    if (methods.includes("ALL")) {
+      app.all(route.path, handler);
+    } else if (explicitMethods.length > 0) {
+      app.on(explicitMethods, route.path, handler);
+    }
+  }
 
   for (const { nested, path } of dashboardPagePaths(basePath, {
     componentGallery: options.componentGallery,

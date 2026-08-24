@@ -117,8 +117,8 @@ function runtimeModuleForResolvedPluginModule(
 }
 
 /**
- * Prevent required runtime packages from being externalized so Rolldown
- * bundles them inline.
+ * Prevent import-in-the-middle and require-in-the-middle from being
+ * externalized so Rolldown bundles them inline.
  *
  * @sentry/node (via @opentelemetry/instrumentation) statically imports these
  * packages. Nitro already lists them in nf3's NonBundleablePackages, which
@@ -127,24 +127,19 @@ function runtimeModuleForResolvedPluginModule(
  * step fails to materialize the packages at runtime, causing an
  * ERR_MODULE_NOT_FOUND startup crash.
  *
- * The virtual app config also loads @sentry/junior-acp only when ACP is
- * enabled. Bundling it keeps that optional runtime load inside the function
- * output instead of relying on module tracing.
- *
- * Adding these packages to noExternals overrides the NonBundleablePackages
- * default. The trade-off is that Node.js ESM loader hooks (hook.mjs) are not
- * active, which limits OTEL auto-instrumentation of modules loaded after
- * initialization. That is an acceptable cost compared to a startup failure.
+ * Adding them to noExternals overrides the NonBundleablePackages default and
+ * forces Rolldown to bundle their CJS code inline. The trade-off is that
+ * Node.js ESM loader hooks (hook.mjs) are not active, which limits OTEL
+ * auto-instrumentation of modules loaded after initialization. That is an
+ * acceptable cost compared to a fatal startup failure.
  */
-function bundleRequiredRuntimePackages(nitro: Nitro): void {
+function bundleOpenTelemetryLoaderHooks(nitro: Nitro): void {
   const existing = Array.isArray(nitro.options.noExternals)
     ? nitro.options.noExternals
     : [];
-  const additions = [
-    "@sentry/junior-acp",
-    "import-in-the-middle",
-    "require-in-the-middle",
-  ].filter((pkg) => !existing.includes(pkg));
+  const additions = ["import-in-the-middle", "require-in-the-middle"].filter(
+    (pkg) => !existing.includes(pkg),
+  );
   if (additions.length > 0) {
     nitro.options.noExternals = [...existing, ...additions];
   }
@@ -280,7 +275,7 @@ export function juniorNitro(options: JuniorNitroOptions = {}): {
           nitro,
           options,
         );
-        bundleRequiredRuntimePackages(nitro);
+        bundleOpenTelemetryLoaderHooks(nitro);
 
         applyRolldownTreeshakeWorkaround(nitro);
         const pluginSource = options.plugins;

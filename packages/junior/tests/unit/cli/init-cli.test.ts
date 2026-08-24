@@ -31,8 +31,10 @@ function normalizeText(source: string): string {
 function removeExampleOnlyServerConfig(source: string): string {
   return normalizeText(
     source
+      .replace("  { acpAdapter },\n", "")
+      .replace('  import("@sentry/junior-acp"),\n', "")
       .replace(
-        '  experimental: { acp: process.env.NODE_ENV === "development" },\n',
+        '  adapters: process.env.NODE_ENV === "development" ? [acpAdapter()] : [],\n',
         "",
       )
       .replace(

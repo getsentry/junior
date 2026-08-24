@@ -1,16 +1,19 @@
 import { createHash } from "node:crypto";
 import path from "node:path";
 import * as acp from "@agentclientprotocol/sdk";
+import { acpAdapter } from "@sentry/junior-acp";
 import type { StateAdapter } from "chat";
-import { completeAcpAuthorization } from "@sentry/junior-acp";
+import { completeAcpAuthorization } from "@sentry/junior-acp/testing";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createApp } from "@/app";
+import { createAdapterConversations } from "@/chat/api-turns/adapter-conversations";
 import {
   ConversationTurnLifecycleService,
   type ConversationTurnLifecycle,
 } from "@/chat/conversations/turn-lifecycle";
 import { getConversationEventStore } from "@/chat/db";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
+import { recordConversationExecution } from "@/chat/task-execution/state";
 import {
   closeApiTurnWorkFixture,
   createConversationWorkWebHarness,
@@ -50,11 +53,12 @@ describe("remote ACP recovery", () => {
     await closeApiTurnWorkFixture();
   });
 
-  it("finishes an authenticate request when browser sign-in expires", async () => {
+  it("finishes an abandoned authenticate request when browser sign-in expires", async () => {
     const harness = await createConversationWorkWebHarness();
     const app = await createApp({
       conversationWork: harness.conversationWork,
-      experimental: { acp: true, subagents: true },
+      adapters: [acpAdapter()],
+      experimental: { subagents: true },
     });
     const initialized = await app.fetch(initializeRequest());
     const connectionId = initialized.headers.get("Acp-Connection-Id");
@@ -103,8 +107,6 @@ describe("remote ACP recovery", () => {
     if (!transactionId)
       throw new Error("ACP sign-in URL has no transaction id");
     const userCode = verificationCodeFromElicitation(params);
-    await reader.cancel();
-    reader.releaseLock();
 
     await expect(
       completeAcpAuthorization({
@@ -116,48 +118,42 @@ describe("remote ACP recovery", () => {
       }),
     ).resolves.toBe("invalid");
 
-    const later = Date.now() + 11 * 60 * 1000;
-    const now = vi.spyOn(Date, "now").mockReturnValue(later);
-    let completion: Awaited<ReturnType<typeof completeAcpAuthorization>>;
-    try {
-      completion = await completeAcpAuthorization({
-        state: harness.state,
-        transactionId,
-        user: testViewer(harness.actor.email),
-        userCode,
-      });
-    } finally {
-      now.mockRestore();
+    const authorizationKey = `junior:acp:v1:authorization:${transactionId}`;
+    const authorization =
+      await harness.state.get<Record<string, unknown>>(authorizationKey);
+    if (!authorization) {
+      throw new Error("ACP sign-in transaction was not stored");
     }
-
-    expect(completion).toBe("expired");
-    const resumedStream = await app.request(ACP_TEST_URL, {
-      method: "GET",
-      headers: {
-        Accept: "text/event-stream",
-        "Acp-Connection-Id": connectionId,
-        Cookie: cookie,
-      },
+    const expiresAtMs = Date.now() - 1;
+    await harness.state.set(authorizationKey, {
+      ...authorization,
+      expiresAtMs,
     });
-    expect(resumedStream.status).toBe(200);
-    const resumedReader = resumedStream.body?.getReader();
-    if (!resumedReader) throw new Error("ACP GET returned no stream body");
-    const resumedBuffer = { value: "" };
-    await expect(
-      readAcpSseMessage(resumedReader, resumedBuffer),
-    ).resolves.toMatchObject({
+    await harness.state.set(
+      `junior:acp:v1:connection:${connectionId}:authorization`,
+      { expiresAtMs, transactionId },
+    );
+
+    await expect(readAcpSseMessage(reader, buffer)).resolves.toMatchObject({
       method: acp.methods.client.elicitation.complete,
     });
-    await expect(
-      readAcpSseMessage(resumedReader, resumedBuffer),
-    ).resolves.toMatchObject({
+    await expect(readAcpSseMessage(reader, buffer)).resolves.toMatchObject({
       id: requestId,
       error: {
         message: expect.stringContaining("Junior sign-in request expired"),
       },
     });
-    await resumedReader.cancel();
-    resumedReader.releaseLock();
+
+    await expect(
+      completeAcpAuthorization({
+        state: harness.state,
+        transactionId,
+        user: testViewer(harness.actor.email),
+        userCode,
+      }),
+    ).resolves.toBe("expired");
+    await reader.cancel();
+    reader.releaseLock();
   });
 
   it("rejects a second active prompt from another app instance", async () => {
@@ -175,11 +171,13 @@ describe("remote ACP recovery", () => {
     });
     const app = await createApp({
       conversationWork: harness.conversationWork,
-      experimental: { acp: true, subagents: true },
+      adapters: [acpAdapter()],
+      experimental: { subagents: true },
     });
     const secondApp = await createApp({
       conversationWork: createIndependentConversationWork(harness),
-      experimental: { acp: true, subagents: true },
+      adapters: [acpAdapter()],
+      experimental: { subagents: true },
     });
     const sessionCreated = deferred<string>();
     const firstPrompt = withAcpClient({
@@ -258,11 +256,13 @@ describe("remote ACP recovery", () => {
       });
       const app = await createApp({
         conversationWork: harness.conversationWork,
-        experimental: { acp: true, subagents: true },
+        adapters: [acpAdapter()],
+        experimental: { subagents: true },
       });
       const secondApp = await createApp({
         conversationWork: createIndependentConversationWork(harness),
-        experimental: { acp: true, subagents: true },
+        adapters: [acpAdapter()],
+        experimental: { subagents: true },
       });
       const sessionCreated = deferred<string>();
       let cancelActiveTurn: (() => Promise<void>) | undefined;
@@ -342,11 +342,13 @@ describe("remote ACP recovery", () => {
     });
     const app = await createApp({
       conversationWork: harness.conversationWork,
-      experimental: { acp: true, subagents: true },
+      adapters: [acpAdapter()],
+      experimental: { subagents: true },
     });
     const secondApp = await createApp({
       conversationWork: createIndependentConversationWork(harness),
-      experimental: { acp: true, subagents: true },
+      adapters: [acpAdapter()],
+      experimental: { subagents: true },
     });
     const sessionCreated = deferred<string>();
     let cancelActiveTurn: (() => Promise<void>) | undefined;
@@ -452,11 +454,13 @@ describe("remote ACP recovery", () => {
         ...harness.conversationWork,
         state: observedState,
       },
-      experimental: { acp: true, subagents: true },
+      adapters: [acpAdapter()],
+      experimental: { subagents: true },
     });
     const secondApp = await createApp({
       conversationWork: createIndependentConversationWork(harness),
-      experimental: { acp: true, subagents: true },
+      adapters: [acpAdapter()],
+      experimental: { subagents: true },
     });
     const sessionCreated = deferred<string>();
     const secondPromptPosted = deferred();
@@ -585,17 +589,94 @@ describe("remote ACP recovery", () => {
     ]);
   }, 20_000);
 
+  it("returns a terminal after failed cleanup and during a later Turn", async () => {
+    const harness = await createConversationWorkWebHarness({
+      modelStream: streamReplies("First Turn complete."),
+    });
+    const conversations = createAdapterConversations({
+      conversationStore: harness.conversationStore,
+      eventStore: getConversationEventStore(),
+      queue: harness.queue,
+      state: harness.state,
+    });
+    const conversationId = `local:acp:${"1".repeat(32)}`;
+    const user = testViewer(harness.actor.email);
+    await conversations.create({ conversationId, user });
+    const first = await conversations.prompt({
+      conversationId,
+      idempotencyKey: "first",
+      text: "Finish the first Turn.",
+      user,
+    });
+    if (first.status !== "accepted") {
+      throw new Error(`First adapter prompt was ${first.status}`);
+    }
+    await harness.drain();
+
+    const failedAtMs = Date.now();
+    await recordConversationExecution({
+      conversationId,
+      createdAtMs: failedAtMs,
+      execution: { status: "failed", updatedAtMs: failedAtMs },
+      lastActivityAtMs: failedAtMs,
+      state: harness.state,
+      updatedAtMs: failedAtMs,
+    });
+    await expect(
+      conversations.readTurn({
+        afterCursor: first.afterCursor,
+        conversationId,
+        messageId: first.messageId,
+        turnId: first.turnId,
+      }),
+    ).resolves.toMatchObject({
+      terminal: { outcome: "completed", status: "completed" },
+    });
+
+    const second = await conversations.prompt({
+      conversationId,
+      idempotencyKey: "second",
+      text: "Keep the next Turn active.",
+      user,
+    });
+    if (second.status !== "accepted") {
+      throw new Error(`Second adapter prompt was ${second.status}`);
+    }
+    await new ConversationTurnLifecycleService(
+      getConversationEventStore(),
+    ).start({
+      conversationId,
+      createdAtMs: Date.now(),
+      inputMessageIds: [second.messageId],
+      surface: "api",
+      turnId: second.turnId,
+    });
+
+    await expect(
+      conversations.readTurn({
+        afterCursor: first.afterCursor,
+        conversationId,
+        messageId: first.messageId,
+        turnId: first.turnId,
+      }),
+    ).resolves.toMatchObject({
+      terminal: { outcome: "completed", status: "completed" },
+    });
+  });
+
   it("recovers prompt admission after the first queue send fails", async () => {
     const harness = await createConversationWorkWebHarness({
       modelStream: streamReplies("Recovered queue reply."),
     });
     const app = await createApp({
       conversationWork: harness.conversationWork,
-      experimental: { acp: true, subagents: true },
+      adapters: [acpAdapter()],
+      experimental: { subagents: true },
     });
     const secondApp = await createApp({
       conversationWork: createIndependentConversationWork(harness),
-      experimental: { acp: true, subagents: true },
+      adapters: [acpAdapter()],
+      experimental: { subagents: true },
     });
     const sessionId = await withAcpClient({
       app,
@@ -657,7 +738,8 @@ describe("remote ACP recovery", () => {
     const harness = await createConversationWorkWebHarness();
     const app = await createApp({
       conversationWork: harness.conversationWork,
-      experimental: { acp: true, subagents: true },
+      adapters: [acpAdapter()],
+      experimental: { subagents: true },
     });
     const sessionId = await withAcpClient({
       app,

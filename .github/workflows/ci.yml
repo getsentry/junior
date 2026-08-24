@@ -193,6 +193,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node-pnpm
+      - run: pnpm --filter @sentry/junior-acp build
       - run: pnpm --filter @sentry/junior build
       - run: pnpm --filter @sentry/junior exec vitest run --maxWorkers=4 --coverage ${{ matrix.path }}
       - name: Upload coverage

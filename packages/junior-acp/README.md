@@ -1,8 +1,8 @@
 # Remote ACP
 
-Junior exposes ACP v1 Streamable HTTP at `/api/acp` when the app sets
-`experimental: { acp: true }`. The route accepts `GET`, `POST`, and `DELETE`.
-The app must also enable the dashboard. The client must support ACP URL
+Junior exposes ACP v1 Streamable HTTP at `/api/acp` when the app adds
+`acpAdapter()` to `createApp({ adapters })`. The route accepts `GET`, `POST`,
+and `DELETE`. The app must also enable the dashboard. The client must support ACP URL
 elicitation. Junior advertises browser sign-in as its ACP authentication method.
 The dashboard completes Google OAuth and binds the verified Junior user to the
 ACP connection after the user enters the verification code shown by the client.
@@ -20,8 +20,8 @@ reason.
 `@sentry/junior-acp` owns ACP JSON-RPC, SSE, connection state, and browser
 authorization transactions. It does not import Junior core. The package owns a
 `ConversationPort` with six Conversation operations. Junior implements that
-contract in one adapter module. The adapter owns user access, mailbox admission,
-cancellation, and event projection. Core loads the ACP runtime through app setup.
+contract in its generic app-adapter boundary. Core owns user access, mailbox
+admission, cancellation, and event projection. App setup loads the ACP runtime.
 No ACP type enters the agent loop.
 
 ## Runtime Design

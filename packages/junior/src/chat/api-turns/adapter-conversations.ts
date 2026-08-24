@@ -1,15 +1,10 @@
-/**
- * Bind the protocol adapter port to Junior's Conversation runtime.
- *
- * The ACP package cannot reach the mailbox, worker, database, or Conversation
- * event store directly. Core implements the transport package's narrow port.
- */
+/** Bind app adapters to Junior's Conversation runtime. */
 import type { StateAdapter } from "chat";
 import type {
-  ConversationPort,
-  ConversationTurnPage,
-  ConversationTurnTerminal,
-} from "@sentry/junior-acp";
+  AdapterConversations,
+  AdapterTurnPage,
+  AdapterTurnTerminal,
+} from "@/app-adapter";
 import type { User } from "@sentry/junior-plugin-api";
 import { readConversationAccessFromSql } from "@/api/conversations/access";
 import {
@@ -29,12 +24,12 @@ import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import {
   appendAndEnqueueExclusiveInboundMessage,
   getConversation,
-  hasRunnableConversationWork,
 } from "@/chat/task-execution/store";
+import { hasRunnableConversationWork } from "@/chat/task-execution/state";
 
 const EVENT_PAGE_SIZE = 50;
 
-interface AcpConversationOptions {
+interface AdapterConversationOptions {
   conversationStore?: ConversationStore;
   eventStore: ConversationEventStore;
   queue: ConversationWorkQueue;
@@ -58,16 +53,39 @@ async function hasConversationAccess(
   return Boolean(access?.isParticipant);
 }
 
-/** Return whether shared Conversation state still blocks the next ACP prompt. */
-async function hasRunnableWork(args: {
+/** Return whether one Turn can publish its terminal result without racing cleanup. */
+async function turnTerminalIsReady(args: {
   conversationId: string;
+  eventStore: ConversationEventStore;
+  messageId: string;
   state: StateAdapter;
+  terminalSeq: number;
+  turnId: string;
 }): Promise<boolean> {
   const conversation = await getConversation({
     conversationId: args.conversationId,
     state: args.state,
   });
-  return conversation ? hasRunnableConversationWork(conversation) : false;
+  if (
+    conversation?.execution.pendingMessages.some(
+      (message) => message.inboundMessageId === args.messageId,
+    )
+  ) {
+    return false;
+  }
+  if (!conversation || !hasRunnableConversationWork(conversation)) {
+    return true;
+  }
+
+  const later = await args.eventStore.query(args.conversationId, {
+    afterSeq: args.terminalSeq,
+    limit: 1,
+    types: ["turn_started"],
+  });
+  return later.events.some(
+    (event) =>
+      event.data.type === "turn_started" && event.data.turnId !== args.turnId,
+  );
 }
 
 async function latestEventCursor(
@@ -78,10 +96,10 @@ async function latestEventCursor(
   return page.events.at(-1)?.seq ?? 0;
 }
 
-async function appendAndEnqueueAcpPrompt(args: {
+async function appendAndEnqueueAdapterPrompt(args: {
   conversationId: string;
   idempotencyKey: string;
-  options: AcpConversationOptions;
+  options: AdapterConversationOptions;
   text: string;
   user: User;
 }): Promise<{
@@ -89,7 +107,7 @@ async function appendAndEnqueueAcpPrompt(args: {
   status: "accepted" | "active" | "duplicate";
 }> {
   const text = args.text.trim();
-  if (!text) throw new Error("ACP prompt must not be empty");
+  if (!text) throw new Error("Adapter prompt must not be empty");
   const actor = actorFromUser(args.user);
   const nowMs = Date.now();
   const messageId = apiConversationMessageId({
@@ -125,10 +143,10 @@ async function appendAndEnqueueAcpPrompt(args: {
   };
 }
 
-/** Create the narrow Conversation capability consumed by remote ACP. */
-export function createAcpConversationPort(
-  options: AcpConversationOptions,
-): ConversationPort {
+/** Create the Conversation capability supplied to app adapters. */
+export function createAdapterConversations(
+  options: AdapterConversationOptions,
+): AdapterConversations {
   return {
     async cancel({ conversationId, user }) {
       if (!(await hasConversationAccess(conversationId, user))) {
@@ -143,7 +161,7 @@ export function createAcpConversationPort(
       return "cancelled";
     },
 
-    async createConversation({ conversationId, user }) {
+    async create({ conversationId, user }) {
       await recordApiConversationActivity({
         actor: actorFromUser(user),
         conversationId,
@@ -153,7 +171,7 @@ export function createAcpConversationPort(
       });
     },
 
-    async hasConversationAccess({ conversationId, user }) {
+    async hasAccess({ conversationId, user }) {
       return await hasConversationAccess(conversationId, user);
     },
 
@@ -165,7 +183,7 @@ export function createAcpConversationPort(
         options.eventStore,
         conversationId,
       );
-      const admission = await appendAndEnqueueAcpPrompt({
+      const admission = await appendAndEnqueueAdapterPrompt({
         conversationId,
         idempotencyKey,
         options,
@@ -196,7 +214,7 @@ export function createAcpConversationPort(
         .map(({ id, role, text }) => ({ id, role, text }));
     },
 
-    async readTurn({ afterCursor, conversationId, turnId }) {
+    async readTurn({ afterCursor, conversationId, messageId, turnId }) {
       const page = await options.eventStore.query(conversationId, {
         afterSeq: afterCursor,
         limit: EVENT_PAGE_SIZE,
@@ -219,7 +237,7 @@ export function createAcpConversationPort(
           : [];
       });
 
-      let terminal: ConversationTurnTerminal | undefined;
+      let terminal: AdapterTurnTerminal | undefined;
       const terminalEvent = await options.eventStore.loadByIdempotencyKey(
         conversationId,
         `turn:${turnId}:terminal`,
@@ -227,9 +245,13 @@ export function createAcpConversationPort(
       if (
         terminalEvent &&
         terminalEvent.seq <= cursor &&
-        !(await hasRunnableWork({
+        (await turnTerminalIsReady({
           conversationId,
+          eventStore: options.eventStore,
+          messageId,
           state: options.state,
+          terminalSeq: terminalEvent.seq,
+          turnId,
         }))
       ) {
         const data = terminalEvent.data;
@@ -242,7 +264,7 @@ export function createAcpConversationPort(
           terminal = { failureCode: data.failureCode, status: "failed" };
         }
       }
-      const turnPage: ConversationTurnPage = { cursor, messages };
+      const turnPage: AdapterTurnPage = { cursor, messages };
       if (terminal) turnPage.terminal = terminal;
       return turnPage;
     },

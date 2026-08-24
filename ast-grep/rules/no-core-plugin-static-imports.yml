@@ -12,9 +12,6 @@ rule:
         kind: string
         regex: '^["@'']@sentry/junior-.+["@'']$'
     - not:
-        any:
-          - has:
-              kind: string
-              regex: '^["@'']@sentry/junior-plugin-api["@'']$'
-          # ACP is an optional transport package. Type imports do not load it.
-          - pattern: import type $$$A from "@sentry/junior-acp"
+        has:
+          kind: string
+          regex: '^["@'']@sentry/junior-plugin-api["@'']$'

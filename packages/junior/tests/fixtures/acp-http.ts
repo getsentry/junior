@@ -2,7 +2,7 @@ import * as acp from "@agentclientprotocol/sdk";
 import { createHttpStream } from "@agentclientprotocol/sdk/experimental/http-client";
 import type { StateAdapter } from "chat";
 import type { Hono } from "hono";
-import { completeAcpAuthorization } from "@sentry/junior-acp";
+import { completeAcpAuthorization } from "@sentry/junior-acp/testing";
 import { vi } from "vitest";
 import { createConversationWork } from "@/chat/app/conversation-work";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
@@ -19,7 +19,6 @@ export function mockAcpDashboardConfig(): void {
     }),
     dashboard: { authRequired: false },
     functionMaxDurationSeconds: undefined,
-    loadAcp: undefined,
     pluginSet: undefined,
     plugins: undefined,
     pluginRuntimeRegistrations: [],

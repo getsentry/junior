@@ -21,20 +21,32 @@ const STREAM_ITEMS_KEY = `${STREAM_KEY}:items`;
 const STREAM_CURSOR_KEY = `${STREAM_KEY}:cursor`;
 const MAX_STREAM_ITEMS = 1_024;
 const REPLAY_ITEM_ID = `acp-item:${stableHex(`${REQUEST_KEY}:0`)}`;
-const REPLAY_COMPLETION_KEY = `${STREAM_KEY}:complete:${stableHex(REPLAY_ITEM_ID)}`;
 
 function replayReceipt(): AcpRequestReceipt {
   return {
-    outputs: [
-      {
-        kind: "replay",
-        sessionId: SESSION_ID,
-      },
-    ],
+    outputs: [{ kind: "replay" }],
+    sessionId: SESSION_ID,
   };
 }
 
 describe("ACP transport", () => {
+  it("does not create output after its connection expires", async () => {
+    const state = createMemoryState();
+    await state.connect();
+    const createReceipt = vi.fn(async () => replayReceipt());
+
+    await expect(
+      acceptAcpRequest({
+        connectionId: CONNECTION_ID,
+        createReceipt,
+        requestKey: REQUEST_KEY,
+        state,
+      }),
+    ).resolves.toBe("expired");
+    expect(createReceipt).not.toHaveBeenCalled();
+    await state.disconnect();
+  });
+
   it("rejects overflow without trimming pending output", async () => {
     const state = createMemoryState();
     await state.connect();
@@ -81,7 +93,6 @@ describe("ACP transport", () => {
     await state.set(STREAM_CURSOR_KEY, {
       itemId: `existing-${MAX_STREAM_ITEMS - 1}`,
     });
-    await state.set(REPLAY_COMPLETION_KEY, true);
     await expect(accept()).resolves.toBe("accepted");
     const reset = await state.getList(STREAM_ITEMS_KEY);
     expect(reset).toEqual([
@@ -90,7 +101,6 @@ describe("ACP transport", () => {
         output: { kind: "replay" },
       }),
     ]);
-    await expect(state.get(REPLAY_COMPLETION_KEY)).resolves.toBeNull();
     expect(createReceipt).toHaveBeenCalledTimes(1);
     await state.disconnect();
   });

@@ -21,7 +21,6 @@ import { executeAgentRun } from "@/chat/agent";
 import { normalizeSandboxEgressTracePropagationDomains } from "@/chat/sandbox/egress/tracing";
 import {
   getExperimentalFeatures,
-  isExperimentalFeatureEnabled,
   setExperimentalFeatures,
   type ExperimentalFeaturesConfig,
 } from "@/chat/experimental";
@@ -49,7 +48,6 @@ import type {
   PluginRegistration,
   ResourceEvent,
   PluginRouteMethod,
-  User,
 } from "@sentry/junior-plugin-api";
 import {
   pluginCatalogConfigFromEnv,
@@ -99,12 +97,9 @@ import { ingestResourceEvent } from "@/chat/resource-events/ingest";
 import { createResourceEventTeamIdResolver } from "@/chat/resource-events/workspace";
 import { ingestEventTasks } from "@/chat/event-tasks/ingest";
 import { receiveLocalOAuthCredential } from "@/chat/local/credential-sync";
-import { createAcpConversationPort } from "@/api/acp-conversations";
-import {
-  loadAcpPackage,
-  type AcpAuthorizationCompletion,
-} from "@/api/acp-package";
 import { getStateAdapter } from "@/chat/state/adapter";
+import { createAdapterConversations } from "@/chat/api-turns/adapter-conversations";
+import type { JuniorAppAdapter, JuniorAuthenticatedRoute } from "./app-adapter";
 import { JUNIOR_VERSION } from "./version";
 
 export { defineJuniorPlugins } from "./plugins";
@@ -114,8 +109,24 @@ export type {
   JuniorPluginSet,
   JuniorPluginSetOptions,
 } from "./plugins";
+export type {
+  AdapterConversations,
+  AdapterMessage,
+  AdapterPromptAdmission,
+  AdapterTurnPage,
+  AdapterTurnTerminal,
+  JuniorAdapterRoute,
+  JuniorAdapterLock,
+  JuniorAdapterState,
+  JuniorAppAdapter,
+  JuniorAppAdapterContext,
+  JuniorAppAdapterRoutes,
+  JuniorAuthenticatedRoute,
+} from "./app-adapter";
 
 export interface JuniorAppOptions {
+  /** Non-plugin adapters mounted against Junior's shared runtime. */
+  adapters?: readonly JuniorAppAdapter[];
   /** Authenticated dashboard mounted by core when configured. */
   dashboard?: JuniorDashboardOptions;
   /**
@@ -179,17 +190,9 @@ export interface JuniorDashboardOptions {
 }
 
 interface JuniorDashboardRuntimeOptions extends JuniorDashboardOptions {
-  acpAuthorization?: AcpAuthorizationBridge;
   agentName?: string;
+  authenticatedRoutes?: readonly JuniorAuthenticatedRoute[];
   pluginRoutes?: PluginApiRouteRegistration[];
-}
-
-interface AcpAuthorizationBridge {
-  complete(
-    transactionId: string,
-    user: User,
-    userCode: string,
-  ): Promise<AcpAuthorizationCompletion>;
 }
 
 type JuniorVirtualDashboardOptions = JuniorDashboardOptions;
@@ -206,7 +209,6 @@ interface JuniorVirtualConfig {
   functionMaxDurationSeconds?: number;
   createDashboardApp?: CreateDashboardApp;
   dashboard?: JuniorVirtualDashboardOptions;
-  loadAcp?: () => Promise<unknown>;
   pluginSet?: JuniorPluginSet;
   plugins?: PluginCatalogConfig;
   pluginRuntimeRegistrations: string[];
@@ -214,7 +216,7 @@ interface JuniorVirtualConfig {
 
 interface HostRouteRegistration {
   handler(request: Request): Promise<Response> | Response;
-  method?: PluginRouteMethod | PluginRouteMethod[];
+  method?: PluginRouteMethod | readonly PluginRouteMethod[];
   path: string;
 }
 
@@ -238,28 +240,22 @@ async function defaultWaitUntil(): Promise<WaitUntilFn> {
 }
 
 /** Resolve build-time configuration from the virtual module injected by juniorNitro(). */
-async function resolveVirtualConfig(options: {
-  includeAcp: boolean;
-}): Promise<JuniorVirtualConfig | undefined> {
+async function resolveVirtualConfig(): Promise<
+  JuniorVirtualConfig | undefined
+> {
   try {
     const mod: {
       createDashboardApp?: CreateDashboardApp;
       functionMaxDurationSeconds?: number;
       dashboard?: JuniorVirtualDashboardOptions;
-      loadAcp?: () => Promise<unknown>;
       pluginSet?: JuniorPluginSet;
       plugins?: PluginCatalogConfig;
       pluginRuntimeRegistrations?: string[];
     } = await import("#junior/config");
-    const loadAcp =
-      options.includeAcp && Object.prototype.hasOwnProperty.call(mod, "loadAcp")
-        ? mod.loadAcp
-        : undefined;
     return {
       createDashboardApp: mod.createDashboardApp,
       functionMaxDurationSeconds: mod.functionMaxDurationSeconds,
       dashboard: mod.dashboard,
-      loadAcp,
       pluginSet: mod.pluginSet,
       plugins: mod.plugins,
       pluginRuntimeRegistrations: mod.pluginRuntimeRegistrations ?? [],
@@ -358,7 +354,7 @@ function validateBuildIncludesPluginRuntimeRegistrations(
 }
 
 async function createDashboardRouteRegistrations(args: {
-  acpAuthorization?: AcpAuthorizationBridge;
+  authenticatedRoutes: readonly JuniorAuthenticatedRoute[];
   dashboard: JuniorDashboardOptions | undefined;
   createDashboardApp: CreateDashboardApp | undefined;
   pluginRoutes: PluginApiRouteRegistration[];
@@ -370,7 +366,7 @@ async function createDashboardRouteRegistrations(args: {
   const createDashboardApp =
     args.createDashboardApp ?? (await loadDashboardAppFactory());
   return dashboardRouteRegistrations({
-    acpAuthorization: args.acpAuthorization,
+    authenticatedRoutes: args.authenticatedRoutes,
     dashboard: args.dashboard,
     createDashboardApp,
     pluginRoutes: args.pluginRoutes,
@@ -438,7 +434,10 @@ function normalizeDashboardPath(
 }
 
 /** List every route path core forwards to the dashboard app and reserves from plugin routes. */
-function dashboardHostRoutePaths(dashboard: JuniorDashboardOptions): string[] {
+function dashboardHostRoutePaths(
+  dashboard: JuniorDashboardOptions,
+  authenticatedRoutes: readonly JuniorAuthenticatedRoute[] = [],
+): string[] {
   const basePath = normalizeDashboardPath(dashboard.basePath, "/");
   const authPath = normalizeDashboardPath(dashboard.authPath, "/api/auth");
   const pagePath = (suffix: string) =>
@@ -500,7 +499,7 @@ function dashboardHostRoutePaths(dashboard: JuniorDashboardOptions): string[] {
     "/api/workspaces/*",
     "/api/config",
     "/api/me",
-    "/api/acp/auth/*",
+    ...authenticatedRoutes.map((route) => route.path),
     authPath,
     `${authPath}/*`,
   ];
@@ -573,14 +572,15 @@ function routePatternOverlaps(ownedPath: string, routePath: string): boolean {
 function dashboardOwnedRoutePath(
   routePath: string,
   dashboard: JuniorDashboardOptions,
+  authenticatedRoutes: readonly JuniorAuthenticatedRoute[] = [],
 ): boolean {
-  return dashboardHostRoutePaths(dashboard).some((path) =>
+  return dashboardHostRoutePaths(dashboard, authenticatedRoutes).some((path) =>
     routePatternOverlaps(path, routePath),
   );
 }
 
 function dashboardRouteRegistrations(args: {
-  acpAuthorization?: AcpAuthorizationBridge;
+  authenticatedRoutes: readonly JuniorAuthenticatedRoute[];
   dashboard: JuniorDashboardOptions;
   createDashboardApp: CreateDashboardApp;
   pluginRoutes: PluginApiRouteRegistration[];
@@ -590,11 +590,9 @@ function dashboardRouteRegistrations(args: {
     const dashboardOptions: JuniorDashboardRuntimeOptions = {
       ...args.dashboard,
       agentName: botConfig.userName,
+      authenticatedRoutes: args.authenticatedRoutes,
       pluginRoutes: args.pluginRoutes,
     };
-    if (args.acpAuthorization) {
-      dashboardOptions.acpAuthorization = args.acpAuthorization;
-    }
     app ??= args.createDashboardApp(dashboardOptions);
     if (!app || typeof app.fetch !== "function") {
       throw new Error("createDashboardApp() must return an app with fetch()");
@@ -602,13 +600,16 @@ function dashboardRouteRegistrations(args: {
     return app.fetch(request);
   };
 
-  return dashboardHostRoutePaths(args.dashboard).map((path) => ({
-    handler: fetch,
-    path,
-  }));
+  return dashboardHostRoutePaths(args.dashboard, args.authenticatedRoutes).map(
+    (path) => ({
+      handler: fetch,
+      path,
+    }),
+  );
 }
 
 function validateDashboardRouteOwnership(args: {
+  authenticatedRoutes?: readonly JuniorAuthenticatedRoute[];
   dashboard: JuniorDashboardOptions | undefined;
   routes: PluginRouteRegistration[];
 }): void {
@@ -616,7 +617,13 @@ function validateDashboardRouteOwnership(args: {
     return;
   }
   for (const route of args.routes) {
-    if (dashboardOwnedRoutePath(route.path, args.dashboard)) {
+    if (
+      dashboardOwnedRoutePath(
+        route.path,
+        args.dashboard,
+        args.authenticatedRoutes,
+      )
+    ) {
       throw new Error(
         `Plugin "${route.pluginName}" route "${route.path}" conflicts with core dashboard routes`,
       );
@@ -628,9 +635,10 @@ function validateDashboardRouteOwnership(args: {
 function mountRoutes(app: Hono, routes: HostRouteRegistration[]): void {
   for (const route of routes) {
     const handler = (c: Context) => route.handler(c.req.raw);
-    const methods = Array.isArray(route.method)
-      ? route.method
-      : [route.method ?? "ALL"];
+    const methods =
+      typeof route.method === "string"
+        ? [route.method]
+        : (route.method ?? ["ALL"]);
     const explicitMethods = methods.filter(
       (method): method is Exclude<PluginRouteMethod, "ALL"> => method !== "ALL",
     );
@@ -645,23 +653,13 @@ function mountRoutes(app: Hono, routes: HostRouteRegistration[]): void {
 
 /** Create a Hono app with all Junior routes. */
 export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
-  const virtualConfig = await resolveVirtualConfig({
-    includeAcp: options?.experimental?.acp === true,
-  });
+  const virtualConfig = await resolveVirtualConfig();
   if (virtualConfig?.functionMaxDurationSeconds !== undefined) {
     configureFunctionMaxDurationSeconds(
       virtualConfig.functionMaxDurationSeconds,
     );
   }
   const dashboard = options?.dashboard ?? virtualConfig?.dashboard;
-  if (
-    options?.experimental?.acp === true &&
-    (!dashboard || dashboard.disabled)
-  ) {
-    throw new Error(
-      "createApp({ experimental: { acp: true } }) requires an enabled dashboard",
-    );
-  }
   const configuredPlugins = options?.plugins ?? virtualConfig?.pluginSet;
   const plugins = pluginRuntimeRegistrationsFromPluginSet(configuredPlugins);
   const pluginConfig = configuredPlugins
@@ -740,7 +738,6 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
       );
     }
     pluginRoutes = getPluginRoutes({ resourceEvents });
-    validateDashboardRouteOwnership({ dashboard, routes: pluginRoutes });
     if (dashboard && !dashboard.disabled) {
       pluginApiRoutes = getPluginApiRoutes();
     }
@@ -781,25 +778,40 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
       });
     return conversationWorkOptions;
   };
-  const acpWork = isExperimentalFeatureEnabled("acp")
-    ? getConversationWorkOptions()
-    : undefined;
-  const acpState = acpWork ? (acpWork.state ?? getStateAdapter()) : undefined;
-  const acpPackage = acpWork
-    ? await loadAcpPackage(virtualConfig?.loadAcp)
-    : undefined;
-  const acpAuthorization: AcpAuthorizationBridge | undefined =
-    acpState && acpPackage
-      ? {
-          complete: async (transactionId, user, userCode) =>
-            await acpPackage.completeAcpAuthorization({
-              state: acpState,
-              transactionId,
-              user,
-              userCode,
-            }),
-        }
-      : undefined;
+  const adapterOutputs = await Promise.all(
+    (options?.adapters ?? []).map(async (adapter) => {
+      const work = getConversationWorkOptions();
+      const state = work.state ?? getStateAdapter();
+      return await adapter({
+        agentName: botConfig.userName,
+        baseURL: dashboard?.baseURL ?? process.env.JUNIOR_BASE_URL,
+        conversations: createAdapterConversations({
+          conversationStore: work.conversationStore,
+          eventStore: getConversationEventStore(),
+          queue: work.queue ?? getVercelConversationWorkQueue(),
+          state,
+        }),
+        reportError: (error, event, attributes) =>
+          void logException(error, event, attributes),
+        state,
+        version: JUNIOR_VERSION,
+      });
+    }),
+  );
+  const adapterRoutes = adapterOutputs.flatMap((output) => output.routes ?? []);
+  const authenticatedRoutes = adapterOutputs.flatMap(
+    (output) => output.authenticatedRoutes ?? [],
+  );
+  if (authenticatedRoutes.length > 0 && (!dashboard || dashboard.disabled)) {
+    throw new Error(
+      "createApp() adapters with authenticated routes require an enabled dashboard",
+    );
+  }
+  validateDashboardRouteOwnership({
+    authenticatedRoutes,
+    dashboard,
+    routes: pluginRoutes,
+  });
   const slackWebhookServices = createProductionSlackWebhookServices({
     services: runtimeServiceOverrides,
   });
@@ -820,10 +832,11 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   });
 
   mountRoutes(app, pluginRoutes);
+  mountRoutes(app, adapterRoutes);
   mountRoutes(
     app,
     await createDashboardRouteRegistrations({
-      acpAuthorization,
+      authenticatedRoutes,
       dashboard,
       createDashboardApp: virtualConfig?.createDashboardApp,
       pluginRoutes: pluginApiRoutes,
@@ -873,25 +886,6 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   let pluginTaskPOST:
     | ReturnType<typeof createVercelPluginTaskCallback>
     | undefined;
-  if (acpWork && acpState && acpPackage) {
-    const queue = acpWork.queue ?? getVercelConversationWorkQueue();
-    const handleAcpRequest = acpPackage.createAcpHttpHandler({
-      conversations: createAcpConversationPort({
-        conversationStore: acpWork.conversationStore,
-        eventStore: getConversationEventStore(),
-        queue,
-        state: acpState,
-      }),
-      baseURL: dashboard?.baseURL ?? process.env.JUNIOR_BASE_URL,
-      onError: (error, event, context) =>
-        void logException(error, event, { ...context, platform: "acp" }),
-      state: acpState,
-      version: JUNIOR_VERSION,
-    });
-    app.on(["GET", "POST", "DELETE"], "/api/acp", (c) =>
-      handleAcpRequest(c.req.raw),
-    );
-  }
   if (process.env.NODE_ENV === "development") {
     registerVercelConversationWorkDevConsumer(getConversationWorkOptions());
     registerVercelPluginTaskDevConsumer();

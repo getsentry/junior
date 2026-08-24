@@ -1,21 +1,23 @@
 /**
  * Short-lived ACP transport state.
  *
- * StateAdapter records replace process-local connection maps and stream
+ * Shared state records replace process-local connection maps and stream
  * buffers. Session history and Turn results remain in the Conversation log.
  */
 import { createHash, randomUUID } from "node:crypto";
-import type { Lock, StateAdapter } from "chat";
 import * as acp from "@agentclientprotocol/sdk";
 import { userSchema, type User } from "@sentry/junior-plugin-api";
 import { z } from "zod";
-import type {
-  AcpErrorContext,
-  ConversationPort,
-  ReportAcpError,
-} from "./conversations";
+import type { AcpErrorContext, ReportAcpError } from "./errors";
+import type { ConversationPort } from "./conversations";
 import { sleep } from "./sleep";
-import { fenceLock, MUTATION_LOCK_TTL_MS, withLock } from "./state";
+import {
+  fenceLock,
+  MUTATION_LOCK_TTL_MS,
+  withLock,
+  type AcpLock,
+  type AcpState,
+} from "./state";
 
 // Transport records can expire because the Conversation log owns durable history.
 export const ACP_STATE_TTL_MS = 24 * 60 * 60 * 1000;
@@ -31,6 +33,7 @@ const MUTATION_LOCK_OPTIONS = {
   waitMs: LOCK_WAIT_MS,
 } as const;
 const SSE_KEEP_ALIVE_MS = 15_000;
+const SSE_MAINTENANCE_INTERVAL_MS = 1_000;
 
 const jsonRpcIdSchema = z.union([z.string(), z.number().finite(), z.null()]);
 
@@ -82,13 +85,6 @@ const acpStreamRouteSchema = z
   })
   .strict();
 
-const acpStreamDependencySchema = z
-  .object({
-    itemId: z.string().min(1),
-    sessionId: z.string().min(1),
-  })
-  .strict();
-
 const acpPromptStreamOutputSchema = z
   .object({
     afterSeq: z.number().int().nonnegative(),
@@ -102,7 +98,6 @@ const acpPromptStreamOutputSchema = z
 const acpStreamOutputSchema = z.discriminatedUnion("kind", [
   z
     .object({
-      afterStreamItem: acpStreamDependencySchema.optional(),
       kind: z.literal("message"),
       message: acpMessageSchema,
     })
@@ -118,33 +113,11 @@ const storedAcpStreamItemSchema = z
   })
   .strict();
 
-const acpReceiptOutputSchema = z.discriminatedUnion("kind", [
-  z
-    .object({
-      kind: z.literal("message"),
-      message: acpMessageSchema,
-      sessionId: z.string().min(1).optional(),
-    })
-    .strict(),
-  z
-    .object({
-      kind: z.literal("replay"),
-      sessionId: z.string().min(1),
-    })
-    .strict(),
-  z
-    .object({
-      kind: z.literal("prompt"),
-      output: acpPromptStreamOutputSchema,
-      sessionId: z.string().min(1),
-    })
-    .strict(),
-]);
-
 const acpRequestReceiptSchema = z
   .object({
     deliveryKey: z.string().min(1).optional(),
-    outputs: z.array(acpReceiptOutputSchema),
+    outputs: z.array(acpStreamOutputSchema),
+    sessionId: z.string().min(1).optional(),
   })
   .strict();
 
@@ -153,13 +126,11 @@ const acpStreamCursorSchema = z.object({ itemId: z.string().min(1) }).strict();
 export type AcpConnection = z.output<typeof acpConnectionSchema>;
 export type AcpStreamRoute = z.output<typeof acpStreamRouteSchema>;
 
-type AcpStreamDependency = z.output<typeof acpStreamDependencySchema>;
 export type AcpPromptStreamOutput = z.output<
   typeof acpPromptStreamOutputSchema
 >;
 type AcpStreamOutput = z.output<typeof acpStreamOutputSchema>;
 type StoredAcpStreamItem = z.output<typeof storedAcpStreamItemSchema>;
-export type AcpReceiptOutput = z.output<typeof acpReceiptOutputSchema>;
 export type AcpRequestReceipt = z.output<typeof acpRequestReceiptSchema>;
 
 function stableHex(value: string): string {
@@ -205,14 +176,6 @@ function streamAppendLockKey(route: AcpStreamRoute): string {
   return `${streamKey(route)}:append`;
 }
 
-function streamItemCompletionKey(
-  connectionId: string,
-  dependency: AcpStreamDependency,
-): string {
-  const route = { connectionId, sessionId: dependency.sessionId };
-  return `${streamKey(route)}:complete:${stableHex(dependency.itemId)}`;
-}
-
 function requestStreamItemId(requestKey: string, index: number): string {
   return `acp-item:${stableHex(`${requestKey}:${index}`)}`;
 }
@@ -226,14 +189,14 @@ function parseReceipt(value: unknown): AcpRequestReceipt {
 }
 
 async function readStreamItems(
-  state: StateAdapter,
+  state: AcpState,
   route: AcpStreamRoute,
 ): Promise<StoredAcpStreamItem[]> {
   return (await state.getList(streamListKey(route))).map(parseStreamItem);
 }
 
 async function readStreamCursor(
-  state: StateAdapter,
+  state: AcpState,
   route: AcpStreamRoute,
 ): Promise<string | undefined> {
   const value = await state.get(streamCursorKey(route));
@@ -243,7 +206,7 @@ async function readStreamCursor(
 }
 
 async function connectionIsLive(
-  state: StateAdapter,
+  state: AcpState,
   connectionId: string,
 ): Promise<boolean> {
   return Boolean(await readAcpConnection(state, connectionId));
@@ -251,7 +214,7 @@ async function connectionIsLive(
 
 /** Create one unauthenticated ACP transport connection. */
 export async function createAcpConnection(
-  state: StateAdapter,
+  state: AcpState,
   credentialHash: string,
 ): Promise<{ connection: AcpConnection; connectionId: string }> {
   const connectionId = randomUUID();
@@ -265,7 +228,7 @@ export async function createAcpConnection(
 
 /** Read one live ACP transport connection. */
 export async function readAcpConnection(
-  state: StateAdapter,
+  state: AcpState,
   connectionId: string,
 ): Promise<AcpConnection | undefined> {
   const value = await state.get(connectionKey(connectionId));
@@ -276,7 +239,7 @@ export async function readAcpConnection(
 
 /** Remove one ACP connection so all of its live streams terminate. */
 export async function deleteAcpConnection(
-  state: StateAdapter,
+  state: AcpState,
   connectionId: string,
 ): Promise<void> {
   await state.delete(connectionKey(connectionId));
@@ -287,7 +250,7 @@ export async function deleteAcpConnection(
 export async function bindAcpConnectionUser(args: {
   connectionId: string;
   credentialHash: string;
-  state: StateAdapter;
+  state: AcpState;
   user: User;
 }): Promise<"completed" | "conflict" | "expired"> {
   const result = await withLock(
@@ -319,9 +282,9 @@ export async function bindAcpConnectionUser(args: {
 
 async function prepareStreamAppend(args: {
   id?: string;
-  lock: Lock;
+  lock: AcpLock;
   route: AcpStreamRoute;
-  state: StateAdapter;
+  state: AcpState;
 }): Promise<StoredAcpStreamItem[] | string> {
   const existing = await readStreamItems(args.state, args.route);
   const cursor = await readStreamCursor(args.state, args.route);
@@ -350,10 +313,10 @@ async function prepareStreamAppend(args: {
 /** Reuse pending output IDs and fence stream capacity before each new delivery. */
 async function appendStreamOutputWithLock(args: {
   id: string;
-  lock: Lock;
+  lock: AcpLock;
   output: AcpStreamOutput;
   route: AcpStreamRoute;
-  state: StateAdapter;
+  state: AcpState;
 }): Promise<string> {
   const route = acpStreamRouteSchema.parse(args.route);
   const output = acpStreamOutputSchema.parse(args.output);
@@ -370,18 +333,8 @@ async function appendStreamOutputWithLock(args: {
     id = `${args.id}:delivery:${delivery}`;
   }
   await fenceLock(args.state, args.lock, MUTATION_LOCK_TTL_MS);
-  if (output.kind === "replay") {
-    const sessionId = route.sessionId;
-    if (!sessionId) {
-      throw new Error("ACP replay output requires a session stream");
-    }
-    await args.state.delete(
-      streamItemCompletionKey(route.connectionId, {
-        itemId: id,
-        sessionId,
-      }),
-    );
-    await fenceLock(args.state, args.lock, MUTATION_LOCK_TTL_MS);
+  if (output.kind !== "message" && !route.sessionId) {
+    throw new Error(`ACP ${output.kind} output requires a session stream`);
   }
   await args.state.appendToList(
     streamListKey(route),
@@ -395,7 +348,7 @@ async function appendStreamOutput(args: {
   id: string;
   output: AcpStreamOutput;
   route: AcpStreamRoute;
-  state: StateAdapter;
+  state: AcpState;
 }): Promise<string> {
   const route = acpStreamRouteSchema.parse(args.route);
   const result = await withLock(
@@ -449,51 +402,25 @@ async function streamSessionReplay(args: {
   return true;
 }
 
-/** Queue one request receipt on its connection and session streams. */
+/** Queue one request receipt on its connection or session stream. */
 async function queueReceipt(args: {
   append?: typeof appendStreamOutput;
   connectionId: string;
   receipt: AcpRequestReceipt;
   requestKey: string;
-  state: StateAdapter;
+  state: AcpState;
 }): Promise<void> {
   const receipt = parseReceipt(args.receipt);
   const deliveryKey = receipt.deliveryKey ?? args.requestKey;
   const append = args.append ?? appendStreamOutput;
-  let dependency: AcpStreamDependency | undefined;
+  const route: AcpStreamRoute = { connectionId: args.connectionId };
+  if (receipt.sessionId) route.sessionId = receipt.sessionId;
   for (const [index, output] of receipt.outputs.entries()) {
     const id = requestStreamItemId(deliveryKey, index);
-    if (output.kind === "replay") {
-      const itemId = await append({
-        id,
-        output: { kind: "replay" },
-        route: { connectionId: args.connectionId, sessionId: output.sessionId },
-        state: args.state,
-      });
-      dependency = { itemId, sessionId: output.sessionId };
-      continue;
-    }
-    if (output.kind === "message") {
-      const streamOutput: Extract<AcpStreamOutput, { kind: "message" }> = {
-        kind: "message",
-        message: output.message,
-      };
-      if (dependency) streamOutput.afterStreamItem = dependency;
-      const route: AcpStreamRoute = { connectionId: args.connectionId };
-      if (output.sessionId) route.sessionId = output.sessionId;
-      await append({
-        id,
-        output: streamOutput,
-        route,
-        state: args.state,
-      });
-      dependency = undefined;
-      continue;
-    }
     await append({
       id,
-      output: output.output,
-      route: { connectionId: args.connectionId, sessionId: output.sessionId },
+      output,
+      route,
       state: args.state,
     });
   }
@@ -504,7 +431,7 @@ export async function completeAcpRequest(args: {
   connectionId: string;
   receipt: AcpRequestReceipt;
   requestKey: string;
-  state: StateAdapter;
+  state: AcpState;
 }): Promise<"completed" | "expired" | "full"> {
   try {
     const result = await withLock(
@@ -548,13 +475,16 @@ export async function acceptAcpRequest(args: {
   createReceipt: () => Promise<AcpRequestReceipt>;
   reserveRoute?: AcpStreamRoute;
   requestKey: string;
-  state: StateAdapter;
-}): Promise<"accepted" | "busy" | "full"> {
+  state: AcpState;
+}): Promise<"accepted" | "busy" | "expired" | "full"> {
   try {
     const result = await withLock(
       args.state,
       receiptLockKey(args.connectionId, args.requestKey),
       async (lock) => {
+        if (!(await readAcpConnection(args.state, args.connectionId))) {
+          return "expired" as const;
+        }
         const stored = await args.state.get(
           receiptKey(args.connectionId, args.requestKey),
         );
@@ -582,8 +512,11 @@ export async function acceptAcpRequest(args: {
             await queueReceipt(queue);
           };
           if (!args.reserveRoute) {
+            if (!(await readAcpConnection(args.state, args.connectionId))) {
+              return "expired" as const;
+            }
             await createAndQueue();
-            return;
+            return "accepted" as const;
           }
           const route = acpStreamRouteSchema.parse(args.reserveRoute);
           const stream = await withLock(
@@ -595,6 +528,9 @@ export async function acceptAcpRequest(args: {
                 route,
                 state: args.state,
               });
+              if (!(await readAcpConnection(args.state, args.connectionId))) {
+                return "expired" as const;
+              }
               await createAndQueue(async (input) => {
                 if (
                   streamAppendLockKey(input.route) !==
@@ -607,13 +543,14 @@ export async function acceptAcpRequest(args: {
                   lock: streamLock,
                 });
               });
+              return "accepted" as const;
             },
             MUTATION_LOCK_OPTIONS,
           );
           if (!stream.acquired) {
             throw new Error("Timed out acquiring ACP stream append control");
           }
-          return;
+          return stream.value;
         }
         await fenceLock(args.state, lock, MUTATION_LOCK_TTL_MS);
         await queueReceipt({
@@ -622,10 +559,11 @@ export async function acceptAcpRequest(args: {
           requestKey: args.requestKey,
           state: args.state,
         });
+        return "accepted" as const;
       },
       MUTATION_LOCK_OPTIONS,
     );
-    return result.acquired ? "accepted" : "busy";
+    return result.acquired ? result.value : "busy";
   } catch (error) {
     if (error instanceof AcpStreamFullError) return "full";
     throw error;
@@ -658,7 +596,7 @@ async function streamPrompt(args: {
   output: AcpPromptStreamOutput;
   sessionId: string;
   signal: AbortSignal;
-  state: StateAdapter;
+  state: AcpState;
 }): Promise<boolean> {
   let cursor = args.output.afterSeq;
   const sentMessageIds = new Set<string>();
@@ -728,33 +666,14 @@ function serializeSseKeepAlive(): Uint8Array {
   return new TextEncoder().encode(":\n\n");
 }
 
-/** Wait until another stream has delivered its required item. */
-async function waitForStreamDependency(args: {
-  connectionId: string;
-  dependency: AcpStreamDependency;
-  signal: AbortSignal;
-  state: StateAdapter;
-}): Promise<boolean> {
-  while (!args.signal.aborted) {
-    if (!(await connectionIsLive(args.state, args.connectionId))) return false;
-    const value = await args.state.get(
-      streamItemCompletionKey(args.connectionId, args.dependency),
-    );
-    if (value !== null && value !== undefined && z.literal(true).parse(value)) {
-      return true;
-    }
-    await sleep(EVENT_POLL_INTERVAL_MS, args.signal);
-  }
-  return false;
-}
-
 /** Open one connection or session SSE reader backed by shared state. */
 export async function openAcpSse(args: {
   conversations: ConversationPort;
+  maintain?: () => Promise<void>;
   onError?: ReportAcpError;
   requestSignal: AbortSignal;
   route: AcpStreamRoute;
-  state: StateAdapter;
+  state: AcpState;
   userId?: string;
 }): Promise<Response> {
   const route = acpStreamRouteSchema.parse(args.route);
@@ -778,11 +697,12 @@ export async function openAcpSse(args: {
 /** Keep one SSE body alive while it consumes durable stream items in order. */
 function createSseBody(args: {
   conversations: ConversationPort;
-  lock: Lock;
+  lock: AcpLock;
+  maintain?: () => Promise<void>;
   onError?: ReportAcpError;
   requestSignal: AbortSignal;
   route: AcpStreamRoute;
-  state: StateAdapter;
+  state: AcpState;
   userId?: string;
 }): ReadableStream<Uint8Array> {
   const abort = new AbortController();
@@ -790,6 +710,7 @@ function createSseBody(args: {
   let heartbeat: ReturnType<typeof setInterval> | undefined;
   let keepAlive: ReturnType<typeof setInterval> | undefined;
   let leaseExpiresAt = args.lock.expiresAt;
+  let nextMaintenanceAtMs = 0;
   let retainingLease: Promise<void> | undefined;
 
   const correlation: AcpErrorContext = {
@@ -902,6 +823,10 @@ function createSseBody(args: {
           if (!(await connectionIsLive(args.state, args.route.connectionId))) {
             return;
           }
+          if (args.maintain && Date.now() >= nextMaintenanceAtMs) {
+            nextMaintenanceAtMs = Date.now() + SSE_MAINTENANCE_INTERVAL_MS;
+            await args.maintain();
+          }
 
           const items = await readStreamItems(args.state, args.route);
           const cursorIndex = cursor
@@ -915,19 +840,17 @@ function createSseBody(args: {
 
           for (const item of pending) {
             if (abort.signal.aborted) return;
+            // ACP v1 does not replay in-flight transport output. Advance before
+            // emission so a lost lease cannot duplicate a delivered message.
+            await retainLease();
+            await args.state.set(
+              streamCursorKey(args.route),
+              acpStreamCursorSchema.parse({ itemId: item.id }),
+              ACP_STATE_TTL_MS,
+            );
+            cursor = item.id;
             let delivered: boolean;
             if (item.output.kind === "message") {
-              if (
-                item.output.afterStreamItem &&
-                !(await waitForStreamDependency({
-                  connectionId: args.route.connectionId,
-                  dependency: item.output.afterStreamItem,
-                  signal: abort.signal,
-                  state: args.state,
-                }))
-              ) {
-                return;
-              }
               delivered = await emit(item.output.message);
             } else {
               const sessionId = args.route.sessionId;
@@ -955,24 +878,6 @@ function createSseBody(args: {
                     });
             }
             if (!delivered || abort.signal.aborted) return;
-            await retainLease();
-            if (item.output.kind === "replay") {
-              await args.state.set(
-                streamItemCompletionKey(args.route.connectionId, {
-                  itemId: item.id,
-                  sessionId: args.route.sessionId!,
-                }),
-                true,
-                ACP_STATE_TTL_MS,
-              );
-              await retainLease();
-            }
-            await args.state.set(
-              streamCursorKey(args.route),
-              acpStreamCursorSchema.parse({ itemId: item.id }),
-              ACP_STATE_TTL_MS,
-            );
-            cursor = item.id;
           }
         }
       };

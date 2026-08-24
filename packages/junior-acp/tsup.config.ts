@@ -11,10 +11,5 @@ export default defineConfig({
   outDir: "dist",
   clean: true,
   splitting: true,
-  external: [
-    "@agentclientprotocol/sdk",
-    "@sentry/junior-plugin-api",
-    "chat",
-    "zod",
-  ],
+  external: ["@agentclientprotocol/sdk", "@sentry/junior-plugin-api", "zod"],
 });

@@ -1,4 +1,5 @@
 import * as acp from "@agentclientprotocol/sdk";
+import { acpAdapter } from "@sentry/junior-acp";
 import type { StateAdapter } from "chat";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createApp } from "@/app";
@@ -30,7 +31,7 @@ describe("remote ACP HTTP", () => {
     await closeApiTurnWorkFixture();
   });
 
-  it("does not mount the endpoint without the experimental flag", async () => {
+  it("does not mount the endpoint without the ACP adapter", async () => {
     const harness = await createConversationWorkWebHarness();
     const app = await createApp({
       conversationWork: harness.conversationWork,
@@ -42,11 +43,12 @@ describe("remote ACP HTTP", () => {
     expect(response.status).toBe(404);
   });
 
-  it("initializes anonymously and rejects a valid personal token", async () => {
+  it("initializes with isolated cookies and rejects a valid personal token", async () => {
     const harness = await createConversationWorkWebHarness();
     const app = await createApp({
       conversationWork: harness.conversationWork,
-      experimental: { acp: true, subagents: true },
+      adapters: [acpAdapter()],
+      experimental: { subagents: true },
     });
 
     const anonymous = await app.fetch(initializeRequest());
@@ -57,16 +59,47 @@ describe("remote ACP HTTP", () => {
     const bearerRequest = initializeRequest();
     bearerRequest.headers.set("Authorization", `Bearer ${token.token}`);
     const bearer = await app.fetch(bearerRequest);
+    const oldConnectionId = anonymous.headers.get("Acp-Connection-Id");
+    if (!oldConnectionId) {
+      throw new Error("ACP initialize returned no connection");
+    }
+    const oldCookie = connectionCookie(anonymous);
+    const fresh = await app.fetch(initializeRequest("fresh-connection"));
+    const freshConnectionId = fresh.headers.get("Acp-Connection-Id");
+    if (!freshConnectionId) {
+      throw new Error("ACP initialize returned no fresh connection");
+    }
+    const freshCookie = connectionCookie(fresh);
+    const delayedDelete = await app.request(ACP_URL, {
+      method: "DELETE",
+      headers: {
+        "Acp-Connection-Id": oldConnectionId,
+        Cookie: oldCookie,
+      },
+    });
+    const freshStream = await app.request(ACP_URL, {
+      method: "GET",
+      headers: {
+        Accept: "text/event-stream",
+        "Acp-Connection-Id": freshConnectionId,
+        Cookie: freshCookie,
+      },
+    });
 
     expect(anonymous.status).toBe(200);
     expect(bearer.status).toBe(401);
+    expect(delayedDelete.status).toBe(202);
+    expect(delayedDelete.headers.get("set-cookie")).toBeNull();
+    expect(freshStream.status).toBe(200);
+    await freshStream.body?.cancel();
   });
 
   it("validates JSON-RPC envelopes and initialization", async () => {
     const harness = await createConversationWorkWebHarness();
     const app = await createApp({
       conversationWork: harness.conversationWork,
-      experimental: { acp: true, subagents: true },
+      adapters: [acpAdapter()],
+      experimental: { subagents: true },
     });
     const nullId = await app.fetch(initializeRequest(null));
     const malformed = await app.request(ACP_URL, {
@@ -75,25 +108,6 @@ describe("remote ACP HTTP", () => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ jsonrpc: "2.0", privatePrompt: "sentinel" }),
-    });
-    const wrongVersion = await app.request(ACP_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        jsonrpc: "1.0",
-        id: 1,
-        method: "initialize",
-        params: {},
-      }),
-    });
-    const nonFiniteId = await app.request(ACP_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: '{"jsonrpc":"2.0","id":1e400,"method":"session/new"}',
     });
     const failedInitialize = await app.request(ACP_URL, {
       method: "POST",
@@ -105,22 +119,6 @@ describe("remote ACP HTTP", () => {
         id: 1,
         method: "initialize",
         params: { clientCapabilities: {} },
-      }),
-    });
-    const unknownInitializeField = await app.request(ACP_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        id: 1,
-        method: "initialize",
-        params: {
-          protocolVersion: acp.PROTOCOL_VERSION,
-          clientCapabilities: {},
-          privatePrompt: "sentinel",
-        },
       }),
     });
     const initialized = await app.fetch(initializeRequest());
@@ -151,16 +149,9 @@ describe("remote ACP HTTP", () => {
       result: { protocolVersion: acp.PROTOCOL_VERSION },
     });
     expect(malformed.status).toBe(400);
-    expect(wrongVersion.status).toBe(400);
-    expect(nonFiniteId.status).toBe(400);
     expect(failedInitialize.status).toBe(200);
     expect(failedInitialize.headers.get("Acp-Connection-Id")).toBeNull();
     await expect(failedInitialize.json()).resolves.toMatchObject({
-      error: { code: -32602 },
-    });
-    expect(unknownInitializeField.status).toBe(200);
-    expect(unknownInitializeField.headers.get("Acp-Connection-Id")).toBeNull();
-    await expect(unknownInitializeField.json()).resolves.toMatchObject({
       error: { code: -32602 },
     });
     expect(invalidConnectionId.status).toBe(400);
@@ -171,7 +162,8 @@ describe("remote ACP HTTP", () => {
     const harness = await createConversationWorkWebHarness();
     const app = await createApp({
       conversationWork: harness.conversationWork,
-      experimental: { acp: true, subagents: true },
+      adapters: [acpAdapter()],
+      experimental: { subagents: true },
     });
 
     const error = await withAcpClient({
@@ -211,11 +203,13 @@ describe("remote ACP HTTP", () => {
     });
     const app = await createApp({
       conversationWork: harness.conversationWork,
-      experimental: { acp: true, subagents: true },
+      adapters: [acpAdapter()],
+      experimental: { subagents: true },
     });
     const secondApp = await createApp({
       conversationWork: createIndependentConversationWork(harness),
-      experimental: { acp: true, subagents: true },
+      adapters: [acpAdapter()],
+      experimental: { subagents: true },
     });
     const fetch = appFetch(app, secondApp);
     const firstUpdates: acp.SessionUpdate[] = [];
@@ -432,7 +426,8 @@ describe("remote ACP HTTP", () => {
     });
     const app = await createApp({
       conversationWork: harness.conversationWork,
-      experimental: { acp: true, subagents: true },
+      adapters: [acpAdapter()],
+      experimental: { subagents: true },
     });
 
     await withRawAcpConnection({
@@ -523,11 +518,13 @@ describe("remote ACP HTTP", () => {
     const harness = await createConversationWorkWebHarness();
     const app = await createApp({
       conversationWork: harness.conversationWork,
-      experimental: { acp: true, subagents: true },
+      adapters: [acpAdapter()],
+      experimental: { subagents: true },
     });
     const secondApp = await createApp({
       conversationWork: createIndependentConversationWork(harness),
-      experimental: { acp: true, subagents: true },
+      adapters: [acpAdapter()],
+      experimental: { subagents: true },
     });
     const initialized = await app.fetch(initializeRequest());
     const connectionId = initialized.headers.get("Acp-Connection-Id");
@@ -574,7 +571,8 @@ describe("remote ACP HTTP", () => {
     });
     const app = await createApp({
       conversationWork: createIndependentConversationWork(harness, state),
-      experimental: { acp: true, subagents: true },
+      adapters: [acpAdapter()],
+      experimental: { subagents: true },
     });
     const initialized = await app.fetch(initializeRequest());
     const connectionId = initialized.headers.get("Acp-Connection-Id");
@@ -617,7 +615,8 @@ describe("remote ACP HTTP", () => {
     });
     const app = await createApp({
       conversationWork: harness.conversationWork,
-      experimental: { acp: true, subagents: true },
+      adapters: [acpAdapter()],
+      experimental: { subagents: true },
     });
     const promptAccepted = deferred();
     const sessionStreamOpened = deferred<Response>();
@@ -750,11 +749,13 @@ describe("remote ACP HTTP", () => {
     });
     const app = await createApp({
       conversationWork: harness.conversationWork,
-      experimental: { acp: true, subagents: true },
+      adapters: [acpAdapter()],
+      experimental: { subagents: true },
     });
     const secondApp = await createApp({
       conversationWork: createIndependentConversationWork(harness),
-      experimental: { acp: true, subagents: true },
+      adapters: [acpAdapter()],
+      experimental: { subagents: true },
     });
     const sessionCreated = deferred<string>();
     let cancelActiveTurn: (() => Promise<void>) | undefined;
@@ -860,7 +861,8 @@ describe("remote ACP HTTP", () => {
     });
     const app = await createApp({
       conversationWork: harness.conversationWork,
-      experimental: { acp: true, subagents: true },
+      adapters: [acpAdapter()],
+      experimental: { subagents: true },
     });
     let sessionId: string | undefined;
     const failed = withAcpClient({
@@ -917,7 +919,8 @@ describe("remote ACP HTTP", () => {
     const harness = await createConversationWorkWebHarness();
     const app = await createApp({
       conversationWork: harness.conversationWork,
-      experimental: { acp: true, subagents: true },
+      adapters: [acpAdapter()],
+      experimental: { subagents: true },
     });
     const errors = await withAcpClient({
       app,

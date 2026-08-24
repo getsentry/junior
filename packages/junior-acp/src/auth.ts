@@ -4,11 +4,15 @@ import {
   randomUUID,
   timingSafeEqual,
 } from "node:crypto";
-import type { StateAdapter } from "chat";
 import * as acp from "@agentclientprotocol/sdk";
 import { userSchema, type User } from "@sentry/junior-plugin-api";
 import { z } from "zod";
-import { fenceLock, MUTATION_LOCK_TTL_MS, withLock } from "./state";
+import {
+  fenceLock,
+  MUTATION_LOCK_TTL_MS,
+  withLock,
+  type AcpState,
+} from "./state";
 import {
   ACP_STATE_TTL_MS,
   bindAcpConnectionUser,
@@ -30,6 +34,13 @@ const acpAuthorizationSchema = z
     requestId: jsonRpcIdSchema,
     requestKey: z.string().min(1),
     userCodeHash: z.string().length(64),
+  })
+  .strict();
+
+const acpAuthorizationPointerSchema = z
+  .object({
+    expiresAtMs: z.number().int().positive(),
+    transactionId: z.string().uuid(),
   })
   .strict();
 
@@ -56,6 +67,10 @@ function authorizationKey(transactionId: string): string {
 
 function authorizationLockKey(transactionId: string): string {
   return `${authorizationKey(transactionId)}:lock`;
+}
+
+function authorizationPointerKey(connectionId: string): string {
+  return `junior:acp:v1:connection:${connectionId}:authorization`;
 }
 
 function credentialHash(value: string): string {
@@ -111,11 +126,6 @@ export function createAcpConnectionCredential(request: Request): {
   };
 }
 
-/** Clear the ACP connection credential in the client cookie store. */
-export function clearAcpConnectionCredential(request: Request): string {
-  return `${ACP_CONNECTION_COOKIE}=; ${cookieAttributes(request)}; Max-Age=0`;
-}
-
 /** Verify that this request controls the supplied ACP connection hash. */
 export function hasAcpConnectionCredential(
   request: Request,
@@ -138,13 +148,39 @@ function authorizationBaseURL(request: Request, configured?: string): URL {
 }
 
 async function readAuthorization(
-  state: StateAdapter,
+  state: AcpState,
   transactionId: string,
 ): Promise<AcpAuthorization | undefined> {
   const value = await state.get(authorizationKey(transactionId));
   return value === null || value === undefined
     ? undefined
     : acpAuthorizationSchema.parse(value);
+}
+
+async function readAuthorizationPointer(
+  state: AcpState,
+  connectionId: string,
+): Promise<z.output<typeof acpAuthorizationPointerSchema> | undefined> {
+  const value = await state.get(authorizationPointerKey(connectionId));
+  return value === null || value === undefined
+    ? undefined
+    : acpAuthorizationPointerSchema.parse(value);
+}
+
+/** Remove one completed transaction and its matching connection pointer. */
+async function deleteAuthorization(
+  state: AcpState,
+  authorization: AcpAuthorization,
+  transactionId: string,
+): Promise<void> {
+  await state.delete(authorizationKey(transactionId));
+  const pointer = await readAuthorizationPointer(
+    state,
+    authorization.connectionId,
+  );
+  if (pointer?.transactionId === transactionId) {
+    await state.delete(authorizationPointerKey(authorization.connectionId));
+  }
 }
 
 function completionReceipt(
@@ -193,7 +229,7 @@ export async function beginAcpAuthorization(args: {
   request: Request;
   requestId: acp.JsonRpcId;
   requestKey: string;
-  state: StateAdapter;
+  state: AcpState;
 }): Promise<AcpRequestReceipt> {
   const transactionId = randomUUID();
   const userCode = createUserCode();
@@ -211,8 +247,13 @@ export async function beginAcpAuthorization(args: {
     authorization,
     ACP_STATE_TTL_MS,
   );
+  await args.state.set(
+    authorizationPointerKey(args.connectionId),
+    { expiresAtMs: authorization.expiresAtMs, transactionId },
+    ACP_STATE_TTL_MS,
+  );
   const url = authorizationBaseURL(args.request, args.baseURL);
-  url.pathname = `/api/acp/auth/${transactionId}`;
+  url.pathname = `/_junior/acp/auth/${transactionId}`;
   const params = {
     mode: "url",
     message: `Sign in to Junior in your browser. Enter verification code ${userCode}.`,
@@ -239,7 +280,7 @@ export async function beginAcpAuthorization(args: {
 async function finishAuthorization(args: {
   authorization: AcpAuthorization;
   response: acp.AnyResponse;
-  state: StateAdapter;
+  state: AcpState;
 }): Promise<"busy" | "completed" | "expired"> {
   const result = await completeAcpRequest({
     connectionId: args.authorization.connectionId,
@@ -252,7 +293,7 @@ async function finishAuthorization(args: {
 
 /** Bind a Google-authenticated user and resume the pending ACP request. */
 export async function completeAcpAuthorization(args: {
-  state: StateAdapter;
+  state: AcpState;
   transactionId: string;
   user: User;
   userCode: string;
@@ -279,7 +320,11 @@ export async function completeAcpAuthorization(args: {
         });
         if (completion === "busy") return completion;
         await fenceLock(args.state, lock, MUTATION_LOCK_TTL_MS);
-        await args.state.delete(authorizationKey(args.transactionId));
+        await deleteAuthorization(
+          args.state,
+          authorization,
+          args.transactionId,
+        );
         return "expired" as const;
       }
       if (!userCodeMatches(args.userCode, authorization.userCodeHash)) {
@@ -302,7 +347,11 @@ export async function completeAcpAuthorization(args: {
         });
         if (completion !== "completed") return completion;
         await fenceLock(args.state, lock, MUTATION_LOCK_TTL_MS);
-        await args.state.delete(authorizationKey(args.transactionId));
+        await deleteAuthorization(
+          args.state,
+          authorization,
+          args.transactionId,
+        );
         return binding;
       }
       const completion = await finishAuthorization({
@@ -312,7 +361,7 @@ export async function completeAcpAuthorization(args: {
       });
       if (completion !== "completed") return completion;
       await fenceLock(args.state, lock, MUTATION_LOCK_TTL_MS);
-      await args.state.delete(authorizationKey(args.transactionId));
+      await deleteAuthorization(args.state, authorization, args.transactionId);
       return "completed" as const;
     },
     {
@@ -331,7 +380,7 @@ export async function completeAcpAuthorization(args: {
 export async function handleAcpAuthorizationResponse(args: {
   connectionId: string;
   response: acp.AnyResponse;
-  state: StateAdapter;
+  state: AcpState;
 }): Promise<"accepted" | "cancelled" | "ignored"> {
   if (typeof args.response.id !== "string") return "ignored";
   const parsedId = z.string().uuid().safeParse(args.response.id);
@@ -363,7 +412,7 @@ export async function handleAcpAuthorizationResponse(args: {
       });
       if (completion === "busy") return false;
       await fenceLock(args.state, lock, MUTATION_LOCK_TTL_MS);
-      await args.state.delete(authorizationKey(parsedId.data));
+      await deleteAuthorization(args.state, current, parsedId.data);
       return true;
     },
     {
@@ -376,4 +425,52 @@ export async function handleAcpAuthorizationResponse(args: {
     throw new Error("Timed out acquiring ACP authorization control");
   }
   return result.value ? "cancelled" : "ignored";
+}
+
+/** Finish an abandoned browser authorization while its connection stream is live. */
+export async function expireAcpAuthorization(args: {
+  connectionId: string;
+  state: AcpState;
+}): Promise<boolean> {
+  const pointer = await readAuthorizationPointer(args.state, args.connectionId);
+  if (!pointer || pointer.expiresAtMs > Date.now()) return false;
+
+  const result = await withLock(
+    args.state,
+    authorizationLockKey(pointer.transactionId),
+    async (lock) => {
+      const authorization = await readAuthorization(
+        args.state,
+        pointer.transactionId,
+      );
+      if (!authorization || authorization.connectionId !== args.connectionId) {
+        await args.state.delete(authorizationPointerKey(args.connectionId));
+        return false;
+      }
+      if (authorization.expiresAtMs > Date.now()) return false;
+      const completion = await finishAuthorization({
+        authorization,
+        response: cancelledMessage(
+          authorization.requestId,
+          "Junior sign-in request expired",
+        ),
+        state: args.state,
+      });
+      if (completion === "busy") return false;
+      await fenceLock(args.state, lock, MUTATION_LOCK_TTL_MS);
+      await deleteAuthorization(
+        args.state,
+        authorization,
+        pointer.transactionId,
+      );
+      return true;
+    },
+    {
+      keepAlive: true,
+      ttlMs: MUTATION_LOCK_TTL_MS,
+      waitMs: LOCK_WAIT_MS,
+    },
+  );
+  if (!result.acquired) return false;
+  return result.value;
 }

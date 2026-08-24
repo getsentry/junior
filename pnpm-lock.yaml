@@ -211,9 +211,6 @@ importers:
       '@opentelemetry/core':
         specifier: 'catalog:'
         version: 2.9.0(@opentelemetry/api@1.9.1)
-      '@sentry/junior-acp':
-        specifier: workspace:*
-        version: file:packages/junior-acp(ai@6.0.190(zod@4.4.3))
       '@sentry/junior-plugin-api':
         specifier: workspace:*
         version: link:../junior-plugin-api
@@ -293,6 +290,9 @@ importers:
       '@oxlint/plugins':
         specifier: 1.79.0
         version: 1.79.0
+      '@sentry/junior-acp':
+        specifier: workspace:*
+        version: link:../junior-acp
       '@sentry/junior-github':
         specifier: workspace:*
         version: file:packages/junior-github(@neondatabase/serverless@1.1.0)(@opentelemetry/api@1.9.1)(@types/pg@8.15.6)(pg@8.21.0)
@@ -347,9 +347,6 @@ importers:
       '@sentry/junior-plugin-api':
         specifier: workspace:*
         version: link:../junior-plugin-api
-      chat:
-        specifier: 4.29.0
-        version: 4.29.0(zod@4.4.3)
       zod:
         specifier: 'catalog:'
         version: 4.4.3
@@ -11564,7 +11561,6 @@ snapshots:
       '@neondatabase/serverless': 1.1.0
       '@opentelemetry/api': 1.9.1
       '@opentelemetry/core': 2.9.0(@opentelemetry/api@1.9.1)
-      '@sentry/junior-acp': file:packages/junior-acp(ai@6.0.190(zod@4.4.3))
       '@sentry/junior-plugin-api': file:packages/junior-plugin-api
       '@sentry/node': 10.65.0(@opentelemetry/core@2.9.0(@opentelemetry/api@1.9.1))
       '@sinclair/typebox': 0.34.49

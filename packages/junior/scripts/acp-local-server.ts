@@ -8,7 +8,8 @@ import type { AddressInfo } from "node:net";
 import path from "node:path";
 import { serve } from "@hono/node-server";
 import { createApp } from "@/app";
-import { completeAcpAuthorization } from "@sentry/junior-acp";
+import { acpAdapter } from "@sentry/junior-acp";
+import { completeAcpAuthorization } from "@sentry/junior-acp/testing";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { getSqlExecutor } from "@/chat/db";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
@@ -41,9 +42,10 @@ const harness = await createConversationWorkWebHarness({
 // Use the request origin instead of a deployed callback origin from .env.local.
 delete process.env.JUNIOR_BASE_URL;
 const app = await createApp({
+  adapters: [acpAdapter()],
   conversationWork: harness.conversationWork,
   dashboard: { authRequired: false },
-  experimental: { acp: true, subagents: true },
+  experimental: { subagents: true },
 });
 let drainActive = false;
 
@@ -64,7 +66,7 @@ async function drainQueuedWork(): Promise<void> {
 const drainTimer = setInterval(() => void drainQueuedWork(), 10);
 const server = serve({
   async fetch(request) {
-    const match = /^\/api\/acp\/auth\/([0-9a-f-]+)$/i.exec(
+    const match = /^\/_junior\/acp\/auth\/([0-9a-f-]+)$/i.exec(
       new URL(request.url).pathname,
     );
     if (request.method === "POST" && match?.[1]) {

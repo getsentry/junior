@@ -1,26 +1,22 @@
 /**
  * Own the remote ACP v1 Streamable HTTP edge.
  *
- * StateAdapter transport records route short-lived JSON-RPC messages. Junior's
+ * Shared state records route short-lived JSON-RPC messages. Junior's
  * Conversation log remains the source for session replay and Turn output. No
  * request relies on another request reaching the same app process.
  */
 import { createHash } from "node:crypto";
-import type { StateAdapter } from "chat";
 import type { User } from "@sentry/junior-plugin-api";
 import * as acp from "@agentclientprotocol/sdk";
 import { z } from "zod";
-import type {
-  AcpErrorContext,
-  ConversationPort,
-  ReportAcpError,
-} from "./conversations";
+import type { AcpErrorContext, ReportAcpError } from "./errors";
+import type { ConversationPort } from "./conversations";
 import {
   ACP_AUTH_METHOD,
   ACP_AUTH_METHOD_ID,
   beginAcpAuthorization,
-  clearAcpConnectionCredential,
   createAcpConnectionCredential,
+  expireAcpAuthorization,
   handleAcpAuthorizationResponse,
   hasAcpConnectionCredential,
 } from "./auth";
@@ -32,7 +28,6 @@ import {
   readAcpConnection,
   type AcpConnection,
   type AcpPromptStreamOutput,
-  type AcpReceiptOutput,
   type AcpRequestReceipt,
   type AcpStreamRoute,
 } from "./transport";
@@ -54,6 +49,7 @@ import {
   type PromptParams,
   type SessionParams,
 } from "./schema";
+import type { AcpState } from "./state";
 
 const ACP_CONNECTION_ID_HEADER = "Acp-Connection-Id";
 const ACP_SESSION_ID_HEADER = "Acp-Session-Id";
@@ -67,7 +63,7 @@ export interface AcpHttpHandlerOptions {
   baseURL?: string;
   conversations: ConversationPort;
   onError?: ReportAcpError;
-  state: StateAdapter;
+  state: AcpState;
   version: string;
 }
 
@@ -204,16 +200,6 @@ function determineRoute(
   };
 }
 
-/** Keep load failures on the connection stream until session ownership succeeds. */
-function responseSessionId(
-  call: AcpCall,
-  route: AcpStreamRoute,
-): string | undefined {
-  return call.method === acp.methods.agent.session.load
-    ? undefined
-    : route.sessionId;
-}
-
 function resultMessage(
   requestId: acp.JsonRpcId,
   result: unknown,
@@ -270,7 +256,7 @@ async function createSession(args: {
   const sessionId = `${ACP_CONVERSATION_PREFIX}${stableHex(
     `${args.connection.nonce}:${args.requestKey}`,
   )}`;
-  await args.conversations.createConversation({
+  await args.conversations.create({
     conversationId: sessionId,
     user: args.user,
   });
@@ -323,7 +309,6 @@ async function createRequestReceipt(args: {
   connection: AcpConnection;
   conversations: ConversationPort;
   requestKey: string;
-  route: AcpStreamRoute;
   user: User;
 }): Promise<AcpRequestReceipt> {
   if (args.call.method === acp.methods.agent.session.new) {
@@ -345,7 +330,7 @@ async function createRequestReceipt(args: {
     );
     rejectUnsupportedMcpServers(params.mcpServers);
     if (
-      !(await args.conversations.hasConversationAccess({
+      !(await args.conversations.hasAccess({
         conversationId: params.sessionId,
         user: args.user,
       }))
@@ -353,8 +338,9 @@ async function createRequestReceipt(args: {
       throw acp.RequestError.resourceNotFound(params.sessionId);
     }
     return {
+      sessionId: params.sessionId,
       outputs: [
-        { kind: "replay", sessionId: params.sessionId },
+        { kind: "replay" },
         { kind: "message", message: resultMessage(args.call.id, {}) },
       ],
     };
@@ -366,13 +352,8 @@ async function createRequestReceipt(args: {
       requestId: args.call.id,
     });
     return {
-      outputs: [
-        {
-          kind: "prompt",
-          output: prompt.output,
-          sessionId: prompt.sessionId,
-        },
-      ],
+      outputs: [prompt.output],
+      sessionId: prompt.sessionId,
     };
   }
 
@@ -402,7 +383,7 @@ async function handleCancelNotification(args: {
 async function requireConnection(args: {
   connectionId: string;
   request: Request;
-  state: StateAdapter;
+  state: AcpState;
 }): Promise<AcpConnection | undefined> {
   const value = await readAcpConnection(args.state, args.connectionId);
   if (
@@ -423,7 +404,7 @@ function isJsonContentType(contentType: string | null): boolean {
 async function handleInitialize(args: {
   call: AcpCall;
   request: Request;
-  state: StateAdapter;
+  state: AcpState;
   version: string;
 }): Promise<Response> {
   const requestId = args.call.id;
@@ -474,7 +455,7 @@ async function handleConnectedPost(args: {
   options: AcpHttpHandlerOptions;
   request: Request;
   route: AcpStreamRoute;
-  state: StateAdapter;
+  state: AcpState;
 }): Promise<Response> {
   const requestId = args.call.id;
   if (requestId === undefined) {
@@ -542,18 +523,20 @@ async function handleConnectedPost(args: {
           connection: args.connection,
           conversations: args.options.conversations,
           requestKey: identifiedRequestKey,
-          route: args.route,
           user: args.authenticated,
         });
       } catch (error) {
         if (!(error instanceof acp.RequestError)) throw error;
-        const sessionId = responseSessionId(args.call, args.route);
-        const output: AcpReceiptOutput = {
-          kind: "message",
-          message: errorMessage(requestId, error),
+        const receipt: AcpRequestReceipt = {
+          outputs: [
+            {
+              kind: "message",
+              message: errorMessage(requestId, error),
+            },
+          ],
         };
-        if (sessionId) output.sessionId = sessionId;
-        return { outputs: [output] };
+        if (args.route.sessionId) receipt.sessionId = args.route.sessionId;
+        return receipt;
       }
     },
   };
@@ -564,6 +547,9 @@ async function handleConnectedPost(args: {
   if (status === "busy") {
     return textResponse("ACP request is already being accepted", 503);
   }
+  if (status === "expired") {
+    return textResponse("Unknown Acp-Connection-Id", 404);
+  }
   if (status === "full") {
     return textResponse("ACP stream has too much undelivered output", 503);
   }
@@ -573,7 +559,7 @@ async function handleConnectedPost(args: {
 async function handleConnectedResponse(args: {
   connectionId: string;
   response: AcpResponse;
-  state: StateAdapter;
+  state: AcpState;
 }): Promise<Response> {
   await handleAcpAuthorizationResponse({
     connectionId: args.connectionId,
@@ -720,18 +706,21 @@ export function createAcpHttpHandler(
           route,
           state,
         };
+        if (!sessionId) {
+          stream.maintain = async () => {
+            await expireAcpAuthorization({
+              connectionId: route.connectionId,
+              state,
+            });
+          };
+        }
         if (authenticated) stream.userId = authenticated.id;
         return await openAcpSse(stream);
       }
 
       if (request.method === "DELETE") {
         await deleteAcpConnection(state, connectionId);
-        return new Response(null, {
-          status: 202,
-          headers: {
-            "Set-Cookie": clearAcpConnectionCredential(request),
-          },
-        });
+        return emptyResponse(202);
       }
 
       return textResponse("Method Not Allowed", 405);
