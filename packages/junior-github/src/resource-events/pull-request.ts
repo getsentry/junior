@@ -44,7 +44,7 @@ export const GITHUB_PULL_REQUEST_SUGGESTED_EVENTS = [
   "pull_request.closed_unmerged",
 ] as const;
 
-/** Exact facts GitHub may set on pull request event data. Missing facts fail closed. */
+/** Exact values GitHub may set on pull request event data. Missing keys do not match. */
 export const GITHUB_PULL_REQUEST_MATCH_FIELDS = resourceEventMatchFieldsSchema.parse({
   authorEmail: {
     kind: "string",

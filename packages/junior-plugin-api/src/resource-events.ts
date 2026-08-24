@@ -6,7 +6,7 @@ export const RESOURCE_EVENT_DATA_MAX_KEYS = 32;
 export const RESOURCE_EVENT_DATA_MAX_JSON_BYTES = 4_000;
 export const RESOURCE_EVENT_GUIDANCE_MAX_LENGTH = 1_000;
 
-/** Small trusted facts from the plugin. The agent should not look these up again. */
+/** Small trusted data from the plugin. The agent should not look these up again. */
 export const resourceEventDataSchema = z
   .record(z.string(), z.unknown())
   .superRefine((value, context) => {
@@ -46,7 +46,7 @@ export const resourceTypeSchema = z
 const RESOURCE_EVENT_MATCH_FIELD_NAME =
   /^[a-z][a-zA-Z0-9]*$/;
 
-/** One exact fact a watch or event task may require on trusted event data. */
+/** One exact value a watch or event task may require on trusted event data. */
 export const resourceEventMatchFieldSchema = z
   .object({
     kind: z.enum(["boolean", "string", "number"]),
@@ -70,12 +70,12 @@ export const resourceEventMatchFieldsSchema = z
     if (Object.keys(fields).length > RESOURCE_EVENT_DATA_MAX_KEYS) {
       context.addIssue({
         code: "custom",
-        message: `Resource event match fields may include at most ${RESOURCE_EVENT_DATA_MAX_KEYS} keys.`,
+        message: `Resource event match keys may include at most ${RESOURCE_EVENT_DATA_MAX_KEYS} keys.`,
       });
     }
   });
 
-/** Exact trusted facts required before a watch or event task runs. */
+/** Exact trusted values required before a watch or event task runs. */
 export const resourceEventMatchSchema = z
   .record(
     z.string().regex(RESOURCE_EVENT_MATCH_FIELD_NAME),
@@ -120,7 +120,7 @@ function stableMatchValue(value: ResourceEventMatch[string]): unknown {
   });
 }
 
-/** Stable JSON for one match object. Array order does not matter. */
+/** Stable JSON for one match object. List order does not matter. */
 export function stableResourceEventMatchKey(
   match: ResourceEventMatch | undefined,
 ): string {
@@ -134,7 +134,7 @@ export function stableResourceEventMatchKey(
   );
 }
 
-/** Return whether trusted event data satisfies one exact match object. */
+/** Return whether trusted event data matches one exact match object. */
 export function resourceEventMatches(
   match: ResourceEventMatch | undefined,
   data: ResourceEventData | undefined,

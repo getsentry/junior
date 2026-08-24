@@ -35,7 +35,7 @@ const catalog: ResourceEventCatalog = {
 };
 
 describe("resourceEventMatches", () => {
-  it("matches exact facts and any-of lists", () => {
+  it("matches exact values and list any-one entries", () => {
     expect(resourceEventMatches(undefined, { isDraft: true })).toBe(true);
     expect(resourceEventMatches({}, { isDraft: true })).toBe(true);
     expect(resourceEventMatches({ isDraft: false }, { isDraft: false })).toBe(
@@ -54,7 +54,7 @@ describe("resourceEventMatches", () => {
     ).toBe(false);
   });
 
-  it("treats any-of array order as the same match key", () => {
+  it("treats list order as the same match key", () => {
     expect(stableResourceEventMatchKey(undefined)).toBe("");
     expect(
       stableResourceEventMatchKey({ base: ["main", "master"], isDraft: false }),

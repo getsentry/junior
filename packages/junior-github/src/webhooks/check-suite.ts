@@ -69,17 +69,17 @@ export type GitHubFailingCheck = {
   name: string;
 };
 
-/** Pull request facts filled in when the check suite body omits them. */
+/** Pull request values filled in when the check suite body omits them. */
 export type GitHubCheckSuitePullRequestFacts = {
   authorEmail?: string;
   authorUsername?: string;
   isDraft?: boolean;
 };
 
-/** Optional facts for one check suite event. */
+/** Optional values for one check suite event. */
 export type GitHubCheckSuiteFacts = {
   failingChecks?: GitHubFailingCheck[];
-  /** Pull request facts by number when GitHub omitted them on the suite. */
+  /** Pull request values by number when GitHub omitted them on the suite. */
   pullRequestFactsByNumber?: Record<number, GitHubCheckSuitePullRequestFacts>;
 };
 
@@ -300,7 +300,7 @@ export function normalizeCheckSuiteEvents(
 }
 
 
-/** Read which check suite facts still need a GitHub API load. */
+/** Read which check suite values still need a GitHub API load. */
 export function parseCheckSuiteFactsTarget(body: unknown): {
   checkSuiteId: number;
   headSha: string;
@@ -347,7 +347,7 @@ export function parseCheckSuiteFactsTarget(body: unknown): {
   ];
   const loadFailingChecks =
     conclusion === "failure" || conclusion === "timed_out";
-  // Check-suite PR objects omit author; load PR facts whenever a PR is attached.
+  // Check suite PR objects omit author; load PR values whenever a PR is attached.
   if (
     !loadFailingChecks &&
     pullRequestNumbers.length === 0
@@ -391,7 +391,7 @@ function pullRequestFactsFromResponse(
   return Object.keys(facts).length > 0 ? facts : undefined;
 }
 
-/** Load missing facts for one check suite event. */
+/** Load missing values for one check suite event. */
 export async function loadCheckSuiteFacts(args: {
   appIdEnv: string;
   body: unknown;
@@ -452,7 +452,7 @@ export async function loadCheckSuiteFacts(args: {
             const facts = pullRequestFactsFromResponse(response);
             return facts ? ([number, facts] as const) : undefined;
           } catch (error) {
-            args.log?.error("GitHub pull request fact load failed", {
+            args.log?.error("GitHub pull request data load failed", {
               errorType: error instanceof Error ? error.name : "UnknownError",
               pullRequest: number,
               repository: `${target.owner}/${target.repoName}`,
@@ -473,7 +473,7 @@ export async function loadCheckSuiteFacts(args: {
         facts.pullRequestFactsByNumber = pullRequestFactsByNumber;
       }
     } catch (error) {
-      args.log?.error("GitHub check suite pull request load failed", {
+      args.log?.error("GitHub check suite pull request data load failed", {
         checkSuiteId: target.checkSuiteId,
         errorType: error instanceof Error ? error.name : "UnknownError",
         repository: `${target.owner}/${target.repoName}`,

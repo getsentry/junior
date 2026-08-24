@@ -88,7 +88,7 @@ export function resourceEventGuidance(
   )?.guidance?.[eventType];
 }
 
-/** Return declared match fields for one registered resource type. */
+/** Return declared match keys for one registered resource type. */
 export function resourceEventMatchFields(
   catalog: ResourceEventCatalog,
   namespace: string,
@@ -99,16 +99,16 @@ export function resourceEventMatchFields(
   )?.matchFields;
 }
 
-/** Build the model-facing match object validated against the resource type. */
+/** Build the match object the tools accept for one resource type. */
 export function registeredResourceEventMatchSchema() {
   return resourceEventMatchSchema
     .optional()
     .describe(
-      "Optional exact facts from the resource type matchFields. Scalar values must equal the event data. Arrays mean any-of. Omit a key to ignore it. Unmatched events are dropped silently.",
+      "Optional exact values from the resource type matchFields. A single value must equal the event data. A list means the event value may be any one entry. Omit a key to ignore it. Unmatched events are dropped with no agent turn.",
     );
 }
 
-/** Reject match keys that the resource type does not declare. */
+/** Reject match keys the resource type does not list. */
 export function requireSupportedResourceEventMatch(
   catalog: ResourceEventCatalog,
   input: {
@@ -126,7 +126,7 @@ export function requireSupportedResourceEventMatch(
   );
   if (!fields || Object.keys(fields).length === 0) {
     throw new ToolInputError(
-      `Resource type "${input.namespace}:${input.resourceType}" does not support match fields.`,
+      `Resource type "${input.namespace}:${input.resourceType}" does not support match.`,
     );
   }
   const normalized: ResourceEventMatch = {};
@@ -134,19 +134,19 @@ export function requireSupportedResourceEventMatch(
     const field = fields[key];
     if (!field) {
       throw new ToolInputError(
-        `Resource type "${input.namespace}:${input.resourceType}" does not support match field "${key}".`,
+        `Resource type "${input.namespace}:${input.resourceType}" does not support match key "${key}".`,
       );
     }
     if (Array.isArray(value)) {
       if (field.kind === "boolean") {
         throw new ToolInputError(
-          `Match field "${key}" is boolean and cannot use a list.`,
+          `Match key "${key}" is boolean and cannot use a list.`,
         );
       }
       for (const entry of value) {
         if (typeof entry !== field.kind) {
           throw new ToolInputError(
-            `Match field "${key}" expects ${field.kind} values.`,
+            `Match key "${key}" expects ${field.kind} values.`,
           );
         }
         if (
@@ -155,7 +155,7 @@ export function requireSupportedResourceEventMatch(
           !field.enum.includes(entry)
         ) {
           throw new ToolInputError(
-            `Match field "${key}" does not allow value "${entry}".`,
+            `Match key "${key}" does not allow value "${entry}".`,
           );
         }
       }
@@ -164,12 +164,12 @@ export function requireSupportedResourceEventMatch(
     }
     if (typeof value !== field.kind) {
       throw new ToolInputError(
-        `Match field "${key}" expects a ${field.kind} value.`,
+        `Match key "${key}" expects a ${field.kind} value.`,
       );
     }
     if (field.enum && typeof value === "string" && !field.enum.includes(value)) {
       throw new ToolInputError(
-        `Match field "${key}" does not allow value "${value}".`,
+        `Match key "${key}" does not allow value "${value}".`,
       );
     }
     normalized[key] = value;

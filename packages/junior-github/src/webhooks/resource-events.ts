@@ -34,7 +34,7 @@ function pullRequestDraftData(
   return typeof draft === "boolean" ? { isDraft: draft } : undefined;
 }
 
-/** Trusted author facts from a GitHub user object when present. */
+/** Trusted author values from a GitHub user object when present. */
 function pullRequestAuthorData(user: {
   email?: string | null;
   login?: string | null;
@@ -50,7 +50,7 @@ function pullRequestAuthorData(user: {
   return data;
 }
 
-/** Merge optional PR match facts into one trusted data object. */
+/** Merge optional PR match values into one trusted data object. */
 function pullRequestMatchData(parts: Array<Record<string, unknown> | undefined>):
   | Record<string, unknown>
   | undefined {

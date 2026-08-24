@@ -657,7 +657,7 @@ describe("GitHub webhook resource events", () => {
     }
   });
 
-  it("uses loaded draft facts when check suite pull requests omit draft", () => {
+  it("uses loaded draft data when check suite pull requests omit draft", () => {
     vi.setSystemTime(1_000);
     expect(
       normalizeGitHubResourceEvents({
@@ -775,7 +775,7 @@ describe("GitHub webhook resource events", () => {
     ]);
   });
 
-  it("attaches failing check-run handles when check suite facts are provided", () => {
+  it("attaches failing check-run handles when check suite data is provided", () => {
     vi.setSystemTime(1_000);
     expect(
       normalizeGitHubResourceEvents({
