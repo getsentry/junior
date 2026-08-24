@@ -35,7 +35,7 @@ export function readMockCodeOverview(nowMs = Date.now()): CodeOverviewReport {
   return {
     changes: [
       {
-        id: "6:github:9001",
+        id: "00000000-0000-4000-8000-000000000001",
         number: 42,
         openedAt: new Date(nowMs - 2 * 86_400_000).toISOString(),
         provider: "github",
@@ -45,7 +45,7 @@ export function readMockCodeOverview(nowMs = Date.now()): CodeOverviewReport {
         url: "https://github.com/getsentry/payments/pull/42",
       },
       {
-        id: "6:github:9002",
+        id: "00000000-0000-4000-8000-000000000002",
         mergedAt: new Date(nowMs - 4 * 86_400_000).toISOString(),
         number: 781,
         openedAt: new Date(nowMs - 6 * 86_400_000).toISOString(),
@@ -61,7 +61,7 @@ export function readMockCodeOverview(nowMs = Date.now()): CodeOverviewReport {
       {
         closed: 1,
         created: 5,
-        id: "6:github:2001",
+        id: "00000000-0000-4000-8000-000000000003",
         merged: 4,
         name: "getsentry/junior",
         open: 1,
@@ -71,7 +71,7 @@ export function readMockCodeOverview(nowMs = Date.now()): CodeOverviewReport {
       {
         closed: 0,
         created: 3,
-        id: "6:github:2002",
+        id: "00000000-0000-4000-8000-000000000004",
         merged: 2,
         name: "getsentry/payments",
         open: 1,

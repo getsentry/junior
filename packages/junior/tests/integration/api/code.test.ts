@@ -1,8 +1,11 @@
 import { describe, expect, test, vi } from "vitest";
+import { z } from "zod";
+import type { CodeChangeInput } from "@sentry/junior-plugin-api";
 import { createJuniorApi } from "@/api";
 import { codeOverviewReportSchema } from "@/api/schema";
 import { recordCodeChange } from "@/chat/code/store";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
+import { juniorCodeChanges, juniorCodeRepositories } from "@/db/schema";
 import { createConfiguredJuniorSqlFixture } from "../../fixtures/sql";
 
 describe("code API", () => {
@@ -11,7 +14,7 @@ describe("code API", () => {
     vi.setSystemTime(new Date("2026-08-24T12:00:00.000Z"));
     try {
       await migrateSchema(fixture.sql);
-      await recordCodeChange(fixture.sql.db(), "github", {
+      const codeChange = {
         conversationIds: ["conversation-1"],
         mergedAt: new Date("2026-08-22T12:00:00.000Z"),
         number: 42,
@@ -26,6 +29,25 @@ describe("code API", () => {
         title: "Make code native",
         updatedAt: new Date("2026-08-22T12:00:00.000Z"),
         url: "https://github.com/getsentry/junior/pull/42",
+      } satisfies CodeChangeInput;
+      await recordCodeChange(fixture.sql.db(), "github", codeChange);
+      await recordCodeChange(fixture.sql.db(), "github", codeChange);
+
+      const repositories = await fixture.sql
+        .db()
+        .select()
+        .from(juniorCodeRepositories);
+      const changes = await fixture.sql.db().select().from(juniorCodeChanges);
+      expect(repositories).toHaveLength(1);
+      expect(changes).toHaveLength(1);
+      expect(z.string().uuid().parse(repositories[0]?.id)).toBe(
+        repositories[0]?.id,
+      );
+      expect(z.string().uuid().parse(changes[0]?.id)).toBe(changes[0]?.id);
+      expect(repositories[0]?.providerId).toBe("repository-1");
+      expect(changes[0]).toMatchObject({
+        providerId: "change-42",
+        repositoryId: repositories[0]?.id,
       });
 
       const response = await createJuniorApi().request(

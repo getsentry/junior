@@ -15,7 +15,7 @@ export const codeRepositorySummarySchema = z
   .object({
     closed: z.number().int().nonnegative(),
     created: z.number().int().nonnegative(),
-    id: z.string().min(1),
+    id: z.string().uuid(),
     merged: z.number().int().nonnegative(),
     name: z.string().min(1),
     open: z.number().int().nonnegative(),
@@ -27,7 +27,7 @@ export const codeRepositorySummarySchema = z
 export const codeChangeSummaryReportSchema = z
   .object({
     closedAt: z.string().optional(),
-    id: z.string().min(1),
+    id: z.string().uuid(),
     mergedAt: z.string().optional(),
     number: z.number().int().positive(),
     openedAt: z.string(),

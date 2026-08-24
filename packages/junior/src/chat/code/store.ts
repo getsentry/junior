@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { and, eq, lte, sql } from "drizzle-orm";
 import {
   codeChangeInputSchema,
@@ -6,10 +7,6 @@ import {
 import type { JuniorDatabase } from "@/db/db";
 import { juniorCodeChanges, juniorCodeRepositories } from "@/db/schema";
 
-function codeRecordId(provider: string, providerId: string): string {
-  return `${provider.length}:${provider}:${providerId}`;
-}
-
 /** Record the latest details for one code change created by Junior. */
 export async function recordCodeChange(
   db: JuniorDatabase,
@@ -17,11 +14,10 @@ export async function recordCodeChange(
   input: CodeChangeInput,
 ): Promise<void> {
   const change = codeChangeInputSchema.parse(input);
-  const repositoryId = codeRecordId(provider, change.repository.providerId);
-  await db
+  const repositories = await db
     .insert(juniorCodeRepositories)
     .values({
-      id: repositoryId,
+      id: randomUUID(),
       name: change.repository.name,
       provider,
       providerId: change.repository.providerId,
@@ -29,16 +25,35 @@ export async function recordCodeChange(
       updatedAt: change.updatedAt,
     })
     .onConflictDoUpdate({
-      target: juniorCodeRepositories.id,
+      target: [
+        juniorCodeRepositories.provider,
+        juniorCodeRepositories.providerId,
+      ],
       set: {
         name: change.repository.name,
         ...(change.repository.url ? { url: change.repository.url } : undefined),
         updatedAt: change.updatedAt,
       },
       where: lte(juniorCodeRepositories.updatedAt, change.updatedAt),
-    });
+    })
+    .returning({ id: juniorCodeRepositories.id });
+  const existingRepositories = repositories[0]
+    ? []
+    : await db
+        .select({ id: juniorCodeRepositories.id })
+        .from(juniorCodeRepositories)
+        .where(
+          and(
+            eq(juniorCodeRepositories.provider, provider),
+            eq(juniorCodeRepositories.providerId, change.repository.providerId),
+          ),
+        )
+        .limit(1);
+  const repositoryId = repositories[0]?.id ?? existingRepositories[0]?.id;
+  if (!repositoryId) {
+    throw new Error("Code repository upsert returned no row");
+  }
 
-  const id = codeRecordId(provider, change.providerId);
   const conversationIds = sql.join(
     change.conversationIds.map((conversationId) => sql`${conversationId}`),
     sql`, `,
@@ -70,17 +85,14 @@ export async function recordCodeChange(
     .values({
       ...values,
       conversationIds: change.conversationIds,
-      id,
+      id: randomUUID(),
       provider,
       providerId: change.providerId,
     })
     .onConflictDoUpdate({
-      target: juniorCodeChanges.id,
+      target: [juniorCodeChanges.provider, juniorCodeChanges.providerId],
       set: values,
-      where: and(
-        eq(juniorCodeChanges.provider, provider),
-        lte(juniorCodeChanges.updatedAt, change.updatedAt),
-      ),
+      where: lte(juniorCodeChanges.updatedAt, change.updatedAt),
     });
 }
 
