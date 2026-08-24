@@ -1091,18 +1091,9 @@ describe("agent plugin hooks", () => {
                 method: "GET",
                 path: "/_junior/demo/auth",
                 async handler(_request, user) {
-                  await ctx.state.appendToList("items", "one");
-                  const lease = await ctx.state.acquireLease("stream", 10);
-                  const initialExpiry = lease?.expiresAt ?? 0;
-                  if (!lease || !(await lease.renew(1_000))) {
-                    throw new Error("Route state lease was not acquired");
-                  }
-                  if (lease.expiresAt <= initialExpiry) {
-                    throw new Error("Route state lease expiry was not renewed");
-                  }
-                  await lease.release();
-                  const items = await ctx.state.getList<string>("items");
-                  return new Response(`${user.email}:${items.join(",")}`);
+                  await ctx.state.set("item", "one");
+                  const item = await ctx.state.get<string>("item");
+                  return new Response(`${user.email}:${item}`);
                 },
               },
             ];
@@ -1120,7 +1111,7 @@ describe("agent plugin hooks", () => {
         { email: "person@example.com", id: "user-1", identities: [] },
       );
       await expect(response.text()).resolves.toBe("person@example.com:one");
-      await expect(options.state.getList("items")).resolves.toEqual([]);
+      await expect(options.state.get("item")).resolves.toBeNull();
     } finally {
       setPlugins(previous);
     }

@@ -3,7 +3,7 @@ import type { PluginContext, User } from "./context";
 import type { PluginConversations } from "./conversations";
 import type { Dispatch, DispatchOptions, DispatchResult } from "./dispatch";
 import { nonBlankStringSchema } from "./schemas";
-import type { PluginReadState, PluginRouteState, PluginState } from "./state";
+import type { PluginReadState, PluginState } from "./state";
 import type { ResourceEventPublisher } from "./resource-events";
 import type { PluginConversationAnnotations } from "./annotations";
 import type { PluginConversationEventStats } from "./conversation-events";
@@ -135,32 +135,24 @@ export type PluginRouteMethod =
   | "OPTIONS"
   | "ALL";
 
-export type PluginRouteHandler = {
-  bivarianceHack(request: Request): Promise<Response> | Response;
-}["bivarianceHack"];
+export type PluginRouteHandler = (
+  request: Request,
+) => Promise<Response> | Response;
 
-interface PluginRouteBase {
+export interface PluginRoute {
+  auth?: undefined;
+  handler: PluginRouteHandler;
   method?: PluginRouteMethod | PluginRouteMethod[];
   path: string;
 }
 
-export interface PluginRoute extends PluginRouteBase {
-  /** Omit for routes that perform their own request authentication. */
-  auth?: undefined;
-  handler: PluginRouteHandler;
-}
-
-export type PluginUserRouteHandler = {
-  bivarianceHack(request: Request, user: User): Promise<Response> | Response;
-}["bivarianceHack"];
-
 /** One HTTP route that receives a host-authenticated User. */
-export interface PluginUserRoute extends PluginRouteBase {
+export type PluginUserRoute = {
   auth: "user";
-  handler: PluginUserRouteHandler;
-}
-
-export type PluginRouteDefinition = PluginRoute | PluginUserRoute;
+  handler: (request: Request, user: User) => Promise<Response> | Response;
+  method?: PluginRouteMethod | PluginRouteMethod[];
+  path: string;
+};
 
 /** Fetch-compatible plugin HTTP app mounted by Junior. */
 export type PluginRouteApp = {
@@ -185,7 +177,7 @@ export interface RouteRegistrationHookContext extends PluginContext {
   /** Core-owned delivery boundary for provider webhook events. */
   resourceEvents: ResourceEventPublisher;
   /** Durable state namespace owned by this plugin. */
-  state: PluginRouteState;
+  state: PluginState;
 }
 
 export interface ApiRouteRegistrationHookContext extends PluginContext {

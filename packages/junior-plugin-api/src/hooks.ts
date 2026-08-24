@@ -18,8 +18,9 @@ import type {
   ProfileReportHookContext,
   ApiRouteRegistrationHookContext,
   PluginOperationalReportContent,
-  PluginRouteDefinition,
+  PluginRoute,
   PluginRouteApp,
+  PluginUserRoute,
   RouteRegistrationHookContext,
   SlackConversationLink,
   SlackConversationLinkHookContext,
@@ -104,7 +105,7 @@ export interface PluginHooks {
     | Promise<PluginProviderAccount | undefined>
     | PluginProviderAccount
     | undefined;
-  routes?(ctx: RouteRegistrationHookContext): PluginRouteDefinition[];
+  routes?(ctx: RouteRegistrationHookContext): (PluginRoute | PluginUserRoute)[];
   sandboxPrepare?(ctx: SandboxPrepareHookContext): Promise<void> | void;
   workspacePrepare?(ctx: WorkspacePrepareHookContext): Promise<void> | void;
   slackConversationLink?(

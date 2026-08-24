@@ -12,7 +12,6 @@ import type {
   PluginMcp,
   PluginReadState,
   PluginRoute,
-  PluginRouteDefinition,
   PluginRouteMethod,
   PluginSandbox,
   PluginOperationalReport,
@@ -85,12 +84,8 @@ export interface PluginRouteRegistration extends PluginRoute {
   pluginName: string;
 }
 
-export interface PluginUserRouteRegistration extends PluginUserRoute {
-  pluginName: string;
-}
-
 export interface PluginRouteRegistrations {
-  authenticatedRoutes: PluginUserRouteRegistration[];
+  authenticatedRoutes: PluginUserRoute[];
   routes: PluginRouteRegistration[];
 }
 
@@ -807,7 +802,7 @@ export function getPluginTools(
 
 /** Normalize route methods so JS plugins cannot register invalid verbs. */
 function routeMethods(
-  route: PluginRouteDefinition,
+  route: PluginRoute | PluginUserRoute,
   pluginName: string,
 ): PluginRouteMethod[] {
   const methods = Array.isArray(route.method)
@@ -869,7 +864,7 @@ export function getPluginRoutes(options: {
   };
   state: StateAdapter;
 }): PluginRouteRegistrations {
-  const authenticatedRoutes: PluginUserRouteRegistration[] = [];
+  const authenticatedRoutes: PluginUserRoute[] = [];
   const routes: PluginRouteRegistration[] = [];
   const seen = new Set<string>();
   const methodsByPath = new Map<string, Set<PluginRouteMethod>>();
@@ -938,24 +933,26 @@ export function getPluginRoutes(options: {
       );
     }
     for (const route of pluginRoutes) {
-      if (!isRecord(route)) {
+      const rawRoute: unknown = route;
+      if (!isRecord(rawRoute)) {
         throw new Error(
           `Plugin route from plugin "${pluginName}" must be an object`,
         );
       }
-      if (typeof route.path !== "string" || !route.path.startsWith("/")) {
+      if (typeof rawRoute.path !== "string" || !rawRoute.path.startsWith("/")) {
         throw new Error(
-          `Plugin route "${route.path}" from plugin "${pluginName}" must start with /`,
+          `Plugin route "${rawRoute.path}" from plugin "${pluginName}" must start with /`,
         );
       }
-      if (typeof route.handler !== "function") {
+      if (typeof rawRoute.handler !== "function") {
         throw new Error(
-          `Plugin route "${route.path}" from plugin "${pluginName}" must provide a handler`,
+          `Plugin route "${rawRoute.path}" from plugin "${pluginName}" must provide a handler`,
         );
       }
-      if (route.auth !== undefined && route.auth !== "user") {
+      const auth = rawRoute.auth;
+      if (auth !== undefined && auth !== "user") {
         throw new Error(
-          `Plugin route "${route.path}" from plugin "${pluginName}" has invalid auth "${String(route.auth)}"`,
+          `Plugin route "${route.path}" from plugin "${pluginName}" has invalid auth "${String(auth)}"`,
         );
       }
       const methods = routeMethods(route, pluginName);
@@ -978,7 +975,7 @@ export function getPluginRoutes(options: {
       }
       methodsByPath.set(route.path, pathMethods);
       if (route.auth === "user") {
-        authenticatedRoutes.push({ ...route, pluginName });
+        authenticatedRoutes.push(route);
       } else {
         routes.push({ ...route, pluginName });
       }
