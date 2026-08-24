@@ -1,4 +1,7 @@
-import type { SubscribableResource } from "@sentry/junior-plugin-api";
+import {
+  resourceEventMatchFieldsSchema,
+  type SubscribableResource,
+} from "@sentry/junior-plugin-api";
 
 export const GITHUB_PULL_REQUEST_EVENTS = [
   "pull_request.checks.failed",
@@ -42,12 +45,20 @@ export const GITHUB_PULL_REQUEST_SUGGESTED_EVENTS = [
 ] as const;
 
 /** Exact facts GitHub may set on pull request event data. Missing facts fail closed. */
-export const GITHUB_PULL_REQUEST_MATCH_FIELDS = {
+export const GITHUB_PULL_REQUEST_MATCH_FIELDS = resourceEventMatchFieldsSchema.parse({
+  authorEmail: {
+    kind: "string",
+    description: "pull request author email when GitHub sends it",
+  },
+  authorUsername: {
+    kind: "string",
+    description: "pull request author login",
+  },
   isDraft: {
-    kind: "boolean" as const,
+    kind: "boolean",
     description: "true when the pull request is a draft",
   },
-};
+});
 
 /** Build the stable pull request identity shared by tools and webhooks. */
 export function gitHubPullRequestResource(input: {

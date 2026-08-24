@@ -258,11 +258,14 @@ function webhookRoute(
         };
       },
     },
+    appIdEnv: "GITHUB_APP_ID",
     botEmail,
     classifyPullRequestCommits,
     db: fixture.db(),
     installationId: () => "456",
+    installationIdEnv: "GITHUB_INSTALLATION_ID",
     log: { error },
+    privateKeyEnv: "GITHUB_APP_PRIVATE_KEY",
     resourceEvents: {
       async publish(event) {
         published.push(event);
@@ -327,6 +330,10 @@ describe("GitHub webhook resource events", () => {
           draft: false,
           number: 946,
           title: "feat(github): expose pull_request.opened",
+          user: {
+            email: "author@example.com",
+            login: "octocat",
+          },
         },
       },
       deliveryId: "delivery-opened",
@@ -340,7 +347,11 @@ describe("GitHub webhook resource events", () => {
         occurredAtMs: Date.parse("2026-07-10T12:00:00.000Z"),
         identifier: "getsentry/junior#946",
         trustedSummary: "GitHub PR getsentry/junior#946 was opened.",
-        data: { isDraft: false },
+        data: {
+          isDraft: false,
+          authorUsername: "octocat",
+          authorEmail: "author@example.com",
+        },
         untrustedText,
       },
       {
@@ -349,7 +360,11 @@ describe("GitHub webhook resource events", () => {
         occurredAtMs: Date.parse("2026-07-10T12:00:00.000Z"),
         identifier: "getsentry/junior",
         trustedSummary: "GitHub PR getsentry/junior#946 was opened.",
-        data: { isDraft: false },
+        data: {
+          isDraft: false,
+          authorUsername: "octocat",
+          authorEmail: "author@example.com",
+        },
         untrustedText,
       },
       {
@@ -358,7 +373,11 @@ describe("GitHub webhook resource events", () => {
         occurredAtMs: Date.parse("2026-07-10T12:00:00.000Z"),
         identifier: "getsentry/junior#946",
         trustedSummary: "GitHub PR getsentry/junior#946 is ready for review.",
-        data: { isDraft: false },
+        data: {
+          isDraft: false,
+          authorUsername: "octocat",
+          authorEmail: "author@example.com",
+        },
         untrustedText,
       },
       {
@@ -367,7 +386,11 @@ describe("GitHub webhook resource events", () => {
         occurredAtMs: Date.parse("2026-07-10T12:00:00.000Z"),
         identifier: "getsentry/junior",
         trustedSummary: "GitHub PR getsentry/junior#946 is ready for review.",
-        data: { isDraft: false },
+        data: {
+          isDraft: false,
+          authorUsername: "octocat",
+          authorEmail: "author@example.com",
+        },
         untrustedText,
       },
     ]);
@@ -385,6 +408,7 @@ describe("GitHub webhook resource events", () => {
             draft: true,
             number: 946,
             title: "wip",
+            user: { login: "octocat" },
           },
         },
         deliveryId: "delivery-draft-opened",
@@ -397,7 +421,7 @@ describe("GitHub webhook resource events", () => {
         occurredAtMs: Date.parse("2026-07-10T12:00:00.000Z"),
         identifier: "getsentry/junior#946",
         trustedSummary: "GitHub PR getsentry/junior#946 was opened.",
-        data: { isDraft: true },
+        data: { isDraft: true, authorUsername: "octocat" },
         untrustedText: "Title: wip",
       },
       {
@@ -406,7 +430,7 @@ describe("GitHub webhook resource events", () => {
         occurredAtMs: Date.parse("2026-07-10T12:00:00.000Z"),
         identifier: "getsentry/junior",
         trustedSummary: "GitHub PR getsentry/junior#946 was opened.",
-        data: { isDraft: true },
+        data: { isDraft: true, authorUsername: "octocat" },
         untrustedText: "Title: wip",
       },
     ]);
@@ -421,6 +445,10 @@ describe("GitHub webhook resource events", () => {
             number: 946,
             title: "ready",
             updated_at: "2026-07-11T12:00:00.000Z",
+            user: {
+              email: "author@example.com",
+              login: "octocat",
+            },
           },
         },
         deliveryId: "delivery-ready",
@@ -433,7 +461,11 @@ describe("GitHub webhook resource events", () => {
         occurredAtMs: Date.parse("2026-07-11T12:00:00.000Z"),
         identifier: "getsentry/junior#946",
         trustedSummary: "GitHub PR getsentry/junior#946 is ready for review.",
-        data: { isDraft: false },
+        data: {
+          isDraft: false,
+          authorUsername: "octocat",
+          authorEmail: "author@example.com",
+        },
         untrustedText: "Title: ready",
       },
       {
@@ -442,7 +474,11 @@ describe("GitHub webhook resource events", () => {
         occurredAtMs: Date.parse("2026-07-11T12:00:00.000Z"),
         identifier: "getsentry/junior",
         trustedSummary: "GitHub PR getsentry/junior#946 is ready for review.",
-        data: { isDraft: false },
+        data: {
+          isDraft: false,
+          authorUsername: "octocat",
+          authorEmail: "author@example.com",
+        },
         untrustedText: "Title: ready",
       },
     ]);
@@ -637,7 +673,16 @@ describe("GitHub webhook resource events", () => {
           },
         },
         checkSuiteEnrichment: {
-          pullRequestDraftByNumber: { 10: false, 11: true },
+          pullRequestFactsByNumber: {
+            10: {
+              authorUsername: "octocat",
+              isDraft: false,
+            },
+            11: {
+              authorUsername: "other",
+              isDraft: true,
+            },
+          },
         },
         deliveryId: "delivery-draft-enrichment",
         eventName: "check_suite",
@@ -656,6 +701,7 @@ describe("GitHub webhook resource events", () => {
           scope: "check_suite",
           suiteConclusion: "success",
           isDraft: false,
+          authorUsername: "octocat",
           headSha: "abcdef1234567890",
           checkSuiteId: 7,
           checkSuiteUrl:
@@ -676,6 +722,7 @@ describe("GitHub webhook resource events", () => {
           scope: "check_suite",
           suiteConclusion: "success",
           isDraft: false,
+          authorUsername: "octocat",
           headSha: "abcdef1234567890",
           checkSuiteId: 7,
           checkSuiteUrl:
@@ -696,6 +743,7 @@ describe("GitHub webhook resource events", () => {
           scope: "check_suite",
           suiteConclusion: "success",
           isDraft: true,
+          authorUsername: "other",
           headSha: "abcdef1234567890",
           checkSuiteId: 7,
           checkSuiteUrl:
@@ -716,6 +764,7 @@ describe("GitHub webhook resource events", () => {
           scope: "check_suite",
           suiteConclusion: "success",
           isDraft: true,
+          authorUsername: "other",
           headSha: "abcdef1234567890",
           checkSuiteId: 7,
           checkSuiteUrl:
@@ -755,7 +804,7 @@ describe("GitHub webhook resource events", () => {
               name: "lint",
             },
           ],
-          pullRequestDraftByNumber: { 691: false },
+          pullRequestFactsByNumber: { 691: { isDraft: false } },
         },
         deliveryId: "delivery-enriched",
         eventName: "check_suite",

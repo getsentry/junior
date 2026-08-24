@@ -42,7 +42,6 @@ import {
   listGitHubFinishedWork,
   listGitHubUnfinishedWork,
 } from "./pull-request-outcomes/store.js";
-import { loadCheckSuiteEnrichment } from "./webhooks/check-suite-enrichment.js";
 import {
   additionalActorCoauthorTrailers,
   configureGit,
@@ -271,6 +270,7 @@ export function githubPlugin(
         return [
           createGitHubWebhookRoute({
             annotations: ctx.annotations,
+            appIdEnv,
             botEmail: () => readEnv(botEmailEnv),
             classifyPullRequestCommits: async ({
               number,
@@ -301,15 +301,9 @@ export function githubPlugin(
             },
             db: ctx.db as GitHubDb,
             installationId: () => readEnv(installationIdEnv),
-            loadCheckSuiteEnrichment: async (body) =>
-              await loadCheckSuiteEnrichment({
-                appIdEnv,
-                body,
-                installationIdEnv,
-                log: ctx.log,
-                privateKeyEnv,
-              }),
+            installationIdEnv,
             log: ctx.log,
+            privateKeyEnv,
             resourceEvents: ctx.resourceEvents,
             webhookSecret: () => readEnv("GITHUB_WEBHOOK_SECRET"),
           }),

@@ -531,6 +531,14 @@ describe("github plugin", () => {
         "pull_request.merged",
       ]),
       matchFields: {
+        authorEmail: {
+          kind: "string",
+          description: "pull request author email when GitHub sends it",
+        },
+        authorUsername: {
+          kind: "string",
+          description: "pull request author login",
+        },
         isDraft: {
           kind: "boolean",
           description: "true when the pull request is a draft",
@@ -554,6 +562,14 @@ describe("github plugin", () => {
       "pull_request.checks.failed": "Inspect the failed checks.",
     });
     expect(pullRequest?.matchFields).toEqual({
+      authorEmail: {
+        kind: "string",
+        description: "pull request author email when GitHub sends it",
+      },
+      authorUsername: {
+        kind: "string",
+        description: "pull request author login",
+      },
       isDraft: {
         kind: "boolean",
         description: "true when the pull request is a draft",
