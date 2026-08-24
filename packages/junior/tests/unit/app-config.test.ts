@@ -955,6 +955,8 @@ describe("createApp plugin config", () => {
       ).rejects.toThrow(
         `Plugin "legacy-dashboard" route "${path}" conflicts with core dashboard routes`,
       );
+      expect(getPlugins()).toEqual([]);
+      expect(pluginCatalogRuntime.getProviders()).toEqual([]);
     }
   });
 

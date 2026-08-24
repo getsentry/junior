@@ -3,9 +3,14 @@ import { createMemoryState } from "@chat-adapter/state-memory";
 import { describe, expect, it, vi } from "vitest";
 import {
   acceptAcpRequest,
+  bindAcpConnectionUser,
   completeAcpRequest,
+  deleteAcpConnection,
   type AcpRequestReceipt,
 } from "@sentry/junior-acp/testing";
+import type { StateAdapter } from "chat";
+import { deferred } from "../../fixtures/conversation-work";
+import { readProxyProperty } from "../../fixtures/proxy-property";
 
 const CONNECTION_ID = "9dddb5f1-bd8f-42cc-a88e-c3cb909354dd";
 const CONNECTION_KEY = `junior:acp:v1:connection:${CONNECTION_ID}`;
@@ -30,6 +35,54 @@ function replayReceipt(): AcpRequestReceipt {
 }
 
 describe("ACP transport", () => {
+  it("does not let browser authorization restore a deleted connection", async () => {
+    const state = createMemoryState();
+    await state.connect();
+    const credentialHash = "0".repeat(64);
+    await state.set(CONNECTION_KEY, {
+      credentialHash,
+      nonce: "transport-test",
+    });
+    const writeStarted = deferred();
+    const releaseWrite = deferred();
+    let blockConnectionWrite = true;
+    const delayedState = new Proxy(state, {
+      get(target, property) {
+        if (property === "set") {
+          return async (key: string, value: unknown, ttlMs?: number) => {
+            if (key === CONNECTION_KEY && blockConnectionWrite) {
+              blockConnectionWrite = false;
+              writeStarted.resolve();
+              await releaseWrite.promise;
+            }
+            await target.set(key, value, ttlMs);
+          };
+        }
+        const value = readProxyProperty(target, property);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    }) as StateAdapter;
+
+    const binding = bindAcpConnectionUser({
+      connectionId: CONNECTION_ID,
+      credentialHash,
+      state: delayedState,
+      user: {
+        email: "viewer@example.com",
+        id: "test:viewer@example.com",
+        identities: [],
+      },
+    });
+    await writeStarted.promise;
+    const deletion = deleteAcpConnection(delayedState, CONNECTION_ID);
+    releaseWrite.resolve();
+
+    await expect(binding).resolves.toBe("completed");
+    await expect(deletion).resolves.toBeUndefined();
+    await expect(state.get(CONNECTION_KEY)).resolves.toBeNull();
+    await state.disconnect();
+  });
+
   it("does not create output after its connection expires", async () => {
     const state = createMemoryState();
     await state.connect();

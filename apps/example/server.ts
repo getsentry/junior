@@ -19,7 +19,7 @@ const [
 ]);
 
 const app = await createApp({
-  adapters: process.env.NODE_ENV === "development" ? [acpAdapter()] : [],
+  adapters: [acpAdapter()],
   dashboard: {
     authRequired: exampleDashboardAuthRequired(),
     allowedGoogleDomains: ["sentry.io"],

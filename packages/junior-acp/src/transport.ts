@@ -242,8 +242,20 @@ export async function deleteAcpConnection(
   state: AcpState,
   connectionId: string,
 ): Promise<void> {
-  await state.delete(connectionKey(connectionId));
-  await state.delete(streamCursorKey({ connectionId }));
+  const result = await withLock(
+    state,
+    connectionLockKey(connectionId),
+    async (lock) => {
+      await fenceLock(state, lock, MUTATION_LOCK_TTL_MS);
+      await state.delete(connectionKey(connectionId));
+      await fenceLock(state, lock, MUTATION_LOCK_TTL_MS);
+      await state.delete(streamCursorKey({ connectionId }));
+    },
+    MUTATION_LOCK_OPTIONS,
+  );
+  if (!result.acquired) {
+    throw new Error("Timed out acquiring ACP connection control");
+  }
 }
 
 /** Bind one live ACP connection to the canonical authorized user. */

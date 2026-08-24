@@ -73,6 +73,10 @@ function authorizationPointerKey(connectionId: string): string {
   return `junior:acp:v1:connection:${connectionId}:authorization`;
 }
 
+function authorizationPointerLockKey(connectionId: string): string {
+  return `${authorizationPointerKey(connectionId)}:lock`;
+}
+
 function credentialHash(value: string): string {
   return createHash("sha256").update(value).digest("hex");
 }
@@ -140,7 +144,9 @@ export function hasAcpConnectionCredential(
 
 function authorizationBaseURL(request: Request, configured?: string): URL {
   const value = configured?.trim();
-  const url = new URL(value || new URL(request.url).origin);
+  let origin = value || new URL(request.url).origin;
+  if (value && !/^https?:\/\//.test(value)) origin = `https://${value}`;
+  const url = new URL(origin);
   url.pathname = "/";
   url.search = "";
   url.hash = "";
@@ -167,20 +173,43 @@ async function readAuthorizationPointer(
     : acpAuthorizationPointerSchema.parse(value);
 }
 
+async function deleteAuthorizationPointer(
+  state: AcpState,
+  connectionId: string,
+  transactionId: string,
+): Promise<void> {
+  const result = await withLock(
+    state,
+    authorizationPointerLockKey(connectionId),
+    async (lock) => {
+      const pointer = await readAuthorizationPointer(state, connectionId);
+      if (pointer?.transactionId !== transactionId) return;
+      await fenceLock(state, lock, MUTATION_LOCK_TTL_MS);
+      await state.delete(authorizationPointerKey(connectionId));
+    },
+    {
+      keepAlive: true,
+      ttlMs: MUTATION_LOCK_TTL_MS,
+      waitMs: LOCK_WAIT_MS,
+    },
+  );
+  if (!result.acquired) {
+    throw new Error("Timed out acquiring ACP authorization pointer control");
+  }
+}
+
 /** Remove one completed transaction and its matching connection pointer. */
 async function deleteAuthorization(
   state: AcpState,
   authorization: AcpAuthorization,
   transactionId: string,
 ): Promise<void> {
-  await state.delete(authorizationKey(transactionId));
-  const pointer = await readAuthorizationPointer(
+  await deleteAuthorizationPointer(
     state,
     authorization.connectionId,
+    transactionId,
   );
-  if (pointer?.transactionId === transactionId) {
-    await state.delete(authorizationPointerKey(authorization.connectionId));
-  }
+  await state.delete(authorizationKey(transactionId));
 }
 
 function completionReceipt(
@@ -231,27 +260,64 @@ export async function beginAcpAuthorization(args: {
   requestKey: string;
   state: AcpState;
 }): Promise<AcpRequestReceipt> {
-  const transactionId = randomUUID();
-  const userCode = createUserCode();
-  const authorization = acpAuthorizationSchema.parse({
-    connectionId: args.connectionId,
-    credentialHash: args.credentialHash,
-    elicitationId: transactionId,
-    expiresAtMs: Date.now() + ACP_AUTHORIZATION_TTL_MS,
-    requestId: args.requestId,
-    requestKey: args.requestKey,
-    userCodeHash: userCodeHash(userCode),
-  });
-  await args.state.set(
-    authorizationKey(transactionId),
-    authorization,
-    ACP_STATE_TTL_MS,
+  const result = await withLock(
+    args.state,
+    authorizationPointerLockKey(args.connectionId),
+    async (lock) => {
+      const pointer = await readAuthorizationPointer(
+        args.state,
+        args.connectionId,
+      );
+      if (pointer) {
+        const pending = await readAuthorization(
+          args.state,
+          pointer.transactionId,
+        );
+        if (pending?.connectionId === args.connectionId) {
+          throw acp.RequestError.invalidRequest(
+            undefined,
+            "Junior sign-in is already in progress",
+          );
+        }
+        await fenceLock(args.state, lock, MUTATION_LOCK_TTL_MS);
+        await args.state.delete(authorizationPointerKey(args.connectionId));
+      }
+
+      const transactionId = randomUUID();
+      const userCode = createUserCode();
+      const authorization = acpAuthorizationSchema.parse({
+        connectionId: args.connectionId,
+        credentialHash: args.credentialHash,
+        elicitationId: transactionId,
+        expiresAtMs: Date.now() + ACP_AUTHORIZATION_TTL_MS,
+        requestId: args.requestId,
+        requestKey: args.requestKey,
+        userCodeHash: userCodeHash(userCode),
+      });
+      await fenceLock(args.state, lock, MUTATION_LOCK_TTL_MS);
+      await args.state.set(
+        authorizationKey(transactionId),
+        authorization,
+        ACP_STATE_TTL_MS,
+      );
+      await fenceLock(args.state, lock, MUTATION_LOCK_TTL_MS);
+      await args.state.set(
+        authorizationPointerKey(args.connectionId),
+        { expiresAtMs: authorization.expiresAtMs, transactionId },
+        ACP_STATE_TTL_MS,
+      );
+      return { transactionId, userCode };
+    },
+    {
+      keepAlive: true,
+      ttlMs: MUTATION_LOCK_TTL_MS,
+      waitMs: LOCK_WAIT_MS,
+    },
   );
-  await args.state.set(
-    authorizationPointerKey(args.connectionId),
-    { expiresAtMs: authorization.expiresAtMs, transactionId },
-    ACP_STATE_TTL_MS,
-  );
+  if (!result.acquired) {
+    throw new Error("Timed out acquiring ACP authorization pointer control");
+  }
+  const { transactionId, userCode } = result.value;
   const url = authorizationBaseURL(args.request, args.baseURL);
   url.pathname = `/_junior/acp/auth/${transactionId}`;
   const params = {
@@ -444,7 +510,11 @@ export async function expireAcpAuthorization(args: {
         pointer.transactionId,
       );
       if (!authorization || authorization.connectionId !== args.connectionId) {
-        await args.state.delete(authorizationPointerKey(args.connectionId));
+        await deleteAuthorizationPointer(
+          args.state,
+          args.connectionId,
+          pointer.transactionId,
+        );
         return false;
       }
       if (authorization.expiresAtMs > Date.now()) return false;

@@ -58,6 +58,10 @@ describe("remote ACP recovery", () => {
     const app = await createApp({
       conversationWork: harness.conversationWork,
       adapters: [acpAdapter()],
+      dashboard: {
+        authRequired: false,
+        baseURL: "junior.example.com",
+      },
       experimental: { subagents: true },
     });
     const initialized = await app.fetch(initializeRequest());
@@ -103,7 +107,9 @@ describe("remote ACP recovery", () => {
     if (params.mode !== "url" || typeof params.url !== "string") {
       throw new Error("ACP authenticate returned no sign-in URL");
     }
-    const transactionId = new URL(params.url).pathname.split("/").at(-1);
+    const authorizationURL = new URL(params.url);
+    expect(authorizationURL.origin).toBe("https://junior.example.com");
+    const transactionId = authorizationURL.pathname.split("/").at(-1);
     if (!transactionId)
       throw new Error("ACP sign-in URL has no transaction id");
     const userCode = verificationCodeFromElicitation(params);
@@ -152,6 +158,100 @@ describe("remote ACP recovery", () => {
         userCode,
       }),
     ).resolves.toBe("expired");
+    await reader.cancel();
+    reader.releaseLock();
+  });
+
+  it("rejects a second authenticate request without replacing the pending sign-in", async () => {
+    const harness = await createConversationWorkWebHarness();
+    const app = await createApp({
+      conversationWork: harness.conversationWork,
+      adapters: [acpAdapter()],
+      experimental: { subagents: true },
+    });
+    const initialized = await app.fetch(initializeRequest());
+    const connectionId = initialized.headers.get("Acp-Connection-Id");
+    if (!connectionId) throw new Error("ACP initialize returned no connection");
+    const cookie = connectionCookie(initialized);
+    const stream = await app.request(ACP_TEST_URL, {
+      method: "GET",
+      headers: {
+        Accept: "text/event-stream",
+        "Acp-Connection-Id": connectionId,
+        Cookie: cookie,
+      },
+    });
+    const reader = stream.body?.getReader();
+    if (!reader) throw new Error("ACP GET returned no stream body");
+    const authenticate = async (id: string) =>
+      await app.request(ACP_TEST_URL, {
+        method: "POST",
+        headers: {
+          "Acp-Connection-Id": connectionId,
+          "Content-Type": "application/json",
+          Cookie: cookie,
+        },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id,
+          method: acp.methods.agent.authenticate,
+          params: { methodId: "junior" },
+        }),
+      });
+
+    await expect(authenticate("first-authenticate")).resolves.toMatchObject({
+      status: 202,
+    });
+    const buffer = { value: "" };
+    const elicitation = await readAcpSseMessage(reader, buffer);
+    if (
+      !("method" in elicitation) ||
+      elicitation.method !== acp.methods.client.elicitation.create
+    ) {
+      throw new Error("ACP authenticate returned no sign-in elicitation");
+    }
+    const params = elicitation.params as acp.CreateElicitationRequest;
+    if (params.mode !== "url" || typeof params.url !== "string") {
+      throw new Error("ACP authenticate returned no sign-in URL");
+    }
+    const transactionId = new URL(params.url).pathname.split("/").at(-1);
+    if (!transactionId)
+      throw new Error("ACP sign-in URL has no transaction id");
+
+    await expect(authenticate("second-authenticate")).resolves.toMatchObject({
+      status: 202,
+    });
+    const secondMessage = await readAcpSseMessage(reader, buffer);
+    expect(secondMessage).toMatchObject({
+      id: "second-authenticate",
+      error: {
+        code: -32600,
+        message: expect.stringContaining(
+          "Junior sign-in is already in progress",
+        ),
+      },
+    });
+    await expect(
+      harness.state.get(
+        `junior:acp:v1:connection:${connectionId}:authorization`,
+      ),
+    ).resolves.toMatchObject({ transactionId });
+
+    await expect(
+      completeAcpAuthorization({
+        state: harness.state,
+        transactionId,
+        user: testViewer(harness.actor.email),
+        userCode: verificationCodeFromElicitation(params),
+      }),
+    ).resolves.toBe("completed");
+    await expect(readAcpSseMessage(reader, buffer)).resolves.toMatchObject({
+      method: acp.methods.client.elicitation.complete,
+    });
+    await expect(readAcpSseMessage(reader, buffer)).resolves.toMatchObject({
+      id: "first-authenticate",
+      result: {},
+    });
     await reader.cancel();
     reader.releaseLock();
   });

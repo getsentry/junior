@@ -686,6 +686,17 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   const previousExperimentalFeatures = getExperimentalFeatures();
   const previousDashboardLinkOptions =
     setDashboardConversationLinkOptions(dashboard);
+  const restoreRuntimeConfig = (): void => {
+    pluginCatalogRuntime.setConfig(previousPluginCatalogConfig);
+    setPlugins(previousPlugins);
+    setConfigDefaults(previousConfigDefaults);
+    botConfig.defaultProfile = previousDefaultProfile;
+    botConfig.profiles = previousModelProfiles;
+    setSlackReactionConfig(previousSlackReactionConfig);
+    setSandboxResourceConfig(previousSandboxResources);
+    setExperimentalFeatures(previousExperimentalFeatures);
+    setDashboardConversationLinkOptions(previousDashboardLinkOptions);
+  };
   let pluginRoutes: PluginRouteRegistration[] = [];
   let pluginApiRoutes: PluginApiRouteRegistration[] = [];
   const resolveResourceEventTeamId = createResourceEventTeamIdResolver();
@@ -742,15 +753,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
       pluginApiRoutes = getPluginApiRoutes();
     }
   } catch (error) {
-    pluginCatalogRuntime.setConfig(previousPluginCatalogConfig);
-    setPlugins(previousPlugins);
-    setConfigDefaults(previousConfigDefaults);
-    botConfig.defaultProfile = previousDefaultProfile;
-    botConfig.profiles = previousModelProfiles;
-    setSlackReactionConfig(previousSlackReactionConfig);
-    setSandboxResourceConfig(previousSandboxResources);
-    setExperimentalFeatures(previousExperimentalFeatures);
-    setDashboardConversationLinkOptions(previousDashboardLinkOptions);
+    restoreRuntimeConfig();
     throw error;
   }
 
@@ -778,40 +781,47 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
       });
     return conversationWorkOptions;
   };
-  const adapterOutputs = await Promise.all(
-    (options?.adapters ?? []).map(async (adapter) => {
-      const work = getConversationWorkOptions();
-      const state = work.state ?? getStateAdapter();
-      return await adapter({
-        agentName: botConfig.userName,
-        baseURL: dashboard?.baseURL ?? process.env.JUNIOR_BASE_URL,
-        conversations: createAdapterConversations({
-          conversationStore: work.conversationStore,
-          eventStore: getConversationEventStore(),
-          queue: work.queue ?? getVercelConversationWorkQueue(),
+  let adapterRoutes: HostRouteRegistration[] = [];
+  let authenticatedRoutes: JuniorAuthenticatedRoute[] = [];
+  try {
+    const adapterOutputs = await Promise.all(
+      (options?.adapters ?? []).map(async (adapter) => {
+        const work = getConversationWorkOptions();
+        const state = work.state ?? getStateAdapter();
+        return await adapter({
+          agentName: botConfig.userName,
+          baseURL: dashboard?.baseURL ?? process.env.JUNIOR_BASE_URL,
+          conversations: createAdapterConversations({
+            conversationStore: work.conversationStore,
+            eventStore: getConversationEventStore(),
+            queue: work.queue ?? getVercelConversationWorkQueue(),
+            state,
+          }),
+          reportError: (error, event, attributes) =>
+            void logException(error, event, attributes),
           state,
-        }),
-        reportError: (error, event, attributes) =>
-          void logException(error, event, attributes),
-        state,
-        version: JUNIOR_VERSION,
-      });
-    }),
-  );
-  const adapterRoutes = adapterOutputs.flatMap((output) => output.routes ?? []);
-  const authenticatedRoutes = adapterOutputs.flatMap(
-    (output) => output.authenticatedRoutes ?? [],
-  );
-  if (authenticatedRoutes.length > 0 && (!dashboard || dashboard.disabled)) {
-    throw new Error(
-      "createApp() adapters with authenticated routes require an enabled dashboard",
+          version: JUNIOR_VERSION,
+        });
+      }),
     );
+    adapterRoutes = adapterOutputs.flatMap((output) => output.routes ?? []);
+    authenticatedRoutes = adapterOutputs.flatMap(
+      (output) => output.authenticatedRoutes ?? [],
+    );
+    if (authenticatedRoutes.length > 0 && (!dashboard || dashboard.disabled)) {
+      throw new Error(
+        "createApp() adapters with authenticated routes require an enabled dashboard",
+      );
+    }
+    validateDashboardRouteOwnership({
+      authenticatedRoutes,
+      dashboard,
+      routes: pluginRoutes,
+    });
+  } catch (error) {
+    restoreRuntimeConfig();
+    throw error;
   }
-  validateDashboardRouteOwnership({
-    authenticatedRoutes,
-    dashboard,
-    routes: pluginRoutes,
-  });
   const slackWebhookServices = createProductionSlackWebhookServices({
     services: runtimeServiceOverrides,
   });
