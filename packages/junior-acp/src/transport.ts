@@ -262,10 +262,10 @@ export async function bindAcpConnectionUser(args: {
 
 interface PreparedStreamAppend {
   existingIds: Set<string>;
-  pendingIds: Set<string>;
+  retainedIds: Set<string>;
 }
 
-/** Admit all missing receipt items or clear a fully consumed stream. */
+/** Admit a receipt without reordering outputs that remain queued. */
 async function prepareStreamAppend(args: {
   ids: readonly string[];
   lock: AcpLock;
@@ -278,14 +278,18 @@ async function prepareStreamAppend(args: {
     ? existing.findIndex((item) => item.id === cursor)
     : -1;
   const pending = existing.slice(cursorIndex >= 0 ? cursorIndex + 1 : 0);
+  const presentIds = new Set<string>();
   const pendingIds = new Set<string>();
   for (const id of args.ids) {
-    const pendingItem = pending.find(
-      (item) => item.id === id || item.id.startsWith(`${id}:delivery:`),
-    );
-    if (pendingItem) pendingIds.add(id);
+    const matches = (item: StoredAcpStreamItem): boolean =>
+      item.id === id || item.id.startsWith(`${id}:delivery:`);
+    if (existing.some(matches)) presentIds.add(id);
+    if (pending.some(matches)) pendingIds.add(id);
   }
-  const missingCount = args.ids.length - pendingIds.size;
+  // A retry must not append consumed siblings behind outputs from the same
+  // receipt that are still queued. Fully consumed receipts remain retryable.
+  const retainedIds = pendingIds.size === 0 ? new Set<string>() : presentIds;
+  const missingCount = args.ids.length - retainedIds.size;
   if (missingCount > MAX_STREAM_ITEMS) throw new AcpStreamFullError();
   if (
     missingCount === 0 ||
@@ -293,7 +297,7 @@ async function prepareStreamAppend(args: {
   ) {
     return {
       existingIds: new Set(existing.map((item) => item.id)),
-      pendingIds,
+      retainedIds,
     };
   }
 
@@ -303,7 +307,7 @@ async function prepareStreamAppend(args: {
   await fenceLock(args.state, args.lock, MUTATION_LOCK_TTL_MS);
   await args.state.delete(streamListKey(args.route));
   await args.state.delete(streamCursorKey(args.route));
-  return { existingIds: new Set(), pendingIds: new Set() };
+  return { existingIds: new Set(), retainedIds: new Set() };
 }
 
 /** Append one pre-admitted output while holding its stream mutation lock. */
@@ -396,7 +400,7 @@ async function queueReceipt(args: {
     });
     for (const [index, output] of receipt.outputs.entries()) {
       const id = ids[index];
-      if (!id || prepared.pendingIds.has(id)) continue;
+      if (!id || prepared.retainedIds.has(id)) continue;
       await appendStreamOutputWithLock({
         existingIds: prepared.existingIds,
         id,
@@ -704,6 +708,7 @@ function createSseBody(args: {
   let leaseExpiresAt = args.lock.expiresAt;
   let nextMaintenanceAtMs = 0;
   let retainingLease: Promise<void> | undefined;
+  let closeBody: (() => void) | undefined;
 
   const correlation: AcpErrorContext = {
     connectionId: args.route.connectionId,
@@ -714,6 +719,7 @@ function createSseBody(args: {
     if (cleaned) return;
     cleaned = true;
     abort.abort();
+    closeBody?.();
     if (keepAlive) clearInterval(keepAlive);
     if (heartbeat) clearInterval(heartbeat);
     args.requestSignal.removeEventListener("abort", onRequestAbort);
@@ -751,6 +757,13 @@ function createSseBody(args: {
   return new ReadableStream<Uint8Array>({
     start(controller) {
       let failureCaptured = false;
+      closeBody = () => {
+        try {
+          controller.close();
+        } catch {
+          // The response stream may already be closed or cancelled.
+        }
+      };
       const fail = (error: unknown): void => {
         if (cleaned) return;
         const failure =
@@ -875,9 +888,6 @@ function createSseBody(args: {
       };
 
       void pump()
-        .then(() => {
-          if (!cleaned) controller.close();
-        })
         .catch((error: unknown) => {
           if (!cleaned && !args.requestSignal.aborted) fail(error);
         })

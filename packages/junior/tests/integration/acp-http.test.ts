@@ -507,7 +507,7 @@ describe("remote ACP HTTP", () => {
     });
   }, 20_000);
 
-  it("holds one shared SSE lease and hands it to a later app instance", async () => {
+  it("coordinates an SSE stream across handoff and request abort", async () => {
     const harness = await createConversationWorkWebHarness();
     const app = await createApp({
       conversationWork: harness.conversationWork,
@@ -541,6 +541,19 @@ describe("remote ACP HTTP", () => {
     const handedOff = await secondApp.fetch(streamRequest());
     expect(handedOff.status).toBe(200);
     await handedOff.body?.cancel();
+
+    const requestAbort = new AbortController();
+    const aborted = await app.fetch(
+      new Request(streamRequest(), { signal: requestAbort.signal }),
+    );
+    expect(aborted.status).toBe(200);
+    const reader = aborted.body?.getReader();
+    if (!reader) throw new Error("ACP GET returned no stream body");
+
+    requestAbort.abort();
+
+    await expect(reader.closed).resolves.toBeUndefined();
+    reader.releaseLock();
   });
 
   it("terminates an SSE stream after it loses its shared lease", async () => {

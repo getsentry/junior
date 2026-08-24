@@ -25,7 +25,12 @@ const STREAM_KEY = `junior:acp:v1:connection:${CONNECTION_ID}:stream:session:${s
 const STREAM_ITEMS_KEY = `${STREAM_KEY}:items`;
 const STREAM_CURSOR_KEY = `${STREAM_KEY}:cursor`;
 const MAX_STREAM_ITEMS = 1_024;
-const REPLAY_ITEM_ID = `acp-item:${stableHex(`${REQUEST_KEY}:0`)}`;
+
+function streamItemId(requestKey: string, index: number): string {
+  return `acp-item:${stableHex(`${requestKey}:${index}`)}`;
+}
+
+const REPLAY_ITEM_ID = streamItemId(REQUEST_KEY, 0);
 
 function replayReceipt(): AcpRequestReceipt {
   return {
@@ -187,6 +192,45 @@ describe("ACP transport", () => {
       }),
     ]);
     expect(createReceipt).toHaveBeenCalledTimes(1);
+    await state.disconnect();
+  });
+
+  it("preserves the remaining order when a multi-output receipt is retried", async () => {
+    const state = createMemoryState();
+    await state.connect();
+    await state.set(CONNECTION_KEY, {
+      credentialHash: "0".repeat(64),
+      nonce: "transport-test",
+    });
+    const requestKey = `${REQUEST_KEY}-partial-retry`;
+    const firstId = streamItemId(requestKey, 0);
+    const secondId = streamItemId(requestKey, 1);
+
+    await expect(
+      completeAcpRequest({
+        connectionId: CONNECTION_ID,
+        receipt: loadReceipt(),
+        requestKey,
+        state,
+      }),
+    ).resolves.toBe("completed");
+    const initial = [...(await state.getList(STREAM_ITEMS_KEY))];
+    expect(initial).toEqual([
+      expect.objectContaining({ id: firstId }),
+      expect.objectContaining({ id: secondId }),
+    ]);
+    await state.set(STREAM_CURSOR_KEY, { itemId: firstId });
+
+    await expect(
+      completeAcpRequest({
+        connectionId: CONNECTION_ID,
+        receipt: loadReceipt(),
+        requestKey,
+        state,
+      }),
+    ).resolves.toBe("completed");
+
+    await expect(state.getList(STREAM_ITEMS_KEY)).resolves.toEqual(initial);
     await state.disconnect();
   });
 });
