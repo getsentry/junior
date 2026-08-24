@@ -956,27 +956,25 @@ export function githubPlugin(
       async issueCredential(ctx) {
         try {
           if (ctx.grant.name === "installation-read") {
-            return await issueInstallationCredential({
-              appIdEnv,
-              privateKeyEnv,
-              installationIdEnv,
-              ...(declaredReadPermissions
-                ? { permissions: declaredReadPermissions }
-                : { loadPermissions: loadReadPermissions }),
-            });
+            return await issueInstallationCredential(
+              {
+                appIdEnv,
+                privateKeyEnv,
+                installationIdEnv,
+                ...(declaredReadPermissions
+                  ? { permissions: declaredReadPermissions }
+                  : { loadPermissions: loadReadPermissions }),
+              },
+              ctx.log,
+            );
           }
           if (ctx.grant.name === "installation-write") {
-            const repository = githubRepositoryFromLeaseScope(
-              ctx.grant.leaseScope,
+            // Repository-only mint keeps the installed App permission envelope.
+            const repository = githubRepositoryFromLeaseScope(ctx.grant.leaseScope);
+            return await issueInstallationCredential(
+              { appIdEnv, privateKeyEnv, installationIdEnv, repositories: [repository.name] },
+              ctx.log,
             );
-            return await issueInstallationCredential({
-              appIdEnv,
-              privateKeyEnv,
-              installationIdEnv,
-              // This repository-only variant cannot downscope the installed
-              // App envelope with an operation-specific permission body.
-              repositories: [repository.name],
-            });
           }
           if (USER_TOKEN_GRANTS.has(ctx.grant.name)) {
             return await issueUserCredential(ctx, {

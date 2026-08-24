@@ -4,10 +4,11 @@
  * This module owns OAuth refresh, installation tokens, credential leases, and
  * repository-scoped credential parsing.
  */
-import { createPrivateKey, createSign } from "node:crypto";
+import { createHmac, createPrivateKey, createSign } from "node:crypto";
 import type {
   PluginCredentialResult,
   PluginGrant,
+  PluginLogger,
   PluginProviderAccount,
   PluginStoredTokens,
   PluginUserTokenSlot,
@@ -849,11 +850,22 @@ export async function issueInstallationToken(
   };
 }
 
+function fingerprintInstallationToken(token: string): string {
+  return createHmac("sha256", "junior.credential-fingerprint.v1")
+    .update(token, "utf8")
+    .digest("hex")
+    .slice(0, 12);
+}
+
 /** Issue a bounded GitHub App installation credential. */
 export async function issueInstallationCredential(
   options: InstallationCredentialOptions,
+  log?: Pick<PluginLogger, "info">,
 ): Promise<PluginCredentialResult> {
   const token = await issueInstallationToken(options);
+  log?.info("github.installation_token.issued", {
+    "app.credential.token_fingerprint": fingerprintInstallationToken(token.token),
+  });
   return createCredentialLease({
     token: token.token,
     expiresAtMs: token.expiresAtMs,

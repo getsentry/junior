@@ -105,9 +105,10 @@ function beforeToolContext(actor: TestActor, actors?: TestActor[]) {
   };
 }
 
+const pluginLogInfo = vi.fn();
 const pluginLog = {
   error() {},
-  info() {},
+  info: pluginLogInfo,
   warn() {},
 };
 
@@ -2232,6 +2233,7 @@ Conversation: \`local:test:old-conversation\`
     process.env.GITHUB_APP_ID = "123";
     process.env.GITHUB_INSTALLATION_ID = "456";
     process.env.GITHUB_APP_PRIVATE_KEY = privateKey;
+    pluginLogInfo.mockClear();
     const requests = mockGitHubInstallationApi();
     const plugin = githubPlugin({
       appPermissions: {
@@ -2263,6 +2265,12 @@ Conversation: \`local:test:old-conversation\`
       },
       headers: expect.any(Object),
     });
+    expect(pluginLogInfo).toHaveBeenCalledWith(
+      "github.installation_token.issued",
+      expect.objectContaining({
+        "app.credential.token_fingerprint": expect.any(String),
+      }),
+    );
   });
 
   it("issues read-only GitHub App installation credentials from plugin hooks", async () => {

@@ -1,3 +1,4 @@
+import { fingerprintLeaseAuthorization } from "@/chat/credentials/token-fingerprint";
 import { logInfo, logWarn } from "@/chat/logging";
 import { onPluginEgressResponse } from "@/chat/plugins/credential-hooks";
 import { matchesSandboxEgressDomain } from "@/chat/sandbox/egress/policy";
@@ -814,8 +815,14 @@ export async function executeCredentialedEgressRequest(input: {
     upstream.status === UPSTREAM_TOKEN_REJECTION_STATUS ||
     upstream.status === UPSTREAM_PERMISSION_REJECTION_STATUS
   ) {
+    const tokenFingerprint = fingerprintLeaseAuthorization(
+      lease.headerTransforms,
+    );
     logWarn("sandbox.egress.upstream_auth.rejected", {
       ...attributes(upstream.status, upstream),
+      ...(tokenFingerprint
+        ? { "app.credential.token_fingerprint": tokenFingerprint }
+        : {}),
       ...(upstream.status === UPSTREAM_TOKEN_REJECTION_STATUS
         ? {
             "app.sandbox.egress.www_authenticate":

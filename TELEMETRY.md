@@ -257,8 +257,14 @@ Events: `sandbox.egress.credential.needed`,
 Spans: resumed `chat.turn`, `chat.reply`
 
 Attributes: `app.credential.provider`, `app.credential.delivery`,
+`app.credential.token_fingerprint`,
 `app.ai.retryable_reason`, `app.ai.session_id`,
 `app.ai.resume_session_version`
+
+`app.credential.token_fingerprint` appears on GitHub installation mint
+(`plugin.log.info` with `app.log.message=github.installation_token.issued`) and
+on `sandbox.egress.upstream_auth.rejected` so mint and rejected hops can be
+matched.
 
 ### Skills And Plugins
 
