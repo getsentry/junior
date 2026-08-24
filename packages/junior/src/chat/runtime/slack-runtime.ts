@@ -8,6 +8,7 @@
  */
 import type { Message, MessageContext, Thread } from "chat";
 import type { Destination } from "@sentry/junior-plugin-api";
+import { isExperimentalFeatureEnabled } from "@/chat/experimental";
 import { getSubscribedReplyPreflightDecision } from "@/chat/services/subscribed-decision";
 import { isProviderRetryError } from "@/chat/services/provider-error";
 import { AuthorizationFlowDisabledError } from "@/chat/services/auth-pause";
@@ -963,6 +964,40 @@ export function createSlackTurnRuntime<
               thread,
               message,
               decision: { shouldReply: false, reason },
+              context: threadContext,
+              ack: hooks.ack,
+              text: combinedText,
+            });
+            return;
+          }
+
+          // When non-mention replies are off, skip prepare and stay quiet unless
+          // the decision unsubscribes the thread (!stop).
+          if (
+            !isResourceEventNotification &&
+            !turnIsExplicitMention &&
+            !isExperimentalFeatureEnabled("passive-routing")
+          ) {
+            const decision = await deps.decideSubscribedReply({
+              rawText: combinedText.rawText,
+              text: combinedText.userText,
+              hasAttachments:
+                content.hasAttachments ||
+                queuedMessages.some(
+                  (queued) => queued.message.attachments.length > 0,
+                ),
+              isExplicitMention: false,
+              context: threadContext,
+            });
+            await maybeHandleThreadOptOutDecision({
+              thread,
+              decision,
+              beforeFirstResponsePost: hooks.beforeFirstResponsePost,
+            });
+            await skipSubscribedMessage({
+              thread,
+              message,
+              decision,
               context: threadContext,
               ack: hooks.ack,
               text: combinedText,

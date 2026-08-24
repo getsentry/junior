@@ -405,6 +405,10 @@ describe("mcp auth runtime slack integration", () => {
     pluginApp = await createPluginAppFixture([EVAL_MCP_PLUGIN_ROOT]);
 
     vi.resetModules();
+    const { restoreSuiteExperimentalFeatures } = await import(
+      "../../fixtures/experimental-setup"
+    );
+    restoreSuiteExperimentalFeatures();
     chatRuntimeModule = await import("../../fixtures/chat-runtime");
     mcpAuthStoreModule = await import("@/chat/mcp/auth-store");
     mcpOauthCallbackHarnessModule =
