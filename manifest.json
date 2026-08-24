@@ -1,0 +1,34 @@
+{
+  "commitSha": "8ee446255d72a15792a6f8fb129e63bfe027a951",
+  "mode": "path",
+  "reasons": [
+    "packages/junior-dashboard/src/client/conversations/TranscriptMarkdown.tsx",
+    "packages/junior-dashboard/src/client/pages/dev/ComponentsPage.tsx",
+    "packages/junior-dashboard/src/mock-reporting/fixtures.ts"
+  ],
+  "scenarioIds": [
+    "gallery-foundations",
+    "gallery-charts",
+    "gallery-transcripts",
+    "gallery-index"
+  ],
+  "shots": [
+    {
+      "file": "gallery-foundations__desktop.png",
+      "label": "Gallery · Foundations · desktop"
+    },
+    {
+      "file": "gallery-charts__desktop.png",
+      "label": "Gallery · Charts · desktop"
+    },
+    {
+      "file": "gallery-transcripts__desktop.png",
+      "label": "Gallery · Transcripts · desktop"
+    },
+    {
+      "file": "gallery-index__desktop.png",
+      "label": "Component gallery index · desktop"
+    }
+  ],
+  "skipped": false
+}
