@@ -24,9 +24,11 @@ conversation.
   event publisher; core binds the plugin namespace and never needs the raw
   provider webhook. Publication requires an active registration that declares
   the event type.
-- Plugins declare resource types, supported and suggested event types, and
-  ingress readiness on their registration. Core builds one enabled runtime
-  catalog for search, tool schemas, and validation.
+- Plugins declare resource types, supported and suggested event types, optional
+  match fields, and ingress readiness on their registration. Core builds one
+  enabled runtime catalog for search, tool schemas, and validation. A declared
+  match field must appear on trusted event data for events of that resource
+  type.
 - `searchResourceEventTypes` discovers that catalog without creating anything.
   `watchResourceEvents` creates a temporary resource subscription for the
   current Slack thread. Concrete identifiers still come from plugin tool
@@ -47,8 +49,10 @@ conversation.
   on and what it did or needs next. Stable handling rules live in runtime and
   docs, not a long per-event prompt (`notification.ts`).
 - A subscription selector is one Slack workspace, one namespace, one
-  identifier, and one or more event types. `resourceType` and `label` are
-  presentation metadata, not match keys.
+  identifier, and one or more event types. Optional `match` adds exact trusted
+  facts from the resource type `matchFields`. Core drops events that do not
+  match before any wake. `resourceType` and `label` are presentation metadata,
+  not match keys.
 - Duplicate provider deliveries must not create duplicate conversation work.
 - A plugin cannot use a resource event to widen conversation visibility or
   credential authority.

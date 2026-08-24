@@ -2,8 +2,12 @@ import { createHash } from "node:crypto";
 import type { Lock, StateAdapter } from "chat";
 import {
   destinationSchema,
+  resourceEventMatchSchema,
+  resourceEventMatches,
   resourceEventTypeSchema,
   type Destination,
+  type ResourceEventData,
+  type ResourceEventMatch,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import { getStateAdapter } from "@/chat/state/adapter";
@@ -32,6 +36,7 @@ const subscriptionSchema = z
     id: z.string().min(1),
     intent: z.string().min(1),
     label: z.string().min(1),
+    match: resourceEventMatchSchema.optional(),
     namespace: z.string().min(1),
     identifier: z.string().min(1),
     resourceType: z.string().min(1),
@@ -49,6 +54,7 @@ export interface CreateResourceEventSubscriptionInput {
   expiresAtMs: number;
   intent: string;
   label: string;
+  match?: ResourceEventMatch;
   namespace: string;
   identifier: string;
   resourceType: string;
@@ -189,16 +195,27 @@ async function readSubscriptionIdIndex(
   return subscriptionIdIndexSchema.parse(value);
 }
 
+function stableMatchKey(match: ResourceEventMatch | undefined): string {
+  if (!match || Object.keys(match).length === 0) return "";
+  return JSON.stringify(
+    Object.fromEntries(
+      Object.entries(match).sort(([left], [right]) => left.localeCompare(right)),
+    ),
+  );
+}
+
 function buildSubscriptionId(input: {
   conversationId: string;
   events: string[];
+  match?: ResourceEventMatch;
   namespace: string;
   identifier: string;
   teamId: string;
 }): string {
   const eventKey = [...new Set(input.events)].sort().join("\0");
+  const matchKey = stableMatchKey(input.match);
   return `resub_${digest(
-    `${input.teamId}\0${input.namespace}\0${input.identifier}\0${input.conversationId}\0${eventKey}`,
+    `${input.teamId}\0${input.namespace}\0${input.identifier}\0${input.conversationId}\0${eventKey}\0${matchKey}`,
   )}`;
 }
 
@@ -285,6 +302,7 @@ function activeAt(
 function matchesEvent(
   subscription: ResourceEventSubscription,
   input: {
+    data?: ResourceEventData;
     eventType: string;
     nowMs: number;
     namespace: string;
@@ -297,7 +315,8 @@ function matchesEvent(
     subscription.identifier === input.identifier &&
     subscriptionTeamId(subscription.destination) === input.teamId &&
     subscription.events.includes(input.eventType) &&
-    activeAt(subscription, input.nowMs)
+    activeAt(subscription, input.nowMs) &&
+    resourceEventMatches(subscription.match, input.data)
   );
 }
 
@@ -318,9 +337,12 @@ export async function createResourceEventSubscription(
   if (input.expiresAtMs <= nowMs) {
     throw new Error("Resource event subscription expiry must be in the future");
   }
+  const match =
+    input.match && Object.keys(input.match).length > 0 ? input.match : undefined;
   const id = buildSubscriptionId({
     conversationId: input.conversationId,
     events,
+    match,
     namespace: input.namespace,
     identifier: input.identifier,
     teamId: subscriptionTeamId(input.destination),
@@ -334,6 +356,7 @@ export async function createResourceEventSubscription(
     id,
     intent: input.intent,
     label: input.label,
+    ...(match ? { match } : undefined),
     namespace: input.namespace,
     identifier: input.identifier,
     resourceType: input.resourceType,
@@ -459,6 +482,7 @@ export async function cancelSubscriptions(input: {
 
 /** Find active subscriptions interested in a normalized resource event. */
 export async function findMatchingResourceEventSubscriptions(input: {
+  data?: ResourceEventData;
   eventType: string;
   nowMs?: number;
   namespace: string;
@@ -482,6 +506,7 @@ export async function findMatchingResourceEventSubscriptions(input: {
     (record): record is ResourceEventSubscription =>
       record !== undefined &&
       matchesEvent(record, {
+        data: input.data,
         eventType: input.eventType,
         nowMs,
         namespace: input.namespace,
@@ -493,6 +518,7 @@ export async function findMatchingResourceEventSubscriptions(input: {
 
 /** Recheck and deliver a matched subscription while holding its status lock. */
 export async function deliverResourceEventSubscription(input: {
+  data?: ResourceEventData;
   deliver: (subscription: ResourceEventSubscription) => Promise<boolean>;
   eventType: string;
   nowMs?: number;
@@ -517,6 +543,7 @@ export async function deliverResourceEventSubscription(input: {
       if (
         !current ||
         !matchesEvent(current, {
+          data: input.data,
           eventType: input.eventType,
           nowMs,
           namespace: input.namespace,

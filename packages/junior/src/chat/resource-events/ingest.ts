@@ -20,6 +20,7 @@ export async function ingestResourceEvent(
   const event = resourceEventSchema.parse(input);
   const nowMs = options.nowMs ?? Date.now();
   const subscriptions = await findMatchingResourceEventSubscriptions({
+    data: event.data,
     eventType: event.eventType,
     nowMs,
     namespace: event.namespace,
@@ -33,6 +34,7 @@ export async function ingestResourceEvent(
   for (const subscription of subscriptions) {
     try {
       const delivered = await deliverResourceEventSubscription({
+        data: event.data,
         eventType: event.eventType,
         namespace: event.namespace,
         identifier: event.identifier,

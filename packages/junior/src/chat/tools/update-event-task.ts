@@ -21,6 +21,15 @@ import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 
 /** Return whether an edit changes the task's executable event source. */
+function stableMatchJson(match: EventTask["trigger"]["match"]): string {
+  if (!match || Object.keys(match).length === 0) return "";
+  return JSON.stringify(
+    Object.fromEntries(
+      Object.entries(match).sort(([left], [right]) => left.localeCompare(right)),
+    ),
+  );
+}
+
 function changesEventTaskTrigger(
   current: EventTask["trigger"],
   next: EventTask["trigger"],
@@ -31,7 +40,8 @@ function changesEventTaskTrigger(
     current.namespace !== next.namespace ||
     current.identifier !== next.identifier ||
     currentEvents.length !== nextEvents.length ||
-    currentEvents.some((event, index) => event !== nextEvents[index])
+    currentEvents.some((event, index) => event !== nextEvents[index]) ||
+    stableMatchJson(current.match) !== stableMatchJson(next.match)
   );
 }
 
@@ -87,9 +97,9 @@ export function createUpdateEventTaskTool(
     outputSchema: eventTaskToolResultSchema,
     async execute(input) {
       const current = await writableEventTask(context, input.taskId);
-      if (input.trigger) {
-        requireSupportedEventTaskTrigger(catalog, input.trigger);
-      }
+      const match = input.trigger
+        ? requireSupportedEventTaskTrigger(catalog, input.trigger)
+        : undefined;
       const { actor } = requireEventTaskSlackContext(context);
       const isCreator = actor.userId === current.createdBy.slackUserId;
       if (input.credentialMode === "creator" && !isCreator) {
@@ -115,6 +125,7 @@ export function createUpdateEventTaskTool(
             resourceType: input.trigger.resourceType,
             label: input.trigger.label,
             events: [...new Set(input.trigger.events)],
+            ...(match ? { match } : undefined),
           }
         : current.trigger;
       const nextInstruction =

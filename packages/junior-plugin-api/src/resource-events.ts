@@ -43,11 +43,98 @@ export const resourceTypeSchema = z
     "Canonical plugin-defined resource type, such as issue or pull_request.",
   );
 
+const RESOURCE_EVENT_MATCH_FIELD_NAME =
+  /^[a-z][a-zA-Z0-9]*$/;
+
+/** One exact fact a watch or event task may require on trusted event data. */
+export const resourceEventMatchFieldSchema = z
+  .object({
+    kind: z.enum(["boolean", "string", "number"]),
+    description: z.string().trim().min(1).max(200),
+    enum: z.array(z.string().min(1)).min(1).optional(),
+  })
+  .strict()
+  .superRefine((field, context) => {
+    if (field.enum && field.kind !== "string") {
+      context.addIssue({
+        code: "custom",
+        message: 'Resource event match field enum requires kind "string".',
+        path: ["enum"],
+      });
+    }
+  });
+
+export const resourceEventMatchFieldsSchema = z
+  .record(z.string().regex(RESOURCE_EVENT_MATCH_FIELD_NAME), resourceEventMatchFieldSchema)
+  .superRefine((fields, context) => {
+    if (Object.keys(fields).length > RESOURCE_EVENT_DATA_MAX_KEYS) {
+      context.addIssue({
+        code: "custom",
+        message: `Resource event match fields may include at most ${RESOURCE_EVENT_DATA_MAX_KEYS} keys.`,
+      });
+    }
+  });
+
+/** Exact trusted facts required before a watch or event task runs. */
+export const resourceEventMatchSchema = z
+  .record(
+    z.string().regex(RESOURCE_EVENT_MATCH_FIELD_NAME),
+    z.union([
+      z.boolean(),
+      z.number().finite(),
+      z.string().min(1),
+      z.array(z.union([z.number().finite(), z.string().min(1)])).min(1),
+    ]),
+  )
+  .superRefine((match, context) => {
+    if (Object.keys(match).length > RESOURCE_EVENT_DATA_MAX_KEYS) {
+      context.addIssue({
+        code: "custom",
+        message: `Resource event match may include at most ${RESOURCE_EVENT_DATA_MAX_KEYS} keys.`,
+      });
+    }
+    for (const [key, value] of Object.entries(match)) {
+      if (!Array.isArray(value)) continue;
+      if (value.some((entry) => typeof entry === "boolean")) {
+        context.addIssue({
+          code: "custom",
+          message: `Resource event match field "${key}" cannot use a boolean list.`,
+          path: [key],
+        });
+      }
+    }
+  });
+
+export type ResourceEventMatch = z.output<typeof resourceEventMatchSchema>;
+export type ResourceEventMatchFields = z.output<
+  typeof resourceEventMatchFieldsSchema
+>;
+
+/** Return whether trusted event data satisfies one exact match object. */
+export function resourceEventMatches(
+  match: ResourceEventMatch | undefined,
+  data: ResourceEventData | undefined,
+): boolean {
+  if (!match || Object.keys(match).length === 0) return true;
+  if (!data) return false;
+  for (const [key, expected] of Object.entries(match)) {
+    const actual = data[key];
+    if (actual === undefined) return false;
+    if (Array.isArray(expected)) {
+      if (!expected.some((value) => Object.is(value, actual))) return false;
+      continue;
+    }
+    if (!Object.is(expected, actual)) return false;
+  }
+  return true;
+}
+
 export const pluginResourceEventTypeSchema = z
   .object({
     type: resourceTypeSchema,
     supportedEvents: z.array(resourceEventTypeSchema).min(1),
     suggestedEvents: z.array(resourceEventTypeSchema).optional(),
+    matchFields: resourceEventMatchFieldsSchema.optional(),
     guidance: z
       .record(
         resourceEventTypeSchema,

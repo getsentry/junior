@@ -218,7 +218,9 @@ const checkSuiteWebhookSchema = z.object({
     head_sha: z.string().optional(),
     id: z.number().optional(),
     latest_check_runs_count: z.number().optional().nullable(),
-    pull_requests: z.array(z.object({ number: z.number() })),
+    pull_requests: z.array(
+      z.object({ draft: z.boolean().optional(), number: z.number() }),
+    ),
   }),
   repository: repositorySchema,
 });
@@ -264,6 +266,7 @@ export function buildCheckSuiteResourceEvent(args: {
   eventType: "pull_request.checks.failed" | "pull_request.checks.recovered";
   failingChecks?: GitHubFailingCheck[];
   headSha?: string;
+  isDraft?: boolean;
   latestCheckRunsCount?: number;
   pullRequestNumber: number;
   repo: string;
@@ -282,6 +285,7 @@ export function buildCheckSuiteResourceEvent(args: {
       : `${resource.label} check suite recovered${shortSha ? ` for ${shortSha}` : ""}.`;
 
   const data: Record<string, unknown> = {
+    isDraft: args.isDraft === true,
     repo: args.repo,
     pullRequest: args.pullRequestNumber,
     scope: "check_suite",
@@ -423,6 +427,7 @@ function normalizeCheckSuiteEvents(
             ? options?.failingChecks
             : undefined,
         headSha,
+        isDraft: pullRequest.draft === true,
         latestCheckRunsCount:
           typeof suite.latest_check_runs_count === "number"
             ? suite.latest_check_runs_count
@@ -443,6 +448,7 @@ const issueCommentWebhookSchema = z.object({
     user: z.object({ login: z.string().optional() }).optional(),
   }),
   issue: z.object({
+    draft: z.boolean().optional(),
     number: z.number(),
     pull_request: z.object({ url: z.string().min(1) }).optional(),
   }),
@@ -471,6 +477,7 @@ function normalizeIssueCommentEvents(
         occurredAtMs: Date.now(),
         identifier: resource.identifier,
         trustedSummary: `${resource.label} received a comment${author ? ` from ${author}` : ""}.`,
+        data: { isDraft: parsed.data.issue.draft === true },
         untrustedText: parsed.data.comment.body,
       },
       input.repo,
@@ -581,7 +588,7 @@ const pullRequestReviewCommentWebhookSchema = z.object({
     body: z.string(),
     user: z.object({ login: z.string().optional() }).optional(),
   }),
-  pull_request: z.object({ number: z.number() }),
+  pull_request: z.object({ draft: z.boolean().optional(), number: z.number() }),
   repository: repositorySchema,
 });
 
@@ -606,6 +613,7 @@ function normalizePullRequestReviewCommentEvent(
       occurredAtMs: Date.now(),
       identifier: resource.identifier,
       trustedSummary: `${resource.label} received an inline review comment${author ? ` from ${author}` : ""}.`,
+      data: { isDraft: parsed.data.pull_request.draft === true },
       untrustedText: parsed.data.comment.body,
     },
     repo,
@@ -614,7 +622,7 @@ function normalizePullRequestReviewCommentEvent(
 
 const pullRequestReviewWebhookSchema = z.object({
   action: z.string(),
-  pull_request: z.object({ number: z.number() }),
+  pull_request: z.object({ draft: z.boolean().optional(), number: z.number() }),
   repository: repositorySchema,
   review: z.object({
     body: z.string().optional().nullable(),
@@ -658,6 +666,7 @@ function normalizePullRequestReviewEvent(
           : eventType === "pull_request.review.changes_requested"
             ? `${resource.label} received requested changes${reviewer ? ` from ${reviewer}` : ""}.`
             : `${resource.label} received a review comment${reviewer ? ` from ${reviewer}` : ""}.`,
+      data: { isDraft: parsed.data.pull_request.draft === true },
       untrustedText: parsed.data.review.body ?? undefined,
     },
     repo,
@@ -702,6 +711,7 @@ function pullRequestEventText(pullRequest: {
 function pullRequestLifecycleEvents(input: {
   deliveryId: string;
   eventType: string;
+  isDraft: boolean;
   occurredAtMs: number;
   repo: string;
   resource: ReturnType<typeof gitHubPullRequestResource>;
@@ -717,6 +727,7 @@ function pullRequestLifecycleEvents(input: {
       identifier: input.resource.identifier,
       ...(input.terminal ? { terminal: true } : undefined),
       trustedSummary: input.trustedSummary,
+      data: { isDraft: input.isDraft },
       ...(input.untrustedText ? { untrustedText: input.untrustedText } : undefined),
     },
     input.repo,
@@ -736,6 +747,7 @@ function normalizePullRequestEvent(
     number: parsed.data.pull_request.number,
     repo,
   });
+  const isDraft = parsed.data.pull_request.draft === true;
   const untrustedText = pullRequestEventText(parsed.data.pull_request);
 
   if (parsed.data.action === "opened") {
@@ -744,6 +756,7 @@ function normalizePullRequestEvent(
     const events = pullRequestLifecycleEvents({
       deliveryId,
       eventType: "pull_request.opened",
+      isDraft,
       occurredAtMs: openedAtMs,
       repo,
       resource,
@@ -752,11 +765,12 @@ function normalizePullRequestEvent(
     });
     // Non-draft opens are immediately reviewable; emit the same signal used
     // when a draft later leaves draft state.
-    if (parsed.data.pull_request.draft !== true) {
+    if (!isDraft) {
       events.push(
         ...pullRequestLifecycleEvents({
           deliveryId,
           eventType: "pull_request.ready_for_review",
+          isDraft: false,
           occurredAtMs: openedAtMs,
           repo,
           resource,
@@ -772,6 +786,7 @@ function normalizePullRequestEvent(
     return pullRequestLifecycleEvents({
       deliveryId,
       eventType: "pull_request.ready_for_review",
+      isDraft: false,
       occurredAtMs:
         providerTime(parsed.data.pull_request.updated_at) ?? Date.now(),
       repo,
@@ -788,6 +803,7 @@ function normalizePullRequestEvent(
   return pullRequestLifecycleEvents({
     deliveryId,
     eventType,
+    isDraft,
     occurredAtMs:
       providerTime(
         parsed.data.pull_request.merged

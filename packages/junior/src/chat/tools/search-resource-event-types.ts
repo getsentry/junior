@@ -15,6 +15,18 @@ const searchedResourceTypeSchema = z
     type: z.string(),
     supportedEvents: z.array(z.string()),
     suggestedEvents: z.array(z.string()).optional(),
+    matchFields: z
+      .record(
+        z.string(),
+        z
+          .object({
+            kind: z.enum(["boolean", "string", "number"]),
+            description: z.string(),
+            enum: z.array(z.string()).optional(),
+          })
+          .strict(),
+      )
+      .optional(),
   })
   .strict();
 
@@ -43,6 +55,9 @@ function searchableResourceTypes(catalog: ResourceEventCatalog) {
         supportedEvents: [...resourceType.supportedEvents].sort(),
         ...(resourceType.suggestedEvents
           ? { suggestedEvents: [...resourceType.suggestedEvents].sort() }
+          : undefined),
+        ...(resourceType.matchFields
+          ? { matchFields: resourceType.matchFields }
           : undefined),
       })),
     )
@@ -102,6 +117,7 @@ export function createSearchResourceEventTypesTool(
               resourceType.type,
               ...resourceType.supportedEvents,
               ...(resourceType.suggestedEvents ?? []),
+              ...Object.keys(resourceType.matchFields ?? {}),
             ].join(" "),
           );
           return terms.every((term) => text.includes(term));

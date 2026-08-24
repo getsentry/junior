@@ -29,6 +29,12 @@ watch this pull request and tell me when its checks fail
 whenever an issue is reopened in this repository, summarize why in this channel
 ```
 
+```text
+whenever a non-draft pull request opens in this repository, review it
+```
+
+Optional `match` facts come from the resource type. Junior drops events that do not match before it wakes the agent.
+
 ## Limits
 
 - Watches default to 14 days and cannot exceed 30 days.

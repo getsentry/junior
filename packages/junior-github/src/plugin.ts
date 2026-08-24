@@ -722,6 +722,12 @@ export function githubPlugin(
           type: "pull_request",
           supportedEvents: [...GITHUB_PULL_REQUEST_EVENTS],
           suggestedEvents: [...GITHUB_PULL_REQUEST_SUGGESTED_EVENTS],
+          matchFields: {
+            isDraft: {
+              kind: "boolean",
+              description: "true when the pull request is a draft",
+            },
+          },
           ...(options.pullRequestEvents?.guidance
             ? { guidance: options.pullRequestEvents.guidance }
             : undefined),

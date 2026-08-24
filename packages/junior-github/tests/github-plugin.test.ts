@@ -547,6 +547,12 @@ describe("github plugin", () => {
     expect(pullRequest?.guidance).toEqual({
       "pull_request.checks.failed": "Inspect the failed checks.",
     });
+    expect(pullRequest?.matchFields).toEqual({
+      isDraft: {
+        kind: "boolean",
+        description: "true when the pull request is a draft",
+      },
+    });
   });
 
   it("registers release source watches", () => {

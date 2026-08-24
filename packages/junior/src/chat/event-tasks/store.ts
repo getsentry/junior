@@ -1,4 +1,8 @@
-import { type ResourceEvent, type User } from "@sentry/junior-plugin-api";
+import {
+  resourceEventMatches,
+  type ResourceEvent,
+  type User,
+} from "@sentry/junior-plugin-api";
 import { and, asc, desc, eq, inArray, or, sql } from "drizzle-orm";
 import type { JuniorDatabase } from "@/db/db";
 import { juniorDestinations } from "@/db/schema/destinations";
@@ -201,5 +205,9 @@ export async function findMatchingEventTasks(
     .orderBy(asc(juniorEventTasks.createdAtMs), asc(juniorEventTasks.id));
   return rows
     .map(parseTask)
-    .filter((task) => task.trigger.events.includes(event.eventType));
+    .filter(
+      (task) =>
+        task.trigger.events.includes(event.eventType) &&
+        resourceEventMatches(task.trigger.match, event.data),
+    );
 }
