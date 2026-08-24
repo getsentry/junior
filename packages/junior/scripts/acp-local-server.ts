@@ -37,8 +37,10 @@ const harness = await createConversationWorkWebHarness({
     process.env.JUNIOR_ACP_LOCAL_REPLY?.trim() || DEFAULT_REPLY,
   ),
 });
-// Use the request origin instead of a deployed callback origin from .env.local.
+// Use the loopback request origin, not deployed callback origins from env files.
 delete process.env.JUNIOR_BASE_URL;
+delete process.env.VERCEL_PROJECT_PRODUCTION_URL;
+delete process.env.VERCEL_URL;
 const app = await createApp({
   adapters: [acpAdapter()],
   conversationWork: harness.conversationWork,
