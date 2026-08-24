@@ -62,7 +62,6 @@ describe("remote ACP recovery", () => {
         authRequired: false,
         baseURL: "junior.example.com",
       },
-      experimental: { subagents: true },
     });
     const initialized = await app.fetch(initializeRequest());
     const connectionId = initialized.headers.get("Acp-Connection-Id");
@@ -167,7 +166,6 @@ describe("remote ACP recovery", () => {
     const app = await createApp({
       conversationWork: harness.conversationWork,
       adapters: [acpAdapter()],
-      experimental: { subagents: true },
     });
     const initialized = await app.fetch(initializeRequest());
     const connectionId = initialized.headers.get("Acp-Connection-Id");
@@ -272,12 +270,10 @@ describe("remote ACP recovery", () => {
     const app = await createApp({
       conversationWork: harness.conversationWork,
       adapters: [acpAdapter()],
-      experimental: { subagents: true },
     });
     const secondApp = await createApp({
       conversationWork: createIndependentConversationWork(harness),
       adapters: [acpAdapter()],
-      experimental: { subagents: true },
     });
     const sessionCreated = deferred<string>();
     const firstPrompt = withAcpClient({
@@ -357,12 +353,10 @@ describe("remote ACP recovery", () => {
       const app = await createApp({
         conversationWork: harness.conversationWork,
         adapters: [acpAdapter()],
-        experimental: { subagents: true },
       });
       const secondApp = await createApp({
         conversationWork: createIndependentConversationWork(harness),
         adapters: [acpAdapter()],
-        experimental: { subagents: true },
       });
       const sessionCreated = deferred<string>();
       let cancelActiveTurn: (() => Promise<void>) | undefined;
@@ -443,12 +437,10 @@ describe("remote ACP recovery", () => {
     const app = await createApp({
       conversationWork: harness.conversationWork,
       adapters: [acpAdapter()],
-      experimental: { subagents: true },
     });
     const secondApp = await createApp({
       conversationWork: createIndependentConversationWork(harness),
       adapters: [acpAdapter()],
-      experimental: { subagents: true },
     });
     const sessionCreated = deferred<string>();
     let cancelActiveTurn: (() => Promise<void>) | undefined;
@@ -555,12 +547,10 @@ describe("remote ACP recovery", () => {
         state: observedState,
       },
       adapters: [acpAdapter()],
-      experimental: { subagents: true },
     });
     const secondApp = await createApp({
       conversationWork: createIndependentConversationWork(harness),
       adapters: [acpAdapter()],
-      experimental: { subagents: true },
     });
     const sessionCreated = deferred<string>();
     const secondPromptPosted = deferred();
@@ -771,12 +761,10 @@ describe("remote ACP recovery", () => {
     const app = await createApp({
       conversationWork: harness.conversationWork,
       adapters: [acpAdapter()],
-      experimental: { subagents: true },
     });
     const secondApp = await createApp({
       conversationWork: createIndependentConversationWork(harness),
       adapters: [acpAdapter()],
-      experimental: { subagents: true },
     });
     const sessionId = await withAcpClient({
       app,
@@ -839,7 +827,6 @@ describe("remote ACP recovery", () => {
     const app = await createApp({
       conversationWork: harness.conversationWork,
       adapters: [acpAdapter()],
-      experimental: { subagents: true },
     });
     const sessionId = await withAcpClient({
       app,

@@ -10,6 +10,7 @@ import { userSchema, type User } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import type { AcpErrorContext, ReportAcpError } from "./errors";
 import type { ConversationPort } from "./conversations";
+import { acpInboundMessageSchema } from "./schema";
 import { sleep } from "./sleep";
 import {
   fenceLock,
@@ -36,39 +37,6 @@ const SSE_KEEP_ALIVE_MS = 15_000;
 const SSE_MAINTENANCE_INTERVAL_MS = 1_000;
 
 const jsonRpcIdSchema = z.union([z.string(), z.number().finite(), z.null()]);
-
-const jsonRpcErrorSchema = z
-  .object({
-    code: z.number().int(),
-    data: z.unknown().optional(),
-    message: z.string(),
-  })
-  .strict();
-
-const acpMessageSchema = z.union([
-  z
-    .object({
-      id: jsonRpcIdSchema.optional(),
-      jsonrpc: z.literal("2.0"),
-      method: z.string().min(1),
-      params: z.unknown().optional(),
-    })
-    .strict(),
-  z
-    .object({
-      id: jsonRpcIdSchema,
-      jsonrpc: z.literal("2.0"),
-      result: z.unknown(),
-    })
-    .strict(),
-  z
-    .object({
-      error: jsonRpcErrorSchema,
-      id: jsonRpcIdSchema,
-      jsonrpc: z.literal("2.0"),
-    })
-    .strict(),
-]);
 
 const acpConnectionSchema = z
   .object({
@@ -99,7 +67,7 @@ const acpStreamOutputSchema = z.discriminatedUnion("kind", [
   z
     .object({
       kind: z.literal("message"),
-      message: acpMessageSchema,
+      message: acpInboundMessageSchema,
     })
     .strict(),
   z.object({ kind: z.literal("replay") }).strict(),

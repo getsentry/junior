@@ -9,10 +9,8 @@ import path from "node:path";
 import { serve } from "@hono/node-server";
 import { createApp } from "@/app";
 import { acpAdapter } from "@sentry/junior-acp";
-import { completeAcpAuthorization } from "@sentry/junior-acp/testing";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { getSqlExecutor } from "@/chat/db";
-import { resolveViewerUser } from "@/chat/plugins/viewer";
 import {
   closeApiTurnWorkFixture,
   createConversationWorkWebHarness,
@@ -45,7 +43,6 @@ const app = await createApp({
   adapters: [acpAdapter()],
   conversationWork: harness.conversationWork,
   dashboard: { authRequired: false },
-  experimental: { subagents: true },
 });
 let drainActive = false;
 
@@ -65,27 +62,7 @@ async function drainQueuedWork(): Promise<void> {
 
 const drainTimer = setInterval(() => void drainQueuedWork(), 10);
 const server = serve({
-  async fetch(request) {
-    const match = /^\/_junior\/acp\/auth\/([0-9a-f-]+)$/i.exec(
-      new URL(request.url).pathname,
-    );
-    if (request.method === "POST" && match?.[1]) {
-      const value = (await request.formData()).get("code");
-      const userCode = typeof value === "string" ? value : "";
-      const user = await resolveViewerUser(harness.actor.email);
-      if (!user) throw new Error("Local ACP user could not be resolved");
-      const result = await completeAcpAuthorization({
-        state: harness.state,
-        transactionId: match[1],
-        user,
-        userCode,
-      });
-      return new Response(`ACP authorization ${result}`, {
-        status: result === "completed" ? 200 : 403,
-      });
-    }
-    return app.fetch(request);
-  },
+  fetch: app.fetch,
   hostname: "127.0.0.1",
   port: localPort(),
 });

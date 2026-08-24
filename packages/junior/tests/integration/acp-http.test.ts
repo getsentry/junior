@@ -35,7 +35,6 @@ describe("remote ACP HTTP", () => {
     const harness = await createConversationWorkWebHarness();
     const app = await createApp({
       conversationWork: harness.conversationWork,
-      experimental: { subagents: true },
     });
 
     const response = await app.fetch(initializeRequest());
@@ -48,7 +47,6 @@ describe("remote ACP HTTP", () => {
     const app = await createApp({
       conversationWork: harness.conversationWork,
       adapters: [acpAdapter()],
-      experimental: { subagents: true },
     });
 
     const anonymous = await app.fetch(initializeRequest());
@@ -99,7 +97,6 @@ describe("remote ACP HTTP", () => {
     const app = await createApp({
       conversationWork: harness.conversationWork,
       adapters: [acpAdapter()],
-      experimental: { subagents: true },
     });
     const nullId = await app.fetch(initializeRequest(null));
     const malformed = await app.request(ACP_URL, {
@@ -163,7 +160,6 @@ describe("remote ACP HTTP", () => {
     const app = await createApp({
       conversationWork: harness.conversationWork,
       adapters: [acpAdapter()],
-      experimental: { subagents: true },
     });
 
     const error = await withAcpClient({
@@ -204,12 +200,10 @@ describe("remote ACP HTTP", () => {
     const app = await createApp({
       conversationWork: harness.conversationWork,
       adapters: [acpAdapter()],
-      experimental: { subagents: true },
     });
     const secondApp = await createApp({
       conversationWork: createIndependentConversationWork(harness),
       adapters: [acpAdapter()],
-      experimental: { subagents: true },
     });
     const fetch = appFetch(app, secondApp);
     const firstUpdates: acp.SessionUpdate[] = [];
@@ -427,7 +421,6 @@ describe("remote ACP HTTP", () => {
     const app = await createApp({
       conversationWork: harness.conversationWork,
       adapters: [acpAdapter()],
-      experimental: { subagents: true },
     });
 
     await withRawAcpConnection({
@@ -519,12 +512,10 @@ describe("remote ACP HTTP", () => {
     const app = await createApp({
       conversationWork: harness.conversationWork,
       adapters: [acpAdapter()],
-      experimental: { subagents: true },
     });
     const secondApp = await createApp({
       conversationWork: createIndependentConversationWork(harness),
       adapters: [acpAdapter()],
-      experimental: { subagents: true },
     });
     const initialized = await app.fetch(initializeRequest());
     const connectionId = initialized.headers.get("Acp-Connection-Id");
@@ -572,7 +563,6 @@ describe("remote ACP HTTP", () => {
     const app = await createApp({
       conversationWork: createIndependentConversationWork(harness, state),
       adapters: [acpAdapter()],
-      experimental: { subagents: true },
     });
     const initialized = await app.fetch(initializeRequest());
     const connectionId = initialized.headers.get("Acp-Connection-Id");
@@ -616,7 +606,6 @@ describe("remote ACP HTTP", () => {
     const app = await createApp({
       conversationWork: harness.conversationWork,
       adapters: [acpAdapter()],
-      experimental: { subagents: true },
     });
     const promptAccepted = deferred();
     const sessionStreamOpened = deferred<Response>();
@@ -750,12 +739,10 @@ describe("remote ACP HTTP", () => {
     const app = await createApp({
       conversationWork: harness.conversationWork,
       adapters: [acpAdapter()],
-      experimental: { subagents: true },
     });
     const secondApp = await createApp({
       conversationWork: createIndependentConversationWork(harness),
       adapters: [acpAdapter()],
-      experimental: { subagents: true },
     });
     const sessionCreated = deferred<string>();
     let cancelActiveTurn: (() => Promise<void>) | undefined;
@@ -862,7 +849,6 @@ describe("remote ACP HTTP", () => {
     const app = await createApp({
       conversationWork: harness.conversationWork,
       adapters: [acpAdapter()],
-      experimental: { subagents: true },
     });
     let sessionId: string | undefined;
     const failed = withAcpClient({
@@ -920,7 +906,6 @@ describe("remote ACP HTTP", () => {
     const app = await createApp({
       conversationWork: harness.conversationWork,
       adapters: [acpAdapter()],
-      experimental: { subagents: true },
     });
     const errors = await withAcpClient({
       app,
