@@ -30,6 +30,7 @@ import {
 } from "./resource-events/issue.js";
 import {
   GITHUB_PULL_REQUEST_EVENTS,
+  GITHUB_PULL_REQUEST_MATCH_FIELDS,
   GITHUB_PULL_REQUEST_SUGGESTED_EVENTS,
   type GitHubPullRequestEventOptions,
 } from "./resource-events/pull-request.js";
@@ -722,12 +723,7 @@ export function githubPlugin(
           type: "pull_request",
           supportedEvents: [...GITHUB_PULL_REQUEST_EVENTS],
           suggestedEvents: [...GITHUB_PULL_REQUEST_SUGGESTED_EVENTS],
-          matchFields: {
-            isDraft: {
-              kind: "boolean",
-              description: "true when the pull request is a draft",
-            },
-          },
+          matchFields: GITHUB_PULL_REQUEST_MATCH_FIELDS,
           ...(options.pullRequestEvents?.guidance
             ? { guidance: options.pullRequestEvents.guidance }
             : undefined),
@@ -739,10 +735,7 @@ export function githubPlugin(
         },
         {
           type: "repository",
-          supportedEvents: [
-            ...GITHUB_ISSUE_EVENTS,
-            ...GITHUB_PULL_REQUEST_EVENTS,
-          ],
+          supportedEvents: [...GITHUB_ISSUE_EVENTS, ...GITHUB_PULL_REQUEST_EVENTS],
           suggestedEvents: [
             "issue.opened",
             "pull_request.opened",

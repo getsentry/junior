@@ -41,6 +41,14 @@ export const GITHUB_PULL_REQUEST_SUGGESTED_EVENTS = [
   "pull_request.closed_unmerged",
 ] as const;
 
+/** Exact facts GitHub always sets on pull request event data. */
+export const GITHUB_PULL_REQUEST_MATCH_FIELDS = {
+  isDraft: {
+    kind: "boolean" as const,
+    description: "true when the pull request is a draft",
+  },
+};
+
 /** Build the stable pull request identity shared by tools and webhooks. */
 export function gitHubPullRequestResource(input: {
   number: number;
