@@ -137,22 +137,15 @@ export type PluginRouteMethod =
 
 export type PluginRouteHandler = (
   request: Request,
+  user?: User,
 ) => Promise<Response> | Response;
 
 export interface PluginRoute {
-  auth?: undefined;
+  auth?: "user";
   handler: PluginRouteHandler;
   method?: PluginRouteMethod | PluginRouteMethod[];
   path: string;
 }
-
-/** One HTTP route that receives a host-authenticated User. */
-export type PluginUserRoute = {
-  auth: "user";
-  handler: (request: Request, user: User) => Promise<Response> | Response;
-  method?: PluginRouteMethod | PluginRouteMethod[];
-  path: string;
-};
 
 /** Fetch-compatible plugin HTTP app mounted by Junior. */
 export type PluginRouteApp = {

@@ -21,7 +21,6 @@ import type {
   ResourceEvent,
   SlackConversationLink,
   PluginRegistration,
-  PluginUserRoute,
   RouteRegistrationHookContext,
   SlackToolRegistrationHookContext,
   ToolRegistrationHookContext,
@@ -85,7 +84,7 @@ export interface PluginRouteRegistration extends PluginRoute {
 }
 
 export interface PluginRouteRegistrations {
-  authenticatedRoutes: PluginUserRoute[];
+  authenticatedRoutes: PluginRoute[];
   routes: PluginRouteRegistration[];
 }
 
@@ -802,7 +801,7 @@ export function getPluginTools(
 
 /** Normalize route methods so JS plugins cannot register invalid verbs. */
 function routeMethods(
-  route: PluginRoute | PluginUserRoute,
+  route: PluginRoute,
   pluginName: string,
 ): PluginRouteMethod[] {
   const methods = Array.isArray(route.method)
@@ -864,7 +863,7 @@ export function getPluginRoutes(options: {
   };
   state: StateAdapter;
 }): PluginRouteRegistrations {
-  const authenticatedRoutes: PluginUserRoute[] = [];
+  const authenticatedRoutes: PluginRoute[] = [];
   const routes: PluginRouteRegistration[] = [];
   const seen = new Set<string>();
   const methodsByPath = new Map<string, Set<PluginRouteMethod>>();

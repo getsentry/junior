@@ -1091,6 +1091,7 @@ describe("agent plugin hooks", () => {
                 method: "GET",
                 path: "/_junior/demo/auth",
                 async handler(_request, user) {
+                  if (!user) throw new Error("Authenticated route has no User");
                   await ctx.state.set("item", "one");
                   const item = await ctx.state.get<string>("item");
                   return new Response(`${user.email}:${item}`);
