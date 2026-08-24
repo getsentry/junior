@@ -20,7 +20,9 @@ import { logException, logWarn } from "@/chat/logging";
 import { executeAgentRun } from "@/chat/agent";
 import { normalizeSandboxEgressTracePropagationDomains } from "@/chat/sandbox/egress/tracing";
 import {
+  EXPERIMENTAL_FEATURES,
   getExperimentalFeatures,
+  isKnownExperimentalFeature,
   setExperimentalFeatures,
   type ExperimentalFeaturesConfig,
 } from "@/chat/experimental";
@@ -314,6 +316,19 @@ function warnUnregisteredConfigDefaults(
   for (const key of Object.keys(defaults ?? {})) {
     if (!pluginCatalogRuntime.isConfigKey(key)) {
       logWarn("config.default.unregistered", { "app.config.key": key });
+    }
+  }
+}
+
+function warnUnknownExperimentalFeatures(
+  config: ExperimentalFeaturesConfig | undefined,
+): void {
+  for (const key of Object.keys(config ?? {})) {
+    if (!isKnownExperimentalFeature(key)) {
+      logWarn("experimental.feature.unknown", {
+        "app.experimental.feature": key,
+        "app.experimental.known_features": EXPERIMENTAL_FEATURES.join(", "),
+      });
     }
   }
 }
@@ -748,6 +763,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
       );
     setSandboxResourceConfig(options?.sandbox);
     setExperimentalFeatures(options?.experimental);
+    warnUnknownExperimentalFeatures(options?.experimental);
     setConfigDefaults(options?.configDefaults);
     warnUnregisteredConfigDefaults(options?.configDefaults);
     if (options?.profiles || options?.defaultProfile) {

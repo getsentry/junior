@@ -1,5 +1,3 @@
-import { logWarn } from "@/chat/logging";
-
 /**
  * Known unstable product features that must be opted into explicitly.
  * Add new keys here as features graduate from private experiments; remove them
@@ -23,6 +21,13 @@ function isExperimentalFeature(value: string): value is ExperimentalFeature {
   return EXPERIMENTAL_FEATURE_SET.has(value);
 }
 
+/** Return whether a string is a known experimental feature name. */
+export function isKnownExperimentalFeature(
+  value: string,
+): value is ExperimentalFeature {
+  return isExperimentalFeature(value);
+}
+
 /** Replace app-level experimental opt-ins and return the previous setting. */
 export function setExperimentalFeatures(
   config?: ExperimentalFeaturesConfig,
@@ -43,11 +48,9 @@ export function setExperimentalFeatures(
         `experimental.${rawName} must be a boolean when provided`,
       );
     }
+    // Unknown keys are ignored here. createApp warns about them so removed or
+    // mistyped names do not hard-fail startup under package version skew.
     if (!isExperimentalFeature(rawName)) {
-      logWarn("experimental.feature.unknown", {
-        "app.experimental.feature": rawName,
-        "app.experimental.known_features": EXPERIMENTAL_FEATURES.join(", "),
-      });
       continue;
     }
     next[rawName] = enabled;
