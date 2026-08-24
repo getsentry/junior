@@ -133,7 +133,9 @@ Unstable product surfaces opt in through `createApp({ experimental })`, the same
 pattern used by frameworks such as Next.js. Features default off, may change
 without a stable migration path, and should stay unset in production unless you
 are deliberately dogfooding them. There is no environment-variable opt-in.
-Unknown feature names log a warning and are ignored; they do not fail startup.
+TypeScript rejects unknown feature names at compile time. At runtime, unknown
+names log a warning and are ignored so a removed flag in an already-built app
+does not fail startup.
 
 ```ts
 import { createApp } from "@sentry/junior";

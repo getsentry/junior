@@ -10,20 +10,14 @@ export const EXPERIMENTAL_FEATURES = ["passive-routing", "subagents"] as const;
 /** One known experimental feature name. */
 export type ExperimentalFeature = (typeof EXPERIMENTAL_FEATURES)[number];
 
-/**
- * App-level opt-ins for unstable product features.
- * Known keys stay suggested in TypeScript. Unknown keys are ignored at runtime
- * with a warning so stale or mistyped names do not fail app startup.
- */
+/** App-level opt-ins for unstable product features. */
 export type ExperimentalFeaturesConfig = Readonly<
-  Partial<Record<ExperimentalFeature | (string & {}), boolean>>
+  Partial<Record<ExperimentalFeature, boolean>>
 >;
 
 const EXPERIMENTAL_FEATURE_SET = new Set<string>(EXPERIMENTAL_FEATURES);
 
-let configuredExperimental: Readonly<
-  Partial<Record<ExperimentalFeature, boolean>>
-> = {};
+let configuredExperimental: ExperimentalFeaturesConfig = {};
 
 function isExperimentalFeature(value: string): value is ExperimentalFeature {
   return EXPERIMENTAL_FEATURE_SET.has(value);

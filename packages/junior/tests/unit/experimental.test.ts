@@ -38,6 +38,7 @@ describe("experimental features", () => {
 
     try {
       setExperimentalFeatures({
+        // @ts-expect-error intentional unknown key
         widgets: true,
         subagents: true,
       });

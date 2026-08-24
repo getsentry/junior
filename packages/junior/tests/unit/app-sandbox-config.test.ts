@@ -57,6 +57,7 @@ describe("createApp experimental config", () => {
       await createApp({
         plugins: defineJuniorPlugins([]),
         experimental: {
+          // @ts-expect-error intentional unknown key
           widgets: true,
           subagents: true,
         },
