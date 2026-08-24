@@ -22,13 +22,13 @@ interface AcpAdapterContext {
 
 interface AcpAdapterRoute {
   handler(request: Request): Promise<Response> | Response;
-  method: readonly PluginRouteMethod[];
+  method: PluginRouteMethod[];
   path: string;
 }
 
 interface AcpAuthenticatedRoute {
   handler(request: Request, user: User): Promise<Response> | Response;
-  method: readonly PluginRouteMethod[];
+  method: PluginRouteMethod[];
   path: string;
 }
 

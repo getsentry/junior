@@ -64,6 +64,7 @@ import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { buildDeterministicTurnId } from "@/chat/state/turn-id";
 import {
   appendAndEnqueueInboundMessage,
+  appendAndEnqueueExclusiveInboundMessage,
   type InboundMessage,
 } from "@/chat/task-execution/store";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
@@ -130,6 +131,10 @@ export interface ApiConversationMessageAccepted {
   messageId: string;
   status: "accepted" | "duplicate";
 }
+
+export type ApiConversationMessageAdmission =
+  | ApiConversationMessageAccepted
+  | { conversationId: string; messageId: string; status: "active" };
 
 function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
@@ -209,8 +214,12 @@ function actorFromMetadata(metadata: ApiTurnMailboxMetadata): WebActor {
     platform: "web",
     userId: metadata.authorUserId,
     email: normalizeEmail(metadata.authorEmail),
-    ...(metadata.authorFullName ? { fullName: metadata.authorFullName } : undefined),
-    ...(metadata.authorUserName ? { userName: metadata.authorUserName } : undefined),
+    ...(metadata.authorFullName
+      ? { fullName: metadata.authorFullName }
+      : undefined),
+    ...(metadata.authorUserName
+      ? { userName: metadata.authorUserName }
+      : undefined),
   };
 }
 
@@ -284,9 +293,9 @@ export function buildApiTurnInboundMessage(args: {
       text,
       metadata: {
         authorEmail: normalizeEmail(args.actor.email),
-        ...(args.actor.fullName ? { authorFullName: args.actor.fullName } : undefined),
+        ...(args.actor.fullName && { authorFullName: args.actor.fullName }),
         authorUserId: args.actor.userId,
-        ...(args.actor.userName ? { authorUserName: args.actor.userName } : undefined),
+        ...(args.actor.userName && { authorUserName: args.actor.userName }),
         kind: "api_turn",
         messageId: args.messageId,
       } satisfies ApiTurnMailboxMetadata,
@@ -360,11 +369,19 @@ export async function createAndEnqueueApiConversation(
   );
 }
 
-/** Append one API message to an existing conversation and wake the worker. */
-export async function appendAndEnqueueApiConversationMessage(
+/** Append one API message and optionally require an idle Conversation. */
+export function appendAndEnqueueApiConversationMessage(
+  input: AppendApiConversationMessageInput,
+  options: EnqueueOptions & { exclusive: true },
+): Promise<ApiConversationMessageAdmission>;
+export function appendAndEnqueueApiConversationMessage(
   input: AppendApiConversationMessageInput,
   options: EnqueueOptions,
-): Promise<ApiConversationMessageAccepted> {
+): Promise<ApiConversationMessageAccepted>;
+export async function appendAndEnqueueApiConversationMessage(
+  input: AppendApiConversationMessageInput,
+  options: EnqueueOptions & { exclusive?: boolean },
+): Promise<ApiConversationMessageAdmission> {
   const text = input.message.trim();
   if (!text) {
     throw new Error("API conversation message must not be empty");
@@ -382,9 +399,12 @@ export async function appendAndEnqueueApiConversationMessage(
     conversationId: input.conversationId,
     conversationStore: options.conversationStore,
     nowMs,
-    ...(input.rootVisibility ? { rootVisibility: input.rootVisibility } : undefined),
+    ...(input.rootVisibility && { rootVisibility: input.rootVisibility }),
   });
-  const result = await appendAndEnqueueInboundMessage({
+  const enqueue = options.exclusive
+    ? appendAndEnqueueExclusiveInboundMessage
+    : appendAndEnqueueInboundMessage;
+  const result = await enqueue({
     message: buildApiTurnInboundMessage({
       actor: input.actor,
       conversationId: input.conversationId,
@@ -398,10 +418,11 @@ export async function appendAndEnqueueApiConversationMessage(
     queue: options.queue,
     state: options.state,
   });
+  const status = result.status === "appended" ? "accepted" : result.status;
   return {
     conversationId: input.conversationId,
     messageId,
-    status: result.status === "duplicate" ? "duplicate" : "accepted",
+    status,
   };
 }
 
@@ -749,7 +770,9 @@ export function createApiTurnWorker(options: {
             publishExternally: false,
             source,
             surface: "api",
-            ...(cancellationSignal ? { signal: cancellationSignal } : undefined),
+            ...(cancellationSignal
+              ? { signal: cancellationSignal }
+              : undefined),
             authorization: createWebAuthorization({
               actorId: actor.userId,
               conversationId: context.conversationId,
@@ -890,7 +913,9 @@ export function createApiTurnWorker(options: {
             await lifecycle.fail({
               conversationId: context.conversationId,
               createdAtMs: Date.now(),
-              ...(modelFailureEventId ? { eventId: modelFailureEventId } : undefined),
+              ...(modelFailureEventId
+                ? { eventId: modelFailureEventId }
+                : undefined),
               failureCode: "model_execution_failed",
               turnId,
             });

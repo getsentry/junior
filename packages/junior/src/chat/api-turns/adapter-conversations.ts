@@ -8,9 +8,8 @@ import type {
 import type { User } from "@sentry/junior-plugin-api";
 import { readConversationAccessFromSql } from "@/api/conversations/access";
 import {
-  apiConversationMessageId,
   apiTurnIdForMessage,
-  buildApiTurnInboundMessage,
+  appendAndEnqueueApiConversationMessage,
   recordApiConversationActivity,
   webActorFromEmail,
 } from "@/chat/api-turns/work";
@@ -21,10 +20,7 @@ import { projectConversationMessages } from "@/chat/conversations/message-projec
 import type { ConversationStore } from "@/chat/conversations/store";
 import { getDb } from "@/chat/db";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
-import {
-  appendAndEnqueueExclusiveInboundMessage,
-  getConversation,
-} from "@/chat/task-execution/store";
+import { getConversation } from "@/chat/task-execution/store";
 import { hasRunnableConversationWork } from "@/chat/task-execution/state";
 
 const EVENT_PAGE_SIZE = 50;
@@ -96,53 +92,6 @@ async function latestEventCursor(
   return page.events.at(-1)?.seq ?? 0;
 }
 
-async function appendAndEnqueueAdapterPrompt(args: {
-  conversationId: string;
-  idempotencyKey: string;
-  options: AdapterConversationOptions;
-  text: string;
-  user: User;
-}): Promise<{
-  messageId: string;
-  status: "accepted" | "active" | "duplicate";
-}> {
-  const text = args.text.trim();
-  if (!text) throw new Error("Adapter prompt must not be empty");
-  const actor = actorFromUser(args.user);
-  const nowMs = Date.now();
-  const messageId = apiConversationMessageId({
-    conversationId: args.conversationId,
-    idempotencyKey: args.idempotencyKey,
-  });
-  if (await getAuthPausedApiTurnId(args.conversationId)) {
-    return { messageId, status: "active" };
-  }
-  const destination = await recordApiConversationActivity({
-    actor,
-    conversationId: args.conversationId,
-    conversationStore: args.options.conversationStore,
-    nowMs,
-  });
-  const result = await appendAndEnqueueExclusiveInboundMessage({
-    message: buildApiTurnInboundMessage({
-      actor,
-      conversationId: args.conversationId,
-      destination,
-      message: text,
-      messageId,
-      nowMs,
-    }),
-    conversationStore: args.options.conversationStore,
-    nowMs,
-    queue: args.options.queue,
-    state: args.options.state,
-  });
-  return {
-    messageId,
-    status: result.status === "appended" ? "accepted" : result.status,
-  };
-}
-
 /** Create the Conversation capability supplied to app adapters. */
 export function createAdapterConversations(
   options: AdapterConversationOptions,
@@ -183,13 +132,23 @@ export function createAdapterConversations(
         options.eventStore,
         conversationId,
       );
-      const admission = await appendAndEnqueueAdapterPrompt({
-        conversationId,
-        idempotencyKey,
-        options,
-        text,
-        user,
-      });
+      if (await getAuthPausedApiTurnId(conversationId)) {
+        return { status: "active" };
+      }
+      const admission = await appendAndEnqueueApiConversationMessage(
+        {
+          actor: actorFromUser(user),
+          conversationId,
+          idempotencyKey,
+          message: text,
+        },
+        {
+          conversationStore: options.conversationStore,
+          exclusive: true,
+          queue: options.queue,
+          state: options.state,
+        },
+      );
       if (admission.status === "active") return { status: "active" };
 
       return {

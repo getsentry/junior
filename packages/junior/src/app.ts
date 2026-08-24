@@ -115,8 +115,6 @@ export type {
   AdapterPromptAdmission,
   AdapterTurnPage,
   AdapterTurnTerminal,
-  JuniorAdapterRoute,
-  JuniorAdapterLock,
   JuniorAdapterState,
   JuniorAppAdapter,
   JuniorAppAdapterContext,

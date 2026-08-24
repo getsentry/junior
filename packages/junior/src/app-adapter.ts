@@ -1,27 +1,22 @@
-import type { PluginRouteMethod, User } from "@sentry/junior-plugin-api";
-
-/** One lock held by an app adapter in Junior's shared state. */
-export interface JuniorAdapterLock {
-  expiresAt: number;
-  threadId: string;
-  token: string;
-}
+import type { StateAdapter } from "chat";
+import type {
+  PluginRoute,
+  PluginRouteMethod,
+  User,
+} from "@sentry/junior-plugin-api";
 
 /** Shared state operations available to app adapters. */
-export interface JuniorAdapterState {
-  acquireLock(key: string, ttlMs: number): Promise<JuniorAdapterLock | null>;
-  appendToList(
-    key: string,
-    value: unknown,
-    options?: { maxLength?: number; ttlMs?: number },
-  ): Promise<void>;
-  delete(key: string): Promise<void>;
-  extendLock(lock: JuniorAdapterLock, ttlMs: number): Promise<boolean>;
-  get<T = unknown>(key: string): Promise<T | null>;
-  getList<T = unknown>(key: string): Promise<T[]>;
-  releaseLock(lock: JuniorAdapterLock): Promise<void>;
-  set<T = unknown>(key: string, value: T, ttlMs?: number): Promise<void>;
-}
+export type JuniorAdapterState = Pick<
+  StateAdapter,
+  | "acquireLock"
+  | "appendToList"
+  | "delete"
+  | "extendLock"
+  | "get"
+  | "getList"
+  | "releaseLock"
+  | "set"
+>;
 
 /** One text Message exposed to an app adapter. */
 export interface AdapterMessage {
@@ -76,13 +71,6 @@ export interface AdapterConversations {
   }): Promise<AdapterTurnPage>;
 }
 
-/** One unauthenticated HTTP route owned by an app adapter. */
-export interface JuniorAdapterRoute {
-  handler(request: Request): Promise<Response> | Response;
-  method?: PluginRouteMethod | readonly PluginRouteMethod[];
-  path: string;
-}
-
 /** One dashboard-authenticated HTTP route owned by an app adapter. */
 export interface JuniorAuthenticatedRoute {
   handler(request: Request, user: User): Promise<Response> | Response;
@@ -107,7 +95,7 @@ export interface JuniorAppAdapterContext {
 /** HTTP routes returned by one configured app adapter. */
 export interface JuniorAppAdapterRoutes {
   authenticatedRoutes?: readonly JuniorAuthenticatedRoute[];
-  routes?: readonly JuniorAdapterRoute[];
+  routes?: readonly PluginRoute[];
 }
 
 /** Configure one non-plugin app adapter against Junior's runtime capabilities. */
