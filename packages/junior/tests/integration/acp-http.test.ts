@@ -1,6 +1,6 @@
 import * as acp from "@agentclientprotocol/sdk";
-import { createHttpStream } from "@agentclientprotocol/sdk/experimental/http-client";
-import type { Hono } from "hono";
+import { acpAdapter } from "@sentry/junior-acp";
+import type { StateAdapter } from "chat";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createApp } from "@/app";
 import { getConversationEventStore } from "@/chat/db";
@@ -9,116 +9,32 @@ import {
   closeApiTurnWorkFixture,
   createConversationWorkWebHarness,
 } from "../fixtures/api-turn";
+import {
+  ACP_TEST_URL as ACP_URL,
+  appFetch,
+  connectionCookie,
+  createIndependentConversationWork,
+  initializeAndAuthenticate,
+  initializeRequest,
+  mockAcpDashboardConfig,
+  withAcpClient,
+  withRawAcpConnection,
+} from "../fixtures/acp-http";
 import { deferred, streamReplies } from "../fixtures/conversation-work";
 import { createModelStream } from "../fixtures/model-stream";
+import { readProxyProperty } from "../fixtures/proxy-property";
 
-const ACP_URL = "http://junior.test/api/acp";
-
-function appFetch(app: Hono): typeof globalThis.fetch {
-  return async (input, init) =>
-    await app.fetch(new Request(input, init as RequestInit));
-}
-
-function initializeRequest(token?: string): Request {
-  return new Request(ACP_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : undefined),
-    },
-    body: JSON.stringify({
-      jsonrpc: "2.0",
-      id: 1,
-      method: "initialize",
-      params: {
-        protocolVersion: acp.PROTOCOL_VERSION,
-        clientCapabilities: {},
-      },
-    }),
-  });
-}
-
-async function withAcpClient<T>(args: {
-  app: Hono;
-  onUpdate?: (update: acp.SessionUpdate) => void;
-  run: (context: acp.ClientContext) => Promise<T>;
-  token: string;
-}): Promise<T> {
-  const stream = createHttpStream(ACP_URL, {
-    fetch: appFetch(args.app),
-    headers: { Authorization: `Bearer ${args.token}` },
-  });
-  try {
-    return await acp
-      .client({ name: "junior-acp-test" })
-      .onNotification(acp.methods.client.session.update, (context) => {
-        args.onUpdate?.(context.params.update);
-      })
-      .connectWith(stream, args.run);
-  } finally {
-    await stream.writable.close().catch(() => undefined);
-  }
-}
-
-/** Drive explicit JSON-RPC ids through the official HTTP transport. */
-async function withRawAcpConnection<T>(args: {
-  app: Hono;
-  run: (
-    request: (
-      id: acp.JsonRpcId,
-      method: string,
-      params: unknown,
-    ) => Promise<unknown>,
-  ) => Promise<T>;
-  token: string;
-}): Promise<T> {
-  const stream = createHttpStream(ACP_URL, {
-    fetch: appFetch(args.app),
-    headers: { Authorization: `Bearer ${args.token}` },
-  });
-  const reader = stream.readable.getReader();
-  const writer = stream.writable.getWriter();
-  const request = async (
-    id: acp.JsonRpcId,
-    method: string,
-    params: unknown,
-  ): Promise<unknown> => {
-    await writer.write({ jsonrpc: "2.0", id, method, params });
-    while (true) {
-      const next = await reader.read();
-      if (next.done) {
-        throw new Error("ACP stream closed before the response arrived");
-      }
-      if (!("id" in next.value) || next.value.id !== id) continue;
-      if ("method" in next.value) continue;
-      if ("error" in next.value) {
-        throw new Error(
-          `ACP request failed: ${next.value.error.code} ${next.value.error.message}`,
-        );
-      }
-      return next.value.result;
-    }
-  };
-  try {
-    return await args.run(request);
-  } finally {
-    await writer.close().catch(() => undefined);
-    writer.releaseLock();
-    await reader.cancel().catch(() => undefined);
-    reader.releaseLock();
-  }
-}
+mockAcpDashboardConfig();
 
 describe("remote ACP HTTP", () => {
   afterEach(async () => {
     await closeApiTurnWorkFixture();
   });
 
-  it("does not mount the endpoint without the experimental flag", async () => {
+  it("does not mount the endpoint without the ACP adapter", async () => {
     const harness = await createConversationWorkWebHarness();
     const app = await createApp({
       conversationWork: harness.conversationWork,
-      experimental: { subagents: true },
     });
 
     const response = await app.fetch(initializeRequest());
@@ -126,63 +42,73 @@ describe("remote ACP HTTP", () => {
     expect(response.status).toBe(404);
   });
 
-  it("requires a valid personal bearer token before ACP dispatch", async () => {
+  it("initializes with isolated cookies and rejects a valid personal token", async () => {
     const harness = await createConversationWorkWebHarness();
     const app = await createApp({
       conversationWork: harness.conversationWork,
-      experimental: { acp: true, subagents: true },
+      adapters: [acpAdapter()],
     });
 
-    const missing = await app.fetch(initializeRequest());
-    const invalid = await app.fetch(initializeRequest("jr_pat_invalid"));
-
-    expect(missing.status).toBe(401);
-    expect(invalid.status).toBe(401);
-  });
-
-  it("rejects unsafe envelopes and failed initialization", async () => {
-    const harness = await createConversationWorkWebHarness();
-    const app = await createApp({
-      conversationWork: harness.conversationWork,
-      experimental: { acp: true, subagents: true },
-    });
+    const anonymous = await app.fetch(initializeRequest());
     const token = await createPersonalToken({
       email: harness.actor.email,
-      name: "ACP envelope validation",
+      name: "ACP rejected token",
     });
+    const bearerRequest = initializeRequest();
+    bearerRequest.headers.set("Authorization", `Bearer ${token.token}`);
+    const bearer = await app.fetch(bearerRequest);
+    const oldConnectionId = anonymous.headers.get("Acp-Connection-Id");
+    if (!oldConnectionId) {
+      throw new Error("ACP initialize returned no connection");
+    }
+    const oldCookie = connectionCookie(anonymous);
+    const fresh = await app.fetch(initializeRequest("fresh-connection"));
+    const freshConnectionId = fresh.headers.get("Acp-Connection-Id");
+    if (!freshConnectionId) {
+      throw new Error("ACP initialize returned no fresh connection");
+    }
+    const freshCookie = connectionCookie(fresh);
+    const delayedDelete = await app.request(ACP_URL, {
+      method: "DELETE",
+      headers: {
+        "Acp-Connection-Id": oldConnectionId,
+        Cookie: oldCookie,
+      },
+    });
+    const freshStream = await app.request(ACP_URL, {
+      method: "GET",
+      headers: {
+        Accept: "text/event-stream",
+        "Acp-Connection-Id": freshConnectionId,
+        Cookie: freshCookie,
+      },
+    });
+
+    expect(anonymous.status).toBe(200);
+    expect(bearer.status).toBe(401);
+    expect(delayedDelete.status).toBe(202);
+    expect(delayedDelete.headers.get("set-cookie")).toBeNull();
+    expect(freshStream.status).toBe(200);
+    await freshStream.body?.cancel();
+  });
+
+  it("validates JSON-RPC envelopes and initialization", async () => {
+    const harness = await createConversationWorkWebHarness();
+    const app = await createApp({
+      conversationWork: harness.conversationWork,
+      adapters: [acpAdapter()],
+    });
+    const nullId = await app.fetch(initializeRequest(null));
     const malformed = await app.request(ACP_URL, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${token.token}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ jsonrpc: "2.0", privatePrompt: "sentinel" }),
     });
-    const wrongVersion = await app.request(ACP_URL, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token.token}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        jsonrpc: "1.0",
-        id: 1,
-        method: "initialize",
-        params: {},
-      }),
-    });
-    const nonFiniteId = await app.request(ACP_URL, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token.token}`,
-        "Content-Type": "application/json",
-      },
-      body: '{"jsonrpc":"2.0","id":1e400,"method":"session/new"}',
-    });
     const failedInitialize = await app.request(ACP_URL, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${token.token}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
@@ -192,33 +118,94 @@ describe("remote ACP HTTP", () => {
         params: { clientCapabilities: {} },
       }),
     });
+    const initialized = await app.fetch(initializeRequest());
+    const connectionId = initialized.headers.get("Acp-Connection-Id");
+    if (!connectionId) throw new Error("ACP initialize returned no connection");
+    const cookie = connectionCookie(initialized);
+    const invalidConnectionId = await app.request(ACP_URL, {
+      method: "GET",
+      headers: {
+        Accept: "text/event-stream",
+        "Acp-Connection-Id": "../../invalid",
+      },
+    });
+    const invalidSessionId = await app.request(ACP_URL, {
+      method: "GET",
+      headers: {
+        Accept: "text/event-stream",
+        "Acp-Connection-Id": connectionId,
+        "Acp-Session-Id": "local:acp:invalid",
+        Cookie: cookie,
+      },
+    });
 
+    expect(nullId.status).toBe(200);
+    expect(nullId.headers.get("Acp-Connection-Id")).toBeTruthy();
+    await expect(nullId.json()).resolves.toMatchObject({
+      id: null,
+      result: { protocolVersion: acp.PROTOCOL_VERSION },
+    });
     expect(malformed.status).toBe(400);
-    expect(wrongVersion.status).toBe(400);
-    expect(nonFiniteId.status).toBe(400);
     expect(failedInitialize.status).toBe(200);
     expect(failedInitialize.headers.get("Acp-Connection-Id")).toBeNull();
     await expect(failedInitialize.json()).resolves.toMatchObject({
       error: { code: -32602 },
     });
+    expect(invalidConnectionId.status).toBe(400);
+    expect(invalidSessionId.status).toBe(400);
   });
 
-  it("runs, reloads, and protects a private Conversation through the official client", async () => {
+  it("requires ACP authentication before session methods", async () => {
+    const harness = await createConversationWorkWebHarness();
+    const app = await createApp({
+      conversationWork: harness.conversationWork,
+      adapters: [acpAdapter()],
+    });
+
+    const error = await withAcpClient({
+      app,
+      email: harness.actor.email,
+      run: async (context) => {
+        const initialized = await context.request(
+          acp.methods.agent.initialize,
+          {
+            protocolVersion: acp.PROTOCOL_VERSION,
+            clientCapabilities: { elicitation: { url: {} } },
+          },
+        );
+        expect(initialized.authMethods).toEqual([
+          expect.objectContaining({ id: "junior" }),
+        ]);
+        try {
+          await context.request(acp.methods.agent.session.new, {
+            cwd: "/client/workspace",
+            mcpServers: [],
+          });
+          return undefined;
+        } catch (cause) {
+          return cause;
+        }
+      },
+      state: harness.state,
+    });
+
+    expect(error).toMatchObject({ code: -32000 });
+    expect(harness.queue.hasQueuedMessages()).toBe(false);
+  });
+
+  it("runs, reloads, and protects a private Conversation across app instances", async () => {
     const harness = await createConversationWorkWebHarness({
       modelStream: streamReplies("First ACP reply."),
     });
     const app = await createApp({
       conversationWork: harness.conversationWork,
-      experimental: { acp: true, subagents: true },
+      adapters: [acpAdapter()],
     });
-    const ownerToken = await createPersonalToken({
-      email: harness.actor.email,
-      name: "ACP owner",
+    const secondApp = await createApp({
+      conversationWork: createIndependentConversationWork(harness),
+      adapters: [acpAdapter()],
     });
-    const otherToken = await createPersonalToken({
-      email: "bob@example.com",
-      name: "ACP other actor",
-    });
+    const fetch = appFetch(app, secondApp);
     const firstUpdates: acp.SessionUpdate[] = [];
     let resolveFirstSession!: (sessionId: string) => void;
     const firstSession = new Promise<string>((resolve) => {
@@ -227,19 +214,19 @@ describe("remote ACP HTTP", () => {
 
     const firstRun = withAcpClient({
       app,
-      token: ownerToken.token,
+      email: harness.actor.email,
+      fetch,
       onUpdate: (update) => firstUpdates.push(update),
       run: async (context) => {
-        const initialized = await context.request(
-          acp.methods.agent.initialize,
-          {
-            protocolVersion: acp.PROTOCOL_VERSION,
-            clientCapabilities: {},
-          },
-        );
+        const initialized = await initializeAndAuthenticate(context);
         expect(initialized).toMatchObject({
           protocolVersion: acp.PROTOCOL_VERSION,
-          authMethods: [],
+          authMethods: [
+            expect.objectContaining({
+              id: "junior",
+              name: "Sign in to Junior",
+            }),
+          ],
         });
         expect(initialized.agentCapabilities).toEqual({
           loadSession: true,
@@ -263,6 +250,7 @@ describe("remote ACP HTTP", () => {
         });
         return { result, sessionId: session.sessionId };
       },
+      state: harness.state,
     });
 
     const sessionId = await firstSession;
@@ -297,34 +285,47 @@ describe("remote ACP HTTP", () => {
       "First ACP reply.",
     ]);
 
-    const rawInitialize = await app.fetch(initializeRequest(ownerToken.token));
+    const rawInitialize = await app.fetch(initializeRequest());
     const connectionId = rawInitialize.headers.get("Acp-Connection-Id");
     expect(connectionId).toBeTruthy();
-    const crossActorConnection = await app.request(ACP_URL, {
+    const cookie = connectionCookie(rawInitialize);
+    const stolenConnection = await app.request(ACP_URL, {
       method: "GET",
       headers: {
         Accept: "text/event-stream",
-        Authorization: `Bearer ${otherToken.token}`,
         "Acp-Connection-Id": connectionId!,
       },
     });
-    expect(crossActorConnection.status).toBe(404);
-    await app.request(ACP_URL, {
+    expect(stolenConnection.status).toBe(401);
+    const stolenDelete = await app.request(ACP_URL, {
       method: "DELETE",
       headers: {
-        Authorization: `Bearer ${ownerToken.token}`,
         "Acp-Connection-Id": connectionId!,
       },
     });
+    expect(stolenDelete.status).toBe(401);
+    const ownerDelete = await app.request(ACP_URL, {
+      method: "DELETE",
+      headers: {
+        "Acp-Connection-Id": connectionId!,
+        Cookie: `junior_acp_connection=; ${cookie}`,
+      },
+    });
+    expect(ownerDelete.status).toBe(202);
+    const deletedConnection = await app.request(ACP_URL, {
+      method: "DELETE",
+      headers: {
+        "Acp-Connection-Id": connectionId!,
+        Cookie: cookie,
+      },
+    });
+    expect(deletedConnection.status).toBe(401);
 
     const crossActorSessionErrors = await withAcpClient({
       app,
-      token: otherToken.token,
+      email: "bob@example.com",
       run: async (context) => {
-        await context.request(acp.methods.agent.initialize, {
-          protocolVersion: acp.PROTOCOL_VERSION,
-          clientCapabilities: {},
-        });
+        await initializeAndAuthenticate(context);
         let loadError: unknown;
         let promptError: unknown;
         try {
@@ -346,6 +347,7 @@ describe("remote ACP HTTP", () => {
         }
         return { loadError, promptError };
       },
+      state: harness.state,
     });
     expect(crossActorSessionErrors).toEqual({
       loadError: expect.objectContaining({ code: -32002 }),
@@ -365,13 +367,11 @@ describe("remote ACP HTTP", () => {
     });
     const secondRun = withAcpClient({
       app,
-      token: ownerToken.token,
+      email: harness.actor.email,
+      fetch,
       onUpdate: (update) => secondUpdates.push(update),
       run: async (context) => {
-        await context.request(acp.methods.agent.initialize, {
-          protocolVersion: acp.PROTOCOL_VERSION,
-          clientCapabilities: {},
-        });
+        await initializeAndAuthenticate(context);
         await context.request(acp.methods.agent.session.load, {
           sessionId,
           cwd: "/different/client/workspace",
@@ -383,6 +383,7 @@ describe("remote ACP HTTP", () => {
           prompt: [{ type: "text", text: "Follow up." }],
         });
       },
+      state: harness.state,
     });
 
     await secondPromptStarted;
@@ -413,26 +414,25 @@ describe("remote ACP HTTP", () => {
     ]);
   }, 20_000);
 
-  it("deduplicates repeated request ids without colliding id types", async () => {
+  it("deduplicates exact retries without colliding payloads or id types", async () => {
     const harness = await createConversationWorkWebHarness({
       modelStream: streamReplies("Typed id reply."),
     });
     const app = await createApp({
       conversationWork: harness.conversationWork,
-      experimental: { acp: true, subagents: true },
-    });
-    const token = await createPersonalToken({
-      email: harness.actor.email,
-      name: "ACP idempotency",
+      adapters: [acpAdapter()],
     });
 
     await withRawAcpConnection({
       app,
-      token: token.token,
+      email: harness.actor.email,
       run: async (request) => {
         await request(0, acp.methods.agent.initialize, {
           protocolVersion: acp.PROTOCOL_VERSION,
-          clientCapabilities: {},
+          clientCapabilities: { elicitation: { url: {} } },
+        });
+        await request("authenticate", acp.methods.agent.authenticate, {
+          methodId: "junior",
         });
         const created = await request(1, acp.methods.agent.session.new, {
           cwd: "/client/workspace",
@@ -466,6 +466,20 @@ describe("remote ACP HTTP", () => {
         expect(harness.queue.hasQueuedMessages()).toBe(false);
         expect(harness.agentRuns).toHaveLength(1);
 
+        harness.setModelStream(streamReplies("Changed payload reply."));
+        const changedPayload = request(2, acp.methods.agent.session.prompt, {
+          sessionId,
+          prompt: [{ type: "text", text: "Reused id, new payload." }],
+        });
+        await vi.waitFor(() => {
+          expect(harness.queue.hasQueuedMessages()).toBe(true);
+        });
+        await harness.drain();
+        await expect(changedPayload).resolves.toEqual({
+          stopReason: "end_turn",
+        });
+        expect(harness.agentRuns).toHaveLength(2);
+
         harness.setModelStream(streamReplies("Typed id reply."));
         const typed = request("2", acp.methods.agent.session.prompt, {
           sessionId,
@@ -479,16 +493,124 @@ describe("remote ACP HTTP", () => {
         });
         await harness.drain();
         await typedResult;
-        expect(harness.agentRuns).toHaveLength(2);
+        expect(harness.agentRuns).toHaveLength(3);
         await expect(harness.historyTexts(sessionId)).resolves.toEqual([
           "Numeric request id.",
           "Typed id reply.",
+          "Reused id, new payload.",
+          "Changed payload reply.",
           "String request id.",
           "Typed id reply.",
         ]);
       },
+      state: harness.state,
     });
   }, 20_000);
+
+  it("coordinates an SSE stream across handoff and request abort", async () => {
+    const harness = await createConversationWorkWebHarness();
+    const app = await createApp({
+      conversationWork: harness.conversationWork,
+      adapters: [acpAdapter()],
+    });
+    const secondApp = await createApp({
+      conversationWork: createIndependentConversationWork(harness),
+      adapters: [acpAdapter()],
+    });
+    const initialized = await app.fetch(initializeRequest());
+    const connectionId = initialized.headers.get("Acp-Connection-Id");
+    if (!connectionId) throw new Error("ACP initialize returned no connection");
+    const cookie = connectionCookie(initialized);
+    const streamRequest = () =>
+      new Request(ACP_URL, {
+        method: "GET",
+        headers: {
+          Accept: "text/event-stream",
+          "Acp-Connection-Id": connectionId,
+          Cookie: cookie,
+        },
+      });
+
+    const first = await app.fetch(streamRequest());
+    const overlapping = await secondApp.fetch(streamRequest());
+
+    expect(first.status).toBe(200);
+    expect(overlapping.status).toBe(409);
+    await first.body?.cancel();
+
+    const handedOff = await secondApp.fetch(streamRequest());
+    expect(handedOff.status).toBe(200);
+    await handedOff.body?.cancel();
+
+    const requestAbort = new AbortController();
+    const aborted = await app.fetch(
+      new Request(streamRequest(), { signal: requestAbort.signal }),
+    );
+    expect(aborted.status).toBe(200);
+    const reader = aborted.body?.getReader();
+    if (!reader) throw new Error("ACP GET returned no stream body");
+
+    requestAbort.abort();
+
+    await expect(reader.closed).resolves.toBeUndefined();
+    reader.releaseLock();
+  });
+
+  it("terminates an SSE stream after it loses its shared lease", async () => {
+    const harness = await createConversationWorkWebHarness();
+    const state = new Proxy(harness.state, {
+      get(target, property) {
+        if (property === "extendLock") {
+          return async (
+            lock: Parameters<StateAdapter["extendLock"]>[0],
+            ttlMs: number,
+          ) =>
+            lock.threadId.endsWith(":subscriber")
+              ? false
+              : await target.extendLock(lock, ttlMs);
+        }
+        const value = readProxyProperty(target, property);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    });
+    const app = await createApp({
+      conversationWork: createIndependentConversationWork(harness, state),
+      adapters: [acpAdapter()],
+    });
+    const initialized = await app.fetch(initializeRequest());
+    const connectionId = initialized.headers.get("Acp-Connection-Id");
+    if (!connectionId) throw new Error("ACP initialize returned no connection");
+    const cookie = connectionCookie(initialized);
+    const stream = await app.request(ACP_URL, {
+      method: "GET",
+      headers: {
+        Accept: "text/event-stream",
+        "Acp-Connection-Id": connectionId,
+        Cookie: cookie,
+      },
+    });
+    const reader = stream.body?.getReader();
+    if (!reader) throw new Error("ACP GET returned no stream body");
+
+    const accepted = await app.request(ACP_URL, {
+      method: "POST",
+      headers: {
+        "Acp-Connection-Id": connectionId,
+        "Content-Type": "application/json",
+        Cookie: cookie,
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 2,
+        method: "unsupported/test",
+        params: {},
+      }),
+    });
+
+    expect(accepted.status).toBe(202);
+    await expect(reader.read()).rejects.toThrow("ACP SSE stream lease expired");
+    reader.releaseLock();
+  });
 
   it("finishes durable work after the ACP connection closes", async () => {
     const harness = await createConversationWorkWebHarness({
@@ -496,27 +618,49 @@ describe("remote ACP HTTP", () => {
     });
     const app = await createApp({
       conversationWork: harness.conversationWork,
-      experimental: { acp: true, subagents: true },
+      adapters: [acpAdapter()],
     });
-    const token = await createPersonalToken({
-      email: harness.actor.email,
-      name: "ACP disconnect",
-    });
-    const stream = createHttpStream(ACP_URL, {
-      fetch: appFetch(app),
-      headers: { Authorization: `Bearer ${token.token}` },
-    });
+    const promptAccepted = deferred();
+    const sessionStreamOpened = deferred<Response>();
+    let connectionId: string | undefined;
+    let cookie: string | undefined;
+    const fetch: typeof globalThis.fetch = async (input, init) => {
+      const request = new Request(input, init as RequestInit);
+      cookie ??= request.headers.get("cookie") ?? undefined;
+      const isSessionStream =
+        request.method === "GET" && request.headers.has("Acp-Session-Id");
+      let isPrompt = false;
+      if (request.method === "POST") {
+        const body: unknown = await request.clone().json();
+        isPrompt =
+          typeof body === "object" &&
+          body !== null &&
+          "method" in body &&
+          body.method === acp.methods.agent.session.prompt;
+      }
+      const response = await app.fetch(
+        isSessionStream
+          ? new Request(request, { signal: new AbortController().signal })
+          : request,
+      );
+      connectionId ??= response.headers.get("Acp-Connection-Id") ?? undefined;
+      if (isPrompt && response.status === 202) promptAccepted.resolve();
+      if (isSessionStream && response.status === 200) {
+        sessionStreamOpened.resolve(response);
+        return response.clone();
+      }
+      return response;
+    };
     let resolveSession!: (sessionId: string) => void;
     const session = new Promise<string>((resolve) => {
       resolveSession = resolve;
     });
-    const connected = acp
-      .client({ name: "junior-acp-disconnect-test" })
-      .connectWith(stream, async (context) => {
-        await context.request(acp.methods.agent.initialize, {
-          protocolVersion: acp.PROTOCOL_VERSION,
-          clientCapabilities: {},
-        });
+    const connected = withAcpClient({
+      app,
+      email: harness.actor.email,
+      fetch,
+      run: async (context) => {
+        await initializeAndAuthenticate(context);
         const created = await context.request(acp.methods.agent.session.new, {
           cwd: "/client/workspace",
           mcpServers: [],
@@ -526,33 +670,54 @@ describe("remote ACP HTTP", () => {
           sessionId: created.sessionId,
           prompt: [{ type: "text", text: "Keep running." }],
         });
-      });
+      },
+      state: harness.state,
+    });
     const connectionClosed = connected.catch(() => undefined);
 
     const sessionId = await session;
     await vi.waitFor(() => {
       expect(harness.queue.hasQueuedMessages()).toBe(true);
     });
-    await stream.writable.close();
+    await promptAccepted.promise;
+    const sessionStream = await sessionStreamOpened.promise;
+    if (!sessionStream.body)
+      throw new Error("ACP session SSE returned no body");
+    const sessionReader = sessionStream.body.getReader();
+    const sessionClosed = (async () => {
+      while (!(await sessionReader.read()).done) {
+        // Drain all session output until the server ends the stream.
+      }
+    })();
+    if (!connectionId) throw new Error("ACP initialize returned no connection");
+    if (!cookie) throw new Error("ACP client sent no connection cookie");
+    const deleted = await app.request(ACP_URL, {
+      method: "DELETE",
+      headers: {
+        "Acp-Connection-Id": connectionId,
+        Cookie: cookie,
+      },
+    });
+    expect(deleted.status).toBe(202);
     await connectionClosed;
+    await expect(sessionClosed).resolves.toBeUndefined();
+    sessionReader.releaseLock();
     await harness.drain();
 
     const replayed: acp.SessionUpdate[] = [];
     await withAcpClient({
       app,
-      token: token.token,
+      email: harness.actor.email,
       onUpdate: (update) => replayed.push(update),
       run: async (context) => {
-        await context.request(acp.methods.agent.initialize, {
-          protocolVersion: acp.PROTOCOL_VERSION,
-          clientCapabilities: {},
-        });
+        await initializeAndAuthenticate(context);
         await context.request(acp.methods.agent.session.load, {
           sessionId,
           cwd: "/client/workspace",
           mcpServers: [],
         });
       },
+      state: harness.state,
     });
 
     await expect(harness.historyTexts(sessionId)).resolves.toEqual([
@@ -586,23 +751,21 @@ describe("remote ACP HTTP", () => {
     });
     const app = await createApp({
       conversationWork: harness.conversationWork,
-      experimental: { acp: true, subagents: true },
+      adapters: [acpAdapter()],
     });
-    const token = await createPersonalToken({
-      email: harness.actor.email,
-      name: "ACP cancellation",
+    const secondApp = await createApp({
+      conversationWork: createIndependentConversationWork(harness),
+      adapters: [acpAdapter()],
     });
     const sessionCreated = deferred<string>();
     let cancelActiveTurn: (() => Promise<void>) | undefined;
 
     const cancelledRun = withAcpClient({
       app,
-      token: token.token,
+      email: harness.actor.email,
+      fetch: appFetch(app, secondApp),
       run: async (context) => {
-        await context.request(acp.methods.agent.initialize, {
-          protocolVersion: acp.PROTOCOL_VERSION,
-          clientCapabilities: {},
-        });
+        await initializeAndAuthenticate(context);
         const session = await context.request(acp.methods.agent.session.new, {
           cwd: "/client/workspace",
           mcpServers: [],
@@ -618,6 +781,7 @@ describe("remote ACP HTTP", () => {
           prompt: [{ type: "text", text: "Cancel this Turn." }],
         });
       },
+      state: harness.state,
     });
 
     const sessionId = await sessionCreated.promise;
@@ -658,12 +822,9 @@ describe("remote ACP HTTP", () => {
     const followUpStarted = deferred();
     const followUp = withAcpClient({
       app,
-      token: token.token,
+      email: harness.actor.email,
       run: async (context) => {
-        await context.request(acp.methods.agent.initialize, {
-          protocolVersion: acp.PROTOCOL_VERSION,
-          clientCapabilities: {},
-        });
+        await initializeAndAuthenticate(context);
         await context.request(acp.methods.agent.session.load, {
           sessionId,
           cwd: "/client/workspace",
@@ -675,6 +836,7 @@ describe("remote ACP HTTP", () => {
           prompt: [{ type: "text", text: "Continue after cancellation." }],
         });
       },
+      state: harness.state,
     });
 
     await followUpStarted.promise;
@@ -699,21 +861,14 @@ describe("remote ACP HTTP", () => {
     });
     const app = await createApp({
       conversationWork: harness.conversationWork,
-      experimental: { acp: true, subagents: true },
-    });
-    const token = await createPersonalToken({
-      email: harness.actor.email,
-      name: "ACP failed Turn",
+      adapters: [acpAdapter()],
     });
     let sessionId: string | undefined;
     const failed = withAcpClient({
       app,
-      token: token.token,
+      email: harness.actor.email,
       run: async (context) => {
-        await context.request(acp.methods.agent.initialize, {
-          protocolVersion: acp.PROTOCOL_VERSION,
-          clientCapabilities: {},
-        });
+        await initializeAndAuthenticate(context);
         const session = await context.request(acp.methods.agent.session.new, {
           cwd: "/client/workspace",
           mcpServers: [],
@@ -724,6 +879,7 @@ describe("remote ACP HTTP", () => {
           prompt: [{ type: "text", text: "Fail this Turn." }],
         });
       },
+      state: harness.state,
     });
     const failedResult = failed.then(
       () => {
@@ -762,21 +918,13 @@ describe("remote ACP HTTP", () => {
     const harness = await createConversationWorkWebHarness();
     const app = await createApp({
       conversationWork: harness.conversationWork,
-      experimental: { acp: true, subagents: true },
+      adapters: [acpAdapter()],
     });
-    const token = await createPersonalToken({
-      email: harness.actor.email,
-      name: "ACP validation",
-    });
-
     const errors = await withAcpClient({
       app,
-      token: token.token,
+      email: harness.actor.email,
       run: async (context) => {
-        await context.request(acp.methods.agent.initialize, {
-          protocolVersion: acp.PROTOCOL_VERSION,
-          clientCapabilities: {},
-        });
+        await initializeAndAuthenticate(context);
         let mcpError: unknown;
         try {
           await context.request(acp.methods.agent.session.new, {
@@ -810,6 +958,13 @@ describe("remote ACP HTTP", () => {
           ],
           [{ type: "text" as const, text: " " }],
           [{ type: "text" as const, text: "x".repeat(32_001) }],
+          [
+            {
+              type: "text" as const,
+              text: "Unknown fields are not accepted.",
+              privatePrompt: "sentinel",
+            },
+          ],
         ]) {
           try {
             await context.request(acp.methods.agent.session.prompt, {
@@ -822,11 +977,13 @@ describe("remote ACP HTTP", () => {
         }
         return { mcpError, promptErrors };
       },
+      state: harness.state,
     });
 
     expect(errors.mcpError).toMatchObject({ code: -32602 });
-    expect(errors.promptErrors).toHaveLength(4);
+    expect(errors.promptErrors).toHaveLength(5);
     expect(errors.promptErrors).toEqual([
+      expect.objectContaining({ code: -32602 }),
       expect.objectContaining({ code: -32602 }),
       expect.objectContaining({ code: -32602 }),
       expect.objectContaining({ code: -32602 }),

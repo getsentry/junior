@@ -15,13 +15,12 @@ import {
   setProfiles,
   setSlackReactionConfig,
 } from "@/chat/config";
-import { getDb } from "@/chat/db";
+import { getConversationEventStore, getDb } from "@/chat/db";
 import { logException, logWarn } from "@/chat/logging";
 import { executeAgentRun } from "@/chat/agent";
 import { normalizeSandboxEgressTracePropagationDomains } from "@/chat/sandbox/egress/tracing";
 import {
   getExperimentalFeatures,
-  isExperimentalFeatureEnabled,
   setExperimentalFeatures,
   type ExperimentalFeaturesConfig,
 } from "@/chat/experimental";
@@ -98,17 +97,34 @@ import { ingestResourceEvent } from "@/chat/resource-events/ingest";
 import { createResourceEventTeamIdResolver } from "@/chat/resource-events/workspace";
 import { ingestEventTasks } from "@/chat/event-tasks/ingest";
 import { receiveLocalOAuthCredential } from "@/chat/local/credential-sync";
-import { createAcpHttpHandler } from "@/api/acp/route";
+import { getStateAdapter } from "@/chat/state/adapter";
+import { createAdapterConversations } from "@/chat/api-turns/adapter-conversations";
+import type { JuniorAppAdapter, JuniorAuthenticatedRoute } from "./app-adapter";
+import { JUNIOR_VERSION } from "./version";
 
 export { defineJuniorPlugins } from "./plugins";
-export { JUNIOR_VERSION } from "./version";
+export { JUNIOR_VERSION };
 export type {
   JuniorPluginInput,
   JuniorPluginSet,
   JuniorPluginSetOptions,
 } from "./plugins";
+export type {
+  AdapterConversations,
+  AdapterMessage,
+  AdapterPromptAdmission,
+  AdapterTurnPage,
+  AdapterTurnTerminal,
+  JuniorAdapterState,
+  JuniorAppAdapter,
+  JuniorAppAdapterContext,
+  JuniorAppAdapterRoutes,
+  JuniorAuthenticatedRoute,
+} from "./app-adapter";
 
 export interface JuniorAppOptions {
+  /** Non-plugin adapters mounted against Junior's shared runtime. */
+  adapters?: readonly JuniorAppAdapter[];
   /** Authenticated dashboard mounted by core when configured. */
   dashboard?: JuniorDashboardOptions;
   /**
@@ -173,7 +189,23 @@ export interface JuniorDashboardOptions {
 
 interface JuniorDashboardRuntimeOptions extends JuniorDashboardOptions {
   agentName?: string;
+  authenticatedRoutes?: readonly JuniorAuthenticatedRoute[];
   pluginRoutes?: PluginApiRouteRegistration[];
+}
+
+/** Resolve the public deployment URL exposed to app adapters. */
+function resolveAdapterBaseURL(
+  dashboard: JuniorDashboardOptions | undefined,
+): string | undefined {
+  const configured =
+    dashboard?.baseURL?.trim() || process.env.JUNIOR_BASE_URL?.trim();
+  if (configured) return configured;
+
+  const vercelURL =
+    process.env.VERCEL_PROJECT_PRODUCTION_URL?.trim() ||
+    process.env.VERCEL_URL?.trim();
+  if (!vercelURL) return undefined;
+  return /^https?:\/\//.test(vercelURL) ? vercelURL : `https://${vercelURL}`;
 }
 
 type JuniorVirtualDashboardOptions = JuniorDashboardOptions;
@@ -197,7 +229,7 @@ interface JuniorVirtualConfig {
 
 interface HostRouteRegistration {
   handler(request: Request): Promise<Response> | Response;
-  method?: PluginRouteMethod | PluginRouteMethod[];
+  method?: PluginRouteMethod | readonly PluginRouteMethod[];
   path: string;
 }
 
@@ -335,6 +367,7 @@ function validateBuildIncludesPluginRuntimeRegistrations(
 }
 
 async function createDashboardRouteRegistrations(args: {
+  authenticatedRoutes: readonly JuniorAuthenticatedRoute[];
   dashboard: JuniorDashboardOptions | undefined;
   createDashboardApp: CreateDashboardApp | undefined;
   pluginRoutes: PluginApiRouteRegistration[];
@@ -346,6 +379,7 @@ async function createDashboardRouteRegistrations(args: {
   const createDashboardApp =
     args.createDashboardApp ?? (await loadDashboardAppFactory());
   return dashboardRouteRegistrations({
+    authenticatedRoutes: args.authenticatedRoutes,
     dashboard: args.dashboard,
     createDashboardApp,
     pluginRoutes: args.pluginRoutes,
@@ -413,7 +447,10 @@ function normalizeDashboardPath(
 }
 
 /** List every route path core forwards to the dashboard app and reserves from plugin routes. */
-function dashboardHostRoutePaths(dashboard: JuniorDashboardOptions): string[] {
+function dashboardHostRoutePaths(
+  dashboard: JuniorDashboardOptions,
+  authenticatedRoutes: readonly JuniorAuthenticatedRoute[] = [],
+): string[] {
   const basePath = normalizeDashboardPath(dashboard.basePath, "/");
   const authPath = normalizeDashboardPath(dashboard.authPath, "/api/auth");
   const pagePath = (suffix: string) =>
@@ -475,6 +512,7 @@ function dashboardHostRoutePaths(dashboard: JuniorDashboardOptions): string[] {
     "/api/workspaces/*",
     "/api/config",
     "/api/me",
+    ...authenticatedRoutes.map((route) => route.path),
     authPath,
     `${authPath}/*`,
   ];
@@ -547,37 +585,44 @@ function routePatternOverlaps(ownedPath: string, routePath: string): boolean {
 function dashboardOwnedRoutePath(
   routePath: string,
   dashboard: JuniorDashboardOptions,
+  authenticatedRoutes: readonly JuniorAuthenticatedRoute[] = [],
 ): boolean {
-  return dashboardHostRoutePaths(dashboard).some((path) =>
+  return dashboardHostRoutePaths(dashboard, authenticatedRoutes).some((path) =>
     routePatternOverlaps(path, routePath),
   );
 }
 
 function dashboardRouteRegistrations(args: {
+  authenticatedRoutes: readonly JuniorAuthenticatedRoute[];
   dashboard: JuniorDashboardOptions;
   createDashboardApp: CreateDashboardApp;
   pluginRoutes: PluginApiRouteRegistration[];
 }): HostRouteRegistration[] {
   let app: DashboardApp | undefined;
   const fetch = (request: Request) => {
-    app ??= args.createDashboardApp({
+    const dashboardOptions: JuniorDashboardRuntimeOptions = {
       ...args.dashboard,
       agentName: botConfig.userName,
+      authenticatedRoutes: args.authenticatedRoutes,
       pluginRoutes: args.pluginRoutes,
-    });
+    };
+    app ??= args.createDashboardApp(dashboardOptions);
     if (!app || typeof app.fetch !== "function") {
       throw new Error("createDashboardApp() must return an app with fetch()");
     }
     return app.fetch(request);
   };
 
-  return dashboardHostRoutePaths(args.dashboard).map((path) => ({
-    handler: fetch,
-    path,
-  }));
+  return dashboardHostRoutePaths(args.dashboard, args.authenticatedRoutes).map(
+    (path) => ({
+      handler: fetch,
+      path,
+    }),
+  );
 }
 
 function validateDashboardRouteOwnership(args: {
+  authenticatedRoutes?: readonly JuniorAuthenticatedRoute[];
   dashboard: JuniorDashboardOptions | undefined;
   routes: PluginRouteRegistration[];
 }): void {
@@ -585,7 +630,13 @@ function validateDashboardRouteOwnership(args: {
     return;
   }
   for (const route of args.routes) {
-    if (dashboardOwnedRoutePath(route.path, args.dashboard)) {
+    if (
+      dashboardOwnedRoutePath(
+        route.path,
+        args.dashboard,
+        args.authenticatedRoutes,
+      )
+    ) {
       throw new Error(
         `Plugin "${route.pluginName}" route "${route.path}" conflicts with core dashboard routes`,
       );
@@ -597,9 +648,10 @@ function validateDashboardRouteOwnership(args: {
 function mountRoutes(app: Hono, routes: HostRouteRegistration[]): void {
   for (const route of routes) {
     const handler = (c: Context) => route.handler(c.req.raw);
-    const methods = Array.isArray(route.method)
-      ? route.method
-      : [route.method ?? "ALL"];
+    const methods =
+      typeof route.method === "string"
+        ? [route.method]
+        : (route.method ?? ["ALL"]);
     const explicitMethods = methods.filter(
       (method): method is Exclude<PluginRouteMethod, "ALL"> => method !== "ALL",
     );
@@ -647,6 +699,17 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   const previousExperimentalFeatures = getExperimentalFeatures();
   const previousDashboardLinkOptions =
     setDashboardConversationLinkOptions(dashboard);
+  const restoreRuntimeConfig = (): void => {
+    pluginCatalogRuntime.setConfig(previousPluginCatalogConfig);
+    setPlugins(previousPlugins);
+    setConfigDefaults(previousConfigDefaults);
+    botConfig.defaultProfile = previousDefaultProfile;
+    botConfig.profiles = previousModelProfiles;
+    setSlackReactionConfig(previousSlackReactionConfig);
+    setSandboxResourceConfig(previousSandboxResources);
+    setExperimentalFeatures(previousExperimentalFeatures);
+    setDashboardConversationLinkOptions(previousDashboardLinkOptions);
+  };
   let pluginRoutes: PluginRouteRegistration[] = [];
   let pluginApiRoutes: PluginApiRouteRegistration[] = [];
   const resolveResourceEventTeamId = createResourceEventTeamIdResolver();
@@ -699,20 +762,11 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
       );
     }
     pluginRoutes = getPluginRoutes({ resourceEvents });
-    validateDashboardRouteOwnership({ dashboard, routes: pluginRoutes });
     if (dashboard && !dashboard.disabled) {
       pluginApiRoutes = getPluginApiRoutes();
     }
   } catch (error) {
-    pluginCatalogRuntime.setConfig(previousPluginCatalogConfig);
-    setPlugins(previousPlugins);
-    setConfigDefaults(previousConfigDefaults);
-    botConfig.defaultProfile = previousDefaultProfile;
-    botConfig.profiles = previousModelProfiles;
-    setSlackReactionConfig(previousSlackReactionConfig);
-    setSandboxResourceConfig(previousSandboxResources);
-    setExperimentalFeatures(previousExperimentalFeatures);
-    setDashboardConversationLinkOptions(previousDashboardLinkOptions);
+    restoreRuntimeConfig();
     throw error;
   }
 
@@ -730,6 +784,57 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     replyExecutor: { agentRunner },
     sandbox: { tracePropagation },
   };
+  let conversationWorkOptions: ConversationWorkCallbackOptions | undefined;
+  const getConversationWorkOptions = () => {
+    conversationWorkOptions ??=
+      options?.conversationWork ??
+      createProductionConversationWorkOptions({
+        agentRunner,
+        services: runtimeServiceOverrides,
+      });
+    return conversationWorkOptions;
+  };
+  let adapterRoutes: HostRouteRegistration[] = [];
+  let authenticatedRoutes: JuniorAuthenticatedRoute[] = [];
+  try {
+    const adapterOutputs = await Promise.all(
+      (options?.adapters ?? []).map(async (adapter) => {
+        const work = getConversationWorkOptions();
+        const state = work.state ?? getStateAdapter();
+        return await adapter({
+          agentName: botConfig.userName,
+          baseURL: resolveAdapterBaseURL(dashboard),
+          conversations: createAdapterConversations({
+            conversationStore: work.conversationStore,
+            eventStore: getConversationEventStore(),
+            queue: work.queue ?? getVercelConversationWorkQueue(),
+            state,
+          }),
+          reportError: (error, event, attributes) =>
+            void logException(error, event, attributes),
+          state,
+          version: JUNIOR_VERSION,
+        });
+      }),
+    );
+    adapterRoutes = adapterOutputs.flatMap((output) => output.routes ?? []);
+    authenticatedRoutes = adapterOutputs.flatMap(
+      (output) => output.authenticatedRoutes ?? [],
+    );
+    if (authenticatedRoutes.length > 0 && (!dashboard || dashboard.disabled)) {
+      throw new Error(
+        "createApp() adapters with authenticated routes require an enabled dashboard",
+      );
+    }
+    validateDashboardRouteOwnership({
+      authenticatedRoutes,
+      dashboard,
+      routes: pluginRoutes,
+    });
+  } catch (error) {
+    restoreRuntimeConfig();
+    throw error;
+  }
   const slackWebhookServices = createProductionSlackWebhookServices({
     services: runtimeServiceOverrides,
   });
@@ -750,9 +855,11 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   });
 
   mountRoutes(app, pluginRoutes);
+  mountRoutes(app, adapterRoutes);
   mountRoutes(
     app,
     await createDashboardRouteRegistrations({
+      authenticatedRoutes,
       dashboard,
       createDashboardApp: virtualConfig?.createDashboardApp,
       pluginRoutes: pluginApiRoutes,
@@ -802,32 +909,6 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   let pluginTaskPOST:
     | ReturnType<typeof createVercelPluginTaskCallback>
     | undefined;
-  let conversationWorkOptions: ConversationWorkCallbackOptions | undefined;
-  const getConversationWorkOptions = () => {
-    conversationWorkOptions ??=
-      options?.conversationWork ??
-      createProductionConversationWorkOptions({
-        agentRunner,
-        services: runtimeServiceOverrides,
-      });
-    return conversationWorkOptions;
-  };
-  if (isExperimentalFeatureEnabled("acp")) {
-    const work = getConversationWorkOptions();
-    const cancellation = work.apiTurnCancellation;
-    if (!cancellation) {
-      throw new Error("Experimental ACP requires API Turn cancellation wiring");
-    }
-    const handleAcpRequest = createAcpHttpHandler({
-      cancellation,
-      conversationStore: work.conversationStore,
-      queue: work.queue ?? getVercelConversationWorkQueue(),
-      state: work.state,
-    });
-    app.on(["GET", "POST", "DELETE"], "/api/acp", (c) =>
-      handleAcpRequest(c.req.raw),
-    );
-  }
   if (process.env.NODE_ENV === "development") {
     registerVercelConversationWorkDevConsumer(getConversationWorkOptions());
     registerVercelPluginTaskDevConsumer();

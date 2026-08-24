@@ -76,6 +76,21 @@ afterEach(async () => {
 });
 
 describe("createApp plugin config", () => {
+  it("requires an enabled dashboard for authenticated adapter routes", async () => {
+    const expected =
+      "createApp() adapters with authenticated routes require an enabled dashboard";
+    const adapter = () => ({
+      authenticatedRoutes: [
+        {
+          handler: () => new Response("ok"),
+          path: "/_junior/adapter/auth/:transactionId",
+        },
+      ],
+    });
+
+    await expect(createApp({ adapters: [adapter] })).rejects.toThrow(expected);
+  });
+
   it("routes Slack webhooks through the production Slack handler", async () => {
     const app = await createApp({
       plugins: defineJuniorPlugins([]),
@@ -940,6 +955,8 @@ describe("createApp plugin config", () => {
       ).rejects.toThrow(
         `Plugin "legacy-dashboard" route "${path}" conflicts with core dashboard routes`,
       );
+      expect(getPlugins()).toEqual([]);
+      expect(pluginCatalogRuntime.getProviders()).toEqual([]);
     }
   });
 

@@ -107,6 +107,83 @@ describe("dashboard routes", () => {
     );
   });
 
+  it("returns authenticated adapter routes through Google sign-in", async () => {
+    const transactionId = "11111111-1111-4111-8111-111111111111";
+    const path = `/_junior/adapter/auth/${transactionId}`;
+    let callbackURL: string | undefined;
+    const handle = vi.fn(() => new Response("adapter route"));
+    const authenticatedRoutes = [
+      {
+        handler: handle,
+        method: ["GET", "POST"] as const,
+        path: "/_junior/adapter/auth/:transactionId",
+      },
+    ];
+    const unauthenticatedApp = createDashboardApp({
+      authenticatedRoutes,
+      allowedGoogleDomains: ["sentry.io"],
+      auth: auth(null, (value) => {
+        callbackURL = value;
+      }),
+    });
+    const unauthenticated = await unauthenticatedApp.fetch(
+      new Request(`http://localhost${path}`),
+    );
+    expect(unauthenticated.status).toBe(302);
+    const loginURL = new URL(unauthenticated.headers.get("location")!);
+    expect(loginURL.pathname).toBe("/auth/login");
+    expect(loginURL.searchParams.get("next")).toBe(path);
+
+    await unauthenticatedApp.fetch(new Request(loginURL));
+    expect(callbackURL).toBe(`http://localhost${path}`);
+    expect(handle).not.toHaveBeenCalled();
+
+    const authenticatedApp = createDashboardApp({
+      authenticatedRoutes,
+      allowedGoogleDomains: ["sentry.io"],
+      auth: auth({
+        user: {
+          email: "person@sentry.io",
+          emailVerified: true,
+          name: "Adapter User",
+        },
+      }),
+    });
+    const page = await authenticatedApp.request(`http://localhost${path}`);
+    expect(page.status).toBe(200);
+    await expect(page.text()).resolves.toBe("adapter route");
+    expect(handle).toHaveBeenCalledWith(
+      expect.objectContaining({ method: "GET" }),
+      expect.objectContaining({ id: "user:person@sentry.io" }),
+    );
+  });
+
+  it("rejects disallowed users on authenticated adapter routes", async () => {
+    const handle = vi.fn(() => new Response("adapter route"));
+    const app = createDashboardApp({
+      authenticatedRoutes: [
+        {
+          handler: handle,
+          path: "/_junior/adapter/auth/:transactionId",
+        },
+      ],
+      allowedGoogleDomains: ["sentry.io"],
+      auth: auth({
+        user: {
+          email: "person@example.com",
+          emailVerified: true,
+        },
+      }),
+    });
+
+    const response = await app.request(
+      "/_junior/adapter/auth/11111111-1111-4111-8111-111111111111",
+    );
+
+    expect(response.status).toBe(403);
+    expect(handle).not.toHaveBeenCalled();
+  });
+
   it("starts OAuth on the JUNIOR_BASE_URL origin", async () => {
     process.env.BETTER_AUTH_URL = "https://legacy-auth.example.com";
     process.env.JUNIOR_BASE_URL = "https://junior.example.com";
@@ -381,12 +458,8 @@ describe("dashboard routes", () => {
       'content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, interactive-widget=resizes-content"',
     );
     expect(html).toContain('name="theme-color" content="#000000"');
-    expect(html).toContain(
-      'href="/_junior/dashboard/manifest.webmanifest"',
-    );
-    expect(html).toContain(
-      'href="/_junior/dashboard/icon-512.png"',
-    );
+    expect(html).toContain('href="/_junior/dashboard/manifest.webmanifest"');
+    expect(html).toContain('href="/_junior/dashboard/icon-512.png"');
   });
 
   it("renders the configured agent name from the dashboard shell", async () => {

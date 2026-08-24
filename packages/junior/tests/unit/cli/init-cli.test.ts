@@ -31,10 +31,9 @@ function normalizeText(source: string): string {
 function removeExampleOnlyServerConfig(source: string): string {
   return normalizeText(
     source
-      .replace(
-        '  experimental: { acp: process.env.NODE_ENV === "development" },\n',
-        "",
-      )
+      .replace("  { acpAdapter },\n", "")
+      .replace('  import("@sentry/junior-acp"),\n', "")
+      .replace("  adapters: [acpAdapter()],\n", "")
       .replace(
         /  \{\n    exampleDashboardAuthRequired,\n    exampleDashboardComponentGallery,\n    exampleDashboardMockConversations,\n  \},\n/,
         "",

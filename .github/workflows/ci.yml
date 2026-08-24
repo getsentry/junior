@@ -49,12 +49,14 @@ jobs:
               - .github/actions/**
             core:
               - packages/junior/**
+              - packages/junior-acp/**
               - packages/junior-plugin-api/**
               - packages/junior-testing/**
               - policies/**
             dashboard:
               - packages/junior-dashboard/**
               - packages/junior/**
+              - packages/junior-acp/**
               - packages/junior-plugin-api/**
             docs:
               - packages/docs/**
@@ -65,6 +67,7 @@ jobs:
             example:
               - apps/example/**
               - packages/junior/**
+              - packages/junior-acp/**
               - packages/junior-plugin-api/**
             lint_config:
               - ast-grep/**
@@ -190,6 +193,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node-pnpm
+      - run: pnpm --filter @sentry/junior-acp build
       - run: pnpm --filter @sentry/junior build
       - run: pnpm --filter @sentry/junior exec vitest run --maxWorkers=4 --coverage ${{ matrix.path }}
       - name: Upload coverage
@@ -391,6 +395,7 @@ jobs:
         run: |
           mkdir -p artifacts
           pnpm --filter @sentry/junior pack --pack-destination artifacts
+          pnpm --filter @sentry/junior-acp pack --pack-destination artifacts
           pnpm --filter @sentry/junior-plugin-api pack --pack-destination artifacts
           pnpm --filter @sentry/junior-agent-browser pack --pack-destination artifacts
           pnpm --filter @sentry/junior-amplitude pack --pack-destination artifacts
