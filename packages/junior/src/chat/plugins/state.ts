@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { PluginState } from "@sentry/junior-plugin-api";
+import type { PluginRouteState } from "@sentry/junior-plugin-api";
 import type { StateAdapter } from "chat";
 import { getStateAdapter } from "@/chat/state/adapter";
 
@@ -30,9 +30,41 @@ function validatePluginStateKey(key: string): void {
 export function createPluginState(
   plugin: string,
   adapter?: StateAdapter,
-): PluginState {
+): PluginRouteState {
   const getAdapter = (): StateAdapter => adapter ?? getStateAdapter();
   return {
+    async acquireLease(key, ttlMs) {
+      validatePluginStateKey(key);
+      const state = getAdapter();
+      await state.connect();
+      const lock = await state.acquireLock(pluginStateKey(plugin, key), ttlMs);
+      if (!lock) return undefined;
+
+      let expiresAt = lock.expiresAt;
+      let released = false;
+      return {
+        get expiresAt() {
+          return expiresAt;
+        },
+        async release() {
+          if (released) return;
+          await state.releaseLock(lock);
+          released = true;
+        },
+        async renew(nextTtlMs) {
+          if (released) return false;
+          const renewed = await state.extendLock(lock, nextTtlMs);
+          if (renewed) expiresAt = Date.now() + nextTtlMs;
+          return renewed;
+        },
+      };
+    },
+    async appendToList(key, value, options) {
+      validatePluginStateKey(key);
+      const state = getAdapter();
+      await state.connect();
+      await state.appendToList(pluginStateKey(plugin, key), value, options);
+    },
     async delete(key) {
       validatePluginStateKey(key);
       const state = getAdapter();
@@ -45,6 +77,12 @@ export function createPluginState(
       await state.connect();
       const value = await state.get<T>(pluginStateKey(plugin, key));
       return value ?? undefined;
+    },
+    async getList<T = unknown>(key: string): Promise<T[]> {
+      validatePluginStateKey(key);
+      const state = getAdapter();
+      await state.connect();
+      return await state.getList<T>(pluginStateKey(plugin, key));
     },
     async set(key, value, ttlMs) {
       validatePluginStateKey(key);

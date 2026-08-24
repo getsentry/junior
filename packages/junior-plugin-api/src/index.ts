@@ -3,6 +3,7 @@ export * from "./code";
 export * from "./conversation-events";
 export * from "./schemas";
 export * from "./context";
+export * from "./conversations";
 export * from "./state";
 export {
   definePromptContext,

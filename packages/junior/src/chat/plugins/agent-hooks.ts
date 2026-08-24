@@ -8,9 +8,11 @@ import {
 } from "@sentry/junior-plugin-api";
 import type {
   InvocationContext,
+  PluginConversations,
   PluginMcp,
   PluginReadState,
   PluginRoute,
+  PluginRouteDefinition,
   PluginRouteMethod,
   PluginSandbox,
   PluginOperationalReport,
@@ -20,11 +22,14 @@ import type {
   ResourceEvent,
   SlackConversationLink,
   PluginRegistration,
+  PluginUserRoute,
+  RouteRegistrationHookContext,
   SlackToolRegistrationHookContext,
   ToolRegistrationHookContext,
   User,
   UserPromptContext,
 } from "@sentry/junior-plugin-api";
+import type { StateAdapter } from "chat";
 import { getDb } from "@/chat/db";
 import { createPluginAnnotations } from "@/chat/plugins/annotations";
 import { createPluginConversationEvents } from "@/chat/plugins/conversation-events";
@@ -78,6 +83,15 @@ export interface ToolHookResult {
 
 export interface PluginRouteRegistration extends PluginRoute {
   pluginName: string;
+}
+
+export interface PluginUserRouteRegistration extends PluginUserRoute {
+  pluginName: string;
+}
+
+export interface PluginRouteRegistrations {
+  authenticatedRoutes: PluginUserRouteRegistration[];
+  routes: PluginRouteRegistration[];
 }
 
 export interface PluginApiRouteRegistration {
@@ -793,7 +807,7 @@ export function getPluginTools(
 
 /** Normalize route methods so JS plugins cannot register invalid verbs. */
 function routeMethods(
-  route: PluginRoute,
+  route: PluginRouteDefinition,
   pluginName: string,
 ): PluginRouteMethod[] {
   const methods = Array.isArray(route.method)
@@ -843,6 +857,8 @@ function requirePublishedResourceEvent(
 
 /** Collect route handlers exposed by plugins for app-level mounting. */
 export function getPluginRoutes(options: {
+  app: RouteRegistrationHookContext["app"];
+  conversations: PluginConversations;
   resourceEvents: {
     neededMatchKeys?(input: {
       eventTypes: string[];
@@ -851,7 +867,9 @@ export function getPluginRoutes(options: {
     }): Promise<string[]>;
     publish(event: ResourceEvent): Promise<void>;
   };
-}): PluginRouteRegistration[] {
+  state: StateAdapter;
+}): PluginRouteRegistrations {
+  const authenticatedRoutes: PluginUserRouteRegistration[] = [];
   const routes: PluginRouteRegistration[] = [];
   const seen = new Set<string>();
   const methodsByPath = new Map<string, Set<PluginRouteMethod>>();
@@ -864,6 +882,7 @@ export function getPluginRoutes(options: {
     }
     const pluginRoutes = hook({
       ...basePluginContext(plugin),
+      app: options.app,
       annotations: {
         forConversation: (conversationId) =>
           createPluginAnnotations({
@@ -873,6 +892,7 @@ export function getPluginRoutes(options: {
           }),
       },
       codeChanges: createCodeChangePublisher(pluginName),
+      conversations: options.conversations,
       resourceEvents: {
         async neededMatchKeys(input) {
           if (!options.resourceEvents.neededMatchKeys) return [];
@@ -910,6 +930,7 @@ export function getPluginRoutes(options: {
           });
         },
       },
+      state: createPluginState(pluginName, options.state),
     });
     if (!Array.isArray(pluginRoutes)) {
       throw new Error(
@@ -932,6 +953,11 @@ export function getPluginRoutes(options: {
           `Plugin route "${route.path}" from plugin "${pluginName}" must provide a handler`,
         );
       }
+      if (route.auth !== undefined && route.auth !== "user") {
+        throw new Error(
+          `Plugin route "${route.path}" from plugin "${pluginName}" has invalid auth "${String(route.auth)}"`,
+        );
+      }
       const methods = routeMethods(route, pluginName);
       const pathMethods = methodsByPath.get(route.path) ?? new Set();
       if (
@@ -951,14 +977,15 @@ export function getPluginRoutes(options: {
         pathMethods.add(method);
       }
       methodsByPath.set(route.path, pathMethods);
-      routes.push({
-        ...route,
-        pluginName,
-      });
+      if (route.auth === "user") {
+        authenticatedRoutes.push({ ...route, pluginName });
+      } else {
+        routes.push({ ...route, pluginName });
+      }
     }
   }
 
-  return routes;
+  return { authenticatedRoutes, routes };
 }
 
 /** Collect authenticated product API route apps exposed by plugins. */

@@ -78,7 +78,7 @@ afterEach(async () => {
 describe("createApp plugin config", () => {
   it("requires an enabled dashboard for authenticated adapter routes", async () => {
     const expected =
-      "createApp() adapters with authenticated routes require an enabled dashboard";
+      "createApp() authenticated routes require an enabled dashboard";
     const adapter = () => ({
       authenticatedRoutes: [
         {

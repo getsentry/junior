@@ -31,8 +31,9 @@ import {
 } from "@/chat/sandbox/resources";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import {
-  type PluginRouteRegistration,
   type PluginApiRouteRegistration,
+  type PluginRouteRegistration,
+  type PluginRouteRegistrations,
   getPluginApiRoutes,
   getPluginRoutes,
   setPlugins,
@@ -793,7 +794,6 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
         configuredPlugins?.registrations ?? [],
       );
     }
-    pluginRoutes = getPluginRoutes({ resourceEvents });
     if (dashboard && !dashboard.disabled) {
       pluginApiRoutes = getPluginApiRoutes();
     }
@@ -829,6 +829,30 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   let adapterRoutes: HostRouteRegistration[] = [];
   let authenticatedRoutes: JuniorAuthenticatedRoute[] = [];
   try {
+    let registeredPluginRoutes: PluginRouteRegistrations = {
+      authenticatedRoutes: [],
+      routes: [],
+    };
+    if (plugins.some((plugin) => Boolean(plugin.hooks?.routes))) {
+      const work = getConversationWorkOptions();
+      const state = work.state ?? getStateAdapter();
+      registeredPluginRoutes = getPluginRoutes({
+        app: {
+          agentName: botConfig.userName,
+          baseURL: resolveAdapterBaseURL(dashboard),
+          version: JUNIOR_VERSION,
+        },
+        conversations: createAdapterConversations({
+          conversationStore: work.conversationStore,
+          eventStore: getConversationEventStore(),
+          queue: work.queue ?? getVercelConversationWorkQueue(),
+          state,
+        }),
+        resourceEvents,
+        state,
+      });
+    }
+    pluginRoutes = registeredPluginRoutes.routes;
     const adapterOutputs = await Promise.all(
       (options?.adapters ?? []).map(async (adapter) => {
         const work = getConversationWorkOptions();
@@ -850,12 +874,13 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
       }),
     );
     adapterRoutes = adapterOutputs.flatMap((output) => output.routes ?? []);
-    authenticatedRoutes = adapterOutputs.flatMap(
-      (output) => output.authenticatedRoutes ?? [],
-    );
+    authenticatedRoutes = [
+      ...registeredPluginRoutes.authenticatedRoutes,
+      ...adapterOutputs.flatMap((output) => output.authenticatedRoutes ?? []),
+    ];
     if (authenticatedRoutes.length > 0 && (!dashboard || dashboard.disabled)) {
       throw new Error(
-        "createApp() adapters with authenticated routes require an enabled dashboard",
+        "createApp() authenticated routes require an enabled dashboard",
       );
     }
     validateDashboardRouteOwnership({
