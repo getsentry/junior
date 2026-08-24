@@ -110,6 +110,30 @@ export type ResourceEventMatchFields = z.output<
   typeof resourceEventMatchFieldsSchema
 >;
 
+function stableMatchValue(value: ResourceEventMatch[string]): unknown {
+  if (!Array.isArray(value)) return value;
+  return [...value].sort((left, right) => {
+    if (typeof left === "number" && typeof right === "number") {
+      return left - right;
+    }
+    return String(left).localeCompare(String(right));
+  });
+}
+
+/** Stable JSON for one match object. Array order does not matter. */
+export function stableResourceEventMatchKey(
+  match: ResourceEventMatch | undefined,
+): string {
+  if (!match || Object.keys(match).length === 0) return "";
+  return JSON.stringify(
+    Object.fromEntries(
+      Object.entries(match)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, value]) => [key, stableMatchValue(value)]),
+    ),
+  );
+}
+
 /** Return whether trusted event data satisfies one exact match object. */
 export function resourceEventMatches(
   match: ResourceEventMatch | undefined,

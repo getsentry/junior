@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { resourceEventMatches } from "@sentry/junior-plugin-api";
+import {
+  resourceEventMatches,
+  stableResourceEventMatchKey,
+} from "@sentry/junior-plugin-api";
 import {
   requireSupportedResourceEventMatch,
   type ResourceEventCatalog,
@@ -49,6 +52,15 @@ describe("resourceEventMatches", () => {
     expect(
       resourceEventMatches({ base: ["main", "master"] }, { base: "develop" }),
     ).toBe(false);
+  });
+
+  it("treats any-of array order as the same match key", () => {
+    expect(stableResourceEventMatchKey(undefined)).toBe("");
+    expect(
+      stableResourceEventMatchKey({ base: ["main", "master"], isDraft: false }),
+    ).toBe(
+      stableResourceEventMatchKey({ isDraft: false, base: ["master", "main"] }),
+    );
   });
 });
 

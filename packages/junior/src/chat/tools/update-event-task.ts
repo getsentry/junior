@@ -1,3 +1,4 @@
+import { stableResourceEventMatchKey } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import { getDb } from "@/chat/db";
 import { saveEventTask } from "@/chat/event-tasks/store";
@@ -21,15 +22,6 @@ import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 
 /** Return whether an edit changes the task's executable event source. */
-function stableMatchJson(match: EventTask["trigger"]["match"]): string {
-  if (!match || Object.keys(match).length === 0) return "";
-  return JSON.stringify(
-    Object.fromEntries(
-      Object.entries(match).sort(([left], [right]) => left.localeCompare(right)),
-    ),
-  );
-}
-
 function changesEventTaskTrigger(
   current: EventTask["trigger"],
   next: EventTask["trigger"],
@@ -41,7 +33,8 @@ function changesEventTaskTrigger(
     current.identifier !== next.identifier ||
     currentEvents.length !== nextEvents.length ||
     currentEvents.some((event, index) => event !== nextEvents[index]) ||
-    stableMatchJson(current.match) !== stableMatchJson(next.match)
+    stableResourceEventMatchKey(current.match) !==
+      stableResourceEventMatchKey(next.match)
   );
 }
 

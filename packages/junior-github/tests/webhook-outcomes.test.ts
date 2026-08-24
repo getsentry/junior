@@ -302,7 +302,6 @@ describe("GitHub webhook resource events", () => {
         identifier: "getsentry/junior#946",
         terminal: true,
         trustedSummary: "GitHub PR getsentry/junior#946 was merged.",
-        data: { isDraft: false },
       },
       {
         eventKey: "github:delivery-merge:pull_request.merged",
@@ -310,7 +309,6 @@ describe("GitHub webhook resource events", () => {
         occurredAtMs: Date.parse("2026-07-10T12:00:00.000Z"),
         identifier: "getsentry/junior",
         trustedSummary: "GitHub PR getsentry/junior#946 was merged.",
-        data: { isDraft: false },
       },
     ]);
   });
@@ -474,7 +472,6 @@ describe("GitHub webhook resource events", () => {
             identifier: "getsentry/junior#946",
             trustedSummary:
               "GitHub PR getsentry/junior#946 received requested changes from reviewer.",
-            data: { isDraft: false },
             untrustedText: "please revise",
           },
         ],
@@ -499,7 +496,6 @@ describe("GitHub webhook resource events", () => {
             identifier: "getsentry/junior#946",
             trustedSummary:
               "GitHub PR getsentry/junior#946 received a review comment from reviewer.",
-            data: { isDraft: false },
             untrustedText: "overall this looks close",
           },
         ],
@@ -520,7 +516,6 @@ describe("GitHub webhook resource events", () => {
             identifier: "getsentry/junior#946",
             trustedSummary:
               "GitHub PR getsentry/junior#946 received a comment from reviewer.",
-            data: { isDraft: false },
             untrustedText: "please revise",
           },
         ],
@@ -542,7 +537,6 @@ describe("GitHub webhook resource events", () => {
             identifier: "getsentry/junior#946",
             trustedSummary:
               "GitHub PR getsentry/junior#946 received an inline review comment from reviewer.",
-            data: { isDraft: false },
             untrustedText: "change this line",
           },
         ],
@@ -572,7 +566,6 @@ describe("GitHub webhook resource events", () => {
             trustedSummary:
               "GitHub PR getsentry/junior#946 checks failed for abcdef123456.",
             data: {
-              isDraft: false,
               repo: "getsentry/junior",
               pullRequest: 946,
               scope: "check_suite",
@@ -593,7 +586,6 @@ describe("GitHub webhook resource events", () => {
             trustedSummary:
               "GitHub PR getsentry/junior#947 checks failed for abcdef123456.",
             data: {
-              isDraft: false,
               repo: "getsentry/junior",
               pullRequest: 947,
               scope: "check_suite",
@@ -669,7 +661,6 @@ describe("GitHub webhook resource events", () => {
         trustedSummary:
           "GitHub PR getsentry/junior#691 checks failed (2) for abcdef123456.",
         data: {
-          isDraft: false,
           repo: "getsentry/junior",
           pullRequest: 691,
           scope: "check_suite",
@@ -705,7 +696,6 @@ describe("GitHub webhook resource events", () => {
         trustedSummary:
           "GitHub PR getsentry/junior#691 checks failed (2) for abcdef123456.",
         data: {
-          isDraft: false,
           repo: "getsentry/junior",
           pullRequest: 691,
           scope: "check_suite",

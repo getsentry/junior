@@ -5,6 +5,7 @@ import {
   resourceEventMatchSchema,
   resourceEventMatches,
   resourceEventTypeSchema,
+  stableResourceEventMatchKey,
   type Destination,
   type ResourceEventData,
   type ResourceEventMatch,
@@ -195,15 +196,6 @@ async function readSubscriptionIdIndex(
   return subscriptionIdIndexSchema.parse(value);
 }
 
-function stableMatchKey(match: ResourceEventMatch | undefined): string {
-  if (!match || Object.keys(match).length === 0) return "";
-  return JSON.stringify(
-    Object.fromEntries(
-      Object.entries(match).sort(([left], [right]) => left.localeCompare(right)),
-    ),
-  );
-}
-
 function buildSubscriptionId(input: {
   conversationId: string;
   events: string[];
@@ -213,10 +205,13 @@ function buildSubscriptionId(input: {
   teamId: string;
 }): string {
   const eventKey = [...new Set(input.events)].sort().join("\0");
-  const matchKey = stableMatchKey(input.match);
-  return `resub_${digest(
-    `${input.teamId}\0${input.namespace}\0${input.identifier}\0${input.conversationId}\0${eventKey}\0${matchKey}`,
-  )}`;
+  const matchKey = stableResourceEventMatchKey(input.match);
+  // Keep the pre-match identity when match is empty so recreating a watch
+  // replaces the existing subscription instead of double-delivering.
+  const material = matchKey
+    ? `${input.teamId}\0${input.namespace}\0${input.identifier}\0${input.conversationId}\0${eventKey}\0${matchKey}`
+    : `${input.teamId}\0${input.namespace}\0${input.identifier}\0${input.conversationId}\0${eventKey}`;
+  return `resub_${digest(material)}`;
 }
 
 async function withIndexLock<T>(

@@ -530,6 +530,12 @@ describe("github plugin", () => {
         "pull_request.ready_for_review",
         "pull_request.merged",
       ]),
+      matchFields: {
+        isDraft: {
+          kind: "boolean",
+          description: "true when the pull request is a draft",
+        },
+      },
     });
   });
 

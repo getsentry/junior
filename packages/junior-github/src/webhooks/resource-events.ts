@@ -10,6 +10,13 @@ function gitHubEventKey(deliveryId: string, eventType: string): string {
   return `github:${deliveryId}:${eventType}`;
 }
 
+/** Include isDraft only when GitHub sent an explicit draft boolean. */
+function pullRequestDraftData(
+  draft: boolean | undefined,
+): { isDraft: boolean } | undefined {
+  return typeof draft === "boolean" ? { isDraft: draft } : undefined;
+}
+
 /** Address a pull request event through both the pull request and its repository. */
 function pullRequestTargets(
   event: ResourceEventInput,
@@ -285,12 +292,12 @@ export function buildCheckSuiteResourceEvent(args: {
       : `${resource.label} check suite recovered${shortSha ? ` for ${shortSha}` : ""}.`;
 
   const data: Record<string, unknown> = {
-    isDraft: args.isDraft === true,
     repo: args.repo,
     pullRequest: args.pullRequestNumber,
     scope: "check_suite",
     suiteConclusion: args.suiteConclusion,
   };
+  if (typeof args.isDraft === "boolean") data.isDraft = args.isDraft;
   if (args.headSha) data.headSha = args.headSha;
   if (args.checkSuiteId !== undefined) data.checkSuiteId = args.checkSuiteId;
   if (args.checkSuiteId !== undefined && args.headSha) {
@@ -427,7 +434,9 @@ function normalizeCheckSuiteEvents(
             ? options?.failingChecks
             : undefined,
         headSha,
-        isDraft: pullRequest.draft === true,
+        ...(typeof pullRequest.draft === "boolean"
+          ? { isDraft: pullRequest.draft }
+          : undefined),
         latestCheckRunsCount:
           typeof suite.latest_check_runs_count === "number"
             ? suite.latest_check_runs_count
@@ -470,6 +479,7 @@ function normalizeIssueCommentEvents(
   if (parsed.data.issue.pull_request) {
     const eventType = "pull_request.comment.created";
     const resource = gitHubPullRequestResource(input);
+    const draftData = pullRequestDraftData(parsed.data.issue.draft);
     return pullRequestTargets(
       {
         eventKey: gitHubEventKey(deliveryId, eventType),
@@ -477,7 +487,7 @@ function normalizeIssueCommentEvents(
         occurredAtMs: Date.now(),
         identifier: resource.identifier,
         trustedSummary: `${resource.label} received a comment${author ? ` from ${author}` : ""}.`,
-        data: { isDraft: parsed.data.issue.draft === true },
+        ...(draftData ? { data: draftData } : undefined),
         untrustedText: parsed.data.comment.body,
       },
       input.repo,
@@ -606,6 +616,7 @@ function normalizePullRequestReviewCommentEvent(
     repo,
   });
   const author = parsed.data.comment.user?.login;
+  const draftData = pullRequestDraftData(parsed.data.pull_request.draft);
   return pullRequestTargets(
     {
       eventKey: gitHubEventKey(deliveryId, eventType),
@@ -613,7 +624,7 @@ function normalizePullRequestReviewCommentEvent(
       occurredAtMs: Date.now(),
       identifier: resource.identifier,
       trustedSummary: `${resource.label} received an inline review comment${author ? ` from ${author}` : ""}.`,
-      data: { isDraft: parsed.data.pull_request.draft === true },
+      ...(draftData ? { data: draftData } : undefined),
       untrustedText: parsed.data.comment.body,
     },
     repo,
@@ -654,6 +665,7 @@ function normalizePullRequestReviewEvent(
     repo,
   });
   const reviewer = parsed.data.review.user?.login;
+  const draftData = pullRequestDraftData(parsed.data.pull_request.draft);
   return pullRequestTargets(
     {
       eventKey: gitHubEventKey(deliveryId, eventType),
@@ -666,7 +678,7 @@ function normalizePullRequestReviewEvent(
           : eventType === "pull_request.review.changes_requested"
             ? `${resource.label} received requested changes${reviewer ? ` from ${reviewer}` : ""}.`
             : `${resource.label} received a review comment${reviewer ? ` from ${reviewer}` : ""}.`,
-      data: { isDraft: parsed.data.pull_request.draft === true },
+      ...(draftData ? { data: draftData } : undefined),
       untrustedText: parsed.data.review.body ?? undefined,
     },
     repo,
@@ -711,7 +723,7 @@ function pullRequestEventText(pullRequest: {
 function pullRequestLifecycleEvents(input: {
   deliveryId: string;
   eventType: string;
-  isDraft: boolean;
+  isDraft?: boolean;
   occurredAtMs: number;
   repo: string;
   resource: ReturnType<typeof gitHubPullRequestResource>;
@@ -719,6 +731,7 @@ function pullRequestLifecycleEvents(input: {
   trustedSummary: string;
   untrustedText?: string;
 }): ResourceEventInput[] {
+  const draftData = pullRequestDraftData(input.isDraft);
   return pullRequestTargets(
     {
       eventKey: gitHubEventKey(input.deliveryId, input.eventType),
@@ -727,7 +740,7 @@ function pullRequestLifecycleEvents(input: {
       identifier: input.resource.identifier,
       ...(input.terminal ? { terminal: true } : undefined),
       trustedSummary: input.trustedSummary,
-      data: { isDraft: input.isDraft },
+      ...(draftData ? { data: draftData } : undefined),
       ...(input.untrustedText ? { untrustedText: input.untrustedText } : undefined),
     },
     input.repo,
@@ -747,7 +760,8 @@ function normalizePullRequestEvent(
     number: parsed.data.pull_request.number,
     repo,
   });
-  const isDraft = parsed.data.pull_request.draft === true;
+  const draft = parsed.data.pull_request.draft;
+  const isDraft = typeof draft === "boolean" ? draft : undefined;
   const untrustedText = pullRequestEventText(parsed.data.pull_request);
 
   if (parsed.data.action === "opened") {
@@ -756,7 +770,7 @@ function normalizePullRequestEvent(
     const events = pullRequestLifecycleEvents({
       deliveryId,
       eventType: "pull_request.opened",
-      isDraft,
+      ...(isDraft !== undefined ? { isDraft } : undefined),
       occurredAtMs: openedAtMs,
       repo,
       resource,
@@ -765,7 +779,7 @@ function normalizePullRequestEvent(
     });
     // Non-draft opens are immediately reviewable; emit the same signal used
     // when a draft later leaves draft state.
-    if (!isDraft) {
+    if (draft !== true) {
       events.push(
         ...pullRequestLifecycleEvents({
           deliveryId,
@@ -803,7 +817,7 @@ function normalizePullRequestEvent(
   return pullRequestLifecycleEvents({
     deliveryId,
     eventType,
-    isDraft,
+    ...(isDraft !== undefined ? { isDraft } : undefined),
     occurredAtMs:
       providerTime(
         parsed.data.pull_request.merged

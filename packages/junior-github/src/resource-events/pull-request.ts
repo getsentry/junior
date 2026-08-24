@@ -41,7 +41,7 @@ export const GITHUB_PULL_REQUEST_SUGGESTED_EVENTS = [
   "pull_request.closed_unmerged",
 ] as const;
 
-/** Exact facts GitHub always sets on pull request event data. */
+/** Exact facts GitHub may set on pull request event data. Missing facts fail closed. */
 export const GITHUB_PULL_REQUEST_MATCH_FIELDS = {
   isDraft: {
     kind: "boolean" as const,

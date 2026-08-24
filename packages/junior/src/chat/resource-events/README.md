@@ -26,9 +26,9 @@ conversation.
   the event type.
 - Plugins declare resource types, supported and suggested event types, optional
   match fields, and ingress readiness on their registration. Core builds one
-  enabled runtime catalog for search, tool schemas, and validation. A declared
-  match field must appear on trusted event data for events of that resource
-  type.
+  enabled runtime catalog for search, tool schemas, and validation. Prefer
+  match fields the plugin always sets. If a field is missing on an event, core
+  fails closed and does not match.
 - `searchResourceEventTypes` discovers that catalog without creating anything.
   `watchResourceEvents` creates a temporary resource subscription for the
   current Slack thread. Concrete identifiers still come from plugin tool

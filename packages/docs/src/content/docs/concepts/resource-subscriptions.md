@@ -33,7 +33,7 @@ whenever an issue is reopened in this repository, summarize why in this channel
 whenever a non-draft pull request opens in this repository, review it
 ```
 
-Optional `match` facts come from the resource type. Junior drops events that do not match before it wakes the agent.
+Optional `match` facts come from the resource type. Junior drops events that do not match before it wakes the agent. Use a match field only when that resource type declares it. For GitHub, `isDraft` works on `pull_request` and on `repository` watches that receive pull request events.
 
 ## Limits
 
