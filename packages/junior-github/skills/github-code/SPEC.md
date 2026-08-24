@@ -12,7 +12,7 @@ Guide evidence-first GitHub repository work from inspection through a reviewable
 - Install repository dependencies with the detected package manager's locked/frozen mode before verification when dependencies are absent.
 - For every completed repository edit, create or update a pushed PR unless the user explicitly opts out; default new PRs to draft while honoring explicit ready-for-review instructions.
 - Write conventional PR titles that match the current dominant change.
-- Write short reviewer-facing PR bodies in ASD-STE100 English; explain what changed and why, add only context the diff cannot show, and omit empty ceremony or fixed templates.
+- Write short reviewer-facing PR bodies in ASD-STE100 English; explain what changed and why, add only context the diff cannot show, omit empty ceremony or fixed templates, and keep Checks/Verification/Test plan style sections out of the PR body (report local checks to the user instead).
 - Treat existing PR metadata and commit messages as fallible context, and refresh the title/body against the current diff after material changes.
 - Report exact validation and permission failures without claiming partial work is complete.
 
