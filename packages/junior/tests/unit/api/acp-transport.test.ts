@@ -34,6 +34,19 @@ function replayReceipt(): AcpRequestReceipt {
   };
 }
 
+function loadReceipt(): AcpRequestReceipt {
+  return {
+    outputs: [
+      { kind: "replay" },
+      {
+        kind: "message",
+        message: { jsonrpc: "2.0", id: "load", result: {} },
+      },
+    ],
+    sessionId: SESSION_ID,
+  };
+}
+
 describe("ACP transport", () => {
   it("does not let browser authorization restore a deleted connection", async () => {
     const state = createMemoryState();
@@ -107,7 +120,7 @@ describe("ACP transport", () => {
       credentialHash: "0".repeat(64),
       nonce: "transport-test",
     });
-    for (let index = 0; index < MAX_STREAM_ITEMS; index += 1) {
+    for (let index = 0; index < MAX_STREAM_ITEMS - 1; index += 1) {
       await state.appendToList(STREAM_ITEMS_KEY, {
         id: `existing-${index}`,
         output: {
@@ -116,6 +129,25 @@ describe("ACP transport", () => {
         },
       });
     }
+    const beforeMultiOutput = [...(await state.getList(STREAM_ITEMS_KEY))];
+    await expect(
+      completeAcpRequest({
+        connectionId: CONNECTION_ID,
+        receipt: loadReceipt(),
+        requestKey: `${REQUEST_KEY}-multi-output`,
+        state,
+      }),
+    ).resolves.toBe("full");
+    await expect(state.getList(STREAM_ITEMS_KEY)).resolves.toEqual(
+      beforeMultiOutput,
+    );
+    await state.appendToList(STREAM_ITEMS_KEY, {
+      id: `existing-${MAX_STREAM_ITEMS - 1}`,
+      output: {
+        kind: "message",
+        message: { jsonrpc: "2.0", id: MAX_STREAM_ITEMS - 1, result: {} },
+      },
+    });
     const createReceipt = vi.fn(async () => replayReceipt());
     const accept = () =>
       acceptAcpRequest({

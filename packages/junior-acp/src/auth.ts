@@ -142,10 +142,23 @@ export function hasAcpConnectionCredential(
   return actual.length === expected.length && timingSafeEqual(actual, expected);
 }
 
+/** Resolve a trusted browser origin, with request fallback only on loopback. */
 function authorizationBaseURL(request: Request, configured?: string): URL {
   const value = configured?.trim();
-  let origin = value || new URL(request.url).origin;
-  if (value && !/^https?:\/\//.test(value)) origin = `https://${value}`;
+  let origin: string;
+  if (value) {
+    origin = /^https?:\/\//.test(value) ? value : `https://${value}`;
+  } else {
+    const requestURL = new URL(request.url);
+    const hostname = requestURL.hostname.replace(/^\[|\]$/g, "");
+    if (!["localhost", "127.0.0.1", "::1"].includes(hostname)) {
+      throw acp.RequestError.internalError(
+        undefined,
+        "Junior ACP sign-in requires a configured public base URL",
+      );
+    }
+    origin = requestURL.origin;
+  }
   const url = new URL(origin);
   url.pathname = "/";
   url.search = "";
@@ -260,6 +273,7 @@ export async function beginAcpAuthorization(args: {
   requestKey: string;
   state: AcpState;
 }): Promise<AcpRequestReceipt> {
+  const url = authorizationBaseURL(args.request, args.baseURL);
   const result = await withLock(
     args.state,
     authorizationPointerLockKey(args.connectionId),
@@ -318,7 +332,6 @@ export async function beginAcpAuthorization(args: {
     throw new Error("Timed out acquiring ACP authorization pointer control");
   }
   const { transactionId, userCode } = result.value;
-  const url = authorizationBaseURL(args.request, args.baseURL);
   url.pathname = `/_junior/acp/auth/${transactionId}`;
   const params = {
     mode: "url",

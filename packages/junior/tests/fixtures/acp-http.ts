@@ -17,7 +17,7 @@ export function mockAcpDashboardConfig(): void {
     createDashboardApp: () => ({
       fetch: () => new Response("Not Found", { status: 404 }),
     }),
-    dashboard: { authRequired: false },
+    dashboard: { authRequired: false, baseURL: "http://junior.test" },
     functionMaxDurationSeconds: undefined,
     pluginSet: undefined,
     plugins: undefined,

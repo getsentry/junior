@@ -195,6 +195,21 @@ interface JuniorDashboardRuntimeOptions extends JuniorDashboardOptions {
   pluginRoutes?: PluginApiRouteRegistration[];
 }
 
+/** Resolve the public deployment URL exposed to app adapters. */
+function resolveAdapterBaseURL(
+  dashboard: JuniorDashboardOptions | undefined,
+): string | undefined {
+  const configured =
+    dashboard?.baseURL?.trim() || process.env.JUNIOR_BASE_URL?.trim();
+  if (configured) return configured;
+
+  const vercelURL =
+    process.env.VERCEL_PROJECT_PRODUCTION_URL?.trim() ||
+    process.env.VERCEL_URL?.trim();
+  if (!vercelURL) return undefined;
+  return /^https?:\/\//.test(vercelURL) ? vercelURL : `https://${vercelURL}`;
+}
+
 type JuniorVirtualDashboardOptions = JuniorDashboardOptions;
 
 interface DashboardApp {
@@ -790,7 +805,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
         const state = work.state ?? getStateAdapter();
         return await adapter({
           agentName: botConfig.userName,
-          baseURL: dashboard?.baseURL ?? process.env.JUNIOR_BASE_URL,
+          baseURL: resolveAdapterBaseURL(dashboard),
           conversations: createAdapterConversations({
             conversationStore: work.conversationStore,
             eventStore: getConversationEventStore(),

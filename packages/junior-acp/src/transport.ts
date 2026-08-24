@@ -260,56 +260,65 @@ export async function bindAcpConnectionUser(args: {
   return result.value;
 }
 
+interface PreparedStreamAppend {
+  existingIds: Set<string>;
+  pendingIds: Set<string>;
+}
+
+/** Admit all missing receipt items or clear a fully consumed stream. */
 async function prepareStreamAppend(args: {
-  id?: string;
+  ids: readonly string[];
   lock: AcpLock;
   route: AcpStreamRoute;
   state: AcpState;
-}): Promise<StoredAcpStreamItem[] | string> {
+}): Promise<PreparedStreamAppend> {
   const existing = await readStreamItems(args.state, args.route);
   const cursor = await readStreamCursor(args.state, args.route);
   const cursorIndex = cursor
     ? existing.findIndex((item) => item.id === cursor)
     : -1;
-  if (args.id) {
-    const pending = existing.slice(cursorIndex >= 0 ? cursorIndex + 1 : 0);
+  const pending = existing.slice(cursorIndex >= 0 ? cursorIndex + 1 : 0);
+  const pendingIds = new Set<string>();
+  for (const id of args.ids) {
     const pendingItem = pending.find(
-      (item) =>
-        item.id === args.id || item.id.startsWith(`${args.id}:delivery:`),
+      (item) => item.id === id || item.id.startsWith(`${id}:delivery:`),
     );
-    if (pendingItem) return pendingItem.id;
+    if (pendingItem) pendingIds.add(id);
   }
-  if (existing.length < MAX_STREAM_ITEMS) return existing;
+  const missingCount = args.ids.length - pendingIds.size;
+  if (missingCount > MAX_STREAM_ITEMS) throw new AcpStreamFullError();
+  if (
+    missingCount === 0 ||
+    existing.length + missingCount <= MAX_STREAM_ITEMS
+  ) {
+    return {
+      existingIds: new Set(existing.map((item) => item.id)),
+      pendingIds,
+    };
+  }
 
-  if (cursorIndex !== existing.length - 1) {
+  if (existing.length === 0 || cursorIndex !== existing.length - 1) {
     throw new AcpStreamFullError();
   }
   await fenceLock(args.state, args.lock, MUTATION_LOCK_TTL_MS);
   await args.state.delete(streamListKey(args.route));
   await args.state.delete(streamCursorKey(args.route));
-  return [];
+  return { existingIds: new Set(), pendingIds: new Set() };
 }
 
-/** Reuse pending output IDs and fence stream capacity before each new delivery. */
+/** Append one pre-admitted output while holding its stream mutation lock. */
 async function appendStreamOutputWithLock(args: {
+  existingIds: Set<string>;
   id: string;
   lock: AcpLock;
   output: AcpStreamOutput;
   route: AcpStreamRoute;
   state: AcpState;
-}): Promise<string> {
+}): Promise<void> {
   const route = acpStreamRouteSchema.parse(args.route);
   const output = acpStreamOutputSchema.parse(args.output);
-  const existing = await prepareStreamAppend({
-    id: args.id,
-    lock: args.lock,
-    route,
-    state: args.state,
-  });
-  if (typeof existing === "string") return existing;
-  const existingIds = new Set(existing.map((item) => item.id));
   let id = args.id;
-  for (let delivery = 1; existingIds.has(id); delivery += 1) {
+  for (let delivery = 1; args.existingIds.has(id); delivery += 1) {
     id = `${args.id}:delivery:${delivery}`;
   }
   await fenceLock(args.state, args.lock, MUTATION_LOCK_TTL_MS);
@@ -321,26 +330,7 @@ async function appendStreamOutputWithLock(args: {
     { id, output } satisfies StoredAcpStreamItem,
     { ttlMs: ACP_STATE_TTL_MS },
   );
-  return id;
-}
-
-async function appendStreamOutput(args: {
-  id: string;
-  output: AcpStreamOutput;
-  route: AcpStreamRoute;
-  state: AcpState;
-}): Promise<string> {
-  const route = acpStreamRouteSchema.parse(args.route);
-  const result = await withLock(
-    args.state,
-    streamAppendLockKey(route),
-    async (lock) => await appendStreamOutputWithLock({ ...args, lock, route }),
-    MUTATION_LOCK_OPTIONS,
-  );
-  if (!result.acquired) {
-    throw new Error("Timed out acquiring ACP stream append control");
-  }
-  return result.value;
+  args.existingIds.add(id);
 }
 
 class AcpStreamFullError extends Error {
@@ -384,25 +374,54 @@ async function streamSessionReplay(args: {
 
 /** Queue one request receipt on its connection or session stream. */
 async function queueReceipt(args: {
-  append?: typeof appendStreamOutput;
   connectionId: string;
   receipt: AcpRequestReceipt;
   requestKey: string;
   state: AcpState;
+  stream?: { lock: AcpLock; route: AcpStreamRoute };
 }): Promise<void> {
   const receipt = parseReceipt(args.receipt);
   const deliveryKey = receipt.deliveryKey ?? args.requestKey;
-  const append = args.append ?? appendStreamOutput;
   const route: AcpStreamRoute = { connectionId: args.connectionId };
   if (receipt.sessionId) route.sessionId = receipt.sessionId;
-  for (const [index, output] of receipt.outputs.entries()) {
-    const id = requestStreamItemId(deliveryKey, index);
-    await append({
-      id,
-      output,
+  const ids = receipt.outputs.map((_, index) =>
+    requestStreamItemId(deliveryKey, index),
+  );
+  const appendAll = async (lock: AcpLock): Promise<void> => {
+    const prepared = await prepareStreamAppend({
+      ids,
+      lock,
       route,
       state: args.state,
     });
+    for (const [index, output] of receipt.outputs.entries()) {
+      const id = ids[index];
+      if (!id || prepared.pendingIds.has(id)) continue;
+      await appendStreamOutputWithLock({
+        existingIds: prepared.existingIds,
+        id,
+        lock,
+        output,
+        route,
+        state: args.state,
+      });
+    }
+  };
+  if (args.stream) {
+    if (streamAppendLockKey(args.stream.route) !== streamAppendLockKey(route)) {
+      throw new Error("Reserved ACP output changed streams");
+    }
+    await appendAll(args.stream.lock);
+    return;
+  }
+  const result = await withLock(
+    args.state,
+    streamAppendLockKey(route),
+    appendAll,
+    MUTATION_LOCK_OPTIONS,
+  );
+  if (!result.acquired) {
+    throw new Error("Timed out acquiring ACP stream append control");
   }
 }
 
@@ -473,7 +492,10 @@ export async function acceptAcpRequest(args: {
             ? undefined
             : parseReceipt(stored);
         if (!receipt) {
-          const createAndQueue = async (append?: typeof appendStreamOutput) => {
+          const createAndQueue = async (stream?: {
+            lock: AcpLock;
+            route: AcpStreamRoute;
+          }) => {
             const created = parseReceipt(await args.createReceipt());
             await fenceLock(args.state, lock, MUTATION_LOCK_TTL_MS);
             await args.state.set(
@@ -488,7 +510,7 @@ export async function acceptAcpRequest(args: {
               requestKey: args.requestKey,
               state: args.state,
             };
-            if (append) queue.append = append;
+            if (stream) queue.stream = stream;
             await queueReceipt(queue);
           };
           if (!args.reserveRoute) {
@@ -504,6 +526,7 @@ export async function acceptAcpRequest(args: {
             streamAppendLockKey(route),
             async (streamLock) => {
               await prepareStreamAppend({
+                ids: [requestStreamItemId(args.requestKey, 0)],
                 lock: streamLock,
                 route,
                 state: args.state,
@@ -511,18 +534,7 @@ export async function acceptAcpRequest(args: {
               if (!(await readAcpConnection(args.state, args.connectionId))) {
                 return "expired" as const;
               }
-              await createAndQueue(async (input) => {
-                if (
-                  streamAppendLockKey(input.route) !==
-                  streamAppendLockKey(route)
-                ) {
-                  throw new Error("Reserved ACP output changed streams");
-                }
-                return await appendStreamOutputWithLock({
-                  ...input,
-                  lock: streamLock,
-                });
-              });
+              await createAndQueue({ lock: streamLock, route });
               return "accepted" as const;
             },
             MUTATION_LOCK_OPTIONS,

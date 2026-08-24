@@ -50,17 +50,20 @@ const EVAL_MCP_PLUGIN_ROOT = path.resolve(
 
 describe("remote ACP recovery", () => {
   afterEach(async () => {
+    vi.unstubAllEnvs();
     await closeApiTurnWorkFixture();
   });
 
   it("finishes an abandoned authenticate request when browser sign-in expires", async () => {
+    vi.stubEnv("JUNIOR_BASE_URL", "");
+    vi.stubEnv("VERCEL_PROJECT_PRODUCTION_URL", "junior.example.com");
+    vi.stubEnv("VERCEL_URL", "preview.example.com");
     const harness = await createConversationWorkWebHarness();
     const app = await createApp({
       conversationWork: harness.conversationWork,
       adapters: [acpAdapter()],
       dashboard: {
         authRequired: false,
-        baseURL: "junior.example.com",
       },
     });
     const initialized = await app.fetch(initializeRequest());
@@ -157,6 +160,75 @@ describe("remote ACP recovery", () => {
         userCode,
       }),
     ).resolves.toBe("expired");
+    await reader.cancel();
+    reader.releaseLock();
+  });
+
+  it("rejects an untrusted request origin before starting browser sign-in", async () => {
+    vi.stubEnv("JUNIOR_BASE_URL", "");
+    vi.stubEnv("VERCEL_PROJECT_PRODUCTION_URL", "");
+    vi.stubEnv("VERCEL_URL", "");
+    const harness = await createConversationWorkWebHarness();
+    const app = await createApp({
+      conversationWork: harness.conversationWork,
+      adapters: [acpAdapter()],
+      dashboard: { authRequired: false },
+    });
+    const attackerURL = "https://attacker.example/api/acp";
+    const baseInitialize = initializeRequest();
+    const initialized = await app.fetch(
+      new Request(attackerURL, {
+        body: await baseInitialize.text(),
+        headers: baseInitialize.headers,
+        method: baseInitialize.method,
+      }),
+    );
+    const connectionId = initialized.headers.get("Acp-Connection-Id");
+    if (!connectionId) throw new Error("ACP initialize returned no connection");
+    const cookie = connectionCookie(initialized);
+    const stream = await app.fetch(
+      new Request(attackerURL, {
+        headers: {
+          Accept: "text/event-stream",
+          "Acp-Connection-Id": connectionId,
+          Cookie: cookie,
+        },
+      }),
+    );
+    const reader = stream.body?.getReader();
+    if (!reader) throw new Error("ACP GET returned no stream body");
+    const requestId = "untrusted-origin-authenticate";
+    const accepted = await app.fetch(
+      new Request(attackerURL, {
+        method: "POST",
+        headers: {
+          "Acp-Connection-Id": connectionId,
+          "Content-Type": "application/json",
+          Cookie: cookie,
+        },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: requestId,
+          method: acp.methods.agent.authenticate,
+          params: { methodId: "junior" },
+        }),
+      }),
+    );
+    expect(accepted.status).toBe(202);
+
+    const message = await readAcpSseMessage(reader, { value: "" });
+    expect(message).toMatchObject({
+      id: requestId,
+      error: {
+        message: expect.stringContaining("configured public base URL"),
+      },
+    });
+    expect(JSON.stringify(message)).not.toContain("attacker.example");
+    await expect(
+      harness.state.get(
+        `junior:acp:v1:connection:${connectionId}:authorization`,
+      ),
+    ).resolves.toBeNull();
     await reader.cancel();
     reader.releaseLock();
   });
