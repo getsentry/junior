@@ -1,5 +1,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import type {
+  CodeChangeInput,
+  CodeChangePublisher,
   PluginConversationAnnotations,
   PluginLogger,
   PluginRoute,
@@ -12,6 +14,7 @@ import {
   recordGitHubIssueOutcome,
 } from "../issue-outcomes/store.js";
 import {
+  type GitHubPullRequestOutcomeInput,
   recordGitHubPullRequestConversations,
   recordGitHubPullRequestLinkedIssues,
   recordGitHubPullRequestOutcome,
@@ -78,6 +81,29 @@ function webhookInstallationId(body: unknown): number | undefined {
   return parseInstallationId((installation as { id?: unknown }).id);
 }
 
+function githubCodeChange(
+  outcome: GitHubPullRequestOutcomeInput,
+  conversationIds: string[],
+): CodeChangeInput {
+  return {
+    closedAt: outcome.closedAt,
+    conversationIds,
+    mergedAt: outcome.mergedAt,
+    number: outcome.number,
+    openedAt: outcome.openedAt,
+    providerId: outcome.pullRequestId,
+    repository: {
+      name: outcome.repositoryFullName,
+      providerId: outcome.repositoryId,
+      url: `https://github.com/${outcome.repositoryFullName}`,
+    },
+    state: outcome.state === "closed_unmerged" ? "closed" : outcome.state,
+    title: outcome.title,
+    updatedAt: outcome.updatedAt,
+    url: `https://github.com/${outcome.repositoryFullName}/pull/${outcome.number}`,
+  };
+}
+
 /** Create the public, signed GitHub webhook route owned by the plugin. */
 export function createGitHubWebhookRoute(args: {
   annotations: PluginConversationAnnotations;
@@ -87,6 +113,7 @@ export function createGitHubWebhookRoute(args: {
     number: number;
     repositoryFullName: string;
   }): Promise<GitHubPullRequestCommitComposition | undefined>;
+  codeChanges: CodeChangePublisher;
   db: GitHubDb;
   installationId(): string | undefined;
   installationIdEnv: string;
@@ -146,6 +173,14 @@ export function createGitHubWebhookRoute(args: {
           args.db,
           pullRequestOutcome,
         );
+        if (recordedOutcome.applied) {
+          await args.codeChanges.record(
+            githubCodeChange(
+              pullRequestOutcome,
+              recordedOutcome.conversationIds,
+            ),
+          );
+        }
         if (recordedOutcome.applied && pullRequestOutcome.state !== "open") {
           const status =
             pullRequestOutcome.state === "merged" ? "merged" : "closed";
@@ -217,6 +252,12 @@ export function createGitHubWebhookRoute(args: {
             pullRequestConversations,
           )
         : false;
+      if (recordedPullRequestConversations && pullRequestConversations) {
+        await args.codeChanges.associateConversations({
+          conversationIds: pullRequestConversations.conversationIds,
+          providerId: pullRequestConversations.pullRequestId,
+        });
+      }
       const recordedPullRequestLinkedIssues = pullRequestLinkedIssues
         ? await recordGitHubPullRequestLinkedIssues(
             args.db,

@@ -4,6 +4,7 @@ import type { LocationDetailReport } from "@sentry/junior/api/schema";
 import {
   conversationFeedSchema,
   conversationStatsReportSchema,
+  codeOverviewReportSchema,
   statsReportSchema,
 } from "@sentry/junior/api/schema";
 import {
@@ -97,6 +98,16 @@ export function useConversationsData(status: "active" | "archived" = "active") {
         `/api/conversations${status === "archived" ? "?status=archived" : ""}`,
         signal,
       ),
+    retry: false,
+  });
+}
+
+/** Fetch repository and code change analytics. */
+export function useCodeOverviewData() {
+  return useQuery({
+    queryKey: ["dashboard", "code"],
+    queryFn: ({ signal }) =>
+      fetchDashboardJson(codeOverviewReportSchema, "/api/code", signal),
     retry: false,
   });
 }

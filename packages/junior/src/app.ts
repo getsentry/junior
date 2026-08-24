@@ -422,6 +422,7 @@ function dashboardHostRoutePaths(dashboard: JuniorDashboardOptions): string[] {
   const peoplePath = pagePath("people");
   const pagePaths = [
     basePath,
+    pagePath("code"),
     conversationsPath,
     `${conversationsPath}/*`,
     pagePath("locations"),
@@ -462,6 +463,7 @@ function dashboardHostRoutePaths(dashboard: JuniorDashboardOptions): string[] {
     "/api/tasks",
     "/api/tasks/*",
     "/api/skills",
+    "/api/code",
     "/api/stats",
     "/api/conversations",
     "/api/conversations/*",

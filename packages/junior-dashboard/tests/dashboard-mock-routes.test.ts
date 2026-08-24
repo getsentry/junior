@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   actorDirectoryReportSchema,
+  codeOverviewReportSchema,
   conversationDetailReportSchema,
   conversationEventPageSchema,
   type ConversationSummaryReport,
@@ -80,6 +81,15 @@ describe("dashboard canonical-event mock routes", () => {
     await expect(me.json()).resolves.toEqual({
       user: { email: "dev@example.com", emailVerified: true },
     });
+
+    const code = await app.fetch(new Request("http://localhost/api/code"));
+    expect(code.status).toBe(200);
+    const codeOverview = codeOverviewReportSchema.parse(await code.json());
+    expect(codeOverview.changes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ repository: "getsentry/junior" }),
+      ]),
+    );
 
     const conversations = await app.fetch(
       new Request("http://localhost/api/conversations"),

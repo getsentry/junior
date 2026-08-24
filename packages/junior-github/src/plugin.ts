@@ -299,6 +299,7 @@ export function githubPlugin(
                   ),
               });
             },
+            codeChanges: ctx.codeChanges,
             db: ctx.db as GitHubDb,
             installationId: () => readEnv(installationIdEnv),
             installationIdEnv,

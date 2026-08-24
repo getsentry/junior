@@ -14,6 +14,7 @@ import type {
   ConversationStatsItem,
   ConversationStatsReport,
   ConversationSummaryReport,
+  CodeOverviewReport,
   LocationDetailReport,
   LocationActorSummaryReport,
   LocationActivityDayReport,
@@ -26,6 +27,69 @@ import type {
   TaskList,
   TaskSummary,
 } from "@sentry/junior/api/schema";
+
+/** Build code activity for local dashboard development and QA. */
+export function readMockCodeOverview(nowMs = Date.now()): CodeOverviewReport {
+  const windowEnd = new Date(nowMs).toISOString();
+  const windowStart = new Date(nowMs - 30 * 86_400_000).toISOString();
+  return {
+    changes: [
+      {
+        id: "6:github:9001",
+        number: 42,
+        openedAt: new Date(nowMs - 2 * 86_400_000).toISOString(),
+        provider: "github",
+        repository: "getsentry/payments",
+        state: "open",
+        title: "Reduce checkout latency",
+        url: "https://github.com/getsentry/payments/pull/42",
+      },
+      {
+        id: "6:github:9002",
+        mergedAt: new Date(nowMs - 4 * 86_400_000).toISOString(),
+        number: 781,
+        openedAt: new Date(nowMs - 6 * 86_400_000).toISOString(),
+        provider: "github",
+        repository: "getsentry/junior",
+        state: "merged",
+        title: "Keep repository context across turns",
+        url: "https://github.com/getsentry/junior/pull/781",
+      },
+    ],
+    generatedAt: windowEnd,
+    repositories: [
+      {
+        closed: 1,
+        created: 5,
+        id: "6:github:2001",
+        merged: 4,
+        name: "getsentry/junior",
+        open: 1,
+        provider: "github",
+        url: "https://github.com/getsentry/junior",
+      },
+      {
+        closed: 0,
+        created: 3,
+        id: "6:github:2002",
+        merged: 2,
+        name: "getsentry/payments",
+        open: 1,
+        provider: "github",
+        url: "https://github.com/getsentry/payments",
+      },
+    ],
+    summary: {
+      closed: 1,
+      created: 8,
+      merged: 6,
+      mergeRate: 6 / 7,
+      open: 2,
+    },
+    windowEnd,
+    windowStart,
+  };
+}
 
 const ACTIVE_CONVERSATION_ID = "slack:CQA123:1770003600.000200";
 const INCIDENT_CONVERSATION_ID = "slack:CQA123:1770000000.000100";

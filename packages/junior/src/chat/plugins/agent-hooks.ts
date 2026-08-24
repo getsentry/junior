@@ -54,6 +54,7 @@ import type { Actor } from "@/chat/actor";
 import { z } from "zod";
 import { workspaceRepoCheckoutPath } from "@/chat/workspaces/checkout-path";
 import { listWorkspaceNamesByRepository } from "@/chat/workspaces/store";
+import { createCodeChangePublisher } from "@/chat/code/publisher";
 
 /** Signal that a plugin intentionally denied a tool execution. */
 export class PluginHookDeniedError extends Error {
@@ -864,6 +865,7 @@ export function getPluginRoutes(options: {
             plugin: pluginName,
           }),
       },
+      codeChanges: createCodeChangePublisher(pluginName),
       resourceEvents: {
         async publish(event) {
           const parsed = resourceEventInputSchema.parse(event);
