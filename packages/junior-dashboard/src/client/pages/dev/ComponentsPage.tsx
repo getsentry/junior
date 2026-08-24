@@ -98,6 +98,23 @@ line three
 1. first
 2. second
 
+## Table
+
+| Service | Status | p95 |
+| --- | :---: | ---: |
+| **relay** | healthy | 42ms |
+| snuba | degraded | 180ms |
+| \`ingest\` | healthy | 31ms |
+
+## Wide table
+
+| Service | Region | Owner | Deploy | Status | p50 | p95 | p99 | Errors | Notes |
+| --- | --- | --- | --- | :---: | ---: | ---: | ---: | ---: | --- |
+| **relay** | us-central1 | platform | payments-v42 | healthy | 18ms | 42ms | 91ms | 0.1% | baseline |
+| snuba | us-central1 | data | snuba-nightly | degraded | 64ms | 180ms | 420ms | 0.8% | queue pressure |
+| \`ingest\` | europe-west3 | pipeline | ingest-2026.08 | healthy | 12ms | 31ms | 77ms | 0.2% | within budget |
+| checkout | us-west1 | payments | payments-v42 | degraded | 210ms | **890ms** | 1.4s | 0.5% | post-deploy spike |
+
 Paragraph after a blank line stays a paragraph.`;
 
 const MIXED_ASSISTANT = `I checked the PR.

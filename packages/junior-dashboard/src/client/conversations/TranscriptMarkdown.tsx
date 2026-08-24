@@ -7,9 +7,17 @@ import {
 } from "./transcriptMarkdownLinks";
 import { HighlightText, useTranscriptSearch } from "./transcriptSearch";
 
+type TableAlignment = "left" | "center" | "right" | null;
+
 type MarkdownBlock =
   | { type: "heading"; level: 1 | 2 | 3 | 4 | 5 | 6; text: string }
   | { type: "list"; ordered: boolean; items: string[] }
+  | {
+      type: "table";
+      alignments: TableAlignment[];
+      headers: string[];
+      rows: string[][];
+    }
   | { type: "paragraph"; lines: string[] };
 
 /** Render transcript markdown as readable prose with GFM-style hard breaks. */
@@ -78,6 +86,8 @@ function MarkdownBlockView(props: { block: MarkdownBlock }) {
         </ListTag>
       );
     }
+    case "table":
+      return <MarkdownTable block={props.block} />;
     case "paragraph":
       return (
         <p className="m-0 min-w-0 whitespace-normal text-dashboard-text">
@@ -131,12 +141,20 @@ function parseMarkdownProseBlocks(text: string): MarkdownBlock[] {
         continue;
       }
 
+      const table = matchTable(lines, index);
+      if (table) {
+        blocks.push(table.block);
+        index = table.nextIndex;
+        continue;
+      }
+
       const paragraphLines: string[] = [];
       while (
         index < lines.length &&
         !matchHeading(lines[index] ?? "") &&
         !isOrderedListItem(lines[index] ?? "") &&
-        !isUnorderedListItem(lines[index] ?? "")
+        !isUnorderedListItem(lines[index] ?? "") &&
+        !matchTable(lines, index)
       ) {
         paragraphLines.push(lines[index] ?? "");
         index += 1;
@@ -146,6 +164,160 @@ function parseMarkdownProseBlocks(text: string): MarkdownBlock[] {
   }
 
   return blocks;
+}
+
+function MarkdownTable(props: {
+  block: Extract<MarkdownBlock, { type: "table" }>;
+}) {
+  const columnCount = Math.max(
+    props.block.headers.length,
+    ...props.block.rows.map((row) => row.length),
+    props.block.alignments.length,
+  );
+
+  return (
+    <div className="min-w-0 max-w-full overflow-x-auto rounded-md border border-dashboard-border bg-dashboard-fill-faint">
+      <table className="w-max border-collapse text-left text-sm">
+        <thead className="bg-dashboard-overlay-soft">
+          <tr>
+            {Array.from({ length: columnCount }, (_, index) => {
+              const alignment = props.block.alignments[index] ?? null;
+              return (
+                <th
+                  className={cn(
+                    "whitespace-nowrap border-b border-dashboard-border px-2.5 py-1.5 font-mono text-xs font-medium tracking-[0.04em] text-dashboard-text-muted",
+                    tableCellAlignClass(alignment),
+                  )}
+                  key={`h-${index}`}
+                  scope="col"
+                >
+                  {renderInlineMarkdown(props.block.headers[index] ?? "")}
+                </th>
+              );
+            })}
+          </tr>
+        </thead>
+        <tbody>
+          {props.block.rows.map((row, rowIndex) => (
+            <tr
+              className="border-b border-dashboard-border-subtle last:border-b-0"
+              key={`r-${rowIndex}`}
+            >
+              {Array.from({ length: columnCount }, (_, index) => {
+                const alignment = props.block.alignments[index] ?? null;
+                return (
+                  <td
+                    className={cn(
+                      "whitespace-nowrap px-2.5 py-1.5 align-top text-dashboard-text",
+                      tableCellAlignClass(alignment),
+                    )}
+                    key={`c-${rowIndex}-${index}`}
+                  >
+                    {renderInlineMarkdown(row[index] ?? "")}
+                  </td>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function tableCellAlignClass(alignment: TableAlignment): string | undefined {
+  if (alignment === "center") return "text-center";
+  if (alignment === "right") return "text-right";
+  return undefined;
+}
+
+function matchTable(
+  lines: readonly string[],
+  index: number,
+): { block: Extract<MarkdownBlock, { type: "table" }>; nextIndex: number } | undefined {
+  const headerLine = lines[index] ?? "";
+  const separatorLine = lines[index + 1] ?? "";
+  if (!isTableRowLine(headerLine) || !isTableSeparatorLine(separatorLine)) {
+    return undefined;
+  }
+
+  const headers = splitTableRow(headerLine);
+  const alignments = parseTableAlignments(separatorLine);
+  if (headers.length === 0 || alignments.length === 0) {
+    return undefined;
+  }
+
+  const rows: string[][] = [];
+  let cursor = index + 2;
+  while (cursor < lines.length && isTableRowLine(lines[cursor] ?? "")) {
+    rows.push(splitTableRow(lines[cursor] ?? ""));
+    cursor += 1;
+  }
+
+  return {
+    block: {
+      alignments,
+      headers,
+      rows,
+      type: "table",
+    },
+    nextIndex: cursor,
+  };
+}
+
+function isTableRowLine(line: string): boolean {
+  const trimmed = line.trim();
+  if (!trimmed.includes("|")) return false;
+  if (isTableSeparatorLine(trimmed)) return false;
+  return /^\|?.+\|/.test(trimmed) || /\|.+\|?$/.test(trimmed);
+}
+
+function isTableSeparatorLine(line: string): boolean {
+  const cells = splitTableRow(line);
+  if (cells.length === 0) return false;
+  return cells.every((cell) => /^:?-{3,}:?$/.test(cell.replace(/\s+/g, "")));
+}
+
+function parseTableAlignments(line: string): TableAlignment[] {
+  return splitTableRow(line).map((cell) => {
+    const token = cell.replace(/\s+/g, "");
+    const left = token.startsWith(":");
+    const right = token.endsWith(":");
+    if (left && right) return "center";
+    if (right) return "right";
+    if (left) return "left";
+    return null;
+  });
+}
+
+function splitTableRow(line: string): string[] {
+  let trimmed = line.trim();
+  if (!trimmed) return [];
+  if (trimmed.startsWith("|")) trimmed = trimmed.slice(1);
+  if (trimmed.endsWith("|")) trimmed = trimmed.slice(0, -1);
+
+  const cells: string[] = [];
+  let current = "";
+  let escaped = false;
+  for (const char of trimmed) {
+    if (escaped) {
+      current += char;
+      escaped = false;
+      continue;
+    }
+    if (char === "\\") {
+      escaped = true;
+      continue;
+    }
+    if (char === "|") {
+      cells.push(current.trim());
+      current = "";
+      continue;
+    }
+    current += char;
+  }
+  cells.push(current.trim());
+  return cells;
 }
 
 function matchHeading(line: string): MarkdownBlock | undefined {
