@@ -971,9 +971,8 @@ export function createSlackTurnRuntime<
             return;
           }
 
-          // Avoid prepare/classifier work when passive routing is off and this
-          // turn is not an explicit mention or resource-event notification.
-          // Still run the lightweight decision so !stop can unsubscribe.
+          // When non-mention replies are off, skip prepare and stay quiet unless
+          // the decision unsubscribes the thread (!stop).
           if (
             !isResourceEventNotification &&
             !turnIsExplicitMention &&
@@ -990,23 +989,11 @@ export function createSlackTurnRuntime<
               isExplicitMention: false,
               context: threadContext,
             });
-            if (
-              await maybeHandleThreadOptOutDecision({
-                thread,
-                decision,
-                beforeFirstResponsePost: hooks.beforeFirstResponsePost,
-              })
-            ) {
-              await skipSubscribedMessage({
-                thread,
-                message,
-                decision,
-                context: threadContext,
-                ack: hooks.ack,
-                text: combinedText,
-              });
-              return;
-            }
+            await maybeHandleThreadOptOutDecision({
+              thread,
+              decision,
+              beforeFirstResponsePost: hooks.beforeFirstResponsePost,
+            });
             await skipSubscribedMessage({
               thread,
               message,

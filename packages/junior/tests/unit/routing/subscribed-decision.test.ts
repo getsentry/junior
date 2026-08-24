@@ -46,7 +46,7 @@ describe("subscribed reply decision", () => {
     });
   });
 
-  it("skips non-mention passive routing when the experimental flag is off", async () => {
+  it("skips non-mention replies when passive-routing is off", async () => {
     setExperimentalFeatures(undefined);
     const completeObject = vi.fn();
 

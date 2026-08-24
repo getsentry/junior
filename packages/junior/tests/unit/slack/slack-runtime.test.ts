@@ -178,7 +178,7 @@ describe("createSlackTurnRuntime", () => {
   });
 
   describe("handleSubscribedMessage", () => {
-    it("skips non-mention passive turns before prepare when the flag is off", async () => {
+    it("skips non-mention replies before prepare when passive-routing is off", async () => {
       const { setExperimentalFeatures } = await import("@/chat/experimental");
       setExperimentalFeatures(undefined);
       try {

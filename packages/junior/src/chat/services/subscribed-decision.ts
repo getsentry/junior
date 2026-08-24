@@ -461,8 +461,8 @@ export async function decideSubscribedThreadReply(args: {
     };
   }
 
-  // Passive routing (non-mention replies in subscribed threads) is experimental
-  // and off by default. Keep forced opt-out and explicit-mention paths above.
+  // Non-mention replies in subscribed threads stay experimental and off by
+  // default. Forced opt-out and explicit mentions are handled above.
   if (!isExperimentalFeatureEnabled("passive-routing")) {
     return {
       shouldReply: false,
@@ -471,10 +471,7 @@ export async function decideSubscribedThreadReply(args: {
     };
   }
 
-  if (
-    !args.input.hasAttachments &&
-    isAcknowledgmentOnly(text)
-  ) {
+  if (!args.input.hasAttachments && isAcknowledgmentOnly(text)) {
     return {
       shouldReply: false,
       reason: SubscribedReplyReason.SideConversation,

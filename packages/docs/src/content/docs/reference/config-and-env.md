@@ -141,9 +141,9 @@ const app = await createApp({
   experimental: {
     // ACP v1 Streamable HTTP for one-process development and testing.
     acp: true,
-    // Non-mention replies in subscribed Slack threads (classifier + follow-up
-    // heuristics). Off by default; without this, Junior only replies to
-    // explicit @mentions and resource-event notifications in those threads.
+    // Reply to non-mention messages in Slack threads Junior already joined.
+    // Off by default. Without this, Junior only replies to explicit @mentions
+    // and resource-event notifications in those threads.
     "passive-routing": true,
     // Model-facing spawnAgent for durable child agent work. Incomplete; keep off
     // unless you are testing the #879 runtime.
@@ -161,9 +161,8 @@ connection state in one Node process. Use it only for local or single-process
 testing. Run `pnpm acp:local` in this repository for a loopback test with the
 official ACP SDK client.
 
-`passive-routing` restores automatic replies to non-mention messages in threads
-Junior already joined. Leave it unset in production unless you are deliberately
-dogfooding that path.
+`passive-routing` turns on replies to non-mention messages in threads Junior
+already joined. Leave it unset in production unless you are testing that path.
 
 ## Profiles
 
