@@ -1,4 +1,17 @@
 # Changelog
+## 0.182.0
+
+### New Features ✨
+
+- (acp) Support serverless remote sessions by @gricha in [#1589](https://github.com/getsentry/junior/pull/1589)
+- (dashboard) Render GFM tables in transcript markdown by @sentry-junior in [#1670](https://github.com/getsentry/junior/pull/1670)
+- (resource-events) Add exact match for watches and event tasks by @sentry-junior in [#1671](https://github.com/getsentry/junior/pull/1671)
+- (slack) Gate passive routing behind experimental flag by @sentry-junior in [#1674](https://github.com/getsentry/junior/pull/1674)
+
+### Bug Fixes 🐛
+
+- (skills) Keep Checks/Verification out of PR bodies by @sentry-junior in [#1672](https://github.com/getsentry/junior/pull/1672)
+
 ## 0.181.1
 
 ### Bug Fixes 🐛
