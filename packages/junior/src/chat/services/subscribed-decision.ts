@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isExperimentalFeatureEnabled } from "@/chat/experimental";
 import { estimateTextTokens } from "@/chat/services/context-budget";
 import { isProviderRetryError } from "@/chat/services/provider-error";
 import { buildSubscribedReplyRouterPolicy } from "@/chat/services/subscribed-reply-router-policy";
@@ -13,6 +14,7 @@ export enum SubscribedReplyReason {
   SideConversation = "side_conversation",
   LowConfidence = "low_confidence",
   ClassifierError = "classifier_error",
+  PassiveDisabled = "passive_disabled",
 }
 
 export interface SubscribedDecisionInput {
@@ -440,20 +442,8 @@ export async function decideSubscribedThreadReply(args: {
   if (preflightDecision) {
     return preflightDecision;
   }
-  const evidence = buildRouterEvidence(args.input);
   if (!text && !args.input.hasAttachments) {
     return { shouldReply: false, reason: SubscribedReplyReason.EmptyMessage };
-  }
-  if (
-    !args.input.isExplicitMention &&
-    !args.input.hasAttachments &&
-    isAcknowledgmentOnly(text)
-  ) {
-    return {
-      shouldReply: false,
-      reason: SubscribedReplyReason.SideConversation,
-      reasonDetail: "acknowledgment",
-    };
   }
 
   if (args.input.isExplicitMention) {
@@ -471,6 +461,28 @@ export async function decideSubscribedThreadReply(args: {
     };
   }
 
+  // Passive routing (non-mention replies in subscribed threads) is experimental
+  // and off by default. Keep forced opt-out and explicit-mention paths above.
+  if (!isExperimentalFeatureEnabled("passive-routing")) {
+    return {
+      shouldReply: false,
+      reason: SubscribedReplyReason.PassiveDisabled,
+      reasonDetail: "passive-routing",
+    };
+  }
+
+  if (
+    !args.input.hasAttachments &&
+    isAcknowledgmentOnly(text)
+  ) {
+    return {
+      shouldReply: false,
+      reason: SubscribedReplyReason.SideConversation,
+      reasonDetail: "acknowledgment",
+    };
+  }
+
+  const evidence = buildRouterEvidence(args.input);
   if (
     evidence.assistantWasLastSpeaker &&
     evidence.humanMessagesSinceLastAssistant === 0 &&

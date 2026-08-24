@@ -2,10 +2,13 @@ import { beforeEach } from "vitest";
 import { setExperimentalFeatures } from "@/chat/experimental";
 
 /**
- * Production leaves experimental features off. The suite opts in so
- * agent-invocation coverage exercises the real wiring path without an env flag.
+ * Production leaves experimental features off. The suite opts in so coverage
+ * exercises the real wiring path without an env flag.
  */
-const SUITE_EXPERIMENTAL = { subagents: true } as const;
+const SUITE_EXPERIMENTAL = {
+  "passive-routing": true,
+  subagents: true,
+} as const;
 
 setExperimentalFeatures(SUITE_EXPERIMENTAL);
 
