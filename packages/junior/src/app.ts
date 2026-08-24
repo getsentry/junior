@@ -459,6 +459,7 @@ function dashboardHostRoutePaths(
   const peoplePath = pagePath("people");
   const pagePaths = [
     basePath,
+    pagePath("code"),
     conversationsPath,
     `${conversationsPath}/*`,
     pagePath("locations"),
@@ -499,6 +500,7 @@ function dashboardHostRoutePaths(
     "/api/tasks",
     "/api/tasks/*",
     "/api/skills",
+    "/api/code",
     "/api/stats",
     "/api/conversations",
     "/api/conversations/*",

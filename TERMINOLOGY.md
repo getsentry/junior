@@ -6,6 +6,12 @@ Canonical words used across Junior's code and documentation.
 
 - **Workspace**: a named recipe that selects repositories and setup
   instructions for a Sandbox snapshot.
+- **Repository**: a source-code repository known to Junior, regardless of its
+  hosting service.
+- **Code change**: a proposed change to a repository. GitHub calls it a pull
+  request. GitLab calls it a merge request.
+- **Commit**: one recorded repository revision. Its hosting service owns the
+  commit identifier.
 - **Sandbox**: an isolated execution environment for a run or snapshot build.
 - **Conversation**: the durable container for visible history and execution
   state, identified by a globally unique `conversationId`.

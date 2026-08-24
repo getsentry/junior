@@ -253,6 +253,13 @@
       "when": 1787454188316,
       "tag": "0035_workspace_snapshot_size_bytes",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1787598193137,
+      "tag": "0036_complex_rage",
+      "breakpoints": true
     }
   ]
 }

@@ -261,6 +261,10 @@ function webhookRoute(
     appIdEnv: "GITHUB_APP_ID",
     botEmail,
     classifyPullRequestCommits,
+    codeChanges: {
+      async associateConversations() {},
+      async record() {},
+    },
     db: fixture.db(),
     installationId: () => "456",
     installationIdEnv: "GITHUB_INSTALLATION_ID",
@@ -1384,6 +1388,7 @@ describe("GitHub-owned pull request outcomes", () => {
 
   it("derives ownership identity from the configured bot email environment", async () => {
     const fixture = await createGitHubFixture();
+    const codeChangesRecord = vi.fn(async () => {});
     vi.stubEnv(
       "CUSTOM_GITHUB_BOT_EMAIL",
       "264270552+sentry-junior[bot]@users.noreply.github.com",
@@ -1409,6 +1414,10 @@ describe("GitHub-owned pull request outcomes", () => {
         db: fixture.db(),
         log: { error() {}, info() {}, warn() {} },
         plugin: { name: "github" },
+        codeChanges: {
+          async associateConversations() {},
+          record: codeChangesRecord,
+        },
         resourceEvents: { async publish() {} },
       });
 
@@ -1420,6 +1429,17 @@ describe("GitHub-owned pull request outcomes", () => {
       ).resolves.toEqual([
         expect.objectContaining({ pullRequestId: "1001", state: "open" }),
       ]);
+      expect(codeChangesRecord).toHaveBeenCalledWith(
+        expect.objectContaining({
+          number: 946,
+          providerId: "1001",
+          repository: expect.objectContaining({
+            name: "getsentry/junior",
+            providerId: "2001",
+          }),
+          state: "open",
+        }),
+      );
     } finally {
       await fixture.close();
     }
@@ -1478,6 +1498,10 @@ describe("GitHub-owned pull request outcomes", () => {
               },
             };
           },
+        },
+        codeChanges: {
+          async associateConversations() {},
+          async record() {},
         },
         db: fixture.db(),
         log: { error() {}, info() {}, warn() {} },

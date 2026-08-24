@@ -26,6 +26,7 @@ import { isNewConversationPath } from "./conversations/conversationRoutes";
 import { ConversationWorkspace } from "./conversations/ConversationWorkspace";
 import { useConversationData } from "./conversations/queries";
 import { ComponentsPage } from "./pages/dev/ComponentsPage";
+import { CodePage } from "./pages/code/CodePage";
 import { LocationDetailPage } from "./pages/locations/LocationDetailPage";
 import { LocationsPage } from "./pages/locations/LocationsPage";
 import { PeoplePage } from "./pages/people/PeoplePage";
@@ -91,6 +92,7 @@ export function DashboardShell() {
       conversationDisplayTitle(mobileConversation)
     : undefined;
   const primaryNavItems = [
+    { key: "code", label: "Code", to: "/code" },
     ...(loggedIn
       ? [{ key: "tasks", label: "Tasks", to: "/tasks" }]
       : []),
@@ -297,6 +299,7 @@ export function DashboardShell() {
           }
           path="/"
         />
+        <Route element={<CodePage />} path="/code" />
         <Route
           element={<Navigate replace to="/" />}
           path="/conversations/new"

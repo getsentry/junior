@@ -58,6 +58,7 @@ describe("dashboard routes", () => {
     const app = dashboard(null);
 
     for (const path of [
+      "/code",
       "/conversations",
       "/conversations/slack%3AC1%3A123",
       "/conversations/slack%3AC1%3A123?view=tools",
@@ -497,6 +498,7 @@ describe("dashboard routes", () => {
     });
 
     for (const path of [
+      "/code",
       "/conversations",
       "/conversations/slack%3AC1%3A123",
       "/locations",

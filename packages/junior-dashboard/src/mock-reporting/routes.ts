@@ -15,6 +15,7 @@ import {
   conversationParamsSchema,
   conversationPendingMessagesReportSchema,
   conversationStatsReportSchema,
+  codeOverviewReportSchema,
   locationDetailReportSchema,
   locationDirectoryReportSchema,
   locationParamsSchema,
@@ -33,6 +34,7 @@ import {
   readMockConversationFeed,
   readMockConversationPendingMessages,
   readMockConversationStats,
+  readMockCodeOverview,
   readMockLocationDetail,
   readMockLocationDirectory,
   readMockPeopleDirectory,
@@ -53,6 +55,10 @@ export function createMockReportingApi(): Hono<{
   Variables: JuniorApiVariables;
 }> {
   const app = new Hono<{ Variables: JuniorApiVariables }>();
+
+  app.get("/code", () =>
+    jsonResponse(codeOverviewReportSchema, readMockCodeOverview()),
+  );
 
   app.get("/people", () =>
     jsonResponse(actorDirectoryReportSchema, readMockPeopleDirectory()),

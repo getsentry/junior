@@ -1,6 +1,17 @@
 export { dailyConversationActivitySchema } from "./activity";
 export type { DailyConversationActivity } from "./activity";
 export {
+  codeChangeSummaryReportSchema,
+  codeChangeSummarySchema,
+  codeOverviewReportSchema,
+  codeRepositorySummarySchema,
+} from "./schema/code";
+export type {
+  CodeChangeSummaryReport,
+  CodeOverviewReport,
+  CodeRepositorySummary,
+} from "./schema/code";
+export {
   acceptedConversationMessageSchema,
   archiveConversationBodySchema,
   archiveConversationResponseSchema,

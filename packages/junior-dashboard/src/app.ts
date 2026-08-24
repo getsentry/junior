@@ -471,6 +471,9 @@ function dashboardPagePaths(
   const paths: Array<{ nested?: boolean; path: string }> = [
     { path: basePath },
     {
+      path: basePath === "/" ? "/code" : `${basePath}/code`,
+    },
+    {
       nested: true,
       path: basePath === "/" ? "/conversations" : `${basePath}/conversations`,
     },
