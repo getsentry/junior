@@ -54,7 +54,7 @@
   "scripts": {
     "prepare": "pnpm run build",
     "prepack": "pnpm run build",
-    "build": "tsup && tsc -p tsconfig.build.json --emitDeclarationOnly",
+    "build": "tsup && tsc -p tsconfig.build.json --emitDeclarationOnly && node scripts/rewrite-declaration-paths.mjs",
     "acp:smoke": "pnpm exec tsx scripts/acp-smoke.ts",
     "db:generate": "pnpm exec drizzle-kit generate --config drizzle.config.ts",
     "lint": "oxlint --config .oxlintrc.json --deny-warnings src tests scripts bin tsup.config.ts && depcruise --config .dependency-cruiser.mjs src/chat",
@@ -65,7 +65,9 @@
     "skills:check": "node --test scripts/check-skills.test.mjs && node scripts/check-skills.mjs",
     "tool-annotations:check": "node --test scripts/check-tool-annotations.test.mjs && node scripts/check-tool-annotations.mjs",
     "tool-error-classification:check": "node --test scripts/check-tool-error-classification.test.mjs && node scripts/check-tool-error-classification.mjs",
-    "test:coverage": "vitest run --maxWorkers=4 --coverage --reporter=default --reporter=junit --outputFile.junit=coverage/results.junit.xml"
+    "test:coverage": "vitest run --maxWorkers=4 --coverage --reporter=default --reporter=junit --outputFile.junit=coverage/results.junit.xml",
+    "declaration-paths:check": "node --test scripts/rewrite-declaration-paths.test.mjs",
+    "consumer-types:check": "node scripts/check-consumer-types.mjs"
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "1.3.0",
