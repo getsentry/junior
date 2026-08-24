@@ -2,64 +2,51 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
+import { fileURLToPath } from "node:url";
 
 const packageRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "..",
 );
-const requireFromPackage = createRequire(path.join(packageRoot, "package.json"));
+const tsc = createRequire(path.join(packageRoot, "package.json")).resolve(
+  "typescript/bin/tsc",
+);
 
-function run(command, args, options = {}) {
+function run(command, args, cwd) {
   const result = spawnSync(command, args, {
+    cwd,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
-    ...options,
   });
   if (result.status !== 0) {
-    const details = [result.stdout, result.stderr]
-      .filter(Boolean)
-      .join("\n")
-      .trim();
+    const details = `${result.stdout ?? ""}\n${result.stderr ?? ""}`.trim();
     throw new Error(
       `${command} ${args.join(" ")} failed${details ? `:\n${details}` : ""}`,
     );
   }
-  return result.stdout;
+  return result.stdout ?? "";
 }
 
-function typecheckProject(dir, typescriptBin, tsconfigName) {
-  const result = spawnSync(
-    typescriptBin,
-    ["--noEmit", "-p", tsconfigName, "--pretty", "false"],
-    {
-      cwd: dir,
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "pipe"],
-    },
-  );
+function tscProject(cwd, config) {
+  const result = spawnSync(tsc, ["--noEmit", "-p", config, "--pretty", "false"], {
+    cwd,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+  });
   return {
-    status: result.status ?? 1,
+    ok: result.status === 0,
     output: `${result.stdout ?? ""}\n${result.stderr ?? ""}`.trim(),
   };
 }
 
-async function writeConsumerFixture(dir) {
+async function writeApp(dir, name, experimentalBody) {
   await fs.writeFile(
-    path.join(dir, "package.json"),
-    `${JSON.stringify(
-      {
-        name: "junior-consumer-types",
-        private: true,
-        type: "module",
-      },
-      null,
-      2,
-    )}\n`,
+    path.join(dir, `${name}.ts`),
+    `import { createApp } from "@sentry/junior";\n\nawait createApp({\n  experimental: ${experimentalBody},\n});\n`,
   );
   await fs.writeFile(
-    path.join(dir, "tsconfig.base.json"),
+    path.join(dir, `tsconfig.${name}.json`),
     `${JSON.stringify(
       {
         compilerOptions: {
@@ -71,135 +58,60 @@ async function writeConsumerFixture(dir) {
           skipLibCheck: true,
           types: [],
         },
+        include: [`${name}.ts`],
       },
       null,
       2,
     )}\n`,
-  );
-  await fs.writeFile(
-    path.join(dir, "tsconfig.valid.json"),
-    `${JSON.stringify(
-      {
-        extends: "./tsconfig.base.json",
-        include: ["valid.ts"],
-      },
-      null,
-      2,
-    )}\n`,
-  );
-  await fs.writeFile(
-    path.join(dir, "tsconfig.invalid.json"),
-    `${JSON.stringify(
-      {
-        extends: "./tsconfig.base.json",
-        include: ["invalid.ts"],
-      },
-      null,
-      2,
-    )}\n`,
-  );
-  await fs.writeFile(
-    path.join(dir, "valid.ts"),
-    `import { createApp } from "@sentry/junior";
-
-await createApp({
-  experimental: {
-    subagents: true,
-  },
-});
-`,
-  );
-  await fs.writeFile(
-    path.join(dir, "invalid.ts"),
-    `import { createApp } from "@sentry/junior";
-
-await createApp({
-  experimental: {
-    acp: true,
-  },
-});
-`,
   );
 }
 
-/** Pack the local package and prove consumer tsc sees closed experimental keys. */
-export async function checkConsumerTypes(options = {}) {
-  const tscBin =
-    options.typescriptBin ?? requireFromPackage.resolve("typescript/bin/tsc");
+async function main() {
   const packDir = await fs.mkdtemp(path.join(os.tmpdir(), "junior-pack-"));
-  const consumerDir = await fs.mkdtemp(
-    path.join(os.tmpdir(), "junior-consumer-"),
-  );
-
+  const appDir = await fs.mkdtemp(path.join(os.tmpdir(), "junior-app-"));
   try {
-    const packOutput = run("pnpm", ["pack", "--pack-destination", packDir], {
-      cwd: packageRoot,
-    });
-    const tarballName = packOutput
+    const packOut = run("pnpm", ["pack", "--pack-destination", packDir], packageRoot);
+    const tarballLine = packOut
       .split(/\r?\n/)
       .map((line) => line.trim())
       .filter(Boolean)
       .at(-1);
-    if (!tarballName) {
-      throw new Error("pnpm pack did not report a tarball path");
+    if (!tarballLine) {
+      throw new Error("pnpm pack did not print a tarball path");
     }
-    const tarballPath = path.isAbsolute(tarballName)
-      ? tarballName
-      : path.join(packDir, path.basename(tarballName));
+    const tarball = path.isAbsolute(tarballLine)
+      ? tarballLine
+      : path.join(packDir, path.basename(tarballLine));
 
-    await writeConsumerFixture(consumerDir);
-    run("npm", ["install", "--no-save", "--no-package-lock", tarballPath], {
-      cwd: consumerDir,
-    });
-
-    const valid = typecheckProject(consumerDir, tscBin, "tsconfig.valid.json");
-    if (valid.status !== 0) {
-      throw new Error(
-        `known experimental key should typecheck for consumers:\n${valid.output}`,
-      );
-    }
-
-    const invalid = typecheckProject(
-      consumerDir,
-      tscBin,
-      "tsconfig.invalid.json",
+    await fs.writeFile(
+      path.join(appDir, "package.json"),
+      `${JSON.stringify({ name: "junior-app-types", private: true, type: "module" }, null, 2)}\n`,
     );
-    if (invalid.status === 0) {
-      throw new Error(
-        "unknown experimental key should fail consumer typecheck, but tsc exited 0",
-      );
-    }
-    if (
-      !/acp|experimental|ExperimentalFeaturesConfig|did not exist|not assignable|Object literal may only specify known properties/i.test(
-        invalid.output,
-      )
-    ) {
-      throw new Error(
-        `unknown experimental key failed for an unexpected reason:\n${invalid.output}`,
-      );
+    await writeApp(appDir, "ok", "{ subagents: true }");
+    await writeApp(appDir, "bad", "{ acp: true }");
+    run("npm", ["install", "--no-save", "--no-package-lock", tarball], appDir);
+
+    const ok = tscProject(appDir, "tsconfig.ok.json");
+    if (!ok.ok) {
+      throw new Error(`known feature should typecheck:\n${ok.output}`);
     }
 
-    return {
-      tarballPath,
-      invalidOutput: invalid.output,
-    };
+    const bad = tscProject(appDir, "tsconfig.bad.json");
+    if (bad.ok) {
+      throw new Error("unknown feature should fail typecheck");
+    }
+    if (!/\bacp\b|experimental|known properties/i.test(bad.output)) {
+      throw new Error(`unknown feature failed for the wrong reason:\n${bad.output}`);
+    }
+
+    console.log(`ok: ${path.basename(tarball)}`);
   } finally {
     await fs.rm(packDir, { recursive: true, force: true });
-    await fs.rm(consumerDir, { recursive: true, force: true });
+    await fs.rm(appDir, { recursive: true, force: true });
   }
 }
 
-async function main() {
-  const result = await checkConsumerTypes();
-  console.log(`Consumer types OK via ${path.basename(result.tarballPath)}`);
-}
-
-if (
-  process.argv[1] &&
-  path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
-) {
-  main().catch((error) => {
-    console.error(error);
-    process.exitCode = 1;
-  });
-}
+main().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});
