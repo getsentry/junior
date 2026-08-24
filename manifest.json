@@ -1,0 +1,17 @@
+{
+  "commitSha": "a52ad28e6e87c415d5f77abf558f3b6b1a025840",
+  "mode": "path",
+  "reasons": [
+    "packages/junior-dashboard/src/client/components/charts/SystemMetricCharts.tsx"
+  ],
+  "scenarioIds": [
+    "gallery-charts"
+  ],
+  "shots": [
+    {
+      "file": "gallery-charts__desktop.png",
+      "label": "Gallery · Charts · desktop"
+    }
+  ],
+  "skipped": false
+}
