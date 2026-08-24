@@ -123,7 +123,7 @@ Mention `minimumReleaseAgeExclude` sync if `pnpm-workspace.yaml` changed.
 
 ### 10. Push and open/update draft PR
 
-Open a draft PR. Include version change, release summary with links to the GitHub releases, config comparison findings, optional workspace/plugin/vercel changes, check results, and unexpected diffs. Add **Manual review required** when breaking changes, unresolved config drift, approximate Vercel review, or failed checks exist.
+Open a draft PR. Include version change, release summary with links to the GitHub releases, config comparison findings, optional workspace/plugin/vercel changes, and unexpected diffs. Do not put `Checks`, `Verification`, `Test plan`, or similar validation sections in the PR body; put local check results in the final user report only. Add **Manual review required** when breaking changes, unresolved config drift, approximate Vercel review, or failed checks exist.
 
 When PR creation returns a subscribable resource hint, watch the PR for suggested review and CI events. After merge, if deployment follow-up is needed, use `github_getDeployment` for the merged commit and watch the suggested deployment events.
 
