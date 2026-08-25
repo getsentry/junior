@@ -38,7 +38,6 @@ import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
 import { runNonInteractiveCommand } from "@/chat/sandbox/noninteractive-command";
 import type { AnyToolDefinition } from "@/chat/tools/definition";
 import { getDashboardConversationLink } from "@/chat/slack/dashboard-link";
-import { canRouteResourceEvents } from "@/chat/resource-events/workspace";
 import { createResourceEventSubscription } from "@/chat/resource-events/store";
 import { RESOURCE_SUBSCRIPTION_DEFAULT_TTL_MS } from "@/chat/resource-events/tool-support";
 import { getSlackToolContext } from "@/chat/slack/tool-support/context";
@@ -637,7 +636,6 @@ export function getPluginTools(
       : undefined;
     const mcp = pluginMcpContext(plugin, context);
     const canSubscribe =
-      canRouteResourceEvents() &&
       Boolean(plugin.resourceEvents) &&
       plugin.resourceEvents?.isEnabled?.() !== false;
     const resourceEvents: ToolRegistrationHookContext["resourceEvents"] = {
