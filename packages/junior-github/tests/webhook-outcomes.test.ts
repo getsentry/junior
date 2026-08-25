@@ -30,8 +30,10 @@ import {
 import { createGitHubWebhookRoute } from "../src/webhooks/handler";
 import {
   buildCheckSuiteUrl,
+  needsCheckSuitePullRequestFacts,
   normalizeGitHubResourceEvents,
   parseCheckSuiteFactsTarget,
+  parseCheckSuitePublishTargets,
   selectFailingChecks,
 } from "../src/webhooks/resource-events";
 
@@ -1056,9 +1058,126 @@ describe("GitHub webhook resource events", () => {
     ).toEqual({
       checkSuiteId: 89021857045,
       headSha: "8105236768dd1da43379152ee11900be8983ae03",
+      loadFailingChecks: true,
+      loadPullRequestFacts: false,
       owner: "getsentry",
+      pullRequestNumbers: [999001],
       repoName: "sentry",
     });
+  });
+
+  it("loads pull request match fields only when a filter needs them", () => {
+    expect(needsCheckSuitePullRequestFacts(["repo"])).toBe(false);
+    expect(needsCheckSuitePullRequestFacts(["isDraft"])).toBe(true);
+    expect(
+      parseCheckSuiteFactsTarget(
+        {
+          action: "completed",
+          repository: checkSuiteRepository("getsentry/junior"),
+          check_suite: {
+            conclusion: "success",
+            head_sha: "abcdef1234567890",
+            id: 7,
+            pull_requests: [checkSuitePullRequest(10), checkSuitePullRequest(11)],
+          },
+        },
+        { loadPullRequestFacts: true },
+      ),
+    ).toEqual({
+      checkSuiteId: 7,
+      headSha: "abcdef1234567890",
+      loadFailingChecks: false,
+      loadPullRequestFacts: true,
+      owner: "getsentry",
+      pullRequestNumbers: [10, 11],
+      repoName: "junior",
+    });
+    expect(
+      parseCheckSuitePublishTargets({
+        action: "completed",
+        repository: checkSuiteRepository("getsentry/junior"),
+        check_suite: {
+          conclusion: "success",
+          head_sha: "abcdef1234567890",
+          id: 7,
+          pull_requests: [checkSuitePullRequest(10)],
+        },
+      }),
+    ).toEqual({
+      eventTypes: ["pull_request.checks.recovered"],
+      identifiers: ["getsentry/junior", "getsentry/junior#10"],
+    });
+  });
+
+  it("attaches loaded pull request match fields on check suite events", () => {
+    expect(
+      normalizeGitHubResourceEvents({
+        body: {
+          action: "completed",
+          repository: checkSuiteRepository("getsentry/junior"),
+          check_suite: {
+            app: { name: "GitHub Actions" },
+            conclusion: "success",
+            head_sha: "abcdef1234567890",
+            id: 7,
+            pull_requests: [checkSuitePullRequest(10)],
+          },
+        },
+        checkSuiteFacts: {
+          pullRequestFactsByNumber: {
+            10: {
+              authorUsername: "octocat",
+              isDraft: false,
+            },
+          },
+        },
+        deliveryId: "delivery-match-facts",
+        eventName: "check_suite",
+      }),
+    ).toEqual([
+      {
+        eventKey: "github:delivery-match-facts:pull_request.checks.recovered:10",
+        eventType: "pull_request.checks.recovered",
+        occurredAtMs: 1_000,
+        identifier: "getsentry/junior#10",
+        trustedSummary:
+          "GitHub PR getsentry/junior#10 check suite recovered for abcdef123456.",
+        data: {
+          repo: "getsentry/junior",
+          pullRequest: 10,
+          scope: "check_suite",
+          suiteConclusion: "success",
+          isDraft: false,
+          authorUsername: "octocat",
+          headSha: "abcdef1234567890",
+          checkSuiteId: 7,
+          checkSuiteUrl:
+            "https://github.com/getsentry/junior/commit/abcdef1234567890/checks?check_suite_id=7",
+          appName: "GitHub Actions",
+        },
+      },
+      {
+        eventKey: "github:delivery-match-facts:pull_request.checks.recovered:10",
+        eventType: "pull_request.checks.recovered",
+        occurredAtMs: 1_000,
+        identifier: "getsentry/junior",
+        trustedSummary:
+          "GitHub PR getsentry/junior#10 check suite recovered for abcdef123456.",
+        data: {
+          repo: "getsentry/junior",
+          pullRequest: 10,
+          scope: "check_suite",
+          suiteConclusion: "success",
+          isDraft: false,
+          authorUsername: "octocat",
+          headSha: "abcdef1234567890",
+          checkSuiteId: 7,
+          checkSuiteUrl:
+            "https://github.com/getsentry/junior/commit/abcdef1234567890/checks?check_suite_id=7",
+          appName: "GitHub Actions",
+        },
+      },
+    ]);
   });
 
   it("keeps only failed runs and drops runs from other suites", () => {

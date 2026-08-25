@@ -28,7 +28,11 @@ import {
   normalizeGitHubPullRequestLinkedIssues,
   normalizeGitHubPullRequestOutcome,
 } from "./pull-request-outcome.js";
-import { loadCheckSuiteFacts } from "./check-suite.js";
+import {
+  loadCheckSuiteFacts,
+  needsCheckSuitePullRequestFacts,
+  parseCheckSuitePublishTargets,
+} from "./check-suite.js";
 import { normalizeGitHubResourceEvents } from "./resource-events.js";
 
 /** Verify GitHub's SHA-256 signature against the untouched request body. */
@@ -265,12 +269,22 @@ export function createGitHubWebhookRoute(args: {
           )
         : false;
 
+      const checkSuitePublishTargets =
+        eventName === "check_suite"
+          ? parseCheckSuitePublishTargets(body)
+          : undefined;
+      const checkSuiteMatchKeys =
+        checkSuitePublishTargets && args.resourceEvents.neededMatchKeys
+          ? await args.resourceEvents.neededMatchKeys(checkSuitePublishTargets)
+          : [];
       const checkSuiteFacts =
         eventName === "check_suite"
           ? await loadCheckSuiteFacts({
               appIdEnv: args.appIdEnv,
               body,
               installationIdEnv: args.installationIdEnv,
+              loadPullRequestFacts:
+                needsCheckSuitePullRequestFacts(checkSuiteMatchKeys),
               log: args.log,
               privateKeyEnv: args.privateKeyEnv,
             })

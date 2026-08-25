@@ -308,4 +308,13 @@ export type ResourceEvent = z.output<typeof resourceEventSchema>;
 export interface ResourceEventPublisher {
   /** Publish one normalized event under the owning plugin's namespace. */
   publish(event: ResourceEventInput): Promise<void>;
+  /**
+   * Return match keys used by active watches or event tasks for these
+   * identifiers and event types. Plugins use this to load optional trusted
+   * data only when a filter needs it.
+   */
+  neededMatchKeys?(input: {
+    eventTypes: string[];
+    identifiers: string[];
+  }): Promise<string[]>;
 }

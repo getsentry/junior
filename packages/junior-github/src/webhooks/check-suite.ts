@@ -5,10 +5,18 @@ import type { ResourceEventInput } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import {
   githubRequest,
+  isRecord,
   issueInstallationToken,
 } from "../credential-support.js";
 import { gitHubPullRequestResource } from "../resource-events/pull-request.js";
 import { gitHubRepositoryResource } from "../resource-events/repository.js";
+
+/** Match keys that need a pull request API load on check suite events. */
+const CHECK_SUITE_PULL_REQUEST_MATCH_KEYS = new Set([
+  "authorEmail",
+  "authorUsername",
+  "isDraft",
+]);
 
 function gitHubEventKey(deliveryId: string, eventType: string): string {
   return `github:${deliveryId}:${eventType}`;
@@ -107,6 +115,16 @@ function isCheckSuiteRepositoryPullRequest(
   return pullRequest.base.repo.id === repositoryId;
 }
 
+/** True when a GitHub API call failed with HTTP 404. */
+function isGitHubNotFoundError(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    error.name === "GitHubRequestError" &&
+    "status" in error &&
+    (error as { status: unknown }).status === 404
+  );
+}
+
 const FAILING_CHECK_CONCLUSIONS = new Set([
   "failure",
   "timed_out",
@@ -122,9 +140,18 @@ export type GitHubFailingCheck = {
   name: string;
 };
 
+/** Pull request values filled in when a match filter needs them. */
+export type GitHubCheckSuitePullRequestFacts = {
+  authorEmail?: string;
+  authorUsername?: string;
+  isDraft?: boolean;
+};
+
 /** Optional values for one check suite event. */
 export type GitHubCheckSuiteFacts = {
   failingChecks?: GitHubFailingCheck[];
+  /** Pull request values by number when a match filter needs them. */
+  pullRequestFactsByNumber?: Record<number, GitHubCheckSuitePullRequestFacts>;
 };
 
 /** Build a browser URL for one check suite. GitHub does not send html_url. */
@@ -148,11 +175,14 @@ function oneLineLabel(value: string, maxLength = 80): string {
 /** Build the trusted data and summary for one check-suite PR event. */
 export function buildCheckSuiteResourceEvent(args: {
   appName?: string;
+  authorEmail?: string;
+  authorUsername?: string;
   checkSuiteId?: number;
   deliveryId: string;
   eventType: "pull_request.checks.failed" | "pull_request.checks.recovered";
   failingChecks?: GitHubFailingCheck[];
   headSha?: string;
+  isDraft?: boolean;
   latestCheckRunsCount?: number;
   pullRequestNumber: number;
   repo: string;
@@ -176,6 +206,9 @@ export function buildCheckSuiteResourceEvent(args: {
     scope: "check_suite",
     suiteConclusion: args.suiteConclusion,
   };
+  if (typeof args.isDraft === "boolean") data.isDraft = args.isDraft;
+  if (args.authorUsername) data.authorUsername = args.authorUsername;
+  if (args.authorEmail) data.authorEmail = args.authorEmail;
   if (args.headSha) data.headSha = args.headSha;
   if (args.checkSuiteId !== undefined) data.checkSuiteId = args.checkSuiteId;
   if (args.checkSuiteId !== undefined && args.headSha) {
@@ -303,9 +336,14 @@ export function normalizeCheckSuiteEvents(
   const repo = repository.full_name;
   return suite.pull_requests.flatMap((pullRequest) => {
     if (!isCheckSuiteRepositoryPullRequest(pullRequest, repository.id)) return [];
+    const facts = options?.pullRequestFactsByNumber?.[pullRequest.number];
     return pullRequestTargets(
       buildCheckSuiteResourceEvent({
         appName,
+        ...(facts?.authorEmail ? { authorEmail: facts.authorEmail } : undefined),
+        ...(facts?.authorUsername
+          ? { authorUsername: facts.authorUsername }
+          : undefined),
         checkSuiteId: suite.id,
         deliveryId,
         eventType,
@@ -314,6 +352,9 @@ export function normalizeCheckSuiteEvents(
             ? options?.failingChecks
             : undefined,
         headSha,
+        ...(typeof facts?.isDraft === "boolean"
+          ? { isDraft: facts.isDraft }
+          : undefined),
         latestCheckRunsCount:
           typeof suite.latest_check_runs_count === "number"
             ? suite.latest_check_runs_count
@@ -327,17 +368,61 @@ export function normalizeCheckSuiteEvents(
   });
 }
 
-/** Read which failed check suite still needs a check-run list load. */
-export function parseCheckSuiteFactsTarget(body: unknown): {
+/** Identifiers and event types one completed check suite may publish. */
+export function parseCheckSuitePublishTargets(body: unknown):
+  | {
+      eventTypes: string[];
+      identifiers: string[];
+    }
+  | undefined {
+  const parsed = checkSuiteWebhookSchema.safeParse(body);
+  if (!parsed.success || parsed.data.action !== "completed") return undefined;
+  const conclusion = parsed.data.check_suite.conclusion;
+  const eventType =
+    conclusion === "failure" || conclusion === "timed_out"
+      ? "pull_request.checks.failed"
+      : conclusion === "success"
+        ? "pull_request.checks.recovered"
+        : undefined;
+  if (!eventType) return undefined;
+  const repository = parsed.data.repository;
+  const repo = repository.full_name;
+  const identifiers = new Set<string>([
+    gitHubRepositoryResource({ repo }).identifier,
+  ]);
+  for (const pullRequest of parsed.data.check_suite.pull_requests) {
+    if (!isCheckSuiteRepositoryPullRequest(pullRequest, repository.id)) continue;
+    identifiers.add(
+      gitHubPullRequestResource({ number: pullRequest.number, repo }).identifier,
+    );
+  }
+  return {
+    eventTypes: [eventType],
+    identifiers: [...identifiers],
+  };
+}
+
+/** Read which check suite values still need a GitHub API load. */
+export function parseCheckSuiteFactsTarget(
+  body: unknown,
+  options?: { loadPullRequestFacts?: boolean },
+): {
   checkSuiteId: number;
   headSha: string;
+  loadFailingChecks: boolean;
+  loadPullRequestFacts: boolean;
   owner: string;
+  pullRequestNumbers: number[];
   repoName: string;
 } | undefined {
   const parsed = checkSuiteWebhookSchema.safeParse(body);
   if (!parsed.success || parsed.data.action !== "completed") return undefined;
   const conclusion = parsed.data.check_suite.conclusion;
-  if (conclusion !== "failure" && conclusion !== "timed_out") {
+  if (
+    conclusion !== "failure" &&
+    conclusion !== "timed_out" &&
+    conclusion !== "success"
+  ) {
     return undefined;
   }
   const headSha = parsed.data.check_suite.head_sha;
@@ -349,11 +434,32 @@ export function parseCheckSuiteFactsTarget(body: unknown): {
   ) {
     return undefined;
   }
+  const repository = parsed.data.repository;
+  const pullRequestNumbers = [
+    ...new Set(
+      parsed.data.check_suite.pull_requests
+        .filter((pullRequest) =>
+          isCheckSuiteRepositoryPullRequest(pullRequest, repository.id),
+        )
+        .map((pullRequest) => pullRequest.number),
+    ),
+  ];
+  const loadFailingChecks =
+    conclusion === "failure" || conclusion === "timed_out";
+  const loadPullRequestFacts = Boolean(
+    options?.loadPullRequestFacts && pullRequestNumbers.length > 0,
+  );
+  if (!loadFailingChecks && !loadPullRequestFacts) {
+    return undefined;
+  }
   return {
     checkSuiteId,
     headSha,
-    owner: parsed.data.repository.owner.login,
-    repoName: parsed.data.repository.name,
+    loadFailingChecks,
+    loadPullRequestFacts,
+    owner: repository.owner.login,
+    pullRequestNumbers,
+    repoName: repository.name,
   };
 }
 
@@ -363,41 +469,131 @@ function checkRunsFromResponse(value: unknown): unknown[] {
   return parsed.data.check_runs ?? [];
 }
 
-/** Load failed check-run names and urls for one failed check suite. */
+function pullRequestFactsFromResponse(
+  value: unknown,
+): GitHubCheckSuitePullRequestFacts | undefined {
+  if (!isRecord(value)) return undefined;
+  const facts: GitHubCheckSuitePullRequestFacts = {};
+  if (typeof value.draft === "boolean") facts.isDraft = value.draft;
+  const user = value.user;
+  if (isRecord(user)) {
+    const username =
+      typeof user.login === "string" ? user.login.trim() : undefined;
+    if (username) facts.authorUsername = username;
+    const email =
+      typeof user.email === "string" ? user.email.trim() : undefined;
+    if (email) facts.authorEmail = email;
+  }
+  return Object.keys(facts).length > 0 ? facts : undefined;
+}
+
+/** True when active match filters need pull request fields from the API. */
+export function needsCheckSuitePullRequestFacts(
+  matchKeys: Iterable<string>,
+): boolean {
+  for (const key of matchKeys) {
+    if (CHECK_SUITE_PULL_REQUEST_MATCH_KEYS.has(key)) return true;
+  }
+  return false;
+}
+
+/** Load failed check runs and optional pull request match fields. */
 export async function loadCheckSuiteFacts(args: {
   appIdEnv: string;
   body: unknown;
   installationIdEnv: string;
+  loadPullRequestFacts?: boolean;
   log?: { error(message: string, metadata?: Record<string, unknown>): void };
   privateKeyEnv: string;
 }): Promise<GitHubCheckSuiteFacts | undefined> {
-  const target = parseCheckSuiteFactsTarget(args.body);
+  const target = parseCheckSuiteFactsTarget(args.body, {
+    loadPullRequestFacts: args.loadPullRequestFacts,
+  });
   if (!target) return undefined;
 
-  try {
-    const token = await issueInstallationToken({
-      appIdEnv: args.appIdEnv,
-      installationIdEnv: args.installationIdEnv,
-      permissions: { checks: "read" },
-      privateKeyEnv: args.privateKeyEnv,
-      repositories: [target.repoName],
-    });
-    // Load runs for this suite only. Commit-wide latest runs mix other apps.
-    const response = await githubRequest(
-      "https://api.github.com",
-      `/repos/${encodeURIComponent(target.owner)}/${encodeURIComponent(target.repoName)}/check-suites/${target.checkSuiteId}/check-runs?filter=latest&per_page=100`,
-      { token: token.token },
-    );
-    const failing = selectFailingChecks(checkRunsFromResponse(response), {
-      checkSuiteId: target.checkSuiteId,
-    });
-    return failing.length > 0 ? { failingChecks: failing } : undefined;
-  } catch (error) {
-    args.log?.error("GitHub check suite load failed", {
-      checkSuiteId: target.checkSuiteId,
-      errorType: error instanceof Error ? error.name : "UnknownError",
-      repository: `${target.owner}/${target.repoName}`,
-    });
-    return undefined;
+  const facts: GitHubCheckSuiteFacts = {};
+
+  if (target.loadFailingChecks) {
+    try {
+      const token = await issueInstallationToken({
+        appIdEnv: args.appIdEnv,
+        installationIdEnv: args.installationIdEnv,
+        permissions: { checks: "read" },
+        privateKeyEnv: args.privateKeyEnv,
+        repositories: [target.repoName],
+      });
+      // Load runs for this suite only. Commit-wide latest runs mix other apps.
+      const response = await githubRequest(
+        "https://api.github.com",
+        `/repos/${encodeURIComponent(target.owner)}/${encodeURIComponent(target.repoName)}/check-suites/${target.checkSuiteId}/check-runs?filter=latest&per_page=100`,
+        { token: token.token },
+      );
+      const failing = selectFailingChecks(checkRunsFromResponse(response), {
+        checkSuiteId: target.checkSuiteId,
+      });
+      if (failing.length > 0) facts.failingChecks = failing;
+    } catch (error) {
+      args.log?.error("GitHub check suite load failed", {
+        checkSuiteId: target.checkSuiteId,
+        errorType: error instanceof Error ? error.name : "UnknownError",
+        repository: `${target.owner}/${target.repoName}`,
+      });
+    }
   }
+
+  if (target.loadPullRequestFacts) {
+    try {
+      const token = await issueInstallationToken({
+        appIdEnv: args.appIdEnv,
+        installationIdEnv: args.installationIdEnv,
+        permissions: { pull_requests: "read" },
+        privateKeyEnv: args.privateKeyEnv,
+        repositories: [target.repoName],
+      });
+      const loaded = await Promise.all(
+        target.pullRequestNumbers.map(async (number) => {
+          try {
+            const response = await githubRequest(
+              "https://api.github.com",
+              `/repos/${encodeURIComponent(target.owner)}/${encodeURIComponent(target.repoName)}/pulls/${number}`,
+              { token: token.token },
+            );
+            const loadedFacts = pullRequestFactsFromResponse(response);
+            return loadedFacts ? ([number, loadedFacts] as const) : undefined;
+          } catch (error) {
+            // 404 is expected when the suite lists a stale PR number.
+            if (!isGitHubNotFoundError(error)) {
+              args.log?.error("GitHub pull request data load failed", {
+                errorType: error instanceof Error ? error.name : "UnknownError",
+                pullRequest: number,
+                repository: `${target.owner}/${target.repoName}`,
+              });
+            }
+            return undefined;
+          }
+        }),
+      );
+      const pullRequestFactsByNumber: Record<
+        number,
+        GitHubCheckSuitePullRequestFacts
+      > = {};
+      for (const entry of loaded) {
+        if (!entry) continue;
+        pullRequestFactsByNumber[entry[0]] = entry[1];
+      }
+      if (Object.keys(pullRequestFactsByNumber).length > 0) {
+        facts.pullRequestFactsByNumber = pullRequestFactsByNumber;
+      }
+    } catch (error) {
+      args.log?.error("GitHub check suite pull request data load failed", {
+        checkSuiteId: target.checkSuiteId,
+        errorType: error instanceof Error ? error.name : "UnknownError",
+        repository: `${target.owner}/${target.repoName}`,
+      });
+    }
+  }
+
+  return facts.failingChecks || facts.pullRequestFactsByNumber
+    ? facts
+    : undefined;
 }

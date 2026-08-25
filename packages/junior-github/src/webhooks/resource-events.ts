@@ -12,13 +12,16 @@ import {
 
 export type {
   GitHubCheckSuiteFacts,
+  GitHubCheckSuitePullRequestFacts,
   GitHubFailingCheck,
 } from "./check-suite.js";
 export {
   buildCheckSuiteResourceEvent,
   buildCheckSuiteUrl,
   loadCheckSuiteFacts,
+  needsCheckSuitePullRequestFacts,
   parseCheckSuiteFactsTarget,
+  parseCheckSuitePublishTargets,
   selectFailingChecks,
 } from "./check-suite.js";
 
