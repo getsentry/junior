@@ -1,0 +1,48 @@
+{
+  "commitSha": "fcfa823ce462c108a5271b2b86da16b171aba69d",
+  "mode": "path",
+  "reasons": [
+    "packages/junior-dashboard/src/client/api.ts",
+    "packages/junior-dashboard/src/client/pages/code/CodeActivityChart.tsx",
+    "packages/junior-dashboard/src/client/pages/code/CodePage.tsx",
+    "packages/junior-dashboard/src/client/pages/people/PersonProfilePage.tsx",
+    "packages/junior-dashboard/src/client/pages/people/ProfileCodeActivity.tsx",
+    "packages/junior-dashboard/src/mock-reporting/fixtures.ts",
+    "packages/junior-dashboard/src/mock-reporting/routes.ts",
+    "packages/junior-dashboard/visual/scenarios.test.ts",
+    "packages/junior-dashboard/visual/scenarios.ts"
+  ],
+  "scenarioIds": [
+    "gallery-index",
+    "conversations",
+    "conversation-detail",
+    "conversation-detail-focused"
+  ],
+  "shots": [
+    {
+      "file": "gallery-index__desktop.png",
+      "label": "Component gallery index · desktop"
+    },
+    {
+      "file": "conversations__desktop.png",
+      "label": "Conversations · desktop"
+    },
+    {
+      "file": "conversations__mobile.png",
+      "label": "Conversations · mobile"
+    },
+    {
+      "file": "conversation-detail__desktop.png",
+      "label": "Conversation detail · desktop"
+    },
+    {
+      "file": "conversation-detail__mobile.png",
+      "label": "Conversation detail · mobile"
+    },
+    {
+      "file": "conversation-detail-focused__mobile.png",
+      "label": "Conversation detail · focused composer · mobile"
+    }
+  ],
+  "skipped": false
+}
