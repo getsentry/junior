@@ -62,9 +62,21 @@ export const codeOverviewReportSchema = z
   })
   .strict();
 
+/** Person-scoped code activity for one People profile. */
+export const codePersonReportSchema = z
+  .object({
+    activityDays: z.array(codeActivityDaySchema),
+    generatedAt: z.string(),
+    summary: codeChangeSummarySchema,
+    windowEnd: z.string(),
+    windowStart: z.string(),
+  })
+  .strict();
+
 export type CodeActivityDay = z.infer<typeof codeActivityDaySchema>;
 export type CodeChangeSummaryReport = z.infer<
   typeof codeChangeSummaryReportSchema
 >;
 export type CodeOverviewReport = z.infer<typeof codeOverviewReportSchema>;
+export type CodePersonReport = z.infer<typeof codePersonReportSchema>;
 export type CodeRepositorySummary = z.infer<typeof codeRepositorySummarySchema>;

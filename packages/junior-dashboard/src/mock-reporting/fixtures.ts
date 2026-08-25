@@ -15,6 +15,7 @@ import type {
   ConversationStatsReport,
   ConversationSummaryReport,
   CodeOverviewReport,
+  CodePersonReport,
   LocationDetailReport,
   LocationActorSummaryReport,
   LocationActivityDayReport,
@@ -1896,77 +1897,30 @@ export function readMockPeopleProfile(
 
 /** Build mock person-scoped plugin reports for local profile QA. */
 export function readMockPeoplePluginReports(
-  email: string,
+  _email: string,
 ): PluginOperationalReportFeed {
   const nowMs = Date.now();
+  return {
+    generatedAt: new Date(nowMs).toISOString(),
+    reports: [],
+    source: "plugins",
+  };
+}
+
+/** Build mock person-scoped code activity for local profile QA. */
+export function readMockPeopleCode(email: string): CodePersonReport | undefined {
   const directory = readMockPeopleDirectory();
   const person = directory.people.find(
     (entry) => entry.actor.email.toLowerCase() === email.trim().toLowerCase(),
   );
-  if (!person) {
-    return {
-      generatedAt: new Date(nowMs).toISOString(),
-      reports: [],
-      source: "plugins",
-    };
-  }
-
-  const end = new Date(nowMs);
-  end.setUTCHours(0, 0, 0, 0);
-  const days = Array.from({ length: 90 }, (_, index) => {
-    const date = new Date(end);
-    date.setUTCDate(date.getUTCDate() - (89 - index));
-    const key = date.toISOString().slice(0, 10);
-    const wave = (index % 7) + (index % 3);
-    return {
-      id: key,
-      label: key,
-      values: {
-        created: wave === 0 ? 0 : wave % 4,
-      },
-    };
-  });
-
+  if (!person) return undefined;
+  const overview = readMockCodeOverview();
   return {
-    generatedAt: new Date(nowMs).toISOString(),
-    source: "plugins",
-    reports: [
-      {
-        pluginName: "github",
-        title: "GitHub",
-        generatedAt: new Date(nowMs).toISOString(),
-        metrics: [
-          { label: "PRs opened · 30d", value: "12" },
-          { label: "PRs merged · 30d", value: "9" },
-          { label: "Issues opened · 30d", value: "4" },
-          { label: "PR merge rate · 30d", value: "75%" },
-        ],
-        widgets: [
-          {
-            id: "pull-requests-created",
-            type: "bar_chart",
-            title: "Pull requests opened",
-            description:
-              "Junior-owned pull requests opened for this person per day",
-            timeRangeDays: [7, 30, 90],
-            series: [{ key: "created", label: "Opened" }],
-            categories: days,
-          },
-          {
-            id: "issues-created",
-            type: "bar_chart",
-            title: "Issues opened",
-            description: "Junior-owned issues opened for this person per day",
-            timeRangeDays: [7, 30, 90],
-            series: [{ key: "created", label: "Opened" }],
-            categories: days.map((day, index) => ({
-              ...day,
-              values: { created: index % 5 === 0 ? 1 : 0 },
-            })),
-          },
-        ],
-      },
-    ],
+    activityDays: overview.activityDays,
+    generatedAt: overview.generatedAt,
+    summary: overview.summary,
+    windowEnd: overview.windowEnd,
+    windowStart: overview.windowStart,
   };
 }
 

@@ -1,8 +1,11 @@
-import { desc, eq, gte, or, sql } from "drizzle-orm";
+import { desc, eq, gte, or, sql, type SQL } from "drizzle-orm";
 import { z } from "zod";
 import { getDb } from "@/chat/db";
 import { juniorCodeChanges, juniorCodeRepositories } from "@/db/schema";
-import { codeOverviewReportSchema } from "../schema/code";
+import {
+  codeOverviewReportSchema,
+  codePersonReportSchema,
+} from "../schema/code";
 
 const DAY_MS = 24 * 60 * 60 * 1_000;
 const WINDOW_DAYS = 30;
@@ -67,17 +70,36 @@ function mergeRate(merged: number, closed: number): number | undefined {
   return completed > 0 ? merged / completed : undefined;
 }
 
-/** Read code activity created by Junior across installed code plugins. */
-export async function readCodeOverview(nowMs = Date.now()) {
+/** True when any linked conversation actor belongs to the subject user. */
+function ownedByUserSql(conversationIds: SQL, userId: string): SQL {
+  return sql`EXISTS (
+    SELECT 1
+    FROM unnest(${conversationIds}) AS linked(conversation_id)
+    INNER JOIN junior_conversations AS conversations
+      ON conversations.conversation_id = linked.conversation_id
+    INNER JOIN junior_identities AS identities
+      ON identities.id = conversations.actor_identity_id
+    WHERE identities.user_id = ${userId}
+  )`;
+}
+
+function ownershipFilter(userId: string | undefined): SQL | undefined {
+  if (!userId) return undefined;
+  return ownedByUserSql(sql`${juniorCodeChanges.conversationIds}`, userId);
+}
+
+async function readCodeWindows(args: {
+  nowMs: number;
+  userId?: string;
+}) {
   const db = getDb();
-  const windowEnd = new Date(nowMs);
-  const windowStart = new Date(nowMs - WINDOW_DAYS * DAY_MS);
-  const activityStart = startOfUtcDay(nowMs - (ACTIVITY_DAYS - 1) * DAY_MS);
+  const windowEnd = new Date(args.nowMs);
+  const windowStart = new Date(args.nowMs - WINDOW_DAYS * DAY_MS);
+  const activityStart = startOfUtcDay(args.nowMs - (ACTIVITY_DAYS - 1) * DAY_MS);
   const changes = juniorCodeChanges;
-  const repositories = juniorCodeRepositories;
-  const [summaryResult, repositoryResult, activityResult, recentChanges] =
-    await Promise.all([
-      db.execute(sql`
+  const ownership = ownershipFilter(args.userId);
+  const [summaryResult, activityResult] = await Promise.all([
+    db.execute(sql`
       SELECT
         count(*) FILTER (WHERE ${changes.openedAt} >= ${windowStart})::integer AS "created",
         count(*) FILTER (WHERE ${changes.mergedAt} >= ${windowStart})::integer AS "merged",
@@ -96,30 +118,9 @@ export async function readCodeOverview(nowMs = Date.now()) {
           )
         )::double precision AS "medianMergeTimeMs"
       FROM ${changes}
+      ${ownership ? sql`WHERE ${ownership}` : sql``}
     `),
-      db.execute(sql`
-      SELECT
-        ${repositories.id} AS "id",
-        ${repositories.name} AS "name",
-        ${repositories.provider} AS "provider",
-        ${repositories.url} AS "url",
-        count(${changes.id}) FILTER (WHERE ${changes.openedAt} >= ${windowStart})::integer AS "created",
-        count(${changes.id}) FILTER (WHERE ${changes.mergedAt} >= ${windowStart})::integer AS "merged",
-        count(${changes.id}) FILTER (
-          WHERE ${changes.state} = 'closed' AND ${changes.closedAt} >= ${windowStart}
-        )::integer AS "closed",
-        count(${changes.id}) FILTER (WHERE ${changes.state} = 'open')::integer AS "open"
-      FROM ${repositories}
-      LEFT JOIN ${changes} ON ${changes.repositoryId} = ${repositories.id}
-      WHERE ${changes.openedAt} >= ${windowStart}
-        OR ${changes.mergedAt} >= ${windowStart}
-        OR ${changes.closedAt} >= ${windowStart}
-        OR ${changes.state} = 'open'
-      GROUP BY ${repositories.id}
-      ORDER BY "merged" DESC, "created" DESC, ${repositories.name} ASC
-      LIMIT 25
-    `),
-      db.execute(sql`
+    db.execute(sql`
       WITH days AS (
         SELECT generate_series(
           date_trunc('day', ${activityStart}::timestamptz AT TIME ZONE 'UTC'),
@@ -136,15 +137,18 @@ export async function readCodeOverview(nowMs = Date.now()) {
           SELECT ${changes.openedAt} AS event_at, 'created'::text AS kind
           FROM ${changes}
           WHERE ${changes.openedAt} >= ${activityStart}
+            ${ownership ? sql`AND ${ownership}` : sql``}
           UNION ALL
           SELECT ${changes.mergedAt} AS event_at, 'merged'::text AS kind
           FROM ${changes}
           WHERE ${changes.mergedAt} >= ${activityStart}
+            ${ownership ? sql`AND ${ownership}` : sql``}
           UNION ALL
           SELECT ${changes.closedAt} AS event_at, 'closed'::text AS kind
           FROM ${changes}
           WHERE ${changes.state} = 'closed'
             AND ${changes.closedAt} >= ${activityStart}
+            ${ownership ? sql`AND ${ownership}` : sql``}
         ) AS events
         GROUP BY date_trunc('day', event_at AT TIME ZONE 'UTC')
       )
@@ -157,35 +161,82 @@ export async function readCodeOverview(nowMs = Date.now()) {
       LEFT JOIN daily ON daily.day = days.day
       ORDER BY days.day
     `),
-      db
-        .select({
-          closedAt: changes.closedAt,
-          id: changes.id,
-          mergedAt: changes.mergedAt,
-          number: changes.number,
-          openedAt: changes.openedAt,
-          provider: changes.provider,
-          repository: repositories.name,
-          state: changes.state,
-          title: changes.title,
-          url: changes.url,
-        })
-        .from(changes)
-        .innerJoin(repositories, eq(changes.repositoryId, repositories.id))
-        .where(
-          or(
-            gte(changes.openedAt, windowStart),
-            gte(changes.mergedAt, windowStart),
-            gte(changes.closedAt, windowStart),
-            eq(changes.state, "open"),
-          ),
-        )
-        .orderBy(desc(changes.updatedAt))
-        .limit(25),
-    ]);
-  const summary = summaryRowSchema.parse(queryRows(summaryResult)[0]);
-  return codeOverviewReportSchema.parse({
+  ]);
+  const summary = summaryRowSchema.parse(queryRows(summaryResult)[0] ?? {
+    closed: 0,
+    created: 0,
+    medianMergeTimeMs: null,
+    merged: 0,
+    open: 0,
+  });
+  return {
     activityDays: z.array(activityDaySchema).parse(queryRows(activityResult)),
+    summary: {
+      ...summary,
+      mergeRate: mergeRate(summary.merged, summary.closed),
+    },
+    windowEnd,
+    windowStart,
+  };
+}
+
+/** Read code activity created by Junior across installed code plugins. */
+export async function readCodeOverview(nowMs = Date.now()) {
+  const db = getDb();
+  const changes = juniorCodeChanges;
+  const repositories = juniorCodeRepositories;
+  const windows = await readCodeWindows({ nowMs });
+  const [repositoryResult, recentChanges] = await Promise.all([
+    db.execute(sql`
+      SELECT
+        ${repositories.id} AS "id",
+        ${repositories.name} AS "name",
+        ${repositories.provider} AS "provider",
+        ${repositories.url} AS "url",
+        count(${changes.id}) FILTER (WHERE ${changes.openedAt} >= ${windows.windowStart})::integer AS "created",
+        count(${changes.id}) FILTER (WHERE ${changes.mergedAt} >= ${windows.windowStart})::integer AS "merged",
+        count(${changes.id}) FILTER (
+          WHERE ${changes.state} = 'closed' AND ${changes.closedAt} >= ${windows.windowStart}
+        )::integer AS "closed",
+        count(${changes.id}) FILTER (WHERE ${changes.state} = 'open')::integer AS "open"
+      FROM ${repositories}
+      LEFT JOIN ${changes} ON ${changes.repositoryId} = ${repositories.id}
+      WHERE ${changes.openedAt} >= ${windows.windowStart}
+        OR ${changes.mergedAt} >= ${windows.windowStart}
+        OR ${changes.closedAt} >= ${windows.windowStart}
+        OR ${changes.state} = 'open'
+      GROUP BY ${repositories.id}
+      ORDER BY "merged" DESC, "created" DESC, ${repositories.name} ASC
+      LIMIT 25
+    `),
+    db
+      .select({
+        closedAt: changes.closedAt,
+        id: changes.id,
+        mergedAt: changes.mergedAt,
+        number: changes.number,
+        openedAt: changes.openedAt,
+        provider: changes.provider,
+        repository: repositories.name,
+        state: changes.state,
+        title: changes.title,
+        url: changes.url,
+      })
+      .from(changes)
+      .innerJoin(repositories, eq(changes.repositoryId, repositories.id))
+      .where(
+        or(
+          gte(changes.openedAt, windows.windowStart),
+          gte(changes.mergedAt, windows.windowStart),
+          gte(changes.closedAt, windows.windowStart),
+          eq(changes.state, "open"),
+        ),
+      )
+      .orderBy(desc(changes.updatedAt))
+      .limit(25),
+  ]);
+  return codeOverviewReportSchema.parse({
+    activityDays: windows.activityDays,
     changes: recentChanges.map((change) => ({
       ...change,
       closedAt: change.closedAt?.toISOString(),
@@ -194,7 +245,7 @@ export async function readCodeOverview(nowMs = Date.now()) {
       title: change.title ?? undefined,
       url: change.url ?? undefined,
     })),
-    generatedAt: windowEnd.toISOString(),
+    generatedAt: windows.windowEnd.toISOString(),
     repositories: z
       .array(repositoryRowSchema)
       .parse(queryRows(repositoryResult))
@@ -203,11 +254,30 @@ export async function readCodeOverview(nowMs = Date.now()) {
         mergeRate: mergeRate(repository.merged, repository.closed),
         url: repository.url ?? undefined,
       })),
-    summary: {
-      ...summary,
-      mergeRate: mergeRate(summary.merged, summary.closed),
-    },
-    windowEnd: windowEnd.toISOString(),
-    windowStart: windowStart.toISOString(),
+    summary: windows.summary,
+    windowEnd: windows.windowEnd.toISOString(),
+    windowStart: windows.windowStart.toISOString(),
+  });
+}
+
+/**
+ * Read person-scoped code activity linked through conversation actors on
+ * Junior-owned code changes.
+ */
+export async function readPersonCodeOverview(args: {
+  nowMs?: number;
+  userId: string;
+}) {
+  const nowMs = args.nowMs ?? Date.now();
+  const windows = await readCodeWindows({
+    nowMs,
+    userId: args.userId,
+  });
+  return codePersonReportSchema.parse({
+    activityDays: windows.activityDays,
+    generatedAt: windows.windowEnd.toISOString(),
+    summary: windows.summary,
+    windowEnd: windows.windowEnd.toISOString(),
+    windowStart: windows.windowStart.toISOString(),
   });
 }

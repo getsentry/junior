@@ -5,12 +5,14 @@ export {
   codeChangeSummaryReportSchema,
   codeChangeSummarySchema,
   codeOverviewReportSchema,
+  codePersonReportSchema,
   codeRepositorySummarySchema,
 } from "./schema/code";
 export type {
   CodeActivityDay,
   CodeChangeSummaryReport,
   CodeOverviewReport,
+  CodePersonReport,
   CodeRepositorySummary,
 } from "./schema/code";
 export {

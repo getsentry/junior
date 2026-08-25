@@ -5,6 +5,7 @@ import {
   conversationFeedSchema,
   conversationStatsReportSchema,
   codeOverviewReportSchema,
+  codePersonReportSchema,
   statsReportSchema,
 } from "@sentry/junior/api/schema";
 import {
@@ -187,6 +188,21 @@ export function useActorPluginReportsData(email: string | undefined) {
       fetchDashboardJson(
         pluginOperationalReportFeedSchema,
         `/api/people/${encodeURIComponent(email!)}/plugin-reports`,
+        signal,
+      ),
+    retry: false,
+  });
+}
+
+/** Fetch person-scoped native code activity for one People profile. */
+export function useActorCodeData(email: string | undefined) {
+  return useQuery({
+    enabled: Boolean(email),
+    queryKey: ["dashboard", "people", email, "code"],
+    queryFn: ({ signal }) =>
+      fetchDashboardJson(
+        codePersonReportSchema,
+        `/api/people/${encodeURIComponent(email!)}/code`,
         signal,
       ),
     retry: false,

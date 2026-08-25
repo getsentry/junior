@@ -33,8 +33,6 @@ import {
   GITHUB_RELEASE_SUGGESTED_EVENTS,
 } from "./resource-events/release.js";
 import type { GitHubDb } from "./db/database.js";
-import { buildGitHubProfileReport } from "./outcomes/profile-report.js";
-import { buildGitHubOutcomeReport } from "./outcomes/report.js";
 import { classifyGitHubPullRequestCommitComposition } from "./pull-request-outcomes/commit-composition.js";
 import { githubSidebarAnnotations } from "./annotations.js";
 import {
@@ -309,19 +307,6 @@ export function githubPlugin(
             webhookSecret: () => readEnv("GITHUB_WEBHOOK_SECRET"),
           }),
         ];
-      },
-      async operationalReport(ctx) {
-        return await buildGitHubOutcomeReport({
-          db: ctx.db as GitHubDb,
-          nowMs: ctx.nowMs,
-        });
-      },
-      async profileReport(ctx) {
-        return await buildGitHubProfileReport({
-          db: ctx.db as GitHubDb,
-          nowMs: ctx.nowMs,
-          userId: ctx.subject.id,
-        });
       },
       tools(ctx) {
         return createGitHubTools(
