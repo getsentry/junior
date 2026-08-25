@@ -10,8 +10,10 @@ client. Personal tokens do not grant ACP access.
 
 ACP maps a session to a private Conversation. It uses the existing
 web Actor, API Turn mailbox, worker, event store, and Conversation access rules.
-Client paths do not select the Junior sandbox. Client MCP servers, resource
-links, media, filesystem callbacks, and terminal callbacks are not supported.
+Client paths do not select the Junior sandbox. ACP prompt resource links are
+accepted by reference and stored as text. Junior does not fetch their URIs.
+Client MCP servers, embedded resources, media, filesystem callbacks, and
+terminal callbacks are not supported.
 `session/cancel` stops the active Turn and returns the ACP `cancelled` stop
 reason.
 
