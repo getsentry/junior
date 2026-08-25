@@ -31,6 +31,7 @@ import { createGitHubWebhookRoute } from "../src/webhooks/handler";
 import {
   buildCheckSuiteUrl,
   normalizeGitHubResourceEvents,
+  parseCheckSuiteFactsTarget,
   selectFailingChecks,
 } from "../src/webhooks/resource-events";
 import { mswServer } from "./msw";
@@ -899,6 +900,123 @@ describe("GitHub webhook resource events", () => {
     ).toBe(
       "https://github.com/getsentry/junior/commit/abcdef1234567890abcdef1234567890abcdef12/checks?check_suite_id=42",
     );
+  });
+
+  it("drops check-suite PRs whose base is a foreign fork of the suite repo", () => {
+    vi.setSystemTime(1_000);
+    expect(
+      normalizeGitHubResourceEvents({
+        body: {
+          action: "completed",
+          repository: { full_name: "getsentry/sentry" },
+          check_suite: {
+            app: { name: "GitHub Actions" },
+            conclusion: "success",
+            head_sha: "8105236768dd1da43379152ee11900be8983ae03",
+            id: 89021857045,
+            pull_requests: [
+              {
+                number: 113,
+                url: "https://api.github.com/repos/kkpan11/sentry/pulls/113",
+                base: {
+                  repo: {
+                    url: "https://api.github.com/repos/kkpan11/sentry",
+                    name: "sentry",
+                  },
+                },
+              },
+              {
+                number: 999001,
+                url: "https://api.github.com/repos/getsentry/sentry/pulls/999001",
+                base: {
+                  repo: {
+                    full_name: "getsentry/sentry",
+                  },
+                },
+              },
+            ],
+          },
+        },
+        deliveryId: "delivery-foreign-prs",
+        eventName: "check_suite",
+      }),
+    ).toEqual([
+      {
+        eventKey:
+          "github:delivery-foreign-prs:pull_request.checks.recovered:999001",
+        eventType: "pull_request.checks.recovered",
+        occurredAtMs: 1_000,
+        identifier: "getsentry/sentry#999001",
+        trustedSummary:
+          "GitHub PR getsentry/sentry#999001 check suite recovered for 8105236768dd.",
+        data: {
+          repo: "getsentry/sentry",
+          pullRequest: 999001,
+          scope: "check_suite",
+          suiteConclusion: "success",
+          headSha: "8105236768dd1da43379152ee11900be8983ae03",
+          checkSuiteId: 89021857045,
+          checkSuiteUrl:
+            "https://github.com/getsentry/sentry/commit/8105236768dd1da43379152ee11900be8983ae03/checks?check_suite_id=89021857045",
+          appName: "GitHub Actions",
+        },
+      },
+      {
+        eventKey:
+          "github:delivery-foreign-prs:pull_request.checks.recovered:999001",
+        eventType: "pull_request.checks.recovered",
+        occurredAtMs: 1_000,
+        identifier: "getsentry/sentry",
+        trustedSummary:
+          "GitHub PR getsentry/sentry#999001 check suite recovered for 8105236768dd.",
+        data: {
+          repo: "getsentry/sentry",
+          pullRequest: 999001,
+          scope: "check_suite",
+          suiteConclusion: "success",
+          headSha: "8105236768dd1da43379152ee11900be8983ae03",
+          checkSuiteId: 89021857045,
+          checkSuiteUrl:
+            "https://github.com/getsentry/sentry/commit/8105236768dd1da43379152ee11900be8983ae03/checks?check_suite_id=89021857045",
+          appName: "GitHub Actions",
+        },
+      },
+    ]);
+  });
+
+  it("loads check-suite PR facts only for same-repo pull requests", () => {
+    expect(
+      parseCheckSuiteFactsTarget({
+        action: "completed",
+        repository: { full_name: "getsentry/sentry" },
+        check_suite: {
+          conclusion: "success",
+          head_sha: "8105236768dd1da43379152ee11900be8983ae03",
+          id: 89021857045,
+          pull_requests: [
+            {
+              number: 113,
+              url: "https://api.github.com/repos/kkpan11/sentry/pulls/113",
+            },
+            {
+              number: 999001,
+              base: { repo: { full_name: "getsentry/sentry" } },
+            },
+            {
+              // Missing base identity keeps same-repo behavior for sparse payloads.
+              number: 42,
+            },
+          ],
+        },
+      }),
+    ).toEqual({
+      checkSuiteId: 89021857045,
+      headSha: "8105236768dd1da43379152ee11900be8983ae03",
+      loadFailingChecks: false,
+      owner: "getsentry",
+      pullRequestNumbers: [999001, 42],
+      repoName: "sentry",
+    });
   });
 
   it("keeps only failed runs and drops runs from other suites", () => {

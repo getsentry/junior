@@ -33,6 +33,26 @@ const repositorySchema = z
   .object({ full_name: z.string().min(1) })
   .passthrough();
 
+const checkSuitePullRequestSchema = z
+  .object({
+    base: z
+      .object({
+        repo: z
+          .object({
+            full_name: z.string().optional(),
+            url: z.string().optional(),
+          })
+          .passthrough()
+          .optional(),
+      })
+      .passthrough()
+      .optional(),
+    draft: z.boolean().optional(),
+    number: z.number(),
+    url: z.string().optional(),
+  })
+  .passthrough();
+
 const checkSuiteWebhookSchema = z.object({
   action: z.string(),
   check_suite: z.object({
@@ -47,12 +67,58 @@ const checkSuiteWebhookSchema = z.object({
     head_sha: z.string().optional(),
     id: z.number().optional(),
     latest_check_runs_count: z.number().optional().nullable(),
-    pull_requests: z.array(
-      z.object({ draft: z.boolean().optional(), number: z.number() }),
-    ),
+    pull_requests: z.array(checkSuitePullRequestSchema),
   }),
   repository: repositorySchema,
 });
+
+/** Read owner/name from a GitHub REST repo or pull URL. */
+function repositoryFullNameFromApiUrl(url: string | undefined): string | undefined {
+  if (!url) return undefined;
+  const match =
+    /^https:\/\/api\.github\.com\/repos\/([^/]+\/[^/]+)(?:\/|$)/i.exec(url);
+  return match?.[1];
+}
+
+/** Base repository for one check-suite pull_requests entry, when GitHub sends it. */
+function checkSuitePullRequestBaseRepo(pullRequest: {
+  base?: { repo?: { full_name?: string; url?: string } };
+  url?: string;
+}): string | undefined {
+  const fullName = pullRequest.base?.repo?.full_name?.trim();
+  if (fullName) return fullName;
+  return (
+    repositoryFullNameFromApiUrl(pullRequest.base?.repo?.url) ??
+    repositoryFullNameFromApiUrl(pullRequest.url)
+  );
+}
+
+/**
+ * Keep only PRs whose base repo is the check-suite repository.
+ * GitHub attaches every open PR whose head sha matches, including PRs against forks.
+ * When base identity is missing, keep the PR (common same-repo payloads and tests).
+ */
+function isCheckSuiteRepositoryPullRequest(
+  pullRequest: {
+    base?: { repo?: { full_name?: string; url?: string } };
+    url?: string;
+  },
+  repositoryFullName: string,
+): boolean {
+  const baseRepo = checkSuitePullRequestBaseRepo(pullRequest);
+  if (!baseRepo) return true;
+  return baseRepo.toLowerCase() === repositoryFullName.toLowerCase();
+}
+
+/** True when a GitHub API call failed with HTTP 404. */
+function isGitHubNotFoundError(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    error.name === "GitHubRequestError" &&
+    "status" in error &&
+    (error as { status: unknown }).status === 404
+  );
+}
 
 const FAILING_CHECK_CONCLUSIONS = new Set([
   "failure",
@@ -261,8 +327,9 @@ export function normalizeCheckSuiteEvents(
     typeof suite.head_sha === "string" && /^[0-9a-f]{7,40}$/i.test(suite.head_sha)
       ? suite.head_sha
       : undefined;
+  const repo = parsed.data.repository.full_name;
   return suite.pull_requests.flatMap((pullRequest) => {
-    const repo = parsed.data.repository.full_name;
+    if (!isCheckSuiteRepositoryPullRequest(pullRequest, repo)) return [];
     const facts = options?.pullRequestFactsByNumber?.[pullRequest.number];
     const draft =
       typeof pullRequest.draft === "boolean"
@@ -328,13 +395,17 @@ export function parseCheckSuiteFactsTarget(body: unknown): {
   ) {
     return undefined;
   }
-  const [owner, repoName, ...extra] = parsed.data.repository.full_name.split("/");
+  const repositoryFullName = parsed.data.repository.full_name;
+  const [owner, repoName, ...extra] = repositoryFullName.split("/");
   if (!owner || !repoName || extra.length > 0) return undefined;
+  // Only load PRs based on this repository. Foreign fork PRs share head sha and 404 here.
   const pullRequestNumbers = [
     ...new Set(
-      parsed.data.check_suite.pull_requests.map(
-        (pullRequest) => pullRequest.number,
-      ),
+      parsed.data.check_suite.pull_requests
+        .filter((pullRequest) =>
+          isCheckSuiteRepositoryPullRequest(pullRequest, repositoryFullName),
+        )
+        .map((pullRequest) => pullRequest.number),
     ),
   ];
   const loadFailingChecks =
@@ -443,11 +514,14 @@ export async function loadCheckSuiteFacts(args: {
             const facts = pullRequestFactsFromResponse(response);
             return facts ? ([number, facts] as const) : undefined;
           } catch (error) {
-            args.log?.error("GitHub pull request data load failed", {
-              errorType: error instanceof Error ? error.name : "UnknownError",
-              pullRequest: number,
-              repository: `${target.owner}/${target.repoName}`,
-            });
+            // 404 is expected when the suite lists a stale or foreign PR number.
+            if (!isGitHubNotFoundError(error)) {
+              args.log?.error("GitHub pull request data load failed", {
+                errorType: error instanceof Error ? error.name : "UnknownError",
+                pullRequest: number,
+                repository: `${target.owner}/${target.repoName}`,
+              });
+            }
             return undefined;
           }
         }),
