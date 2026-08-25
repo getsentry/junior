@@ -2,8 +2,8 @@ import * as acp from "@agentclientprotocol/sdk";
 import { createHttpStream } from "@agentclientprotocol/sdk/experimental/http-client";
 import type { StateAdapter } from "chat";
 import type { Hono } from "hono";
-import { completeAcpAuthorization } from "@sentry/junior-acp/testing";
 import { vi } from "vitest";
+import { completeAcpAuthorization } from "@/api/acp/auth";
 import { createConversationWork } from "@/chat/app/conversation-work";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
 import type { ConversationWorkWebHarness } from "./api-turn";
@@ -11,7 +11,7 @@ import { createSlackAdapterFixture } from "./conversation-work";
 
 export const ACP_TEST_URL = "http://junior.test/api/acp";
 
-/** Supply the enabled dashboard contract required by ACP integration apps. */
+/** Supply dashboard browser authentication for ACP integration tests. */
 export function mockAcpDashboardConfig(): void {
   vi.doMock("#junior/config", () => ({
     createDashboardApp: () => ({

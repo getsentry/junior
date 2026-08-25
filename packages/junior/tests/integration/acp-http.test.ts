@@ -1,5 +1,4 @@
 import * as acp from "@agentclientprotocol/sdk";
-import { acpAdapter } from "@sentry/junior-acp";
 import type { StateAdapter } from "chat";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createApp } from "@/app";
@@ -31,7 +30,7 @@ describe("remote ACP HTTP", () => {
     await closeApiTurnWorkFixture();
   });
 
-  it("does not mount the endpoint without the ACP adapter", async () => {
+  it("mounts the endpoint without extra app config", async () => {
     const harness = await createConversationWorkWebHarness();
     const app = await createApp({
       conversationWork: harness.conversationWork,
@@ -39,14 +38,31 @@ describe("remote ACP HTTP", () => {
 
     const response = await app.fetch(initializeRequest());
 
-    expect(response.status).toBe(404);
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      result: { protocolVersion: acp.PROTOCOL_VERSION },
+    });
+  });
+
+  it("stays mounted without dashboard authentication", async () => {
+    const harness = await createConversationWorkWebHarness();
+    const app = await createApp({
+      conversationWork: harness.conversationWork,
+      dashboard: { disabled: true },
+    });
+
+    const response = await app.fetch(initializeRequest());
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      result: { authMethods: [] },
+    });
   });
 
   it("initializes with isolated cookies and rejects a valid personal token", async () => {
     const harness = await createConversationWorkWebHarness();
     const app = await createApp({
       conversationWork: harness.conversationWork,
-      adapters: [acpAdapter()],
     });
 
     const anonymous = await app.fetch(initializeRequest());
@@ -96,7 +112,6 @@ describe("remote ACP HTTP", () => {
     const harness = await createConversationWorkWebHarness();
     const app = await createApp({
       conversationWork: harness.conversationWork,
-      adapters: [acpAdapter()],
     });
     const nullId = await app.fetch(initializeRequest(null));
     const malformed = await app.request(ACP_URL, {
@@ -159,7 +174,6 @@ describe("remote ACP HTTP", () => {
     const harness = await createConversationWorkWebHarness();
     const app = await createApp({
       conversationWork: harness.conversationWork,
-      adapters: [acpAdapter()],
     });
 
     const error = await withAcpClient({
@@ -199,11 +213,9 @@ describe("remote ACP HTTP", () => {
     });
     const app = await createApp({
       conversationWork: harness.conversationWork,
-      adapters: [acpAdapter()],
     });
     const secondApp = await createApp({
       conversationWork: createIndependentConversationWork(harness),
-      adapters: [acpAdapter()],
     });
     const fetch = appFetch(app, secondApp);
     const firstUpdates: acp.SessionUpdate[] = [];
@@ -420,7 +432,6 @@ describe("remote ACP HTTP", () => {
     });
     const app = await createApp({
       conversationWork: harness.conversationWork,
-      adapters: [acpAdapter()],
     });
 
     await withRawAcpConnection({
@@ -511,11 +522,9 @@ describe("remote ACP HTTP", () => {
     const harness = await createConversationWorkWebHarness();
     const app = await createApp({
       conversationWork: harness.conversationWork,
-      adapters: [acpAdapter()],
     });
     const secondApp = await createApp({
       conversationWork: createIndependentConversationWork(harness),
-      adapters: [acpAdapter()],
     });
     const initialized = await app.fetch(initializeRequest());
     const connectionId = initialized.headers.get("Acp-Connection-Id");
@@ -575,7 +584,6 @@ describe("remote ACP HTTP", () => {
     });
     const app = await createApp({
       conversationWork: createIndependentConversationWork(harness, state),
-      adapters: [acpAdapter()],
     });
     const initialized = await app.fetch(initializeRequest());
     const connectionId = initialized.headers.get("Acp-Connection-Id");
@@ -618,7 +626,6 @@ describe("remote ACP HTTP", () => {
     });
     const app = await createApp({
       conversationWork: harness.conversationWork,
-      adapters: [acpAdapter()],
     });
     const promptAccepted = deferred();
     const sessionStreamOpened = deferred<Response>();
@@ -751,11 +758,9 @@ describe("remote ACP HTTP", () => {
     });
     const app = await createApp({
       conversationWork: harness.conversationWork,
-      adapters: [acpAdapter()],
     });
     const secondApp = await createApp({
       conversationWork: createIndependentConversationWork(harness),
-      adapters: [acpAdapter()],
     });
     const sessionCreated = deferred<string>();
     let cancelActiveTurn: (() => Promise<void>) | undefined;
@@ -861,7 +866,6 @@ describe("remote ACP HTTP", () => {
     });
     const app = await createApp({
       conversationWork: harness.conversationWork,
-      adapters: [acpAdapter()],
     });
     let sessionId: string | undefined;
     const failed = withAcpClient({
@@ -918,7 +922,6 @@ describe("remote ACP HTTP", () => {
     const harness = await createConversationWorkWebHarness();
     const app = await createApp({
       conversationWork: harness.conversationWork,
-      adapters: [acpAdapter()],
     });
     const errors = await withAcpClient({
       app,

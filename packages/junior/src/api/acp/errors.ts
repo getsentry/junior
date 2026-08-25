@@ -1,8 +1,8 @@
-export interface AcpErrorContext {
+export type AcpErrorContext = {
   connectionId?: string;
   conversationId?: string;
   userId?: string;
-}
+};
 
 export type ReportAcpError = (
   error: unknown,

@@ -9,10 +9,8 @@ import {
   RESOURCE_EVENT_SUMMARY_MAX_LENGTH,
   RESOURCE_EVENT_TEXT_MAX_LENGTH,
   type ResourceEvent,
-  type PluginConversations,
   type ToolRegistrationHookContext,
 } from "@sentry/junior-plugin-api";
-import { createMemoryState } from "@chat-adapter/state-memory";
 import { z } from "zod";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -91,21 +89,6 @@ const TEST_EGRESS = {
     return new Response("ok");
   },
 };
-
-function pluginRouteOptions(
-  publish: (event: ResourceEvent) => Promise<void> = async () => {},
-) {
-  return {
-    app: {
-      agentName: "Junior",
-      baseURL: "https://junior.example.com",
-      version: "test",
-    },
-    conversations: {} as PluginConversations,
-    resourceEvents: { publish },
-    state: createMemoryState(),
-  };
-}
 
 const SLACK_DESTINATION = {
   platform: "slack",
@@ -1044,7 +1027,7 @@ describe("agent plugin hooks", () => {
     ]);
     try {
       const publish = vi.fn(async (_event: ResourceEvent) => {});
-      const { routes } = getPluginRoutes(pluginRouteOptions(publish));
+      const routes = getPluginRoutes({ resourceEvents: { publish } });
 
       expect(routes).toHaveLength(1);
       expect(routes[0]?.pluginName).toBe("agent-demo");
@@ -1067,52 +1050,6 @@ describe("agent plugin hooks", () => {
       expect(published?.untrustedText).toHaveLength(
         RESOURCE_EVENT_TEXT_MAX_LENGTH,
       );
-    } finally {
-      setPlugins(previous);
-    }
-  });
-
-  it("supplies route runtime capabilities and separates user routes", async () => {
-    const options = pluginRouteOptions();
-    const previous = setPlugins([
-      defineJuniorPlugin({
-        manifest: {
-          name: "agent-demo",
-          displayName: "Agent Demo",
-          description: "Agent demo",
-        },
-        hooks: {
-          routes(ctx) {
-            expect(ctx.app).toEqual(options.app);
-            expect(ctx.conversations).toBe(options.conversations);
-            return [
-              {
-                auth: "user",
-                method: "GET",
-                path: "/_junior/demo/auth",
-                async handler(_request, user) {
-                  if (!user) throw new Error("Authenticated route has no User");
-                  await ctx.state.set("item", "one");
-                  const item = await ctx.state.get<string>("item");
-                  return new Response(`${user.email}:${item}`);
-                },
-              },
-            ];
-          },
-        },
-      }),
-    ]);
-    try {
-      const { authenticatedRoutes, routes } = getPluginRoutes(options);
-
-      expect(routes).toEqual([]);
-      expect(authenticatedRoutes).toHaveLength(1);
-      const response = await authenticatedRoutes[0]!.handler(
-        new Request("http://localhost/_junior/demo/auth"),
-        { email: "person@example.com", id: "user-1", identities: [] },
-      );
-      await expect(response.text()).resolves.toBe("person@example.com:one");
-      await expect(options.state.get("item")).resolves.toBeNull();
     } finally {
       setPlugins(previous);
     }
@@ -1150,7 +1087,7 @@ describe("agent plugin hooks", () => {
     ]);
     try {
       const publish = vi.fn(async () => {});
-      const [route] = getPluginRoutes(pluginRouteOptions(publish)).routes;
+      const [route] = getPluginRoutes({ resourceEvents: { publish } });
 
       await expect(
         route!.handler(new Request("http://localhost/demo")),
@@ -1216,7 +1153,7 @@ describe("agent plugin hooks", () => {
       ]);
       try {
         const publish = vi.fn(async () => {});
-        const [route] = getPluginRoutes(pluginRouteOptions(publish)).routes;
+        const [route] = getPluginRoutes({ resourceEvents: { publish } });
 
         await expect(
           route!.handler(new Request("http://localhost/demo")),
@@ -1250,7 +1187,11 @@ describe("agent plugin hooks", () => {
       }),
     ]);
     try {
-      expect(() => getPluginRoutes(pluginRouteOptions())).toThrow(
+      expect(() =>
+        getPluginRoutes({
+          resourceEvents: { publish: async () => {} },
+        }),
+      ).toThrow(
         'Plugin route "/demo" from plugin "agent-demo" has invalid method "TRACE"',
       );
     } finally {
@@ -1280,7 +1221,11 @@ describe("agent plugin hooks", () => {
       }),
     ]);
     try {
-      expect(() => getPluginRoutes(pluginRouteOptions())).toThrow(
+      expect(() =>
+        getPluginRoutes({
+          resourceEvents: { publish: async () => {} },
+        }),
+      ).toThrow(
         'Plugin route "/demo" from plugin "agent-demo" must not combine ALL with explicit methods',
       );
     } finally {
@@ -1315,7 +1260,11 @@ describe("agent plugin hooks", () => {
       }),
     ]);
     try {
-      expect(() => getPluginRoutes(pluginRouteOptions())).toThrow(
+      expect(() =>
+        getPluginRoutes({
+          resourceEvents: { publish: async () => {} },
+        }),
+      ).toThrow(
         'Plugin route "/demo" conflicts with an ALL route for the same path',
       );
     } finally {

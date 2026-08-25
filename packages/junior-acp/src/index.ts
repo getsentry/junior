@@ -1,1 +1,0 @@
-export { acpAdapter } from "./adapter";

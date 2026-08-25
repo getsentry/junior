@@ -8,7 +8,6 @@ import {
 } from "@sentry/junior-plugin-api";
 import type {
   InvocationContext,
-  PluginConversations,
   PluginMcp,
   PluginReadState,
   PluginRoute,
@@ -21,13 +20,11 @@ import type {
   ResourceEvent,
   SlackConversationLink,
   PluginRegistration,
-  RouteRegistrationHookContext,
   SlackToolRegistrationHookContext,
   ToolRegistrationHookContext,
   User,
   UserPromptContext,
 } from "@sentry/junior-plugin-api";
-import type { StateAdapter } from "chat";
 import { getDb } from "@/chat/db";
 import { createPluginAnnotations } from "@/chat/plugins/annotations";
 import { createPluginConversationEvents } from "@/chat/plugins/conversation-events";
@@ -81,11 +78,6 @@ export interface ToolHookResult {
 
 export interface PluginRouteRegistration extends PluginRoute {
   pluginName: string;
-}
-
-export interface PluginRouteRegistrations {
-  authenticatedRoutes: PluginRoute[];
-  routes: PluginRouteRegistration[];
 }
 
 export interface PluginApiRouteRegistration {
@@ -851,8 +843,6 @@ function requirePublishedResourceEvent(
 
 /** Collect route handlers exposed by plugins for app-level mounting. */
 export function getPluginRoutes(options: {
-  app: RouteRegistrationHookContext["app"];
-  conversations: PluginConversations;
   resourceEvents: {
     neededMatchKeys?(input: {
       eventTypes: string[];
@@ -861,9 +851,7 @@ export function getPluginRoutes(options: {
     }): Promise<string[]>;
     publish(event: ResourceEvent): Promise<void>;
   };
-  state: StateAdapter;
-}): PluginRouteRegistrations {
-  const authenticatedRoutes: PluginRoute[] = [];
+}): PluginRouteRegistration[] {
   const routes: PluginRouteRegistration[] = [];
   const seen = new Set<string>();
   const methodsByPath = new Map<string, Set<PluginRouteMethod>>();
@@ -876,7 +864,6 @@ export function getPluginRoutes(options: {
     }
     const pluginRoutes = hook({
       ...basePluginContext(plugin),
-      app: options.app,
       annotations: {
         forConversation: (conversationId) =>
           createPluginAnnotations({
@@ -886,7 +873,6 @@ export function getPluginRoutes(options: {
           }),
       },
       codeChanges: createCodeChangePublisher(pluginName),
-      conversations: options.conversations,
       resourceEvents: {
         async neededMatchKeys(input) {
           if (!options.resourceEvents.neededMatchKeys) return [];
@@ -924,7 +910,6 @@ export function getPluginRoutes(options: {
           });
         },
       },
-      state: createPluginState(pluginName, options.state),
     });
     if (!Array.isArray(pluginRoutes)) {
       throw new Error(
@@ -932,26 +917,19 @@ export function getPluginRoutes(options: {
       );
     }
     for (const route of pluginRoutes) {
-      const rawRoute: unknown = route;
-      if (!isRecord(rawRoute)) {
+      if (!isRecord(route)) {
         throw new Error(
           `Plugin route from plugin "${pluginName}" must be an object`,
         );
       }
-      if (typeof rawRoute.path !== "string" || !rawRoute.path.startsWith("/")) {
+      if (typeof route.path !== "string" || !route.path.startsWith("/")) {
         throw new Error(
-          `Plugin route "${rawRoute.path}" from plugin "${pluginName}" must start with /`,
+          `Plugin route "${route.path}" from plugin "${pluginName}" must start with /`,
         );
       }
-      if (typeof rawRoute.handler !== "function") {
+      if (typeof route.handler !== "function") {
         throw new Error(
-          `Plugin route "${rawRoute.path}" from plugin "${pluginName}" must provide a handler`,
-        );
-      }
-      const auth = rawRoute.auth;
-      if (auth !== undefined && auth !== "user") {
-        throw new Error(
-          `Plugin route "${route.path}" from plugin "${pluginName}" has invalid auth "${String(auth)}"`,
+          `Plugin route "${route.path}" from plugin "${pluginName}" must provide a handler`,
         );
       }
       const methods = routeMethods(route, pluginName);
@@ -973,15 +951,14 @@ export function getPluginRoutes(options: {
         pathMethods.add(method);
       }
       methodsByPath.set(route.path, pathMethods);
-      if (route.auth === "user") {
-        authenticatedRoutes.push(route);
-      } else {
-        routes.push({ ...route, pluginName });
-      }
+      routes.push({
+        ...route,
+        pluginName,
+      });
     }
   }
 
-  return { authenticatedRoutes, routes };
+  return routes;
 }
 
 /** Collect authenticated product API route apps exposed by plugins. */

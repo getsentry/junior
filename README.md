@@ -22,8 +22,7 @@ Start here:
 
 | Package                        | Purpose                                                                      |
 | ------------------------------ | ---------------------------------------------------------------------------- |
-| `@sentry/junior`               | Core Slack bot runtime                                                       |
-| `@sentry/junior-acp`           | Remote ACP transport over Junior Conversations                               |
+| `@sentry/junior`               | Core agent, Slack, and ACP runtime                                           |
 | `@sentry/junior-plugin-api`    | Lightweight plugin API types and helpers                                     |
 | `@sentry/junior-agent-browser` | Agent Browser plugin package for browser automation                          |
 | `@sentry/junior-amplitude`     | Read-only Amplitude product analytics through Amplitude's hosted MCP server  |

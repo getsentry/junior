@@ -1,3 +1,4 @@
+/** Own the dashboard-authenticated ACP confirmation page. */
 import type { User } from "@sentry/junior-plugin-api";
 import { completeAcpAuthorization } from "./auth";
 import type { AcpState } from "./state";

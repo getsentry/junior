@@ -8,9 +8,6 @@ targets:
     id: "@sentry/junior"
     includeNames: /^sentry-junior-\d.*\.tgz$/
   - name: npm
-    id: "@sentry/junior-acp"
-    includeNames: /^sentry-junior-acp-\d.*\.tgz$/
-  - name: npm
     id: "@sentry/junior-plugin-api"
     includeNames: /^sentry-junior-plugin-api-\d.*\.tgz$/
   - name: npm

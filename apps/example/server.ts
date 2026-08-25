@@ -4,7 +4,6 @@ initSentry();
 
 const [
   { createApp },
-  { acpAdapter },
   {
     exampleDashboardAuthRequired,
     exampleDashboardComponentGallery,
@@ -13,13 +12,11 @@ const [
   { plugins },
 ] = await Promise.all([
   import("@sentry/junior"),
-  import("@sentry/junior-acp"),
   import("./dashboard.ts"),
   import("./plugins.ts"),
 ]);
 
 const app = await createApp({
-  adapters: [acpAdapter()],
   dashboard: {
     authRequired: exampleDashboardAuthRequired(),
     allowedGoogleDomains: ["sentry.io"],

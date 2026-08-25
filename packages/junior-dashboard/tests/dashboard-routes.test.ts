@@ -109,16 +109,15 @@ describe("dashboard routes", () => {
     );
   });
 
-  it("returns authenticated adapter routes through Google sign-in", async () => {
-    const transactionId = "11111111-1111-4111-8111-111111111111";
-    const path = `/_junior/adapter/auth/${transactionId}`;
+  it("returns authenticated host routes through Google sign-in", async () => {
+    const path = "/_junior/acp/auth/11111111-1111-4111-8111-111111111111";
     let callbackURL: string | undefined;
-    const handle = vi.fn(() => new Response("adapter route"));
+    const handle = vi.fn(() => new Response("authenticated route"));
     const authenticatedRoutes = [
       {
         handler: handle,
         method: ["GET", "POST"] as const,
-        path: "/_junior/adapter/auth/:transactionId",
+        path: "/_junior/acp/auth/:transactionId",
       },
     ];
     const unauthenticatedApp = createDashboardApp({
@@ -147,26 +146,25 @@ describe("dashboard routes", () => {
         user: {
           email: "person@sentry.io",
           emailVerified: true,
-          name: "Adapter User",
+          name: "ACP User",
         },
       }),
     });
     const page = await authenticatedApp.request(`http://localhost${path}`);
-    expect(page.status).toBe(200);
-    await expect(page.text()).resolves.toBe("adapter route");
+    await expect(page.text()).resolves.toBe("authenticated route");
     expect(handle).toHaveBeenCalledWith(
       expect.objectContaining({ method: "GET" }),
       expect.objectContaining({ id: "user:person@sentry.io" }),
     );
   });
 
-  it("rejects disallowed users on authenticated adapter routes", async () => {
-    const handle = vi.fn(() => new Response("adapter route"));
+  it("rejects disallowed users on authenticated host routes", async () => {
+    const handle = vi.fn(() => new Response("authenticated route"));
     const app = createDashboardApp({
       authenticatedRoutes: [
         {
           handler: handle,
-          path: "/_junior/adapter/auth/:transactionId",
+          path: "/_junior/acp/auth/:transactionId",
         },
       ],
       allowedGoogleDomains: ["sentry.io"],
@@ -179,7 +177,7 @@ describe("dashboard routes", () => {
     });
 
     const response = await app.request(
-      "/_junior/adapter/auth/11111111-1111-4111-8111-111111111111",
+      "/_junior/acp/auth/11111111-1111-4111-8111-111111111111",
     );
 
     expect(response.status).toBe(403);

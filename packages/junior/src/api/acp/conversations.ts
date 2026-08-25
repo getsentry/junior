@@ -1,10 +1,5 @@
-/** Bind app adapters to Junior's Conversation runtime. */
+/** Bind ACP sessions to Junior's existing Conversation runtime. */
 import type { StateAdapter } from "chat";
-import type {
-  AdapterConversations,
-  AdapterTurnPage,
-  AdapterTurnTerminal,
-} from "@/app-adapter";
 import type { User } from "@sentry/junior-plugin-api";
 import { readConversationAccessFromSql } from "@/api/conversations/access";
 import {
@@ -25,7 +20,56 @@ import { hasRunnableConversationWork } from "@/chat/task-execution/state";
 
 const EVENT_PAGE_SIZE = 50;
 
-interface AdapterConversationOptions {
+type ConversationMessage = {
+  id: string;
+  role: "assistant" | "user";
+  text: string;
+};
+
+type PromptAdmission =
+  | {
+      afterCursor: number;
+      messageId: string;
+      status: "accepted";
+      turnId: string;
+    }
+  | { status: "active" }
+  | { status: "not_found" };
+
+type TurnTerminal =
+  | { outcome: "cancelled" | "completed"; status: "completed" }
+  | { failureCode: string; status: "failed" };
+
+type TurnPage = {
+  cursor: number;
+  messages: ConversationMessage[];
+  terminal?: TurnTerminal;
+};
+
+/** ACP operations backed by Junior Conversations. */
+export type AcpConversations = {
+  cancel(args: {
+    conversationId: string;
+    user: User;
+  }): Promise<"cancelled" | "not_found">;
+  create(args: { conversationId: string; user: User }): Promise<void>;
+  hasAccess(args: { conversationId: string; user: User }): Promise<boolean>;
+  prompt(args: {
+    conversationId: string;
+    idempotencyKey: string;
+    text: string;
+    user: User;
+  }): Promise<PromptAdmission>;
+  readMessages(conversationId: string): Promise<ConversationMessage[]>;
+  readTurn(args: {
+    afterCursor: number;
+    conversationId: string;
+    messageId: string;
+    turnId: string;
+  }): Promise<TurnPage>;
+};
+
+interface ConversationOptions {
   conversationStore?: ConversationStore;
   eventStore: ConversationEventStore;
   queue: ConversationWorkQueue;
@@ -92,10 +136,10 @@ async function latestEventCursor(
   return page.events.at(-1)?.seq ?? 0;
 }
 
-/** Create the Conversation capability supplied to app adapters. */
-export function createAdapterConversations(
-  options: AdapterConversationOptions,
-): AdapterConversations {
+/** Create the ACP view of Junior's Conversation runtime. */
+export function createAcpConversations(
+  options: ConversationOptions,
+): AcpConversations {
   return {
     async cancel({ conversationId, user }) {
       if (!(await hasConversationAccess(conversationId, user))) {
@@ -196,7 +240,7 @@ export function createAdapterConversations(
           : [];
       });
 
-      let terminal: AdapterTurnTerminal | undefined;
+      let terminal: TurnTerminal | undefined;
       const terminalEvent = await options.eventStore.loadByIdempotencyKey(
         conversationId,
         `turn:${turnId}:terminal`,
@@ -223,7 +267,7 @@ export function createAdapterConversations(
           terminal = { failureCode: data.failureCode, status: "failed" };
         }
       }
-      const turnPage: AdapterTurnPage = { cursor, messages };
+      const turnPage: TurnPage = { cursor, messages };
       if (terminal) turnPage.terminal = terminal;
       return turnPage;
     },

@@ -7,7 +7,7 @@ import {
   completeAcpRequest,
   deleteAcpConnection,
   type AcpRequestReceipt,
-} from "@sentry/junior-acp/testing";
+} from "@/api/acp/transport";
 import type { StateAdapter } from "chat";
 import { deferred } from "../../fixtures/conversation-work";
 import { readProxyProperty } from "../../fixtures/proxy-property";

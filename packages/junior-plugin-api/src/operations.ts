@@ -1,6 +1,5 @@
 import { z } from "zod";
 import type { PluginContext, User } from "./context";
-import type { PluginConversations } from "./conversations";
 import type { Dispatch, DispatchOptions, DispatchResult } from "./dispatch";
 import { nonBlankStringSchema } from "./schemas";
 import type { PluginReadState, PluginState } from "./state";
@@ -135,13 +134,11 @@ export type PluginRouteMethod =
   | "OPTIONS"
   | "ALL";
 
-export type PluginRouteHandler = (
-  request: Request,
-  user?: User,
-) => Promise<Response> | Response;
+export type PluginRouteHandler = {
+  bivarianceHack(request: Request): Promise<Response> | Response;
+}["bivarianceHack"];
 
 export interface PluginRoute {
-  auth?: "user";
   handler: PluginRouteHandler;
   method?: PluginRouteMethod | PluginRouteMethod[];
   path: string;
@@ -156,21 +153,11 @@ export type PluginRouteApp = {
 };
 
 export interface RouteRegistrationHookContext extends PluginContext {
-  /** Host metadata needed to construct external protocol responses. */
-  app: {
-    agentName: string;
-    baseURL?: string;
-    version: string;
-  };
   annotations: PluginConversationAnnotations;
   /** Provider-neutral write boundary for Junior's native code index. */
   codeChanges: CodeChangePublisher;
-  /** Provider-neutral Conversation lifecycle available to route plugins. */
-  conversations: PluginConversations;
   /** Core-owned delivery boundary for provider webhook events. */
   resourceEvents: ResourceEventPublisher;
-  /** Durable state namespace owned by this plugin. */
-  state: PluginState;
 }
 
 export interface ApiRouteRegistrationHookContext extends PluginContext {
