@@ -176,11 +176,10 @@ describe("Conversation API work", () => {
       expect(stored?.title?.trim().length).toBeGreaterThan(0);
     });
 
-    const messages = (
-      await getConversationEventStore().loadMessageHistory(
-        accepted.conversationId,
-      )
-    ).events.filter((event) => event.data.type === "message");
+    const history = await getConversationEventStore().loadHistory(
+      accepted.conversationId,
+    );
+    const messages = history.filter((event) => event.data.type === "message");
     expect(messages.map((event) => event.data)).toEqual([
       expect.objectContaining({
         role: "user",
@@ -193,6 +192,15 @@ describe("Conversation API work", () => {
         meta: expect.objectContaining({ source: "web" }),
       }),
     ]);
+    const agentReply = history.findIndex(
+      (event) => event.data.type === "assistant_message",
+    );
+    const deliveredReply = history.findIndex(
+      (event) =>
+        event.data.type === "message" && event.data.role === "assistant",
+    );
+    expect(agentReply).toBeGreaterThanOrEqual(0);
+    expect(deliveredReply).toBeGreaterThan(agentReply);
 
     await expect(
       getTurnRecord(

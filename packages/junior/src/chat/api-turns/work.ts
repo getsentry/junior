@@ -12,7 +12,10 @@ import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import type { WebActor } from "@/chat/actor";
 import type { ConversationStore } from "@/chat/conversations/store";
-import { loadProjection } from "@/chat/conversations/projection";
+import {
+  commitAcceptedReply,
+  loadProjection,
+} from "@/chat/conversations/projection";
 import {
   hydrateConversationMessages,
   persistConversationMessages,
@@ -646,6 +649,7 @@ export function createApiTurnWorker(
         const deliverAssistantMessage = async (
           value: AssistantMessage | string,
         ): Promise<void> => {
+          const agentMessage = typeof value === "string" ? undefined : value;
           const replyText =
             typeof value === "string" ? value : getAssistantReplyText(value);
           if (!replyText?.trim()) {
@@ -653,9 +657,9 @@ export function createApiTurnWorker(
           }
           failureCode = "delivery_failed";
           assistantMessageDelivered = true;
-          // Visible conversation messages feed the dashboard transcript.
-          // Agent history is committed once by the completed checkpoint.
-          recordDeliveredAssistantMessage({
+          // Match Slack/local: write agent history before the visible reply so
+          // the transcript keeps tools and final reasoning above the answer.
+          const recordedMessageId = recordDeliveredAssistantMessage({
             conversation,
             sessionId: turnId,
             source: "web",
@@ -664,10 +668,17 @@ export function createApiTurnWorker(
           });
           try {
             await persistWithRetry(() =>
-              persistConversationMessages({
-                conversation,
-                conversationId: context.conversationId,
-              }),
+              agentMessage
+                ? commitAcceptedReply({
+                    agentMessage,
+                    conversation,
+                    conversationMessageId: recordedMessageId,
+                    conversationId: context.conversationId,
+                  })
+                : persistConversationMessages({
+                    conversation,
+                    conversationId: context.conversationId,
+                  }),
             );
           } catch (error) {
             logException(
