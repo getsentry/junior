@@ -1,10 +1,8 @@
 /**
  * Add Slack provider behavior around one native agent Turn.
  *
- * This module prepares Slack input and owns Slack status, delivery, and saved
- * Slack state. Native execution concerns that remain here must move behind a
- * provider-neutral runtime contract. Agent execution stays behind
- * `AgentRunner`.
+ * This module prepares Slack input and owns Slack status, delivery, and state.
+ * It calls `executeTurn` to run and finish the Turn.
  */
 import type { Message, Thread } from "chat";
 import type { SlackAdapter } from "@chat-adapter/slack";
@@ -39,9 +37,11 @@ import {
 import { buildSteeringPiMessage } from "@/chat/agent/prompt";
 import {
   RetryableDeliveryError,
+  type AgentRun,
   type AgentSteeringMessage,
 } from "@/chat/agent/types";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
+import { AgentRunError, executeTurn } from "@/chat/runtime/turn-execution";
 import {
   credentialContextForActor,
   type CredentialContext,
@@ -160,6 +160,7 @@ import { requireSlackDestination } from "@/chat/destination";
 import { escapeXml } from "@/chat/xml";
 import { persistConversationMessages } from "@/chat/conversations/messages";
 import type { ConversationTurnLifecycle } from "@/chat/conversations/turn-lifecycle";
+import type { AgentRunResult } from "@/chat/services/turn-result";
 import type {
   DispatchTurnContext,
   DispatchTurnResult,
@@ -989,7 +990,6 @@ export function createSlackTurn(deps: SlackTurnDeps) {
         let runResultHandled = false;
         let assistantMessageDelivered = false;
         let acceptedDeliveryId: string | undefined;
-        let lifecycleTerminalized = false;
         let turnCompletionNotified = false;
         const recordDispatchOutcome = async (
           dispatchOutcome: "blocked" | "completed" | "failed",
@@ -1020,7 +1020,6 @@ export function createSlackTurn(deps: SlackTurnDeps) {
         let turnWakeError: unknown;
         let boundaryFailureCode: "agent_run_failed" | "delivery_failed" =
           "agent_run_failed";
-        let finalizedFailureEventId: string | undefined;
         let terminalDispatchFailureOutcome: "blocked" | undefined;
         const notifyTurnCompleted = async (): Promise<void> => {
           if (turnCompletionNotified) {
@@ -1296,7 +1295,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
                 );
               }
             : undefined;
-          const outcome = await deps.services.agentRunner.run({
+          const run: AgentRun = {
             conversationId,
             turnId,
             ...(runId ? { runId } : undefined),
@@ -1376,7 +1375,151 @@ export function createSlackTurn(deps: SlackTurnDeps) {
                 });
               },
             },
-          });
+          };
+          let completedResult: AgentRunResult | undefined;
+          const saveResult = async (result: AgentRunResult) => {
+            let finalResult = result;
+            setTags({ modelId: finalResult.diagnostics.modelId });
+            const diagnosticsAttributes =
+              getAgentTurnDiagnosticsAttributes(finalResult);
+            setSpanAttributes(diagnosticsAttributes);
+            let failureEventId: string | undefined;
+            if (finalResult.diagnostics.outcome !== "success") {
+              const finalized = finalizeFailedTurnReplyWithEvent({
+                reply: finalResult,
+                logException,
+              });
+              finalResult = finalized.reply;
+              failureEventId = finalized.eventId;
+              await deliverAssistantMessage(finalResult.text);
+            }
+            const turnResult: DispatchTurnResult =
+              finalResult.diagnostics.outcome === "success"
+                ? { outcome: "completed" }
+                : {
+                    errorMessage:
+                      finalResult.diagnostics.errorMessage ??
+                      `Agent turn ended with ${finalResult.diagnostics.outcome}.`,
+                    outcome: "failed",
+                  };
+            runResultHandled = true;
+            shouldPersistFailureState = false;
+            boundaryFailureCode = "agent_run_failed";
+
+            const completedState = buildDeliveredTurnStatePatch({
+              conversation: preparedState.conversation,
+              reply: finalResult,
+              sessionId: turnId,
+              userMessageId: preparedState.userMessageId,
+            });
+            let saveFailed = false;
+            let saveFailureEventId: string | undefined;
+            try {
+              // Save the accepted delivery first so recovery cannot send the
+              // reply again. Save Conversation messages next and Redis state
+              // last.
+              if (conversationId && finalResult.piMessages?.length) {
+                await saveTurnCheckpoint({
+                  mode: "completed",
+                  channelName,
+                  conversationId,
+                  turnId,
+                  durationMs: finalResult.diagnostics.durationMs,
+                  usage: finalResult.diagnostics.usage,
+                  destination,
+                  destinationVisibility,
+                  source,
+                  sliceId: 1,
+                  dispatchOutcome:
+                    finalResult.diagnostics.outcome === "success"
+                      ? "completed"
+                      : "failed",
+                  ...(options.execution?.dispatch && turnResult.errorMessage
+                    ? { errorMessage: turnResult.errorMessage }
+                    : undefined),
+                  ...(acceptedDeliveryId
+                    ? { resultMessageId: acceptedDeliveryId }
+                    : undefined),
+                  messages: finalResult.piMessages,
+                  actor: executionActor,
+                  surface: options.execution?.surface ?? "slack",
+                  dispatchId: options.execution?.dispatch?.id,
+                });
+              } else if (conversationId) {
+                await recordTurnSummary({
+                  channelName,
+                  conversationId,
+                  cumulativeDurationMs: finalResult.diagnostics.durationMs,
+                  cumulativeUsage: finalResult.diagnostics.usage,
+                  turnId,
+                  sliceId: 1,
+                  startedAtMs: message.metadata.dateSent.getTime(),
+                  state: "completed",
+                  actor: executionActor,
+                  destination,
+                  destinationVisibility,
+                  source,
+                  surface: options.execution?.surface ?? "slack",
+                  dispatchId: options.execution?.dispatch?.id,
+                  dispatchOutcome:
+                    finalResult.diagnostics.outcome === "success"
+                      ? "completed"
+                      : "failed",
+                  ...(acceptedDeliveryId
+                    ? { resultMessageId: acceptedDeliveryId }
+                    : undefined),
+                  traceId: getActiveTraceId(),
+                });
+              }
+              await persistWithRetry(() =>
+                persistConversationMessages({
+                  conversation: completedState.conversation,
+                  conversationId,
+                }),
+              );
+              await persistThreadRuntimeStateWithRetry(thread, completedState);
+            } catch (saveError) {
+              // The user already saw the reply. Record the save failure without
+              // posting a second error reply.
+              saveFailed = true;
+              saveFailureEventId = logException(
+                saveError,
+                "slack.reply.post_delivery_commit.failed",
+                messageTs ? { "messaging.message.id": messageTs } : {},
+              );
+            }
+            preparedState.conversation = completedState.conversation;
+            persistedAtLeastOnce = true;
+            options.onTurnOutcome?.(turnResult);
+            completedResult = finalResult;
+
+            if (saveFailed) {
+              return {
+                ...(saveFailureEventId
+                  ? { eventId: saveFailureEventId }
+                  : undefined),
+                failureCode: "persistence_failed" as const,
+                outcome: "failed" as const,
+              };
+            }
+            if (finalResult.diagnostics.outcome === "success") {
+              return {
+                outcome: assistantMessageDelivered
+                  ? ("success" as const)
+                  : ("no_reply" as const),
+              };
+            }
+            return {
+              ...(failureEventId ? { eventId: failureEventId } : undefined),
+              failureCode: "model_execution_failed" as const,
+              outcome: "failed" as const,
+            };
+          };
+          const outcome = await executeTurn(
+            deps.services.agentRunner,
+            run,
+            saveResult,
+          );
           if (outcome.status === "awaiting_auth") {
             await recordDispatchOutcome("blocked", "failed");
             options.onTurnOutcome?.({ outcome: "blocked" });
@@ -1408,7 +1551,6 @@ export function createSlackTurn(deps: SlackTurnDeps) {
                   failureCode: "agent_run_failed",
                   turnId,
                 });
-                lifecycleTerminalized = true;
               }
               persistedAtLeastOnce = true;
               shouldPersistFailureState = false;
@@ -1469,157 +1611,23 @@ export function createSlackTurn(deps: SlackTurnDeps) {
             return;
           }
 
-          let reply = outcome.result;
-          setTags({ modelId: reply.diagnostics.modelId });
-          const diagnosticsAttributes =
-            getAgentTurnDiagnosticsAttributes(reply);
-          setSpanAttributes(diagnosticsAttributes);
-          if (reply.diagnostics.outcome !== "success") {
-            const finalized = finalizeFailedTurnReplyWithEvent({
-              reply,
-              logException,
-            });
-            reply = finalized.reply;
-            finalizedFailureEventId = finalized.eventId;
-            await deliverAssistantMessage(reply.text);
-          }
-          const turnResult: DispatchTurnResult =
-            reply.diagnostics.outcome === "success"
-              ? { outcome: "completed" }
-              : {
-                  errorMessage:
-                    reply.diagnostics.errorMessage ??
-                    `Agent turn ended with ${reply.diagnostics.outcome}.`,
-                  outcome: "failed",
-                };
-          runResultHandled = true;
-          shouldPersistFailureState = false;
-          boundaryFailureCode = "agent_run_failed";
-
-          const completedState = buildDeliveredTurnStatePatch({
-            conversation: preparedState.conversation,
-            reply,
-            sessionId: turnId,
-            userMessageId: preparedState.userMessageId,
-          });
-          try {
-            // Commit the durable delivery record first so recovery cannot
-            // regenerate an accepted reply. Persist canonical message
-            // facts next, then update Redis runtime scratch independently.
-            if (conversationId && reply.piMessages?.length) {
-              await saveTurnCheckpoint({
-                mode: "completed",
-                channelName,
-                conversationId,
-                turnId,
-                durationMs: reply.diagnostics.durationMs,
-                usage: reply.diagnostics.usage,
-                destination,
-                destinationVisibility,
-                source,
-                sliceId: 1,
-                dispatchOutcome:
-                  reply.diagnostics.outcome === "success"
-                    ? "completed"
-                    : "failed",
-                ...(options.execution?.dispatch && turnResult.errorMessage
-                  ? { errorMessage: turnResult.errorMessage }
-                  : undefined),
-                ...(acceptedDeliveryId
-                  ? { resultMessageId: acceptedDeliveryId }
-                  : undefined),
-                messages: reply.piMessages,
-                actor: executionActor,
-                surface: options.execution?.surface ?? "slack",
-                dispatchId: options.execution?.dispatch?.id,
-              });
-            } else if (conversationId) {
-              await recordTurnSummary({
-                channelName,
-                conversationId,
-                cumulativeDurationMs: reply.diagnostics.durationMs,
-                cumulativeUsage: reply.diagnostics.usage,
-                turnId: turnId,
-                sliceId: 1,
-                startedAtMs: message.metadata.dateSent.getTime(),
-                state: "completed",
-                actor: executionActor,
-                destination,
-                destinationVisibility,
-                source,
-                surface: options.execution?.surface ?? "slack",
-                dispatchId: options.execution?.dispatch?.id,
-                dispatchOutcome:
-                  reply.diagnostics.outcome === "success"
-                    ? "completed"
-                    : "failed",
-                ...(acceptedDeliveryId
-                  ? { resultMessageId: acceptedDeliveryId }
-                  : undefined),
-                traceId: getActiveTraceId(),
-              });
-            }
-            await persistWithRetry(() =>
-              persistConversationMessages({
-                conversation: completedState.conversation,
-                conversationId,
-              }),
-            );
-            await persistThreadRuntimeStateWithRetry(thread, completedState);
-          } catch (commitError) {
-            // The user already saw the reply; keep the turn successful and
-            // record the persistence failure for operators.
-            const persistenceEventId = logException(
-              commitError,
-              "slack.reply.post_delivery_commit.failed",
-              messageTs ? { "messaging.message.id": messageTs } : {},
-            );
-            if (conversationId && !lifecycleTerminalized) {
-              await deps.services.turnLifecycle.fail({
-                conversationId,
-                createdAtMs: Date.now(),
-                ...(persistenceEventId
-                  ? { eventId: persistenceEventId }
-                  : undefined),
-                failureCode: "persistence_failed",
-                turnId,
-              });
-              lifecycleTerminalized = true;
-            }
-          }
-          preparedState.conversation = completedState.conversation;
-          persistedAtLeastOnce = true;
-          options.onTurnOutcome?.(turnResult);
-          if (!lifecycleTerminalized && conversationId) {
-            if (reply.diagnostics.outcome === "success") {
-              await deps.services.turnLifecycle.complete({
-                conversationId,
-                createdAtMs: Date.now(),
-                outcome: assistantMessageDelivered ? "success" : "no_reply",
-                turnId,
-              });
-            } else {
-              await deps.services.turnLifecycle.fail({
-                conversationId,
-                createdAtMs: Date.now(),
-                ...(finalizedFailureEventId
-                  ? { eventId: finalizedFailureEventId }
-                  : undefined),
-                failureCode: "model_execution_failed",
-                turnId,
-              });
-            }
-            lifecycleTerminalized = true;
+          if (!completedResult) {
+            throw new Error("Completed Turn did not save a result");
           }
           if (shouldEmitDevAgentTrace()) {
             logInfo("agent.turn.completed", {
-              "app.ai.outcome": reply.diagnostics.outcome,
-              "app.ai.tool_call_count": reply.diagnostics.toolCalls.length,
-              "app.ai.tool_error_results": reply.diagnostics.toolErrorCount,
+              "app.ai.outcome": completedResult.diagnostics.outcome,
+              "app.ai.tool_call_count":
+                completedResult.diagnostics.toolCalls.length,
+              "app.ai.tool_error_results":
+                completedResult.diagnostics.toolErrorCount,
             });
           }
           await notifyTurnCompleted();
-          if (reply.diagnostics.outcome === "success" && conversationId) {
+          if (
+            completedResult.diagnostics.outcome === "success" &&
+            conversationId
+          ) {
             try {
               await deps.services.scheduleSessionCompletedPluginTasks({
                 conversationId,
@@ -1669,8 +1677,11 @@ export function createSlackTurn(deps: SlackTurnDeps) {
             shouldPersistFailureState = true;
           }
           shouldPersistFailureState = true;
-          const classifiedFailure = getConversationTurnBoundaryError(error);
-          const failureCause = classifiedFailure?.cause ?? error;
+          const runFailure =
+            error instanceof AgentRunError ? error.cause : error;
+          const classifiedFailure =
+            getConversationTurnBoundaryError(runFailure);
+          const failureCause = classifiedFailure?.cause ?? runFailure;
           if (
             failureCause instanceof AuthorizationFlowDisabledError ||
             failureCause instanceof PluginCredentialFailureError
