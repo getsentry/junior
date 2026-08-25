@@ -267,9 +267,12 @@ describe("splitSlackReplyText", () => {
       (_, i) => `const value${i + 1} = ${i + 1};`,
     ).join("\n");
     const chunks = splitSlackReplyText(`\`\`\`ts\n${code}\n\`\`\``);
+    const firstBody = chunks[0]?.endsWith(getSlackContinuationMarker())
+      ? chunks[0].slice(0, -getSlackContinuationMarker().length)
+      : chunks[0];
 
     expect(chunks.length).toBeGreaterThan(1);
-    expect(chunks[0]?.endsWith("```")).toBe(true);
+    expect(firstBody?.endsWith("```")).toBe(true);
     expect(chunks[1]?.startsWith("```ts\n")).toBe(true);
     expect(chunks.every((chunk) => fitsSlackInlineBudget(chunk))).toBe(true);
   });

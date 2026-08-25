@@ -2,8 +2,8 @@ import type { PostableMessage } from "chat";
 import { getInterruptionMarker } from "@/chat/interruption-marker";
 import { normalizeSlackReplyMarkdown } from "@/chat/slack/mrkdwn";
 
-const MAX_INLINE_CHARS = 2200;
-const MAX_INLINE_LINES = 45;
+const MAX_INLINE_CHARS = 1200;
+const MAX_INLINE_LINES = 12;
 const CONTINUED_MARKER = "\n\n[Continued below]";
 
 function countSlackLines(text: string): number {

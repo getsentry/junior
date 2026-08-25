@@ -23,6 +23,7 @@ import {
   sandboxSkillDir,
 } from "@/chat/sandbox/paths";
 import type { SlackConversationContext } from "@/chat/slack/conversation-context";
+import { slackOutputPolicy } from "@/chat/slack/output";
 import type { SkillMetadata } from "@/chat/skills";
 import type { ActiveMcpCatalogSummary } from "@/chat/tool-support/skill/mcp-tool-summary";
 import { escapeXml } from "@/chat/xml";
@@ -376,10 +377,18 @@ function buildBehaviorSection(platform: PromptPlatform): string {
   return sections.join("\n\n");
 }
 
+const DEFAULT_REPLY_TARGET_CHARS = 800;
+
+/** One short length rule shared by every platform. */
+function buildMaxMessageSizeRule(): string {
+  return `- Keep replies short: usually 1–5 sentences and under ${DEFAULT_REPLY_TARGET_CHARS} characters. Stay inside one message (≤${slackOutputPolicy.maxInlineChars} characters / ≤${slackOutputPolicy.maxInlineLines} lines). Prefer a canvas or linked artifact for longer detail.`;
+}
+
 function buildOutputSection(platform: PromptPlatform): string {
   if (platform === "local") {
     return [
       `<output format="markdown">`,
+      buildMaxMessageSizeRule(),
       "- Start with the answer or result, not internal process narration.",
       "- Use concise Markdown suitable for terminal and web output: short paragraphs, bullets, links, fenced code blocks, and GFM tables when a grid is clearer than bullets.",
       "- End every turn with a final user-facing response.",
@@ -389,7 +398,7 @@ function buildOutputSection(platform: PromptPlatform): string {
 
   return [
     `<output format="slack-markdown">`,
-    "- Default to the shortest complete reply—usually 1–5 sentences and under 800 characters. Include only the outcome, decisive evidence, and any blocker or required next action. If useful detail would exceed that, put it in a Slack canvas and reply with the link. An explicit user request for detail overrides this target.",
+    buildMaxMessageSizeRule(),
     "- Start with the answer or result, not internal process narration.",
     "- Use Slack-flavored Markdown: **bold** section labels, `code`, [text](url) links, bullet lists, and fenced code blocks. No hash-prefixed headings and no tables. When the answer primarily lists several URLs, show each URL bare instead of as a labeled link.",
     "- End every turn with a final user-facing markdown response unless the Slack action rules allow a no-reply completion.",

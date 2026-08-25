@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { slackOutputPolicy } from "@/chat/slack/output";
 import { sendSlackReply } from "@/chat/slack/reply";
 import {
   getCapturedSlackApiCalls,
@@ -63,14 +64,14 @@ describe("sendSlackReply", () => {
     const messageTs = await sendSlackReply({
       channelId: "C123",
       conversationId: "agent-dispatch:dispatch-1",
-      text: "a".repeat(4_500),
+      text: "a".repeat(slackOutputPolicy.maxInlineChars * 2 + 100),
     });
 
-    expect(messageTs).toHaveLength(3);
+    expect(messageTs.length).toBeGreaterThan(1);
     expect(messageTs.every(Boolean)).toBe(true);
 
     const posts = getCapturedSlackApiCalls("chat.postMessage");
-    expect(posts).toHaveLength(3);
+    expect(posts).toHaveLength(messageTs.length);
     expect(posts[0]?.params).toEqual(
       expect.objectContaining({
         channel: "C123",
@@ -78,18 +79,14 @@ describe("sendSlackReply", () => {
     );
     expect(posts[0]?.params).not.toHaveProperty("thread_ts");
     // Later chunks reply under the first posted message.
-    expect(posts[1]?.params).toEqual(
-      expect.objectContaining({
-        channel: "C123",
-        thread_ts: messageTs[0],
-      }),
-    );
-    expect(posts[2]?.params).toEqual(
-      expect.objectContaining({
-        channel: "C123",
-        thread_ts: messageTs[0],
-      }),
-    );
+    for (const post of posts.slice(1)) {
+      expect(post.params).toEqual(
+        expect.objectContaining({
+          channel: "C123",
+          thread_ts: messageTs[0],
+        }),
+      );
+    }
   });
 
   it("keeps the original thread for every chunk", async () => {
