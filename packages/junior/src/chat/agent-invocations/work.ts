@@ -5,6 +5,7 @@ import { openConversationProjection } from "@/chat/conversations/projection";
 import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
 import { getConversationEventStore } from "@/chat/db";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
+import { AgentRunError, executeTurn } from "@/chat/runtime/turn-execution";
 import {
   getPersistedSandboxState,
   getPersistedThreadState,
@@ -26,6 +27,7 @@ import { getAssistantReplyText } from "@/chat/services/assistant-reply";
 import { getTerminalAssistantMessages } from "@/chat/pi/transcript";
 import type { PiMessage } from "@/chat/pi/messages";
 import type { SandboxRef } from "@/chat/sandbox/ref";
+import type { AgentRunResult } from "@/chat/services/turn-result";
 import {
   appendAndEnqueueInboundMessage,
   type InboundMessage,
@@ -258,10 +260,72 @@ function isInvocationInputCommitLost(error: unknown): boolean {
   return isTurnInputCommitLostError(cause);
 }
 
-/** Build the invocation consumer that advances work through the shared runner. */
-export function createAgentInvocationWorker(options: {
-  agentRunner: AgentRunner;
+/** Save one completed agent result on its child agent invocation. */
+async function saveAgentInvocationResult(args: {
+  invocation: AgentInvocation;
+  result: AgentRunResult;
+  sandboxRef?: SandboxRef;
+  turnId: string;
 }) {
+  const failed = args.result.diagnostics.outcome !== "success";
+  await persistThreadStateById(args.invocation.childConversationId, {
+    sandboxRef: args.result.sandboxRef ?? args.sandboxRef,
+  });
+  if (args.result.piMessages?.length) {
+    await saveTurnCheckpoint({
+      mode: "completed",
+      conversationId: args.invocation.childConversationId,
+      turnId: args.turnId,
+      durationMs: args.result.diagnostics.durationMs,
+      usage: args.result.diagnostics.usage,
+      destination: args.invocation.destination,
+      destinationVisibility: args.invocation.destinationVisibility,
+      ...(failed
+        ? {
+            errorMessage:
+              args.result.diagnostics.errorMessage ?? "Agent invocation failed",
+          }
+        : undefined),
+      messages: args.result.piMessages,
+      actor: args.invocation.actor,
+      source: args.invocation.source,
+      surface: "internal",
+    });
+  }
+  const terminal = await completeAgentInvocation({
+    invocationId: args.invocation.invocationId,
+    ...(failed
+      ? {
+          errorMessage:
+            args.result.diagnostics.errorMessage ?? "Agent invocation failed",
+          status: "failed" as const,
+        }
+      : {
+          result: args.result.text,
+          status: "completed" as const,
+        }),
+  });
+  if (!terminal || !isTerminalAgentInvocation(terminal)) {
+    throw new Error(
+      `Agent invocation did not finish for ${args.invocation.invocationId}`,
+    );
+  }
+  return terminal.status === "completed"
+    ? {
+        finishedAtMs: terminal.terminalAtMs,
+        outcome: terminal.result.trim()
+          ? ("success" as const)
+          : ("no_reply" as const),
+      }
+    : {
+        finishedAtMs: terminal.terminalAtMs,
+        failureCode: "model_execution_failed" as const,
+        outcome: "failed" as const,
+      };
+}
+
+/** Build the invocation consumer that advances work through the shared runner. */
+export function createAgentInvocationWorker(agentRunner: AgentRunner) {
   return async (
     context: ConversationWorkerContext,
     invocationId: string,
@@ -354,46 +418,60 @@ export function createAgentInvocationWorker(options: {
 
     let outcome;
     try {
-      outcome = await options.agentRunner.run({
-        conversationId: invocation.childConversationId,
-        turnId,
-        runId: invocation.invocationId,
-        instruction: {
-          text: invocation.input,
-        },
-        history,
-        actor: invocation.actor,
-        credentialContext: invocation.credentialContext,
-        destination: invocation.destination,
-        destinationVisibility: invocation.destinationVisibility,
-        publishExternally: context.publishExternally,
-        source: invocation.source,
-        surface: "internal",
-        // TODO(#881, #883): Child runs may still need a path to force
-        // interactive auth when a delegated tool requires credentials the
-        // parent already has authority to request. Today background children
-        // hard-fail instead of pausing for an OAuth link.
-        disabledFeatures: ["handoff", "interactive-auth", "subagents"],
-        reasoning: invocation.reasoningLevel,
-        state: {
-          sandboxRef,
-        },
-        durability: {
-          onInputCommitted: acknowledge,
-          shouldYield: context.shouldYield,
-          onSandboxRefChanged: async (nextSandboxRef) => {
-            sandboxRef = nextSandboxRef;
-            await persistThreadStateById(invocation.childConversationId, {
-              sandboxRef,
-            });
+      outcome = await executeTurn(
+        agentRunner,
+        {
+          conversationId: invocation.childConversationId,
+          turnId,
+          runId: invocation.invocationId,
+          instruction: {
+            text: invocation.input,
+          },
+          history,
+          actor: invocation.actor,
+          credentialContext: invocation.credentialContext,
+          destination: invocation.destination,
+          destinationVisibility: invocation.destinationVisibility,
+          publishExternally: context.publishExternally,
+          source: invocation.source,
+          surface: "internal",
+          // TODO(#881, #883): Child runs may still need a path to force
+          // interactive auth when a delegated tool requires credentials the
+          // parent already has authority to request. Today background children
+          // hard-fail instead of pausing for an OAuth link.
+          disabledFeatures: ["handoff", "interactive-auth", "subagents"],
+          reasoning: invocation.reasoningLevel,
+          state: {
+            sandboxRef,
+          },
+          durability: {
+            onInputCommitted: acknowledge,
+            shouldYield: context.shouldYield,
+            onSandboxRefChanged: async (nextSandboxRef) => {
+              sandboxRef = nextSandboxRef;
+              await persistThreadStateById(invocation.childConversationId, {
+                sandboxRef,
+              });
+            },
           },
         },
-      });
+        async (result) =>
+          await saveAgentInvocationResult({
+            invocation,
+            result,
+            sandboxRef,
+            turnId,
+          }),
+      );
     } catch (error) {
-      if (isInvocationInputCommitLost(error)) {
+      if (!(error instanceof AgentRunError)) {
+        throw error;
+      }
+      const runError = error.cause;
+      if (isInvocationInputCommitLost(runError)) {
         return { status: "lost_lease" };
       }
-      const blocking = blockingInvocationError(error);
+      const blocking = blockingInvocationError(runError);
       if (blocking) {
         const terminal = await completeAgentInvocation({
           invocationId: invocation.invocationId,
@@ -407,12 +485,14 @@ export function createAgentInvocationWorker(options: {
         return { status: "completed" };
       }
       if (!context.attempt.isFinalAttempt) {
-        throw error;
+        throw runError;
       }
       const terminal = await completeAgentInvocation({
         invocationId: invocation.invocationId,
         errorMessage:
-          error instanceof Error ? error.message : "Agent invocation failed",
+          runError instanceof Error
+            ? runError.message
+            : "Agent invocation failed",
         status: "failed",
       });
       if (terminal) {
@@ -439,51 +519,6 @@ export function createAgentInvocationWorker(options: {
       return { status: "completed" };
     }
 
-    const result = outcome.result;
-    const failed = result.diagnostics.outcome !== "success";
-    await persistThreadStateById(invocation.childConversationId, {
-      sandboxRef: result.sandboxRef ?? sandboxRef,
-    });
-    if (result.piMessages?.length) {
-      await saveTurnCheckpoint({
-        mode: "completed",
-        conversationId: invocation.childConversationId,
-        turnId,
-        durationMs: result.diagnostics.durationMs,
-        usage: result.diagnostics.usage,
-        destination: invocation.destination,
-        destinationVisibility: invocation.destinationVisibility,
-        ...(failed
-          ? {
-              errorMessage:
-                result.diagnostics.errorMessage ?? "Agent invocation failed",
-            }
-          : undefined),
-        messages: result.piMessages,
-        actor: invocation.actor,
-        source: invocation.source,
-        surface: "internal",
-      });
-    }
-    const terminal = await completeAgentInvocation({
-      invocationId: invocation.invocationId,
-      ...(failed
-        ? {
-            errorMessage:
-              result.diagnostics.errorMessage ?? "Agent invocation failed",
-            status: "failed" as const,
-          }
-        : {
-            result: result.text,
-            status: "completed" as const,
-          }),
-    });
-    if (!terminal) {
-      throw new Error(
-        `Agent invocation disappeared during completion for ${invocation.invocationId}`,
-      );
-    }
-    await persistTerminalLifecycle(terminal);
     await acknowledge();
     return { status: "completed" };
   };

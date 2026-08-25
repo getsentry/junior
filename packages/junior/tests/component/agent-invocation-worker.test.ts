@@ -107,9 +107,7 @@ describe("agent invocation worker", () => {
         state: "running",
         surface: "internal",
       });
-      const worker = createAgentInvocationWorker({
-        agentRunner: neverRunAgentRunner(),
-      });
+      const worker = createAgentInvocationWorker(neverRunAgentRunner());
       const context = {
         attempt: {
           ack: vi.fn(),
@@ -166,7 +164,7 @@ describe("agent invocation worker", () => {
       const run = vi.fn(async () => {
         throw new Error("agent runner unavailable");
       });
-      const worker = createAgentInvocationWorker({ agentRunner: { run } });
+      const worker = createAgentInvocationWorker({ run });
       const message = buildAgentInvocationInboundMessage(created);
       const context = (isFinalAttempt: boolean, ack: () => Promise<void>) =>
         ({
@@ -219,9 +217,7 @@ describe("agent invocation worker", () => {
         idempotencyKey: "invalid-child-1",
       });
       const ack = vi.fn();
-      const worker = createAgentInvocationWorker({
-        agentRunner: neverRunAgentRunner(),
-      });
+      const worker = createAgentInvocationWorker(neverRunAgentRunner());
       const context = {
         attempt: {
           ack,

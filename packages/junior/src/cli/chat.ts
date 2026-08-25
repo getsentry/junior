@@ -262,9 +262,7 @@ async function prepareLocalChatRun(
       fallbackWorker: async () => {
         throw new Error("Local child queue received non-invocation work");
       },
-      invocationWorker: createAgentInvocationWorker({
-        agentRunner,
-      }),
+      invocationWorker: createAgentInvocationWorker(agentRunner),
     });
     await processConversationWork(message, {
       queue: localConversationWork.queue,

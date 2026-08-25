@@ -429,10 +429,13 @@ export async function completeAgentInvocation(
   return await getAgentInvocation(args.invocationId);
 }
 
-/** Return whether an invocation already owns its immutable terminal result. */
+/** Return whether an agent invocation has finished. */
 export function isTerminalAgentInvocation(
   invocation: AgentInvocation,
-): boolean {
+): invocation is Extract<
+  AgentInvocation,
+  { status: "blocked" | "completed" | "failed" }
+> {
   return TERMINAL_AGENT_INVOCATION_STATUSES.includes(
     invocation.status as (typeof TERMINAL_AGENT_INVOCATION_STATUSES)[number],
   );
