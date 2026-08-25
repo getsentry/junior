@@ -555,25 +555,26 @@ describe("remote ACP recovery", () => {
   it("holds terminal output until acknowledgement, then accepts a follow-up", async () => {
     const terminalPersisted = deferred();
     const releaseWorker = deferred();
-    const persistedLifecycle = new ConversationTurnLifecycleService(
-      getConversationEventStore(),
-    );
-    let blockFirstCompletion = true;
-    const turnLifecycle = {
-      start: async (input) => await persistedLifecycle.start(input),
-      complete: async (input) => {
-        await persistedLifecycle.complete(input);
-        if (!blockFirstCompletion) return;
-        blockFirstCompletion = false;
-        terminalPersisted.resolve();
-        await releaseWorker.promise;
-      },
-      fail: async (input) => await persistedLifecycle.fail(input),
-    } satisfies ConversationTurnLifecycle;
     const harness = await createConversationWorkWebHarness({
       modelStream: streamReplies("Follow-up complete."),
-      turnLifecycle,
     });
+    const run = harness.conversationWork.run;
+    let holdFirstAcknowledgement = true;
+    harness.conversationWork.run = async (context) =>
+      await run({
+        ...context,
+        attempt: {
+          ...context.attempt,
+          ack: async () => {
+            if (holdFirstAcknowledgement) {
+              holdFirstAcknowledgement = false;
+              terminalPersisted.resolve();
+              await releaseWorker.promise;
+            }
+            await context.attempt.ack();
+          },
+        },
+      });
     let observePendingRead = false;
     let pendingReadObserved = false;
     let sessionStateKey: string | undefined;
@@ -685,7 +686,10 @@ describe("remote ACP recovery", () => {
       throw new Error("ACP cancellation handler was not ready");
     }
     await cancelActiveTurn();
-    const draining = harness.drain();
+    const draining = processConversationQueueMessage(
+      harness.queue.takeMessage(),
+      harness.conversationWork,
+    );
     await terminalPersisted.promise;
     observePendingRead = true;
     await vi.waitFor(() => {

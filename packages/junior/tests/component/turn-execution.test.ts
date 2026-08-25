@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { createLocalSource } from "@sentry/junior-plugin-api";
 import type { AgentRun } from "@/chat/agent/types";
-import { executeTurn } from "@/chat/runtime/turn-execution";
+import { AgentRunError, executeTurn } from "@/chat/runtime/turn-execution";
 
 const conversationId = "local:test:turn-execution";
 const run = {
@@ -13,6 +13,26 @@ const run = {
 } satisfies AgentRun;
 
 describe("Turn execution", () => {
+  it("marks agent errors so the worker can apply agent retry rules", async () => {
+    const agentError = new Error("model request failed");
+
+    await expect(
+      executeTurn(
+        {
+          run: vi.fn(async () => {
+            throw agentError;
+          }),
+        },
+        run,
+        vi.fn(),
+      ),
+    ).rejects.toMatchObject({
+      cause: agentError,
+      message: agentError.message,
+      name: "AgentRunError",
+    } satisfies Partial<AgentRunError>);
+  });
+
   it("leaves save errors for the worker to retry", async () => {
     const saveError = new Error("result save failed");
 

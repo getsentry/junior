@@ -18,8 +18,6 @@ import {
   createConversationWork,
   type ConversationWorkCallbackOptions,
 } from "@/chat/app/conversation-work";
-import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
-import type { ConversationTurnLifecycle } from "@/chat/conversations/turn-lifecycle";
 import type { ConversationStore } from "@/chat/conversations/store";
 import {
   closeDb,
@@ -133,7 +131,6 @@ export async function createConversationWorkWebHarness(
   options: {
     agentRunner?: AgentRunner;
     modelStream?: StreamFn;
-    turnLifecycle?: ConversationTurnLifecycle;
   } = {},
 ): Promise<ConversationWorkWebHarness> {
   const conversationStore = getConversationStore();
@@ -148,20 +145,11 @@ export async function createConversationWorkWebHarness(
       return await executeAgentRun(request, modelStream);
     },
   };
-  const replyExecutor: NonNullable<
-    JuniorRuntimeServiceOverrides["replyExecutor"]
-  > = { agentRunner };
-  if (options.turnLifecycle) {
-    replyExecutor.turnLifecycle = options.turnLifecycle;
-  }
   const work = createConversationWork({
     agentRunner,
     conversationStore,
     getSlackAdapter: () => createSlackAdapterFixture(),
     queue,
-    services: {
-      replyExecutor,
-    },
     state,
   });
   const actor = apiTurnTestActor;

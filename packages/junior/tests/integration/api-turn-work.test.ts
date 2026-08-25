@@ -132,14 +132,14 @@ describe("api turn conversation work", () => {
     });
 
     const agentRuns: AgentRun[] = [];
-    const worker = createApiTurnWorker({
-      agentRunner: createModelAgentRunnerForRun((run) => {
+    const worker = createApiTurnWorker(
+      createModelAgentRunnerForRun((run) => {
         agentRuns.push(run);
         return createModelStream([
           { type: "text", text: "Stored only in Junior." },
         ]);
       }),
-    });
+    );
     const route = routeApiTurnWork({
       apiTurnWorker: worker,
       fallbackWorker: async () => {
@@ -202,6 +202,31 @@ describe("api turn conversation work", () => {
       state: "completed",
       surface: "api",
     });
+
+    const turnEvents = (
+      await getConversationEventStore().loadHistory(accepted.conversationId)
+    ).filter(
+      (event) =>
+        event.data.type === "turn_started" ||
+        event.data.type === "turn_completed" ||
+        event.data.type === "turn_failed",
+    );
+    expect(turnEvents).toEqual([
+      expect.objectContaining({
+        data: expect.objectContaining({
+          surface: "api",
+          turnId: apiTurnIdForMessage(accepted.messageId),
+          type: "turn_started",
+        }),
+      }),
+      expect.objectContaining({
+        data: expect.objectContaining({
+          outcome: "success",
+          turnId: apiTurnIdForMessage(accepted.messageId),
+          type: "turn_completed",
+        }),
+      }),
+    ]);
   });
 
   it("feeds private source visibility into the agent run", async () => {
@@ -225,14 +250,14 @@ describe("api turn conversation work", () => {
     });
 
     const agentRuns: AgentRun[] = [];
-    const worker = createApiTurnWorker({
-      agentRunner: createModelAgentRunnerForRun((run) => {
+    const worker = createApiTurnWorker(
+      createModelAgentRunnerForRun((run) => {
         agentRuns.push(run);
         return createModelStream([
           { type: "text", text: "Private reply stays in Junior." },
         ]);
       }),
-    });
+    );
     const route = routeApiTurnWork({
       apiTurnWorker: worker,
       fallbackWorker: async () => {
@@ -281,15 +306,15 @@ describe("api turn conversation work", () => {
     if (!signal) throw new Error("Expected an active Turn signal");
     cancellation.cancel(accepted.conversationId);
     const agentRuns: AgentRun[] = [];
-    const worker = createApiTurnWorker({
-      agentRunner: createModelAgentRunnerForRun((run) => {
+    const worker = createApiTurnWorker(
+      createModelAgentRunnerForRun((run) => {
         agentRuns.push(run);
         return createModelStream([
           { type: "text", text: "Cancelled Turn must not reach the agent." },
         ]);
       }),
       cancellation,
-    });
+    );
 
     await expect(
       worker({
@@ -476,14 +501,14 @@ describe("api turn conversation work", () => {
     });
 
     const agentRuns: AgentRun[] = [];
-    const worker = createApiTurnWorker({
-      agentRunner: createModelAgentRunnerForRun((run) => {
+    const worker = createApiTurnWorker(
+      createModelAgentRunnerForRun((run) => {
         agentRuns.push(run);
         return createModelStream([
           { type: "text", text: "Dashboard-only reply." },
         ]);
       }),
-    });
+    );
     const route = routeApiTurnWork({
       apiTurnWorker: worker,
       fallbackWorker: async () => {

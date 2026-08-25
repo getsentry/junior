@@ -124,11 +124,10 @@ export function createConversationWork(
     conversationStore: options.conversationStore,
     queue: options.queue,
     run: routeApiTurnWork({
-      apiTurnWorker: createApiTurnWorker({
-        agentRunner: options.agentRunner,
-        cancellation: apiTurnCancellation,
-        turnLifecycle: services.replyExecutor?.turnLifecycle,
-      }),
+      apiTurnWorker: createApiTurnWorker(
+        options.agentRunner,
+        apiTurnCancellation,
+      ),
       fallbackWorker: routeAgentInvocationWork({
         invocationWorker: createAgentInvocationWorker(options.agentRunner),
         fallbackWorker: providerWorker,
