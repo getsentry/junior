@@ -60,16 +60,16 @@ function names are all part of that interface.
   owning module documentation and avoid using it for nearby concepts.
 - Add an interface only when it removes real coupling or represents a stable
   edge.
-- An options object of functions or services is dependency injection. Renaming
-  or forwarding it does not reduce coupling.
-- Keep operation input separate from services. Import stable app services from
-  their owning module. Pass a service only when the caller must choose its
-  behavior, such as model execution, transport, or time. Do not pass a
-  configured app store through unrelated callers.
+- Passing services through parameters is dependency injection. Putting those
+  services in an options object does not change that.
+- Keep work data separate from services. Import stable app services from their
+  owning module. Pass a service only when the caller must choose it, such as
+  model execution, transport, or time. Do not pass an app store through callers
+  that do not own it.
 - Do not use a one-field service options object. Pass the one required service
   directly.
-- Do not add a factory, bound function, or wrapper object only to hide several
-  services. It must remove caller responsibility or enforce an owning rule.
+- Do not add a factory or wrapper only to hide service parameters. It must
+  remove a choice from callers or enforce a rule that it owns.
 - Avoid one-hop wrappers, renamed aliases, and helper layers that only forward
   arguments, options, or dependencies. Call the owning capability directly
   unless the intermediate function enforces a rule, translates an edge, or owns

@@ -16,12 +16,9 @@ duplicate diagnostics.
   be expressed with `finally`.
 - If a catch block handles an error, it must either finish the recovery or
   rethrow with useful domain context. Avoid log-and-rethrow duplicates.
-- Do not change which errors a catch handles during a refactor. A catch for an
-  agent Run must not also handle later save, delivery, or Turn event errors.
-  Those operations can have different retry rules.
-- When adjacent async steps need different error handling, keep them in separate
-  `try` blocks or use a small typed error. Add one focused test that proves each
-  error reaches the correct handler.
+- During a refactor, preserve which errors each `catch` handles. Moving async
+  work across a `try` boundary can change retries or fallback behavior even
+  when the successful path is unchanged.
 - Use `finally` for cleanup that must run without changing error ownership.
 - Keep best-effort observers explicit. If correctness depends on the operation,
   it is not best-effort.
