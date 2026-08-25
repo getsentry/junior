@@ -6,10 +6,7 @@ import { completeAcpAuthorization } from "@/api/acp/auth";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createApp } from "@/app";
 import { createAcpConversations } from "@/api/acp/conversations";
-import {
-  ConversationTurnLifecycleService,
-  type ConversationTurnLifecycle,
-} from "@/chat/conversations/turn-lifecycle";
+import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
 import { getConversationEventStore } from "@/chat/db";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
 import { recordConversationExecution } from "@/chat/task-execution/state";
@@ -744,9 +741,9 @@ describe("remote ACP recovery", () => {
   }, 20_000);
 
   it("returns a terminal after failed cleanup and during a later Turn", async () => {
-    const harness = await createConversationWorkWebHarness({
-      modelStream: streamReplies("First Turn complete."),
-    });
+    const harness = await createConversationWorkWebHarness(
+      streamReplies("First Turn complete."),
+    );
     const conversations = createAcpConversations({
       conversationStore: harness.conversationStore,
       eventStore: getConversationEventStore(),
