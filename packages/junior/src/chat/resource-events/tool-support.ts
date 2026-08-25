@@ -12,37 +12,24 @@ export const RESOURCE_WATCH_TOOL_SOURCE = {
   description: "Inspect or stop resource watches for the current conversation.",
 };
 
-/** True when this conversation id can own a temporary resource watch. */
+/** True when this conversation can own a temporary resource watch. */
 export function canHoldResourceEventSubscription(
   conversationId: string | undefined,
 ): boolean {
-  if (!conversationId) {
-    return false;
-  }
-  const parts = conversationId.split(":");
-  return (
-    parts.length === 3 &&
-    parts[0] === "slack" &&
-    Boolean(parts[1]) &&
-    Boolean(parts[2])
-  );
+  return Boolean(conversationId?.trim());
 }
 
 /** Require the conversation identity that owns a resource watch. */
 export function requireResourceWatchConversation(
   context: ToolRuntimeContext,
 ): string {
-  if (!context.conversationId) {
+  const conversationId = context.conversationId?.trim();
+  if (!conversationId) {
     throw new ToolInputError(
       "Resource event subscriptions require a conversation",
     );
   }
-  if (!canHoldResourceEventSubscription(context.conversationId)) {
-    throw new ToolInputError(
-      "Resource event subscriptions require a Slack thread conversation",
-    );
-  }
-  return context.conversationId;
+  return conversationId;
 }
 
 /** Return whether the current runtime can safely manage conversation watches. */

@@ -660,13 +660,13 @@ describe("agent plugin hooks", () => {
     }
   });
 
-  it("allows resource subscription hints for web continues into Slack", () => {
+  it("allows resource subscription hints for any conversation with an id", () => {
     const webActor = {
       platform: "web" as const,
       userId: "dashboard:alice",
       email: "alice@example.com",
     };
-    const webSource = createWebSource("slack:C123:1712345.0001", "public");
+    const webSource = createWebSource("local:web:dashboard-1", "public");
     const previous = setPlugins([
       defineJuniorPlugin({
         manifest: {
@@ -691,12 +691,8 @@ describe("agent plugin hooks", () => {
     ]);
     try {
       const tools = getPluginTools({
-        conversationId: "slack:C123:1712345.0001",
-        destination: {
-          platform: "slack",
-          teamId: "T123",
-          channelId: "C123",
-        },
+        conversationId: "local:web:dashboard-1",
+        destination: LOCAL_DESTINATION,
         actor: webActor,
         egress: TEST_EGRESS,
         source: webSource,
