@@ -12,7 +12,23 @@ export const RESOURCE_WATCH_TOOL_SOURCE = {
   description: "Inspect or stop resource watches for the current conversation.",
 };
 
-/** Require the Slack thread identity that owns a resource watch. */
+/** True when this conversation id can own a temporary resource watch. */
+export function canHoldResourceEventSubscription(
+  conversationId: string | undefined,
+): boolean {
+  if (!conversationId) {
+    return false;
+  }
+  const parts = conversationId.split(":");
+  return (
+    parts.length === 3 &&
+    parts[0] === "slack" &&
+    Boolean(parts[1]) &&
+    Boolean(parts[2])
+  );
+}
+
+/** Require the conversation identity that owns a resource watch. */
 export function requireResourceWatchConversation(
   context: ToolRuntimeContext,
 ): string {
@@ -21,12 +37,7 @@ export function requireResourceWatchConversation(
       "Resource event subscriptions require a conversation",
     );
   }
-  if (context.destination.platform !== "slack") {
-    throw new ToolInputError(
-      "Resource event subscriptions currently require Slack delivery",
-    );
-  }
-  if (!isSlackThreadConversationId(context.conversationId)) {
+  if (!canHoldResourceEventSubscription(context.conversationId)) {
     throw new ToolInputError(
       "Resource event subscriptions require a Slack thread conversation",
     );
@@ -38,21 +49,5 @@ export function requireResourceWatchConversation(
 export function canUseResourceEventSubscriptionTools(
   context: ToolRuntimeContext,
 ): boolean {
-  return (
-    context.destination.platform === "slack" &&
-    Boolean(
-      context.conversationId &&
-      isSlackThreadConversationId(context.conversationId),
-    )
-  );
-}
-
-function isSlackThreadConversationId(conversationId: string): boolean {
-  const parts = conversationId.split(":");
-  return (
-    parts.length === 3 &&
-    parts[0] === "slack" &&
-    Boolean(parts[1]) &&
-    Boolean(parts[2])
-  );
+  return canHoldResourceEventSubscription(context.conversationId);
 }

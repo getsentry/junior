@@ -40,7 +40,10 @@ import type { AnyToolDefinition } from "@/chat/tools/definition";
 import { getDashboardConversationLink } from "@/chat/slack/dashboard-link";
 import { canRouteResourceEvents } from "@/chat/resource-events/workspace";
 import { createResourceEventSubscription } from "@/chat/resource-events/store";
-import { RESOURCE_SUBSCRIPTION_DEFAULT_TTL_MS } from "@/chat/resource-events/tool-support";
+import {
+  canHoldResourceEventSubscription,
+  RESOURCE_SUBSCRIPTION_DEFAULT_TTL_MS,
+} from "@/chat/resource-events/tool-support";
 import { getSlackToolContext } from "@/chat/slack/tool-support/context";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
@@ -636,18 +639,15 @@ export function getPluginTools(
         })
       : undefined;
     const mcp = pluginMcpContext(plugin, context);
-    // Watches deliver into the Slack conversation. Source can be web when the
-    // dashboard continues a Slack thread; destination owns the capability.
     const canSubscribe =
-      context.destination.platform === "slack" &&
-      Boolean(context.conversationId) &&
+      canHoldResourceEventSubscription(context.conversationId) &&
       canRouteResourceEvents() &&
       Boolean(plugin.resourceEvents) &&
       plugin.resourceEvents?.isEnabled?.() !== false;
     const resourceEvents: ToolRegistrationHookContext["resourceEvents"] = {
       canSubscribe,
       async subscribe(input) {
-        if (!canSubscribe || context.destination.platform !== "slack") {
+        if (!canSubscribe) {
           throw new Error(
             "Resource subscriptions are not available in this conversation.",
           );

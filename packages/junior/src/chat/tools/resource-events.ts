@@ -1,5 +1,8 @@
 import type { ResourceEventCatalog } from "@/chat/resource-events/catalog";
-import { canUseResourceEventSubscriptionTools } from "@/chat/resource-events/tool-support";
+import {
+  canHoldResourceEventSubscription,
+  canUseResourceEventSubscriptionTools,
+} from "@/chat/resource-events/tool-support";
 import type { ToolRegistry } from "@/chat/tools/definition";
 import { createListResourceEventSubscriptionsTool } from "@/chat/tools/list-resource-event-subscriptions";
 import { createSearchResourceEventTypesTool } from "@/chat/tools/search-resource-event-types";
@@ -14,7 +17,7 @@ export function createResourceEventTools(
 ): ToolRegistry {
   const enabled = Object.keys(catalog).length > 0;
   const discoveryTools: ToolRegistry =
-    context.destination.platform === "slack" && enabled
+    canHoldResourceEventSubscription(context.conversationId) && enabled
       ? {
           searchResourceEventTypes: createSearchResourceEventTypesTool(catalog),
         }
