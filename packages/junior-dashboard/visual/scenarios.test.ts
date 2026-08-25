@@ -41,6 +41,14 @@ describe("selectVisualScenarioIds", () => {
     ).toEqual(["person-profile"]);
   });
 
+  it("selects the code page for code page changes", () => {
+    expect(
+      selectVisualScenarioIds([
+        "packages/junior-dashboard/src/client/pages/code/CodePage.tsx",
+      ]),
+    ).toEqual(["code"]);
+  });
+
   it("selects focused gallery pages for shared component changes", () => {
     expect(
       selectVisualScenarioIds([
