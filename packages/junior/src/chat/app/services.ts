@@ -24,7 +24,7 @@ import {
   type SubscribedReplyPolicy,
   type SubscribedReplyPolicyDeps,
 } from "@/chat/services/subscribed-reply-policy";
-import type { ReplyExecutorServices } from "@/chat/runtime/reply-executor";
+import type { SlackTurnServices } from "@/chat/providers/slack/turn";
 import {
   createVisionContextService,
   type VisionContextDeps,
@@ -39,7 +39,7 @@ import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-que
 export interface JuniorRuntimeServices {
   conversationMemory: ConversationMemoryService;
   contextCompactor: ContextCompactor;
-  replyExecutor: ReplyExecutorServices;
+  replyExecutor: SlackTurnServices;
   subscribedReplyPolicy: SubscribedReplyPolicy;
   visionContext: VisionContextService;
 }
@@ -47,7 +47,7 @@ export interface JuniorRuntimeServices {
 export interface JuniorRuntimeServiceOverrides {
   conversationMemory?: Partial<ConversationMemoryDeps>;
   contextCompactor?: Partial<ContextCompactorDeps>;
-  replyExecutor?: Partial<ReplyExecutorServices>;
+  replyExecutor?: Partial<SlackTurnServices>;
   subscribedReplyPolicy?: Partial<SubscribedReplyPolicyDeps>;
   sandbox?: {
     tracePropagation?: SandboxEgressTracePropagationConfig;

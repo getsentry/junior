@@ -11,7 +11,7 @@ import { z } from "zod";
 import type {
   SlackTurnOptions,
   SteeringCandidateMessage,
-} from "@/chat/runtime/slack-runtime";
+} from "@/chat/providers/slack/runtime";
 import {
   isCooperativeTurnYieldError,
   isTurnInputDeferredError,

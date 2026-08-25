@@ -1,10 +1,10 @@
 /**
- * Slack reply execution boundary.
+ * Add Slack provider behavior around one native agent Turn.
  *
- * This module bridges prepared Slack thread state into the agent runner
- * and commits the resulting Slack-visible delivery/state updates. It is where
- * queued messages, compaction, status updates, and Slack posting meet; agent
- * internals stay behind the runner seam.
+ * This module prepares Slack input and owns Slack status, delivery, and saved
+ * Slack state. Native execution concerns that remain here must move behind a
+ * provider-neutral runtime contract. Agent execution stays behind
+ * `AgentRunner`.
  */
 import type { Message, Thread } from "chat";
 import type { SlackAdapter } from "@chat-adapter/slack";
@@ -358,7 +358,7 @@ async function loadPiMessagesForTurn(args: {
   return {};
 }
 
-export interface ReplyExecutorServices {
+export interface SlackTurnServices {
   agentRunner: AgentRunner;
   contextCompactor: ContextCompactor;
   getPausedTurnRequest: (args: {
@@ -374,7 +374,7 @@ export interface ReplyExecutorServices {
   }) => Promise<void>;
 }
 
-interface ReplyExecutorDeps {
+interface SlackTurnDeps {
   getSlackAdapter: () => SlackAdapter;
   resolveUserAttachments: (
     attachments: Message["attachments"] | undefined,
@@ -395,17 +395,17 @@ interface ReplyExecutorDeps {
     }>
   >;
   prepareTurnState: (args: PrepareTurnStateInput) => Promise<PreparedTurnState>;
-  services: ReplyExecutorServices;
+  services: SlackTurnServices;
 }
 
-/** Build the shared reply handler that prepares, advances, and commits a turn. */
-/** Slack reply executor publishes unless a caller opts out. */
+/** Return whether the Slack caller should publish destination output. */
 function shouldPublishExternally(publishExternally?: boolean): boolean {
   return publishExternally !== false;
 }
 
-export function createReplyToThread(deps: ReplyExecutorDeps) {
-  return async function replyToThread(
+/** Build the Slack caller that prepares input and delivers output for a Turn. */
+export function createSlackTurn(deps: SlackTurnDeps) {
+  return async function executeSlackTurn(
     thread: Thread,
     message: Message,
     options: {
@@ -605,7 +605,9 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
           } catch (error) {
             logException(error, "slack.auth_pause.notice_post.failed", {
               "app.slack.reply_stage": "thread_reply_auth_pause_notice",
-              ...(messageTs ? { "messaging.message.id": messageTs } : undefined),
+              ...(messageTs
+                ? { "messaging.message.id": messageTs }
+                : undefined),
               ...getSlackErrorObservabilityAttributes(error),
             });
           }
@@ -785,7 +787,9 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               logException(error, "agent.continue.schedule.failed", {
                 "app.ai.resume_session_version": pausedTurn.expectedVersion,
                 "app.ai.resume_session_id": pausedTurn.turnId,
-                ...(messageTs ? { "messaging.message.id": messageTs } : undefined),
+                ...(messageTs
+                  ? { "messaging.message.id": messageTs }
+                  : undefined),
               });
               throw error;
             }
@@ -1069,7 +1073,9 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
             }
             const eventId = logException(error, "slack.thread.post.failed", {
               "app.slack.reply_stage": "thread_reply",
-              ...(messageTs ? { "messaging.message.id": messageTs } : undefined),
+              ...(messageTs
+                ? { "messaging.message.id": messageTs }
+                : undefined),
               ...getSlackErrorObservabilityAttributes(error),
             });
             throw new ConversationTurnBoundaryError({
@@ -1451,7 +1457,9 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               shouldPersistFailureState = false;
             } catch (scheduleError) {
               logException(scheduleError, "agent.continue.schedule.failed", {
-                ...(messageTs ? { "messaging.message.id": messageTs } : undefined),
+                ...(messageTs
+                  ? { "messaging.message.id": messageTs }
+                  : undefined),
                 "app.ai.resume_session_version": outcome.resumeVersion,
               });
               shouldPersistFailureState = true;
@@ -1570,7 +1578,9 @@ export function createReplyToThread(deps: ReplyExecutorDeps) {
               await deps.services.turnLifecycle.fail({
                 conversationId,
                 createdAtMs: Date.now(),
-                ...(persistenceEventId ? { eventId: persistenceEventId } : undefined),
+                ...(persistenceEventId
+                  ? { eventId: persistenceEventId }
+                  : undefined),
                 failureCode: "persistence_failed",
                 turnId,
               });

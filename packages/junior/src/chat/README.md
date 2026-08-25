@@ -13,7 +13,8 @@ file.
    destinationless child work.
 3. A worker acquires the conversation lease, drains pending input, and restores
    persisted conversation state.
-4. `runtime/` prepares and orchestrates the run; `agent/` owns Pi execution.
+4. `runtime/` prepares and orchestrates the native run; `agent/` owns Pi
+   execution. `providers/` adds source-specific ingress and delivery behavior.
 5. Tools, plugins, credentials, sandbox, and MCP operate within harness-owned
    actor and destination context.
 6. `agent/` emits every completed, tool-free visible assistant message through
@@ -35,7 +36,9 @@ with `publishExternally: false`. Continues keep the conversation destination
 - `app/`: composition root only.
 - `ingress/`: source parsing, classification, and routing.
 - `task-execution/`: mailbox, queue, lease, checkpoint, worker, and recovery.
-- `runtime/`: turn orchestration and provider-neutral delivery callbacks.
+- `runtime/`: native Turn orchestration and provider-neutral delivery ports.
+- `providers/`: source provider layers around the native runtime. Slack owns
+  its provider runtime in `providers/slack/`.
 - `api-turns/`: mailbox enqueue and worker consumer for dashboard/API turns
   that stay in the conversation log (`publishExternally: false`), including
   continues of Slack-rooted conversations by verified participants.
@@ -52,7 +55,8 @@ with `publishExternally: false`. Continues keep the conversation destination
 - `attachments/`: provider-neutral attachment metadata, object storage, and garbage collection.
 - `artifacts/`: content-addressed public artifacts, SQL metadata, and their unauthenticated read path.
 - `state/` and `conversations/`: persistence by concern.
-- `slack/` and `local/`: platform adapters.
+- `slack/`: low-level Slack transport, message projection, and formatting.
+- `local/`: local CLI adapter.
 - `plugins/`, `credentials/`, `sandbox/`, and `mcp/`: external capability
   boundaries.
 - `tool-support/action-review.ts`: effective approval modes, authoritative
@@ -61,9 +65,11 @@ with `publishExternally: false`. Continues keep the conversation destination
   Codex-derived policy and structured model reviewer for actions that enter
   review.
 
-Provider modules must not import runtime orchestration. Runtime and service
-modules depend on small injected ports rather than provider implementations or
-the production singleton.
+Provider layers may call the native runtime through provider-neutral contracts.
+The native runtime must not import a provider layer. Low-level provider
+adapters must not orchestrate native Turns. Runtime and service modules depend
+on small injected ports rather than provider implementations or the production
+singleton.
 
 ## Vocabulary
 

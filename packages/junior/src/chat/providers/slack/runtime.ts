@@ -1,5 +1,5 @@
 /**
- * Slack event runtime.
+ * Slack provider runtime.
  *
  * This module owns inbound Slack routing decisions for mentions, subscribed
  * messages, assistant lifecycle events, and retryable turn pauses. It should
@@ -170,7 +170,7 @@ export interface SlackTurnRuntimeDependencies<TPreparedState> {
     thread: Thread;
   }) => Promise<void>;
   prepareTurnState: (args: PrepareTurnStateInput) => Promise<TPreparedState>;
-  replyToThread: (
+  executeSlackTurn: (
     thread: Thread,
     message: Message,
     options: {
@@ -780,7 +780,7 @@ export function createSlackTurnRuntime<
               }),
             stripLeadingBotMention: deps.stripLeadingBotMention,
           });
-          await deps.replyToThread(thread, message, {
+          await deps.executeSlackTurn(thread, message, {
             explicitMention: true,
             beforeFirstResponsePost: hooks.beforeFirstResponsePost,
             conversationId: hooks.conversationId,
@@ -921,7 +921,7 @@ export function createSlackTurnRuntime<
         });
         await deps.withSpan("chat.turn", "chat.turn", turnContext, async () => {
           // This path can compact context and run router/vision model calls
-          // before replyToThread() opens the main reply span.
+          // before executeSlackTurn() opens the main reply span.
           const content = parseContent(message);
           const strippedUserText = deps.stripLeadingBotMention(
             stripLeadingSteeringOverride(content.topLevelText),
@@ -1121,7 +1121,7 @@ export function createSlackTurnRuntime<
             hooks,
           );
 
-          await deps.replyToThread(thread, message, {
+          await deps.executeSlackTurn(thread, message, {
             explicitMention: Boolean(message.isMention),
             conversationId: hooks.conversationId,
             destination: hooks.destination,

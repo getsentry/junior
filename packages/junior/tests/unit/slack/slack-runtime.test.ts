@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   createSlackTurnRuntime,
   type SlackTurnRuntimeDependencies,
-} from "@/chat/runtime/slack-runtime";
+} from "@/chat/providers/slack/runtime";
 import type { SubscribedReplyDecision } from "@/chat/services/subscribed-reply-policy";
 import {
   createTestThread,
@@ -37,7 +37,7 @@ function createMockDeps(
     prepareTurnState: vi
       .fn()
       .mockResolvedValue({ prepared: true } satisfies TestState),
-    replyToThread: vi.fn().mockResolvedValue(undefined),
+    executeSlackTurn: vi.fn().mockResolvedValue(undefined),
     decideSubscribedReply: vi.fn().mockResolvedValue({
       shouldReply: true,
       reason: "test",
@@ -51,7 +51,7 @@ function createMockDeps(
 
 describe("createSlackTurnRuntime", () => {
   describe("handleNewMention", () => {
-    it("subscribes thread and calls replyToThread with explicitMention: true", async () => {
+    it("subscribes thread and calls executeSlackTurn with explicitMention: true", async () => {
       const deps = createMockDeps();
       const runtime = createSlackTurnRuntime<TestState>(deps);
       const thread = await createTestThread({});
@@ -62,7 +62,7 @@ describe("createSlackTurnRuntime", () => {
       });
 
       expect(thread.subscribeCalls).toBe(1);
-      expect(deps.replyToThread).toHaveBeenCalledWith(
+      expect(deps.executeSlackTurn).toHaveBeenCalledWith(
         thread,
         message,
         expect.objectContaining({
@@ -100,7 +100,7 @@ describe("createSlackTurnRuntime", () => {
         },
       });
 
-      expect(deps.replyToThread).toHaveBeenCalledWith(
+      expect(deps.executeSlackTurn).toHaveBeenCalledWith(
         thread,
         latest,
         expect.objectContaining({
@@ -139,7 +139,7 @@ describe("createSlackTurnRuntime", () => {
       "$name",
       async ({ ackBeforeFailure, isFinalAttempt, shouldPostFallback }) => {
         const deps = createMockDeps({
-          replyToThread: vi.fn(async (_thread, _message, hooks) => {
+          executeSlackTurn: vi.fn(async (_thread, _message, hooks) => {
             if (ackBeforeFailure) {
               await hooks.ack?.();
             }
@@ -215,7 +215,7 @@ describe("createSlackTurnRuntime", () => {
             },
           }),
         );
-        expect(deps.replyToThread).not.toHaveBeenCalled();
+        expect(deps.executeSlackTurn).not.toHaveBeenCalled();
       } finally {
         setExperimentalFeatures({
           "passive-routing": true,
