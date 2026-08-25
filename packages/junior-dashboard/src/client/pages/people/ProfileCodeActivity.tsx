@@ -1,12 +1,5 @@
 import type { CodePersonReport } from "@sentry/junior/api/schema";
-import {
-  CircleDot,
-  GitMerge,
-  GitPullRequest,
-  LibraryBig,
-  Timer,
-  XCircle,
-} from "lucide-react";
+import { GitPullRequest, LibraryBig, Timer } from "lucide-react";
 import { formatDuration } from "../../components/Duration";
 import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
 import { SectionIntro } from "../../components/layout/SectionIntro";
@@ -42,30 +35,12 @@ export function ProfileCodeActivity(props: {
   return (
     <section aria-labelledby="profile-code-title" className="grid gap-4">
       <SectionIntro id="profile-code-title" title="Code" />
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
-        <StatCard
-          detail="Across all repositories"
-          icon={CircleDot}
-          label="Open changes"
-          value={formatCompactNumber(summary.open)}
-        />
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <StatCard
           detail="In the last 30 days"
           icon={GitPullRequest}
           label="Created"
           value={formatCompactNumber(summary.created)}
-        />
-        <StatCard
-          detail="In the last 30 days"
-          icon={GitMerge}
-          label="Merged"
-          value={formatCompactNumber(summary.merged)}
-        />
-        <StatCard
-          detail="Closed without merge in the last 30 days"
-          icon={XCircle}
-          label="Closed"
-          value={formatCompactNumber(summary.closed)}
         />
         <StatCard
           detail="Share of completed changes that merged"

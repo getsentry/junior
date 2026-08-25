@@ -1,13 +1,6 @@
 import { useState } from "react";
 import type { CodeOverviewReport } from "@sentry/junior/api/schema";
-import {
-  CircleDot,
-  GitMerge,
-  GitPullRequest,
-  LibraryBig,
-  Timer,
-  XCircle,
-} from "lucide-react";
+import { GitPullRequest, LibraryBig, Timer } from "lucide-react";
 import { useCodeOverviewData } from "../../api";
 import { formatDuration } from "../../components/Duration";
 import { EmptyTelemetry } from "../../components/EmptyTelemetry";
@@ -71,30 +64,12 @@ function CodeOverview(props: {
   const data = props.data;
   return (
     <>
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
-        <StatCard
-          detail="Across all repositories"
-          icon={CircleDot}
-          label="Open changes"
-          value={formatCompactNumber(data.summary.open)}
-        />
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <StatCard
           detail="In the last 30 days"
           icon={GitPullRequest}
           label="Created"
           value={formatCompactNumber(data.summary.created)}
-        />
-        <StatCard
-          detail="In the last 30 days"
-          icon={GitMerge}
-          label="Merged"
-          value={formatCompactNumber(data.summary.merged)}
-        />
-        <StatCard
-          detail="Closed without merge in the last 30 days"
-          icon={XCircle}
-          label="Closed"
-          value={formatCompactNumber(data.summary.closed)}
         />
         <StatCard
           detail="Share of completed changes that merged"
