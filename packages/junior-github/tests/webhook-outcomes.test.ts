@@ -11,7 +11,7 @@ import {
   type LocalPgliteFixture,
 } from "@sentry/junior-testing/pglite";
 import { http, HttpResponse } from "msw";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   githubSqlSchema,
   type GitHubPullRequestCommitComposition,
@@ -35,10 +35,22 @@ import {
   selectFailingChecks,
 } from "../src/webhooks/resource-events";
 
+/** Minimal repository object for check_suite webhook fixtures. */
+function checkSuiteRepository(repo = "getsentry/junior", id = 1) {
+  const [owner, name] = repo.split("/") as [string, string];
+  return {
+    id,
+    name,
+    full_name: repo,
+    owner: { login: owner },
+  };
+}
+
 /** Minimal same-repo check_suite pull_requests entry (GitHub CheckRunPullRequest). */
 function checkSuitePullRequest(
   number: number,
   repo = "getsentry/junior",
+  repositoryId = 1,
 ): {
   base: { repo: { id: number; name: string; url: string }; sha: string };
   head: { repo: { id: number; name: string; url: string }; sha: string };
@@ -54,11 +66,11 @@ function checkSuitePullRequest(
     url: `${repoUrl}/pulls/${number}`,
     head: {
       sha: "abcdef1234567890",
-      repo: { id: 1, name: name!, url: repoUrl },
+      repo: { id: repositoryId, name: name!, url: repoUrl },
     },
     base: {
       sha: "0000000000000000",
-      repo: { id: 1, name: name!, url: repoUrl },
+      repo: { id: repositoryId, name: name!, url: repoUrl },
     },
   };
 }
@@ -315,6 +327,11 @@ afterEach(() => {
 });
 
 describe("GitHub webhook resource events", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000);
+  });
+
   it("uses the provider merge timestamp", () => {
     vi.setSystemTime(new Date("2026-07-20T12:00:00.000Z"));
     const events = normalizeGitHubResourceEvents({
@@ -519,7 +536,6 @@ describe("GitHub webhook resource events", () => {
   });
 
   it("normalizes review, comment, and check events into exact subscription contracts", () => {
-    vi.setSystemTime(1_000);
     const cases = [
       {
         eventName: "pull_request_review",
@@ -615,7 +631,7 @@ describe("GitHub webhook resource events", () => {
         eventName: "check_suite",
         body: {
           action: "completed",
-          repository: { full_name: "getsentry/junior" },
+          repository: checkSuiteRepository("getsentry/junior"),
           check_suite: {
             app: { name: "GitHub Actions", slug: "github-actions" },
             conclusion: "failure",
@@ -692,12 +708,11 @@ describe("GitHub webhook resource events", () => {
   });
 
   it("emits recovered check suite events without draft or author fields", () => {
-    vi.setSystemTime(1_000);
     expect(
       normalizeGitHubResourceEvents({
         body: {
           action: "completed",
-          repository: { full_name: "getsentry/junior" },
+          repository: checkSuiteRepository("getsentry/junior"),
           check_suite: {
             app: { name: "GitHub Actions" },
             conclusion: "success",
@@ -790,12 +805,11 @@ describe("GitHub webhook resource events", () => {
   });
 
   it("attaches failing check-run handles when check suite data is provided", () => {
-    vi.setSystemTime(1_000);
     expect(
       normalizeGitHubResourceEvents({
         body: {
           action: "completed",
-          repository: { full_name: "getsentry/junior" },
+          repository: checkSuiteRepository("getsentry/junior"),
           check_suite: {
             app: { name: "GitHub Actions" },
             conclusion: "failure",
@@ -909,12 +923,11 @@ describe("GitHub webhook resource events", () => {
   });
 
   it("drops check-suite PRs whose base is a foreign fork of the suite repo", () => {
-    vi.setSystemTime(1_000);
     expect(
       normalizeGitHubResourceEvents({
         body: {
           action: "completed",
-          repository: { full_name: "getsentry/sentry" },
+          repository: checkSuiteRepository("getsentry/sentry", 873328),
           check_suite: {
             app: { name: "GitHub Actions" },
             conclusion: "success",
@@ -942,7 +955,7 @@ describe("GitHub webhook resource events", () => {
                   },
                 },
               },
-              checkSuitePullRequest(999001, "getsentry/sentry"),
+              checkSuitePullRequest(999001, "getsentry/sentry", 873328),
             ],
           },
         },
@@ -997,19 +1010,19 @@ describe("GitHub webhook resource events", () => {
     expect(
       parseCheckSuiteFactsTarget({
         action: "completed",
-        repository: { full_name: "getsentry/sentry" },
+        repository: checkSuiteRepository("getsentry/sentry", 873328),
         check_suite: {
           conclusion: "success",
           head_sha: "8105236768dd1da43379152ee11900be8983ae03",
           id: 89021857045,
-          pull_requests: [checkSuitePullRequest(999001, "getsentry/sentry")],
+          pull_requests: [checkSuitePullRequest(999001, "getsentry/sentry", 873328)],
         },
       }),
     ).toBeUndefined();
     expect(
       parseCheckSuiteFactsTarget({
         action: "completed",
-        repository: { full_name: "getsentry/sentry" },
+        repository: checkSuiteRepository("getsentry/sentry", 873328),
         check_suite: {
           conclusion: "failure",
           head_sha: "8105236768dd1da43379152ee11900be8983ae03",
@@ -1036,7 +1049,7 @@ describe("GitHub webhook resource events", () => {
                 },
               },
             },
-            checkSuitePullRequest(999001, "getsentry/sentry"),
+            checkSuitePullRequest(999001, "getsentry/sentry", 873328),
           ],
         },
       }),
@@ -1095,7 +1108,6 @@ describe("GitHub webhook resource events", () => {
   });
 
   it("normalizes issue lifecycle and comments for issue and repository tasks", () => {
-    vi.setSystemTime(1_000);
     expect(
       normalizeGitHubResourceEvents({
         body: {

@@ -36,7 +36,7 @@ function pullRequestTargets(
  */
 const checkRunRepoRefSchema = z
   .object({
-    id: z.number().optional(),
+    id: z.number(),
     name: z.string().min(1),
     url: z.string().min(1),
   })
@@ -61,7 +61,12 @@ const checkRunPullRequestSchema = z
   .passthrough();
 
 const repositorySchema = z
-  .object({ full_name: z.string().min(1) })
+  .object({
+    full_name: z.string().min(1),
+    id: z.number(),
+    name: z.string().min(1),
+    owner: z.object({ login: z.string().min(1) }).passthrough(),
+  })
   .passthrough();
 
 const checkSuiteWebhookSchema = z.object({
@@ -90,24 +95,16 @@ const checkRunsListResponseSchema = z
   })
   .passthrough();
 
-/** Read owner/name from a GitHub REST repo or pull URL. */
-function repositoryFullNameFromApiUrl(url: string): string | undefined {
-  const match =
-    /^https:\/\/api\.github\.com\/repos\/([^/]+\/[^/]+)(?:\/|$)/i.exec(url);
-  return match?.[1];
-}
-
 /**
  * Keep only pull requests whose base repo is the check suite repository.
  * GitHub attaches every open PR with the same head sha, including PRs based on forks.
+ * Compare repository ids from the webhook payload — no URL parsing.
  */
 function isCheckSuiteRepositoryPullRequest(
   pullRequest: z.infer<typeof checkRunPullRequestSchema>,
-  repositoryFullName: string,
+  repositoryId: number,
 ): boolean {
-  const baseFullName = repositoryFullNameFromApiUrl(pullRequest.base.repo.url);
-  if (!baseFullName) return false;
-  return baseFullName.toLowerCase() === repositoryFullName.toLowerCase();
+  return pullRequest.base.repo.id === repositoryId;
 }
 
 const FAILING_CHECK_CONCLUSIONS = new Set([
@@ -302,9 +299,10 @@ export function normalizeCheckSuiteEvents(
     typeof suite.head_sha === "string" && /^[0-9a-f]{7,40}$/i.test(suite.head_sha)
       ? suite.head_sha
       : undefined;
-  const repo = parsed.data.repository.full_name;
+  const repository = parsed.data.repository;
+  const repo = repository.full_name;
   return suite.pull_requests.flatMap((pullRequest) => {
-    if (!isCheckSuiteRepositoryPullRequest(pullRequest, repo)) return [];
+    if (!isCheckSuiteRepositoryPullRequest(pullRequest, repository.id)) return [];
     return pullRequestTargets(
       buildCheckSuiteResourceEvent({
         appName,
@@ -351,13 +349,11 @@ export function parseCheckSuiteFactsTarget(body: unknown): {
   ) {
     return undefined;
   }
-  const [owner, repoName, ...extra] = parsed.data.repository.full_name.split("/");
-  if (!owner || !repoName || extra.length > 0) return undefined;
   return {
     checkSuiteId,
     headSha,
-    owner,
-    repoName,
+    owner: parsed.data.repository.owner.login,
+    repoName: parsed.data.repository.name,
   };
 }
 
