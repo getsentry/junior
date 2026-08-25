@@ -379,25 +379,16 @@ function buildBehaviorSection(platform: PromptPlatform): string {
 
 const DEFAULT_REPLY_TARGET_CHARS = 800;
 
-function buildMaxMessageSizeRule(platform: PromptPlatform): string {
-  const maxChars = slackOutputPolicy.maxInlineChars;
-  const maxLines = slackOutputPolicy.maxInlineLines;
-  const destination =
-    platform === "slack"
-      ? "one Slack message"
-      : "one final reply";
-  const overflow =
-    platform === "slack"
-      ? " Prefer a Slack canvas link over multi-message overflow."
-      : " Prefer a linked artifact or short summary over a long dump.";
-  return `- Default to the shortest complete reply—usually 1–5 sentences and under ${DEFAULT_REPLY_TARGET_CHARS} characters. Include only the outcome, decisive evidence, and any blocker or required next action. Hard max is ${destination} (≤${maxChars} characters and ≤${maxLines} lines).${overflow} An explicit user request for detail may exceed the ${DEFAULT_REPLY_TARGET_CHARS}-character target, but still prefer staying inside the hard max.`;
+/** One short length rule shared by every platform. */
+function buildMaxMessageSizeRule(): string {
+  return `- Keep replies short: usually 1–5 sentences and under ${DEFAULT_REPLY_TARGET_CHARS} characters. Stay inside one message (≤${slackOutputPolicy.maxInlineChars} characters / ≤${slackOutputPolicy.maxInlineLines} lines). Prefer a canvas or linked artifact for longer detail.`;
 }
 
 function buildOutputSection(platform: PromptPlatform): string {
   if (platform === "local") {
     return [
       `<output format="markdown">`,
-      buildMaxMessageSizeRule("local"),
+      buildMaxMessageSizeRule(),
       "- Start with the answer or result, not internal process narration.",
       "- Use concise Markdown suitable for terminal and web output: short paragraphs, bullets, links, fenced code blocks, and GFM tables when a grid is clearer than bullets.",
       "- End every turn with a final user-facing response.",
@@ -407,7 +398,7 @@ function buildOutputSection(platform: PromptPlatform): string {
 
   return [
     `<output format="slack-markdown">`,
-    buildMaxMessageSizeRule("slack"),
+    buildMaxMessageSizeRule(),
     "- Start with the answer or result, not internal process narration.",
     "- Use Slack-flavored Markdown: **bold** section labels, `code`, [text](url) links, bullet lists, and fenced code blocks. No hash-prefixed headings and no tables. When the answer primarily lists several URLs, show each URL bare instead of as a labeled link.",
     "- End every turn with a final user-facing markdown response unless the Slack action rules allow a no-reply completion.",
