@@ -1,4 +1,14 @@
 # Changelog
+## 0.184.0
+
+### Breaking Changes 🛠
+
+- (acp) Mount ACP in every Junior app by @gricha in [#1678](https://github.com/getsentry/junior/pull/1678)
+
+### Bug Fixes 🐛
+
+- (slack) Put long reply chunks in one thread by @sentry-junior in [#1684](https://github.com/getsentry/junior/pull/1684)
+
 ## 0.183.0
 
 ### New Features ✨
