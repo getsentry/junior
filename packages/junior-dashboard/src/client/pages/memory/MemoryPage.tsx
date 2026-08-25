@@ -92,7 +92,7 @@ function MemoryOverview(props: { range: TimeRangeDays }) {
       <PageContentSkeleton
         className="gap-6 sm:gap-8"
         label="Loading memory history"
-        variant="stats"
+        variant="overview"
       />
     );
   }

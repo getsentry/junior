@@ -75,6 +75,25 @@ export function DashboardShell() {
   const primaryUserPages = loggedIn
     ? userPages.filter((page) => page.navigation === "primary")
     : [];
+  const memoryNavPage = primaryUserPages.find(
+    (page) => page.pluginName === "memory" && page.id === "memories",
+  );
+  const otherPrimaryUserPages = primaryUserPages.filter(
+    (page) => !(page.pluginName === "memory" && page.id === "memories"),
+  );
+  // Auth-only routes already imply the signed-in primary nav. Hold Tasks and
+  // Memories slots while core/user-pages catch up so the header does not jump.
+  const reserveAuthPrimaryNav =
+    loading &&
+    (location.pathname.startsWith("/tasks") ||
+      location.pathname.startsWith("/memories") ||
+      location.pathname.startsWith("/settings") ||
+      location.pathname.startsWith("/plugins/"));
+  const showTasksNav = loggedIn || reserveAuthPrimaryNav;
+  const showMemoriesNav =
+    Boolean(memoryNavPage) ||
+    reserveAuthPrimaryNav ||
+    (loggedIn && userPagesQuery.isPending);
   const workspace =
     location.pathname === "/" ||
     location.pathname === "/conversations" ||
@@ -97,10 +116,17 @@ export function DashboardShell() {
     : undefined;
   const primaryNavItems = [
     { key: "code", label: "Code", to: "/code" },
-    ...(loggedIn
-      ? [{ key: "tasks", label: "Tasks", to: "/tasks" }]
+    ...(showTasksNav ? [{ key: "tasks", label: "Tasks", to: "/tasks" }] : []),
+    ...(showMemoriesNav
+      ? [
+          {
+            key: "memory:memories",
+            label: memoryNavPage?.label ?? "Memories",
+            to: pluginUserPagePath("memory", "memories"),
+          },
+        ]
       : []),
-    ...primaryUserPages.map((page) => ({
+    ...otherPrimaryUserPages.map((page) => ({
       key: `${page.pluginName}:${page.id}`,
       label: page.label,
       to: pluginUserPagePath(page.pluginName, page.id),
@@ -556,7 +582,7 @@ function MemoryRouteLoading(props: { label: string }) {
         />
         <PageContentSkeleton
           label={props.label}
-          variant={overview ? "stats" : "list"}
+          variant={overview ? "overview" : "library"}
         />
       </PageLayout>
     </>
