@@ -60,17 +60,16 @@ function names are all part of that interface.
   owning module documentation and avoid using it for nearby concepts.
 - Add an interface only when it removes real coupling or represents a stable
   edge.
-- Treat an options object of functions or services as dependency injection.
-  Renaming the object or passing it through another function does not reduce
-  coupling.
-- Separate operation input from services. Import stable repo-owned services
-  from their owner. Pass a boundary only when the caller selects its behavior,
-  such as model execution, transport, or time. An existing process-wide store
-  is not caller selection.
-- Do not use a one-field service options object. Pass the one required external
-  capability directly.
-- Do not add a factory, bound function, or capability object only to hide a
-  dependency bag. It must remove caller knowledge or enforce an owning rule.
+- An options object of functions or services is dependency injection. Renaming
+  or forwarding it does not reduce coupling.
+- Keep operation input separate from services. Import stable app services from
+  their owning module. Pass a service only when the caller must choose its
+  behavior, such as model execution, transport, or time. Do not pass a
+  configured app store through unrelated callers.
+- Do not use a one-field service options object. Pass the one required service
+  directly.
+- Do not add a factory, bound function, or wrapper object only to hide several
+  services. It must remove caller responsibility or enforce an owning rule.
 - Avoid one-hop wrappers, renamed aliases, and helper layers that only forward
   arguments, options, or dependencies. Call the owning capability directly
   unless the intermediate function enforces a rule, translates an edge, or owns

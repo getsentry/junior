@@ -37,7 +37,7 @@ import {
 } from "./conversation-work";
 import { testViewer } from "./user";
 
-/** Default verified dashboard viewer for web turn tests. */
+/** Default verified dashboard viewer for Conversation API tests. */
 const API_TURN_TEST_EMAIL = "alice@example.com";
 export const apiTurnTestActor = {
   platform: "web" as const,
@@ -55,7 +55,7 @@ export type ApiTurnWorkFixture = {
 };
 
 /**
- * Wire the standard product store + queue + state path for web turn tests.
+ * Wire the standard product store, queue, and state for Conversation API tests.
  *
  * Callers should run `closeApiTurnWorkFixture` from `afterEach`.
  */
@@ -113,7 +113,7 @@ export type ConversationWorkWebHarness = {
     idempotencyKey: string;
     message: string;
   }) => Promise<{ messageId: string }>;
-  /** Drain the durable queue through the production web/API turn router. */
+  /** Drain the durable queue through the production Conversation API route. */
   drain: () => Promise<void>;
   /** Read participant pending-messages, including authorization prompts. */
   pendingMessages: (
@@ -124,22 +124,19 @@ export type ConversationWorkWebHarness = {
 };
 
 /**
- * Compose the production web ingress → durable queue → API turn → agent path.
- * Fake only model generation at the executeAgentRun stream boundary.
+ * Compose the production Conversation API, queue, and agent path.
+ * Fake only model generation at the agent Run boundary.
  */
 export async function createConversationWorkWebHarness(
-  options: {
-    agentRunner?: AgentRunner;
-    modelStream?: StreamFn;
-  } = {},
+  streamFn: StreamFn = streamReplies("Conversation API request complete."),
 ): Promise<ConversationWorkWebHarness> {
   const conversationStore = getConversationStore();
   const queue = createConversationWorkQueueTestAdapter();
   const state = getStateAdapter();
   await state.connect();
-  let modelStream = options.modelStream ?? streamReplies("Web turn complete.");
+  let modelStream = streamFn;
   const agentRuns: AgentRun[] = [];
-  const agentRunner: AgentRunner = options.agentRunner ?? {
+  const agentRunner: AgentRunner = {
     run: async (request) => {
       agentRuns.push(request);
       return await executeAgentRun(request, modelStream);

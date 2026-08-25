@@ -26,7 +26,7 @@ import {
 import { createModelAgentRunnerForRun } from "../fixtures/agent-runner";
 import { createModelStream } from "../fixtures/model-stream";
 
-describe("api turn conversation work", () => {
+describe("Conversation API work", () => {
   afterEach(async () => {
     await closeApiTurnWorkFixture();
     vi.restoreAllMocks();
@@ -90,7 +90,7 @@ describe("api turn conversation work", () => {
     });
   });
 
-  it("enqueues public web turns with public source visibility and runs them on the worker", async () => {
+  it("runs a public Conversation API message with public source visibility", async () => {
     const { actor, conversationStore, queue, state } =
       await createApiTurnWorkFixture();
     const accepted = await createAndEnqueueApiConversation(
@@ -143,7 +143,9 @@ describe("api turn conversation work", () => {
     const route = routeApiTurnWork({
       apiTurnWorker: worker,
       fallbackWorker: async () => {
-        throw new Error("fallback worker must not run for web turns");
+        throw new Error(
+          "fallback worker must not run for Conversation API work",
+        );
       },
     });
 
@@ -261,7 +263,9 @@ describe("api turn conversation work", () => {
     const route = routeApiTurnWork({
       apiTurnWorker: worker,
       fallbackWorker: async () => {
-        throw new Error("fallback worker must not run for web turns");
+        throw new Error(
+          "fallback worker must not run for Conversation API work",
+        );
       },
     });
 
@@ -339,7 +343,7 @@ describe("api turn conversation work", () => {
     expect(cancellation.begin(accepted.conversationId)).toBeDefined();
   });
 
-  it("routes empty resume wakes to the active API turn", async () => {
+  it("routes an empty resume wake to the active Turn", async () => {
     const { actor, conversationStore, queue, state } =
       await createApiTurnWorkFixture();
     const accepted = await createAndEnqueueApiConversation(

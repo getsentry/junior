@@ -1,4 +1,4 @@
-/** API Turns run the shared agent and save replies without external delivery. */
+/** Conversation API work runs a native Turn and keeps replies in the Conversation. */
 import { createHash } from "node:crypto";
 import type { StateAdapter } from "chat";
 import {
@@ -358,7 +358,7 @@ export async function createAndEnqueueApiConversation(
   );
 }
 
-/** Append one API message and optionally require an idle Conversation. */
+/** Append one Conversation API message and optionally require an idle Conversation. */
 export function appendAndEnqueueApiConversationMessage(
   input: AppendApiConversationMessageInput,
   options: EnqueueOptions & { exclusive: true },
@@ -435,7 +435,7 @@ function hasLostTurnInputCommit(error: unknown): boolean {
   return isTurnInputCommitLostError(error) || isTurnInputCommitLostError(cause);
 }
 
-/** Build the mailbox consumer for API-authored root turns. */
+/** Create the worker for messages from the Conversation API. */
 export function createApiTurnWorker(
   agentRunner: AgentRunner,
   cancellation?: ApiTurnCancellation,
@@ -446,12 +446,12 @@ export function createApiTurnWorker(
     const resolved = await resolveApiTurnWork(context);
     if (!resolved) {
       throw new Error(
-        `API turn worker received non-API work for ${context.conversationId}`,
+        `Conversation API worker received other work for ${context.conversationId}`,
       );
     }
     if (context.publishExternally) {
       throw new Error(
-        `API turn work must not publish externally for ${context.conversationId}`,
+        `Conversation API work cannot publish to a provider for ${context.conversationId}`,
       );
     }
 
@@ -492,7 +492,7 @@ export function createApiTurnWorker(
       );
       if (!resumedActor) {
         throw new Error(
-          `API turn resume missing actor for ${context.conversationId}`,
+          `Conversation API resume missing actor for ${context.conversationId}`,
         );
       }
       actor = resumedActor;
@@ -535,7 +535,7 @@ export function createApiTurnWorker(
             await context.attempt.ack();
           } catch {
             throw new TurnInputCommitLostError(
-              `Conversation work lease lost before API turn inbox ack for ${context.conversationId}`,
+              `Conversation work lease lost before Conversation API message acknowledgement for ${context.conversationId}`,
             );
           }
           acknowledged = true;
@@ -588,7 +588,7 @@ export function createApiTurnWorker(
           const userMessage = getTurnUserMessage(conversation, turnId);
           if (!userMessage) {
             throw new Error(
-              `Unable to locate the persisted user message for API turn "${turnId}"`,
+              `Unable to locate the persisted user message for Turn "${turnId}"`,
             );
           }
           userMessageId = userMessage.id;
@@ -688,7 +688,7 @@ export function createApiTurnWorker(
           }
           if (!isResume) {
             // Match Slack: a newer user message supersedes an auth-parked turn
-            // instead of leaving two active API turns or letting a late OAuth
+            // instead of leaving two active Turns or letting a late OAuth
             // wake resume stale work.
             const authParked = (
               await listTurnSummaries(context.conversationId)
@@ -792,9 +792,7 @@ export function createApiTurnWorker(
             },
             async (result) => {
               if (cancellationSignal?.aborted) {
-                throw (
-                  cancellationSignal.reason ?? new Error("API Turn cancelled")
-                );
+                throw cancellationSignal.reason ?? new Error("Turn cancelled");
               }
 
               finishCancellation();
@@ -978,7 +976,7 @@ export function createApiTurnWorker(
   };
 }
 
-/** Route API turn work before falling through to other consumers. */
+/** Route Conversation API work before other work. */
 export function routeApiTurnWork(options: {
   apiTurnWorker: (
     context: ConversationWorkerContext,

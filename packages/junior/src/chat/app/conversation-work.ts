@@ -42,7 +42,7 @@ interface ConversationWorkOptions {
 
 export type ConversationWorkCallbackOptions =
   VercelConversationWorkCallbackOptions & {
-    /** App-scoped control for API Turn cancellation across request handlers. */
+    /** App-scoped Turn cancellation for Conversation API request handlers. */
     apiTurnCancellation?: ApiTurnCancellation;
   };
 
