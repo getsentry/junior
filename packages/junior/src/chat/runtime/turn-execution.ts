@@ -6,7 +6,10 @@ import type {
 import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
 import { getConversationEventStore } from "@/chat/db";
 import type { AgentRunOutcome } from "@/chat/runtime/agent-run-outcome";
-import type { AgentRunner } from "@/chat/runtime/agent-runner";
+import {
+  runAgentWithTimeout,
+  type AgentRunner,
+} from "@/chat/runtime/agent-runner";
 import type { AgentRunResult } from "@/chat/services/turn-result";
 
 type SavedTurnResult =
@@ -40,15 +43,17 @@ export class AgentRunError extends Error {
  *
  * A paused Run, or a Run waiting for authorization, leaves the Turn open. A
  * save error also leaves the Turn open so the worker can retry or recover it.
+ * A timeout aborts the Run before this function reports the failure.
  */
 export async function executeTurn(
   agentRunner: AgentRunner,
   run: AgentRun,
   saveResult: (result: AgentRunResult) => Promise<SavedTurnResult>,
+  timeoutMs?: number,
 ): Promise<TurnExecutionOutcome> {
   let outcome: AgentRunOutcome;
   try {
-    outcome = await agentRunner.run(run);
+    outcome = await runAgentWithTimeout(agentRunner, run, timeoutMs);
   } catch (error) {
     throw new AgentRunError(error);
   }

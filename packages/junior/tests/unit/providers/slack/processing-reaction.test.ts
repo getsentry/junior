@@ -21,7 +21,7 @@ vi.mock("@/chat/config", () => ({
   }),
 }));
 
-import { startSlackProcessingReactionForMessage } from "@/chat/runtime/processing-reaction";
+import { startProcessingReactionForMessage } from "@/chat/providers/slack/processing-reaction";
 import { parseSlackMessageTs } from "@/chat/slack/timestamp";
 
 function slackTs(value: string) {
@@ -32,7 +32,7 @@ function slackTs(value: string) {
   return ts;
 }
 
-describe("processing reaction session", () => {
+describe("Slack processing reaction", () => {
   beforeEach(() => {
     addReactionToMessage.mockReset();
     removeReactionFromMessage.mockReset();
@@ -41,13 +41,13 @@ describe("processing reaction session", () => {
   });
 
   it("removes the processing reaction and adds done on complete", async () => {
-    const session = await startSlackProcessingReactionForMessage({
+    const reaction = await startProcessingReactionForMessage({
       channelId: "C0PROCESSING",
       timestamp: slackTs("1700007301.000000"),
       logException: () => undefined,
     });
 
-    await session.complete();
+    await reaction.complete();
 
     expect(addReactionToMessage).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -74,13 +74,13 @@ describe("processing reaction session", () => {
       new Error("no_reaction found"),
     );
 
-    const session = await startSlackProcessingReactionForMessage({
+    const reaction = await startProcessingReactionForMessage({
       channelId: "C0PROCESSING",
       timestamp: slackTs("1700007302.000000"),
       logException: () => undefined,
     });
 
-    await session.complete();
+    await reaction.complete();
 
     expect(removeReactionFromMessage).toHaveBeenCalledTimes(1);
     expect(addReactionToMessage).toHaveBeenCalledWith(
@@ -91,14 +91,14 @@ describe("processing reaction session", () => {
   });
 
   it("keeps the processing reaction when keep() is called", async () => {
-    const session = await startSlackProcessingReactionForMessage({
+    const reaction = await startProcessingReactionForMessage({
       channelId: "C0PROCESSING",
       timestamp: slackTs("1700007303.000000"),
       logException: () => undefined,
     });
 
-    session.keep();
-    await session.complete();
+    reaction.keep();
+    await reaction.complete();
 
     expect(removeReactionFromMessage).not.toHaveBeenCalled();
     expect(addReactionToMessage).toHaveBeenCalledTimes(1);

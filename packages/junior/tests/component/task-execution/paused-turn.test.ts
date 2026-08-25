@@ -131,17 +131,17 @@ describe("paused turn runner callbacks", () => {
             if (!prepared) {
               throw new Error("Expected the continuation to prepare");
             }
-            if (!prepared.replyContext) {
-              throw new Error("Expected prepared paused-turn reply context");
+            if (!prepared.run) {
+              throw new Error("Expected the prepared Run");
             }
             // Redis no longer stores execution actor; bare author + team rebuild.
-            expect(prepared.replyContext.actor).toEqual({
+            expect(prepared.run.actor).toEqual({
               platform: "slack",
               teamId: "T123",
               userId: "U123",
             });
             // Slack resume defaults to publish when the checkpoint omits the flag.
-            expect(prepared.replyContext.publishExternally).toBe(true);
+            expect(prepared.run.publishExternally).toBe(true);
             const runArgs = { ...args, ...prepared };
             await runArgs.onPostDeliveryCommitFailure?.(
               new Error("completion state did not persist"),
@@ -223,10 +223,10 @@ describe("paused turn runner callbacks", () => {
           agentRunner: agentRunnerShouldNotRun,
           resumeTurn: async (args) => {
             const prepared = await args.beforeStart?.();
-            if (!prepared || !prepared.replyContext) {
-              throw new Error("Expected prepared paused-turn reply context");
+            if (!prepared || !prepared.run) {
+              throw new Error("Expected the prepared Run");
             }
-            seenPublishExternally = prepared.replyContext.publishExternally;
+            seenPublishExternally = prepared.run.publishExternally;
             return true;
           },
         },
@@ -486,10 +486,10 @@ describe("paused turn runner callbacks", () => {
             if (!prepared) {
               throw new Error("Expected the continuation to prepare");
             }
-            if (!prepared.replyContext) {
-              throw new Error("Expected prepared paused-turn reply context");
+            if (!prepared.run) {
+              throw new Error("Expected the prepared Run");
             }
-            expect(prepared.replyContext.source).toEqual(sessionSource);
+            expect(prepared.run.source).toEqual(sessionSource);
             return true;
           },
         },

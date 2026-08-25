@@ -32,9 +32,9 @@ import {
 } from "@/chat/slack/message/content";
 import {
   shouldKeepProcessingReactionForToolInvocation,
-  startSlackProcessingReaction,
-  type ProcessingReactionSession,
-} from "@/chat/runtime/processing-reaction";
+  startProcessingReaction,
+  type ProcessingReaction,
+} from "@/chat/providers/slack/processing-reaction";
 import { getMessageTs } from "@/chat/runtime/thread-context";
 import { stripLeadingSteeringOverride } from "@/chat/slack/message-control";
 import {
@@ -418,7 +418,7 @@ export function createSlackTurnRuntime<
   };
 
   const createToolInvocationHook = (
-    processingReaction: ProcessingReactionSession,
+    processingReaction: ProcessingReaction,
     hooks: ReplyHooks,
   ) => {
     return (invocation: TurnToolInvocation): void => {
@@ -430,13 +430,13 @@ export function createSlackTurnRuntime<
   };
 
   const stopProcessingReactions = async (
-    processingReactions: ProcessingReactionSession[],
+    processingReactions: ProcessingReaction[],
   ): Promise<void> => {
     await Promise.all(processingReactions.map((reaction) => reaction.stop()));
   };
 
   const completeProcessingReactions = async (
-    processingReactions: ProcessingReactionSession[],
+    processingReactions: ProcessingReaction[],
   ): Promise<void> => {
     await Promise.all(
       processingReactions.map((reaction) => reaction.complete()),
@@ -444,17 +444,14 @@ export function createSlackTurnRuntime<
   };
 
   const createProcessingReactionTracker = (thread: Thread) => {
-    const processingReactions: ProcessingReactionSession[] = [];
-    const processingReactionByMessage = new Map<
-      string,
-      ProcessingReactionSession
-    >();
+    const processingReactions: ProcessingReaction[] = [];
+    const processingReactionByMessage = new Map<string, ProcessingReaction>();
 
     return {
       start: async (
         context: RuntimeLogContext,
         targetMessage: Message,
-      ): Promise<ProcessingReactionSession> => {
+      ): Promise<ProcessingReaction> => {
         const channelId = deps.getChannelId(thread, targetMessage);
         const messageTs = getMessageTs(targetMessage);
         const reactionKey =
@@ -466,7 +463,7 @@ export function createSlackTurnRuntime<
           }
         }
 
-        const started = await startSlackProcessingReaction({
+        const started = await startProcessingReaction({
           thread,
           message: targetMessage,
           logException: deps.logException,
@@ -698,7 +695,7 @@ export function createSlackTurnRuntime<
       hooks: SlackTurnOptions,
     ): Promise<void> {
       const processingReactions = createProcessingReactionTracker(thread);
-      let processingReaction: ProcessingReactionSession | undefined;
+      let processingReaction: ProcessingReaction | undefined;
       const skippedSteeringMessages: SteeringMessageDecision[] = [];
       let completed = false;
       let acked = false;
@@ -885,7 +882,7 @@ export function createSlackTurnRuntime<
       hooks: SlackTurnOptions,
     ): Promise<void> {
       const processingReactions = createProcessingReactionTracker(thread);
-      let processingReaction: ProcessingReactionSession | undefined;
+      let processingReaction: ProcessingReaction | undefined;
       const skippedSteeringMessages: SteeringMessageDecision[] = [];
       let completed = false;
       let acked = false;

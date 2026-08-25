@@ -12,7 +12,7 @@ import {
   logWarn,
   withLogContext,
 } from "@/chat/logging";
-import { resumeSlackTurn } from "@/chat/runtime/slack-resume";
+import { resumeSlackTurn } from "@/chat/providers/slack/resume";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { hydrateConversationMessages } from "@/chat/conversations/messages";
 import { loadProjection } from "@/chat/conversations/projection";
@@ -515,9 +515,11 @@ async function runPausedTurnInContext(
           messageTs: getTurnUserSlackMessageTs(userMessage),
           inputMessageIds: [userMessage.id],
           initialStatus: latestReportedProgress(turnMessages),
-          replyContext: {
+          run: {
             instruction: {
-              ...(conversationContext ? { context: conversationContext } : undefined),
+              ...(conversationContext
+                ? { context: conversationContext }
+                : undefined),
               // Attachment fields come from the turn user message context helper.
               ...getTurnUserReplyAttachmentContext(userMessage),
               text: userMessage.text,
