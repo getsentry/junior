@@ -12,14 +12,12 @@ import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import type { WebActor } from "@/chat/actor";
 import type { ConversationStore } from "@/chat/conversations/store";
-import {
-  commitAcceptedReply,
-  loadProjection,
-} from "@/chat/conversations/projection";
+import { loadProjection } from "@/chat/conversations/projection";
 import {
   hydrateConversationMessages,
   persistConversationMessages,
 } from "@/chat/conversations/messages";
+import { commitWebAcceptedReply } from "@/chat/api-turns/accepted-reply";
 import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
 import type { ConversationTurnFailureCode } from "@/chat/conversations/history";
 import { credentialContextForActor } from "@/chat/credentials/context";
@@ -48,11 +46,9 @@ import {
   buildConversationContext,
   markConversationMessage,
   normalizeConversationText,
-  recordDeliveredAssistantMessage,
   upsertConversationMessage,
 } from "@/chat/services/conversation-memory";
 import { finalizeFailedTurnReplyWithEvent } from "@/chat/services/turn-failure-response";
-import { persistWithRetry } from "@/chat/services/persist-retry";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { buildDeterministicTurnId } from "@/chat/state/turn-id";
 import {
@@ -657,39 +653,14 @@ export function createApiTurnWorker(
           }
           failureCode = "delivery_failed";
           assistantMessageDelivered = true;
-          // Match Slack/local: write agent history before the visible reply so
-          // the transcript keeps tools and final reasoning above the answer.
-          const recordedMessageId = recordDeliveredAssistantMessage({
+          await commitWebAcceptedReply({
+            ...(agentMessage ? { agentMessage } : undefined),
             conversation,
+            conversationId: context.conversationId,
             sessionId: turnId,
-            source: "web",
             text: replyText,
             userMessageId,
           });
-          try {
-            await persistWithRetry(() =>
-              agentMessage
-                ? commitAcceptedReply({
-                    agentMessage,
-                    conversation,
-                    conversationMessageId: recordedMessageId,
-                    conversationId: context.conversationId,
-                  })
-                : persistConversationMessages({
-                    conversation,
-                    conversationId: context.conversationId,
-                  }),
-            );
-          } catch (error) {
-            logException(
-              new Error("Accepted assistant message persistence failed"),
-              "api.assistant.message_post_delivery_persist.failed",
-              {
-                "error.type":
-                  error instanceof Error ? error.name : typeof error,
-              },
-            );
-          }
           failureCode = "agent_run_failed";
         };
 
