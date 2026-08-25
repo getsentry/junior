@@ -1,4 +1,27 @@
 # Changelog
+## 0.183.0
+
+### New Features ✨
+
+- (code) Add repository and code change analytics by @dcramer in [#1673](https://github.com/getsentry/junior/pull/1673)
+
+### Bug Fixes 🐛
+
+#### Dashboard
+
+- Shorten input token cache chart description by @sentry-junior in [#1675](https://github.com/getsentry/junior/pull/1675)
+- Keep task source tooltips short and wider by @sentry-junior in [#1680](https://github.com/getsentry/junior/pull/1680)
+
+#### Other
+
+- (github) Load check-suite PR match fields on demand by @sentry-junior in [#1683](https://github.com/getsentry/junior/pull/1683)
+
+### Internal Changes 🔧
+
+- (chat) Add native Turn execution by @dcramer in [#1679](https://github.com/getsentry/junior/pull/1679)
+- (dashboard) Split large app and route tests by @sentry-junior in [#1681](https://github.com/getsentry/junior/pull/1681)
+- (slack) Move Turn orchestration to provider layer by @dcramer in [#1567](https://github.com/getsentry/junior/pull/1567)
+
 ## 0.182.0
 
 ### New Features ✨
