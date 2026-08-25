@@ -1,0 +1,45 @@
+{
+  "commitSha": "e4d59703cbc759dc882e686c4ddd825c6a357cb7",
+  "mode": "path",
+  "reasons": [
+    "packages/junior-dashboard/src/client/App.tsx",
+    "packages/junior-dashboard/src/client/components/PageContentSkeleton.tsx",
+    "packages/junior-dashboard/src/client/components/README.md",
+    "packages/junior-dashboard/src/client/pages/memory/MemoryPage.tsx",
+    "packages/junior-dashboard/src/client/pages/memory/MemoryPageLayout.tsx",
+    "packages/junior-dashboard/src/client/pages/tasks/TaskExecutionsPage.tsx",
+    "packages/junior-dashboard/src/client/pages/tasks/TaskRunsPage.tsx",
+    "packages/junior-dashboard/src/client/pages/tasks/TasksPage.tsx",
+    "packages/junior-dashboard/src/client/pages/tasks/TasksPageLayout.tsx",
+    "packages/junior-dashboard/src/client/primaryNav.ts"
+  ],
+  "scenarioIds": [
+    "gallery-foundations",
+    "gallery-index",
+    "conversations",
+    "conversation-detail-focused"
+  ],
+  "shots": [
+    {
+      "file": "gallery-foundations__desktop.png",
+      "label": "Gallery · Foundations · desktop"
+    },
+    {
+      "file": "gallery-index__desktop.png",
+      "label": "Component gallery index · desktop"
+    },
+    {
+      "file": "conversations__desktop.png",
+      "label": "Conversations · desktop"
+    },
+    {
+      "file": "conversations__mobile.png",
+      "label": "Conversations · mobile"
+    },
+    {
+      "file": "conversation-detail-focused__mobile.png",
+      "label": "Conversation detail · focused composer · mobile"
+    }
+  ],
+  "skipped": false
+}
