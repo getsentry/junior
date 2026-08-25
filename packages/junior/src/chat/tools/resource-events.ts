@@ -12,15 +12,27 @@ export function createResourceEventTools(
   catalog: ResourceEventCatalog,
 ): ToolRegistry {
   const enabled = Object.keys(catalog).length > 0;
+  const conversationId = context.conversationId?.trim();
   return {
     ...(enabled
       ? {
           searchResourceEventTypes: createSearchResourceEventTypesTool(catalog),
-          watchResourceEvents: createWatchResourceEventsTool(context, catalog),
         }
       : undefined),
-    listResourceEventSubscriptions:
-      createListResourceEventSubscriptionsTool(context),
-    stopWatchingResources: createStopWatchingResourcesTool(context),
+    ...(conversationId
+      ? {
+          ...(enabled
+            ? {
+                watchResourceEvents: createWatchResourceEventsTool(
+                  context,
+                  catalog,
+                ),
+              }
+            : undefined),
+          listResourceEventSubscriptions:
+            createListResourceEventSubscriptionsTool(context),
+          stopWatchingResources: createStopWatchingResourcesTool(context),
+        }
+      : undefined),
   };
 }

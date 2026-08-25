@@ -319,6 +319,7 @@ describe("Slack tool registration", () => {
       [],
       {},
       {
+        conversationId: "local:test:run-test",
         destination: {
           platform: "local",
           conversationId: "local:test:run-test",
@@ -333,7 +334,27 @@ describe("Slack tool registration", () => {
       Object.keys(tools).filter((name) => name.startsWith("slack")),
     ).toEqual([]);
     expect(tools).not.toHaveProperty("attachFile");
+    expect(tools).toHaveProperty("stopWatchingResources");
+    expect(tools).toHaveProperty("searchConversationEvents");
+  });
+
+  it("does not register conversation-bound tools without a conversation id", () => {
+    const tools = createTools(
+      [],
+      {},
+      {
+        destination: {
+          platform: "local",
+          conversationId: "local:test:run-test",
+        },
+        egress: noopEgress,
+        source: createLocalSource("local:test:run-test"),
+        workspace: noopSandbox,
+      },
+    );
+
     expect(tools).not.toHaveProperty("stopWatchingResources");
+    expect(tools).not.toHaveProperty("listResourceEventSubscriptions");
     expect(tools).not.toHaveProperty("searchConversationEvents");
   });
 
