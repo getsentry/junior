@@ -1,0 +1,42 @@
+{
+  "commitSha": "a7910348beb0ebf4f5df1fcaf61cc8cdbf21e1f1",
+  "mode": "path",
+  "reasons": [
+    "packages/junior-dashboard/src/client/components/Tooltip.tsx",
+    "packages/junior-dashboard/src/client/conversations/ConversationMeta.tsx",
+    "packages/junior-dashboard/tests/telemetry-components.test.tsx"
+  ],
+  "scenarioIds": [
+    "gallery-foundations",
+    "gallery-index",
+    "conversations",
+    "conversation-detail"
+  ],
+  "shots": [
+    {
+      "file": "gallery-foundations__desktop.png",
+      "label": "Gallery · Foundations · desktop"
+    },
+    {
+      "file": "gallery-index__desktop.png",
+      "label": "Component gallery index · desktop"
+    },
+    {
+      "file": "conversations__desktop.png",
+      "label": "Conversations · desktop"
+    },
+    {
+      "file": "conversations__mobile.png",
+      "label": "Conversations · mobile"
+    },
+    {
+      "file": "conversation-detail__desktop.png",
+      "label": "Conversation detail · desktop"
+    },
+    {
+      "file": "conversation-detail__mobile.png",
+      "label": "Conversation detail · mobile"
+    }
+  ],
+  "skipped": false
+}
