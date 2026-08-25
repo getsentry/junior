@@ -1,17 +1,32 @@
+import { useState } from "react";
 import type { CodeOverviewReport } from "@sentry/junior/api/schema";
-import { CircleDot, GitMerge, GitPullRequest, LibraryBig } from "lucide-react";
+import {
+  CircleDot,
+  GitMerge,
+  GitPullRequest,
+  LibraryBig,
+  Timer,
+  XCircle,
+} from "lucide-react";
 import { useCodeOverviewData } from "../../api";
+import { formatDuration } from "../../components/Duration";
 import { EmptyTelemetry } from "../../components/EmptyTelemetry";
 import { LoadingView } from "../../components/LoadingView";
 import { StatusChip } from "../../components/StatusChip";
+import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
 import { PageLayout } from "../../components/layout/PageLayout";
 import { StatCard } from "../../components/metrics/StatCard";
 import { formatCompactNumber } from "../../format";
+import { CodeActivityChart } from "./CodeActivityChart";
 
 function mergeRate(value: number | undefined): string {
   return value === undefined ? "—" : `${Math.round(value * 100)}%`;
+}
+
+function medianMergeTime(value: number | undefined): string {
+  return formatDuration(value) || "—";
 }
 
 function stateTone(state: "closed" | "merged" | "open") {
@@ -22,6 +37,7 @@ function stateTone(state: "closed" | "merged" | "open") {
 
 /** Render code analytics and recent code changes. */
 export function CodePage() {
+  const [range, setRange] = useState<TimeRangeDays>(30);
   const query = useCodeOverviewData();
   if (!query.data && !query.error) {
     return (
@@ -34,6 +50,8 @@ export function CodePage() {
     <PageLayout>
       <PageHeader
         description="Repositories and code changes created by Junior."
+        onRangeChange={setRange}
+        range={range}
         title="Code"
       />
       {query.error ? (
@@ -41,16 +59,19 @@ export function CodePage() {
           Code activity is unavailable. Try refreshing the dashboard.
         </EmptyTelemetry>
       ) : null}
-      {query.data ? <CodeOverview data={query.data} /> : null}
+      {query.data ? <CodeOverview data={query.data} range={range} /> : null}
     </PageLayout>
   );
 }
 
-function CodeOverview(props: { data: CodeOverviewReport }) {
+function CodeOverview(props: {
+  data: CodeOverviewReport;
+  range: TimeRangeDays;
+}) {
   const data = props.data;
   return (
     <>
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
         <StatCard
           detail="Across all repositories"
           icon={CircleDot}
@@ -70,12 +91,25 @@ function CodeOverview(props: { data: CodeOverviewReport }) {
           value={formatCompactNumber(data.summary.merged)}
         />
         <StatCard
+          detail="Closed without merge in the last 30 days"
+          icon={XCircle}
+          label="Closed"
+          value={formatCompactNumber(data.summary.closed)}
+        />
+        <StatCard
           detail="Share of completed changes that merged"
           icon={LibraryBig}
           label="Merge rate"
           value={mergeRate(data.summary.mergeRate)}
         />
+        <StatCard
+          detail="Median time from open to merge in the last 30 days"
+          icon={Timer}
+          label="Median merge time"
+          value={medianMergeTime(data.summary.medianMergeTimeMs)}
+        />
       </div>
+      <CodeActivityChart days={data.activityDays} range={props.range} />
       <Card as="section">
         <div className="border-b border-dashboard-border-subtle px-4 py-3 font-display text-lg text-dashboard-text">
           Repositories
@@ -97,6 +131,10 @@ function CodeOverview(props: { data: CodeOverviewReport }) {
                     Created
                   </th>
                   <th className="px-4 py-2.5 text-right font-medium">Merged</th>
+                  <th className="px-4 py-2.5 text-right font-medium">Closed</th>
+                  <th className="px-4 py-2.5 text-right font-medium">
+                    Merge rate
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -132,6 +170,12 @@ function CodeOverview(props: { data: CodeOverviewReport }) {
                     </td>
                     <td className="px-4 py-3 text-right font-mono text-sm text-dashboard-text">
                       {repository.merged}
+                    </td>
+                    <td className="px-4 py-3 text-right font-mono text-sm text-dashboard-text">
+                      {repository.closed}
+                    </td>
+                    <td className="px-4 py-3 text-right font-mono text-sm text-dashboard-text">
+                      {mergeRate(repository.mergeRate)}
                     </td>
                   </tr>
                 ))}

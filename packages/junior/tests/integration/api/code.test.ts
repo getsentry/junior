@@ -58,14 +58,29 @@ describe("code API", () => {
       expect(report.summary).toEqual({
         closed: 0,
         created: 1,
+        medianMergeTimeMs: 2 * 24 * 60 * 60 * 1_000,
         merged: 1,
         mergeRate: 1,
         open: 0,
+      });
+      expect(report.activityDays).toHaveLength(90);
+      expect(report.activityDays.at(-3)).toEqual({
+        closed: 0,
+        created: 0,
+        date: "2026-08-22",
+        merged: 1,
+      });
+      expect(report.activityDays.at(-5)).toEqual({
+        closed: 0,
+        created: 1,
+        date: "2026-08-20",
+        merged: 0,
       });
       expect(report.repositories).toEqual([
         expect.objectContaining({
           created: 1,
           merged: 1,
+          mergeRate: 1,
           name: "getsentry/junior",
           provider: "github",
         }),

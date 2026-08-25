@@ -32,7 +32,17 @@ import type {
 export function readMockCodeOverview(nowMs = Date.now()): CodeOverviewReport {
   const windowEnd = new Date(nowMs).toISOString();
   const windowStart = new Date(nowMs - 30 * 86_400_000).toISOString();
+  const activityDays = Array.from({ length: 90 }, (_, index) => {
+    const date = new Date(nowMs - (89 - index) * 86_400_000)
+      .toISOString()
+      .slice(0, 10);
+    const created = index === 84 || index === 88 ? 1 : index === 83 ? 2 : 0;
+    const merged = index === 86 ? 1 : 0;
+    const closed = index === 85 ? 1 : 0;
+    return { closed, created, date, merged };
+  });
   return {
+    activityDays,
     changes: [
       {
         id: "00000000-0000-4000-8000-000000000001",
@@ -63,6 +73,7 @@ export function readMockCodeOverview(nowMs = Date.now()): CodeOverviewReport {
         created: 5,
         id: "00000000-0000-4000-8000-000000000003",
         merged: 4,
+        mergeRate: 4 / 5,
         name: "getsentry/junior",
         open: 1,
         provider: "github",
@@ -73,6 +84,7 @@ export function readMockCodeOverview(nowMs = Date.now()): CodeOverviewReport {
         created: 3,
         id: "00000000-0000-4000-8000-000000000004",
         merged: 2,
+        mergeRate: 1,
         name: "getsentry/payments",
         open: 1,
         provider: "github",
@@ -82,6 +94,7 @@ export function readMockCodeOverview(nowMs = Date.now()): CodeOverviewReport {
     summary: {
       closed: 1,
       created: 8,
+      medianMergeTimeMs: 2 * 86_400_000,
       merged: 6,
       mergeRate: 6 / 7,
       open: 2,

@@ -2286,11 +2286,6 @@ describe("GitHub-owned pull request outcomes", () => {
       });
       expect(report.title).toBe("GitHub activity");
       expect(report.metrics).toEqual([
-        { label: "PR closure merge rate · 30d", value: "50%" },
-        {
-          label: "Median PR merge time · merged in 30d",
-          value: "90d",
-        },
         {
           label: "Median issue close time · closed in 30d",
           value: "71d",
@@ -2301,7 +2296,7 @@ describe("GitHub-owned pull request outcomes", () => {
         { label: "Median issue cost · opened in 30d", value: "—" },
       ]);
       expect(report.widgets?.[0]?.timeRangeDays).toEqual([7, 30, 90]);
-      expect(report.widgets?.[0]?.title).toBe("Pull requests created");
+      expect(report.widgets?.[0]?.title).toBe("Issues created");
       expect(report.widgets?.[0]?.series).toEqual([
         { key: "created", label: "Created" },
       ]);
@@ -2311,41 +2306,21 @@ describe("GitHub-owned pull request outcomes", () => {
         label: "2026-07-29",
         values: { created: 1 },
       });
-      expect(report.widgets?.[0]?.categories.at(-2)).toEqual({
-        id: "2026-07-30",
-        label: "2026-07-30",
-        values: { created: 0 },
-      });
-      expect(report.recordSets?.[0]?.records?.[0]?.values).toEqual({
-        closed: "1",
-        created: "2",
-        juniorOnly: "1",
-        medianCost: "—",
-        merged: "1",
-        mergeRate: "50%",
-        repository: "getsentry/junior",
-      });
-      expect(report.recordSets?.[0]?.fields?.slice(0, 3)).toEqual([
-        { key: "repository", label: "Repository" },
-        { key: "created", label: "Created" },
-        { key: "juniorOnly", label: "Junior-only merges" },
-      ]);
-      expect(report.widgets?.[1]?.timeRangeDays).toEqual([7, 30, 90]);
-      expect(report.widgets?.[1]?.title).toBe("Issues created");
-      expect(report.widgets?.[1]?.series).toEqual([
-        { key: "created", label: "Created" },
-      ]);
-      expect(report.widgets?.[1]?.categories).toHaveLength(90);
-      expect(report.widgets?.[1]?.categories.at(-3)).toEqual({
-        id: "2026-07-29",
-        label: "2026-07-29",
-        values: { created: 1 },
-      });
-      expect(report.widgets?.[1]?.categories.at(-12)).toEqual({
+      expect(report.widgets?.[0]?.categories.at(-12)).toEqual({
         id: "2026-07-20",
         label: "2026-07-20",
         values: { created: 0 },
       });
+      expect(report.recordSets?.[0]?.records?.[0]?.values).toEqual({
+        juniorOnly: "1",
+        medianCost: "—",
+        repository: "getsentry/junior",
+      });
+      expect(report.recordSets?.[0]?.fields).toEqual([
+        { key: "repository", label: "Repository" },
+        { key: "juniorOnly", label: "Junior-only merges" },
+        { key: "medianCost", label: "Median cost" },
+      ]);
       expect(report.recordSets?.[1]?.records?.[0]?.values).toEqual({
         completed: "0",
         created: "2",
@@ -2432,11 +2407,6 @@ describe("GitHub-owned pull request outcomes", () => {
       });
 
       expect(report.metrics).toEqual([
-        { label: "PR closure merge rate · 30d", value: "—" },
-        {
-          label: "Median PR merge time · merged in 30d",
-          value: "—",
-        },
         {
           label: "Median issue close time · closed in 30d",
           value: "—",

@@ -1,12 +1,14 @@
 export { dailyConversationActivitySchema } from "./activity";
 export type { DailyConversationActivity } from "./activity";
 export {
+  codeActivityDaySchema,
   codeChangeSummaryReportSchema,
   codeChangeSummarySchema,
   codeOverviewReportSchema,
   codeRepositorySummarySchema,
 } from "./schema/code";
 export type {
+  CodeActivityDay,
   CodeChangeSummaryReport,
   CodeOverviewReport,
   CodeRepositorySummary,
