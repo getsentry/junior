@@ -843,7 +843,14 @@ function requirePublishedResourceEvent(
 
 /** Collect route handlers exposed by plugins for app-level mounting. */
 export function getPluginRoutes(options: {
-  resourceEvents: { publish(event: ResourceEvent): Promise<void> };
+  resourceEvents: {
+    neededMatchKeys?(input: {
+      eventTypes: string[];
+      identifiers: string[];
+      namespace: string;
+    }): Promise<string[]>;
+    publish(event: ResourceEvent): Promise<void>;
+  };
 }): PluginRouteRegistration[] {
   const routes: PluginRouteRegistration[] = [];
   const seen = new Set<string>();
@@ -867,6 +874,29 @@ export function getPluginRoutes(options: {
       },
       codeChanges: createCodeChangePublisher(pluginName),
       resourceEvents: {
+        async neededMatchKeys(input) {
+          if (!options.resourceEvents.neededMatchKeys) return [];
+          const identifiers = [
+            ...new Set(
+              input.identifiers
+                .map((identifier) =>
+                  normalizeResourceEventIdentifier(
+                    plugin.resourceEvents,
+                    identifier,
+                  ),
+                )
+                .filter(Boolean),
+            ),
+          ];
+          if (identifiers.length === 0 || input.eventTypes.length === 0) {
+            return [];
+          }
+          return await options.resourceEvents.neededMatchKeys({
+            eventTypes: input.eventTypes,
+            identifiers,
+            namespace: pluginName,
+          });
+        },
         async publish(event) {
           const parsed = resourceEventInputSchema.parse(event);
           requirePublishedResourceEvent(plugin, parsed.eventType);

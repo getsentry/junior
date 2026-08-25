@@ -94,7 +94,9 @@ import { createVercelAttachmentStorage } from "@/chat/attachments/vercel";
 import { publicArtifactGET } from "@/handlers/artifacts";
 import type { WaitUntilFn } from "@/handlers/types";
 import { ingestResourceEvent } from "@/chat/resource-events/ingest";
+import { collectResourceEventMatchKeys } from "@/chat/resource-events/store";
 import { createResourceEventTeamIdResolver } from "@/chat/resource-events/workspace";
+import { collectEventTaskMatchKeys } from "@/chat/event-tasks/store";
 import { ingestEventTasks } from "@/chat/event-tasks/ingest";
 import { receiveLocalOAuthCredential } from "@/chat/local/credential-sync";
 import { getStateAdapter } from "@/chat/state/adapter";
@@ -715,7 +717,35 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   let pluginRoutes: PluginRouteRegistration[] = [];
   let pluginApiRoutes: PluginApiRouteRegistration[] = [];
   const resolveResourceEventTeamId = createResourceEventTeamIdResolver();
-  const resourceEvents: { publish(event: ResourceEvent): Promise<void> } = {
+  const resourceEvents: {
+    neededMatchKeys(input: {
+      eventTypes: string[];
+      identifiers: string[];
+      namespace: string;
+    }): Promise<string[]>;
+    publish(event: ResourceEvent): Promise<void>;
+  } = {
+    async neededMatchKeys(input) {
+      const teamId = await resolveResourceEventTeamId();
+      if (!teamId) return [];
+      const conversationWork = getConversationWorkOptions();
+      const [watchKeys, taskKeys] = await Promise.all([
+        collectResourceEventMatchKeys({
+          eventTypes: input.eventTypes,
+          identifiers: input.identifiers,
+          namespace: input.namespace,
+          state: conversationWork.state,
+          teamId,
+        }),
+        collectEventTaskMatchKeys(getDb(), {
+          eventTypes: input.eventTypes,
+          identifiers: input.identifiers,
+          namespace: input.namespace,
+          teamId,
+        }),
+      ]);
+      return [...new Set([...watchKeys, ...taskKeys])].sort();
+    },
     async publish(event) {
       const teamId = await resolveResourceEventTeamId();
       if (!teamId) {

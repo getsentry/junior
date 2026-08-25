@@ -406,14 +406,14 @@ One pull request: `owner/repo#number`.
 <details class="resource-event">
 <summary><code>pull_request.checks.failed</code></summary>
 
-A check suite finished with failure or timeout. Trusted data includes the PR, full head SHA, suite id/url, and failed check-run ids/urls when Junior can load them. Failed check names are untrusted provider content.
+A check suite finished with failure or timeout. Trusted data includes the PR, full head SHA, suite id/url, and failed check-run ids/urls when Junior can load them. Failed check names are untrusted provider content. When a watch or event task uses `isDraft`, `authorUsername`, or `authorEmail`, Junior loads those pull request fields for same-repo pull requests only.
 
 </details>
 
 <details class="resource-event">
 <summary><code>pull_request.checks.recovered</code></summary>
 
-A check suite finished successfully after a failure. Trusted data includes the PR, full head SHA, and suite id/url. This is for one suite only. It does not mean the whole PR is green.
+A check suite finished successfully after a failure. Trusted data includes the PR, full head SHA, and suite id/url. This is for one suite only. It does not mean the whole PR is green. When a watch or event task uses `isDraft`, `authorUsername`, or `authorEmail`, Junior loads those pull request fields for same-repo pull requests only.
 
 </details>
 

@@ -475,6 +475,54 @@ export async function cancelSubscriptions(input: {
   }
 }
 
+/**
+ * Collect match keys from active watches for these identifiers and event types.
+ * Does not evaluate match values — only reports keys that filters use.
+ */
+export async function collectResourceEventMatchKeys(input: {
+  eventTypes: string[];
+  identifiers: string[];
+  namespace: string;
+  nowMs?: number;
+  state?: StateAdapter;
+  teamId: string;
+}): Promise<string[]> {
+  const state = input.state ?? getStateAdapter();
+  await state.connect();
+  const nowMs = input.nowMs ?? Date.now();
+  const eventTypes = new Set(
+    input.eventTypes.map((eventType) => eventType.trim()).filter(Boolean),
+  );
+  if (eventTypes.size === 0) return [];
+  const keys = new Set<string>();
+  const identifiers = new Set(
+    input.identifiers.map((value) => value.trim()).filter(Boolean),
+  );
+  for (const identifier of identifiers) {
+    const ids = await readSubscriptionIdIndex(
+      state,
+      resourceIndexKey(input.teamId, input.namespace, identifier),
+    );
+    const records = await Promise.all(
+      ids.map(async (id) =>
+        parseSubscription(await state.get(subscriptionKey(id))),
+      ),
+    );
+    for (const record of records) {
+      if (!record) continue;
+      if (record.namespace !== input.namespace) continue;
+      if (record.identifier !== identifier) continue;
+      if (subscriptionTeamId(record.destination) !== input.teamId) continue;
+      if (!activeAt(record, nowMs)) continue;
+      if (!record.events.some((eventType) => eventTypes.has(eventType))) continue;
+      for (const key of Object.keys(record.match ?? {})) {
+        keys.add(key);
+      }
+    }
+  }
+  return [...keys].sort();
+}
+
 /** Find active subscriptions interested in a normalized resource event. */
 export async function findMatchingResourceEventSubscriptions(input: {
   data?: ResourceEventData;

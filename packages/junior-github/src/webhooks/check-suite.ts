@@ -11,6 +11,13 @@ import {
 import { gitHubPullRequestResource } from "../resource-events/pull-request.js";
 import { gitHubRepositoryResource } from "../resource-events/repository.js";
 
+/** Match keys that need a pull request API load on check suite events. */
+const CHECK_SUITE_PULL_REQUEST_MATCH_KEYS = new Set([
+  "authorEmail",
+  "authorUsername",
+  "isDraft",
+]);
+
 function gitHubEventKey(deliveryId: string, eventType: string): string {
   return `github:${deliveryId}:${eventType}`;
 }
@@ -29,8 +36,45 @@ function pullRequestTargets(
   ];
 }
 
+/**
+ * Check suite pull_requests use GitHub's CheckRunPullRequest shape:
+ * url, id, number, head/base with repo { id, url, name }.
+ * No draft, author, or full_name on those objects.
+ * @see https://docs.github.com/en/webhooks/webhook-events-and-payloads#check_suite
+ */
+const checkRunRepoRefSchema = z
+  .object({
+    id: z.number(),
+    name: z.string().min(1),
+    url: z.string().min(1),
+  })
+  .passthrough();
+
+const checkRunPullRequestSideSchema = z
+  .object({
+    ref: z.string().optional(),
+    repo: checkRunRepoRefSchema,
+    sha: z.string().optional(),
+  })
+  .passthrough();
+
+const checkRunPullRequestSchema = z
+  .object({
+    base: checkRunPullRequestSideSchema,
+    head: checkRunPullRequestSideSchema.optional(),
+    id: z.number().optional(),
+    number: z.number(),
+    url: z.string().optional(),
+  })
+  .passthrough();
+
 const repositorySchema = z
-  .object({ full_name: z.string().min(1) })
+  .object({
+    full_name: z.string().min(1),
+    id: z.number(),
+    name: z.string().min(1),
+    owner: z.object({ login: z.string().min(1) }).passthrough(),
+  })
   .passthrough();
 
 const checkSuiteWebhookSchema = z.object({
@@ -47,12 +91,52 @@ const checkSuiteWebhookSchema = z.object({
     head_sha: z.string().optional(),
     id: z.number().optional(),
     latest_check_runs_count: z.number().optional().nullable(),
-    pull_requests: z.array(
-      z.object({ draft: z.boolean().optional(), number: z.number() }),
-    ),
+    pull_requests: z.array(checkRunPullRequestSchema),
   }),
   repository: repositorySchema,
 });
+
+/** List check runs in a suite: { check_runs: CheckRun[] }. */
+const checkRunsListResponseSchema = z
+  .object({
+    check_runs: z.array(z.unknown()).optional(),
+  })
+  .passthrough();
+
+/**
+ * Keep only pull requests whose base repo is the check suite repository.
+ * GitHub attaches every open PR with the same head sha, including PRs based on forks.
+ * Compare repository ids from the webhook payload — no URL parsing.
+ */
+function isCheckSuiteRepositoryPullRequest(
+  pullRequest: z.infer<typeof checkRunPullRequestSchema>,
+  repositoryId: number,
+): boolean {
+  return pullRequest.base.repo.id === repositoryId;
+}
+
+/** Map a completed check suite conclusion to the resource event type we publish. */
+function checkSuiteEventType(
+  conclusion: string | null | undefined,
+): "pull_request.checks.failed" | "pull_request.checks.recovered" | undefined {
+  if (conclusion === "failure" || conclusion === "timed_out") {
+    return "pull_request.checks.failed";
+  }
+  if (conclusion === "success") {
+    return "pull_request.checks.recovered";
+  }
+  return undefined;
+}
+
+/** True when a GitHub API call failed with HTTP 404. */
+function isGitHubNotFoundError(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    error.name === "GitHubRequestError" &&
+    "status" in error &&
+    (error as { status: unknown }).status === 404
+  );
+}
 
 const FAILING_CHECK_CONCLUSIONS = new Set([
   "failure",
@@ -69,7 +153,7 @@ export type GitHubFailingCheck = {
   name: string;
 };
 
-/** Pull request values filled in when the check suite body omits them. */
+/** Pull request values filled in when a match filter needs them. */
 export type GitHubCheckSuitePullRequestFacts = {
   authorEmail?: string;
   authorUsername?: string;
@@ -79,7 +163,7 @@ export type GitHubCheckSuitePullRequestFacts = {
 /** Optional values for one check suite event. */
 export type GitHubCheckSuiteFacts = {
   failingChecks?: GitHubFailingCheck[];
-  /** Pull request values by number when GitHub omitted them on the suite. */
+  /** Pull request values by number when a match filter needs them. */
   pullRequestFactsByNumber?: Record<number, GitHubCheckSuitePullRequestFacts>;
 };
 
@@ -247,29 +331,19 @@ export function normalizeCheckSuiteEvents(
   const parsed = checkSuiteWebhookSchema.safeParse(body);
   if (!parsed.success || parsed.data.action !== "completed") return [];
   const conclusion = parsed.data.check_suite.conclusion;
-  if (!conclusion) return [];
-  const eventType =
-    conclusion === "failure" || conclusion === "timed_out"
-      ? "pull_request.checks.failed"
-      : conclusion === "success"
-        ? "pull_request.checks.recovered"
-        : undefined;
-  if (!eventType) return [];
+  const eventType = checkSuiteEventType(conclusion);
+  if (!eventType || typeof conclusion !== "string") return [];
   const suite = parsed.data.check_suite;
   const appName = suite.app?.name?.trim() || suite.app?.slug?.trim() || undefined;
   const headSha =
     typeof suite.head_sha === "string" && /^[0-9a-f]{7,40}$/i.test(suite.head_sha)
       ? suite.head_sha
       : undefined;
+  const repository = parsed.data.repository;
+  const repo = repository.full_name;
   return suite.pull_requests.flatMap((pullRequest) => {
-    const repo = parsed.data.repository.full_name;
+    if (!isCheckSuiteRepositoryPullRequest(pullRequest, repository.id)) return [];
     const facts = options?.pullRequestFactsByNumber?.[pullRequest.number];
-    const draft =
-      typeof pullRequest.draft === "boolean"
-        ? pullRequest.draft
-        : typeof facts?.isDraft === "boolean"
-          ? facts.isDraft
-          : undefined;
     return pullRequestTargets(
       buildCheckSuiteResourceEvent({
         appName,
@@ -285,7 +359,9 @@ export function normalizeCheckSuiteEvents(
             ? options?.failingChecks
             : undefined,
         headSha,
-        ...(typeof draft === "boolean" ? { isDraft: draft } : undefined),
+        ...(typeof facts?.isDraft === "boolean"
+          ? { isDraft: facts.isDraft }
+          : undefined),
         latestCheckRunsCount:
           typeof suite.latest_check_runs_count === "number"
             ? suite.latest_check_runs_count
@@ -299,12 +375,43 @@ export function normalizeCheckSuiteEvents(
   });
 }
 
+/** Identifiers and event types one completed check suite may publish. */
+export function parseCheckSuitePublishTargets(body: unknown):
+  | {
+      eventTypes: string[];
+      identifiers: string[];
+    }
+  | undefined {
+  const parsed = checkSuiteWebhookSchema.safeParse(body);
+  if (!parsed.success || parsed.data.action !== "completed") return undefined;
+  const eventType = checkSuiteEventType(parsed.data.check_suite.conclusion);
+  if (!eventType) return undefined;
+  const repository = parsed.data.repository;
+  const repo = repository.full_name;
+  const identifiers = new Set<string>([
+    gitHubRepositoryResource({ repo }).identifier,
+  ]);
+  for (const pullRequest of parsed.data.check_suite.pull_requests) {
+    if (!isCheckSuiteRepositoryPullRequest(pullRequest, repository.id)) continue;
+    identifiers.add(
+      gitHubPullRequestResource({ number: pullRequest.number, repo }).identifier,
+    );
+  }
+  return {
+    eventTypes: [eventType],
+    identifiers: [...identifiers],
+  };
+}
 
 /** Read which check suite values still need a GitHub API load. */
-export function parseCheckSuiteFactsTarget(body: unknown): {
+export function parseCheckSuiteFactsTarget(
+  body: unknown,
+  options?: { loadPullRequestFacts?: boolean },
+): {
   checkSuiteId: number;
   headSha: string;
   loadFailingChecks: boolean;
+  loadPullRequestFacts: boolean;
   owner: string;
   pullRequestNumbers: number[];
   repoName: string;
@@ -328,40 +435,39 @@ export function parseCheckSuiteFactsTarget(body: unknown): {
   ) {
     return undefined;
   }
-  const [owner, repoName, ...extra] = parsed.data.repository.full_name.split("/");
-  if (!owner || !repoName || extra.length > 0) return undefined;
+  const repository = parsed.data.repository;
   const pullRequestNumbers = [
     ...new Set(
-      parsed.data.check_suite.pull_requests.map(
-        (pullRequest) => pullRequest.number,
-      ),
+      parsed.data.check_suite.pull_requests
+        .filter((pullRequest) =>
+          isCheckSuiteRepositoryPullRequest(pullRequest, repository.id),
+        )
+        .map((pullRequest) => pullRequest.number),
     ),
   ];
   const loadFailingChecks =
     conclusion === "failure" || conclusion === "timed_out";
-  // Check suite PR objects omit author; load PR values whenever a PR is attached.
-  if (
-    !loadFailingChecks &&
-    pullRequestNumbers.length === 0
-  ) {
+  const loadPullRequestFacts = Boolean(
+    options?.loadPullRequestFacts && pullRequestNumbers.length > 0,
+  );
+  if (!loadFailingChecks && !loadPullRequestFacts) {
     return undefined;
   }
   return {
     checkSuiteId,
     headSha,
     loadFailingChecks,
-    owner,
+    loadPullRequestFacts,
+    owner: repository.owner.login,
     pullRequestNumbers,
-    repoName,
+    repoName: repository.name,
   };
 }
 
 function checkRunsFromResponse(value: unknown): unknown[] {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return [];
-  }
-  const checkRuns = (value as { check_runs?: unknown }).check_runs;
-  return Array.isArray(checkRuns) ? checkRuns : [];
+  const parsed = checkRunsListResponseSchema.safeParse(value);
+  if (!parsed.success) return [];
+  return parsed.data.check_runs ?? [];
 }
 
 function pullRequestFactsFromResponse(
@@ -382,15 +488,28 @@ function pullRequestFactsFromResponse(
   return Object.keys(facts).length > 0 ? facts : undefined;
 }
 
-/** Load missing values for one check suite event. */
+/** True when active match filters need pull request fields from the API. */
+export function needsCheckSuitePullRequestFacts(
+  matchKeys: Iterable<string>,
+): boolean {
+  for (const key of matchKeys) {
+    if (CHECK_SUITE_PULL_REQUEST_MATCH_KEYS.has(key)) return true;
+  }
+  return false;
+}
+
+/** Load failed check runs and optional pull request match fields. */
 export async function loadCheckSuiteFacts(args: {
   appIdEnv: string;
   body: unknown;
   installationIdEnv: string;
+  loadPullRequestFacts?: boolean;
   log?: { error(message: string, metadata?: Record<string, unknown>): void };
   privateKeyEnv: string;
 }): Promise<GitHubCheckSuiteFacts | undefined> {
-  const target = parseCheckSuiteFactsTarget(args.body);
+  const target = parseCheckSuiteFactsTarget(args.body, {
+    loadPullRequestFacts: args.loadPullRequestFacts,
+  });
   if (!target) return undefined;
 
   const facts: GitHubCheckSuiteFacts = {};
@@ -423,7 +542,7 @@ export async function loadCheckSuiteFacts(args: {
     }
   }
 
-  if (target.pullRequestNumbers.length > 0) {
+  if (target.loadPullRequestFacts) {
     try {
       const token = await issueInstallationToken({
         appIdEnv: args.appIdEnv,
@@ -440,14 +559,17 @@ export async function loadCheckSuiteFacts(args: {
               `/repos/${encodeURIComponent(target.owner)}/${encodeURIComponent(target.repoName)}/pulls/${number}`,
               { token: token.token },
             );
-            const facts = pullRequestFactsFromResponse(response);
-            return facts ? ([number, facts] as const) : undefined;
+            const loadedFacts = pullRequestFactsFromResponse(response);
+            return loadedFacts ? ([number, loadedFacts] as const) : undefined;
           } catch (error) {
-            args.log?.error("GitHub pull request data load failed", {
-              errorType: error instanceof Error ? error.name : "UnknownError",
-              pullRequest: number,
-              repository: `${target.owner}/${target.repoName}`,
-            });
+            // 404 is expected when the suite lists a stale PR number.
+            if (!isGitHubNotFoundError(error)) {
+              args.log?.error("GitHub pull request data load failed", {
+                errorType: error instanceof Error ? error.name : "UnknownError",
+                pullRequest: number,
+                repository: `${target.owner}/${target.repoName}`,
+              });
+            }
             return undefined;
           }
         }),

@@ -186,6 +186,50 @@ export async function listPublicEventTasksForTeams(
   return rows.map(parseTask);
 }
 
+/**
+ * Collect match keys from event tasks for these identifiers and event types.
+ * Does not evaluate match values — only reports keys that filters use.
+ */
+export async function collectEventTaskMatchKeys(
+  db: JuniorDatabase,
+  input: {
+    eventTypes: string[];
+    identifiers: string[];
+    namespace: string;
+    teamId: string;
+  },
+): Promise<string[]> {
+  const eventTypes = new Set(
+    input.eventTypes.map((eventType) => eventType.trim()).filter(Boolean),
+  );
+  const identifiers = [
+    ...new Set(input.identifiers.map((value) => value.trim()).filter(Boolean)),
+  ];
+  if (eventTypes.size === 0 || identifiers.length === 0) return [];
+  const rows = await db
+    .select({ task: juniorEventTasks.task, title: juniorEventTasks.title })
+    .from(juniorEventTasks)
+    .where(
+      and(
+        eq(juniorEventTasks.teamId, input.teamId),
+        eq(juniorEventTasks.namespace, input.namespace),
+        inArray(juniorEventTasks.identifier, identifiers),
+      ),
+    )
+    .orderBy(asc(juniorEventTasks.createdAtMs), asc(juniorEventTasks.id));
+  const keys = new Set<string>();
+  for (const row of rows) {
+    const task = parseTask(row);
+    if (!task.trigger.events.some((eventType) => eventTypes.has(eventType))) {
+      continue;
+    }
+    for (const key of Object.keys(task.trigger.match ?? {})) {
+      keys.add(key);
+    }
+  }
+  return [...keys].sort();
+}
+
 /** Find every task matching one normalized resource event. */
 export async function findMatchingEventTasks(
   db: JuniorDatabase,
