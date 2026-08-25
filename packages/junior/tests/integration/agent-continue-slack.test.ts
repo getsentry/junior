@@ -191,11 +191,24 @@ describe("paused turn Slack integration", () => {
         source: "test",
       });
 
-    const continued = await continueAgentRun({
+    const stateAdapter = stateAdapterModule.getStateAdapter();
+    const oldResumeLock = await stateAdapter.acquireLock(
       conversationId,
-      sessionId,
-      expectedVersion: sessionRecord.version,
-    });
+      90_000,
+    );
+    expect(oldResumeLock).not.toBeNull();
+    let continued: boolean;
+    try {
+      continued = await continueAgentRun({
+        conversationId,
+        sessionId,
+        expectedVersion: sessionRecord.version,
+      });
+    } finally {
+      if (oldResumeLock) {
+        await stateAdapter.releaseLock(oldResumeLock);
+      }
+    }
 
     expect(continued).toBe(true);
 
@@ -240,6 +253,7 @@ describe("paused turn Slack integration", () => {
         userId: "U123",
       },
       destination: SLACK_DESTINATION,
+      publishExternally: true,
       source: storedSource,
       toolChannelId: "C123",
       state: expect.objectContaining({

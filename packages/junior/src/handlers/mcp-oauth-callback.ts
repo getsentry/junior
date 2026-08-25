@@ -38,7 +38,7 @@ import {
   buildConversationContext,
   markConversationMessage,
 } from "@/chat/services/conversation-memory";
-import { resumeSlackTurn } from "@/chat/runtime/slack-resume";
+import { resumeSlackTurn } from "@/chat/providers/slack/resume";
 import { persistAuthPauseTurnState } from "@/chat/runtime/auth-pause-state";
 import {
   clearPendingAuth,
@@ -393,7 +393,7 @@ async function resumeAuthorizedMcpTurn(args: {
         sliceId: lockedSessionRecord.sliceId,
         messageTs: lockedMessageTs,
         inputMessageIds: [lockedUserMessage.id],
-        replyContext: {
+        run: {
           instruction: {
             text: lockedUserMessage.text,
             context: lockedConversationContext,

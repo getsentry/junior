@@ -14,7 +14,7 @@ import { postSlackMessage } from "@/chat/slack/outbound";
 import {
   ResumeTurnBusyError,
   resumeSlackTurn,
-} from "@/chat/runtime/slack-resume";
+} from "@/chat/providers/slack/resume";
 import { persistAuthPauseTurnState } from "@/chat/runtime/auth-pause-state";
 import {
   logException,
@@ -113,7 +113,9 @@ function oauthTokenErrorAttributes(
     "app.credential.provider": provider,
     "app.oauth.error.phase": "token_exchange",
     "server.address": new URL(endpoint).hostname,
-    ...(status !== undefined ? { "http.response.status_code": status } : undefined),
+    ...(status !== undefined
+      ? { "http.response.status_code": status }
+      : undefined),
   };
 }
 
@@ -418,7 +420,7 @@ async function resumeOAuthSessionRecordTurn(
         sliceId: lockedSessionRecord.sliceId,
         messageTs: lockedMessageTs,
         inputMessageIds: [lockedUserMessage.id],
-        replyContext: {
+        run: {
           instruction: {
             text: lockedUserMessage.text,
             context: lockedConversationContext,

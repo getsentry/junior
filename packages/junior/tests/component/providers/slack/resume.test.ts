@@ -2,8 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createSlackSource } from "@sentry/junior-plugin-api";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
-import { deliverAssistantMessagesForTest } from "../../fixtures/agent-runner";
-import { getCapturedSlackApiCalls } from "../../msw/handlers/slack-api";
+import { deliverAssistantMessagesForTest } from "../../../fixtures/agent-runner";
+import { getCapturedSlackApiCalls } from "../../../msw/handlers/slack-api";
 
 const ORIGINAL_STATE_ADAPTER = process.env.JUNIOR_STATE_ADAPTER;
 const TEST_SLACK_DESTINATION = {
@@ -65,7 +65,7 @@ describe("Slack resume result handling", () => {
   });
 
   it("posts the safe fallback when failure-state persistence fails", async () => {
-    const { resumeSlackTurn } = await import("@/chat/runtime/slack-resume");
+    const { resumeSlackTurn } = await import("@/chat/providers/slack/resume");
     const { getConversationEventStore } = await import("@/chat/db");
     const conversationId = "slack:T123:C123:1700000000.009";
     const turnId = "turn_1700000000_009";
@@ -78,7 +78,7 @@ describe("Slack resume result handling", () => {
         inputMessageIds: ["msg.9"],
         conversationId,
         turnId,
-        replyContext: {
+        run: {
           credentialContext: {
             actor: { type: "user", userId: "U123" },
           },
@@ -128,7 +128,7 @@ describe("Slack resume result handling", () => {
   });
 
   it("posts an auth pause notice with the conversation footer", async () => {
-    const { resumeSlackTurn } = await import("@/chat/runtime/slack-resume");
+    const { resumeSlackTurn } = await import("@/chat/providers/slack/resume");
 
     await resumeSlackTurn({
       messageText: "continue this turn",
@@ -137,7 +137,7 @@ describe("Slack resume result handling", () => {
       channelId: "C123",
       threadTs: "1700000000.008",
       initialText: "",
-      replyContext: {
+      run: {
         credentialContext: {
           actor: { type: "user", userId: "U123" },
         },
@@ -172,7 +172,7 @@ describe("Slack resume result handling", () => {
   });
 
   it("replaces an execution-failure result before Slack planning", async () => {
-    const { resumeSlackTurn } = await import("@/chat/runtime/slack-resume");
+    const { resumeSlackTurn } = await import("@/chat/providers/slack/resume");
 
     await resumeSlackTurn({
       messageText: "Continue the original request",
@@ -181,7 +181,7 @@ describe("Slack resume result handling", () => {
       channelId: "C123",
       threadTs: "1700000000.006",
       initialText: "Connected. Continuing...",
-      replyContext: {
+      run: {
         credentialContext: {
           actor: { type: "user", userId: "U123" },
         },
@@ -207,7 +207,7 @@ describe("Slack resume result handling", () => {
   });
 
   it("keeps the delivered reply when the result commit fails", async () => {
-    const { resumeSlackTurn } = await import("@/chat/runtime/slack-resume");
+    const { resumeSlackTurn } = await import("@/chat/providers/slack/resume");
     const onFailure = vi.fn(async () => undefined);
 
     await expect(
@@ -217,7 +217,7 @@ describe("Slack resume result handling", () => {
         turnId: "turn-resume-commit-fail",
         channelId: "C123",
         threadTs: "1700000000.011",
-        replyContext: {
+        run: {
           credentialContext: {
             actor: { type: "user", userId: "U123" },
           },
@@ -249,7 +249,7 @@ describe("Slack resume result handling", () => {
   });
 
   it("releases the thread lock before scheduling a suspended continuation", async () => {
-    const { resumeSlackTurn } = await import("@/chat/runtime/slack-resume");
+    const { resumeSlackTurn } = await import("@/chat/providers/slack/resume");
     const { getStateAdapter } = await import("@/chat/state/adapter");
     const onSuspend = vi.fn(async () => {
       const stateAdapter = getStateAdapter();
@@ -270,7 +270,7 @@ describe("Slack resume result handling", () => {
       turnId: "turn-resume-lock-release",
       channelId: "C123",
       threadTs: "1700000000.013",
-      replyContext: {
+      run: {
         credentialContext: {
           actor: { type: "user", userId: "U123" },
         },
@@ -294,7 +294,7 @@ describe("Slack resume result handling", () => {
   });
 
   it("runs failure handling when suspended continuation scheduling fails", async () => {
-    const { resumeSlackTurn } = await import("@/chat/runtime/slack-resume");
+    const { resumeSlackTurn } = await import("@/chat/providers/slack/resume");
     const onFailure = vi.fn(async () => undefined);
 
     await resumeSlackTurn({
@@ -303,7 +303,7 @@ describe("Slack resume result handling", () => {
       turnId: "turn-resume-suspend-fail",
       channelId: "C123",
       threadTs: "1700000000.014",
-      replyContext: {
+      run: {
         credentialContext: {
           actor: { type: "user", userId: "U123" },
         },
