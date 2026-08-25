@@ -22,7 +22,8 @@ import { escapeXml } from "@/chat/xml";
 
 /**
  * Return a stable key for one steering message. Resolved attachments may change
- * when the mailbox retries, so only the message time and text form the key.
+ * when Junior retries a mailbox delivery, so only the message time and text
+ * form the key.
  */
 export function steeringMessageKey(message: PiMessage): string | undefined {
   if (message.role !== "user") {
@@ -40,19 +41,19 @@ function renderRecentThreadMessageLines(
   conversationContext: string | undefined,
   messages: QueuedTurnMessage[],
 ): string[] {
-  const passiveMessages = messages.filter((queued) => {
+  const messagesForContext = messages.filter((queued) => {
     if (queued.explicitMention) {
       return false;
     }
-    const slackTs = queuedInstructionActor(queued)?.slackTs;
+    const slackTs = inboundMessageActor(queued)?.slackTs;
     return !slackTs || !conversationContext?.includes(`slack_ts="${slackTs}"`);
   });
-  if (passiveMessages.length === 0) {
+  if (messagesForContext.length === 0) {
     return [];
   }
   const lines: string[] = [];
-  for (const queued of passiveMessages) {
-    const actor = queuedInstructionActor(queued);
+  for (const queued of messagesForContext) {
+    const actor = inboundMessageActor(queued);
     const author = escapeXml(actor?.authorName ?? "user");
     const attrs = [
       `role="user"`,
@@ -72,24 +73,19 @@ function renderRecentThreadMessageLines(
   return lines;
 }
 
-/** Add recent passive Slack messages to the agent context. */
+/** Add recent Slack messages to the agent context. */
 export function appendRecentMessagesToContext(
   conversationContext: string | undefined,
   messages: QueuedTurnMessage[],
-  options?: { includeConversationContext?: boolean },
 ): string | undefined {
-  const baseContext =
-    options?.includeConversationContext === false
-      ? undefined
-      : conversationContext;
   return appendThreadContextMessages(
-    baseContext,
+    conversationContext,
     renderRecentThreadMessageLines(conversationContext, messages),
   );
 }
 
-/** Return the actor data stored with one queued Slack instruction. */
-export function queuedInstructionActor(
+/** Return the actor stored with one inbound Slack message. */
+export function inboundMessageActor(
   queued: QueuedTurnMessage,
 ): AgentSteeringMessage["actor"] {
   const actor = getMessageActorIdentity(queued.message);
@@ -104,8 +100,8 @@ export function queuedInstructionActor(
   };
 }
 
-/** Return the authority stored with one queued Slack instruction. */
-export function queuedInstructionProvenance(
+/** Return the authority stored with one inbound Slack message. */
+export function inboundMessageProvenance(
   queued: QueuedTurnMessage,
   teamId: string,
 ): ConversationMessageProvenance {
@@ -144,29 +140,29 @@ export async function resolveChannelName(
   }
 }
 
-/** Collect attachments from the active and queued Slack messages. */
+/** Collect attachments from the current Slack message and its batch. */
 export function collectAttachments(
   message: Message,
-  queuedMessages?: QueuedTurnMessage[],
+  batchedMessages?: QueuedTurnMessage[],
 ): Message["attachments"] {
   return [
-    ...(queuedMessages ?? []).flatMap((queued) => queued.message.attachments),
+    ...(batchedMessages ?? []).flatMap((queued) => queued.message.attachments),
     ...message.attachments,
   ];
 }
 
 /**
- * Save steering messages once while holding the same lock as a resumed Turn.
- * Return false when another Run owns the lock so the mailbox stays pending.
+ * Save each steering message once. Return false when a resumed Run is active
+ * so the mailbox delivery stays pending.
  */
 export async function saveSteeringMessages(args: {
   conversationId: string;
-  entries: Array<{
+  messages: Array<{
     message: PiMessage;
     provenance: ConversationMessageProvenance;
   }>;
 }): Promise<boolean> {
-  if (args.entries.length === 0) {
+  if (args.messages.length === 0) {
     return true;
   }
   const state = getStateAdapter();
@@ -179,13 +175,13 @@ export async function saveSteeringMessages(args: {
     const projection = await loadConversationProjection({
       conversationId: args.conversationId,
     });
-    // A mailbox retry can contain a mix of saved and unsaved messages.
+    // A repeated mailbox delivery can contain saved and unsaved messages.
     const savedKeys = new Set(
       projection.messages
         .map(steeringMessageKey)
         .filter((key): key is string => key !== undefined),
     );
-    const missing = args.entries.filter((entry) => {
+    const missing = args.messages.filter((entry) => {
       const key = steeringMessageKey(entry.message);
       return key === undefined || !savedKeys.has(key);
     });

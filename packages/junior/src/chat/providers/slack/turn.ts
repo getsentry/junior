@@ -1,7 +1,7 @@
 /**
- * Add Slack provider behavior around one native agent Turn.
+ * Add Slack behavior around one Turn.
  *
- * This module prepares Slack input and owns Slack status, delivery, and state.
+ * This module owns Slack status, delivery, and state.
  * It calls `executeTurn` to run and finish the Turn.
  */
 import type { Message, Thread } from "chat";
@@ -155,8 +155,8 @@ import type {
 import {
   appendRecentMessagesToContext,
   collectAttachments,
-  queuedInstructionActor,
-  queuedInstructionProvenance,
+  inboundMessageActor,
+  inboundMessageProvenance,
   resolveChannelName,
   saveSteeringMessages,
   steeringMessageKey,
@@ -482,8 +482,8 @@ export function createSlackTurn(deps: SlackTurnDeps) {
             queuedMessages.map(async (queued) => {
               const attachments = queued.message.attachments;
               return {
-                actor: queuedInstructionActor(queued),
-                provenance: queuedInstructionProvenance(queued, teamId),
+                actor: inboundMessageActor(queued),
+                provenance: inboundMessageProvenance(queued, teamId),
                 text: queued.userText,
                 timestampMs: queued.message.metadata.dateSent.getTime(),
                 omittedImageAttachmentCount:
@@ -504,14 +504,14 @@ export function createSlackTurn(deps: SlackTurnDeps) {
             }),
           );
         };
-        /** Save new messages before acknowledgment so the resumed Run sees them. */
-        const savePausedTurnMessages = async (
+        /** Save new messages before completing the mailbox delivery. */
+        const saveMessagesForPausedTurn = async (
           pausedTurnId: string,
         ): Promise<boolean> => {
           if (!conversationId) {
             return true;
           }
-          const steeringMessages = [
+          const messagesForPausedTurn = [
             ...(options.queuedMessages ?? []),
             {
               explicitMention: Boolean(
@@ -527,18 +527,18 @@ export function createSlackTurn(deps: SlackTurnDeps) {
             (queued) =>
               buildDeterministicTurnId(queued.message.id) !== pausedTurnId,
           );
-          if (steeringMessages.length === 0) {
+          if (messagesForPausedTurn.length === 0) {
             return true;
           }
-          const entries = (await resolveSteeringMessages(steeringMessages)).map(
-            (steering) => ({
-              message: buildSteeringPiMessage(steering),
-              provenance: steering.provenance,
-            }),
-          );
+          const steeringMessages = (
+            await resolveSteeringMessages(messagesForPausedTurn)
+          ).map((steering) => ({
+            message: buildSteeringPiMessage(steering),
+            provenance: steering.provenance,
+          }));
           return saveSteeringMessages({
             conversationId,
-            entries,
+            messages: steeringMessages,
           });
         };
         if (preparedState.userMessageAlreadyReplied) {
@@ -566,13 +566,11 @@ export function createSlackTurn(deps: SlackTurnDeps) {
             turnId: activeTurnId,
           });
           if (pausedTurn) {
-            // Durable event-log append first: rescheduling a continuation
-            // does not consume the message, and `ack` may only
-            // fire after the input is model-visible.
-            if (!(await savePausedTurnMessages(pausedTurn.turnId))) {
-              // A live resume holds the thread lock; leave the mailbox
-              // message pending so the next drain re-delivers it after the
-              // resume completes.
+            // Save agent input before resuming the Turn. Complete the mailbox
+            // delivery only after that input is visible in agent history.
+            if (!(await saveMessagesForPausedTurn(pausedTurn.turnId))) {
+              // A resumed Run is saving the same history. Keep this mailbox
+              // delivery pending until that Run finishes.
               throw new TurnInputDeferredError();
             }
             try {
@@ -602,16 +600,15 @@ export function createSlackTurn(deps: SlackTurnDeps) {
           );
           if (sessionRecord?.state === "paused") {
             if (sessionRecord.resumeReason === "auth") {
-              // A user follow-up supersedes the authorization-paused Run.
-              // Answer it now as a fresh Turn instead of adding it to a pause that
-              // may never resume. Its prompt stays model-visible through the
-              // event log. The pendingAuth state keeps the
-              // authorization link reusable, and the abandoned record turns a
-              // late OAuth callback into a stale no-op instead of a competing
-              // run.
+              // A user follow-up replaces a Turn paused for authorization.
+              // Answer it as a new Turn. The original agent input remains in
+              // history, and the authorization link remains valid. A later
+              // authorization response finds the abandoned Turn and cannot
+              // start a competing Run.
               await abandonTurnRecord({
                 conversationId,
                 turnId: activeTurnId,
+                // TODO(dcramer): Rename this legacy text in Slack and Conversation API Turn records together.
                 errorMessage:
                   "Auth-parked session superseded by a new user message",
               });
@@ -995,10 +992,8 @@ export function createSlackTurn(deps: SlackTurnDeps) {
             }
           }
           const hasDurablePromptHistory = Boolean(piMessages?.length);
-          // Batched steering messages: each explicit mention from another actor
-          // sent before this turn started, drained into it, kept with its own
-          // author's provenance so every contributor joins the run's actors.
-          const batchedInstructions = (
+          // Each batched steering message keeps its own Actor and authority.
+          const batchedSteeringMessages = (
             await resolveSteeringMessages(
               (options.queuedMessages ?? []).filter(
                 (queued) => queued.explicitMention,
@@ -1008,43 +1003,36 @@ export function createSlackTurn(deps: SlackTurnDeps) {
             message: buildSteeringPiMessage(steering),
             provenance: steering.provenance,
           }));
-          // Commit the batch to the event log before the run starts — the
-          // Membership-rule commit point — so its
-          // authors' instruction provenance is durable while they are known.
-          // The fresh prompt checkpoint then matches these merged messages as
-          // an already-committed prefix and reuses that provenance instead of
-          // collapsing them to the live actor.
+          // Save the batch before starting the Run so every Actor stays attached
+          // to the right instruction. The first Turn checkpoint can then reuse
+          // that saved history.
           if (
             !(await saveSteeringMessages({
               conversationId,
-              entries: batchedInstructions,
+              messages: batchedSteeringMessages,
             }))
           ) {
-            // A live resume owns the event-log read-modify-write. Defer the
-            // Turn (as savePausedTurnMessages does) so the worker releases the
-            // lease and the next drain commits provenance before running;
-            // never run with the batch uncommitted.
+            // A resumed Run is saving the same history. Keep this mailbox
+            // delivery pending and do not start without the saved messages.
             shouldPersistFailureState = false;
             throw new TurnInputDeferredError();
           }
-          if (batchedInstructions.length > 0) {
-            // Merge the committed batch into the transcript the model sees. A
-            // redelivery reloads the batch from the durable log, so skip any
-            // message already present by `steeringMessageKey` — never merge (and
-            // later re-commit) the same batched message twice.
+          if (batchedSteeringMessages.length > 0) {
+            // A repeated mailbox delivery may reload saved steering messages.
+            // Add only messages that are not already in agent history.
             const presentKeys = new Set(
               (piMessages ?? [])
                 .map(steeringMessageKey)
                 .filter((key): key is string => key !== undefined),
             );
-            const newlyBatched = batchedInstructions
+            const newSteeringMessages = batchedSteeringMessages
               .map((entry) => entry.message)
               .filter((batchedMessage) => {
                 const key = steeringMessageKey(batchedMessage);
                 return key === undefined || !presentKeys.has(key);
               });
-            if (newlyBatched.length > 0) {
-              piMessages = [...(piMessages ?? []), ...newlyBatched];
+            if (newSteeringMessages.length > 0) {
+              piMessages = [...(piMessages ?? []), ...newSteeringMessages];
             }
           }
 
