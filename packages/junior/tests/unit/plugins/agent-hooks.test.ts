@@ -660,6 +660,55 @@ describe("agent plugin hooks", () => {
     }
   });
 
+  it("allows resource subscription hints for web continues into Slack", () => {
+    const webActor = {
+      platform: "web" as const,
+      userId: "dashboard:alice",
+      email: "alice@example.com",
+    };
+    const webSource = createWebSource("slack:C123:1712345.0001", "public");
+    const previous = setPlugins([
+      defineJuniorPlugin({
+        manifest: {
+          name: "agent-demo",
+          displayName: "Agent Demo",
+          description: "Agent demo",
+        },
+        resourceEvents: {
+          resourceTypes: [
+            { type: "demo", supportedEvents: ["demo.completed"] },
+          ],
+        },
+        hooks: {
+          tools(ctx) {
+            expect(ctx.resourceEvents.canSubscribe).toBe(true);
+            return {
+              demoTool: demoPluginTool("Demo tool", "review"),
+            };
+          },
+        },
+      }),
+    ]);
+    try {
+      const tools = getPluginTools({
+        conversationId: "slack:C123:1712345.0001",
+        destination: {
+          platform: "slack",
+          teamId: "T123",
+          channelId: "C123",
+        },
+        actor: webActor,
+        egress: TEST_EGRESS,
+        source: webSource,
+        workspace: {} as any,
+      });
+
+      expect(tools).toHaveProperty("agentDemo_demoTool");
+    } finally {
+      setPlugins(previous);
+    }
+  });
+
   it("warns when a plugin tool omits behavioral annotations", () => {
     const previous = setPlugins([
       defineJuniorPlugin({

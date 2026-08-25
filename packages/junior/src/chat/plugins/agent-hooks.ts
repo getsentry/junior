@@ -636,8 +636,9 @@ export function getPluginTools(
         })
       : undefined;
     const mcp = pluginMcpContext(plugin, context);
+    // Watches deliver into the Slack conversation. Source can be web when the
+    // dashboard continues a Slack thread; destination owns the capability.
     const canSubscribe =
-      context.source.platform === "slack" &&
       context.destination.platform === "slack" &&
       Boolean(context.conversationId) &&
       canRouteResourceEvents() &&
