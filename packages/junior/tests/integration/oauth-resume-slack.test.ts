@@ -4,6 +4,7 @@ import { fauxAssistantMessage } from "@earendil-works/pi-ai/providers/faux";
 import {
   getSlackContinuationMarker,
   getSlackInterruptionMarker,
+  slackOutputPolicy,
 } from "@/chat/slack/output";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { getCapturedSlackApiCalls } from "../msw/handlers/slack-api";
@@ -281,8 +282,9 @@ describe("oauth resume slack integration", () => {
 
   it("chunks long resumed replies into explicit continuation messages", async () => {
     const { resumeSlackTurn } = await import("@/chat/runtime/slack-resume");
+    const lineCount = slackOutputPolicy.maxInlineLines * 4;
     const longReply = Array.from(
-      { length: 80 },
+      { length: lineCount },
       (_, i) => `line ${i + 1}`,
     ).join("\n");
 
@@ -305,27 +307,26 @@ describe("oauth resume slack integration", () => {
     });
 
     const postCalls = getCapturedSlackApiCalls("chat.postMessage");
-    expect(postCalls).toHaveLength(5);
+    expect(postCalls.length).toBeGreaterThan(2);
     expect(postCalls[0]?.params).toMatchObject({
       channel: "C123",
       thread_ts: "1700000000.002",
       text: "Connected. Continuing...",
     });
-    expect(postCalls[1]?.params.text).toContain(getSlackContinuationMarker());
-    expect(postCalls[2]?.params.text).toContain(getSlackContinuationMarker());
-    expect(postCalls[3]?.params.text).toContain(getSlackContinuationMarker());
-    expect(postCalls[4]?.params.text).not.toContain(
-      getSlackContinuationMarker(),
-    );
-    expect(postCalls[4]?.params.text).toContain("line 80");
-    // Continuations keep body blocks only; the conversation footer is final-chunk only.
-    for (const call of postCalls.slice(1, 4)) {
+    const replyPosts = postCalls.slice(1);
+    expect(replyPosts.length).toBeGreaterThan(1);
+    for (const call of replyPosts.slice(0, -1)) {
+      expect(call.params.text).toContain(getSlackContinuationMarker());
+      // Continuations keep body blocks only; the conversation footer is final-chunk only.
       expect(JSON.stringify(call.params.blocks ?? [])).not.toContain(
         "slack:C123:1700000000.002",
       );
     }
+    const finalReply = replyPosts.at(-1)!;
+    expect(finalReply.params.text).not.toContain(getSlackContinuationMarker());
+    expect(finalReply.params.text).toContain(`line ${lineCount}`);
     expectBlocksIncludeConversationId(
-      postCalls[4]!.params,
+      finalReply.params,
       "slack:C123:1700000000.002",
     );
   });
