@@ -1879,6 +1879,9 @@ describe("dashboard canonical-event components", () => {
     expect(html).toMatch(
       /href="\/tasks\/sched_source_task"[^>]*>Triggered by Scheduled Task<\/a>/,
     );
+    // Full task prompts stay off hover chrome; open the task page for those.
+    expect(html).not.toContain("Update getsentry/yc-scraper");
+    expect(html).not.toContain("Instruction");
     expect(html).not.toContain(
       "Triggered by Scheduled Task · Update getsentry/yc-scraper",
     );

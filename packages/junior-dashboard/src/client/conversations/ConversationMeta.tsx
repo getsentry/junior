@@ -545,7 +545,6 @@ function SourceTask(props: {
 }) {
   const kindLabel =
     props.sourceTask.kind === "scheduled" ? "Scheduled Task" : "Event Task";
-  const label = props.sourceTask.label?.trim();
   const taskId = props.sourceTask.id?.trim();
   const title = props.sourceTask.title?.trim();
   const link = taskId ? (
@@ -558,24 +557,16 @@ function SourceTask(props: {
   ) : (
     <span>Triggered by {kindLabel}</span>
   );
-  if (!label && !title) return link;
+  // Keep tooltips to short identity fields. Full task prompts belong on the
+  // task details page, not in hover chrome.
+  if (!title) return link;
   return (
     <Tooltip
       align="left"
       content={
         <span className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1">
-          {title ? (
-            <>
-              <span>Title</span>
-              <span className="text-dashboard-text">{title}</span>
-            </>
-          ) : null}
-          {label ? (
-            <>
-              <span>Instruction</span>
-              <span className="text-dashboard-text">{label}</span>
-            </>
-          ) : null}
+          <span>Title</span>
+          <span className="text-dashboard-text">{title}</span>
           {taskId ? (
             <>
               <span>ID</span>
