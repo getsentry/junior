@@ -22,7 +22,8 @@ function costUsd(value: number | undefined): string {
 function hasCodeActivity(report: CodePersonReport): boolean {
   const summary = report.summary;
   return (
-    summary.open + summary.created + summary.merged + summary.closed > 0 ||
+    summary.created + summary.merged + summary.closed > 0 ||
+    (summary.costUsd ?? 0) > 0 ||
     report.activityDays.some(
       (day) => day.created + day.merged + day.closed > 0,
     )

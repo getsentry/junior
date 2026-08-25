@@ -16,7 +16,6 @@ import {
   githubSqlSchema,
   type GitHubPullRequestCommitComposition,
   juniorGitHubIssues,
-  juniorGitHubPullRequestIssues,
   juniorGitHubPullRequests,
 } from "../src/db/schema";
 import type { GitHubDb } from "../src/db/database";
