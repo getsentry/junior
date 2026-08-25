@@ -4,10 +4,7 @@ import {
   cancelSubscriptions,
   listResourceEventSubscriptions,
 } from "@/chat/resource-events/store";
-import {
-  requireResourceWatchConversation,
-  RESOURCE_WATCH_TOOL_SOURCE,
-} from "@/chat/resource-events/tool-support";
+import { RESOURCE_WATCH_TOOL_SOURCE } from "@/chat/resource-events/tool-support";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
@@ -40,7 +37,7 @@ export function createStopWatchingResourcesTool(context: ToolRuntimeContext) {
       .strict(),
     outputSchema,
     async execute({ id }) {
-      const conversationId = requireResourceWatchConversation(context);
+      const conversationId = context.conversationId;
       let stoppedIds: string[];
       if (id) {
         const stopped = await cancelResourceEventSubscription({

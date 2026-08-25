@@ -1,9 +1,6 @@
 import { z } from "zod";
 import { listResourceEventSubscriptions } from "@/chat/resource-events/store";
-import {
-  requireResourceWatchConversation,
-  RESOURCE_WATCH_TOOL_SOURCE,
-} from "@/chat/resource-events/tool-support";
+import { RESOURCE_WATCH_TOOL_SOURCE } from "@/chat/resource-events/tool-support";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
@@ -46,7 +43,7 @@ export function createListResourceEventSubscriptionsTool(
     inputSchema: z.object({}).strict(),
     outputSchema,
     async execute() {
-      const conversationId = requireResourceWatchConversation(context);
+      const conversationId = context.conversationId;
       const subscriptions = await listResourceEventSubscriptions({
         conversationId,
       });
