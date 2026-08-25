@@ -370,9 +370,10 @@ export function createWorkspaceTools(
           workspaceId: workspace.id,
           workspaceName: workspace.name,
         });
-        const conversationId = canRouteResourceEvents()
-          ? context.conversationId?.trim() || undefined
-          : undefined;
+        const conversationId =
+          canRouteResourceEvents() && context.destination.platform === "slack"
+            ? context.conversationId.trim()
+            : undefined;
         const subscription = conversationId
           ? await createResourceEventSubscription({
               conversationId,

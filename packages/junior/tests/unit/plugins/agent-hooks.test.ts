@@ -729,6 +729,7 @@ describe("agent plugin hooks", () => {
     ]);
     try {
       getPluginTools({
+        conversationId: "slack:DDM:1712345.0001",
         destination: SLACK_DESTINATION,
         actor: TEST_ACTOR,
         egress: TEST_EGRESS,
@@ -771,6 +772,7 @@ describe("agent plugin hooks", () => {
     ]);
     try {
       const tools = getPluginTools({
+        conversationId: LOCAL_DESTINATION.conversationId,
         destination: LOCAL_DESTINATION,
         egress: TEST_EGRESS,
         source: LOCAL_SOURCE,
@@ -820,6 +822,7 @@ describe("agent plugin hooks", () => {
     ]);
     try {
       const tools = getPluginTools({
+        conversationId: LOCAL_DESTINATION.conversationId,
         destination: LOCAL_DESTINATION,
         egress: TEST_EGRESS,
         source: LOCAL_SOURCE,
@@ -853,6 +856,7 @@ describe("agent plugin hooks", () => {
     try {
       expect(() =>
         getPluginTools({
+        conversationId: LOCAL_DESTINATION.conversationId,
           destination: LOCAL_DESTINATION,
           egress: TEST_EGRESS,
           source: LOCAL_SOURCE,
@@ -886,6 +890,7 @@ describe("agent plugin hooks", () => {
         [],
         {},
         {
+          conversationId: LOCAL_DESTINATION.conversationId,
           destination: LOCAL_DESTINATION,
           egress: TEST_EGRESS,
           source: LOCAL_SOURCE,
@@ -936,6 +941,7 @@ describe("agent plugin hooks", () => {
     ]);
     try {
       getPluginTools({
+        conversationId: LOCAL_DESTINATION.conversationId,
         destination: LOCAL_DESTINATION,
         egress: TEST_EGRESS,
         mcpToolManager: {
@@ -1908,6 +1914,7 @@ describe("agent plugin hooks", () => {
 describe("getPluginTools channel resolution", () => {
   function capturePluginContext(
     context: ToolRuntimeContext = {
+      conversationId: LOCAL_DESTINATION.conversationId,
       destination: LOCAL_DESTINATION,
       egress: TEST_EGRESS,
       source: LOCAL_SOURCE,
@@ -1941,6 +1948,7 @@ describe("getPluginTools channel resolution", () => {
   it("passes runtime-owned destination directly to plugin hooks", () => {
     const source = slackSource("DDM");
     const ctx = capturePluginContext({
+      conversationId: "slack:DDM:1712345.0001",
       source,
       destination: {
         platform: "slack",
@@ -1961,6 +1969,7 @@ describe("getPluginTools channel resolution", () => {
   it("computes channelCapabilities from source channelId", () => {
     // DM channel: canvas and reactions yes, standalone channel-post no
     const ctx = capturePluginContext({
+      conversationId: "slack:DDM:1712345.0001",
       source: slackSource("DDM"),
       destination: {
         platform: "slack",
@@ -1977,6 +1986,7 @@ describe("getPluginTools channel resolution", () => {
 
   it("creates a direct credential subject when channelId is a DM", () => {
     const ctx = capturePluginContext({
+      conversationId: "slack:DDM:1712345.0001",
       source: slackSource("DDM"),
       destination: {
         platform: "slack",
@@ -1997,6 +2007,7 @@ describe("getPluginTools channel resolution", () => {
 
   it("does not create a credential subject when channelId is not a DM", () => {
     const ctx = capturePluginContext({
+      conversationId: "slack:DDM:1712345.0001",
       source: slackSource("CSOURCE"),
       destination: {
         platform: "slack",

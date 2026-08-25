@@ -46,6 +46,7 @@ function ctx(
 ): ToolRuntimeContext {
   if (!channelId) {
     return {
+      conversationId: "local:test:tool-registration",
       destination: {
         platform: "local" as const,
         conversationId: "local:test:tool-registration",
@@ -338,25 +339,6 @@ describe("Slack tool registration", () => {
     expect(tools).toHaveProperty("searchConversationEvents");
   });
 
-  it("does not register conversation-bound tools without a conversation id", () => {
-    const tools = createTools(
-      [],
-      {},
-      {
-        destination: {
-          platform: "local",
-          conversationId: "local:test:run-test",
-        },
-        egress: noopEgress,
-        source: createLocalSource("local:test:run-test"),
-        workspace: noopSandbox,
-      },
-    );
-
-    expect(tools).not.toHaveProperty("stopWatchingResources");
-    expect(tools).not.toHaveProperty("listResourceEventSubscriptions");
-    expect(tools).not.toHaveProperty("searchConversationEvents");
-  });
 
   it("registers image generation only when artifact persistence is available", () => {
     expect(createTools([], {}, ctx())).not.toHaveProperty("imageGenerate");

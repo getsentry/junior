@@ -15,7 +15,7 @@ export const RESOURCE_WATCH_TOOL_SOURCE = {
 export function requireResourceWatchConversation(
   context: ToolRuntimeContext,
 ): string {
-  const conversationId = context.conversationId?.trim();
+  const conversationId = context.conversationId.trim();
   if (!conversationId) {
     throw new Error("Resource event subscriptions require a conversation id");
   }
