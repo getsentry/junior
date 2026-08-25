@@ -39,7 +39,10 @@ import { runNonInteractiveCommand } from "@/chat/sandbox/noninteractive-command"
 import type { AnyToolDefinition } from "@/chat/tools/definition";
 import { getDashboardConversationLink } from "@/chat/slack/dashboard-link";
 import { createResourceEventSubscription } from "@/chat/resource-events/store";
-import { RESOURCE_SUBSCRIPTION_DEFAULT_TTL_MS } from "@/chat/resource-events/tool-support";
+import {
+  requireResourceWatchConversation,
+  RESOURCE_SUBSCRIPTION_DEFAULT_TTL_MS,
+} from "@/chat/resource-events/tool-support";
 import { getSlackToolContext } from "@/chat/slack/tool-support/context";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
@@ -663,7 +666,7 @@ export function getPluginTools(
           );
         }
         const subscription = await createResourceEventSubscription({
-          conversationId: context.conversationId!,
+          conversationId: requireResourceWatchConversation(context),
           destination: context.destination,
           events: input.events,
           expiresAtMs: Date.now() + RESOURCE_SUBSCRIPTION_DEFAULT_TTL_MS,

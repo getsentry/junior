@@ -1,4 +1,3 @@
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 
 /** Default lifetime for temporary resource subscriptions. */
@@ -18,9 +17,7 @@ export function requireResourceWatchConversation(
 ): string {
   const conversationId = context.conversationId?.trim();
   if (!conversationId) {
-    throw new ToolInputError(
-      "Resource event subscriptions require a conversation",
-    );
+    throw new Error("Resource event subscriptions require a conversation id");
   }
   return conversationId;
 }
