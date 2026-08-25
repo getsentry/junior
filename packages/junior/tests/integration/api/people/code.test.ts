@@ -92,6 +92,7 @@ describe("people code API", () => {
       const report = codePersonReportSchema.parse(await response.json());
       expect(report.summary).toEqual({
         closed: 0,
+        costUsd: 0,
         created: 1,
         medianMergeTimeMs: 2 * 24 * 60 * 60 * 1_000,
         merged: 1,

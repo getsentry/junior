@@ -1,10 +1,10 @@
 import type { CodePersonReport } from "@sentry/junior/api/schema";
-import { GitPullRequest, LibraryBig, Timer } from "lucide-react";
+import { Coins, GitPullRequest, LibraryBig, Timer } from "lucide-react";
 import { formatDuration } from "../../components/Duration";
 import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
 import { SectionIntro } from "../../components/layout/SectionIntro";
 import { StatCard } from "../../components/metrics/StatCard";
-import { formatCompactNumber } from "../../format";
+import { formatCompactNumber, formatCostSummary } from "../../format";
 import { CodeActivityChart } from "../code/CodeActivityChart";
 
 function mergeRate(value: number | undefined): string {
@@ -13,6 +13,10 @@ function mergeRate(value: number | undefined): string {
 
 function medianMergeTime(value: number | undefined): string {
   return formatDuration(value) || "—";
+}
+
+function costUsd(value: number | undefined): string {
+  return formatCostSummary(value === undefined ? undefined : { total: value }) || "—";
 }
 
 function hasCodeActivity(report: CodePersonReport): boolean {
@@ -35,7 +39,7 @@ export function ProfileCodeActivity(props: {
   return (
     <section aria-labelledby="profile-code-title" className="grid gap-4">
       <SectionIntro id="profile-code-title" title="Code" />
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatCard
           detail="In the last 30 days"
           icon={GitPullRequest}
@@ -53,6 +57,12 @@ export function ProfileCodeActivity(props: {
           icon={Timer}
           label="Median merge time"
           value={medianMergeTime(summary.medianMergeTimeMs)}
+        />
+        <StatCard
+          detail="Conversation cost for changes opened in the last 30 days"
+          icon={Coins}
+          label="Cost"
+          value={costUsd(summary.costUsd)}
         />
       </div>
       <CodeActivityChart days={props.report.activityDays} range={props.range} />

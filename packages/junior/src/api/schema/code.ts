@@ -4,7 +4,9 @@ import { codeChangeStateSchema } from "@sentry/junior-plugin-api";
 export const codeChangeSummarySchema = z
   .object({
     closed: z.number().int().nonnegative(),
+    costUsd: z.number().nonnegative().optional(),
     created: z.number().int().nonnegative(),
+    medianCostUsd: z.number().nonnegative().optional(),
     medianMergeTimeMs: z.number().nonnegative().optional(),
     merged: z.number().int().nonnegative(),
     mergeRate: z.number().min(0).max(1).optional(),
@@ -26,6 +28,7 @@ export const codeRepositorySummarySchema = z
     closed: z.number().int().nonnegative(),
     created: z.number().int().nonnegative(),
     id: z.string().uuid(),
+    medianCostUsd: z.number().nonnegative().optional(),
     merged: z.number().int().nonnegative(),
     mergeRate: z.number().min(0).max(1).optional(),
     name: z.string().min(1),

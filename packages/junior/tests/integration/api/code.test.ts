@@ -57,6 +57,7 @@ describe("code API", () => {
       const report = codeOverviewReportSchema.parse(await response.json());
       expect(report.summary).toEqual({
         closed: 0,
+        costUsd: 0,
         created: 1,
         medianMergeTimeMs: 2 * 24 * 60 * 60 * 1_000,
         merged: 1,
@@ -79,12 +80,12 @@ describe("code API", () => {
       expect(report.repositories).toEqual([
         expect.objectContaining({
           created: 1,
-          merged: 1,
           mergeRate: 1,
           name: "getsentry/junior",
           provider: "github",
         }),
       ]);
+      expect(report.repositories[0]?.medianCostUsd).toBeUndefined();
       expect(report.changes).toEqual([
         expect.objectContaining({
           number: 42,

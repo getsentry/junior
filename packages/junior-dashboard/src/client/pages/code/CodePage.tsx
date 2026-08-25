@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { CodeOverviewReport } from "@sentry/junior/api/schema";
-import { GitPullRequest, LibraryBig, Timer } from "lucide-react";
+import { Coins, GitPullRequest, LibraryBig, Timer } from "lucide-react";
 import { useCodeOverviewData } from "../../api";
 import { formatDuration } from "../../components/Duration";
 import { EmptyTelemetry } from "../../components/EmptyTelemetry";
@@ -11,7 +11,7 @@ import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
 import { PageLayout } from "../../components/layout/PageLayout";
 import { StatCard } from "../../components/metrics/StatCard";
-import { formatCompactNumber } from "../../format";
+import { formatCompactNumber, formatCostSummary } from "../../format";
 import { CodeActivityChart } from "./CodeActivityChart";
 
 function mergeRate(value: number | undefined): string {
@@ -20,6 +20,10 @@ function mergeRate(value: number | undefined): string {
 
 function medianMergeTime(value: number | undefined): string {
   return formatDuration(value) || "—";
+}
+
+function costUsd(value: number | undefined): string {
+  return formatCostSummary(value === undefined ? undefined : { total: value }) || "—";
 }
 
 function stateTone(state: "closed" | "merged" | "open") {
@@ -64,7 +68,7 @@ function CodeOverview(props: {
   const data = props.data;
   return (
     <>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatCard
           detail="In the last 30 days"
           icon={GitPullRequest}
@@ -82,6 +86,12 @@ function CodeOverview(props: {
           icon={Timer}
           label="Median merge time"
           value={medianMergeTime(data.summary.medianMergeTimeMs)}
+        />
+        <StatCard
+          detail="Conversation cost for changes opened in the last 30 days"
+          icon={Coins}
+          label="Cost"
+          value={costUsd(data.summary.costUsd)}
         />
       </div>
       <CodeActivityChart days={data.activityDays} range={props.range} />
@@ -101,14 +111,14 @@ function CodeOverview(props: {
               <thead className="font-mono text-xs uppercase tracking-[0.1em] text-dashboard-text-muted">
                 <tr className="border-b border-dashboard-border-subtle">
                   <th className="px-4 py-2.5 font-medium">Repository</th>
-                  <th className="px-4 py-2.5 text-right font-medium">Open</th>
                   <th className="px-4 py-2.5 text-right font-medium">
                     Created
                   </th>
-                  <th className="px-4 py-2.5 text-right font-medium">Merged</th>
-                  <th className="px-4 py-2.5 text-right font-medium">Closed</th>
                   <th className="px-4 py-2.5 text-right font-medium">
                     Merge rate
+                  </th>
+                  <th className="px-4 py-2.5 text-right font-medium">
+                    Median cost
                   </th>
                 </tr>
               </thead>
@@ -138,19 +148,13 @@ function CodeOverview(props: {
                       </div>
                     </td>
                     <td className="px-4 py-3 text-right font-mono text-sm text-dashboard-text">
-                      {repository.open}
-                    </td>
-                    <td className="px-4 py-3 text-right font-mono text-sm text-dashboard-text">
                       {repository.created}
                     </td>
                     <td className="px-4 py-3 text-right font-mono text-sm text-dashboard-text">
-                      {repository.merged}
-                    </td>
-                    <td className="px-4 py-3 text-right font-mono text-sm text-dashboard-text">
-                      {repository.closed}
-                    </td>
-                    <td className="px-4 py-3 text-right font-mono text-sm text-dashboard-text">
                       {mergeRate(repository.mergeRate)}
+                    </td>
+                    <td className="px-4 py-3 text-right font-mono text-sm text-dashboard-text">
+                      {costUsd(repository.medianCostUsd)}
                     </td>
                   </tr>
                 ))}
