@@ -58,7 +58,7 @@ const tokenChart: ChartConfig = {
 const inputCacheChart: ChartConfig = {
   axisFormat: formatCompactNumber,
   color: "#22d3ee",
-  description: "Daily cached and uncached input tokens",
+  description: "Daily cache mix",
   format: formatCompactNumber,
   metric: "inputTokens",
   title: "Input token cache",
