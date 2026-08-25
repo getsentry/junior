@@ -1,10 +1,8 @@
 /**
- * Add Slack provider behavior around one native agent Turn.
+ * Add Slack behavior around one Turn.
  *
- * This module prepares Slack input and owns Slack status, delivery, and saved
- * Slack state. Native execution concerns that remain here must move behind a
- * provider-neutral runtime contract. Agent execution stays behind
- * `AgentRunner`.
+ * This module owns Slack status, delivery, and state.
+ * It calls `executeTurn` to run and finish the Turn.
  */
 import type { Message, Thread } from "chat";
 import type { SlackAdapter } from "@chat-adapter/slack";
@@ -39,9 +37,11 @@ import {
 import { buildSteeringPiMessage } from "@/chat/agent/prompt";
 import {
   RetryableDeliveryError,
+  type AgentRun,
   type AgentSteeringMessage,
 } from "@/chat/agent/types";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
+import { AgentRunError, executeTurn } from "@/chat/runtime/turn-execution";
 import {
   credentialContextForActor,
   type CredentialContext,
@@ -76,7 +76,6 @@ import {
   type TurnToolInvocation,
 } from "@/chat/runtime/turn-input";
 import {
-  appendThreadContextMessages,
   markConversationMessage,
   normalizeConversationText,
   recordDeliveredAssistantMessage,
@@ -100,11 +99,8 @@ import {
   resolveSlackConversationContext,
 } from "@/chat/slack/conversation-context";
 import { lookupSlackUser } from "@/chat/slack/user";
-import { createActor, parseActorUserId, type Actor } from "@/chat/actor";
-import {
-  ensureSlackMessageActorIdentity,
-  getMessageActorIdentity,
-} from "@/chat/services/message-actor-identity";
+import { parseActorUserId, type Actor } from "@/chat/actor";
+import { ensureSlackMessageActorIdentity } from "@/chat/services/message-actor-identity";
 import {
   isResourceEventSlackMessage,
   RESOURCE_EVENT_SYSTEM_ACTOR,
@@ -140,30 +136,31 @@ import {
 } from "@/chat/task-execution/checkpoint";
 import { resolveDestinationVisibility } from "@/chat/conversations/destination-visibility";
 import {
-  contextProvenance,
-  instructionProvenanceFor,
-  type ConversationMessageProvenance,
-} from "@/chat/conversations/provenance";
-import {
   commitAcceptedReply,
-  commitMessages,
   loadConversationProjection,
 } from "@/chat/conversations/projection";
-import { getStateAdapter } from "@/chat/state/adapter";
-import { acquireActiveLock } from "@/chat/state/locks";
 import { persistWithRetry } from "@/chat/services/persist-retry";
 import {
   stripRuntimeTurnContext,
   trimTrailingAssistantMessages,
 } from "@/chat/pi/transcript";
 import { requireSlackDestination } from "@/chat/destination";
-import { escapeXml } from "@/chat/xml";
 import { persistConversationMessages } from "@/chat/conversations/messages";
 import type { ConversationTurnLifecycle } from "@/chat/conversations/turn-lifecycle";
+import type { AgentRunResult } from "@/chat/services/turn-result";
 import type {
   DispatchTurnContext,
   DispatchTurnResult,
 } from "@/chat/agent-dispatch/types";
+import {
+  appendRecentMessagesToContext,
+  collectAttachments,
+  inboundMessageActor,
+  inboundMessageProvenance,
+  resolveChannelName,
+  saveSteeringMessages,
+  steeringMessageKey,
+} from "@/chat/providers/slack/input";
 
 /**
  * Persist post-delivery Redis scratch with a short retry after durable SQL
@@ -174,141 +171,6 @@ async function persistThreadRuntimeStateWithRetry(
   patch: Parameters<typeof persistThreadState>[1],
 ): Promise<void> {
   await persistWithRetry(() => persistThreadRuntimeState(thread, patch));
-}
-
-/**
- * Identity key for parked-input dedupe: the inbound timestamp plus the user
- * turn text (always the first content part). Attachment resolution may differ
- * across queue redeliveries, so resolved attachment parts must not decide
- * whether the same inbound message was already appended.
- */
-function parkedInputKey(message: PiMessage): string | undefined {
-  if (message.role !== "user") {
-    return undefined;
-  }
-  const first = Array.isArray(message.content) ? message.content[0] : undefined;
-  const text =
-    first && typeof first === "object" && "text" in first
-      ? String((first as { text?: unknown }).text ?? "")
-      : "";
-  return `${message.timestamp}:${text}`;
-}
-
-function renderRecentThreadMessageLines(
-  conversationContext: string | undefined,
-  messages: QueuedTurnMessage[],
-): string[] {
-  const passiveMessages = messages.filter((queued) => {
-    if (queued.explicitMention) {
-      return false;
-    }
-    const slackTs = queuedInstructionActor(queued)?.slackTs;
-    return !slackTs || !conversationContext?.includes(`slack_ts="${slackTs}"`);
-  });
-  if (passiveMessages.length === 0) {
-    return [];
-  }
-  const lines: string[] = [];
-  for (const queued of passiveMessages) {
-    const actor = queuedInstructionActor(queued);
-    const author = escapeXml(actor?.authorName ?? "user");
-    const attrs = [
-      `role="user"`,
-      `author="${author}"`,
-      actor?.authorId ? `actor_id="${escapeXml(actor.authorId)}"` : undefined,
-      actor?.slackTs ? `slack_ts="${escapeXml(actor.slackTs)}"` : undefined,
-    ]
-      .filter((attr): attr is string => Boolean(attr))
-      .join(" ");
-    const text = escapeXml(queued.userText.replace(/\s+/g, " "));
-    lines.push(
-      `  <message ${attrs}>`,
-      `[user] ${author}: ${text}`,
-      "  </message>",
-    );
-  }
-  return lines;
-}
-
-function appendRecentThreadMessagesToContext(
-  conversationContext: string | undefined,
-  messages: QueuedTurnMessage[],
-  options?: { includeConversationContext?: boolean },
-): string | undefined {
-  const baseContext =
-    options?.includeConversationContext === false
-      ? undefined
-      : conversationContext;
-  return appendThreadContextMessages(
-    baseContext,
-    renderRecentThreadMessageLines(conversationContext, messages),
-  );
-}
-
-function queuedInstructionActor(
-  queued: QueuedTurnMessage,
-): AgentSteeringMessage["actor"] {
-  const actor = getMessageActorIdentity(queued.message);
-  const authorId =
-    actor?.userId ?? parseActorUserId(queued.message.author.userId);
-  const authorName = actor?.fullName ?? actor?.userName;
-  const slackTs = getMessageTimestamp(queued.message);
-  return {
-    ...(authorId ? { authorId } : undefined),
-    ...(authorName ? { authorName } : undefined),
-    ...(slackTs ? { slackTs } : undefined),
-  };
-}
-
-/**
- * Provenance for a queued or steered Slack message: a user-authored instruction
- * attributed to the message's own author, or unauthored context for
- * system-originated resource events.
- */
-function queuedInstructionProvenance(
-  queued: QueuedTurnMessage,
-  teamId: string,
-): ConversationMessageProvenance {
-  if (isResourceEventSlackMessage(queued.message)) {
-    return contextProvenance;
-  }
-  const identity = getMessageActorIdentity(queued.message);
-  const author =
-    identity && "platform" in identity
-      ? identity
-      : createActor(
-          { userId: parseActorUserId(queued.message.author.userId) },
-          {
-            platform: "slack",
-            teamId,
-            userId: parseActorUserId(queued.message.author.userId),
-          },
-        );
-  return instructionProvenanceFor(author);
-}
-
-async function resolveChannelName(thread: Thread): Promise<string | undefined> {
-  const existingName = thread.channel.name?.trim();
-  if (existingName) {
-    return existingName;
-  }
-
-  try {
-    const metadata = await thread.channel.fetchMetadata();
-    return metadata.name?.trim() || undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-function collectTurnAttachments(
-  message: Message,
-  queuedMessages?: QueuedTurnMessage[],
-): Message["attachments"] {
-  return [
-    ...(queuedMessages ?? []).flatMap((queued) => queued.message.attachments),
-    ...message.attachments,
-  ];
 }
 
 interface LoadedPiMessagesForTurn {
@@ -620,8 +482,8 @@ export function createSlackTurn(deps: SlackTurnDeps) {
             queuedMessages.map(async (queued) => {
               const attachments = queued.message.attachments;
               return {
-                actor: queuedInstructionActor(queued),
-                provenance: queuedInstructionProvenance(queued, teamId),
+                actor: inboundMessageActor(queued),
+                provenance: inboundMessageProvenance(queued, teamId),
                 text: queued.userText,
                 timestampMs: queued.message.metadata.dateSent.getTime(),
                 omittedImageAttachmentCount:
@@ -642,85 +504,14 @@ export function createSlackTurn(deps: SlackTurnDeps) {
             }),
           );
         };
-        /**
-         * Commit drained parked/batched input pairs to the conversation
-         * event log, deduping by `parkedInputKey` so a redelivery never
-         * double-appends. This is the Membership-Rule commit point
-         * Membership rule: each drained message is written with its
-         * own author's instruction provenance while that author is still known,
-         * rather than collapsing to a single latest-wins actor.
-         *
-         * The read-compute-append races a concurrently-resumed slice, which
-         * runs under the thread resume lock; take the same lock so the two
-         * writers never interleave. Returns false when the lock is busy (a live
-         * resume owns the event log): the caller must leave the mailbox
-         * message pending for the next drain instead of consuming it.
-         */
-        const drainParkedInputToEventLog = async (
-          pairs: Array<{
-            message: PiMessage;
-            provenance: ConversationMessageProvenance;
-          }>,
-        ): Promise<boolean> => {
-          if (!conversationId || pairs.length === 0) {
-            return true;
-          }
-          const stateAdapter = getStateAdapter();
-          await stateAdapter.connect();
-          const lock = await acquireActiveLock(stateAdapter, conversationId);
-          if (!lock) {
-            return false;
-          }
-          try {
-            const projection = await loadConversationProjection({
-              conversationId,
-            });
-            // Dedupe per message: a partial-overlap redelivery (some messages
-            // already appended before a schedule failure) must append only
-            // the missing ones.
-            const appendedKeys = new Set(
-              projection.messages
-                .map(parkedInputKey)
-                .filter((key): key is string => key !== undefined),
-            );
-            const missing = pairs.filter((pair) => {
-              const key = parkedInputKey(pair.message);
-              return key === undefined || !appendedKeys.has(key);
-            });
-            if (missing.length === 0) {
-              // A prior delivery already appended this input durably.
-              return true;
-            }
-            await commitMessages({
-              conversationId,
-              messages: [
-                ...projection.messages,
-                ...missing.map((pair) => pair.message),
-              ],
-              provenance: [
-                ...projection.provenance,
-                ...missing.map((pair) => pair.provenance),
-              ],
-            });
-            return true;
-          } finally {
-            await stateAdapter.releaseLock(lock);
-          }
-        };
-        /**
-         * Durably append this turn's parked user input to the event log at
-         * the parked safe boundary so the resumed `continue()` sees it. The
-         * awaiting record pins the log session and materializes the projection
-         * tail, so the append needs no record mutation. Must complete before
-         * `ack` consumes the mailbox record.
-         */
-        const appendParkedTurnInput = async (
-          parkedSessionId: string,
+        /** Save new messages before completing the mailbox delivery. */
+        const saveMessagesForPausedTurn = async (
+          pausedTurnId: string,
         ): Promise<boolean> => {
           if (!conversationId) {
             return true;
           }
-          const parkedMessages = [
+          const messagesForPausedTurn = [
             ...(options.queuedMessages ?? []),
             {
               explicitMention: Boolean(
@@ -731,21 +522,24 @@ export function createSlackTurn(deps: SlackTurnDeps) {
               userText: currentText.userText,
             },
           ].filter(
-            // Redelivery of the parked turn's own message must not duplicate
+            // Redelivery of the paused Turn's own message must not duplicate
             // the prompt that already started the session.
             (queued) =>
-              buildDeterministicTurnId(queued.message.id) !== parkedSessionId,
+              buildDeterministicTurnId(queued.message.id) !== pausedTurnId,
           );
-          if (parkedMessages.length === 0) {
+          if (messagesForPausedTurn.length === 0) {
             return true;
           }
-          const parkedPairs = (
-            await resolveSteeringMessages(parkedMessages)
+          const steeringMessages = (
+            await resolveSteeringMessages(messagesForPausedTurn)
           ).map((steering) => ({
             message: buildSteeringPiMessage(steering),
             provenance: steering.provenance,
           }));
-          return drainParkedInputToEventLog(parkedPairs);
+          return saveSteeringMessages({
+            conversationId,
+            messages: steeringMessages,
+          });
         };
         if (preparedState.userMessageAlreadyReplied) {
           const deliveredMessage = [...preparedState.conversation.messages]
@@ -772,13 +566,11 @@ export function createSlackTurn(deps: SlackTurnDeps) {
             turnId: activeTurnId,
           });
           if (pausedTurn) {
-            // Durable event-log append first: rescheduling a continuation
-            // does not consume the message, and `ack` may only
-            // fire after the input is model-visible.
-            if (!(await appendParkedTurnInput(pausedTurn.turnId))) {
-              // A live resume holds the thread lock; leave the mailbox
-              // message pending so the next drain re-delivers it after the
-              // resume completes.
+            // Save agent input before resuming the Turn. Complete the mailbox
+            // delivery only after that input is visible in agent history.
+            if (!(await saveMessagesForPausedTurn(pausedTurn.turnId))) {
+              // A resumed Run is saving the same history. Keep this mailbox
+              // delivery pending until that Run finishes.
               throw new TurnInputDeferredError();
             }
             try {
@@ -808,16 +600,15 @@ export function createSlackTurn(deps: SlackTurnDeps) {
           );
           if (sessionRecord?.state === "paused") {
             if (sessionRecord.resumeReason === "auth") {
-              // A user follow-up supersedes the auth-parked run: answer it
-              // now as a fresh turn instead of consuming it into a pause that
-              // may never resume. The parked prompt stays model-visible via
-              // the event-log projection, pendingAuth state keeps the
-              // authorization link reusable, and the abandoned record turns a
-              // late OAuth callback into a stale no-op instead of a competing
-              // run.
+              // A user follow-up replaces a Turn paused for authorization.
+              // Answer it as a new Turn. The original agent input remains in
+              // history, and the authorization link remains valid. A later
+              // authorization response finds the abandoned Turn and cannot
+              // start a competing Run.
               await abandonTurnRecord({
                 conversationId,
                 turnId: activeTurnId,
+                // TODO(dcramer): Rename this legacy text in Slack and Conversation API Turn records together.
                 errorMessage:
                   "Auth-parked session superseded by a new user message",
               });
@@ -955,7 +746,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
         if (actor?.userName) {
           setTags({ userName: actor.userName });
         }
-        const turnAttachments = collectTurnAttachments(
+        const turnAttachments = collectAttachments(
           message,
           options.queuedMessages,
         );
@@ -989,7 +780,6 @@ export function createSlackTurn(deps: SlackTurnDeps) {
         let runResultHandled = false;
         let assistantMessageDelivered = false;
         let acceptedDeliveryId: string | undefined;
-        let lifecycleTerminalized = false;
         let turnCompletionNotified = false;
         const recordDispatchOutcome = async (
           dispatchOutcome: "blocked" | "completed" | "failed",
@@ -1020,7 +810,6 @@ export function createSlackTurn(deps: SlackTurnDeps) {
         let turnWakeError: unknown;
         let boundaryFailureCode: "agent_run_failed" | "delivery_failed" =
           "agent_run_failed";
-        let finalizedFailureEventId: string | undefined;
         let terminalDispatchFailureOutcome: "blocked" | undefined;
         const notifyTurnCompleted = async (): Promise<void> => {
           if (turnCompletionNotified) {
@@ -1203,10 +992,8 @@ export function createSlackTurn(deps: SlackTurnDeps) {
             }
           }
           const hasDurablePromptHistory = Boolean(piMessages?.length);
-          // Batched parked input: each explicit-mention message another actor
-          // sent before this turn started, drained into it, kept with its own
-          // author's provenance so every contributor joins the run's actors.
-          const batchedInstructions = (
+          // Each batched steering message keeps its own Actor and authority.
+          const batchedSteeringMessages = (
             await resolveSteeringMessages(
               (options.queuedMessages ?? []).filter(
                 (queued) => queued.explicitMention,
@@ -1216,38 +1003,36 @@ export function createSlackTurn(deps: SlackTurnDeps) {
             message: buildSteeringPiMessage(steering),
             provenance: steering.provenance,
           }));
-          // Commit the batch to the event log before the run starts — the
-          // Membership-rule commit point — so its
-          // authors' instruction provenance is durable while they are known.
-          // The fresh prompt checkpoint then matches these merged messages as
-          // an already-committed prefix and reuses that provenance instead of
-          // collapsing them to the live actor.
-          if (!(await drainParkedInputToEventLog(batchedInstructions))) {
-            // A live resume owns the event-log read-modify-write. Defer the
-            // turn (as appendParkedTurnInput does) so the worker releases the
-            // lease and the next drain commits provenance before running;
-            // never run with the batch uncommitted.
+          // Save the batch before starting the Run so every Actor stays attached
+          // to the right instruction. The first Turn checkpoint can then reuse
+          // that saved history.
+          if (
+            !(await saveSteeringMessages({
+              conversationId,
+              messages: batchedSteeringMessages,
+            }))
+          ) {
+            // A resumed Run is saving the same history. Keep this mailbox
+            // delivery pending and do not start without the saved messages.
             shouldPersistFailureState = false;
             throw new TurnInputDeferredError();
           }
-          if (batchedInstructions.length > 0) {
-            // Merge the committed batch into the transcript the model sees. A
-            // redelivery reloads the batch from the durable log, so skip any
-            // message already present by `parkedInputKey` — never merge (and
-            // later re-commit) the same batched message twice.
+          if (batchedSteeringMessages.length > 0) {
+            // A repeated mailbox delivery may reload saved steering messages.
+            // Add only messages that are not already in agent history.
             const presentKeys = new Set(
               (piMessages ?? [])
-                .map(parkedInputKey)
+                .map(steeringMessageKey)
                 .filter((key): key is string => key !== undefined),
             );
-            const newlyBatched = batchedInstructions
+            const newSteeringMessages = batchedSteeringMessages
               .map((entry) => entry.message)
               .filter((batchedMessage) => {
-                const key = parkedInputKey(batchedMessage);
+                const key = steeringMessageKey(batchedMessage);
                 return key === undefined || !presentKeys.has(key);
               });
-            if (newlyBatched.length > 0) {
-              piMessages = [...(piMessages ?? []), ...newlyBatched];
+            if (newSteeringMessages.length > 0) {
+              piMessages = [...(piMessages ?? []), ...newSteeringMessages];
             }
           }
 
@@ -1274,7 +1059,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
             actor?.userId ?? parseActorUserId(message.author.userId);
           const activeInstructionAuthorName =
             actor?.fullName ?? actor?.userName;
-          const promptConversationContext = appendRecentThreadMessagesToContext(
+          const promptConversationContext = appendRecentMessagesToContext(
             preparedState.conversationContext,
             options.queuedMessages ?? [],
           );
@@ -1296,7 +1081,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
                 );
               }
             : undefined;
-          const outcome = await deps.services.agentRunner.run({
+          const run: AgentRun = {
             conversationId,
             turnId,
             ...(runId ? { runId } : undefined),
@@ -1376,7 +1161,151 @@ export function createSlackTurn(deps: SlackTurnDeps) {
                 });
               },
             },
-          });
+          };
+          let completedResult: AgentRunResult | undefined;
+          const saveResult = async (result: AgentRunResult) => {
+            let finalResult = result;
+            setTags({ modelId: finalResult.diagnostics.modelId });
+            const diagnosticsAttributes =
+              getAgentTurnDiagnosticsAttributes(finalResult);
+            setSpanAttributes(diagnosticsAttributes);
+            let failureEventId: string | undefined;
+            if (finalResult.diagnostics.outcome !== "success") {
+              const finalized = finalizeFailedTurnReplyWithEvent({
+                reply: finalResult,
+                logException,
+              });
+              finalResult = finalized.reply;
+              failureEventId = finalized.eventId;
+              await deliverAssistantMessage(finalResult.text);
+            }
+            const turnResult: DispatchTurnResult =
+              finalResult.diagnostics.outcome === "success"
+                ? { outcome: "completed" }
+                : {
+                    errorMessage:
+                      finalResult.diagnostics.errorMessage ??
+                      `Agent turn ended with ${finalResult.diagnostics.outcome}.`,
+                    outcome: "failed",
+                  };
+            runResultHandled = true;
+            shouldPersistFailureState = false;
+            boundaryFailureCode = "agent_run_failed";
+
+            const completedState = buildDeliveredTurnStatePatch({
+              conversation: preparedState.conversation,
+              reply: finalResult,
+              sessionId: turnId,
+              userMessageId: preparedState.userMessageId,
+            });
+            let saveFailed = false;
+            let saveFailureEventId: string | undefined;
+            try {
+              // Save the accepted delivery first so recovery cannot send the
+              // reply again. Save Conversation messages next and Redis state
+              // last.
+              if (conversationId && finalResult.piMessages?.length) {
+                await saveTurnCheckpoint({
+                  mode: "completed",
+                  channelName,
+                  conversationId,
+                  turnId,
+                  durationMs: finalResult.diagnostics.durationMs,
+                  usage: finalResult.diagnostics.usage,
+                  destination,
+                  destinationVisibility,
+                  source,
+                  sliceId: 1,
+                  dispatchOutcome:
+                    finalResult.diagnostics.outcome === "success"
+                      ? "completed"
+                      : "failed",
+                  ...(options.execution?.dispatch && turnResult.errorMessage
+                    ? { errorMessage: turnResult.errorMessage }
+                    : undefined),
+                  ...(acceptedDeliveryId
+                    ? { resultMessageId: acceptedDeliveryId }
+                    : undefined),
+                  messages: finalResult.piMessages,
+                  actor: executionActor,
+                  surface: options.execution?.surface ?? "slack",
+                  dispatchId: options.execution?.dispatch?.id,
+                });
+              } else if (conversationId) {
+                await recordTurnSummary({
+                  channelName,
+                  conversationId,
+                  cumulativeDurationMs: finalResult.diagnostics.durationMs,
+                  cumulativeUsage: finalResult.diagnostics.usage,
+                  turnId,
+                  sliceId: 1,
+                  startedAtMs: message.metadata.dateSent.getTime(),
+                  state: "completed",
+                  actor: executionActor,
+                  destination,
+                  destinationVisibility,
+                  source,
+                  surface: options.execution?.surface ?? "slack",
+                  dispatchId: options.execution?.dispatch?.id,
+                  dispatchOutcome:
+                    finalResult.diagnostics.outcome === "success"
+                      ? "completed"
+                      : "failed",
+                  ...(acceptedDeliveryId
+                    ? { resultMessageId: acceptedDeliveryId }
+                    : undefined),
+                  traceId: getActiveTraceId(),
+                });
+              }
+              await persistWithRetry(() =>
+                persistConversationMessages({
+                  conversation: completedState.conversation,
+                  conversationId,
+                }),
+              );
+              await persistThreadRuntimeStateWithRetry(thread, completedState);
+            } catch (saveError) {
+              // The user already saw the reply. Record the save failure without
+              // posting a second error reply.
+              saveFailed = true;
+              saveFailureEventId = logException(
+                saveError,
+                "slack.reply.post_delivery_commit.failed",
+                messageTs ? { "messaging.message.id": messageTs } : {},
+              );
+            }
+            preparedState.conversation = completedState.conversation;
+            persistedAtLeastOnce = true;
+            options.onTurnOutcome?.(turnResult);
+            completedResult = finalResult;
+
+            if (saveFailed) {
+              return {
+                ...(saveFailureEventId
+                  ? { eventId: saveFailureEventId }
+                  : undefined),
+                failureCode: "persistence_failed" as const,
+                outcome: "failed" as const,
+              };
+            }
+            if (finalResult.diagnostics.outcome === "success") {
+              return {
+                outcome: assistantMessageDelivered
+                  ? ("success" as const)
+                  : ("no_reply" as const),
+              };
+            }
+            return {
+              ...(failureEventId ? { eventId: failureEventId } : undefined),
+              failureCode: "model_execution_failed" as const,
+              outcome: "failed" as const,
+            };
+          };
+          const outcome = await executeTurn(
+            deps.services.agentRunner,
+            run,
+            saveResult,
+          );
           if (outcome.status === "awaiting_auth") {
             await recordDispatchOutcome("blocked", "failed");
             options.onTurnOutcome?.({ outcome: "blocked" });
@@ -1408,7 +1337,6 @@ export function createSlackTurn(deps: SlackTurnDeps) {
                   failureCode: "agent_run_failed",
                   turnId,
                 });
-                lifecycleTerminalized = true;
               }
               persistedAtLeastOnce = true;
               shouldPersistFailureState = false;
@@ -1469,157 +1397,23 @@ export function createSlackTurn(deps: SlackTurnDeps) {
             return;
           }
 
-          let reply = outcome.result;
-          setTags({ modelId: reply.diagnostics.modelId });
-          const diagnosticsAttributes =
-            getAgentTurnDiagnosticsAttributes(reply);
-          setSpanAttributes(diagnosticsAttributes);
-          if (reply.diagnostics.outcome !== "success") {
-            const finalized = finalizeFailedTurnReplyWithEvent({
-              reply,
-              logException,
-            });
-            reply = finalized.reply;
-            finalizedFailureEventId = finalized.eventId;
-            await deliverAssistantMessage(reply.text);
-          }
-          const turnResult: DispatchTurnResult =
-            reply.diagnostics.outcome === "success"
-              ? { outcome: "completed" }
-              : {
-                  errorMessage:
-                    reply.diagnostics.errorMessage ??
-                    `Agent turn ended with ${reply.diagnostics.outcome}.`,
-                  outcome: "failed",
-                };
-          runResultHandled = true;
-          shouldPersistFailureState = false;
-          boundaryFailureCode = "agent_run_failed";
-
-          const completedState = buildDeliveredTurnStatePatch({
-            conversation: preparedState.conversation,
-            reply,
-            sessionId: turnId,
-            userMessageId: preparedState.userMessageId,
-          });
-          try {
-            // Commit the durable delivery record first so recovery cannot
-            // regenerate an accepted reply. Persist canonical message
-            // facts next, then update Redis runtime scratch independently.
-            if (conversationId && reply.piMessages?.length) {
-              await saveTurnCheckpoint({
-                mode: "completed",
-                channelName,
-                conversationId,
-                turnId,
-                durationMs: reply.diagnostics.durationMs,
-                usage: reply.diagnostics.usage,
-                destination,
-                destinationVisibility,
-                source,
-                sliceId: 1,
-                dispatchOutcome:
-                  reply.diagnostics.outcome === "success"
-                    ? "completed"
-                    : "failed",
-                ...(options.execution?.dispatch && turnResult.errorMessage
-                  ? { errorMessage: turnResult.errorMessage }
-                  : undefined),
-                ...(acceptedDeliveryId
-                  ? { resultMessageId: acceptedDeliveryId }
-                  : undefined),
-                messages: reply.piMessages,
-                actor: executionActor,
-                surface: options.execution?.surface ?? "slack",
-                dispatchId: options.execution?.dispatch?.id,
-              });
-            } else if (conversationId) {
-              await recordTurnSummary({
-                channelName,
-                conversationId,
-                cumulativeDurationMs: reply.diagnostics.durationMs,
-                cumulativeUsage: reply.diagnostics.usage,
-                turnId: turnId,
-                sliceId: 1,
-                startedAtMs: message.metadata.dateSent.getTime(),
-                state: "completed",
-                actor: executionActor,
-                destination,
-                destinationVisibility,
-                source,
-                surface: options.execution?.surface ?? "slack",
-                dispatchId: options.execution?.dispatch?.id,
-                dispatchOutcome:
-                  reply.diagnostics.outcome === "success"
-                    ? "completed"
-                    : "failed",
-                ...(acceptedDeliveryId
-                  ? { resultMessageId: acceptedDeliveryId }
-                  : undefined),
-                traceId: getActiveTraceId(),
-              });
-            }
-            await persistWithRetry(() =>
-              persistConversationMessages({
-                conversation: completedState.conversation,
-                conversationId,
-              }),
-            );
-            await persistThreadRuntimeStateWithRetry(thread, completedState);
-          } catch (commitError) {
-            // The user already saw the reply; keep the turn successful and
-            // record the persistence failure for operators.
-            const persistenceEventId = logException(
-              commitError,
-              "slack.reply.post_delivery_commit.failed",
-              messageTs ? { "messaging.message.id": messageTs } : {},
-            );
-            if (conversationId && !lifecycleTerminalized) {
-              await deps.services.turnLifecycle.fail({
-                conversationId,
-                createdAtMs: Date.now(),
-                ...(persistenceEventId
-                  ? { eventId: persistenceEventId }
-                  : undefined),
-                failureCode: "persistence_failed",
-                turnId,
-              });
-              lifecycleTerminalized = true;
-            }
-          }
-          preparedState.conversation = completedState.conversation;
-          persistedAtLeastOnce = true;
-          options.onTurnOutcome?.(turnResult);
-          if (!lifecycleTerminalized && conversationId) {
-            if (reply.diagnostics.outcome === "success") {
-              await deps.services.turnLifecycle.complete({
-                conversationId,
-                createdAtMs: Date.now(),
-                outcome: assistantMessageDelivered ? "success" : "no_reply",
-                turnId,
-              });
-            } else {
-              await deps.services.turnLifecycle.fail({
-                conversationId,
-                createdAtMs: Date.now(),
-                ...(finalizedFailureEventId
-                  ? { eventId: finalizedFailureEventId }
-                  : undefined),
-                failureCode: "model_execution_failed",
-                turnId,
-              });
-            }
-            lifecycleTerminalized = true;
+          if (!completedResult) {
+            throw new Error("Completed Turn did not save a result");
           }
           if (shouldEmitDevAgentTrace()) {
             logInfo("agent.turn.completed", {
-              "app.ai.outcome": reply.diagnostics.outcome,
-              "app.ai.tool_call_count": reply.diagnostics.toolCalls.length,
-              "app.ai.tool_error_results": reply.diagnostics.toolErrorCount,
+              "app.ai.outcome": completedResult.diagnostics.outcome,
+              "app.ai.tool_call_count":
+                completedResult.diagnostics.toolCalls.length,
+              "app.ai.tool_error_results":
+                completedResult.diagnostics.toolErrorCount,
             });
           }
           await notifyTurnCompleted();
-          if (reply.diagnostics.outcome === "success" && conversationId) {
+          if (
+            completedResult.diagnostics.outcome === "success" &&
+            conversationId
+          ) {
             try {
               await deps.services.scheduleSessionCompletedPluginTasks({
                 conversationId,
@@ -1669,8 +1463,11 @@ export function createSlackTurn(deps: SlackTurnDeps) {
             shouldPersistFailureState = true;
           }
           shouldPersistFailureState = true;
-          const classifiedFailure = getConversationTurnBoundaryError(error);
-          const failureCause = classifiedFailure?.cause ?? error;
+          const runFailure =
+            error instanceof AgentRunError ? error.cause : error;
+          const classifiedFailure =
+            getConversationTurnBoundaryError(runFailure);
+          const failureCause = classifiedFailure?.cause ?? runFailure;
           if (
             failureCause instanceof AuthorizationFlowDisabledError ||
             failureCause instanceof PluginCredentialFailureError
