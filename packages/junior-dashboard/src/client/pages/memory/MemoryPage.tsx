@@ -15,7 +15,7 @@ import type { PluginUserPageLink } from "@sentry/junior-plugin-api";
 
 import { FilterTabList } from "../../components/FilterBar";
 import { InlineError } from "../../components/InlineError";
-import { LoadingView } from "../../components/LoadingView";
+import { PageContentSkeleton } from "../../components/PageContentSkeleton";
 import { LoadMorePagination } from "../../components/Pagination";
 import { SearchInput } from "../../components/SearchInput";
 import { SelectableRow } from "../../components/SelectableRow";
@@ -89,14 +89,11 @@ function MemoryOverview(props: { range: TimeRangeDays }) {
   }
   if (!dashboardQuery.data) {
     return (
-      <>
-        <Card className="min-h-64 animate-pulse">
-          <span className="sr-only">Loading memory history</span>
-        </Card>
-        <div className="h-24 animate-pulse border-y border-white/[0.06]">
-          <span className="sr-only">Loading memory summary</span>
-        </div>
-      </>
+      <PageContentSkeleton
+        className="gap-6 sm:gap-8"
+        label="Loading memory history"
+        variant="stats"
+      />
     );
   }
   return (
@@ -172,9 +169,7 @@ function MemoryLibrary(props: {
     selectedRecord,
   ]);
 
-  if (!query.data && !query.error) {
-    return <LoadingView label="Loading memories" />;
-  }
+  const loading = !query.data && !query.error;
 
   return (
     <section className="grid gap-4" aria-labelledby="memory-library-title">
@@ -222,7 +217,9 @@ function MemoryLibrary(props: {
         value={filter}
       />
 
-      {query.error ? (
+      {loading ? (
+        <PageContentSkeleton label="Loading memories" variant="panel" />
+      ) : query.error ? (
         <Card className="flex items-center gap-3 border-rose-300/20 p-5 text-sm text-rose-200">
           <CircleAlert aria-hidden="true" size={18} />
           {query.error.message}
@@ -275,12 +272,14 @@ function MemoryLibrary(props: {
           ) : null}
         </div>
       )}
-      <MemoryDetailsDrawer
-        action={action}
-        onAction={runAction}
-        onClose={() => navigate(memoryPath(props.libraryPath))}
-        record={selectedRecord}
-      />
+      {!loading ? (
+        <MemoryDetailsDrawer
+          action={action}
+          onAction={runAction}
+          onClose={() => navigate(memoryPath(props.libraryPath))}
+          record={selectedRecord}
+        />
+      ) : null}
     </section>
   );
 }

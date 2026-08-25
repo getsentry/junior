@@ -14,7 +14,7 @@ import type {
 
 import { useTaskExecutionsData } from "../../api";
 import { InlineError } from "../../components/InlineError";
-import { LoadingView } from "../../components/LoadingView";
+import { PageContentSkeleton } from "../../components/PageContentSkeleton";
 import { StatusChip } from "../../components/StatusChip";
 import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
 import { Card } from "../../components/layout/Card";
@@ -45,7 +45,15 @@ export function TaskExecutionsPage(props: { enabled: boolean }) {
     return <Navigate replace to="/tasks" />;
   }
   if (!query.data && !query.error) {
-    return <LoadingView label="Loading task executions" />;
+    return (
+      <>
+        <PageHeader
+          description="Terminal runs for one scheduled or event task."
+          title="Task executions"
+        />
+        <PageContentSkeleton label="Loading task executions" variant="list" />
+      </>
+    );
   }
   if (query.error || !query.data) {
     return (

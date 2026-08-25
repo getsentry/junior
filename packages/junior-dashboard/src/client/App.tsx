@@ -10,12 +10,16 @@ import {
 } from "./api";
 import { ConnectionBanner } from "./components/ConnectionBanner";
 import { LoadingView } from "./components/LoadingView";
+import { PageContentSkeleton } from "./components/PageContentSkeleton";
 import { ProfileMenu } from "./components/ProfileMenu";
 import {
   DashboardChrome,
   DashboardChromeProvider,
 } from "./components/layout/DashboardChrome";
 import { DashboardHeader } from "./components/layout/DashboardHeader";
+import { PageHeader } from "./components/layout/PageHeader";
+import { PageLayout } from "./components/layout/PageLayout";
+import { SecondaryNavigation } from "./components/layout/SecondaryNavigation";
 import { VisualViewportShell } from "./components/layout/VisualViewportShell";
 import {
   buildConversations,
@@ -193,7 +197,12 @@ export function DashboardShell() {
           element={
             loading ? (
               <TasksPageLayout>
-                <LoadingView label="Loading task executions" />
+                <TasksRouteLoading
+                  description="Terminal runs for one scheduled or event task."
+                  label="Loading task executions"
+                  title="Task executions"
+                  variant="list"
+                />
               </TasksPageLayout>
             ) : loggedIn ? (
               <TasksPageLayout>
@@ -209,7 +218,12 @@ export function DashboardShell() {
           element={
             loading ? (
               <TasksPageLayout>
-                <LoadingView label="Loading task runs" />
+                <TasksRouteLoading
+                  description="Newest runs across your tasks and tasks in public destinations."
+                  label="Loading task runs"
+                  title="Runs"
+                  variant="list"
+                />
               </TasksPageLayout>
             ) : loggedIn ? (
               <TasksPageLayout>
@@ -225,7 +239,12 @@ export function DashboardShell() {
           element={
             loading ? (
               <TasksPageLayout>
-                <LoadingView label="Loading tasks" />
+                <TasksRouteLoading
+                  description="Find and manage tasks across your linked workspaces."
+                  label="Loading tasks"
+                  title="All tasks"
+                  variant="list"
+                />
               </TasksPageLayout>
             ) : loggedIn ? (
               <TasksPageLayout>
@@ -241,7 +260,12 @@ export function DashboardShell() {
           element={
             loading ? (
               <TasksPageLayout>
-                <LoadingView label="Loading tasks" />
+                <TasksRouteLoading
+                  description="Scheduled and event-driven work created by users."
+                  label="Loading tasks"
+                  title="Tasks"
+                  variant="stats"
+                />
               </TasksPageLayout>
             ) : loggedIn ? (
               <TasksPageLayout>
@@ -442,7 +466,7 @@ export function DashboardShell() {
         <Route
           element={
             loading || userPagesQuery.isPending ? (
-              <LoadingView label="Loading memory" />
+              <MemoryRouteLoading label="Loading memory" />
             ) : loggedIn && userPagesQuery.data ? (
               <MemoryPermalinkRoute pages={userPagesQuery.data} />
             ) : (
@@ -454,7 +478,7 @@ export function DashboardShell() {
         <Route
           element={
             loading || userPagesQuery.isPending ? (
-              <LoadingView label="Loading memories" />
+              <MemoryRouteLoading label="Loading memories" />
             ) : loggedIn && userPagesQuery.data ? (
               <MemoryPermalinkRoute pages={userPagesQuery.data} />
             ) : (
@@ -497,6 +521,46 @@ function conversationIdFromPath(pathname: string): string | undefined {
   } catch {
     return match[1];
   }
+}
+
+function TasksRouteLoading(props: {
+  description: string;
+  label: string;
+  title: string;
+  variant: "list" | "stats";
+}) {
+  return (
+    <>
+      <PageHeader description={props.description} title={props.title} />
+      <PageContentSkeleton label={props.label} variant={props.variant} />
+    </>
+  );
+}
+
+function MemoryRouteLoading(props: { label: string }) {
+  const location = useLocation();
+  const overview = location.pathname === "/memories";
+  return (
+    <>
+      <SecondaryNavigation
+        ariaLabel="Memory navigation"
+        items={[
+          { end: true, label: "Overview", to: "/memories" },
+          { label: "Memories", to: "/memories/library" },
+        ]}
+      />
+      <PageLayout className="gap-6 sm:gap-8">
+        <PageHeader
+          description="Personal and public memories Junior can use across conversations."
+          title="Memories"
+        />
+        <PageContentSkeleton
+          label={props.label}
+          variant={overview ? "stats" : "list"}
+        />
+      </PageLayout>
+    </>
+  );
 }
 
 function LegacySystemRedirect(props: { section: "locations" | "people" }) {
