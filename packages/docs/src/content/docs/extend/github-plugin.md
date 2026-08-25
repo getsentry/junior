@@ -281,7 +281,9 @@ pnpm exec junior upgrade
 ```
 
 This creates the `junior_github_pull_requests` and `junior_github_issues`
-projections used by webhook ingestion and the `/system` outcome report.
+projections used by webhook ingestion and outcome tracking. Opened pull
+requests also publish native code-change records for the dashboard Code page
+and person profiles.
 
 ## Capabilities
 
