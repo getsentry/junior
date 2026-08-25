@@ -54,7 +54,7 @@
   "scripts": {
     "prepare": "pnpm run build",
     "prepack": "pnpm run build",
-    "build": "tsup && tsc -p tsconfig.build.json --emitDeclarationOnly && node scripts/rewrite-declaration-paths.mjs",
+    "build": "tsup && tsc -p tsconfig.build.json --emitDeclarationOnly && tsc-alias -p tsconfig.build.json",
     "acp:smoke": "pnpm exec tsx scripts/acp-smoke.ts",
     "db:generate": "pnpm exec drizzle-kit generate --config drizzle.config.ts",
     "lint": "oxlint --config .oxlintrc.json --deny-warnings src tests scripts bin tsup.config.ts && depcruise --config .dependency-cruiser.mjs src/chat",
@@ -66,7 +66,7 @@
     "tool-annotations:check": "node --test scripts/check-tool-annotations.test.mjs && node scripts/check-tool-annotations.mjs",
     "tool-error-classification:check": "node --test scripts/check-tool-error-classification.test.mjs && node scripts/check-tool-error-classification.mjs",
     "test:coverage": "vitest run --maxWorkers=4 --coverage --reporter=default --reporter=junit --outputFile.junit=coverage/results.junit.xml",
-    "consumer-types:check": "node --test scripts/rewrite-declaration-paths.test.mjs && node scripts/check-consumer-types.mjs"
+    "consumer-types:check": "node scripts/check-consumer-types.mjs"
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "1.3.0",
@@ -120,6 +120,7 @@
     "msw": "^2.14.6",
     "nitro": "3.0.260522-beta",
     "oxlint": "^1.79.0",
+    "tsc-alias": "^1.9.2",
     "tsup": "^8.5.1",
     "typescript": "^6.0.3",
     "vercel": "^54.4.0",
