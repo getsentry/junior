@@ -743,6 +743,7 @@ describe("sandbox egress proxy integration", () => {
       [],
       {},
       {
+        conversationId,
         destination: {
           platform: "local",
           conversationId,

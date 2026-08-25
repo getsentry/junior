@@ -38,7 +38,6 @@ import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
 import { runNonInteractiveCommand } from "@/chat/sandbox/noninteractive-command";
 import type { AnyToolDefinition } from "@/chat/tools/definition";
 import { getDashboardConversationLink } from "@/chat/slack/dashboard-link";
-import { canRouteResourceEvents } from "@/chat/resource-events/workspace";
 import { createResourceEventSubscription } from "@/chat/resource-events/store";
 import { RESOURCE_SUBSCRIPTION_DEFAULT_TTL_MS } from "@/chat/resource-events/tool-support";
 import { getSlackToolContext } from "@/chat/slack/tool-support/context";
@@ -613,9 +612,9 @@ export function getPluginTools(
           userId: slackToolContext.actor?.userId,
         })
       : undefined;
-    const dashboardConversationUrl = context.conversationId
-      ? getDashboardConversationLink(context.conversationId)
-      : undefined;
+    const dashboardConversationUrl = getDashboardConversationLink(
+      context.conversationId,
+    );
     const slackContext: SlackToolRegistrationHookContext | undefined =
       slackToolContext
         ? {
@@ -628,25 +627,19 @@ export function getPluginTools(
             ...(credentialSubject ? { credentialSubject } : undefined),
           }
         : undefined;
-    const annotations = context.conversationId
-      ? createPluginAnnotations({
-          conversationId: context.conversationId,
-          db: getDb(),
-          plugin: pluginName,
-        })
-      : undefined;
+    const annotations = createPluginAnnotations({
+      conversationId: context.conversationId,
+      db: getDb(),
+      plugin: pluginName,
+    });
     const mcp = pluginMcpContext(plugin, context);
     const canSubscribe =
-      context.source.platform === "slack" &&
-      context.destination.platform === "slack" &&
-      Boolean(context.conversationId) &&
-      canRouteResourceEvents() &&
       Boolean(plugin.resourceEvents) &&
       plugin.resourceEvents?.isEnabled?.() !== false;
     const resourceEvents: ToolRegistrationHookContext["resourceEvents"] = {
       canSubscribe,
       async subscribe(input) {
-        if (!canSubscribe || context.destination.platform !== "slack") {
+        if (!canSubscribe) {
           throw new Error(
             "Resource subscriptions are not available in this conversation.",
           );
@@ -668,7 +661,7 @@ export function getPluginTools(
           );
         }
         const subscription = await createResourceEventSubscription({
-          conversationId: context.conversationId!,
+          conversationId: context.conversationId,
           destination: context.destination,
           events: input.events,
           expiresAtMs: Date.now() + RESOURCE_SUBSCRIPTION_DEFAULT_TTL_MS,
@@ -691,7 +684,7 @@ export function getPluginTools(
       context.resolveActorIdentity ?? (async () => undefined);
     const common = {
       ...basePluginContext(plugin),
-      ...(annotations ? { annotations } : undefined),
+      annotations,
       conversationId: context.conversationId,
       locationId: context.locationId,
       userText: context.userText,

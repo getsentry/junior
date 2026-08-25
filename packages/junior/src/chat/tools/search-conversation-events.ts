@@ -128,13 +128,7 @@ export function createSearchConversationEventsTool(
       .strict(),
     outputSchema: searchConversationEventsOutputSchema,
     execute: async (input) => {
-      const currentConversationId = context.conversationId?.trim();
-      if (!currentConversationId) {
-        throw new ToolInputError(
-          "searchConversationEvents requires an active conversation",
-        );
-      }
-
+      const currentConversationId = context.conversationId;
       const conversationId =
         input.conversation_id?.trim() || currentConversationId;
       const afterSeq = input.after_seq ?? undefined;

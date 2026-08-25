@@ -119,10 +119,7 @@ export function createTools(
     ...createScheduledTaskTools(context),
     ...createWorkspaceTools(context),
   };
-  if (context.conversationId) {
-    tools.searchConversationEvents =
-      createSearchConversationEventsTool(context);
-  }
+  tools.searchConversationEvents = createSearchConversationEventsTool(context);
   if (context.supportsImageInput) {
     tools.viewImage = createViewImageTool(
       context.workspace,
@@ -142,7 +139,7 @@ export function createTools(
       hooks.toolOverrides?.imageGenerate,
     );
   }
-  if (context.attachmentStorage && context.conversationId) {
+  if (context.attachmentStorage) {
     tools.publishImage = createPublishImageTool({
       conversationId: context.conversationId,
       db: getSqlExecutor(),
@@ -174,7 +171,7 @@ export function createTools(
     tools.slackCanvasWrite = createSlackCanvasWriteTool(state);
     tools.slackThreadRead = createSlackThreadReadTool(slackContext);
     tools.slackChannelJoin = createSlackChannelJoinTool(slackContext);
-    if (context.conversationId && slackContext.source.visibility === "public") {
+    if (slackContext.source.visibility === "public") {
       tools.searchConversationMessages =
         createSlackConversationMessageSearchTool(
           {
@@ -224,7 +221,7 @@ export function createTools(
         slackContext,
         state,
         (input) => readSandboxFileUpload(context.workspace, input),
-        context.conversationId && context.attachmentStorage
+        context.attachmentStorage
           ? {
               conversationId: context.conversationId,
               db: getSqlExecutor(),

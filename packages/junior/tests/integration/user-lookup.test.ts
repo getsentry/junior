@@ -779,6 +779,7 @@ describe("userLookup", () => {
         [],
         {},
         {
+          conversationId: "slack:C0TEST:1700000000.100000",
           source: createSlackSource({
             teamId: "T0TEST",
             channelId: "C0TEST",

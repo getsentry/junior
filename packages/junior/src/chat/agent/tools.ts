@@ -379,7 +379,7 @@ export async function wireAgentTools(
       activeWorkspaceId: () => agentSandbox.sandboxRef()?.workspaceId,
       switch: agentSandbox.switchWorkspace,
     },
-  } as ToolRuntimeContext;
+  } satisfies ToolRuntimeContext;
   const actionReview = createToolActionReview({
     context: {
       actor: args.currentActor,

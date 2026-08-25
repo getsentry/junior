@@ -104,7 +104,7 @@ export interface ToolActionReviewer {
 /** Core-owned context used to prepare one exact action for Guardian. */
 export interface ToolActionReviewContext {
   actor?: Actor;
-  conversationId?: string;
+  conversationId: string;
   credentialContext?: CredentialContext;
   destination: Destination;
   source: Source;
@@ -291,12 +291,8 @@ function assertAuthoritativeContext(
   context: ToolActionReviewContext,
 ): asserts context is ToolActionReviewContext & {
   actor: Actor;
-  conversationId: string;
   userIntent: () => string;
 } {
-  if (!context.conversationId?.trim()) {
-    throw new ToolActionReviewUnavailableError();
-  }
   if (!context.actor) {
     throw new ToolActionReviewUnavailableError();
   }

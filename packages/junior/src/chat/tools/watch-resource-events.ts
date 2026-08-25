@@ -11,7 +11,6 @@ import {
 } from "@/chat/resource-events/catalog";
 import { createResourceEventSubscription } from "@/chat/resource-events/store";
 import {
-  requireResourceWatchConversation,
   RESOURCE_SUBSCRIPTION_DEFAULT_TTL_MS,
   RESOURCE_SUBSCRIPTION_MAX_TTL_MS,
   STOP_WATCHING_TOOL_NAME,
@@ -144,7 +143,6 @@ export function createWatchResourceEventsTool(
     inputSchema: inputSchema(catalog),
     outputSchema,
     async execute(input: Input) {
-      const conversationId = requireResourceWatchConversation(context);
       const events = cleanStrings(input.events);
       for (const eventType of events) {
         if (
@@ -169,7 +167,7 @@ export function createWatchResourceEventsTool(
       });
       const nowMs = Date.now();
       const subscription = await createResourceEventSubscription({
-        conversationId,
+        conversationId: context.conversationId,
         destination: context.destination,
         events,
         expiresAtMs: nowMs + ttlMs(input),

@@ -1656,6 +1656,7 @@ describe("Slack schedule tool wiring via createTools", () => {
         [],
         {},
         {
+          conversationId: `slack:DDM:1700000000.100000`,
           source: createSlackSource({
             teamId: TEAM_ID,
             channelId: "DDM",

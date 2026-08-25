@@ -46,6 +46,7 @@ function ctx(
 ): ToolRuntimeContext {
   if (!channelId) {
     return {
+      conversationId: "local:test:tool-registration",
       destination: {
         platform: "local" as const,
         conversationId: "local:test:tool-registration",
@@ -319,6 +320,7 @@ describe("Slack tool registration", () => {
       [],
       {},
       {
+        conversationId: "local:test:run-test",
         destination: {
           platform: "local",
           conversationId: "local:test:run-test",
@@ -333,9 +335,10 @@ describe("Slack tool registration", () => {
       Object.keys(tools).filter((name) => name.startsWith("slack")),
     ).toEqual([]);
     expect(tools).not.toHaveProperty("attachFile");
-    expect(tools).not.toHaveProperty("stopWatchingResources");
-    expect(tools).not.toHaveProperty("searchConversationEvents");
+    expect(tools).toHaveProperty("stopWatchingResources");
+    expect(tools).toHaveProperty("searchConversationEvents");
   });
+
 
   it("registers image generation only when artifact persistence is available", () => {
     expect(createTools([], {}, ctx())).not.toHaveProperty("imageGenerate");
