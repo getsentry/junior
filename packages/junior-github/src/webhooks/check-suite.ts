@@ -115,6 +115,19 @@ function isCheckSuiteRepositoryPullRequest(
   return pullRequest.base.repo.id === repositoryId;
 }
 
+/** Map a completed check suite conclusion to the resource event type we publish. */
+function checkSuiteEventType(
+  conclusion: string | null | undefined,
+): "pull_request.checks.failed" | "pull_request.checks.recovered" | undefined {
+  if (conclusion === "failure" || conclusion === "timed_out") {
+    return "pull_request.checks.failed";
+  }
+  if (conclusion === "success") {
+    return "pull_request.checks.recovered";
+  }
+  return undefined;
+}
+
 /** True when a GitHub API call failed with HTTP 404. */
 function isGitHubNotFoundError(error: unknown): boolean {
   return (
@@ -318,14 +331,8 @@ export function normalizeCheckSuiteEvents(
   const parsed = checkSuiteWebhookSchema.safeParse(body);
   if (!parsed.success || parsed.data.action !== "completed") return [];
   const conclusion = parsed.data.check_suite.conclusion;
-  if (!conclusion) return [];
-  const eventType =
-    conclusion === "failure" || conclusion === "timed_out"
-      ? "pull_request.checks.failed"
-      : conclusion === "success"
-        ? "pull_request.checks.recovered"
-        : undefined;
-  if (!eventType) return [];
+  const eventType = checkSuiteEventType(conclusion);
+  if (!eventType || typeof conclusion !== "string") return [];
   const suite = parsed.data.check_suite;
   const appName = suite.app?.name?.trim() || suite.app?.slug?.trim() || undefined;
   const headSha =
@@ -377,13 +384,7 @@ export function parseCheckSuitePublishTargets(body: unknown):
   | undefined {
   const parsed = checkSuiteWebhookSchema.safeParse(body);
   if (!parsed.success || parsed.data.action !== "completed") return undefined;
-  const conclusion = parsed.data.check_suite.conclusion;
-  const eventType =
-    conclusion === "failure" || conclusion === "timed_out"
-      ? "pull_request.checks.failed"
-      : conclusion === "success"
-        ? "pull_request.checks.recovered"
-        : undefined;
+  const eventType = checkSuiteEventType(parsed.data.check_suite.conclusion);
   if (!eventType) return undefined;
   const repository = parsed.data.repository;
   const repo = repository.full_name;
