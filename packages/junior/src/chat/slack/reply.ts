@@ -32,9 +32,9 @@ export async function sendSlackReply(args: {
     replyAttribution: args.replyAttribution,
   });
   const messageTs: string[] = [];
-  // Overflow without an inbound thread becomes a thread under the first chunk
-  // so channel tops stay one root message (scheduled tasks included).
-  let overflowThreadTs = args.threadTs;
+  // Keep the thread root. Slack wants the parent message ts, not each reply's ts.
+  // With no inbound thread, the first posted chunk becomes that root.
+  let threadTs = args.threadTs;
 
   for (const [index, text] of chunks.entries()) {
     const isFinalChunk = index === chunks.length - 1;
@@ -48,15 +48,13 @@ export async function sendSlackReply(args: {
         : text;
     const response = await postSlackMessage({
       channelId: args.channelId,
-      threadTs: overflowThreadTs,
+      threadTs,
       text: fallbackText,
       ...(blocks ? { blocks } : undefined),
     });
     if (response.ts) {
       messageTs.push(response.ts);
-      if (!overflowThreadTs) {
-        overflowThreadTs = response.ts;
-      }
+      threadTs ??= response.ts;
     }
   }
 

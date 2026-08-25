@@ -77,7 +77,7 @@ describe("sendSlackReply", () => {
       }),
     );
     expect(posts[0]?.params).not.toHaveProperty("thread_ts");
-    // Overflow without an inbound thread roots under the first posted chunk.
+    // Later chunks reply under the first posted message.
     expect(posts[1]?.params).toEqual(
       expect.objectContaining({
         channel: "C123",
@@ -92,7 +92,7 @@ describe("sendSlackReply", () => {
     );
   });
 
-  it("keeps an inbound thread_ts for every overflow chunk", async () => {
+  it("keeps the original thread for every chunk", async () => {
     const messageTs = await sendSlackReply({
       channelId: "C123",
       conversationId: "slack:C123:1700000000.000100",
