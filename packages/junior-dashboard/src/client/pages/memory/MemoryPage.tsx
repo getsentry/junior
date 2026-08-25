@@ -23,8 +23,6 @@ import { StatusChip } from "../../components/StatusChip";
 import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
-import { PageLayout } from "../../components/layout/PageLayout";
-import { SecondaryNavigation } from "../../components/layout/SecondaryNavigation";
 import {
   type PluginUserPageRecord,
   usePluginUserPageData,
@@ -36,6 +34,7 @@ import {
   useMemoryDashboardData,
 } from "./memoryDashboard";
 import { MemoryDetailsDrawer } from "./MemoryDetailsDrawer";
+import { MemoryPageLayout } from "./MemoryPageLayout";
 import { MemoryTimeline } from "./MemoryTimeline";
 import { MemoryCostChart } from "./MemoryCostChart";
 import { useMemoryRecord } from "./memoryRecord";
@@ -53,27 +52,18 @@ export function MemoryPage(props: { page: PluginUserPageLink }) {
   const libraryHref = pathWithSearch(libraryPath, location.search);
 
   return (
-    <>
-      <SecondaryNavigation
-        ariaLabel="Memory navigation"
-        items={[
-          { end: true, label: "Overview", to: basePath },
-          { label: "Memories", to: libraryHref },
-        ]}
+    <MemoryPageLayout libraryHref={libraryHref}>
+      <PageHeader
+        description={props.page.description}
+        {...(overview ? { onRangeChange: setRange, range } : {})}
+        title={props.page.label}
       />
-      <PageLayout className="gap-6 sm:gap-8">
-        <PageHeader
-          description={props.page.description}
-          {...(overview ? { onRangeChange: setRange, range } : {})}
-          title={props.page.label}
-        />
-        {overview ? (
-          <MemoryOverview range={range} />
-        ) : (
-          <MemoryLibrary libraryPath={libraryPath} page={props.page} />
-        )}
-      </PageLayout>
-    </>
+      {overview ? (
+        <MemoryOverview range={range} />
+      ) : (
+        <MemoryLibrary libraryPath={libraryPath} page={props.page} />
+      )}
+    </MemoryPageLayout>
   );
 }
 

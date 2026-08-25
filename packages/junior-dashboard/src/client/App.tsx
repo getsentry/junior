@@ -10,16 +10,12 @@ import {
 } from "./api";
 import { ConnectionBanner } from "./components/ConnectionBanner";
 import { LoadingView } from "./components/LoadingView";
-import { PageContentSkeleton } from "./components/PageContentSkeleton";
 import { ProfileMenu } from "./components/ProfileMenu";
 import {
   DashboardChrome,
   DashboardChromeProvider,
 } from "./components/layout/DashboardChrome";
 import { DashboardHeader } from "./components/layout/DashboardHeader";
-import { PageHeader } from "./components/layout/PageHeader";
-import { PageLayout } from "./components/layout/PageLayout";
-import { SecondaryNavigation } from "./components/layout/SecondaryNavigation";
 import { VisualViewportShell } from "./components/layout/VisualViewportShell";
 import {
   buildConversations,
@@ -41,15 +37,19 @@ import { SystemPage } from "./pages/system/SystemPage";
 import { SystemPageLayout } from "./pages/system/SystemPageLayout";
 import { WorkspaceFormPage } from "./pages/system/WorkspaceFormPage";
 import { WorkspacesPage } from "./pages/system/WorkspacesPage";
+import { MemoryRouteLoading } from "./pages/memory/MemoryPageLayout";
 import { TaskExecutionsPage } from "./pages/tasks/TaskExecutionsPage";
 import { TaskRunsPage } from "./pages/tasks/TaskRunsPage";
 import { TasksPage } from "./pages/tasks/TasksPage";
-import { TasksPageLayout } from "./pages/tasks/TasksPageLayout";
+import {
+  TasksPageLayout,
+  TasksRouteLoading,
+} from "./pages/tasks/TasksPageLayout";
 import {
   MemoryPermalinkRoute,
   PluginUserPageRoute,
-  pluginUserPagePath,
 } from "./pages/user/PluginUserPage";
+import { buildPrimaryNavItems } from "./primaryNav";
 import { dashboardShellBgClass } from "./styles";
 import type { DashboardCoreData } from "./types";
 
@@ -75,25 +75,6 @@ export function DashboardShell() {
   const primaryUserPages = loggedIn
     ? userPages.filter((page) => page.navigation === "primary")
     : [];
-  const memoryNavPage = primaryUserPages.find(
-    (page) => page.pluginName === "memory" && page.id === "memories",
-  );
-  const otherPrimaryUserPages = primaryUserPages.filter(
-    (page) => !(page.pluginName === "memory" && page.id === "memories"),
-  );
-  // Auth-only routes already imply the signed-in primary nav. Hold Tasks and
-  // Memories slots while core/user-pages catch up so the header does not jump.
-  const reserveAuthPrimaryNav =
-    loading &&
-    (location.pathname.startsWith("/tasks") ||
-      location.pathname.startsWith("/memories") ||
-      location.pathname.startsWith("/settings") ||
-      location.pathname.startsWith("/plugins/"));
-  const showTasksNav = loggedIn || reserveAuthPrimaryNav;
-  const showMemoriesNav =
-    Boolean(memoryNavPage) ||
-    reserveAuthPrimaryNav ||
-    (loggedIn && userPagesQuery.isPending);
   const workspace =
     location.pathname === "/" ||
     location.pathname === "/conversations" ||
@@ -114,25 +95,13 @@ export function DashboardShell() {
     ? conversationDetail.data?.displayTitle?.trim() ||
       conversationDisplayTitle(mobileConversation)
     : undefined;
-  const primaryNavItems = [
-    { key: "code", label: "Code", to: "/code" },
-    ...(showTasksNav ? [{ key: "tasks", label: "Tasks", to: "/tasks" }] : []),
-    ...(showMemoriesNav
-      ? [
-          {
-            key: "memory:memories",
-            label: memoryNavPage?.label ?? "Memories",
-            to: pluginUserPagePath("memory", "memories"),
-          },
-        ]
-      : []),
-    ...otherPrimaryUserPages.map((page) => ({
-      key: `${page.pluginName}:${page.id}`,
-      label: page.label,
-      to: pluginUserPagePath(page.pluginName, page.id),
-    })),
-    { key: "system", label: "System", to: "/system" },
-  ];
+  const primaryNavItems = buildPrimaryNavItems({
+    loading,
+    loggedIn,
+    pathname: location.pathname,
+    primaryUserPages,
+    userPagesPending: userPagesQuery.isPending,
+  });
 
   useEffect(() => {
     setMobileNavigationOpen(false);
@@ -547,46 +516,6 @@ function conversationIdFromPath(pathname: string): string | undefined {
   } catch {
     return match[1];
   }
-}
-
-function TasksRouteLoading(props: {
-  description: string;
-  label: string;
-  title: string;
-  variant: "list" | "stats";
-}) {
-  return (
-    <>
-      <PageHeader description={props.description} title={props.title} />
-      <PageContentSkeleton label={props.label} variant={props.variant} />
-    </>
-  );
-}
-
-function MemoryRouteLoading(props: { label: string }) {
-  const location = useLocation();
-  const overview = location.pathname === "/memories";
-  return (
-    <>
-      <SecondaryNavigation
-        ariaLabel="Memory navigation"
-        items={[
-          { end: true, label: "Overview", to: "/memories" },
-          { label: "Memories", to: "/memories/library" },
-        ]}
-      />
-      <PageLayout className="gap-6 sm:gap-8">
-        <PageHeader
-          description="Personal and public memories Junior can use across conversations."
-          title="Memories"
-        />
-        <PageContentSkeleton
-          label={props.label}
-          variant={overview ? "overview" : "library"}
-        />
-      </PageLayout>
-    </>
-  );
 }
 
 function LegacySystemRedirect(props: { section: "locations" | "people" }) {
