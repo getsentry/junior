@@ -12,14 +12,7 @@ export const RESOURCE_WATCH_TOOL_SOURCE = {
   description: "Inspect or stop resource watches for the current conversation.",
 };
 
-/** True when this conversation can own a temporary resource watch. */
-export function canHoldResourceEventSubscription(
-  conversationId: string | undefined,
-): boolean {
-  return Boolean(conversationId?.trim());
-}
-
-/** Require the conversation identity that owns a resource watch. */
+/** Return the conversation identity that owns a resource watch. */
 export function requireResourceWatchConversation(
   context: ToolRuntimeContext,
 ): string {
@@ -30,11 +23,4 @@ export function requireResourceWatchConversation(
     );
   }
   return conversationId;
-}
-
-/** Return whether the current runtime can safely manage conversation watches. */
-export function canUseResourceEventSubscriptionTools(
-  context: ToolRuntimeContext,
-): boolean {
-  return canHoldResourceEventSubscription(context.conversationId);
 }

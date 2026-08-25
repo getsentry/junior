@@ -40,10 +40,7 @@ import type { AnyToolDefinition } from "@/chat/tools/definition";
 import { getDashboardConversationLink } from "@/chat/slack/dashboard-link";
 import { canRouteResourceEvents } from "@/chat/resource-events/workspace";
 import { createResourceEventSubscription } from "@/chat/resource-events/store";
-import {
-  canHoldResourceEventSubscription,
-  RESOURCE_SUBSCRIPTION_DEFAULT_TTL_MS,
-} from "@/chat/resource-events/tool-support";
+import { RESOURCE_SUBSCRIPTION_DEFAULT_TTL_MS } from "@/chat/resource-events/tool-support";
 import { getSlackToolContext } from "@/chat/slack/tool-support/context";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
@@ -640,7 +637,6 @@ export function getPluginTools(
       : undefined;
     const mcp = pluginMcpContext(plugin, context);
     const canSubscribe =
-      canHoldResourceEventSubscription(context.conversationId) &&
       canRouteResourceEvents() &&
       Boolean(plugin.resourceEvents) &&
       plugin.resourceEvents?.isEnabled?.() !== false;

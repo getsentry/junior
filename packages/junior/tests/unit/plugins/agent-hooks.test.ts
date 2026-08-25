@@ -660,7 +660,7 @@ describe("agent plugin hooks", () => {
     }
   });
 
-  it("allows resource subscription hints for any conversation with an id", () => {
+  it("allows resource subscription hints for conversations", () => {
     const webActor = {
       platform: "web" as const,
       userId: "dashboard:alice",
