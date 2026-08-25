@@ -107,17 +107,23 @@ function CodeOverview(props: {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full border-collapse text-left">
+            <table className="w-full min-w-[36rem] table-fixed border-collapse text-left">
+              <colgroup>
+                <col />
+                <col className="w-28" />
+                <col className="w-28" />
+                <col className="w-28" />
+              </colgroup>
               <thead className="font-mono text-xs uppercase tracking-[0.1em] text-dashboard-text-muted">
                 <tr className="border-b border-dashboard-border-subtle">
                   <th className="px-4 py-2.5 font-medium">Repository</th>
-                  <th className="px-4 py-2.5 text-right font-medium">
+                  <th className="px-4 py-2.5 text-right font-medium whitespace-nowrap">
                     Created
                   </th>
-                  <th className="px-4 py-2.5 text-right font-medium">
+                  <th className="px-4 py-2.5 text-right font-medium whitespace-nowrap">
                     Merge rate
                   </th>
-                  <th className="px-4 py-2.5 text-right font-medium">
+                  <th className="px-4 py-2.5 text-right font-medium whitespace-nowrap">
                     Median cost
                   </th>
                 </tr>
@@ -128,8 +134,8 @@ function CodeOverview(props: {
                     className="border-b border-dashboard-border-subtle last:border-b-0"
                     key={repository.id}
                   >
-                    <td className="px-4 py-3">
-                      <div className="font-display text-sm text-dashboard-text">
+                    <td className="min-w-0 px-4 py-3">
+                      <div className="truncate font-display text-sm text-dashboard-text">
                         {repository.url ? (
                           <a
                             className="text-inherit no-underline hover:text-cyan-100"
@@ -143,17 +149,17 @@ function CodeOverview(props: {
                           repository.name
                         )}
                       </div>
-                      <div className="mt-1 font-mono text-xs text-dashboard-text-muted">
+                      <div className="mt-1 truncate font-mono text-xs text-dashboard-text-muted">
                         {repository.provider}
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-right font-mono text-sm text-dashboard-text">
+                    <td className="px-4 py-3 text-right font-mono text-sm whitespace-nowrap text-dashboard-text">
                       {repository.created}
                     </td>
-                    <td className="px-4 py-3 text-right font-mono text-sm text-dashboard-text">
+                    <td className="px-4 py-3 text-right font-mono text-sm whitespace-nowrap text-dashboard-text">
                       {mergeRate(repository.mergeRate)}
                     </td>
-                    <td className="px-4 py-3 text-right font-mono text-sm text-dashboard-text">
+                    <td className="px-4 py-3 text-right font-mono text-sm whitespace-nowrap text-dashboard-text">
                       {costUsd(repository.medianCostUsd)}
                     </td>
                   </tr>
