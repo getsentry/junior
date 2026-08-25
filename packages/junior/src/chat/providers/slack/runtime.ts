@@ -127,10 +127,10 @@ type RuntimeLogContext = Record<string, unknown> & {
 
 export interface SlackTurnRuntimeDependencies<TPreparedState> {
   assistantUserName: string;
-  botUserId?: string;
   cancelEventSubscriptions: (input: {
     conversationId: string;
   }) => Promise<void>;
+  getBotUserId: () => string | undefined;
   getPreparedConversationContext: (
     preparedState: TPreparedState,
   ) => string | undefined;
@@ -507,7 +507,7 @@ export function createSlackTurnRuntime<
     const strippedUserText = stripLeadingBotMention(
       stripLeadingSteeringOverride(content.topLevelText),
       {
-        botUserId: deps.botUserId,
+        botUserId: deps.getBotUserId(),
         stripLeadingSlackMentionToken: Boolean(message.isMention),
       },
     );
@@ -725,7 +725,7 @@ export function createSlackTurnRuntime<
         await withSpan("chat.turn", "chat.turn", context, async () => {
           await thread.subscribe();
           const queuedMessages = getQueuedMessages(hooks.messageContext, {
-            botUserId: deps.botUserId,
+            botUserId: deps.getBotUserId(),
             explicitMention: true,
           });
           let queuedProcessingReactionsStarted = false;
@@ -746,7 +746,7 @@ export function createSlackTurnRuntime<
             await startQueuedProcessingReactions();
           };
           const drainSteeringMessages = createAcceptedSteeringDrain(hooks, {
-            botUserId: deps.botUserId,
+            botUserId: deps.getBotUserId(),
             explicitMention: true,
             onAcceptedForProcessing: async (messages) => {
               await Promise.all(
@@ -915,7 +915,7 @@ export function createSlackTurnRuntime<
           const strippedUserText = stripLeadingBotMention(
             stripLeadingSteeringOverride(content.topLevelText),
             {
-              botUserId: deps.botUserId,
+              botUserId: deps.getBotUserId(),
               stripLeadingSlackMentionToken: Boolean(message.isMention),
             },
           );
@@ -930,7 +930,7 @@ export function createSlackTurnRuntime<
             runId,
           };
           const queuedMessages = getQueuedMessages(hooks.messageContext, {
-            botUserId: deps.botUserId,
+            botUserId: deps.getBotUserId(),
             explicitMention: Boolean(message.isMention),
           });
           const combinedText = combineTurnText(queuedMessages, currentText);
@@ -1061,7 +1061,7 @@ export function createSlackTurnRuntime<
           const conversationContext =
             deps.getPreparedConversationContext(preparedState);
           const drainSteeringMessages = createAcceptedSteeringDrain(hooks, {
-            botUserId: deps.botUserId,
+            botUserId: deps.getBotUserId(),
             explicitMention: Boolean(message.isMention),
             onAcceptedForProcessing: async (messages) => {
               await Promise.all(

@@ -190,6 +190,7 @@ interface ResumeSlackTurnArgs {
   initialStatus?: AssistantStatusSpec;
   agentRunner: AgentRunner;
   inputMessageIds?: string[];
+  scheduleSessionCompletedPluginTasks?: typeof scheduleSessionCompletedPluginTasks;
   commitResult?: (result: AgentRunResult) => Promise<void>;
   onFailure?: (error: unknown) => Promise<void>;
   onAuthPause?: (pause: { providerDisplayName: string }) => Promise<void>;
@@ -816,7 +817,10 @@ async function resumeSlackTurnInContext(
           conversationId: runArgs.conversationId,
           sessionId: runArgs.turnId,
         };
-        await scheduleSessionCompletedPluginTasks(params);
+        await (
+          runArgs.scheduleSessionCompletedPluginTasks ??
+          scheduleSessionCompletedPluginTasks
+        )(params);
       } catch (scheduleError) {
         logException(
           scheduleError,

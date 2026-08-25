@@ -122,8 +122,8 @@ export function createSlackRuntime(options: CreateSlackRuntimeOptions) {
     AssistantLifecycleEvent
   >({
     assistantUserName: botConfig.userName,
-    botUserId: options.getSlackAdapter().botUserId,
     cancelEventSubscriptions,
+    getBotUserId: () => options.getSlackAdapter().botUserId,
     modelId: defaultModelId(botConfig),
     now: options.now ?? (() => Date.now()),
     failConversationTurn: (input) =>

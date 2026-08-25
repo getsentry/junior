@@ -19,8 +19,8 @@ function createMockDeps(
 ): SlackTurnRuntimeDependencies<TestState> {
   return {
     assistantUserName: "test-bot",
-    botUserId: "U0APP",
     cancelEventSubscriptions: vi.fn().mockResolvedValue(undefined),
+    getBotUserId: () => "U0APP",
     modelId: "test-model",
     now: () => 1700000000000,
     initializeAssistantThread: vi.fn().mockResolvedValue(undefined),
@@ -248,7 +248,7 @@ describe("createSlackTurnRuntime", () => {
 
     it("removes the leading bot mention before preparing the turn", async () => {
       const deps = createMockDeps({
-        botUserId: "U123",
+        getBotUserId: () => "U123",
       });
       const runtime = createSlackTurnRuntime<TestState>(deps);
       const thread = await createTestThread({});

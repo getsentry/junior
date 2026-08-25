@@ -96,6 +96,10 @@ export interface PausedTurnOptions {
     | "surface"
   >;
   wakePausedTurn?: (request: PausedTurnRequest) => Promise<void>;
+  scheduleSessionCompletedPluginTasks?: (params: {
+    conversationId: string;
+    sessionId: string;
+  }) => Promise<void>;
 }
 
 /** Per-worker controls for one paused turn. */
@@ -391,6 +395,8 @@ async function runPausedTurnInContext(
     // Queue continue runs under the conversation work lease already.
     ownsConversationLease: true,
     agentRunner: options.agentRunner,
+    scheduleSessionCompletedPluginTasks:
+      options.scheduleSessionCompletedPluginTasks,
     beforeStart: async () => {
       let turn: TurnRecord | undefined;
       try {
