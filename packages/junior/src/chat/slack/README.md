@@ -1,8 +1,8 @@
 # Slack Adapter
 
-Slack code owns Slack ingress context, assistant-thread status, outbound
-formatting, and Slack API error mapping. It does not own agent decisions or
-runtime orchestration.
+Low-level Slack code owns Slack ingress data, assistant-thread status, outbound
+formatting, and Slack API error mapping. The Slack provider layer in
+`../providers/slack/` combines these capabilities with the native agent runtime.
 
 ## Ingress And Context
 
@@ -67,7 +67,9 @@ status rendering.
 
 ## Boundaries
 
-- Slack modules must not import runtime modules.
+- Low-level Slack modules must not import runtime modules.
+- The Slack provider layer may call provider-neutral runtime contracts. It must
+  not replace the native agent loop.
 - Shared services receive small Slack ports instead of SDK clients.
 - Slack SDK types stay inside the adapter.
 - Do not add bespoke `chat.update` streaming loops unless Slack imposes a hard

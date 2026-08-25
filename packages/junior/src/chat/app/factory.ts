@@ -3,12 +3,12 @@ import type { Message } from "chat";
 import {
   createSlackTurnRuntime,
   type AssistantLifecycleEvent,
-} from "@/chat/runtime/slack-runtime";
+} from "@/chat/providers/slack/runtime";
 import { createJuniorRuntimeServices } from "@/chat/app/services";
 import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { logException, logWarn, withSpan } from "@/chat/logging";
-import { createReplyToThread } from "@/chat/runtime/reply-executor";
+import { createSlackTurn } from "@/chat/providers/slack/turn";
 import {
   initializeAssistantThread as initializeAssistantThreadImpl,
   refreshAssistantThreadContext as refreshAssistantThreadContextImpl,
@@ -117,7 +117,7 @@ export function createSlackRuntime(options: CreateSlackRuntimeOptions) {
       );
     },
   });
-  const replyToThread = createReplyToThread({
+  const executeSlackTurn = createSlackTurn({
     getSlackAdapter: options.getSlackAdapter,
     prepareTurnState,
     resolveUserAttachments: services.visionContext.resolveUserAttachments,
@@ -229,7 +229,7 @@ export function createSlackRuntime(options: CreateSlackRuntimeOptions) {
         conversation: preparedState.conversation,
       });
     },
-    replyToThread,
+    executeSlackTurn,
     initializeAssistantThread: async ({
       channelId,
       threadTs,
@@ -260,7 +260,7 @@ export function createSlackRuntime(options: CreateSlackRuntimeOptions) {
     runDispatchTurn: createSlackDispatchTurnRunner({
       getLocationConfiguration: getLocationConfigurationService,
       getSlackAdapter: options.getSlackAdapter,
-      replyToThread,
+      executeSlackTurn,
     }),
   };
 }

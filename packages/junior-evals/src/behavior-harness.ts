@@ -18,7 +18,7 @@ import {
 import { createSlackRuntime } from "@/chat/app/factory";
 import { botConfig } from "@/chat/config";
 import { getConversationEventStore, getDb } from "@/chat/db";
-import type { AssistantLifecycleEvent } from "@/chat/runtime/slack-runtime";
+import type { AssistantLifecycleEvent } from "@/chat/providers/slack/runtime";
 import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
 import { createUserTokenStore } from "@/chat/capabilities/factory";
 import { parseOAuthStatePayload } from "@/chat/oauth-flow";
