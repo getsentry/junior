@@ -130,9 +130,7 @@ export function createConversationWork(
         turnLifecycle: services.replyExecutor?.turnLifecycle,
       }),
       fallbackWorker: routeAgentInvocationWork({
-        invocationWorker: createAgentInvocationWorker({
-          agentRunner: options.agentRunner,
-        }),
+        invocationWorker: createAgentInvocationWorker(options.agentRunner),
         fallbackWorker: providerWorker,
       }),
     }),

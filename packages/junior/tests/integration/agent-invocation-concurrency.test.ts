@@ -62,9 +62,7 @@ async function createHarness(streamForRun: (request: AgentRun) => StreamFn) {
   const run = vi.spyOn(agentRunner, "run");
   const route = routeAgentInvocationWork({
     fallbackWorker: vi.fn(async () => ({ status: "completed" as const })),
-    invocationWorker: createAgentInvocationWorker({
-      agentRunner,
-    }),
+    invocationWorker: createAgentInvocationWorker(agentRunner),
   });
 
   return {
