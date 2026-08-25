@@ -495,7 +495,10 @@ export async function collectResourceEventMatchKeys(input: {
   );
   if (eventTypes.size === 0) return [];
   const keys = new Set<string>();
-  for (const identifier of [...new Set(input.identifiers.map((value) => value.trim()).filter(Boolean))]) {
+  const identifiers = new Set(
+    input.identifiers.map((value) => value.trim()).filter(Boolean),
+  );
+  for (const identifier of identifiers) {
     const ids = await readSubscriptionIdIndex(
       state,
       resourceIndexKey(input.teamId, input.namespace, identifier),
