@@ -58,9 +58,9 @@ export function createConversationWork(
   const apiTurnCancellation = createApiTurnCancellation();
   const services: JuniorRuntimeServiceOverrides = {
     ...options.services,
+    agentRunner: options.agentRunner,
     replyExecutor: {
       ...options.services?.replyExecutor,
-      agentRunner: options.agentRunner,
       getPausedTurnRequest:
         options.services?.replyExecutor?.getPausedTurnRequest ??
         (async (request) =>

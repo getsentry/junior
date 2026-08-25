@@ -149,7 +149,7 @@ async function slack(options: { modelStream?: StreamFn } = {}) {
     conversationStore: getConversationStore(),
     getSlackAdapter: () => adapter,
     queue: wakes,
-    services: { replyExecutor: { agentRunner } },
+    services: { agentRunner },
     state,
   });
   return {

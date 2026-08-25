@@ -809,7 +809,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     tracePropagation,
   });
   const runtimeServiceOverrides = {
-    replyExecutor: { agentRunner },
+    agentRunner,
     sandbox: { tracePropagation },
   };
   let conversationWorkOptions: ConversationWorkCallbackOptions | undefined;

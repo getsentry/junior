@@ -22,8 +22,7 @@ import {
 import type { AgentRunResult } from "@/chat/services/turn-result";
 import { getAssistantReplyText } from "@/chat/services/assistant-reply";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
-import type { AgentRunner } from "@/chat/runtime/agent-runner";
-import { AgentRunError, executeTurn } from "@/chat/runtime/turn-execution";
+import { AgentRunError, type ExecuteTurn } from "@/chat/runtime/turn-execution";
 import { scheduleSessionCompletedPluginTasks } from "@/chat/plugins/task-runner";
 import {
   buildTurnFailureResponse,
@@ -188,7 +187,7 @@ interface ResumeSlackTurnArgs {
   ownsConversationLease?: boolean;
   initialText?: string;
   initialStatus?: AssistantStatusSpec;
-  agentRunner: AgentRunner;
+  executeTurn: ExecuteTurn;
   inputMessageIds?: string[];
   scheduleSessionCompletedPluginTasks?: typeof scheduleSessionCompletedPluginTasks;
   commitResult?: (result: AgentRunResult) => Promise<void>;
@@ -672,8 +671,7 @@ async function resumeSlackTurnInContext(
       });
     }
     const replyTimeoutMs = resolveReplyTimeoutMs();
-    const outcome = await executeTurn(
-      runArgs.agentRunner,
+    const outcome = await runArgs.executeTurn(
       run,
       async (result) => {
         const finalized = finalizeFailedTurnReplyWithEvent({

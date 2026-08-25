@@ -81,9 +81,7 @@ describe("Slack behavior: subscribed messages", () => {
             } as never;
           },
         },
-        replyExecutor: {
-          agentRunner: neverRunAgentRunner(),
-        },
+        agentRunner: neverRunAgentRunner(),
       },
     });
 
@@ -118,9 +116,7 @@ describe("Slack behavior: subscribed messages", () => {
             throw providerError;
           },
         },
-        replyExecutor: {
-          agentRunner: neverRunAgentRunner(),
-        },
+        agentRunner: neverRunAgentRunner(),
       },
     });
 
@@ -155,12 +151,10 @@ describe("Slack behavior: subscribed messages", () => {
             throw new Error("resource events bypass subscribed classifier");
           },
         },
-        replyExecutor: {
-          agentRunner: replyForRun((run) => {
-            agentRuns.push(run);
-            return "I checked the subscribed PR event.\nThe PR is merged.";
-          }),
-        },
+        agentRunner: replyForRun((run) => {
+          agentRuns.push(run);
+          return "I checked the subscribed PR event.\nThe PR is merged.";
+        }),
       },
     });
 
@@ -233,7 +227,7 @@ describe("Slack behavior: subscribed messages", () => {
     });
     const { slackRuntime } = createRuntime({
       services: {
-        replyExecutor: { agentRunner },
+        agentRunner,
       },
     });
     const thread = await createTestThread({
@@ -357,12 +351,10 @@ describe("Slack behavior: subscribed messages", () => {
             } as never;
           },
         },
-        replyExecutor: {
-          agentRunner: replyForRun((run) => {
-            replyCalls.push(run.instruction.text);
-            return "Action item captured: monitor dashboards for 30 minutes.";
-          }),
-        },
+        agentRunner: replyForRun((run) => {
+          replyCalls.push(run.instruction.text);
+          return "Action item captured: monitor dashboards for 30 minutes.";
+        }),
       },
     });
 
@@ -406,12 +398,10 @@ describe("Slack behavior: subscribed messages", () => {
             } as never;
           },
         },
-        replyExecutor: {
-          agentRunner: replyForRun((run) => {
-            replyCalls.push(run.instruction.text);
-            return "Yes. Shipping status is green.";
-          }),
-        },
+        agentRunner: replyForRun((run) => {
+          replyCalls.push(run.instruction.text);
+          return "Yes. Shipping status is green.";
+        }),
       },
     });
 
@@ -450,15 +440,13 @@ describe("Slack behavior: subscribed messages", () => {
             );
           },
         },
-        replyExecutor: {
-          agentRunner: replyForRun((run) => {
-            replyCalls.push({
-              prompt: run.instruction.text,
-              piMessages: run.history ? [...run.history] : undefined,
-            });
-            return "Handled queued subscribed turn.";
-          }),
-        },
+        agentRunner: replyForRun((run) => {
+          replyCalls.push({
+            prompt: run.instruction.text,
+            piMessages: run.history ? [...run.history] : undefined,
+          });
+          return "Handled queued subscribed turn.";
+        }),
       },
     });
     const thread = await createTestThread({
@@ -521,14 +509,12 @@ describe("Slack behavior: subscribed messages", () => {
             } as never;
           },
         },
-        replyExecutor: {
-          agentRunner: replyForRun((run) => {
-            replyCalls.push(run.instruction.text);
-            return replyCalls.length === 1
-              ? "I can help with this thread."
-              : "I'm back because you mentioned me again.";
-          }),
-        },
+        agentRunner: replyForRun((run) => {
+          replyCalls.push(run.instruction.text);
+          return replyCalls.length === 1
+            ? "I can help with this thread."
+            : "I'm back because you mentioned me again.";
+        }),
       },
     });
 
@@ -629,9 +615,7 @@ describe("Slack behavior: subscribed messages", () => {
             );
           },
         },
-        replyExecutor: {
-          agentRunner: neverRunAgentRunner(),
-        },
+        agentRunner: neverRunAgentRunner(),
       },
     });
 
@@ -672,9 +656,7 @@ describe("Slack behavior: subscribed messages", () => {
             } as never;
           },
         },
-        replyExecutor: {
-          agentRunner: neverRunAgentRunner(),
-        },
+        agentRunner: neverRunAgentRunner(),
       },
     });
 
@@ -721,9 +703,7 @@ describe("Slack behavior: subscribed messages", () => {
             } as never;
           },
         },
-        replyExecutor: {
-          agentRunner: neverRunAgentRunner(),
-        },
+        agentRunner: neverRunAgentRunner(),
       },
     });
 
@@ -772,9 +752,7 @@ describe("Slack behavior: subscribed messages", () => {
             } as never;
           },
         },
-        replyExecutor: {
-          agentRunner: neverRunAgentRunner(),
-        },
+        agentRunner: neverRunAgentRunner(),
       },
     });
 
@@ -827,12 +805,10 @@ describe("Slack behavior: subscribed messages", () => {
             } as never;
           },
         },
-        replyExecutor: {
-          agentRunner: replyForRun((run) => {
-            agentRuns.push(run);
-            return "Deploy summarized.";
-          }),
-        },
+        agentRunner: replyForRun((run) => {
+          agentRuns.push(run);
+          return "Deploy summarized.";
+        }),
       },
     });
 
@@ -887,12 +863,10 @@ describe("Slack behavior: subscribed messages", () => {
             } as never;
           },
         },
-        replyExecutor: {
-          agentRunner: replyForRun((run) => {
-            agentRuns.push(run);
-            return "Deploy summarized.";
-          }),
-        },
+        agentRunner: replyForRun((run) => {
+          agentRuns.push(run);
+          return "Deploy summarized.";
+        }),
       },
     });
 
@@ -947,9 +921,7 @@ describe("Slack behavior: subscribed messages", () => {
             );
           },
         },
-        replyExecutor: {
-          agentRunner: neverRunAgentRunner(),
-        },
+        agentRunner: neverRunAgentRunner(),
       },
     });
 
@@ -1013,12 +985,10 @@ describe("Slack behavior: subscribed messages", () => {
             } as never;
           },
         },
-        replyExecutor: {
-          agentRunner: replyForRun((run) => {
-            replyCalls.push(run.instruction.text);
-            return "You asked for the budget by Friday.";
-          }),
-        },
+        agentRunner: replyForRun((run) => {
+          replyCalls.push(run.instruction.text);
+          return "You asked for the budget by Friday.";
+        }),
       },
     });
 
@@ -1074,14 +1044,12 @@ describe("Slack behavior: subscribed messages", () => {
             } as never;
           },
         },
-        replyExecutor: {
-          agentRunner: replyForRun((run) => {
-            replyCalls.push(run.instruction.text);
-            return replyCalls.length === 1
-              ? "The deploy changed billing, auth, and the API gateway."
-              : "The three services were billing, auth, and the API gateway.";
-          }),
-        },
+        agentRunner: replyForRun((run) => {
+          replyCalls.push(run.instruction.text);
+          return replyCalls.length === 1
+            ? "The deploy changed billing, auth, and the API gateway."
+            : "The three services were billing, auth, and the API gateway.";
+        }),
       },
     });
 

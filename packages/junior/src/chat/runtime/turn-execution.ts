@@ -85,3 +85,10 @@ export async function executeTurn(
 
   return { status: "completed" };
 }
+
+/** Run the agent and finish a Turn after its caller saves the result. */
+export type ExecuteTurn = (
+  run: AgentRun,
+  saveResult: (result: AgentRunResult) => Promise<SavedTurnResult>,
+  timeoutMs?: number,
+) => Promise<TurnExecutionOutcome>;

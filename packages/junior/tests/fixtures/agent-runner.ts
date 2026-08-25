@@ -9,6 +9,7 @@ import { getAssistantReplyText } from "@/chat/services/assistant-reply";
 import type { PiMessage } from "@/chat/pi/messages";
 import { isAssistantMessage } from "@/chat/pi/transcript";
 import type { AgentRun } from "@/chat/agent/types";
+import { executeTurn, type ExecuteTurn } from "@/chat/runtime/turn-execution";
 
 function assistantMessage(text: string): AssistantMessage {
   return fauxAssistantMessage(text);
@@ -25,6 +26,12 @@ export const realAgentRunner: AgentRunner = {
     return await executeAgentRun(run);
   },
 };
+
+/** Create native Turn execution with a test AgentRunner. */
+export function createTestTurnExecution(agentRunner: AgentRunner): ExecuteTurn {
+  return async (run, saveResult, timeoutMs) =>
+    await executeTurn(agentRunner, run, saveResult, timeoutMs);
+}
 
 /** Run the real agent while replacing only model output. */
 export function createModelAgentRunner(streamFn: StreamFn): AgentRunner {

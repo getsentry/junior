@@ -78,12 +78,10 @@ describe("Slack behavior: message content", () => {
             } as never;
           },
         },
-        replyExecutor: {
-          agentRunner: createModelAgentRunnerForRun((run) => {
-            captureAgentCall(calls, run);
-            return createModelStream([{ type: "text", text: "Summary sent." }]);
-          }),
-        },
+        agentRunner: createModelAgentRunnerForRun((run) => {
+          captureAgentCall(calls, run);
+          return createModelStream([{ type: "text", text: "Summary sent." }]);
+        }),
       },
     });
 
@@ -113,12 +111,10 @@ describe("Slack behavior: message content", () => {
 
     const { slackRuntime } = createTestChatRuntime({
       services: {
-        replyExecutor: {
-          agentRunner: createModelAgentRunnerForRun((run) => {
-            captureAgentCall(calls, run);
-            return createModelStream([{ type: "text", text: "Reviewed." }]);
-          }),
-        },
+        agentRunner: createModelAgentRunnerForRun((run) => {
+          captureAgentCall(calls, run);
+          return createModelStream([{ type: "text", text: "Reviewed." }]);
+        }),
       },
     });
 
@@ -158,12 +154,10 @@ describe("Slack behavior: message content", () => {
 
     const { slackRuntime } = createTestChatRuntime({
       services: {
-        replyExecutor: {
-          agentRunner: createModelAgentRunnerForRun((run) => {
-            captureAgentCall(calls, run);
-            return createModelStream([{ type: "text", text: "Done." }]);
-          }),
-        },
+        agentRunner: createModelAgentRunnerForRun((run) => {
+          captureAgentCall(calls, run);
+          return createModelStream([{ type: "text", text: "Done." }]);
+        }),
       },
     });
 
@@ -191,14 +185,10 @@ describe("Slack behavior: message content", () => {
 
     const { slackRuntime } = createTestChatRuntime({
       services: {
-        replyExecutor: {
-          agentRunner: createModelAgentRunnerForRun((run) => {
-            captureAgentCall(calls, run);
-            return createModelStream([
-              { type: "text", text: "Alert reviewed." },
-            ]);
-          }),
-        },
+        agentRunner: createModelAgentRunnerForRun((run) => {
+          captureAgentCall(calls, run);
+          return createModelStream([{ type: "text", text: "Alert reviewed." }]);
+        }),
       },
     });
 
@@ -242,12 +232,10 @@ describe("Slack behavior: message content", () => {
 
     const { slackRuntime } = createTestChatRuntime({
       services: {
-        replyExecutor: {
-          agentRunner: createModelAgentRunnerForRun((run) => {
-            captureAgentCall(calls, run);
-            return createModelStream([{ type: "text", text: "Review found." }]);
-          }),
-        },
+        agentRunner: createModelAgentRunnerForRun((run) => {
+          captureAgentCall(calls, run);
+          return createModelStream([{ type: "text", text: "Review found." }]);
+        }),
       },
     });
 
@@ -322,9 +310,7 @@ describe("Slack behavior: message content", () => {
   it("does not invoke the agent for self-authored mention messages", async () => {
     const { slackRuntime } = createTestChatRuntime({
       services: {
-        replyExecutor: {
-          agentRunner: neverRunAgentRunner(),
-        },
+        agentRunner: neverRunAgentRunner(),
       },
     });
 
@@ -365,18 +351,15 @@ describe("Slack behavior: message content", () => {
             } as never;
           },
         },
-        replyExecutor: {
-          agentRunner: createModelAgentRunnerForRun((run) => {
-            captureAgentCall(calls, run);
-            return createModelStream([
-              {
-                type: "text",
-                text:
-                  calls.length === 1 ? "First response." : "Second response.",
-              },
-            ]);
-          }),
-        },
+        agentRunner: createModelAgentRunnerForRun((run) => {
+          captureAgentCall(calls, run);
+          return createModelStream([
+            {
+              type: "text",
+              text: calls.length === 1 ? "First response." : "Second response.",
+            },
+          ]);
+        }),
       },
     });
 
@@ -458,12 +441,10 @@ describe("Slack behavior: message content", () => {
             }) as never,
           autoCompactionTriggerTokens: 100,
         },
-        replyExecutor: {
-          agentRunner: createModelAgentRunnerForRun((run) => {
-            captureAgentCall(calls, run);
-            return createModelStream([{ type: "text", text: "Done." }]);
-          }),
-        },
+        agentRunner: createModelAgentRunnerForRun((run) => {
+          captureAgentCall(calls, run);
+          return createModelStream([{ type: "text", text: "Done." }]);
+        }),
       },
     });
 
@@ -536,6 +517,9 @@ describe("Slack behavior: message content", () => {
 
     const { slackRuntime } = createTestChatRuntime({
       services: {
+        agentRunner: createModelAgentRunner(
+          createModelStream([{ type: "text", text: "Done." }]),
+        ),
         replyExecutor: {
           contextCompactor: {
             maybeCompact: async (args) => {
@@ -543,9 +527,6 @@ describe("Slack behavior: message content", () => {
               return { compacted: false, reason: "below_threshold" };
             },
           },
-          agentRunner: createModelAgentRunner(
-            createModelStream([{ type: "text", text: "Done." }]),
-          ),
         },
       },
     });
@@ -632,12 +613,10 @@ describe("Slack behavior: message content", () => {
           },
           autoCompactionTriggerTokens: 100,
         },
-        replyExecutor: {
-          agentRunner: createModelAgentRunnerForRun((run) => {
-            captureAgentCall(calls, run);
-            return createModelStream([{ type: "text", text: "Done." }]);
-          }),
-        },
+        agentRunner: createModelAgentRunnerForRun((run) => {
+          captureAgentCall(calls, run);
+          return createModelStream([{ type: "text", text: "Done." }]);
+        }),
       },
     });
 

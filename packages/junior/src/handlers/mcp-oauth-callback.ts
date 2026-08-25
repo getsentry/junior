@@ -21,6 +21,7 @@ import { getMcpProviderErrorAttributes } from "@/chat/mcp/errors";
 import { logException, logWarn } from "@/chat/logging";
 import type { AgentRunResult } from "@/chat/services/turn-result";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
+import { executeTurn } from "@/chat/runtime/turn-execution";
 import {
   getLocationConfigurationService,
   getPersistedSandboxState,
@@ -284,7 +285,8 @@ async function resumeAuthorizedMcpTurn(args: {
     messageTs: getTurnUserSlackMessageTs(userMessage),
     lockKey: threadId,
     initialText: "",
-    agentRunner,
+    executeTurn: async (run, saveResult, timeoutMs) =>
+      await executeTurn(agentRunner, run, saveResult, timeoutMs),
     beforeStart: async () => {
       const lockedState = await getPersistedThreadState(threadId);
       const lockedConversation = coerceThreadConversationState(lockedState);

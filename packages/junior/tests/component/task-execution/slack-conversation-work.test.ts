@@ -275,49 +275,49 @@ describe("Slack conversation work execution", () => {
         text: "hello",
         authorId: "U123",
         metadata: {
-                  platform: "slack",
-                  route: "mention",
-                  message: {
-                    _type: "chat:Message",
-                    attachments: [],
-                    author: {
-                      userId: "U123",
-                      userName: "dcramer",
-                      fullName: "David Cramer",
-                      isBot: false,
-                      isMe: false,
+          platform: "slack",
+          route: "mention",
+          message: {
+            _type: "chat:Message",
+            attachments: [],
+            author: {
+              userId: "U123",
+              userName: "dcramer",
+              fullName: "David Cramer",
+              isBot: false,
+              isMe: false,
+            },
+            formatted: {
+              type: "root",
+              children: [
+                {
+                  type: "paragraph",
+                  children: [
+                    {
+                      type: "table",
+                      children: [],
                     },
-                    formatted: {
-                      type: "root",
-                      children: [
-                        {
-                          type: "paragraph",
-                          children: [
-                            {
-                              type: "table",
-                              children: [],
-                            },
-                          ],
-                        },
-                      ],
-                    },
-                    id: "1712345.0002",
-                    metadata: {
-                      dateSent: "2026-07-22T12:00:00.000Z",
-                      edited: false,
-                    },
-                    raw: {},
-                    text: "hello",
-                    threadId: CONVERSATION_ID,
-                  },
-                  thread: {
-                    _type: "chat:Thread",
-                    adapterName: "slack",
-                    channelId: "C123",
-                    id: CONVERSATION_ID,
-                    isDM: false,
-                  },
+                  ],
                 },
+              ],
+            },
+            id: "1712345.0002",
+            metadata: {
+              dateSent: "2026-07-22T12:00:00.000Z",
+              edited: false,
+            },
+            raw: {},
+            text: "hello",
+            threadId: CONVERSATION_ID,
+          },
+          thread: {
+            _type: "chat:Thread",
+            adapterName: "slack",
+            channelId: "C123",
+            id: CONVERSATION_ID,
+            isDM: false,
+          },
+        },
       },
       ...conversationQueueMessage(),
       destination: SLACK_DESTINATION,
@@ -1613,11 +1613,9 @@ describe("Slack conversation work execution", () => {
     const slackAdapter = createSlackAdapterFixture();
     const { slackRuntime } = createTestChatRuntime({
       services: {
-        replyExecutor: {
-          agentRunner: {
-            run: async () => {
-              throw new Error("persistent queued failure");
-            },
+        agentRunner: {
+          run: async () => {
+            throw new Error("persistent queued failure");
           },
         },
       },
@@ -1912,17 +1910,15 @@ describe("Slack conversation work execution", () => {
     let yieldedSessionId: string | undefined;
     const { slackRuntime } = createTestChatRuntime({
       services: {
-        replyExecutor: {
-          agentRunner: {
-            run: async (request) => {
-              const _text = request.instruction.text;
-              const context = request;
+        agentRunner: {
+          run: async (request) => {
+            const _text = request.instruction.text;
+            const context = request;
 
-              await context?.durability?.onInputCommitted?.();
-              currentNowMs = 242_000;
-              yieldedSessionId = context?.turnId;
-              return { status: "suspended", reason: "timeout", resumeVersion: 1 };
-            },
+            await context?.durability?.onInputCommitted?.();
+            currentNowMs = 242_000;
+            yieldedSessionId = context?.turnId;
+            return { status: "suspended", reason: "timeout", resumeVersion: 1 };
           },
         },
       },

@@ -85,9 +85,7 @@ async function createDirectMessageBot(modelStream: StreamFn) {
   const slackRuntime = createSlackRuntime({
     getSlackAdapter: () => bot.getAdapter("slack"),
     services: {
-      replyExecutor: {
-        agentRunner: createModelAgentRunner(modelStream),
-      },
+      agentRunner: createModelAgentRunner(modelStream),
     },
   });
 
@@ -115,9 +113,7 @@ async function createMentionBot(modelStream: StreamFn) {
   const slackRuntime = createSlackRuntime({
     getSlackAdapter: () => bot.getAdapter("slack"),
     services: {
-      replyExecutor: {
-        agentRunner: createModelAgentRunner(modelStream),
-      },
+      agentRunner: createModelAgentRunner(modelStream),
     },
   });
 
