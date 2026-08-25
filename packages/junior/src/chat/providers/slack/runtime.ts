@@ -20,7 +20,13 @@ import {
   isTurnInputDeferredError,
   isTurnInputCommitLostError,
 } from "@/chat/runtime/turn";
-import { buildTurnFailureResponse, withLogContext } from "@/chat/logging";
+import {
+  buildTurnFailureResponse,
+  logException,
+  logWarn,
+  withSpan,
+  withLogContext,
+} from "@/chat/logging";
 import { getSlackErrorObservabilityAttributes } from "@/chat/slack/errors";
 import type {
   SubscribedReplyDecision,
@@ -35,7 +41,13 @@ import {
   startProcessingReaction,
   type ProcessingReaction,
 } from "@/chat/providers/slack/processing-reaction";
-import { getMessageTs } from "@/chat/runtime/thread-context";
+import {
+  getChannelId,
+  getMessageTs,
+  getRunId,
+  getThreadId,
+  stripLeadingBotMention,
+} from "@/chat/runtime/thread-context";
 import { stripLeadingSteeringOverride } from "@/chat/slack/message-control";
 import {
   combineTurnText,
@@ -115,15 +127,13 @@ type RuntimeLogContext = Record<string, unknown> & {
 
 export interface SlackTurnRuntimeDependencies<TPreparedState> {
   assistantUserName: string;
+  botUserId?: string;
   cancelEventSubscriptions: (input: {
     conversationId: string;
   }) => Promise<void>;
-  getChannelId: (thread: Thread, message: Message) => string | undefined;
   getPreparedConversationContext: (
     preparedState: TPreparedState,
   ) => string | undefined;
-  getThreadId: (thread: Thread, message: Message) => string | undefined;
-  getRunId: (thread: Thread, message: Message) => string | undefined;
   initializeAssistantThread: (event: {
     channelId: string;
     sourceChannelId?: string;
@@ -137,12 +147,6 @@ export interface SlackTurnRuntimeDependencies<TPreparedState> {
     threadId: string;
     threadTs: string;
   }) => Promise<void>;
-  logException: (
-    error: unknown,
-    eventName: string,
-    attributes?: Record<string, unknown>,
-  ) => string | undefined;
-  logWarn: (eventName: string, attributes?: Record<string, unknown>) => void;
   modelId: string;
   now: () => number;
   recordSkippedSteeringMessage: (args: {
@@ -193,19 +197,6 @@ export interface SlackTurnRuntimeDependencies<TPreparedState> {
     },
   ) => Promise<void>;
   decideSubscribedReply: SubscribedReplyPolicy;
-  stripLeadingBotMention: (
-    text: string,
-    options: {
-      botUserId?: string;
-      stripLeadingSlackMentionToken?: boolean;
-    },
-  ) => string;
-  withSpan: (
-    name: string,
-    op: string,
-    context: Record<string, unknown>,
-    callback: () => Promise<void>,
-  ) => Promise<void>;
 }
 
 /**
@@ -215,15 +206,16 @@ export interface SlackTurnRuntimeDependencies<TPreparedState> {
 function getQueuedMessages(
   context: MessageContext | undefined,
   options: {
+    botUserId?: string;
     explicitMention: boolean;
-    stripLeadingBotMention: SlackTurnRuntimeDependencies<unknown>["stripLeadingBotMention"];
   },
 ): QueuedTurnMessage[] {
   return (context?.skipped ?? []).map((message) => {
     const content = parseContent(message);
-    const stripped = options.stripLeadingBotMention(
+    const stripped = stripLeadingBotMention(
       stripLeadingSteeringOverride(content.topLevelText),
       {
+        botUserId: options.botUserId,
         stripLeadingSlackMentionToken:
           options.explicitMention || Boolean(message.isMention),
       },
@@ -240,8 +232,8 @@ function getQueuedMessages(
 function getQueuedMessagesFromSlackMessages(
   messages: Message[],
   options: {
+    botUserId?: string;
     explicitMention: boolean;
-    stripLeadingBotMention: SlackTurnRuntimeDependencies<unknown>["stripLeadingBotMention"];
   },
 ): QueuedTurnMessage[] {
   return getQueuedMessages(
@@ -270,6 +262,7 @@ interface SteeringMessageSelection {
 function createAcceptedSteeringDrain(
   hooks: ReplyHooks,
   options: {
+    botUserId?: string;
     explicitMention: boolean;
     onAcceptedForProcessing?: (messages: Message[]) => Promise<void>;
     onSkipped?: (messages: SteeringMessageDecision[]) => Promise<void>;
@@ -277,7 +270,6 @@ function createAcceptedSteeringDrain(
       messages: SteeringCandidateMessage[],
       context?: SteeringDrainContext,
     ) => Promise<SteeringMessageSelection>;
-    stripLeadingBotMention: SlackTurnRuntimeDependencies<unknown>["stripLeadingBotMention"];
   },
 ):
   | ((
@@ -403,8 +395,8 @@ export function createSlackTurnRuntime<
     thread: Thread;
   }): Promise<void> => {
     const conversationId =
-      deps.getThreadId(args.thread, args.message) ??
-      deps.getRunId(args.thread, args.message);
+      getThreadId(args.thread, args.message) ??
+      getRunId(args.thread, args.message);
     if (!conversationId) {
       return;
     }
@@ -452,7 +444,7 @@ export function createSlackTurnRuntime<
         context: RuntimeLogContext,
         targetMessage: Message,
       ): Promise<ProcessingReaction> => {
-        const channelId = deps.getChannelId(thread, targetMessage);
+        const channelId = getChannelId(thread, targetMessage);
         const messageTs = getMessageTs(targetMessage);
         const reactionKey =
           channelId && messageTs ? `${channelId}:${messageTs}` : undefined;
@@ -466,7 +458,6 @@ export function createSlackTurnRuntime<
         const started = await startProcessingReaction({
           thread,
           message: targetMessage,
-          logException: deps.logException,
         });
         processingReactions.push(started);
         if (reactionKey) {
@@ -487,7 +478,7 @@ export function createSlackTurnRuntime<
     try {
       await args.thread.post(buildTurnFailureResponse(args.eventId));
     } catch (postError) {
-      deps.logException(postError, args.postFailureEventName, {
+      logException(postError, args.postFailureEventName, {
         "app.slack.reply_stage": "error_fallback_post",
         "app.error.original_event_id": args.eventId,
         ...getSlackErrorObservabilityAttributes(postError),
@@ -507,15 +498,16 @@ export function createSlackTurnRuntime<
   }> => {
     const { message } = candidate;
     const context: TurnContext = {
-      threadId: deps.getThreadId(thread, message),
+      threadId: getThreadId(thread, message),
       actorId: message.author.userId,
-      channelId: deps.getChannelId(thread, message),
-      runId: deps.getRunId(thread, message),
+      channelId: getChannelId(thread, message),
+      runId: getRunId(thread, message),
     };
     const content = parseContent(message);
-    const strippedUserText = deps.stripLeadingBotMention(
+    const strippedUserText = stripLeadingBotMention(
       stripLeadingSteeringOverride(content.topLevelText),
       {
+        botUserId: deps.botUserId,
         stripLeadingSlackMentionToken: Boolean(message.isMention),
       },
     );
@@ -552,7 +544,7 @@ export function createSlackTurnRuntime<
         runId: args.context.runId,
       }),
       () => {
-        deps.logWarn("subscribed_message.reply.skipped", {
+        logWarn("subscribed_message.reply.skipped", {
           "app.decision.reason": args.decision.reason,
         });
       },
@@ -683,7 +675,7 @@ export function createSlackTurnRuntime<
       }
     } catch (error) {
       withLogContext(args.context, () => {
-        deps.logException(error, "agent.turn.steering_flush.failed");
+        logException(error, "agent.turn.steering_flush.failed");
       });
     }
   };
@@ -705,18 +697,18 @@ export function createSlackTurnRuntime<
           thread,
           pending: skippedSteeringMessages,
           context: logContext({
-            threadId: deps.getThreadId(thread, message),
+            threadId: getThreadId(thread, message),
             actorId: message.author.userId,
             actorUserName: actorUserName(message),
-            channelId: deps.getChannelId(thread, message),
-            runId: deps.getRunId(thread, message),
+            channelId: getChannelId(thread, message),
+            runId: getRunId(thread, message),
           }),
         });
       };
       try {
-        const threadId = deps.getThreadId(thread, message);
-        const channelId = deps.getChannelId(thread, message);
-        const runId = deps.getRunId(thread, message);
+        const threadId = getThreadId(thread, message);
+        const channelId = getChannelId(thread, message);
+        const runId = getRunId(thread, message);
         const context = logContext({
           threadId,
           channelId,
@@ -730,11 +722,11 @@ export function createSlackTurnRuntime<
           hooks,
         );
 
-        await deps.withSpan("chat.turn", "chat.turn", context, async () => {
+        await withSpan("chat.turn", "chat.turn", context, async () => {
           await thread.subscribe();
           const queuedMessages = getQueuedMessages(hooks.messageContext, {
+            botUserId: deps.botUserId,
             explicitMention: true,
-            stripLeadingBotMention: deps.stripLeadingBotMention,
           });
           let queuedProcessingReactionsStarted = false;
           const startQueuedProcessingReactions = async (): Promise<void> => {
@@ -754,6 +746,7 @@ export function createSlackTurnRuntime<
             await startQueuedProcessingReactions();
           };
           const drainSteeringMessages = createAcceptedSteeringDrain(hooks, {
+            botUserId: deps.botUserId,
             explicitMention: true,
             onAcceptedForProcessing: async (messages) => {
               await Promise.all(
@@ -775,7 +768,6 @@ export function createSlackTurnRuntime<
                 messages,
                 thread,
               }),
-            stripLeadingBotMention: deps.stripLeadingBotMention,
           });
           await deps.executeSlackTurn(thread, message, {
             explicitMention: true,
@@ -794,11 +786,11 @@ export function createSlackTurnRuntime<
         });
       } catch (error) {
         const failureLogContext = logContext({
-          threadId: deps.getThreadId(thread, message),
+          threadId: getThreadId(thread, message),
           actorId: message.author.userId,
           actorUserName: actorUserName(message),
-          channelId: deps.getChannelId(thread, message),
-          runId: deps.getRunId(thread, message),
+          channelId: getChannelId(thread, message),
+          runId: getRunId(thread, message),
         });
         const classifiedFailure = getConversationTurnBoundaryError(error);
         const failureCause = classifiedFailure?.cause ?? error;
@@ -815,7 +807,7 @@ export function createSlackTurnRuntime<
           failureCause.code === "read_only_channel"
         ) {
           withLogContext(failureLogContext, () => {
-            deps.logWarn("mention.handler.skipped", {
+            logWarn("mention.handler.skipped", {
               "app.decision.reason": "read_only_channel",
             });
           });
@@ -824,7 +816,7 @@ export function createSlackTurnRuntime<
         const eventId =
           classifiedFailure?.eventId ??
           withLogContext(failureLogContext, () =>
-            deps.logException(failureCause, "mention.handler.failed"),
+            logException(failureCause, "mention.handler.failed"),
           );
         if (!acked && hooks.isFinalAttempt === false) {
           // The mailbox redelivers this message; only the final bounded
@@ -864,11 +856,11 @@ export function createSlackTurnRuntime<
             thread,
             pending: skippedSteeringMessages,
             context: logContext({
-              threadId: deps.getThreadId(thread, message),
+              threadId: getThreadId(thread, message),
               actorId: message.author.userId,
               actorUserName: actorUserName(message),
-              channelId: deps.getChannelId(thread, message),
-              runId: deps.getRunId(thread, message),
+              channelId: getChannelId(thread, message),
+              runId: getRunId(thread, message),
             }),
           });
           await processingReactions.stopAll();
@@ -892,18 +884,18 @@ export function createSlackTurnRuntime<
           thread,
           pending: skippedSteeringMessages,
           context: logContext({
-            threadId: deps.getThreadId(thread, message),
+            threadId: getThreadId(thread, message),
             actorId: message.author.userId,
             actorUserName: actorUserName(message),
-            channelId: deps.getChannelId(thread, message),
-            runId: deps.getRunId(thread, message),
+            channelId: getChannelId(thread, message),
+            runId: getRunId(thread, message),
           }),
         });
       };
       try {
-        const threadId = deps.getThreadId(thread, message);
-        const channelId = deps.getChannelId(thread, message);
-        const runId = deps.getRunId(thread, message);
+        const threadId = getThreadId(thread, message);
+        const channelId = getChannelId(thread, message);
+        const runId = getRunId(thread, message);
         const isResourceEventNotification =
           isResourceEventSlackMessage(message);
         const actorId = isResourceEventNotification
@@ -916,13 +908,14 @@ export function createSlackTurnRuntime<
           channelId,
           runId,
         });
-        await deps.withSpan("chat.turn", "chat.turn", turnContext, async () => {
+        await withSpan("chat.turn", "chat.turn", turnContext, async () => {
           // This path can compact context and run router/vision model calls
           // before executeSlackTurn() opens the main reply span.
           const content = parseContent(message);
-          const strippedUserText = deps.stripLeadingBotMention(
+          const strippedUserText = stripLeadingBotMention(
             stripLeadingSteeringOverride(content.topLevelText),
             {
+              botUserId: deps.botUserId,
               stripLeadingSlackMentionToken: Boolean(message.isMention),
             },
           );
@@ -937,8 +930,8 @@ export function createSlackTurnRuntime<
             runId,
           };
           const queuedMessages = getQueuedMessages(hooks.messageContext, {
+            botUserId: deps.botUserId,
             explicitMention: Boolean(message.isMention),
-            stripLeadingBotMention: deps.stripLeadingBotMention,
           });
           const combinedText = combineTurnText(queuedMessages, currentText);
           const turnIsExplicitMention =
@@ -1068,6 +1061,7 @@ export function createSlackTurnRuntime<
           const conversationContext =
             deps.getPreparedConversationContext(preparedState);
           const drainSteeringMessages = createAcceptedSteeringDrain(hooks, {
+            botUserId: deps.botUserId,
             explicitMention: Boolean(message.isMention),
             onAcceptedForProcessing: async (messages) => {
               await Promise.all(
@@ -1090,7 +1084,6 @@ export function createSlackTurnRuntime<
                 messages,
                 thread,
               }),
-            stripLeadingBotMention: deps.stripLeadingBotMention,
           });
           processingReaction = await processingReactions.start(
             turnContext,
@@ -1136,11 +1129,11 @@ export function createSlackTurnRuntime<
         });
       } catch (error) {
         const failureLogContext = logContext({
-          threadId: deps.getThreadId(thread, message),
+          threadId: getThreadId(thread, message),
           actorId: message.author.userId,
           actorUserName: actorUserName(message),
-          channelId: deps.getChannelId(thread, message),
-          runId: deps.getRunId(thread, message),
+          channelId: getChannelId(thread, message),
+          runId: getRunId(thread, message),
         });
         const classifiedFailure = getConversationTurnBoundaryError(error);
         const failureCause = classifiedFailure?.cause ?? error;
@@ -1157,7 +1150,7 @@ export function createSlackTurnRuntime<
           failureCause.code === "read_only_channel"
         ) {
           withLogContext(failureLogContext, () => {
-            deps.logWarn("subscribed_message.handler.skipped", {
+            logWarn("subscribed_message.handler.skipped", {
               "app.decision.reason": "read_only_channel",
             });
           });
@@ -1166,10 +1159,7 @@ export function createSlackTurnRuntime<
         const eventId =
           classifiedFailure?.eventId ??
           withLogContext(failureLogContext, () =>
-            deps.logException(
-              failureCause,
-              "subscribed_message.handler.failed",
-            ),
+            logException(failureCause, "subscribed_message.handler.failed"),
           );
         if (!acked && hooks.isFinalAttempt === false) {
           // The mailbox redelivers this message; only the final bounded
@@ -1210,11 +1200,11 @@ export function createSlackTurnRuntime<
             thread,
             pending: skippedSteeringMessages,
             context: logContext({
-              threadId: deps.getThreadId(thread, message),
+              threadId: getThreadId(thread, message),
               actorId: message.author.userId,
               actorUserName: actorUserName(message),
-              channelId: deps.getChannelId(thread, message),
-              runId: deps.getRunId(thread, message),
+              channelId: getChannelId(thread, message),
+              runId: getRunId(thread, message),
             }),
           });
           await processingReactions.stopAll();
@@ -1238,7 +1228,7 @@ export function createSlackTurnRuntime<
               sourceChannelId: event.context?.channelId,
             });
           } catch (error) {
-            deps.logException(error, "assistant.thread.initialization.failed");
+            logException(error, "assistant.thread.initialization.failed");
           }
         },
       );
@@ -1260,7 +1250,7 @@ export function createSlackTurnRuntime<
               sourceChannelId: event.context?.channelId,
             });
           } catch (error) {
-            deps.logException(error, "assistant.context.refresh.failed");
+            logException(error, "assistant.context.refresh.failed");
           }
         },
       );

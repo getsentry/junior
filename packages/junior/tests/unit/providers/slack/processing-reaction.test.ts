@@ -44,7 +44,6 @@ describe("Slack processing reaction", () => {
     const reaction = await startProcessingReactionForMessage({
       channelId: "C0PROCESSING",
       timestamp: slackTs("1700007301.000000"),
-      logException: () => undefined,
     });
 
     await reaction.complete();
@@ -77,7 +76,6 @@ describe("Slack processing reaction", () => {
     const reaction = await startProcessingReactionForMessage({
       channelId: "C0PROCESSING",
       timestamp: slackTs("1700007302.000000"),
-      logException: () => undefined,
     });
 
     await reaction.complete();
@@ -94,7 +92,6 @@ describe("Slack processing reaction", () => {
     const reaction = await startProcessingReactionForMessage({
       channelId: "C0PROCESSING",
       timestamp: slackTs("1700007303.000000"),
-      logException: () => undefined,
     });
 
     reaction.keep();

@@ -9,6 +9,7 @@ import { getChannelId, getMessageTs } from "@/chat/runtime/thread-context";
 import type { TurnToolInvocation } from "@/chat/runtime/turn-input";
 import { getChatConfig } from "@/chat/config";
 import type { SlackMessageTs } from "@/chat/slack/timestamp";
+import { logException } from "@/chat/logging";
 
 /** Controls the automatic Slack processing reaction lifecycle for one message. */
 export interface ProcessingReaction {
@@ -43,11 +44,6 @@ export function shouldKeepProcessingReactionForToolInvocation(
 
 /** Start Junior's automatic Slack processing reaction for one inbound message. */
 export async function startProcessingReaction(args: {
-  logException: (
-    error: unknown,
-    eventName: string,
-    attributes?: Record<string, unknown>,
-  ) => string | undefined;
   message: Message;
   thread: Thread;
 }): Promise<ProcessingReaction> {
@@ -64,7 +60,6 @@ export async function startProcessingReaction(args: {
   return startProcessingReactionForMessage({
     channelId,
     timestamp: messageTs,
-    logException: args.logException,
   });
 }
 
@@ -72,11 +67,6 @@ export async function startProcessingReaction(args: {
 export async function startProcessingReactionForMessage(args: {
   channelId: string;
   timestamp: SlackMessageTs;
-  logException: (
-    error: unknown,
-    eventName: string,
-    attributes?: Record<string, unknown>,
-  ) => string | undefined;
 }): Promise<ProcessingReaction> {
   try {
     await addReactionToMessage({
@@ -85,7 +75,7 @@ export async function startProcessingReactionForMessage(args: {
       emoji: getChatConfig().slack.processingReactionEmoji,
     });
   } catch (error) {
-    args.logException(error, "slack.processing.reaction_add.failed", {
+    logException(error, "slack.processing.reaction_add.failed", {
       "app.slack.action": "reactions.add",
       "messaging.message.id": args.timestamp,
       ...getSlackErrorObservabilityAttributes(error),
@@ -107,7 +97,7 @@ export async function startProcessingReactionForMessage(args: {
       });
       return true;
     } catch (error) {
-      args.logException(error, "slack.processing.reaction_remove.failed", {
+      logException(error, "slack.processing.reaction_remove.failed", {
         "app.slack.action": "reactions.remove",
         "messaging.message.id": args.timestamp,
         ...getSlackErrorObservabilityAttributes(error),
@@ -135,7 +125,7 @@ export async function startProcessingReactionForMessage(args: {
           emoji: getChatConfig().slack.completedReactionEmoji,
         });
       } catch (error) {
-        args.logException(error, "slack.processing.reaction_complete.failed", {
+        logException(error, "slack.processing.reaction_complete.failed", {
           "app.slack.action": "reactions.add",
           "messaging.message.id": args.timestamp,
           ...getSlackErrorObservabilityAttributes(error),

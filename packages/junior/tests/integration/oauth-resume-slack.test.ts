@@ -13,6 +13,8 @@ import {
 } from "../fixtures/agent-runner";
 import { createModelStream } from "../fixtures/model-stream";
 
+const ORIGINAL_REPLY_TIMEOUT_MS = process.env.EVAL_AGENT_REPLY_TIMEOUT_MS;
+
 function modelReply(text: string) {
   return createModelAgentRunner(createModelStream([{ type: "text", text }]));
 }
@@ -51,6 +53,11 @@ describe("oauth resume slack integration", () => {
   afterEach(async () => {
     await disconnectStateAdapter();
     delete process.env.JUNIOR_STATE_ADAPTER;
+    if (ORIGINAL_REPLY_TIMEOUT_MS === undefined) {
+      delete process.env.EVAL_AGENT_REPLY_TIMEOUT_MS;
+    } else {
+      process.env.EVAL_AGENT_REPLY_TIMEOUT_MS = ORIGINAL_REPLY_TIMEOUT_MS;
+    }
   });
 
   it("posts resumed status updates through the Slack MSW harness", async () => {
@@ -154,6 +161,7 @@ describe("oauth resume slack integration", () => {
   });
 
   it("posts a failure reply when resumed generation times out", async () => {
+    process.env.EVAL_AGENT_REPLY_TIMEOUT_MS = "10";
     const { resumeSlackTurn } = await import("@/chat/providers/slack/resume");
     const runEvents: string[] = [];
     let observedSignal: AbortSignal | undefined;
@@ -200,7 +208,6 @@ describe("oauth resume slack integration", () => {
           }
         },
       },
-      replyTimeoutMs: 10,
       onFailure,
     });
 
@@ -371,42 +378,5 @@ describe("oauth resume slack integration", () => {
     expect(postCalls[1]?.params.text).toContain(
       getSlackInterruptionMarker().trim(),
     );
-  });
-
-  it("schedules plugin tasks after a successful resumed turn", async () => {
-    const { resumeSlackTurn } = await import("@/chat/providers/slack/resume");
-    const { getConversationEventStore } = await import("@/chat/db");
-    const conversationId = "slack:C123:1700000000.012";
-    const turnId = "turn-resume-plugin-tasks";
-    const scheduleSessionCompletedPluginTasks = vi.fn(async () => {
-      const history =
-        await getConversationEventStore().loadHistory(conversationId);
-      expect(history.map((event) => event.data)).toContainEqual(
-        expect.objectContaining({ type: "turn_completed", turnId }),
-      );
-    });
-
-    await resumeSlackTurn({
-      messageText: "continue this turn",
-      conversationId,
-      turnId,
-      channelId: "C123",
-      threadTs: "1700000000.012",
-      run: {
-        credentialContext: {
-          actor: { type: "user", userId: "U123" },
-        },
-        destination: TEST_SLACK_DESTINATION,
-        source: testSlackSource("1700000000.012"),
-        actor: { platform: "slack", teamId: "T123", userId: "U123" },
-      },
-      agentRunner: modelReply("Final resumed answer"),
-      scheduleSessionCompletedPluginTasks,
-    });
-
-    expect(scheduleSessionCompletedPluginTasks).toHaveBeenCalledWith({
-      conversationId,
-      sessionId: turnId,
-    });
   });
 });

@@ -87,11 +87,7 @@ import {
 import { persistWithRetry } from "@/chat/services/persist-retry";
 import { isRetryableSlackPostError } from "@/chat/slack/errors";
 
-function resolveReplyTimeoutMs(explicitTimeoutMs?: number): number | undefined {
-  if (typeof explicitTimeoutMs === "number" && explicitTimeoutMs > 0) {
-    return explicitTimeoutMs;
-  }
-
+function resolveReplyTimeoutMs(): number | undefined {
   const raw = process.env.EVAL_AGENT_REPLY_TIMEOUT_MS?.trim();
   if (!raw) {
     return undefined;
@@ -194,17 +190,12 @@ interface ResumeSlackTurnArgs {
   initialStatus?: AssistantStatusSpec;
   agentRunner: AgentRunner;
   inputMessageIds?: string[];
-  scheduleSessionCompletedPluginTasks?: (params: {
-    conversationId: string;
-    sessionId: string;
-  }) => Promise<void>;
   commitResult?: (result: AgentRunResult) => Promise<void>;
   onFailure?: (error: unknown) => Promise<void>;
   onAuthPause?: (pause: { providerDisplayName: string }) => Promise<void>;
   onSuspend?: (resumeVersion: number) => Promise<void>;
   onPostDeliveryCommitFailure?: (error: unknown) => Promise<void>;
   beforeStart?: () => Promise<ResumePreparedTurn | false | void>;
-  replyTimeoutMs?: number;
 }
 
 // Resume input carries the instruction text separately from the saved Run.
@@ -516,7 +507,6 @@ async function resumeSlackTurnInContext(
       processingReaction = await startProcessingReactionForMessage({
         channelId: runArgs.channelId,
         timestamp: runArgs.messageTs,
-        logException,
       });
     }
     if (runArgs.initialText) {
@@ -680,7 +670,7 @@ async function resumeSlackTurnInContext(
         surface: "slack",
       });
     }
-    const replyTimeoutMs = resolveReplyTimeoutMs(runArgs.replyTimeoutMs);
+    const replyTimeoutMs = resolveReplyTimeoutMs();
     const outcome = await executeTurn(
       runArgs.agentRunner,
       run,
@@ -826,11 +816,7 @@ async function resumeSlackTurnInContext(
           conversationId: runArgs.conversationId,
           sessionId: runArgs.turnId,
         };
-        if (runArgs.scheduleSessionCompletedPluginTasks) {
-          await runArgs.scheduleSessionCompletedPluginTasks(params);
-        } else {
-          await scheduleSessionCompletedPluginTasks(params);
-        }
+        await scheduleSessionCompletedPluginTasks(params);
       } catch (scheduleError) {
         logException(
           scheduleError,

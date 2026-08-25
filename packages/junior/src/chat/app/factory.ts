@@ -7,18 +7,11 @@ import {
 import { createJuniorRuntimeServices } from "@/chat/app/services";
 import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
-import { logException, logWarn, withSpan } from "@/chat/logging";
 import { createSlackTurn } from "@/chat/providers/slack/turn";
 import {
   initializeAssistantThread as initializeAssistantThreadImpl,
   refreshAssistantThreadContext as refreshAssistantThreadContextImpl,
 } from "@/chat/slack/assistant-thread/lifecycle";
-import {
-  getChannelId,
-  getRunId,
-  getThreadId,
-  stripLeadingBotMention,
-} from "@/chat/runtime/thread-context";
 import {
   getLocationConfigurationService,
   persistThreadState,
@@ -129,20 +122,10 @@ export function createSlackRuntime(options: CreateSlackRuntimeOptions) {
     AssistantLifecycleEvent
   >({
     assistantUserName: botConfig.userName,
+    botUserId: options.getSlackAdapter().botUserId,
     cancelEventSubscriptions,
     modelId: defaultModelId(botConfig),
     now: options.now ?? (() => Date.now()),
-    getThreadId,
-    getChannelId,
-    getRunId,
-    stripLeadingBotMention: (text, stripOptions) =>
-      stripLeadingBotMention(text, {
-        ...stripOptions,
-        botUserId: options.getSlackAdapter().botUserId,
-      }),
-    withSpan,
-    logWarn,
-    logException,
     failConversationTurn: (input) =>
       services.replyExecutor.turnLifecycle.fail(input),
     prepareTurnState,
