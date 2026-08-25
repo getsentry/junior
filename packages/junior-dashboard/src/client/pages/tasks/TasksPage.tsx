@@ -15,7 +15,7 @@ import { useTasksData } from "../../api";
 import { Button, ToggleButton } from "../../components/Button";
 import { FilterBar, FilterGroup } from "../../components/FilterBar";
 import { InlineError } from "../../components/InlineError";
-import { LoadingView } from "../../components/LoadingView";
+import { PageContentSkeleton } from "../../components/PageContentSkeleton";
 import {
   pageCount,
   pageItems,
@@ -164,9 +164,7 @@ export function TasksPage(props: {
     },
   });
 
-  if (!query.data && !query.error) {
-    return <LoadingView label="Loading tasks" />;
-  }
+  const loading = !query.data && !query.error;
 
   return (
     <>
@@ -181,7 +179,13 @@ export function TasksPage(props: {
           : {})}
         title={props.view === "overview" ? "Tasks" : "All tasks"}
       />
-      {props.view === "overview" ? (
+      {loading ? (
+        <PageContentSkeleton
+          label="Loading tasks"
+          variant={props.view === "overview" ? "stats" : "list"}
+        />
+      ) : null}
+      {!loading && props.view === "overview" ? (
         <>
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             <StatCard
@@ -214,7 +218,7 @@ export function TasksPage(props: {
           ) : null}
         </>
       ) : null}
-      {props.view === "list" ? (
+      {!loading && props.view === "list" ? (
         <>
           <FilterBar
             search={{
