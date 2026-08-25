@@ -153,34 +153,21 @@ const app = await createApp({
 `junior chat` enables experimental `subagents` automatically because it is the
 local createApp-equivalent entrypoint and already wires the child-worker path.
 
-## App adapters
+## Remote ACP
 
-App adapters add non-plugin HTTP interfaces to the shared Junior runtime. For
-example, `@sentry/junior-acp` maps remote ACP sessions to private Conversations:
+Every Junior app mounts `GET`, `POST`, and `DELETE /api/acp`. No app option
+enables the route. Configure the dashboard to let ACP clients authenticate with
+Google. The client must support ACP URL elicitation. Junior asks the user to
+enter the verification code shown by the client, then uses the dashboard Google
+sign-in flow. Personal tokens do not grant access to this route.
 
-```ts
-import { createApp } from "@sentry/junior";
-import { acpAdapter } from "@sentry/junior-acp";
-
-const app = await createApp({
-  adapters: [acpAdapter()],
-  dashboard: {
-    allowedGoogleDomains: ["example.com"],
-  },
-});
-```
-
-The ACP adapter mounts `GET`, `POST`, and `DELETE /api/acp`. The client must support ACP
-URL elicitation. Junior asks the user to enter the verification code shown by
-the client, then uses the dashboard Google sign-in flow. Personal tokens do not
-grant access to this route. The route stores connection, authorization, and
-stream records in the configured `StateAdapter`. The production Redis adapter
-lets requests reach different app instances. It does not need process affinity.
-The memory adapter remains local to one process. A client must reconnect and
-call `session/load` when its live SSE request reaches the deployment request
-limit. Run `pnpm acp:local` in this repository for a loopback test with the
-official ACP SDK client. ACP remains a pre-stable surface and must be added
-explicitly to each app that uses it.
+ACP stores short-lived connection, authorization, and stream records in the
+configured `StateAdapter`. Production Redis state lets requests reach different
+app instances. It does not need process affinity. Memory state remains local to
+one process. A client must reconnect and call `session/load` when its live SSE
+request reaches the deployment request limit. Run `pnpm acp:local` in this
+repository for a loopback test with the official ACP SDK client. ACP remains a
+pre-stable surface.
 
 `passive-routing` turns on replies to non-mention messages in threads Junior
 already joined. Leave it unset in production unless you are testing that path.

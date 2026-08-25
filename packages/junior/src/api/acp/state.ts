@@ -1,27 +1,21 @@
 import { setTimeout as wait } from "node:timers/promises";
+import type { Lock, StateAdapter } from "chat";
 
 /** One lock held in shared ACP state. */
-export interface AcpLock {
-  expiresAt: number;
-  threadId: string;
-  token: string;
-}
+export type AcpLock = Lock;
 
 /** Shared state operations required by the ACP transport. */
-export interface AcpState {
-  acquireLock(key: string, ttlMs: number): Promise<AcpLock | null>;
-  appendToList(
-    key: string,
-    value: unknown,
-    options?: { maxLength?: number; ttlMs?: number },
-  ): Promise<void>;
-  delete(key: string): Promise<void>;
-  extendLock(lock: AcpLock, ttlMs: number): Promise<boolean>;
-  get<T = unknown>(key: string): Promise<T | null>;
-  getList<T = unknown>(key: string): Promise<T[]>;
-  releaseLock(lock: AcpLock): Promise<void>;
-  set<T = unknown>(key: string, value: T, ttlMs?: number): Promise<void>;
-}
+export type AcpState = Pick<
+  StateAdapter,
+  | "acquireLock"
+  | "appendToList"
+  | "delete"
+  | "extendLock"
+  | "get"
+  | "getList"
+  | "releaseLock"
+  | "set"
+>;
 
 export const MUTATION_LOCK_TTL_MS = 10_000;
 

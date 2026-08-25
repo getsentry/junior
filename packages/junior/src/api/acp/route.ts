@@ -10,7 +10,7 @@ import type { User } from "@sentry/junior-plugin-api";
 import * as acp from "@agentclientprotocol/sdk";
 import { z } from "zod";
 import type { AcpErrorContext, ReportAcpError } from "./errors";
-import type { ConversationPort } from "./conversations";
+import type { AcpConversations } from "./conversations";
 import {
   ACP_AUTH_METHOD,
   ACP_AUTH_METHOD_ID,
@@ -58,14 +58,14 @@ const ACP_EVENT_STREAM_MIME_TYPE = "text/event-stream";
 const ACP_JSON_MIME_TYPE = "application/json";
 const MAX_PROMPT_TEXT_LENGTH = 32_000;
 
-/** Dependencies for one serverless-safe remote ACP HTTP handler. */
-export interface AcpHttpHandlerOptions {
-  baseURL?: string;
-  conversations: ConversationPort;
+/** Dependencies for the serverless-safe remote ACP HTTP handler. */
+type AcpHttpHandlerOptions = {
+  browserAuth?: { baseURL?: string };
+  conversations: AcpConversations;
   onError?: ReportAcpError;
   state: AcpState;
   version: string;
-}
+};
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -244,7 +244,7 @@ function emptyResponse(status: number): Response {
 async function createSession(args: {
   call: AcpCall;
   connection: AcpConnection;
-  conversations: ConversationPort;
+  conversations: AcpConversations;
   requestKey: string;
   user: User;
 }): Promise<string> {
@@ -267,7 +267,7 @@ async function createSession(args: {
 async function acceptPrompt(args: {
   call: AcpCall;
   connection: AcpConnection;
-  conversations: ConversationPort;
+  conversations: AcpConversations;
   requestId: acp.JsonRpcId;
   requestKey: string;
   user: User;
@@ -307,7 +307,7 @@ async function acceptPrompt(args: {
 async function createRequestReceipt(args: {
   call: AcpCall & { id: acp.JsonRpcId };
   connection: AcpConnection;
-  conversations: ConversationPort;
+  conversations: AcpConversations;
   requestKey: string;
   user: User;
 }): Promise<AcpRequestReceipt> {
@@ -363,7 +363,7 @@ async function createRequestReceipt(args: {
 /** Handle a session/cancel notification through durable Turn control. */
 async function handleCancelNotification(args: {
   call: AcpCall;
-  conversations: ConversationPort;
+  conversations: AcpConversations;
   user: User;
 }): Promise<void> {
   const params = parseParams<CancelParams>(
@@ -402,6 +402,7 @@ function isJsonContentType(contentType: string | null): boolean {
 }
 
 async function handleInitialize(args: {
+  browserAuthAvailable: boolean;
   call: AcpCall;
   request: Request;
   state: AcpState;
@@ -430,7 +431,7 @@ async function handleInitialize(args: {
           embeddedContext: false,
         },
       },
-      authMethods: [ACP_AUTH_METHOD],
+      authMethods: args.browserAuthAvailable ? [ACP_AUTH_METHOD] : [],
       agentInfo: { name: "junior", version: args.version },
     } satisfies acp.InitializeResponse;
     const connection = await createAcpConnection(
@@ -505,8 +506,14 @@ async function handleConnectedPost(args: {
               ],
             };
           }
+          if (!args.options.browserAuth) {
+            throw acp.RequestError.internalError(
+              undefined,
+              "Junior ACP authentication requires an enabled dashboard",
+            );
+          }
           return await beginAcpAuthorization({
-            baseURL: args.options.baseURL,
+            baseURL: args.options.browserAuth.baseURL,
             connectionId: args.connectionId,
             credentialHash: args.connection.credentialHash,
             request: args.request,
@@ -636,6 +643,7 @@ export function createAcpHttpHandler(
             );
           }
           return await handleInitialize({
+            browserAuthAvailable: options.browserAuth !== undefined,
             call,
             request,
             state,

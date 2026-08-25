@@ -1,28 +1,27 @@
 # Remote ACP
 
-Junior exposes ACP v1 Streamable HTTP at `/api/acp` when the app adds
-`acpAdapter()` to `createApp({ adapters })`. The route accepts `GET`, `POST`,
-and `DELETE`. The app must also enable the dashboard. The client must support ACP URL
-elicitation. Junior advertises browser sign-in as its ACP authentication method.
-The dashboard completes Google OAuth and binds the verified Junior user to the
-ACP connection after the user enters the verification code shown by the client.
-Personal tokens do not grant ACP access.
+Every Junior app exposes ACP v1 Streamable HTTP at `/api/acp`. The route accepts
+`GET`, `POST`, and `DELETE`. No app option enables it. The app must configure the
+dashboard before a client can authenticate. The client must support ACP URL
+elicitation. Junior then advertises browser sign-in as its ACP authentication
+method. The dashboard completes Google OAuth and binds the verified Junior user
+to the ACP connection after the user enters the verification code shown by the
+client. Personal tokens do not grant ACP access.
 
-The adapter maps an ACP session to a private Conversation. It uses the existing
+ACP maps a session to a private Conversation. It uses the existing
 web Actor, API Turn mailbox, worker, event store, and Conversation access rules.
 Client paths do not select the Junior sandbox. Client MCP servers, resource
 links, media, filesystem callbacks, and terminal callbacks are not supported.
 `session/cancel` stops the active Turn and returns the ACP `cancelled` stop
 reason.
 
-## Package Boundary
+## Ownership
 
-`@sentry/junior-acp` owns ACP JSON-RPC, SSE, connection state, and browser
-authorization transactions. It does not import Junior core. The package owns a
-`ConversationPort` with six Conversation operations. Junior implements that
-contract in its generic app-adapter boundary. Core owns user access, mailbox
-admission, cancellation, and event projection. App setup loads the ACP runtime.
-No ACP type enters the agent loop.
+This directory owns ACP JSON-RPC, SSE, connection state, browser authorization,
+and its direct Conversation calls. `conversations.ts` uses Junior's existing
+access, mailbox admission, cancellation, queue, and event projection code. No
+general adapter or plugin contract sits between ACP and the runtime. No ACP type
+enters the agent loop.
 
 ## Runtime Design
 
@@ -57,8 +56,8 @@ disconnects, and a later load replays its stored Messages. A prompt that is
 still in flight when the stream closes cannot resolve transparently in the old
 client connection.
 
-ACP remains an opt-in experimental surface. Test client-specific session,
-resource, and tool behavior before enabling it for general use.
+ACP remains a pre-stable surface. Test client-specific session, resource, and
+tool behavior before relying on it for general use.
 
 Run the official-SDK smoke client against a single local process through the
 existing tunnel:
@@ -87,7 +86,7 @@ Turns and one reconnect, and then exits. A local callback route completes
 the same ACP authorization transaction without Google. The test server uses
 the normal Conversation, mailbox, worker, event, and replay paths. It replaces
 only Google sign-in, Vercel Queue transport, and model generation with local
-test adapters.
+test fakes.
 
 This command is test equipment. It does not add a local ACP transport to the
 product. The Compose services stay available for later local tests.

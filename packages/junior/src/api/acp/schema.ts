@@ -1,3 +1,4 @@
+/** Validate the ACP wire messages that Junior supports. */
 import * as acp from "@agentclientprotocol/sdk";
 import { z } from "zod";
 

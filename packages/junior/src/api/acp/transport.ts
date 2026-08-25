@@ -9,7 +9,7 @@ import * as acp from "@agentclientprotocol/sdk";
 import { userSchema, type User } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import type { AcpErrorContext, ReportAcpError } from "./errors";
-import type { ConversationPort } from "./conversations";
+import type { AcpConversations } from "./conversations";
 import { acpInboundMessageSchema } from "./schema";
 import { sleep } from "./sleep";
 import {
@@ -348,7 +348,7 @@ type EmitAcpMessage = (message: acp.AnyMessage) => Promise<boolean>;
 
 /** Replay durable Conversation Messages as ACP session updates. */
 async function streamSessionReplay(args: {
-  conversations: ConversationPort;
+  conversations: AcpConversations;
   emit: EmitAcpMessage;
   sessionId: string;
   signal: AbortSignal;
@@ -586,7 +586,7 @@ function errorMessage(
 
 /** Emit assistant Messages and the final response for one durable Turn. */
 async function streamPrompt(args: {
-  conversations: ConversationPort;
+  conversations: AcpConversations;
   connectionId: string;
   emit: EmitAcpMessage;
   output: AcpPromptStreamOutput;
@@ -664,7 +664,7 @@ function serializeSseKeepAlive(): Uint8Array {
 
 /** Open one connection or session SSE reader backed by shared state. */
 export async function openAcpSse(args: {
-  conversations: ConversationPort;
+  conversations: AcpConversations;
   maintain?: () => Promise<void>;
   onError?: ReportAcpError;
   requestSignal: AbortSignal;
@@ -692,7 +692,7 @@ export async function openAcpSse(args: {
 
 /** Keep one SSE body alive while it consumes durable stream items in order. */
 function createSseBody(args: {
-  conversations: ConversationPort;
+  conversations: AcpConversations;
   lock: AcpLock;
   maintain?: () => Promise<void>;
   onError?: ReportAcpError;

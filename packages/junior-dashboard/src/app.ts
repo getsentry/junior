@@ -10,7 +10,6 @@ import {
 import { apiErrorSchema } from "@sentry/junior/api/schema";
 import { initSentry } from "@sentry/junior/instrumentation";
 import { JUNIOR_VERSION } from "@sentry/junior/version";
-import type { JuniorAuthenticatedRoute } from "@sentry/junior";
 import type {
   PluginApiRouteRequestContext,
   PluginRouteApp,
@@ -32,7 +31,7 @@ import {
   type DashboardAuth,
   type DashboardSession,
 } from "./auth";
-import { isAuthenticatedPath } from "./authenticated-routes";
+import { isAuthPath, type AuthenticatedRoute } from "./authenticated-routes";
 import { createMockReportingApi } from "./mock-reporting/routes";
 import {
   DASHBOARD_AVATAR_HEADER_PATH,
@@ -73,7 +72,7 @@ export interface JuniorDashboardOptions {
 }
 
 interface DashboardRuntimeOptions extends JuniorDashboardOptions {
-  authenticatedRoutes?: readonly JuniorAuthenticatedRoute[];
+  authenticatedRoutes?: readonly AuthenticatedRoute[];
   pluginRoutes?: DashboardPluginRoute[];
 }
 
@@ -82,9 +81,7 @@ interface DashboardPluginRoute {
   pluginName: string;
 }
 
-type Variables = JuniorApiVariables & {
-  authSession: DashboardSession;
-};
+type Variables = JuniorApiVariables & { authSession: DashboardSession };
 
 function hasSentryConversationLinks(): boolean {
   return Boolean(
@@ -182,7 +179,7 @@ function isDashboardPagePath(
 }
 
 interface DashboardReturnPathOptions {
-  authenticatedRoutes?: readonly JuniorAuthenticatedRoute[];
+  authenticatedRoutes?: readonly AuthenticatedRoute[];
   componentGallery?: boolean;
 }
 
@@ -193,7 +190,7 @@ function dashboardReturnPath(
 ): string | undefined {
   if (
     !isDashboardPagePath(url.pathname, basePath, options) &&
-    !isAuthenticatedPath(url.pathname, options.authenticatedRoutes ?? [])
+    !isAuthPath(url.pathname, options.authenticatedRoutes ?? [])
   ) {
     return undefined;
   }
@@ -216,10 +213,7 @@ function requestedReturnPath(
   if (
     returnUrl.origin !== url.origin ||
     (!isDashboardPagePath(returnUrl.pathname, basePath, options) &&
-      !isAuthenticatedPath(
-        returnUrl.pathname,
-        options.authenticatedRoutes ?? [],
-      ))
+      !isAuthPath(returnUrl.pathname, options.authenticatedRoutes ?? []))
   ) {
     return undefined;
   }
@@ -466,7 +460,7 @@ export function createDashboardApp(
     next: Next,
   ) => {
     const pathname = new URL(c.req.url).pathname;
-    const appRoute = isAuthenticatedPath(pathname, authenticatedRoutes);
+    const appRoute = isAuthPath(pathname, authenticatedRoutes);
     if (appRoute) {
       const canonicalUrl = canonicalRequestUrl(c.req.raw, canonicalBaseURL);
       if (canonicalUrl) return Response.redirect(canonicalUrl, 302);

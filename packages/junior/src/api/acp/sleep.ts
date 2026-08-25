@@ -1,4 +1,4 @@
-/** Wait for a duration and reject when the owning request stops. */
+/** Wait for a duration and reject when the ACP request stops. */
 export function sleep(ms: number, signal: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
     if (signal.aborted) {

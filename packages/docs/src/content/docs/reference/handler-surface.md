@@ -20,7 +20,7 @@ Handled `GET` routes:
 - `/api/oauth/callback/:provider`
 - `/api/oauth/callback/mcp/:provider`
 
-When `createApp({ dashboard })` mounts `@sentry/junior-dashboard`, the dashboard package owns `/`, `/conversations`, `/conversations/*`, `/locations`, `/locations/*`, `/people`, `/people/*`, `/system`, `/system/*`, `/_junior/dashboard/client.js`, `/auth/login`, `/api/auth/*`, and the authenticated product API routes `/api/health`, `/api/runtime`, `/api/plugins`, `/api/plugins/*`, `/api/plugin-reports`, `/api/skills`, `/api/conversations`, `/api/conversations/*`, `/api/locations`, `/api/locations/*`, `/api/people`, `/api/people/*`, `/api/config`, and `/api/me`; use `/health` for unauthenticated health checks. Plugin API routes are mounted under `/api/plugins/:plugin/*` and inherit auth. The dashboard also authenticates browser routes supplied by configured app adapters.
+When `createApp({ dashboard })` mounts `@sentry/junior-dashboard`, the dashboard package owns `/`, `/conversations`, `/conversations/*`, `/locations`, `/locations/*`, `/people`, `/people/*`, `/system`, `/system/*`, `/_junior/dashboard/client.js`, `/auth/login`, `/api/auth/*`, and the authenticated product API routes `/api/health`, `/api/runtime`, `/api/plugins`, `/api/plugins/*`, `/api/plugin-reports`, `/api/skills`, `/api/conversations`, `/api/conversations/*`, `/api/locations`, `/api/locations/*`, `/api/people`, `/api/people/*`, `/api/config`, and `/api/me`; use `/health` for unauthenticated health checks. Plugin API routes are mounted under `/api/plugins/:plugin/*` and inherit auth. The dashboard also authenticates the ACP browser confirmation route.
 
 Handled `POST` routes:
 
@@ -29,15 +29,15 @@ Handled `POST` routes:
 - `/api/internal/plugin/tasks`
 - `/api/webhooks/:platform` (Slack path is `/api/webhooks/slack`)
 
-When `createApp({ adapters: [acpAdapter()] })` is set, `GET`, `POST`, and
-`DELETE /api/acp` expose ACP v1 Streamable HTTP. The adapter also supplies the
-dashboard-authenticated `/_junior/acp/auth/:transactionId` browser route. Clients authenticate through
+`GET`, `POST`, and `DELETE /api/acp` always expose ACP v1 Streamable HTTP.
+When the app configures the dashboard, it also mounts the authenticated
+`/_junior/acp/auth/:transactionId` browser route. Clients authenticate through
 ACP URL elicitation. The user enters the verification code shown by the client,
 then completes the dashboard Google sign-in flow. Personal tokens do not grant
-access. This pre-stable adapter stores transport records in the configured
-`StateAdapter`. The production Redis adapter supports requests from different
-app instances. Live SSE requests still end at the deployment request limit.
-Clients must reconnect and call `session/load` after that limit.
+access. ACP stores transport records in the configured `StateAdapter`.
+Production Redis state supports requests from different app instances. Live
+SSE requests still end at the deployment request limit. Clients must reconnect
+and call `session/load` after that limit.
 
 ## Expected behavior
 

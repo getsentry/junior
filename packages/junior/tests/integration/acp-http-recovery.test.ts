@@ -1,12 +1,11 @@
 import { createHash } from "node:crypto";
 import path from "node:path";
 import * as acp from "@agentclientprotocol/sdk";
-import { acpAdapter } from "@sentry/junior-acp";
 import type { StateAdapter } from "chat";
-import { completeAcpAuthorization } from "@sentry/junior-acp/testing";
+import { completeAcpAuthorization } from "@/api/acp/auth";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createApp } from "@/app";
-import { createAdapterConversations } from "@/chat/api-turns/adapter-conversations";
+import { createAcpConversations } from "@/api/acp/conversations";
 import {
   ConversationTurnLifecycleService,
   type ConversationTurnLifecycle,
@@ -61,7 +60,6 @@ describe("remote ACP recovery", () => {
     const harness = await createConversationWorkWebHarness();
     const app = await createApp({
       conversationWork: harness.conversationWork,
-      adapters: [acpAdapter()],
       dashboard: {
         authRequired: false,
       },
@@ -171,7 +169,6 @@ describe("remote ACP recovery", () => {
     const harness = await createConversationWorkWebHarness();
     const app = await createApp({
       conversationWork: harness.conversationWork,
-      adapters: [acpAdapter()],
       dashboard: { authRequired: false },
     });
     const attackerURL = "https://attacker.example/api/acp";
@@ -237,7 +234,6 @@ describe("remote ACP recovery", () => {
     const harness = await createConversationWorkWebHarness();
     const app = await createApp({
       conversationWork: harness.conversationWork,
-      adapters: [acpAdapter()],
     });
     const initialized = await app.fetch(initializeRequest());
     const connectionId = initialized.headers.get("Acp-Connection-Id");
@@ -341,11 +337,9 @@ describe("remote ACP recovery", () => {
     });
     const app = await createApp({
       conversationWork: harness.conversationWork,
-      adapters: [acpAdapter()],
     });
     const secondApp = await createApp({
       conversationWork: createIndependentConversationWork(harness),
-      adapters: [acpAdapter()],
     });
     const sessionCreated = deferred<string>();
     const firstPrompt = withAcpClient({
@@ -424,11 +418,9 @@ describe("remote ACP recovery", () => {
       });
       const app = await createApp({
         conversationWork: harness.conversationWork,
-        adapters: [acpAdapter()],
       });
       const secondApp = await createApp({
         conversationWork: createIndependentConversationWork(harness),
-        adapters: [acpAdapter()],
       });
       const sessionCreated = deferred<string>();
       let cancelActiveTurn: (() => Promise<void>) | undefined;
@@ -508,11 +500,9 @@ describe("remote ACP recovery", () => {
     });
     const app = await createApp({
       conversationWork: harness.conversationWork,
-      adapters: [acpAdapter()],
     });
     const secondApp = await createApp({
       conversationWork: createIndependentConversationWork(harness),
-      adapters: [acpAdapter()],
     });
     const sessionCreated = deferred<string>();
     let cancelActiveTurn: (() => Promise<void>) | undefined;
@@ -618,11 +608,9 @@ describe("remote ACP recovery", () => {
         ...harness.conversationWork,
         state: observedState,
       },
-      adapters: [acpAdapter()],
     });
     const secondApp = await createApp({
       conversationWork: createIndependentConversationWork(harness),
-      adapters: [acpAdapter()],
     });
     const sessionCreated = deferred<string>();
     const secondPromptPosted = deferred();
@@ -755,7 +743,7 @@ describe("remote ACP recovery", () => {
     const harness = await createConversationWorkWebHarness({
       modelStream: streamReplies("First Turn complete."),
     });
-    const conversations = createAdapterConversations({
+    const conversations = createAcpConversations({
       conversationStore: harness.conversationStore,
       eventStore: getConversationEventStore(),
       queue: harness.queue,
@@ -771,7 +759,7 @@ describe("remote ACP recovery", () => {
       user,
     });
     if (first.status !== "accepted") {
-      throw new Error(`First adapter prompt was ${first.status}`);
+      throw new Error(`First ACP prompt was ${first.status}`);
     }
     await harness.drain();
 
@@ -802,7 +790,7 @@ describe("remote ACP recovery", () => {
       user,
     });
     if (second.status !== "accepted") {
-      throw new Error(`Second adapter prompt was ${second.status}`);
+      throw new Error(`Second ACP prompt was ${second.status}`);
     }
     await new ConversationTurnLifecycleService(
       getConversationEventStore(),
@@ -832,11 +820,9 @@ describe("remote ACP recovery", () => {
     });
     const app = await createApp({
       conversationWork: harness.conversationWork,
-      adapters: [acpAdapter()],
     });
     const secondApp = await createApp({
       conversationWork: createIndependentConversationWork(harness),
-      adapters: [acpAdapter()],
     });
     const sessionId = await withAcpClient({
       app,
@@ -898,7 +884,6 @@ describe("remote ACP recovery", () => {
     const harness = await createConversationWorkWebHarness();
     const app = await createApp({
       conversationWork: harness.conversationWork,
-      adapters: [acpAdapter()],
     });
     const sessionId = await withAcpClient({
       app,

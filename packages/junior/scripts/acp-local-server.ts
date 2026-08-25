@@ -8,7 +8,6 @@ import type { AddressInfo } from "node:net";
 import path from "node:path";
 import { serve } from "@hono/node-server";
 import { createApp } from "@/app";
-import { acpAdapter } from "@sentry/junior-acp";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { getSqlExecutor } from "@/chat/db";
 import {
@@ -42,7 +41,6 @@ delete process.env.JUNIOR_BASE_URL;
 delete process.env.VERCEL_PROJECT_PRODUCTION_URL;
 delete process.env.VERCEL_URL;
 const app = await createApp({
-  adapters: [acpAdapter()],
   conversationWork: harness.conversationWork,
   dashboard: { authRequired: false },
 });

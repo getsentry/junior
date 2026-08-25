@@ -1,3 +1,4 @@
+/** Own ACP browser authorization records and connection binding. */
 import {
   createHash,
   randomBytes,

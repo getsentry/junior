@@ -31,9 +31,6 @@ function normalizeText(source: string): string {
 function removeExampleOnlyServerConfig(source: string): string {
   return normalizeText(
     source
-      .replace("  { acpAdapter },\n", "")
-      .replace('  import("@sentry/junior-acp"),\n', "")
-      .replace("  adapters: [acpAdapter()],\n", "")
       .replace(
         /  \{\n    exampleDashboardAuthRequired,\n    exampleDashboardComponentGallery,\n    exampleDashboardMockConversations,\n  \},\n/,
         "",

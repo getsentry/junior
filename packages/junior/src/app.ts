@@ -1,6 +1,6 @@
-// Core owns host-level route ordering for Junior. Plugin app routes mount before
-// core runtime routes, so dashboard-enabled apps reject plugin route patterns
-// that can shadow dashboard/auth paths before the dashboard app is mounted.
+// Core owns host-level route ordering for Junior. ACP mounts before plugin
+// routes. Dashboard-enabled apps reject plugin route patterns that can shadow
+// dashboard or auth paths before the dashboard app is mounted.
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
 import { Hono, type Context } from "hono";
@@ -48,6 +48,7 @@ import type {
   PluginRegistration,
   ResourceEvent,
   PluginRouteMethod,
+  User,
 } from "@sentry/junior-plugin-api";
 import {
   pluginCatalogConfigFromEnv,
@@ -100,8 +101,12 @@ import { collectEventTaskMatchKeys } from "@/chat/event-tasks/store";
 import { ingestEventTasks } from "@/chat/event-tasks/ingest";
 import { receiveLocalOAuthCredential } from "@/chat/local/credential-sync";
 import { getStateAdapter } from "@/chat/state/adapter";
-import { createAdapterConversations } from "@/chat/api-turns/adapter-conversations";
-import type { JuniorAppAdapter, JuniorAuthenticatedRoute } from "./app-adapter";
+import { createAcpConversations } from "@/api/acp/conversations";
+import { createAcpHttpHandler } from "@/api/acp/route";
+import {
+  ACP_AUTHORIZATION_PATH,
+  handleAcpAuthorizationPage,
+} from "@/api/acp/authorization-page";
 import { JUNIOR_VERSION } from "./version";
 
 export { defineJuniorPlugins } from "./plugins";
@@ -111,22 +116,7 @@ export type {
   JuniorPluginSet,
   JuniorPluginSetOptions,
 } from "./plugins";
-export type {
-  AdapterConversations,
-  AdapterMessage,
-  AdapterPromptAdmission,
-  AdapterTurnPage,
-  AdapterTurnTerminal,
-  JuniorAdapterState,
-  JuniorAppAdapter,
-  JuniorAppAdapterContext,
-  JuniorAppAdapterRoutes,
-  JuniorAuthenticatedRoute,
-} from "./app-adapter";
-
 export interface JuniorAppOptions {
-  /** Non-plugin adapters mounted against Junior's shared runtime. */
-  adapters?: readonly JuniorAppAdapter[];
   /** Authenticated dashboard mounted by core when configured. */
   dashboard?: JuniorDashboardOptions;
   /**
@@ -191,12 +181,12 @@ export interface JuniorDashboardOptions {
 
 interface JuniorDashboardRuntimeOptions extends JuniorDashboardOptions {
   agentName?: string;
-  authenticatedRoutes?: readonly JuniorAuthenticatedRoute[];
+  authenticatedRoutes?: readonly AuthenticatedRoute[];
   pluginRoutes?: PluginApiRouteRegistration[];
 }
 
-/** Resolve the public deployment URL exposed to app adapters. */
-function resolveAdapterBaseURL(
+/** Resolve the public deployment URL used by ACP browser authorization. */
+function resolveAcpBaseURL(
   dashboard: JuniorDashboardOptions | undefined,
 ): string | undefined {
   const configured =
@@ -231,6 +221,12 @@ interface JuniorVirtualConfig {
 
 interface HostRouteRegistration {
   handler(request: Request): Promise<Response> | Response;
+  method?: PluginRouteMethod | readonly PluginRouteMethod[];
+  path: string;
+}
+
+interface AuthenticatedRoute {
+  handler(request: Request, user: User): Promise<Response> | Response;
   method?: PluginRouteMethod | readonly PluginRouteMethod[];
   path: string;
 }
@@ -369,7 +365,7 @@ function validateBuildIncludesPluginRuntimeRegistrations(
 }
 
 async function createDashboardRouteRegistrations(args: {
-  authenticatedRoutes: readonly JuniorAuthenticatedRoute[];
+  authenticatedRoutes: readonly AuthenticatedRoute[];
   dashboard: JuniorDashboardOptions | undefined;
   createDashboardApp: CreateDashboardApp | undefined;
   pluginRoutes: PluginApiRouteRegistration[];
@@ -451,7 +447,7 @@ function normalizeDashboardPath(
 /** List every route path core forwards to the dashboard app and reserves from plugin routes. */
 function dashboardHostRoutePaths(
   dashboard: JuniorDashboardOptions,
-  authenticatedRoutes: readonly JuniorAuthenticatedRoute[] = [],
+  authenticatedRoutes: readonly AuthenticatedRoute[] = [],
 ): string[] {
   const basePath = normalizeDashboardPath(dashboard.basePath, "/");
   const authPath = normalizeDashboardPath(dashboard.authPath, "/api/auth");
@@ -589,7 +585,7 @@ function routePatternOverlaps(ownedPath: string, routePath: string): boolean {
 function dashboardOwnedRoutePath(
   routePath: string,
   dashboard: JuniorDashboardOptions,
-  authenticatedRoutes: readonly JuniorAuthenticatedRoute[] = [],
+  authenticatedRoutes: readonly AuthenticatedRoute[] = [],
 ): boolean {
   return dashboardHostRoutePaths(dashboard, authenticatedRoutes).some((path) =>
     routePatternOverlaps(path, routePath),
@@ -597,7 +593,7 @@ function dashboardOwnedRoutePath(
 }
 
 function dashboardRouteRegistrations(args: {
-  authenticatedRoutes: readonly JuniorAuthenticatedRoute[];
+  authenticatedRoutes: readonly AuthenticatedRoute[];
   dashboard: JuniorDashboardOptions;
   createDashboardApp: CreateDashboardApp;
   pluginRoutes: PluginApiRouteRegistration[];
@@ -626,7 +622,7 @@ function dashboardRouteRegistrations(args: {
 }
 
 function validateDashboardRouteOwnership(args: {
-  authenticatedRoutes?: readonly JuniorAuthenticatedRoute[];
+  authenticatedRoutes?: readonly AuthenticatedRoute[];
   dashboard: JuniorDashboardOptions | undefined;
   routes: PluginRouteRegistration[];
 }): void {
@@ -826,38 +822,54 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
       });
     return conversationWorkOptions;
   };
-  let adapterRoutes: HostRouteRegistration[] = [];
-  let authenticatedRoutes: JuniorAuthenticatedRoute[] = [];
-  try {
-    const adapterOutputs = await Promise.all(
-      (options?.adapters ?? []).map(async (adapter) => {
-        const work = getConversationWorkOptions();
-        const state = work.state ?? getStateAdapter();
-        return await adapter({
-          agentName: botConfig.userName,
-          baseURL: resolveAdapterBaseURL(dashboard),
-          conversations: createAdapterConversations({
-            conversationStore: work.conversationStore,
-            eventStore: getConversationEventStore(),
-            queue: work.queue ?? getVercelConversationWorkQueue(),
-            state,
-          }),
-          reportError: (error, event, attributes) =>
-            void logException(error, event, attributes),
+  let acpRuntime:
+    | {
+        handleRequest(request: Request): Promise<Response>;
+        state: ReturnType<typeof getStateAdapter>;
+      }
+    | undefined;
+  /** Create ACP state and Conversation bindings only after the first ACP request. */
+  const getAcpRuntime = () => {
+    if (acpRuntime) return acpRuntime;
+    const work = getConversationWorkOptions();
+    const state = work.state ?? getStateAdapter();
+    acpRuntime = {
+      handleRequest: createAcpHttpHandler({
+        ...(dashboard && !dashboard.disabled
+          ? { browserAuth: { baseURL: resolveAcpBaseURL(dashboard) } }
+          : undefined),
+        conversations: createAcpConversations({
+          conversationStore: work.conversationStore,
+          eventStore: getConversationEventStore(),
+          queue: work.queue ?? getVercelConversationWorkQueue(),
           state,
-          version: JUNIOR_VERSION,
-        });
+        }),
+        onError: (error, event, attributes) =>
+          void logException(error, event, { ...attributes, platform: "acp" }),
+        state,
+        version: JUNIOR_VERSION,
       }),
-    );
-    adapterRoutes = adapterOutputs.flatMap((output) => output.routes ?? []);
-    authenticatedRoutes = adapterOutputs.flatMap(
-      (output) => output.authenticatedRoutes ?? [],
-    );
-    if (authenticatedRoutes.length > 0 && (!dashboard || dashboard.disabled)) {
-      throw new Error(
-        "createApp() adapters with authenticated routes require an enabled dashboard",
-      );
-    }
+      state,
+    };
+    return acpRuntime;
+  };
+  const authenticatedRoutes: AuthenticatedRoute[] =
+    dashboard && !dashboard.disabled
+      ? [
+          {
+            handler: (request, user) =>
+              handleAcpAuthorizationPage({
+                agentName: botConfig.userName,
+                request,
+                state: getAcpRuntime().state,
+                user,
+              }),
+            method: ["GET", "POST"],
+            path: ACP_AUTHORIZATION_PATH,
+          },
+        ]
+      : [];
+  try {
     validateDashboardRouteOwnership({
       authenticatedRoutes,
       dashboard,
@@ -886,8 +898,10 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     );
   });
 
+  app.on(["GET", "POST", "DELETE"], "/api/acp", (c) =>
+    getAcpRuntime().handleRequest(c.req.raw),
+  );
   mountRoutes(app, pluginRoutes);
-  mountRoutes(app, adapterRoutes);
   mountRoutes(
     app,
     await createDashboardRouteRegistrations({

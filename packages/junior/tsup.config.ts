@@ -30,6 +30,7 @@ export default defineConfig({
     "hono",
     "@sentry/node",
     // All runtime npm dependencies stay external
+    "@agentclientprotocol/sdk",
     "@ai-sdk/gateway",
     "@chat-adapter/slack",
     "@chat-adapter/state-memory",
