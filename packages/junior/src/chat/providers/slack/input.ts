@@ -6,12 +6,35 @@ import {
   instructionProvenanceFor,
   type ConversationMessageProvenance,
 } from "@/chat/conversations/provenance";
+import {
+  commitMessages,
+  loadConversationProjection,
+} from "@/chat/conversations/projection";
+import type { PiMessage } from "@/chat/pi/messages";
 import { isResourceEventSlackMessage } from "@/chat/resource-events/actor";
 import type { QueuedTurnMessage } from "@/chat/runtime/turn-input";
 import { getMessageTimestamp } from "@/chat/slack/message/identity";
 import { appendThreadContextMessages } from "@/chat/services/conversation-memory";
 import { getMessageActorIdentity } from "@/chat/services/message-actor-identity";
+import { getStateAdapter } from "@/chat/state/adapter";
+import { acquireActiveLock } from "@/chat/state/locks";
 import { escapeXml } from "@/chat/xml";
+
+/**
+ * Return a stable key for one steering message. Resolved attachments may change
+ * when the mailbox retries, so only the message time and text form the key.
+ */
+export function steeringMessageKey(message: PiMessage): string | undefined {
+  if (message.role !== "user") {
+    return undefined;
+  }
+  const first = Array.isArray(message.content) ? message.content[0] : undefined;
+  const text =
+    first && typeof first === "object" && "text" in first
+      ? String((first as { text?: unknown }).text ?? "")
+      : "";
+  return `${message.timestamp}:${text}`;
+}
 
 function renderRecentThreadMessageLines(
   conversationContext: string | undefined,
@@ -130,4 +153,58 @@ export function collectAttachments(
     ...(queuedMessages ?? []).flatMap((queued) => queued.message.attachments),
     ...message.attachments,
   ];
+}
+
+/**
+ * Save steering messages once while holding the same lock as a resumed Turn.
+ * Return false when another Run owns the lock so the mailbox stays pending.
+ */
+export async function saveSteeringMessages(args: {
+  conversationId: string;
+  entries: Array<{
+    message: PiMessage;
+    provenance: ConversationMessageProvenance;
+  }>;
+}): Promise<boolean> {
+  if (args.entries.length === 0) {
+    return true;
+  }
+  const state = getStateAdapter();
+  await state.connect();
+  const lock = await acquireActiveLock(state, args.conversationId);
+  if (!lock) {
+    return false;
+  }
+  try {
+    const projection = await loadConversationProjection({
+      conversationId: args.conversationId,
+    });
+    // A mailbox retry can contain a mix of saved and unsaved messages.
+    const savedKeys = new Set(
+      projection.messages
+        .map(steeringMessageKey)
+        .filter((key): key is string => key !== undefined),
+    );
+    const missing = args.entries.filter((entry) => {
+      const key = steeringMessageKey(entry.message);
+      return key === undefined || !savedKeys.has(key);
+    });
+    if (missing.length === 0) {
+      return true;
+    }
+    await commitMessages({
+      conversationId: args.conversationId,
+      messages: [
+        ...projection.messages,
+        ...missing.map((entry) => entry.message),
+      ],
+      provenance: [
+        ...projection.provenance,
+        ...missing.map((entry) => entry.provenance),
+      ],
+    });
+    return true;
+  } finally {
+    await state.releaseLock(lock);
+  }
 }

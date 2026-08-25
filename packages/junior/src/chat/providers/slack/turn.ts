@@ -158,11 +158,9 @@ import {
   queuedInstructionActor,
   queuedInstructionProvenance,
   resolveChannelName,
+  saveSteeringMessages,
+  steeringMessageKey,
 } from "@/chat/providers/slack/input";
-import {
-  parkedInputKey,
-  saveParkedInput,
-} from "@/chat/providers/slack/parked-input";
 
 /**
  * Persist post-delivery Redis scratch with a short retry after durable SQL
@@ -506,14 +504,14 @@ export function createSlackTurn(deps: SlackTurnDeps) {
             }),
           );
         };
-        /** Save parked input before acknowledgment so the resumed Run sees it. */
-        const appendParkedTurnInput = async (
-          parkedSessionId: string,
+        /** Save new messages before acknowledgment so the resumed Run sees them. */
+        const savePausedTurnMessages = async (
+          pausedTurnId: string,
         ): Promise<boolean> => {
           if (!conversationId) {
             return true;
           }
-          const parkedMessages = [
+          const steeringMessages = [
             ...(options.queuedMessages ?? []),
             {
               explicitMention: Boolean(
@@ -524,23 +522,23 @@ export function createSlackTurn(deps: SlackTurnDeps) {
               userText: currentText.userText,
             },
           ].filter(
-            // Redelivery of the parked turn's own message must not duplicate
+            // Redelivery of the paused Turn's own message must not duplicate
             // the prompt that already started the session.
             (queued) =>
-              buildDeterministicTurnId(queued.message.id) !== parkedSessionId,
+              buildDeterministicTurnId(queued.message.id) !== pausedTurnId,
           );
-          if (parkedMessages.length === 0) {
+          if (steeringMessages.length === 0) {
             return true;
           }
-          const parkedPairs = (
-            await resolveSteeringMessages(parkedMessages)
-          ).map((steering) => ({
-            message: buildSteeringPiMessage(steering),
-            provenance: steering.provenance,
-          }));
-          return saveParkedInput({
+          const entries = (await resolveSteeringMessages(steeringMessages)).map(
+            (steering) => ({
+              message: buildSteeringPiMessage(steering),
+              provenance: steering.provenance,
+            }),
+          );
+          return saveSteeringMessages({
             conversationId,
-            entries: parkedPairs,
+            entries,
           });
         };
         if (preparedState.userMessageAlreadyReplied) {
@@ -571,7 +569,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
             // Durable event-log append first: rescheduling a continuation
             // does not consume the message, and `ack` may only
             // fire after the input is model-visible.
-            if (!(await appendParkedTurnInput(pausedTurn.turnId))) {
+            if (!(await savePausedTurnMessages(pausedTurn.turnId))) {
               // A live resume holds the thread lock; leave the mailbox
               // message pending so the next drain re-delivers it after the
               // resume completes.
@@ -604,10 +602,10 @@ export function createSlackTurn(deps: SlackTurnDeps) {
           );
           if (sessionRecord?.state === "paused") {
             if (sessionRecord.resumeReason === "auth") {
-              // A user follow-up supersedes the auth-parked run: answer it
-              // now as a fresh turn instead of consuming it into a pause that
-              // may never resume. The parked prompt stays model-visible via
-              // the event-log projection, pendingAuth state keeps the
+              // A user follow-up supersedes the authorization-paused Run.
+              // Answer it now as a fresh Turn instead of adding it to a pause that
+              // may never resume. Its prompt stays model-visible through the
+              // event log. The pendingAuth state keeps the
               // authorization link reusable, and the abandoned record turns a
               // late OAuth callback into a stale no-op instead of a competing
               // run.
@@ -997,7 +995,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
             }
           }
           const hasDurablePromptHistory = Boolean(piMessages?.length);
-          // Batched parked input: each explicit-mention message another actor
+          // Batched steering messages: each explicit mention from another actor
           // sent before this turn started, drained into it, kept with its own
           // author's provenance so every contributor joins the run's actors.
           const batchedInstructions = (
@@ -1017,13 +1015,13 @@ export function createSlackTurn(deps: SlackTurnDeps) {
           // an already-committed prefix and reuses that provenance instead of
           // collapsing them to the live actor.
           if (
-            !(await saveParkedInput({
+            !(await saveSteeringMessages({
               conversationId,
               entries: batchedInstructions,
             }))
           ) {
             // A live resume owns the event-log read-modify-write. Defer the
-            // turn (as appendParkedTurnInput does) so the worker releases the
+            // Turn (as savePausedTurnMessages does) so the worker releases the
             // lease and the next drain commits provenance before running;
             // never run with the batch uncommitted.
             shouldPersistFailureState = false;
@@ -1032,17 +1030,17 @@ export function createSlackTurn(deps: SlackTurnDeps) {
           if (batchedInstructions.length > 0) {
             // Merge the committed batch into the transcript the model sees. A
             // redelivery reloads the batch from the durable log, so skip any
-            // message already present by `parkedInputKey` — never merge (and
+            // message already present by `steeringMessageKey` — never merge (and
             // later re-commit) the same batched message twice.
             const presentKeys = new Set(
               (piMessages ?? [])
-                .map(parkedInputKey)
+                .map(steeringMessageKey)
                 .filter((key): key is string => key !== undefined),
             );
             const newlyBatched = batchedInstructions
               .map((entry) => entry.message)
               .filter((batchedMessage) => {
-                const key = parkedInputKey(batchedMessage);
+                const key = steeringMessageKey(batchedMessage);
                 return key === undefined || !presentKeys.has(key);
               });
             if (newlyBatched.length > 0) {
