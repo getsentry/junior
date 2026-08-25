@@ -17,6 +17,7 @@ import {
   hydrateConversationMessages,
   persistConversationMessages,
 } from "@/chat/conversations/messages";
+import { commitWebAcceptedReply } from "@/chat/api-turns/accepted-reply";
 import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
 import type { ConversationTurnFailureCode } from "@/chat/conversations/history";
 import { credentialContextForActor } from "@/chat/credentials/context";
@@ -45,11 +46,9 @@ import {
   buildConversationContext,
   markConversationMessage,
   normalizeConversationText,
-  recordDeliveredAssistantMessage,
   upsertConversationMessage,
 } from "@/chat/services/conversation-memory";
 import { finalizeFailedTurnReplyWithEvent } from "@/chat/services/turn-failure-response";
-import { persistWithRetry } from "@/chat/services/persist-retry";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { buildDeterministicTurnId } from "@/chat/state/turn-id";
 import {
@@ -646,6 +645,7 @@ export function createApiTurnWorker(
         const deliverAssistantMessage = async (
           value: AssistantMessage | string,
         ): Promise<void> => {
+          const agentMessage = typeof value === "string" ? undefined : value;
           const replyText =
             typeof value === "string" ? value : getAssistantReplyText(value);
           if (!replyText?.trim()) {
@@ -653,32 +653,14 @@ export function createApiTurnWorker(
           }
           failureCode = "delivery_failed";
           assistantMessageDelivered = true;
-          // Visible conversation messages feed the dashboard transcript.
-          // Agent history is committed once by the completed checkpoint.
-          recordDeliveredAssistantMessage({
+          await commitWebAcceptedReply({
+            ...(agentMessage ? { agentMessage } : undefined),
             conversation,
+            conversationId: context.conversationId,
             sessionId: turnId,
-            source: "web",
             text: replyText,
             userMessageId,
           });
-          try {
-            await persistWithRetry(() =>
-              persistConversationMessages({
-                conversation,
-                conversationId: context.conversationId,
-              }),
-            );
-          } catch (error) {
-            logException(
-              new Error("Accepted assistant message persistence failed"),
-              "api.assistant.message_post_delivery_persist.failed",
-              {
-                "error.type":
-                  error instanceof Error ? error.name : typeof error,
-              },
-            );
-          }
           failureCode = "agent_run_failed";
         };
 
