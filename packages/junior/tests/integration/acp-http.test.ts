@@ -208,9 +208,9 @@ describe("remote ACP HTTP", () => {
   });
 
   it("runs, reloads, and protects a private Conversation across app instances", async () => {
-    const harness = await createConversationWorkWebHarness({
-      modelStream: streamReplies("First ACP reply."),
-    });
+    const harness = await createConversationWorkWebHarness(
+      streamReplies("First ACP reply."),
+    );
     const app = await createApp({
       conversationWork: harness.conversationWork,
     });
@@ -427,9 +427,9 @@ describe("remote ACP HTTP", () => {
   }, 20_000);
 
   it("deduplicates exact retries without colliding payloads or id types", async () => {
-    const harness = await createConversationWorkWebHarness({
-      modelStream: streamReplies("Typed id reply."),
-    });
+    const harness = await createConversationWorkWebHarness(
+      streamReplies("Typed id reply."),
+    );
     const app = await createApp({
       conversationWork: harness.conversationWork,
     });
@@ -621,9 +621,9 @@ describe("remote ACP HTTP", () => {
   });
 
   it("finishes durable work after the ACP connection closes", async () => {
-    const harness = await createConversationWorkWebHarness({
-      modelStream: streamReplies("Completed after disconnect."),
-    });
+    const harness = await createConversationWorkWebHarness(
+      streamReplies("Completed after disconnect."),
+    );
     const app = await createApp({
       conversationWork: harness.conversationWork,
     });
@@ -746,8 +746,8 @@ describe("remote ACP HTTP", () => {
   it("cancels the active Turn and accepts a later prompt", async () => {
     const modelStarted = deferred();
     const releaseModel = deferred();
-    const harness = await createConversationWorkWebHarness({
-      modelStream: createModelStream([
+    const harness = await createConversationWorkWebHarness(
+      createModelStream([
         {
           type: "text",
           text: "This reply must not be stored.",
@@ -755,7 +755,7 @@ describe("remote ACP HTTP", () => {
           waitFor: releaseModel.promise,
         },
       ]),
-    });
+    );
     const app = await createApp({
       conversationWork: harness.conversationWork,
     });
@@ -859,11 +859,9 @@ describe("remote ACP HTTP", () => {
   }, 20_000);
 
   it("maps one durable failed Turn to a protocol error", async () => {
-    const harness = await createConversationWorkWebHarness({
-      modelStream: createModelStream([
-        { type: "error", errorMessage: "model unavailable" },
-      ]),
-    });
+    const harness = await createConversationWorkWebHarness(
+      createModelStream([{ type: "error", errorMessage: "model unavailable" }]),
+    );
     const app = await createApp({
       conversationWork: harness.conversationWork,
     });

@@ -15,6 +15,7 @@ type SavedTurnResult =
       outcome: CompleteConversationTurnInput["outcome"];
     }
   | {
+      eventId?: string;
       finishedAtMs?: number;
       failureCode: FailConversationTurnInput["failureCode"];
       outcome: "failed";
@@ -67,6 +68,7 @@ export async function executeTurn(
   if (saved.outcome === "failed") {
     await lifecycle.fail({
       ...common,
+      ...(saved.eventId ? { eventId: saved.eventId } : undefined),
       failureCode: saved.failureCode,
     });
   } else {

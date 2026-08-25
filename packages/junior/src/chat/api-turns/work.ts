@@ -1,12 +1,4 @@
-/**
- * API-authored conversation turns.
- *
- * Dashboard and product API messages enter the shared mailbox with
- * `publishExternally: false`. The worker leases the conversation, runs the
- * shared agent path, and accepts replies into the conversation log only.
- * Continues of Slack-rooted conversations keep the Slack destination for
- * location context and never publish back to Slack.
- */
+/** Conversation API work runs a native Turn and keeps replies in the Conversation. */
 import { createHash } from "node:crypto";
 import type { StateAdapter } from "chat";
 import {
@@ -25,15 +17,13 @@ import {
   hydrateConversationMessages,
   persistConversationMessages,
 } from "@/chat/conversations/messages";
-import {
-  ConversationTurnLifecycleService,
-  type ConversationTurnLifecycle,
-} from "@/chat/conversations/turn-lifecycle";
+import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
 import type { ConversationTurnFailureCode } from "@/chat/conversations/history";
 import { credentialContextForActor } from "@/chat/credentials/context";
 import { getConversationEventStore, getConversationStore } from "@/chat/db";
 import { logException, setTags, withLogContext } from "@/chat/logging";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
+import { AgentRunError, executeTurn } from "@/chat/runtime/turn-execution";
 import { buildDeliveredTurnStatePatch } from "@/chat/runtime/delivered-turn-state";
 import {
   getPersistedSandboxState,
@@ -83,7 +73,6 @@ import {
   scheduleSessionCompletedPluginTasks,
 } from "@/chat/plugins/task-runner";
 import type { SandboxRef } from "@/chat/sandbox/ref";
-import type { AgentRunResult } from "@/chat/services/turn-result";
 import type { StoredSlackActor } from "@/chat/actor";
 import {
   createWebAuthorization,
@@ -369,7 +358,7 @@ export async function createAndEnqueueApiConversation(
   );
 }
 
-/** Append one API message and optionally require an idle Conversation. */
+/** Append one Conversation API message and optionally require an idle Conversation. */
 export function appendAndEnqueueApiConversationMessage(
   input: AppendApiConversationMessageInput,
   options: EnqueueOptions & { exclusive: true },
@@ -446,30 +435,29 @@ function hasLostTurnInputCommit(error: unknown): boolean {
   return isTurnInputCommitLostError(error) || isTurnInputCommitLostError(cause);
 }
 
-/** Build the mailbox consumer for API-authored root turns. */
-export function createApiTurnWorker(options: {
-  agentRunner: AgentRunner;
-  cancellation?: ApiTurnCancellation;
-  turnLifecycle?: ConversationTurnLifecycle;
-}) {
+/** Create the worker for messages from the Conversation API. */
+export function createApiTurnWorker(
+  agentRunner: AgentRunner,
+  cancellation?: ApiTurnCancellation,
+) {
   return async (
     context: ConversationWorkerContext,
   ): Promise<ConversationWorkerResult> => {
     const resolved = await resolveApiTurnWork(context);
     if (!resolved) {
       throw new Error(
-        `API turn worker received non-API work for ${context.conversationId}`,
+        `Conversation API worker received other work for ${context.conversationId}`,
       );
     }
     if (context.publishExternally) {
       throw new Error(
-        `API turn work must not publish externally for ${context.conversationId}`,
+        `Conversation API work cannot publish to a provider for ${context.conversationId}`,
       );
     }
 
-    const lifecycle =
-      options.turnLifecycle ??
-      new ConversationTurnLifecycleService(getConversationEventStore());
+    const lifecycle = new ConversationTurnLifecycleService(
+      getConversationEventStore(),
+    );
 
     const isResume = resolved.kind === "resume";
     let actor: WebActor;
@@ -504,7 +492,7 @@ export function createApiTurnWorker(options: {
       );
       if (!resumedActor) {
         throw new Error(
-          `API turn resume missing actor for ${context.conversationId}`,
+          `Conversation API resume missing actor for ${context.conversationId}`,
         );
       }
       actor = resumedActor;
@@ -547,7 +535,7 @@ export function createApiTurnWorker(options: {
             await context.attempt.ack();
           } catch {
             throw new TurnInputCommitLostError(
-              `Conversation work lease lost before API turn inbox ack for ${context.conversationId}`,
+              `Conversation work lease lost before Conversation API message acknowledgement for ${context.conversationId}`,
             );
           }
           acknowledged = true;
@@ -562,7 +550,7 @@ export function createApiTurnWorker(options: {
         let sandboxRef: SandboxRef | undefined =
           getPersistedSandboxState(persisted);
         const initialSandboxRef = sandboxRef;
-        const appSignal = options.cancellation?.signal(context.conversationId);
+        const appSignal = cancellation?.signal(context.conversationId);
         const stopSignal = context.stopSignal?.();
         const cancellationSignal =
           appSignal && stopSignal
@@ -570,7 +558,7 @@ export function createApiTurnWorker(options: {
             : (appSignal ?? stopSignal);
         const finishCancellation = (): void => {
           if (appSignal) {
-            options.cancellation?.finish(context.conversationId, appSignal);
+            cancellation?.finish(context.conversationId, appSignal);
           }
         };
         const completeCancelledTurn =
@@ -579,10 +567,9 @@ export function createApiTurnWorker(options: {
               await completeCancelledApiTurn({
                 acknowledge,
                 actorId: actor.userId,
-                cancellation: options.cancellation,
+                cancellation,
                 conversation,
                 conversationId: context.conversationId,
-                lifecycle,
                 sandboxRef,
                 signal: appSignal,
                 turnId,
@@ -601,7 +588,7 @@ export function createApiTurnWorker(options: {
           const userMessage = getTurnUserMessage(conversation, turnId);
           if (!userMessage) {
             throw new Error(
-              `Unable to locate the persisted user message for API turn "${turnId}"`,
+              `Unable to locate the persisted user message for Turn "${turnId}"`,
             );
           }
           userMessageId = userMessage.id;
@@ -654,7 +641,7 @@ export function createApiTurnWorker(options: {
         let failureCode: ConversationTurnFailureCode = "persistence_failed";
         let modelFailureEventId: string | undefined;
         let modelFailureCaptureAttempted = false;
-        let reply: AgentRunResult | undefined;
+        let completedSuccessfully = false;
 
         const deliverAssistantMessage = async (
           value: AssistantMessage | string,
@@ -701,7 +688,7 @@ export function createApiTurnWorker(options: {
           }
           if (!isResume) {
             // Match Slack: a newer user message supersedes an auth-parked turn
-            // instead of leaving two active API turns or letting a late OAuth
+            // instead of leaving two active Turns or letting a late OAuth
             // wake resume stale work.
             const authParked = (
               await listTurnSummaries(context.conversationId)
@@ -753,56 +740,126 @@ export function createApiTurnWorker(options: {
           currentRunId = `api-run:${stableHex(turnId, String(startedAtMs))}`;
           setTags({ runId: currentRunId });
 
-          const outcome = await options.agentRunner.run({
-            conversationId: context.conversationId,
-            turnId,
-            runId: currentRunId,
-            instruction: {
-              text,
-              context: buildConversationContext(conversation, {
-                excludeMessageId: userMessageId,
-              }),
-            },
-            history: piMessages,
-            actor,
-            credentialContext: credentialContextForActor(actor),
-            destination,
-            publishExternally: false,
-            source,
-            surface: "api",
-            ...(cancellationSignal
-              ? { signal: cancellationSignal }
-              : undefined),
-            authorization: createWebAuthorization({
-              actorId: actor.userId,
+          const outcome = await executeTurn(
+            agentRunner,
+            {
               conversationId: context.conversationId,
-            }),
-            state: {
-              pendingAuth: conversation.processing.pendingAuth,
-              sandboxRef,
-            },
-            delivery: deliverAssistantMessage,
-            durability: {
-              onInputCommitted: acknowledge,
-              shouldYield: context.shouldYield,
-              onSandboxRefChanged: async (nextSandboxRef) => {
-                sandboxRef = nextSandboxRef;
-                await persistThreadStateById(context.conversationId, {
-                  conversation,
-                  sandboxRef,
-                });
+              turnId,
+              runId: currentRunId,
+              instruction: {
+                text,
+                context: buildConversationContext(conversation, {
+                  excludeMessageId: userMessageId,
+                }),
               },
-              recordPendingAuth: async (pendingAuth) => {
-                conversation.processing.pendingAuth = pendingAuth;
-                await persistThreadStateById(context.conversationId, {
-                  conversation,
-                  sandboxRef,
-                });
+              history: piMessages,
+              actor,
+              credentialContext: credentialContextForActor(actor),
+              destination,
+              publishExternally: false,
+              source,
+              surface: "api",
+              ...(cancellationSignal
+                ? { signal: cancellationSignal }
+                : undefined),
+              authorization: createWebAuthorization({
+                actorId: actor.userId,
+                conversationId: context.conversationId,
+              }),
+              state: {
+                pendingAuth: conversation.processing.pendingAuth,
+                sandboxRef,
+              },
+              delivery: deliverAssistantMessage,
+              durability: {
+                onInputCommitted: acknowledge,
+                shouldYield: context.shouldYield,
+                onSandboxRefChanged: async (nextSandboxRef) => {
+                  sandboxRef = nextSandboxRef;
+                  await persistThreadStateById(context.conversationId, {
+                    conversation,
+                    sandboxRef,
+                  });
+                },
+                recordPendingAuth: async (pendingAuth) => {
+                  conversation.processing.pendingAuth = pendingAuth;
+                  await persistThreadStateById(context.conversationId, {
+                    conversation,
+                    sandboxRef,
+                  });
+                },
               },
             },
-          });
+            async (result) => {
+              if (cancellationSignal?.aborted) {
+                throw (
+                  cancellationSignal.reason ??
+                  new DOMException("Turn cancelled", "AbortError")
+                );
+              }
 
-          if (cancellationSignal?.aborted) {
+              finishCancellation();
+              modelFailureCaptureAttempted =
+                result.diagnostics.outcome !== "success";
+              const finalized = finalizeFailedTurnReplyWithEvent({
+                reply: result,
+                logException,
+              });
+              const reply = finalized.reply;
+              modelFailureEventId = finalized.eventId;
+              if (reply.diagnostics.outcome !== "success") {
+                await deliverAssistantMessage(reply.text);
+              }
+
+              const completedState = buildDeliveredTurnStatePatch({
+                conversation,
+                reply,
+                sessionId: turnId,
+                userMessageId,
+              });
+              await persistThreadStateById(context.conversationId, {
+                conversation: completedState.conversation,
+                sandboxRef: reply.sandboxRef ?? sandboxRef,
+              });
+              if (reply.piMessages?.length) {
+                // Prefer the live checkpoint slice after yield/resume; first
+                // completion has no prior record and starts at slice 1.
+                const latest = await getTurnRecord(
+                  context.conversationId,
+                  turnId,
+                );
+                await saveTurnCheckpoint({
+                  mode: "completed",
+                  conversationId: context.conversationId,
+                  turnId,
+                  sliceId: latest?.sliceId ?? 1,
+                  messages: reply.piMessages,
+                  durationMs: reply.diagnostics.durationMs,
+                  usage: reply.diagnostics.usage,
+                  destination,
+                  publishExternally: false,
+                  source,
+                  actor,
+                  surface: "api",
+                });
+              }
+
+              completedSuccessfully = reply.diagnostics.outcome === "success";
+              return completedSuccessfully
+                ? {
+                    outcome: assistantMessageDelivered ? "success" : "no_reply",
+                  }
+                : {
+                    ...(modelFailureEventId
+                      ? { eventId: modelFailureEventId }
+                      : undefined),
+                    failureCode: "model_execution_failed",
+                    outcome: "failed",
+                  };
+            },
+          );
+
+          if (outcome.status !== "completed" && cancellationSignal?.aborted) {
             return await completeCancelledTurn();
           }
 
@@ -822,62 +879,12 @@ export function createApiTurnWorker(options: {
               sandboxRef,
             });
             if (appSignal) {
-              options.cancellation?.park(context.conversationId, appSignal);
+              cancellation?.park(context.conversationId, appSignal);
             }
             await acknowledge();
             return { status: "paused" };
           }
-          finishCancellation();
-          reply = outcome.result;
-          modelFailureCaptureAttempted =
-            reply.diagnostics.outcome !== "success";
-          const finalized = finalizeFailedTurnReplyWithEvent({
-            reply,
-            logException,
-          });
-          reply = finalized.reply;
-          modelFailureEventId = finalized.eventId;
-          if (reply.diagnostics.outcome !== "success") {
-            await deliverAssistantMessage(reply.text);
-          }
-
-          const completedState = buildDeliveredTurnStatePatch({
-            conversation,
-            reply,
-            sessionId: turnId,
-            userMessageId,
-          });
-          await persistThreadStateById(context.conversationId, {
-            conversation: completedState.conversation,
-            sandboxRef: reply.sandboxRef ?? sandboxRef,
-          });
-          if (reply.piMessages?.length) {
-            // Prefer the live checkpoint slice after yield/resume; first
-            // completion has no prior record and starts at slice 1.
-            const latest = await getTurnRecord(context.conversationId, turnId);
-            await saveTurnCheckpoint({
-              mode: "completed",
-              conversationId: context.conversationId,
-              turnId,
-              sliceId: latest?.sliceId ?? 1,
-              messages: reply.piMessages,
-              durationMs: reply.diagnostics.durationMs,
-              usage: reply.diagnostics.usage,
-              destination,
-              publishExternally: false,
-              source,
-              actor,
-              surface: "api",
-            });
-          }
-
-          if (reply.diagnostics.outcome === "success") {
-            await lifecycle.complete({
-              conversationId: context.conversationId,
-              createdAtMs: Date.now(),
-              outcome: assistantMessageDelivered ? "success" : "no_reply",
-              turnId,
-            });
+          if (completedSuccessfully) {
             try {
               await scheduleSessionCompletedPluginTasks(
                 {
@@ -909,29 +916,20 @@ export function createApiTurnWorker(options: {
                 turnId,
               });
             }
-          } else {
-            await lifecycle.fail({
-              conversationId: context.conversationId,
-              createdAtMs: Date.now(),
-              ...(modelFailureEventId
-                ? { eventId: modelFailureEventId }
-                : undefined),
-              failureCode: "model_execution_failed",
-              turnId,
-            });
           }
 
           await acknowledge();
           return { status: "completed" };
         } catch (error) {
-          if (hasLostTurnInputCommit(error)) {
+          const failure = error instanceof AgentRunError ? error.cause : error;
+          if (hasLostTurnInputCommit(failure)) {
             return { status: "lost_lease" };
           }
           if (cancellationSignal?.aborted) {
             return await completeCancelledTurn();
           }
           if (!context.attempt.isFinalAttempt) {
-            throw error;
+            throw failure;
           }
 
           const failureEventId =
@@ -939,7 +937,7 @@ export function createApiTurnWorker(options: {
               ? modelFailureEventId
               : captureApiBoundaryFailure({
                   conversationId: context.conversationId,
-                  error,
+                  error: failure,
                   failureCode,
                   runId: currentRunId,
                   turnId,
@@ -981,7 +979,7 @@ export function createApiTurnWorker(options: {
   };
 }
 
-/** Route API turn work before falling through to other consumers. */
+/** Route Conversation API work before other work. */
 export function routeApiTurnWork(options: {
   apiTurnWorker: (
     context: ConversationWorkerContext,

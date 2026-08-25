@@ -65,10 +65,10 @@ describe("web auth orchestration", () => {
     process.env = { ...ORIGINAL_ENV };
   });
 
-  it("parks a web turn for MCP auth, exposes the prompt, and resumes after OAuth", async () => {
-    const q = await createConversationWorkWebHarness({
-      modelStream: streamMcpSearchAndCall("Eval Auth tool completed."),
-    });
+  it("parks a Turn from the Conversation API for MCP auth, shows the prompt, and resumes after OAuth", async () => {
+    const q = await createConversationWorkWebHarness(
+      streamMcpSearchAndCall("Eval Auth tool completed."),
+    );
     const started = await q.start({
       idempotencyKey: "web-auth-park-resume-1",
       message: "use eval-auth and confirm the connection",
@@ -102,10 +102,10 @@ describe("web auth orchestration", () => {
     );
   });
 
-  it("supersedes an auth-parked web turn and clears the dashboard prompt", async () => {
-    const q = await createConversationWorkWebHarness({
-      modelStream: streamMcpSearch("Eval Auth is connected."),
-    });
+  it("supersedes an auth-parked Turn from the Conversation API and clears the prompt", async () => {
+    const q = await createConversationWorkWebHarness(
+      streamMcpSearch("Eval Auth is connected."),
+    );
     const started = await q.start({
       idempotencyKey: "web-auth-supersede-1",
       message: "connect eval-auth first",
@@ -159,10 +159,10 @@ describe("web auth orchestration", () => {
     ).toBe(true);
   });
 
-  it("stops queued and auth-paused web Turns without process state", async () => {
-    const q = await createConversationWorkWebHarness({
-      modelStream: streamMcpSearch("This response must not run."),
-    });
+  it("stops queued and auth-paused Turns from the Conversation API without process state", async () => {
+    const q = await createConversationWorkWebHarness(
+      streamMcpSearch("This response must not run."),
+    );
     const started = await q.start({
       idempotencyKey: "web-auth-stop-1",
       message: "connect eval-auth first",
@@ -228,9 +228,9 @@ describe("web auth orchestration", () => {
   });
 
   it("does not resume a superseded web auth turn after a late OAuth callback", async () => {
-    const q = await createConversationWorkWebHarness({
-      modelStream: streamMcpSearch("Eval Auth is connected."),
-    });
+    const q = await createConversationWorkWebHarness(
+      streamMcpSearch("Eval Auth is connected."),
+    );
     const started = await q.start({
       idempotencyKey: "web-auth-late-oauth-1",
       message: "connect eval-auth first",

@@ -1,4 +1,4 @@
-/** App-scoped control for one active API Turn per Conversation. */
+/** App-scoped control for one active Turn started by the Conversation API. */
 export interface ApiTurnCancellation {
   begin(conversationId: string): AbortSignal | undefined;
   cancel(conversationId: string): boolean;
@@ -14,7 +14,7 @@ interface ActiveApiTurnCancellation {
   parked: boolean;
 }
 
-/** Create in-process cancellation state for active API Turns. */
+/** Create in-process cancellation state for Turns from the Conversation API. */
 export function createApiTurnCancellation(): ApiTurnCancellation {
   const active = new Map<string, ActiveApiTurnCancellation>();
 
@@ -36,7 +36,7 @@ export function createApiTurnCancellation(): ApiTurnCancellation {
       if (!entry) {
         return false;
       }
-      entry.controller.abort(new Error("API Turn cancelled"));
+      entry.controller.abort(new DOMException("Turn cancelled", "AbortError"));
       return true;
     },
     disconnect(conversationId, signal) {
@@ -71,14 +71,13 @@ export function createApiTurnCancellation(): ApiTurnCancellation {
   };
 }
 
-/** Close one cancelled API Turn without a failure reply or retry. */
+/** Close one cancelled Turn without a failure reply or retry. */
 export async function completeCancelledApiTurn(args: {
   acknowledge(): Promise<void>;
   actorId: string;
   cancellation?: ApiTurnCancellation;
   conversation: ThreadConversationState;
   conversationId: string;
-  lifecycle: ConversationTurnLifecycle;
   sandboxRef?: SandboxRef;
   signal?: AbortSignal;
   turnId: string;
@@ -90,7 +89,7 @@ export async function completeCancelledApiTurn(args: {
     await abandonTurnRecord({
       conversationId: args.conversationId,
       turnId: args.turnId,
-      errorMessage: "API Turn cancelled",
+      errorMessage: "Turn cancelled",
     });
     clearPendingAuth(args.conversation, args.turnId);
     markConversationMessage(args.conversation, args.userMessageId, {
@@ -112,7 +111,9 @@ export async function completeCancelledApiTurn(args: {
       conversation: args.conversation,
       sandboxRef: args.sandboxRef,
     });
-    await args.lifecycle.complete({
+    await new ConversationTurnLifecycleService(
+      getConversationEventStore(),
+    ).complete({
       conversationId: args.conversationId,
       createdAtMs: Date.now(),
       outcome: "cancelled",
@@ -125,7 +126,8 @@ export async function completeCancelledApiTurn(args: {
   }
   await args.acknowledge();
 }
-import type { ConversationTurnLifecycle } from "@/chat/conversations/turn-lifecycle";
+import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
+import { getConversationEventStore } from "@/chat/db";
 import { deleteWebAuthorization } from "@/chat/api-turns/authorization";
 import { persistThreadStateById } from "@/chat/runtime/thread-state";
 import { markTurnClosed } from "@/chat/runtime/turn";

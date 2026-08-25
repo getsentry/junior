@@ -42,7 +42,7 @@ interface ConversationWorkOptions {
 
 export type ConversationWorkCallbackOptions =
   VercelConversationWorkCallbackOptions & {
-    /** App-scoped control for API Turn cancellation across request handlers. */
+    /** App-scoped Turn cancellation for Conversation API request handlers. */
     apiTurnCancellation?: ApiTurnCancellation;
   };
 
@@ -124,11 +124,10 @@ export function createConversationWork(
     conversationStore: options.conversationStore,
     queue: options.queue,
     run: routeApiTurnWork({
-      apiTurnWorker: createApiTurnWorker({
-        agentRunner: options.agentRunner,
-        cancellation: apiTurnCancellation,
-        turnLifecycle: services.replyExecutor?.turnLifecycle,
-      }),
+      apiTurnWorker: createApiTurnWorker(
+        options.agentRunner,
+        apiTurnCancellation,
+      ),
       fallbackWorker: routeAgentInvocationWork({
         invocationWorker: createAgentInvocationWorker(options.agentRunner),
         fallbackWorker: providerWorker,
