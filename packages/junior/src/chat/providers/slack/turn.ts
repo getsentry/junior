@@ -76,7 +76,6 @@ import {
   type TurnToolInvocation,
 } from "@/chat/runtime/turn-input";
 import {
-  appendThreadContextMessages,
   markConversationMessage,
   normalizeConversationText,
   recordDeliveredAssistantMessage,
@@ -100,11 +99,8 @@ import {
   resolveSlackConversationContext,
 } from "@/chat/slack/conversation-context";
 import { lookupSlackUser } from "@/chat/slack/user";
-import { createActor, parseActorUserId, type Actor } from "@/chat/actor";
-import {
-  ensureSlackMessageActorIdentity,
-  getMessageActorIdentity,
-} from "@/chat/services/message-actor-identity";
+import { parseActorUserId, type Actor } from "@/chat/actor";
+import { ensureSlackMessageActorIdentity } from "@/chat/services/message-actor-identity";
 import {
   isResourceEventSlackMessage,
   RESOURCE_EVENT_SYSTEM_ACTOR,
@@ -140,24 +136,15 @@ import {
 } from "@/chat/task-execution/checkpoint";
 import { resolveDestinationVisibility } from "@/chat/conversations/destination-visibility";
 import {
-  contextProvenance,
-  instructionProvenanceFor,
-  type ConversationMessageProvenance,
-} from "@/chat/conversations/provenance";
-import {
   commitAcceptedReply,
-  commitMessages,
   loadConversationProjection,
 } from "@/chat/conversations/projection";
-import { getStateAdapter } from "@/chat/state/adapter";
-import { acquireActiveLock } from "@/chat/state/locks";
 import { persistWithRetry } from "@/chat/services/persist-retry";
 import {
   stripRuntimeTurnContext,
   trimTrailingAssistantMessages,
 } from "@/chat/pi/transcript";
 import { requireSlackDestination } from "@/chat/destination";
-import { escapeXml } from "@/chat/xml";
 import { persistConversationMessages } from "@/chat/conversations/messages";
 import type { ConversationTurnLifecycle } from "@/chat/conversations/turn-lifecycle";
 import type { AgentRunResult } from "@/chat/services/turn-result";
@@ -165,6 +152,17 @@ import type {
   DispatchTurnContext,
   DispatchTurnResult,
 } from "@/chat/agent-dispatch/types";
+import {
+  appendRecentMessagesToContext,
+  collectAttachments,
+  queuedInstructionActor,
+  queuedInstructionProvenance,
+  resolveChannelName,
+} from "@/chat/providers/slack/input";
+import {
+  parkedInputKey,
+  saveParkedInput,
+} from "@/chat/providers/slack/parked-input";
 
 /**
  * Persist post-delivery Redis scratch with a short retry after durable SQL
@@ -175,141 +173,6 @@ async function persistThreadRuntimeStateWithRetry(
   patch: Parameters<typeof persistThreadState>[1],
 ): Promise<void> {
   await persistWithRetry(() => persistThreadRuntimeState(thread, patch));
-}
-
-/**
- * Identity key for parked-input dedupe: the inbound timestamp plus the user
- * turn text (always the first content part). Attachment resolution may differ
- * across queue redeliveries, so resolved attachment parts must not decide
- * whether the same inbound message was already appended.
- */
-function parkedInputKey(message: PiMessage): string | undefined {
-  if (message.role !== "user") {
-    return undefined;
-  }
-  const first = Array.isArray(message.content) ? message.content[0] : undefined;
-  const text =
-    first && typeof first === "object" && "text" in first
-      ? String((first as { text?: unknown }).text ?? "")
-      : "";
-  return `${message.timestamp}:${text}`;
-}
-
-function renderRecentThreadMessageLines(
-  conversationContext: string | undefined,
-  messages: QueuedTurnMessage[],
-): string[] {
-  const passiveMessages = messages.filter((queued) => {
-    if (queued.explicitMention) {
-      return false;
-    }
-    const slackTs = queuedInstructionActor(queued)?.slackTs;
-    return !slackTs || !conversationContext?.includes(`slack_ts="${slackTs}"`);
-  });
-  if (passiveMessages.length === 0) {
-    return [];
-  }
-  const lines: string[] = [];
-  for (const queued of passiveMessages) {
-    const actor = queuedInstructionActor(queued);
-    const author = escapeXml(actor?.authorName ?? "user");
-    const attrs = [
-      `role="user"`,
-      `author="${author}"`,
-      actor?.authorId ? `actor_id="${escapeXml(actor.authorId)}"` : undefined,
-      actor?.slackTs ? `slack_ts="${escapeXml(actor.slackTs)}"` : undefined,
-    ]
-      .filter((attr): attr is string => Boolean(attr))
-      .join(" ");
-    const text = escapeXml(queued.userText.replace(/\s+/g, " "));
-    lines.push(
-      `  <message ${attrs}>`,
-      `[user] ${author}: ${text}`,
-      "  </message>",
-    );
-  }
-  return lines;
-}
-
-function appendRecentThreadMessagesToContext(
-  conversationContext: string | undefined,
-  messages: QueuedTurnMessage[],
-  options?: { includeConversationContext?: boolean },
-): string | undefined {
-  const baseContext =
-    options?.includeConversationContext === false
-      ? undefined
-      : conversationContext;
-  return appendThreadContextMessages(
-    baseContext,
-    renderRecentThreadMessageLines(conversationContext, messages),
-  );
-}
-
-function queuedInstructionActor(
-  queued: QueuedTurnMessage,
-): AgentSteeringMessage["actor"] {
-  const actor = getMessageActorIdentity(queued.message);
-  const authorId =
-    actor?.userId ?? parseActorUserId(queued.message.author.userId);
-  const authorName = actor?.fullName ?? actor?.userName;
-  const slackTs = getMessageTimestamp(queued.message);
-  return {
-    ...(authorId ? { authorId } : undefined),
-    ...(authorName ? { authorName } : undefined),
-    ...(slackTs ? { slackTs } : undefined),
-  };
-}
-
-/**
- * Provenance for a queued or steered Slack message: a user-authored instruction
- * attributed to the message's own author, or unauthored context for
- * system-originated resource events.
- */
-function queuedInstructionProvenance(
-  queued: QueuedTurnMessage,
-  teamId: string,
-): ConversationMessageProvenance {
-  if (isResourceEventSlackMessage(queued.message)) {
-    return contextProvenance;
-  }
-  const identity = getMessageActorIdentity(queued.message);
-  const author =
-    identity && "platform" in identity
-      ? identity
-      : createActor(
-          { userId: parseActorUserId(queued.message.author.userId) },
-          {
-            platform: "slack",
-            teamId,
-            userId: parseActorUserId(queued.message.author.userId),
-          },
-        );
-  return instructionProvenanceFor(author);
-}
-
-async function resolveChannelName(thread: Thread): Promise<string | undefined> {
-  const existingName = thread.channel.name?.trim();
-  if (existingName) {
-    return existingName;
-  }
-
-  try {
-    const metadata = await thread.channel.fetchMetadata();
-    return metadata.name?.trim() || undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-function collectTurnAttachments(
-  message: Message,
-  queuedMessages?: QueuedTurnMessage[],
-): Message["attachments"] {
-  return [
-    ...(queuedMessages ?? []).flatMap((queued) => queued.message.attachments),
-    ...message.attachments,
-  ];
 }
 
 interface LoadedPiMessagesForTurn {
@@ -643,78 +506,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
             }),
           );
         };
-        /**
-         * Commit drained parked/batched input pairs to the conversation
-         * event log, deduping by `parkedInputKey` so a redelivery never
-         * double-appends. This is the Membership-Rule commit point
-         * Membership rule: each drained message is written with its
-         * own author's instruction provenance while that author is still known,
-         * rather than collapsing to a single latest-wins actor.
-         *
-         * The read-compute-append races a concurrently-resumed slice, which
-         * runs under the thread resume lock; take the same lock so the two
-         * writers never interleave. Returns false when the lock is busy (a live
-         * resume owns the event log): the caller must leave the mailbox
-         * message pending for the next drain instead of consuming it.
-         */
-        const drainParkedInputToEventLog = async (
-          pairs: Array<{
-            message: PiMessage;
-            provenance: ConversationMessageProvenance;
-          }>,
-        ): Promise<boolean> => {
-          if (!conversationId || pairs.length === 0) {
-            return true;
-          }
-          const stateAdapter = getStateAdapter();
-          await stateAdapter.connect();
-          const lock = await acquireActiveLock(stateAdapter, conversationId);
-          if (!lock) {
-            return false;
-          }
-          try {
-            const projection = await loadConversationProjection({
-              conversationId,
-            });
-            // Dedupe per message: a partial-overlap redelivery (some messages
-            // already appended before a schedule failure) must append only
-            // the missing ones.
-            const appendedKeys = new Set(
-              projection.messages
-                .map(parkedInputKey)
-                .filter((key): key is string => key !== undefined),
-            );
-            const missing = pairs.filter((pair) => {
-              const key = parkedInputKey(pair.message);
-              return key === undefined || !appendedKeys.has(key);
-            });
-            if (missing.length === 0) {
-              // A prior delivery already appended this input durably.
-              return true;
-            }
-            await commitMessages({
-              conversationId,
-              messages: [
-                ...projection.messages,
-                ...missing.map((pair) => pair.message),
-              ],
-              provenance: [
-                ...projection.provenance,
-                ...missing.map((pair) => pair.provenance),
-              ],
-            });
-            return true;
-          } finally {
-            await stateAdapter.releaseLock(lock);
-          }
-        };
-        /**
-         * Durably append this turn's parked user input to the event log at
-         * the parked safe boundary so the resumed `continue()` sees it. The
-         * awaiting record pins the log session and materializes the projection
-         * tail, so the append needs no record mutation. Must complete before
-         * `ack` consumes the mailbox record.
-         */
+        /** Save parked input before acknowledgment so the resumed Run sees it. */
         const appendParkedTurnInput = async (
           parkedSessionId: string,
         ): Promise<boolean> => {
@@ -746,7 +538,10 @@ export function createSlackTurn(deps: SlackTurnDeps) {
             message: buildSteeringPiMessage(steering),
             provenance: steering.provenance,
           }));
-          return drainParkedInputToEventLog(parkedPairs);
+          return saveParkedInput({
+            conversationId,
+            entries: parkedPairs,
+          });
         };
         if (preparedState.userMessageAlreadyReplied) {
           const deliveredMessage = [...preparedState.conversation.messages]
@@ -956,7 +751,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
         if (actor?.userName) {
           setTags({ userName: actor.userName });
         }
-        const turnAttachments = collectTurnAttachments(
+        const turnAttachments = collectAttachments(
           message,
           options.queuedMessages,
         );
@@ -1221,7 +1016,12 @@ export function createSlackTurn(deps: SlackTurnDeps) {
           // The fresh prompt checkpoint then matches these merged messages as
           // an already-committed prefix and reuses that provenance instead of
           // collapsing them to the live actor.
-          if (!(await drainParkedInputToEventLog(batchedInstructions))) {
+          if (
+            !(await saveParkedInput({
+              conversationId,
+              entries: batchedInstructions,
+            }))
+          ) {
             // A live resume owns the event-log read-modify-write. Defer the
             // turn (as appendParkedTurnInput does) so the worker releases the
             // lease and the next drain commits provenance before running;
@@ -1273,7 +1073,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
             actor?.userId ?? parseActorUserId(message.author.userId);
           const activeInstructionAuthorName =
             actor?.fullName ?? actor?.userName;
-          const promptConversationContext = appendRecentThreadMessagesToContext(
+          const promptConversationContext = appendRecentMessagesToContext(
             preparedState.conversationContext,
             options.queuedMessages ?? [],
           );
