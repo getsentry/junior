@@ -16,6 +16,12 @@ duplicate diagnostics.
   be expressed with `finally`.
 - If a catch block handles an error, it must either finish the recovery or
   rethrow with useful domain context. Avoid log-and-rethrow duplicates.
+- Preserve catch boundaries during a refactor. A catch for agent execution must
+  not absorb later save, delivery, or lifecycle errors that have different
+  retry rules.
+- When adjacent async steps have different failure owners, show that split in
+  the control flow or with a small typed error. Add one focused test that proves
+  the errors reach the correct owners.
 - Use `finally` for cleanup that must run without changing error ownership.
 - Keep best-effort observers explicit. If correctness depends on the operation,
   it is not best-effort.
