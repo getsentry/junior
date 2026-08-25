@@ -143,7 +143,6 @@ export function createWatchResourceEventsTool(
     inputSchema: inputSchema(catalog),
     outputSchema,
     async execute(input: Input) {
-      const conversationId = context.conversationId;
       const events = cleanStrings(input.events);
       for (const eventType of events) {
         if (
@@ -168,7 +167,7 @@ export function createWatchResourceEventsTool(
       });
       const nowMs = Date.now();
       const subscription = await createResourceEventSubscription({
-        conversationId,
+        conversationId: context.conversationId,
         destination: context.destination,
         events,
         expiresAtMs: nowMs + ttlMs(input),

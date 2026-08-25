@@ -43,9 +43,8 @@ export function createListResourceEventSubscriptionsTool(
     inputSchema: z.object({}).strict(),
     outputSchema,
     async execute() {
-      const conversationId = context.conversationId;
       const subscriptions = await listResourceEventSubscriptions({
-        conversationId,
+        conversationId: context.conversationId,
       });
       const details = {
         subscriptions: subscriptions.map((subscription) => ({

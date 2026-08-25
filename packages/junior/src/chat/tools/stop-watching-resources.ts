@@ -37,11 +37,10 @@ export function createStopWatchingResourcesTool(context: ToolRuntimeContext) {
       .strict(),
     outputSchema,
     async execute({ id }) {
-      const conversationId = context.conversationId;
       let stoppedIds: string[];
       if (id) {
         const stopped = await cancelResourceEventSubscription({
-          conversationId,
+          conversationId: context.conversationId,
           id,
         });
         if (!stopped) {
@@ -52,9 +51,9 @@ export function createStopWatchingResourcesTool(context: ToolRuntimeContext) {
         stoppedIds = [stopped.id];
       } else {
         const subscriptions = await listResourceEventSubscriptions({
-          conversationId,
+          conversationId: context.conversationId,
         });
-        await cancelSubscriptions({ conversationId });
+        await cancelSubscriptions({ conversationId: context.conversationId });
         stoppedIds = subscriptions.map((subscription) => subscription.id);
       }
       const details = {
