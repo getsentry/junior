@@ -111,9 +111,9 @@ pnpm exec junior upgrade
 ```
 
 The migrations create `junior_github_pull_requests` and
-`junior_github_issues`, which back webhook ingestion and the `/system` outcome
-report. When a tracked pull request merges, Junior also reads its commit list
-and records whether every Git author was Junior's configured bot or whether the
+`junior_github_issues`, which back webhook ingestion and outcome projections.
+When a tracked pull request merges, Junior also reads its commit list and
+records whether every Git author was Junior's configured bot or whether the
 pull request contained non-Junior-authored commits.
 The pull request projection also stores associated native Junior conversation
 ids as an opaque, deduplicated `text[]` without a foreign key.

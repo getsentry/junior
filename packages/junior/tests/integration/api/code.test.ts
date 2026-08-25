@@ -57,19 +57,35 @@ describe("code API", () => {
       const report = codeOverviewReportSchema.parse(await response.json());
       expect(report.summary).toEqual({
         closed: 0,
+        costUsd: 0,
         created: 1,
+        medianMergeTimeMs: 2 * 24 * 60 * 60 * 1_000,
         merged: 1,
         mergeRate: 1,
         open: 0,
       });
+      expect(report.activityDays).toHaveLength(90);
+      expect(report.activityDays.at(-3)).toEqual({
+        closed: 0,
+        created: 0,
+        date: "2026-08-22",
+        merged: 1,
+      });
+      expect(report.activityDays.at(-5)).toEqual({
+        closed: 0,
+        created: 1,
+        date: "2026-08-20",
+        merged: 0,
+      });
       expect(report.repositories).toEqual([
         expect.objectContaining({
           created: 1,
-          merged: 1,
+          mergeRate: 1,
           name: "getsentry/junior",
           provider: "github",
         }),
       ]);
+      expect(report.repositories[0]?.medianCostUsd).toBeUndefined();
       expect(report.changes).toEqual([
         expect.objectContaining({
           number: 42,

@@ -7,9 +7,11 @@ import {
   personParamsSchema,
   personalSpendReportSchema,
 } from "../schema/person";
+import { codePersonReportSchema } from "../schema/code";
 import { pluginOperationalReportFeedSchema } from "../../reporting-schema";
 import { validateRequest } from "../validation";
 import { requireViewer } from "../viewer";
+import { readPeopleCode } from "./code";
 import { readPeopleList } from "./list";
 import { readPeoplePluginReports } from "./plugin-reports";
 import { readPeopleProfile } from "./profile";
@@ -43,6 +45,15 @@ export function createPeopleRoutes(): Hono<JuniorApiEnv> {
         pluginOperationalReportFeedSchema,
         await readPeoplePluginReports({ email, viewer }),
       );
+    },
+  );
+
+  app.get(
+    "/:email/code",
+    validateRequest("param", personParamsSchema, "Invalid route parameters."),
+    async (context) => {
+      const { email } = context.req.valid("param");
+      return jsonResponse(codePersonReportSchema, await readPeopleCode(email));
     },
   );
 

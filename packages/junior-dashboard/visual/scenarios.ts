@@ -98,8 +98,16 @@ export const VISUAL_SCENARIOS: VisualScenario[] = [
     id: "person-profile",
     label: "Person profile",
     path: `/people/${encodeURIComponent("avery@sentry.io")}`,
-    // Wait for the plugin section so async profile reports are present.
-    ready: "GitHub",
+    // Wait for native code activity so async person code stats are present.
+    ready: "Code",
+    viewports: [DESKTOP, MOBILE],
+  },
+  {
+    id: "code",
+    label: "Code",
+    path: "/code",
+    // Page header, not a buried chart/stat label.
+    ready: "Code",
     viewports: [DESKTOP, MOBILE],
   },
   {
@@ -249,6 +257,11 @@ const PATH_RULES: PathRule[] = [
     match: (filePath) =>
       filePath.startsWith("packages/junior-dashboard/src/client/pages/people/"),
     scenarioIds: ["person-profile"],
+  },
+  {
+    match: (filePath) =>
+      filePath.startsWith("packages/junior-dashboard/src/client/pages/code/"),
+    scenarioIds: ["code"],
   },
   {
     match: (filePath) =>

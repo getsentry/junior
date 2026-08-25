@@ -14,6 +14,10 @@ named components so pages stay thin and taste stays consistent.
 - Prefer small named components for repeated UI surfaces, such as `Field`,
   `TextInput`, `StatusChip`, `Section`, `Toolbar`, or `EmptyState`, instead of
   repeated `<div className="field">` style hooks.
+- For data tables, give metric and status columns equal fixed widths. Let only
+  the leading label column flex. Prefer `table-fixed` so column widths stay
+  stable as values change. Give the table a minimum width and horizontal scroll
+  on narrow viewports so fixed columns do not crush the label column.
 - Put repeated semantic surfaces in shared client components outside the route
   or page module. For the dashboard, that home is
   `packages/junior-dashboard/src/client/components/`. Charts, drawers, tables,

@@ -16,6 +16,7 @@ import {
   conversationPendingMessagesReportSchema,
   conversationStatsReportSchema,
   codeOverviewReportSchema,
+  codePersonReportSchema,
   locationDetailReportSchema,
   locationDirectoryReportSchema,
   locationParamsSchema,
@@ -37,6 +38,7 @@ import {
   readMockCodeOverview,
   readMockLocationDetail,
   readMockLocationDirectory,
+  readMockPeopleCode,
   readMockPeopleDirectory,
   readMockPeoplePluginReports,
   readMockPeopleProfile,
@@ -79,6 +81,16 @@ export function createMockReportingApi(): Hono<{
       pluginOperationalReportFeedSchema,
       readMockPeoplePluginReports(params.data.email),
     );
+  });
+  app.get("/people/:email/code", (c) => {
+    const params = personParamsSchema.safeParse(c.req.param());
+    if (!params.success) {
+      return errorResponse("Invalid route parameters.", 400);
+    }
+    const report = readMockPeopleCode(params.data.email);
+    return report
+      ? jsonResponse(codePersonReportSchema, report)
+      : errorResponse("Person not found.", 404);
   });
   app.get("/people/:email", (c) => {
     const params = personParamsSchema.safeParse(c.req.param());
