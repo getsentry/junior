@@ -34,6 +34,35 @@ import {
   parseCheckSuiteFactsTarget,
   selectFailingChecks,
 } from "../src/webhooks/resource-events";
+
+/** Minimal same-repo check_suite pull_requests entry (GitHub CheckRunPullRequest). */
+function checkSuitePullRequest(
+  number: number,
+  repo = "getsentry/junior",
+): {
+  base: { repo: { id: number; name: string; url: string }; sha: string };
+  head: { repo: { id: number; name: string; url: string }; sha: string };
+  id: number;
+  number: number;
+  url: string;
+} {
+  const [owner, name] = repo.split("/");
+  const repoUrl = `https://api.github.com/repos/${owner}/${name}`;
+  return {
+    id: number,
+    number,
+    url: `${repoUrl}/pulls/${number}`,
+    head: {
+      sha: "abcdef1234567890",
+      repo: { id: 1, name: name!, url: repoUrl },
+    },
+    base: {
+      sha: "0000000000000000",
+      repo: { id: 1, name: name!, url: repoUrl },
+    },
+  };
+}
+
 import { mswServer } from "./msw";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -595,7 +624,7 @@ describe("GitHub webhook resource events", () => {
               "https://github.com/getsentry/junior/commit/abcdef1234567890/checks?check_suite_id=99",
             id: 99,
             latest_check_runs_count: 3,
-            pull_requests: [{ number: 946 }, { number: 947 }],
+            pull_requests: [checkSuitePullRequest(946), checkSuitePullRequest(947)],
           },
         },
         expected: [
@@ -662,7 +691,7 @@ describe("GitHub webhook resource events", () => {
     }
   });
 
-  it("uses loaded draft data when check suite pull requests omit draft", () => {
+  it("emits recovered check suite events without draft or author fields", () => {
     vi.setSystemTime(1_000);
     expect(
       normalizeGitHubResourceEvents({
@@ -674,27 +703,15 @@ describe("GitHub webhook resource events", () => {
             conclusion: "success",
             head_sha: "abcdef1234567890",
             id: 7,
-            pull_requests: [{ number: 10 }, { number: 11 }],
+            pull_requests: [checkSuitePullRequest(10), checkSuitePullRequest(11)],
           },
         },
-        checkSuiteFacts: {
-          pullRequestFactsByNumber: {
-            10: {
-              authorUsername: "octocat",
-              isDraft: false,
-            },
-            11: {
-              authorUsername: "other",
-              isDraft: true,
-            },
-          },
-        },
-        deliveryId: "delivery-draft-facts",
+        deliveryId: "delivery-recovered",
         eventName: "check_suite",
       }),
     ).toEqual([
       {
-        eventKey: "github:delivery-draft-facts:pull_request.checks.recovered:10",
+        eventKey: "github:delivery-recovered:pull_request.checks.recovered:10",
         eventType: "pull_request.checks.recovered",
         occurredAtMs: 1_000,
         identifier: "getsentry/junior#10",
@@ -705,8 +722,6 @@ describe("GitHub webhook resource events", () => {
           pullRequest: 10,
           scope: "check_suite",
           suiteConclusion: "success",
-          isDraft: false,
-          authorUsername: "octocat",
           headSha: "abcdef1234567890",
           checkSuiteId: 7,
           checkSuiteUrl:
@@ -715,7 +730,7 @@ describe("GitHub webhook resource events", () => {
         },
       },
       {
-        eventKey: "github:delivery-draft-facts:pull_request.checks.recovered:10",
+        eventKey: "github:delivery-recovered:pull_request.checks.recovered:10",
         eventType: "pull_request.checks.recovered",
         occurredAtMs: 1_000,
         identifier: "getsentry/junior",
@@ -726,8 +741,6 @@ describe("GitHub webhook resource events", () => {
           pullRequest: 10,
           scope: "check_suite",
           suiteConclusion: "success",
-          isDraft: false,
-          authorUsername: "octocat",
           headSha: "abcdef1234567890",
           checkSuiteId: 7,
           checkSuiteUrl:
@@ -736,7 +749,7 @@ describe("GitHub webhook resource events", () => {
         },
       },
       {
-        eventKey: "github:delivery-draft-facts:pull_request.checks.recovered:11",
+        eventKey: "github:delivery-recovered:pull_request.checks.recovered:11",
         eventType: "pull_request.checks.recovered",
         occurredAtMs: 1_000,
         identifier: "getsentry/junior#11",
@@ -747,8 +760,6 @@ describe("GitHub webhook resource events", () => {
           pullRequest: 11,
           scope: "check_suite",
           suiteConclusion: "success",
-          isDraft: true,
-          authorUsername: "other",
           headSha: "abcdef1234567890",
           checkSuiteId: 7,
           checkSuiteUrl:
@@ -757,7 +768,7 @@ describe("GitHub webhook resource events", () => {
         },
       },
       {
-        eventKey: "github:delivery-draft-facts:pull_request.checks.recovered:11",
+        eventKey: "github:delivery-recovered:pull_request.checks.recovered:11",
         eventType: "pull_request.checks.recovered",
         occurredAtMs: 1_000,
         identifier: "getsentry/junior",
@@ -768,8 +779,6 @@ describe("GitHub webhook resource events", () => {
           pullRequest: 11,
           scope: "check_suite",
           suiteConclusion: "success",
-          isDraft: true,
-          authorUsername: "other",
           headSha: "abcdef1234567890",
           checkSuiteId: 7,
           checkSuiteUrl:
@@ -792,7 +801,7 @@ describe("GitHub webhook resource events", () => {
             conclusion: "failure",
             head_sha: "abcdef1234567890abcdef1234567890abcdef12",
             id: 42,
-            pull_requests: [{ number: 691 }],
+            pull_requests: [checkSuitePullRequest(691)],
           },
         },
         checkSuiteFacts: {
@@ -809,7 +818,6 @@ describe("GitHub webhook resource events", () => {
               name: "lint",
             },
           ],
-          pullRequestFactsByNumber: { 691: { isDraft: false } },
         },
         deliveryId: "delivery-check-suite-facts",
         eventName: "check_suite",
@@ -827,7 +835,6 @@ describe("GitHub webhook resource events", () => {
           pullRequest: 691,
           scope: "check_suite",
           suiteConclusion: "failure",
-          isDraft: false,
           headSha: "abcdef1234567890abcdef1234567890abcdef12",
           checkSuiteId: 42,
           checkSuiteUrl:
@@ -863,7 +870,6 @@ describe("GitHub webhook resource events", () => {
           pullRequest: 691,
           scope: "check_suite",
           suiteConclusion: "failure",
-          isDraft: false,
           headSha: "abcdef1234567890abcdef1234567890abcdef12",
           checkSuiteId: 42,
           checkSuiteUrl:
@@ -916,24 +922,27 @@ describe("GitHub webhook resource events", () => {
             id: 89021857045,
             pull_requests: [
               {
+                id: 113,
                 number: 113,
                 url: "https://api.github.com/repos/kkpan11/sentry/pulls/113",
-                base: {
+                head: {
+                  sha: "8105236768dd1da43379152ee11900be8983ae03",
                   repo: {
+                    id: 873328,
+                    url: "https://api.github.com/repos/getsentry/sentry",
+                    name: "sentry",
+                  },
+                },
+                base: {
+                  sha: "6cea12f09116576aafb4e003226b94c8b9c1c0b0",
+                  repo: {
+                    id: 638019593,
                     url: "https://api.github.com/repos/kkpan11/sentry",
                     name: "sentry",
                   },
                 },
               },
-              {
-                number: 999001,
-                url: "https://api.github.com/repos/getsentry/sentry/pulls/999001",
-                base: {
-                  repo: {
-                    full_name: "getsentry/sentry",
-                  },
-                },
-              },
+              checkSuitePullRequest(999001, "getsentry/sentry"),
             ],
           },
         },
@@ -984,7 +993,7 @@ describe("GitHub webhook resource events", () => {
     ]);
   });
 
-  it("loads check-suite PR facts only for same-repo pull requests", () => {
+  it("loads failed check-run lists only for failed or timed out suites", () => {
     expect(
       parseCheckSuiteFactsTarget({
         action: "completed",
@@ -993,28 +1002,48 @@ describe("GitHub webhook resource events", () => {
           conclusion: "success",
           head_sha: "8105236768dd1da43379152ee11900be8983ae03",
           id: 89021857045,
+          pull_requests: [checkSuitePullRequest(999001, "getsentry/sentry")],
+        },
+      }),
+    ).toBeUndefined();
+    expect(
+      parseCheckSuiteFactsTarget({
+        action: "completed",
+        repository: { full_name: "getsentry/sentry" },
+        check_suite: {
+          conclusion: "failure",
+          head_sha: "8105236768dd1da43379152ee11900be8983ae03",
+          id: 89021857045,
           pull_requests: [
             {
+              id: 113,
               number: 113,
               url: "https://api.github.com/repos/kkpan11/sentry/pulls/113",
+              head: {
+                sha: "8105236768dd1da43379152ee11900be8983ae03",
+                repo: {
+                  id: 873328,
+                  url: "https://api.github.com/repos/getsentry/sentry",
+                  name: "sentry",
+                },
+              },
+              base: {
+                sha: "6cea12f09116576aafb4e003226b94c8b9c1c0b0",
+                repo: {
+                  id: 638019593,
+                  url: "https://api.github.com/repos/kkpan11/sentry",
+                  name: "sentry",
+                },
+              },
             },
-            {
-              number: 999001,
-              base: { repo: { full_name: "getsentry/sentry" } },
-            },
-            {
-              // Missing base identity keeps same-repo behavior for sparse payloads.
-              number: 42,
-            },
+            checkSuitePullRequest(999001, "getsentry/sentry"),
           ],
         },
       }),
     ).toEqual({
       checkSuiteId: 89021857045,
       headSha: "8105236768dd1da43379152ee11900be8983ae03",
-      loadFailingChecks: false,
       owner: "getsentry",
-      pullRequestNumbers: [999001, 42],
       repoName: "sentry",
     });
   });

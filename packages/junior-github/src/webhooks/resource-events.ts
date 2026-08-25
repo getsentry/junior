@@ -12,7 +12,6 @@ import {
 
 export type {
   GitHubCheckSuiteFacts,
-  GitHubCheckSuitePullRequestFacts,
   GitHubFailingCheck,
 } from "./check-suite.js";
 export {
