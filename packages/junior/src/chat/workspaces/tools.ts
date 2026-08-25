@@ -18,10 +18,7 @@ import {
   createResourceEventSubscription,
 } from "@/chat/resource-events/store";
 import { canRouteResourceEvents } from "@/chat/resource-events/workspace";
-import {
-  RESOURCE_SUBSCRIPTION_DEFAULT_TTL_MS,
-  requireResourceWatchConversation,
-} from "@/chat/resource-events/tool-support";
+import { RESOURCE_SUBSCRIPTION_DEFAULT_TTL_MS } from "@/chat/resource-events/tool-support";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
@@ -374,7 +371,7 @@ export function createWorkspaceTools(
           workspaceName: workspace.name,
         });
         const conversationId = canRouteResourceEvents()
-          ? requireResourceWatchConversation(context)
+          ? context.conversationId?.trim() || undefined
           : undefined;
         const subscription = conversationId
           ? await createResourceEventSubscription({
