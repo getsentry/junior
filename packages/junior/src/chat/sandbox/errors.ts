@@ -148,11 +148,7 @@ export function isAbortError(error: unknown): boolean {
     if (!(candidate instanceof Error)) return false;
     if (candidate.name === "AbortError") return true;
     const message = candidate.message.toLowerCase();
-    return (
-      message === "api turn cancelled" ||
-      message === "api turn canceled" ||
-      message.startsWith("executeagentrun timed out after")
-    );
+    return message.startsWith("executeagentrun timed out after");
   });
 }
 

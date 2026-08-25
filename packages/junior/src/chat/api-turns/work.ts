@@ -792,7 +792,10 @@ export function createApiTurnWorker(
             },
             async (result) => {
               if (cancellationSignal?.aborted) {
-                throw cancellationSignal.reason ?? new Error("Turn cancelled");
+                throw (
+                  cancellationSignal.reason ??
+                  new DOMException("Turn cancelled", "AbortError")
+                );
               }
 
               finishCancellation();

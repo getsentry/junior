@@ -17,6 +17,7 @@ vi.mock("@vercel/sandbox", () => ({
 
 import { closeDb, getDb } from "@/chat/db";
 import { FUNCTION_TIMEOUT_BUFFER_SECONDS, getChatConfig } from "@/chat/config";
+import { createApiTurnCancellation } from "@/chat/api-turns/cancellation";
 import { runWithTurnRequestDeadline } from "@/chat/runtime/request-deadline";
 import { deleteWorkspaceSnapshotBuilders } from "@/chat/sandbox/snapshot/builder-sandbox";
 import * as profile from "@/chat/sandbox/snapshot/profile";
@@ -196,6 +197,56 @@ describe("Workspace snapshot completion", () => {
       loadSnapshotsForProfile(getDb(), workspace.id, value.hash),
     ).resolves.toMatchObject({
       build: { status: "failed", error: "status code 404" },
+      ready: null,
+    });
+  });
+
+  it("keeps a build open when Conversation API cancellation stops it", async () => {
+    const workspace = await createWorkspace({
+      name: `snapshot-cancelled-${randomUUID()}`,
+      setupScript: "printf ready",
+      repos: [],
+    });
+    const value = profile.create(SANDBOX_RUNTIME, workspace);
+    if (!value) throw new Error("Workspace snapshot profile is missing");
+
+    await setWorkspaceSnapshotBuild(
+      workspace.id,
+      {
+        id: randomUUID(),
+        status: "building",
+        phase: "created",
+        profileHash: value.hash,
+        startedAt: new Date(),
+        sandboxName: "cancelled-builder",
+        commandId: null,
+        error: null,
+      },
+      { insertIfMissing: true },
+    );
+    const cancellation = createApiTurnCancellation();
+    const signal = cancellation.begin("conversation-1");
+    if (!signal) throw new Error("Expected an active Turn signal");
+    sandboxGetMock.mockImplementation(async () => {
+      cancellation.cancel("conversation-1");
+      throw signal.reason;
+    });
+
+    await expect(
+      resolveWorkspaceSnapshot({
+        workspace,
+        runtime: SANDBOX_RUNTIME,
+        signal,
+        shouldStop: () => false,
+        applyNetworkPolicy: async () => {},
+        removeCredentialRoute: false,
+      }),
+    ).rejects.toMatchObject({ name: "AbortError", message: "Turn cancelled" });
+
+    await expect(
+      loadSnapshotsForProfile(getDb(), workspace.id, value.hash),
+    ).resolves.toMatchObject({
+      build: { status: "building", error: null },
       ready: null,
     });
   });

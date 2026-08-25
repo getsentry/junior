@@ -36,7 +36,7 @@ export function createApiTurnCancellation(): ApiTurnCancellation {
       if (!entry) {
         return false;
       }
-      entry.controller.abort(new Error("Turn cancelled"));
+      entry.controller.abort(new DOMException("Turn cancelled", "AbortError"));
       return true;
     },
     disconnect(conversationId, signal) {

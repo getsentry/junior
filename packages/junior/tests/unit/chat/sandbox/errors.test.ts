@@ -35,7 +35,6 @@ describe("isAbortError", () => {
     const abortError = new Error("The operation was aborted");
     abortError.name = "AbortError";
     expect(isAbortError(abortError)).toBe(true);
-    expect(isAbortError(new Error("API Turn cancelled"))).toBe(true);
     expect(
       isAbortError(new Error("executeAgentRun timed out after 720000ms")),
     ).toBe(true);
