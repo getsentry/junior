@@ -423,7 +423,13 @@ const conversationReportTurnLifecycleEventDataSchema = z.discriminatedUnion(
         type: z.literal("turn_lifecycle"),
         turnId: z.string().min(1),
         state: z.literal("failed"),
-        failureKind: z.enum(["agent", "delivery"]),
+        // Stable privacy-safe failure codes from conversation history.
+        failureCode: z.enum([
+          "agent_run_failed",
+          "delivery_failed",
+          "model_execution_failed",
+          "persistence_failed",
+        ]),
       })
       .strict(),
   ],

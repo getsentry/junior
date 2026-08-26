@@ -14,8 +14,11 @@ import {
   groupTranscriptMessages,
   messageRawText,
 } from "./conversations/transcriptRenderModel";
-import { getDashboardAgentName } from "./agentName";
 import { conversationTranscriptMessages } from "./conversations/eventTranscript";
+import {
+  transcriptFailureDescription,
+  transcriptFailureTitle,
+} from "./conversations/transcriptFailure";
 import type {
   Conversation,
   ConversationTranscript,
@@ -126,7 +129,7 @@ function appendTranscriptMessages(
       appendFailure(
         lines,
         conversationTranscript,
-        entry.outcome,
+        entry.failureCode,
         entry.timestamp,
       );
       continue;
@@ -213,22 +216,17 @@ function appendReasoning(
 function appendFailure(
   lines: string[],
   conversationTranscript: ConversationTranscript,
-  outcome: "error" | "delivery_failed",
+  failureCode:
+    | "agent_run_failed"
+    | "delivery_failed"
+    | "model_execution_failed"
+    | "persistence_failed",
   timestamp: number | undefined,
 ): void {
-  lines.push(
-    "",
-    outcome === "delivery_failed"
-      ? "### Message delivery failed"
-      : "### Agent response failed",
-  );
+  lines.push("", `### ${transcriptFailureTitle(failureCode)}`);
   addEventMeta(lines, conversationTranscript, timestamp);
-  lines.push(
-    "",
-    outcome === "delivery_failed"
-      ? `${getDashboardAgentName()} could not deliver this message to its destination.`
-      : `The model response ended before ${getDashboardAgentName()} could complete this turn.`,
-  );
+  lines.push("", transcriptFailureDescription(failureCode));
+  addMetaLine(lines, "Failure code", failureCode);
 }
 
 function appendContextEvent(

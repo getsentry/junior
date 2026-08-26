@@ -12,7 +12,11 @@ import type {
 export type RenderedFailureEntry = {
   key: string;
   kind: "failure";
-  outcome: "error" | "delivery_failed";
+  failureCode:
+    | "agent_run_failed"
+    | "delivery_failed"
+    | "model_execution_failed"
+    | "persistence_failed";
   timestamp?: number;
 };
 
@@ -157,11 +161,11 @@ export function groupTranscriptMessages(
     }
 
     flushMessage();
-    if (message.outcome) {
+    if (message.failureCode) {
       entries.push({
         key: `${message.sourceSeq}:failure`,
         kind: "failure",
-        outcome: message.outcome,
+        failureCode: message.failureCode,
         timestamp: message.timestamp,
       });
     }

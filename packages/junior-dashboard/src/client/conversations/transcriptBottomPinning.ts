@@ -171,7 +171,7 @@ function eventTailVersion(event: ConversationReportEvent | undefined): string {
         data.type,
         data.turnId,
         data.state,
-        "failureKind" in data ? data.failureKind : "",
+        "failureCode" in data ? data.failureCode : "",
       ].join(":");
     case "structured_event":
       return [

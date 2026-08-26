@@ -401,8 +401,7 @@ function reportEventData(args: {
         type: "turn_lifecycle",
         turnId: data.turnId,
         state: "failed",
-        failureKind:
-          data.failureCode === "delivery_failed" ? "delivery" : "agent",
+        failureCode: data.failureCode,
       };
     case "compaction":
       return {

@@ -890,13 +890,13 @@ describe("conversation report event projection", () => {
       type: "turn_lifecycle",
       turnId: "turn-1",
       state: "failed",
-      failureKind: "agent",
+      failureCode: "model_execution_failed",
     });
     expect(projected[4]?.data).toEqual({
       type: "turn_lifecycle",
       turnId: "turn-delivery-1",
       state: "failed",
-      failureKind: "delivery",
+      failureCode: "delivery_failed",
     });
     const serialized = JSON.stringify(projected);
     for (const forbidden of [
@@ -909,13 +909,11 @@ describe("conversation report event projection", () => {
       "private-authorization-id",
       "private tool result",
       "private provider error",
-      "model_execution_failed",
       eventId,
       "private-provider",
       "actorId",
       "authorizationId",
       "eventId",
-      "failureCode",
       "args",
       "content",
       "meta",
@@ -1152,7 +1150,7 @@ describe("conversation report event projection", () => {
         type: "turn_lifecycle",
         turnId: "turn-1",
         state: "failed",
-        failureKind: "delivery",
+        failureCode: "delivery_failed",
       },
       {
         type: "tool_calls",
@@ -1216,7 +1214,7 @@ describe("conversation report event projection", () => {
         type: "turn_lifecycle",
         turnId: "turn-1",
         state: "failed",
-        failureKind: "agent",
+        failureCode: "model_execution_failed",
       },
     };
 
@@ -1234,7 +1232,7 @@ describe("conversation report event projection", () => {
           type: "turn_lifecycle",
           turnId: "turn-1",
           state: "succeeded",
-          failureKind: "agent",
+          failureCode: "model_execution_failed",
         },
       }).success,
     ).toBe(false);
@@ -1253,7 +1251,7 @@ describe("conversation report event projection", () => {
     expect(
       conversationReportEventSchema.safeParse({
         ...valid,
-        data: { ...valid.data, failureCode: "private-failure-code" },
+        data: { ...valid.data, failureCode: "not_a_real_code" },
       }).success,
     ).toBe(false);
     expect(

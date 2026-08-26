@@ -1185,7 +1185,7 @@ function failedConversation(nowMs: number): ConversationDetailReport {
         type: "turn_lifecycle",
         turnId: "failed-turn",
         state: "failed",
-        failureKind: "agent",
+        failureCode: "model_execution_failed",
       }),
     ],
   });

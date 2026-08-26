@@ -128,7 +128,12 @@ export type TranscriptViewMessage = {
     reasoningLevel: string;
     source: "configured" | "inherited" | "router";
   };
-  outcome?: "error" | "delivery_failed";
+  /** Stable privacy-safe failure code for a terminal failed turn. */
+  failureCode?:
+    | "agent_run_failed"
+    | "delivery_failed"
+    | "model_execution_failed"
+    | "persistence_failed";
   parts: TranscriptViewPart[];
   role: "assistant" | "system" | "tool" | "user";
   source?: "slack" | "web";

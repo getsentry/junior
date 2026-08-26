@@ -327,7 +327,7 @@ describe("transcript bottom pinning", () => {
               type: "turn_lifecycle",
               turnId: "turn-1",
               state: "failed",
-              failureKind: "agent",
+              failureCode: "model_execution_failed",
             },
           },
         ],
