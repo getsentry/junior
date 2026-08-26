@@ -35,10 +35,7 @@ import {
   finalizeFailedTurnReplyWithEvent,
   requireTurnFailureEventId,
 } from "@/chat/services/turn-failure-response";
-import {
-  getTurnLifecycle,
-  type ConversationTurnLifecycle,
-} from "@/chat/conversations/turn-lifecycle";
+import { getTurnLifecycle } from "@/chat/conversations/turn-lifecycle";
 import type { ConversationTurnFailureCode } from "@/chat/conversations/history";
 import {
   recordTurnSummary,
@@ -262,10 +259,10 @@ async function postResumeFailureReply(args: {
 async function handleResumeFailure(args: {
   error: unknown;
   eventName: string;
-  turnLifecycle: ConversationTurnLifecycle;
   failureCode: ConversationTurnFailureCode;
   resume: ResumeSlackTurnArgs;
 }): Promise<void> {
+  const turnLifecycle = getTurnLifecycle();
   const capturedEventId = logException(args.error, args.eventName);
   const eventId = requireTurnFailureEventId(capturedEventId, args.eventName);
   let failureStatePersistError: unknown;
@@ -278,7 +275,7 @@ async function handleResumeFailure(args: {
       { "app.error.original_event_id": eventId },
     );
     try {
-      await args.turnLifecycle.fail({
+      await turnLifecycle.fail({
         conversationId: args.resume.conversationId,
         turnId: args.resume.turnId,
         createdAtMs: Date.now(),
@@ -308,7 +305,7 @@ async function handleResumeFailure(args: {
       { "app.error.original_event_id": eventId },
     );
     try {
-      await args.turnLifecycle.fail({
+      await turnLifecycle.fail({
         conversationId: args.resume.conversationId,
         turnId: args.resume.turnId,
         createdAtMs: Date.now(),
@@ -327,7 +324,7 @@ async function handleResumeFailure(args: {
   if (failureStatePersistError) {
     throw failureStatePersistError;
   }
-  await args.turnLifecycle.fail({
+  await turnLifecycle.fail({
     conversationId: args.resume.conversationId,
     turnId: args.resume.turnId,
     createdAtMs: Date.now(),
@@ -790,7 +787,6 @@ async function resumeSlackTurnInContext(
               error: new Error("Resumed Run ended suspended without onSuspend"),
               eventName: "slack.resume.turn.failed",
               failureCode: "agent_run_failed",
-              turnLifecycle,
               resume: runArgs,
             });
           };
@@ -803,7 +799,6 @@ async function resumeSlackTurnInContext(
             ),
             eventName: "slack.resume.turn.failed",
             failureCode: "agent_run_failed",
-            turnLifecycle,
             resume: runArgs,
           });
         };
@@ -857,7 +852,6 @@ async function resumeSlackTurnInContext(
           error: runError,
           eventName: "slack.resume.turn.failed",
           failureCode,
-          turnLifecycle,
           resume: runArgs,
         });
       };
@@ -910,7 +904,6 @@ async function resumeSlackTurnInContext(
         error: pauseError,
         eventName: "slack.resume.pause_handler.failed",
         failureCode: "persistence_failed",
-        turnLifecycle,
         resume: runArgs,
       });
       return true;

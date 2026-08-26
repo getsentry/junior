@@ -59,7 +59,10 @@ import {
 } from "@/chat/runtime/turn-input";
 import { getMessageActorIdentity } from "@/chat/services/message-actor-identity";
 import { isResourceEventSlackMessage } from "@/chat/resource-events/actor";
-import type { FailConversationTurnInput } from "@/chat/conversations/turn-lifecycle";
+import {
+  getTurnLifecycle,
+  type FailConversationTurnInput,
+} from "@/chat/conversations/turn-lifecycle";
 
 export interface AssistantLifecycleEvent {
   channelId: string;
@@ -140,7 +143,6 @@ export interface SlackTurnRuntimeDependencies<TPreparedState> {
     threadId: string;
     threadTs: string;
   }) => Promise<void>;
-  failConversationTurn: (input: FailConversationTurnInput) => Promise<void>;
   refreshAssistantThreadContext: (event: {
     channelId: string;
     sourceChannelId?: string;
@@ -363,6 +365,7 @@ export function createSlackTurnRuntime<
 >(
   deps: SlackTurnRuntimeDependencies<TPreparedState>,
 ): SlackTurnRuntime<TPreparedState, TAssistantEvent> {
+  const turnLifecycle = getTurnLifecycle();
   const logContext = (args: {
     channelId?: string;
     actorId?: string;
@@ -400,7 +403,7 @@ export function createSlackTurnRuntime<
     if (!conversationId) {
       return;
     }
-    await deps.failConversationTurn({
+    await turnLifecycle.fail({
       conversationId,
       createdAtMs: deps.now(),
       eventId: args.eventId,

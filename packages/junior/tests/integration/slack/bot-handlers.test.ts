@@ -460,6 +460,11 @@ describe("bot handlers (integration)", () => {
         failureCode: "model_execution_failed",
       }),
     ]);
+    const failure = lifecycle[1]?.data;
+    if (failure?.type !== "turn_failed" || !failure.eventId) {
+      throw new Error("Expected a Turn failure event with an event ID");
+    }
+    expect(postIncludes(thread, `event_id=${failure.eventId}`)).toBe(true);
   });
 
   it("does not persist an assistant message when final Slack delivery fails", async () => {
