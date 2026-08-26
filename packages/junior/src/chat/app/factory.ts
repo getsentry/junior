@@ -37,10 +37,20 @@ import {
   ensureSlackMessageActorIdentity,
   getMessageActorIdentity,
 } from "@/chat/services/message-actor-identity";
+import { lookupSlackUser } from "@/chat/slack/user";
+import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
+import { getConversationEventStore } from "@/chat/db";
+import type { ScheduleSessionCompletedPluginTasksOptions } from "@/chat/plugins/task-runner";
+import {
+  createPausedTurns,
+  type PausedTurns,
+} from "@/chat/task-execution/turn-wake";
 
 export interface CreateSlackRuntimeOptions {
   getSlackAdapter: () => SlackAdapter;
   now?: () => number;
+  pausedTurns?: PausedTurns;
+  sendPluginTask?: ScheduleSessionCompletedPluginTasksOptions["send"];
   services?: JuniorRuntimeServiceOverrides;
 }
 
@@ -80,6 +90,9 @@ function upsertSkippedConversationMessage(
 
 export function createSlackRuntime(options: CreateSlackRuntimeOptions) {
   const services = createJuniorRuntimeServices(options.services);
+  const turnLifecycle = new ConversationTurnLifecycleService(
+    getConversationEventStore(),
+  );
   const prepareTurnState = createPrepareTurnState({
     compactConversationIfNeeded:
       services.conversationMemory.compactConversationIfNeeded,
@@ -104,18 +117,21 @@ export function createSlackRuntime(options: CreateSlackRuntimeOptions) {
             ensureSlackMessageActorIdentity(
               message,
               destination.teamId,
-              services.replyExecutor.lookupSlackUser,
+              lookupSlackUser,
             ),
           ),
       );
     },
   });
   const executeSlackTurn = createSlackTurn({
+    contextCompactor: services.contextCompactor,
     executeTurn: services.executeTurn,
     getSlackAdapter: options.getSlackAdapter,
+    pausedTurns: options.pausedTurns ?? createPausedTurns(),
     prepareTurnState,
     resolveUserAttachments: services.visionContext.resolveUserAttachments,
-    services: services.replyExecutor,
+    sendPluginTask: options.sendPluginTask,
+    turnLifecycle,
   });
 
   const runtime = createSlackTurnRuntime<
@@ -127,8 +143,7 @@ export function createSlackRuntime(options: CreateSlackRuntimeOptions) {
     getBotUserId: () => options.getSlackAdapter().botUserId,
     modelId: defaultModelId(botConfig),
     now: options.now ?? (() => Date.now()),
-    failConversationTurn: (input) =>
-      services.replyExecutor.turnLifecycle.fail(input),
+    failConversationTurn: (input) => turnLifecycle.fail(input),
     prepareTurnState,
     persistPreparedState: async ({ thread, preparedState }) => {
       await persistThreadState(thread, {

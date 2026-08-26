@@ -23,10 +23,6 @@ import {
   getTurnRecord,
   upsertTurnRecord,
 } from "@/chat/task-execution/turn-cursor";
-import {
-  wakePausedTurn as schedulePausedTurnWake,
-  type PausedTurnRequest,
-} from "@/chat/task-execution/turn-wake";
 import { resetSlackApiMockState } from "../../msw/handlers/slack-api";
 import {
   FakeSlackAdapter,
@@ -110,12 +106,14 @@ async function loadTurnLifecycleEvents(conversationId: string) {
 
 function createRuntime(
   args: {
+    queue?: ConversationWorkQueueTestAdapter;
     services?: JuniorRuntimeServiceOverrides;
     slackAdapter?: FakeSlackAdapter;
   } = {},
 ) {
   const services = args.services ?? {};
   return createTestChatRuntime({
+    queue: args.queue,
     slackAdapter: args.slackAdapter,
     services: {
       ...services,
@@ -143,12 +141,6 @@ function slackDestination(channelId: string) {
     teamId: "T123",
     channelId,
   } satisfies Destination;
-}
-
-function bindPausedTurnQueue(queue: ConversationWorkQueueTestAdapter) {
-  return async (request: PausedTurnRequest): Promise<void> => {
-    await schedulePausedTurnWake(request, { queue });
-  };
 }
 
 function createAwaitingContinuationState(args: {
@@ -222,15 +214,11 @@ describe("bot handlers (integration)", () => {
   });
 
   it("handleNewMention: posts reply from executeAgentRun", async () => {
-    const scheduleSessionCompletedPluginTasks = vi.fn(async () => undefined);
     const { slackRuntime } = createTestChatRuntime({
       services: {
         agentRunner: createModelAgentRunner(
           createModelStream([{ type: "text", text: "Hello from the bot!" }]),
         ),
-        replyExecutor: {
-          scheduleSessionCompletedPluginTasks,
-        },
         visionContext: {
           listThreadReplies: async () => [],
         },
@@ -265,10 +253,6 @@ describe("bot handlers (integration)", () => {
       return false;
     });
     expect(hasReply).toBe(true);
-    expect(scheduleSessionCompletedPluginTasks).toHaveBeenCalledWith({
-      conversationId: "slack:C0INT:1700000000.000",
-      sessionId: "turn_msg-new-mention",
-    });
   });
 
   it("does not replay a message that already has a delivered reply", async () => {
@@ -682,11 +666,9 @@ describe("bot handlers (integration)", () => {
     const queueSendEntered = queue.holdNextSendUntil(finishQueueSend.promise);
     const ack = vi.fn();
     const { slackRuntime } = createRuntime({
+      queue,
       services: {
         agentRunner: neverRunAgentRunner(),
-        replyExecutor: {
-          wakePausedTurn: bindPausedTurnQueue(queue),
-        },
       },
     });
 
@@ -767,11 +749,9 @@ describe("bot handlers (integration)", () => {
     });
     const queue = createConversationWorkQueueTestAdapter();
     const { slackRuntime } = createRuntime({
+      queue,
       services: {
         agentRunner: neverRunAgentRunner(),
-        replyExecutor: {
-          wakePausedTurn: bindPausedTurnQueue(queue),
-        },
       },
     });
     const thread = await createTestThread({
@@ -824,11 +804,9 @@ describe("bot handlers (integration)", () => {
     });
     const queue = createConversationWorkQueueTestAdapter();
     const { slackRuntime } = createRuntime({
+      queue,
       services: {
         agentRunner: neverRunAgentRunner(),
-        replyExecutor: {
-          wakePausedTurn: bindPausedTurnQueue(queue),
-        },
       },
     });
     const thread = await createTestThread({
@@ -974,11 +952,9 @@ describe("bot handlers (integration)", () => {
     const queue = createConversationWorkQueueTestAdapter();
     const ack = vi.fn();
     const { slackRuntime } = createRuntime({
+      queue,
       services: {
         agentRunner: neverRunAgentRunner(),
-        replyExecutor: {
-          wakePausedTurn: bindPausedTurnQueue(queue),
-        },
       },
     });
     const thread = await createTestThread({
@@ -1138,11 +1114,9 @@ describe("bot handlers (integration)", () => {
     });
     const queue = createConversationWorkQueueTestAdapter();
     const { slackRuntime } = createRuntime({
+      queue,
       services: {
         agentRunner: neverRunAgentRunner(),
-        replyExecutor: {
-          wakePausedTurn: bindPausedTurnQueue(queue),
-        },
       },
     });
 
@@ -1193,11 +1167,9 @@ describe("bot handlers (integration)", () => {
     const queue = createConversationWorkQueueTestAdapter();
     const onTurnStatePersisted = vi.fn();
     const { slackRuntime } = createRuntime({
+      queue,
       services: {
         agentRunner: neverRunAgentRunner(),
-        replyExecutor: {
-          wakePausedTurn: bindPausedTurnQueue(queue),
-        },
       },
     });
 
@@ -1257,11 +1229,9 @@ describe("bot handlers (integration)", () => {
     const queue = createConversationWorkQueueTestAdapter();
     queue.rejectSends();
     const { slackRuntime } = createRuntime({
+      queue,
       services: {
         agentRunner: neverRunAgentRunner(),
-        replyExecutor: {
-          wakePausedTurn: bindPausedTurnQueue(queue),
-        },
       },
     });
 

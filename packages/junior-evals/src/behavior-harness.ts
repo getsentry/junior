@@ -56,7 +56,10 @@ import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import { addAgentTurnUsage, type AgentTurnUsage } from "@/chat/usage";
 import { runNextPausedTurn } from "@/chat/task-execution/paused-turn";
-import { wakePausedTurn } from "@/chat/task-execution/turn-wake";
+import {
+  createPausedTurns,
+  wakePausedTurn,
+} from "@/chat/task-execution/turn-wake";
 import { ACTIVE_TURN_COMPACTION_SUMMARY_PREFIX } from "@/chat/services/context-compaction-marker";
 import { TURN_CONTEXT_TAG } from "@/chat/turn-context-tag";
 import { listIncompleteScheduledRuns } from "@/chat/scheduled-tasks/runs";
@@ -75,10 +78,6 @@ import {
   createAgentDispatchConversationWorker,
   createAgentDispatchWorkRouter,
 } from "@/chat/agent-dispatch/work";
-import {
-  ConversationTurnLifecycleService,
-  type ConversationTurnLifecycle,
-} from "@/chat/conversations/turn-lifecycle";
 import {
   getDispatchInputMessageId,
   getDispatchRecord,
@@ -1680,7 +1679,6 @@ function buildRuntimeServices(
   observations: RuntimeObservations,
   conversationWorkQueue: ConversationWorkQueueTestAdapter,
   steeringDelivery: SteeringDelivery,
-  turnLifecycle: ConversationTurnLifecycle,
   signal?: AbortSignal,
 ): JuniorRuntimeServiceOverrides {
   const replyTexts = scenario.overrides?.reply_texts ?? [];
@@ -2015,22 +2013,6 @@ function buildRuntimeServices(
             gatewaySnapshot.restore();
           }
         }
-      },
-    },
-    replyExecutor: {
-      turnLifecycle,
-      wakePausedTurn: async (request) => {
-        await wakePausedTurn(request, {
-          queue: conversationWorkQueue,
-          state: env.stateAdapter,
-        });
-      },
-      scheduleSessionCompletedPluginTasks: async (params) => {
-        await scheduleSessionCompletedPluginTasks(params, {
-          send: async (message) => {
-            await processEvalPluginTask(message);
-          },
-        });
       },
     },
     visionContext: {
@@ -2703,9 +2685,6 @@ export async function runEvalScenario(
 
     const conversationWorkQueue = createConversationWorkQueueTestAdapter();
     const steeringDelivery: SteeringDelivery = {};
-    const turnLifecycle = new ConversationTurnLifecycleService(
-      getConversationEventStore(),
-    );
     const services = buildRuntimeServices(
       scenario,
       env,
@@ -2713,7 +2692,6 @@ export async function runEvalScenario(
       observations,
       conversationWorkQueue,
       steeringDelivery,
-      turnLifecycle,
       options.signal,
     );
     const evalAgentRunner = services.agentRunner;
@@ -2723,6 +2701,11 @@ export async function runEvalScenario(
 
     const slackRuntime = createSlackRuntime({
       getSlackAdapter: () => slackAdapter as any,
+      pausedTurns: createPausedTurns({
+        queue: conversationWorkQueue,
+        state: env.stateAdapter,
+      }),
+      sendPluginTask: processEvalPluginTask,
       services,
     });
 

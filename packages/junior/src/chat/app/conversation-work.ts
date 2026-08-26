@@ -6,10 +6,7 @@ import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import type { VercelConversationWorkCallbackOptions } from "@/chat/task-execution/vercel-callback";
 import { createSlackConversationWorker } from "@/chat/task-execution/slack-work";
 import { runNextPausedTurn } from "@/chat/task-execution/paused-turn";
-import {
-  getPausedTurnRequest,
-  wakePausedTurn,
-} from "@/chat/task-execution/turn-wake";
+import { createPausedTurns } from "@/chat/task-execution/turn-wake";
 import {
   buildDispatchRoutingContext,
   createAgentDispatchConversationWorker,
@@ -56,30 +53,18 @@ export function createConversationWork(
   runtime: ReturnType<typeof createSlackRuntime>;
 } {
   const apiTurnCancellation = createApiTurnCancellation();
-  const services: JuniorRuntimeServiceOverrides = {
-    ...options.services,
-    agentRunner: options.agentRunner,
-    replyExecutor: {
-      ...options.services?.replyExecutor,
-      getPausedTurnRequest:
-        options.services?.replyExecutor?.getPausedTurnRequest ??
-        (async (request) =>
-          await getPausedTurnRequest({
-            ...request,
-            conversationStore: options.conversationStore,
-          })),
-      wakePausedTurn:
-        options.services?.replyExecutor?.wakePausedTurn ??
-        (async (request) =>
-          await wakePausedTurn(request, {
-            queue: options.queue,
-            state: options.state,
-          })),
-    },
-  };
+  const pausedTurns = createPausedTurns({
+    conversationStore: options.conversationStore,
+    queue: options.queue,
+    ...(options.state ? { state: options.state } : undefined),
+  });
   const runtime = createSlackRuntime({
     getSlackAdapter: options.getSlackAdapter,
-    services,
+    pausedTurns,
+    services: {
+      ...options.services,
+      agentRunner: options.agentRunner,
+    },
   });
   const slackWorker = createSlackConversationWorker({
     getSlackAdapter: options.getSlackAdapter,
@@ -89,9 +74,7 @@ export function createConversationWork(
         conversationId,
         {
           agentRunner: options.agentRunner,
-          scheduleSessionCompletedPluginTasks:
-            services.replyExecutor?.scheduleSessionCompletedPluginTasks,
-          wakePausedTurn: services.replyExecutor?.wakePausedTurn,
+          wakePausedTurn: pausedTurns.wake,
         },
         runOptions,
       ),
@@ -106,9 +89,7 @@ export function createConversationWork(
           agentRunner: options.agentRunner,
           inputMessageIds: [getDispatchInputMessageId(dispatch.id)],
           routingContext: buildDispatchRoutingContext(dispatch),
-          scheduleSessionCompletedPluginTasks:
-            services.replyExecutor?.scheduleSessionCompletedPluginTasks,
-          wakePausedTurn: services.replyExecutor?.wakePausedTurn,
+          wakePausedTurn: pausedTurns.wake,
         },
         { shouldYield: hooks.shouldYield },
       );
