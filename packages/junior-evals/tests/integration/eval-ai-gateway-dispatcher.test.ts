@@ -89,7 +89,7 @@ describe("eval AI Gateway dispatcher", () => {
           failure: failedAssistant,
           messages: [userMessage as PiMessage, failedAssistant as PiMessage],
         }),
-      ).toEqual({ delayMs: 2_000, messages: [userMessage as PiMessage] });
+      ).toMatchObject({ delayMs: 2_000, messages: [userMessage as PiMessage] });
     } finally {
       await restore();
     }

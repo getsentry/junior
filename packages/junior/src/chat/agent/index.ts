@@ -1604,7 +1604,10 @@ async function executeAgentRunInPrivacyContext(
 
               providerRetryAttempt += 1;
               await prepareRetry(providerRetry.messages);
-              logWarn("agent.turn.provider.retrying");
+              logWarn("agent.turn.provider.retrying", {
+                ...getProviderErrorAttributes(providerRetry.providerError),
+                "app.ai.provider_error.retry_attempt": providerRetryAttempt,
+              });
               await sleep(providerRetry.delayMs, signal);
               run = agent!.continue();
             }
