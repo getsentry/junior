@@ -419,7 +419,6 @@ function githubIssueCredentialContext(input: {
   };
   grant: {
     access: "read" | "write";
-    leaseScope?: string;
     name: string;
     reason?: string;
   };
@@ -642,7 +641,6 @@ describe("github plugin", () => {
     ).toMatchObject({
       name: "installation-write",
       access: "write",
-      leaseScope: "repository:getsentry/junior",
       reason: "github.installation-write",
     });
     expect(
@@ -654,7 +652,6 @@ describe("github plugin", () => {
     ).toMatchObject({
       name: "installation-write",
       access: "write",
-      leaseScope: "repository:getsentry/junior",
       reason: "github.installation-write",
     });
     expect(
@@ -666,7 +663,6 @@ describe("github plugin", () => {
     ).toMatchObject({
       name: "installation-write",
       access: "write",
-      leaseScope: "repository:getsentry/junior",
       reason: "github.installation-write",
     });
     expect(
@@ -678,7 +674,6 @@ describe("github plugin", () => {
     ).toMatchObject({
       name: "installation-write",
       access: "write",
-      leaseScope: "repository:getsentry/junior",
       reason: "github.installation-write",
     });
     await expect(
@@ -724,7 +719,6 @@ describe("github plugin", () => {
     ).toMatchObject({
       name: "installation-write",
       access: "write",
-      leaseScope: "repository:getsentry/junior",
       reason: "github.installation-write",
     });
     expect(
@@ -735,7 +729,6 @@ describe("github plugin", () => {
     ).toMatchObject({
       name: "installation-write",
       access: "write",
-      leaseScope: "repository:getsentry/junior",
       reason: "github.installation-write",
     });
     expect(
@@ -746,7 +739,6 @@ describe("github plugin", () => {
     ).toMatchObject({
       name: "installation-write",
       access: "write",
-      leaseScope: "repository:getsentry/junior",
       reason: "github.installation-write",
     });
     expect(
@@ -757,7 +749,6 @@ describe("github plugin", () => {
     ).toMatchObject({
       name: "installation-write",
       access: "write",
-      leaseScope: "repository:getsentry/junior",
       reason: "github.installation-write",
     });
     expect(
@@ -768,7 +759,6 @@ describe("github plugin", () => {
     ).toMatchObject({
       name: "installation-write",
       access: "write",
-      leaseScope: "repository:getsentry/junior",
       reason: "github.installation-write",
     });
   });
@@ -1807,7 +1797,6 @@ Conversation: \`local:test:old-conversation\`
     ).toMatchObject({
       name: "installation-write",
       access: "write",
-      leaseScope: "repository:getsentry/junior",
       reason: "github.installation-write",
     });
     expect(
@@ -1818,12 +1807,11 @@ Conversation: \`local:test:old-conversation\`
     ).toMatchObject({
       name: "installation-write",
       access: "write",
-      leaseScope: "repository:getsentry/junior",
       reason: "github.installation-write",
     });
   });
 
-  it("selects repository-scoped installation identity for Git push discovery", async () => {
+  it("selects installation identity for Git push discovery", async () => {
     expect(
       await grantForEgress({
         method: "GET",
@@ -1832,7 +1820,6 @@ Conversation: \`local:test:old-conversation\`
     ).toMatchObject({
       name: "installation-write",
       access: "write",
-      leaseScope: "repository:getsentry/junior",
       reason: "github.installation-write",
     });
   });
@@ -1971,7 +1958,6 @@ Conversation: \`local:test:old-conversation\`
     ).resolves.toMatchObject({
       name: "installation-write",
       access: "write",
-      leaseScope: "repository:getsentry/junior",
       reason: "github.installation-write",
     });
     await expect(
@@ -2120,7 +2106,6 @@ Conversation: \`local:test:old-conversation\`
     ).resolves.toMatchObject({
       name: "installation-write",
       access: "write",
-      leaseScope: "repository:getsentry/junior",
       reason: "github.installation-write",
     });
     await expect(
@@ -2132,7 +2117,6 @@ Conversation: \`local:test:old-conversation\`
     ).resolves.toMatchObject({
       name: "installation-write",
       access: "write",
-      leaseScope: "repository:getsentry/junior",
       reason: "github.installation-write",
     });
     await expect(
@@ -2144,7 +2128,6 @@ Conversation: \`local:test:old-conversation\`
     ).resolves.toMatchObject({
       name: "installation-write",
       access: "write",
-      leaseScope: "repository:getsentry/junior",
       reason: "github.installation-write",
     });
     await expect(
@@ -2155,7 +2138,6 @@ Conversation: \`local:test:old-conversation\`
     ).resolves.toMatchObject({
       name: "installation-write",
       access: "write",
-      leaseScope: "repository:getsentry/junior",
       reason: "github.installation-write",
     });
     await expect(
@@ -2166,7 +2148,6 @@ Conversation: \`local:test:old-conversation\`
     ).resolves.toMatchObject({
       name: "installation-write",
       access: "write",
-      leaseScope: "repository:getsentry/junior",
       reason: "github.installation-write",
     });
     await expect(
@@ -2177,7 +2158,6 @@ Conversation: \`local:test:old-conversation\`
     ).resolves.toMatchObject({
       name: "installation-write",
       access: "write",
-      leaseScope: "repository:getsentry/junior",
       reason: "github.installation-write",
     });
     await expect(
@@ -2188,7 +2168,6 @@ Conversation: \`local:test:old-conversation\`
     ).resolves.toMatchObject({
       name: "installation-write",
       access: "write",
-      leaseScope: "repository:getsentry/junior",
       reason: "github.installation-write",
     });
     await expect(
@@ -2199,7 +2178,6 @@ Conversation: \`local:test:old-conversation\`
     ).resolves.toMatchObject({
       name: "installation-write",
       access: "write",
-      leaseScope: "repository:getsentry/junior",
       reason: "github.installation-write",
     });
     await expect(
@@ -2253,7 +2231,7 @@ Conversation: \`local:test:old-conversation\`
     );
   });
 
-  it("preserves installed App permissions on repository-scoped write credentials", async () => {
+  it("issues full-installation write credentials without repository downscope", async () => {
     const privateKey = generateKeyPairSync("rsa", { modulusLength: 2048 })
       .privateKey.export({ type: "pkcs8", format: "pem" })
       .toString();
@@ -2272,7 +2250,6 @@ Conversation: \`local:test:old-conversation\`
       grant: {
         name: "installation-write",
         access: "write",
-        leaseScope: "repository:getsentry/junior",
         reason: "github.installation-write",
       },
       db,
@@ -2286,9 +2263,7 @@ Conversation: \`local:test:old-conversation\`
     expect(requests[0]).toEqual({
       url: "https://api.github.com/app/installations/456/access_tokens",
       method: "POST",
-      body: {
-        repositories: ["junior"],
-      },
+      body: {},
       headers: expect.any(Object),
     });
   });

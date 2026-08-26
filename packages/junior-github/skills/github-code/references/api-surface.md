@@ -72,15 +72,15 @@ jr-rpc config set github.repo owner/repo
 
 - Prefer `--json` output for machine-readable parsing where available.
 - Pass extra `git clone` flags after `--` (e.g. `gh repo clone owner/repo -- --depth=1`).
-- A local `git commit` does not call GitHub. Pushing that commit uses Junior's repository-scoped installation credential and requires `github.contents.write` on the target repo.
+- A local `git commit` does not call GitHub. Pushing that commit uses Junior's installation credential and requires `github.contents.write` on the target repo.
 - If the commit changes workflow files under `.github/workflows`, the App installation needs Workflows write in addition to Contents write.
 - Before rebasing, merge-base analysis, blame/history inspection, or a base comparison, check whether the repository is shallow. Fetch a bounded depth of the base into `refs/remotes/origin/BASE`, deepen incrementally until the needed ancestry is present, and compare against `origin/BASE`; use `--unshallow` only when bounded deepening is insufficient. Never force-push to work around missing ancestry.
 - Before `github_createPullRequest`, push the head branch explicitly and resolve the target repo's default branch for `base`. That push requires GitHub write access to the remote.
 - Use `github_updatePullRequest` for title, body, base, or open/closed state changes. Do not raw-`PATCH` `/repos/.../pulls/NUMBER`; that path is denied so Junior can keep the conversation footer.
 - Merge, fork creation, REST contents/Git database writes, and repository administration are outside the current write allowlist.
-- Pull request reviews and inline review comments use the same repository-scoped `installation-write` credential as other bot-owned PR writes, so they post as Junior even on headless turns. Merge remains denied.
+- Pull request reviews and inline review comments use the same `installation-write` credential as other bot-owned PR writes, so they post as Junior even on headless turns. Merge remains denied.
 - Resolve review threads with `github_resolvePullRequestReviewThread`. That tool is the Junior equivalent of `gh api graphql` `resolveReviewThread`; raw GraphQL mutations stay denied, and the tool only succeeds on Junior-authored PRs.
 - If the explicit `git push` fails with 401/403 or another access/permission error, verify the repo context and retry once. If it still fails, load troubleshooting guidance and report the exact command failure.
-- PR comments, labels, and assignees use GitHub's issue endpoints; use the `github-issues` REST guidance for those operations. All allowlisted bot writes share the same repository-scoped `installation-write` credential.
+- PR comments, labels, and assignees use GitHub's issue endpoints; use the `github-issues` REST guidance for those operations. All allowlisted bot writes share the same `installation-write` credential.
 - To embed a local image in a GitHub issue, pull request, review, or comment, call `publishImage` first. That tool returns a durable public URL. The published image is public to anyone on the internet who has the URL. Embed the URL with normal GitHub Markdown. Do not use private Slack file links or conversation attachment URLs.
 - Return actionable errors for access, permission, not-found, and validation failures.

@@ -21,7 +21,7 @@ Use `git` and `gh` for repository work. Use `github_createPullRequest`, not `gh 
 - Read applicable `AGENTS.md` files before editing. Narrower repo/task instructions win.
 - Preserve unrelated work. Never force-push, delete refs, or perform destructive merges.
 - Base conclusions on repository evidence. Do not claim a check ran unless it did.
-- For Junior-owned pull requests, push the branch before creating the PR. The runtime supplies repository-scoped GitHub App credentials for both; try the operations before requesting remediation and never ask for a user token.
+- For Junior-owned pull requests, push the branch before creating the PR. The runtime supplies GitHub App installation credentials for both; try the operations before requesting remediation and never ask for a user token.
 - Use `github_cloneRepository` instead of shelling out to `git clone` when a repository is not already available in the sandbox.
 - If `github_cloneRepository` returns a tool input error about matching Workspaces, call `switchWorkspace`. The checkout is already present after a successful switch. Pass `allowAdHoc=true` only for an intentional ad-hoc checkout.
 - A tool-routing denial requires the named tool; only an upstream denial justifies permission remediation.

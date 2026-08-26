@@ -17,7 +17,6 @@ import {
   HTTP_READ_METHODS,
   USER_WRITE_REQUIREMENTS,
   githubRepositoryFromUrl,
-  githubRepositoryLeaseScope,
   isRecord,
   type GitHubGrant,
   type GitHubGrantName,
@@ -395,14 +394,13 @@ function reviewThreadResolveRepository(
   return repository;
 }
 
-function repositoryLeaseScopeFromRef(repository: string): string {
+function requireRepositoryRef(repository: string): void {
   const [owner, name] = repository.split("/");
   if (!owner || !name) {
     throw new EgressPolicyDenied(
       "GitHub review thread resolution does not identify a target repository.",
     );
   }
-  return githubRepositoryLeaseScope({ owner, name });
 }
 
 function isGitHubGraphqlMutation(
@@ -463,25 +461,22 @@ function grantForAccess(
   access: PluginGrantAccess,
   reason: GitHubGrantReason,
   name: GitHubGrantName,
-  leaseScope?: string,
 ): GitHubGrant {
   return {
     name,
     access,
-    ...(leaseScope ? { leaseScope } : undefined),
     reason,
     ...(name === "user-write" ? { requirements: USER_WRITE_REQUIREMENTS } : undefined),
   };
 }
 
-function repositoryLeaseScope(upstreamUrl: URL): string {
-  const repository = githubRepositoryFromUrl(upstreamUrl);
-  if (!repository) {
-    throw new EgressPolicyDenied(
-      "GitHub write request does not identify a target repository.",
-    );
+function requireRepositoryTarget(upstreamUrl: URL): void {
+  if (githubRepositoryFromUrl(upstreamUrl)) {
+    return;
   }
-  return githubRepositoryLeaseScope(repository);
+  throw new EgressPolicyDenied(
+    "GitHub write request does not identify a target repository.",
+  );
 }
 
 export async function githubGrantForEgress(
@@ -504,11 +499,11 @@ export async function githubGrantForEgress(
   const smartHttpAccess = githubSmartHttpAccess(upstreamUrl);
   if (smartHttpAccess) {
     if (smartHttpAccess === "write") {
+      requireRepositoryTarget(upstreamUrl);
       return grantForAccess(
         "write",
         "github.installation-write",
         "installation-write",
-        repositoryLeaseScope(upstreamUrl),
       );
     }
     return grantForAccess(
@@ -525,13 +520,15 @@ export async function githubGrantForEgress(
 
   const writeGrantName = githubApiWriteGrantName(method, upstreamUrl);
   if (writeGrantName) {
+    if (writeGrantName === "installation-write") {
+      requireRepositoryTarget(upstreamUrl);
+    }
     return grantForAccess(
       "write",
       writeGrantName === "user-write"
         ? "github.user-write"
         : "github.installation-write",
       writeGrantName,
-      repositoryLeaseScope(upstreamUrl),
     );
   }
 
@@ -542,11 +539,11 @@ export async function githubGrantForEgress(
     ctx.request.bodyText,
   );
   if (reviewThreadRepository) {
+    requireRepositoryRef(reviewThreadRepository);
     return grantForAccess(
       "write",
       "github.installation-write",
       "installation-write",
-      repositoryLeaseScopeFromRef(reviewThreadRepository),
     );
   }
 

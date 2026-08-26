@@ -1721,7 +1721,7 @@ describe("GitHub-owned pull request outcomes", () => {
     }
   });
 
-  it("classifies commits through repository-scoped production plugin wiring", async () => {
+  it("classifies commits through production plugin wiring", async () => {
     const fixture = await createGitHubFixture();
     const tokenBodies: unknown[] = [];
     const commitRequests: Request[] = [];

@@ -63,7 +63,6 @@ import {
   GitHubPluginSetupError,
   createPermissionCache,
   credentialUnavailable,
-  githubRepositoryFromLeaseScope,
   githubRequest,
   issueInstallationCredential,
   issueInstallationToken,
@@ -383,16 +382,12 @@ export function githubPlugin(
             });
           }
           if (ctx.grant.name === "installation-write") {
-            const repository = githubRepositoryFromLeaseScope(
-              ctx.grant.leaseScope,
-            );
+            // Installation write uses the full installed App envelope. Repo
+            // allowlisting stays in egress policy, not in per-hop token minting.
             return await issueInstallationCredential({
               appIdEnv,
               privateKeyEnv,
               installationIdEnv,
-              // This repository-only variant cannot downscope the installed
-              // App envelope with an operation-specific permission body.
-              repositories: [repository.name],
             });
           }
           if (USER_TOKEN_GRANTS.has(ctx.grant.name)) {

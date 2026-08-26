@@ -2,7 +2,7 @@
  * GitHub credential issuance and provider request support.
  *
  * This module owns OAuth refresh, installation tokens, credential leases, and
- * repository-scoped credential parsing.
+ * installation and user credential parsing.
  */
 import { createPrivateKey, createSign } from "node:crypto";
 import type {
@@ -87,14 +87,10 @@ interface InstallationCredentialBaseOptions {
 type InstallationCredentialOptions = InstallationCredentialBaseOptions &
   (
     | {
+        // Optional downscope. Omit both for the full installation envelope.
         loadPermissions?: never;
         permissions?: GitHubAppPermissions;
-        repositories: string[];
-      }
-    | {
-        loadPermissions?: never;
-        permissions: GitHubAppPermissions;
-        repositories?: never;
+        repositories?: string[];
       }
     | {
         loadPermissions: LoadInstallationReadPermissions;
@@ -571,26 +567,6 @@ export function githubRepositoryFromUrl(
   return owner && name ? { owner, name } : undefined;
 }
 
-/** Build the stable lease scope for a GitHub repository. */
-export function githubRepositoryLeaseScope(
-  repository: GitHubRepository,
-): string {
-  return `repository:${repository.owner.toLowerCase()}/${repository.name.toLowerCase()}`;
-}
-
-/** Parse the repository bound to an installation-write lease. */
-export function githubRepositoryFromLeaseScope(
-  leaseScope: string | undefined,
-): GitHubRepository {
-  const match = /^repository:([^/]+)\/([^/]+)$/.exec(leaseScope ?? "");
-  if (!match?.[1] || !match[2]) {
-    throw new GitHubPluginSetupError(
-      "GitHub installation write grant is missing a repository lease scope.",
-    );
-  }
-  return { owner: match[1], name: match[2] };
-}
-
 /** Resolve the GitHub account associated with stored user tokens. */
 export async function resolveUserAccount(
   tokens: PluginStoredTokens,
@@ -827,11 +803,11 @@ export async function issueInstallationToken(
       : typeof options.loadPermissions === "function"
         ? await options.loadPermissions({ appJwt, installationId })
         : undefined;
+  const repositories =
+    "repositories" in options ? options.repositories : undefined;
   const body = {
     ...(permissions ? { permissions } : undefined),
-    ...("repositories" in options
-      ? { repositories: options.repositories }
-      : undefined),
+    ...(repositories ? { repositories } : undefined),
   };
   const accessTokenResponse = await githubRequest(
     "https://api.github.com",

@@ -18,7 +18,7 @@ import { botUserIdFromEmail } from "../webhooks/ownership.js";
  *   -F id=THREAD_ID
  * ```
  *
- * `repo` is required so Junior can issue a repository-scoped installation
+ * `repo` is required so Junior can bind the GraphQL operation to a repository
  * credential; GraphQL has no repo path to derive that from.
  */
 const inputSchema = z
@@ -26,7 +26,7 @@ const inputSchema = z
     repo: z
       .string()
       .describe(
-        'Repository in "owner/name" format. Required for repository-scoped credentials (GraphQL has no repo path).',
+        'Repository in "owner/name" format. Required because GraphQL has no repo path.',
       ),
     threadId: z
       .string()
