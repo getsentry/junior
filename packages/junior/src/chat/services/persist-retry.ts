@@ -2,8 +2,8 @@
  * Shared post-delivery persist retry.
  *
  * Delivered outcomes the user already saw must not be lost to a transient
- * state-write failure, so both the Slack reply executor and the dispatch
- * runner retry these persists with the same short linear backoff.
+ * state-write failure, so both Slack turns and dispatch turns retry these
+ * persists with the same short linear backoff.
  */
 import { sleep } from "@/chat/sleep";
 

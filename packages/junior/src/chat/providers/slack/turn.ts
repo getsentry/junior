@@ -104,7 +104,7 @@ import {
   isResourceEventSlackMessage,
   RESOURCE_EVENT_SYSTEM_ACTOR,
 } from "@/chat/resource-events/actor";
-import type { PausedTurnRequest } from "@/chat/task-execution/turn-wake";
+import type { PausedTurns } from "@/chat/task-execution/turn-wake";
 import {
   ConversationTurnBoundaryError,
   CooperativeTurnYieldError,
@@ -147,6 +147,10 @@ import {
 import { requireSlackDestination } from "@/chat/destination";
 import { persistConversationMessages } from "@/chat/conversations/messages";
 import type { ConversationTurnLifecycle } from "@/chat/conversations/turn-lifecycle";
+import {
+  scheduleSessionCompletedPluginTasks,
+  type ScheduleSessionCompletedPluginTasksOptions,
+} from "@/chat/plugins/task-runner";
 import type { AgentRunResult } from "@/chat/services/turn-result";
 import type {
   DispatchTurnContext,
@@ -220,24 +224,11 @@ async function loadPiMessagesForTurn(args: {
   return {};
 }
 
-export interface SlackTurnServices {
-  contextCompactor: ContextCompactor;
-  getPausedTurnRequest: (args: {
-    conversationId: string;
-    turnId: string;
-  }) => Promise<PausedTurnRequest | undefined>;
-  lookupSlackUser: typeof lookupSlackUser;
-  turnLifecycle: ConversationTurnLifecycle;
-  wakePausedTurn: (request: PausedTurnRequest) => Promise<void>;
-  scheduleSessionCompletedPluginTasks: (params: {
-    conversationId: string;
-    sessionId: string;
-  }) => Promise<void>;
-}
-
 interface SlackTurnDeps {
+  contextCompactor: ContextCompactor;
   executeTurn: ExecuteTurn;
   getSlackAdapter: () => SlackAdapter;
+  pausedTurns: PausedTurns;
   resolveUserAttachments: (
     attachments: Message["attachments"] | undefined,
     context: {
@@ -257,7 +248,8 @@ interface SlackTurnDeps {
     }>
   >;
   prepareTurnState: (args: PrepareTurnStateInput) => Promise<PreparedTurnState>;
-  services: SlackTurnServices;
+  sendPluginTask?: ScheduleSessionCompletedPluginTasksOptions["send"];
+  turnLifecycle: Pick<ConversationTurnLifecycle, "fail" | "start">;
 }
 
 /** Return whether the Slack caller should publish destination output. */
@@ -372,7 +364,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
               ensureSlackMessageActorIdentity(
                 queued.message,
                 teamId,
-                deps.services.lookupSlackUser,
+                lookupSlackUser,
               ),
             ),
         );
@@ -392,7 +384,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
           executionActor = await ensureSlackMessageActorIdentity(
             message,
             teamId,
-            deps.services.lookupSlackUser,
+            lookupSlackUser,
           );
           if (executionActor) {
             credentialContext = credentialContextForActor(executionActor);
@@ -561,7 +553,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
           return;
         }
         if (conversationId && activeTurnId) {
-          const pausedTurn = await deps.services.getPausedTurnRequest({
+          const pausedTurn = await deps.pausedTurns.get({
             conversationId,
             turnId: activeTurnId,
           });
@@ -574,7 +566,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
               throw new TurnInputDeferredError();
             }
             try {
-              await deps.services.wakePausedTurn(pausedTurn);
+              await deps.pausedTurns.wake(pausedTurn);
             } catch (error) {
               logException(error, "agent.continue.schedule.failed", {
                 "app.ai.resume_session_version": pausedTurn.expectedVersion,
@@ -682,7 +674,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
           nextTurnId: turnId,
         });
         if (conversationId && preparedState.userMessageId) {
-          await deps.services.turnLifecycle.start({
+          await deps.turnLifecycle.start({
             conversationId,
             createdAtMs: Date.now(),
             inputMessageIds: [
@@ -966,24 +958,23 @@ export function createSlackTurn(deps: SlackTurnDeps) {
             loadedPiMessages.canCompact &&
             piMessages?.length
           ) {
-            const compaction =
-              await deps.services.contextCompactor.maybeCompact({
-                conversation: preparedState.conversation,
-                conversationContext: preparedState.conversationContext,
-                conversationId,
-                metadata: {
-                  threadId,
-                  actorId: slackActorId,
-                  channelId,
-                  runId,
-                },
-                onCompactionStart: () => status.update(compactingStatus),
-                piMessages,
-                modelId: modelIdForProfile(
-                  botConfig,
-                  loadedPiMessages.modelProfile ?? botConfig.defaultProfile,
-                ),
-              });
+            const compaction = await deps.contextCompactor.maybeCompact({
+              conversation: preparedState.conversation,
+              conversationContext: preparedState.conversationContext,
+              conversationId,
+              metadata: {
+                threadId,
+                actorId: slackActorId,
+                channelId,
+                runId,
+              },
+              onCompactionStart: () => status.update(compactingStatus),
+              piMessages,
+              modelId: modelIdForProfile(
+                botConfig,
+                loadedPiMessages.modelProfile ?? botConfig.defaultProfile,
+              ),
+            });
             if (compaction.compacted) {
               piMessages = compaction.piMessages;
               await persistThreadState(thread, {
@@ -1327,7 +1318,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
                 conversation: preparedState.conversation,
               });
               if (conversationId) {
-                await deps.services.turnLifecycle.fail({
+                await deps.turnLifecycle.fail({
                   conversationId,
                   createdAtMs: Date.now(),
                   ...(authFailureEventId
@@ -1375,7 +1366,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
               );
             }
             try {
-              await deps.services.wakePausedTurn({
+              await deps.pausedTurns.wake({
                 conversationId,
                 destination,
                 turnId: turnId,
@@ -1414,10 +1405,13 @@ export function createSlackTurn(deps: SlackTurnDeps) {
             conversationId
           ) {
             try {
-              await deps.services.scheduleSessionCompletedPluginTasks({
-                conversationId,
-                sessionId: turnId,
-              });
+              await scheduleSessionCompletedPluginTasks(
+                {
+                  conversationId,
+                  sessionId: turnId,
+                },
+                deps.sendPluginTask ? { send: deps.sendPluginTask } : undefined,
+              );
             } catch (error) {
               logException(
                 error,
