@@ -542,11 +542,14 @@ describe("context compaction projection reset", () => {
       "Continue the outstanding request now",
     );
     expect(textOf(handoffMessages[1]!)).toContain(
-      "Continue the multi-file implementation.",
+      "Current user instruction at handoff:\nImplement the multi-file change.",
+    );
+    expect(textOf(handoffMessages[1]!)).toContain(
+      "Continuation summary:\nContinue the multi-file implementation.",
     );
     const durableHandoffMessages = [
       user(
-        "<current-instruction>\nModel handoff checkpoint. Continue the outstanding request now using this summary as the complete prior context:\nContinue the multi-file implementation.\n</current-instruction>",
+        "<current-instruction>\nModel handoff checkpoint. Continue the outstanding request now using this summary as the complete prior context:\nCurrent user instruction at handoff:\nImplement the multi-file change.\n\nContinuation summary:\nContinue the multi-file implementation.\n</current-instruction>",
         3,
       ),
     ];
