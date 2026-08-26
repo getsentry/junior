@@ -1,15 +1,14 @@
 import { getSlackBotToken } from "@/chat/config";
 import { getSlackClient } from "@/chat/slack/client";
 
-/** Whether this app instance can run resource-event delivery. */
+/**
+ * Whether this install can enable resource-event delivery.
+ *
+ * Single-bot installs use the Slack bot token as the install gate. Multi-bot
+ * mode stays off until event delivery can bind without a single-bot assumption.
+ */
 export function canRouteResourceEvents(): boolean {
   return Boolean(getSlackBotToken());
-}
-
-/** Confirm the single-bot install can publish resource events. */
-export function createResourceEventInstallResolver(): () => Promise<boolean> {
-  const resolveTeamId = createResourceEventTeamIdResolver();
-  return async () => Boolean(await resolveTeamId());
 }
 
 /**

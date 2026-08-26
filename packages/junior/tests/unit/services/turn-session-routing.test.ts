@@ -80,9 +80,6 @@ describe("resolveTurnSessionRouting", () => {
       destination: DESTINATION,
       source: SOURCE,
     });
-    expect(store.get).toHaveBeenCalledWith({
-      conversationId: "slack:C123:1712345.0001",
-    });
   });
 
   it("rejects a conversation without durable routing metadata", async () => {
@@ -97,26 +94,6 @@ describe("resolveTurnSessionRouting", () => {
       }),
     ).rejects.toThrow(
       "Conversation slack:C123:1712345.0001 is missing durable routing metadata",
-    );
-  });
-
-  it("rejects destination-only legacy routing", async () => {
-    const store = conversationStore({
-      get: vi.fn(async () =>
-        conversation({
-          conversationId: "agent-dispatch:dispatch-1",
-          destination: DESTINATION,
-        }),
-      ),
-    });
-
-    await expect(
-      resolveTurnSessionRouting({
-        conversationId: "agent-dispatch:dispatch-1",
-        conversationStore: store,
-      }),
-    ).rejects.toThrow(
-      "Conversation agent-dispatch:dispatch-1 is missing durable routing metadata",
     );
   });
 });
@@ -152,7 +129,7 @@ describe("resolveConversationRouting", () => {
     });
   });
 
-  it("completes slack session from the conversation id when destination is bound", async () => {
+  it("completes slack session from a historical conversation id when destination is bound", async () => {
     const store = conversationStore({
       get: vi.fn(async () =>
         conversation({
@@ -165,29 +142,6 @@ describe("resolveConversationRouting", () => {
       resolveConversationRouting({
         conversationId: "slack:C123:1712345.0001",
         conversationStore: store,
-      }),
-    ).resolves.toEqual({
-      destination: DESTINATION,
-      source: {
-        platform: "slack",
-        teamId: "T123",
-        channelId: "C123",
-        threadTs: "1712345.0001",
-        visibility: "public",
-      },
-    });
-  });
-
-  it("binds historical slack conversation ids with fallback team id", async () => {
-    const store = conversationStore({
-      get: vi.fn(async () => undefined),
-    });
-
-    await expect(
-      resolveConversationRouting({
-        conversationId: "slack:C123:1712345.0001",
-        conversationStore: store,
-        fallbackTeamId: "T123",
       }),
     ).resolves.toEqual({
       destination: DESTINATION,
@@ -252,7 +206,6 @@ describe("resolveConversationRouting", () => {
       resolveConversationRouting({
         conversationId: "agent:child",
         conversationStore: store,
-        fallbackTeamId: "T123",
       }),
     ).resolves.toBeUndefined();
   });

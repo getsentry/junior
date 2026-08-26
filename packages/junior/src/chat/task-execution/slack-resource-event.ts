@@ -199,8 +199,7 @@ export async function hydrateSlackResourceEventRecords(args: {
   const threadTs =
     (routing?.source.platform === "slack"
       ? routing.source.threadTs?.trim()
-      : undefined) ||
-    parseSlackThreadId(args.conversationId)?.threadTs;
+      : undefined) || parseSlackThreadId(args.conversationId)?.threadTs;
   if (!threadTs) {
     throw new Error(
       `Conversation ${args.conversationId} is missing a Slack thread for resource-event delivery`,

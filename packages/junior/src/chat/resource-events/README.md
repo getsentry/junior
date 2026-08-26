@@ -17,7 +17,7 @@ conversation.
 - Plugin route code validates and normalizes incoming events before calling
   the ingestion boundary.
 - Resource-event creation and delivery stay off until the install can publish
-  them. Single-bot installs verify the app token once as that gate.
+  them. Single-bot installs use the Slack bot token as that gate.
 - Plugin-owned routes publish normalized events through the route-hook resource
   event publisher; core binds the plugin namespace and never needs the raw
   provider webhook. Publication requires an active registration that declares

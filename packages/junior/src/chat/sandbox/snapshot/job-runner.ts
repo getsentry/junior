@@ -4,7 +4,7 @@ import { getDb } from "@/chat/db";
 import { logInfo } from "@/chat/logging";
 import { createPluginHookRunner } from "@/chat/plugins/agent-hooks";
 import { ingestResourceEvent } from "@/chat/resource-events/ingest";
-import { createResourceEventInstallResolver } from "@/chat/resource-events/workspace";
+import { canRouteResourceEvents } from "@/chat/resource-events/workspace";
 import { getTurnRequestDeadline } from "@/chat/runtime/request-deadline";
 import { buildSandboxEgressNetworkPolicy } from "@/chat/sandbox/egress/policy";
 import { createSandboxEgressCredentialToken } from "@/chat/sandbox/egress/session";
@@ -32,14 +32,11 @@ const SNAPSHOT_BUILD_SYSTEM_ACTOR = {
 /** Leave time to send the next job before this request ends. */
 const JOB_STOP_BUFFER_MS = 40_000;
 
-const resolveResourceEventInstall = createResourceEventInstallResolver();
-
 async function publishFinishedEvent(
   input: Parameters<typeof workspaceSnapshotFinishedEvent>[0],
 ): Promise<void> {
   const event = workspaceSnapshotFinishedEvent(input);
-  const installReady = await resolveResourceEventInstall();
-  if (!installReady) {
+  if (!canRouteResourceEvents()) {
     logInfo("workspace.snapshot.event.delivery.skipped", {
       "app.resource_event.namespace": event.namespace,
       "app.resource_event.event_type": event.eventType,

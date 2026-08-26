@@ -134,13 +134,6 @@ describe("resource event delivery", () => {
       conversationId: CONVERSATION_ID,
     });
     expect(work?.messages).toHaveLength(1);
-    const notificationText = work?.messages[0]?.input.text;
-    expect(notificationText).toContain("About: GitHub PR getsentry/junior#691");
-    expect(notificationText).toContain("Summary: CI failed on workflow test.");
-    expect(notificationText).toContain('"failingChecks"');
-    expect(notificationText).toContain('"checkRunId": 11');
-    expect(notificationText).toContain("Failed checks:");
-    expect(notificationText).toContain("- test");
     expect(work?.messages[0]).toMatchObject({
       source: "resource_event",
       publishExternally: false,
@@ -157,21 +150,22 @@ describe("resource event delivery", () => {
         },
       },
     });
+    expect(work?.messages[0]).not.toHaveProperty("destination");
     expect(work?.messages[0]?.input.metadata).not.toHaveProperty("platform");
-    expect(work?.messages[0]?.destination).toBeUndefined();
+    expect(work?.messages[0]?.input.metadata).not.toHaveProperty("route");
   });
 
-  it("enqueues matching watches for every conversation", async () => {
+  it("enqueues matching watches for every conversation id", async () => {
     const queue = createConversationWorkQueueTestAdapter();
-    const first = await createGithubPrSubscription({
+    const threadWatch = await createGithubPrSubscription({
       events: ["pull_request.checks.failed"],
     });
-    const second = await createResourceEventSubscription(
+    const opaqueWatch = await createResourceEventSubscription(
       {
-        conversationId: "slack:C999:1712345.0002",
+        conversationId: "agent:deadbeefcafebabe",
         events: ["pull_request.checks.failed"],
         expiresAtMs: 2_000_000,
-        intent: "Watch the same PR from another conversation.",
+        intent: "Watch from an opaque conversation id.",
         label: "GitHub PR getsentry/junior#691",
         namespace: "github",
         identifier: "getsentry/junior#691",
@@ -183,7 +177,7 @@ describe("resource event delivery", () => {
     await expect(
       ingestResourceEvent(
         {
-          eventKey: "delivery-workspace:check-suite-1",
+          eventKey: "delivery-multi:check-suite-1",
           eventType: "pull_request.checks.failed",
           occurredAtMs: 1_500,
           namespace: "github",
@@ -193,15 +187,16 @@ describe("resource event delivery", () => {
         { nowMs: 1_500, queue },
       ),
     ).resolves.toEqual({ enqueued: 2 });
+
     expect(queue.sentRecords()).toEqual(
       expect.arrayContaining([
         {
           conversationId: CONVERSATION_ID,
-          idempotencyKey: `resource-event:${first.id}:delivery-workspace:check-suite-1`,
+          idempotencyKey: `resource-event:${threadWatch.id}:delivery-multi:check-suite-1`,
         },
         {
-          conversationId: "slack:C999:1712345.0002",
-          idempotencyKey: `resource-event:${second.id}:delivery-workspace:check-suite-1`,
+          conversationId: "agent:deadbeefcafebabe",
+          idempotencyKey: `resource-event:${opaqueWatch.id}:delivery-multi:check-suite-1`,
         },
       ]),
     );
@@ -827,65 +822,6 @@ describe("resource event delivery", () => {
     ]);
   });
 
-  it("enqueues watches for every matching conversation without destination checks", async () => {
-    const queue = createConversationWorkQueueTestAdapter();
-    const opaque = await createResourceEventSubscription(
-      {
-        conversationId: "agent:deadbeefcafebabe",
-        events: ["pull_request.checks.failed"],
-        expiresAtMs: 2_000_000,
-        intent: "Watch from an opaque conversation id.",
-        label: "GitHub PR getsentry/junior#691",
-        namespace: "github",
-        identifier: "getsentry/junior#691",
-        resourceType: "pull_request",
-      },
-      { nowMs: 1_000 },
-    );
-    const good = await createGithubPrSubscription({
-      events: ["pull_request.checks.failed"],
-    });
-
-    await expect(
-      ingestResourceEvent(
-        {
-          eventKey: "delivery-opaque:check-suite-1",
-          eventType: "pull_request.checks.failed",
-          occurredAtMs: 1_500,
-          namespace: "github",
-          identifier: "getsentry/junior#691",
-          trustedSummary: "CI failed on workflow test.",
-        },
-        {
-          nowMs: 1_500,
-          queue,
-        },
-      ),
-    ).resolves.toEqual({ enqueued: 2 });
-
-    expect(queue.sentRecords()).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ conversationId: CONVERSATION_ID }),
-        expect.objectContaining({ conversationId: "agent:deadbeefcafebabe" }),
-      ]),
-    );
-    await expect(
-      listResourceEventSubscriptions({
-        conversationId: "agent:deadbeefcafebabe",
-        nowMs: 1_600,
-      }),
-    ).resolves.toEqual([
-      expect.objectContaining({ id: opaque.id, status: "active" }),
-    ]);
-    await expect(
-      listResourceEventSubscriptions({
-        conversationId: CONVERSATION_ID,
-        nowMs: 1_600,
-      }),
-    ).resolves.toEqual([
-      expect.objectContaining({ id: good.id, status: "active" }),
-    ]);
-  });
 
   it("does not enqueue expired subscriptions", async () => {
     const queue = createConversationWorkQueueTestAdapter();

@@ -7,7 +7,7 @@ import { logWarn } from "@/chat/logging";
 import { ingestResourceEvent } from "@/chat/resource-events/ingest";
 import { collectResourceEventMatchKeys } from "@/chat/resource-events/store";
 import {
-  createResourceEventInstallResolver,
+  canRouteResourceEvents,
   createResourceEventTeamIdResolver,
 } from "@/chat/resource-events/workspace";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
@@ -29,13 +29,12 @@ export function createResourceEventAppPublisher(args: {
     state?: StateAdapter;
   };
 }): ResourceEventAppPublisher {
-  const resolveInstall = createResourceEventInstallResolver();
   // Event tasks still key by destination team until that store is conversation-owned.
   const resolveEventTaskTeamId = createResourceEventTeamIdResolver();
 
   return {
     async neededMatchKeys(input) {
-      if (!(await resolveInstall())) return [];
+      if (!canRouteResourceEvents()) return [];
       const work = args.conversationWork();
       const eventTaskTeamId = await resolveEventTaskTeamId();
       const [watchKeys, taskKeys] = await Promise.all([
@@ -57,7 +56,7 @@ export function createResourceEventAppPublisher(args: {
       return [...new Set([...watchKeys, ...taskKeys])].sort();
     },
     async publish(event) {
-      if (!(await resolveInstall())) {
+      if (!canRouteResourceEvents()) {
         logWarn("resource_event.delivery.unavailable", {
           "app.resource_event.namespace": event.namespace,
           "app.resource_event.reason": "install_not_ready",
