@@ -20,6 +20,7 @@ import {
 } from "@/chat/task-execution/store";
 import { processConversationWork } from "@/chat/task-execution/worker";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
+import { createResourceEventInboundMessage } from "@/chat/resource-events/notification";
 import {
   buildSlackInboundMessage,
   createSlackConversationWorker,
@@ -375,19 +376,29 @@ describe("Slack conversation work execution", () => {
       throw new Error("resource event notifications do not have Slack users");
     });
     const calls: Message[] = [];
+    const publishFlags: Array<boolean | undefined> = [];
 
+    // Bind destination first, then enqueue the plain resource-event wake the
+    // way ingest does. The Slack worker hydrates and must publish from the
+    // bound surface.
+    await requestConversationWork({
+      conversationId: CONVERSATION_ID,
+      destination: SLACK_DESTINATION,
+      state,
+    });
     await appendInboundMessage({
-      message: createSlackResourceEventInboundMessage({
-        conversationId: CONVERSATION_ID,
-        destination: SLACK_DESTINATION,
-        threadTs: "1712345.0001",
-        occurredAtMs: 1_700_000_000_000,
+      message: createResourceEventInboundMessage({
         event: {
           eventKey: "check-suite-1",
           eventType: "pull_request.checks.failed",
+          occurredAtMs: 1_700_000_000_000,
           namespace: "github",
           identifier: "getsentry/junior#691",
-          subscriptionId: "resub_1",
+          trustedSummary: "A subscribed resource changed.",
+        },
+        subscription: {
+          conversationId: CONVERSATION_ID,
+          id: "resub_1",
         },
         text: "[event notification]\n\nA subscribed resource changed.",
       }),
@@ -407,6 +418,7 @@ describe("Slack conversation work execution", () => {
             throw new Error("unexpected mention route");
           },
           handleSubscribedMessage: async (_thread, message, hooks) => {
+            publishFlags.push(hooks.publishExternally);
             await hooks.ack?.();
             calls.push(message);
           },
@@ -417,6 +429,7 @@ describe("Slack conversation work execution", () => {
 
     expect(lookupSlackUser).not.toHaveBeenCalled();
     expect(calls).toHaveLength(1);
+    expect(publishFlags).toEqual([true]);
     expect(calls[0]?.raw).toMatchObject({ event_type: "resource_event" });
     expect(calls[0]?.raw).not.toHaveProperty("ts");
     expect(getMessageActorIdentity(calls[0]!)).toEqual({

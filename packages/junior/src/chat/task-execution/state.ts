@@ -508,13 +508,16 @@ function normalizeConversation(
   ) {
     return undefined;
   }
+  // Destinationless pending messages inherit the conversation destination.
+  // Only a conflicting explicit message destination is invalid.
   if (
     execution.pendingMessages.length > 0 &&
-    execution.pendingMessages.some((message) =>
-      message.destination
-        ? !destination || !sameDestination(message.destination, destination)
-        : Boolean(destination),
-    )
+    execution.pendingMessages.some((message) => {
+      if (!message.destination) {
+        return false;
+      }
+      return !destination || !sameDestination(message.destination, destination);
+    })
   ) {
     return undefined;
   }
@@ -1044,10 +1047,12 @@ function assertSameOptionalConversationDestination(args: {
   current: Destination | undefined;
   next: Destination | undefined;
 }): void {
-  if (!args.current && !args.next) {
+  // Destinationless next inherits the bound conversation destination. First
+  // bind is allowed when current is empty. Only a conflicting next is an error.
+  if (!args.next || !args.current) {
     return;
   }
-  if (args.current && args.next && sameDestination(args.current, args.next)) {
+  if (sameDestination(args.current, args.next)) {
     return;
   }
   throw new Error(

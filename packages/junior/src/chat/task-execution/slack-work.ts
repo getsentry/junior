@@ -640,6 +640,10 @@ export function createSlackConversationWorker(
     if (!latestRecord) {
       return { status: "completed" };
     }
+    // Hydration may rewrite plain resource-event wakes onto the bound Slack
+    // surface. Publish from the hydrated records, not the pre-hydrate flag.
+    const publishExternally =
+      latestRecord.publishExternally ?? context.publishExternally;
 
     const latestMetadata = parseSlackMetadata(latestRecord.input.metadata);
     if (!latestMetadata) {
@@ -711,8 +715,7 @@ export function createSlackConversationWorker(
           await context.attempt.drain(async (pendingRecords) => {
             const candidates = pendingRecords
               .filter(
-                (record) =>
-                  record.publishExternally === context.publishExternally,
+                (record) => record.publishExternally === publishExternally,
               )
               .map((record) => ({
                 inboundMessageId: record.inboundMessageId,
@@ -732,7 +735,7 @@ export function createSlackConversationWorker(
             await options.runtime.handleNewMention(thread, latestMessage, {
               conversationId: context.conversationId,
               destination,
-              publishExternally: context.publishExternally,
+              publishExternally,
               messageContext,
               drainSteeringMessages,
               ack,
@@ -746,7 +749,7 @@ export function createSlackConversationWorker(
               {
                 conversationId: context.conversationId,
                 destination,
-                publishExternally: context.publishExternally,
+                publishExternally,
                 messageContext,
                 drainSteeringMessages,
                 ack,
