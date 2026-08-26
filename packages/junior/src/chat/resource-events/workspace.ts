@@ -1,9 +1,26 @@
+import type { Destination } from "@sentry/junior-plugin-api";
 import { getSlackBotToken } from "@/chat/config";
 import { getSlackClient } from "@/chat/slack/client";
 
 /** Return whether provider events can be bound to one Slack workspace. */
 export function canRouteResourceEvents(): boolean {
   return Boolean(getSlackBotToken());
+}
+
+/**
+ * Workspace team id used only to scope resource-event match indexes.
+ *
+ * Today this comes from the Slack destination. Delivery still resolves the
+ * conversation destination separately.
+ */
+export function resourceEventIndexTeamId(
+  destination: Destination,
+): string | undefined {
+  if (destination.platform !== "slack") {
+    return undefined;
+  }
+  const teamId = destination.teamId.trim();
+  return teamId || undefined;
 }
 
 /** Resolve and cache the Slack workspace owned by this app instance. */

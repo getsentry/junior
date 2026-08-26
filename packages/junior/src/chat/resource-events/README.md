@@ -31,15 +31,16 @@ conversation.
   event, core does not match.
 - `searchResourceEventTypes` discovers that catalog without creating anything.
   `watchResourceEvents` creates a temporary resource subscription for the
-  current Slack thread. Concrete identifiers still come from plugin tool
+  current conversation. Concrete identifiers still come from plugin tool
   results rather than catalog enumeration.
-- A temporary watch stores the current conversation id as an opaque mailbox
-  key. It does not rewrite that id.
-- Destination on the subscription (or the conversation root) decides external
-  publish. If that destination is Slack, delivery fills in channel/thread
-  details and publishes. Otherwise it only wakes the conversation mailbox.
-- Ingestion cancels watches that claim a Slack destination but cannot resolve
-  a thread, instead of failing the whole webhook batch.
+- A temporary watch stores the current conversation id and a workspace team id
+  for match indexes. It does not store destination or rewrite the conversation
+  id.
+- Delivery loads the conversation (and parents) to choose destination. When the
+  route is Slack, it publishes into that thread. Otherwise it only wakes the
+  conversation mailbox.
+- Ingestion cancels watches that have no deliverable route instead of failing
+  the whole webhook batch.
 - Core validates namespace, resource type, and event ownership again before
   storing a subscription.
 - Normalized events contain a stable namespace and identifier plus a short safe

@@ -40,6 +40,7 @@ import type { AnyToolDefinition } from "@/chat/tools/definition";
 import { getDashboardConversationLink } from "@/chat/slack/dashboard-link";
 import { createResourceEventSubscription } from "@/chat/resource-events/store";
 import { RESOURCE_SUBSCRIPTION_DEFAULT_TTL_MS } from "@/chat/resource-events/tool-support";
+import { resourceEventIndexTeamId } from "@/chat/resource-events/workspace";
 import { getSlackToolContext } from "@/chat/slack/tool-support/context";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
@@ -660,11 +661,8 @@ export function getPluginTools(
             "Resource subscription contains an event or resource that the plugin does not support.",
           );
         }
-        const teamId =
-          context.destination.platform === "slack"
-            ? context.destination.teamId
-            : undefined;
-        if (!teamId?.trim()) {
+        const teamId = resourceEventIndexTeamId(context.destination);
+        if (!teamId) {
           throw new Error(
             "Resource subscriptions require a workspace team id from the conversation destination.",
           );

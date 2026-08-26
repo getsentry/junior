@@ -12,8 +12,7 @@ import { z } from "zod";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { JUNIOR_THREAD_STATE_TTL_MS } from "@/chat/state/ttl";
 
-// Hard cutover: watches bind conversation id + workspace team only.
-// Destination/routing lives on the conversation, not the watch record.
+// v4 stores conversation id + workspace team only. Destination lives on the conversation.
 const RESOURCE_EVENT_PREFIX = "junior:resource_event_subscription:v4";
 const INDEX_LOCK_TTL_MS = 10_000;
 const SUBSCRIPTION_LOCK_TTL_MS = 10_000;
@@ -39,7 +38,7 @@ const subscriptionSchema = z
     identifier: z.string().min(1),
     resourceType: z.string().min(1),
     status: subscriptionStatusSchema,
-    // Workspace tenant for match indexes only — not delivery routing.
+    /** Workspace team id for match indexes only. */
     teamId: z.string().min(1),
     updatedAtMs: z.number().finite(),
   })
@@ -57,7 +56,7 @@ export interface CreateResourceEventSubscriptionInput {
   namespace: string;
   identifier: string;
   resourceType: string;
-  /** Workspace tenant used only to scope match indexes. */
+  /** Workspace team id for match indexes only. */
   teamId: string;
 }
 

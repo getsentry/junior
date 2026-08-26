@@ -98,10 +98,34 @@ describe("resource event delivery route", () => {
     });
   });
 
+  it("returns undefined when no conversation route exists", async () => {
+    getConversation.mockImplementation(async ({ conversationId }) => {
+      if (conversationId === "agent:child") {
+        return {
+          conversationId: "agent:child",
+          lineage: { parentConversationId: "agent-dispatch:task" },
+        };
+      }
+      if (conversationId === "agent-dispatch:task") {
+        return {
+          conversationId: "agent-dispatch:task",
+        };
+      }
+      return undefined;
+    });
+
+    await expect(
+      resolveResourceEventDeliveryRoute({
+        conversationId: "agent:child",
+        teamId: destination.teamId,
+      }),
+    ).resolves.toBeUndefined();
+  });
+
   it("returns undefined when Slack destination has no thread", async () => {
     getConversation.mockResolvedValue({
       conversationId: "agent:child",
-      lineage: { parentConversationId: "agent-dispatch:task" },
+      destination,
     });
 
     await expect(

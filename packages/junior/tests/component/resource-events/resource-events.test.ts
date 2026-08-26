@@ -834,7 +834,7 @@ describe("resource event delivery", () => {
     ]);
   });
 
-  it("cancels watches that cannot resolve a Slack destination route", async () => {
+  it("cancels watches that have no deliverable conversation route", async () => {
     const queue = createConversationWorkQueueTestAdapter();
     const bad = await createResourceEventSubscription(
       {

@@ -15,6 +15,7 @@ import {
   RESOURCE_SUBSCRIPTION_MAX_TTL_MS,
   STOP_WATCHING_TOOL_NAME,
 } from "@/chat/resource-events/tool-support";
+import { resourceEventIndexTeamId } from "@/chat/resource-events/workspace";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
@@ -139,7 +140,7 @@ export function createWatchResourceEventsTool(
       readOnlyHint: false,
     },
     description:
-      "Watch one plugin resource in the current Slack thread for a limited time; matching events return to this conversation as updates. Use for watch, notify, or tell-me-when requests. This does not create an event task or execute a durable task instruction. Prefer a subscribable tool result when available.",
+      "Watch one plugin resource in the current conversation for a limited time; matching events return to this conversation as updates. Use for watch, notify, or tell-me-when requests. This does not create an event task or execute a durable task instruction. Prefer a subscribable tool result when available.",
     inputSchema: inputSchema(catalog),
     outputSchema,
     async execute(input: Input) {
@@ -166,11 +167,8 @@ export function createWatchResourceEventsTool(
         resourceType: input.resourceType,
       });
       const nowMs = Date.now();
-      const teamId =
-        context.destination.platform === "slack"
-          ? context.destination.teamId
-          : undefined;
-      if (!teamId?.trim()) {
+      const teamId = resourceEventIndexTeamId(context.destination);
+      if (!teamId) {
         throw new ToolInputError(
           "Resource watches require a workspace team id from the conversation destination.",
         );

@@ -2,10 +2,7 @@ import type { StateAdapter } from "chat";
 import { resourceEventSchema } from "@sentry/junior-plugin-api";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { logWarn } from "@/chat/logging";
-import {
-  enqueueResourceEventNotification,
-  resolveResourceEventDeliveryRoute,
-} from "@/chat/resource-events/notification";
+import { enqueueResourceEventNotification } from "@/chat/resource-events/notification";
 import {
   cancelResourceEventSubscription,
   deliverResourceEventSubscription,
@@ -38,26 +35,7 @@ export async function ingestResourceEvent(
   const waitDeadlineMs = Date.now() + 10_000;
   for (const subscription of subscriptions) {
     try {
-      const route = await resolveResourceEventDeliveryRoute({
-        conversationId: subscription.conversationId,
-        teamId: subscription.teamId,
-      });
-      if (!route) {
-        logWarn("resource_event.subscription.undeliverable", {
-          "app.resource_event.subscription_id": subscription.id,
-          "app.resource_event.conversation_id": subscription.conversationId,
-          "app.resource_event.namespace": subscription.namespace,
-          "app.resource_event.identifier": subscription.identifier,
-          "app.resource_event.reason": "missing_destination_route",
-        });
-        await cancelResourceEventSubscription({
-          conversationId: subscription.conversationId,
-          id: subscription.id,
-          nowMs,
-          state: options.state,
-        });
-        continue;
-      }
+      let undeliverable = false;
       const delivered = await deliverResourceEventSubscription({
         data: event.data,
         eventType: event.eventType,
@@ -76,9 +54,30 @@ export async function ingestResourceEvent(
             state: options.state,
             subscription: current,
           });
+          if (result.status === "undeliverable") {
+            // Cancel after the subscription lock releases.
+            undeliverable = true;
+            return false;
+          }
           return result.status === "appended";
         },
       });
+      if (undeliverable) {
+        logWarn("resource_event.subscription.undeliverable", {
+          "app.resource_event.subscription_id": subscription.id,
+          "app.resource_event.conversation_id": subscription.conversationId,
+          "app.resource_event.namespace": subscription.namespace,
+          "app.resource_event.identifier": subscription.identifier,
+          "app.resource_event.reason": "missing_destination_route",
+        });
+        await cancelResourceEventSubscription({
+          conversationId: subscription.conversationId,
+          id: subscription.id,
+          nowMs,
+          state: options.state,
+        });
+        continue;
+      }
       if (delivered) {
         enqueued += 1;
       }

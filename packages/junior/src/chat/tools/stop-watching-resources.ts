@@ -29,7 +29,7 @@ export function createStopWatchingResourcesTool(context: ToolRuntimeContext) {
       readOnlyHint: false,
     },
     description:
-      "Stop one resource watch in the current Slack thread by id. Omit id only when the user explicitly asks to stop every watch in this thread. Infer terse stop requests from context, inspect active watches when the target is unclear, and call this tool before confirming that watching stopped.",
+      "Stop one resource watch in the current conversation by id. Omit id only when the user explicitly asks to stop every watch in this conversation. Infer terse stop requests from context, inspect active watches when the target is unclear, and call this tool before confirming that watching stopped.",
     exposure: "deferred",
     source: RESOURCE_WATCH_TOOL_SOURCE,
     inputSchema: z

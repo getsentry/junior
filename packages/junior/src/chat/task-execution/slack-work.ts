@@ -446,7 +446,6 @@ interface SlackResourceEventInboundInput {
     identifier: string;
   };
   subscription: {
-    /** Opaque conversation mailbox that owns the watch. */
     conversationId: string;
     destination: {
       channelId: string;
@@ -455,7 +454,6 @@ interface SlackResourceEventInboundInput {
     };
     id: string;
   };
-  /** Slack thread timestamp used only for external Slack routing metadata. */
   threadTs: string;
   text: string;
 }
@@ -545,12 +543,11 @@ function slackSerializedResourceEventMessage(input: {
 export function createSlackResourceEventInboundMessage(
   input: SlackResourceEventInboundInput,
 ): InboundMessage {
-  // Destination + threadTs own Slack routing. conversationId is the mailbox only.
   const destination = input.subscription.destination;
   const threadTs = input.threadTs.trim();
   if (!threadTs) {
     throw new Error(
-      "Resource event delivery requires a Slack thread timestamp on the destination route",
+      "Resource event delivery requires a Slack thread timestamp",
     );
   }
   const messageId = `resource-event-${input.subscription.id}-${input.event.eventKey}`;
