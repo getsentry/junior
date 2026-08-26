@@ -2,44 +2,40 @@
 
 ## Intent
 
-Guide evidence-first GitHub repository work from inspection through a reviewable result without duplicating command and troubleshooting detail in runtime context.
+Guide evidence-first GitHub repository work from inspection through a reviewable result without loading command and packaging detail on every run.
 
 ## Behavioral contract
 
 - Resolve and inspect the repository before acting.
-- Preserve unrelated work and reject destructive Git operations.
-- Treat shallow clones as inspection checkouts; fetch/deepen before history-dependent operations and never force-push around missing ancestry.
-- Install repository dependencies with the detected package manager's locked/frozen mode before verification when dependencies are absent.
-- For every completed repository edit, create or update a pushed PR unless the user explicitly opts out; default new PRs to draft while honoring explicit ready-for-review instructions.
-- Write conventional PR titles that match the current dominant change.
-- Write short reviewer-facing PR bodies in ASD-STE100 English; explain what changed and why, add only context the diff cannot show, omit empty ceremony or fixed templates, and keep Checks/Verification/Test plan style sections out of the PR body (report local checks to the user instead).
-- Treat existing PR metadata and commit messages as fallible context, and refresh the title/body against the current diff after material changes.
-- Report exact validation and permission failures without claiming partial work is complete.
+- Preserve unrelated work; reject destructive Git operations.
+- Treat shallow clones as inspection checkouts; deepen before history work; never force-push around missing ancestry.
+- Install dependencies with the lockfile frozen mode before verification when needed.
+- Finish completed edits with a pushed PR unless the user opts out; default draft.
+- Write conventional PR titles and short plain-English bodies; keep check results out of the PR body.
+- Report exact validation and permission failures.
 
 ## Runtime architecture
 
-- `SKILL.md`: compact workflow and decision rules.
+- `SKILL.md`: always-on rules and reference router.
 - `references/api-surface.md`: command and permission lookup.
+- `references/workflow.md`: edit, verify, and PR packaging.
 - `references/troubleshooting-workarounds.md`: failure recovery.
 
-Do not move provider runtime installation, OAuth, or environment setup into this skill; the GitHub plugin manifest owns those concerns.
+The GitHub plugin manifest owns runtime install, OAuth, and env setup. Do not move those into this skill.
 
-## Trigger expectations
+## Triggers
 
 Should trigger for implementation, source inspection, clone/fetch/branch work, commits, PRs, reviews, CI, and repository credential failures.
 
-Should not trigger for GitHub issue-only operations, non-GitHub ticketing, product telemetry, or general product documentation with no repository task.
+Should not trigger for issue-only ops, non-GitHub ticketing, product telemetry, or docs with no repository task.
 
 ## Validation
 
-After material edits:
-
 1. Run the repository skill validator.
-2. Run formatting or package checks applicable to changed Markdown.
-3. Confirm all referenced files exist.
+2. Confirm all referenced files exist.
+3. Confirm `SKILL.md` stays a router (workflow detail lives in references).
 4. Confirm code-edit completion defaults to a draft PR.
-5. Confirm dependency installation and shallow-history recovery do not permit lockfile mutation or force-push shortcuts.
 
 ## Maintenance
 
-Keep workflow policy in `SKILL.md`; move syntax matrices and failure details to the routed references. Remove duplicated rules rather than restating them across sections.
+Keep always-on policy in `SKILL.md`. Move syntax matrices, packaging steps, and failure tables to routed references. Delete duplicates instead of restating them.
