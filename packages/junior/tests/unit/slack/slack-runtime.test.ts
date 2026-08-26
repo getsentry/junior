@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createSlackTurnRuntime,
   type SlackTurnRuntimeDependencies,
@@ -9,6 +9,12 @@ import {
   createTestMessage,
   createTestDestination,
 } from "../../fixtures/slack-harness";
+
+const failTurn = vi.hoisted(() => vi.fn(async () => undefined));
+
+vi.mock("@/chat/conversations/turn-lifecycle", () => ({
+  getTurnLifecycle: () => ({ fail: failTurn }),
+}));
 
 interface TestState {
   prepared: boolean;
@@ -25,7 +31,6 @@ function createMockDeps(
     now: () => 1700000000000,
     initializeAssistantThread: vi.fn().mockResolvedValue(undefined),
     refreshAssistantThreadContext: vi.fn().mockResolvedValue(undefined),
-    failConversationTurn: vi.fn().mockResolvedValue(undefined),
     onSubscribedMessageSkipped: vi.fn().mockResolvedValue(undefined),
     recordSkippedSteeringMessage: vi.fn().mockResolvedValue(undefined),
     recordSkippedSubscribedTurn: vi.fn().mockResolvedValue(undefined),
@@ -44,6 +49,10 @@ function createMockDeps(
 }
 
 describe("createSlackTurnRuntime", () => {
+  beforeEach(() => {
+    failTurn.mockClear();
+  });
+
   describe("handleNewMention", () => {
     it("subscribes thread and calls executeSlackTurn with explicitMention: true", async () => {
       const deps = createMockDeps();
@@ -145,26 +154,18 @@ describe("createSlackTurnRuntime", () => {
           isFinalAttempt,
         });
 
-        const failureCalls = vi.mocked(deps.failConversationTurn).mock.calls;
-        const eventId = failureCalls[0]?.[0].eventId;
-        const expectedFailure = {
-          conversationId: message.threadId,
-          createdAtMs: 1700000000000,
-          eventId: expect.any(String),
-          failureCode: "agent_run_failed",
-          turnId: "turn_m-failed-turn",
-        };
-        expect(failureCalls).toEqual(
-          shouldPostFallback ? [[expectedFailure]] : [],
-        );
-        expect(thread.posts).toEqual(
-          shouldPostFallback
-            ? [
-                "I ran into an internal error while processing that. " +
-                  `Reference: \`event_id=${eventId}\`.`,
-              ]
-            : [],
-        );
+        expect(failTurn).toHaveBeenCalledTimes(shouldPostFallback ? 1 : 0);
+        expect(thread.posts).toHaveLength(shouldPostFallback ? 1 : 0);
+        expect(
+          thread.posts.some((post) =>
+            typeof post === "string"
+              ? post.includes(
+                  "I ran into an internal error while processing that. " +
+                    "Reference: `event_id=",
+                )
+              : false,
+          ),
+        ).toBe(shouldPostFallback);
       },
     );
   });

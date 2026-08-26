@@ -146,7 +146,7 @@ import {
 } from "@/chat/pi/transcript";
 import { requireSlackDestination } from "@/chat/destination";
 import { persistConversationMessages } from "@/chat/conversations/messages";
-import type { ConversationTurnLifecycle } from "@/chat/conversations/turn-lifecycle";
+import { getTurnLifecycle } from "@/chat/conversations/turn-lifecycle";
 import {
   scheduleSessionCompletedPluginTasks,
   type ScheduleSessionCompletedPluginTasksOptions,
@@ -249,7 +249,6 @@ interface SlackTurnDeps {
   >;
   prepareTurnState: (args: PrepareTurnStateInput) => Promise<PreparedTurnState>;
   sendPluginTask?: ScheduleSessionCompletedPluginTasksOptions["send"];
-  turnLifecycle: Pick<ConversationTurnLifecycle, "fail" | "start">;
 }
 
 /** Return whether the Slack caller should publish destination output. */
@@ -259,6 +258,8 @@ function shouldPublishExternally(publishExternally?: boolean): boolean {
 
 /** Build the Slack caller that prepares input and delivers output for a Turn. */
 export function createSlackTurn(deps: SlackTurnDeps) {
+  const turnLifecycle = getTurnLifecycle();
+
   return async function executeSlackTurn(
     thread: Thread,
     message: Message,
@@ -674,7 +675,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
           nextTurnId: turnId,
         });
         if (conversationId && preparedState.userMessageId) {
-          await deps.turnLifecycle.start({
+          await turnLifecycle.start({
             conversationId,
             createdAtMs: Date.now(),
             inputMessageIds: [
@@ -1318,7 +1319,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
                 conversation: preparedState.conversation,
               });
               if (conversationId) {
-                await deps.turnLifecycle.fail({
+                await turnLifecycle.fail({
                   conversationId,
                   createdAtMs: Date.now(),
                   ...(authFailureEventId
