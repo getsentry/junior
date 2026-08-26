@@ -382,8 +382,8 @@ export function githubPlugin(
             });
           }
           if (ctx.grant.name === "installation-write") {
-            // Installation write uses the full installed App envelope. Repo
-            // allowlisting stays in egress policy, not in per-hop token minting.
+            // Use the full installed App permissions. Repo allowlisting stays in
+            // egress policy, not in per-request token minting.
             return await issueInstallationCredential({
               appIdEnv,
               privateKeyEnv,

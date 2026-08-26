@@ -18,8 +18,8 @@ import { botUserIdFromEmail } from "../webhooks/ownership.js";
  *   -F id=THREAD_ID
  * ```
  *
- * `repo` is required so Junior can bind the GraphQL operation to a repository
- * credential; GraphQL has no repo path to derive that from.
+ * `repo` is required so Junior can bind the GraphQL operation to a repository;
+ * GraphQL has no repo path to derive that from.
  */
 const inputSchema = z
   .object({

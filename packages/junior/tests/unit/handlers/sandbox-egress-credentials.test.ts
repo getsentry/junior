@@ -192,7 +192,7 @@ describe("sandboxEgressCredentialLease — credential error normalization", () =
     );
   });
 
-  it("reuses host-shared installation leases across contexts and scopes", async () => {
+  it("reuses installation leases across sandboxes", async () => {
     hasEgressCredentialHooks.mockReturnValue(true);
     issuePluginCredential.mockClear();
     const state = new Map<string, unknown>();

@@ -733,9 +733,8 @@ export async function executeCredentialedEgressRequest(input: {
 
   const fetchImpl = deps.fetch ?? fetch;
   const body = bodyForGrantSelection ?? (await requestBodyBytes(request));
-  // One remint retry for upstream 403 after credential injection. Intermittent
-  // provider denials (for example GitHub git receive-pack) should not fail the
-  // command before Junior replaces the cached lease and tries once more.
+  // Retry once on upstream 403 after credential injection. Replace the cached
+  // lease first so a single intermittent provider denial does not fail the hop.
   const maxAttempts = 2;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {

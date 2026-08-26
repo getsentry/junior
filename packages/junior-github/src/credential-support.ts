@@ -87,7 +87,7 @@ interface InstallationCredentialBaseOptions {
 type InstallationCredentialOptions = InstallationCredentialBaseOptions &
   (
     | {
-        // Optional downscope. Omit both for the full installation envelope.
+        // Omit both to use the full installed App permissions and repos.
         loadPermissions?: never;
         permissions?: GitHubAppPermissions;
         repositories?: string[];

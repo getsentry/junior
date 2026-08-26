@@ -17,11 +17,11 @@ import { getStateAdapter } from "@/chat/state/adapter";
 //
 // The sandbox gets a signed context token in its network policy URL; the proxy
 // verifies that token on every forwarded request. Credential leases are cached
-// on the host by provider grant (and actor only for user-owned grants) so the
-// same installation token can be reused across sandboxes until expiry. Auth-
-// required and permission-denied signals are written here so the sandbox
-// command runner can translate host egress failures into the same user-facing
-// auth flow as direct tool calls.
+// on the host by provider grant. Installation grants are shared across
+// sandboxes. Other grants stay bound to the actor. Auth-required and
+// permission-denied signals are written here so the sandbox command runner can
+// translate host egress failures into the same user-facing auth flow as direct
+// tool calls.
 
 export const SANDBOX_EGRESS_PROXY_PATH = "/api/internal/sandbox-egress";
 
@@ -45,10 +45,9 @@ export type {
 /**
  * Build the host lease cache key for one provider grant.
  *
- * Installation/bot grants are shared across sandboxes. User grants stay bound
- * to the actor so one human's OAuth token cannot be reused for another.
- * Sandbox egress id and context token id are not part of the key: those only
- * authorize the hop; they do not change which host credential to inject.
+ * Installation grants are shared across sandboxes. Other grants stay bound to
+ * the actor. Sandbox egress id and context token id authorize the hop only;
+ * they do not change which host credential to inject.
  */
 function leaseKey(
   provider: string,
@@ -56,10 +55,7 @@ function leaseKey(
   context: SandboxEgressCredentialContext,
 ): string {
   const actor = context.credentials.actor;
-  // Only installation/bot grants are host-shared. User and broker-default
-  // grants stay actor-bound so one human's token cannot serve another.
-  const isSharedInstallationGrant = grant.name.startsWith("installation-");
-  const actorKey = isSharedInstallationGrant
+  const actorKey = grant.name.startsWith("installation-")
     ? "shared"
     : "type" in actor
       ? `user:${actor.userId}`
@@ -213,11 +209,11 @@ export function parseSandboxEgressCredentialToken(
 }
 
 /**
- * Cache credential header transforms for one host-owned provider grant.
+ * Cache credential header transforms for one provider grant.
  *
- * TTL follows the provider lease expiry. Sandbox context expiry still bounds
+ * TTL follows the provider lease expiry. Sandbox context expiry still decides
  * whether a hop may use the cache; it does not shorten a shared installation
- * lease for every other sandbox.
+ * lease for other sandboxes.
  */
 export async function setSandboxEgressCredentialLease(
   context: SandboxEgressCredentialContext,
@@ -233,9 +229,7 @@ export async function setSandboxEgressCredentialLease(
   await state.set(leaseKey(lease.provider, lease.grant, context), lease, ttlMs);
 }
 
-/**
- * Load cached credential header transforms for the host-owned provider grant.
- */
+/** Load cached credential header transforms for one provider grant. */
 export async function getSandboxEgressCredentialLease(
   provider: string,
   grant: SandboxEgressCredentialLease["grant"],

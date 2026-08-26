@@ -138,7 +138,7 @@ githubPlugin({
 
 Installation-read token requests remain read-only by requesting read-capable configured permissions at `read` level and omitting GitHub permission fields that have no `read` value. Installation-write token requests intentionally omit the `permissions` field, so GitHub applies the complete permission envelope approved on the App installation. GitHub remains the source of truth for whether a permission name or level exists.
 
-GitHub App user-to-server tokens do not use OAuth scopes as their permission model. Their effective access is limited by the GitHub App's installed permissions, the app installation's repository access, and the requesting user's own GitHub access. Repository-scoped installation tokens instead use the App permission envelope and installation repository access without borrowing the requesting user's authority. GitHub returns an empty `scope` value for user-to-server tokens, so Junior cannot verify granted scopes from the token response.
+GitHub App user-to-server tokens do not use OAuth scopes as their permission model. Their effective access is limited by the GitHub App's installed permissions, the app installation's repository access, and the requesting user's own GitHub access. Installation tokens use the App permissions and installation repository access without borrowing the requesting user's authority. GitHub returns an empty `scope` value for user-to-server tokens, so Junior cannot verify granted scopes from the token response.
 
 If you pass `additionalUserScopes`, Junior includes those values in the authorization URL and records the requested scope string as a local reauthorization contract. This does not expand or prove GitHub API permissions. Configure provider-enforced access in the GitHub App settings; `appPermissions` only controls read-token downscoping:
 
@@ -157,7 +157,7 @@ Use `additionalUserScopes` only when a human-identity integration flow requires 
 - `user-read` and explicitly human `user-write` operations require the actor, or an explicitly delegated user subject, to authorize the GitHub App through the private OAuth flow. Junior-owned issue, pull request, review, inline review comment, and branch operations do not fall back to user OAuth.
 - Headless resource-event turns use the `resource-event` system actor and may receive the same installation grants. This lets Junior respond to subscribed pull request events by committing and pushing fixes without inheriting a subscriber's OAuth credential.
 - Git commits use Junior as author and committer. Resolvable human run actors are credited once with `Co-Authored-By` trailers.
-- Installation credential leases are cached on the host by grant name and reused across sandboxes until near expiry. User grants stay actor-scoped. Upstream 403 after injection clears the cached lease, remints once, and retries the hop once before recording permission denied.
+- Installation credential leases are cached on the host by grant name and reused across sandboxes until near expiry. User grants stay actor-scoped. Upstream 403 after injection clears the cached lease, issues a new token, and retries the hop once before recording permission denied.
 - Sandbox does not receive raw tokens via env; host applies Authorization header transforms for GitHub API and upload calls.
 
 ## 4) CLI usage

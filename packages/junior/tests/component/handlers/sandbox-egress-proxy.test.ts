@@ -674,7 +674,7 @@ describe("sandbox egress proxy composition", () => {
     });
   });
 
-  it("reuses host-cached credential leases across renewed credential contexts for the same actor", async () => {
+  it("reuses cached credential leases across renewed contexts for the same actor", async () => {
     setSandboxEgressUserActor();
     issueProviderCredentialLeaseMock
       .mockResolvedValueOnce({
@@ -727,7 +727,7 @@ describe("sandbox egress proxy composition", () => {
     expect(issueProviderCredentialLeaseMock).toHaveBeenCalledTimes(1);
   });
 
-  it("remints once on upstream 403 and recovers or records permission denied", async () => {
+  it("retries once on upstream 403 and recovers or records permission denied", async () => {
     setSandboxEgressUserActor();
     const lease = (token: string) => ({
       id: `lease-${token}`,
@@ -778,7 +778,7 @@ describe("sandbox egress proxy composition", () => {
     const body = await persistent.text();
     expect(body).toBe("Permission denied for this organization");
     expect(body).not.toContain("junior-auth-required");
-    // Second hop reuses the recovered lease, then remints once after 403.
+    // Second hop reuses the recovered lease, then retries once after 403.
     expect(issueProviderCredentialLeaseMock).toHaveBeenCalledTimes(3);
     expect(fetchMock).toHaveBeenCalledTimes(4);
     await expect(

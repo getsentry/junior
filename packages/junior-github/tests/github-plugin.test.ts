@@ -2231,7 +2231,7 @@ Conversation: \`local:test:old-conversation\`
     );
   });
 
-  it("issues full-installation write credentials without repository downscope", async () => {
+  it("issues installation-write credentials without repository filter", async () => {
     const privateKey = generateKeyPairSync("rsa", { modulusLength: 2048 })
       .privateKey.export({ type: "pkcs8", format: "pem" })
       .toString();
