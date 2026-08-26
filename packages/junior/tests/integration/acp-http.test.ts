@@ -217,6 +217,8 @@ describe("remote ACP HTTP", () => {
     const secondApp = await createApp({
       conversationWork: createIndependentConversationWork(harness),
     });
+    const expectedFirstPromptText =
+      "First\nACP prompt.\nResource link:\nName: client file\nURI: file:///client/workspace/file.ts\nTitle: Workspace file\nDescription: Relevant TypeScript source\nMIME type: text/typescript\nSize: 123 bytes";
     const fetch = appFetch(app, secondApp);
     const firstUpdates: acp.SessionUpdate[] = [];
     let resolveFirstSession!: (sessionId: string) => void;
@@ -258,6 +260,15 @@ describe("remote ACP HTTP", () => {
           prompt: [
             { type: "text", text: "First" },
             { type: "text", text: "ACP prompt." },
+            {
+              type: "resource_link",
+              name: "client file",
+              uri: "file:///client/workspace/file.ts",
+              title: "Workspace file",
+              description: "Relevant TypeScript source",
+              mimeType: "text/typescript",
+              size: 123,
+            },
           ],
         });
         return { result, sessionId: session.sessionId };
@@ -293,7 +304,7 @@ describe("remote ACP HTTP", () => {
       source: { platform: "web", visibility: "private" },
     });
     await expect(harness.historyTexts(sessionId)).resolves.toEqual([
-      "First\nACP prompt.",
+      expectedFirstPromptText,
       "First ACP reply.",
     ]);
 
@@ -367,7 +378,7 @@ describe("remote ACP HTTP", () => {
     });
     expect(harness.queue.hasQueuedMessages()).toBe(false);
     await expect(harness.historyTexts(sessionId)).resolves.toEqual([
-      "First\nACP prompt.",
+      expectedFirstPromptText,
       "First ACP reply.",
     ]);
 
@@ -407,7 +418,7 @@ describe("remote ACP HTTP", () => {
     expect(secondUpdates).toEqual([
       expect.objectContaining({
         sessionUpdate: "user_message_chunk",
-        content: { type: "text", text: "First\nACP prompt." },
+        content: { type: "text", text: expectedFirstPromptText },
       }),
       expect.objectContaining({
         sessionUpdate: "agent_message_chunk",
@@ -419,7 +430,7 @@ describe("remote ACP HTTP", () => {
       }),
     ]);
     await expect(harness.historyTexts(sessionId)).resolves.toEqual([
-      "First\nACP prompt.",
+      expectedFirstPromptText,
       "First ACP reply.",
       "Follow up.",
       "Second ACP reply.",
@@ -945,13 +956,6 @@ describe("remote ACP HTTP", () => {
         for (const prompt of [
           [
             {
-              type: "resource_link" as const,
-              name: "client file",
-              uri: "file:///client/workspace/file.ts",
-            },
-          ],
-          [
-            {
               type: "image" as const,
               data: "AA==",
               mimeType: "image/png",
@@ -982,9 +986,8 @@ describe("remote ACP HTTP", () => {
     });
 
     expect(errors.mcpError).toMatchObject({ code: -32602 });
-    expect(errors.promptErrors).toHaveLength(5);
+    expect(errors.promptErrors).toHaveLength(4);
     expect(errors.promptErrors).toEqual([
-      expect.objectContaining({ code: -32602 }),
       expect.objectContaining({ code: -32602 }),
       expect.objectContaining({ code: -32602 }),
       expect.objectContaining({ code: -32602 }),

@@ -104,16 +104,36 @@ function rejectUnsupportedMcpServers(mcpServers: readonly unknown[]): void {
   }
 }
 
-/** Convert supported ACP text blocks to one bounded API Turn message. */
+function resourceLinkText(
+  block: Extract<PromptParams["prompt"][number], { type: "resource_link" }>,
+): string {
+  return [
+    "Resource link:",
+    `Name: ${block.name}`,
+    `URI: ${block.uri}`,
+    ...(block.title ? [`Title: ${block.title}`] : []),
+    ...(block.description ? [`Description: ${block.description}`] : []),
+    ...(block.mimeType ? [`MIME type: ${block.mimeType}`] : []),
+    ...(block.size !== undefined && block.size !== null
+      ? [`Size: ${block.size} bytes`]
+      : []),
+  ].join("\n");
+}
+
+/** Convert supported ACP content blocks to one bounded API Turn message. */
 function promptText(prompt: PromptParams["prompt"]): string {
   if (prompt.length === 0) {
     throw acp.RequestError.invalidParams(
       { field: "prompt" },
-      "Junior accepts one or more text blocks only",
+      "Junior accepts one or more text or resource link blocks",
     );
   }
   const blocks: string[] = [];
   for (const block of prompt) {
+    if (block.type === "resource_link") {
+      blocks.push(resourceLinkText(block));
+      continue;
+    }
     if (!block.text.trim()) {
       throw acp.RequestError.invalidParams(
         { field: "prompt" },
