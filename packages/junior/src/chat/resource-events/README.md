@@ -34,15 +34,12 @@ conversation.
   current conversation. Concrete identifiers still come from plugin tool
   results rather than catalog enumeration.
 - A temporary watch stores the current conversation id and a workspace team id
-  for match indexes. It does not store destination or rewrite the conversation
-  id.
-- Delivery uses the conversation's bound destination and session (including
-  parent lineage). That binding decides the provider surface for the whole
-  conversation, so a watch wakes the same agent and tools as any other turn.
-  Slack-bound conversations publish into the bound thread. Other destinations
-  only wake the conversation mailbox.
-- Ingestion cancels watches that have no bound destination instead of failing
-  the whole webhook batch.
+  for match indexes. It does not store destination, provider, or rewrite the
+  conversation id.
+- Ingestion only wakes that conversation mailbox with plain system input.
+  Destination and provider stay on the conversation binding. The worker for the
+  bound surface applies them when the turn runs, so the same agent and tools
+  stay active for the whole conversation.
 - Core validates namespace, resource type, and event ownership again before
   storing a subscription.
 - Normalized events contain a stable namespace and identifier plus a short safe
@@ -51,8 +48,8 @@ conversation.
   up again. Keep `data` small. Leave deep investigation for tools.
 - Ingestion appends a system-authored conversation message and sends a normal
   task-execution wake-up. Resource-event identity constants and detection live
-  in `actor.ts` (`RESOURCE_EVENT_SYSTEM_ACTOR`, synthetic Slack author id, and
-  message markers). Live and resume paths both execute as that system actor.
+  in `actor.ts` (`RESOURCE_EVENT_SYSTEM_ACTOR`, synthetic author id, and message
+  markers). Live and resume paths both execute as that system actor.
 - Notification text stays short and uses plain language: what the update is
   about, the instructions for this update, a verified summary and details, and
   external text. When the agent replies, it should summarize what it was acting

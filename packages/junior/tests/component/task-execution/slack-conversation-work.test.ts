@@ -378,18 +378,16 @@ describe("Slack conversation work execution", () => {
 
     await appendInboundMessage({
       message: createSlackResourceEventInboundMessage({
+        conversationId: CONVERSATION_ID,
+        destination: SLACK_DESTINATION,
         threadTs: "1712345.0001",
+        occurredAtMs: 1_700_000_000_000,
         event: {
           eventKey: "check-suite-1",
           eventType: "pull_request.checks.failed",
-          occurredAtMs: 1_700_000_000_000,
           namespace: "github",
           identifier: "getsentry/junior#691",
-        },
-        subscription: {
-          conversationId: CONVERSATION_ID,
-          destination: SLACK_DESTINATION,
-          id: "resub_1",
+          subscriptionId: "resub_1",
         },
         text: "[event notification]\n\nA subscribed resource changed.",
       }),
@@ -1006,18 +1004,16 @@ describe("Slack conversation work execution", () => {
         await hooks.ack?.();
         await appendInboundMessage({
           message: createSlackResourceEventInboundMessage({
-        threadTs: "1712345.0001",
+            conversationId: CONVERSATION_ID,
+            destination: SLACK_DESTINATION,
+            threadTs: "1712345.0001",
+            occurredAtMs: 2_000,
             event: {
               eventKey: "check-suite-1",
               eventType: "check_suite.completed",
-              occurredAtMs: 2_000,
               namespace: "github",
               identifier: "getsentry/junior#1010",
-            },
-            subscription: {
-              conversationId: CONVERSATION_ID,
-              destination: SLACK_DESTINATION,
-              id: "sub-1",
+              subscriptionId: "sub-1",
             },
             text: "CI failed.",
           }),

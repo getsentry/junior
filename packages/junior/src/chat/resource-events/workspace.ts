@@ -10,8 +10,8 @@ export function canRouteResourceEvents(): boolean {
 /**
  * Workspace team id used only to scope resource-event match indexes.
  *
- * Today this comes from the Slack destination. Delivery still resolves the
- * conversation destination separately.
+ * This is not delivery routing. Watches store the id for match fanout; the
+ * conversation binding still owns destination and provider for turns.
  */
 export function resourceEventIndexTeamId(
   destination: Destination,

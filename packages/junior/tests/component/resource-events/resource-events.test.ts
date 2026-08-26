@@ -144,14 +144,11 @@ describe("resource event delivery", () => {
     expect(notificationText).toContain("- test");
     expect(work?.messages[0]).toMatchObject({
       source: "resource_event",
+      publishExternally: false,
       input: {
         text: expect.stringContaining("CI failed on workflow test."),
         metadata: {
           kind: "resource_event",
-          installation: {
-            teamId: "T123",
-          },
-          route: "subscribed",
           resourceEvent: {
             eventType: "pull_request.checks.failed",
             namespace: "github",
@@ -161,6 +158,8 @@ describe("resource event delivery", () => {
         },
       },
     });
+    expect(work?.messages[0]?.input.metadata).not.toHaveProperty("platform");
+    expect(work?.messages[0]?.destination).toBeUndefined();
   });
 
   it("matches subscriptions only within the event's Slack workspace", async () => {
@@ -834,15 +833,15 @@ describe("resource event delivery", () => {
     ]);
   });
 
-  it("cancels watches that have no deliverable conversation route", async () => {
+  it("enqueues watches for every matching conversation without destination checks", async () => {
     const queue = createConversationWorkQueueTestAdapter();
-    const bad = await createResourceEventSubscription(
+    const opaque = await createResourceEventSubscription(
       {
         conversationId: "agent:deadbeefcafebabe",
         teamId: SLACK_DESTINATION.teamId,
         events: ["pull_request.checks.failed"],
         expiresAtMs: 2_000_000,
-        intent: "Watch without a routable conversation.",
+        intent: "Watch from an opaque conversation id.",
         label: "GitHub PR getsentry/junior#691",
         namespace: "github",
         identifier: "getsentry/junior#691",
@@ -857,7 +856,7 @@ describe("resource event delivery", () => {
     await expect(
       ingestResourceEvent(
         {
-          eventKey: "delivery-undeliverable:check-suite-1",
+          eventKey: "delivery-opaque:check-suite-1",
           eventType: "pull_request.checks.failed",
           occurredAtMs: 1_500,
           namespace: "github",
@@ -870,17 +869,22 @@ describe("resource event delivery", () => {
           teamId: SLACK_DESTINATION.teamId,
         },
       ),
-    ).resolves.toEqual({ enqueued: 1 });
+    ).resolves.toEqual({ enqueued: 2 });
 
-    expect(queue.sentRecords()).toEqual([
-      expect.objectContaining({ conversationId: CONVERSATION_ID }),
-    ]);
+    expect(queue.sentRecords()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ conversationId: CONVERSATION_ID }),
+        expect.objectContaining({ conversationId: "agent:deadbeefcafebabe" }),
+      ]),
+    );
     await expect(
       listResourceEventSubscriptions({
         conversationId: "agent:deadbeefcafebabe",
         nowMs: 1_600,
       }),
-    ).resolves.toEqual([]);
+    ).resolves.toEqual([
+      expect.objectContaining({ id: opaque.id, status: "active" }),
+    ]);
     await expect(
       listResourceEventSubscriptions({
         conversationId: CONVERSATION_ID,
@@ -889,7 +893,6 @@ describe("resource event delivery", () => {
     ).resolves.toEqual([
       expect.objectContaining({ id: good.id, status: "active" }),
     ]);
-    expect(bad.id).not.toEqual(good.id);
   });
 
   it("does not enqueue expired subscriptions", async () => {
