@@ -20,7 +20,7 @@ import {
 import { canRouteResourceEvents } from "@/chat/resource-events/workspace";
 import {
   RESOURCE_SUBSCRIPTION_DEFAULT_TTL_MS,
-  resolveResourceWatchThread,
+  canHoldResourceEventSubscription,
 } from "@/chat/resource-events/tool-support";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
@@ -373,18 +373,16 @@ export function createWorkspaceTools(
           workspaceId: workspace.id,
           workspaceName: workspace.name,
         });
-        const thread =
-          canRouteResourceEvents()
-            ? resolveResourceWatchThread({
-                conversationId: context.conversationId,
-                destination: context.destination,
-                source: context.source,
-              })
+        const conversationId =
+          canRouteResourceEvents() &&
+          canHoldResourceEventSubscription(context.conversationId) &&
+          context.destination.platform === "slack"
+            ? context.conversationId.trim()
             : undefined;
-        const subscription = thread
+        const subscription = conversationId
           ? await createResourceEventSubscription({
-              conversationId: thread.conversationId,
-              destination: thread.destination,
+              conversationId,
+              destination: context.destination,
               events: [
                 WORKSPACE_SNAPSHOT_READY_EVENT,
                 WORKSPACE_SNAPSHOT_FAILED_EVENT,
@@ -425,9 +423,9 @@ export function createWorkspaceTools(
             status: "ready" as const,
           };
         } finally {
-          if (!keepWatch && subscription && thread) {
+          if (!keepWatch && subscription && conversationId) {
             await stopWorkspaceSnapshotWatch({
-              conversationId: thread.conversationId,
+              conversationId,
               subscriptionId: subscription.id,
             });
           }

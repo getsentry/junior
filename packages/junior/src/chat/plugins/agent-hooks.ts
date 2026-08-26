@@ -41,8 +41,7 @@ import { getDashboardConversationLink } from "@/chat/slack/dashboard-link";
 import { createResourceEventSubscription } from "@/chat/resource-events/store";
 import {
   RESOURCE_SUBSCRIPTION_DEFAULT_TTL_MS,
-  requireResourceWatchThread,
-  resolveResourceWatchThread,
+  canHoldResourceEventSubscription,
 } from "@/chat/resource-events/tool-support";
 import { getSlackToolContext } from "@/chat/slack/tool-support/context";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
@@ -640,19 +639,19 @@ export function getPluginTools(
     const canSubscribe =
       Boolean(plugin.resourceEvents) &&
       plugin.resourceEvents?.isEnabled?.() !== false &&
-      Boolean(
-        resolveResourceWatchThread({
-          conversationId: context.conversationId,
-          destination: context.destination,
-          source: context.source,
-        }),
-      );
+      canHoldResourceEventSubscription(context.conversationId) &&
+      context.destination.platform === "slack";
     const resourceEvents: ToolRegistrationHookContext["resourceEvents"] = {
       canSubscribe,
       async subscribe(input) {
         if (!canSubscribe) {
           throw new Error(
             "Resource subscriptions are not available in this conversation.",
+          );
+        }
+        if (context.destination.platform !== "slack") {
+          throw new Error(
+            "Resource subscriptions require a Slack destination for this conversation.",
           );
         }
         const registration = plugin.resourceEvents;
@@ -671,14 +670,9 @@ export function getPluginTools(
             "Resource subscription contains an event or resource that the plugin does not support.",
           );
         }
-        const thread = requireResourceWatchThread({
+        const subscription = await createResourceEventSubscription({
           conversationId: context.conversationId,
           destination: context.destination,
-          source: context.source,
-        });
-        const subscription = await createResourceEventSubscription({
-          conversationId: thread.conversationId,
-          destination: thread.destination,
           events: input.events,
           expiresAtMs: Date.now() + RESOURCE_SUBSCRIPTION_DEFAULT_TTL_MS,
           intent: input.intent,

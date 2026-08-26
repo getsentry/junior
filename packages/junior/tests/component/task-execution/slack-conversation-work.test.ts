@@ -378,6 +378,7 @@ describe("Slack conversation work execution", () => {
 
     await appendInboundMessage({
       message: createSlackResourceEventInboundMessage({
+        threadTs: "1712345.0001",
         event: {
           eventKey: "check-suite-1",
           eventType: "pull_request.checks.failed",
@@ -1005,6 +1006,7 @@ describe("Slack conversation work execution", () => {
         await hooks.ack?.();
         await appendInboundMessage({
           message: createSlackResourceEventInboundMessage({
+        threadTs: "1712345.0001",
             event: {
               eventKey: "check-suite-1",
               eventType: "check_suite.completed",

@@ -842,7 +842,7 @@ describe("resource event delivery", () => {
     ]);
   });
 
-  it("cancels undeliverable non-Slack watches instead of failing delivery", async () => {
+  it("cancels watches that cannot resolve a Slack destination route", async () => {
     const queue = createConversationWorkQueueTestAdapter();
     const bad = await createResourceEventSubscription(
       {
@@ -850,7 +850,7 @@ describe("resource event delivery", () => {
         destination: SLACK_DESTINATION,
         events: ["pull_request.checks.failed"],
         expiresAtMs: 2_000_000,
-        intent: "Legacy undeliverable watch.",
+        intent: "Watch without a routable conversation.",
         label: "GitHub PR getsentry/junior#691",
         namespace: "github",
         identifier: "getsentry/junior#691",

@@ -33,18 +33,15 @@ conversation.
   `watchResourceEvents` creates a temporary resource subscription for the
   current Slack thread. Concrete identifiers still come from plugin tool
   results rather than catalog enumeration.
-- Temporary watches bind to the Slack thread mailbox
-  (`slack:{channelId}:{threadTs}`). Destination comes from the Slack execution
-  destination (the conversation root's destination on child turns), not from
-  parsing the turn's opaque conversation id. Create/list/stop and plugin
-  `resourceEvents.subscribe()` resolve the thread from the live Slack source
-  `threadTs` or an existing Slack-thread conversation id so agent-invocation
-  and similar children still attach watches to the parent thread.
-- Create rejects turns that cannot resolve that thread binding. Ingestion
-  cancels legacy undeliverable watches instead of throwing into webhook fanout.
-  Delivery uses destination for the channel and the bound thread id for
-  `threadTs`; it does not treat "conversation id must already be slack-shaped
-  on the creating turn" as the product rule.
+- A temporary watch stores the current conversation id as an opaque mailbox
+  key. It does not rewrite that id into a Slack thread id.
+- Destination is the conversation's Slack route (usually the execution
+  destination, falling back to the root conversation destination). Delivery
+  resolves the Slack channel and thread timestamp from that route, then wakes
+  the watched conversation mailbox.
+- Create requires a conversation id and a Slack destination. Ingestion cancels
+  watches that cannot resolve a Slack route instead of failing the whole
+  webhook batch.
 - Core validates namespace, resource type, and event ownership again before
   storing a subscription.
 - Normalized events contain a stable namespace and identifier plus a short safe

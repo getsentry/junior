@@ -137,7 +137,7 @@ describe("resource event tools", () => {
     );
   });
 
-  it("binds watches to the Slack source thread from agent child turns", async () => {
+  it("stores the current conversation id for agent child turns", async () => {
     const tool = createResourceEventTools(
       {
         ...context,
@@ -160,40 +160,10 @@ describe("resource event tools", () => {
 
     expect(createSubscription).toHaveBeenCalledWith(
       expect.objectContaining({
-        conversationId: "slack:C123:1712345.0001",
+        conversationId: "agent:deadbeefcafebabe",
         destination: context.destination,
       }),
     );
-  });
-
-  it("rejects watches when no Slack thread can be resolved", async () => {
-    const tool = createResourceEventTools(
-      {
-        ...context,
-        conversationId: "agent-dispatch:abc123",
-        source: createSlackSource({
-          teamId: "T123",
-          channelId: "C123",
-          visibility: "public",
-        }),
-      },
-      GITHUB_EVENTS,
-    ).watchResourceEvents!;
-
-    await expect(
-      tool.execute!(
-        {
-          identifier: "getsentry/junior#1",
-          namespace: "github",
-          resourceType: "pull_request",
-          label: "GitHub PR #1",
-          events: ["pull_request.checks.failed"],
-          intent: "Report failed checks.",
-        },
-        {},
-      ),
-    ).rejects.toThrow("Resource watches require a Slack thread");
-    expect(createSubscription).not.toHaveBeenCalled();
   });
 
   it("keeps inspection and stopping in the resource-watch catalog", () => {

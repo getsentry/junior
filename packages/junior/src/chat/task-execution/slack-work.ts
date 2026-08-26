@@ -446,6 +446,7 @@ interface SlackResourceEventInboundInput {
     identifier: string;
   };
   subscription: {
+    /** Opaque conversation mailbox that owns the watch. */
     conversationId: string;
     destination: {
       channelId: string;
@@ -454,6 +455,8 @@ interface SlackResourceEventInboundInput {
     };
     id: string;
   };
+  /** Slack thread timestamp used only for external Slack routing metadata. */
+  threadTs: string;
   text: string;
 }
 
@@ -481,15 +484,6 @@ function requireSlackAuthorId(message: Message): string {
   return authorId;
 }
 
-function parseSlackConversationId(
-  conversationId: string,
-): { channelId: string; threadTs: string } | undefined {
-  const parts = conversationId.split(":");
-  if (parts.length !== 3 || parts[0] !== "slack" || !parts[1] || !parts[2]) {
-    return undefined;
-  }
-  return { channelId: parts[1], threadTs: parts[2] };
-}
 
 function slackSerializedThread(input: {
   channelId: string;
@@ -551,13 +545,12 @@ function slackSerializedResourceEventMessage(input: {
 export function createSlackResourceEventInboundMessage(
   input: SlackResourceEventInboundInput,
 ): InboundMessage {
-  // Destination owns the Slack channel. The subscription conversation id must
-  // be the thread mailbox (`slack:{channel}:{threadTs}`) that matches it.
+  // Destination + threadTs own Slack routing. conversationId is the mailbox only.
   const destination = input.subscription.destination;
-  const slack = parseSlackConversationId(input.subscription.conversationId);
-  if (!slack || slack.channelId !== destination.channelId) {
+  const threadTs = input.threadTs.trim();
+  if (!threadTs) {
     throw new Error(
-      "Resource event subscription is not bound to a Slack thread for its destination",
+      "Resource event delivery requires a Slack thread timestamp on the destination route",
     );
   }
   const messageId = `resource-event-${input.subscription.id}-${input.event.eventKey}`;
@@ -567,13 +560,13 @@ export function createSlackResourceEventInboundMessage(
     eventType: input.event.eventType,
     id: messageId,
     text: input.text,
-    threadTs: slack.threadTs,
+    threadTs,
     timestampIso,
   });
   const thread = slackSerializedThread({
     channelId: destination.channelId,
     message,
-    threadTs: slack.threadTs,
+    threadTs,
   });
   return {
     conversationId: input.subscription.conversationId,

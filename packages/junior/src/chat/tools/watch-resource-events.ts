@@ -14,7 +14,7 @@ import {
   RESOURCE_SUBSCRIPTION_DEFAULT_TTL_MS,
   RESOURCE_SUBSCRIPTION_MAX_TTL_MS,
   STOP_WATCHING_TOOL_NAME,
-  requireResourceWatchThread,
+  canHoldResourceEventSubscription,
 } from "@/chat/resource-events/tool-support";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
@@ -166,15 +166,20 @@ export function createWatchResourceEventsTool(
         namespace: input.namespace,
         resourceType: input.resourceType,
       });
+      if (!canHoldResourceEventSubscription(context.conversationId)) {
+        throw new ToolInputError(
+          "Resource watches require an active conversation.",
+        );
+      }
+      if (context.destination.platform !== "slack") {
+        throw new ToolInputError(
+          "Resource watches require a Slack destination for this conversation.",
+        );
+      }
       const nowMs = Date.now();
-      const thread = requireResourceWatchThread({
+      const subscription = await createResourceEventSubscription({
         conversationId: context.conversationId,
         destination: context.destination,
-        source: context.source,
-      });
-      const subscription = await createResourceEventSubscription({
-        conversationId: thread.conversationId,
-        destination: thread.destination,
         events,
         expiresAtMs: nowMs + ttlMs(input),
         intent,
