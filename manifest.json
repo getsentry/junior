@@ -1,0 +1,46 @@
+{
+  "commitSha": "5b785e24e320941c25ab0fdbb192af91a2b5a4c7",
+  "mode": "path",
+  "reasons": [
+    "packages/junior-dashboard/src/client/conversations/conversationOutbox.ts",
+    "packages/junior-dashboard/src/client/pages/memory/memoryRecord.ts",
+    "packages/junior-dashboard/src/client/types.ts",
+    "packages/junior-dashboard/src/mock-reporting/fixtures.ts",
+    "packages/junior-dashboard/tests/conversation-outbox.test.ts",
+    "packages/junior-dashboard/tests/pending-mailbox-stack.test.tsx",
+    "packages/junior-dashboard/tests/pending-mailbox-transcript.test.ts"
+  ],
+  "scenarioIds": [
+    "gallery-index",
+    "conversations",
+    "conversation-detail",
+    "conversation-detail-focused"
+  ],
+  "shots": [
+    {
+      "file": "gallery-index__desktop.png",
+      "label": "Component gallery index · desktop"
+    },
+    {
+      "file": "conversations__desktop.png",
+      "label": "Conversations · desktop"
+    },
+    {
+      "file": "conversations__mobile.png",
+      "label": "Conversations · mobile"
+    },
+    {
+      "file": "conversation-detail__desktop.png",
+      "label": "Conversation detail · desktop"
+    },
+    {
+      "file": "conversation-detail__mobile.png",
+      "label": "Conversation detail · mobile"
+    },
+    {
+      "file": "conversation-detail-focused__mobile.png",
+      "label": "Conversation detail · focused composer · mobile"
+    }
+  ],
+  "skipped": false
+}
