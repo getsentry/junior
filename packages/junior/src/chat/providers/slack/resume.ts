@@ -36,11 +36,10 @@ import {
   requireTurnFailureEventId,
 } from "@/chat/services/turn-failure-response";
 import {
-  ConversationTurnLifecycleService,
+  getTurnLifecycle,
   type ConversationTurnLifecycle,
 } from "@/chat/conversations/turn-lifecycle";
 import type { ConversationTurnFailureCode } from "@/chat/conversations/history";
-import { getConversationEventStore } from "@/chat/db";
 import {
   recordTurnSummary,
   saveTurnCheckpoint,
@@ -457,9 +456,7 @@ async function resumeSlackTurnInContext(
   let assistantMessageDelivered = false;
   let shouldScheduleCompletedPluginTasks = false;
   let postDeliveryCommitError: unknown;
-  const turnLifecycle = new ConversationTurnLifecycleService(
-    getConversationEventStore(),
-  );
+  const turnLifecycle = getTurnLifecycle();
   let failureCode: ConversationTurnFailureCode = "agent_run_failed";
   let runArgs = args;
   try {
