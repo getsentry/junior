@@ -1,4 +1,39 @@
 # Changelog
+## 0.185.0
+
+### New Features ✨
+
+- (chat) Show specific turn failure reasons in the transcript by @sentry-junior in [#1697](https://github.com/getsentry/junior/pull/1697)
+- (code) Move code stats onto Code and person profiles by @sentry-junior in [#1690](https://github.com/getsentry/junior/pull/1690)
+
+### Bug Fixes 🐛
+
+#### Chat
+
+- Allow PR watch hints on web continues by @sentry-junior in [#1692](https://github.com/getsentry/junior/pull/1692)
+- Commit web replies before the visible message by @sentry-junior in [#1693](https://github.com/getsentry/junior/pull/1693)
+
+#### Other
+
+- (acp) Accept resource links in prompts by @gricha in [#1691](https://github.com/getsentry/junior/pull/1691)
+- (dashboard) Keep memories and tasks chrome stable while loading by @sentry-junior in [#1687](https://github.com/getsentry/junior/pull/1687)
+- (provider) Keep bounded provider error summaries in telemetry by @sentry-junior in [#1699](https://github.com/getsentry/junior/pull/1699)
+
+### Internal Changes 🔧
+
+#### Slack
+
+- Remove reply executor services by @dcramer in [#1698](https://github.com/getsentry/junior/pull/1698)
+- Use native Turn execution by @dcramer in [#1696](https://github.com/getsentry/junior/pull/1696)
+- Move resume into the Slack provider by @dcramer in [#1695](https://github.com/getsentry/junior/pull/1695)
+- Run Turns through the core runtime by @dcramer in [#1689](https://github.com/getsentry/junior/pull/1689)
+
+#### Other
+
+- (chat) Use native Turn execution for Conversation API by @dcramer in [#1682](https://github.com/getsentry/junior/pull/1682)
+- (egress) Simplify host installation credential cache by @sentry-junior in [#1700](https://github.com/getsentry/junior/pull/1700)
+- (warden) Disable code-review skill on PRs by @sentry-junior in [#1688](https://github.com/getsentry/junior/pull/1688)
+
 ## 0.184.0
 
 ### Breaking Changes 🛠
