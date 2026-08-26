@@ -400,6 +400,14 @@ const conversationReportAssistantMessageEventDataSchema = z
   })
   .strict();
 
+/** Stable failure codes exposed on failed turn lifecycle report events. */
+export const conversationTurnFailureCodeSchema = z.enum([
+  "agent_run_failed",
+  "delivery_failed",
+  "model_execution_failed",
+  "persistence_failed",
+]);
+
 const conversationReportTurnLifecycleEventDataSchema = z.discriminatedUnion(
   "state",
   [
@@ -423,13 +431,7 @@ const conversationReportTurnLifecycleEventDataSchema = z.discriminatedUnion(
         type: z.literal("turn_lifecycle"),
         turnId: z.string().min(1),
         state: z.literal("failed"),
-        // Stable privacy-safe failure codes from conversation history.
-        failureCode: z.enum([
-          "agent_run_failed",
-          "delivery_failed",
-          "model_execution_failed",
-          "persistence_failed",
-        ]),
+        failureCode: conversationTurnFailureCodeSchema,
       })
       .strict(),
   ],
@@ -796,6 +798,9 @@ export const conversationStatsReportSchema = z
 
 export type ConversationReportStatus = z.infer<
   typeof conversationReportStatusSchema
+>;
+export type ConversationTurnFailureCode = z.infer<
+  typeof conversationTurnFailureCodeSchema
 >;
 export type ConversationSurface = z.infer<typeof conversationSurfaceSchema>;
 export type ConversationCost = z.infer<typeof conversationCostSchema>;

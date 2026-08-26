@@ -311,9 +311,7 @@ describe("dashboard canonical-event Markdown export", () => {
     );
 
     expect(markdown).toContain("### Message delivery failed");
-    expect(markdown).toContain(
-      "Junior could not deliver this message to its destination.",
-    );
+    expect(markdown).toContain("Junior could not deliver this message.");
     expect(markdown).not.toContain("turn-1");
     expect(markdown).not.toContain("Model execution failed");
     expect(markdown).not.toContain("Agent run failed");

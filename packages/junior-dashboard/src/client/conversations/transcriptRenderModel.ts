@@ -1,3 +1,5 @@
+import type { ConversationTurnFailureCode } from "@sentry/junior/api/schema";
+
 import type {
   TranscriptViewAttachmentsDeliveredPart,
   TranscriptViewContextEventPart,
@@ -12,11 +14,7 @@ import type {
 export type RenderedFailureEntry = {
   key: string;
   kind: "failure";
-  failureCode:
-    | "agent_run_failed"
-    | "delivery_failed"
-    | "model_execution_failed"
-    | "persistence_failed";
+  failureCode: ConversationTurnFailureCode;
   timestamp?: number;
 };
 

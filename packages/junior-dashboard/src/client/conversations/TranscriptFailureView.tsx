@@ -1,15 +1,15 @@
 import { CircleAlert } from "lucide-react";
+import type { ConversationTurnFailureCode } from "@sentry/junior/api/schema";
 
 import { formatMessageTimestamp } from "../format";
 import {
-  type TranscriptFailureCode,
   transcriptFailureDescription,
   transcriptFailureTitle,
 } from "./transcriptFailure";
 
 /** Render a terminal transcript failure as a distinct alert surface. */
 export function TranscriptFailureView(props: {
-  failureCode: TranscriptFailureCode;
+  failureCode: ConversationTurnFailureCode;
   timestamp?: number;
 }) {
   const timestamp = formatMessageTimestamp(props.timestamp);

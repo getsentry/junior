@@ -8,6 +8,7 @@ import type {
   ActorIdentity,
   ConversationStatsReport,
   ConversationSummaryReport,
+  ConversationTurnFailureCode,
 } from "@sentry/junior/api/schema";
 import type { ConversationDetailReport } from "@sentry/junior/api/schema";
 import type { ConversationEventPresentation } from "@sentry/junior-plugin-api";
@@ -128,12 +129,7 @@ export type TranscriptViewMessage = {
     reasoningLevel: string;
     source: "configured" | "inherited" | "router";
   };
-  /** Stable privacy-safe failure code for a terminal failed turn. */
-  failureCode?:
-    | "agent_run_failed"
-    | "delivery_failed"
-    | "model_execution_failed"
-    | "persistence_failed";
+  failureCode?: ConversationTurnFailureCode;
   parts: TranscriptViewPart[];
   role: "assistant" | "system" | "tool" | "user";
   source?: "slack" | "web";

@@ -1,46 +1,43 @@
+import type { ConversationTurnFailureCode } from "@sentry/junior/api/schema";
+
 import { getDashboardAgentName } from "../agentName";
 
-/** Stable privacy-safe failure codes shown in the conversation transcript. */
-export type TranscriptFailureCode =
-  | "agent_run_failed"
-  | "delivery_failed"
-  | "model_execution_failed"
-  | "persistence_failed";
-
-/** Human title for one terminal transcript failure. */
-export function transcriptFailureTitle(failureCode: TranscriptFailureCode): string {
+/** Title for one failed turn in the transcript. */
+export function transcriptFailureTitle(
+  failureCode: ConversationTurnFailureCode,
+): string {
   switch (failureCode) {
     case "delivery_failed":
       return "Message delivery failed";
     case "model_execution_failed":
       return "Model execution failed";
     case "persistence_failed":
-      return "Persistence failed";
+      return "Save failed";
     case "agent_run_failed":
       return "Agent run failed";
   }
 }
 
-/** Human description for one terminal transcript failure. */
+/** Short description for one failed turn in the transcript. */
 export function transcriptFailureDescription(
-  failureCode: TranscriptFailureCode,
+  failureCode: ConversationTurnFailureCode,
 ): string {
   const agentName = getDashboardAgentName();
   switch (failureCode) {
     case "delivery_failed":
-      return `${agentName} could not deliver this message to its destination.`;
+      return `${agentName} could not deliver this message.`;
     case "model_execution_failed":
-      return `The model response ended before ${agentName} could complete this turn.`;
+      return `The model stopped before ${agentName} finished this turn.`;
     case "persistence_failed":
-      return `${agentName} could not persist the result of this turn.`;
+      return `${agentName} could not save the result of this turn.`;
     case "agent_run_failed":
-      return `${agentName} hit an internal error while running this turn.`;
+      return `${agentName} hit an internal error during this turn.`;
   }
 }
 
-/** Searchable plain text for one terminal transcript failure. */
+/** Search text for one failed turn in the transcript. */
 export function transcriptFailureSearchText(
-  failureCode: TranscriptFailureCode,
+  failureCode: ConversationTurnFailureCode,
 ): string {
   return [
     transcriptFailureTitle(failureCode),

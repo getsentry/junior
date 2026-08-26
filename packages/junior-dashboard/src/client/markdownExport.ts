@@ -19,6 +19,7 @@ import {
   transcriptFailureDescription,
   transcriptFailureTitle,
 } from "./conversations/transcriptFailure";
+import type { ConversationTurnFailureCode } from "@sentry/junior/api/schema";
 import type {
   Conversation,
   ConversationTranscript,
@@ -216,11 +217,7 @@ function appendReasoning(
 function appendFailure(
   lines: string[],
   conversationTranscript: ConversationTranscript,
-  failureCode:
-    | "agent_run_failed"
-    | "delivery_failed"
-    | "model_execution_failed"
-    | "persistence_failed",
+  failureCode: ConversationTurnFailureCode,
   timestamp: number | undefined,
 ): void {
   lines.push("", `### ${transcriptFailureTitle(failureCode)}`);

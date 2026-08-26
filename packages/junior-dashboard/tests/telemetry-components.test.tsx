@@ -815,9 +815,7 @@ describe("dashboard canonical-event components", () => {
       ]),
     );
     expect(html).toContain("Message delivery failed");
-    expect(html).toContain(
-      "Junior could not deliver this message to its destination.",
-    );
+    expect(html).toContain("Junior could not deliver this message.");
     expect(html).not.toContain("Model execution failed");
     expect(html).not.toContain("Agent run failed");
   });
