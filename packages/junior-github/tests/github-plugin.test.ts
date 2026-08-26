@@ -1164,7 +1164,7 @@ Conversation: \`local:test:old-conversation\`
         { toolCallId: "call-completed-storage-fails" },
       ),
     ).rejects.toThrow(
-      "GitHub issue was created, but Junior could not persist the completed issue state.",
+      "GitHub issue was created, but the runtime could not persist the completed issue state.",
     );
     await expect(
       tool?.execute?.(

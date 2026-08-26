@@ -30,7 +30,7 @@ const inputSchema = z
       .string()
       .optional()
       .describe(
-        "Replacement pull request body. Junior appends requester attribution and the conversation footer.",
+        "Replacement pull request body. The runtime appends requester attribution and the conversation footer.",
       ),
     base: z
       .string()
@@ -108,7 +108,7 @@ function githubApiErrorMessage(payload: unknown): string {
   return "GitHub request failed";
 }
 
-/** Update mutable PR metadata while preserving Junior-owned body attribution. */
+/** Update mutable PR metadata while preserving runtime-owned body attribution. */
 export function createGitHubUpdatePullRequestTool(ctx: {
   actor?: Actor;
   conversationId?: string;

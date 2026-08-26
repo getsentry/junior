@@ -30,7 +30,7 @@ const inputSchema = z
       .string()
       .optional()
       .describe(
-        "Replacement issue body. Junior appends requester attribution and the conversation footer.",
+        "Replacement issue body. The runtime appends requester attribution and the conversation footer.",
       ),
     state: z
       .enum(["open", "closed"])
@@ -95,7 +95,7 @@ function githubApiErrorMessage(payload: unknown): string {
   return "GitHub request failed";
 }
 
-/** Update mutable issue metadata while preserving Junior-owned body attribution. */
+/** Update mutable issue metadata while preserving runtime-owned body attribution. */
 export function createGitHubUpdateIssueTool(ctx: {
   actor?: Actor;
   conversationId?: string;

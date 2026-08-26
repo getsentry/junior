@@ -105,7 +105,7 @@ describe("resolvePullRequestReviewThread", () => {
     ).rejects.toMatchObject({
       name: "PluginToolInputError",
       message:
-        "Junior can only resolve review threads on pull requests it authored.",
+        "This bot can only resolve review threads on pull requests it authored.",
     });
     expect(fetch).toHaveBeenCalledTimes(1);
   });
