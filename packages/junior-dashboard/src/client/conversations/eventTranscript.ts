@@ -415,6 +415,9 @@ export function transcriptMessagesFromEvents(
       messages.push({
         role: data.failureCode === "delivery_failed" ? "system" : "assistant",
         failureCode: data.failureCode,
+        ...(data.failureReason
+          ? { failureReason: data.failureReason }
+          : undefined),
         parts: [],
         sourceSeq: event.seq,
         timestamp: eventTimestamp(event),

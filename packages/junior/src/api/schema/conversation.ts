@@ -408,6 +408,25 @@ export const conversationTurnFailureCodeSchema = z.enum([
   "persistence_failed",
 ]);
 
+/** Stable failure reasons exposed on failed turn lifecycle report events. */
+export const conversationTurnFailureReasonSchema = z.enum([
+  "auth",
+  "permission",
+  "rate_limit",
+  "capacity",
+  "timeout",
+  "network",
+  "server",
+  "invalid_request",
+  "invalid_response",
+  "quota",
+  "content_policy",
+  "unknown",
+  "empty_output",
+  "tool_errors",
+  "suppressed_output",
+]);
+
 const conversationReportTurnLifecycleEventDataSchema = z.discriminatedUnion(
   "state",
   [
@@ -432,6 +451,7 @@ const conversationReportTurnLifecycleEventDataSchema = z.discriminatedUnion(
         turnId: z.string().min(1),
         state: z.literal("failed"),
         failureCode: conversationTurnFailureCodeSchema,
+        failureReason: conversationTurnFailureReasonSchema.optional(),
       })
       .strict(),
   ],
@@ -801,6 +821,9 @@ export type ConversationReportStatus = z.infer<
 >;
 export type ConversationTurnFailureCode = z.infer<
   typeof conversationTurnFailureCodeSchema
+>;
+export type ConversationTurnFailureReason = z.infer<
+  typeof conversationTurnFailureReasonSchema
 >;
 export type ConversationSurface = z.infer<typeof conversationSurfaceSchema>;
 export type ConversationCost = z.infer<typeof conversationCostSchema>;

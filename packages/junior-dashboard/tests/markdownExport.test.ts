@@ -269,6 +269,7 @@ describe("dashboard canonical-event Markdown export", () => {
           turnId: "turn-1",
           state: "failed",
           failureCode: "model_execution_failed",
+          failureReason: "network",
         }),
       ]),
     );
@@ -292,8 +293,9 @@ describe("dashboard canonical-event Markdown export", () => {
     expect(markdown).toContain("- Model: openai/gpt-5-mini");
     expect(markdown).toContain("- Reasoning: medium");
     expect(markdown).toContain("Investigate the remaining deployment failure.");
-    expect(markdown).toContain("### Model execution failed");
+    expect(markdown).toContain("### Model network error");
     expect(markdown).toContain("model_execution_failed");
+    expect(markdown).toContain("network");
     expect(markdown).not.toContain("missing");
     expect(markdown).not.toContain("Result: running");
   });
@@ -313,8 +315,8 @@ describe("dashboard canonical-event Markdown export", () => {
     expect(markdown).toContain("### Message delivery failed");
     expect(markdown).toContain("Junior could not deliver this message.");
     expect(markdown).not.toContain("turn-1");
-    expect(markdown).not.toContain("Model execution failed");
-    expect(markdown).not.toContain("Agent run failed");
+    expect(markdown).not.toContain("Model network error");
+    expect(markdown).not.toContain("Internal error");
   });
 
   it("labels redacted in-progress tools without inventing a completion", () => {

@@ -1,11 +1,50 @@
-import type { ConversationTurnFailureCode } from "@sentry/junior/api/schema";
+import type {
+  ConversationTurnFailureCode,
+  ConversationTurnFailureReason,
+} from "@sentry/junior/api/schema";
 
 import { getDashboardAgentName } from "../agentName";
 
 /** Title for one failed turn in the transcript. */
 export function transcriptFailureTitle(
   failureCode: ConversationTurnFailureCode,
+  failureReason?: ConversationTurnFailureReason,
 ): string {
+  if (failureCode === "model_execution_failed" && failureReason) {
+    switch (failureReason) {
+      case "auth":
+        return "Model auth failed";
+      case "permission":
+        return "Model access denied";
+      case "rate_limit":
+        return "Model rate limited";
+      case "capacity":
+        return "Model at capacity";
+      case "timeout":
+        return "Model timed out";
+      case "network":
+        return "Model network error";
+      case "server":
+        return "Model provider error";
+      case "invalid_request":
+        return "Invalid model request";
+      case "invalid_response":
+        return "Invalid model response";
+      case "quota":
+        return "Model quota exhausted";
+      case "content_policy":
+        return "Blocked by content policy";
+      case "empty_output":
+        return "Empty model response";
+      case "tool_errors":
+        return "Tool errors stopped the turn";
+      case "suppressed_output":
+        return "Model output was dropped";
+      case "unknown":
+        return "Model provider error";
+    }
+  }
+
   switch (failureCode) {
     case "delivery_failed":
       return "Message delivery failed";
@@ -14,15 +53,52 @@ export function transcriptFailureTitle(
     case "persistence_failed":
       return "Save failed";
     case "agent_run_failed":
-      return "Agent run failed";
+      return "Internal error";
   }
 }
 
 /** Short description for one failed turn in the transcript. */
 export function transcriptFailureDescription(
   failureCode: ConversationTurnFailureCode,
+  failureReason?: ConversationTurnFailureReason,
 ): string {
   const agentName = getDashboardAgentName();
+
+  if (failureCode === "model_execution_failed" && failureReason) {
+    switch (failureReason) {
+      case "auth":
+        return "The model provider rejected credentials. An admin needs to fix configuration.";
+      case "permission":
+        return "The model provider denied access to this model or request.";
+      case "rate_limit":
+        return "The model is rate-limited. Try again shortly.";
+      case "capacity":
+        return "The selected model is at capacity. Try again shortly.";
+      case "timeout":
+        return "The model provider timed out before the turn finished.";
+      case "network":
+        return "The model provider had a network problem before the turn finished.";
+      case "server":
+        return "The model provider returned a server error.";
+      case "invalid_request":
+        return "The model provider rejected this request as invalid.";
+      case "invalid_response":
+        return "The model provider returned an invalid response.";
+      case "quota":
+        return "The model provider quota is exhausted. An admin needs to fix billing or limits.";
+      case "content_policy":
+        return "The model provider blocked this request under its content policy.";
+      case "empty_output":
+        return `The model returned no usable text before ${agentName} finished this turn.`;
+      case "tool_errors":
+        return "One or more tools failed and the turn could not finish.";
+      case "suppressed_output":
+        return `The model produced text that ${agentName} could not deliver.`;
+      case "unknown":
+        return "The model provider failed for an unknown reason.";
+    }
+  }
+
   switch (failureCode) {
     case "delivery_failed":
       return `${agentName} could not deliver this message.`;
@@ -38,11 +114,15 @@ export function transcriptFailureDescription(
 /** Search text for one failed turn in the transcript. */
 export function transcriptFailureSearchText(
   failureCode: ConversationTurnFailureCode,
+  failureReason?: ConversationTurnFailureReason,
 ): string {
   return [
-    transcriptFailureTitle(failureCode),
-    transcriptFailureDescription(failureCode),
+    transcriptFailureTitle(failureCode, failureReason),
+    transcriptFailureDescription(failureCode, failureReason),
     failureCode.replaceAll("_", " "),
     failureCode,
+    ...(failureReason
+      ? [failureReason.replaceAll("_", " "), failureReason]
+      : []),
   ].join(" ");
 }

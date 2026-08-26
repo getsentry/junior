@@ -1186,6 +1186,7 @@ function failedConversation(nowMs: number): ConversationDetailReport {
         turnId: "failed-turn",
         state: "failed",
         failureCode: "model_execution_failed",
+        failureReason: "network",
       }),
     ],
   });

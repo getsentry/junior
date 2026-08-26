@@ -245,6 +245,9 @@ async function runLocalAgentTurnInContext(
   let completedState: ReturnType<typeof buildDeliveredTurnStatePatch>;
   let failureCode: ConversationTurnFailureCode = "persistence_failed";
   let modelFailureEventId: string | undefined;
+  let modelFailureReason:
+    | ReturnType<typeof finalizeFailedTurnReplyWithEvent>["failureReason"]
+    | undefined;
   let modelFailureCaptureAttempted = false;
   let currentRunId: string | undefined;
   let completionSliceId = 1;
@@ -422,6 +425,7 @@ async function runLocalAgentTurnInContext(
     });
     reply = finalized.reply;
     modelFailureEventId = finalized.eventId;
+    modelFailureReason = finalized.failureReason;
 
     if (reply.diagnostics.outcome !== "success") {
       await deliverAssistantMessage(reply.text);
@@ -542,6 +546,7 @@ async function runLocalAgentTurnInContext(
       createdAtMs: Date.now(),
       ...(modelFailureEventId ? { eventId: modelFailureEventId } : undefined),
       failureCode: "model_execution_failed",
+      ...(modelFailureReason ? { failureReason: modelFailureReason } : undefined),
       turnId,
     });
   }

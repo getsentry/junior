@@ -1,6 +1,7 @@
 import type {
   ConversationEventStore,
   ConversationTurnFailureCode,
+  ConversationTurnFailureReason,
 } from "./history";
 
 /** Product-owned inputs for opening one correlated conversation turn. */
@@ -26,6 +27,7 @@ export interface FailConversationTurnInput {
   createdAtMs: number;
   eventId?: string;
   failureCode: ConversationTurnFailureCode;
+  failureReason?: ConversationTurnFailureReason;
   turnId: string;
 }
 
@@ -81,6 +83,9 @@ export class ConversationTurnLifecycleService implements ConversationTurnLifecyc
           type: "turn_failed",
           turnId: input.turnId,
           failureCode: input.failureCode,
+          ...(input.failureReason
+            ? { failureReason: input.failureReason }
+            : undefined),
           ...(input.eventId ? { eventId: input.eventId } : undefined),
         },
       },

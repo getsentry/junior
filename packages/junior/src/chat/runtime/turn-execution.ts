@@ -21,6 +21,7 @@ type SavedTurnResult =
       eventId?: string;
       finishedAtMs?: number;
       failureCode: FailConversationTurnInput["failureCode"];
+      failureReason?: FailConversationTurnInput["failureReason"];
       outcome: "failed";
     };
 
@@ -75,6 +76,9 @@ export async function executeTurn(
       ...common,
       ...(saved.eventId ? { eventId: saved.eventId } : undefined),
       failureCode: saved.failureCode,
+      ...(saved.failureReason
+        ? { failureReason: saved.failureReason }
+        : undefined),
     });
   } else {
     await lifecycle.complete({

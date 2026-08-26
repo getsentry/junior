@@ -1,4 +1,7 @@
-import type { ConversationTurnFailureCode } from "@sentry/junior/api/schema";
+import type {
+  ConversationTurnFailureCode,
+  ConversationTurnFailureReason,
+} from "@sentry/junior/api/schema";
 
 import type {
   TranscriptViewAttachmentsDeliveredPart,
@@ -15,6 +18,7 @@ export type RenderedFailureEntry = {
   key: string;
   kind: "failure";
   failureCode: ConversationTurnFailureCode;
+  failureReason?: ConversationTurnFailureReason;
   timestamp?: number;
 };
 
@@ -164,6 +168,9 @@ export function groupTranscriptMessages(
         key: `${message.sourceSeq}:failure`,
         kind: "failure",
         failureCode: message.failureCode,
+        ...(message.failureReason
+          ? { failureReason: message.failureReason }
+          : undefined),
         timestamp: message.timestamp,
       });
     }

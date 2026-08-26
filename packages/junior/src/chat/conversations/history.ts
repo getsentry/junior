@@ -249,6 +249,33 @@ export type ConversationTurnFailureCode = z.output<
   typeof conversationTurnFailureCodeSchema
 >;
 
+/**
+ * Stable reason for a failed turn.
+ * Provider kinds stay privacy-safe; execution classes avoid raw exception text.
+ */
+export const conversationTurnFailureReasonSchema = z.enum([
+  "auth",
+  "permission",
+  "rate_limit",
+  "capacity",
+  "timeout",
+  "network",
+  "server",
+  "invalid_request",
+  "invalid_response",
+  "quota",
+  "content_policy",
+  "unknown",
+  "empty_output",
+  "tool_errors",
+  "suppressed_output",
+]);
+
+/** Privacy-safe reason persisted on a failed turn. */
+export type ConversationTurnFailureReason = z.output<
+  typeof conversationTurnFailureReasonSchema
+>;
+
 const turnStartedEventDataSchema = z
   .object({
     type: z.literal("turn_started"),
@@ -331,6 +358,7 @@ const turnFailedEventDataSchema = z
     type: z.literal("turn_failed"),
     turnId: z.string().min(1),
     failureCode: conversationTurnFailureCodeSchema,
+    failureReason: conversationTurnFailureReasonSchema.optional(),
     eventId: z
       .string()
       .regex(/^[a-f0-9]{32}$/i)

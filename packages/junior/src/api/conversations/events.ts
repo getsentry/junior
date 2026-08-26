@@ -402,6 +402,9 @@ function reportEventData(args: {
         turnId: data.turnId,
         state: "failed",
         failureCode: data.failureCode,
+        ...(data.failureReason
+          ? { failureReason: data.failureReason }
+          : undefined),
       };
     case "compaction":
       return {

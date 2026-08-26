@@ -9,6 +9,7 @@ import type {
   ConversationStatsReport,
   ConversationSummaryReport,
   ConversationTurnFailureCode,
+  ConversationTurnFailureReason,
 } from "@sentry/junior/api/schema";
 import type { ConversationDetailReport } from "@sentry/junior/api/schema";
 import type { ConversationEventPresentation } from "@sentry/junior-plugin-api";
@@ -130,6 +131,7 @@ export type TranscriptViewMessage = {
     source: "configured" | "inherited" | "router";
   };
   failureCode?: ConversationTurnFailureCode;
+  failureReason?: ConversationTurnFailureReason;
   parts: TranscriptViewPart[];
   role: "assistant" | "system" | "tool" | "user";
   source?: "slack" | "web";

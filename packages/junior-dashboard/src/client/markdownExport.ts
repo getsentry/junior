@@ -19,7 +19,10 @@ import {
   transcriptFailureDescription,
   transcriptFailureTitle,
 } from "./conversations/transcriptFailure";
-import type { ConversationTurnFailureCode } from "@sentry/junior/api/schema";
+import type {
+  ConversationTurnFailureCode,
+  ConversationTurnFailureReason,
+} from "@sentry/junior/api/schema";
 import type {
   Conversation,
   ConversationTranscript,
@@ -131,6 +134,7 @@ function appendTranscriptMessages(
         lines,
         conversationTranscript,
         entry.failureCode,
+        entry.failureReason,
         entry.timestamp,
       );
       continue;
@@ -218,12 +222,19 @@ function appendFailure(
   lines: string[],
   conversationTranscript: ConversationTranscript,
   failureCode: ConversationTurnFailureCode,
+  failureReason: ConversationTurnFailureReason | undefined,
   timestamp: number | undefined,
 ): void {
-  lines.push("", `### ${transcriptFailureTitle(failureCode)}`);
+  lines.push(
+    "",
+    `### ${transcriptFailureTitle(failureCode, failureReason)}`,
+  );
   addEventMeta(lines, conversationTranscript, timestamp);
-  lines.push("", transcriptFailureDescription(failureCode));
+  lines.push("", transcriptFailureDescription(failureCode, failureReason));
   addMetaLine(lines, "Failure code", failureCode);
+  if (failureReason) {
+    addMetaLine(lines, "Failure reason", failureReason);
+  }
 }
 
 function appendContextEvent(

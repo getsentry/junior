@@ -689,13 +689,14 @@ describe("dashboard canonical-event components", () => {
           turnId: "turn-1",
           state: "failed",
           failureCode: "model_execution_failed",
+          failureReason: "network",
         }),
       ]),
     );
     expect(html).toContain("Context compacted");
     expect(html).toContain("Model handoff");
-    expect(html).toContain("Model execution failed");
-    expect(html).toContain("model_execution_failed");
+    expect(html).toContain("Model network error");
+    expect(html).toContain("network");
   });
 
   it("anchors structured events to the transcript rail", () => {
@@ -816,8 +817,8 @@ describe("dashboard canonical-event components", () => {
     );
     expect(html).toContain("Message delivery failed");
     expect(html).toContain("Junior could not deliver this message.");
-    expect(html).not.toContain("Model execution failed");
-    expect(html).not.toContain("Agent run failed");
+    expect(html).not.toContain("Model network error");
+    expect(html).not.toContain("Internal error");
   });
 
   it("does not invent an object for an empty raw message", () => {

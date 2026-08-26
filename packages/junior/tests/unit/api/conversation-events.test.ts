@@ -833,6 +833,7 @@ describe("conversation report event projection", () => {
           type: "turn_failed",
           turnId: "turn-1",
           failureCode: "model_execution_failed",
+          failureReason: "network",
           eventId,
         }),
         event(5, {
@@ -891,6 +892,7 @@ describe("conversation report event projection", () => {
       turnId: "turn-1",
       state: "failed",
       failureCode: "model_execution_failed",
+      failureReason: "network",
     });
     expect(projected[4]?.data).toEqual({
       type: "turn_lifecycle",
