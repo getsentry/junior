@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { StateAdapter } from "chat";
 import {
   SLACK_BOT_USER_ID,
-  SLACK_DESTINATION,
   SLACK_SIGNING_SECRET,
   createConversationWorkQueueTestAdapter,
   deferred,
