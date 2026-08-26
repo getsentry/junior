@@ -39,7 +39,11 @@ import { runNonInteractiveCommand } from "@/chat/sandbox/noninteractive-command"
 import type { AnyToolDefinition } from "@/chat/tools/definition";
 import { getDashboardConversationLink } from "@/chat/slack/dashboard-link";
 import { createResourceEventSubscription } from "@/chat/resource-events/store";
-import { RESOURCE_SUBSCRIPTION_DEFAULT_TTL_MS } from "@/chat/resource-events/tool-support";
+import {
+  RESOURCE_SUBSCRIPTION_DEFAULT_TTL_MS,
+  requireResourceWatchThread,
+  resolveResourceWatchThread,
+} from "@/chat/resource-events/tool-support";
 import { getSlackToolContext } from "@/chat/slack/tool-support/context";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
@@ -635,7 +639,14 @@ export function getPluginTools(
     const mcp = pluginMcpContext(plugin, context);
     const canSubscribe =
       Boolean(plugin.resourceEvents) &&
-      plugin.resourceEvents?.isEnabled?.() !== false;
+      plugin.resourceEvents?.isEnabled?.() !== false &&
+      Boolean(
+        resolveResourceWatchThread({
+          conversationId: context.conversationId,
+          destination: context.destination,
+          source: context.source,
+        }),
+      );
     const resourceEvents: ToolRegistrationHookContext["resourceEvents"] = {
       canSubscribe,
       async subscribe(input) {
@@ -660,9 +671,14 @@ export function getPluginTools(
             "Resource subscription contains an event or resource that the plugin does not support.",
           );
         }
-        const subscription = await createResourceEventSubscription({
+        const thread = requireResourceWatchThread({
           conversationId: context.conversationId,
           destination: context.destination,
+          source: context.source,
+        });
+        const subscription = await createResourceEventSubscription({
+          conversationId: thread.conversationId,
+          destination: thread.destination,
           events: input.events,
           expiresAtMs: Date.now() + RESOURCE_SUBSCRIPTION_DEFAULT_TTL_MS,
           intent: input.intent,

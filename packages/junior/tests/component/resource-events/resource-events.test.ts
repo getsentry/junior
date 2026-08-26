@@ -842,6 +842,64 @@ describe("resource event delivery", () => {
     ]);
   });
 
+  it("cancels undeliverable non-Slack watches instead of failing delivery", async () => {
+    const queue = createConversationWorkQueueTestAdapter();
+    const bad = await createResourceEventSubscription(
+      {
+        conversationId: "agent:deadbeefcafebabe",
+        destination: SLACK_DESTINATION,
+        events: ["pull_request.checks.failed"],
+        expiresAtMs: 2_000_000,
+        intent: "Legacy undeliverable watch.",
+        label: "GitHub PR getsentry/junior#691",
+        namespace: "github",
+        identifier: "getsentry/junior#691",
+        resourceType: "pull_request",
+      },
+      { nowMs: 1_000 },
+    );
+    const good = await createGithubPrSubscription({
+      events: ["pull_request.checks.failed"],
+    });
+
+    await expect(
+      ingestResourceEvent(
+        {
+          eventKey: "delivery-undeliverable:check-suite-1",
+          eventType: "pull_request.checks.failed",
+          occurredAtMs: 1_500,
+          namespace: "github",
+          identifier: "getsentry/junior#691",
+          trustedSummary: "CI failed on workflow test.",
+        },
+        {
+          nowMs: 1_500,
+          queue,
+          teamId: SLACK_DESTINATION.teamId,
+        },
+      ),
+    ).resolves.toEqual({ enqueued: 1 });
+
+    expect(queue.sentRecords()).toEqual([
+      expect.objectContaining({ conversationId: CONVERSATION_ID }),
+    ]);
+    await expect(
+      listResourceEventSubscriptions({
+        conversationId: "agent:deadbeefcafebabe",
+        nowMs: 1_600,
+      }),
+    ).resolves.toEqual([]);
+    await expect(
+      listResourceEventSubscriptions({
+        conversationId: CONVERSATION_ID,
+        nowMs: 1_600,
+      }),
+    ).resolves.toEqual([
+      expect.objectContaining({ id: good.id, status: "active" }),
+    ]);
+    expect(bad.id).not.toEqual(good.id);
+  });
+
   it("does not enqueue expired subscriptions", async () => {
     const queue = createConversationWorkQueueTestAdapter();
     await createGithubPrSubscription({

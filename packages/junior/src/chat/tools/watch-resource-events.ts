@@ -14,6 +14,7 @@ import {
   RESOURCE_SUBSCRIPTION_DEFAULT_TTL_MS,
   RESOURCE_SUBSCRIPTION_MAX_TTL_MS,
   STOP_WATCHING_TOOL_NAME,
+  requireResourceWatchThread,
 } from "@/chat/resource-events/tool-support";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
@@ -166,9 +167,14 @@ export function createWatchResourceEventsTool(
         resourceType: input.resourceType,
       });
       const nowMs = Date.now();
-      const subscription = await createResourceEventSubscription({
+      const thread = requireResourceWatchThread({
         conversationId: context.conversationId,
         destination: context.destination,
+        source: context.source,
+      });
+      const subscription = await createResourceEventSubscription({
+        conversationId: thread.conversationId,
+        destination: thread.destination,
         events,
         expiresAtMs: nowMs + ttlMs(input),
         intent,

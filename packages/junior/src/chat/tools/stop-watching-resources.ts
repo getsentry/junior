@@ -4,7 +4,10 @@ import {
   cancelSubscriptions,
   listResourceEventSubscriptions,
 } from "@/chat/resource-events/store";
-import { RESOURCE_WATCH_TOOL_SOURCE } from "@/chat/resource-events/tool-support";
+import {
+  RESOURCE_WATCH_TOOL_SOURCE,
+  requireResourceWatchThread,
+} from "@/chat/resource-events/tool-support";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
@@ -37,10 +40,15 @@ export function createStopWatchingResourcesTool(context: ToolRuntimeContext) {
       .strict(),
     outputSchema,
     async execute({ id }) {
+      const thread = requireResourceWatchThread({
+        conversationId: context.conversationId,
+        destination: context.destination,
+        source: context.source,
+      });
       let stoppedIds: string[];
       if (id) {
         const stopped = await cancelResourceEventSubscription({
-          conversationId: context.conversationId,
+          conversationId: thread.conversationId,
           id,
         });
         if (!stopped) {
@@ -51,9 +59,9 @@ export function createStopWatchingResourcesTool(context: ToolRuntimeContext) {
         stoppedIds = [stopped.id];
       } else {
         const subscriptions = await listResourceEventSubscriptions({
-          conversationId: context.conversationId,
+          conversationId: thread.conversationId,
         });
-        await cancelSubscriptions({ conversationId: context.conversationId });
+        await cancelSubscriptions({ conversationId: thread.conversationId });
         stoppedIds = subscriptions.map((subscription) => subscription.id);
       }
       const details = {

@@ -551,22 +551,19 @@ function slackSerializedResourceEventMessage(input: {
 export function createSlackResourceEventInboundMessage(
   input: SlackResourceEventInboundInput,
 ): InboundMessage {
-  const slack = parseSlackConversationId(input.subscription.conversationId);
-  if (!slack) {
-    throw new Error(
-      "Resource event delivery currently requires a Slack conversation",
-    );
-  }
+  // Destination owns the Slack channel. The subscription conversation id must
+  // be the thread mailbox (`slack:{channel}:{threadTs}`) that matches it.
   const destination = input.subscription.destination;
-  if (destination.channelId !== slack.channelId) {
+  const slack = parseSlackConversationId(input.subscription.conversationId);
+  if (!slack || slack.channelId !== destination.channelId) {
     throw new Error(
-      "Resource event subscription destination does not match Slack conversation",
+      "Resource event subscription is not bound to a Slack thread for its destination",
     );
   }
   const messageId = `resource-event-${input.subscription.id}-${input.event.eventKey}`;
   const timestampIso = new Date(input.event.occurredAtMs).toISOString();
   const message = slackSerializedResourceEventMessage({
-    channelId: slack.channelId,
+    channelId: destination.channelId,
     eventType: input.event.eventType,
     id: messageId,
     text: input.text,
@@ -574,7 +571,7 @@ export function createSlackResourceEventInboundMessage(
     timestampIso,
   });
   const thread = slackSerializedThread({
-    channelId: slack.channelId,
+    channelId: destination.channelId,
     message,
     threadTs: slack.threadTs,
   });

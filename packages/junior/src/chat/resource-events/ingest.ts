@@ -1,11 +1,14 @@
 import type { StateAdapter } from "chat";
 import { resourceEventSchema } from "@sentry/junior-plugin-api";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
+import { logWarn } from "@/chat/logging";
 import { enqueueResourceEventNotification } from "@/chat/resource-events/notification";
 import {
+  cancelResourceEventSubscription,
   deliverResourceEventSubscription,
   findMatchingResourceEventSubscriptions,
 } from "@/chat/resource-events/store";
+import { canDeliverResourceWatchConversation } from "@/chat/resource-events/tool-support";
 
 /** Match a normalized resource event and enqueue notifications into conversations. */
 export async function ingestResourceEvent(
@@ -33,6 +36,22 @@ export async function ingestResourceEvent(
   const waitDeadlineMs = Date.now() + 10_000;
   for (const subscription of subscriptions) {
     try {
+      if (!canDeliverResourceWatchConversation(subscription.conversationId)) {
+        logWarn("resource_event.subscription.undeliverable", {
+          "app.resource_event.subscription_id": subscription.id,
+          "app.resource_event.conversation_id": subscription.conversationId,
+          "app.resource_event.namespace": subscription.namespace,
+          "app.resource_event.identifier": subscription.identifier,
+          "app.resource_event.reason": "non_slack_conversation",
+        });
+        await cancelResourceEventSubscription({
+          conversationId: subscription.conversationId,
+          id: subscription.id,
+          nowMs,
+          state: options.state,
+        });
+        continue;
+      }
       const delivered = await deliverResourceEventSubscription({
         data: event.data,
         eventType: event.eventType,

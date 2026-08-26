@@ -18,7 +18,10 @@ import {
   createResourceEventSubscription,
 } from "@/chat/resource-events/store";
 import { canRouteResourceEvents } from "@/chat/resource-events/workspace";
-import { RESOURCE_SUBSCRIPTION_DEFAULT_TTL_MS } from "@/chat/resource-events/tool-support";
+import {
+  RESOURCE_SUBSCRIPTION_DEFAULT_TTL_MS,
+  resolveResourceWatchThread,
+} from "@/chat/resource-events/tool-support";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
@@ -370,14 +373,18 @@ export function createWorkspaceTools(
           workspaceId: workspace.id,
           workspaceName: workspace.name,
         });
-        const conversationId =
-          canRouteResourceEvents() && context.destination.platform === "slack"
-            ? context.conversationId.trim()
+        const thread =
+          canRouteResourceEvents()
+            ? resolveResourceWatchThread({
+                conversationId: context.conversationId,
+                destination: context.destination,
+                source: context.source,
+              })
             : undefined;
-        const subscription = conversationId
+        const subscription = thread
           ? await createResourceEventSubscription({
-              conversationId,
-              destination: context.destination,
+              conversationId: thread.conversationId,
+              destination: thread.destination,
               events: [
                 WORKSPACE_SNAPSHOT_READY_EVENT,
                 WORKSPACE_SNAPSHOT_FAILED_EVENT,
@@ -418,9 +425,9 @@ export function createWorkspaceTools(
             status: "ready" as const,
           };
         } finally {
-          if (!keepWatch && subscription && conversationId) {
+          if (!keepWatch && subscription && thread) {
             await stopWorkspaceSnapshotWatch({
-              conversationId,
+              conversationId: thread.conversationId,
               subscriptionId: subscription.id,
             });
           }
