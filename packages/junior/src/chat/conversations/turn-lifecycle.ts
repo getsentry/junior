@@ -3,6 +3,7 @@ import type {
   ConversationTurnFailureCode,
   ConversationTurnFailureReason,
 } from "./history";
+import { getConversationEventStore } from "@/chat/db";
 
 /** Product-owned inputs for opening one correlated conversation turn. */
 export interface StartConversationTurnInput {
@@ -91,4 +92,9 @@ export class ConversationTurnLifecycleService implements ConversationTurnLifecyc
       },
     ]);
   }
+}
+
+/** Return the Turn lifecycle that records Conversation events. */
+export function getTurnLifecycle(): ConversationTurnLifecycle {
+  return new ConversationTurnLifecycleService(getConversationEventStore());
 }
