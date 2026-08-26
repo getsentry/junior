@@ -46,21 +46,28 @@ export type {
  * Build the host lease cache key for one provider grant.
  *
  * Installation grants are shared across sandboxes. Other grants stay bound to
- * the actor. Sandbox egress id and context token id authorize the hop only;
- * they do not change which host credential to inject.
+ * the credential owner: the actor for normal user runs, or the delegated
+ * subject when a system run injects that user's token. Sandbox egress id and
+ * context token id authorize the hop only; they do not change which host
+ * credential to inject.
  */
 function leaseKey(
   provider: string,
   grant: SandboxEgressCredentialLease["grant"],
   context: SandboxEgressCredentialContext,
 ): string {
+  if (grant.name.startsWith("installation-")) {
+    return `${SANDBOX_EGRESS_LEASE_PREFIX}:${provider}:${grant.name}:shared`;
+  }
   const actor = context.credentials.actor;
-  const actorKey = grant.name.startsWith("installation-")
-    ? "shared"
+  const subject =
+    "subject" in context.credentials ? context.credentials.subject : undefined;
+  const ownerKey = subject
+    ? `subject:${subject.userId}`
     : "type" in actor
       ? `user:${actor.userId}`
       : `system:${actor.name}`;
-  return `${SANDBOX_EGRESS_LEASE_PREFIX}:${provider}:${grant.name}:${actorKey}`;
+  return `${SANDBOX_EGRESS_LEASE_PREFIX}:${provider}:${grant.name}:${ownerKey}`;
 }
 
 /**
