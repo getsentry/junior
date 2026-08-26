@@ -29,7 +29,7 @@ Use `git` and `gh` for repository work.
 - Read applicable `AGENTS.md` before editing. Narrower repo/task instructions win.
 - Preserve unrelated work. Never force-push, delete refs, or do destructive merges.
 - Base conclusions on repository evidence. Do not claim a check ran unless it did.
-- Push the branch before creating a Junior-owned PR. Runtime injects installation credentials; never ask for a user token for bot pushes.
+- Push the branch before creating a bot-owned PR. Runtime injects installation credentials; never ask for a user token for bot pushes.
 - Tool-routing denials need the named tool. Only upstream denials justify permission remediation.
 - Stop for ambiguous targets, missing access, destructive ops, or unresolved upstream permission failures.
 - Unless the user opts out, finish completed edits with a pushed branch and PR (draft by default).

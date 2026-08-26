@@ -1,6 +1,6 @@
 # GitHub API surface — code and pull requests
 
-PR create/update and review-thread resolve use the Junior tools named in `SKILL.md`. Other supported mutations use allowlisted REST through `gh api`. Generic GraphQL-backed `gh pr` mutations are not supported.
+PR create/update and review-thread resolve use the tools named in `SKILL.md`. Other supported mutations use allowlisted REST through `gh api`. Generic GraphQL-backed `gh pr` mutations are not supported.
 
 ## Repo targeting
 

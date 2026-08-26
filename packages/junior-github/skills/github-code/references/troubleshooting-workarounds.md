@@ -10,14 +10,14 @@
 | 401 Unauthorized | Credential rejected | Confirm target; distinguish user OAuth vs installation setup |
 | `junior-auth-required` `user-write` | Missing/stale user OAuth | Follow private OAuth prompt; never ask for pasted tokens |
 | `git push` 401/403 | Install scope, remote, or permissions | Verify remote/repo, retry once, then report install scope |
-| `permission_denied` `source: "upstream"` | GitHub 403 after inject | Not a Junior runtime block; use grant/account/SSO fields |
+| `permission_denied` `source: "upstream"` | GitHub 403 after inject | Not a local runtime block; use grant/account/SSO fields |
 | 403 without upstream `permission_denied` | Local policy denial | Read body; follow required-tool guidance |
 | `Token scopes: none` on `gh auth status` | Normal for App user tokens | Use App permissions / accepted-permissions headers |
 | `github_createPullRequest` 401/403 | Install/repo lacks write | Report install scope; do not fall back to user OAuth |
 | Create PR 422 on `head` | Branch not pushed | Push branch; retry with explicit head/base |
 | Create/update PR 422 on `base` | Base missing | Resolve default branch; retry |
 | 403 names `github_updatePullRequest` | Raw PR PATCH blocked | Use `github_updatePullRequest` |
-| GraphQL mutations not enabled | Raw resolve blocked | Use `github_resolvePullRequestReviewThread` (Junior PRs only) |
+| GraphQL mutations not enabled | Raw resolve blocked | Use `github_resolvePullRequestReviewThread` (bot-authored PRs only) |
 | Missing blame/old history | Shallow clone | Deepen needed refs; `--unshallow` only if required |
 | Odd ancestry / rebase fails | Base ref missing locally | Fetch `BASE:refs/remotes/origin/BASE`, deepen, use `origin/BASE` |
 | Missing deps in tests | Not installed | Frozen/immutable install for the lockfile; do not rewrite lockfile |
