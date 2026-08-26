@@ -15,13 +15,43 @@ import type {
   Conversation,
   ConversationStore,
 } from "@/chat/conversations/store";
-import { parseSlackThreadId } from "@/chat/slack/context";
+import { parseSlackMessageTs } from "@/chat/slack/timestamp";
 import type { SessionSource } from "@/chat/source";
 
 export interface TurnSessionRouting {
   destination: Destination;
   locationId?: string;
   source: Source;
+}
+
+const SLACK_CHANNEL_ID_RE = /^[CDG][A-Z0-9]+$/;
+
+/**
+ * Read channel + thread from a historical `slack:<channel>:<ts>` conversation id.
+ *
+ * Services may only import Slack timestamp parsing. Keep this local so routing
+ * does not depend on Slack infrastructure modules.
+ */
+function parseHistoricalSlackThreadId(
+  conversationId: string | undefined,
+): { channelId: string; threadTs: string } | undefined {
+  const normalized = conversationId?.trim();
+  if (!normalized) {
+    return undefined;
+  }
+
+  const parts = normalized.split(":");
+  if (parts.length !== 3 || parts[0] !== "slack") {
+    return undefined;
+  }
+
+  const channelId = parts[1]?.trim() ?? "";
+  const threadTs = parseSlackMessageTs(parts[2]);
+  if (!SLACK_CHANNEL_ID_RE.test(channelId) || !threadTs) {
+    return undefined;
+  }
+
+  return { channelId, threadTs };
 }
 
 async function loadConversationChain(
@@ -62,7 +92,7 @@ function slackRoutingFromConversationId(
   conversationId: string,
   teamId: string,
 ): TurnSessionRouting | undefined {
-  const parsed = parseSlackThreadId(conversationId);
+  const parsed = parseHistoricalSlackThreadId(conversationId);
   if (!parsed || !teamId.trim()) {
     return undefined;
   }
@@ -99,7 +129,7 @@ function completeSlackSource(args: {
   }
 
   for (const conversationId of args.conversationIds) {
-    const parsed = parseSlackThreadId(conversationId);
+    const parsed = parseHistoricalSlackThreadId(conversationId);
     if (parsed && parsed.channelId === args.destination.channelId) {
       return slackSourceFromThread({
         channelId: parsed.channelId,
