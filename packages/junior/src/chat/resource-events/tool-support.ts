@@ -8,10 +8,3 @@ export const RESOURCE_WATCH_TOOL_SOURCE = {
   id: "resource-watches",
   description: "Inspect or stop resource watches for the current conversation.",
 };
-
-/** Return whether this conversation can hold a temporary resource watch. */
-export function canHoldResourceEventSubscription(
-  conversationId: string | undefined,
-): boolean {
-  return Boolean(conversationId?.trim());
-}

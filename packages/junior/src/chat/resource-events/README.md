@@ -34,14 +34,12 @@ conversation.
   current Slack thread. Concrete identifiers still come from plugin tool
   results rather than catalog enumeration.
 - A temporary watch stores the current conversation id as an opaque mailbox
-  key. It does not rewrite that id into a Slack thread id.
-- Destination is the conversation's Slack route (usually the execution
-  destination, falling back to the root conversation destination). Delivery
-  resolves the Slack channel and thread timestamp from that route, then wakes
-  the watched conversation mailbox.
-- Create requires a conversation id and a Slack destination. Ingestion cancels
-  watches that cannot resolve a Slack route instead of failing the whole
-  webhook batch.
+  key. It does not rewrite that id.
+- Destination on the subscription (or the conversation root) decides external
+  publish. If that destination is Slack, delivery fills in channel/thread
+  details and publishes. Otherwise it only wakes the conversation mailbox.
+- Ingestion cancels watches that claim a Slack destination but cannot resolve
+  a thread, instead of failing the whole webhook batch.
 - Core validates namespace, resource type, and event ownership again before
   storing a subscription.
 - Normalized events contain a stable namespace and identifier plus a short safe

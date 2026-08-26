@@ -30,8 +30,10 @@ describe("resource event delivery route", () => {
         destination,
       }),
     ).resolves.toEqual({
+      kind: "slack",
       destination,
       threadTs: "1712345.0001",
+      publishExternally: true,
     });
   });
 
@@ -65,24 +67,50 @@ describe("resource event delivery route", () => {
         destination,
       }),
     ).resolves.toEqual({
+      kind: "slack",
       destination,
       threadTs: "1712345.0001",
+      publishExternally: true,
     });
   });
 
-  it("returns undefined when no Slack route exists", async () => {
+  it("wakes the conversation without Slack publish when destination is not Slack", async () => {
+    getConversation.mockResolvedValue({
+      conversationId: "local:web:abc",
+      destination: {
+        platform: "local",
+        conversationId: "local:web:abc",
+      },
+    });
+
+    await expect(
+      resolveResourceEventDeliveryRoute({
+        conversationId: "local:web:abc",
+        destination: {
+          platform: "local",
+          conversationId: "local:web:abc",
+        },
+      }),
+    ).resolves.toEqual({
+      kind: "conversation",
+      destination: {
+        platform: "local",
+        conversationId: "local:web:abc",
+      },
+      publishExternally: false,
+    });
+  });
+
+  it("returns undefined when Slack destination has no thread", async () => {
     getConversation.mockResolvedValue({
       conversationId: "agent:child",
-      lineage: { parentConversationId: "local:web:abc" },
+      lineage: { parentConversationId: "agent-dispatch:task" },
     });
 
     await expect(
       resolveResourceEventDeliveryRoute({
         conversationId: "agent:child",
-        destination: {
-          platform: "local",
-          conversationId: "local:web:abc",
-        },
+        destination,
       }),
     ).resolves.toBeUndefined();
   });
