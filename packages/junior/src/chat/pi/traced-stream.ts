@@ -28,7 +28,6 @@ import { hasCompactedConversationContext } from "@/chat/services/context-compact
 import {
   createProviderError,
   getProviderErrorAttributes,
-  summarizeProviderErrorMessage,
 } from "@/chat/services/provider-error";
 
 type GenAiAttributeMode = "content" | "metadata";
@@ -195,24 +194,16 @@ export function createTracedStreamFn(
         .then(
           (finalMessage: AssistantMessage) => {
             try {
-              for (const [key, value] of Object.entries(
-                buildChatEndAttributes(finalMessage, mode),
-              )) {
+              const endAttributes = buildChatEndAttributes(finalMessage, mode);
+              for (const [key, value] of Object.entries(endAttributes)) {
                 span.setAttribute(key, value);
               }
               if (finalMessage.stopReason === "error") {
-                const providerError = createProviderError(
-                  finalMessage.errorMessage ?? "",
-                );
-                // OTEL recording-errors: error.type is the class; status
-                // description may carry the non-sensitive exception message.
-                span.setAttribute("error.type", providerError.kind);
-                const summary = summarizeProviderErrorMessage(
-                  finalMessage.errorMessage ?? "",
-                );
+                const summary = endAttributes["app.ai.provider_error.summary"];
                 span.setStatus({
                   code: 2,
-                  message: summary ?? "LLM stream failed",
+                  message:
+                    typeof summary === "string" ? summary : "LLM stream failed",
                 });
               }
             } finally {

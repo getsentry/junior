@@ -5,7 +5,6 @@ import {
 import type { PiMessage } from "@/chat/pi/messages";
 import {
   createProviderError,
-  getProviderErrorAttributes,
   type ProviderError,
 } from "@/chat/services/provider-error";
 import {
@@ -58,15 +57,4 @@ export function nextProviderRetry(args: {
   }
 
   return { delayMs, messages, providerError };
-}
-
-/** Safe attributes for one provider-boundary retry attempt. */
-export function getProviderRetryAttributes(args: {
-  attempt: number;
-  providerError: ProviderError;
-}): Record<string, unknown> {
-  return {
-    ...getProviderErrorAttributes(args.providerError),
-    "app.ai.provider_error.retry_attempt": args.attempt,
-  };
 }

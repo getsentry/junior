@@ -9,12 +9,8 @@ import {
   getProviderErrorUserMessage,
   isProviderRetryError,
   ProviderError,
-  summarizeProviderErrorMessage,
 } from "@/chat/services/provider-error";
-import {
-  getProviderRetryAttributes,
-  nextProviderRetry,
-} from "@/chat/services/provider-retry";
+import { nextProviderRetry } from "@/chat/services/provider-retry";
 
 function assistantError(errorMessage: string | undefined): AssistantMessage {
   return fauxAssistantMessage([], {
@@ -53,11 +49,12 @@ describe("provider retry helpers", () => {
   });
 
   it("keeps a bounded provider summary without gateway JSON payloads", () => {
-    expect(summarizeProviderErrorMessage(XAI_SERVICE_UNAVAILABLE)).toBe("503");
     expect(
-      getProviderErrorAttributes(createProviderError(XAI_SERVICE_UNAVAILABLE, {
-        modelId: "xai/grok-4.5",
-      })),
+      getProviderErrorAttributes(
+        createProviderError(XAI_SERVICE_UNAVAILABLE, {
+          modelId: "xai/grok-4.5",
+        }),
+      ),
     ).toMatchObject({
       "app.ai.provider_error.kind": "server",
       "app.ai.provider_error.status": 503,
@@ -143,19 +140,13 @@ describe("provider retry helpers", () => {
       failure: failedAssistant,
       messages: [user, failedAssistant],
     });
-    expect(retry).toMatchObject({ delayMs: 2_000, messages: [user] });
-    expect(retry?.providerError).toMatchObject({
-      kind: "network",
-      retryable: true,
+    expect(retry).toMatchObject({
+      delayMs: 2_000,
+      messages: [user],
+      providerError: { kind: "network", retryable: true },
     });
-    expect(
-      getProviderRetryAttributes({
-        attempt: 1,
-        providerError: retry!.providerError,
-      }),
-    ).toMatchObject({
+    expect(getProviderErrorAttributes(retry!.providerError)).toMatchObject({
       "app.ai.provider_error.kind": "network",
-      "app.ai.provider_error.retry_attempt": 1,
       "app.ai.provider_error.summary":
         "Anthropic stream ended before message_stop",
     });

@@ -118,44 +118,20 @@ function providerMessage(error: unknown): string {
 
 const PROVIDER_ERROR_SUMMARY_MAX_CHARS = 240;
 
-/**
- * Build a short provider-boundary summary for telemetry.
- *
- * Keep the leading diagnostic text. Drop large JSON bodies that often follow
- * gateway status lines so Sentry stays free of provider payloads.
- */
-export function summarizeProviderErrorMessage(message: string): string | undefined {
+/** Short provider-boundary text for telemetry. Drop trailing JSON bodies. */
+function summarizeProviderErrorMessage(message: string): string | undefined {
   const normalized = message.trim().replace(/\s+/g, " ");
   if (!normalized) return undefined;
 
-  // Strip nested JSON/array bodies from gateway status lines without keeping
-  // payload keys. Plain transport messages stay intact.
-  let withoutJsonBodies = normalized;
-  for (let pass = 0; pass < 8; pass += 1) {
-    const next = withoutJsonBodies
-      .replace(/\{[^{}]*\}/g, " ")
-      .replace(/\[[^[\]]*\]/g, " ")
-      .replace(/\s+/g, " ")
-      .trim();
-    if (next === withoutJsonBodies) break;
-    withoutJsonBodies = next;
-  }
-  const summary = withoutJsonBodies || normalized;
+  // Gateway errors often look like `503 {"error":...}`. Keep the lead text.
+  const jsonStart = normalized.indexOf("{");
+  const summary = (
+    jsonStart >= 0 ? normalized.slice(0, jsonStart) : normalized
+  ).trim();
   if (!summary) return undefined;
   return summary.length > PROVIDER_ERROR_SUMMARY_MAX_CHARS
     ? `${summary.slice(0, PROVIDER_ERROR_SUMMARY_MAX_CHARS)}...`
     : summary;
-}
-
-function providerErrorCauseMessage(error: ProviderError): string | undefined {
-  const cause = error.cause;
-  if (cause instanceof Error) {
-    return summarizeProviderErrorMessage(cause.message);
-  }
-  if (typeof cause === "string") {
-    return summarizeProviderErrorMessage(cause);
-  }
-  return undefined;
 }
 
 function extractTransportKind(
@@ -326,7 +302,16 @@ export function getProviderErrorUserMessage(error: ProviderError): string {
 export function getProviderErrorAttributes(
   error: ProviderError,
 ): Record<string, unknown> {
-  const summary = providerErrorCauseMessage(error);
+  const cause = error.cause;
+  const causeMessage =
+    cause instanceof Error
+      ? cause.message
+      : typeof cause === "string"
+        ? cause
+        : undefined;
+  const summary = causeMessage
+    ? summarizeProviderErrorMessage(causeMessage)
+    : undefined;
   return {
     "app.ai.provider_error.kind": error.kind,
     "app.ai.provider_error.retryable": error.retryable,
