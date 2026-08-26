@@ -2940,7 +2940,9 @@ describe("createTestSandbox", () => {
     ).rejects.toSatisfy(
       (error: unknown) =>
         error instanceof ToolInputError &&
-        error.message.includes("Workspace sentry-docs snapshot is not ready yet") &&
+        error.message.includes(
+          "The sentry-docs workspace is still preparing its sandbox.",
+        ) &&
         isWorkspaceSnapshotNotReadyError(error),
     );
 

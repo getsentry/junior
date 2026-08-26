@@ -27,3 +27,25 @@ export function getWorkspaceSnapshotNotReadyError(
 export function isWorkspaceSnapshotNotReadyError(error: unknown): boolean {
   return getWorkspaceSnapshotNotReadyError(error) !== undefined;
 }
+
+/** Explain a not-ready Workspace snapshot in plain language. */
+export function getWorkspaceSnapshotNotReadyUserMessage(
+  error: unknown,
+): string | undefined {
+  const notReady = getWorkspaceSnapshotNotReadyError(error);
+  if (!notReady) return undefined;
+  return (
+    `The ${notReady.workspaceName} workspace is still preparing its sandbox. ` +
+    "Wait for that preparation to finish, then try again."
+  );
+}
+
+/** Build the user-facing turn reply for a not-ready Workspace snapshot. */
+export function buildWorkspaceSnapshotNotReadyResponse(
+  error: unknown,
+  eventId: string,
+): string | undefined {
+  const message = getWorkspaceSnapshotNotReadyUserMessage(error);
+  if (!message) return undefined;
+  return `${message} Reference: \`event_id=${eventId}\`.`;
+}

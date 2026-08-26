@@ -27,7 +27,10 @@ import {
   isSandboxUnavailableError,
   throwSandboxOperationError,
 } from "@/chat/sandbox/errors";
-import { getWorkspaceSnapshotNotReadyError } from "@/chat/sandbox/snapshot/not-ready-error";
+import {
+  getWorkspaceSnapshotNotReadyError,
+  getWorkspaceSnapshotNotReadyUserMessage,
+} from "@/chat/sandbox/snapshot/not-ready-error";
 import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
 import { tryWorkspaceRepoCheckoutPath } from "@/chat/workspaces/checkout-path";
 import {
@@ -131,12 +134,10 @@ function createSandboxUnavailableToolError(
 
 /** Create the safe expected tool error when a Workspace snapshot is still building. */
 function createWorkspaceSnapshotNotReadyToolError(cause: unknown): ToolInputError {
-  const notReady = getWorkspaceSnapshotNotReadyError(cause);
-  const workspaceName = notReady?.workspaceName ?? "the requested Workspace";
-  return new ToolInputError(
-    `Workspace ${workspaceName} snapshot is not ready yet, so the sandbox could not start. A snapshot build is in progress or was just started. Wait for the snapshot to finish, then retry the sandbox operation or switch Workspace again.`,
-    { cause },
-  );
+  const message =
+    getWorkspaceSnapshotNotReadyUserMessage(cause) ??
+    "The workspace is still preparing its sandbox. Wait for that preparation to finish, then try again.";
+  return new ToolInputError(message, { cause });
 }
 
 const SANDBOX_TOOL_NAMES = new Set([

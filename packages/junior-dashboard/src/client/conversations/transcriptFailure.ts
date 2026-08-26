@@ -40,9 +40,15 @@ export function transcriptFailureTitle(
         return "Tool failed";
       case "suppressed_output":
         return "Model output was dropped";
+      case "workspace_snapshot_not_ready":
+        return "Workspace still preparing";
       case "unknown":
         return "Model service error";
     }
+  }
+
+  if (failureReason === "workspace_snapshot_not_ready") {
+    return "Workspace still preparing";
   }
 
   switch (failureCode) {
@@ -96,9 +102,15 @@ export function transcriptFailureDescription(
         return "A tool failed and the turn could not finish.";
       case "suppressed_output":
         return `The model produced text that ${agentName} could not deliver.`;
+      case "workspace_snapshot_not_ready":
+        return "The workspace is still preparing its sandbox. Wait for that preparation to finish, then try again.";
       case "unknown":
         return "The model service failed for an unknown reason.";
     }
+  }
+
+  if (failureReason === "workspace_snapshot_not_ready") {
+    return "The workspace is still preparing its sandbox. Wait for that preparation to finish, then try again.";
   }
 
   switch (failureCode) {

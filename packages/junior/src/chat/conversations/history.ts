@@ -269,6 +269,7 @@ export const conversationTurnFailureReasonSchema = z.enum([
   "empty_output",
   "tool_errors",
   "suppressed_output",
+  "workspace_snapshot_not_ready",
 ]);
 
 /** Why a failed turn stopped. */

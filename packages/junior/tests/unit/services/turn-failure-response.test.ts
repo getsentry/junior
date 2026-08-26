@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import { getInterruptionMarker } from "@/chat/interruption-marker";
+import { WorkspaceSnapshotNotReadyError } from "@/chat/sandbox/snapshot/not-ready-error";
 import { createProviderError } from "@/chat/services/provider-error";
 import {
+  buildThrownTurnFailureResponse,
   finalizeFailedTurnReply,
   finalizeFailedTurnReplyWithEvent,
   getTurnFailureReason,
@@ -176,5 +178,46 @@ describe("finalizeFailedTurnReply", () => {
     expect(finalized.text).toBe(
       `Here is what I found so far${getInterruptionMarker()}`,
     );
+  });
+
+  it("explains a Workspace snapshot that is still preparing", () => {
+    const logException = vi.fn().mockReturnValue("evt_not_ready");
+    const notReady = new WorkspaceSnapshotNotReadyError("sentry-docs");
+
+    const finalized = finalizeFailedTurnReplyWithEvent({
+      reply: providerErrorReply({
+        assistantMessageCount: 0,
+        errorMessage: notReady.message,
+        providerError: new Error(`sandbox setup failed (${notReady.message})`, {
+          cause: notReady,
+        }),
+        text: "",
+      }),
+      logException,
+    });
+
+    expect(finalized.failureReason).toBe("workspace_snapshot_not_ready");
+    expect(finalized.reply.text).toContain(
+      "The sentry-docs workspace is still preparing its sandbox.",
+    );
+    expect(finalized.reply.text).toContain("event_id=evt_not_ready");
+    expect(finalized.reply.text).not.toContain("internal error");
+    expect(logException.mock.calls[0]?.[1]).toBe(
+      "agent.turn.workspace_snapshot_not_ready",
+    );
+  });
+
+  it("keeps the same plain message for thrown turn failures", () => {
+    const notReady = new WorkspaceSnapshotNotReadyError("sentry-docs");
+    const text = buildThrownTurnFailureResponse({
+      error: new Error("sandbox setup failed", { cause: notReady }),
+      eventId: "evt_boundary",
+    });
+
+    expect(text).toContain(
+      "The sentry-docs workspace is still preparing its sandbox.",
+    );
+    expect(text).toContain("event_id=evt_boundary");
+    expect(text).not.toContain("internal error");
   });
 });
