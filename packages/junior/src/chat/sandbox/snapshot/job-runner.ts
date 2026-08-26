@@ -4,7 +4,6 @@ import { getDb } from "@/chat/db";
 import { logInfo } from "@/chat/logging";
 import { createPluginHookRunner } from "@/chat/plugins/agent-hooks";
 import { ingestResourceEvent } from "@/chat/resource-events/ingest";
-import { canRouteResourceEvents } from "@/chat/resource-events/workspace";
 import { getTurnRequestDeadline } from "@/chat/runtime/request-deadline";
 import { buildSandboxEgressNetworkPolicy } from "@/chat/sandbox/egress/policy";
 import { createSandboxEgressCredentialToken } from "@/chat/sandbox/egress/session";
@@ -36,14 +35,6 @@ async function publishFinishedEvent(
   input: Parameters<typeof workspaceSnapshotFinishedEvent>[0],
 ): Promise<void> {
   const event = workspaceSnapshotFinishedEvent(input);
-  if (!canRouteResourceEvents()) {
-    logInfo("workspace.snapshot.event.delivery.skipped", {
-      "app.resource_event.namespace": event.namespace,
-      "app.resource_event.event_type": event.eventType,
-      "app.resource_event.reason": "install_not_ready",
-    });
-    return;
-  }
   const queue = getVercelConversationWorkQueue();
   await ingestResourceEvent(event, { queue });
 }

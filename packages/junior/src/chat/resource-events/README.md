@@ -16,8 +16,8 @@ conversation.
   before the Slack thread is marked unsubscribed.
 - Plugin route code validates and normalizes incoming events before calling
   the ingestion boundary.
-- Resource-event creation and delivery stay off until the install can publish
-  them. Single-bot installs use the Slack bot token as that gate.
+- Every conversation destination can hold a resource-event watch. Delivery
+  wakes that conversation mailbox; the bound destination chooses the worker.
 - Plugin-owned routes publish normalized events through the route-hook resource
   event publisher; core binds the plugin namespace and never needs the raw
   provider webhook. Publication requires an active registration that declares
@@ -33,10 +33,15 @@ conversation.
   results rather than catalog enumeration.
 - A temporary watch stores the current conversation id only. It does not store
   destination or rewrite the conversation id.
+- Root conversations pin destination when they are created. That bound
+  destination is the safe routing surface for later resource-event wakes.
 - Ingestion only wakes that conversation mailbox with plain system input.
   Destination stays on the conversation binding. The worker for the bound
   surface applies it when the turn runs, so the same agent and tools stay active
   for the whole conversation.
+- TODO(subagents): destinationless child conversations are not a real bound
+  surface yet. When subagents matter, pin watches to the parent root or give
+  children the parent's bound destination and worker path.
 - Core validates namespace, resource type, and event ownership again before
   storing a subscription.
 - Normalized events contain a stable namespace and identifier plus a short safe

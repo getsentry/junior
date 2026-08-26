@@ -493,6 +493,13 @@ export class SqlStore implements ConversationStore {
       const existing = await this.get({
         conversationId: args.conversationId,
       });
+      // New root conversations pin destination at create. Children stay
+      // destinationless and inherit through parent lineage.
+      if (!existing && !args.destination) {
+        throw new Error(
+          `Conversation ${args.conversationId} requires a destination at create`,
+        );
+      }
       if (existing && args.destination) {
         assertSameConversationDestination({
           conversationId: args.conversationId,

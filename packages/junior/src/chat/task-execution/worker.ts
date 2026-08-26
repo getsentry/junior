@@ -4,6 +4,7 @@ import { getChatConfig } from "@/chat/config";
 import { logException, logInfo, logWarn, withLogContext } from "@/chat/logging";
 import type { ConversationStore } from "@/chat/conversations/store";
 import { isProviderRetryError } from "@/chat/services/provider-error";
+import { resolveConversationRouting } from "@/chat/services/turn-session-routing";
 import { getTurnRequestDeadline } from "@/chat/runtime/request-deadline";
 import {
   ConversationQueueMessageRejectedError,
@@ -402,7 +403,15 @@ async function processConversationWorkInContext(
     }
     return { status: "no_work" };
   }
-  const destination = initial.destination;
+  // Mailbox wakes may omit destination. Prefer the bound conversation root.
+  let destination = initial.destination;
+  if (!destination && options.conversationStore) {
+    const routing = await resolveConversationRouting({
+      conversationId,
+      conversationStore: options.conversationStore,
+    });
+    destination = routing?.destination;
+  }
 
   const lease = await startConversationWork({
     conversationId,

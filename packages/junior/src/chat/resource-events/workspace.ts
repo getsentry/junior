@@ -2,27 +2,19 @@ import { getSlackBotToken } from "@/chat/config";
 import { getSlackClient } from "@/chat/slack/client";
 
 /**
- * Whether this install can enable resource-event delivery.
- *
- * Single-bot installs use the Slack bot token as the install gate. Multi-bot
- * mode stays off until event delivery can bind without a single-bot assumption.
- */
-export function canRouteResourceEvents(): boolean {
-  return Boolean(getSlackBotToken());
-}
-
-/**
  * Resolve the single-bot Slack team id for event-task indexing.
  *
  * Resource watches do not use this. Event tasks still key by destination team
- * until that store is conversation-owned.
+ * until that store is conversation-owned. Resource-event delivery itself is
+ * not gated on Slack.
  */
 export function createResourceEventTeamIdResolver(): () => Promise<
   string | undefined
 > {
   let pending: Promise<string> | undefined;
   return async () => {
-    if (!canRouteResourceEvents()) return undefined;
+    // Event tasks still need a Slack team key. Watches do not.
+    if (!getSlackBotToken()) return undefined;
     pending ??= getSlackClient()
       .auth.test()
       .then((result) => {

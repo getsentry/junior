@@ -3,13 +3,9 @@ import type { StateAdapter } from "chat";
 import { getDb } from "@/chat/db";
 import { ingestEventTasks } from "@/chat/event-tasks/ingest";
 import { collectEventTaskMatchKeys } from "@/chat/event-tasks/store";
-import { logWarn } from "@/chat/logging";
 import { ingestResourceEvent } from "@/chat/resource-events/ingest";
 import { collectResourceEventMatchKeys } from "@/chat/resource-events/store";
-import {
-  canRouteResourceEvents,
-  createResourceEventTeamIdResolver,
-} from "@/chat/resource-events/workspace";
+import { createResourceEventTeamIdResolver } from "@/chat/resource-events/workspace";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
 
@@ -34,7 +30,6 @@ export function createResourceEventAppPublisher(args: {
 
   return {
     async neededMatchKeys(input) {
-      if (!canRouteResourceEvents()) return [];
       const work = args.conversationWork();
       const eventTaskTeamId = await resolveEventTaskTeamId();
       const [watchKeys, taskKeys] = await Promise.all([
@@ -56,13 +51,6 @@ export function createResourceEventAppPublisher(args: {
       return [...new Set([...watchKeys, ...taskKeys])].sort();
     },
     async publish(event) {
-      if (!canRouteResourceEvents()) {
-        logWarn("resource_event.delivery.unavailable", {
-          "app.resource_event.namespace": event.namespace,
-          "app.resource_event.reason": "install_not_ready",
-        });
-        return;
-      }
       const work = args.conversationWork();
       const queue = work.queue ?? getVercelConversationWorkQueue();
       const eventTaskTeamId = await resolveEventTaskTeamId();

@@ -96,9 +96,29 @@ export function createConversationWork(
     },
     runTurn: runtime.runDispatchTurn,
   });
+  // Bound destination chooses the provider worker. Do not fall through to
+  // Slack for destinationless or non-Slack conversations.
+  const boundDestinationWorker = async (
+    context: Parameters<typeof slackWorker>[0],
+  ) => {
+    const destination = context.destination;
+    if (!destination) {
+      throw new Error(
+        `Conversation ${context.conversationId} is missing a bound destination`,
+      );
+    }
+    if (destination.platform === "slack") {
+      return await slackWorker(context);
+    }
+    // Local roots are CLI-owned today. Resource-event wakes still require a
+    // bound local worker path rather than Slack fallback.
+    throw new Error(
+      `Conversation ${context.conversationId} has a ${destination.platform} destination but no matching conversation worker`,
+    );
+  };
   const providerWorker = createAgentDispatchWorkRouter({
     dispatchWorker,
-    fallbackWorker: slackWorker,
+    fallbackWorker: boundDestinationWorker,
   });
   return {
     apiTurnCancellation,
