@@ -2915,7 +2915,7 @@ describe("createTestSandbox", () => {
     expect(sandboxCreateMock).not.toHaveBeenCalled();
   });
 
-  it("returns a recoverable tool error when a Workspace snapshot is not ready", async () => {
+  it("returns a building tool result when a Workspace snapshot is not ready", async () => {
     getReadyWorkspaceMock.mockRejectedValueOnce(
       new WorkspaceSnapshotNotReadyError("sentry-docs"),
     );
@@ -2937,14 +2937,14 @@ describe("createTestSandbox", () => {
         toolName: "bash",
         input: { command: "pwd" },
       }),
-    ).rejects.toSatisfy(
-      (error: unknown) =>
-        error instanceof ToolInputError &&
-        error.message.includes(
-          "The sentry-docs workspace is still preparing its sandbox.",
-        ) &&
-        isWorkspaceSnapshotNotReadyError(error),
-    );
+    ).resolves.toMatchObject({
+      details: {
+        status: "building",
+        workspace: "sentry-docs",
+        message:
+          "The sentry-docs workspace is still preparing its sandbox. Wait for that preparation to finish, then try again.",
+      },
+    });
 
     expect(ensureWorkspaceSnapshotBuildMock).toHaveBeenCalledWith({ workspace });
     expect(sandboxCreateMock).not.toHaveBeenCalled();

@@ -132,12 +132,20 @@ function createSandboxUnavailableToolError(
   );
 }
 
-/** Create the safe expected tool error when a Workspace snapshot is still building. */
-function createWorkspaceSnapshotNotReadyToolError(cause: unknown): ToolInputError {
+/**
+ * Return the same non-error preparing status switchWorkspace uses when the
+ * active Workspace snapshot is not ready yet.
+ */
+function createWorkspaceSnapshotNotReadyToolResult(cause: unknown) {
+  const notReady = getWorkspaceSnapshotNotReadyError(cause);
   const message =
     getWorkspaceSnapshotNotReadyUserMessage(cause) ??
     "The workspace is still preparing its sandbox. Wait for that preparation to finish, then try again.";
-  return new ToolInputError(message, { cause });
+  return makeStructuredToolOutput({
+    status: "building" as const,
+    ...(notReady ? { workspace: notReady.workspaceName } : undefined),
+    message,
+  });
 }
 
 const SANDBOX_TOOL_NAMES = new Set([
@@ -760,7 +768,7 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
     } catch (error) {
       params.signal?.throwIfAborted();
       if (getWorkspaceSnapshotNotReadyError(error)) {
-        throw createWorkspaceSnapshotNotReadyToolError(error);
+        return createWorkspaceSnapshotNotReadyToolResult(error) as T;
       }
       if (isSandboxUnavailableError(error)) {
         // Do not replay an operation that may already have produced side effects.
@@ -785,9 +793,10 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
     try {
       return await callback(await runtime.acquire());
     } catch (error) {
-      if (getWorkspaceSnapshotNotReadyError(error)) {
-        throw createWorkspaceSnapshotNotReadyToolError(error);
-      }
+      // Host workspace helpers have no tool-result channel. Keep the typed
+      // not-ready error so callers can recover the same way switchWorkspace does.
+      const notReady = getWorkspaceSnapshotNotReadyError(error);
+      if (notReady) throw notReady;
       if (isSandboxUnavailableError(error)) {
         throw createSandboxUnavailableToolError(operation, error);
       }
