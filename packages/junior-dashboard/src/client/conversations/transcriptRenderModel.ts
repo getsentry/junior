@@ -17,8 +17,10 @@ import type {
 export type RenderedFailureEntry = {
   key: string;
   kind: "failure";
+  eventId?: string;
   failureCode: ConversationTurnFailureCode;
   failureReason?: ConversationTurnFailureReason;
+  sentryEventUrl?: string;
   timestamp?: number;
 };
 
@@ -170,6 +172,10 @@ export function groupTranscriptMessages(
         failureCode: message.failureCode,
         ...(message.failureReason
           ? { failureReason: message.failureReason }
+          : undefined),
+        ...(message.eventId ? { eventId: message.eventId } : undefined),
+        ...(message.sentryEventUrl
+          ? { sentryEventUrl: message.sentryEventUrl }
           : undefined),
         timestamp: message.timestamp,
       });

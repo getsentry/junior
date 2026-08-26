@@ -676,6 +676,9 @@ describe("dashboard canonical-event components", () => {
   });
 
   it("renders failure and context lifecycle rows", () => {
+    const eventId = "0123456789abcdef0123456789abcdef";
+    const sentryEventUrl =
+      "https://my-org.sentry.io/events/0123456789abcdef0123456789abcdef/?project=4501";
     const html = renderTranscript(
       conversation([
         event(0, { type: "compaction" }),
@@ -690,6 +693,8 @@ describe("dashboard canonical-event components", () => {
           state: "failed",
           failureCode: "model_execution_failed",
           failureReason: "network",
+          eventId,
+          sentryEventUrl,
         }),
       ]),
     );
@@ -697,6 +702,9 @@ describe("dashboard canonical-event components", () => {
     expect(html).toContain("Model handoff");
     expect(html).toContain("Model connection failed");
     expect(html).toContain('data-transcript-failure-reason="network"');
+    expect(html).toContain(`data-transcript-failure-event-id="${eventId}"`);
+    expect(html).toContain(`event_id=${eventId}`);
+    expect(html).toContain(`href="${sentryEventUrl}"`);
   });
 
   it("anchors structured events to the transcript rail", () => {
