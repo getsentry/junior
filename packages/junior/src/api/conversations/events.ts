@@ -408,8 +408,8 @@ function reportEventData(args: {
         ...(data.failureReason
           ? { failureReason: data.failureReason }
           : undefined),
-        // Event ids are already public in Slack failure replies; keep them on
-        // the transcript for the same debugging path in the dashboard.
+        // Slack failure replies already show event ids, so keep them on the
+        // conversation report too.
         ...(eventId ? { eventId } : undefined),
         ...(sentryEventUrl ? { sentryEventUrl } : undefined),
       };
