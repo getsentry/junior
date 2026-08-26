@@ -33,8 +33,8 @@ conversation.
   results rather than catalog enumeration.
 - A temporary watch stores the current conversation id only. It does not store
   destination or rewrite the conversation id.
-- Root conversations pin destination when they are created. That bound
-  destination is the safe routing surface for later resource-event wakes.
+- Root conversations pin destination on first upsert. That bound destination is
+  the safe routing surface for later resource-event wakes.
 - Ingestion only wakes that conversation mailbox with plain system input.
   Destination stays on the conversation binding. The worker for the bound
   surface applies it when the turn runs, so the same agent and tools stay active

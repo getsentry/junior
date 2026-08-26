@@ -493,13 +493,6 @@ export class SqlStore implements ConversationStore {
       const existing = await this.get({
         conversationId: args.conversationId,
       });
-      // New root conversations pin destination at create. Children stay
-      // destinationless and inherit through parent lineage.
-      if (!existing && !args.destination) {
-        throw new Error(
-          `Conversation ${args.conversationId} requires a destination at create`,
-        );
-      }
       if (existing && args.destination) {
         assertSameConversationDestination({
           conversationId: args.conversationId,
@@ -778,6 +771,19 @@ export class SqlStore implements ConversationStore {
     conversation: Conversation;
   }): Promise<void> {
     const { conversation } = args;
+    // Root conversations pin destination on first write. Children stay
+    // destinationless and inherit through parent lineage. Later updates may omit
+    // destination because onConflict keeps the existing destination_id.
+    if (!conversation.lineage && !conversation.destination) {
+      const existing = await this.get({
+        conversationId: conversation.conversationId,
+      });
+      if (!existing) {
+        throw new Error(
+          `Conversation ${conversation.conversationId} requires a destination at create`,
+        );
+      }
+    }
     const incomingExecutionVersion = sql`coalesce(excluded.execution_updated_at, excluded.updated_at)`;
     const currentExecutionVersion = sql`coalesce(${juniorConversations.executionUpdatedAt}, ${juniorConversations.updatedAt})`;
     const incomingExecutionIsFresh = sql`${incomingExecutionVersion} >= ${currentExecutionVersion}`;
