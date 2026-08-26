@@ -4,7 +4,10 @@ import type {
   Conversation,
   ConversationStore,
 } from "@/chat/conversations/store";
-import { resolveTurnSessionRouting } from "@/chat/services/turn-session-routing";
+import {
+  resolveConversationRouting,
+  resolveTurnSessionRouting,
+} from "@/chat/services/turn-session-routing";
 import type { SessionSource } from "@/chat/source";
 
 const DESTINATION = {
@@ -22,17 +25,20 @@ const SOURCE = {
 } as const satisfies SessionSource;
 
 function conversation(args: {
+  conversationId?: string;
   destination?: Destination;
+  lineage?: { parentConversationId: string };
   sessionSource?: SessionSource;
 }): Conversation {
   return {
-    conversationId: "slack:C123:1712345.0001",
+    conversationId: args.conversationId ?? "slack:C123:1712345.0001",
     createdAtMs: 1,
     lastActivityAtMs: 1,
     updatedAtMs: 1,
     schemaVersion: 1,
     execution: { status: "paused" },
     ...(args.destination ? { destination: args.destination } : undefined),
+    ...(args.lineage ? { lineage: args.lineage } : undefined),
     ...(args.sessionSource ? { sessionSource: args.sessionSource } : undefined),
   };
 }
@@ -98,6 +104,7 @@ describe("resolveTurnSessionRouting", () => {
     const store = conversationStore({
       get: vi.fn(async () =>
         conversation({
+          conversationId: "agent-dispatch:dispatch-1",
           destination: DESTINATION,
         }),
       ),
@@ -111,5 +118,142 @@ describe("resolveTurnSessionRouting", () => {
     ).rejects.toThrow(
       "Conversation agent-dispatch:dispatch-1 is missing durable routing metadata",
     );
+  });
+});
+
+describe("resolveConversationRouting", () => {
+  it("uses parent destination and session for destinationless children", async () => {
+    const store = conversationStore({
+      get: vi.fn(async ({ conversationId }) => {
+        if (conversationId === "agent:child") {
+          return conversation({
+            conversationId: "agent:child",
+            lineage: { parentConversationId: "slack:C123:1712345.0001" },
+          });
+        }
+        if (conversationId === "slack:C123:1712345.0001") {
+          return conversation({
+            destination: DESTINATION,
+            sessionSource: SOURCE,
+          });
+        }
+        return undefined;
+      }),
+    });
+
+    await expect(
+      resolveConversationRouting({
+        conversationId: "agent:child",
+        conversationStore: store,
+      }),
+    ).resolves.toEqual({
+      destination: DESTINATION,
+      source: SOURCE,
+    });
+  });
+
+  it("completes slack session from the conversation id when destination is bound", async () => {
+    const store = conversationStore({
+      get: vi.fn(async () =>
+        conversation({
+          destination: DESTINATION,
+        }),
+      ),
+    });
+
+    await expect(
+      resolveConversationRouting({
+        conversationId: "slack:C123:1712345.0001",
+        conversationStore: store,
+      }),
+    ).resolves.toEqual({
+      destination: DESTINATION,
+      source: {
+        platform: "slack",
+        teamId: "T123",
+        channelId: "C123",
+        threadTs: "1712345.0001",
+        visibility: "public",
+      },
+    });
+  });
+
+  it("binds historical slack conversation ids with fallback team id", async () => {
+    const store = conversationStore({
+      get: vi.fn(async () => undefined),
+    });
+
+    await expect(
+      resolveConversationRouting({
+        conversationId: "slack:C123:1712345.0001",
+        conversationStore: store,
+        fallbackTeamId: "T123",
+      }),
+    ).resolves.toEqual({
+      destination: DESTINATION,
+      source: {
+        platform: "slack",
+        teamId: "T123",
+        channelId: "C123",
+        threadTs: "1712345.0001",
+        visibility: "public",
+      },
+    });
+  });
+
+  it("returns local routing without a stored session source", async () => {
+    const store = conversationStore({
+      get: vi.fn(async () =>
+        conversation({
+          conversationId: "local:web:abc",
+          destination: {
+            platform: "local",
+            conversationId: "local:web:abc",
+          },
+        }),
+      ),
+    });
+
+    await expect(
+      resolveConversationRouting({
+        conversationId: "local:web:abc",
+        conversationStore: store,
+      }),
+    ).resolves.toEqual({
+      destination: {
+        platform: "local",
+        conversationId: "local:web:abc",
+      },
+      source: {
+        platform: "local",
+        visibility: "private",
+        conversationId: "local:web:abc",
+      },
+    });
+  });
+
+  it("returns undefined when no destination can be resolved", async () => {
+    const store = conversationStore({
+      get: vi.fn(async ({ conversationId }) => {
+        if (conversationId === "agent:child") {
+          return conversation({
+            conversationId: "agent:child",
+            lineage: { parentConversationId: "agent-dispatch:task" },
+          });
+        }
+        if (conversationId === "agent-dispatch:task") {
+          return conversation({ conversationId: "agent-dispatch:task" });
+        }
+        return undefined;
+      }),
+    });
+
+    await expect(
+      resolveConversationRouting({
+        conversationId: "agent:child",
+        conversationStore: store,
+        fallbackTeamId: "T123",
+      }),
+    ).resolves.toBeUndefined();
   });
 });

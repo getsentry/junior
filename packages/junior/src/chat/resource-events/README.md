@@ -36,10 +36,12 @@ conversation.
 - A temporary watch stores the current conversation id and a workspace team id
   for match indexes. It does not store destination or rewrite the conversation
   id.
-- Delivery loads the conversation (and parents) to choose destination. When the
-  route is Slack, it publishes into that thread. Otherwise it only wakes the
-  conversation mailbox.
-- Ingestion cancels watches that have no deliverable route instead of failing
+- Delivery uses the conversation's bound destination and session (including
+  parent lineage). That binding decides the provider surface for the whole
+  conversation, so a watch wakes the same agent and tools as any other turn.
+  Slack-bound conversations publish into the bound thread. Other destinations
+  only wake the conversation mailbox.
+- Ingestion cancels watches that have no bound destination instead of failing
   the whole webhook batch.
 - Core validates namespace, resource type, and event ownership again before
   storing a subscription.
