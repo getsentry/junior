@@ -20,8 +20,14 @@ import type { SessionSource } from "@/chat/source";
 export interface TurnSessionRouting {
   destination: Destination;
   locationId?: string;
-  source: Source;
+  /** Present when session source is known or can be completed. */
+  source?: Source;
 }
+
+/** Full turn routing: destination plus a completed session source. */
+export type RequiredTurnSessionRouting = TurnSessionRouting & {
+  source: Source;
+};
 
 const SLACK_CHANNEL_ID_RE = /^[CDG][A-Z0-9]+$/;
 
@@ -85,13 +91,17 @@ function completeSlackSource(args: {
 }): SessionSource | undefined {
   if (
     args.source?.platform === "slack" &&
-    args.source.channelId === args.destination.channelId &&
-    args.source.threadTs?.trim()
+    args.source.channelId === args.destination.channelId
   ) {
+    // Keep channel-level sessions without inventing threadTs. Threaded
+    // sessions keep their stored anchor when present.
+    const threadTs = args.source.threadTs?.trim();
     return {
-      ...args.source,
-      threadTs: args.source.threadTs.trim(),
+      platform: "slack",
+      visibility: args.source.visibility ?? "public",
       teamId: args.source.teamId?.trim() || args.destination.teamId,
+      channelId: args.source.channelId,
+      ...(threadTs ? { threadTs } : undefined),
     };
   }
 
@@ -149,55 +159,58 @@ export async function resolveConversationRouting(args: {
     }
   }
 
-  if (destination?.platform === "slack") {
+  if (!destination) {
+    return undefined;
+  }
+
+  if (destination.platform === "slack") {
     const slackSource = completeSlackSource({
       destination,
       source,
       conversationIds,
     });
-    if (!slackSource) {
-      return undefined;
-    }
     return {
       destination,
       ...(locationId ? { locationId } : undefined),
-      source: slackSource,
+      ...(slackSource ? { source: slackSource } : undefined),
     };
   }
 
-  if (destination && source) {
+  if (destination.platform === "local") {
     return {
       destination,
       ...(locationId ? { locationId } : undefined),
-      source,
+      source: source?.platform === "local"
+        ? source
+        : {
+            platform: "local",
+            visibility: "private",
+            conversationId: destination.conversationId,
+          },
     };
   }
 
-  if (destination?.platform === "local") {
-    return {
-      destination,
-      ...(locationId ? { locationId } : undefined),
-      source: {
-        platform: "local",
-        visibility: "private",
-        conversationId: destination.conversationId,
-      },
-    };
-  }
-
-  return undefined;
+  return {
+    destination,
+    ...(locationId ? { locationId } : undefined),
+    ...(source ? { source } : undefined),
+  };
 }
 
 /** Require conversation destination and session source from SQL. */
 export async function resolveTurnSessionRouting(args: {
   conversationId: string;
   conversationStore?: ConversationStore;
-}): Promise<TurnSessionRouting> {
+}): Promise<RequiredTurnSessionRouting> {
   const routing = await resolveConversationRouting(args);
-  if (!routing) {
+  if (!routing?.destination || !routing.source) {
     throw new Error(
       `Conversation ${args.conversationId} is missing durable routing metadata`,
     );
   }
-  return routing;
+  return {
+    destination: routing.destination,
+    source: routing.source,
+    ...(routing.locationId ? { locationId: routing.locationId } : undefined),
+  };
 }

@@ -155,6 +155,38 @@ describe("resolveConversationRouting", () => {
     });
   });
 
+  it("keeps a slack destination when threadTs cannot be filled", async () => {
+    const store = conversationStore({
+      get: vi.fn(async () =>
+        conversation({
+          conversationId: "opaque-root",
+          destination: DESTINATION,
+          sessionSource: {
+            platform: "slack",
+            teamId: "T123",
+            channelId: "C123",
+            visibility: "public",
+          },
+        }),
+      ),
+    });
+
+    await expect(
+      resolveConversationRouting({
+        conversationId: "opaque-root",
+        conversationStore: store,
+      }),
+    ).resolves.toEqual({
+      destination: DESTINATION,
+      source: {
+        platform: "slack",
+        teamId: "T123",
+        channelId: "C123",
+        visibility: "public",
+      },
+    });
+  });
+
   it("returns local routing without a stored session source", async () => {
     const store = conversationStore({
       get: vi.fn(async () =>

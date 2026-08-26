@@ -110,8 +110,9 @@ export function createConversationWork(
     if (destination.platform === "slack") {
       return await slackWorker(context);
     }
-    // Local roots are CLI-owned today. Resource-event wakes still require a
-    // bound local worker path rather than Slack fallback.
+    // Local-bound resource-event and dashboard wakes are claimed earlier by
+    // routeApiTurnWork when context.destination is already bound. Reaching
+    // here with a local destination means no matching conversation-only work.
     throw new Error(
       `Conversation ${context.conversationId} has a ${destination.platform} destination but no matching conversation worker`,
     );

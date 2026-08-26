@@ -558,6 +558,11 @@ export class SqlStore implements ConversationStore {
       const existing = existingRow
         ? conversationFromRow(existingRow)
         : undefined;
+      // Execution dual-write updates existing rows or creates roots that already
+      // carry a destination. It does not invent destinationless roots.
+      if (!existing && !args.destination) {
+        return;
+      }
       const incomingExecutionAt =
         args.execution.updatedAtMs ?? args.updatedAtMs;
       const existingExecutionAt =
@@ -576,6 +581,7 @@ export class SqlStore implements ConversationStore {
           createdAtMs: args.createdAtMs,
           lastActivityAtMs: args.lastActivityAtMs,
           updatedAtMs: args.updatedAtMs,
+          ...(existing?.lineage ? { lineage: existing.lineage } : undefined),
           ...(args.channelName ? { channelName: args.channelName } : undefined),
           ...(args.destination ? { destination: args.destination } : undefined),
           ...(args.actor ? { actor: args.actor } : undefined),

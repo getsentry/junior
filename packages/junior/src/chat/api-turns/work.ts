@@ -2,6 +2,7 @@
 import { createHash } from "node:crypto";
 import type { StateAdapter } from "chat";
 import {
+  createLocalSource,
   createWebSource,
   localDestinationSchema,
   type Destination,
@@ -10,7 +11,7 @@ import {
 } from "@sentry/junior-plugin-api";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
-import type { WebActor } from "@/chat/actor";
+import type { LocalActor, WebActor } from "@/chat/actor";
 import type { ConversationStore } from "@/chat/conversations/store";
 import { loadProjection } from "@/chat/conversations/projection";
 import {
@@ -86,6 +87,10 @@ import {
   resolveApiTurnWork,
   type ApiTurnMailboxMetadata,
 } from "@/chat/api-turns/routing";
+import {
+  joinMailboxText,
+  localResourceEventActor,
+} from "@/chat/api-turns/mailbox-input";
 
 export { resolveApiTurnWork } from "@/chat/api-turns/routing";
 
@@ -413,7 +418,6 @@ export async function appendAndEnqueueApiConversationMessage(
     status,
   };
 }
-
 function captureApiBoundaryFailure(args: {
   conversationId: string;
   error: unknown;
@@ -459,7 +463,8 @@ export function createApiTurnWorker(
     );
 
     const isResume = resolved.kind === "resume";
-    let actor: WebActor;
+    const isResourceEvent = resolved.kind === "resource_event";
+    let actor: WebActor | LocalActor;
     let text: string;
     let turnId: string;
     let userMessageId: string;
@@ -472,15 +477,22 @@ export function createApiTurnWorker(
 
     if (resolved.kind === "mailbox") {
       const first = resolved.batch[0]!;
-      text = resolved.batch
-        .map((entry) => entry.message.input.text.trim())
-        .filter(Boolean)
-        .join("\n\n");
+      text = joinMailboxText(resolved.batch.map((entry) => entry.message));
       actor = actorFromMetadata(first.metadata);
       turnId = apiTurnIdForMessage(first.metadata.messageId);
       userMessageId = first.metadata.messageId;
       startedAtMs = first.message.createdAtMs;
       inputMessageIds = resolved.batch.map((entry) => entry.metadata.messageId);
+    } else if (resolved.kind === "resource_event") {
+      const first = resolved.batch[0]!;
+      text = joinMailboxText(resolved.batch.map((entry) => entry.message));
+      actor = localResourceEventActor();
+      turnId = apiTurnIdForMessage(first.message.inboundMessageId);
+      userMessageId = first.message.inboundMessageId;
+      startedAtMs = first.message.createdAtMs;
+      inputMessageIds = resolved.batch.map(
+        (entry) => entry.message.inboundMessageId,
+      );
     } else {
       turnId = resolved.turnId;
       // Execution actor is rebuilt at resume from the durable conversation
@@ -502,25 +514,28 @@ export function createApiTurnWorker(
       inputMessageIds = [];
     }
 
-    // Prefer the leased mailbox destination, then durable conversation state.
+    const mailboxDestination =
+      resolved.kind === "mailbox" || resolved.kind === "resource_event"
+        ? resolved.batch[0]?.message.destination
+        : undefined;
     const destination = resolveApiTurnDestination({
       conversationId: context.conversationId,
       existing:
         context.destination ??
-        (resolved.kind === "mailbox"
-          ? resolved.batch[0]?.message.destination
-          : undefined) ??
+        mailboxDestination ??
         storedConversation?.destination,
     });
-    const source = webSourceForConversation({
-      conversationId: context.conversationId,
-      visibility: storedConversation?.visibility,
-    });
+    const source = isResourceEvent
+      ? createLocalSource(context.conversationId)
+      : webSourceForConversation({
+          conversationId: context.conversationId,
+          visibility: storedConversation?.visibility,
+        });
 
     return await withLogContext(
       {
         conversationId: context.conversationId,
-        platform: "web",
+        platform: isResourceEvent ? "local" : "web",
         userId: actor.userId,
         ...(actor.userName ? { userName: actor.userName } : undefined),
       },
@@ -612,7 +627,7 @@ export function createApiTurnWorker(
             meta: {
               explicitMention: true,
               replied: false,
-              source: "web",
+              ...(isResourceEvent ? undefined : { source: "web" as const }),
             },
           });
           await persistConversationMessages({

@@ -52,7 +52,7 @@ import {
 } from "@/chat/task-execution/turn-wake";
 import {
   resolveTurnSessionRouting,
-  type TurnSessionRouting,
+  type RequiredTurnSessionRouting,
 } from "@/chat/services/turn-session-routing";
 import { parseSlackThreadId } from "@/chat/slack/context";
 import { postSlackMessage } from "@/chat/slack/outbound";
@@ -649,7 +649,7 @@ async function failStrandedTurnWithFallback(args: {
     "app.ai.conversation_id": args.conversationId,
     "app.ai.session_id": failed.turnId,
   });
-  let routing: TurnSessionRouting;
+  let routing: RequiredTurnSessionRouting;
   try {
     routing = await resolveTurnSessionRouting({
       conversationId: args.conversationId,

@@ -196,9 +196,10 @@ export async function hydrateSlackResourceEventRecords(args: {
     routing?.destination ?? args.destination,
     "Slack resource-event hydration",
   );
+  const boundSource = routing?.source;
   const threadTs =
-    (routing?.source.platform === "slack"
-      ? routing.source.threadTs?.trim()
+    (boundSource?.platform === "slack"
+      ? boundSource.threadTs?.trim()
       : undefined) || parseSlackThreadId(args.conversationId)?.threadTs;
   if (!threadTs) {
     throw new Error(

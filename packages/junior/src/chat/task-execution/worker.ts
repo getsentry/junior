@@ -4,7 +4,6 @@ import { getChatConfig } from "@/chat/config";
 import { logException, logInfo, logWarn, withLogContext } from "@/chat/logging";
 import type { ConversationStore } from "@/chat/conversations/store";
 import { isProviderRetryError } from "@/chat/services/provider-error";
-import { resolveConversationRouting } from "@/chat/services/turn-session-routing";
 import { getTurnRequestDeadline } from "@/chat/runtime/request-deadline";
 import {
   ConversationQueueMessageRejectedError,
@@ -403,14 +402,16 @@ async function processConversationWorkInContext(
     }
     return { status: "no_work" };
   }
-  // Mailbox wakes may omit destination. Prefer the bound conversation root.
+  // Mailbox wakes may omit destination. Use this conversation's own bound
+  // destination only — never invent one. Children stay destinationless and must
+  // not inherit parent dest into worker context (invocation/dispatch workers
+  // forbid provider destinations).
   let destination = initial.destination;
   if (!destination && options.conversationStore) {
-    const routing = await resolveConversationRouting({
-      conversationId,
-      conversationStore: options.conversationStore,
-    });
-    destination = routing?.destination;
+    const stored = await options.conversationStore.get({ conversationId });
+    if (stored && !stored.lineage) {
+      destination = stored.destination;
+    }
   }
 
   const lease = await startConversationWork({

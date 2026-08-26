@@ -18,6 +18,7 @@ import { purgeConversation } from "@/chat/conversations/retention";
 
 async function recordConversation(conversationId: string): Promise<void> {
   await getConversationStore().recordActivity({
+    destination: { platform: "local" as const, conversationId },
     conversationId,
     nowMs: 1,
     source: "internal",
@@ -72,7 +73,7 @@ describe("conversation event list API", () => {
   });
 
   it("pages backward without gaps", async () => {
-    const conversationId = "internal:paged-events";
+    const conversationId = "local:test:paged-events";
     await recordConversation(conversationId);
     await getConversationEventStore().append(conversationId, [
       message("message-1", 1),
@@ -143,7 +144,7 @@ describe("conversation event list API", () => {
   });
 
   it("reports privacy-safe Guardian decisions", async () => {
-    const conversationId = "internal:guardian-events";
+    const conversationId = "local:test:guardian-events";
     await recordConversation(conversationId);
     await getConversationEventStore().append(conversationId, [
       {
@@ -181,7 +182,7 @@ describe("conversation event list API", () => {
   });
 
   it("keeps a history page self-contained when a subagent start is older", async () => {
-    const conversationId = "internal:paged-subagent";
+    const conversationId = "local:test:paged-subagent";
     await recordConversation(conversationId);
     await getConversationEventStore().append(conversationId, [
       {
@@ -238,7 +239,7 @@ describe("conversation event list API", () => {
   });
 
   it("keeps a terminal tool observation self-contained when its start is older", async () => {
-    const conversationId = "internal:paged-tool";
+    const conversationId = "local:test:paged-tool";
     await recordConversation(conversationId);
     await getConversationEventStore().append(conversationId, [
       {
@@ -298,7 +299,7 @@ describe("conversation event list API", () => {
   });
 
   it("rejects tampered, cross-conversation, and invalid pagination input", async () => {
-    const firstConversationId = "internal:first-cursor-owner";
+    const firstConversationId = "local:test:first-cursor-owner";
     const secondConversationId = "internal:second-cursor-owner";
     await recordConversation(firstConversationId);
     await recordConversation(secondConversationId);
@@ -455,7 +456,7 @@ describe("conversation event list API", () => {
   });
 
   it("returns expired history and detail after retention purge", async () => {
-    const conversationId = "internal:expired-paged-events";
+    const conversationId = "local:test:expired-paged-events";
     await recordConversation(conversationId);
     await getConversationEventStore().append(conversationId, [
       message("expired-message-1", 1),

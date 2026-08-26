@@ -3,6 +3,7 @@ import {
   getTurnRecord,
   listTurnSummaries,
 } from "@/chat/task-execution/checkpoint";
+import { isResourceEventMailboxMetadata } from "@/chat/resource-events/notification";
 import type { InboundMessage } from "@/chat/task-execution/store";
 import type { ConversationWorkerContext } from "@/chat/task-execution/worker";
 
@@ -20,6 +21,12 @@ const apiTurnMailboxMetadataSchema = z
 export type ApiTurnMailboxMetadata = z.output<
   typeof apiTurnMailboxMetadataSchema
 >;
+
+/** Local-bound resource-event mailbox rows share the conversation-only runner. */
+export type LocalResourceEventMailboxEntry = {
+  message: InboundMessage;
+  kind: "resource_event";
+};
 
 /** Return the active root API Turn for one Conversation, if it has one. */
 export async function getActiveApiTurnId(
@@ -86,11 +93,33 @@ function parseApiTurnMessages(
   });
 }
 
+function parseLocalResourceEventMessages(
+  messages: readonly InboundMessage[],
+): LocalResourceEventMailboxEntry[] {
+  if (messages.length === 0) {
+    return [];
+  }
+  if (
+    !messages.every(
+      (message) =>
+        message.source === "resource_event" &&
+        isResourceEventMailboxMetadata(message.input.metadata),
+    )
+  ) {
+    return [];
+  }
+  return messages.map((message) => ({
+    message,
+    kind: "resource_event" as const,
+  }));
+}
+
 /**
- * Resolve API Turn work from mailbox metadata or an active checkpoint.
+ * Resolve conversation-only work from mailbox metadata or an active checkpoint.
  *
- * Empty resume wakes after yield carry no mailbox rows. Use durable active
- * Turn state so these wakes do not fall through to Slack.
+ * Covers dashboard API turns and local-bound resource-event wakes. Empty resume
+ * wakes after yield carry no mailbox rows; durable active Turn state keeps those
+ * wakes on this runner instead of falling through to Slack.
  */
 export async function resolveApiTurnWork(
   context: ConversationWorkerContext,
@@ -102,12 +131,26 @@ export async function resolveApiTurnWork(
         metadata: ApiTurnMailboxMetadata;
       }>;
     }
+  | {
+      kind: "resource_event";
+      batch: LocalResourceEventMailboxEntry[];
+    }
   | { kind: "resume"; turnId: string }
   | undefined
 > {
   const batch = parseApiTurnMessages(context.attempt.messages);
   if (batch.length > 0) {
     return { kind: "mailbox", batch };
+  }
+  // Local-bound resource events share the conversation-only runner. Slack-bound
+  // resource events stay on the Slack worker for thread hydration.
+  if (context.destination?.platform === "local") {
+    const resourceBatch = parseLocalResourceEventMessages(
+      context.attempt.messages,
+    );
+    if (resourceBatch.length > 0) {
+      return { kind: "resource_event", batch: resourceBatch };
+    }
   }
   if (context.attempt.messages.length > 0) {
     return undefined;
