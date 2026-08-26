@@ -215,8 +215,8 @@ export function messageRawText(message: TranscriptViewMessage): string {
       }
       return [
         "model handoff",
-        `profile ${part.event.modelProfile}`,
         `model ${part.event.modelId}`,
+        `profile ${part.event.modelProfile}`,
         part.event.summary,
         part.event.reasoningLevel
           ? `reasoning ${part.event.reasoningLevel}`
