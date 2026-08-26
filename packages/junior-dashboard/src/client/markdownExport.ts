@@ -231,9 +231,9 @@ function appendFailure(
   );
   addEventMeta(lines, conversationTranscript, timestamp);
   lines.push("", transcriptFailureDescription(failureCode, failureReason));
-  addMetaLine(lines, "Failure code", failureCode);
+  addMetaLine(lines, "Code", failureCode);
   if (failureReason) {
-    addMetaLine(lines, "Failure reason", failureReason);
+    addMetaLine(lines, "Reason", failureReason);
   }
 }
 

@@ -236,7 +236,7 @@ export const conversationTurnSurfaceSchema = z.enum([
   "internal",
 ]);
 
-/** Stable, privacy-safe classification for a failed turn. */
+/** Where a failed turn stopped. */
 export const conversationTurnFailureCodeSchema = z.enum([
   "agent_run_failed",
   "delivery_failed",
@@ -244,14 +244,14 @@ export const conversationTurnFailureCodeSchema = z.enum([
   "persistence_failed",
 ]);
 
-/** Failure classification persisted without raw provider or exception data. */
+/** Where a failed turn stopped. */
 export type ConversationTurnFailureCode = z.output<
   typeof conversationTurnFailureCodeSchema
 >;
 
 /**
- * Stable reason for a failed turn.
- * Provider kinds stay privacy-safe; execution classes avoid raw exception text.
+ * Why a failed turn stopped.
+ * Values are fixed labels only. Do not store raw exception text.
  */
 export const conversationTurnFailureReasonSchema = z.enum([
   "auth",
@@ -271,7 +271,7 @@ export const conversationTurnFailureReasonSchema = z.enum([
   "suppressed_output",
 ]);
 
-/** Privacy-safe reason persisted on a failed turn. */
+/** Why a failed turn stopped. */
 export type ConversationTurnFailureReason = z.output<
   typeof conversationTurnFailureReasonSchema
 >;

@@ -1,10 +1,19 @@
 import { z } from "zod";
+import {
+  conversationTurnFailureCodeSchema,
+  conversationTurnFailureReasonSchema,
+} from "@/chat/conversations/history";
 import { usageCostSchema, usageSchema } from "@/usage-schema";
 import {
   conversationAnnotationInputSchema,
   conversationSidebarAnnotationSchema,
   conversationEventPresentationSchema,
 } from "@sentry/junior-plugin-api";
+
+export {
+  conversationTurnFailureCodeSchema,
+  conversationTurnFailureReasonSchema,
+};
 
 export const conversationReportStatusSchema = z.enum([
   "active",
@@ -399,33 +408,6 @@ const conversationReportAssistantMessageEventDataSchema = z
     parts: z.array(conversationReportReasoningPartSchema).min(1),
   })
   .strict();
-
-/** Stable failure codes exposed on failed turn lifecycle report events. */
-export const conversationTurnFailureCodeSchema = z.enum([
-  "agent_run_failed",
-  "delivery_failed",
-  "model_execution_failed",
-  "persistence_failed",
-]);
-
-/** Stable failure reasons exposed on failed turn lifecycle report events. */
-export const conversationTurnFailureReasonSchema = z.enum([
-  "auth",
-  "permission",
-  "rate_limit",
-  "capacity",
-  "timeout",
-  "network",
-  "server",
-  "invalid_request",
-  "invalid_response",
-  "quota",
-  "content_policy",
-  "unknown",
-  "empty_output",
-  "tool_errors",
-  "suppressed_output",
-]);
 
 const conversationReportTurnLifecycleEventDataSchema = z.discriminatedUnion(
   "state",

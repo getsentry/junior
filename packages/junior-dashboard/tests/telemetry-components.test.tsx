@@ -695,8 +695,8 @@ describe("dashboard canonical-event components", () => {
     );
     expect(html).toContain("Context compacted");
     expect(html).toContain("Model handoff");
-    expect(html).toContain("Model network error");
-    expect(html).toContain("network");
+    expect(html).toContain("Model connection failed");
+    expect(html).toContain('data-transcript-failure-reason="network"');
   });
 
   it("anchors structured events to the transcript rail", () => {
@@ -817,7 +817,7 @@ describe("dashboard canonical-event components", () => {
     );
     expect(html).toContain("Message delivery failed");
     expect(html).toContain("Junior could not deliver this message.");
-    expect(html).not.toContain("Model network error");
+    expect(html).not.toContain("Model connection failed");
     expect(html).not.toContain("Internal error");
   });
 

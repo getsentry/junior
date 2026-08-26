@@ -46,10 +46,7 @@ function getExecutionFailureReason(reply: {
   return "empty assistant turn";
 }
 
-/**
- * Return a privacy-safe reason for a failed model turn.
- * Prefer provider kinds; otherwise use a stable execution class.
- */
+/** Return a fixed reason label for a failed model turn. */
 export function getTurnFailureReason(
   reply: AgentRunResult,
 ): ConversationTurnFailureReason | undefined {

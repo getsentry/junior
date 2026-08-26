@@ -17,7 +17,6 @@ export function TranscriptFailureView(props: {
   timestamp?: number;
 }) {
   const timestamp = formatMessageTimestamp(props.timestamp);
-  const detail = props.failureReason ?? props.failureCode;
 
   return (
     <div
@@ -37,9 +36,6 @@ export function TranscriptFailureView(props: {
         </div>
         <div className="mt-1 text-sm leading-relaxed text-rose-100/70">
           {transcriptFailureDescription(props.failureCode, props.failureReason)}
-        </div>
-        <div className="mt-1 font-mono text-xs leading-none text-rose-100/55">
-          {detail}
         </div>
       </div>
       {timestamp ? (

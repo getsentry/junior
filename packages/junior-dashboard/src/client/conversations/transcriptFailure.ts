@@ -13,7 +13,7 @@ export function transcriptFailureTitle(
   if (failureCode === "model_execution_failed" && failureReason) {
     switch (failureReason) {
       case "auth":
-        return "Model auth failed";
+        return "Model credentials rejected";
       case "permission":
         return "Model access denied";
       case "rate_limit":
@@ -23,9 +23,9 @@ export function transcriptFailureTitle(
       case "timeout":
         return "Model timed out";
       case "network":
-        return "Model network error";
+        return "Model connection failed";
       case "server":
-        return "Model provider error";
+        return "Model service error";
       case "invalid_request":
         return "Invalid model request";
       case "invalid_response":
@@ -37,11 +37,11 @@ export function transcriptFailureTitle(
       case "empty_output":
         return "Empty model response";
       case "tool_errors":
-        return "Tool errors stopped the turn";
+        return "Tool failed";
       case "suppressed_output":
         return "Model output was dropped";
       case "unknown":
-        return "Model provider error";
+        return "Model service error";
     }
   }
 
@@ -49,7 +49,7 @@ export function transcriptFailureTitle(
     case "delivery_failed":
       return "Message delivery failed";
     case "model_execution_failed":
-      return "Model execution failed";
+      return "Model failed";
     case "persistence_failed":
       return "Save failed";
     case "agent_run_failed":
@@ -67,35 +67,35 @@ export function transcriptFailureDescription(
   if (failureCode === "model_execution_failed" && failureReason) {
     switch (failureReason) {
       case "auth":
-        return "The model provider rejected credentials. An admin needs to fix configuration.";
+        return "The model service rejected credentials. An admin needs to fix configuration.";
       case "permission":
-        return "The model provider denied access to this model or request.";
+        return "The model service denied access to this model or request.";
       case "rate_limit":
-        return "The model is rate-limited. Try again shortly.";
+        return "The model is rate limited. Try again shortly.";
       case "capacity":
         return "The selected model is at capacity. Try again shortly.";
       case "timeout":
-        return "The model provider timed out before the turn finished.";
+        return "The model service timed out before the turn finished.";
       case "network":
-        return "The model provider had a network problem before the turn finished.";
+        return "The model service had a connection problem before the turn finished.";
       case "server":
-        return "The model provider returned a server error.";
+        return "The model service returned an error.";
       case "invalid_request":
-        return "The model provider rejected this request as invalid.";
+        return "The model service rejected this request as invalid.";
       case "invalid_response":
-        return "The model provider returned an invalid response.";
+        return "The model service returned an invalid response.";
       case "quota":
-        return "The model provider quota is exhausted. An admin needs to fix billing or limits.";
+        return "The model service quota is exhausted. An admin needs to fix billing or limits.";
       case "content_policy":
-        return "The model provider blocked this request under its content policy.";
+        return "The model service blocked this request under its content policy.";
       case "empty_output":
         return `The model returned no usable text before ${agentName} finished this turn.`;
       case "tool_errors":
-        return "One or more tools failed and the turn could not finish.";
+        return "A tool failed and the turn could not finish.";
       case "suppressed_output":
         return `The model produced text that ${agentName} could not deliver.`;
       case "unknown":
-        return "The model provider failed for an unknown reason.";
+        return "The model service failed for an unknown reason.";
     }
   }
 
@@ -120,9 +120,6 @@ export function transcriptFailureSearchText(
     transcriptFailureTitle(failureCode, failureReason),
     transcriptFailureDescription(failureCode, failureReason),
     failureCode.replaceAll("_", " "),
-    failureCode,
-    ...(failureReason
-      ? [failureReason.replaceAll("_", " "), failureReason]
-      : []),
+    ...(failureReason ? [failureReason.replaceAll("_", " ")] : []),
   ].join(" ");
 }
