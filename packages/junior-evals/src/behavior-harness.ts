@@ -1734,292 +1734,291 @@ function buildRuntimeServices(
           },
         }
       : {}),
-    replyExecutor: {
-      turnLifecycle,
-      agentRunner: {
-        run: async (request) => {
-          const pendingSteeringDelivery = steeringDelivery.deliver;
-          const runRequest = pendingSteeringDelivery
+    agentRunner: {
+      run: async (request) => {
+        const pendingSteeringDelivery = steeringDelivery.deliver;
+        const runRequest = pendingSteeringDelivery
+          ? {
+              ...request,
+              durability: {
+                ...request.durability,
+                onInputCommitted: async () => {
+                  await request.durability?.onInputCommitted?.();
+                  if (steeringDelivery.deliver !== pendingSteeringDelivery) {
+                    return;
+                  }
+                  steeringDelivery.deliver = undefined;
+                  await pendingSteeringDelivery();
+                },
+              },
+            }
+          : request;
+        const timeoutResume = scenario.overrides?.timeout_resume;
+        const activeTurnCompaction = scenario.overrides?.active_turn_compaction;
+        if (activeTurnCompaction && !activeTurnCompactionInjected) {
+          activeTurnCompactionInjected = true;
+          await runRequest.durability?.onInputCommitted?.();
+          const nowMs = Date.now();
+          const actor = actorFromRun(runRequest);
+          const piMessages = [
+            {
+              role: "user",
+              content: [
+                {
+                  type: "text",
+                  text: `<${TURN_CONTEXT_TAG}>\nEval continuation fixture.\n</${TURN_CONTEXT_TAG}>`,
+                },
+              ],
+              timestamp: nowMs,
+            },
+            {
+              role: "user",
+              content: [
+                {
+                  type: "text",
+                  text: renderCurrentInstruction(runRequest.instruction.text),
+                },
+              ],
+              timestamp: nowMs + 1,
+            },
+            {
+              role: "user",
+              content: [
+                {
+                  type: "text",
+                  text: `${ACTIVE_TURN_COMPACTION_SUMMARY_PREFIX}\n${activeTurnCompaction.summary}`,
+                },
+              ],
+              timestamp: nowMs + 2,
+            },
+          ] as PiMessage[];
+          const sessionRecord = await upsertTurnRecord({
+            conversationId: runRequest.conversationId,
+            turnId: runRequest.turnId,
+            sliceId: 1,
+            state: "paused",
+            piMessages,
+            resumeReason: "yield",
+            destination: runRequest.destination,
+            destinationVisibility: runRequest.destinationVisibility,
+            source: runRequest.source,
+            surface: runRequest.surface,
+            actor,
+            trailingMessageProvenance: [
+              { authority: "instruction", actor },
+              { authority: "context" },
+            ],
+            turnStartMessageIndex: 0,
+          });
+          return {
+            status: "suspended",
+            reason: "yield" as const,
+            resumeVersion: sessionRecord.version,
+          };
+        }
+        if (timeoutResume && !timeoutResumeInjected) {
+          timeoutResumeInjected = true;
+          await runRequest.durability?.onInputCommitted?.();
+          const nowMs = Date.now();
+          const toolCallId = "eval-timeout-resume-tool-call";
+          const abortedAttempt = {
+            target: timeoutResume.tool_name,
+            aborted: true,
+          };
+          const timedOutResult = projectTimedOutToolResult({
+            content: [{ type: "text", text: JSON.stringify(abortedAttempt) }],
+            details: abortedAttempt,
+          });
+          if (
+            !timedOutResult?.content ||
+            timedOutResult.details === undefined
+          ) {
+            throw new Error("Failed to build timeout continuation fixture");
+          }
+          const piMessages = [
+            {
+              role: "user",
+              content: [{ type: "text", text: runRequest.instruction.text }],
+              timestamp: nowMs,
+            },
+            {
+              role: "assistant",
+              content: [
+                {
+                  type: "toolCall",
+                  id: toolCallId,
+                  name: timeoutResume.tool_name,
+                  arguments: timeoutResume.arguments,
+                },
+              ],
+              stopReason: "toolUse",
+              api: "eval-timeout-resume",
+              provider: "eval-timeout-resume",
+              model: "xai/grok-4.5",
+              timestamp: nowMs,
+              usage: { input: 0, output: 0, totalTokens: 0 },
+            },
+            {
+              role: "toolResult",
+              toolCallId,
+              toolName: timeoutResume.tool_name,
+              content: timedOutResult.content,
+              details: timedOutResult.details,
+              isError: timedOutResult.isError,
+              timestamp: nowMs,
+            },
+          ] as PiMessage[];
+          const sessionRecord = await upsertTurnRecord({
+            conversationId: runRequest.conversationId,
+            turnId: runRequest.turnId,
+            sliceId: 2,
+            state: "paused",
+            piMessages,
+            resumeReason: "timeout",
+            resumedFromSliceId: 1,
+            destination: runRequest.destination,
+            destinationVisibility: runRequest.destinationVisibility,
+            source: runRequest.source,
+            surface: runRequest.surface,
+            actor: actorFromRun(runRequest),
+            errorMessage: "Agent turn timed out at the eval fixture boundary",
+            turnStartMessageIndex: 0,
+          });
+          return {
+            status: "suspended",
+            reason: "timeout" as const,
+            resumeVersion: sessionRecord.version,
+          };
+        }
+        const mockImageGeneration = scenario.overrides?.mock_image_generation;
+        const replyText = replyTexts[replyState.successfulCount];
+        let scriptedStream: ReturnType<typeof createFauxCore> | undefined;
+        if (typeof replyText === "string") {
+          scriptedStream = createFauxCore({
+            api: "eval",
+            provider: "eval",
+          });
+          scriptedStream.setResponses([fauxAssistantMessage(replyText)]);
+        }
+
+        const gatewaySnapshot = snapshotEnv([
+          "AI_GATEWAY_API_KEY",
+          "VERCEL_OIDC_TOKEN",
+        ]);
+        const baseToolOverrides: ToolHooks["toolOverrides"] = {
+          ...(request.environment?.toolOverrides ?? {}),
+        };
+        const viewImageFixtures = new Map(
+          scenario.overrides?.view_image_files?.map((fixture) => [
+            fixture.path,
+            resolveEvalRelativePath(fixture.source),
+          ]) ?? [],
+        );
+        const toolOverrides = {
+          ...baseToolOverrides,
+          webFetch: createReplayWebFetchDeps(baseToolOverrides),
+          webSearch: createReplayWebSearchDeps(baseToolOverrides),
+          ...(mockImageGeneration
+            ? { imageGenerate: createMockImageGenerateDeps() }
+            : {}),
+          ...(viewImageFixtures.size > 0
             ? {
-                ...request,
-                durability: {
-                  ...request.durability,
-                  onInputCommitted: async () => {
-                    await request.durability?.onInputCommitted?.();
-                    if (steeringDelivery.deliver !== pendingSteeringDelivery) {
-                      return;
-                    }
-                    steeringDelivery.deliver = undefined;
-                    await pendingSteeringDelivery();
+                viewImage: {
+                  readFile: async (imagePath: string) => {
+                    const sourcePath = viewImageFixtures.get(imagePath);
+                    return sourcePath ? await readFile(sourcePath) : null;
                   },
                 },
               }
-            : request;
-          const timeoutResume = scenario.overrides?.timeout_resume;
-          const activeTurnCompaction =
-            scenario.overrides?.active_turn_compaction;
-          if (activeTurnCompaction && !activeTurnCompactionInjected) {
-            activeTurnCompactionInjected = true;
-            await runRequest.durability?.onInputCommitted?.();
-            const nowMs = Date.now();
-            const actor = actorFromRun(runRequest);
-            const piMessages = [
-              {
-                role: "user",
-                content: [
-                  {
-                    type: "text",
-                    text: `<${TURN_CONTEXT_TAG}>\nEval continuation fixture.\n</${TURN_CONTEXT_TAG}>`,
-                  },
-                ],
-                timestamp: nowMs,
-              },
-              {
-                role: "user",
-                content: [
-                  {
-                    type: "text",
-                    text: renderCurrentInstruction(runRequest.instruction.text),
-                  },
-                ],
-                timestamp: nowMs + 1,
-              },
-              {
-                role: "user",
-                content: [
-                  {
-                    type: "text",
-                    text: `${ACTIVE_TURN_COMPACTION_SUMMARY_PREFIX}\n${activeTurnCompaction.summary}`,
-                  },
-                ],
-                timestamp: nowMs + 2,
-              },
-            ] as PiMessage[];
-            const sessionRecord = await upsertTurnRecord({
-              conversationId: runRequest.conversationId,
-              turnId: runRequest.turnId,
-              sliceId: 1,
-              state: "paused",
-              piMessages,
-              resumeReason: "yield",
-              destination: runRequest.destination,
-              destinationVisibility: runRequest.destinationVisibility,
-              source: runRequest.source,
-              surface: runRequest.surface,
-              actor,
-              trailingMessageProvenance: [
-                { authority: "instruction", actor },
-                { authority: "context" },
-              ],
-              turnStartMessageIndex: 0,
-            });
-            return {
-              status: "suspended",
-              reason: "yield" as const,
-              resumeVersion: sessionRecord.version,
-            };
-          }
-          if (timeoutResume && !timeoutResumeInjected) {
-            timeoutResumeInjected = true;
-            await runRequest.durability?.onInputCommitted?.();
-            const nowMs = Date.now();
-            const toolCallId = "eval-timeout-resume-tool-call";
-            const abortedAttempt = {
-              target: timeoutResume.tool_name,
-              aborted: true,
-            };
-            const timedOutResult = projectTimedOutToolResult({
-              content: [{ type: "text", text: JSON.stringify(abortedAttempt) }],
-              details: abortedAttempt,
-            });
-            if (
-              !timedOutResult?.content ||
-              timedOutResult.details === undefined
-            ) {
-              throw new Error("Failed to build timeout continuation fixture");
-            }
-            const piMessages = [
-              {
-                role: "user",
-                content: [{ type: "text", text: runRequest.instruction.text }],
-                timestamp: nowMs,
-              },
-              {
-                role: "assistant",
-                content: [
-                  {
-                    type: "toolCall",
-                    id: toolCallId,
-                    name: timeoutResume.tool_name,
-                    arguments: timeoutResume.arguments,
-                  },
-                ],
-                stopReason: "toolUse",
-                api: "eval-timeout-resume",
-                provider: "eval-timeout-resume",
-                model: "xai/grok-4.5",
-                timestamp: nowMs,
-                usage: { input: 0, output: 0, totalTokens: 0 },
-              },
-              {
-                role: "toolResult",
-                toolCallId,
-                toolName: timeoutResume.tool_name,
-                content: timedOutResult.content,
-                details: timedOutResult.details,
-                isError: timedOutResult.isError,
-                timestamp: nowMs,
-              },
-            ] as PiMessage[];
-            const sessionRecord = await upsertTurnRecord({
-              conversationId: runRequest.conversationId,
-              turnId: runRequest.turnId,
-              sliceId: 2,
-              state: "paused",
-              piMessages,
-              resumeReason: "timeout",
-              resumedFromSliceId: 1,
-              destination: runRequest.destination,
-              destinationVisibility: runRequest.destinationVisibility,
-              source: runRequest.source,
-              surface: runRequest.surface,
-              actor: actorFromRun(runRequest),
-              errorMessage: "Agent turn timed out at the eval fixture boundary",
-              turnStartMessageIndex: 0,
-            });
-            return {
-              status: "suspended",
-              reason: "timeout" as const,
-              resumeVersion: sessionRecord.version,
-            };
-          }
-          const mockImageGeneration = scenario.overrides?.mock_image_generation;
-          const replyText = replyTexts[replyState.successfulCount];
-          let scriptedStream: ReturnType<typeof createFauxCore> | undefined;
-          if (typeof replyText === "string") {
-            scriptedStream = createFauxCore({
-              api: "eval",
-              provider: "eval",
-            });
-            scriptedStream.setResponses([fauxAssistantMessage(replyText)]);
-          }
-
-          const gatewaySnapshot = snapshotEnv([
-            "AI_GATEWAY_API_KEY",
-            "VERCEL_OIDC_TOKEN",
+            : {}),
+        };
+        if (scenario.overrides?.unset_gateway_api_key) {
+          delete process.env.AI_GATEWAY_API_KEY;
+          delete process.env.VERCEL_OIDC_TOKEN;
+        }
+        try {
+          const pendingToolInvocations: EvalToolInvocation[] = [];
+          const replySignal = AbortSignal.any([
+            ...(signal ? [signal] : []),
+            AbortSignal.timeout(replyTimeoutMs),
           ]);
-          const baseToolOverrides: ToolHooks["toolOverrides"] = {
-            ...(request.environment?.toolOverrides ?? {}),
-          };
-          const viewImageFixtures = new Map(
-            scenario.overrides?.view_image_files?.map((fixture) => [
-              fixture.path,
-              resolveEvalRelativePath(fixture.source),
-            ]) ?? [],
-          );
-          const toolOverrides = {
-            ...baseToolOverrides,
-            webFetch: createReplayWebFetchDeps(baseToolOverrides),
-            webSearch: createReplayWebSearchDeps(baseToolOverrides),
-            ...(mockImageGeneration
-              ? { imageGenerate: createMockImageGenerateDeps() }
-              : {}),
-            ...(viewImageFixtures.size > 0
-              ? {
-                  viewImage: {
-                    readFile: async (imagePath: string) => {
-                      const sourcePath = viewImageFixtures.get(imagePath);
-                      return sourcePath ? await readFile(sourcePath) : null;
-                    },
-                  },
-                }
-              : {}),
-          };
-          if (scenario.overrides?.unset_gateway_api_key) {
-            delete process.env.AI_GATEWAY_API_KEY;
-            delete process.env.VERCEL_OIDC_TOKEN;
-          }
-          try {
-            const pendingToolInvocations: EvalToolInvocation[] = [];
-            const replySignal = AbortSignal.any([
-              ...(signal ? [signal] : []),
-              AbortSignal.timeout(replyTimeoutMs),
-            ]);
-            const outcome = await raceWithAbort(replySignal, () =>
-              executeAgentRun(
-                {
-                  ...runRequest,
-                  signal: replySignal,
-                  deadlineAtMs: Math.min(
-                    runRequest.deadlineAtMs ?? Number.POSITIVE_INFINITY,
-                    Date.now() + replyTimeoutMs,
-                  ),
-                  environment: {
-                    ...runRequest.environment,
-                    attachmentStorage:
-                      runRequest.environment?.attachmentStorage ??
-                      attachmentStorage,
-                    ...(env.configuredSkillDirs.length > 0
-                      ? { skillDirs: env.configuredSkillDirs }
-                      : {}),
-                    toolOverrides,
-                  },
-                  onEvent: async (event) => {
-                    await runRequest.onEvent?.(event);
-                    if (event.type === "tool_started") {
-                      const evalInvocation = toEvalToolInvocation({
-                        params: event.params,
-                        toolCallId: event.toolCallId,
-                        toolName: event.toolName,
-                      });
-                      observations.toolInvocations.push(evalInvocation);
-                      pendingToolInvocations.push(evalInvocation);
-                      return;
-                    }
-                    if (event.type !== "tool_finished") {
-                      return;
-                    }
-                    const result = event.report;
-                    const pendingIndex = pendingToolInvocations.findIndex(
-                      (candidate) => candidate.toolCallId === result.toolCallId,
-                    );
-                    if (pendingIndex === -1) {
-                      return;
-                    }
-                    const [invocation] = pendingToolInvocations.splice(
-                      pendingIndex,
-                      1,
-                    );
-                    invocation.completed = true;
-                    invocation.ok = result.ok;
-                    if (result.error) {
-                      invocation.error = result.error;
-                    }
-                    if (result.result !== undefined) {
-                      invocation.result = result.result;
-                    }
-                  },
+          const outcome = await raceWithAbort(replySignal, () =>
+            executeAgentRun(
+              {
+                ...runRequest,
+                signal: replySignal,
+                deadlineAtMs: Math.min(
+                  runRequest.deadlineAtMs ?? Number.POSITIVE_INFINITY,
+                  Date.now() + replyTimeoutMs,
+                ),
+                environment: {
+                  ...runRequest.environment,
+                  attachmentStorage:
+                    runRequest.environment?.attachmentStorage ??
+                    attachmentStorage,
+                  ...(env.configuredSkillDirs.length > 0
+                    ? { skillDirs: env.configuredSkillDirs }
+                    : {}),
+                  toolOverrides,
                 },
-                scriptedStream?.stream,
-              ),
-            );
-            const usage =
-              outcome.status === "completed"
-                ? outcome.result.diagnostics.usage
-                : outcome.usage;
-            observations.usage = addAgentTurnUsage(observations.usage, usage);
-            if (outcome.status === "completed") {
-              observations.modelIds.add(outcome.result.diagnostics.modelId);
-            }
-            replyState.successfulCount += 1;
-            return outcome;
-          } finally {
-            if (scenario.overrides?.unset_gateway_api_key) {
-              gatewaySnapshot.restore();
-            }
+                onEvent: async (event) => {
+                  await runRequest.onEvent?.(event);
+                  if (event.type === "tool_started") {
+                    const evalInvocation = toEvalToolInvocation({
+                      params: event.params,
+                      toolCallId: event.toolCallId,
+                      toolName: event.toolName,
+                    });
+                    observations.toolInvocations.push(evalInvocation);
+                    pendingToolInvocations.push(evalInvocation);
+                    return;
+                  }
+                  if (event.type !== "tool_finished") {
+                    return;
+                  }
+                  const result = event.report;
+                  const pendingIndex = pendingToolInvocations.findIndex(
+                    (candidate) => candidate.toolCallId === result.toolCallId,
+                  );
+                  if (pendingIndex === -1) {
+                    return;
+                  }
+                  const [invocation] = pendingToolInvocations.splice(
+                    pendingIndex,
+                    1,
+                  );
+                  invocation.completed = true;
+                  invocation.ok = result.ok;
+                  if (result.error) {
+                    invocation.error = result.error;
+                  }
+                  if (result.result !== undefined) {
+                    invocation.result = result.result;
+                  }
+                },
+              },
+              scriptedStream?.stream,
+            ),
+          );
+          const usage =
+            outcome.status === "completed"
+              ? outcome.result.diagnostics.usage
+              : outcome.usage;
+          observations.usage = addAgentTurnUsage(observations.usage, usage);
+          if (outcome.status === "completed") {
+            observations.modelIds.add(outcome.result.diagnostics.modelId);
           }
-        },
+          replyState.successfulCount += 1;
+          return outcome;
+        } finally {
+          if (scenario.overrides?.unset_gateway_api_key) {
+            gatewaySnapshot.restore();
+          }
+        }
       },
+    },
+    replyExecutor: {
+      turnLifecycle,
       wakePausedTurn: async (request) => {
         await wakePausedTurn(request, {
           queue: conversationWorkQueue,
@@ -2717,7 +2716,7 @@ export async function runEvalScenario(
       turnLifecycle,
       options.signal,
     );
-    const evalAgentRunner = services.replyExecutor?.agentRunner;
+    const evalAgentRunner = services.agentRunner;
     if (!evalAgentRunner) {
       throw new Error("Eval agent runner was not configured.");
     }

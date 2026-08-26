@@ -82,8 +82,8 @@ async function createEditedDmBot(args: {
   const slackRuntime = createSlackRuntime({
     getSlackAdapter: () => bot.getAdapter("slack"),
     services: {
+      agentRunner: args.agentRunner,
       replyExecutor: {
-        agentRunner: args.agentRunner,
         ...(args.queue
           ? {
               wakePausedTurn: async (request) => {

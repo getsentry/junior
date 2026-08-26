@@ -29,13 +29,11 @@ describe("Slack behavior: processing reaction", () => {
   it("adds eyes before mention work and marks the message complete after the reply", async () => {
     const { slackRuntime } = createTestChatRuntime({
       services: {
-        replyExecutor: {
-          agentRunner: createModelAgentRunnerForRun(() => {
-            expect(slackApiOutbox.reactionAdds()).toHaveLength(1);
-            expect(slackApiOutbox.reactionRemovals()).toHaveLength(0);
-            return createModelStream([{ type: "text", text: "Done." }]);
-          }),
-        },
+        agentRunner: createModelAgentRunnerForRun(() => {
+          expect(slackApiOutbox.reactionAdds()).toHaveLength(1);
+          expect(slackApiOutbox.reactionRemovals()).toHaveLength(0);
+          return createModelStream([{ type: "text", text: "Done." }]);
+        }),
       },
     });
 
@@ -84,9 +82,7 @@ describe("Slack behavior: processing reaction", () => {
             } as never;
           },
         },
-        replyExecutor: {
-          agentRunner: neverRunAgentRunner(),
-        },
+        agentRunner: neverRunAgentRunner(),
       },
     });
 
@@ -132,13 +128,11 @@ describe("Slack behavior: processing reaction", () => {
             } as never;
           },
         },
-        replyExecutor: {
-          agentRunner: createModelAgentRunnerForRun(() => {
-            expect(slackApiOutbox.reactionAdds()).toHaveLength(1);
-            expect(slackApiOutbox.reactionRemovals()).toHaveLength(0);
-            return createModelStream([{ type: "text", text: "Done." }]);
-          }),
-        },
+        agentRunner: createModelAgentRunnerForRun(() => {
+          expect(slackApiOutbox.reactionAdds()).toHaveLength(1);
+          expect(slackApiOutbox.reactionRemovals()).toHaveLength(0);
+          return createModelStream([{ type: "text", text: "Done." }]);
+        }),
       },
     });
 
@@ -173,13 +167,11 @@ describe("Slack behavior: processing reaction", () => {
   it("does not react to synthetic resource-event notifications", async () => {
     const { slackRuntime } = createTestChatRuntime({
       services: {
-        replyExecutor: {
-          agentRunner: createModelAgentRunnerForRun(() => {
-            expect(slackApiOutbox.reactionAdds()).toHaveLength(0);
-            expect(slackApiOutbox.reactionRemovals()).toHaveLength(0);
-            return createModelStream([{ type: "text", text: "Done." }]);
-          }),
-        },
+        agentRunner: createModelAgentRunnerForRun(() => {
+          expect(slackApiOutbox.reactionAdds()).toHaveLength(0);
+          expect(slackApiOutbox.reactionRemovals()).toHaveLength(0);
+          return createModelStream([{ type: "text", text: "Done." }]);
+        }),
       },
     });
 
@@ -221,18 +213,16 @@ describe("Slack behavior: processing reaction", () => {
   it("keeps eyes when the assistant explicitly adds an eyes reaction", async () => {
     const { slackRuntime } = createTestChatRuntime({
       services: {
-        replyExecutor: {
-          agentRunner: createModelAgentRunner(
-            createModelStream([
-              {
-                type: "toolCall",
-                name: "addReaction",
-                arguments: { emoji: ":eyes:" },
-              },
-              { type: "text", text: "Done." },
-            ]),
-          ),
-        },
+        agentRunner: createModelAgentRunner(
+          createModelStream([
+            {
+              type: "toolCall",
+              name: "addReaction",
+              arguments: { emoji: ":eyes:" },
+            },
+            { type: "text", text: "Done." },
+          ]),
+        ),
       },
     });
 
@@ -265,18 +255,16 @@ describe("Slack behavior: processing reaction", () => {
   it("clears eyes and marks complete for reaction-only no-reply turns", async () => {
     const { slackRuntime } = createTestChatRuntime({
       services: {
-        replyExecutor: {
-          agentRunner: createModelAgentRunner(
-            createModelStream([
-              {
-                type: "toolCall",
-                name: "addReaction",
-                arguments: { emoji: ":heart:" },
-              },
-              { type: "text", text: NO_REPLY_MARKER },
-            ]),
-          ),
-        },
+        agentRunner: createModelAgentRunner(
+          createModelStream([
+            {
+              type: "toolCall",
+              name: "addReaction",
+              arguments: { emoji: ":heart:" },
+            },
+            { type: "text", text: NO_REPLY_MARKER },
+          ]),
+        ),
       },
     });
 

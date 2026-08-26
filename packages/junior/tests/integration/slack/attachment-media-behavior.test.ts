@@ -69,20 +69,18 @@ describe("Slack behavior: mixed attachment media", () => {
           visionContext: {
             completeText: completeTextMock,
           },
-          replyExecutor: {
-            agentRunner: createModelAgentRunnerForRun((request) => {
-              const attachments = request.instruction.attachments ?? [];
-              capturedAttachmentMediaTypes.push(
-                attachments.map((attachment) => attachment.mediaType),
-              );
-              capturedAttachmentNames.push(
-                attachments.map((attachment) => attachment.filename ?? ""),
-              );
-              return createModelStream([
-                { type: "text", text: "Processed attachments." },
-              ]);
-            }),
-          },
+          agentRunner: createModelAgentRunnerForRun((request) => {
+            const attachments = request.instruction.attachments ?? [];
+            capturedAttachmentMediaTypes.push(
+              attachments.map((attachment) => attachment.mediaType),
+            );
+            capturedAttachmentNames.push(
+              attachments.map((attachment) => attachment.filename ?? ""),
+            );
+            return createModelStream([
+              { type: "text", text: "Processed attachments." },
+            ]);
+          }),
         },
       },
       {
@@ -154,23 +152,21 @@ describe("Slack behavior: mixed attachment media", () => {
 
     const { slackRuntime } = await createRuntime({
       services: {
-        replyExecutor: {
-          agentRunner: createModelAgentRunnerForRun((request) => {
-            const attachments = request.instruction.attachments ?? [];
-            capturedAttachmentMediaTypes.push(
-              attachments.map((attachment) => attachment.mediaType),
-            );
-            capturedAttachmentNames.push(
-              attachments.map((attachment) => attachment.filename ?? ""),
-            );
-            capturedOmittedImageCounts.push(
-              request.instruction.omittedImageAttachmentCount ?? 0,
-            );
-            return createModelStream([
-              { type: "text", text: "Processed attachments." },
-            ]);
-          }),
-        },
+        agentRunner: createModelAgentRunnerForRun((request) => {
+          const attachments = request.instruction.attachments ?? [];
+          capturedAttachmentMediaTypes.push(
+            attachments.map((attachment) => attachment.mediaType),
+          );
+          capturedAttachmentNames.push(
+            attachments.map((attachment) => attachment.filename ?? ""),
+          );
+          capturedOmittedImageCounts.push(
+            request.instruction.omittedImageAttachmentCount ?? 0,
+          );
+          return createModelStream([
+            { type: "text", text: "Processed attachments." },
+          ]);
+        }),
       },
     });
 
@@ -227,9 +223,7 @@ describe("Slack behavior: mixed attachment media", () => {
 
     const { slackRuntime } = await createRuntime({
       services: {
-        replyExecutor: {
-          agentRunner: createModelAgentRunnerForRun(streamForRun),
-        },
+        agentRunner: createModelAgentRunnerForRun(streamForRun),
       },
     });
 

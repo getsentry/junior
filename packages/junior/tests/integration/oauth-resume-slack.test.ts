@@ -9,6 +9,7 @@ import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { getCapturedSlackApiCalls } from "../msw/handlers/slack-api";
 import {
   createModelAgentRunner,
+  createTestTurnExecution,
   neverRunAgentRunner,
 } from "../fixtures/agent-runner";
 import { createModelStream } from "../fixtures/model-stream";
@@ -78,8 +79,8 @@ describe("oauth resume slack integration", () => {
         source: testSlackSource("1700000000.001"),
         actor: { platform: "slack", teamId: "T123", userId: "U123" },
       },
-      agentRunner: modelReply(
-        "The budget deadline you mentioned earlier was Friday.",
+      executeTurn: createTestTurnExecution(
+        modelReply("The budget deadline you mentioned earlier was Friday."),
       ),
       commitResult: async () => {
         expect(
@@ -145,7 +146,7 @@ describe("oauth resume slack integration", () => {
         source: testSlackSource("1700000000.011"),
         actor: { platform: "slack", teamId: "T123", userId: "U123" },
       },
-      agentRunner,
+      executeTurn: createTestTurnExecution(agentRunner),
     });
 
     expect(getCapturedSlackApiCalls("assistant.threads.setStatus")).toEqual([]);
@@ -193,7 +194,7 @@ describe("oauth resume slack integration", () => {
         source: testSlackSource("1700000000.010"),
         actor: { platform: "slack", teamId: "T123", userId: "U123" },
       },
-      agentRunner: {
+      executeTurn: createTestTurnExecution({
         run: async (run) => {
           observedSignal = run.signal;
           run.signal?.addEventListener(
@@ -207,7 +208,7 @@ describe("oauth resume slack integration", () => {
             runEvents.push("agent settled");
           }
         },
-      },
+      }),
       onFailure,
     });
 
@@ -260,7 +261,7 @@ describe("oauth resume slack integration", () => {
         source: testSlackSource(threadTs),
         actor: { platform: "slack", teamId: "T123", userId: "U123" },
       },
-      agentRunner: modelReply("Done."),
+      executeTurn: createTestTurnExecution(modelReply("Done.")),
     });
 
     const postCalls = getCapturedSlackApiCalls("chat.postMessage");
@@ -308,7 +309,7 @@ describe("oauth resume slack integration", () => {
         source: testSlackSource("1700000000.002"),
         actor: { platform: "slack", teamId: "T123", userId: "U123" },
       },
-      agentRunner: modelReply(longReply),
+      executeTurn: createTestTurnExecution(modelReply(longReply)),
     });
 
     const postCalls = getCapturedSlackApiCalls("chat.postMessage");
@@ -355,16 +356,18 @@ describe("oauth resume slack integration", () => {
         source: testSlackSource("1700000000.003"),
         actor: { platform: "slack", teamId: "T123", userId: "U123" },
       },
-      agentRunner: createModelAgentRunner(
-        createModelStream([
-          {
-            type: "message",
-            message: fauxAssistantMessage("Partial output", {
-              stopReason: "error",
-              errorMessage: "The model stream stopped.",
-            }),
-          },
-        ]),
+      executeTurn: createTestTurnExecution(
+        createModelAgentRunner(
+          createModelStream([
+            {
+              type: "message",
+              message: fauxAssistantMessage("Partial output", {
+                stopReason: "error",
+                errorMessage: "The model stream stopped.",
+              }),
+            },
+          ]),
+        ),
       ),
     });
 

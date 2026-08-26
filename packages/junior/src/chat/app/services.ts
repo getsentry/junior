@@ -30,7 +30,11 @@ import {
   type VisionContextDeps,
   type VisionContextService,
 } from "@/chat/slack/vision-context";
-import { createAgentRunner } from "@/chat/runtime/agent-runner";
+import {
+  createAgentRunner,
+  type AgentRunner,
+} from "@/chat/runtime/agent-runner";
+import { executeTurn, type ExecuteTurn } from "@/chat/runtime/turn-execution";
 import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
 import { getConversationEventStore } from "@/chat/db";
 import { bindSpawnAgent } from "@/chat/agent-invocations/spawn";
@@ -39,12 +43,14 @@ import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-que
 export interface JuniorRuntimeServices {
   conversationMemory: ConversationMemoryService;
   contextCompactor: ContextCompactor;
+  executeTurn: ExecuteTurn;
   replyExecutor: SlackTurnServices;
   subscribedReplyPolicy: SubscribedReplyPolicy;
   visionContext: VisionContextService;
 }
 
 export interface JuniorRuntimeServiceOverrides {
+  agentRunner?: AgentRunner;
   conversationMemory?: Partial<ConversationMemoryDeps>;
   contextCompactor?: Partial<ContextCompactorDeps>;
   replyExecutor?: Partial<SlackTurnServices>;
@@ -74,7 +80,7 @@ export function createJuniorRuntimeServices(
       overrides.visionContext?.downloadFile ?? downloadPrivateSlackFile,
   });
   const agentRunner =
-    overrides.replyExecutor?.agentRunner ??
+    overrides.agentRunner ??
     createAgentRunner(executeAgentRunImpl, {
       bindSpawnAgent: (request) =>
         bindSpawnAgent(request, { queue: getVercelConversationWorkQueue }),
@@ -84,10 +90,11 @@ export function createJuniorRuntimeServices(
   return {
     conversationMemory,
     contextCompactor,
+    executeTurn: async (run, saveResult, timeoutMs) =>
+      await executeTurn(agentRunner, run, saveResult, timeoutMs),
     replyExecutor: {
       contextCompactor:
         overrides.replyExecutor?.contextCompactor ?? contextCompactor,
-      agentRunner,
       getPausedTurnRequest:
         overrides.replyExecutor?.getPausedTurnRequest ?? getPausedTurnRequest,
       lookupSlackUser:

@@ -464,7 +464,7 @@ export async function createConversationWorkSlackHarness(
     getSlackAdapter: () => adapter,
     queue: wakes,
     services: {
-      replyExecutor: { agentRunner },
+      agentRunner,
       subscribedReplyPolicy: {
         completeObject: async ({ schema }) => ({
           object: schema.parse({

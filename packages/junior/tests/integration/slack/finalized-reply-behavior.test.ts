@@ -50,11 +50,9 @@ describe("Slack behavior: finalized thread replies", () => {
   it("posts a completed assistant message", async () => {
     const { slackRuntime } = createTestChatRuntime({
       services: {
-        replyExecutor: {
-          agentRunner: createModelAgentRunner(
-            createModelStream([{ type: "text", text: "Hello world" }]),
-          ),
-        },
+        agentRunner: createModelAgentRunner(
+          createModelStream([{ type: "text", text: "Hello world" }]),
+        ),
       },
     });
 
@@ -97,11 +95,9 @@ describe("Slack behavior: finalized thread replies", () => {
     ).join("\n");
     const { slackRuntime } = createTestChatRuntime({
       services: {
-        replyExecutor: {
-          agentRunner: createModelAgentRunner(
-            createModelStream([{ type: "text", text: longReply }]),
-          ),
-        },
+        agentRunner: createModelAgentRunner(
+          createModelStream([{ type: "text", text: longReply }]),
+        ),
       },
     });
 
@@ -134,11 +130,9 @@ describe("Slack behavior: finalized thread replies", () => {
     const longReply = `Here is the script:\n\`\`\`ts\n${repeated}\`\`\``;
     const { slackRuntime } = createTestChatRuntime({
       services: {
-        replyExecutor: {
-          agentRunner: createModelAgentRunner(
-            createModelStream([{ type: "text", text: longReply }]),
-          ),
-        },
+        agentRunner: createModelAgentRunner(
+          createModelStream([{ type: "text", text: longReply }]),
+        ),
       },
     });
 
@@ -172,19 +166,17 @@ describe("Slack behavior: finalized thread replies", () => {
     const longReply = `${partialStart} ${"A".repeat(slackOutputPolicy.maxInlineChars)}\n\n${partialEnd}`;
     const { slackRuntime } = createTestChatRuntime({
       services: {
-        replyExecutor: {
-          agentRunner: createModelAgentRunner(
-            createModelStream([
-              {
-                type: "message",
-                message: fauxAssistantMessage(longReply, {
-                  stopReason: "error",
-                  errorMessage: "The model stream stopped.",
-                }),
-              },
-            ]),
-          ),
-        },
+        agentRunner: createModelAgentRunner(
+          createModelStream([
+            {
+              type: "message",
+              message: fauxAssistantMessage(longReply, {
+                stopReason: "error",
+                errorMessage: "The model stream stopped.",
+              }),
+            },
+          ]),
+        ),
       },
     });
 

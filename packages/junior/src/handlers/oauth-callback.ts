@@ -72,6 +72,7 @@ import {
 } from "@/chat/services/turn-session-routing";
 import type { AgentRunResult } from "@/chat/services/turn-result";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
+import { executeTurn } from "@/chat/runtime/turn-execution";
 import { requireSlackDestination } from "@/chat/destination";
 import { relayLocalOAuthCallback } from "@/chat/local/oauth-relay";
 import { getSqlExecutor } from "@/chat/db";
@@ -302,7 +303,8 @@ async function resumeOAuthSessionRecordTurn(
     messageTs: getTurnUserSlackMessageTs(userMessage),
     lockKey: stored.resumeConversationId,
     initialText: "",
-    agentRunner: options.agentRunner,
+    executeTurn: async (run, saveResult, timeoutMs) =>
+      await executeTurn(options.agentRunner, run, saveResult, timeoutMs),
     beforeStart: async () => {
       const lockedState = await getPersistedThreadState(
         stored.resumeConversationId!,

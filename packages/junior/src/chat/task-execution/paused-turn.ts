@@ -72,6 +72,7 @@ import {
 } from "@/chat/resource-events/actor";
 import type { AgentRunResult } from "@/chat/services/turn-result";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
+import { executeTurn } from "@/chat/runtime/turn-execution";
 import type { AgentRun } from "@/chat/agent/types";
 import { persistAuthPauseTurnState } from "@/chat/runtime/auth-pause-state";
 import { clearPendingAuth } from "@/chat/services/pending-auth";
@@ -394,7 +395,8 @@ async function runPausedTurnInContext(
     lockKey: payload.conversationId,
     // Queue continue runs under the conversation work lease already.
     ownsConversationLease: true,
-    agentRunner: options.agentRunner,
+    executeTurn: async (run, saveResult, timeoutMs) =>
+      await executeTurn(options.agentRunner, run, saveResult, timeoutMs),
     scheduleSessionCompletedPluginTasks:
       options.scheduleSessionCompletedPluginTasks,
     beforeStart: async () => {

@@ -111,6 +111,7 @@ export function createSlackRuntime(options: CreateSlackRuntimeOptions) {
     },
   });
   const executeSlackTurn = createSlackTurn({
+    executeTurn: services.executeTurn,
     getSlackAdapter: options.getSlackAdapter,
     prepareTurnState,
     resolveUserAttachments: services.visionContext.resolveUserAttachments,

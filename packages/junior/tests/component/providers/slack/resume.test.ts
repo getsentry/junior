@@ -2,7 +2,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createSlackSource } from "@sentry/junior-plugin-api";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
-import { deliverAssistantMessagesForTest } from "../../../fixtures/agent-runner";
+import {
+  deliverAssistantMessagesForTest,
+  createTestTurnExecution,
+} from "../../../fixtures/agent-runner";
 import { getCapturedSlackApiCalls } from "../../../msw/handlers/slack-api";
 
 const ORIGINAL_STATE_ADAPTER = process.env.JUNIOR_STATE_ADAPTER;
@@ -86,11 +89,11 @@ describe("Slack resume result handling", () => {
           source: testSlackSource("1700000000.009"),
           actor: { platform: "slack", teamId: "T123", userId: "U123" },
         },
-        agentRunner: {
+        executeTurn: createTestTurnExecution({
           run: async () => {
             throw new Error("resume failed");
           },
-        },
+        }),
         onFailure: async () => {
           throw new Error("failure state unavailable");
         },
@@ -145,12 +148,12 @@ describe("Slack resume result handling", () => {
         source: testSlackSource("1700000000.008"),
         actor: { platform: "slack", teamId: "T123", userId: "U123" },
       },
-      agentRunner: {
+      executeTurn: createTestTurnExecution({
         run: async () => ({
           status: "awaiting_auth" as const,
           providerDisplayName: "Eval Auth",
         }),
-      },
+      }),
       onAuthPause: async () => undefined,
     });
 
@@ -189,10 +192,10 @@ describe("Slack resume result handling", () => {
         source: testSlackSource("1700000000.006"),
         actor: { platform: "slack", teamId: "T123", userId: "U123" },
       },
-      agentRunner: {
+      executeTurn: createTestTurnExecution({
         run: async () =>
           completedAgentRun({ text: "", diagnostics: makeDiagnostics() }),
-      },
+      }),
     });
 
     expect(getCapturedSlackApiCalls("chat.postMessage").at(-1)?.params).toEqual(
@@ -225,14 +228,14 @@ describe("Slack resume result handling", () => {
           source: testSlackSource("1700000000.011"),
           actor: { platform: "slack", teamId: "T123", userId: "U123" },
         },
-        agentRunner: {
+        executeTurn: createTestTurnExecution({
           run: async (run) => {
             await deliverAssistantMessagesForTest(run, [
               { text: "Final resumed answer" },
             ]);
             return successfulAgentRun("Final resumed answer");
           },
-        },
+        }),
         commitResult: async () => {
           throw new Error("state write failed");
         },
@@ -278,13 +281,13 @@ describe("Slack resume result handling", () => {
         source: testSlackSource("1700000000.013"),
         actor: { platform: "slack", teamId: "T123", userId: "U123" },
       },
-      agentRunner: {
+      executeTurn: createTestTurnExecution({
         run: async () => ({
           status: "suspended" as const,
           reason: "timeout" as const,
           resumeVersion: 3,
         }),
-      },
+      }),
       onSuspend,
     });
 
@@ -311,13 +314,13 @@ describe("Slack resume result handling", () => {
         source: testSlackSource("1700000000.014"),
         actor: { platform: "slack", teamId: "T123", userId: "U123" },
       },
-      agentRunner: {
+      executeTurn: createTestTurnExecution({
         run: async () => ({
           status: "suspended" as const,
           reason: "timeout" as const,
           resumeVersion: 3,
         }),
-      },
+      }),
       onSuspend: async () => {
         throw new Error("continuation scheduling failed");
       },

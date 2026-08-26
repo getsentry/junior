@@ -40,8 +40,7 @@ import {
   type AgentRun,
   type AgentSteeringMessage,
 } from "@/chat/agent/types";
-import type { AgentRunner } from "@/chat/runtime/agent-runner";
-import { AgentRunError, executeTurn } from "@/chat/runtime/turn-execution";
+import { AgentRunError, type ExecuteTurn } from "@/chat/runtime/turn-execution";
 import {
   credentialContextForActor,
   type CredentialContext,
@@ -221,7 +220,6 @@ async function loadPiMessagesForTurn(args: {
 }
 
 export interface SlackTurnServices {
-  agentRunner: AgentRunner;
   contextCompactor: ContextCompactor;
   getPausedTurnRequest: (args: {
     conversationId: string;
@@ -237,6 +235,7 @@ export interface SlackTurnServices {
 }
 
 interface SlackTurnDeps {
+  executeTurn: ExecuteTurn;
   getSlackAdapter: () => SlackAdapter;
   resolveUserAttachments: (
     attachments: Message["attachments"] | undefined,
@@ -1301,11 +1300,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
               outcome: "failed" as const,
             };
           };
-          const outcome = await executeTurn(
-            deps.services.agentRunner,
-            run,
-            saveResult,
-          );
+          const outcome = await deps.executeTurn(run, saveResult);
           if (outcome.status === "awaiting_auth") {
             await recordDispatchOutcome("blocked", "failed");
             options.onTurnOutcome?.({ outcome: "blocked" });

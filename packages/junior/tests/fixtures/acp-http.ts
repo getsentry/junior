@@ -87,7 +87,7 @@ export function createIndependentConversationWork(
     conversationStore: harness.conversationStore,
     getSlackAdapter: () => createSlackAdapterFixture(),
     queue: harness.queue,
-    services: { replyExecutor: { agentRunner: harness.agentRunner } },
+    services: { agentRunner: harness.agentRunner },
     state,
   });
 }

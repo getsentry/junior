@@ -129,10 +129,7 @@ function createTurnHarness(args: {
     getSlackAdapter: () => adapter,
     services: {
       ...(args.services ?? {}),
-      replyExecutor: {
-        ...(args.services?.replyExecutor ?? {}),
-        agentRunner: args.agentRunner,
-      },
+      agentRunner: args.agentRunner,
       subscribedReplyPolicy: {
         completeObject:
           args.completeObject ??

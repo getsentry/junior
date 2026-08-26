@@ -92,12 +92,10 @@ vi.mock("@/chat/app/factory", () => ({
   createSlackRuntime: vi.fn(
     (options: {
       services?: {
-        replyExecutor?: {
-          agentRunner?: { run: (request: unknown) => Promise<unknown> };
-        };
+        agentRunner?: { run: (request: unknown) => Promise<unknown> };
       };
     }) => {
-      runtimeState.agentRunner = options.services?.replyExecutor?.agentRunner;
+      runtimeState.agentRunner = options.services?.agentRunner;
       return {
         handleNewMention: handleNewMentionMock,
         handleSubscribedMessage: handleSubscribedMessageMock,
@@ -148,8 +146,9 @@ describe("behavior harness", () => {
     );
     await runtimeState.agentRunner?.run({} as never);
 
-    const forwardedSignal = executeAgentRunMock.mock.calls[0]?.[0]
-      ?.signal as AbortSignal | undefined;
+    const forwardedSignal = executeAgentRunMock.mock.calls[0]?.[0]?.signal as
+      | AbortSignal
+      | undefined;
     expect(forwardedSignal).toBeDefined();
     expect(forwardedSignal).not.toBe(controller.signal);
     controller.abort();
