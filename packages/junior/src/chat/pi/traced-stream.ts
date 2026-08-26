@@ -25,7 +25,11 @@ import {
   toGenAiMessagesTraceAttributes,
 } from "@/chat/conversation-privacy";
 import { hasCompactedConversationContext } from "@/chat/services/context-compaction-marker";
-import { summarizeProviderErrorMessage } from "@/chat/services/provider-error";
+import {
+  createProviderError,
+  getProviderErrorAttributes,
+  summarizeProviderErrorMessage,
+} from "@/chat/services/provider-error";
 
 type GenAiAttributeMode = "content" | "metadata";
 type TraceAttributeValue = string | number | boolean | string[];
@@ -128,10 +132,9 @@ function buildChatEndAttributes(
   }
 
   if (message.stopReason === "error") {
-    const summary = summarizeProviderErrorMessage(message.errorMessage ?? "");
-    if (summary) {
-      attributes["app.ai.provider_error.summary"] = summary;
-    }
+    const providerError = createProviderError(message.errorMessage ?? "");
+    Object.assign(attributes, getProviderErrorAttributes(providerError));
+    attributes["error.type"] = providerError.kind;
   }
 
   return attributes;
@@ -198,7 +201,12 @@ export function createTracedStreamFn(
                 span.setAttribute(key, value);
               }
               if (finalMessage.stopReason === "error") {
-                span.setAttribute("error.type", "provider_error");
+                const providerError = createProviderError(
+                  finalMessage.errorMessage ?? "",
+                );
+                // OTEL recording-errors: error.type is the class; status
+                // description may carry the non-sensitive exception message.
+                span.setAttribute("error.type", providerError.kind);
                 const summary = summarizeProviderErrorMessage(
                   finalMessage.errorMessage ?? "",
                 );

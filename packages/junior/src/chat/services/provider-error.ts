@@ -131,10 +131,10 @@ export function summarizeProviderErrorMessage(message: string): string | undefin
   // Strip nested JSON/array bodies from gateway status lines without keeping
   // payload keys. Plain transport messages stay intact.
   let withoutJsonBodies = normalized;
-  while (true) {
+  for (let pass = 0; pass < 8; pass += 1) {
     const next = withoutJsonBodies
       .replace(/\{[^{}]*\}/g, " ")
-      .replace(/\[[^\[\]]*\]/g, " ")
+      .replace(/\[[^[\]]*\]/g, " ")
       .replace(/\s+/g, " ")
       .trim();
     if (next === withoutJsonBodies) break;
