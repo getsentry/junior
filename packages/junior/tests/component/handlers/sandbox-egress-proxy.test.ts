@@ -787,7 +787,7 @@ describe("sandbox egress proxy composition", () => {
       provider: "sentry",
       grant: { name: "default", access: "read" },
       message:
-        "sentry returned HTTP 403 after Junior injected the default grant. Junior forwarded the request; this is not a local runtime block.",
+        "sentry returned HTTP 403 after the runtime injected the default grant. The request was forwarded; this is not a local runtime block.",
       source: "upstream",
       status: 403,
       upstreamHost: "sentry.io",

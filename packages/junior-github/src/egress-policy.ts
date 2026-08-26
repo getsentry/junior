@@ -394,15 +394,6 @@ function reviewThreadResolveRepository(
   return repository;
 }
 
-function requireRepositoryRef(repository: string): void {
-  const [owner, name] = repository.split("/");
-  if (!owner || !name) {
-    throw new EgressPolicyDenied(
-      "GitHub review thread resolution does not identify a target repository.",
-    );
-  }
-}
-
 function isGitHubGraphqlMutation(
   method: string,
   upstreamUrl: URL,
@@ -539,7 +530,6 @@ export async function githubGrantForEgress(
     ctx.request.bodyText,
   );
   if (reviewThreadRepository) {
-    requireRepositoryRef(reviewThreadRepository);
     return grantForAccess(
       "write",
       "github.installation-write",
@@ -555,7 +545,7 @@ export async function githubGrantForEgress(
   if (graphqlAccess) {
     if (graphqlAccess === "write") {
       throw new EgressPolicyDenied(
-        "GitHub GraphQL mutations are not enabled for Junior credentials.",
+        "GitHub GraphQL mutations are not enabled for runtime credentials.",
       );
     }
     return grantForAccess(

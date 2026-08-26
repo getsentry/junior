@@ -253,7 +253,7 @@ function permissionDeniedMessage(
   provider: string,
   grant: SandboxEgressCredentialLease["grant"],
 ): string {
-  return `${provider} returned HTTP 403 after Junior injected the ${grant.name} grant. Junior forwarded the request; this is not a local runtime block.`;
+  return `${provider} returned HTTP 403 after the runtime injected the ${grant.name} grant. The request was forwarded; this is not a local runtime block.`;
 }
 
 function isEgressAuthRequired(error: unknown): error is EgressAuthRequired {
@@ -648,9 +648,7 @@ export async function executeCredentialedEgressRequest(input: {
   const recordPermissionDenied =
     deps.recordPermissionDenied ?? recordSandboxPermissionDenied;
 
-  const resolveLease = async (): Promise<
-    SandboxEgressCredentialLease | Response
-  > => {
+  async function resolveLease(): Promise<SandboxEgressCredentialLease | Response> {
     try {
       return await issueCredentialLease(
         provider,
@@ -658,44 +656,44 @@ export async function executeCredentialedEgressRequest(input: {
         credentialContext,
       );
     } catch (error) {
-      if (error instanceof SandboxEgressCredentialError) {
-        await recordAuthRequired({
-          credentialContext,
-          provider: error.provider,
-          grant: error.grant,
-          kind: error.kind,
-          authorization: error.authorization,
-          message: error.message,
-        });
-        const isAuthRequired = error.kind === "auth_required";
-        logWarn(
-          isAuthRequired
-            ? "sandbox.egress.credential.needed"
-            : "sandbox.egress.credential.unavailable",
-          {
-            ...egressAttributes({
-              egressId: activeEgressId,
-              grantAccess: error.grant.access,
-              grantName: error.grant.name,
-              grantReason: error.grant.reason,
-              host: upstreamUrl.hostname,
-              method: request.method,
-              path: upstreamUrl.pathname,
-              provider: error.provider,
-              status: 401,
-            }),
-            ...routingAttributes(request, upstreamUrl),
-          },
-        );
-        return authRequiredResponse({
-          provider: error.provider,
-          grant: error.grant,
-          message: error.message,
-        });
+      if (!(error instanceof SandboxEgressCredentialError)) {
+        throw error;
       }
-      throw error;
+      await recordAuthRequired({
+        credentialContext,
+        provider: error.provider,
+        grant: error.grant,
+        kind: error.kind,
+        authorization: error.authorization,
+        message: error.message,
+      });
+      const isAuthRequired = error.kind === "auth_required";
+      logWarn(
+        isAuthRequired
+          ? "sandbox.egress.credential.needed"
+          : "sandbox.egress.credential.unavailable",
+        {
+          ...egressAttributes({
+            egressId: activeEgressId,
+            grantAccess: error.grant.access,
+            grantName: error.grant.name,
+            grantReason: error.grant.reason,
+            host: upstreamUrl.hostname,
+            method: request.method,
+            path: upstreamUrl.pathname,
+            provider: error.provider,
+            status: 401,
+          }),
+          ...routingAttributes(request, upstreamUrl),
+        },
+      );
+      return authRequiredResponse({
+        provider: error.provider,
+        grant: error.grant,
+        message: error.message,
+      });
     }
-  };
+  }
 
   let leaseOrResponse = await resolveLease();
   if (leaseOrResponse instanceof Response) {
@@ -733,11 +731,10 @@ export async function executeCredentialedEgressRequest(input: {
 
   const fetchImpl = deps.fetch ?? fetch;
   const body = bodyForGrantSelection ?? (await requestBodyBytes(request));
-  // Retry once on upstream 403 after credential injection. Replace the cached
-  // lease first so a single intermittent provider denial does not fail the hop.
-  const maxAttempts = 2;
+  // One retry after upstream 403: clear/replace the cached lease, then try again.
+  let retriedAfter403 = false;
 
-  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+  while (true) {
     const headers = requestHeaders(
       request,
       lease,
@@ -840,37 +837,31 @@ export async function executeCredentialedEgressRequest(input: {
         message: `Provider rejected the injected ${provider} credential.\n`,
       });
     }
+    if (
+      upstream.status === UPSTREAM_PERMISSION_REJECTION_STATUS &&
+      !retriedAfter403
+    ) {
+      logWarn("sandbox.egress.upstream_auth.rejected", {
+        ...attributes(lease, upstream.status, upstream),
+      });
+      await clearCredentialLease(provider, lease.grant, credentialContext);
+      await upstream.body?.cancel().catch(() => undefined);
+      logWarn("sandbox.egress.upstream_auth.retrying", {
+        ...attributes(lease, upstream.status, upstream),
+      });
+      leaseOrResponse = await resolveLease();
+      if (leaseOrResponse instanceof Response) {
+        return leaseOrResponse;
+      }
+      lease = leaseOrResponse;
+      retriedAfter403 = true;
+      continue;
+    }
     if (upstream.status === UPSTREAM_PERMISSION_REJECTION_STATUS) {
       logWarn("sandbox.egress.upstream_auth.rejected", {
         ...attributes(lease, upstream.status, upstream),
-        "app.sandbox.egress.auth_attempt": attempt,
       });
       await clearCredentialLease(provider, lease.grant, credentialContext);
-      if (attempt < maxAttempts) {
-        await upstream.body?.cancel().catch(() => undefined);
-        logWarn("sandbox.egress.upstream_auth.retrying", {
-          ...attributes(lease, upstream.status, upstream),
-          "app.sandbox.egress.auth_attempt": attempt,
-        });
-        leaseOrResponse = await resolveLease();
-        if (leaseOrResponse instanceof Response) {
-          return leaseOrResponse;
-        }
-        lease = leaseOrResponse;
-        if (!hasSandboxEgressLeaseTransformForHost(lease, upstreamUrl.hostname)) {
-          logWarn("sandbox.egress.transform.missing", {
-            ...attributes(lease, 403),
-            "app.sandbox.egress.transform_domains": lease.headerTransforms.map(
-              (transform) => transform.domain,
-            ),
-          });
-          return Response.json(
-            { error: "Credential lease does not cover forwarded host" },
-            { status: 403 },
-          );
-        }
-        continue;
-      }
       await recordPermissionDenied({
         credentialContext,
         provider,
@@ -913,6 +904,4 @@ export async function executeCredentialedEgressRequest(input: {
       headers: responseHeaders(upstream),
     });
   }
-
-  throw new Error("Credentialed egress exhausted auth attempts without a response");
 }
