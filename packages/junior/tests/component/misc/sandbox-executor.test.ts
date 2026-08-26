@@ -2950,6 +2950,38 @@ describe("createTestSandbox", () => {
     expect(sandboxCreateMock).not.toHaveBeenCalled();
   });
 
+  it("returns plain preparing copy from host workspace helpers", async () => {
+    getReadyWorkspaceMock.mockRejectedValueOnce(
+      new WorkspaceSnapshotNotReadyError("sentry-docs"),
+    );
+    const workspace = {
+      id: "workspace-sentry-docs-helpers",
+      name: "sentry-docs",
+      setupScript: "",
+      snapshot: null,
+      repos: [],
+    };
+    const sandbox = createSandbox({
+      workspace,
+      skills: [],
+      referenceFiles: [],
+    });
+
+    await expect(
+      sandbox.workspace.readFileToBuffer({ path: "/vercel/sandbox/README.md" }),
+    ).rejects.toSatisfy(
+      (error: unknown) =>
+        error instanceof ToolInputError &&
+        error.message.includes(
+          "The sentry-docs workspace is still preparing its sandbox.",
+        ) &&
+        isWorkspaceSnapshotNotReadyError(error),
+    );
+
+    expect(ensureWorkspaceSnapshotBuildMock).toHaveBeenCalledWith({ workspace });
+    expect(sandboxCreateMock).not.toHaveBeenCalled();
+  });
+
   it("starts a new build when a Workspace snapshot is missing", async () => {
     getReadyWorkspaceMock
       .mockResolvedValueOnce({

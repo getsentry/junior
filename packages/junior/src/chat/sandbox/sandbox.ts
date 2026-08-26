@@ -793,10 +793,16 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
     try {
       return await callback(await runtime.acquire());
     } catch (error) {
-      // Host workspace helpers have no tool-result channel. Keep the typed
-      // not-ready error so callers can recover the same way switchWorkspace does.
+      // Host helpers have no structured tool-result channel. Keep the typed
+      // not-ready cause, but surface the same plain preparing copy as tools.
       const notReady = getWorkspaceSnapshotNotReadyError(error);
-      if (notReady) throw notReady;
+      if (notReady) {
+        throw new ToolInputError(
+          getWorkspaceSnapshotNotReadyUserMessage(notReady) ??
+            "The workspace is still preparing its sandbox. Wait for that preparation to finish, then try again.",
+          { cause: notReady },
+        );
+      }
       if (isSandboxUnavailableError(error)) {
         throw createSandboxUnavailableToolError(operation, error);
       }
