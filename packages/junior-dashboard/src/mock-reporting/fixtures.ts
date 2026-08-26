@@ -1187,6 +1187,9 @@ function failedConversation(nowMs: number): ConversationDetailReport {
         state: "failed",
         failureCode: "model_execution_failed",
         failureReason: "network",
+        eventId: "0123456789abcdef0123456789abcdef",
+        sentryEventUrl:
+          "https://sentry.example/organizations/acme/events/0123456789abcdef0123456789abcdef/?project=1",
       }),
     ],
   });

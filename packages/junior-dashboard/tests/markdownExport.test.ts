@@ -270,6 +270,9 @@ describe("dashboard canonical-event Markdown export", () => {
           state: "failed",
           failureCode: "model_execution_failed",
           failureReason: "network",
+          eventId: "0123456789abcdef0123456789abcdef",
+          sentryEventUrl:
+            "https://my-org.sentry.io/events/0123456789abcdef0123456789abcdef/?project=4501",
         }),
       ]),
     );
@@ -296,6 +299,9 @@ describe("dashboard canonical-event Markdown export", () => {
     expect(markdown).toContain("### Model connection failed");
     expect(markdown).toContain("- Code: model_execution_failed");
     expect(markdown).toContain("- Reason: network");
+    expect(markdown).toContain(
+      "- Event id: [0123456789abcdef0123456789abcdef](https://my-org.sentry.io/events/0123456789abcdef0123456789abcdef/?project=4501)",
+    );
     expect(markdown).not.toContain("missing");
     expect(markdown).not.toContain("Result: running");
   });

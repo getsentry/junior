@@ -130,8 +130,10 @@ export type TranscriptViewMessage = {
     reasoningLevel: string;
     source: "configured" | "inherited" | "router";
   };
+  eventId?: string;
   failureCode?: ConversationTurnFailureCode;
   failureReason?: ConversationTurnFailureReason;
+  sentryEventUrl?: string;
   parts: TranscriptViewPart[];
   role: "assistant" | "system" | "tool" | "user";
   source?: "slack" | "web";

@@ -903,6 +903,9 @@ describe("transcript render grouping", () => {
       {
         role: "assistant",
         failureCode: "model_execution_failed",
+        eventId: "0123456789abcdef0123456789abcdef",
+        sentryEventUrl:
+          "https://my-org.sentry.io/events/0123456789abcdef0123456789abcdef/?project=4501",
         sourceSeq: 42,
         timestamp: 1_000,
         parts: [],
@@ -913,6 +916,9 @@ describe("transcript render grouping", () => {
         key: "42:failure",
         kind: "failure",
         failureCode: "model_execution_failed",
+        eventId: "0123456789abcdef0123456789abcdef",
+        sentryEventUrl:
+          "https://my-org.sentry.io/events/0123456789abcdef0123456789abcdef/?project=4501",
         timestamp: 1_000,
       },
     ]);

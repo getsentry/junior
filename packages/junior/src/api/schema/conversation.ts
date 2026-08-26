@@ -434,6 +434,11 @@ const conversationReportTurnLifecycleEventDataSchema = z.discriminatedUnion(
         state: z.literal("failed"),
         failureCode: conversationTurnFailureCodeSchema,
         failureReason: conversationTurnFailureReasonSchema.optional(),
+        eventId: z
+          .string()
+          .regex(/^[a-f0-9]{32}$/i)
+          .optional(),
+        sentryEventUrl: z.string().url().optional(),
       })
       .strict(),
   ],

@@ -167,8 +167,10 @@ const VisibleTranscriptEntries = memo(function VisibleTranscriptEntries(props: {
       )}
       renderFailure={(entry) => (
         <TranscriptFailureView
+          eventId={entry.eventId}
           failureCode={entry.failureCode}
           failureReason={entry.failureReason}
+          sentryEventUrl={entry.sentryEventUrl}
           timestamp={entry.timestamp}
         />
       )}
@@ -375,8 +377,10 @@ function RedactedTranscriptView(props: {
       )}
       renderFailure={(entry) => (
         <TranscriptFailureView
+          eventId={entry.eventId}
           failureCode={entry.failureCode}
           failureReason={entry.failureReason}
+          sentryEventUrl={entry.sentryEventUrl}
           timestamp={entry.timestamp}
         />
       )}

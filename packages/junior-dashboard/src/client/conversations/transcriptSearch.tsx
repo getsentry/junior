@@ -132,7 +132,11 @@ export function entryMatchesSearch(
 
   if (entry.kind === "failure") {
     return textContains(
-      transcriptFailureSearchText(entry.failureCode, entry.failureReason),
+      transcriptFailureSearchText(
+        entry.failureCode,
+        entry.failureReason,
+        entry.eventId,
+      ),
       normalizedQuery,
     );
   }

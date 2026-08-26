@@ -1,6 +1,7 @@
 import type { ConversationEvent } from "@/chat/conversations/history";
 import { renderJuniorNativeConversationEvent } from "@/chat/conversations/structured-events";
 import { renderPluginConversationEvent } from "@/chat/plugins/conversation-events";
+import { buildSentryEventUrl } from "@/chat/sentry-links";
 import { z } from "zod";
 import {
   conversationReportEventSchema,
@@ -396,7 +397,9 @@ function reportEventData(args: {
         turnId: data.turnId,
         state: data.outcome === "success" ? "succeeded" : "no_reply",
       };
-    case "turn_failed":
+    case "turn_failed": {
+      const eventId = data.eventId;
+      const sentryEventUrl = eventId ? buildSentryEventUrl(eventId) : undefined;
       return {
         type: "turn_lifecycle",
         turnId: data.turnId,
@@ -405,7 +408,12 @@ function reportEventData(args: {
         ...(data.failureReason
           ? { failureReason: data.failureReason }
           : undefined),
+        // Event ids are already public in Slack failure replies; keep them on
+        // the transcript for the same debugging path in the dashboard.
+        ...(eventId ? { eventId } : undefined),
+        ...(sentryEventUrl ? { sentryEventUrl } : undefined),
       };
+    }
     case "compaction":
       return {
         type: "compaction",
