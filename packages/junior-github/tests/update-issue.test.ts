@@ -47,7 +47,7 @@ describe("updateIssue", () => {
     }
   });
 
-  it("updates issue metadata and preserves Junior-owned body metadata", async () => {
+  it("updates issue metadata and preserves runtime-owned body metadata", async () => {
     process.env.GITHUB_WEBHOOK_SECRET = "test-secret";
     const { fetch, tool } = toolContext();
 

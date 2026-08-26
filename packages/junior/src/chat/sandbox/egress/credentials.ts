@@ -178,9 +178,9 @@ export function authorizationForSandboxEgressGrant(
 /**
  * Return cached or newly issued credential header transforms for a selected grant.
  *
- * Leases are cached per actor/context/grant, validated against provider-owned
- * domains, and reused only while both the provider lease and sandbox context are
- * still valid.
+ * Leases are cached on the host by provider grant, validated against
+ * provider-owned domains, and reused until the provider lease is near expiry.
+ * Sandbox context only authorizes the hop.
  */
 export async function sandboxEgressCredentialLease(
   provider: string,

@@ -249,7 +249,8 @@ conversation, use `app.dispatch.id` or `agent-dispatch:<dispatch_id>` as
 A turn parked for auth, resumed late, or failed after callback.
 
 Events: `sandbox.egress.credential.needed`,
-`sandbox.egress.credential.unavailable`, `plugin.credential.rejected`,
+`sandbox.egress.credential.unavailable`, `sandbox.egress.upstream_auth.rejected`,
+`sandbox.egress.upstream_auth.retrying`, `plugin.credential.rejected`,
 `subscribed_message.authorization.required`, `agent.continue.schedule.failed`,
 `agent.continue.lock.busy`, `agent.continue.lock.retrying`,
 `oauth.callback.resume.completed`, `oauth.callback.resume.busy`,

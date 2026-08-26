@@ -192,7 +192,7 @@ describe("sandboxEgressCredentialLease — credential error normalization", () =
     );
   });
 
-  it("isolates cached plugin leases by opaque lease scope", async () => {
+  it("reuses installation leases across sandboxes", async () => {
     hasEgressCredentialHooks.mockReturnValue(true);
     issuePluginCredential.mockClear();
     const state = new Map<string, unknown>();
@@ -206,7 +206,7 @@ describe("sandboxEgressCredentialLease — credential error normalization", () =
     issuePluginCredential.mockResolvedValue({
       type: "lease",
       lease: {
-        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+        expiresAt: new Date(Date.now() + 30 * 60_000).toISOString(),
         headerTransforms: [
           {
             domain: "sentry.io",
@@ -219,31 +219,147 @@ describe("sandboxEgressCredentialLease — credential error normalization", () =
       grant: {
         name: "installation-write",
         access: "write" as const,
-        leaseScope: "repository:getsentry/junior",
       },
       source: "plugin" as const,
     };
-    const second = {
-      grant: {
-        name: "installation-write",
-        access: "write" as const,
-        leaseScope: "repository:getsentry/sentry",
-      },
-      source: "plugin" as const,
+    const secondContext = {
+      ...credentialContext(),
+      egressId: "other-egress",
+      contextId: "ctx-other",
     };
 
     await sandboxEgressCredentialLease(PROVIDER, first, credentialContext());
-    await sandboxEgressCredentialLease(PROVIDER, second, credentialContext());
+    await sandboxEgressCredentialLease(PROVIDER, first, secondContext);
     await sandboxEgressCredentialLease(PROVIDER, first, credentialContext());
+
+    expect(issuePluginCredential).toHaveBeenCalledTimes(1);
+    expect(stateStub.set.mock.calls.map(([key]) => key)).toEqual([
+      "sandbox-egress-lease:sentry:installation-write:shared",
+    ]);
+  });
+
+  it("keeps user grants isolated by actor", async () => {
+    hasEgressCredentialHooks.mockReturnValue(true);
+    issuePluginCredential.mockClear();
+    const state = new Map<string, unknown>();
+    const stateStub = {
+      connect: vi.fn(),
+      get: vi.fn((key: string) => state.get(key)),
+      set: vi.fn((key: string, value: unknown) => state.set(key, value)),
+      delete: vi.fn((key: string) => state.delete(key)),
+    };
+    getStateAdapter.mockReturnValue(stateStub);
+    issuePluginCredential.mockResolvedValue({
+      type: "lease",
+      lease: {
+        expiresAt: new Date(Date.now() + 30 * 60_000).toISOString(),
+        headerTransforms: [
+          {
+            domain: "sentry.io",
+            headers: { Authorization: "Bearer user-token" },
+          },
+        ],
+      },
+    });
+    const grant = {
+      grant: {
+        name: "user-write",
+        access: "write" as const,
+      },
+      source: "plugin" as const,
+    };
+    const otherActor = {
+      credentials: { actor: { type: "user" as const, userId: "U999" } },
+      egressId: EGRESS_ID,
+      expiresAtMs: Date.now() + 60_000,
+      contextId: "ctx-other-user",
+    };
+
+    await sandboxEgressCredentialLease(PROVIDER, grant, credentialContext());
+    await sandboxEgressCredentialLease(PROVIDER, grant, otherActor);
 
     expect(issuePluginCredential).toHaveBeenCalledTimes(2);
     expect(stateStub.set.mock.calls.map(([key]) => key)).toEqual([
-      expect.stringContaining(
-        ":installation-write:repository:getsentry/junior:",
-      ),
-      expect.stringContaining(
-        ":installation-write:repository:getsentry/sentry:",
-      ),
+      "sandbox-egress-lease:sentry:user-write:user:U123",
+      "sandbox-egress-lease:sentry:user-write:user:U999",
+    ]);
+  });
+
+  it("keeps user grants isolated by delegated subject on system runs", async () => {
+    hasEgressCredentialHooks.mockReturnValue(true);
+    issuePluginCredential.mockClear();
+    const state = new Map<string, unknown>();
+    const stateStub = {
+      connect: vi.fn(),
+      get: vi.fn((key: string) => state.get(key)),
+      set: vi.fn((key: string, value: unknown) => state.set(key, value)),
+      delete: vi.fn((key: string) => state.delete(key)),
+    };
+    getStateAdapter.mockReturnValue(stateStub);
+    issuePluginCredential.mockResolvedValue({
+      type: "lease",
+      lease: {
+        expiresAt: new Date(Date.now() + 30 * 60_000).toISOString(),
+        headerTransforms: [
+          {
+            domain: "sentry.io",
+            headers: { Authorization: "Bearer user-token" },
+          },
+        ],
+      },
+    });
+    const grant = {
+      grant: {
+        name: "user-write",
+        access: "write" as const,
+      },
+      source: "plugin" as const,
+    };
+    const firstSubject = {
+      credentials: {
+        actor: { platform: "system" as const, name: "resource-event" },
+        subject: {
+          type: "user" as const,
+          userId: "U123",
+          allowedWhen: "event-task" as const,
+          taskId: "task-1",
+          binding: {
+            type: "event-task" as const,
+            plugin: "github",
+            taskId: "task-1",
+            signature: "sig-1",
+          },
+        },
+      },
+      egressId: EGRESS_ID,
+      expiresAtMs: Date.now() + 60_000,
+      contextId: "ctx-subject-1",
+    };
+    const secondSubject = {
+      ...firstSubject,
+      credentials: {
+        ...firstSubject.credentials,
+        subject: {
+          ...firstSubject.credentials.subject,
+          userId: "U999",
+          taskId: "task-2",
+          binding: {
+            ...firstSubject.credentials.subject.binding,
+            taskId: "task-2",
+            signature: "sig-2",
+          },
+        },
+      },
+      contextId: "ctx-subject-2",
+    };
+
+    await sandboxEgressCredentialLease(PROVIDER, grant, firstSubject);
+    await sandboxEgressCredentialLease(PROVIDER, grant, secondSubject);
+
+    expect(issuePluginCredential).toHaveBeenCalledTimes(2);
+    expect(stateStub.set.mock.calls.map(([key]) => key)).toEqual([
+      "sandbox-egress-lease:sentry:user-write:subject:U123",
+      "sandbox-egress-lease:sentry:user-write:subject:U999",
     ]);
   });
 });
