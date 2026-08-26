@@ -626,7 +626,7 @@ describe("canonical event transcript reduction", () => {
           type: "turn_lifecycle",
           turnId: "turn-1",
           state: "failed",
-          failureKind: "agent",
+          failureCode: "model_execution_failed",
         }),
       ]),
     );
@@ -860,13 +860,13 @@ describe("canonical event transcript reduction", () => {
             type: "turn_lifecycle",
             turnId: "turn-1",
             state: "failed",
-            failureKind: "agent",
+            failureCode: "model_execution_failed",
           }),
           event(7, "2026-01-01T00:00:07.000Z", {
             type: "turn_lifecycle",
             turnId: "turn-2",
             state: "failed",
-            failureKind: "delivery",
+            failureCode: "delivery_failed",
           }),
         ]),
       ),
@@ -902,7 +902,7 @@ describe("transcript render grouping", () => {
     const messages: TranscriptViewMessage[] = [
       {
         role: "assistant",
-        outcome: "error",
+        failureCode: "model_execution_failed",
         sourceSeq: 42,
         timestamp: 1_000,
         parts: [],
@@ -912,7 +912,7 @@ describe("transcript render grouping", () => {
       {
         key: "42:failure",
         kind: "failure",
-        outcome: "error",
+        failureCode: "model_execution_failed",
         timestamp: 1_000,
       },
     ]);

@@ -113,6 +113,7 @@ import {
 } from "@/chat/runtime/turn";
 import { buildDeterministicTurnId } from "@/chat/runtime/turn";
 import { buildDeterministicAssistantMessageId } from "@/chat/state/turn-id";
+import type { ConversationTurnFailureReason } from "@/chat/conversations/history";
 import { markTurnClosed, markTurnFailed } from "@/chat/runtime/turn";
 import { startActiveTurn } from "@/chat/runtime/turn";
 import {
@@ -1169,6 +1170,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
               getAgentTurnDiagnosticsAttributes(finalResult);
             setSpanAttributes(diagnosticsAttributes);
             let failureEventId: string | undefined;
+            let failureReason: ConversationTurnFailureReason | undefined;
             if (finalResult.diagnostics.outcome !== "success") {
               const finalized = finalizeFailedTurnReplyWithEvent({
                 reply: finalResult,
@@ -1176,6 +1178,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
               });
               finalResult = finalized.reply;
               failureEventId = finalized.eventId;
+              failureReason = finalized.failureReason;
               await deliverAssistantMessage(finalResult.text);
             }
             const turnResult: DispatchTurnResult =
@@ -1297,6 +1300,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
             return {
               ...(failureEventId ? { eventId: failureEventId } : undefined),
               failureCode: "model_execution_failed" as const,
+              ...(failureReason ? { failureReason } : undefined),
               outcome: "failed" as const,
             };
           };

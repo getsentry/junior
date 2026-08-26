@@ -787,6 +787,7 @@ export function createApiTurnWorker(
                 reply: result,
                 logException,
               });
+              const modelFailureReason = finalized.failureReason;
               const reply = finalized.reply;
               modelFailureEventId = finalized.eventId;
               if (reply.diagnostics.outcome !== "success") {
@@ -836,6 +837,9 @@ export function createApiTurnWorker(
                       ? { eventId: modelFailureEventId }
                       : undefined),
                     failureCode: "model_execution_failed",
+                    ...(modelFailureReason
+                      ? { failureReason: modelFailureReason }
+                      : undefined),
                     outcome: "failed",
                   };
             },

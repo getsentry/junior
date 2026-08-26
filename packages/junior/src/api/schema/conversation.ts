@@ -1,10 +1,19 @@
 import { z } from "zod";
+import {
+  conversationTurnFailureCodeSchema,
+  conversationTurnFailureReasonSchema,
+} from "@/chat/conversations/history";
 import { usageCostSchema, usageSchema } from "@/usage-schema";
 import {
   conversationAnnotationInputSchema,
   conversationSidebarAnnotationSchema,
   conversationEventPresentationSchema,
 } from "@sentry/junior-plugin-api";
+
+export {
+  conversationTurnFailureCodeSchema,
+  conversationTurnFailureReasonSchema,
+};
 
 export const conversationReportStatusSchema = z.enum([
   "active",
@@ -423,7 +432,8 @@ const conversationReportTurnLifecycleEventDataSchema = z.discriminatedUnion(
         type: z.literal("turn_lifecycle"),
         turnId: z.string().min(1),
         state: z.literal("failed"),
-        failureKind: z.enum(["agent", "delivery"]),
+        failureCode: conversationTurnFailureCodeSchema,
+        failureReason: conversationTurnFailureReasonSchema.optional(),
       })
       .strict(),
   ],
@@ -790,6 +800,12 @@ export const conversationStatsReportSchema = z
 
 export type ConversationReportStatus = z.infer<
   typeof conversationReportStatusSchema
+>;
+export type ConversationTurnFailureCode = z.infer<
+  typeof conversationTurnFailureCodeSchema
+>;
+export type ConversationTurnFailureReason = z.infer<
+  typeof conversationTurnFailureReasonSchema
 >;
 export type ConversationSurface = z.infer<typeof conversationSurfaceSchema>;
 export type ConversationCost = z.infer<typeof conversationCostSchema>;

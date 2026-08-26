@@ -108,7 +108,7 @@ function failure(): RenderedTranscriptEntry {
   return {
     key: "failure:1",
     kind: "failure",
-    outcome: "error",
+    failureCode: "model_execution_failed",
     timestamp: 1,
   };
 }

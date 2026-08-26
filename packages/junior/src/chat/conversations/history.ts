@@ -236,7 +236,7 @@ export const conversationTurnSurfaceSchema = z.enum([
   "internal",
 ]);
 
-/** Stable, privacy-safe classification for a failed turn. */
+/** Where a failed turn stopped. */
 export const conversationTurnFailureCodeSchema = z.enum([
   "agent_run_failed",
   "delivery_failed",
@@ -244,9 +244,36 @@ export const conversationTurnFailureCodeSchema = z.enum([
   "persistence_failed",
 ]);
 
-/** Failure classification persisted without raw provider or exception data. */
+/** Where a failed turn stopped. */
 export type ConversationTurnFailureCode = z.output<
   typeof conversationTurnFailureCodeSchema
+>;
+
+/**
+ * Why a failed turn stopped.
+ * Values are fixed labels only. Do not store raw exception text.
+ */
+export const conversationTurnFailureReasonSchema = z.enum([
+  "auth",
+  "permission",
+  "rate_limit",
+  "capacity",
+  "timeout",
+  "network",
+  "server",
+  "invalid_request",
+  "invalid_response",
+  "quota",
+  "content_policy",
+  "unknown",
+  "empty_output",
+  "tool_errors",
+  "suppressed_output",
+]);
+
+/** Why a failed turn stopped. */
+export type ConversationTurnFailureReason = z.output<
+  typeof conversationTurnFailureReasonSchema
 >;
 
 const turnStartedEventDataSchema = z
@@ -331,6 +358,7 @@ const turnFailedEventDataSchema = z
     type: z.literal("turn_failed"),
     turnId: z.string().min(1),
     failureCode: conversationTurnFailureCodeSchema,
+    failureReason: conversationTurnFailureReasonSchema.optional(),
     eventId: z
       .string()
       .regex(/^[a-f0-9]{32}$/i)

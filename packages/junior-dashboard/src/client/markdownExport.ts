@@ -14,8 +14,15 @@ import {
   groupTranscriptMessages,
   messageRawText,
 } from "./conversations/transcriptRenderModel";
-import { getDashboardAgentName } from "./agentName";
 import { conversationTranscriptMessages } from "./conversations/eventTranscript";
+import {
+  transcriptFailureDescription,
+  transcriptFailureTitle,
+} from "./conversations/transcriptFailure";
+import type {
+  ConversationTurnFailureCode,
+  ConversationTurnFailureReason,
+} from "@sentry/junior/api/schema";
 import type {
   Conversation,
   ConversationTranscript,
@@ -126,7 +133,8 @@ function appendTranscriptMessages(
       appendFailure(
         lines,
         conversationTranscript,
-        entry.outcome,
+        entry.failureCode,
+        entry.failureReason,
         entry.timestamp,
       );
       continue;
@@ -213,22 +221,20 @@ function appendReasoning(
 function appendFailure(
   lines: string[],
   conversationTranscript: ConversationTranscript,
-  outcome: "error" | "delivery_failed",
+  failureCode: ConversationTurnFailureCode,
+  failureReason: ConversationTurnFailureReason | undefined,
   timestamp: number | undefined,
 ): void {
   lines.push(
     "",
-    outcome === "delivery_failed"
-      ? "### Message delivery failed"
-      : "### Agent response failed",
+    `### ${transcriptFailureTitle(failureCode, failureReason)}`,
   );
   addEventMeta(lines, conversationTranscript, timestamp);
-  lines.push(
-    "",
-    outcome === "delivery_failed"
-      ? `${getDashboardAgentName()} could not deliver this message to its destination.`
-      : `The model response ended before ${getDashboardAgentName()} could complete this turn.`,
-  );
+  lines.push("", transcriptFailureDescription(failureCode, failureReason));
+  addMetaLine(lines, "Code", failureCode);
+  if (failureReason) {
+    addMetaLine(lines, "Reason", failureReason);
+  }
 }
 
 function appendContextEvent(

@@ -748,6 +748,9 @@ async function resumeSlackTurnInContext(
           outcome: "failed",
           failureCode: "model_execution_failed",
           ...(finalized.eventId ? { eventId: finalized.eventId } : undefined),
+          ...(finalized.failureReason
+            ? { failureReason: finalized.failureReason }
+            : undefined),
         };
       },
       replyTimeoutMs,

@@ -5,6 +5,7 @@ import {
   messageRawText,
   type RenderedTranscriptEntry,
 } from "./transcriptRenderModel";
+import { transcriptFailureSearchText } from "./transcriptFailure";
 import { stringifyPartValue } from "../format";
 
 // ─── Context ────────────────────────────────────────────────────────────────
@@ -131,9 +132,7 @@ export function entryMatchesSearch(
 
   if (entry.kind === "failure") {
     return textContains(
-      entry.outcome === "delivery_failed"
-        ? "message delivery failed"
-        : "agent response failed error",
+      transcriptFailureSearchText(entry.failureCode, entry.failureReason),
       normalizedQuery,
     );
   }

@@ -413,8 +413,11 @@ export function transcriptMessagesFromEvents(
 
     if (data.type === "turn_lifecycle" && data.state === "failed") {
       messages.push({
-        role: data.failureKind === "delivery" ? "system" : "assistant",
-        outcome: data.failureKind === "delivery" ? "delivery_failed" : "error",
+        role: data.failureCode === "delivery_failed" ? "system" : "assistant",
+        failureCode: data.failureCode,
+        ...(data.failureReason
+          ? { failureReason: data.failureReason }
+          : undefined),
         parts: [],
         sourceSeq: event.seq,
         timestamp: eventTimestamp(event),

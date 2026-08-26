@@ -1,20 +1,28 @@
 import { CircleAlert } from "lucide-react";
+import type {
+  ConversationTurnFailureCode,
+  ConversationTurnFailureReason,
+} from "@sentry/junior/api/schema";
 
-import { getDashboardAgentName } from "../agentName";
 import { formatMessageTimestamp } from "../format";
+import {
+  transcriptFailureDescription,
+  transcriptFailureTitle,
+} from "./transcriptFailure";
 
 /** Render a terminal transcript failure as a distinct alert surface. */
 export function TranscriptFailureView(props: {
-  outcome: "error" | "delivery_failed";
+  failureCode: ConversationTurnFailureCode;
+  failureReason?: ConversationTurnFailureReason;
   timestamp?: number;
 }) {
   const timestamp = formatMessageTimestamp(props.timestamp);
-  const deliveryFailed = props.outcome === "delivery_failed";
 
   return (
     <div
       className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-3 rounded-lg bg-rose-300/[0.1] px-4 py-3 text-rose-100 max-md:grid-cols-[auto_minmax(0,1fr)]"
-      data-transcript-failure={props.outcome}
+      data-transcript-failure={props.failureCode}
+      data-transcript-failure-reason={props.failureReason}
       role="alert"
     >
       <CircleAlert
@@ -24,12 +32,10 @@ export function TranscriptFailureView(props: {
       />
       <div className="min-w-0">
         <div className="font-display text-base font-semibold leading-tight">
-          {deliveryFailed ? "Message delivery failed" : "Agent response failed"}
+          {transcriptFailureTitle(props.failureCode, props.failureReason)}
         </div>
         <div className="mt-1 text-sm leading-relaxed text-rose-100/70">
-          {deliveryFailed
-            ? `${getDashboardAgentName()} could not deliver this message to its destination.`
-            : `The model response ended before ${getDashboardAgentName()} could complete this turn.`}
+          {transcriptFailureDescription(props.failureCode, props.failureReason)}
         </div>
       </div>
       {timestamp ? (
