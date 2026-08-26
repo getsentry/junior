@@ -2377,7 +2377,6 @@ async function processEvents(args: {
         namespace: "github",
         identifier: event.subscription.identifier,
         resourceType: event.subscription.resource_type,
-        teamId: EVAL_SLACK_TEAM_ID,
       },
       { nowMs, state: env.stateAdapter },
     );
@@ -2393,7 +2392,6 @@ async function processEvents(args: {
           nowMs,
           queue: conversationWorkQueue,
           state: env.stateAdapter,
-          teamId: EVAL_SLACK_TEAM_ID,
         },
       );
     }

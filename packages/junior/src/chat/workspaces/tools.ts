@@ -17,10 +17,7 @@ import {
   cancelResourceEventSubscription,
   createResourceEventSubscription,
 } from "@/chat/resource-events/store";
-import {
-  canRouteResourceEvents,
-  resourceEventIndexTeamId,
-} from "@/chat/resource-events/workspace";
+import { canRouteResourceEvents } from "@/chat/resource-events/workspace";
 import { RESOURCE_SUBSCRIPTION_DEFAULT_TTL_MS } from "@/chat/resource-events/tool-support";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
@@ -373,29 +370,24 @@ export function createWorkspaceTools(
           workspaceId: workspace.id,
           workspaceName: workspace.name,
         });
-        const teamId = canRouteResourceEvents()
-          ? resourceEventIndexTeamId(context.destination)
-          : undefined;
-        const conversationId = teamId
+        const conversationId = canRouteResourceEvents()
           ? context.conversationId.trim()
           : undefined;
-        const subscription =
-          conversationId && teamId
-            ? await createResourceEventSubscription({
-                conversationId,
-                events: [
-                  WORKSPACE_SNAPSHOT_READY_EVENT,
-                  WORKSPACE_SNAPSHOT_FAILED_EVENT,
-                ],
-                expiresAtMs: Date.now() + RESOURCE_SUBSCRIPTION_DEFAULT_TTL_MS,
-                intent: `Switch to Workspace ${workspace.name} when its snapshot is ready.`,
-                label: watch.label,
-                namespace: watch.namespace,
-                identifier: watch.identifier,
-                resourceType: watch.type,
-                teamId,
-              })
-            : undefined;
+        const subscription = conversationId
+          ? await createResourceEventSubscription({
+              conversationId,
+              events: [
+                WORKSPACE_SNAPSHOT_READY_EVENT,
+                WORKSPACE_SNAPSHOT_FAILED_EVENT,
+              ],
+              expiresAtMs: Date.now() + RESOURCE_SUBSCRIPTION_DEFAULT_TTL_MS,
+              intent: `Switch to Workspace ${workspace.name} when its snapshot is ready.`,
+              label: watch.label,
+              namespace: watch.namespace,
+              identifier: watch.identifier,
+              resourceType: watch.type,
+            })
+          : undefined;
 
         let keepWatch = false;
         try {

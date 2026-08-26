@@ -166,8 +166,8 @@ export function createResourceEventInboundMessage(input: {
 /**
  * Enqueue a resource event as normal conversation mailbox input.
  *
- * The watch only names the conversation. Destination and provider surface stay
- * on the conversation binding and are applied when the worker runs.
+ * The watch only names the conversation. Destination stays on the conversation
+ * binding and is applied when the worker runs.
  */
 export async function enqueueResourceEventNotification(args: {
   event: ResourceEventNotification;

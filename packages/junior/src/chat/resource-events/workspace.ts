@@ -1,29 +1,23 @@
-import type { Destination } from "@sentry/junior-plugin-api";
 import { getSlackBotToken } from "@/chat/config";
 import { getSlackClient } from "@/chat/slack/client";
 
-/** Return whether provider events can be bound to one Slack workspace. */
+/** Whether this app instance can run resource-event delivery. */
 export function canRouteResourceEvents(): boolean {
   return Boolean(getSlackBotToken());
 }
 
-/**
- * Workspace team id used only to scope resource-event match indexes.
- *
- * This is not delivery routing. Watches store the id for match fanout; the
- * conversation binding still owns destination and provider for turns.
- */
-export function resourceEventIndexTeamId(
-  destination: Destination,
-): string | undefined {
-  if (destination.platform !== "slack") {
-    return undefined;
-  }
-  const teamId = destination.teamId.trim();
-  return teamId || undefined;
+/** Confirm the single-bot install can publish resource events. */
+export function createResourceEventInstallResolver(): () => Promise<boolean> {
+  const resolveTeamId = createResourceEventTeamIdResolver();
+  return async () => Boolean(await resolveTeamId());
 }
 
-/** Resolve and cache the Slack workspace owned by this app instance. */
+/**
+ * Resolve the single-bot Slack team id for event-task indexing.
+ *
+ * Resource watches do not use this. Event tasks still key by destination team
+ * until that store is conversation-owned.
+ */
 export function createResourceEventTeamIdResolver(): () => Promise<
   string | undefined
 > {
@@ -35,7 +29,7 @@ export function createResourceEventTeamIdResolver(): () => Promise<
       .then((result) => {
         const teamId = result.team_id?.trim();
         if (!teamId) {
-          throw new Error("Slack auth.test did not return a workspace team id");
+          throw new Error("Slack auth.test did not return a team id");
         }
         return teamId;
       })

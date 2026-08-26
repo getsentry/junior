@@ -16,10 +16,8 @@ conversation.
   before the Slack thread is marked unsubscribed.
 - Plugin route code validates and normalizes incoming events before calling
   the ingestion boundary.
-- Core resolves the single-workspace Slack bot token to a verified team ID and
-  includes that team in every subscription match. Resource-event creation and
-  delivery are disabled in multi-workspace Slack mode until plugins can provide
-  a real provider-to-workspace binding.
+- Resource-event creation and delivery stay off until the install can publish
+  them. Single-bot installs verify the app token once as that gate.
 - Plugin-owned routes publish normalized events through the route-hook resource
   event publisher; core binds the plugin namespace and never needs the raw
   provider webhook. Publication requires an active registration that declares
@@ -33,13 +31,12 @@ conversation.
   `watchResourceEvents` creates a temporary resource subscription for the
   current conversation. Concrete identifiers still come from plugin tool
   results rather than catalog enumeration.
-- A temporary watch stores the current conversation id and a workspace team id
-  for match indexes. It does not store destination, provider, or rewrite the
-  conversation id.
+- A temporary watch stores the current conversation id only. It does not store
+  destination or rewrite the conversation id.
 - Ingestion only wakes that conversation mailbox with plain system input.
-  Destination and provider stay on the conversation binding. The worker for the
-  bound surface applies them when the turn runs, so the same agent and tools
-  stay active for the whole conversation.
+  Destination stays on the conversation binding. The worker for the bound
+  surface applies it when the turn runs, so the same agent and tools stay active
+  for the whole conversation.
 - Core validates namespace, resource type, and event ownership again before
   storing a subscription.
 - Normalized events contain a stable namespace and identifier plus a short safe
@@ -55,11 +52,11 @@ conversation.
   external text. When the agent replies, it should summarize what it was acting
   on and what it did or needs next. Stable handling rules live in runtime and
   docs, not a long per-event prompt (`notification.ts`).
-- A subscription selector is one Slack workspace, one namespace, one
-  identifier, and one or more event types. Optional `match` requires exact
-  trusted values from the resource type `matchFields`. Core drops events that
-  do not match before any wake. `resourceType` and `label` are display metadata,
-  not match keys.
+- A subscription selector is one conversation, one namespace, one identifier,
+  and one or more event types. Optional `match` requires exact trusted values
+  from the resource type `matchFields`. Core drops events that do not match
+  before any wake. `resourceType` and `label` are display metadata, not match
+  keys.
 - Duplicate provider deliveries must not create duplicate conversation work.
 - A plugin cannot use a resource event to widen conversation visibility or
   credential authority.

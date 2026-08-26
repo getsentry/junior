@@ -15,7 +15,6 @@ import {
   RESOURCE_SUBSCRIPTION_MAX_TTL_MS,
   STOP_WATCHING_TOOL_NAME,
 } from "@/chat/resource-events/tool-support";
-import { resourceEventIndexTeamId } from "@/chat/resource-events/workspace";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
@@ -167,12 +166,6 @@ export function createWatchResourceEventsTool(
         resourceType: input.resourceType,
       });
       const nowMs = Date.now();
-      const teamId = resourceEventIndexTeamId(context.destination);
-      if (!teamId) {
-        throw new ToolInputError(
-          "Resource watches require a workspace team id from the conversation destination.",
-        );
-      }
       const subscription = await createResourceEventSubscription({
         conversationId: context.conversationId,
         events,
@@ -187,7 +180,6 @@ export function createWatchResourceEventsTool(
           input.identifier,
         ),
         resourceType: input.resourceType.trim(),
-        teamId,
       });
       const details = {
         id: subscription.id,

@@ -690,7 +690,6 @@ describe("Slack behavior: durable turn steering", () => {
     await createResourceEventSubscription(
       {
         conversationId,
-        teamId: SLACK_DESTINATION.teamId,
         events: ["pull_request.checks.failed"],
         expiresAtMs: Date.now() + 60_000,
         intent: "Watch CI while this turn is active.",
