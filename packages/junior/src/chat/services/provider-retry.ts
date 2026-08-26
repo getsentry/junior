@@ -3,7 +3,11 @@ import {
   type AssistantMessage,
 } from "@earendil-works/pi-ai";
 import type { PiMessage } from "@/chat/pi/messages";
-import { createProviderError } from "@/chat/services/provider-error";
+import {
+  createProviderError,
+  getProviderErrorAttributes,
+  type ProviderError,
+} from "@/chat/services/provider-error";
 import {
   getPiMessageRole,
   trimTrailingAssistantMessages,
@@ -17,7 +21,13 @@ export function nextProviderRetry(args: {
   attempt: number;
   failure?: AssistantMessage;
   messages: PiMessage[];
-}): { delayMs: number; messages: PiMessage[] } | undefined {
+}):
+  | {
+      delayMs: number;
+      messages: PiMessage[];
+      providerError: ProviderError;
+    }
+  | undefined {
   const backoffMs = PROVIDER_RETRY_DELAYS_MS[args.attempt];
   const errorMessage = args.failure?.errorMessage;
   if (backoffMs === undefined || !args.failure || !errorMessage) {
@@ -47,5 +57,16 @@ export function nextProviderRetry(args: {
     return undefined;
   }
 
-  return { delayMs, messages };
+  return { delayMs, messages, providerError };
+}
+
+/** Safe attributes for one provider-boundary retry attempt. */
+export function getProviderRetryAttributes(args: {
+  attempt: number;
+  providerError: ProviderError;
+}): Record<string, unknown> {
+  return {
+    ...getProviderErrorAttributes(args.providerError),
+    "app.ai.provider_error.retry_attempt": args.attempt,
+  };
 }

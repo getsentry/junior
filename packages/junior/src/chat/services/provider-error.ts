@@ -116,6 +116,48 @@ function providerMessage(error: unknown): string {
   return (error instanceof Error ? error.message : String(error)).trim();
 }
 
+const PROVIDER_ERROR_SUMMARY_MAX_CHARS = 240;
+
+/**
+ * Build a short provider-boundary summary for telemetry.
+ *
+ * Keep the leading diagnostic text. Drop large JSON bodies that often follow
+ * gateway status lines so Sentry stays free of provider payloads.
+ */
+export function summarizeProviderErrorMessage(message: string): string | undefined {
+  const normalized = message.trim().replace(/\s+/g, " ");
+  if (!normalized) return undefined;
+
+  // Strip nested JSON/array bodies from gateway status lines without keeping
+  // payload keys. Plain transport messages stay intact.
+  let withoutJsonBodies = normalized;
+  while (true) {
+    const next = withoutJsonBodies
+      .replace(/\{[^{}]*\}/g, " ")
+      .replace(/\[[^\[\]]*\]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (next === withoutJsonBodies) break;
+    withoutJsonBodies = next;
+  }
+  const summary = withoutJsonBodies || normalized;
+  if (!summary) return undefined;
+  return summary.length > PROVIDER_ERROR_SUMMARY_MAX_CHARS
+    ? `${summary.slice(0, PROVIDER_ERROR_SUMMARY_MAX_CHARS)}...`
+    : summary;
+}
+
+function providerErrorCauseMessage(error: ProviderError): string | undefined {
+  const cause = error.cause;
+  if (cause instanceof Error) {
+    return summarizeProviderErrorMessage(cause.message);
+  }
+  if (typeof cause === "string") {
+    return summarizeProviderErrorMessage(cause);
+  }
+  return undefined;
+}
+
 function extractTransportKind(
   error: unknown,
   depth = 0,
@@ -284,6 +326,7 @@ export function getProviderErrorUserMessage(error: ProviderError): string {
 export function getProviderErrorAttributes(
   error: ProviderError,
 ): Record<string, unknown> {
+  const summary = providerErrorCauseMessage(error);
   return {
     "app.ai.provider_error.kind": error.kind,
     "app.ai.provider_error.retryable": error.retryable,
@@ -293,6 +336,7 @@ export function getProviderErrorAttributes(
     ...(error.retryAfterMs !== undefined
       ? { "app.ai.provider_error.retry_after_ms": error.retryAfterMs }
       : undefined),
+    ...(summary ? { "app.ai.provider_error.summary": summary } : undefined),
     ...(error.modelId ? { "gen_ai.request.model": error.modelId } : undefined),
   };
 }

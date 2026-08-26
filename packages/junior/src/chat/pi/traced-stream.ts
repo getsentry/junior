@@ -25,6 +25,7 @@ import {
   toGenAiMessagesTraceAttributes,
 } from "@/chat/conversation-privacy";
 import { hasCompactedConversationContext } from "@/chat/services/context-compaction-marker";
+import { summarizeProviderErrorMessage } from "@/chat/services/provider-error";
 
 type GenAiAttributeMode = "content" | "metadata";
 type TraceAttributeValue = string | number | boolean | string[];
@@ -126,6 +127,13 @@ function buildChatEndAttributes(
     attributes["gen_ai.response.model"] = message.model;
   }
 
+  if (message.stopReason === "error") {
+    const summary = summarizeProviderErrorMessage(message.errorMessage ?? "");
+    if (summary) {
+      attributes["app.ai.provider_error.summary"] = summary;
+    }
+  }
+
   return attributes;
 }
 
@@ -191,7 +199,13 @@ export function createTracedStreamFn(
               }
               if (finalMessage.stopReason === "error") {
                 span.setAttribute("error.type", "provider_error");
-                span.setStatus({ code: 2, message: "LLM stream failed" });
+                const summary = summarizeProviderErrorMessage(
+                  finalMessage.errorMessage ?? "",
+                );
+                span.setStatus({
+                  code: 2,
+                  message: summary ?? "LLM stream failed",
+                });
               }
             } finally {
               span.end();

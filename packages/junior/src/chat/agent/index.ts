@@ -83,7 +83,10 @@ import {
   getProviderErrorAttributes,
   isProviderRetryError,
 } from "@/chat/services/provider-error";
-import { nextProviderRetry } from "@/chat/services/provider-retry";
+import {
+  getProviderRetryAttributes,
+  nextProviderRetry,
+} from "@/chat/services/provider-retry";
 import { nextEmptyOutputContinuation } from "@/chat/services/empty-output-continuation";
 import { getDiscardedRetryUsage } from "@/chat/agent/retry-usage";
 import { projectTimedOutToolResult } from "@/chat/tool-support/timed-out-tool-result";
@@ -1604,7 +1607,13 @@ async function executeAgentRunInPrivacyContext(
 
               providerRetryAttempt += 1;
               await prepareRetry(providerRetry.messages);
-              logWarn("agent.turn.provider.retrying");
+              logWarn(
+                "agent.turn.provider.retrying",
+                getProviderRetryAttributes({
+                  attempt: providerRetryAttempt,
+                  providerError: providerRetry.providerError,
+                }),
+              );
               await sleep(providerRetry.delayMs, signal);
               run = agent!.continue();
             }
