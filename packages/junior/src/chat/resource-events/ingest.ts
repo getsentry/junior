@@ -40,7 +40,7 @@ export async function ingestResourceEvent(
     try {
       const route = await resolveResourceEventDeliveryRoute({
         conversationId: subscription.conversationId,
-        destination: subscription.destination,
+        teamId: subscription.teamId,
       });
       if (!route) {
         logWarn("resource_event.subscription.undeliverable", {

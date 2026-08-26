@@ -166,9 +166,17 @@ export function createWatchResourceEventsTool(
         resourceType: input.resourceType,
       });
       const nowMs = Date.now();
+      const teamId =
+        context.destination.platform === "slack"
+          ? context.destination.teamId
+          : undefined;
+      if (!teamId?.trim()) {
+        throw new ToolInputError(
+          "Resource watches require a workspace team id from the conversation destination.",
+        );
+      }
       const subscription = await createResourceEventSubscription({
         conversationId: context.conversationId,
-        destination: context.destination,
         events,
         expiresAtMs: nowMs + ttlMs(input),
         intent,
@@ -181,6 +189,7 @@ export function createWatchResourceEventsTool(
           input.identifier,
         ),
         resourceType: input.resourceType.trim(),
+        teamId,
       });
       const details = {
         id: subscription.id,

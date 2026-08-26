@@ -130,30 +130,78 @@ async function loadConversationChain(
   return chain;
 }
 
-function threadTsForSlackDestination(
+function slackRouteFromConversationId(
+  conversationId: string,
+  teamId: string,
+): ResourceEventDeliveryRoute | undefined {
+  const parsed = parseSlackThreadId(conversationId);
+  if (!parsed) {
+    return undefined;
+  }
+  return {
+    kind: "slack",
+    destination: {
+      platform: "slack",
+      teamId,
+      channelId: parsed.channelId,
+    },
+    threadTs: parsed.threadTs,
+    publishExternally: true,
+  };
+}
+
+function slackRouteFromChain(
   conversationId: string,
   chain: readonly Conversation[],
-  destination: SlackDestination,
-): string | undefined {
-  const fromId = parseSlackThreadId(conversationId);
-  if (fromId && fromId.channelId === destination.channelId) {
-    return fromId.threadTs;
-  }
+  teamId: string,
+): ResourceEventDeliveryRoute | undefined {
+  const candidateIds = new Set<string>([conversationId]);
   for (const conversation of chain) {
+    candidateIds.add(conversation.conversationId);
+    const parentId = conversation.lineage?.parentConversationId?.trim();
+    if (parentId) {
+      candidateIds.add(parentId);
+    }
+  }
+  for (const candidateId of candidateIds) {
+    const fromId = slackRouteFromConversationId(candidateId, teamId);
+    if (fromId) {
+      return fromId;
+    }
+  }
+
+  for (const conversation of chain) {
+    const destination = asSlackDestination(conversation.destination);
     const source = conversation.sessionSource;
     if (
+      destination &&
       source?.platform === "slack" &&
       source.channelId === destination.channelId &&
       source.threadTs?.trim()
     ) {
-      return source.threadTs.trim();
+      return {
+        kind: "slack",
+        destination,
+        threadTs: source.threadTs.trim(),
+        publishExternally: true,
+      };
     }
-    const fromConversation = parseSlackThreadId(conversation.conversationId);
+
     if (
-      fromConversation &&
-      fromConversation.channelId === destination.channelId
+      source?.platform === "slack" &&
+      source.channelId?.trim() &&
+      source.threadTs?.trim()
     ) {
-      return fromConversation.threadTs;
+      return {
+        kind: "slack",
+        destination: {
+          platform: "slack",
+          teamId: source.teamId?.trim() || teamId,
+          channelId: source.channelId.trim(),
+        },
+        threadTs: source.threadTs.trim(),
+        publishExternally: true,
+      };
     }
   }
   return undefined;
@@ -162,58 +210,63 @@ function threadTsForSlackDestination(
 /**
  * Resolve how a watched conversation should receive one event.
  *
- * The watch stores an opaque conversation id. Destination decides whether the
- * turn publishes to Slack; conversation ancestry fills in Slack thread details.
+ * The watch stores only the conversation mailbox id. Destination and provider
+ * routing come from the conversation record (and parent lineage).
  */
 export async function resolveResourceEventDeliveryRoute(input: {
   conversationId: string;
-  destination: Destination;
+  /** Workspace team id from the watch index; fills slack dest when needed. */
+  teamId: string;
 }): Promise<ResourceEventDeliveryRoute | undefined> {
-  const chain = await loadConversationChain(input.conversationId);
-  const destination =
-    asSlackDestination(input.destination) ??
-    chain.map((entry) => asSlackDestination(entry.destination)).find(Boolean);
+  const teamId = input.teamId.trim();
+  if (!teamId) {
+    return undefined;
+  }
 
+  const fromConversationId = slackRouteFromConversationId(
+    input.conversationId,
+    teamId,
+  );
+  if (fromConversationId) {
+    return fromConversationId;
+  }
+
+  const chain = await loadConversationChain(input.conversationId);
+  const slackRoute = slackRouteFromChain(input.conversationId, chain, teamId);
+  if (slackRoute) {
+    return slackRoute;
+  }
+
+  // Slack destination without a thread cannot deliver a watch update.
+  if (chain.some((entry) => asSlackDestination(entry.destination))) {
+    return undefined;
+  }
+
+  // Non-Slack conversations wake their mailbox without external publish.
+  const destination =
+    chain.map((entry) => entry.destination).find(Boolean) ?? undefined;
   if (destination) {
-    const threadTs = threadTsForSlackDestination(
-      input.conversationId,
-      chain,
-      destination,
-    );
-    if (!threadTs) {
-      return undefined;
-    }
     return {
-      kind: "slack",
+      kind: "conversation",
       destination,
-      threadTs,
-      publishExternally: true,
+      publishExternally: false,
     };
   }
 
-  // No Slack destination on the subscription or conversation chain: still wake
-  // the conversation mailbox without external publish.
-  return {
-    kind: "conversation",
-    destination: input.destination,
-    publishExternally: false,
-  };
+  // No conversation routing info yet — undeliverable.
+  return undefined;
 }
 
 function createConversationResourceEventInboundMessage(input: {
   event: ResourceEventNotification;
-  subscription: Pick<
-    ResourceEventSubscription,
-    "conversationId" | "destination" | "id"
-  >;
+  subscription: Pick<ResourceEventSubscription, "conversationId" | "id">;
+  destination?: Destination;
   text: string;
 }): InboundMessage {
   return {
     conversationId: input.subscription.conversationId,
     createdAtMs: input.event.occurredAtMs,
-    ...(input.subscription.destination
-      ? { destination: input.subscription.destination }
-      : undefined),
+    ...(input.destination ? { destination: input.destination } : undefined),
     inboundMessageId: `resource-event:${input.subscription.id}:${input.event.eventKey}`,
     delivery: "defer",
     source: "resource_event",
@@ -245,7 +298,7 @@ export async function enqueueResourceEventNotification(args: {
 }): Promise<Awaited<ReturnType<typeof appendAndEnqueueInboundMessage>>> {
   const route = await resolveResourceEventDeliveryRoute({
     conversationId: args.subscription.conversationId,
-    destination: args.subscription.destination,
+    teamId: args.subscription.teamId,
   });
   if (!route) {
     throw new Error(
@@ -277,9 +330,9 @@ export async function enqueueResourceEventNotification(args: {
       event: args.event,
       subscription: {
         conversationId: args.subscription.conversationId,
-        destination: route.destination ?? args.subscription.destination,
         id: args.subscription.id,
       },
+      ...(route.destination ? { destination: route.destination } : undefined),
       text,
     }),
     queue: args.queue,

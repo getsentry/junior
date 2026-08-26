@@ -660,9 +660,17 @@ export function getPluginTools(
             "Resource subscription contains an event or resource that the plugin does not support.",
           );
         }
+        const teamId =
+          context.destination.platform === "slack"
+            ? context.destination.teamId
+            : undefined;
+        if (!teamId?.trim()) {
+          throw new Error(
+            "Resource subscriptions require a workspace team id from the conversation destination.",
+          );
+        }
         const subscription = await createResourceEventSubscription({
           conversationId: context.conversationId,
-          destination: context.destination,
           events: input.events,
           expiresAtMs: Date.now() + RESOURCE_SUBSCRIPTION_DEFAULT_TTL_MS,
           intent: input.intent,
@@ -673,6 +681,7 @@ export function getPluginTools(
             input.resource.identifier,
           ),
           resourceType: input.resource.type,
+          teamId,
         });
         return {
           events: subscription.events,

@@ -131,7 +131,7 @@ describe("resource event tools", () => {
     expect(createSubscription).toHaveBeenCalledWith(
       expect.objectContaining({
         conversationId: "slack:C123:1712345.0001",
-        destination: context.destination,
+        teamId: "T123",
         identifier: "getsentry/junior#1",
       }),
     );
@@ -161,7 +161,7 @@ describe("resource event tools", () => {
     expect(createSubscription).toHaveBeenCalledWith(
       expect.objectContaining({
         conversationId: "agent:deadbeefcafebabe",
-        destination: context.destination,
+        teamId: "T123",
       }),
     );
   });

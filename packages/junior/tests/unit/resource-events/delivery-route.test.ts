@@ -27,7 +27,7 @@ describe("resource event delivery route", () => {
     await expect(
       resolveResourceEventDeliveryRoute({
         conversationId: "slack:C123:1712345.0001",
-        destination,
+        teamId: destination.teamId,
       }),
     ).resolves.toEqual({
       kind: "slack",
@@ -64,7 +64,7 @@ describe("resource event delivery route", () => {
     await expect(
       resolveResourceEventDeliveryRoute({
         conversationId: "agent:child",
-        destination,
+        teamId: destination.teamId,
       }),
     ).resolves.toEqual({
       kind: "slack",
@@ -86,10 +86,7 @@ describe("resource event delivery route", () => {
     await expect(
       resolveResourceEventDeliveryRoute({
         conversationId: "local:web:abc",
-        destination: {
-          platform: "local",
-          conversationId: "local:web:abc",
-        },
+        teamId: "T123",
       }),
     ).resolves.toEqual({
       kind: "conversation",
@@ -110,7 +107,7 @@ describe("resource event delivery route", () => {
     await expect(
       resolveResourceEventDeliveryRoute({
         conversationId: "agent:child",
-        destination,
+        teamId: destination.teamId,
       }),
     ).resolves.toBeUndefined();
   });

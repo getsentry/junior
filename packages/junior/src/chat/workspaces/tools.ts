@@ -370,26 +370,30 @@ export function createWorkspaceTools(
           workspaceId: workspace.id,
           workspaceName: workspace.name,
         });
-        const conversationId =
+        const teamId =
           canRouteResourceEvents() && context.destination.platform === "slack"
-            ? context.conversationId.trim()
+            ? context.destination.teamId.trim()
             : undefined;
-        const subscription = conversationId
-          ? await createResourceEventSubscription({
-              conversationId,
-              destination: context.destination,
-              events: [
-                WORKSPACE_SNAPSHOT_READY_EVENT,
-                WORKSPACE_SNAPSHOT_FAILED_EVENT,
-              ],
-              expiresAtMs: Date.now() + RESOURCE_SUBSCRIPTION_DEFAULT_TTL_MS,
-              intent: `Switch to Workspace ${workspace.name} when its snapshot is ready.`,
-              label: watch.label,
-              namespace: watch.namespace,
-              identifier: watch.identifier,
-              resourceType: watch.type,
-            })
+        const conversationId = teamId
+          ? context.conversationId.trim()
           : undefined;
+        const subscription =
+          conversationId && teamId
+            ? await createResourceEventSubscription({
+                conversationId,
+                events: [
+                  WORKSPACE_SNAPSHOT_READY_EVENT,
+                  WORKSPACE_SNAPSHOT_FAILED_EVENT,
+                ],
+                expiresAtMs: Date.now() + RESOURCE_SUBSCRIPTION_DEFAULT_TTL_MS,
+                intent: `Switch to Workspace ${workspace.name} when its snapshot is ready.`,
+                label: watch.label,
+                namespace: watch.namespace,
+                identifier: watch.identifier,
+                resourceType: watch.type,
+                teamId,
+              })
+            : undefined;
 
         let keepWatch = false;
         try {

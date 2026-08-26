@@ -70,7 +70,7 @@ function createGithubPrSubscription(input: {
   return createResourceEventSubscription(
     {
       conversationId: CONVERSATION_ID,
-      destination: SLACK_DESTINATION,
+      teamId: SLACK_DESTINATION.teamId,
       events: input.events,
       expiresAtMs: input.expiresAtMs ?? 2_000_000,
       intent: input.intent ?? "Watch the PR Junior opened.",
@@ -171,11 +171,7 @@ describe("resource event delivery", () => {
     await createResourceEventSubscription(
       {
         conversationId: "slack:C999:1712345.0002",
-        destination: {
-          platform: "slack",
-          teamId: "TOTHER",
-          channelId: "C999",
-        },
+        teamId: "TOTHER",
         events: ["pull_request.checks.failed"],
         expiresAtMs: 2_000_000,
         intent: "Watch the same PR from another workspace.",
@@ -410,7 +406,7 @@ describe("resource event delivery", () => {
     const subscription = await createResourceEventSubscription(
       {
         conversationId: CONVERSATION_ID,
-        destination: SLACK_DESTINATION,
+        teamId: SLACK_DESTINATION.teamId,
         events: ["issue.closed", "issue.reopened"],
         expiresAtMs: 2_000_000,
         intent: "Report when the issue closes or reopens.",
@@ -669,11 +665,7 @@ describe("resource event delivery", () => {
     await createResourceEventSubscription(
       {
         conversationId: "slack:C456:1712345.0002",
-        destination: {
-          platform: "slack",
-          teamId: "T123",
-          channelId: "C456",
-        },
+        teamId: "T123",
         events: ["pull_request.checks.failed"],
         expiresAtMs: 2_000_000,
         intent: "Watch the PR from the second conversation.",
@@ -743,7 +735,7 @@ describe("resource event delivery", () => {
 
     await expect(
       state.acquireLock(
-        `junior:resource_event_subscription:v3:lock:${subscription.id}`,
+        `junior:resource_event_subscription:v4:lock:${subscription.id}`,
         10_000,
       ),
     ).resolves.toBeNull();
@@ -847,7 +839,7 @@ describe("resource event delivery", () => {
     const bad = await createResourceEventSubscription(
       {
         conversationId: "agent:deadbeefcafebabe",
-        destination: SLACK_DESTINATION,
+        teamId: SLACK_DESTINATION.teamId,
         events: ["pull_request.checks.failed"],
         expiresAtMs: 2_000_000,
         intent: "Watch without a routable conversation.",
