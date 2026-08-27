@@ -684,15 +684,11 @@ describe("plugin heartbeat", () => {
     expect(fetchMock).not.toHaveBeenCalled();
     expect(conversationWorkQueue.sentRecords()).toHaveLength(1);
     const dispatchRecord = await getDispatchRecord(running!.dispatchId!);
-    expect(dispatchRecord?.input).toMatchInlineSnapshot(`
-      "[scheduled task]
-
-      This is a scheduled task, not a new message from a person.
-      Follow the instructions below.
-      When you reply, summarize what you were acting on and what you did or need next.
-
-      Instructions: Post a digest. Summarize the latest state."
-    `);
+    expect(dispatchRecord?.input).toContain("[task]");
+    expect(dispatchRecord?.input).toContain("[[NO_REPLY]]");
+    expect(dispatchRecord?.input).toContain(
+      "Instructions: Post a digest. Summarize the latest state.",
+    );
     expect(dispatchRecord?.destination).toEqual(SLACK_DESTINATION);
     expect(dispatchRecord?.destinationVisibility).toBe("public");
     expect(dispatchRecord?.source).toEqual(
