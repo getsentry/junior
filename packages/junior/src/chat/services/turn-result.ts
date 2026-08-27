@@ -1,6 +1,6 @@
 import { isRetryableAssistantError } from "@earendil-works/pi-ai";
 import { logInfo, logWarn, summarizeMessageText } from "@/chat/logging";
-import { containsNoReplyMarker } from "@/chat/no-reply";
+import { containsNoReplyMarker, isNoReplyMarker } from "@/chat/no-reply";
 import type { PiMessage } from "@/chat/pi/messages";
 import { createProviderError } from "@/chat/services/provider-error";
 import type { TurnRoute } from "@/chat/services/turn-router";
@@ -80,25 +80,23 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
       .map((message) => extractAssistantText(message))
       .join("\n\n"),
   ).trim();
-  const replyDecisions = terminalAssistantMessages.map((message) =>
-    decideReply(message),
-  );
-  const primaryText = replyDecisions
+  const primaryText = terminalAssistantMessages
+    .map((message) => decideReply(message))
     .filter(
       (output): output is { kind: "deliver"; text: string } =>
         output.kind === "deliver",
     )
     .map((output) => output.text)
     .join("\n\n");
-  // Silence only when every terminal message is empty or an exact marker, and at
-  // least one exact marker is present. Mixed marker + prose still delivers.
+  // Silence only for exact whole-message markers. Tool-call suppress is not a
+  // no-reply. Mixed marker + prose still delivers.
+  const terminalTexts = terminalAssistantMessages.map((message) =>
+    sanitizeAssistantText(extractAssistantText(message)),
+  );
   const noReplyRequested =
     !primaryText &&
-    replyDecisions.some((decision) => decision.kind === "suppress") &&
-    replyDecisions.every(
-      (decision) =>
-        decision.kind === "suppress" || decision.kind === "empty",
-    );
+    terminalTexts.some((text) => isNoReplyMarker(text)) &&
+    terminalTexts.every((text) => !text || isNoReplyMarker(text));
 
   const toolErrorCount = toolResults.filter((result) => result.isError).length;
   const reactionPerformed = toolResults.some(
