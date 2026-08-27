@@ -1,10 +1,8 @@
-import { timingSafeEqual } from "node:crypto";
 import {
   createUserTokenStore,
   issueProviderCredentialLease,
 } from "@/chat/capabilities/factory";
 import { CredentialUnavailableError } from "@/chat/credentials/broker";
-import { credentialUserSubjectId } from "@/chat/credentials/context";
 import type {
   PluginAuthorization,
   PluginGrant,
@@ -20,7 +18,6 @@ import {
   resolveSandboxEgressProviderForHost,
 } from "@/chat/sandbox/egress/policy";
 import {
-  clearSandboxEgressCredentialLease,
   getSandboxEgressCredentialLease,
   setSandboxEgressCredentialLease,
   type SandboxEgressCredentialContext,
@@ -131,86 +128,6 @@ function assertLeaseTransformsOwnedByProvider(
   }
 }
 
-/** Same refresh window the OAuth broker uses before it treats a token as stale. */
-const USER_TOKEN_REFRESH_BUFFER_MS = 5 * 60 * 1000;
-
-function isSharedInstallationGrant(
-  grant: Pick<PluginGrant, "name">,
-): boolean {
-  return grant.name.startsWith("installation-");
-}
-
-function readAuthorizationHeader(
-  headers: Record<string, string>,
-): string | undefined {
-  for (const [key, value] of Object.entries(headers)) {
-    if (key.toLowerCase() === "authorization") {
-      const trimmed = value.trim();
-      return trimmed.length > 0 ? trimmed : undefined;
-    }
-  }
-  return undefined;
-}
-
-function sameAuthorizationValue(left: string, right: string): boolean {
-  const leftBuffer = Buffer.from(left);
-  const rightBuffer = Buffer.from(right);
-  return (
-    leftBuffer.length === rightBuffer.length &&
-    timingSafeEqual(leftBuffer, rightBuffer)
-  );
-}
-
-function leaseHasAccessToken(
-  lease: SandboxEgressCredentialLease,
-  accessToken: string,
-): boolean {
-  const expected = `Bearer ${accessToken}`;
-  return lease.headerTransforms.some((transform) => {
-    const authorization = readAuthorizationHeader(transform.headers);
-    return (
-      authorization !== undefined &&
-      sameAuthorizationValue(authorization, expected)
-    );
-  });
-}
-
-/**
- * Return whether a cached lease may still be used for this request.
- *
- * Shared installation grants only need a valid cache TTL. User grants also need
- * the stored user token to still exist, not be near expiry, and match the
- * cached Authorization header. That keeps delete, rotate, expire, and test token
- * setup from reusing a stale header.
- */
-async function canReuseCachedLease(input: {
-  context: SandboxEgressCredentialContext;
-  lease: SandboxEgressCredentialLease;
-  provider: string;
-}): Promise<boolean> {
-  if (isSharedInstallationGrant(input.lease.grant)) {
-    return true;
-  }
-
-  const userId = credentialUserSubjectId(input.context.credentials);
-  if (!userId) {
-    // No stored user token backs this grant (for example env-only system use).
-    return true;
-  }
-
-  const stored = await createUserTokenStore().get(userId, input.provider);
-  if (!stored) {
-    return false;
-  }
-  if (
-    stored.expiresAt !== undefined &&
-    stored.expiresAt - Date.now() < USER_TOKEN_REFRESH_BUFFER_MS
-  ) {
-    return false;
-  }
-  return leaseHasAccessToken(input.lease, stored.accessToken);
-}
-
 /**
  * Select the grant needed for one outbound request.
  *
@@ -259,11 +176,12 @@ export function authorizationForSandboxEgressGrant(
 }
 
 /**
- * Return cached or newly issued credential header transforms for a selected grant.
+ * Return credential header transforms for a selected grant.
  *
- * Shared installation grants reuse the host cache until near expiry. User grants
- * reuse a cached lease only when the stored user token still matches it. The
- * sandbox context only authorizes the request.
+ * Only shared installation grants are remembered on the host. User and other
+ * grants always issue from the live credential source so a saved login change
+ * cannot leave stale auth headers in place. The sandbox context only authorizes
+ * the request.
  */
 export async function sandboxEgressCredentialLease(
   provider: string,
@@ -282,13 +200,10 @@ export async function sandboxEgressCredentialLease(
         `Cached credential lease for ${provider}/${grant.name} has ${cached.grant.access} access, but ${grant.access} was selected`,
       );
     }
-    if (await canReuseCachedLease({ context, lease: cached, provider })) {
-      return {
-        ...cached,
-        grant,
-      };
-    }
-    await clearSandboxEgressCredentialLease(provider, grant, context);
+    return {
+      ...cached,
+      grant,
+    };
   }
 
   let lease: {
@@ -367,7 +282,7 @@ export async function sandboxEgressCredentialLease(
     selection.source === "broker"
       ? oauthAuthorizationForProvider(provider)
       : lease.authorization;
-  const cachedLease: SandboxEgressCredentialLease = {
+  const issuedLease: SandboxEgressCredentialLease = {
     provider,
     grant,
     ...(lease.account ? { account: lease.account } : undefined),
@@ -375,9 +290,9 @@ export async function sandboxEgressCredentialLease(
     expiresAt: lease.expiresAt,
     headerTransforms,
   };
-  assertLeaseTransformsOwnedByProvider(provider, cachedLease);
-  await setSandboxEgressCredentialLease(context, cachedLease);
-  return cachedLease;
+  assertLeaseTransformsOwnedByProvider(provider, issuedLease);
+  await setSandboxEgressCredentialLease(context, issuedLease);
+  return issuedLease;
 }
 
 /** Return whether a credential lease can modify requests to the target host. */

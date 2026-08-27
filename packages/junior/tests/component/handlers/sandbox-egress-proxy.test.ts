@@ -52,8 +52,7 @@ vi.mock("@/chat/plugins/catalog-runtime", () => ({
 }));
 
 vi.mock("@/chat/capabilities/factory", () => ({
-  // This suite does not store user tokens, so cached user leases cannot be reused.
-  createUserTokenStore: () => ({ get: async () => undefined }),
+  createUserTokenStore: () => ({ kind: "user-token-store" }),
   issueProviderCredentialLease: issueProviderCredentialLeaseMock,
 }));
 
@@ -615,7 +614,7 @@ describe("sandbox egress proxy composition", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("scopes cached credential leases to the actor", async () => {
+  it("issues separate user credentials per actor", async () => {
     setSandboxEgressUserActor();
     issueProviderCredentialLeaseMock
       .mockResolvedValueOnce({
@@ -675,7 +674,7 @@ describe("sandbox egress proxy composition", () => {
     });
   });
 
-  it("issues a new user lease when the stored token is missing", async () => {
+  it("issues user credentials on every hop instead of remembering them", async () => {
     setSandboxEgressUserActor();
     issueProviderCredentialLeaseMock
       .mockResolvedValueOnce({
@@ -715,7 +714,6 @@ describe("sandbox egress proxy composition", () => {
       "Bearer token-first-session",
     );
 
-    // New signed context/session for the same actor should reuse the host lease.
     setSandboxEgressUserActor();
     const secondResponse = await proxy(
       egressRequest({ path: "/api/0/issues/2" }),
@@ -779,7 +777,7 @@ describe("sandbox egress proxy composition", () => {
     const body = await persistent.text();
     expect(body).toBe("Permission denied for this organization");
     expect(body).not.toContain("junior-auth-required");
-    // Second hop has no stored user token, so the earlier lease is not reused.
+    // User grants are not remembered, so the second hop issues again.
     expect(issueProviderCredentialLeaseMock).toHaveBeenCalledTimes(4);
     expect(fetchMock).toHaveBeenCalledTimes(4);
     await expect(

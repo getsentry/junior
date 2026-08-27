@@ -16,9 +16,8 @@ import { getStateAdapter } from "@/chat/state/adapter";
 // to host egress.
 //
 // The sandbox gets a signed context token in its network policy URL; the proxy
-// verifies that token on every forwarded request. Credential leases are cached
-// on the host by provider grant. Installation grants are shared across
-// sandboxes. Other grants stay bound to the actor. Auth-required and
+// verifies that token on every forwarded request. Only shared installation
+// grants keep remembered auth headers on the host. Auth-required and
 // permission-denied signals are written here so the sandbox command runner can
 // translate host egress failures into the same user-facing auth flow as direct
 // tool calls.
@@ -42,32 +41,24 @@ export type {
   SandboxEgressPermissionDeniedSignal,
 };
 
+/** True when this grant may keep shared auth headers on the host. */
+function isSharedInstallationGrant(
+  grant: Pick<SandboxEgressCredentialLease["grant"], "name">,
+): boolean {
+  return grant.name.startsWith("installation-");
+}
+
 /**
- * Build the host lease cache key for one provider grant.
+ * Build the host key for a shared installation grant.
  *
- * Installation grants are shared across sandboxes. Other grants stay bound to
- * the credential owner: the actor for normal user runs, or the delegated
- * subject when a system run injects that user's token. Sandbox egress id and
- * context token id authorize the hop only; they do not change which host
- * credential to inject.
+ * Only installation grants are remembered. User and other grants issue live
+ * headers each time, so they never write a host key.
  */
 function leaseKey(
   provider: string,
   grant: SandboxEgressCredentialLease["grant"],
-  context: SandboxEgressCredentialContext,
 ): string {
-  if (grant.name.startsWith("installation-")) {
-    return `${SANDBOX_EGRESS_LEASE_PREFIX}:${provider}:${grant.name}:shared`;
-  }
-  const actor = context.credentials.actor;
-  const subject =
-    "subject" in context.credentials ? context.credentials.subject : undefined;
-  const ownerKey = subject
-    ? `subject:${subject.userId}`
-    : "type" in actor
-      ? `user:${actor.userId}`
-      : `system:${actor.name}`;
-  return `${SANDBOX_EGRESS_LEASE_PREFIX}:${provider}:${grant.name}:${ownerKey}`;
+  return `${SANDBOX_EGRESS_LEASE_PREFIX}:${provider}:${grant.name}:shared`;
 }
 
 /**
@@ -216,16 +207,19 @@ export function parseSandboxEgressCredentialToken(
 }
 
 /**
- * Cache credential header transforms for one provider grant.
+ * Remember auth headers for a shared installation grant.
  *
- * TTL follows the provider lease expiry. Sandbox context expiry still decides
- * whether a hop may use the cache; it does not shorten a shared installation
- * lease for other sandboxes.
+ * User and other grants are ignored here. TTL follows the provider expiry.
+ * Sandbox context expiry still decides whether a request may use the headers;
+ * it does not shorten a shared installation grant for other sandboxes.
  */
 export async function setSandboxEgressCredentialLease(
-  context: SandboxEgressCredentialContext,
+  _context: SandboxEgressCredentialContext,
   lease: SandboxEgressCredentialLease,
 ): Promise<void> {
+  if (!isSharedInstallationGrant(lease.grant)) {
+    return;
+  }
   const leaseExpiresAtMs = Date.parse(lease.expiresAt);
   if (!Number.isFinite(leaseExpiresAtMs) || leaseExpiresAtMs <= Date.now()) {
     return;
@@ -233,29 +227,35 @@ export async function setSandboxEgressCredentialLease(
   const ttlMs = Math.max(1, leaseExpiresAtMs - Date.now());
   const state = getStateAdapter();
   await state.connect();
-  await state.set(leaseKey(lease.provider, lease.grant, context), lease, ttlMs);
+  await state.set(leaseKey(lease.provider, lease.grant), lease, ttlMs);
 }
 
-/** Load cached credential header transforms for one provider grant. */
+/** Load remembered auth headers for a shared installation grant. */
 export async function getSandboxEgressCredentialLease(
   provider: string,
   grant: SandboxEgressCredentialLease["grant"],
-  context: SandboxEgressCredentialContext,
+  _context: SandboxEgressCredentialContext,
 ): Promise<SandboxEgressCredentialLease | undefined> {
+  if (!isSharedInstallationGrant(grant)) {
+    return undefined;
+  }
   const state = getStateAdapter();
   await state.connect();
-  return parseLease(await state.get(leaseKey(provider, grant, context)));
+  return parseLease(await state.get(leaseKey(provider, grant)));
 }
 
-/** Clear a cached lease after the upstream provider rejects its auth headers. */
+/** Drop remembered installation headers after the upstream rejects them. */
 export async function clearSandboxEgressCredentialLease(
   provider: string,
   grant: SandboxEgressCredentialLease["grant"],
-  context: SandboxEgressCredentialContext,
+  _context: SandboxEgressCredentialContext,
 ): Promise<void> {
+  if (!isSharedInstallationGrant(grant)) {
+    return;
+  }
   const state = getStateAdapter();
   await state.connect();
-  await state.delete(leaseKey(provider, grant, context));
+  await state.delete(leaseKey(provider, grant));
 }
 
 /**
