@@ -7,10 +7,10 @@
  */
 import type {
   Destination,
-  Location,
   SlackDestination,
   Source,
 } from "@sentry/junior-plugin-api";
+import type { Location } from "@/chat/conversations/location";
 import type {
   Conversation,
   ConversationStore,

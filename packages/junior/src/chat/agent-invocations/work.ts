@@ -1,6 +1,6 @@
 import type { StateAdapter } from "chat";
 import { z } from "zod";
-import type { Location } from "@sentry/junior-plugin-api";
+import type { Location } from "@/chat/conversations/location";
 import type { ConversationStore } from "@/chat/conversations/store";
 import { openConversationProjection } from "@/chat/conversations/projection";
 import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";

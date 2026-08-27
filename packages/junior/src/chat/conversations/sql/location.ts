@@ -1,5 +1,5 @@
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
-import { locationSchema, type Location } from "@sentry/junior-plugin-api";
+import { locationSchema, type Location } from "@/chat/conversations/location";
 import type { juniorDestinations } from "@/db/schema";
 
 type LocationRow = typeof juniorDestinations.$inferSelect;

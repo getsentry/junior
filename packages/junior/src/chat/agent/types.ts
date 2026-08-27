@@ -1,11 +1,11 @@
 /** Input for one Run through Junior's agent. */
 import type {
   Destination,
-  Location,
   ReplyAttribution,
   Source,
   SystemActor,
 } from "@sentry/junior-plugin-api";
+import type { Location } from "@/chat/conversations/location";
 import type { LocationConfigurationService } from "@/chat/configuration/types";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import type { CredentialContext } from "@/chat/credentials/context";
