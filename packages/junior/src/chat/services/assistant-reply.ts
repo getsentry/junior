@@ -1,5 +1,8 @@
 import type { AssistantMessage } from "@earendil-works/pi-ai";
-import { containsNoReplyMarker, isNoReplyMarker } from "@/chat/no-reply";
+import {
+  isNoReplyMarker,
+  stripNoReplyMarkers,
+} from "@/chat/no-reply";
 import { extractAssistantText } from "@/chat/pi/transcript";
 
 const THINKING_XML_BLOCK_PATTERN =
@@ -35,10 +38,14 @@ export function decideReply(message: AssistantMessage): ReplyDecision {
 
   const text = sanitizeAssistantText(extractAssistantText(message));
   if (!text) return { kind: "empty" };
-  if (isNoReplyMarker(text) || containsNoReplyMarker(text)) {
+  if (isNoReplyMarker(text)) {
     return { kind: "suppress" };
   }
-  return { kind: "deliver", text };
+  const visibleText = stripNoReplyMarkers(text);
+  if (!visibleText) {
+    return { kind: "suppress" };
+  }
+  return { kind: "deliver", text: visibleText };
 }
 
 /** Return destination-visible reply text when the message is deliverable. */

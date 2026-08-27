@@ -270,7 +270,7 @@ describe("buildTurnResult", () => {
     expect(reply.diagnostics.usedPrimaryText).toBe(true);
   });
 
-  it("treats a no-reply marker mixed with text as silent completion", () => {
+  it("delivers remaining text when a no-reply marker is mixed with prose", () => {
     const reply = buildTurnResult({
       newMessages: [
         {
@@ -287,7 +287,31 @@ describe("buildTurnResult", () => {
       executionProfile,
     });
 
-    expect(reply.text).toBe("");
+    expect(reply.text).toBe("Done.");
+    expect(reply.diagnostics.outcome).toBe("success");
+  });
+
+  it("still delivers answers that discuss the no-reply marker", () => {
+    const text = `next model correctly no-replied on a false done checkpoint -> ${NO_REPLY_MARKER}`;
+    const reply = buildTurnResult({
+      newMessages: [
+        {
+          role: "assistant",
+          content: [{ type: "text", text }],
+          stopReason: "stop",
+        },
+      ],
+      userInput: "why did you go quiet?",
+      toolCalls: [],
+      generatedFileCount: 0,
+      shouldTrace: false,
+      modelId: "test-model",
+      executionProfile,
+    });
+
+    expect(reply.text).toBe(
+      "next model correctly no-replied on a false done checkpoint ->",
+    );
     expect(reply.diagnostics.outcome).toBe("success");
   });
 

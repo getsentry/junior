@@ -1,6 +1,10 @@
 import { isRetryableAssistantError } from "@earendil-works/pi-ai";
 import { logInfo, logWarn, summarizeMessageText } from "@/chat/logging";
-import { containsNoReplyMarker, isNoReplyMarker } from "@/chat/no-reply";
+import {
+  containsNoReplyMarker,
+  isNoReplyMarker,
+  stripNoReplyMarkers,
+} from "@/chat/no-reply";
 import type { PiMessage } from "@/chat/pi/messages";
 import { createProviderError } from "@/chat/services/provider-error";
 import type { TurnRoute } from "@/chat/services/turn-router";
@@ -83,8 +87,7 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
   const exactNoReplyMarker = isNoReplyMarker(rawPrimaryText);
   const mixedNoReplyMarker =
     !exactNoReplyMarker && containsNoReplyMarker(rawPrimaryText);
-  const noReplyRequested = exactNoReplyMarker || mixedNoReplyMarker;
-  const primaryText = noReplyRequested
+  const primaryText = exactNoReplyMarker
     ? ""
     : terminalAssistantMessages
         .map((message) => decideReply(message))
@@ -93,7 +96,11 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
             output.kind === "deliver",
         )
         .map((output) => output.text)
-        .join("\n\n");
+        .join("\n\n")
+        .trim();
+  // Mixed marker + prose used to silence the whole turn. Keep remaining text.
+  const noReplyRequested =
+    exactNoReplyMarker || (mixedNoReplyMarker && !primaryText);
 
   const toolErrorCount = toolResults.filter((result) => result.isError).length;
   const reactionPerformed = toolResults.some(
@@ -130,6 +137,10 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
     logWarn("ai.no_reply_marker.mixed_text", {
       "app.ai.no_reply_marker": true,
       "app.ai.no_reply_marker_mode": "mixed",
+      "app.ai.no_reply_marker_delivered": Boolean(primaryText),
+      "app.ai.no_reply_marker_stripped": Boolean(
+        stripNoReplyMarkers(rawPrimaryText),
+      ),
     });
   }
 

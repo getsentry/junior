@@ -9,3 +9,23 @@ export function isNoReplyMarker(text: string): boolean {
 export function containsNoReplyMarker(text: string): boolean {
   return text.includes(NO_REPLY_MARKER);
 }
+
+/**
+ * Remove no-reply protocol markers from assistant text.
+ *
+ * Exact marker-only replies stay empty. Mixed replies keep the remaining text so
+ * prose that discusses the marker still delivers.
+ */
+export function stripNoReplyMarkers(text: string): string {
+  if (!containsNoReplyMarker(text)) {
+    return text;
+  }
+
+  return text
+    .split(NO_REPLY_MARKER)
+    .join("")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .replace(/[ \t]{2,}/g, " ")
+    .trim();
+}
