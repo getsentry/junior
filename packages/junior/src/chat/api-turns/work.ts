@@ -1,4 +1,4 @@
-/** Conversation API work runs a native Turn and keeps replies in the Conversation. */
+/** Conversation-only work runs a native Turn and stores assistant Messages. */
 import { createHash } from "node:crypto";
 import type { StateAdapter } from "chat";
 import {
@@ -15,7 +15,7 @@ import {
   hydrateConversationMessages,
   persistConversationMessages,
 } from "@/chat/conversations/messages";
-import { commitWebAcceptedReply } from "@/chat/api-turns/accepted-reply";
+import { commitAssistantMessage } from "@/chat/api-turns/assistant-message";
 import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
 import type { ConversationTurnFailureCode } from "@/chat/conversations/history";
 import { credentialContextForActor } from "@/chat/credentials/context";
@@ -612,11 +612,12 @@ export function createApiTurnWorker(
           }
           failureCode = "delivery_failed";
           assistantMessageDelivered = true;
-          await commitWebAcceptedReply({
+          await commitAssistantMessage({
             ...(agentMessage ? { agentMessage } : undefined),
             conversation,
             conversationId: context.conversationId,
             sessionId: turnId,
+            ...(turnIdentity.source === "web" ? { source: "web" } : undefined),
             text: replyText,
             userMessageId,
           });

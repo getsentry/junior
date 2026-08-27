@@ -39,9 +39,9 @@ with `publishExternally: false`. Continues keep the conversation destination
 - `runtime/`: native Turn orchestration and provider-neutral delivery ports.
 - `providers/`: source provider layers around the native runtime. Slack owns
   its provider runtime in `providers/slack/`.
-- `api-turns/`: mailbox enqueue and worker consumer for dashboard/API turns
-  that stay in the conversation log (`publishExternally: false`), including
-  continues of Slack-rooted conversations by verified participants.
+- `api-turns/`: Conversation API admission and conversation-only execution for
+  user messages and resource events with a local Destination. This includes
+  continues of Slack-associated Conversations by verified participants.
 - `agent-dispatch/`: durable task and plugin dispatch authority, mailbox
   adaptation, and plugin-facing outcome projection.
 - `agent-invocations/`: durable parent/child bindings, delegated work, and

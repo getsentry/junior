@@ -5,26 +5,29 @@ import { recordDeliveredAssistantMessage } from "@/chat/services/conversation-me
 import { persistWithRetry } from "@/chat/services/persist-retry";
 import type { ThreadConversationState } from "@/chat/state/conversation";
 
-/** Record a web-accepted assistant reply with agent history before the visible message. */
-export async function commitWebAcceptedReply(args: {
+/** Store one assistant Message and its Agent history. */
+export async function commitAssistantMessage(args: {
   agentMessage?: AssistantMessage;
   conversation: ThreadConversationState;
   conversationId: string;
   sessionId: string;
+  source?: "web";
   text: string;
   userMessageId: string;
 }): Promise<void> {
   const conversationMessageId = recordDeliveredAssistantMessage({
     conversation: args.conversation,
     sessionId: args.sessionId,
-    source: "web",
+    source: args.source,
     text: args.text,
     userMessageId: args.userMessageId,
   });
   try {
     await persistWithRetry(() =>
       commitAcceptedReply({
-        ...(args.agentMessage ? { agentMessage: args.agentMessage } : undefined),
+        ...(args.agentMessage
+          ? { agentMessage: args.agentMessage }
+          : undefined),
         conversation: args.conversation,
         conversationMessageId,
         conversationId: args.conversationId,
@@ -32,8 +35,8 @@ export async function commitWebAcceptedReply(args: {
     );
   } catch (error) {
     logException(
-      new Error("Accepted assistant message persistence failed"),
-      "api.assistant.message_post_delivery_persist.failed",
+      new Error("Assistant message persistence failed"),
+      "conversation.assistant.message_persist.failed",
       {
         "error.type": error instanceof Error ? error.name : typeof error,
       },

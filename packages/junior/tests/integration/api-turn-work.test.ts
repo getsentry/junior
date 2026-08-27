@@ -522,12 +522,26 @@ describe("Conversation API work", () => {
       await getConversationEventStore().loadHistory(conversationId)
     ).flatMap((event) =>
       event.data.type === "message"
-        ? [{ role: event.data.role, text: event.data.text }]
+        ? [
+            {
+              role: event.data.role,
+              source: event.data.meta?.source,
+              text: event.data.text,
+            },
+          ]
         : [],
     );
     expect(transcript).toEqual([
-      { role: "user", text: "Code change checks failed" },
-      { role: "assistant", text: "Handled the resource event." },
+      {
+        role: "user",
+        source: undefined,
+        text: "Code change checks failed",
+      },
+      {
+        role: "assistant",
+        source: undefined,
+        text: "Handled the resource event.",
+      },
     ]);
   }, 10_000);
 
