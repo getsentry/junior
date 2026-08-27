@@ -26,13 +26,19 @@ export const juniorConversations = pgTable(
     schemaVersion: integer("schema_version").notNull().default(1),
     source: text("source").$type<ConversationSource>(),
     /** Structured session Source locator; set-once on the conversation root. */
+    // TODO(dcramer): Remove source_json after every stored Conversation has a
+    // complete Location and all readers use it for provider context.
     sessionSource: jsonb("source_json").$type<SessionSource>(),
     originType: text("origin_type"),
     originId: text("origin_id"),
     originRunId: text("origin_run_id"),
+    // TODO(dcramer): Rename destination_id to location_id after all deployed
+    // readers and writers use the singular Conversation Location contract.
     destinationId: text("destination_id").references(
       () => juniorDestinations.id,
     ),
+    // TODO(dcramer): Drop destination_json after every row uses location_id and
+    // no supported worker writes the legacy JSON value.
     destination: jsonb("destination_json").$type<Destination>(),
     actorIdentityId: text("actor_identity_id").references(
       () => juniorIdentities.id,

@@ -1,7 +1,9 @@
 import { nonBlankStringSchema } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 
-/** Provider-neutral container associated with a conversation. */
+/** One place outside Junior where a Conversation can be delivered. */
+// TODO(dcramer): Add the fields Location needs to identify the exact provider
+// Conversation. For Slack, this includes threadTs.
 export const locationSchema = z
   .object({
     /** Junior-owned stable identity for this location. */
@@ -15,5 +17,5 @@ export const locationSchema = z
   })
   .strict();
 
-/** Validated provider location associated with a conversation. */
+/** Validated Location associated with a Conversation. */
 export type Location = z.output<typeof locationSchema>;

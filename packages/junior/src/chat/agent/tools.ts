@@ -39,7 +39,7 @@ import { createPiAgentTools } from "@/chat/tool-support/pi-tool-adapter";
 import { planToolExposure } from "@/chat/tool-exposure";
 import type { SandboxRef } from "@/chat/sandbox/ref";
 import { getWorkspace } from "@/chat/workspaces/store";
-import { getConversationStore, getDb } from "@/chat/db";
+import { getDb } from "@/chat/db";
 import type { RepositoryInstructions } from "@/chat/repository-instructions";
 import { createMcpAuthOrchestration } from "@/chat/services/mcp-auth-orchestration";
 import { createPluginAuthOrchestration } from "@/chat/services/plugin-auth-orchestration";
@@ -219,9 +219,6 @@ export async function wireAgentTools(
     ? credentialUserSubjectId(args.run.credentialContext)
     : undefined;
   const userTokenStore = createUserTokenStore();
-  const conversation = await getConversationStore().get({
-    conversationId: args.run.conversationId,
-  });
   const pluginHooks = createPluginHookRunner({
     actor: args.currentActor,
     actors: args.currentActors,
@@ -328,9 +325,7 @@ export async function wireAgentTools(
   );
   const commonToolRuntimeContext = {
     conversationId: args.run.conversationId,
-    ...(conversation?.location
-      ? { locationId: conversation.location.id }
-      : undefined),
+    ...(args.run.location ? { locationId: args.run.location.id } : undefined),
     userText: args.userInput,
     configuration: args.configurationValues,
     egress: createPluginEgress({

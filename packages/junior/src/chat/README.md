@@ -26,10 +26,10 @@ file.
    delivery or intentional no-reply completion commits the durable turn outcome.
 
 The local CLI uses `local/runner.ts` directly rather than pretending to be a
-mailbox-backed provider. API-authored root turns and dashboard continues of
-existing conversations use the shared mailbox and worker through `api-turns/`
-with `publishExternally: false`. Continues keep the conversation destination
-(including Slack) for location context and never copy replies to the provider.
+mailbox-backed provider. API-authored root Turns and dashboard continues of
+existing Conversations use the shared mailbox and worker through `api-turns/`.
+A dashboard continue may keep the Conversation Location without giving the Run
+Delivery to that Location.
 
 ## Ownership
 
@@ -83,10 +83,18 @@ singleton.
 - **Reply**: one destination-visible assistant message owned by delivery code.
 - **Actor**: human or system principal associated with current work.
 - **Credential subject**: principal whose provider authority may be used.
-- **Destination**: platform location where output is delivered.
+- **Source**: the current input that caused a Turn. Source may include the
+  Conversation's Location so the agent can use it for API and UI input too.
+- **Location**: one place outside Junior where a Conversation can be delivered.
+  A Conversation has zero or one Location. Source and Delivery may each contain
+  that Location.
+- **Delivery**: optional ability to send Run output. Delivery may include the
+  Location where it sends output.
+- **Destination**: explicit target for output or a side effect. Current uses as
+  a Conversation Location are migration debt.
 - **publishExternally**: per-turn side effect. When true, also publish assistant
-  output to the conversation destination. The conversation log always stores the
-  turn. Missing or false means conversation-only.
+  output through Delivery. The Conversation log always stores the Turn. Missing
+  or false means Conversation-only.
 
 Attribution does not grant authority. `run.actors` records participating actors;
 credential issuance still requires the current actor or an explicit delegated
@@ -133,17 +141,27 @@ delegation without becoming the execution actor or a general task owner.
   after delivery plus steering may still park so steered work can continue.
 - Unexpected failures propagate to the boundary that owns capture and fallback
   delivery.
-- Source, Actor, Location, Destination, `publishExternally`, and credential
-  context remain explicit and independent across asynchronous boundaries.
-  Provider fields may reach the agent or its tools when needed. They do not
-  select another runtime or grant provider delivery. A destinationless child
-  conversation receives its bounded execution destination from its durable
-  agent invocation.
+- Source and Actor describe the current Turn. Location names an optional place
+  outside Junior. Source and Delivery may each contain Location, but Location
+  does not select another runtime or allow output to be sent.
+- The final Run interface has Source and optional Delivery. It has no separate
+  Location field. Source carries the Conversation Location when the current
+  input needs it, including API or UI input. Delivery carries the Location where
+  it can send output. A dashboard continuation may therefore keep a Slack
+  Location in Source without getting Slack Delivery. During the cutover,
+  `AgentRun.location` may carry the stored Conversation Location while consumers
+  move away from Destination and session Source. Its removal TODO defines the
+  end of that transition.
+- The final interface uses Conversation, Source, Location, and Delivery. Do not
+  add another type, routing object, or wrapper for the same values.
+- Child Conversations store the Location they need instead of searching parent
+  lineage at Run time in the final model.
 - External publish is controlled per turn via `publishExternally`. Slack
   ingress/resume publish unless the flag is explicitly false. Non-Slack,
   destinationless, and dashboard/web work stay conversation-only unless the
-  flag is true. Destination presence must not invent publish. A web Source may
-  keep a Slack Destination when `publishExternally` is false.
+  flag is true. This flag remains at provider, mailbox, and resume boundaries
+  while they need it to restore Delivery. Destination or Location presence
+  must not invent publish.
 - Host-owned runtime context and the actor's current instruction are separate
   user messages. The context message immediately precedes the instruction,
   remains context-authority on resume, and may be replaced before a later model

@@ -629,11 +629,15 @@ describe("Conversation API work", () => {
       status: "accepted",
     });
 
-    await expect(
-      conversationStore.get({ conversationId }),
-    ).resolves.toMatchObject({
+    const storedConversation = await conversationStore.get({ conversationId });
+    expect(storedConversation).toMatchObject({
       source: "slack",
       destination: slackDestination,
+      location: {
+        provider: "slack",
+        tenantId: "T1200",
+        providerId: "C1200",
+      },
       visibility: "public",
       sessionSource: {
         platform: "slack",
@@ -685,6 +689,7 @@ describe("Conversation API work", () => {
     expect(agentRuns[0]).toEqual(
       expect.objectContaining({
         destination: expect.objectContaining({ platform: "slack" }),
+        location: storedConversation?.location,
         publishExternally: false,
         source: expect.objectContaining({ platform: "web" }),
       }),

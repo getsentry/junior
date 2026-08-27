@@ -699,6 +699,9 @@ export function createApiTurnWorker(
               actor,
               credentialContext: credentialContextForActor(actor),
               destination,
+              ...(storedConversation?.location
+                ? { location: storedConversation.location }
+                : undefined),
               publishExternally: false,
               source,
               surface: "api",

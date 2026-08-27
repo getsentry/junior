@@ -1,5 +1,5 @@
 /**
- * Load destination and session source from the conversation record.
+ * Load Location, Destination, and session Source from the Conversation record.
  *
  * Destination is set once on the root conversation. Child conversations
  * inherit through parent lineage. Later turns and mailbox wakes use that
@@ -14,16 +14,17 @@ import type {
   Conversation,
   ConversationStore,
 } from "@/chat/conversations/store";
+import type { Location } from "@/chat/conversations/location";
 import type { SessionSource } from "@/chat/source";
 
 export interface TurnSessionRouting {
   destination: Destination;
-  locationId?: string;
+  location?: Location;
   /** Present when the conversation already stores a session source. */
   source?: Source;
 }
 
-/** Full turn routing: destination plus a completed session source. */
+/** Conversation data with a required Destination and Source. */
 export type RequiredTurnSessionRouting = TurnSessionRouting & {
   source: Source;
 };
@@ -37,7 +38,9 @@ async function loadConversationChain(
   let cursor: string | undefined = conversationId;
   while (cursor && !seen.has(cursor)) {
     seen.add(cursor);
-    const conversation = await conversationStore.get({ conversationId: cursor });
+    const conversation = await conversationStore.get({
+      conversationId: cursor,
+    });
     if (!conversation) {
       break;
     }
@@ -74,7 +77,7 @@ function slackSourceForDestination(args: {
 }
 
 /**
- * Resolve the conversation's destination and session source.
+ * Resolve the Conversation's Location, Destination, and session Source.
  *
  * Walks parent lineage when the conversation has no destination of its own.
  */
@@ -92,12 +95,12 @@ export async function resolveConversationRouting(args: {
 
   let destination: Destination | undefined;
   let source: SessionSource | undefined;
-  let locationId: string | undefined;
+  let location: Location | undefined;
 
   for (const conversation of chain) {
     destination ??= conversation.destination;
     source ??= conversation.sessionSource;
-    locationId ??= conversation.location?.id;
+    location ??= conversation.location;
     if (destination && source) {
       break;
     }
@@ -111,19 +114,19 @@ export async function resolveConversationRouting(args: {
     const slackSource = slackSourceForDestination({ destination, source });
     return {
       destination,
-      ...(locationId ? { locationId } : undefined),
+      ...(location ? { location } : undefined),
       ...(slackSource ? { source: slackSource } : undefined),
     };
   }
 
   return {
     destination,
-    ...(locationId ? { locationId } : undefined),
+    ...(location ? { location } : undefined),
     ...(source ? { source } : undefined),
   };
 }
 
-/** Require conversation destination and session source from SQL. */
+/** Require the Conversation Destination and Source from SQL. */
 export async function resolveTurnSessionRouting(args: {
   conversationId: string;
   conversationStore?: ConversationStore;
@@ -137,6 +140,6 @@ export async function resolveTurnSessionRouting(args: {
   return {
     destination: routing.destination,
     source: routing.source,
-    ...(routing.locationId ? { locationId: routing.locationId } : undefined),
+    ...(routing.location ? { location: routing.location } : undefined),
   };
 }

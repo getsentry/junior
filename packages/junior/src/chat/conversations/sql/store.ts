@@ -181,7 +181,8 @@ function destinationUpsertFromDestination(args: {
     metadata: { platform: "local" },
   };
 }
-// TODO(v0.145.0): Migrate SQL execution_status from awaiting_resume to paused, then remove this mapping.
+// TODO(dcramer): Remove awaiting_resume mapping after every SQL row uses paused
+// and no supported worker writes the legacy status.
 function executionStatusFromValue(value: unknown): ConversationStatus {
   if (value === "awaiting_resume" || value === "paused") return "paused";
   if (

@@ -68,6 +68,7 @@ import { buildDeliveredTurnStatePatch } from "@/chat/runtime/delivered-turn-stat
 import { getTurnRequestDeadline } from "@/chat/runtime/request-deadline";
 import { completeAuthPauseTurn } from "@/chat/runtime/auth-pause-state";
 import type { PreparedTurnState } from "@/chat/runtime/turn-preparation";
+import { getConversationStore } from "@/chat/db";
 import {
   type PrepareTurnStateInput,
   type QueuedTurnMessage,
@@ -1073,6 +1074,9 @@ export function createSlackTurn(deps: SlackTurnDeps) {
                 );
               }
             : undefined;
+          const location = (
+            await getConversationStore().get({ conversationId })
+          )?.location;
           const run: AgentRun = {
             conversationId,
             turnId,
@@ -1101,6 +1105,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
             actor: executionActor,
             slackConversation,
             source,
+            ...(location ? { location } : undefined),
             destination,
             publishExternally: shouldPublishExternally(
               options.publishExternally,

@@ -35,10 +35,26 @@ export interface ConversationLineage {
   parentConversationId: string;
 }
 
+/**
+ * Durable Conversation owned by Junior.
+ *
+ * The final interface stores zero or one complete Location here. No Location
+ * means the Conversation stays in Junior's API and UI. A Location names the
+ * outside place where a provider can deliver the Conversation. Source may also
+ * contain this Location so the agent can use it. Delivery contains it when
+ * output may be sent there. Only Delivery allows output to be sent.
+ *
+ * `destination` and `sessionSource` temporarily duplicate parts of that model.
+ * Their field TODOs state when each legacy copy can be removed.
+ */
 export interface Conversation {
+  // TODO(dcramer): Move this provider label into Location after stored
+  // Conversation reads no longer need the legacy destination projection.
   channelName?: string;
   conversationId: string;
   createdAtMs: number;
+  // TODO(dcramer): Remove this legacy Conversation routing field after core
+  // reads use Location and provider output uses Delivery.
   destination?: Destination;
   execution: ConversationExecution;
   executionMetrics?: {
@@ -47,16 +63,27 @@ export interface Conversation {
     usage?: AgentTurnUsage;
   };
   lastActivityAtMs: number;
+  // TODO(dcramer): Flatten this one-field wrapper to parentConversationId
+  // after stored Conversation callers complete the same hard cutover.
   lineage?: ConversationLineage;
+  /** Optional provider coordinates associated with this Conversation. */
   location?: Location;
+  // TODO(dcramer): Replace this creation-time Actor projection with the
+  // stored creator Identity after creator identity writes are complete.
   actor?: StoredSlackActor;
+  // TODO(dcramer): Keep schemaVersion inside the SQL decoder after callers
+  // stop constructing stored Conversation values directly.
   schemaVersion: 1;
+  // TODO(dcramer): Rename this creation Source after SQL origin fields become
+  // the only stored authority. It is not the Source for the current Turn.
   source?: ConversationSource;
   /**
    * Structured inbound Source locator for this conversation session.
    * Session-stable (threaded Slack keeps threadTs; channel-level turns omit
    * it; never stores per-message ts). Set-once.
    */
+  // TODO(dcramer): Remove this locator after every stored Conversation has a
+  // complete Location and all readers use Location instead.
   sessionSource?: SessionSource;
   title?: string;
   updatedAtMs: number;

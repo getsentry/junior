@@ -1,5 +1,6 @@
 import type { StateAdapter } from "chat";
 import { z } from "zod";
+import type { Location } from "@/chat/conversations/location";
 import type { ConversationStore } from "@/chat/conversations/store";
 import { openConversationProjection } from "@/chat/conversations/projection";
 import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
@@ -28,6 +29,7 @@ import { getTerminalAssistantMessages } from "@/chat/pi/transcript";
 import type { PiMessage } from "@/chat/pi/messages";
 import type { SandboxRef } from "@/chat/sandbox/ref";
 import type { AgentRunResult } from "@/chat/services/turn-result";
+import { resolveConversationRouting } from "@/chat/services/turn-session-routing";
 import {
   appendAndEnqueueInboundMessage,
   type InboundMessage,
@@ -356,6 +358,7 @@ export function createAgentInvocationWorker(agentRunner: AgentRunner) {
     );
     let sandboxRef: SandboxRef | undefined;
     let history: PiMessage[];
+    let location: Location | undefined;
     try {
       if (invocation.childConversationId !== context.conversationId) {
         throw new Error(
@@ -396,6 +399,11 @@ export function createAgentInvocationWorker(agentRunner: AgentRunner) {
       ]);
       sandboxRef = getPersistedSandboxState(persisted);
       history = projection.messages;
+      location = (
+        await resolveConversationRouting({
+          conversationId: invocation.childConversationId,
+        })
+      )?.location;
     } catch (error) {
       if (isInvocationInputCommitLost(error)) {
         return { status: "lost_lease" };
@@ -431,14 +439,15 @@ export function createAgentInvocationWorker(agentRunner: AgentRunner) {
           actor: invocation.actor,
           credentialContext: invocation.credentialContext,
           destination: invocation.destination,
+          ...(location ? { location } : undefined),
           destinationVisibility: invocation.destinationVisibility,
           publishExternally: context.publishExternally,
           source: invocation.source,
           surface: "internal",
-          // TODO(#881, #883): Child runs may still need a path to force
-          // interactive auth when a delegated tool requires credentials the
-          // parent already has authority to request. Today background children
-          // hard-fail instead of pausing for an OAuth link.
+          // TODO(dcramer): Issues #881 and #883 track a path for child runs to
+          // force interactive auth when a delegated tool requires credentials
+          // the parent can request. Today background children hard-fail instead
+          // of pausing for an OAuth link.
           disabledFeatures: ["handoff", "interactive-auth", "subagents"],
           reasoning: invocation.reasoningLevel,
           state: {

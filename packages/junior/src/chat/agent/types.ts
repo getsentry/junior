@@ -1,10 +1,4 @@
-/**
- * Public agent-run launch contract.
- *
- * Providers build one flat `AgentRun` and call `AgentRunner.run`. Delivery and
- * durability are capabilities that affect the run. `onEvent` is best-effort UI
- * only. Stable composition binds stream, spawn, and tracing outside this type.
- */
+/** Input for one Run through Junior's agent. */
 import type {
   Destination,
   ReplyAttribution,
@@ -13,6 +7,7 @@ import type {
 } from "@sentry/junior-plugin-api";
 import type { LocationConfigurationService } from "@/chat/configuration/types";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
+import type { Location } from "@/chat/conversations/location";
 import type { CredentialContext } from "@/chat/credentials/context";
 import type { PiMessage } from "@/chat/pi/messages";
 import type { Actor } from "@/chat/actor";
@@ -50,7 +45,8 @@ export type AgentInstructionActor = {
   authorName?: string;
   /**
    * Slack message ts for the instruction when known.
-   * TODO: generalize to a provider-neutral message id once prompt attrs are neutral.
+   * TODO(dcramer): Use a provider-neutral message id after prompt attributes no
+   * longer require the Slack timestamp.
    */
   slackTs?: string;
 };
@@ -132,9 +128,7 @@ export type AgentRunState = {
  * The runner must commit the preceding agent boundary before invoking this
  * port; the accepted reply transaction appends only this message.
  */
-export type AgentDelivery = (
-  message: AssistantMessage,
-) => void | Promise<void>;
+export type AgentDelivery = (message: AssistantMessage) => void | Promise<void>;
 
 /** Resume the agent turn after a transient or ambiguous delivery failure. */
 export class RetryableDeliveryError extends Error {
@@ -190,7 +184,7 @@ export type AgentEnvironment = {
 };
 
 /**
- * One provider-launched agent-run slice.
+ * One bounded attempt to advance a Turn.
  *
  * Build identity, instruction, history, delivery, and durability here. Bind
  * stable model/stream composition when creating the runner, not on each run.
@@ -216,6 +210,13 @@ export type AgentRun = {
   /** Credential authority projected from actor (plus optional subject). */
   credentialContext?: CredentialContext;
   source: Source;
+  /**
+   * Transitional Conversation Location for this Run.
+   * TODO(dcramer): Remove top-level Location, Destination, and
+   * publishExternally after Source and Delivery contain Location across new,
+   * resumed, and child Runs.
+   */
+  location?: Location;
   destination: Destination;
   /** When true, also publish assistant output to the conversation destination. */
   publishExternally?: boolean;
@@ -225,7 +226,7 @@ export type AgentRun = {
   dispatch?: AgentDispatch;
 
   /**
-   * TODO: Move ephemeral Slack credentials and conversation labels into
+   * TODO(dcramer): Move ephemeral Slack credentials and conversation labels into
    * provider-owned tool/prompt context so the shared run edge stays neutral.
    */
   slackConversation?: SlackConversationContext;
@@ -239,9 +240,9 @@ export type AgentRun = {
    * Optional agent capabilities disabled for this run slice.
    * `interactive-auth` blocks pausing to send an OAuth link; missing credentials
    * hard-fail instead. Default is enabled when omitted.
-   * TODO(#881, #883): child invocations currently disable interactive-auth, but
-   * may later need a path to force the auth flow when a delegated tool requires
-   * credentials the parent can already request.
+   * TODO(dcramer): Issues #881 and #883 track a path for child invocations to
+   * force interactive auth when a delegated tool requires credentials the
+   * parent can already request. Children currently disable it.
    */
   disabledFeatures?: readonly AgentFeature[];
   /** Absolute wall-clock deadline for this host request, in milliseconds. */
@@ -303,7 +304,9 @@ export function assertRunConsistency(
   switch (source.platform) {
     case "slack": {
       if (destination.platform !== "slack") {
-        throw new TypeError("Run source and destination platforms do not match");
+        throw new TypeError(
+          "Run source and destination platforms do not match",
+        );
       }
       if (source.teamId !== destination.teamId) {
         throw new TypeError("Slack source and destination teams do not match");
@@ -312,7 +315,9 @@ export function assertRunConsistency(
     }
     case "local": {
       if (destination.platform !== "local") {
-        throw new TypeError("Run source and destination platforms do not match");
+        throw new TypeError(
+          "Run source and destination platforms do not match",
+        );
       }
       if (source.conversationId !== destination.conversationId) {
         throw new TypeError(
