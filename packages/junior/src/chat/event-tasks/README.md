@@ -32,8 +32,8 @@ events use the current stored task. Event tasks exist only while configured:
 deletion removes the stored task, and there is no pause state or separate
 event-task run history.
 
-The dispatched agent input uses shared framing from `task-input.ts`: a task
-wake, stored instructions, then event facts. The stored task text remains the
+The dispatched agent input uses shared framing from `task-input.ts`. See
+`task-input.md` for the section outline. The stored task text remains the
 instruction. Event text does not add instructions. Destination replies get
 `replyAttribution` (`Event task · <trigger label>`), matching scheduled-task
 footers. The footer does not expose raw event keys.

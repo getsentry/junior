@@ -1,7 +1,7 @@
 /**
  * Shared agent input for tasks. A task can come from a schedule, an event, or
  * a resource subscription. Call sites supply facts; this module owns layout
- * and the reply contract.
+ * and the reply contract. See `task-input.md` for the section outline and prose.
  */
 import { NO_REPLY_MARKER } from "@/chat/no-reply";
 
@@ -40,8 +40,8 @@ function clip(value: string, maxLength: number | undefined): string {
 /**
  * Render agent input for a task run.
  *
- * Order is intentional: name it as a task, give the job, attach event facts,
- * then state how to reply. Empty optional fields are omitted.
+ * Section order and required prose live in `task-input.md`. Empty optional
+ * fields are omitted.
  */
 export function renderTaskInput(args: {
   /** Where this run came from. Does not change the product; only orients the agent. */
