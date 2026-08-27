@@ -8,6 +8,7 @@ import {
 } from "@/chat/event-tasks/types";
 import {
   eventNamespaceSchema,
+  pluginResourceEventCatalog,
   pluginSupportsEvent,
   registeredEventTypeSchema,
   registeredResourceEventMatchSchema,
@@ -54,17 +55,18 @@ export const eventTaskListToolResultSchema = juniorToolOutputSchema
 export function registeredEventTaskTriggerSchema(
   catalog: ResourceEventCatalog,
 ) {
+  const plugins = pluginResourceEventCatalog(catalog);
   return z
     .object({
-      namespace: eventNamespaceSchema(catalog),
+      namespace: eventNamespaceSchema(plugins),
       identifier: z
         .string()
         .trim()
         .min(1)
         .max(EVENT_TASK_IDENTIFIER_MAX_LENGTH),
-      resourceType: registeredResourceTypeSchema(catalog),
+      resourceType: registeredResourceTypeSchema(plugins),
       label: z.string().trim().min(1).max(500),
-      events: z.array(registeredEventTypeSchema(catalog)).min(1),
+      events: z.array(registeredEventTypeSchema(plugins)).min(1),
       match: registeredResourceEventMatchSchema(),
     })
     .strict();
@@ -80,10 +82,11 @@ export function requireSupportedEventTaskTrigger(
     resourceType: string;
   },
 ): EventTask["trigger"]["match"] | undefined {
+  const plugins = pluginResourceEventCatalog(catalog);
   for (const eventType of trigger.events) {
     if (
       !pluginSupportsEvent(
-        catalog,
+        plugins,
         trigger.namespace,
         trigger.resourceType,
         eventType,
@@ -94,7 +97,7 @@ export function requireSupportedEventTaskTrigger(
       );
     }
   }
-  return requireSupportedResourceEventMatch(catalog, {
+  return requireSupportedResourceEventMatch(plugins, {
     match: trigger.match,
     namespace: trigger.namespace,
     resourceType: trigger.resourceType,
@@ -155,8 +158,10 @@ export function eventTaskTriggerAvailable(
   catalog: ResourceEventCatalog,
 ): boolean {
   // resourceType is presentation metadata; runtime matching uses namespace,
-  // identifier, and event type.
-  const registration = catalog[task.trigger.namespace];
+  // identifier, and event type. Core snapshot events never dispatch tasks.
+  const registration = pluginResourceEventCatalog(catalog)[
+    task.trigger.namespace
+  ];
   return Boolean(
     registration &&
     task.trigger.events.every((eventType) =>

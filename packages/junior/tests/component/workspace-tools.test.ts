@@ -584,6 +584,7 @@ describe("Workspace tools", () => {
       resourceType: "workspace_snapshot",
       identifier: workspace.id,
       events: ["workspace_snapshot.ready", "workspace_snapshot.failed"],
+      intent: `Switch to Workspace ${workspace.name} when its snapshot is ready.`,
     });
   });
 });
