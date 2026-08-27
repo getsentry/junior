@@ -35,6 +35,17 @@ export interface ConversationLineage {
   parentConversationId: string;
 }
 
+/**
+ * Durable Conversation owned by Junior.
+ *
+ * The final interface has zero or one complete Location. Location contains the
+ * provider coordinates shared by provider Source and Delivery. Source still
+ * describes the current input. Delivery still grants the authority to send
+ * output. Location alone grants neither.
+ *
+ * `destination` and `sessionSource` temporarily duplicate parts of that model.
+ * Their field TODOs state when each legacy copy can be removed.
+ */
 export interface Conversation {
   // TODO(dcramer): Move this provider label into Location after stored
   // Conversation reads no longer need the legacy destination projection.
@@ -54,6 +65,7 @@ export interface Conversation {
   // TODO(dcramer): Flatten this one-field wrapper to parentConversationId
   // after stored Conversation callers complete the same hard cutover.
   lineage?: ConversationLineage;
+  /** Optional provider coordinates associated with this Conversation. */
   location?: Location;
   // TODO(dcramer): Replace this creation-time Actor projection with the
   // stored creator Identity after creator identity writes are complete.
