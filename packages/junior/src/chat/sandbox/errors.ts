@@ -202,7 +202,7 @@ export function isSandboxCommandStreamInterruptedError(
   });
 }
 
-/** Wrap setup failures. Leave WorkspaceSnapshotNotReadyError unwrapped. */
+/** Wrap setup failures. Keep WorkspaceSnapshotNotReadyError as-is. */
 export function wrapSandboxSetupError(error: unknown): Error {
   const notReady = getWorkspaceSnapshotNotReadyError(error);
   if (notReady) {

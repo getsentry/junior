@@ -88,7 +88,7 @@ describe("createAgentSandbox", () => {
     await expect(sandbox.captureRepositoryInstructions()).rejects.toBe(failure);
   });
 
-  it("surfaces preparing sandbox status to plugin bash callers", async () => {
+  it("returns the preparing message to plugin bash callers", async () => {
     executeSandboxToolMock.mockResolvedValue({
       content: [
         {

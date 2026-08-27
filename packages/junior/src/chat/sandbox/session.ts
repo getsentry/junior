@@ -188,7 +188,7 @@ export function createSandboxRuntime(
   const timeoutMs = options.timeoutMs ?? 1000 * 60 * 30;
   const traceContext = options.traceContext ?? {};
   let activeWorkspace = options.workspace;
-  // Keep the hash from the current sandbox when one already exists.
+  // Prefer the hash stored on the current sandbox over a newly computed one.
   let dependencyProfileHash =
     options.sandboxRef?.profileHash ??
     profileHash(SANDBOX_RUNTIME, activeWorkspace);
@@ -649,7 +649,7 @@ export function createSandboxRuntime(
         }
 
         signal?.throwIfAborted();
-        // Restore the current sandbox before creating a new one.
+        // Reopen the current sandbox before starting a new one.
         const hintedSandbox = await tryRestoreHintedSandbox(signal);
         if (hintedSandbox) {
           return hintedSandbox;

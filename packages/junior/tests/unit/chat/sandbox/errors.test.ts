@@ -61,7 +61,7 @@ describe("isSandboxApiTransientError", () => {
 });
 
 describe("wrapSandboxSetupError", () => {
-  it("preserves Workspace snapshot not-ready errors instead of wrapping them", () => {
+  it("keeps Workspace snapshot not-ready errors as-is", () => {
     const notReady = new WorkspaceSnapshotNotReadyError("sentry-docs");
     const wrapped = new Error(
       "sandbox setup failed (Workspace sentry-docs snapshot is not ready)",

@@ -9,7 +9,7 @@ export class WorkspaceSnapshotNotReadyError extends Error {
   }
 }
 
-/** Find WorkspaceSnapshotNotReadyError in an error cause chain. */
+/** Return WorkspaceSnapshotNotReadyError from this error or its causes. */
 export function getWorkspaceSnapshotNotReadyError(
   error: unknown,
 ): WorkspaceSnapshotNotReadyError | undefined {
@@ -23,12 +23,12 @@ export function getWorkspaceSnapshotNotReadyError(
   return undefined;
 }
 
-/** True when the error chain includes WorkspaceSnapshotNotReadyError. */
+/** True when this error or a cause is WorkspaceSnapshotNotReadyError. */
 export function isWorkspaceSnapshotNotReadyError(error: unknown): boolean {
   return getWorkspaceSnapshotNotReadyError(error) !== undefined;
 }
 
-/** Plain copy for a Workspace that is still preparing. */
+/** User message when a Workspace sandbox is still preparing. */
 export function workspaceSnapshotNotReadyUserMessage(
   error: WorkspaceSnapshotNotReadyError,
 ): string {

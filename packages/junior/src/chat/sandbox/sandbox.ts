@@ -132,7 +132,7 @@ function createSandboxUnavailableToolError(
   );
 }
 
-/** Return status building when the Workspace snapshot is still preparing. */
+/** Tool result when the Workspace sandbox is still preparing. */
 function createWorkspaceSnapshotNotReadyToolResult(cause: unknown) {
   const notReady = getWorkspaceSnapshotNotReadyError(cause);
   if (!notReady) {

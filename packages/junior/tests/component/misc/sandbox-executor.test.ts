@@ -993,7 +993,7 @@ describe("createTestSandbox", () => {
     });
   });
 
-  it("restores the current sandbox when the dependency profile hash changed", async () => {
+  it("reopens the current sandbox when its stored profile no longer matches", async () => {
     const restoredSandbox = makeSandbox("sbx_old");
     hashMock.mockReturnValue("current-profile");
     sandboxGetMock.mockResolvedValueOnce(restoredSandbox);
@@ -1127,7 +1127,7 @@ describe("createTestSandbox", () => {
     });
   });
 
-  it("keeps a restorable sandbox when the Workspace recipe row is missing", async () => {
+  it("reopens the current sandbox when the Workspace row is missing", async () => {
     hashMock.mockReturnValue("profile-base");
     const restored = makeSandbox("sbx_missing_recipe");
     sandboxGetMock.mockResolvedValueOnce(restored);
@@ -1164,7 +1164,7 @@ describe("createTestSandbox", () => {
     expect(refs).toEqual([]);
   });
 
-  it("keeps a restorable sandbox when the Workspace recipe profile changes", async () => {
+  it("reopens the current sandbox when the Workspace profile changes", async () => {
     hashMock.mockReturnValue("profile-new");
     const restored = makeSandbox("sbx_recipe_changed");
     sandboxGetMock.mockResolvedValueOnce(restored);
@@ -2988,7 +2988,7 @@ describe("createTestSandbox", () => {
     expect(sandboxCreateMock).not.toHaveBeenCalled();
   });
 
-  it("returns plain preparing copy from host workspace helpers", async () => {
+  it("returns a preparing message from host workspace helpers", async () => {
     getReadyWorkspaceMock.mockRejectedValueOnce(
       new WorkspaceSnapshotNotReadyError("sentry-docs"),
     );
