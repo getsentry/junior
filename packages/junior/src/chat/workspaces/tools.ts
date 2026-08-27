@@ -17,7 +17,6 @@ import {
   cancelResourceEventSubscription,
   createResourceEventSubscription,
 } from "@/chat/resource-events/store";
-import { canRouteResourceEvents } from "@/chat/resource-events/workspace";
 import { RESOURCE_SUBSCRIPTION_DEFAULT_TTL_MS } from "@/chat/resource-events/tool-support";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
@@ -370,14 +369,10 @@ export function createWorkspaceTools(
           workspaceId: workspace.id,
           workspaceName: workspace.name,
         });
-        const conversationId =
-          canRouteResourceEvents() && context.destination.platform === "slack"
-            ? context.conversationId.trim()
-            : undefined;
+        const conversationId = context.conversationId.trim();
         const subscription = conversationId
           ? await createResourceEventSubscription({
               conversationId,
-              destination: context.destination,
               events: [
                 WORKSPACE_SNAPSHOT_READY_EVENT,
                 WORKSPACE_SNAPSHOT_FAILED_EVENT,

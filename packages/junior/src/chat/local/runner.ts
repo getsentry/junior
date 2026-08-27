@@ -185,9 +185,6 @@ async function runLocalAgentTurnInContext(
     throw new Error("Local agent message must not be empty");
   }
   const destination = localDestination(input.conversationId);
-  // TODO: local CLI does not deliver resource-event watches back into the
-  // conversation yet. Fix delivery here when local destinations should own
-  // watches; do not reintroduce conversation capability gates elsewhere.
   const source = createLocalSource(destination.conversationId);
   const lifecycle = new ConversationTurnLifecycleService(
     getConversationEventStore(),

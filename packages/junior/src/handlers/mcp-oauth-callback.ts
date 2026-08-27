@@ -63,7 +63,7 @@ import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { wakePausedTurn } from "@/chat/task-execution/turn-wake";
 import {
   resolveTurnSessionRouting,
-  type TurnSessionRouting,
+  type RequiredTurnSessionRouting,
 } from "@/chat/services/turn-session-routing";
 import { htmlCallbackResponse } from "@/handlers/oauth-html";
 import type { WaitUntilFn } from "@/handlers/types";
@@ -363,7 +363,7 @@ async function resumeAuthorizedMcpTurn(args: {
         });
         return false;
       }
-      let routing: TurnSessionRouting;
+      let routing: RequiredTurnSessionRouting;
       try {
         routing = await resolveTurnSessionRouting({
           conversationId: authSession.conversationId,

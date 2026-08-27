@@ -665,7 +665,7 @@ describe("conversation work execution", () => {
     ).rejects.toThrow(`Conversation record is invalid for ${CONVERSATION_ID}`);
   });
 
-  it("rejects appending destinationless work to a provider conversation", async () => {
+  it("appends destinationless work onto a provider conversation", async () => {
     await appendInboundMessage({
       message: inboundMessage("m1"),
       nowMs: 1_000,
@@ -680,7 +680,20 @@ describe("conversation work execution", () => {
         },
         nowMs: 2_000,
       }),
-    ).rejects.toThrow("Conversation destination changed");
+    ).resolves.toMatchObject({ status: "appended" });
+
+    await expect(
+      getConversationWorkState({ conversationId: CONVERSATION_ID }),
+    ).resolves.toMatchObject({
+      destination: SLACK_DESTINATION,
+      messages: [
+        expect.objectContaining({ inboundMessageId: "m1" }),
+        expect.objectContaining({
+          inboundMessageId: "m2",
+          source: "internal",
+        }),
+      ],
+    });
   });
 
   it("defers duplicate queue nudges while a conversation lease is active", async () => {
@@ -847,9 +860,9 @@ describe("conversation work execution", () => {
         conversationId: CONVERSATION_ID,
         destination: undefined,
         leaseToken: lease.leaseToken,
-        nowMs: 3_000,
+        nowMs: 3_500,
       }),
-    ).rejects.toThrow("Conversation destination changed");
+    ).resolves.toBe(true);
     await expect(
       getConversationWorkState({ conversationId: CONVERSATION_ID }),
     ).resolves.toMatchObject({

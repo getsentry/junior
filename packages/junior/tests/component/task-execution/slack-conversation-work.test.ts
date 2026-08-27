@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ThreadImpl, type Message, type StateAdapter, type Thread } from "chat";
+import type { ConversationStore } from "@/chat/conversations/store";
 import {
   CooperativeTurnYieldError,
   TurnInputDeferredError,
@@ -20,10 +21,10 @@ import {
 } from "@/chat/task-execution/store";
 import { processConversationWork } from "@/chat/task-execution/worker";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
+import { createResourceEventInboundMessage } from "@/chat/resource-events/notification";
 import {
   buildSlackInboundMessage,
   createSlackConversationWorker,
-  createSlackResourceEventInboundMessage,
 } from "@/chat/task-execution/slack-work";
 import { getMessageActorIdentity } from "@/chat/services/message-actor-identity";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
@@ -60,6 +61,7 @@ import {
 type SlackWorkerOptions = Parameters<typeof createSlackConversationWorker>[0];
 
 interface ProcessQueuedSlackWorkArgs {
+  conversationStore?: SlackWorkerOptions["conversationStore"];
   getSlackAdapter: SlackWorkerOptions["getSlackAdapter"];
   lookupSlackUser?: SlackWorkerOptions["lookupSlackUser"];
   nowMs?: () => number;
@@ -76,6 +78,9 @@ function processNextQueuedSlackWork(args: ProcessQueuedSlackWorkArgs) {
     queue: args.queue,
     softYieldAfterMs: args.softYieldAfterMs,
     run: createSlackConversationWorker({
+      ...(args.conversationStore
+        ? { conversationStore: args.conversationStore }
+        : undefined),
       getSlackAdapter: args.getSlackAdapter,
       lookupSlackUser: args.lookupSlackUser,
       runNextPausedTurn: args.runNextPausedTurn ?? (async () => false),
@@ -375,19 +380,54 @@ describe("Slack conversation work execution", () => {
       throw new Error("resource event notifications do not have Slack users");
     });
     const calls: Message[] = [];
+    const publishFlags: Array<boolean | undefined> = [];
+    const conversationStore: ConversationStore = {
+      createChild: vi.fn(),
+      get: vi.fn(async () => ({
+        conversationId: CONVERSATION_ID,
+        createdAtMs: 1,
+        lastActivityAtMs: 1,
+        updatedAtMs: 1,
+        schemaVersion: 1 as const,
+        execution: { status: "paused" as const },
+        destination: SLACK_DESTINATION,
+        sessionSource: {
+          platform: "slack" as const,
+          teamId: SLACK_DESTINATION.teamId,
+          channelId: SLACK_DESTINATION.channelId,
+          threadTs: "1712345.0001",
+          visibility: "public" as const,
+        },
+      })),
+      getConversationIdByProviderConversation: vi.fn(async () => undefined),
+      bindProviderConversation: vi.fn(),
+      getDestinationVisibility: vi.fn(async () => undefined),
+      findSlackDestinationByName: vi.fn(async () => undefined),
+      recordActivity: vi.fn(),
+      recordExecution: vi.fn(),
+      listByActivity: vi.fn(async () => []),
+    };
 
+    // Destination and session source live on the conversation. Enqueue the
+    // plain resource-event wake the way ingest does; the Slack worker builds
+    // turn context at the edge and publishes from that destination.
+    await requestConversationWork({
+      conversationId: CONVERSATION_ID,
+      destination: SLACK_DESTINATION,
+      state,
+    });
     await appendInboundMessage({
-      message: createSlackResourceEventInboundMessage({
+      message: createResourceEventInboundMessage({
         event: {
           eventKey: "check-suite-1",
           eventType: "pull_request.checks.failed",
           occurredAtMs: 1_700_000_000_000,
           namespace: "github",
           identifier: "getsentry/junior#691",
+          trustedSummary: "A subscribed resource changed.",
         },
         subscription: {
           conversationId: CONVERSATION_ID,
-          destination: SLACK_DESTINATION,
           id: "resub_1",
         },
         text: "[event notification]\n\nA subscribed resource changed.",
@@ -400,6 +440,7 @@ describe("Slack conversation work execution", () => {
 
     await expect(
       processNextQueuedSlackWork({
+        conversationStore,
         getSlackAdapter: () => slackAdapter,
         lookupSlackUser,
         queue,
@@ -408,6 +449,7 @@ describe("Slack conversation work execution", () => {
             throw new Error("unexpected mention route");
           },
           handleSubscribedMessage: async (_thread, message, hooks) => {
+            publishFlags.push(hooks.publishExternally);
             await hooks.ack?.();
             calls.push(message);
           },
@@ -418,6 +460,7 @@ describe("Slack conversation work execution", () => {
 
     expect(lookupSlackUser).not.toHaveBeenCalled();
     expect(calls).toHaveLength(1);
+    expect(publishFlags).toEqual([true]);
     expect(calls[0]?.raw).toMatchObject({ event_type: "resource_event" });
     expect(calls[0]?.raw).not.toHaveProperty("ts");
     expect(getMessageActorIdentity(calls[0]!)).toEqual({
@@ -1004,17 +1047,17 @@ describe("Slack conversation work execution", () => {
       handleNewMention: async (_thread, _message, hooks) => {
         await hooks.ack?.();
         await appendInboundMessage({
-          message: createSlackResourceEventInboundMessage({
+          message: createResourceEventInboundMessage({
             event: {
               eventKey: "check-suite-1",
               eventType: "check_suite.completed",
               occurredAtMs: 2_000,
               namespace: "github",
               identifier: "getsentry/junior#1010",
+              trustedSummary: "CI failed.",
             },
             subscription: {
               conversationId: CONVERSATION_ID,
-              destination: SLACK_DESTINATION,
               id: "sub-1",
             },
             text: "CI failed.",

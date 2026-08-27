@@ -537,10 +537,12 @@ describe("Slack behavior: subscribed messages", () => {
     expect(thread.subscribed).toBe(true);
 
     const subscriptionDestination = createTestDestination(thread);
+    if (subscriptionDestination.platform !== "slack") {
+      throw new Error("expected slack destination");
+    }
     const expiresAtMs = Date.now() + 60_000;
     await createResourceEventSubscription({
       conversationId: thread.id,
-      destination: subscriptionDestination,
       events: ["pull_request.checks.failed"],
       expiresAtMs,
       intent: "Watch CI for this thread.",
@@ -551,7 +553,6 @@ describe("Slack behavior: subscribed messages", () => {
     });
     await createResourceEventSubscription({
       conversationId: thread.id,
-      destination: subscriptionDestination,
       events: ["issue.closed"],
       expiresAtMs,
       intent: "Watch the issue for this thread.",

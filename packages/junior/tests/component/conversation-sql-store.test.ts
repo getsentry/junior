@@ -170,6 +170,26 @@ describe("conversation SQL store", () => {
     }
   });
 
+  it("requires a destination on first root upsert", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+
+    try {
+      const store = createSqlStore(fixture.sql);
+      await migrateSchema(fixture.sql);
+
+      await expect(
+        store.recordActivity({
+          conversationId: "root-without-destination",
+          nowMs: 1_000,
+        }),
+      ).rejects.toThrow(
+        "Conversation root-without-destination requires a destination at create",
+      );
+    } finally {
+      await fixture.close();
+    }
+  });
+
   it("persists queryable conversation records and linked identities", async () => {
     const fixture = await createLocalJuniorSqlFixture();
 
@@ -507,6 +527,7 @@ describe("conversation SQL store", () => {
 
       await store.recordActivity({
         conversationId: CONVERSATION_ID,
+        destination: inboundMessage("unlinked").destination,
         actor: {
           fullName: "Unlinked User",
           platform: "slack",
@@ -970,6 +991,7 @@ INSERT INTO junior_conversations (
       await store.recordExecution({
         conversationId: CONVERSATION_ID,
         createdAtMs: 1_000,
+        destination: inboundMessage("exec-fresh").destination,
         execution: {
           lastCheckpointAtMs: 5_000,
           lastEnqueuedAtMs: 4_000,
@@ -1022,6 +1044,7 @@ INSERT INTO junior_conversations (
       await store.recordExecution({
         conversationId: CONVERSATION_ID,
         createdAtMs: 1_000,
+        destination: inboundMessage("exec-metrics").destination,
         execution: {
           runId: "run-1",
           status: "running",
@@ -1100,6 +1123,7 @@ WHERE conversation_id = $1
       await store.recordExecution({
         conversationId: CONVERSATION_ID,
         createdAtMs: 1_000,
+        destination: inboundMessage("exec-timestamps").destination,
         execution: {
           lastCheckpointAtMs: 5_000,
           lastEnqueuedAtMs: 4_000,
@@ -1149,6 +1173,7 @@ WHERE conversation_id = $1
 
       await store.recordActivity({
         conversationId: CONVERSATION_ID,
+        destination: inboundMessage("created-at").destination,
         nowMs: 5_000,
       });
       await store.recordExecution({

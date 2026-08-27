@@ -2,6 +2,7 @@
 import { createHash } from "node:crypto";
 import type { StateAdapter } from "chat";
 import {
+  createLocalSource,
   createWebSource,
   localDestinationSchema,
   type Destination,
@@ -10,7 +11,7 @@ import {
 } from "@sentry/junior-plugin-api";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
-import type { WebActor } from "@/chat/actor";
+import type { LocalActor, WebActor } from "@/chat/actor";
 import type { ConversationStore } from "@/chat/conversations/store";
 import { loadProjection } from "@/chat/conversations/projection";
 import {
@@ -86,6 +87,11 @@ import {
   resolveApiTurnWork,
   type ApiTurnMailboxMetadata,
 } from "@/chat/api-turns/routing";
+import {
+  joinMailboxText,
+  localResourceEventActor,
+} from "@/chat/api-turns/mailbox-input";
+import { isResourceEventConversationMessage } from "@/chat/resource-events/actor";
 
 export { resolveApiTurnWork } from "@/chat/api-turns/routing";
 
@@ -413,7 +419,6 @@ export async function appendAndEnqueueApiConversationMessage(
     status,
   };
 }
-
 function captureApiBoundaryFailure(args: {
   conversationId: string;
   error: unknown;
@@ -459,68 +464,95 @@ export function createApiTurnWorker(
     );
 
     const isResume = resolved.kind === "resume";
-    let actor: WebActor;
-    let text: string;
-    let turnId: string;
-    let userMessageId: string;
-    let startedAtMs: number;
-    let inputMessageIds: string[];
+    let isResourceEvent = resolved.kind === "resource_event";
+    let actor: WebActor | LocalActor | undefined;
+    let text = "";
+    let turnId = "";
+    let userMessageId = "";
+    let startedAtMs = Date.now();
+    let inputMessageIds: string[] = [];
 
     const storedConversation = await getConversationStore().get({
       conversationId: context.conversationId,
     });
+    const mailboxDestination =
+      resolved.kind === "mailbox" || resolved.kind === "resource_event"
+        ? resolved.batch[0]?.message.destination
+        : undefined;
+    const destination = resolveApiTurnDestination({
+      conversationId: context.conversationId,
+      existing:
+        context.destination ??
+        mailboxDestination ??
+        storedConversation?.destination,
+    });
+    const sourceFor = (resourceEvent: boolean): Source =>
+      resourceEvent
+        ? createLocalSource(context.conversationId)
+        : webSourceForConversation({
+            conversationId: context.conversationId,
+            visibility: storedConversation?.visibility,
+          });
+    let source = sourceFor(isResourceEvent);
 
     if (resolved.kind === "mailbox") {
       const first = resolved.batch[0]!;
-      text = resolved.batch
-        .map((entry) => entry.message.input.text.trim())
-        .filter(Boolean)
-        .join("\n\n");
+      text = joinMailboxText(resolved.batch.map((entry) => entry.message));
       actor = actorFromMetadata(first.metadata);
       turnId = apiTurnIdForMessage(first.metadata.messageId);
       userMessageId = first.metadata.messageId;
       startedAtMs = first.message.createdAtMs;
       inputMessageIds = resolved.batch.map((entry) => entry.metadata.messageId);
+    } else if (resolved.kind === "resource_event") {
+      // TODO(resource-events): Remove this fork; plain mailbox wakes need no special actor/id path.
+      const first = resolved.batch[0]!;
+      text = joinMailboxText(resolved.batch.map((entry) => entry.message));
+      actor = localResourceEventActor();
+      turnId = apiTurnIdForMessage(first.message.inboundMessageId);
+      userMessageId = first.message.inboundMessageId;
+      startedAtMs = first.message.createdAtMs;
+      inputMessageIds = resolved.batch.map(
+        (entry) => entry.message.inboundMessageId,
+      );
     } else {
       turnId = resolved.turnId;
-      // Execution actor is rebuilt at resume from the durable conversation
-      // identity. For Slack-rooted continues, the root actor keeps the verified
-      // participant email used by dashboard access.
-      const resumedActor = actorFromStoredConversation(
-        storedConversation?.actor,
-      );
-      if (!resumedActor) {
-        throw new Error(
-          `Conversation API resume missing actor for ${context.conversationId}`,
-        );
-      }
-      actor = resumedActor;
-      // User message text/id are recovered from thread state below.
-      text = "";
-      userMessageId = "";
-      startedAtMs = Date.now();
-      inputMessageIds = [];
+      actor = actorFromStoredConversation(storedConversation?.actor);
     }
 
-    // Prefer the leased mailbox destination, then durable conversation state.
-    const destination = resolveApiTurnDestination({
+    const persisted = await getPersistedThreadState(context.conversationId);
+    const conversation = coerceThreadConversationState(persisted);
+    await hydrateConversationMessages({
+      conversation,
       conversationId: context.conversationId,
-      existing:
-        context.destination ??
-        (resolved.kind === "mailbox"
-          ? resolved.batch[0]?.message.destination
-          : undefined) ??
-        storedConversation?.destination,
     });
-    const source = webSourceForConversation({
-      conversationId: context.conversationId,
-      visibility: storedConversation?.visibility,
-    });
+    if (isResume) {
+      const userMessage = getTurnUserMessage(conversation, turnId);
+      if (!userMessage) {
+        throw new Error(
+          `Unable to locate the persisted user message for Turn "${turnId}"`,
+        );
+      }
+      // Empty resume wakes lose mailbox kind; rebuild identity from the turn input.
+      if (isResourceEventConversationMessage(userMessage)) {
+        isResourceEvent = true;
+        actor = localResourceEventActor();
+        source = sourceFor(true);
+      }
+      userMessageId = userMessage.id;
+      text = userMessage.text;
+      startedAtMs = userMessage.createdAtMs;
+      inputMessageIds = [userMessageId];
+    }
+    if (!actor) {
+      throw new Error(
+        `Conversation API resume missing actor for ${context.conversationId}`,
+      );
+    }
 
     return await withLogContext(
       {
         conversationId: context.conversationId,
-        platform: "web",
+        platform: isResourceEvent ? "local" : "web",
         userId: actor.userId,
         ...(actor.userName ? { userName: actor.userName } : undefined),
       },
@@ -540,12 +572,6 @@ export function createApiTurnWorker(
           acknowledged = true;
         };
 
-        const persisted = await getPersistedThreadState(context.conversationId);
-        const conversation = coerceThreadConversationState(persisted);
-        await hydrateConversationMessages({
-          conversation,
-          conversationId: context.conversationId,
-        });
         let sandboxRef: SandboxRef | undefined =
           getPersistedSandboxState(persisted);
         const initialSandboxRef = sandboxRef;
@@ -584,16 +610,6 @@ export function createApiTurnWorker(
           };
 
         if (isResume) {
-          const userMessage = getTurnUserMessage(conversation, turnId);
-          if (!userMessage) {
-            throw new Error(
-              `Unable to locate the persisted user message for Turn "${turnId}"`,
-            );
-          }
-          userMessageId = userMessage.id;
-          text = userMessage.text;
-          startedAtMs = userMessage.createdAtMs;
-          inputMessageIds = [userMessageId];
           if (cancellationSignal?.aborted) {
             return await completeCancelledTurn();
           }
@@ -612,7 +628,7 @@ export function createApiTurnWorker(
             meta: {
               explicitMention: true,
               replied: false,
-              source: "web",
+              ...(isResourceEvent ? undefined : { source: "web" as const }),
             },
           });
           await persistConversationMessages({

@@ -4,7 +4,10 @@ import type {
   Conversation,
   ConversationStore,
 } from "@/chat/conversations/store";
-import { resolveTurnSessionRouting } from "@/chat/services/turn-session-routing";
+import {
+  resolveConversationRouting,
+  resolveTurnSessionRouting,
+} from "@/chat/services/turn-session-routing";
 import type { SessionSource } from "@/chat/source";
 
 const DESTINATION = {
@@ -22,17 +25,20 @@ const SOURCE = {
 } as const satisfies SessionSource;
 
 function conversation(args: {
+  conversationId?: string;
   destination?: Destination;
+  lineage?: { parentConversationId: string };
   sessionSource?: SessionSource;
 }): Conversation {
   return {
-    conversationId: "slack:C123:1712345.0001",
+    conversationId: args.conversationId ?? "slack:C123:1712345.0001",
     createdAtMs: 1,
     lastActivityAtMs: 1,
     updatedAtMs: 1,
     schemaVersion: 1,
     execution: { status: "paused" },
     ...(args.destination ? { destination: args.destination } : undefined),
+    ...(args.lineage ? { lineage: args.lineage } : undefined),
     ...(args.sessionSource ? { sessionSource: args.sessionSource } : undefined),
   };
 }
@@ -74,9 +80,6 @@ describe("resolveTurnSessionRouting", () => {
       destination: DESTINATION,
       source: SOURCE,
     });
-    expect(store.get).toHaveBeenCalledWith({
-      conversationId: "slack:C123:1712345.0001",
-    });
   });
 
   it("rejects a conversation without durable routing metadata", async () => {
@@ -93,8 +96,40 @@ describe("resolveTurnSessionRouting", () => {
       "Conversation slack:C123:1712345.0001 is missing durable routing metadata",
     );
   });
+});
 
-  it("rejects destination-only legacy routing", async () => {
+describe("resolveConversationRouting", () => {
+  it("uses parent destination and session for children without destination", async () => {
+    const store = conversationStore({
+      get: vi.fn(async ({ conversationId }) => {
+        if (conversationId === "agent:child") {
+          return conversation({
+            conversationId: "agent:child",
+            lineage: { parentConversationId: "slack:C123:1712345.0001" },
+          });
+        }
+        if (conversationId === "slack:C123:1712345.0001") {
+          return conversation({
+            destination: DESTINATION,
+            sessionSource: SOURCE,
+          });
+        }
+        return undefined;
+      }),
+    });
+
+    await expect(
+      resolveConversationRouting({
+        conversationId: "agent:child",
+        conversationStore: store,
+      }),
+    ).resolves.toEqual({
+      destination: DESTINATION,
+      source: SOURCE,
+    });
+  });
+
+  it("keeps a slack destination without inventing threadTs from the conversation id", async () => {
     const store = conversationStore({
       get: vi.fn(async () =>
         conversation({
@@ -104,12 +139,140 @@ describe("resolveTurnSessionRouting", () => {
     });
 
     await expect(
-      resolveTurnSessionRouting({
-        conversationId: "agent-dispatch:dispatch-1",
+      resolveConversationRouting({
+        conversationId: "slack:C123:1712345.0001",
         conversationStore: store,
       }),
-    ).rejects.toThrow(
-      "Conversation agent-dispatch:dispatch-1 is missing durable routing metadata",
-    );
+    ).resolves.toEqual({
+      destination: DESTINATION,
+    });
+  });
+
+  it("keeps a stored slack session without inventing missing threadTs", async () => {
+    const store = conversationStore({
+      get: vi.fn(async () =>
+        conversation({
+          conversationId: "opaque-root",
+          destination: DESTINATION,
+          sessionSource: {
+            platform: "slack",
+            teamId: "T123",
+            channelId: "C123",
+            visibility: "public",
+          },
+        }),
+      ),
+    });
+
+    await expect(
+      resolveConversationRouting({
+        conversationId: "opaque-root",
+        conversationStore: store,
+      }),
+    ).resolves.toEqual({
+      destination: DESTINATION,
+      source: {
+        platform: "slack",
+        teamId: "T123",
+        channelId: "C123",
+        visibility: "public",
+      },
+    });
+  });
+
+  it("returns local destination and stored session source as-is", async () => {
+    const store = conversationStore({
+      get: vi.fn(async () =>
+        conversation({
+          conversationId: "local:web:abc",
+          destination: {
+            platform: "local",
+            conversationId: "local:web:abc",
+          },
+          sessionSource: {
+            platform: "local",
+            visibility: "private",
+            conversationId: "local:web:abc",
+          },
+        }),
+      ),
+    });
+
+    await expect(
+      resolveConversationRouting({
+        conversationId: "local:web:abc",
+        conversationStore: store,
+      }),
+    ).resolves.toEqual({
+      destination: {
+        platform: "local",
+        conversationId: "local:web:abc",
+      },
+      source: {
+        platform: "local",
+        visibility: "private",
+        conversationId: "local:web:abc",
+      },
+    });
+  });
+
+  it("keeps a web session source on a local destination", async () => {
+    const store = conversationStore({
+      get: vi.fn(async () =>
+        conversation({
+          conversationId: "local:web:dashboard",
+          destination: {
+            platform: "local",
+            conversationId: "local:web:dashboard",
+          },
+          sessionSource: {
+            platform: "web",
+            visibility: "public",
+            conversationId: "local:web:dashboard",
+          },
+        }),
+      ),
+    });
+
+    await expect(
+      resolveConversationRouting({
+        conversationId: "local:web:dashboard",
+        conversationStore: store,
+      }),
+    ).resolves.toEqual({
+      destination: {
+        platform: "local",
+        conversationId: "local:web:dashboard",
+      },
+      source: {
+        platform: "web",
+        visibility: "public",
+        conversationId: "local:web:dashboard",
+      },
+    });
+  });
+
+  it("returns undefined when no destination can be resolved", async () => {
+    const store = conversationStore({
+      get: vi.fn(async ({ conversationId }) => {
+        if (conversationId === "agent:child") {
+          return conversation({
+            conversationId: "agent:child",
+            lineage: { parentConversationId: "agent-dispatch:task" },
+          });
+        }
+        if (conversationId === "agent-dispatch:task") {
+          return conversation({ conversationId: "agent-dispatch:task" });
+        }
+        return undefined;
+      }),
+    });
+
+    await expect(
+      resolveConversationRouting({
+        conversationId: "agent:child",
+        conversationStore: store,
+      }),
+    ).resolves.toBeUndefined();
   });
 });

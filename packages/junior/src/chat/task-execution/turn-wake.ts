@@ -8,7 +8,7 @@ import type { Destination } from "@sentry/junior-plugin-api";
 import type { ConversationStore } from "@/chat/conversations/store";
 import {
   resolveTurnSessionRouting,
-  type TurnSessionRouting,
+  type RequiredTurnSessionRouting,
 } from "@/chat/services/turn-session-routing";
 import {
   failTurnRecord,
@@ -64,7 +64,7 @@ export async function getPausedTurnRequest(args: {
   ) {
     return undefined;
   }
-  let routing: TurnSessionRouting;
+  let routing: RequiredTurnSessionRouting;
   try {
     routing = await resolveTurnSessionRouting({
       conversationId: args.conversationId,

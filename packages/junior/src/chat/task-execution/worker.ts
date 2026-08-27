@@ -402,7 +402,16 @@ async function processConversationWorkInContext(
     }
     return { status: "no_work" };
   }
-  const destination = initial.destination;
+  // Mailbox wakes may omit destination. Read it from this root conversation
+  // only. Children keep no destination so invocation and dispatch workers stay
+  // free of provider destinations.
+  let destination = initial.destination;
+  if (!destination && options.conversationStore) {
+    const stored = await options.conversationStore.get({ conversationId });
+    if (stored && !stored.lineage) {
+      destination = stored.destination;
+    }
+  }
 
   const lease = await startConversationWork({
     conversationId,
@@ -607,7 +616,7 @@ async function processConversationWorkInContext(
         (message) => message.inboundMessageId,
       );
       // Empty batches are resume-only. Adapters read the checkpoint flag; do
-      // not invent publish from destination presence.
+      // not set publish from destination presence alone.
       const publishExternally = attemptMessages[0]?.publishExternally ?? false;
       attemptSelectedMessageIds = new Set(attemptMessageIds);
       const ack = async (): Promise<void> => {

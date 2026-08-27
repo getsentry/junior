@@ -139,10 +139,13 @@ export function createWatchResourceEventsTool(
       readOnlyHint: false,
     },
     description:
-      "Watch one plugin resource in the current Slack thread for a limited time; matching events return to this conversation as updates. Use for watch, notify, or tell-me-when requests. This does not create an event task or execute a durable task instruction. Prefer a subscribable tool result when available.",
+      "Watch one plugin resource in the current conversation for a limited time; matching events return to this conversation as updates. Use for watch, notify, or tell-me-when requests. This does not create an event task or execute a durable task instruction. Prefer a subscribable tool result when available.",
     inputSchema: inputSchema(catalog),
     outputSchema,
     async execute(input: Input) {
+      // TODO(subagents): child conversations (`agent:…`) still store watches on
+      // their own id. When subagents matter, store the parent root id or give
+      // children the parent's destination and worker path.
       const events = cleanStrings(input.events);
       for (const eventType of events) {
         if (
@@ -168,7 +171,6 @@ export function createWatchResourceEventsTool(
       const nowMs = Date.now();
       const subscription = await createResourceEventSubscription({
         conversationId: context.conversationId,
-        destination: context.destination,
         events,
         expiresAtMs: nowMs + ttlMs(input),
         intent,

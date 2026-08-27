@@ -68,7 +68,7 @@ import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { wakePausedTurn } from "@/chat/task-execution/turn-wake";
 import {
   resolveTurnSessionRouting,
-  type TurnSessionRouting,
+  type RequiredTurnSessionRouting,
 } from "@/chat/services/turn-session-routing";
 import type { AgentRunResult } from "@/chat/services/turn-result";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
@@ -390,7 +390,7 @@ async function resumeOAuthSessionRecordTurn(
         });
         return false;
       }
-      let routing: TurnSessionRouting;
+      let routing: RequiredTurnSessionRouting;
       try {
         routing = await resolveTurnSessionRouting({
           conversationId: stored.resumeConversationId!,

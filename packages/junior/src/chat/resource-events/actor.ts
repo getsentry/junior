@@ -8,8 +8,13 @@
  */
 import type { Actor } from "@/chat/actor";
 
-/** Synthetic Slack author id stamped on resource-event mailbox messages. */
-export const RESOURCE_EVENT_SLACK_AUTHOR_ID = "UJRNEVENT";
+/**
+ * Synthetic author id stamped on resource-event mailbox messages.
+ *
+ * Kept stable so provider adapters and conversation history can recognize the
+ * same system input for resource-event turns.
+ */
+export const RESOURCE_EVENT_AUTHOR_ID = "UJRNEVENT";
 
 /** System execution actor for every resource-event turn. */
 export const RESOURCE_EVENT_SYSTEM_ACTOR = {
@@ -24,7 +29,7 @@ export function isResourceEventConversationMessage(message: {
 }): boolean {
   return (
     Boolean(message.meta?.eventType) ||
-    message.author?.userId === RESOURCE_EVENT_SLACK_AUTHOR_ID
+    message.author?.userId === RESOURCE_EVENT_AUTHOR_ID
   );
 }
 

@@ -14,7 +14,6 @@ export async function ingestResourceEvent(
     nowMs?: number;
     queue: ConversationWorkQueue;
     state?: StateAdapter;
-    teamId: string;
   },
 ): Promise<{ enqueued: number }> {
   const event = resourceEventSchema.parse(input);
@@ -26,7 +25,6 @@ export async function ingestResourceEvent(
     namespace: event.namespace,
     identifier: event.identifier,
     state: options.state,
-    teamId: options.teamId,
   });
   let enqueued = 0;
   const errors: unknown[] = [];
@@ -38,7 +36,6 @@ export async function ingestResourceEvent(
         eventType: event.eventType,
         namespace: event.namespace,
         identifier: event.identifier,
-        teamId: options.teamId,
         terminal: event.terminal,
         nowMs,
         state: options.state,

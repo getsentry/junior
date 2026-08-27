@@ -118,6 +118,7 @@ describe("Linear MCP create annotations", () => {
 
     try {
       await getConversationStore().recordActivity({
+        destination: { platform: "local" as const, conversationId },
         conversationId,
         nowMs: Date.now(),
         source: "local",
@@ -271,6 +272,7 @@ describe("Linear MCP create annotations", () => {
 
     try {
       await getConversationStore().recordActivity({
+        destination: { platform: "local" as const, conversationId },
         conversationId,
         nowMs: Date.now(),
         source: "local",

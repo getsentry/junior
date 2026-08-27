@@ -2370,7 +2370,6 @@ async function processEvents(args: {
     await createResourceEventSubscription(
       {
         conversationId: thread.id,
-        destination: createEvalDestination(thread),
         events: event.subscription.events,
         expiresAtMs: nowMs + 14 * 24 * 60 * 60 * 1000,
         intent: event.subscription.intent,
@@ -2393,7 +2392,6 @@ async function processEvents(args: {
           nowMs,
           queue: conversationWorkQueue,
           state: env.stateAdapter,
-          teamId: EVAL_SLACK_TEAM_ID,
         },
       );
     }

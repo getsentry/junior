@@ -46,7 +46,6 @@ import {
 } from "@/chat/plugins/validation";
 import type {
   PluginRegistration,
-  ResourceEvent,
   PluginRouteMethod,
   User,
 } from "@sentry/junior-plugin-api";
@@ -94,11 +93,7 @@ import { createAgentRunner } from "@/chat/runtime/agent-runner";
 import { createVercelAttachmentStorage } from "@/chat/attachments/vercel";
 import { publicArtifactGET } from "@/handlers/artifacts";
 import type { WaitUntilFn } from "@/handlers/types";
-import { ingestResourceEvent } from "@/chat/resource-events/ingest";
-import { collectResourceEventMatchKeys } from "@/chat/resource-events/store";
-import { createResourceEventTeamIdResolver } from "@/chat/resource-events/workspace";
-import { collectEventTaskMatchKeys } from "@/chat/event-tasks/store";
-import { ingestEventTasks } from "@/chat/event-tasks/ingest";
+import { createResourceEventAppPublisher } from "@/chat/resource-events/app-publisher";
 import { receiveLocalOAuthCredential } from "@/chat/local/credential-sync";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { createAcpConversations } from "@/api/acp/conversations";
@@ -712,60 +707,9 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   };
   let pluginRoutes: PluginRouteRegistration[] = [];
   let pluginApiRoutes: PluginApiRouteRegistration[] = [];
-  const resolveResourceEventTeamId = createResourceEventTeamIdResolver();
-  const resourceEvents: {
-    neededMatchKeys(input: {
-      eventTypes: string[];
-      identifiers: string[];
-      namespace: string;
-    }): Promise<string[]>;
-    publish(event: ResourceEvent): Promise<void>;
-  } = {
-    async neededMatchKeys(input) {
-      const teamId = await resolveResourceEventTeamId();
-      if (!teamId) return [];
-      const conversationWork = getConversationWorkOptions();
-      const [watchKeys, taskKeys] = await Promise.all([
-        collectResourceEventMatchKeys({
-          eventTypes: input.eventTypes,
-          identifiers: input.identifiers,
-          namespace: input.namespace,
-          state: conversationWork.state,
-          teamId,
-        }),
-        collectEventTaskMatchKeys(getDb(), {
-          eventTypes: input.eventTypes,
-          identifiers: input.identifiers,
-          namespace: input.namespace,
-          teamId,
-        }),
-      ]);
-      return [...new Set([...watchKeys, ...taskKeys])].sort();
-    },
-    async publish(event) {
-      const teamId = await resolveResourceEventTeamId();
-      if (!teamId) {
-        logWarn("resource_event.delivery.unavailable", {
-          "app.resource_event.namespace": event.namespace,
-          "app.resource_event.reason": "multi_workspace",
-        });
-        return;
-      }
-      const conversationWork = getConversationWorkOptions();
-      const queue = conversationWork.queue ?? getVercelConversationWorkQueue();
-      await Promise.all([
-        ingestResourceEvent(event, {
-          queue,
-          state: conversationWork.state,
-          teamId,
-        }),
-        ingestEventTasks(event, {
-          queue,
-          teamId,
-        }),
-      ]);
-    },
-  };
+  const resourceEvents = createResourceEventAppPublisher({
+    conversationWork: () => getConversationWorkOptions(),
+  });
   let sandboxEgressTracePropagationDomains: string[] = [];
   try {
     sandboxEgressTracePropagationDomains =

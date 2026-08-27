@@ -96,9 +96,30 @@ export function createConversationWork(
     },
     runTurn: runtime.runDispatchTurn,
   });
+  // Destination chooses the provider worker. Do not fall through to Slack when
+  // destination is missing or not Slack.
+  const destinationWorker = async (
+    context: Parameters<typeof slackWorker>[0],
+  ) => {
+    const destination = context.destination;
+    if (!destination) {
+      throw new Error(
+        `Conversation ${context.conversationId} is missing a destination`,
+      );
+    }
+    if (destination.platform === "slack") {
+      return await slackWorker(context);
+    }
+    // Local destination resource-event and dashboard wakes are claimed earlier
+    // by routeApiTurnWork. Reaching here with a local destination means no
+    // matching conversation-only work.
+    throw new Error(
+      `Conversation ${context.conversationId} has a ${destination.platform} destination but no matching conversation worker`,
+    );
+  };
   const providerWorker = createAgentDispatchWorkRouter({
     dispatchWorker,
-    fallbackWorker: slackWorker,
+    fallbackWorker: destinationWorker,
   });
   return {
     apiTurnCancellation,

@@ -558,6 +558,11 @@ export class SqlStore implements ConversationStore {
       const existing = existingRow
         ? conversationFromRow(existingRow)
         : undefined;
+      // Execution dual-write updates existing rows or creates roots that already
+      // carry a destination. It does not create roots without a destination.
+      if (!existing && !args.destination) {
+        return;
+      }
       const incomingExecutionAt =
         args.execution.updatedAtMs ?? args.updatedAtMs;
       const existingExecutionAt =
@@ -576,6 +581,7 @@ export class SqlStore implements ConversationStore {
           createdAtMs: args.createdAtMs,
           lastActivityAtMs: args.lastActivityAtMs,
           updatedAtMs: args.updatedAtMs,
+          ...(existing?.lineage ? { lineage: existing.lineage } : undefined),
           ...(args.channelName ? { channelName: args.channelName } : undefined),
           ...(args.destination ? { destination: args.destination } : undefined),
           ...(args.actor ? { actor: args.actor } : undefined),
@@ -771,6 +777,19 @@ export class SqlStore implements ConversationStore {
     conversation: Conversation;
   }): Promise<void> {
     const { conversation } = args;
+    // Root conversations set destination on first write. Children keep no
+    // destination and inherit through parent lineage. Later updates may omit
+    // destination because onConflict keeps the existing destination_id.
+    if (!conversation.lineage && !conversation.destination) {
+      const existing = await this.get({
+        conversationId: conversation.conversationId,
+      });
+      if (!existing) {
+        throw new Error(
+          `Conversation ${conversation.conversationId} requires a destination at create`,
+        );
+      }
+    }
     const incomingExecutionVersion = sql`coalesce(excluded.execution_updated_at, excluded.updated_at)`;
     const currentExecutionVersion = sql`coalesce(${juniorConversations.executionUpdatedAt}, ${juniorConversations.updatedAt})`;
     const incomingExecutionIsFresh = sql`${incomingExecutionVersion} >= ${currentExecutionVersion}`;
