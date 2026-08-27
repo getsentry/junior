@@ -22,7 +22,13 @@ export type ApiTurnMailboxMetadata = z.output<
   typeof apiTurnMailboxMetadataSchema
 >;
 
-/** Local destination resource-event mailbox rows share the conversation-only runner. */
+/**
+ * Local destination resource-event mailbox rows share the conversation-only runner.
+ *
+ * TODO(resource-events): Remove the dedicated `resource_event` work kind once
+ * local/web destinations run plain mailbox system wakes the same way as any
+ * other deferred conversation turn (no special batch/actor fork).
+ */
 export type LocalResourceEventMailboxEntry = {
   message: InboundMessage;
   kind: "resource_event";
@@ -144,6 +150,7 @@ export async function resolveApiTurnWork(
   }
   // Local destination resource events share the conversation-only runner. Slack
   // destination resource events stay on the Slack worker for thread metadata.
+  // TODO(resource-events): Fold into normal mailbox work; see LocalResourceEventMailboxEntry.
   if (context.destination?.platform === "local") {
     const resourceBatch = parseLocalResourceEventMessages(
       context.attempt.messages,

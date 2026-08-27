@@ -317,6 +317,10 @@ export interface SlackTurnRuntime<
     message: Message,
     hooks: SlackTurnOptions,
   ) => Promise<void>;
+  // Webhook-shaped entry: real Slack traffic arrives as Message + Thread.
+  // TODO(slack-runtime): Add a plain turn entry from conversation destination +
+  // session source so resource-event wakes (and similar system wakes) do not
+  // build synthetic Message/Thread objects just to call this path.
   handleSubscribedMessage: (
     thread: Thread,
     message: Message,

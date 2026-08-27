@@ -4,6 +4,12 @@
  * Resource-event ingest stores plain conversation mailbox input. When the
  * conversation destination is Slack, this module builds the Message and Thread
  * the Slack runtime needs for one turn. It does not rewrite mailbox rows.
+ *
+ * TODO(slack-runtime): Drop this module once Slack turns can start from
+ * conversation destination + session source (channel, team, threadTs, text,
+ * event metadata) without a synthetic chat Message/Thread. Resource wakes and
+ * paused resume should share that entry; handleSubscribedMessage stays for
+ * real webhook traffic only.
  */
 import { Message, ThreadImpl, type StateAdapter } from "chat";
 import type { SlackAdapter } from "@chat-adapter/slack";

@@ -484,6 +484,8 @@ export function createApiTurnWorker(
       startedAtMs = first.message.createdAtMs;
       inputMessageIds = resolved.batch.map((entry) => entry.metadata.messageId);
     } else if (resolved.kind === "resource_event") {
+      // TODO(resource-events): Remove this fork with the dedicated work kind;
+      // plain mailbox system wakes should not need a separate actor/id path.
       const first = resolved.batch[0]!;
       text = joinMailboxText(resolved.batch.map((entry) => entry.message));
       actor = localResourceEventActor();

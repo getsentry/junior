@@ -661,6 +661,9 @@ export function createSlackConversationWorker(
     const hasPlainResourceEvent = records.some(isPlainResourceEventRecord);
     // Plain resource-event wakes omit destination/publish. Slack destination
     // conversations publish by default once the worker runs.
+    // TODO(slack-runtime): When Slack turns start from destination + session
+    // without synthetic Message/Thread, delete the plain-resource branch below
+    // (resolveSlackResourceEventThread / buildResourceEventSlack*).
     const publishExternally = hasPlainResourceEvent
       ? true
       : (latestRecord.publishExternally ?? context.publishExternally);

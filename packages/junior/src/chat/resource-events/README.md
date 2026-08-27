@@ -40,6 +40,12 @@ conversation.
   that destination runs a normal turn, so the same agent and tools stay active
   for the whole conversation. Slack builds Message/Thread context at the worker
   edge only; mailbox rows stay plain.
+- TODO(slack-runtime): Slack still builds a synthetic Message/Thread at the
+  worker edge so `handleSubscribedMessage` can run. Replace with a plain turn
+  entry from conversation destination + session source, then delete
+  `slack-resource-event.ts`.
+- TODO(resource-events): Local destinations still use a dedicated
+  `resource_event` api-turns work kind. Fold into normal deferred mailbox turns.
 - TODO(subagents): child conversations still store watches on their own id.
   When subagents matter, store the parent root id or give children the parent's
   destination and worker path.
