@@ -655,7 +655,7 @@ describe("model handoff composition", () => {
       instruction: { text: "Check the details." },
       destination: { platform: "local", conversationId },
       source: createLocalSource(conversationId),
-      delivery: { send: (message) => delivered.push(message) },
+      delivery: { send: (message) => void delivered.push(message) },
     });
 
     expect(outcome.status).toBe("completed");
