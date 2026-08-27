@@ -11,6 +11,7 @@ import {
 } from "../fixtures/api-turn";
 import {
   completeLatestMcpAuth,
+  expectMcpAuthParked,
   expectMcpAuthCleared,
   expectMcpAuthCredentialsStored,
   expectWebMcpAuthParked,
@@ -100,6 +101,48 @@ describe("web auth orchestration", () => {
         expect.objectContaining({ state: "completed", surface: "api" }),
       ]),
     );
+  });
+
+  it("resumes an API Turn as the user who started it", async () => {
+    const q = await createConversationWorkWebHarness(
+      streamMcpSearchAndCall("Eval Auth tool completed."),
+    );
+    const conversationId = "slack:CAPI123:1787718000.000001";
+    await q.conversationStore.recordActivity({
+      actor: {
+        email: "root@example.com",
+        platform: "slack",
+        slackUserId: "UAPIROOT",
+        teamId: "TAPIROOT",
+      },
+      conversationId,
+      destination: {
+        channelId: "CAPI123",
+        platform: "slack",
+        teamId: "TAPIROOT",
+      },
+      source: "slack",
+      visibility: "private",
+    });
+    await q.continue({
+      conversationId,
+      idempotencyKey: "web-auth-park-resume-1",
+      message: "use eval-auth and confirm the connection",
+    });
+    await q.drain();
+    await expectMcpAuthParked({
+      actorId: q.actor.userId,
+      conversationId,
+    });
+
+    await completeLatestMcpAuth({
+      userId: q.actor.userId,
+      agentRunner: q.agentRunner,
+      conversationWorkQueue: q.queue,
+    });
+    await q.drain();
+
+    expect(q.agentRuns.map((run) => run.actor)).toEqual([q.actor, q.actor]);
   });
 
   it("supersedes an auth-parked Turn from the Conversation API and clears the prompt", async () => {

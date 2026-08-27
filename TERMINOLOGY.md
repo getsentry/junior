@@ -18,8 +18,10 @@ Canonical words used across Junior's code and documentation.
 - **Source**: where an inbound event came from, such as Slack, local CLI, web
   (dashboard), scheduler, or plugin dispatch.
 - **Destination**: where Junior sends output or side effects.
-- **Location**: the optional provider container associated with a conversation,
-  identified by Junior and provider ids. Conversation visibility is separate.
+- **Location**: optional provider context for a conversation or input,
+  identified by Junior and provider ids. A run may keep this context when its
+  Source or Actor is not from that provider. Location does not grant delivery.
+  Conversation visibility is separate.
 - **publishExternally**: whether one turn also publishes assistant output to the
   conversation destination. The conversation log always stores the turn. Slack
   surfaces treat missing as publish; non-Slack work treats missing as
@@ -28,7 +30,8 @@ Canonical words used across Junior's code and documentation.
 - **Identity**: one provider account, such as a Slack account in one workspace,
   optionally linked to a user.
 - **Actor**: the runtime participant for one source invocation. Actor ids are
-  provider-scoped and are not canonical user ids.
+  provider-scoped and are not canonical user ids. An Actor may keep provider
+  fields that the agent or tools need. Those fields do not select the runtime.
 - **Resource event**: one normalized change identified by namespace, identifier,
   event type, and an idempotency key. Plugins and core can publish them.
   Delivery wakes the conversation; destination stays on that conversation.
@@ -90,6 +93,9 @@ Canonical words used across Junior's code and documentation.
 
 - Use `provider` on provider-owned references such as Identity and Location; it
   names the namespace that owns their provider ids.
+- Keep Source, Actor, Location, Destination, and `publishExternally`
+  independent. Do not infer one from another. Provider data may supply agent
+  context without selecting another runtime or granting delivery.
 - For new Source unions, use one discriminant for what produced the work. Keep
   provider-native identifiers inside that provider's Source branch rather than
   adding a second generic provider or thread field.
