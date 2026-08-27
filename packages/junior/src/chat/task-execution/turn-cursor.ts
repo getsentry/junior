@@ -346,11 +346,11 @@ async function recordConversationActivityMetadata(args: {
   });
   const isChild = Boolean(conversation?.lineage);
   // Nested destination/source/actor stay off Redis cursor payloads; callers
-  // pass live routing/identity here for SQL dual-write. Child conversations stay
-  // destinationless.
+  // pass live routing/identity here for SQL dual-write. Child conversations keep
+  // no destination.
   const destination = isChild ? undefined : args.destination;
-  // Root dual-write requires a pinned destination on first create. Cursor-only
-  // writes without destination stay Redis-only until a real root upsert lands.
+  // Root dual-write requires a destination on first create. Cursor-only writes
+  // without destination stay Redis-only until a real root upsert lands.
   if (!isChild && !destination && !conversation) {
     return;
   }

@@ -31,7 +31,7 @@ Canonical words used across Junior's code and documentation.
   provider-scoped and are not canonical user ids.
 - **Resource event**: one normalized change published by a plugin, identified
   by namespace, identifier, event type, and an idempotency key. Delivery wakes
-  the bound conversation; destination stays on that conversation.
+  the conversation; destination stays on that conversation.
 - **Resource subscription**: a temporary conversation association that delivers
   matching resource events back into that conversation.
 - **Event task**: a durable instruction that dispatches when a matching

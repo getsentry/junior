@@ -640,8 +640,8 @@ export function createSlackConversationWorker(
     if (!latestRecord) {
       return { status: "completed" };
     }
-    // Hydration may rewrite plain resource-event wakes onto the bound Slack
-    // surface. Publish from the hydrated records, not the pre-hydrate flag.
+    // Hydration may rewrite plain resource-event wakes with Slack metadata.
+    // Publish from the hydrated records, not the pre-hydrate flag.
     const publishExternally =
       latestRecord.publishExternally ?? context.publishExternally;
 

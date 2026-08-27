@@ -152,8 +152,8 @@ export function createResourceEventInboundMessage(input: {
     delivery: "defer",
     source: "resource_event",
     receivedAtMs: input.receivedAtMs ?? Date.now(),
-    // Destination and external publish come from the conversation binding when
-    // the worker runs. Resource events only wake the mailbox.
+    // Destination and external publish come from the conversation when the
+    // worker runs. Resource events only wake the mailbox.
     publishExternally: false,
     input: {
       text: input.text,
@@ -167,7 +167,7 @@ export function createResourceEventInboundMessage(input: {
  * Enqueue a resource event as normal conversation mailbox input.
  *
  * The watch only names the conversation. Destination stays on the conversation
- * binding and is applied when the worker runs.
+ * and is applied when the worker runs.
  */
 export async function enqueueResourceEventNotification(args: {
   event: ResourceEventNotification;

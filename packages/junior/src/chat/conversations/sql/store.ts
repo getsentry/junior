@@ -559,7 +559,7 @@ export class SqlStore implements ConversationStore {
         ? conversationFromRow(existingRow)
         : undefined;
       // Execution dual-write updates existing rows or creates roots that already
-      // carry a destination. It does not invent destinationless roots.
+      // carry a destination. It does not create roots without a destination.
       if (!existing && !args.destination) {
         return;
       }
@@ -777,8 +777,8 @@ export class SqlStore implements ConversationStore {
     conversation: Conversation;
   }): Promise<void> {
     const { conversation } = args;
-    // Root conversations pin destination on first write. Children stay
-    // destinationless and inherit through parent lineage. Later updates may omit
+    // Root conversations set destination on first write. Children keep no
+    // destination and inherit through parent lineage. Later updates may omit
     // destination because onConflict keeps the existing destination_id.
     if (!conversation.lineage && !conversation.destination) {
       const existing = await this.get({

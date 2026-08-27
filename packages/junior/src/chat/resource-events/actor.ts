@@ -12,7 +12,7 @@ import type { Actor } from "@/chat/actor";
  * Synthetic author id stamped on resource-event mailbox messages.
  *
  * Kept stable so provider adapters and conversation history can recognize the
- * same system input after metadata is rewritten for a bound destination.
+ * same system input after metadata is rewritten for the conversation destination.
  */
 export const RESOURCE_EVENT_AUTHOR_ID = "UJRNEVENT";
 

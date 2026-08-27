@@ -1,9 +1,9 @@
 /**
- * Slack adapter glue for resource-event mailbox wakes.
+ * Slack adapter for resource-event mailbox wakes.
  *
  * Resource-event ingest stores plain conversation mailbox input. When the
- * conversation binding is Slack, this module fills Slack thread metadata so the
- * existing Slack worker can run the same agent surface.
+ * conversation destination is Slack, this module adds Slack thread metadata so
+ * the Slack worker can run the turn.
  */
 import type { SerializedMessage, SerializedThread } from "chat";
 import type { Destination } from "@sentry/junior-plugin-api";
@@ -12,7 +12,6 @@ import { requireSlackDestination } from "@/chat/destination";
 import { RESOURCE_EVENT_AUTHOR_ID } from "@/chat/resource-events/actor";
 import { isResourceEventMailboxMetadata } from "@/chat/resource-events/notification";
 import { resolveConversationRouting } from "@/chat/services/turn-session-routing";
-import { parseSlackThreadId } from "@/chat/slack/context";
 import type { InboundMessage } from "@/chat/task-execution/store";
 
 interface SlackResourceEventInboundInput {
@@ -106,10 +105,10 @@ function hasSlackConversationMetadata(value: unknown): boolean {
 }
 
 /**
- * Build a Slack-shaped mailbox record for a resource-event wake.
+ * Build a Slack mailbox record for a resource-event wake.
  *
- * Resource-event ingest stores plain mailbox input. The Slack worker uses this
- * only when the conversation binding is Slack and the turn needs Slack metadata.
+ * Used only when the conversation destination is Slack and the turn needs
+ * Slack message metadata.
  */
 export function createSlackResourceEventInboundMessage(
   input: SlackResourceEventInboundInput,
@@ -168,9 +167,9 @@ export function createSlackResourceEventInboundMessage(
 }
 
 /**
- * Hydrate plain resource-event mailbox rows for a Slack-bound conversation.
+ * Add Slack metadata to plain resource-event mailbox rows.
  *
- * Destination and thread come from the conversation binding, not the watch.
+ * Destination and thread come from the conversation record, not the watch.
  */
 export async function hydrateSlackResourceEventRecords(args: {
   conversationId: string;
@@ -196,11 +195,10 @@ export async function hydrateSlackResourceEventRecords(args: {
     routing?.destination ?? args.destination,
     "Slack resource-event hydration",
   );
-  const boundSource = routing?.source;
   const threadTs =
-    (boundSource?.platform === "slack"
-      ? boundSource.threadTs?.trim()
-      : undefined) || parseSlackThreadId(args.conversationId)?.threadTs;
+    routing?.source?.platform === "slack"
+      ? routing.source.threadTs?.trim()
+      : undefined;
   if (!threadTs) {
     throw new Error(
       `Conversation ${args.conversationId} is missing a Slack thread for resource-event delivery`,

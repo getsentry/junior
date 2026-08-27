@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ThreadImpl, type Message, type StateAdapter, type Thread } from "chat";
+import type { ConversationStore } from "@/chat/conversations/store";
 import {
   CooperativeTurnYieldError,
   TurnInputDeferredError,
@@ -61,6 +62,7 @@ import {
 type SlackWorkerOptions = Parameters<typeof createSlackConversationWorker>[0];
 
 interface ProcessQueuedSlackWorkArgs {
+  conversationStore?: SlackWorkerOptions["conversationStore"];
   getSlackAdapter: SlackWorkerOptions["getSlackAdapter"];
   lookupSlackUser?: SlackWorkerOptions["lookupSlackUser"];
   nowMs?: () => number;
@@ -77,6 +79,9 @@ function processNextQueuedSlackWork(args: ProcessQueuedSlackWorkArgs) {
     queue: args.queue,
     softYieldAfterMs: args.softYieldAfterMs,
     run: createSlackConversationWorker({
+      ...(args.conversationStore
+        ? { conversationStore: args.conversationStore }
+        : undefined),
       getSlackAdapter: args.getSlackAdapter,
       lookupSlackUser: args.lookupSlackUser,
       runNextPausedTurn: args.runNextPausedTurn ?? (async () => false),
@@ -377,10 +382,36 @@ describe("Slack conversation work execution", () => {
     });
     const calls: Message[] = [];
     const publishFlags: Array<boolean | undefined> = [];
+    const conversationStore: ConversationStore = {
+      createChild: vi.fn(),
+      get: vi.fn(async () => ({
+        conversationId: CONVERSATION_ID,
+        createdAtMs: 1,
+        lastActivityAtMs: 1,
+        updatedAtMs: 1,
+        schemaVersion: 1 as const,
+        execution: { status: "paused" as const },
+        destination: SLACK_DESTINATION,
+        sessionSource: {
+          platform: "slack" as const,
+          teamId: SLACK_DESTINATION.teamId,
+          channelId: SLACK_DESTINATION.channelId,
+          threadTs: "1712345.0001",
+          visibility: "public" as const,
+        },
+      })),
+      getConversationIdByProviderConversation: vi.fn(async () => undefined),
+      bindProviderConversation: vi.fn(),
+      getDestinationVisibility: vi.fn(async () => undefined),
+      findSlackDestinationByName: vi.fn(async () => undefined),
+      recordActivity: vi.fn(),
+      recordExecution: vi.fn(),
+      listByActivity: vi.fn(async () => []),
+    };
 
-    // Bind destination first, then enqueue the plain resource-event wake the
-    // way ingest does. The Slack worker hydrates and must publish from the
-    // bound surface.
+    // Destination and session source live on the conversation. Enqueue the
+    // plain resource-event wake the way ingest does; the Slack worker adds
+    // thread metadata and publishes from that destination.
     await requestConversationWork({
       conversationId: CONVERSATION_ID,
       destination: SLACK_DESTINATION,
@@ -410,6 +441,7 @@ describe("Slack conversation work execution", () => {
 
     await expect(
       processNextQueuedSlackWork({
+        conversationStore,
         getSlackAdapter: () => slackAdapter,
         lookupSlackUser,
         queue,

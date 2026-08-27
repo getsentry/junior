@@ -143,10 +143,9 @@ export function createWatchResourceEventsTool(
     inputSchema: inputSchema(catalog),
     outputSchema,
     async execute(input: Input) {
-      // TODO(subagents): destinationless child conversations (`agent:…`) are
-      // not a real bound surface yet. Watches still store this conversation id
-      // as-is. When subagents matter, either pin watches to the parent root or
-      // give children the parent's bound destination/worker path.
+      // TODO(subagents): child conversations (`agent:…`) still store watches on
+      // their own id. When subagents matter, store the parent root id or give
+      // children the parent's destination and worker path.
       const events = cleanStrings(input.events);
       for (const eventType of events) {
         if (

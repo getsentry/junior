@@ -12,7 +12,7 @@ import { z } from "zod";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { JUNIOR_THREAD_STATE_TTL_MS } from "@/chat/state/ttl";
 
-// v5 stores conversation id only. Destination lives on the conversation.
+// Stores conversation id only. Destination lives on the conversation.
 const RESOURCE_EVENT_PREFIX = "junior:resource_event_subscription:v5";
 const INDEX_LOCK_TTL_MS = 10_000;
 const SUBSCRIPTION_LOCK_TTL_MS = 10_000;

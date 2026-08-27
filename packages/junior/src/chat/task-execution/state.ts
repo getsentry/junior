@@ -508,7 +508,7 @@ function normalizeConversation(
   ) {
     return undefined;
   }
-  // Destinationless pending messages inherit the conversation destination.
+  // Pending messages without destination use the conversation destination.
   // Only a conflicting explicit message destination is invalid.
   if (
     execution.pendingMessages.length > 0 &&
@@ -1047,8 +1047,8 @@ function assertSameOptionalConversationDestination(args: {
   current: Destination | undefined;
   next: Destination | undefined;
 }): void {
-  // Destinationless next inherits the bound conversation destination. First
-  // bind is allowed when current is empty. Only a conflicting next is an error.
+  // Next without destination keeps the conversation destination. First set is
+  // allowed when current is empty. Only a conflicting next is an error.
   if (!args.next || !args.current) {
     return;
   }

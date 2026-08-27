@@ -22,7 +22,7 @@ export type ApiTurnMailboxMetadata = z.output<
   typeof apiTurnMailboxMetadataSchema
 >;
 
-/** Local-bound resource-event mailbox rows share the conversation-only runner. */
+/** Local destination resource-event mailbox rows share the conversation-only runner. */
 export type LocalResourceEventMailboxEntry = {
   message: InboundMessage;
   kind: "resource_event";
@@ -117,9 +117,9 @@ function parseLocalResourceEventMessages(
 /**
  * Resolve conversation-only work from mailbox metadata or an active checkpoint.
  *
- * Covers dashboard API turns and local-bound resource-event wakes. Empty resume
- * wakes after yield carry no mailbox rows; durable active Turn state keeps those
- * wakes on this runner instead of falling through to Slack.
+ * Covers dashboard API turns and local destination resource-event wakes. Empty
+ * resume wakes after yield carry no mailbox rows; durable active Turn state keeps
+ * those wakes on this runner instead of falling through to Slack.
  */
 export async function resolveApiTurnWork(
   context: ConversationWorkerContext,
@@ -142,8 +142,8 @@ export async function resolveApiTurnWork(
   if (batch.length > 0) {
     return { kind: "mailbox", batch };
   }
-  // Local-bound resource events share the conversation-only runner. Slack-bound
-  // resource events stay on the Slack worker for thread hydration.
+  // Local destination resource events share the conversation-only runner. Slack
+  // destination resource events stay on the Slack worker for thread metadata.
   if (context.destination?.platform === "local") {
     const resourceBatch = parseLocalResourceEventMessages(
       context.attempt.messages,

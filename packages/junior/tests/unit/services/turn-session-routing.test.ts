@@ -99,7 +99,7 @@ describe("resolveTurnSessionRouting", () => {
 });
 
 describe("resolveConversationRouting", () => {
-  it("uses parent destination and session for destinationless children", async () => {
+  it("uses parent destination and session for children without destination", async () => {
     const store = conversationStore({
       get: vi.fn(async ({ conversationId }) => {
         if (conversationId === "agent:child") {
@@ -129,7 +129,7 @@ describe("resolveConversationRouting", () => {
     });
   });
 
-  it("completes slack session from a historical conversation id when destination is bound", async () => {
+  it("keeps a slack destination without inventing threadTs from the conversation id", async () => {
     const store = conversationStore({
       get: vi.fn(async () =>
         conversation({
@@ -145,17 +145,10 @@ describe("resolveConversationRouting", () => {
       }),
     ).resolves.toEqual({
       destination: DESTINATION,
-      source: {
-        platform: "slack",
-        teamId: "T123",
-        channelId: "C123",
-        threadTs: "1712345.0001",
-        visibility: "public",
-      },
     });
   });
 
-  it("keeps a slack destination when threadTs cannot be filled", async () => {
+  it("keeps a stored slack session without inventing missing threadTs", async () => {
     const store = conversationStore({
       get: vi.fn(async () =>
         conversation({
@@ -187,13 +180,18 @@ describe("resolveConversationRouting", () => {
     });
   });
 
-  it("returns local routing without a stored session source", async () => {
+  it("returns local destination and stored session source as-is", async () => {
     const store = conversationStore({
       get: vi.fn(async () =>
         conversation({
           conversationId: "local:web:abc",
           destination: {
             platform: "local",
+            conversationId: "local:web:abc",
+          },
+          sessionSource: {
+            platform: "local",
+            visibility: "private",
             conversationId: "local:web:abc",
           },
         }),
