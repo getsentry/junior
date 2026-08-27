@@ -305,7 +305,7 @@ describe("sandboxEgressCredentialLease — credential error normalization", () =
     ]);
   });
 
-  it("reuses a user grant only while the live token still matches", async () => {
+  it("reuses a user lease only while the stored token still matches", async () => {
     hasEgressCredentialHooks.mockReturnValue(true);
     issuePluginCredential.mockClear();
     getUserTokenMock.mockReset();

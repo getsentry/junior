@@ -131,7 +131,7 @@ function assertLeaseTransformsOwnedByProvider(
   }
 }
 
-/** Match the broker refresh buffer so a near-expiry token cannot stay cached. */
+/** Same refresh window the OAuth broker uses before it treats a token as stale. */
 const USER_TOKEN_REFRESH_BUFFER_MS = 5 * 60 * 1000;
 
 function isSharedInstallationGrant(
@@ -152,10 +152,7 @@ function readAuthorizationHeader(
   return undefined;
 }
 
-function authorizationValuesMatch(
-  left: string,
-  right: string,
-): boolean {
+function sameAuthorizationValue(left: string, right: string): boolean {
   const leftBuffer = Buffer.from(left);
   const rightBuffer = Buffer.from(right);
   return (
@@ -164,7 +161,7 @@ function authorizationValuesMatch(
   );
 }
 
-function leaseCarriesAccessToken(
+function leaseHasAccessToken(
   lease: SandboxEgressCredentialLease,
   accessToken: string,
 ): boolean {
@@ -173,19 +170,20 @@ function leaseCarriesAccessToken(
     const authorization = readAuthorizationHeader(transform.headers);
     return (
       authorization !== undefined &&
-      authorizationValuesMatch(authorization, expected)
+      sameAuthorizationValue(authorization, expected)
     );
   });
 }
 
 /**
- * Keep a cached user-bound lease only while the live token still matches it.
+ * Return whether a cached lease may still be used for this request.
  *
- * Installation grants stay TTL-only. User-bound grants re-check the token store
- * so delete, rotate, expire, and harness seed cannot keep injecting a stale
- * bearer from the host cache.
+ * Shared installation grants only need a valid cache TTL. User grants also need
+ * the stored user token to still exist, not be near expiry, and match the
+ * cached Authorization header. That keeps delete, rotate, expire, and test token
+ * setup from reusing a stale header.
  */
-async function cachedLeaseStillMatchesLiveCredentials(input: {
+async function canReuseCachedLease(input: {
   context: SandboxEgressCredentialContext;
   lease: SandboxEgressCredentialLease;
   provider: string;
@@ -196,7 +194,7 @@ async function cachedLeaseStillMatchesLiveCredentials(input: {
 
   const userId = credentialUserSubjectId(input.context.credentials);
   if (!userId) {
-    // System/env-backed grants have no token-store fingerprint to check.
+    // No stored user token backs this grant (for example env-only system use).
     return true;
   }
 
@@ -210,7 +208,7 @@ async function cachedLeaseStillMatchesLiveCredentials(input: {
   ) {
     return false;
   }
-  return leaseCarriesAccessToken(input.lease, stored.accessToken);
+  return leaseHasAccessToken(input.lease, stored.accessToken);
 }
 
 /**
@@ -263,9 +261,9 @@ export function authorizationForSandboxEgressGrant(
 /**
  * Return cached or newly issued credential header transforms for a selected grant.
  *
- * Installation grants reuse the shared host lease until near expiry. User-bound
- * grants may reuse an actor/subject lease only while the live token still matches
- * the cached bearer. Sandbox context only authorizes the hop.
+ * Shared installation grants reuse the host cache until near expiry. User grants
+ * reuse a cached lease only when the stored user token still matches it. The
+ * sandbox context only authorizes the request.
  */
 export async function sandboxEgressCredentialLease(
   provider: string,
@@ -284,13 +282,7 @@ export async function sandboxEgressCredentialLease(
         `Cached credential lease for ${provider}/${grant.name} has ${cached.grant.access} access, but ${grant.access} was selected`,
       );
     }
-    if (
-      await cachedLeaseStillMatchesLiveCredentials({
-        context,
-        lease: cached,
-        provider,
-      })
-    ) {
+    if (await canReuseCachedLease({ context, lease: cached, provider })) {
       return {
         ...cached,
         grant,

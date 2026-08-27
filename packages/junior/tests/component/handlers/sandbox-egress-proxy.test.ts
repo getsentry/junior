@@ -52,8 +52,7 @@ vi.mock("@/chat/plugins/catalog-runtime", () => ({
 }));
 
 vi.mock("@/chat/capabilities/factory", () => ({
-  // No live user tokens in this composition suite: user-bound host leases
-  // must re-issue from the broker mock after cache-hit validation.
+  // This suite does not store user tokens, so cached user leases cannot be reused.
   createUserTokenStore: () => ({ get: async () => undefined }),
   issueProviderCredentialLease: issueProviderCredentialLeaseMock,
 }));
@@ -676,7 +675,7 @@ describe("sandbox egress proxy composition", () => {
     });
   });
 
-  it("re-issues user-bound leases across renewed contexts without a live token match", async () => {
+  it("issues a new user lease when the stored token is missing", async () => {
     setSandboxEgressUserActor();
     issueProviderCredentialLeaseMock
       .mockResolvedValueOnce({
@@ -780,7 +779,7 @@ describe("sandbox egress proxy composition", () => {
     const body = await persistent.text();
     expect(body).toBe("Permission denied for this organization");
     expect(body).not.toContain("junior-auth-required");
-    // Second hop cannot trust the host lease without a live token match.
+    // Second hop has no stored user token, so the earlier lease is not reused.
     expect(issueProviderCredentialLeaseMock).toHaveBeenCalledTimes(4);
     expect(fetchMock).toHaveBeenCalledTimes(4);
     await expect(
