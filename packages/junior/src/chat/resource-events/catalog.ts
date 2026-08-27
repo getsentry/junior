@@ -36,8 +36,23 @@ export function hasResourceEventCatalogEntries(
 export function hasPluginResourceEventCatalogEntries(
   catalog: ResourceEventCatalog,
 ): boolean {
-  return Object.keys(catalog).some(
-    (namespace) => namespace !== CORE_RESOURCE_EVENT_NAMESPACE,
+  return Object.keys(pluginResourceEventCatalog(catalog)).length > 0;
+}
+
+/**
+ * Catalog entries that durable event tasks may select.
+ *
+ * Core Workspace snapshot events only wake temporary watches. Snapshot finish
+ * does not run event-task ingest, so those namespaces stay out of create/update
+ * schemas and trigger availability.
+ */
+export function pluginResourceEventCatalog(
+  catalog: ResourceEventCatalog,
+): ResourceEventCatalog {
+  return Object.fromEntries(
+    Object.entries(catalog).filter(
+      ([namespace]) => namespace !== CORE_RESOURCE_EVENT_NAMESPACE,
+    ),
   );
 }
 
