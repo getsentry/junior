@@ -1,6 +1,6 @@
 import type { StateAdapter } from "chat";
 import { z } from "zod";
-import type { Location } from "@/chat/conversations/location";
+import type { Location } from "@sentry/junior-plugin-api";
 import type { ConversationStore } from "@/chat/conversations/store";
 import { openConversationProjection } from "@/chat/conversations/projection";
 import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
@@ -438,10 +438,11 @@ export function createAgentInvocationWorker(agentRunner: AgentRunner) {
           actor: invocation.actor,
           credentialContext: invocation.credentialContext,
           destination: invocation.destination,
-          ...(location ? { location } : undefined),
           destinationVisibility: invocation.destinationVisibility,
           publishExternally: context.publishExternally,
-          source: invocation.source,
+          source: location
+            ? { ...invocation.source, location }
+            : invocation.source,
           surface: "internal",
           // TODO(dcramer): Issues #881 and #883 track a path for child runs to
           // force interactive auth when a delegated tool requires credentials

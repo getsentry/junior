@@ -646,8 +646,7 @@ describe("model handoff composition", () => {
 
   it("delivers only the tool-free assistant message after tool use", async () => {
     observations.progressTool = true;
-    const delivered: Array<{ text: string }> = [];
-    let deliveredMessage: AssistantMessage | undefined;
+    const delivered: AssistantMessage[] = [];
     const conversationId = "local:test:assistant-message-delivery";
 
     const outcome = await executeAgentRun({
@@ -656,16 +655,13 @@ describe("model handoff composition", () => {
       instruction: { text: "Check the details." },
       destination: { platform: "local", conversationId },
       source: createLocalSource(conversationId),
-      delivery: (message) => {
-        const text = getAssistantReplyText(message);
-        if (text) delivered.push({ text });
-        deliveredMessage = message;
-      },
+      delivery: { send: (message) => delivered.push(message) },
     });
 
     expect(outcome.status).toBe("completed");
-    expect(delivered).toEqual([{ text: "Handoff model completed it." }]);
-    expect(deliveredMessage).toMatchObject({
+    const [reply] = delivered;
+    expect(getAssistantReplyText(reply!)).toBe("Handoff model completed it.");
+    expect(reply).toMatchObject({
       role: "assistant",
       stopReason: "stop",
     });
@@ -683,8 +679,10 @@ describe("model handoff composition", () => {
         instruction: { text: "Check the details." },
         destination: { platform: "local", conversationId },
         source: createLocalSource(conversationId),
-        delivery: () => {
-          throw deliveryError;
+        delivery: {
+          send: () => {
+            throw deliveryError;
+          },
         },
         onEvent: async (event) => {
           if (event.type === "status") {
@@ -712,13 +710,15 @@ describe("model handoff composition", () => {
       instruction: { text: "Check the details." },
       destination: { platform: "local" as const, conversationId },
       source: createLocalSource(conversationId),
-      delivery: (message) => {
-        deliveryAttempts += 1;
-        if (deliveryAttempts === 1) {
-          throw new RetryableDeliveryError(new Error("Slack unavailable"));
-        }
-        const text = getAssistantReplyText(message);
-        if (text) delivered.push({ text });
+      delivery: {
+        send: (message) => {
+          deliveryAttempts += 1;
+          if (deliveryAttempts === 1) {
+            throw new RetryableDeliveryError(new Error("Slack unavailable"));
+          }
+          const text = getAssistantReplyText(message);
+          if (text) delivered.push({ text });
+        },
       },
     };
 

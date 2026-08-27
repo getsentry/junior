@@ -21,6 +21,22 @@ const exactNonBlankStringSchema = nonBlankStringSchema.refine(
   (value) => value === value.trim(),
 );
 
+/** One place outside Junior where a Conversation can be delivered. */
+// TODO(dcramer): Add the fields Location needs to identify the exact provider
+// Conversation. For Slack, this includes threadTs.
+export const locationSchema = z
+  .object({
+    /** Junior-owned stable identity for this location. */
+    id: nonBlankStringSchema,
+    /** Provider namespace that owns the provider and tenant identifiers. */
+    provider: nonBlankStringSchema,
+    /** Optional provider-native workspace, account, or tenant scope. */
+    tenantId: nonBlankStringSchema.optional(),
+    /** Provider-native identifier for the container within its tenant scope. */
+    providerId: nonBlankStringSchema,
+  })
+  .strict();
+
 /** Runtime platform names supported by plugin public contracts. */
 export const platformSchema = z.enum(["slack", "local"]);
 
@@ -58,6 +74,7 @@ export const destinationSchema = z.discriminatedUnion("platform", [
 /** Runtime-owned Slack coordinates for the inbound invocation. */
 export const slackSourceSchema = slackAddressSchema
   .extend({
+    location: locationSchema.optional(),
     visibility: sourceVisibilitySchema,
     messageTs: nonBlankStringSchema.optional(),
     threadTs: nonBlankStringSchema.optional(),
@@ -67,6 +84,7 @@ export const slackSourceSchema = slackAddressSchema
 /** Runtime-owned local CLI coordinates for the inbound invocation. */
 export const localSourceSchema = z
   .object({
+    location: locationSchema.optional(),
     platform: z.literal("local"),
     visibility: z.literal("private"),
     conversationId: localConversationIdSchema,
@@ -76,6 +94,7 @@ export const localSourceSchema = z
 /** Runtime-owned dashboard/web coordinates for the inbound invocation. */
 export const webSourceSchema = z
   .object({
+    location: locationSchema.optional(),
     platform: z.literal("web"),
     visibility: sourceVisibilitySchema,
     // Web can continue any existing conversation id, including Slack roots.

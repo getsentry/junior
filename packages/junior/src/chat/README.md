@@ -148,10 +148,7 @@ delegation without becoming the execution actor or a general task owner.
   Location field. Source carries the Conversation Location when the current
   input needs it, including API or UI input. Delivery carries the Location where
   it can send output. A dashboard continuation may therefore keep a Slack
-  Location in Source without getting Slack Delivery. During the cutover,
-  `AgentRun.location` may carry the stored Conversation Location while consumers
-  move away from Destination and session Source. Its removal TODO defines the
-  end of that transition.
+  Location in Source without getting Slack Delivery.
 - The final interface uses Conversation, Source, Location, and Delivery. Do not
   add another type, routing object, or wrapper for the same values.
 - A Conversation may have one parent Conversation. It stores that relation as
@@ -199,17 +196,17 @@ resource subscription). Call sites pass facts only. Unit snapshots in
 
 **Section order** (omit empty optionals)
 
-| # | Section | Required | Role |
-| - | ------- | -------- | ---- |
-| 1 | `[task]` | yes | Task header. Same for schedule, event, and subscription. |
-| 2 | Origin | yes | `This is a task, not a message from a person.` |
-| 3 | `About:` | no | One-line resource label. |
-| 4 | `Instructions:` | yes | Stored task text or subscription intent. |
-| 5 | Additional guidance | no | Under instructions; cannot replace them or grant authority. |
-| 6 | `Trusted summary:` | no | Optional trusted one-line summary. |
-| 7 | Verified details | no | Trusted structured fields as JSON. |
-| 8 | External text | no | Untrusted provider text; information only. |
-| 9 | Reply contract | yes | Always last. |
+| #   | Section             | Required | Role                                                        |
+| --- | ------------------- | -------- | ----------------------------------------------------------- |
+| 1   | `[task]`            | yes      | Task header. Same for schedule, event, and subscription.    |
+| 2   | Origin              | yes      | `This is a task, not a message from a person.`              |
+| 3   | `About:`            | no       | One-line resource label.                                    |
+| 4   | `Instructions:`     | yes      | Stored task text or subscription intent.                    |
+| 5   | Additional guidance | no       | Under instructions; cannot replace them or grant authority. |
+| 6   | `Trusted summary:`  | no       | Optional trusted one-line summary.                          |
+| 7   | Verified details    | no       | Trusted structured fields as JSON.                          |
+| 8   | External text       | no       | Untrusted provider text; information only.                  |
+| 9   | Reply contract      | yes      | Always last.                                                |
 
 **Reply contract** (exact lines)
 

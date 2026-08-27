@@ -408,14 +408,16 @@ describe("agent invocation conversation work", () => {
         actor: slackInvocationInput.actor,
         destination: slackDestination,
         destinationVisibility: "private",
-        location: {
-          id: expect.any(String),
-          provider: "slack",
-          tenantId: "T123",
-          providerId: "C123",
-        },
         publishExternally: false,
-        source: slackInvocationInput.source,
+        source: {
+          ...slackInvocationInput.source,
+          location: {
+            id: expect.any(String),
+            provider: "slack",
+            tenantId: "T123",
+            providerId: "C123",
+          },
+        },
         surface: "internal",
         runId: created.invocationId,
       });
@@ -604,7 +606,7 @@ describe("agent invocation conversation work", () => {
         actor: invocationInput.actor,
         conversationId: created.childConversationId,
         destination,
-        piMessages: ([
+        piMessages: [
           {
             role: "user",
             content: [{ type: "text", text: invocationInput.input }],
@@ -632,7 +634,7 @@ describe("agent invocation conversation work", () => {
             role: "assistant",
             content: [{ type: "text", text: "Recovered visible result" }],
           },
-        ] as PiMessage[]),
+        ] as PiMessage[],
         turnId: getAgentInvocationTurnId(created.invocationId),
         sliceId: 1,
         source: invocationInput.source,

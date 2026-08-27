@@ -1,13 +1,13 @@
 /** Input for one Run through Junior's agent. */
 import type {
   Destination,
+  Location,
   ReplyAttribution,
   Source,
   SystemActor,
 } from "@sentry/junior-plugin-api";
 import type { LocationConfigurationService } from "@/chat/configuration/types";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
-import type { Location } from "@/chat/conversations/location";
 import type { CredentialContext } from "@/chat/credentials/context";
 import type { PiMessage } from "@/chat/pi/messages";
 import type { Actor } from "@/chat/actor";
@@ -128,7 +128,12 @@ export type AgentRunState = {
  * The runner must commit the preceding agent boundary before invoking this
  * port; the accepted reply transaction appends only this message.
  */
-export type AgentDelivery = (message: AssistantMessage) => void | Promise<void>;
+export interface AgentDelivery {
+  /** Location where this capability can send output, when outside Junior. */
+  location?: Location;
+  /** Send one accepted assistant message. */
+  send(message: AssistantMessage): void | Promise<void>;
+}
 
 /** Resume the agent turn after a transient or ambiguous delivery failure. */
 export class RetryableDeliveryError extends Error {
@@ -210,17 +215,14 @@ export type AgentRun = {
   /** Credential authority projected from actor (plus optional subject). */
   credentialContext?: CredentialContext;
   source: Source;
-  /**
-   * Transitional Conversation Location for this Run.
-   * TODO(dcramer): Remove top-level Location, Destination, and
-   * publishExternally after Source and Delivery contain Location across new,
-   * resumed, and child Runs.
-   */
-  location?: Location;
+  // TODO(dcramer): Remove AgentRun.destination after tool side effects use
+  // feature-owned targets and place context comes from Source or Delivery.
   destination: Destination;
-  /** When true, also publish assistant output to the conversation destination. */
+  // TODO(dcramer): Remove AgentRun.publishExternally after each provider builds
+  // the correct Delivery before every new or resumed Run.
   publishExternally?: boolean;
-  /** Confirmed visibility of the destination where this run is delivered. */
+  // TODO(dcramer): Remove AgentRun.destinationVisibility after privacy reads
+  // the Conversation visibility at its owning boundary.
   destinationVisibility?: ConversationPrivacy;
   surface?: AgentTurnSurface;
   dispatch?: AgentDispatch;

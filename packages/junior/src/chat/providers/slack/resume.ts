@@ -654,7 +654,13 @@ async function resumeSlackTurnInContext(
       deliveryState.conversation,
       sessionId,
     );
-    const run = buildResumedRun(runArgs, status, deliverAssistantMessage);
+    const run = buildResumedRun(runArgs, status, {
+      ...(runArgs.run?.publishExternally !== false &&
+      runArgs.run?.source.location
+        ? { location: runArgs.run.source.location }
+        : undefined),
+      send: deliverAssistantMessage,
+    });
     if (runArgs.inputMessageIds?.length) {
       await turnLifecycle.start({
         conversationId: runArgs.conversationId,

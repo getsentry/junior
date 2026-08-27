@@ -253,13 +253,22 @@ describe("paused turn Slack integration", () => {
         userId: "U123",
       },
       destination: SLACK_DESTINATION,
-      location: {
-        provider: "slack",
-        tenantId: "T123",
-        providerId: "C123",
-      },
       publishExternally: true,
-      source: storedSource,
+      source: {
+        ...storedSource,
+        location: {
+          provider: "slack",
+          tenantId: "T123",
+          providerId: "C123",
+        },
+      },
+      delivery: {
+        location: {
+          provider: "slack",
+          tenantId: "T123",
+          providerId: "C123",
+        },
+      },
       toolChannelId: "C123",
       state: expect.objectContaining({
         sandboxRef: undefined,

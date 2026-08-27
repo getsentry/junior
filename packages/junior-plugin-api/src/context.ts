@@ -3,6 +3,7 @@ import type { ZodTypeAny } from "zod";
 import {
   destinationSchema,
   identitySchema,
+  locationSchema,
   webActorSchema,
   localActorSchema,
   platformSchema,
@@ -23,6 +24,8 @@ export type SystemActor = z.output<typeof systemActorSchema>;
 export type Identity = z.output<typeof identitySchema>;
 export type User = z.output<typeof userSchema>;
 export type Source = z.output<typeof sourceSchema>;
+/** Validated Location associated with a Conversation. */
+export type Location = z.output<typeof locationSchema>;
 export type SlackSource = Extract<Source, { platform: "slack" }>;
 export type LocalSource = Extract<Source, { platform: "local" }>;
 export type WebSource = Extract<Source, { platform: "web" }>;

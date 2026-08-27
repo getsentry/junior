@@ -1,7 +1,6 @@
-import type { Destination, Source } from "@sentry/junior-plugin-api";
+import type { Destination, Location, Source } from "@sentry/junior-plugin-api";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import type { StoredSlackActor } from "@/chat/actor";
-import type { Location } from "@/chat/conversations/location";
 import type { SessionSource } from "@/chat/source";
 import type { AgentTurnUsage } from "@/chat/usage";
 
