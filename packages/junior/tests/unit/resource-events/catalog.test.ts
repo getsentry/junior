@@ -79,7 +79,7 @@ describe("resource event catalog", () => {
           WORKSPACE_SNAPSHOT_FAILED_EVENT,
         ],
       }),
-    ).toThrow();
+    ).toThrow(/Invalid input|Invalid option|Invalid enum value|No resource event namespaces/);
 
     expect(() =>
       requireSupportedEventTaskTrigger(catalog, {
