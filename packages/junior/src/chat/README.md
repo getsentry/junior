@@ -49,8 +49,8 @@ with `publishExternally: false`. Continues keep the conversation destination
 - `event-tasks/`: durable instructions matched to normalized resource events.
 - `scheduled-tasks/`: durable scheduled instructions, authoring tools, and
   heartbeat dispatch.
-- `task-input.ts` / `task-input.md`: shared agent input for tasks (from a
-  schedule, event, or resource subscription) and the prompt section outline.
+- `task-input.ts`: shared agent input for tasks (from a schedule, event, or
+  resource subscription). Section outline lives under **Task agent input** below.
 - `tasks/`: signed-in user projection across scheduled and event tasks.
 - `agent/` and `pi/`: model execution and Pi state conversion.
 - `services/`: consumer-owned domain decisions.
@@ -162,6 +162,54 @@ delegation without becoming the execution actor or a general task owner.
   credential bindings, plus bounded user, assistant, tool-call, and tool-result
   evidence selected with the Codex Guardian transcript rules. It cannot override
   deterministic context checks, and unavailable review fails closed.
+
+## Task agent input
+
+`task-input.ts` owns agent input for every task run (schedule, event, or
+resource subscription). Call sites pass facts only. Unit snapshots in
+`tests/unit/chat/task-input.test.ts` are authoritative for exact prose.
+
+**Goals**
+
+- Mark the turn as a **task**, not a person message.
+- Put the **job** before event payload.
+- Keep event data as **facts**, never as new instructions.
+- End with one **reply contract**. Silence is `[[NO_REPLY]]` from `no-reply.ts`,
+  not vague “do not reply” prose.
+- Stay short. Prefer one clear rule over stacked warnings.
+
+**Section order** (omit empty optionals)
+
+| # | Section | Required | Role |
+| - | ------- | -------- | ---- |
+| 1 | `[task]` | yes | Wake header. Not a separate product kind per source. |
+| 2 | Origin | yes | `This is a task, not a message from a person.` |
+| 3 | `Source:` | no | `schedule` / `event` / `resource subscription` only. |
+| 4 | `About:` | no | One-line resource label. |
+| 5 | `Instructions:` | yes | Stored task text or subscription intent. |
+| 6 | Additional guidance | no | Under instructions; cannot replace them or grant authority. |
+| 7 | `What changed:` | no | Trusted event summary (not `Summary:`). |
+| 8 | Verified details | no | Trusted structured fields as JSON. |
+| 9 | External text | no | Untrusted provider text; information only. |
+| 10 | Reply contract | yes | Always last. |
+
+**Reply contract** (exact lines)
+
+```text
+When you reply, follow any reply format in the instructions.
+If no visible reply is needed, make the final message exactly [[NO_REPLY]].
+Otherwise briefly summarize what you acted on and what you did or need next.
+```
+
+Instruction reply format wins when present. Default visible reply is a short
+status. Human destination footers (`Event task · …`, `Scheduled task · …`) stay
+on `replyAttribution`; they are not part of this agent-input contract.
+
+When the outline changes: update this section, `task-input.ts`, and the unit
+snapshots together. Do not restate the outline in call-site prompts.
+
+First-class delivery mode on the task row (`notify` vs silent as data) is out of
+scope here; track product alignment separately.
 
 Follow `../../../../policies/context-bound-systems.md`,
 `../../../../policies/provider-boundaries.md`, and the feature READMEs in
