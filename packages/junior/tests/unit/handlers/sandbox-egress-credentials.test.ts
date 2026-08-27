@@ -12,6 +12,8 @@ const {
   issuePluginCredential,
   issueProviderCredentialLease,
   getStateAdapter,
+  getUserTokenMock,
+  createUserTokenStore,
 } = vi.hoisted(() => ({
   getOAuthConfigMock: vi.fn(),
   getProvidersMock: vi.fn(() => [
@@ -26,6 +28,10 @@ const {
   issuePluginCredential: vi.fn(),
   issueProviderCredentialLease: vi.fn(),
   getStateAdapter: vi.fn(),
+  getUserTokenMock: vi.fn(async () => undefined),
+  createUserTokenStore: vi.fn(() => ({
+    get: getUserTokenMock,
+  })),
 }));
 
 vi.mock("@/chat/plugins/catalog-runtime", () => ({
@@ -40,7 +46,7 @@ vi.mock("@/chat/plugins/credential-hooks", () => ({
   issuePluginCredential,
 }));
 vi.mock("@/chat/capabilities/factory", () => ({
-  createUserTokenStore: vi.fn(() => ({})),
+  createUserTokenStore,
   issueProviderCredentialLease,
 }));
 vi.mock("@/chat/state/adapter", () => ({ getStateAdapter }));
@@ -241,6 +247,73 @@ describe("sandboxEgressCredentialLease — credential error normalization", () =
   it("keeps user grants isolated by actor", async () => {
     hasEgressCredentialHooks.mockReturnValue(true);
     issuePluginCredential.mockClear();
+    getUserTokenMock.mockReset();
+    getUserTokenMock.mockImplementation(async (userId: string) => ({
+      accessToken: userId === "U123" ? "user-token-u123" : "user-token-u999",
+      refreshToken: "refresh",
+      expiresAt: Date.now() + 30 * 60_000,
+    }));
+    const state = new Map<string, unknown>();
+    const stateStub = {
+      connect: vi.fn(),
+      get: vi.fn((key: string) => state.get(key)),
+      set: vi.fn((key: string, value: unknown) => state.set(key, value)),
+      delete: vi.fn((key: string) => state.delete(key)),
+    };
+    getStateAdapter.mockReturnValue(stateStub);
+    issuePluginCredential.mockImplementation(
+      async (input: { actor: { type?: string; userId?: string } }) => ({
+        type: "lease",
+        lease: {
+          expiresAt: new Date(Date.now() + 30 * 60_000).toISOString(),
+          headerTransforms: [
+            {
+              domain: "sentry.io",
+              headers: {
+                Authorization: `Bearer ${
+                  input.actor.userId === "U999"
+                    ? "user-token-u999"
+                    : "user-token-u123"
+                }`,
+              },
+            },
+          ],
+        },
+      }),
+    );
+    const grant = {
+      grant: {
+        name: "user-write",
+        access: "write" as const,
+      },
+      source: "plugin" as const,
+    };
+    const otherActor = {
+      credentials: { actor: { type: "user" as const, userId: "U999" } },
+      egressId: EGRESS_ID,
+      expiresAtMs: Date.now() + 60_000,
+      contextId: "ctx-other-user",
+    };
+
+    await sandboxEgressCredentialLease(PROVIDER, grant, credentialContext());
+    await sandboxEgressCredentialLease(PROVIDER, grant, otherActor);
+
+    expect(issuePluginCredential).toHaveBeenCalledTimes(2);
+    expect(stateStub.set.mock.calls.map(([key]) => key)).toEqual([
+      "sandbox-egress-lease:sentry:user-write:user:U123",
+      "sandbox-egress-lease:sentry:user-write:user:U999",
+    ]);
+  });
+
+  it("reuses a user grant only while the live token still matches", async () => {
+    hasEgressCredentialHooks.mockReturnValue(true);
+    issuePluginCredential.mockClear();
+    getUserTokenMock.mockReset();
+    getUserTokenMock.mockResolvedValue({
+      accessToken: "user-token",
+      refreshToken: "refresh",
+      expiresAt: Date.now() + 30 * 60_000,
+    });
     const state = new Map<string, unknown>();
     const stateStub = {
       connect: vi.fn(),
@@ -268,26 +341,56 @@ describe("sandboxEgressCredentialLease — credential error normalization", () =
       },
       source: "plugin" as const,
     };
-    const otherActor = {
-      credentials: { actor: { type: "user" as const, userId: "U999" } },
-      egressId: EGRESS_ID,
-      expiresAtMs: Date.now() + 60_000,
-      contextId: "ctx-other-user",
-    };
 
     await sandboxEgressCredentialLease(PROVIDER, grant, credentialContext());
-    await sandboxEgressCredentialLease(PROVIDER, grant, otherActor);
+    await sandboxEgressCredentialLease(PROVIDER, grant, credentialContext());
+    expect(issuePluginCredential).toHaveBeenCalledTimes(1);
 
+    getUserTokenMock.mockResolvedValue(undefined);
+    await sandboxEgressCredentialLease(PROVIDER, grant, credentialContext());
     expect(issuePluginCredential).toHaveBeenCalledTimes(2);
-    expect(stateStub.set.mock.calls.map(([key]) => key)).toEqual([
+    expect(stateStub.delete).toHaveBeenCalledWith(
       "sandbox-egress-lease:sentry:user-write:user:U123",
-      "sandbox-egress-lease:sentry:user-write:user:U999",
-    ]);
+    );
+
+    getUserTokenMock.mockResolvedValue({
+      accessToken: "user-token",
+      refreshToken: "refresh",
+      expiresAt: Date.now() - 1,
+    });
+    await sandboxEgressCredentialLease(PROVIDER, grant, credentialContext());
+    expect(issuePluginCredential).toHaveBeenCalledTimes(3);
+
+    getUserTokenMock.mockResolvedValue({
+      accessToken: "rotated-token",
+      refreshToken: "refresh",
+      expiresAt: Date.now() + 30 * 60_000,
+    });
+    issuePluginCredential.mockResolvedValue({
+      type: "lease",
+      lease: {
+        expiresAt: new Date(Date.now() + 30 * 60_000).toISOString(),
+        headerTransforms: [
+          {
+            domain: "sentry.io",
+            headers: { Authorization: "Bearer rotated-token" },
+          },
+        ],
+      },
+    });
+    await sandboxEgressCredentialLease(PROVIDER, grant, credentialContext());
+    expect(issuePluginCredential).toHaveBeenCalledTimes(4);
   });
 
   it("keeps user grants isolated by delegated subject on system runs", async () => {
     hasEgressCredentialHooks.mockReturnValue(true);
     issuePluginCredential.mockClear();
+    getUserTokenMock.mockReset();
+    getUserTokenMock.mockImplementation(async (userId: string) => ({
+      accessToken: userId === "U123" ? "user-token-u123" : "user-token-u999",
+      refreshToken: "refresh",
+      expiresAt: Date.now() + 30 * 60_000,
+    }));
     const state = new Map<string, unknown>();
     const stateStub = {
       connect: vi.fn(),
@@ -296,18 +399,28 @@ describe("sandboxEgressCredentialLease — credential error normalization", () =
       delete: vi.fn((key: string) => state.delete(key)),
     };
     getStateAdapter.mockReturnValue(stateStub);
-    issuePluginCredential.mockResolvedValue({
-      type: "lease",
-      lease: {
-        expiresAt: new Date(Date.now() + 30 * 60_000).toISOString(),
-        headerTransforms: [
-          {
-            domain: "sentry.io",
-            headers: { Authorization: "Bearer user-token" },
-          },
-        ],
-      },
-    });
+    issuePluginCredential.mockImplementation(
+      async (input: {
+        credentialSubject?: { userId?: string };
+      }) => ({
+        type: "lease",
+        lease: {
+          expiresAt: new Date(Date.now() + 30 * 60_000).toISOString(),
+          headerTransforms: [
+            {
+              domain: "sentry.io",
+              headers: {
+                Authorization: `Bearer ${
+                  input.credentialSubject?.userId === "U999"
+                    ? "user-token-u999"
+                    : "user-token-u123"
+                }`,
+              },
+            },
+          ],
+        },
+      }),
+    );
     const grant = {
       grant: {
         name: "user-write",

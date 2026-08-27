@@ -1,8 +1,10 @@
+import { timingSafeEqual } from "node:crypto";
 import {
   createUserTokenStore,
   issueProviderCredentialLease,
 } from "@/chat/capabilities/factory";
 import { CredentialUnavailableError } from "@/chat/credentials/broker";
+import { credentialUserSubjectId } from "@/chat/credentials/context";
 import type {
   PluginAuthorization,
   PluginGrant,
@@ -18,6 +20,7 @@ import {
   resolveSandboxEgressProviderForHost,
 } from "@/chat/sandbox/egress/policy";
 import {
+  clearSandboxEgressCredentialLease,
   getSandboxEgressCredentialLease,
   setSandboxEgressCredentialLease,
   type SandboxEgressCredentialContext,
@@ -128,6 +131,88 @@ function assertLeaseTransformsOwnedByProvider(
   }
 }
 
+/** Match the broker refresh buffer so a near-expiry token cannot stay cached. */
+const USER_TOKEN_REFRESH_BUFFER_MS = 5 * 60 * 1000;
+
+function isSharedInstallationGrant(
+  grant: Pick<PluginGrant, "name">,
+): boolean {
+  return grant.name.startsWith("installation-");
+}
+
+function readAuthorizationHeader(
+  headers: Record<string, string>,
+): string | undefined {
+  for (const [key, value] of Object.entries(headers)) {
+    if (key.toLowerCase() === "authorization") {
+      const trimmed = value.trim();
+      return trimmed.length > 0 ? trimmed : undefined;
+    }
+  }
+  return undefined;
+}
+
+function authorizationValuesMatch(
+  left: string,
+  right: string,
+): boolean {
+  const leftBuffer = Buffer.from(left);
+  const rightBuffer = Buffer.from(right);
+  return (
+    leftBuffer.length === rightBuffer.length &&
+    timingSafeEqual(leftBuffer, rightBuffer)
+  );
+}
+
+function leaseCarriesAccessToken(
+  lease: SandboxEgressCredentialLease,
+  accessToken: string,
+): boolean {
+  const expected = `Bearer ${accessToken}`;
+  return lease.headerTransforms.some((transform) => {
+    const authorization = readAuthorizationHeader(transform.headers);
+    return (
+      authorization !== undefined &&
+      authorizationValuesMatch(authorization, expected)
+    );
+  });
+}
+
+/**
+ * Keep a cached user-bound lease only while the live token still matches it.
+ *
+ * Installation grants stay TTL-only. User-bound grants re-check the token store
+ * so delete, rotate, expire, and harness seed cannot keep injecting a stale
+ * bearer from the host cache.
+ */
+async function cachedLeaseStillMatchesLiveCredentials(input: {
+  context: SandboxEgressCredentialContext;
+  lease: SandboxEgressCredentialLease;
+  provider: string;
+}): Promise<boolean> {
+  if (isSharedInstallationGrant(input.lease.grant)) {
+    return true;
+  }
+
+  const userId = credentialUserSubjectId(input.context.credentials);
+  if (!userId) {
+    // System/env-backed grants have no token-store fingerprint to check.
+    return true;
+  }
+
+  const stored = await createUserTokenStore().get(userId, input.provider);
+  if (!stored) {
+    return false;
+  }
+  if (
+    stored.expiresAt !== undefined &&
+    stored.expiresAt - Date.now() < USER_TOKEN_REFRESH_BUFFER_MS
+  ) {
+    return false;
+  }
+  return leaseCarriesAccessToken(input.lease, stored.accessToken);
+}
+
 /**
  * Select the grant needed for one outbound request.
  *
@@ -178,9 +263,9 @@ export function authorizationForSandboxEgressGrant(
 /**
  * Return cached or newly issued credential header transforms for a selected grant.
  *
- * Leases are cached on the host by provider grant, validated against
- * provider-owned domains, and reused until the provider lease is near expiry.
- * Sandbox context only authorizes the hop.
+ * Installation grants reuse the shared host lease until near expiry. User-bound
+ * grants may reuse an actor/subject lease only while the live token still matches
+ * the cached bearer. Sandbox context only authorizes the hop.
  */
 export async function sandboxEgressCredentialLease(
   provider: string,
@@ -199,10 +284,19 @@ export async function sandboxEgressCredentialLease(
         `Cached credential lease for ${provider}/${grant.name} has ${cached.grant.access} access, but ${grant.access} was selected`,
       );
     }
-    return {
-      ...cached,
-      grant,
-    };
+    if (
+      await cachedLeaseStillMatchesLiveCredentials({
+        context,
+        lease: cached,
+        provider,
+      })
+    ) {
+      return {
+        ...cached,
+        grant,
+      };
+    }
+    await clearSandboxEgressCredentialLease(provider, grant, context);
   }
 
   let lease: {

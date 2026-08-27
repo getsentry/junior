@@ -52,7 +52,9 @@ vi.mock("@/chat/plugins/catalog-runtime", () => ({
 }));
 
 vi.mock("@/chat/capabilities/factory", () => ({
-  createUserTokenStore: () => ({ kind: "user-token-store" }),
+  // No live user tokens in this composition suite: user-bound host leases
+  // must re-issue from the broker mock after cache-hit validation.
+  createUserTokenStore: () => ({ get: async () => undefined }),
   issueProviderCredentialLease: issueProviderCredentialLeaseMock,
 }));
 
@@ -674,7 +676,7 @@ describe("sandbox egress proxy composition", () => {
     });
   });
 
-  it("reuses cached credential leases across renewed contexts for the same actor", async () => {
+  it("re-issues user-bound leases across renewed contexts without a live token match", async () => {
     setSandboxEgressUserActor();
     issueProviderCredentialLeaseMock
       .mockResolvedValueOnce({
@@ -721,10 +723,10 @@ describe("sandbox egress proxy composition", () => {
       fetchMock as typeof fetch,
     );
     await expect(secondResponse.text()).resolves.toBe(
-      "Bearer token-first-session",
+      "Bearer token-second-session",
     );
 
-    expect(issueProviderCredentialLeaseMock).toHaveBeenCalledTimes(1);
+    expect(issueProviderCredentialLeaseMock).toHaveBeenCalledTimes(2);
   });
 
   it("retries once on upstream 403 and recovers or records permission denied", async () => {
@@ -778,8 +780,8 @@ describe("sandbox egress proxy composition", () => {
     const body = await persistent.text();
     expect(body).toBe("Permission denied for this organization");
     expect(body).not.toContain("junior-auth-required");
-    // Second hop reuses the recovered lease, then retries once after 403.
-    expect(issueProviderCredentialLeaseMock).toHaveBeenCalledTimes(3);
+    // Second hop cannot trust the host lease without a live token match.
+    expect(issueProviderCredentialLeaseMock).toHaveBeenCalledTimes(4);
     expect(fetchMock).toHaveBeenCalledTimes(4);
     await expect(
       consumeSandboxEgressPermissionDeniedSignal(EGRESS_ID),
