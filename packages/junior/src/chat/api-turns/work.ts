@@ -11,7 +11,12 @@ import {
 } from "@sentry/junior-plugin-api";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
-import type { LocalActor, WebActor } from "@/chat/actor";
+import {
+  createActor,
+  type LocalActor,
+  type StoredSlackActor,
+  type WebActor,
+} from "@/chat/actor";
 import type { ConversationStore } from "@/chat/conversations/store";
 import { loadProjection } from "@/chat/conversations/projection";
 import {
@@ -73,7 +78,6 @@ import {
   scheduleSessionCompletedPluginTasks,
 } from "@/chat/plugins/task-runner";
 import type { SandboxRef } from "@/chat/sandbox/ref";
-import type { StoredSlackActor } from "@/chat/actor";
 import {
   createWebAuthorization,
   deleteWebAuthorization,
@@ -238,19 +242,6 @@ export function webActorFromEmail(
     ...(profile?.fullName ? { fullName: profile.fullName } : undefined),
     ...(profile?.userName ? { userName: profile.userName } : undefined),
   };
-}
-
-function actorFromStoredConversation(
-  stored?: StoredSlackActor,
-): WebActor | undefined {
-  const email = stored?.email?.trim().toLowerCase();
-  if (!email) {
-    return undefined;
-  }
-  return webActorFromEmail(
-    email,
-    stored?.fullName ? { fullName: stored.fullName } : undefined,
-  );
 }
 
 /** Build one API mailbox entry with conversation-only publish. */
@@ -516,7 +507,6 @@ export function createApiTurnWorker(
       );
     } else {
       turnId = resolved.turnId;
-      actor = actorFromStoredConversation(storedConversation?.actor);
     }
 
     const persisted = await getPersistedThreadState(context.conversationId);
@@ -532,11 +522,19 @@ export function createApiTurnWorker(
           `Unable to locate the persisted user message for Turn "${turnId}"`,
         );
       }
-      // Empty resume wakes lose mailbox kind; rebuild identity from the turn input.
+      // Empty resume wakes lose mailbox kind; restore the Actor from the Turn input.
       if (isResourceEventConversationMessage(userMessage)) {
         isResourceEvent = true;
         actor = localResourceEventActor();
         source = sourceFor(true);
+      } else {
+        const resumedActor = createActor(userMessage.author, {
+          platform: "web",
+          userId: userMessage.author?.userId,
+        });
+        if (resumedActor?.platform === "web") {
+          actor = resumedActor;
+        }
       }
       userMessageId = userMessage.id;
       text = userMessage.text;

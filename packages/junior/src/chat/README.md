@@ -131,8 +131,10 @@ delegation without becoming the execution actor or a general task owner.
   after delivery plus steering may still park so steered work can continue.
 - Unexpected failures propagate to the boundary that owns capture and fallback
   delivery.
-- Actor, execution destination, conversation, and credential context remain
-  explicit across asynchronous boundaries. A destinationless child
+- Source, Actor, Location, Destination, `publishExternally`, and credential
+  context remain explicit and independent across asynchronous boundaries.
+  Provider fields may reach the agent or its tools when needed. They do not
+  select another runtime or grant provider delivery. A destinationless child
   conversation receives its bounded execution destination from its durable
   agent invocation.
 - External publish is controlled per turn via `publishExternally`. Slack
