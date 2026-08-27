@@ -5,11 +5,7 @@ import {
   isSandboxUnavailableError,
   wrapSandboxSetupError,
 } from "@/chat/sandbox/errors";
-import {
-  buildWorkspaceSnapshotNotReadyResponse,
-  getWorkspaceSnapshotNotReadyUserMessage,
-  WorkspaceSnapshotNotReadyError,
-} from "@/chat/sandbox/snapshot/not-ready-error";
+import { WorkspaceSnapshotNotReadyError } from "@/chat/sandbox/snapshot/not-ready-error";
 
 describe("isSandboxUnavailableError", () => {
   it("treats an invalid sandbox session token as unavailable", () => {
@@ -67,9 +63,12 @@ describe("isSandboxApiTransientError", () => {
 describe("wrapSandboxSetupError", () => {
   it("preserves Workspace snapshot not-ready errors instead of wrapping them", () => {
     const notReady = new WorkspaceSnapshotNotReadyError("sentry-docs");
-    const wrapped = new Error("sandbox setup failed (Workspace sentry-docs snapshot is not ready)", {
-      cause: notReady,
-    });
+    const wrapped = new Error(
+      "sandbox setup failed (Workspace sentry-docs snapshot is not ready)",
+      {
+        cause: notReady,
+      },
+    );
 
     expect(wrapSandboxSetupError(notReady)).toBe(notReady);
     expect(wrapSandboxSetupError(wrapped)).toBe(notReady);
@@ -82,19 +81,5 @@ describe("wrapSandboxSetupError", () => {
     expect(wrapped).not.toBe(failure);
     expect(wrapped.message).toBe("sandbox setup failed (disk full)");
     expect(wrapped.cause).toBe(failure);
-  });
-});
-
-describe("workspace snapshot not-ready user copy", () => {
-  it("uses one plain message for tools and turn replies", () => {
-    const notReady = new WorkspaceSnapshotNotReadyError("sentry-docs");
-    const wrapped = new Error("sandbox setup failed", { cause: notReady });
-
-    expect(getWorkspaceSnapshotNotReadyUserMessage(wrapped)).toBe(
-      "The sentry-docs workspace is still preparing its sandbox. Wait for that preparation to finish, then try again.",
-    );
-    expect(buildWorkspaceSnapshotNotReadyResponse(wrapped, "evt_1")).toBe(
-      "The sentry-docs workspace is still preparing its sandbox. Wait for that preparation to finish, then try again. Reference: `event_id=evt_1`.",
-    );
   });
 });

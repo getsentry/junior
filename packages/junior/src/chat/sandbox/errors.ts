@@ -1,9 +1,6 @@
 import { setSpanAttributes, setSpanStatus } from "@/chat/logging";
 import { extractHttpErrorDetails } from "@/chat/sandbox/http-error-details";
-import {
-  getWorkspaceSnapshotNotReadyError,
-  type WorkspaceSnapshotNotReadyError,
-} from "@/chat/sandbox/snapshot/not-ready-error";
+import { getWorkspaceSnapshotNotReadyError } from "@/chat/sandbox/snapshot/not-ready-error";
 
 const SANDBOX_ERROR_FIELDS = [
   {
@@ -205,10 +202,8 @@ export function isSandboxCommandStreamInterruptedError(
   });
 }
 
-/** Wrap setup failures. Keep WorkspaceSnapshotNotReadyError unchanged. */
-export function wrapSandboxSetupError(
-  error: unknown,
-): Error | WorkspaceSnapshotNotReadyError {
+/** Wrap setup failures. Leave WorkspaceSnapshotNotReadyError unwrapped. */
+export function wrapSandboxSetupError(error: unknown): Error {
   const notReady = getWorkspaceSnapshotNotReadyError(error);
   if (notReady) {
     return notReady;

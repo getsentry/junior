@@ -21,15 +21,12 @@ import {
   isTurnInputCommitLostError,
 } from "@/chat/runtime/turn";
 import {
+  buildTurnFailureResponse,
   logException,
   logWarn,
   withSpan,
   withLogContext,
 } from "@/chat/logging";
-import {
-  buildThrownTurnFailureResponse,
-  getThrownTurnFailureReason,
-} from "@/chat/services/turn-failure-response";
 import { getSlackErrorObservabilityAttributes } from "@/chat/slack/errors";
 import type {
   SubscribedReplyDecision,
@@ -397,7 +394,6 @@ export function createSlackTurnRuntime<
   const failConversationTurn = async (args: {
     eventId: string;
     failureCode: FailConversationTurnInput["failureCode"];
-    failureReason?: FailConversationTurnInput["failureReason"];
     message: Message;
     thread: Thread;
   }): Promise<void> => {
@@ -412,7 +408,6 @@ export function createSlackTurnRuntime<
       createdAtMs: deps.now(),
       eventId: args.eventId,
       failureCode: args.failureCode,
-      ...(args.failureReason ? { failureReason: args.failureReason } : undefined),
       turnId: buildDeterministicTurnId(args.message.id),
     });
   };
@@ -481,16 +476,10 @@ export function createSlackTurnRuntime<
   const postFallbackErrorReplyWithLogging = async (args: {
     thread: Thread;
     eventId: string;
-    error: unknown;
     postFailureEventName: string;
   }): Promise<void> => {
     try {
-      await args.thread.post(
-        buildThrownTurnFailureResponse({
-          error: args.error,
-          eventId: args.eventId,
-        }),
-      );
+      await args.thread.post(buildTurnFailureResponse(args.eventId));
     } catch (postError) {
       logException(postError, args.postFailureEventName, {
         "app.slack.reply_stage": "error_fallback_post",
@@ -816,9 +805,6 @@ export function createSlackTurnRuntime<
         }
         const failureCode =
           classifiedFailure?.failureCode ?? "agent_run_failed";
-        const failureReason =
-          classifiedFailure?.failureReason ??
-          getThrownTurnFailureReason(failureCause);
         if (
           failureCause instanceof SlackActionError &&
           failureCause.code === "read_only_channel"
@@ -833,12 +819,7 @@ export function createSlackTurnRuntime<
         const eventId =
           classifiedFailure?.eventId ??
           withLogContext(failureLogContext, () =>
-            logException(failureCause, "mention.handler.failed", {
-              "app.ai.failure_code": failureCode,
-              ...(failureReason
-                ? { "app.ai.failure_reason": failureReason }
-                : undefined),
-            }),
+            logException(failureCause, "mention.handler.failed"),
           );
         if (!acked && hooks.isFinalAttempt === false) {
           // The mailbox redelivers this message; only the final bounded
@@ -855,7 +836,6 @@ export function createSlackTurnRuntime<
           await failConversationTurn({
             eventId,
             failureCode,
-            ...(failureReason ? { failureReason } : undefined),
             message,
             thread,
           });
@@ -867,7 +847,6 @@ export function createSlackTurnRuntime<
           await postFallbackErrorReplyWithLogging({
             thread,
             eventId,
-            error: failureCause,
             postFailureEventName: "mention.handler.failure_reply_post.failed",
           });
         }
@@ -1169,9 +1148,6 @@ export function createSlackTurnRuntime<
         }
         const failureCode =
           classifiedFailure?.failureCode ?? "agent_run_failed";
-        const failureReason =
-          classifiedFailure?.failureReason ??
-          getThrownTurnFailureReason(failureCause);
         if (
           failureCause instanceof SlackActionError &&
           failureCause.code === "read_only_channel"
@@ -1186,12 +1162,7 @@ export function createSlackTurnRuntime<
         const eventId =
           classifiedFailure?.eventId ??
           withLogContext(failureLogContext, () =>
-            logException(failureCause, "subscribed_message.handler.failed", {
-              "app.ai.failure_code": failureCode,
-              ...(failureReason
-                ? { "app.ai.failure_reason": failureReason }
-                : undefined),
-            }),
+            logException(failureCause, "subscribed_message.handler.failed"),
           );
         if (!acked && hooks.isFinalAttempt === false) {
           // The mailbox redelivers this message; only the final bounded
@@ -1208,7 +1179,6 @@ export function createSlackTurnRuntime<
           await failConversationTurn({
             eventId,
             failureCode,
-            ...(failureReason ? { failureReason } : undefined),
             message,
             thread,
           });
@@ -1220,7 +1190,6 @@ export function createSlackTurnRuntime<
           await postFallbackErrorReplyWithLogging({
             thread,
             eventId,
-            error: failureCause,
             postFailureEventName:
               "subscribed_message.handler.failure_reply_post.failed",
           });

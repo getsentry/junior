@@ -2,10 +2,6 @@ import type { ConversationTurnFailureReason } from "@/chat/conversations/history
 import { buildTurnFailureResponse } from "@/chat/logging";
 import { getInterruptionMarker } from "@/chat/interruption-marker";
 import {
-  buildWorkspaceSnapshotNotReadyResponse,
-  getWorkspaceSnapshotNotReadyError,
-} from "@/chat/sandbox/snapshot/not-ready-error";
-import {
   findProviderError,
   getProviderErrorAttributes,
   getProviderErrorUserMessage,
@@ -58,9 +54,6 @@ export function getTurnFailureReason(
     return undefined;
   }
   if (reply.diagnostics.outcome === "provider_error") {
-    if (getWorkspaceSnapshotNotReadyError(reply.diagnostics.providerError)) {
-      return "workspace_snapshot_not_ready";
-    }
     return findProviderError(reply.diagnostics.providerError)?.kind ?? "unknown";
   }
   if (reply.diagnostics.toolErrorCount > 0) {
@@ -82,20 +75,6 @@ function getFailureCapture(reply: AgentRunResult): {
   eventName: string;
 } {
   if (reply.diagnostics.outcome === "provider_error") {
-    const notReady = getWorkspaceSnapshotNotReadyError(
-      reply.diagnostics.providerError,
-    );
-    if (notReady) {
-      return {
-        eventName: "agent.turn.workspace_snapshot_not_ready",
-        error: notReady,
-        attributes: {
-          "app.workspace.name": notReady.workspaceName,
-          "app.workspace.snapshot.ready": false,
-        },
-        body: "Workspace snapshot was still preparing",
-      };
-    }
     const providerError = findProviderError(reply.diagnostics.providerError);
     return {
       eventName: "agent.turn.provider_error",
@@ -191,19 +170,13 @@ export function finalizeFailedTurnReplyWithEvent(args: {
     args.reply.diagnostics.assistantMessageCount > 0
       ? args.reply.text.trim()
       : "";
-  const workspaceSnapshotMessage = buildWorkspaceSnapshotNotReadyResponse(
-    args.reply.diagnostics.providerError,
-    eventId,
-  );
   const providerUserMessage =
     args.reply.diagnostics.providerError instanceof ProviderError
       ? getProviderErrorUserMessage(args.reply.diagnostics.providerError)
       : "";
-  const failureText =
-    workspaceSnapshotMessage ??
-    (providerUserMessage
-      ? `${providerUserMessage} Reference: \`event_id=${eventId}\`.`
-      : buildTurnFailureResponse(eventId));
+  const failureText = providerUserMessage
+    ? `${providerUserMessage} Reference: \`event_id=${eventId}\`.`
+    : buildTurnFailureResponse(eventId);
 
   return {
     eventId,
@@ -222,25 +195,4 @@ export function finalizeFailedTurnReply(
   args: Parameters<typeof finalizeFailedTurnReplyWithEvent>[0],
 ): AgentRunResult {
   return finalizeFailedTurnReplyWithEvent(args).reply;
-}
-
-/** User-facing reply for an error thrown outside a normal agent result. */
-export function buildThrownTurnFailureResponse(args: {
-  error: unknown;
-  eventId: string;
-}): string {
-  return (
-    buildWorkspaceSnapshotNotReadyResponse(args.error, args.eventId) ??
-    buildTurnFailureResponse(args.eventId)
-  );
-}
-
-/** Failure reason for an error thrown outside a normal agent result. */
-export function getThrownTurnFailureReason(
-  error: unknown,
-): ConversationTurnFailureReason | undefined {
-  if (getWorkspaceSnapshotNotReadyError(error)) {
-    return "workspace_snapshot_not_ready";
-  }
-  return undefined;
 }

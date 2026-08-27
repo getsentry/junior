@@ -119,7 +119,6 @@ import { startActiveTurn } from "@/chat/runtime/turn";
 import {
   finalizeFailedTurnReplyWithEvent,
   getAgentTurnDiagnosticsAttributes,
-  getThrownTurnFailureReason,
 } from "@/chat/services/turn-failure-response";
 import { buildAuthPauseResponse } from "@/chat/services/auth-pause-response";
 import { AuthorizationFlowDisabledError } from "@/chat/services/auth-pause";
@@ -1471,22 +1470,15 @@ export function createSlackTurn(deps: SlackTurnDeps) {
           }
           const failureCode =
             classifiedFailure?.failureCode ?? boundaryFailureCode;
-          const failureReason =
-            classifiedFailure?.failureReason ??
-            getThrownTurnFailureReason(failureCause);
           const failureEventId =
             classifiedFailure?.eventId ??
             logException(failureCause, "slack.turn.execution.failed", {
               "app.ai.failure_code": failureCode,
-              ...(failureReason
-                ? { "app.ai.failure_reason": failureReason }
-                : undefined),
             });
           throw new ConversationTurnBoundaryError({
             cause: failureCause,
             ...(failureEventId ? { eventId: failureEventId } : undefined),
             failureCode,
-            ...(failureReason ? { failureReason } : undefined),
           });
         } finally {
           if (!persistedAtLeastOnce && shouldPersistFailureState) {

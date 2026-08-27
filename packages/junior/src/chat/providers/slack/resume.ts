@@ -25,15 +25,14 @@ import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { AgentRunError, type ExecuteTurn } from "@/chat/runtime/turn-execution";
 import { scheduleSessionCompletedPluginTasks } from "@/chat/plugins/task-runner";
 import {
+  buildTurnFailureResponse,
   logException,
   setTags,
   withLogContext,
   type LogContext,
 } from "@/chat/logging";
 import {
-  buildThrownTurnFailureResponse,
   finalizeFailedTurnReplyWithEvent,
-  getThrownTurnFailureReason,
   requireTurnFailureEventId,
 } from "@/chat/services/turn-failure-response";
 import { getTurnLifecycle } from "@/chat/conversations/turn-lifecycle";
@@ -253,10 +252,7 @@ async function postResumeFailureReply(args: {
     text:
       args.error instanceof TurnSliceLimitExceededError
         ? buildTurnLimitResponse(args.eventId)
-        : buildThrownTurnFailureResponse({
-            error: args.error,
-            eventId: args.eventId,
-          }),
+        : buildTurnFailureResponse(args.eventId),
   });
 }
 
@@ -267,13 +263,7 @@ async function handleResumeFailure(args: {
   resume: ResumeSlackTurnArgs;
 }): Promise<void> {
   const turnLifecycle = getTurnLifecycle();
-  const failureReason = getThrownTurnFailureReason(args.error);
-  const capturedEventId = logException(args.error, args.eventName, {
-    "app.ai.failure_code": args.failureCode,
-    ...(failureReason
-      ? { "app.ai.failure_reason": failureReason }
-      : undefined),
-  });
+  const capturedEventId = logException(args.error, args.eventName);
   const eventId = requireTurnFailureEventId(capturedEventId, args.eventName);
   let failureStatePersistError: unknown;
   try {
@@ -339,7 +329,6 @@ async function handleResumeFailure(args: {
     turnId: args.resume.turnId,
     createdAtMs: Date.now(),
     failureCode: args.failureCode,
-    ...(failureReason ? { failureReason } : undefined),
     eventId,
   });
 }

@@ -1,7 +1,6 @@
 /**
- * Handle for this conversation's current sandbox.
- * Acquire restores `id` first. Only switchWorkspace replaces it.
- * `profileHash` is what this sandbox was built from, not a freshness check.
+ * Current sandbox for this conversation.
+ * Restore `id` first. Only switchWorkspace replaces it.
  */
 export interface SandboxRef {
   id: string;

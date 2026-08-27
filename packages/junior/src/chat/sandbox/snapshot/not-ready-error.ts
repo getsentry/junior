@@ -28,7 +28,7 @@ export function isWorkspaceSnapshotNotReadyError(error: unknown): boolean {
   return getWorkspaceSnapshotNotReadyError(error) !== undefined;
 }
 
-/** Plain user copy for a Workspace that is still preparing. */
+/** Plain copy for a Workspace that is still preparing. */
 export function workspaceSnapshotNotReadyUserMessage(
   error: WorkspaceSnapshotNotReadyError,
 ): string {
@@ -36,22 +36,4 @@ export function workspaceSnapshotNotReadyUserMessage(
     `The ${error.workspaceName} workspace is still preparing its sandbox. ` +
     "Wait for that preparation to finish, then try again."
   );
-}
-
-/** Plain user copy when a not-ready Workspace error is present. */
-export function getWorkspaceSnapshotNotReadyUserMessage(
-  error: unknown,
-): string | undefined {
-  const notReady = getWorkspaceSnapshotNotReadyError(error);
-  return notReady ? workspaceSnapshotNotReadyUserMessage(notReady) : undefined;
-}
-
-/** User-facing turn reply for a still-preparing Workspace. */
-export function buildWorkspaceSnapshotNotReadyResponse(
-  error: unknown,
-  eventId: string,
-): string | undefined {
-  const message = getWorkspaceSnapshotNotReadyUserMessage(error);
-  if (!message) return undefined;
-  return `${message} Reference: \`event_id=${eventId}\`.`;
 }

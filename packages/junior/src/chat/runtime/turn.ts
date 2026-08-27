@@ -1,8 +1,5 @@
 import type { ThreadConversationState } from "@/chat/state/conversation";
-import type {
-  ConversationTurnFailureCode,
-  ConversationTurnFailureReason,
-} from "@/chat/conversations/history";
+import type { ConversationTurnFailureCode } from "@/chat/conversations/history";
 
 export { buildDeterministicTurnId } from "@/chat/state/turn-id";
 
@@ -14,13 +11,11 @@ export { buildDeterministicTurnId } from "@/chat/state/turn-id";
 export class ConversationTurnBoundaryError extends Error {
   readonly eventId?: string;
   readonly failureCode: ConversationTurnFailureCode;
-  readonly failureReason?: ConversationTurnFailureReason;
 
   constructor(args: {
     cause: unknown;
     eventId?: string;
     failureCode: ConversationTurnFailureCode;
-    failureReason?: ConversationTurnFailureReason;
   }) {
     super(
       args.cause instanceof Error ? args.cause.message : String(args.cause),
@@ -31,7 +26,6 @@ export class ConversationTurnBoundaryError extends Error {
     this.name = "ConversationTurnBoundaryError";
     this.eventId = args.eventId;
     this.failureCode = args.failureCode;
-    this.failureReason = args.failureReason;
   }
 }
 
