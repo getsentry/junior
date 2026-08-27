@@ -218,6 +218,42 @@ describe("resolveConversationRouting", () => {
     });
   });
 
+  it("keeps a web session source on a local destination", async () => {
+    const store = conversationStore({
+      get: vi.fn(async () =>
+        conversation({
+          conversationId: "local:web:dashboard",
+          destination: {
+            platform: "local",
+            conversationId: "local:web:dashboard",
+          },
+          sessionSource: {
+            platform: "web",
+            visibility: "public",
+            conversationId: "local:web:dashboard",
+          },
+        }),
+      ),
+    });
+
+    await expect(
+      resolveConversationRouting({
+        conversationId: "local:web:dashboard",
+        conversationStore: store,
+      }),
+    ).resolves.toEqual({
+      destination: {
+        platform: "local",
+        conversationId: "local:web:dashboard",
+      },
+      source: {
+        platform: "web",
+        visibility: "public",
+        conversationId: "local:web:dashboard",
+      },
+    });
+  });
+
   it("returns undefined when no destination can be resolved", async () => {
     const store = conversationStore({
       get: vi.fn(async ({ conversationId }) => {

@@ -177,16 +177,20 @@ export async function resolveConversationRouting(args: {
   }
 
   if (destination.platform === "local") {
+    // Dashboard roots often bind a local destination with a durable web
+    // session source. Keep that identity; only invent local when missing.
+    const localSource =
+      source?.platform === "web" || source?.platform === "local"
+        ? source
+        : {
+            platform: "local" as const,
+            visibility: "private" as const,
+            conversationId: destination.conversationId,
+          };
     return {
       destination,
       ...(locationId ? { locationId } : undefined),
-      source: source?.platform === "local"
-        ? source
-        : {
-            platform: "local",
-            visibility: "private",
-            conversationId: destination.conversationId,
-          },
+      source: localSource,
     };
   }
 
