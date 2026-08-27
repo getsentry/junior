@@ -161,11 +161,11 @@ export function createSearchConversationEventsTool(
         context,
         currentConversationId,
       );
-      // Child conversations inherit the root destination privacy boundary.
+      // A Conversation with a parent uses the root privacy boundary.
       const targetRootConversationId = await resolveRootConversationId(
         conversationStore,
         conversationId,
-        target.lineage?.parentConversationId,
+        target.parentConversationId,
       );
       const targetRoot =
         targetRootConversationId === conversationId
@@ -218,7 +218,7 @@ async function resolveAccessScope(
     ? await resolveRootConversationId(
         conversationStore,
         currentConversationId,
-        current.lineage?.parentConversationId,
+        current.parentConversationId,
       )
     : currentConversationId;
 
@@ -270,10 +270,10 @@ async function resolveRootConversationId(
     if (!parent) {
       return conversationId;
     }
-    if (!parent.lineage?.parentConversationId) {
+    if (!parent.parentConversationId) {
       return parent.conversationId;
     }
-    cursor = parent.lineage.parentConversationId;
+    cursor = parent.parentConversationId;
   }
   return conversationId;
 }

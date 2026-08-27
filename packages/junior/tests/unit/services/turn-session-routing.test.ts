@@ -28,7 +28,7 @@ const SOURCE = {
 function conversation(args: {
   conversationId?: string;
   destination?: Destination;
-  lineage?: { parentConversationId: string };
+  parentConversationId?: string;
   location?: Location;
   sessionSource?: SessionSource;
 }): Conversation {
@@ -40,7 +40,9 @@ function conversation(args: {
     schemaVersion: 1,
     execution: { status: "paused" },
     ...(args.destination ? { destination: args.destination } : undefined),
-    ...(args.lineage ? { lineage: args.lineage } : undefined),
+    ...(args.parentConversationId
+      ? { parentConversationId: args.parentConversationId }
+      : undefined),
     ...(args.location ? { location: args.location } : undefined),
     ...(args.sessionSource ? { sessionSource: args.sessionSource } : undefined),
   };
@@ -108,7 +110,7 @@ describe("resolveConversationRouting", () => {
         if (conversationId === "agent:child") {
           return conversation({
             conversationId: "agent:child",
-            lineage: { parentConversationId: "slack:C123:1712345.0001" },
+            parentConversationId: "slack:C123:1712345.0001",
           });
         }
         if (conversationId === "slack:C123:1712345.0001") {
@@ -273,7 +275,7 @@ describe("resolveConversationRouting", () => {
         if (conversationId === "agent:child") {
           return conversation({
             conversationId: "agent:child",
-            lineage: { parentConversationId: "agent-dispatch:task" },
+            parentConversationId: "agent-dispatch:task",
           });
         }
         if (conversationId === "agent-dispatch:task") {

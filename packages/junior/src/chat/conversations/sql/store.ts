@@ -282,11 +282,7 @@ function conversationFromRow(readRow: ConversationReadRow): Conversation {
       ...(row.executionUsage ? { usage: row.executionUsage } : undefined),
     },
     ...(row.parentConversationId
-      ? {
-          lineage: {
-            parentConversationId: row.parentConversationId,
-          },
-        }
+      ? { parentConversationId: row.parentConversationId }
       : undefined),
     ...(destination ? { destination } : undefined),
     ...(location ? { location } : undefined),
@@ -429,11 +425,10 @@ export class SqlStore implements ConversationStore {
           });
           if (existing) {
             if (
-              existing.lineage?.parentConversationId !==
-              args.parentConversationId
+              existing.parentConversationId !== args.parentConversationId
             ) {
               throw new Error(
-                `Conversation lineage changed for ${args.childConversationId}`,
+                `Conversation parent changed for ${args.childConversationId}`,
               );
             }
             return;
@@ -446,7 +441,7 @@ export class SqlStore implements ConversationStore {
               `Conversation parent is missing for ${args.childConversationId}`,
             );
           }
-          if (parent.lineage) {
+          if (parent.parentConversationId) {
             throw new Error("Recursive agent delegation is not enabled");
           }
           const child: Conversation = {
@@ -455,9 +450,7 @@ export class SqlStore implements ConversationStore {
               nowMs,
               source: args.source,
             }),
-            lineage: {
-              parentConversationId: args.parentConversationId,
-            },
+            parentConversationId: args.parentConversationId,
           };
           await this.upsertConversation({ conversation: child });
         },
@@ -582,7 +575,9 @@ export class SqlStore implements ConversationStore {
           createdAtMs: args.createdAtMs,
           lastActivityAtMs: args.lastActivityAtMs,
           updatedAtMs: args.updatedAtMs,
-          ...(existing?.lineage ? { lineage: existing.lineage } : undefined),
+          ...(existing?.parentConversationId
+            ? { parentConversationId: existing.parentConversationId }
+            : undefined),
           ...(args.channelName ? { channelName: args.channelName } : undefined),
           ...(args.destination ? { destination: args.destination } : undefined),
           ...(args.actor ? { actor: args.actor } : undefined),
@@ -646,7 +641,7 @@ export class SqlStore implements ConversationStore {
         eq(juniorIdentities.id, juniorConversations.actorIdentityId),
       )
       .leftJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
-      // Subagent child conversations are excluded from top-level listings and
+      // Conversations with a parent are excluded from top-level listings and
       // purge with their root on the root's visibility window.
       .where(isNull(juniorConversations.parentConversationId))
       .orderBy(
@@ -778,10 +773,10 @@ export class SqlStore implements ConversationStore {
     conversation: Conversation;
   }): Promise<void> {
     const { conversation } = args;
-    // Root conversations set destination on first write. Children keep no
-    // destination and inherit through parent lineage. Later updates may omit
-    // destination because onConflict keeps the existing destination_id.
-    if (!conversation.lineage && !conversation.destination) {
+    // Root Conversations set Destination on first write. A Conversation with a
+    // parent can omit Destination. Later updates may omit Destination because
+    // onConflict keeps the existing destination_id.
+    if (!conversation.parentConversationId && !conversation.destination) {
       const existing = await this.get({
         conversationId: conversation.conversationId,
       });
@@ -813,11 +808,11 @@ export class SqlStore implements ConversationStore {
           conversation.updatedAtMs,
         )
       : undefined;
-    const rootConversationId = conversation.lineage
+    const rootConversationId = conversation.parentConversationId
       ? sql<string | null>`(
           select parent.root_conversation_id
           from junior_conversations parent
-          where parent.conversation_id = ${conversation.lineage.parentConversationId}
+          where parent.conversation_id = ${conversation.parentConversationId}
         )`
       : conversation.conversationId;
     const rows = await this.executor
@@ -856,8 +851,7 @@ export class SqlStore implements ConversationStore {
           conversation.execution.lastEnqueuedAtMs === undefined
             ? null
             : dateFromMs(conversation.execution.lastEnqueuedAtMs),
-        parentConversationId:
-          conversation.lineage?.parentConversationId ?? null,
+        parentConversationId: conversation.parentConversationId ?? null,
         rootConversationId,
       })
       .onConflictDoUpdate({

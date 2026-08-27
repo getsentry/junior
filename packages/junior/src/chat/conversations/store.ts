@@ -30,11 +30,6 @@ export interface ConversationExecution {
   updatedAtMs?: number;
 }
 
-/** Immutable parent correlation for a child conversation. */
-export interface ConversationLineage {
-  parentConversationId: string;
-}
-
 /**
  * Durable Conversation owned by Junior.
  *
@@ -63,9 +58,8 @@ export interface Conversation {
     usage?: AgentTurnUsage;
   };
   lastActivityAtMs: number;
-  // TODO(dcramer): Flatten this one-field wrapper to parentConversationId
-  // after stored Conversation callers complete the same hard cutover.
-  lineage?: ConversationLineage;
+  /** Immutable parent Conversation. */
+  parentConversationId?: string;
   /** Optional provider coordinates associated with this Conversation. */
   location?: Location;
   // TODO(dcramer): Replace this creation-time Actor projection with the
@@ -99,7 +93,7 @@ export interface Conversation {
 
 /** Persist and read durable conversation metadata for reporting surfaces. */
 export interface ConversationStore {
-  /** Create one destinationless child with immutable parent lineage. */
+  /** Create one Conversation with an immutable parent. */
   createChild(args: {
     childConversationId: string;
     parentConversationId: string;

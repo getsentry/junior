@@ -163,7 +163,7 @@ describe("conversation SQL store", () => {
       ).resolves.toMatchObject({
         conversationId: "child:missing-parent",
         lastActivityAtMs: 1,
-        lineage: { parentConversationId: "parent-without-root" },
+        parentConversationId: "parent-without-root",
       });
     } finally {
       await fixture.close();
