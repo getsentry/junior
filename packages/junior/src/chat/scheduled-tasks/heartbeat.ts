@@ -9,6 +9,7 @@ import {
   getScheduledTaskDispatch,
 } from "@/chat/agent-dispatch/context";
 import { getDispatchConversationId } from "@/chat/agent-dispatch/store";
+import { renderAutomatedTaskInput } from "@/chat/automated-task-input";
 import { getDb } from "@/chat/db";
 import { logInfo } from "@/chat/logging";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
@@ -49,16 +50,10 @@ function singleLineMetadataValue(value: string): string {
 
 /** Render the due scheduled task as plain agent input. */
 function buildDispatchInput(task: ScheduledTask): string {
-  return [
-    "[scheduled task]",
-    "",
-    "This is a scheduled task, not a new message from a person.",
-    "Follow the instructions below.",
-    "If they do not call for action or a reply, do not reply.",
-    "When you reply, follow any reply format in the instructions. Otherwise briefly summarize what you acted on and what you did or need next. Do not narrate instruction conflicts, skills, or templates.",
-    "",
-    `Instructions: ${task.task.text}`,
-  ].join("\n");
+  return renderAutomatedTaskInput({
+    kind: "scheduled_task",
+    instructions: task.task.text,
+  });
 }
 
 function buildDispatchMetadata(args: {

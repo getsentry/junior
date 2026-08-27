@@ -15,7 +15,11 @@ The legacy creator trigger remains during rolling deployment so an old worker ca
 
 Scheduled runs use the core conversation work queue. They preserve `scheduler` as historical dispatch provenance and as the signed task-credential binding label; changing that value would invalidate existing task-scoped credential authority.
 
-The agent input uses plain scheduled-task framing. It states that the task did not start from a new message, gives the instructions, and asks the reply to summarize what Junior acted on and what it did or needs next.
+The agent input uses shared automated-task framing from
+`automated-task-input.ts`. It states that the task did not start from a new
+message, gives the instructions, defers reply format to those instructions, and
+names `[[NO_REPLY]]` as the explicit silent final message when no Slack reply is
+needed.
 
 The heartbeat bounds claims per invocation, reconciles incomplete dispatches before claiming new work, and advances recurring tasks only after their current run reaches a terminal outcome.
 

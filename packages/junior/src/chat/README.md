@@ -49,6 +49,9 @@ with `publishExternally: false`. Continues keep the conversation destination
 - `event-tasks/`: durable instructions matched to normalized resource events.
 - `scheduled-tasks/`: durable scheduled instructions, authoring tools, and
   heartbeat dispatch.
+- `automated-task-input.ts`: shared agent-input framing for scheduled tasks,
+  event tasks, and resource watches, including the explicit `[[NO_REPLY]]`
+  silent-reply contract.
 - `tasks/`: signed-in user projection across scheduled and event tasks.
 - `agent/` and `pi/`: model execution and Pi state conversion.
 - `services/`: consumer-owned domain decisions.

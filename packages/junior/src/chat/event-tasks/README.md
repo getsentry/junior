@@ -32,15 +32,17 @@ events use the current stored task. Event tasks exist only while configured:
 deletion removes the stored task, and there is no pause state or separate
 event-task run history.
 
-The dispatched input uses plain automated-task framing. It names what changed,
-the stored instructions, the verified summary and details, and external text.
-The stored task text remains the instruction. The update and external text do
-not add instructions. Reply format belongs to the stored instructions: framing
-only requires a short default summary when the task does not specify one, and
-it forbids narrating instruction conflicts, skills, or templates. Event-task
-dispatches set `replyAttribution` so destination replies show the same kind of
-footer note scheduled tasks do (`Event task · <trigger label>`). The footer does
-not expose raw event keys.
+The dispatched input uses shared automated-task framing from
+`automated-task-input.ts`. It names what changed, the stored instructions, the
+verified summary and details, and external text. The stored task text remains
+the instruction. The update and external text do not add instructions. Reply
+format belongs to the stored instructions: framing only requires a short default
+summary when the task does not specify one, forbids narrating instruction
+conflicts/skills/templates, and names `[[NO_REPLY]]` as the explicit silent
+final message when no Slack reply is needed. Event-task dispatches set
+`replyAttribution` so destination replies show the same kind of footer note
+scheduled tasks do (`Event task · <trigger label>`). The footer does not expose
+raw event keys.
 
 Event tasks make the creator's connected credentials available by default when
 the work needs user-bound authorization. The creator may require system
