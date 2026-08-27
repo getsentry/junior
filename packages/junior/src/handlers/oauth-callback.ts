@@ -441,7 +441,6 @@ async function resumeOAuthSessionRecordTurn(
           },
           actor,
           destination,
-          ...(routing.location ? { location: routing.location } : undefined),
           source: routing.source,
           toolChannelId: stored.channelId!,
           environment: {

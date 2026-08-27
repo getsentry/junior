@@ -16,7 +16,7 @@ import type {
 } from "@/chat/configuration/types";
 import {
   RetryableDeliveryError,
-  type AgentDelivery,
+  type Delivery,
   type AgentRun,
 } from "@/chat/agent/types";
 import type { AgentRunResult } from "@/chat/services/turn-result";
@@ -336,7 +336,7 @@ async function handleResumeFailure(args: {
 function buildResumedRun(
   args: ResumeSlackTurnArgs,
   statusSession: AssistantStatusSession,
-  delivery: AgentDelivery,
+  delivery: Delivery,
 ): AgentRun {
   const savedRun = args.run;
   if (!savedRun) {
@@ -654,7 +654,13 @@ async function resumeSlackTurnInContext(
       deliveryState.conversation,
       sessionId,
     );
-    const run = buildResumedRun(runArgs, status, deliverAssistantMessage);
+    const run = buildResumedRun(runArgs, status, {
+      ...(runArgs.run?.publishExternally !== false &&
+      runArgs.run?.source.location
+        ? { location: runArgs.run.source.location }
+        : undefined),
+      send: deliverAssistantMessage,
+    });
     if (runArgs.inputMessageIds?.length) {
       await turnLifecycle.start({
         conversationId: runArgs.conversationId,

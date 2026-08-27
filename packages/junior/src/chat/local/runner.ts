@@ -356,7 +356,7 @@ async function runLocalAgentTurnInContext(
             await deps.onToolResult?.(event.report);
           }
         },
-        delivery: deliverAssistantMessage,
+        delivery: { send: deliverAssistantMessage },
         durability: {
           onSandboxRefChanged: async (nextSandboxRef) => {
             sandboxRef = nextSandboxRef;
@@ -544,7 +544,9 @@ async function runLocalAgentTurnInContext(
       createdAtMs: Date.now(),
       ...(modelFailureEventId ? { eventId: modelFailureEventId } : undefined),
       failureCode: "model_execution_failed",
-      ...(modelFailureReason ? { failureReason: modelFailureReason } : undefined),
+      ...(modelFailureReason
+        ? { failureReason: modelFailureReason }
+        : undefined),
       turnId,
     });
   }

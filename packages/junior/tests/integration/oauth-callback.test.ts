@@ -382,12 +382,21 @@ describe("oauth callback integration", () => {
           userId: "U123",
         },
         destination: SLACK_DESTINATION,
-        source: storedSource,
         toolChannelId: "C123",
       }),
     );
     const resumeContext = agentRuns[0]!;
-    expect(resumeContext.source).toEqual(slackSource("1700000000.009"));
+    expect(resumeContext.source).toEqual({
+      ...slackSource("1700000000.009"),
+      location: expect.objectContaining({
+        provider: "slack",
+        providerId: "C123",
+        tenantId: "T123",
+      }),
+    });
+    expect(resumeContext.delivery?.location).toEqual(
+      resumeContext.source.location,
+    );
     expect(resumeContext.instruction.context).not.toContain(
       "list my sentry issues",
     );

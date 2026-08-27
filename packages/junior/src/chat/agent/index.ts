@@ -498,7 +498,9 @@ async function executeAgentRunInPrivacyContext(
       ...(routing.destinationVisibility
         ? { destinationVisibility: routing.destinationVisibility }
         : undefined),
-      ...(routing.dispatch?.id ? { dispatchId: routing.dispatch.id } : undefined),
+      ...(routing.dispatch?.id
+        ? { dispatchId: routing.dispatch.id }
+        : undefined),
       durability,
       recordActiveMcpProviders,
       publishExternally:
@@ -1083,7 +1085,7 @@ async function executeAgentRunInPrivacyContext(
         return;
       }
       try {
-        await delivery(message);
+        await delivery.send(message);
         acceptedToolFreeAssistant = true;
       } catch (error) {
         assistantMessageDeliveryError = new AssistantMessageDeliveryError(
@@ -1637,7 +1639,9 @@ async function executeAgentRunInPrivacyContext(
             : undefined),
           "app.ai.session.conversation_id": conversationId,
           "app.ai.turn.session_id": turnId,
-          ...(currentSliceId ? { "app.ai.turn.slice_id": currentSliceId } : undefined),
+          ...(currentSliceId
+            ? { "app.ai.turn.slice_id": currentSliceId }
+            : undefined),
           ...toGenAiMessagesTraceAttributes("gen_ai.input", inputMessages),
           ...(inputMessagesAttribute
             ? { "gen_ai.input.messages": inputMessagesAttribute }

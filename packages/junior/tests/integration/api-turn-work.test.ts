@@ -689,11 +689,14 @@ describe("Conversation API work", () => {
     expect(agentRuns[0]).toEqual(
       expect.objectContaining({
         destination: expect.objectContaining({ platform: "slack" }),
-        location: storedConversation?.location,
         publishExternally: false,
-        source: expect.objectContaining({ platform: "web" }),
+        source: expect.objectContaining({
+          location: storedConversation?.location,
+          platform: "web",
+        }),
       }),
     );
+    expect(agentRuns[0]?.delivery?.location).toBeUndefined();
 
     const messages = (
       await getConversationEventStore().loadMessageHistory(conversationId)

@@ -87,7 +87,7 @@ export async function deliverAssistantMessagesForTest(
       );
     }
     history.push(message);
-    await run.delivery(message);
+    await run.delivery.send(message);
   }
   return history;
 }

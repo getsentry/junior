@@ -10,13 +10,15 @@ import type {
   SlackDestination,
   Source,
 } from "@sentry/junior-plugin-api";
+import type { Location } from "@/chat/conversations/location";
 import type {
   Conversation,
   ConversationStore,
 } from "@/chat/conversations/store";
-import type { Location } from "@/chat/conversations/location";
 import type { SessionSource } from "@/chat/source";
 
+// TODO(dcramer): Remove TurnSessionRouting and this module after callers read
+// Source, Conversation Location, and provider Delivery from their owners.
 export interface TurnSessionRouting {
   destination: Destination;
   location?: Location;
@@ -115,14 +117,20 @@ export async function resolveConversationRouting(args: {
     return {
       destination,
       ...(location ? { location } : undefined),
-      ...(slackSource ? { source: slackSource } : undefined),
+      ...(slackSource
+        ? {
+            source: location ? { ...slackSource, location } : slackSource,
+          }
+        : undefined),
     };
   }
 
   return {
     destination,
     ...(location ? { location } : undefined),
-    ...(source ? { source } : undefined),
+    ...(source
+      ? { source: location ? { ...source, location } : source }
+      : undefined),
   };
 }
 

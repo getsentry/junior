@@ -509,7 +509,7 @@ describe("mcp oauth callback integration", () => {
           userId: "U123",
         },
         destination: SLACK_DESTINATION,
-        source: storedSource,
+        source: expect.objectContaining(storedSource),
         toolChannelId: "C123",
         state: expect.objectContaining({}),
       }),
@@ -729,7 +729,7 @@ describe("mcp oauth callback integration", () => {
       }),
     );
     const resumeContext = agentRuns[0]!;
-    expect(resumeContext.source).toEqual(slackSource("1700000000.005"));
+    expect(resumeContext.source).toMatchObject(slackSource("1700000000.005"));
     expect(resumeContext.instruction.context).not.toContain(
       "Old MCP context that should not be used.",
     );

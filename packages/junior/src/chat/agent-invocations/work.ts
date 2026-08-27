@@ -398,6 +398,9 @@ export function createAgentInvocationWorker(agentRunner: AgentRunner) {
       ]);
       sandboxRef = getPersistedSandboxState(persisted);
       history = projection.messages;
+      // TODO(dcramer): Remove this parent Location lookup and use
+      // invocation.source after no runnable Agent invocation from before the
+      // Source Location cutover remains.
       location = (
         await getConversationStore().get({
           conversationId: invocation.parentConversationId,
@@ -438,10 +441,11 @@ export function createAgentInvocationWorker(agentRunner: AgentRunner) {
           actor: invocation.actor,
           credentialContext: invocation.credentialContext,
           destination: invocation.destination,
-          ...(location ? { location } : undefined),
           destinationVisibility: invocation.destinationVisibility,
           publishExternally: context.publishExternally,
-          source: invocation.source,
+          source: location
+            ? { ...invocation.source, location }
+            : invocation.source,
           surface: "internal",
           // TODO(dcramer): Issues #881 and #883 track a path for child runs to
           // force interactive auth when a delegated tool requires credentials

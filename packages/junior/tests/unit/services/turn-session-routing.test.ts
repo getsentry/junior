@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { Destination } from "@sentry/junior-plugin-api";
+import type { Destination, Location } from "@sentry/junior-plugin-api";
 import type {
   Conversation,
   ConversationStore,
@@ -9,7 +9,6 @@ import {
   resolveTurnSessionRouting,
 } from "@/chat/services/turn-session-routing";
 import type { SessionSource } from "@/chat/source";
-import type { Location } from "@/chat/conversations/location";
 
 const DESTINATION = {
   platform: "slack",
@@ -142,7 +141,15 @@ describe("resolveConversationRouting", () => {
         tenantId: "T123",
         providerId: "C123",
       },
-      source: SOURCE,
+      source: {
+        ...SOURCE,
+        location: {
+          id: "location-123",
+          provider: "slack",
+          tenantId: "T123",
+          providerId: "C123",
+        },
+      },
     });
   });
 
