@@ -25,7 +25,7 @@ export type ApiTurnMailboxMetadata = z.output<
   typeof apiTurnMailboxMetadataSchema
 >;
 
-type ConversationInput =
+type TurnInput =
   | { message: InboundMessage; metadata: ApiTurnMailboxMetadata }
   | { message: InboundMessage; metadata: ResourceEventMailboxMetadata };
 
@@ -88,7 +88,7 @@ function parseApiTurnMessages(
   }
   return parsed.map((entry) => {
     if (!entry.metadata.success) {
-      throw new Error("Conversation message has invalid metadata");
+      throw new Error("User message has invalid metadata");
     }
     return { message: entry.message, metadata: entry.metadata.data };
   });
@@ -121,18 +121,17 @@ function parseResourceEventMessages(
 }
 
 /**
- * Find a Junior Turn from new input or saved Turn state.
+ * Resolve conversation-only work from new input or a saved Turn.
  *
- * User messages from the Conversation API run here. Resource events for
- * Conversations without the Slack provider run here too. Saved state
- * identifies a resumed Turn.
+ * User messages from the Conversation API run here. Resource events with a
+ * local Destination run here too. Saved state identifies a resumed Turn.
  */
 export async function resolveApiTurnWork(
   context: ConversationWorkerContext,
 ): Promise<
   | {
       kind: "mailbox";
-      batch: ConversationInput[];
+      batch: TurnInput[];
     }
   | { kind: "resume"; turnId: string }
   | undefined
@@ -141,8 +140,8 @@ export async function resolveApiTurnWork(
   if (batch.length > 0) {
     return { kind: "mailbox", batch };
   }
-  // Resource events for Conversations without the Slack provider run here. The
-  // provider supplies thread context for events on Conversations that use Slack.
+  // The Slack provider owns its thread context. Resource events with a local
+  // Destination need no provider work and run here.
   if (context.destination?.platform === "local") {
     const resourceBatch = parseResourceEventMessages(context.attempt.messages);
     if (resourceBatch.length > 0) {

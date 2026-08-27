@@ -405,7 +405,7 @@ describe("Conversation API work", () => {
     expect(resolved).toEqual({ kind: "resume", turnId });
   });
 
-  it("runs and resumes a resource event without the Slack provider", async () => {
+  it("runs and resumes a resource event with a local Destination", async () => {
     const { actor, conversationStore, queue, state } =
       await createApiTurnWorkFixture();
     const conversationId = createApiConversationId({
@@ -470,7 +470,7 @@ describe("Conversation API work", () => {
     const route = routeApiTurnWork({
       apiTurnWorker: worker,
       fallbackWorker: async () => {
-        throw new Error("Slack provider must not receive this resource event");
+        throw new Error("Provider must not receive this resource event");
       },
     });
 

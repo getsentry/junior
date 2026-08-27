@@ -430,7 +430,7 @@ function hasLostTurnInputCommit(error: unknown): boolean {
   return isTurnInputCommitLostError(error) || isTurnInputCommitLostError(cause);
 }
 
-/** Create the worker for messages from the Conversation API. */
+/** Create the worker for Turns that need no provider delivery. */
 export function createApiTurnWorker(
   agentRunner: AgentRunner,
   cancellation?: ApiTurnCancellation,
@@ -441,12 +441,12 @@ export function createApiTurnWorker(
     const resolved = await resolveApiTurnWork(context);
     if (!resolved) {
       throw new Error(
-        `Conversation API worker received other work for ${context.conversationId}`,
+        `Unsupported input for Conversation ${context.conversationId}`,
       );
     }
     if (context.publishExternally) {
       throw new Error(
-        `Conversation API work cannot publish to a provider for ${context.conversationId}`,
+        `publishExternally must be false for Conversation ${context.conversationId}`,
       );
     }
 
@@ -539,7 +539,7 @@ export function createApiTurnWorker(
     }
     if (!actor) {
       throw new Error(
-        `Conversation API resume missing actor for ${context.conversationId}`,
+        `Resumed Turn is missing an Actor for Conversation ${context.conversationId}`,
       );
     }
 
