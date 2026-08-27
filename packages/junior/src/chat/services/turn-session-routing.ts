@@ -1,9 +1,9 @@
 /**
  * Load Location, Destination, and session Source from the Conversation record.
  *
- * Destination is set once on the root conversation. Child conversations
- * inherit through parent lineage. Later turns and mailbox wakes use that
- * same destination so tools stay consistent for the whole conversation.
+ * Destination is set once on the root Conversation. A Conversation with a
+ * parent reads through that relation. Later Turns and mailbox wakes use the
+ * same Destination so tools stay consistent for the whole Conversation.
  */
 import type {
   Destination,
@@ -45,7 +45,7 @@ async function loadConversationChain(
       break;
     }
     chain.push(conversation);
-    cursor = conversation.lineage?.parentConversationId;
+    cursor = conversation.parentConversationId;
   }
   return chain;
 }
@@ -79,7 +79,7 @@ function slackSourceForDestination(args: {
 /**
  * Resolve the Conversation's Location, Destination, and session Source.
  *
- * Walks parent lineage when the conversation has no destination of its own.
+ * Reads parent Conversations when this Conversation has no Destination.
  */
 export async function resolveConversationRouting(args: {
   conversationId: string;

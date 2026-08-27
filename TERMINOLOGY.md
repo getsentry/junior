@@ -14,7 +14,8 @@ Canonical words used across Junior's code and documentation.
   commit identifier.
 - **Sandbox**: an isolated execution environment for a run or snapshot build.
 - **Conversation**: the durable container for visible history and execution
-  state, identified by a globally unique `conversationId`.
+  state, identified by a globally unique `conversationId`. A Conversation may
+  have one parent Conversation. Parent and Location are independent.
 - **Source**: the current input that caused a Turn, such as a Slack message,
   local CLI input, dashboard input, scheduled task, or plugin dispatch. Source
   may include the Conversation's Location so the agent can use that place even

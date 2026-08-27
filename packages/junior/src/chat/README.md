@@ -154,8 +154,9 @@ delegation without becoming the execution actor or a general task owner.
   end of that transition.
 - The final interface uses Conversation, Source, Location, and Delivery. Do not
   add another type, routing object, or wrapper for the same values.
-- Child Conversations store the Location they need instead of searching parent
-  lineage at Run time in the final model.
+- A Conversation may have one parent Conversation. It stores that relation as
+  `parentConversationId`. Location is independent and is not copied from the
+  parent. A Run may read the parent Conversation when it needs that Location.
 - External publish is controlled per turn via `publishExternally`. Slack
   ingress/resume publish unless the flag is explicitly false. Non-Slack,
   destinationless, and dashboard/web work stay conversation-only unless the

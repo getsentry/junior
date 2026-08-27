@@ -4,7 +4,7 @@ import type { Location } from "@/chat/conversations/location";
 import type { ConversationStore } from "@/chat/conversations/store";
 import { openConversationProjection } from "@/chat/conversations/projection";
 import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
-import { getConversationEventStore } from "@/chat/db";
+import { getConversationEventStore, getConversationStore } from "@/chat/db";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import { AgentRunError, executeTurn } from "@/chat/runtime/turn-execution";
 import {
@@ -29,7 +29,6 @@ import { getTerminalAssistantMessages } from "@/chat/pi/transcript";
 import type { PiMessage } from "@/chat/pi/messages";
 import type { SandboxRef } from "@/chat/sandbox/ref";
 import type { AgentRunResult } from "@/chat/services/turn-result";
-import { resolveConversationRouting } from "@/chat/services/turn-session-routing";
 import {
   appendAndEnqueueInboundMessage,
   type InboundMessage,
@@ -400,8 +399,8 @@ export function createAgentInvocationWorker(agentRunner: AgentRunner) {
       sandboxRef = getPersistedSandboxState(persisted);
       history = projection.messages;
       location = (
-        await resolveConversationRouting({
-          conversationId: invocation.childConversationId,
+        await getConversationStore().get({
+          conversationId: invocation.parentConversationId,
         })
       )?.location;
     } catch (error) {

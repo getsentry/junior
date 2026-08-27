@@ -402,13 +402,13 @@ async function processConversationWorkInContext(
     }
     return { status: "no_work" };
   }
-  // Mailbox wakes may omit destination. Read it from this root conversation
-  // only. Children keep no destination so invocation and dispatch workers stay
-  // free of provider destinations.
+  // Mailbox wakes may omit Destination. Read it from this root Conversation
+  // only. Conversations with a parent keep no Destination, so invocation and
+  // dispatch workers stay free of provider Destinations.
   let destination = initial.destination;
   if (!destination && options.conversationStore) {
     const stored = await options.conversationStore.get({ conversationId });
-    if (stored && !stored.lineage) {
+    if (stored && !stored.parentConversationId) {
       destination = stored.destination;
     }
   }

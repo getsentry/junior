@@ -344,14 +344,14 @@ async function recordConversationActivityMetadata(args: {
   const conversation = await conversationStore.get({
     conversationId: args.summary.conversationId,
   });
-  const isChild = Boolean(conversation?.lineage);
-  // Nested destination/source/actor stay off Redis cursor payloads; callers
-  // pass live routing/identity here for SQL dual-write. Child conversations keep
-  // no destination.
-  const destination = isChild ? undefined : args.destination;
+  const hasParent = Boolean(conversation?.parentConversationId);
+  // Nested Destination, Source, and Actor stay off Redis cursor payloads.
+  // Callers pass live values here for the SQL write. Conversations with a
+  // parent keep no Destination.
+  const destination = hasParent ? undefined : args.destination;
   // Root dual-write requires a destination on first create. Cursor-only writes
   // without destination stay Redis-only until a real root upsert lands.
-  if (!isChild && !destination && !conversation) {
+  if (!hasParent && !destination && !conversation) {
     return;
   }
   // Only derive ConversationSource when routing is known. Abandon/fail no longer
@@ -359,7 +359,7 @@ async function recordConversationActivityMetadata(args: {
   // overwrite a durable `local` source with surface `internal`.
   // Prefer the typed session Source branch when present so web/dashboard turns
   // are not collapsed to local just because delivery uses a local destination.
-  const activitySource = isChild
+  const activitySource = hasParent
     ? "internal"
     : args.source?.platform === "web"
       ? "web"
@@ -377,7 +377,7 @@ async function recordConversationActivityMetadata(args: {
     actor: sessionLogActor(args.actor),
     ...definedProps({ source: activitySource }),
     ...(args.source ? { sessionSource: args.source } : undefined),
-    visibility: isChild ? undefined : args.destinationVisibility,
+    visibility: hasParent ? undefined : args.destinationVisibility,
   });
   await conversationStore.recordExecution({
     channelName: args.summary.channelName,
@@ -395,7 +395,7 @@ async function recordConversationActivityMetadata(args: {
     actor: sessionLogActor(args.actor),
     ...definedProps({ source: activitySource }),
     updatedAtMs: args.nowMs,
-    visibility: isChild ? undefined : args.destinationVisibility,
+    visibility: hasParent ? undefined : args.destinationVisibility,
   });
 }
 

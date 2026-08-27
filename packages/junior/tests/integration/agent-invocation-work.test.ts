@@ -35,6 +35,7 @@ import {
 import { createModelStream } from "../fixtures/model-stream";
 import {
   createLocalSource,
+  createSlackSource,
 } from "@sentry/junior-plugin-api";
 const parentConversationId = "local:test:parent-agent";
 const destination = {
@@ -50,6 +51,24 @@ const invocationInput = {
   reasoningLevel: "medium" as const,
   source: createLocalSource(parentConversationId),
 };
+const slackParentConversationId = "slack:C123:1712345.0001";
+const slackDestination = {
+  platform: "slack",
+  teamId: "T123",
+  channelId: "C123",
+} as const;
+const slackSource = createSlackSource({
+  channelId: "C123",
+  teamId: "T123",
+  threadTs: "1712345.0001",
+  visibility: "private",
+});
+const slackInvocationInput = {
+  ...invocationInput,
+  destination: slackDestination,
+  parentConversationId: slackParentConversationId,
+  source: slackSource,
+};
 
 async function prepareParentConversation() {
   const fixture = createConfiguredJuniorSqlFixture();
@@ -60,6 +79,21 @@ async function prepareParentConversation() {
     destination,
     nowMs: 1_000,
     source: "local",
+  });
+  return { conversationStore, fixture };
+}
+
+async function prepareSlackParentConversation() {
+  const fixture = createConfiguredJuniorSqlFixture();
+  await migrateSchema(fixture.sql);
+  const conversationStore = createSqlStore(fixture.sql);
+  await conversationStore.recordActivity({
+    conversationId: slackParentConversationId,
+    destination: slackDestination,
+    nowMs: 1_000,
+    sessionSource: slackSource,
+    source: "slack",
+    visibility: "private",
   });
   return { conversationStore, fixture };
 }
@@ -146,7 +180,7 @@ describe("agent invocation conversation work", () => {
         conversationId: first.childConversationId,
       });
       expect(child).toMatchObject({
-        lineage: { parentConversationId },
+        parentConversationId,
         source: "internal",
       });
       expect(child).not.toHaveProperty("destination");
@@ -253,15 +287,16 @@ describe("agent invocation conversation work", () => {
     }
   });
 
-  it("runs child work once without external delivery and saves its result", async () => {
-    const { conversationStore, fixture } = await prepareParentConversation();
+  it("reads the parent Location without delivering child output", async () => {
+    const { conversationStore, fixture } =
+      await prepareSlackParentConversation();
     const queue = createConversationWorkQueueTestAdapter();
     const state = getStateAdapter();
     await state.connect();
     try {
       const created = await createAndEnqueueAgentInvocation(
         {
-          ...invocationInput,
+          ...slackInvocationInput,
           idempotencyKey: "execute-1",
         },
         {
@@ -271,6 +306,15 @@ describe("agent invocation conversation work", () => {
           state,
         },
       );
+      const child = await conversationStore.get({
+        conversationId: created.childConversationId,
+      });
+      expect(child).toMatchObject({
+        parentConversationId: slackParentConversationId,
+      });
+      expect(child).not.toHaveProperty("destination");
+      expect(child).not.toHaveProperty("location");
+      expect(child).not.toHaveProperty("sessionSource");
       const agentRunner = createModelAgentRunner(
         createModelStream([{ type: "text", text: "Durable child result" }]),
       );
@@ -358,13 +402,20 @@ describe("agent invocation conversation work", () => {
       expect(run).toHaveBeenCalledOnce();
       expect(run.mock.calls[0]?.[0]).toMatchObject({
         conversationId: created.childConversationId,
-        instruction: { text: invocationInput.input },
+        instruction: { text: slackInvocationInput.input },
         disabledFeatures: ["handoff", "interactive-auth", "subagents"],
         reasoning: "medium",
-        actor: invocationInput.actor,
-        destination,
+        actor: slackInvocationInput.actor,
+        destination: slackDestination,
         destinationVisibility: "private",
-        source: invocationInput.source,
+        location: {
+          id: expect.any(String),
+          provider: "slack",
+          tenantId: "T123",
+          providerId: "C123",
+        },
+        publishExternally: false,
+        source: slackInvocationInput.source,
         surface: "internal",
         runId: created.invocationId,
       });
