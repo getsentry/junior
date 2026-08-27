@@ -74,7 +74,6 @@ export function createApiTurnCancellation(): ApiTurnCancellation {
 /** Close one cancelled Turn without a failure reply or retry. */
 export async function completeCancelledApiTurn(args: {
   acknowledge(): Promise<void>;
-  actorId: string;
   cancellation?: ApiTurnCancellation;
   conversation: ThreadConversationState;
   conversationId: string;
@@ -84,8 +83,10 @@ export async function completeCancelledApiTurn(args: {
   userMessageId: string;
 }): Promise<void> {
   try {
-    const ownsPendingAuthorization =
-      args.conversation.processing.pendingAuth?.sessionId === args.turnId;
+    const pendingAuthorization =
+      args.conversation.processing.pendingAuth?.sessionId === args.turnId
+        ? args.conversation.processing.pendingAuth
+        : undefined;
     await abandonTurnRecord({
       conversationId: args.conversationId,
       turnId: args.turnId,
@@ -101,9 +102,9 @@ export async function completeCancelledApiTurn(args: {
       nowMs: Date.now(),
       sessionId: args.turnId,
     });
-    if (ownsPendingAuthorization) {
+    if (pendingAuthorization) {
       await deleteWebAuthorization({
-        actorId: args.actorId,
+        actorId: pendingAuthorization.actorId,
         conversationId: args.conversationId,
       });
     }

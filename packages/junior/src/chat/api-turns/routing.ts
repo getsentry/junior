@@ -1,8 +1,24 @@
 import { z } from "zod";
 import {
+  createLocalSource,
+  createWebSource,
+  type Source,
+} from "@sentry/junior-plugin-api";
+import { createActor, type Actor, type WebActor } from "@/chat/actor";
+import type { ConversationPrivacy } from "@/chat/conversation-privacy";
+import type {
+  ConversationAuthor,
+  ConversationMessage,
+} from "@/chat/state/conversation";
+import {
   getTurnRecord,
   listTurnSummaries,
 } from "@/chat/task-execution/checkpoint";
+import {
+  isResourceEventConversationMessage,
+  RESOURCE_EVENT_MESSAGE_AUTHOR,
+  RESOURCE_EVENT_SYSTEM_ACTOR,
+} from "@/chat/resource-events/actor";
 import { isResourceEventMailboxMetadata } from "@/chat/resource-events/notification";
 import type { InboundMessage } from "@/chat/task-execution/store";
 import type { ConversationWorkerContext } from "@/chat/task-execution/worker";
@@ -22,17 +38,56 @@ export type ApiTurnMailboxMetadata = z.output<
   typeof apiTurnMailboxMetadataSchema
 >;
 
-/**
- * Local destination resource-event mailbox rows share the conversation-only runner.
- *
- * TODO(resource-events): Remove the dedicated `resource_event` work kind once
- * local/web destinations run plain mailbox system wakes the same way as any
- * other deferred conversation turn (no special batch/actor fork).
- */
-export type LocalResourceEventMailboxEntry = {
+export interface TurnInput {
+  actor: Actor;
+  author: ConversationAuthor;
   message: InboundMessage;
-  kind: "resource_event";
-};
+  source: "resource_event" | "web";
+}
+
+export type TurnIdentity = Pick<TurnInput, "actor" | "author" | "source">;
+
+/** Restore normalized Turn identity from one saved Message. */
+export function turnIdentityFromConversationMessage(
+  message: ConversationMessage,
+): TurnIdentity | undefined {
+  if (isResourceEventConversationMessage(message)) {
+    return {
+      actor: RESOURCE_EVENT_SYSTEM_ACTOR,
+      author: message.author ?? RESOURCE_EVENT_MESSAGE_AUTHOR,
+      source: "resource_event",
+    };
+  }
+  const actor = createActor(message.author, {
+    platform: "web",
+    userId: message.author?.userId,
+  });
+  if (actor?.platform !== "web") {
+    return undefined;
+  }
+  return {
+    actor,
+    author: message.author ?? { userId: actor.userId },
+    source: "web",
+  };
+}
+
+/** Build the AgentRun Source for one Turn input. */
+export function sourceFromTurnInput(args: {
+  conversationId: string;
+  source: TurnInput["source"];
+  visibility?: ConversationPrivacy;
+}): Source {
+  switch (args.source) {
+    case "resource_event":
+      return createLocalSource(args.conversationId);
+    case "web":
+      return createWebSource(
+        args.conversationId,
+        args.visibility === "private" ? "private" : "public",
+      );
+  }
+}
 
 /** Return the active root API Turn for one Conversation, if it has one. */
 export async function getActiveApiTurnId(
@@ -77,7 +132,7 @@ export async function getAuthPausedApiTurnId(
 
 function parseApiTurnMessages(
   messages: readonly InboundMessage[],
-): Array<{ message: InboundMessage; metadata: ApiTurnMailboxMetadata }> {
+): TurnInput[] {
   if (messages.length === 0) {
     return [];
   }
@@ -89,19 +144,41 @@ function parseApiTurnMessages(
     return [];
   }
   if (parsed.some((entry) => !entry.metadata.success)) {
-    throw new Error("Conversation mailbox mixes web turns and other input");
+    throw new Error("A Turn cannot combine different kinds of input");
   }
   return parsed.map((entry) => {
     if (!entry.metadata.success) {
-      throw new Error("API turn mailbox metadata failed validation");
+      throw new Error("User message has invalid metadata");
     }
-    return { message: entry.message, metadata: entry.metadata.data };
+    const metadata = entry.metadata.data;
+    const actor: WebActor = {
+      platform: "web",
+      userId: metadata.authorUserId,
+      email: metadata.authorEmail.trim().toLowerCase(),
+      ...(metadata.authorFullName
+        ? { fullName: metadata.authorFullName }
+        : undefined),
+      ...(metadata.authorUserName
+        ? { userName: metadata.authorUserName }
+        : undefined),
+    };
+    return {
+      actor,
+      author: {
+        email: actor.email,
+        ...(actor.fullName ? { fullName: actor.fullName } : undefined),
+        userId: actor.userId,
+        ...(actor.userName ? { userName: actor.userName } : undefined),
+      },
+      message: entry.message,
+      source: "web" as const,
+    };
   });
 }
 
-function parseLocalResourceEventMessages(
+function parseResourceEventMessages(
   messages: readonly InboundMessage[],
-): LocalResourceEventMailboxEntry[] {
+): TurnInput[] {
   if (messages.length === 0) {
     return [];
   }
@@ -114,32 +191,31 @@ function parseLocalResourceEventMessages(
   ) {
     return [];
   }
-  return messages.map((message) => ({
-    message,
-    kind: "resource_event" as const,
-  }));
+  return messages.map((message) => {
+    if (!isResourceEventMailboxMetadata(message.input.metadata)) {
+      throw new Error("Resource event has invalid metadata");
+    }
+    return {
+      actor: RESOURCE_EVENT_SYSTEM_ACTOR,
+      author: RESOURCE_EVENT_MESSAGE_AUTHOR,
+      message,
+      source: "resource_event" as const,
+    };
+  });
 }
 
 /**
- * Resolve conversation-only work from mailbox metadata or an active checkpoint.
+ * Resolve conversation-only work from new input or a saved Turn.
  *
- * Covers dashboard API turns and local destination resource-event wakes. Empty
- * resume wakes after yield carry no mailbox rows; durable active Turn state keeps
- * those wakes on this runner instead of falling through to Slack.
+ * User messages from the Conversation API run here. Resource events with a
+ * local Destination run here too. Saved state identifies a resumed Turn.
  */
 export async function resolveApiTurnWork(
   context: ConversationWorkerContext,
 ): Promise<
   | {
       kind: "mailbox";
-      batch: Array<{
-        message: InboundMessage;
-        metadata: ApiTurnMailboxMetadata;
-      }>;
-    }
-  | {
-      kind: "resource_event";
-      batch: LocalResourceEventMailboxEntry[];
+      batch: TurnInput[];
     }
   | { kind: "resume"; turnId: string }
   | undefined
@@ -148,15 +224,12 @@ export async function resolveApiTurnWork(
   if (batch.length > 0) {
     return { kind: "mailbox", batch };
   }
-  // Local destination resource events share the conversation-only runner. Slack
-  // destination resource events stay on the Slack worker for thread metadata.
-  // TODO(resource-events): Fold into normal mailbox work; see LocalResourceEventMailboxEntry.
+  // The Slack provider owns its thread context. Resource events with a local
+  // Destination need no provider work and run here.
   if (context.destination?.platform === "local") {
-    const resourceBatch = parseLocalResourceEventMessages(
-      context.attempt.messages,
-    );
+    const resourceBatch = parseResourceEventMessages(context.attempt.messages);
     if (resourceBatch.length > 0) {
-      return { kind: "resource_event", batch: resourceBatch };
+      return { kind: "mailbox", batch: resourceBatch };
     }
   }
   if (context.attempt.messages.length > 0) {
