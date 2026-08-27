@@ -614,7 +614,7 @@ describe("sandbox egress proxy composition", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("scopes cached credential leases to the actor", async () => {
+  it("issues separate user credentials per actor", async () => {
     setSandboxEgressUserActor();
     issueProviderCredentialLeaseMock
       .mockResolvedValueOnce({
@@ -674,7 +674,7 @@ describe("sandbox egress proxy composition", () => {
     });
   });
 
-  it("reuses cached credential leases across renewed contexts for the same actor", async () => {
+  it("issues user credentials on every hop instead of remembering them", async () => {
     setSandboxEgressUserActor();
     issueProviderCredentialLeaseMock
       .mockResolvedValueOnce({
@@ -714,17 +714,16 @@ describe("sandbox egress proxy composition", () => {
       "Bearer token-first-session",
     );
 
-    // New signed context/session for the same actor should reuse the host lease.
     setSandboxEgressUserActor();
     const secondResponse = await proxy(
       egressRequest({ path: "/api/0/issues/2" }),
       fetchMock as typeof fetch,
     );
     await expect(secondResponse.text()).resolves.toBe(
-      "Bearer token-first-session",
+      "Bearer token-second-session",
     );
 
-    expect(issueProviderCredentialLeaseMock).toHaveBeenCalledTimes(1);
+    expect(issueProviderCredentialLeaseMock).toHaveBeenCalledTimes(2);
   });
 
   it("retries once on upstream 403 and recovers or records permission denied", async () => {
@@ -778,8 +777,8 @@ describe("sandbox egress proxy composition", () => {
     const body = await persistent.text();
     expect(body).toBe("Permission denied for this organization");
     expect(body).not.toContain("junior-auth-required");
-    // Second hop reuses the recovered lease, then retries once after 403.
-    expect(issueProviderCredentialLeaseMock).toHaveBeenCalledTimes(3);
+    // User grants are not remembered, so the second hop issues again.
+    expect(issueProviderCredentialLeaseMock).toHaveBeenCalledTimes(4);
     expect(fetchMock).toHaveBeenCalledTimes(4);
     await expect(
       consumeSandboxEgressPermissionDeniedSignal(EGRESS_ID),
