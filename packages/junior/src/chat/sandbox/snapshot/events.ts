@@ -10,10 +10,10 @@ export const WORKSPACE_SNAPSHOT_READY_EVENT = "workspace_snapshot.ready";
 export const WORKSPACE_SNAPSHOT_FAILED_EVENT = "workspace_snapshot.failed";
 
 /**
- * Core resource-event registration for Workspace snapshot builds.
+ * Core catalog entry for Workspace snapshot ready and failed events.
  *
- * Not a plugin. Lives in the runtime catalog so search, guidance, and tool
- * schemas treat snapshot ready/failed like any other enabled resource type.
+ * Uses the same registration shape as plugins so search, guidance, and tool
+ * schemas treat these events like any other resource type.
  */
 export function workspaceSnapshotResourceEvents(): PluginResourceEvents {
   return {
@@ -24,11 +24,11 @@ export function workspaceSnapshotResourceEvents(): PluginResourceEvents {
           WORKSPACE_SNAPSHOT_READY_EVENT,
           WORKSPACE_SNAPSHOT_FAILED_EVENT,
         ],
-        // Forced switchWorkspace watches omit these from suggestedEvents.
+        // switchWorkspace already creates the temporary subscription.
         suggestedEvents: [],
         guidance: {
           [WORKSPACE_SNAPSHOT_READY_EVENT]:
-            "Call switchWorkspace again with the same Workspace name. Do not watch these events yourself when switchWorkspace already returned a subscription.",
+            "Call switchWorkspace again with the same Workspace name. Do not create another watch when switchWorkspace already returned a subscription.",
           [WORKSPACE_SNAPSHOT_FAILED_EVENT]:
             "Report the snapshot failure. Do not keep waiting for this Workspace unless the user asks to retry.",
         },

@@ -48,7 +48,7 @@ Junior stores install-wide Workspace recipes and their repositories in SQL. The 
 
 Manage recipes from the authenticated dashboard at `/system/workspaces`, or through the `/api/workspaces` REST routes. Each recipe has a stable name, optional setup script, and one or more repositories. Junior loads `AGENTS.md` from each repository checkout and labels those instructions with the related directory.
 
-Junior builds one complete snapshot for each selected Workspace. The build installs runtime dependencies, prepares repositories, runs the setup script, and then captures the snapshot. The first switch starts that build in the background and returns `building` with a temporary watch for ready and failed events. The agent calls `switchWorkspace` again after the ready event. Later switches reuse the snapshot until its floating profile becomes stale.
+Junior builds one complete snapshot for each selected Workspace. The build installs runtime dependencies, prepares repositories, runs the setup script, and then captures the snapshot. The first switch starts that build in the background and returns `building` with a temporary subscription for ready and failed events. Call `switchWorkspace` again after the ready event. Later switches reuse the snapshot until its floating profile becomes stale.
 
 After a successful Workspace prepare, Junior records the current snapshot id, generation time, build duration, size in bytes when the provider reports it, and profile hash on the Workspace SQL row. The dashboard Workspace details page reads those fields. Repository or setup-script changes clear the recorded snapshot so the page does not show stale build data. Renames preserve it because the Workspace name is not part of the snapshot profile.
 

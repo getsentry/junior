@@ -1,6 +1,6 @@
 # Resource Events
 
-Resource subscriptions route plugin-owned events back into an existing
+Resource subscriptions route resource events back into an existing
 conversation.
 
 ## Contract
@@ -24,13 +24,13 @@ conversation.
   the event type.
 - Plugins declare resource types, supported and suggested event types, optional
   match keys, and whether inbound events are ready on their registration. Core
-  builds one enabled runtime catalog for search, tool schemas, and validation.
-  Prefer match keys the plugin always sets. If a listed key is missing on an
-  event, core does not match.
+  builds one enabled runtime catalog for search, tool schemas, and validation,
+  including core Workspace snapshot events. Prefer match keys the publisher
+  always sets. If a listed key is missing on an event, core does not match.
 - Core also registers the `junior` / `workspace_snapshot` resource type for
   snapshot ready and failed events. That namespace is reserved; plugins must not
-  claim it. Forced `switchWorkspace` watches use the same catalog entry and
-  event guidance as any other temporary subscription.
+  claim it. Temporary watches created by `switchWorkspace` use the same catalog
+  entry and event guidance as any other resource subscription.
 - `searchResourceEventTypes` discovers that catalog without creating anything.
   `watchResourceEvents` creates a temporary resource subscription for the
   current conversation. Concrete identifiers still come from plugin tool

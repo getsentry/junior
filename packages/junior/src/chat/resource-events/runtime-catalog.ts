@@ -8,9 +8,8 @@ import {
 /**
  * Enabled resource-event registrations for search, guidance, and tool schemas.
  *
- * Plugin namespaces come from loaded plugins. Core also registers Workspace
- * snapshot ready/failed under the `junior` namespace so forced switch watches
- * are first-class catalog members, not a private bypass.
+ * Includes core Workspace snapshot events under the `junior` namespace, plus
+ * every enabled plugin registration. Plugins may not use the `junior` namespace.
  */
 export function getResourceEventCatalog(): ResourceEventCatalog {
   const catalog: Record<string, ResourceEventCatalog[string]> = {
@@ -23,7 +22,7 @@ export function getResourceEventCatalog(): ResourceEventCatalog {
     }
     if (plugin.manifest.name === WORKSPACE_SNAPSHOT_NAMESPACE) {
       throw new Error(
-        `Plugin "${WORKSPACE_SNAPSHOT_NAMESPACE}" cannot own resource events; that namespace is reserved for core Workspace snapshots`,
+        `Plugin "${WORKSPACE_SNAPSHOT_NAMESPACE}" cannot register resource events; that namespace is reserved for core Workspace snapshots`,
       );
     }
     catalog[plugin.manifest.name] = registration;

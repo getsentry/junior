@@ -58,11 +58,11 @@ traffic through verified host egress.
   slice records its phase in SQL. The next job can continue after a soft yield
   or a worker stop.
 - When `switchWorkspace` finds no ready snapshot, it returns
-  `status: "building"` plus a forced resource subscription for
-  `workspace_snapshot.ready` and `workspace_snapshot.failed`. It does not hold
-  the tool call open. The build job publishes those core `junior` events when
-  it finishes. The next agent turn should call `switchWorkspace` again with the
-  same name. Other sandbox tools use the same plain preparing message when the
+  `status: "building"` and a temporary resource subscription for
+  `workspace_snapshot.ready` and `workspace_snapshot.failed`. It does not keep
+  the tool call open. The build job publishes those core `junior` events when it
+  finishes. The next Turn should call `switchWorkspace` again with the same
+  name. Other sandbox tools use the same plain preparing message when the
   snapshot is not ready yet.
 - SQL is the only source of Workspace snapshot state. Redis coordinates the
   build lock and its fencing. It does not store Workspace snapshot pointers.

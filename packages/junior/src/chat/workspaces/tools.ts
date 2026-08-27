@@ -345,7 +345,7 @@ export function createWorkspaceTools(
         readOnlyHint: false,
       },
       description:
-        "Replace the current sandbox with a named repository Workspace. Files in the old sandbox do not carry over. Returns ready after the switch, or building with a subscription when the snapshot is still being prepared. When building, wait for the ready event and call switchWorkspace again with the same name.",
+        "Replace the current sandbox with a named repository Workspace. Files in the old sandbox do not carry over. Returns ready after the switch, or building with a temporary subscription when the snapshot is still being prepared. When building, wait for the ready event and call switchWorkspace again with the same name.",
       inputSchema: z
         .object({
           name: z.string().trim().min(1).describe("Exact workspace name."),
