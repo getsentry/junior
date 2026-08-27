@@ -84,17 +84,17 @@ function parseApiTurnMessages(
     return [];
   }
   if (parsed.some((entry) => !entry.metadata.success)) {
-    throw new Error("Conversation input mixes user messages and other input");
+    throw new Error("A Turn cannot combine different kinds of input");
   }
   return parsed.map((entry) => {
     if (!entry.metadata.success) {
-      throw new Error("Conversation message metadata failed validation");
+      throw new Error("Conversation message has invalid metadata");
     }
     return { message: entry.message, metadata: entry.metadata.data };
   });
 }
 
-function parseLocalResourceEventMessages(
+function parseResourceEventMessages(
   messages: readonly InboundMessage[],
 ): Array<{
   message: InboundMessage;
@@ -114,17 +114,18 @@ function parseLocalResourceEventMessages(
   }
   return messages.map((message) => {
     if (!isResourceEventMailboxMetadata(message.input.metadata)) {
-      throw new Error("Resource event metadata failed validation");
+      throw new Error("Resource event has invalid metadata");
     }
     return { message, metadata: message.input.metadata };
   });
 }
 
 /**
- * Find a direct Junior Turn from new input or a saved active Turn.
+ * Find a Junior Turn from new input or saved Turn state.
  *
- * User messages and local resource events run directly in Junior. A resumed
- * Turn has no new input, so saved Turn state identifies it.
+ * User messages from the Conversation API run here. Resource events for
+ * Conversations without the Slack provider run here too. Saved state
+ * identifies a resumed Turn.
  */
 export async function resolveApiTurnWork(
   context: ConversationWorkerContext,
@@ -140,12 +141,10 @@ export async function resolveApiTurnWork(
   if (batch.length > 0) {
     return { kind: "mailbox", batch };
   }
-  // Local resource events run through Junior directly. Slack resource events
-  // stay with Slack because they still need thread context.
+  // Resource events for Conversations without the Slack provider run here. The
+  // provider supplies thread context for events on Conversations that use Slack.
   if (context.destination?.platform === "local") {
-    const resourceBatch = parseLocalResourceEventMessages(
-      context.attempt.messages,
-    );
+    const resourceBatch = parseResourceEventMessages(context.attempt.messages);
     if (resourceBatch.length > 0) {
       return { kind: "mailbox", batch: resourceBatch };
     }

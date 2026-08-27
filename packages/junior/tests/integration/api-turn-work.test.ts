@@ -405,7 +405,7 @@ describe("Conversation API work", () => {
     expect(resolved).toEqual({ kind: "resume", turnId });
   });
 
-  it("runs and resumes a local resource event through Junior", async () => {
+  it("runs and resumes a resource event without the Slack provider", async () => {
     const { actor, conversationStore, queue, state } =
       await createApiTurnWorkFixture();
     const conversationId = createApiConversationId({
@@ -422,7 +422,7 @@ describe("Conversation API work", () => {
       activityAtMs: 1,
       conversationId,
       nowMs: 1,
-      title: "Resource watch",
+      title: "Resource events",
     });
     const message = createResourceEventInboundMessage({
       event: {
@@ -431,14 +431,14 @@ describe("Conversation API work", () => {
         identifier: "getsentry/junior#1563",
         namespace: "github",
         occurredAtMs: 2,
-        trustedSummary: "PR checks failed",
+        trustedSummary: "Code change checks failed",
       },
       receivedAtMs: 2,
       subscription: {
         conversationId,
-        id: "resource-watch-1",
+        id: "resource-subscription-1",
       },
-      text: "PR checks failed",
+      text: "Code change checks failed",
     });
     await appendAndEnqueueInboundMessage({
       conversationStore,
@@ -470,7 +470,7 @@ describe("Conversation API work", () => {
     const route = routeApiTurnWork({
       apiTurnWorker: worker,
       fallbackWorker: async () => {
-        throw new Error("Slack must not handle local resource events");
+        throw new Error("Slack provider must not receive this resource event");
       },
     });
 
@@ -524,7 +524,7 @@ describe("Conversation API work", () => {
         : [],
     );
     expect(transcript).toEqual([
-      { role: "user", text: "PR checks failed" },
+      { role: "user", text: "Code change checks failed" },
       { role: "assistant", text: "Handled the resource event." },
     ]);
   }, 10_000);
