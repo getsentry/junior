@@ -9,6 +9,8 @@ import type {
 } from "@earendil-works/pi-ai";
 import { logWarn } from "@/chat/logging";
 
+// TODO(dcramer): Use ConversationVisibility after the Location cutover makes
+// visibility independent from the legacy destination record.
 export type ConversationPrivacy = "public" | "private";
 type TraceAttributeValue = string | number | boolean | string[];
 const SAFE_METADATA_KEY_LIMIT = 20;
@@ -268,6 +270,8 @@ export function toGenAiMessagesTraceAttributes(
     [`${prefix}.content_chars`]: contentChars,
     [`${prefix}.messages.size`]: contentChars,
     ...(roles.size > 0 ? { [`${prefix}.roles`]: [...roles] } : undefined),
-    ...(partTypes.size > 0 ? { [`${prefix}.part_types`]: [...partTypes] } : undefined),
+    ...(partTypes.size > 0
+      ? { [`${prefix}.part_types`]: [...partTypes] }
+      : undefined),
   };
 }

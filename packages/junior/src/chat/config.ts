@@ -265,7 +265,8 @@ function parseProfileMap(
   return profiles;
 }
 
-// TODO(v0.180.0): Remove env profile settings after the deprecation window.
+// TODO(dcramer): Remove env profile settings after supported deployments no
+// longer use AI_MODEL, AI_HANDOFF_MODEL, or AI_MODEL_PROFILES.
 function parseProfiles(
   rawValue: string | undefined,
   standardModelId: string,

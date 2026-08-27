@@ -37,7 +37,9 @@ async function loadConversationChain(
   let cursor: string | undefined = conversationId;
   while (cursor && !seen.has(cursor)) {
     seen.add(cursor);
-    const conversation = await conversationStore.get({ conversationId: cursor });
+    const conversation = await conversationStore.get({
+      conversationId: cursor,
+    });
     if (!conversation) {
       break;
     }

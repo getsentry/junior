@@ -19,6 +19,8 @@ export type JuniorDestinationVisibility =
   | "public"
   | "unknown";
 
+// TODO(dcramer): Rename this legacy destination table and its provider fields
+// to Location terms after the SQL migration and deployed reader cutover.
 export const juniorDestinations = pgTable(
   "junior_destinations",
   {

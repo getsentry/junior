@@ -435,10 +435,10 @@ export function createAgentInvocationWorker(agentRunner: AgentRunner) {
           publishExternally: context.publishExternally,
           source: invocation.source,
           surface: "internal",
-          // TODO(#881, #883): Child runs may still need a path to force
-          // interactive auth when a delegated tool requires credentials the
-          // parent already has authority to request. Today background children
-          // hard-fail instead of pausing for an OAuth link.
+          // TODO(dcramer): Issues #881 and #883 track a path for child runs to
+          // force interactive auth when a delegated tool requires credentials
+          // the parent can request. Today background children hard-fail instead
+          // of pausing for an OAuth link.
           disabledFeatures: ["handoff", "interactive-auth", "subagents"],
           reasoning: invocation.reasoningLevel,
           state: {

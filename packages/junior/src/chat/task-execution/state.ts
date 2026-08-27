@@ -153,6 +153,8 @@ export interface ConversationExecution {
   updatedAtMs?: number;
 }
 
+// TODO(dcramer): Rename this Redis-only shape to ConversationExecutionState
+// without changing the v2 wire format. SQL owns the durable Conversation.
 export interface Conversation {
   channelName?: string;
   conversationId: string;

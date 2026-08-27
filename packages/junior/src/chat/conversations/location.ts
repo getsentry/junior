@@ -2,6 +2,8 @@ import { nonBlankStringSchema } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 
 /** Provider-neutral container associated with a conversation. */
+// TODO(dcramer): Add the provider fields needed by Source and Delivery to
+// identify the exact Conversation. For Slack, this includes threadTs.
 export const locationSchema = z
   .object({
     /** Junior-owned stable identity for this location. */

@@ -11,6 +11,8 @@ export const juniorConversationBindings = pgTable(
       .references(() => juniorConversations.conversationId),
     provider: text("provider").notNull(),
     providerTenantId: text("provider_tenant_id").notNull().default(""),
+    // TODO(dcramer): Rename provider_destination_id with the Location SQL
+    // migration. It identifies the provider place that contains the thread.
     providerDestinationId: text("provider_destination_id").notNull(),
     providerConversationId: text("provider_conversation_id").notNull(),
     createdAt: timestamptz("created_at").notNull(),
