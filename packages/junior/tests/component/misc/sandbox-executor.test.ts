@@ -1124,10 +1124,10 @@ describe("createTestSandbox", () => {
     });
   });
 
-  it("discards the Workspace hint when its recipe row is missing", async () => {
+  it("keeps a restorable sandbox when the Workspace recipe row is missing", async () => {
     hashMock.mockReturnValue("profile-base");
-    const fresh = makeSandbox("sbx_after_recipe_removed");
-    sandboxCreateMock.mockResolvedValueOnce(fresh);
+    const restored = makeSandbox("sbx_missing_recipe");
+    sandboxGetMock.mockResolvedValueOnce(restored);
     const refs: Array<{
       id: string;
       workspaceId?: string;
@@ -1148,18 +1148,53 @@ describe("createTestSandbox", () => {
 
     await runtime.acquire();
 
-    expect(sandboxGetMock).not.toHaveBeenCalled();
-    expect(sandboxCreateMock).toHaveBeenCalledTimes(1);
-    expect(runtime.sandboxRef()).toEqual({
-      id: "sbx_after_recipe_removed",
-      profileHash: "profile-base",
+    expect(sandboxGetMock).toHaveBeenCalledWith({
+      name: "sbx_missing_recipe",
+      resume: true,
     });
-    expect(refs).toEqual([
-      {
-        id: "sbx_after_recipe_removed",
-        profileHash: "profile-base",
+    expect(sandboxCreateMock).not.toHaveBeenCalled();
+    expect(runtime.sandboxRef()).toEqual({
+      id: "sbx_missing_recipe",
+      profileHash: "profile-workspace",
+      workspaceId: "workspace-deleted",
+    });
+    expect(refs).toEqual([]);
+  });
+
+  it("keeps a restorable sandbox when the Workspace recipe profile changes", async () => {
+    hashMock.mockReturnValue("profile-new");
+    const restored = makeSandbox("sbx_recipe_changed");
+    sandboxGetMock.mockResolvedValueOnce(restored);
+    const runtime = createSandboxRuntime({
+      sandboxRef: {
+        id: "sbx_recipe_changed",
+        profileHash: "profile-old",
+        workspaceId: "workspace-1",
       },
-    ]);
+      workspace: {
+        id: "workspace-1",
+        name: "sentry-docs",
+        setupScript: "echo new",
+        snapshot: null,
+        repos: [],
+      },
+      skills: [],
+      referenceFiles: [],
+    });
+
+    await runtime.acquire();
+
+    expect(sandboxGetMock).toHaveBeenCalledWith({
+      name: "sbx_recipe_changed",
+      resume: true,
+    });
+    expect(sandboxCreateMock).not.toHaveBeenCalled();
+    expect(getReadyWorkspaceMock).not.toHaveBeenCalled();
+    expect(runtime.sandboxRef()).toEqual({
+      id: "sbx_recipe_changed",
+      profileHash: "profile-old",
+      workspaceId: "workspace-1",
+    });
   });
 
   it("prepares the active sandbox after loading a ready Workspace snapshot", async () => {

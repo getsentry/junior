@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { Sandbox, type NetworkPolicy } from "@vercel/sandbox";
 import {
-  logInfo,
   setSpanAttributes,
   withSpan,
   type LogContext,
@@ -189,7 +188,11 @@ export function createSandboxRuntime(
   const timeoutMs = options.timeoutMs ?? 1000 * 60 * 30;
   const traceContext = options.traceContext ?? {};
   let activeWorkspace = options.workspace;
-  let dependencyProfileHash = profileHash(SANDBOX_RUNTIME, activeWorkspace);
+  // Pin the profile of the sandbox this conversation already owns. Latest
+  // recipe hash only applies when creating or switching to a new sandbox.
+  let dependencyProfileHash =
+    options.sandboxRef?.profileHash ??
+    profileHash(SANDBOX_RUNTIME, activeWorkspace);
   const resolveCommandEnv =
     options.commandEnv ?? (async () => ({}) as Record<string, string>);
 
@@ -553,46 +556,21 @@ export function createSandboxRuntime(
   const createFreshSandbox = async (
     signal?: AbortSignal,
   ): Promise<SandboxSession> => {
+    // No restorable pin left. Build from the current recipe, then pin that.
+    const nextProfileHash = profileHash(SANDBOX_RUNTIME, activeWorkspace);
     const candidate = await createSandboxCandidate(
       activeWorkspace,
-      dependencyProfileHash,
+      nextProfileHash,
       signal,
     );
     try {
       await persistSandboxRef(candidate.ref);
+      dependencyProfileHash = candidate.profileHash ?? nextProfileHash;
       return rememberSandbox(candidate.session, candidate.networkPolicyKey);
     } catch (error) {
       await stopSession(candidate.session);
       throw error;
     }
-  };
-
-  const discardHintIfProfileChanged = (): void => {
-    if (
-      activeSandbox ||
-      !sandboxRef ||
-      dependencyProfileHash === sandboxRef.profileHash
-    ) {
-      return;
-    }
-    const attrs = {
-      ...(sandboxRef.profileHash
-        ? { "app.sandbox.previous_profile_hash": sandboxRef.profileHash }
-        : undefined),
-      ...(dependencyProfileHash
-        ? { "app.sandbox.current_profile_hash": dependencyProfileHash }
-        : undefined),
-    };
-    setSpanAttributes({
-      "app.sandbox.reused": false,
-      "app.sandbox.recreate.reason": "dependency_profile_mismatch",
-      ...attrs,
-    });
-    logInfo("sandbox.hint.discarded", {
-      "app.decision.reason": "dependency_profile_mismatch",
-      ...attrs,
-    });
-    sandboxRef = undefined;
   };
 
   const tryReuseCachedSandbox = (): SandboxSession | null =>
@@ -642,6 +620,9 @@ export function createSandboxRuntime(
     try {
       networkPolicyKey = await applyNetworkPolicy(hintedSandbox);
       await prepareSandbox(hintedSandbox);
+      // Keep the pinned profile from the conversation ref. Recipe changes must
+      // not rewrite what this live sandbox was built from.
+      dependencyProfileHash = ref.profileHash ?? dependencyProfileHash;
       await persistSandboxRef({ ...ref, id: hintedSandbox.sandboxId });
       return rememberSandbox(hintedSandbox, networkPolicyKey);
     } catch (error) {
@@ -666,14 +647,14 @@ export function createSandboxRuntime(
         "app.sandbox.skills_count": availableSkills.length,
       },
       async () => {
-        discardHintIfProfileChanged();
-
         const cachedSandbox = await tryReuseCachedSandbox();
         if (cachedSandbox) {
           return cachedSandbox;
         }
 
         signal?.throwIfAborted();
+        // Restore the pinned sandbox first. Never drop a restorable VM just
+        // because the Workspace recipe moved; only switchWorkspace replaces it.
         const hintedSandbox = await tryRestoreHintedSandbox(signal);
         if (hintedSandbox) {
           return hintedSandbox;
