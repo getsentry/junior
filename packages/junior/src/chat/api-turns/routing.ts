@@ -1,12 +1,25 @@
 import { z } from "zod";
 import {
+  createLocalSource,
+  createWebSource,
+  type Source,
+} from "@sentry/junior-plugin-api";
+import { createActor, type Actor, type WebActor } from "@/chat/actor";
+import type { ConversationPrivacy } from "@/chat/conversation-privacy";
+import type {
+  ConversationAuthor,
+  ConversationMessage,
+} from "@/chat/state/conversation";
+import {
   getTurnRecord,
   listTurnSummaries,
 } from "@/chat/task-execution/checkpoint";
 import {
-  isResourceEventMailboxMetadata,
-  type ResourceEventMailboxMetadata,
-} from "@/chat/resource-events/notification";
+  isResourceEventConversationMessage,
+  RESOURCE_EVENT_MESSAGE_AUTHOR,
+  RESOURCE_EVENT_SYSTEM_ACTOR,
+} from "@/chat/resource-events/actor";
+import { isResourceEventMailboxMetadata } from "@/chat/resource-events/notification";
 import type { InboundMessage } from "@/chat/task-execution/store";
 import type { ConversationWorkerContext } from "@/chat/task-execution/worker";
 
@@ -25,9 +38,56 @@ export type ApiTurnMailboxMetadata = z.output<
   typeof apiTurnMailboxMetadataSchema
 >;
 
-type TurnInput =
-  | { message: InboundMessage; metadata: ApiTurnMailboxMetadata }
-  | { message: InboundMessage; metadata: ResourceEventMailboxMetadata };
+export interface TurnInput {
+  actor: Actor;
+  author: ConversationAuthor;
+  message: InboundMessage;
+  source: "resource_event" | "web";
+}
+
+export type TurnIdentity = Pick<TurnInput, "actor" | "author" | "source">;
+
+/** Restore normalized Turn identity from one saved Message. */
+export function turnIdentityFromConversationMessage(
+  message: ConversationMessage,
+): TurnIdentity | undefined {
+  if (isResourceEventConversationMessage(message)) {
+    return {
+      actor: RESOURCE_EVENT_SYSTEM_ACTOR,
+      author: message.author ?? RESOURCE_EVENT_MESSAGE_AUTHOR,
+      source: "resource_event",
+    };
+  }
+  const actor = createActor(message.author, {
+    platform: "web",
+    userId: message.author?.userId,
+  });
+  if (actor?.platform !== "web") {
+    return undefined;
+  }
+  return {
+    actor,
+    author: message.author ?? { userId: actor.userId },
+    source: "web",
+  };
+}
+
+/** Build the AgentRun Source for one Turn input. */
+export function sourceFromTurnInput(args: {
+  conversationId: string;
+  source: TurnInput["source"];
+  visibility?: ConversationPrivacy;
+}): Source {
+  switch (args.source) {
+    case "resource_event":
+      return createLocalSource(args.conversationId);
+    case "web":
+      return createWebSource(
+        args.conversationId,
+        args.visibility === "private" ? "private" : "public",
+      );
+  }
+}
 
 /** Return the active root API Turn for one Conversation, if it has one. */
 export async function getActiveApiTurnId(
@@ -72,7 +132,7 @@ export async function getAuthPausedApiTurnId(
 
 function parseApiTurnMessages(
   messages: readonly InboundMessage[],
-): Array<{ message: InboundMessage; metadata: ApiTurnMailboxMetadata }> {
+): TurnInput[] {
   if (messages.length === 0) {
     return [];
   }
@@ -90,16 +150,35 @@ function parseApiTurnMessages(
     if (!entry.metadata.success) {
       throw new Error("User message has invalid metadata");
     }
-    return { message: entry.message, metadata: entry.metadata.data };
+    const metadata = entry.metadata.data;
+    const actor: WebActor = {
+      platform: "web",
+      userId: metadata.authorUserId,
+      email: metadata.authorEmail.trim().toLowerCase(),
+      ...(metadata.authorFullName
+        ? { fullName: metadata.authorFullName }
+        : undefined),
+      ...(metadata.authorUserName
+        ? { userName: metadata.authorUserName }
+        : undefined),
+    };
+    return {
+      actor,
+      author: {
+        email: actor.email,
+        ...(actor.fullName ? { fullName: actor.fullName } : undefined),
+        userId: actor.userId,
+        ...(actor.userName ? { userName: actor.userName } : undefined),
+      },
+      message: entry.message,
+      source: "web" as const,
+    };
   });
 }
 
 function parseResourceEventMessages(
   messages: readonly InboundMessage[],
-): Array<{
-  message: InboundMessage;
-  metadata: ResourceEventMailboxMetadata;
-}> {
+): TurnInput[] {
   if (messages.length === 0) {
     return [];
   }
@@ -116,7 +195,12 @@ function parseResourceEventMessages(
     if (!isResourceEventMailboxMetadata(message.input.metadata)) {
       throw new Error("Resource event has invalid metadata");
     }
-    return { message, metadata: message.input.metadata };
+    return {
+      actor: RESOURCE_EVENT_SYSTEM_ACTOR,
+      author: RESOURCE_EVENT_MESSAGE_AUTHOR,
+      message,
+      source: "resource_event" as const,
+    };
   });
 }
 

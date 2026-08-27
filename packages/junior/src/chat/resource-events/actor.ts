@@ -16,6 +16,14 @@ import type { Actor } from "@/chat/actor";
  */
 export const RESOURCE_EVENT_AUTHOR_ID = "UJRNEVENT";
 
+/** Synthetic Message author for resource-event input. */
+export const RESOURCE_EVENT_MESSAGE_AUTHOR = {
+  fullName: "Junior event",
+  isBot: true,
+  userId: RESOURCE_EVENT_AUTHOR_ID,
+  userName: "junior-event",
+} as const;
+
 /** System execution actor for every resource-event turn. */
 export const RESOURCE_EVENT_SYSTEM_ACTOR = {
   platform: "system",

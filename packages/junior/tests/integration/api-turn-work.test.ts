@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createLocalSource, createWebSource } from "@sentry/junior-plugin-api";
 import { createApiTurnCancellation } from "@/chat/api-turns/cancellation";
-import { localResourceEventActor } from "@/chat/api-turns/mailbox-input";
 import {
   appendAndEnqueueApiConversationMessage,
   apiTurnIdForMessage,
@@ -15,6 +14,7 @@ import {
 } from "@/chat/api-turns/work";
 import type { AgentRun } from "@/chat/agent/types";
 import { getConversationEventStore } from "@/chat/db";
+import { RESOURCE_EVENT_SYSTEM_ACTOR } from "@/chat/resource-events/actor";
 import { createResourceEventInboundMessage } from "@/chat/resource-events/notification";
 import { appendAndEnqueueInboundMessage } from "@/chat/task-execution/store";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
@@ -449,7 +449,6 @@ describe("Conversation API work", () => {
 
     const messageId = message.inboundMessageId;
     const turnId = apiTurnIdForMessage(messageId);
-    const eventActor = localResourceEventActor();
     const agentRuns: AgentRun[] = [];
     let firstRun = true;
     const worker = createApiTurnWorker(
@@ -504,13 +503,16 @@ describe("Conversation API work", () => {
     for (const run of agentRuns) {
       expect(run).toEqual(
         expect.objectContaining({
-          actor: eventActor,
+          actor: RESOURCE_EVENT_SYSTEM_ACTOR,
+          credentialContext: { actor: RESOURCE_EVENT_SYSTEM_ACTOR },
           destination,
+          disabledFeatures: ["interactive-auth"],
           publishExternally: false,
           source: createLocalSource(conversationId),
           turnId,
         }),
       );
+      expect(run.authorization).toBeUndefined();
     }
     await expect(getTurnRecord(conversationId, turnId)).resolves.toMatchObject({
       publishExternally: false,

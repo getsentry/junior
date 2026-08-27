@@ -20,7 +20,10 @@ import {
   normalizeIncomingSlackThreadId,
   withNormalizedThreadId,
 } from "@/chat/ingress/message-router";
-import { RESOURCE_EVENT_AUTHOR_ID } from "@/chat/resource-events/actor";
+import {
+  RESOURCE_EVENT_AUTHOR_ID,
+  RESOURCE_EVENT_MESSAGE_AUTHOR,
+} from "@/chat/resource-events/actor";
 import { isResourceEventMailboxMetadata } from "@/chat/resource-events/notification";
 import { resolveConversationRouting } from "@/chat/services/turn-session-routing";
 import type { InboundMessage } from "@/chat/task-execution/store";
@@ -97,10 +100,7 @@ export function buildResourceEventSlackMessage(args: {
     threadId,
     text: args.record.input.text,
     author: {
-      userId: RESOURCE_EVENT_AUTHOR_ID,
-      userName: "junior-event",
-      fullName: "Junior event",
-      isBot: true,
+      ...RESOURCE_EVENT_MESSAGE_AUTHOR,
       isMe: false,
     },
     isMention: false,

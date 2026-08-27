@@ -2,21 +2,13 @@
 import { createHash } from "node:crypto";
 import type { StateAdapter } from "chat";
 import {
-  createLocalSource,
-  createWebSource,
   localDestinationSchema,
   type Destination,
   type LocalDestination,
-  type Source,
 } from "@sentry/junior-plugin-api";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
-import {
-  createActor,
-  type LocalActor,
-  type StoredSlackActor,
-  type WebActor,
-} from "@/chat/actor";
+import { type StoredSlackActor, type WebActor } from "@/chat/actor";
 import type { ConversationStore } from "@/chat/conversations/store";
 import { loadProjection } from "@/chat/conversations/projection";
 import {
@@ -89,13 +81,12 @@ import {
 import {
   isApiTurnWork,
   resolveApiTurnWork,
+  sourceFromTurnInput,
+  turnIdentityFromConversationMessage,
   type ApiTurnMailboxMetadata,
+  type TurnIdentity,
 } from "@/chat/api-turns/routing";
-import {
-  joinMailboxText,
-  localResourceEventActor,
-} from "@/chat/api-turns/mailbox-input";
-import { isResourceEventConversationMessage } from "@/chat/resource-events/actor";
+import { joinMailboxText } from "@/chat/api-turns/mailbox-input";
 
 export { resolveApiTurnWork } from "@/chat/api-turns/routing";
 
@@ -196,31 +187,6 @@ function resolveApiTurnDestination(args: {
   return requireLocalDestination(args.conversationId);
 }
 
-/** Build the web Source for one dashboard turn, inheriting conversation privacy. */
-function webSourceForConversation(args: {
-  conversationId: string;
-  visibility?: ConversationPrivacy;
-}): Source {
-  return createWebSource(
-    args.conversationId,
-    args.visibility === "private" ? "private" : "public",
-  );
-}
-
-function actorFromMetadata(metadata: ApiTurnMailboxMetadata): WebActor {
-  return {
-    platform: "web",
-    userId: metadata.authorUserId,
-    email: normalizeEmail(metadata.authorEmail),
-    ...(metadata.authorFullName
-      ? { fullName: metadata.authorFullName }
-      : undefined),
-    ...(metadata.authorUserName
-      ? { userName: metadata.authorUserName }
-      : undefined),
-  };
-}
-
 /** Durable conversation actor fields for web/dashboard participants. */
 function storedActorFromApi(actor: WebActor): StoredSlackActor {
   return {
@@ -311,8 +277,9 @@ export async function recordApiConversationActivity(args: {
   const isNewRoot = !existing;
   const visibility = args.rootVisibility === "private" ? "private" : "public";
   const source = isNewRoot
-    ? webSourceForConversation({
+    ? sourceFromTurnInput({
         conversationId: args.conversationId,
+        source: "web",
         visibility,
       })
     : undefined;
@@ -455,10 +422,7 @@ export function createApiTurnWorker(
     );
 
     const isResume = resolved.kind === "resume";
-    let isResourceEvent =
-      resolved.kind === "mailbox" &&
-      resolved.batch[0]?.metadata.kind === "resource_event";
-    let actor: WebActor | LocalActor | undefined;
+    let turnIdentity: TurnIdentity | undefined;
     let text = "";
     let turnId = "";
     let userMessageId = "";
@@ -479,15 +443,6 @@ export function createApiTurnWorker(
         mailboxDestination ??
         storedConversation?.destination,
     });
-    const sourceFor = (resourceEvent: boolean): Source =>
-      resourceEvent
-        ? createLocalSource(context.conversationId)
-        : webSourceForConversation({
-            conversationId: context.conversationId,
-            visibility: storedConversation?.visibility,
-          });
-    let source = sourceFor(isResourceEvent);
-
     if (resolved.kind === "mailbox") {
       const first = resolved.batch[0]!;
       text = joinMailboxText(resolved.batch.map((entry) => entry.message));
@@ -497,10 +452,7 @@ export function createApiTurnWorker(
       inputMessageIds = resolved.batch.map(
         (entry) => entry.message.inboundMessageId,
       );
-      actor =
-        first.metadata.kind === "resource_event"
-          ? localResourceEventActor()
-          : actorFromMetadata(first.metadata);
+      turnIdentity = first;
     } else {
       turnId = resolved.turnId;
     }
@@ -519,36 +471,37 @@ export function createApiTurnWorker(
         );
       }
       // Resume has no new input. Restore the Actor from the saved Turn input.
-      if (isResourceEventConversationMessage(userMessage)) {
-        isResourceEvent = true;
-        actor = localResourceEventActor();
-        source = sourceFor(true);
-      } else {
-        const resumedActor = createActor(userMessage.author, {
-          platform: "web",
-          userId: userMessage.author?.userId,
-        });
-        if (resumedActor?.platform === "web") {
-          actor = resumedActor;
-        }
-      }
+      turnIdentity = turnIdentityFromConversationMessage(userMessage);
       userMessageId = userMessage.id;
       text = userMessage.text;
       startedAtMs = userMessage.createdAtMs;
       inputMessageIds = [userMessageId];
     }
-    if (!actor) {
+    if (!turnIdentity) {
       throw new Error(
         `Resumed Turn is missing an Actor for Conversation ${context.conversationId}`,
       );
     }
+    const { actor, author } = turnIdentity;
+    const source = sourceFromTurnInput({
+      conversationId: context.conversationId,
+      source: turnIdentity.source,
+      visibility: storedConversation?.visibility,
+    });
+    const webActor = actor.platform === "web" ? actor : undefined;
 
     return await withLogContext(
       {
         conversationId: context.conversationId,
-        platform: isResourceEvent ? "local" : "web",
-        userId: actor.userId,
-        ...(actor.userName ? { userName: actor.userName } : undefined),
+        platform: actor.platform,
+        ...(webActor
+          ? {
+              userId: webActor.userId,
+              ...(webActor.userName
+                ? { userName: webActor.userName }
+                : undefined),
+            }
+          : undefined),
       },
       async () => {
         let acknowledged = isResume || context.attempt.messages.length === 0;
@@ -585,7 +538,6 @@ export function createApiTurnWorker(
             try {
               await completeCancelledApiTurn({
                 acknowledge,
-                actorId: actor.userId,
                 cancellation,
                 conversation,
                 conversationId: context.conversationId,
@@ -613,16 +565,13 @@ export function createApiTurnWorker(
             role: "user",
             text: normalizeConversationText(text),
             createdAtMs: startedAtMs,
-            author: {
-              ...(actor.email ? { email: actor.email } : undefined),
-              ...(actor.fullName ? { fullName: actor.fullName } : undefined),
-              userId: actor.userId,
-              ...(actor.userName ? { userName: actor.userName } : undefined),
-            },
+            author,
             meta: {
               explicitMention: true,
               replied: false,
-              ...(isResourceEvent ? undefined : { source: "web" as const }),
+              ...(turnIdentity.source === "web"
+                ? { source: "web" as const }
+                : undefined),
             },
           });
           await persistConversationMessages({
@@ -679,9 +628,11 @@ export function createApiTurnWorker(
             return await completeCancelledTurn();
           }
           if (!isResume) {
-            // Match Slack: a newer user message supersedes an auth-parked turn
+            // Match Slack: new input supersedes an auth-paused Turn
             // instead of leaving two active Turns or letting a late OAuth
             // wake resume stale work.
+            const pendingAuthorizationActorId =
+              conversation.processing.pendingAuth?.actorId;
             const authParked = (
               await listTurnSummaries(context.conversationId)
             ).filter(
@@ -698,8 +649,7 @@ export function createApiTurnWorker(
               await abandonTurnRecord({
                 conversationId: context.conversationId,
                 turnId: parked.turnId,
-                errorMessage:
-                  "Auth-parked session superseded by a new user message",
+                errorMessage: "Auth-paused Turn superseded by new input",
               });
               // Keep pendingAuth: MCP OAuth still needs it to accept an in-flight
               // connect and store credentials. The abandoned turn record makes a
@@ -710,11 +660,11 @@ export function createApiTurnWorker(
                 sessionId: parked.turnId,
               });
             }
-            if (authParked.length > 0) {
+            if (authParked.length > 0 && pendingAuthorizationActorId) {
               // Drop the dashboard connect prompt so a superseded OAuth flow
               // cannot leave a stale banner after the user moves on.
               await deleteWebAuthorization({
-                actorId: actor.userId,
+                actorId: pendingAuthorizationActorId,
                 conversationId: context.conversationId,
               });
             }
@@ -754,10 +704,14 @@ export function createApiTurnWorker(
               ...(cancellationSignal
                 ? { signal: cancellationSignal }
                 : undefined),
-              authorization: createWebAuthorization({
-                actorId: actor.userId,
-                conversationId: context.conversationId,
-              }),
+              ...(webActor
+                ? {
+                    authorization: createWebAuthorization({
+                      actorId: webActor.userId,
+                      conversationId: context.conversationId,
+                    }),
+                  }
+                : { disabledFeatures: ["interactive-auth"] as const }),
               state: {
                 pendingAuth: conversation.processing.pendingAuth,
                 sandboxRef,

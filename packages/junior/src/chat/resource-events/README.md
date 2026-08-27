@@ -48,8 +48,6 @@ conversation.
   worker edge so `handleSubscribedMessage` can run. Replace with a plain turn
   entry from conversation destination + session source, then delete
   `slack-resource-event.ts`.
-- TODO(resource-events): Local destinations still use a dedicated
-  `resource_event` api-turns work kind. Fold into normal deferred mailbox turns.
 - TODO(subagents): child conversations still store watches on their own id.
   When subagents matter, store the parent root id or give children the parent's
   destination and worker path.
