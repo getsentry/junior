@@ -993,10 +993,10 @@ describe("createTestSandbox", () => {
     });
   });
 
-  it("recreates sandbox when dependency profile hash changed", async () => {
-    const freshSandbox = makeSandbox("sbx_fresh_after_profile_change");
+  it("reopens the current sandbox when its stored profile no longer matches", async () => {
+    const restoredSandbox = makeSandbox("sbx_old");
     hashMock.mockReturnValue("current-profile");
-    sandboxCreateMock.mockResolvedValue(freshSandbox);
+    sandboxGetMock.mockResolvedValueOnce(restoredSandbox);
 
     const executor = createTestSandbox({
       sandboxId: "sbx_old",
@@ -1006,9 +1006,12 @@ describe("createTestSandbox", () => {
 
     const sandbox = await executor.createSandbox();
 
-    await expectWorkspaceToDelegate(sandbox, freshSandbox);
-    expect(sandboxGetMock).not.toHaveBeenCalled();
-    expect(sandboxCreateMock).toHaveBeenCalledTimes(1);
+    await expectWorkspaceToDelegate(sandbox, restoredSandbox);
+    expect(sandboxGetMock).toHaveBeenCalledWith({
+      name: "sbx_old",
+      resume: true,
+    });
+    expect(sandboxCreateMock).not.toHaveBeenCalled();
   });
 
   it("replaces a live workspace when the same recipe id has a new profile", async () => {
@@ -1124,10 +1127,10 @@ describe("createTestSandbox", () => {
     });
   });
 
-  it("discards the Workspace hint when its recipe row is missing", async () => {
+  it("reopens the current sandbox when the Workspace row is missing", async () => {
     hashMock.mockReturnValue("profile-base");
-    const fresh = makeSandbox("sbx_after_recipe_removed");
-    sandboxCreateMock.mockResolvedValueOnce(fresh);
+    const restored = makeSandbox("sbx_missing_recipe");
+    sandboxGetMock.mockResolvedValueOnce(restored);
     const refs: Array<{
       id: string;
       workspaceId?: string;
@@ -1148,18 +1151,53 @@ describe("createTestSandbox", () => {
 
     await runtime.acquire();
 
-    expect(sandboxGetMock).not.toHaveBeenCalled();
-    expect(sandboxCreateMock).toHaveBeenCalledTimes(1);
-    expect(runtime.sandboxRef()).toEqual({
-      id: "sbx_after_recipe_removed",
-      profileHash: "profile-base",
+    expect(sandboxGetMock).toHaveBeenCalledWith({
+      name: "sbx_missing_recipe",
+      resume: true,
     });
-    expect(refs).toEqual([
-      {
-        id: "sbx_after_recipe_removed",
-        profileHash: "profile-base",
+    expect(sandboxCreateMock).not.toHaveBeenCalled();
+    expect(runtime.sandboxRef()).toEqual({
+      id: "sbx_missing_recipe",
+      profileHash: "profile-workspace",
+      workspaceId: "workspace-deleted",
+    });
+    expect(refs).toEqual([]);
+  });
+
+  it("reopens the current sandbox when the Workspace profile changes", async () => {
+    hashMock.mockReturnValue("profile-new");
+    const restored = makeSandbox("sbx_recipe_changed");
+    sandboxGetMock.mockResolvedValueOnce(restored);
+    const runtime = createSandboxRuntime({
+      sandboxRef: {
+        id: "sbx_recipe_changed",
+        profileHash: "profile-old",
+        workspaceId: "workspace-1",
       },
-    ]);
+      workspace: {
+        id: "workspace-1",
+        name: "sentry-docs",
+        setupScript: "echo new",
+        snapshot: null,
+        repos: [],
+      },
+      skills: [],
+      referenceFiles: [],
+    });
+
+    await runtime.acquire();
+
+    expect(sandboxGetMock).toHaveBeenCalledWith({
+      name: "sbx_recipe_changed",
+      resume: true,
+    });
+    expect(sandboxCreateMock).not.toHaveBeenCalled();
+    expect(getReadyWorkspaceMock).not.toHaveBeenCalled();
+    expect(runtime.sandboxRef()).toEqual({
+      id: "sbx_recipe_changed",
+      profileHash: "profile-old",
+      workspaceId: "workspace-1",
+    });
   });
 
   it("prepares the active sandbox after loading a ready Workspace snapshot", async () => {
@@ -2909,6 +2947,73 @@ describe("createTestSandbox", () => {
 
     await expect(runtime.acquire()).rejects.toSatisfy(
       isWorkspaceSnapshotNotReadyError,
+    );
+
+    expect(ensureWorkspaceSnapshotBuildMock).toHaveBeenCalledWith({ workspace });
+    expect(sandboxCreateMock).not.toHaveBeenCalled();
+  });
+
+  it("returns a building tool result when a Workspace snapshot is not ready", async () => {
+    getReadyWorkspaceMock.mockRejectedValueOnce(
+      new WorkspaceSnapshotNotReadyError("sentry-docs"),
+    );
+    const workspace = {
+      id: "workspace-sentry-docs",
+      name: "sentry-docs",
+      setupScript: "",
+      snapshot: null,
+      repos: [],
+    };
+    const sandbox = createSandbox({
+      workspace,
+      skills: [],
+      referenceFiles: [],
+    });
+
+    await expect(
+      sandbox.tools.execute({
+        toolName: "bash",
+        input: { command: "pwd" },
+      }),
+    ).resolves.toMatchObject({
+      details: {
+        status: "building",
+        workspace: "sentry-docs",
+        message:
+          "The sentry-docs workspace is still preparing its sandbox. Wait for that preparation to finish, then try again.",
+      },
+    });
+
+    expect(ensureWorkspaceSnapshotBuildMock).toHaveBeenCalledWith({ workspace });
+    expect(sandboxCreateMock).not.toHaveBeenCalled();
+  });
+
+  it("returns a preparing message from host workspace helpers", async () => {
+    getReadyWorkspaceMock.mockRejectedValueOnce(
+      new WorkspaceSnapshotNotReadyError("sentry-docs"),
+    );
+    const workspace = {
+      id: "workspace-sentry-docs-helpers",
+      name: "sentry-docs",
+      setupScript: "",
+      snapshot: null,
+      repos: [],
+    };
+    const sandbox = createSandbox({
+      workspace,
+      skills: [],
+      referenceFiles: [],
+    });
+
+    await expect(
+      sandbox.workspace.readFileToBuffer({ path: "/vercel/sandbox/README.md" }),
+    ).rejects.toSatisfy(
+      (error: unknown) =>
+        error instanceof ToolInputError &&
+        error.message.includes(
+          "The sentry-docs workspace is still preparing its sandbox.",
+        ) &&
+        isWorkspaceSnapshotNotReadyError(error),
     );
 
     expect(ensureWorkspaceSnapshotBuildMock).toHaveBeenCalledWith({ workspace });
