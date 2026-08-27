@@ -270,6 +270,32 @@ describe("buildTurnResult", () => {
     expect(reply.diagnostics.usedPrimaryText).toBe(true);
   });
 
+  it("treats multiple trailing no-reply markers as silent completion", () => {
+    const reply = buildTurnResult({
+      newMessages: [
+        {
+          role: "assistant",
+          content: [{ type: "text", text: NO_REPLY_MARKER }],
+          stopReason: "stop",
+        },
+        {
+          role: "assistant",
+          content: [{ type: "text", text: NO_REPLY_MARKER }],
+          stopReason: "stop",
+        },
+      ],
+      userInput: "Do whatever makes sense here",
+      toolCalls: [],
+      generatedFileCount: 0,
+      shouldTrace: false,
+      modelId: "test-model",
+      executionProfile,
+    });
+
+    expect(reply.text).toBe("");
+    expect(reply.diagnostics.outcome).toBe("success");
+  });
+
   it("keeps no-reply marker silent when side-effect tools also ran", () => {
     const reply = buildTurnResult({
       newMessages: [

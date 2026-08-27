@@ -1,6 +1,6 @@
 import { isRetryableAssistantError } from "@earendil-works/pi-ai";
 import { logInfo, logWarn, summarizeMessageText } from "@/chat/logging";
-import { containsNoReplyMarker, isNoReplyMarker } from "@/chat/no-reply";
+import { containsNoReplyMarker } from "@/chat/no-reply";
 import type { PiMessage } from "@/chat/pi/messages";
 import { createProviderError } from "@/chat/services/provider-error";
 import type { TurnRoute } from "@/chat/services/turn-router";
@@ -80,21 +80,25 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
       .map((message) => extractAssistantText(message))
       .join("\n\n"),
   ).trim();
-  const exactNoReplyMarker = isNoReplyMarker(rawPrimaryText);
-  const mixedNoReplyMarker =
-    !exactNoReplyMarker && containsNoReplyMarker(rawPrimaryText);
-  // Only an exact whole-message marker is intentional silence.
-  const noReplyRequested = exactNoReplyMarker;
-  const primaryText = noReplyRequested
-    ? ""
-    : terminalAssistantMessages
-        .map((message) => decideReply(message))
-        .filter(
-          (output): output is { kind: "deliver"; text: string } =>
-            output.kind === "deliver",
-        )
-        .map((output) => output.text)
-        .join("\n\n");
+  const replyDecisions = terminalAssistantMessages.map((message) =>
+    decideReply(message),
+  );
+  const primaryText = replyDecisions
+    .filter(
+      (output): output is { kind: "deliver"; text: string } =>
+        output.kind === "deliver",
+    )
+    .map((output) => output.text)
+    .join("\n\n");
+  // Silence only when every terminal message is empty or an exact marker, and at
+  // least one exact marker is present. Mixed marker + prose still delivers.
+  const noReplyRequested =
+    !primaryText &&
+    replyDecisions.some((decision) => decision.kind === "suppress") &&
+    replyDecisions.every(
+      (decision) =>
+        decision.kind === "suppress" || decision.kind === "empty",
+    );
 
   const toolErrorCount = toolResults.filter((result) => result.isError).length;
   const reactionPerformed = toolResults.some(
@@ -116,7 +120,7 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
       : undefined;
   const isProviderError = stopReason === "error";
 
-  if (exactNoReplyMarker) {
+  if (noReplyRequested) {
     const markerCategory = reactionPerformed ? "reaction" : "none";
     const markerAttributes = {
       "app.ai.no_reply_marker": true,
@@ -127,7 +131,7 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
     if (!isProviderError) {
       logInfo("ai.no_reply_marker.accepted", markerAttributes);
     }
-  } else if (mixedNoReplyMarker) {
+  } else if (containsNoReplyMarker(rawPrimaryText)) {
     logWarn("ai.no_reply_marker.mixed_text", {
       "app.ai.no_reply_marker": true,
       "app.ai.no_reply_marker_mode": "mixed",
