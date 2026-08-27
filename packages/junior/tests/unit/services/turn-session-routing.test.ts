@@ -9,6 +9,7 @@ import {
   resolveTurnSessionRouting,
 } from "@/chat/services/turn-session-routing";
 import type { SessionSource } from "@/chat/source";
+import type { Location } from "@/chat/conversations/location";
 
 const DESTINATION = {
   platform: "slack",
@@ -28,6 +29,7 @@ function conversation(args: {
   conversationId?: string;
   destination?: Destination;
   lineage?: { parentConversationId: string };
+  location?: Location;
   sessionSource?: SessionSource;
 }): Conversation {
   return {
@@ -39,6 +41,7 @@ function conversation(args: {
     execution: { status: "paused" },
     ...(args.destination ? { destination: args.destination } : undefined),
     ...(args.lineage ? { lineage: args.lineage } : undefined),
+    ...(args.location ? { location: args.location } : undefined),
     ...(args.sessionSource ? { sessionSource: args.sessionSource } : undefined),
   };
 }
@@ -111,6 +114,12 @@ describe("resolveConversationRouting", () => {
         if (conversationId === "slack:C123:1712345.0001") {
           return conversation({
             destination: DESTINATION,
+            location: {
+              id: "location-123",
+              provider: "slack",
+              tenantId: "T123",
+              providerId: "C123",
+            },
             sessionSource: SOURCE,
           });
         }
@@ -125,6 +134,12 @@ describe("resolveConversationRouting", () => {
       }),
     ).resolves.toEqual({
       destination: DESTINATION,
+      location: {
+        id: "location-123",
+        provider: "slack",
+        tenantId: "T123",
+        providerId: "C123",
+      },
       source: SOURCE,
     });
   });

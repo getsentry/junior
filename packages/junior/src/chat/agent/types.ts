@@ -7,6 +7,7 @@ import type {
 } from "@sentry/junior-plugin-api";
 import type { LocationConfigurationService } from "@/chat/configuration/types";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
+import type { Location } from "@/chat/conversations/location";
 import type { CredentialContext } from "@/chat/credentials/context";
 import type { PiMessage } from "@/chat/pi/messages";
 import type { Actor } from "@/chat/actor";
@@ -209,6 +210,14 @@ export type AgentRun = {
   /** Credential authority projected from actor (plus optional subject). */
   credentialContext?: CredentialContext;
   source: Source;
+  /**
+   * Transitional provider context for this Run.
+   * TODO(dcramer): Remove top-level Location, Destination, and
+   * publishExternally after provider Source contains its inbound Location and
+   * Delivery contains its target Location and authority across new, resumed,
+   * and child Runs.
+   */
+  location?: Location;
   destination: Destination;
   /** When true, also publish assistant output to the conversation destination. */
   publishExternally?: boolean;

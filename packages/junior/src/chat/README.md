@@ -141,9 +141,12 @@ delegation without becoming the execution actor or a general task owner.
 - Source and Actor describe the current Turn. Location describes optional
   provider coordinates. Provider Source and Delivery may use that type, but
   Location does not select another runtime or grant provider delivery.
-- Junior resolves the Conversation's Location from `conversationId`. Callers do
-  not pass another copy into the core agent. Child Conversations store the
-  Location they need instead of searching parent lineage at Run time.
+- The final Run interface gets provider coordinates through Source and
+  Delivery. During the cutover, `AgentRun.location` may carry the stored
+  Conversation Location while consumers move away from Destination and session
+  Source. Its removal TODO defines the end of that transition.
+- Child Conversations store the Location they need instead of searching parent
+  lineage at Run time in the final model.
 - External publish is controlled per turn via `publishExternally`. Slack
   ingress/resume publish unless the flag is explicitly false. Non-Slack,
   destinationless, and dashboard/web work stay conversation-only unless the

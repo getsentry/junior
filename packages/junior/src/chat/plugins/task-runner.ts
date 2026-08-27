@@ -381,7 +381,7 @@ async function loadPluginRun(
     completedAtMs: record.updatedAtMs,
     conversationId: record.conversationId,
     destination: routing.destination,
-    ...(routing.locationId ? { locationId: routing.locationId } : undefined),
+    ...(routing.location ? { locationId: routing.location.id } : undefined),
     // Read Actors from the full run record, not the shorter transcript.
     // This includes every Actor that supplied an instruction.
     actors: record.actors,

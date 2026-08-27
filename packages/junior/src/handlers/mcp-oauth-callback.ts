@@ -409,6 +409,7 @@ async function resumeAuthorizedMcpTurn(args: {
           },
           actor,
           destination,
+          ...(routing.location ? { location: routing.location } : undefined),
           source: routing.source,
           toolChannelId: authSession.toolChannelId ?? authSession.channelId,
           environment: {
