@@ -54,15 +54,10 @@ describe("assistant reply", () => {
   });
 
   it("delivers text that mentions the no-reply marker", () => {
-    expect(
-      decideReply(
-        assistant(
-          `Earlier turn used ${NO_REPLY_MARKER} and then stopped.\n\n\`\`\`ts\n  const x = 1;\n\`\`\``,
-        ),
-      ),
-    ).toEqual({
+    const text = `Earlier turn used ${NO_REPLY_MARKER} and then stopped.`;
+    expect(decideReply(assistant(text))).toEqual({
       kind: "deliver",
-      text: "Earlier turn used  and then stopped.\n\n```ts\n  const x = 1;\n```",
+      text,
     });
   });
 

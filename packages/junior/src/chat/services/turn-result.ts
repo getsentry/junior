@@ -80,22 +80,21 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
       .map((message) => extractAssistantText(message))
       .join("\n\n"),
   ).trim();
-  const primaryText = terminalAssistantMessages
-    .map((message) => decideReply(message))
-    .filter(
-      (output): output is { kind: "deliver"; text: string } =>
-        output.kind === "deliver",
-    )
-    .map((output) => output.text)
-    .join("\n\n")
-    .trim();
-  // decideReply already strips mixed marker mentions. Empty text + marker means
-  // intentional no-reply; empty text without marker is a normal empty response.
-  const noReplyRequested =
-    !primaryText && containsNoReplyMarker(rawPrimaryText);
   const exactNoReplyMarker = isNoReplyMarker(rawPrimaryText);
   const mixedNoReplyMarker =
     !exactNoReplyMarker && containsNoReplyMarker(rawPrimaryText);
+  // Only an exact whole-message marker is intentional silence.
+  const noReplyRequested = exactNoReplyMarker;
+  const primaryText = noReplyRequested
+    ? ""
+    : terminalAssistantMessages
+        .map((message) => decideReply(message))
+        .filter(
+          (output): output is { kind: "deliver"; text: string } =>
+            output.kind === "deliver",
+        )
+        .map((output) => output.text)
+        .join("\n\n");
 
   const toolErrorCount = toolResults.filter((result) => result.isError).length;
   const reactionPerformed = toolResults.some(
