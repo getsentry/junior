@@ -1,5 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { workspaceSnapshotFinishedEvent } from "@/chat/sandbox/snapshot/events";
+import {
+  resourceEventGuidance,
+  pluginSupportsEvent,
+} from "@/chat/resource-events/catalog";
+import { getResourceEventCatalog } from "@/chat/resource-events/runtime-catalog";
+import {
+  WORKSPACE_SNAPSHOT_FAILED_EVENT,
+  WORKSPACE_SNAPSHOT_NAMESPACE,
+  WORKSPACE_SNAPSHOT_READY_EVENT,
+  WORKSPACE_SNAPSHOT_RESOURCE_TYPE,
+  workspaceSnapshotFinishedEvent,
+  workspaceSnapshotResourceEvents,
+} from "@/chat/sandbox/snapshot/events";
 
 describe("Workspace snapshot events", () => {
   it("creates a failed event before a build row exists", () => {
@@ -36,5 +48,40 @@ describe("Workspace snapshot events", () => {
       status: "failed",
     });
     expect(event.untrustedText).toBe(error);
+  });
+
+  it("registers core snapshot events for catalog search and guidance", () => {
+    const registration = workspaceSnapshotResourceEvents();
+    const catalog = {
+      [WORKSPACE_SNAPSHOT_NAMESPACE]: registration,
+    };
+
+    expect(
+      pluginSupportsEvent(
+        catalog,
+        WORKSPACE_SNAPSHOT_NAMESPACE,
+        WORKSPACE_SNAPSHOT_RESOURCE_TYPE,
+        WORKSPACE_SNAPSHOT_READY_EVENT,
+      ),
+    ).toBe(true);
+    expect(
+      resourceEventGuidance(
+        catalog,
+        WORKSPACE_SNAPSHOT_NAMESPACE,
+        WORKSPACE_SNAPSHOT_RESOURCE_TYPE,
+        WORKSPACE_SNAPSHOT_READY_EVENT,
+      ),
+    ).toContain("switchWorkspace");
+    expect(
+      resourceEventGuidance(
+        catalog,
+        WORKSPACE_SNAPSHOT_NAMESPACE,
+        WORKSPACE_SNAPSHOT_RESOURCE_TYPE,
+        WORKSPACE_SNAPSHOT_FAILED_EVENT,
+      ),
+    ).toContain("Report the snapshot failure");
+
+    const runtime = getResourceEventCatalog();
+    expect(runtime[WORKSPACE_SNAPSHOT_NAMESPACE]).toEqual(registration);
   });
 });

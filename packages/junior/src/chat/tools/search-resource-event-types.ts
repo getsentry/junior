@@ -80,7 +80,7 @@ export function createSearchResourceEventTypesTool(
       readOnlyHint: true,
     },
     description:
-      "Search the resource event types currently enabled by plugins without creating anything. Use watchResourceEvents to receive temporary updates in the current Slack thread; use createEventTask to execute a durable instruction for matching events. When explaining results, preserve that distinction. This tool does not watch a resource, create a task, or enumerate concrete resources.",
+      "Search the resource event types currently enabled without creating anything. Includes plugin resources and core Workspace snapshot events. Use watchResourceEvents to receive temporary updates in the current conversation; use createEventTask to execute a durable instruction for matching events. When explaining results, preserve that distinction. This tool does not watch a resource, create a task, or enumerate concrete resources.",
     inputSchema: z
       .object({
         query: z

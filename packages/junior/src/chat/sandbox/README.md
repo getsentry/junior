@@ -52,12 +52,18 @@ traffic through verified host egress.
   dependencies, prepares repositories, runs setup, and captures the complete
   snapshot. Operators manage recipes from `/system/workspaces` or
   `/api/workspaces`. The `junior_snapshots` table records each build as
-  `building`, `failed`, or `ready`. A cold build uses one named Sandbox for up
-  to one hour. Short execution slices create the builder, install
-  dependencies, prepare repositories, start setup, and poll setup. Each slice
-  records its phase in SQL. The next run can continue after a soft yield or a
-  worker stop. The host continues a waiting `switchWorkspace` tool call without
-  asking the model to repeat it.
+  `building`, `failed`, or `ready`. A cold build runs on a background job with
+  one named Sandbox for up to one hour. Short job slices create the builder,
+  install dependencies, prepare repositories, start setup, and poll setup. Each
+  slice records its phase in SQL. The next job can continue after a soft yield
+  or a worker stop.
+- When `switchWorkspace` finds no ready snapshot, it returns
+  `status: "building"` plus a forced resource subscription for
+  `workspace_snapshot.ready` and `workspace_snapshot.failed`. It does not hold
+  the tool call open. The build job publishes those core `junior` events when
+  it finishes. The next agent turn should call `switchWorkspace` again with the
+  same name. Other sandbox tools use the same plain preparing message when the
+  snapshot is not ready yet.
 - SQL is the only source of Workspace snapshot state. Redis coordinates the
   build lock and its fencing. It does not store Workspace snapshot pointers.
 - Workspace repositories clone to fixed `repos/{name}` paths. Setup scripts

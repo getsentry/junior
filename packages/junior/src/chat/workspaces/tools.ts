@@ -345,7 +345,7 @@ export function createWorkspaceTools(
         readOnlyHint: false,
       },
       description:
-        "Replace the current sandbox with a named repository Workspace. Files in the old sandbox do not carry over. Returns ready after the switch, or building when the snapshot is still being prepared.",
+        "Replace the current sandbox with a named repository Workspace. Files in the old sandbox do not carry over. Returns ready after the switch, or building with a subscription when the snapshot is still being prepared. When building, wait for the ready event and call switchWorkspace again with the same name.",
       inputSchema: z
         .object({
           name: z.string().trim().min(1).describe("Exact workspace name."),
@@ -365,6 +365,8 @@ export function createWorkspaceTools(
         if (!workspace)
           throw new ToolInputError(`Workspace not found: ${name}`);
 
+        // Watch before the build job can finish. A ready event is terminal and
+        // will not replay for a late subscription.
         const watch = workspaceSnapshotWatch({
           workspaceId: workspace.id,
           workspaceName: workspace.name,

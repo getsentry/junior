@@ -27,6 +27,10 @@ conversation.
   builds one enabled runtime catalog for search, tool schemas, and validation.
   Prefer match keys the plugin always sets. If a listed key is missing on an
   event, core does not match.
+- Core also registers the `junior` / `workspace_snapshot` resource type for
+  snapshot ready and failed events. That namespace is reserved; plugins must not
+  claim it. Forced `switchWorkspace` watches use the same catalog entry and
+  event guidance as any other temporary subscription.
 - `searchResourceEventTypes` discovers that catalog without creating anything.
   `watchResourceEvents` creates a temporary resource subscription for the
   current conversation. Concrete identifiers still come from plugin tool
