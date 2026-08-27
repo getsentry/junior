@@ -12,8 +12,5 @@ export function containsNoReplyMarker(text: string): boolean {
 
 /** Remove no-reply markers so mixed replies can still deliver remaining text. */
 export function stripNoReplyMarkers(text: string): string {
-  return text
-    .replaceAll(NO_REPLY_MARKER, "")
-    .replace(/[ \t]{2,}/g, " ")
-    .trim();
+  return text.replaceAll(NO_REPLY_MARKER, "").trim();
 }

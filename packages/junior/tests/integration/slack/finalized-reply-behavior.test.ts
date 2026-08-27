@@ -162,7 +162,8 @@ describe("Slack behavior: finalized thread replies", () => {
   });
 
   it("posts answers that mention the no-reply marker", async () => {
-    const answer = `Earlier turn used ${NO_REPLY_MARKER} and then stopped.`;
+    const answer =
+      `Earlier turn used ${NO_REPLY_MARKER} and then stopped.\n\n\`\`\`ts\n  const x = 1;\n\`\`\``;
     const { slackRuntime } = createTestChatRuntime({
       services: {
         agentRunner: createModelAgentRunner(
@@ -187,7 +188,7 @@ describe("Slack behavior: finalized thread replies", () => {
 
     expect(thread.postKinds).toEqual(["value"]);
     expect(thread.posts.map(toPostedText)).toEqual([
-      "Earlier turn used and then stopped.",
+      "Earlier turn used  and then stopped.\n\n```ts\n  const x = 1;\n```",
     ]);
     expect(toPostedText(thread.posts[0])).not.toContain(NO_REPLY_MARKER);
     const lifecycle = await loadTurnLifecycleEvents(thread.id);
