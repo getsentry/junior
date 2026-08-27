@@ -25,7 +25,6 @@ import { createResourceEventInboundMessage } from "@/chat/resource-events/notifi
 import {
   buildSlackInboundMessage,
   createSlackConversationWorker,
-  createSlackResourceEventInboundMessage,
 } from "@/chat/task-execution/slack-work";
 import { getMessageActorIdentity } from "@/chat/services/message-actor-identity";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
@@ -410,8 +409,8 @@ describe("Slack conversation work execution", () => {
     };
 
     // Destination and session source live on the conversation. Enqueue the
-    // plain resource-event wake the way ingest does; the Slack worker adds
-    // thread metadata and publishes from that destination.
+    // plain resource-event wake the way ingest does; the Slack worker builds
+    // turn context at the edge and publishes from that destination.
     await requestConversationWork({
       conversationId: CONVERSATION_ID,
       destination: SLACK_DESTINATION,
@@ -1048,17 +1047,18 @@ describe("Slack conversation work execution", () => {
       handleNewMention: async (_thread, _message, hooks) => {
         await hooks.ack?.();
         await appendInboundMessage({
-          message: createSlackResourceEventInboundMessage({
-            conversationId: CONVERSATION_ID,
-            destination: SLACK_DESTINATION,
-            threadTs: "1712345.0001",
-            occurredAtMs: 2_000,
+          message: createResourceEventInboundMessage({
             event: {
               eventKey: "check-suite-1",
               eventType: "check_suite.completed",
+              occurredAtMs: 2_000,
               namespace: "github",
               identifier: "getsentry/junior#1010",
-              subscriptionId: "sub-1",
+              trustedSummary: "CI failed.",
+            },
+            subscription: {
+              conversationId: CONVERSATION_ID,
+              id: "sub-1",
             },
             text: "CI failed.",
           }),

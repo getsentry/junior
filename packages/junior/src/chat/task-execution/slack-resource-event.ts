@@ -1,93 +1,57 @@
 /**
- * Slack adapter for resource-event mailbox wakes.
+ * Slack edge helpers for resource-event mailbox wakes.
  *
  * Resource-event ingest stores plain conversation mailbox input. When the
- * conversation destination is Slack, this module adds Slack thread metadata so
- * the Slack worker can run the turn.
+ * conversation destination is Slack, this module builds the Message and Thread
+ * the Slack runtime needs for one turn. It does not rewrite mailbox rows.
  */
-import type { SerializedMessage, SerializedThread } from "chat";
-import type { Destination } from "@sentry/junior-plugin-api";
+import { Message, ThreadImpl, type StateAdapter } from "chat";
+import type { SlackAdapter } from "@chat-adapter/slack";
+import type { Destination, SlackDestination } from "@sentry/junior-plugin-api";
 import type { ConversationStore } from "@/chat/conversations/store";
 import { requireSlackDestination } from "@/chat/destination";
+import {
+  normalizeIncomingSlackThreadId,
+  withNormalizedThreadId,
+} from "@/chat/ingress/message-router";
 import { RESOURCE_EVENT_AUTHOR_ID } from "@/chat/resource-events/actor";
 import { isResourceEventMailboxMetadata } from "@/chat/resource-events/notification";
 import { resolveConversationRouting } from "@/chat/services/turn-session-routing";
 import type { InboundMessage } from "@/chat/task-execution/store";
 
-interface SlackResourceEventInboundInput {
+/** Load Slack destination and threadTs for a resource-event wake. */
+export async function resolveSlackResourceEventThread(args: {
   conversationId: string;
-  destination: {
-    channelId: string;
-    platform: "slack";
-    teamId: string;
-  };
-  event: {
-    eventKey: string;
-    eventType: string;
-    namespace: string;
-    identifier: string;
-    subscriptionId: string;
-  };
-  occurredAtMs: number;
-  receivedAtMs?: number;
-  text: string;
-  threadTs: string;
+  conversationStore?: ConversationStore;
+  destination?: Destination;
+}): Promise<{ destination: SlackDestination; threadTs: string }> {
+  const routing = await resolveConversationRouting({
+    conversationId: args.conversationId,
+    conversationStore: args.conversationStore,
+  });
+  const destination = requireSlackDestination(
+    routing?.destination ?? args.destination,
+    "Slack resource-event turn",
+  );
+  const threadTs =
+    routing?.source?.platform === "slack"
+      ? routing.source.threadTs?.trim()
+      : undefined;
+  if (!threadTs) {
+    throw new Error(
+      `Conversation ${args.conversationId} is missing a Slack thread for resource-event delivery`,
+    );
+  }
+  return { destination, threadTs };
 }
 
-function slackSerializedThread(input: {
-  channelId: string;
-  message: SerializedMessage;
-  threadTs: string;
-}): SerializedThread {
-  return {
-    _type: "chat:Thread",
-    adapterName: "slack",
-    channelId: input.channelId,
-    currentMessage: input.message,
-    id: `slack:${input.channelId}:${input.threadTs}`,
-    isDM: input.channelId.startsWith("D"),
-  };
-}
-
-/**
- * Serialize a synthetic resource-event mailbox message without a native Slack
- * message timestamp so Slack Web API calls cannot target the internal id.
- */
-function slackSerializedResourceEventMessage(input: {
-  channelId: string;
-  eventType: string;
-  id: string;
-  text: string;
-  threadTs: string;
-  timestampIso: string;
-}): SerializedMessage {
-  return {
-    _type: "chat:Message",
-    attachments: [],
-    author: {
-      userId: RESOURCE_EVENT_AUTHOR_ID,
-      userName: "junior-event",
-      fullName: "Junior event",
-      isBot: true,
-      isMe: false,
-    },
-    formatted: { type: "root", children: [] },
-    id: input.id,
-    metadata: {
-      dateSent: input.timestampIso,
-      edited: false,
-    },
-    raw: {
-      channel: input.channelId,
-      event_type: "resource_event",
-      resource_event_type: input.eventType,
-      thread_ts: input.threadTs,
-      type: "message",
-      user: RESOURCE_EVENT_AUTHOR_ID,
-    },
-    text: input.text,
-    threadId: `slack:${input.channelId}:${input.threadTs}`,
-  };
+/** Whether a mailbox row is a plain resource-event wake (no Slack envelope). */
+export function isPlainResourceEventRecord(record: InboundMessage): boolean {
+  return (
+    record.source === "resource_event" &&
+    isResourceEventMailboxMetadata(record.input.metadata) &&
+    !hasSlackConversationMetadata(record.input.metadata)
+  );
 }
 
 function hasSlackConversationMetadata(value: unknown): boolean {
@@ -105,122 +69,73 @@ function hasSlackConversationMetadata(value: unknown): boolean {
 }
 
 /**
- * Build a Slack mailbox record for a resource-event wake.
+ * Build a Slack Message for one plain resource-event mailbox row.
  *
- * Used only when the conversation destination is Slack and the turn needs
- * Slack message metadata.
+ * Used only at the Slack worker edge. The mailbox row stays plain.
  */
-export function createSlackResourceEventInboundMessage(
-  input: SlackResourceEventInboundInput,
-): InboundMessage {
-  const destination = input.destination;
-  const threadTs = input.threadTs.trim();
-  if (!threadTs) {
-    throw new Error("Slack resource-event hydration requires a thread timestamp");
-  }
-  const messageId = `resource-event-${input.event.subscriptionId}-${input.event.eventKey}`;
-  const timestampIso = new Date(input.occurredAtMs).toISOString();
-  const message = slackSerializedResourceEventMessage({
-    channelId: destination.channelId,
-    eventType: input.event.eventType,
-    id: messageId,
-    text: input.text,
-    threadTs,
-    timestampIso,
-  });
-  const thread = slackSerializedThread({
-    channelId: destination.channelId,
-    message,
-    threadTs,
-  });
-  return {
-    conversationId: input.conversationId,
-    createdAtMs: input.occurredAtMs,
-    destination,
-    inboundMessageId: `resource-event:${input.event.subscriptionId}:${input.event.eventKey}`,
-    delivery: "defer",
-    source: "resource_event",
-    receivedAtMs: input.receivedAtMs ?? Date.now(),
-    publishExternally: true,
-    input: {
-      text: input.text,
-      authorId: RESOURCE_EVENT_AUTHOR_ID,
-      metadata: {
-        kind: "resource_event",
-        installation: {
-          teamId: destination.teamId,
-        },
-        platform: "slack",
-        route: "subscribed",
-        thread,
-        message,
-        resourceEvent: {
-          eventKey: input.event.eventKey,
-          eventType: input.event.eventType,
-          namespace: input.event.namespace,
-          identifier: input.event.identifier,
-          subscriptionId: input.event.subscriptionId,
-        },
-      },
-    },
-  };
-}
-
-/**
- * Add Slack metadata to plain resource-event mailbox rows.
- *
- * Destination and thread come from the conversation record, not the watch.
- */
-export async function hydrateSlackResourceEventRecords(args: {
-  conversationId: string;
-  conversationStore?: ConversationStore;
-  destination?: Destination;
-  records: InboundMessage[];
-}): Promise<InboundMessage[]> {
-  const needsHydration = args.records.some(
-    (record) =>
-      record.source === "resource_event" &&
-      isResourceEventMailboxMetadata(record.input.metadata) &&
-      !hasSlackConversationMetadata(record.input.metadata),
-  );
-  if (!needsHydration) {
-    return args.records;
-  }
-
-  const routing = await resolveConversationRouting({
-    conversationId: args.conversationId,
-    conversationStore: args.conversationStore,
-  });
-  const destination = requireSlackDestination(
-    routing?.destination ?? args.destination,
-    "Slack resource-event hydration",
-  );
-  const threadTs =
-    routing?.source?.platform === "slack"
-      ? routing.source.threadTs?.trim()
-      : undefined;
-  if (!threadTs) {
+export function buildResourceEventSlackMessage(args: {
+  channelId: string;
+  record: InboundMessage;
+  threadTs: string;
+}): Message {
+  if (!isResourceEventMailboxMetadata(args.record.input.metadata)) {
     throw new Error(
-      `Conversation ${args.conversationId} is missing a Slack thread for resource-event delivery`,
+      "Resource-event Slack turn requires resource-event metadata",
     );
   }
+  const event = args.record.input.metadata.resourceEvent;
+  const messageId = `resource-event-${event.subscriptionId}-${event.eventKey}`;
+  const threadId = `slack:${args.channelId}:${args.threadTs}`;
+  return new Message({
+    id: messageId,
+    threadId,
+    text: args.record.input.text,
+    author: {
+      userId: RESOURCE_EVENT_AUTHOR_ID,
+      userName: "junior-event",
+      fullName: "Junior event",
+      isBot: true,
+      isMe: false,
+    },
+    isMention: false,
+    attachments: [],
+    metadata: {
+      dateSent: new Date(args.record.createdAtMs),
+      edited: false,
+    },
+    formatted: { type: "root", children: [] },
+    raw: {
+      channel: args.channelId,
+      event_type: "resource_event",
+      resource_event_type: event.eventType,
+      thread_ts: args.threadTs,
+      type: "message",
+      user: RESOURCE_EVENT_AUTHOR_ID,
+    },
+  });
+}
 
-  return args.records.map((record) => {
-    if (
-      record.source !== "resource_event" ||
-      !isResourceEventMailboxMetadata(record.input.metadata) ||
-      hasSlackConversationMetadata(record.input.metadata)
-    ) {
-      return record;
-    }
-    return createSlackResourceEventInboundMessage({
-      conversationId: record.conversationId,
-      destination,
-      event: record.input.metadata.resourceEvent,
-      occurredAtMs: record.createdAtMs,
-      receivedAtMs: record.receivedAtMs,
-      text: record.input.text,
-      threadTs,
-    });
+/** Build a ThreadImpl for a resource-event Slack turn. */
+export function buildResourceEventSlackThread(args: {
+  adapter: SlackAdapter;
+  message: Message;
+  state: StateAdapter;
+  threadTs: string;
+  channelId: string;
+}): ThreadImpl {
+  const threadId = normalizeIncomingSlackThreadId(
+    `slack:${args.channelId}:${args.threadTs}`,
+    args.message,
+  );
+  const message = withNormalizedThreadId(args.message, threadId);
+  return new ThreadImpl({
+    adapter: args.adapter,
+    stateAdapter: args.state,
+    id: threadId,
+    channelId: args.channelId,
+    currentMessage: message,
+    initialMessage: message,
+    isDM: args.channelId.startsWith("D"),
+    isSubscribedContext: true,
   });
 }

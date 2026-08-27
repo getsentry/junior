@@ -35,10 +35,11 @@ conversation.
   destination or rewrite the conversation id.
 - Root conversations set destination on first upsert. Later resource-event wakes
   use that destination.
-- Ingestion only wakes that conversation mailbox with plain system input.
-  Destination stays on the conversation. The worker for that destination applies
-  it when the turn runs, so the same agent and tools stay active for the whole
-  conversation.
+- Ingestion only wakes that conversation mailbox with plain system input
+  (text + event metadata). Destination stays on the conversation. The worker for
+  that destination runs a normal turn, so the same agent and tools stay active
+  for the whole conversation. Slack builds Message/Thread context at the worker
+  edge only; mailbox rows stay plain.
 - TODO(subagents): child conversations still store watches on their own id.
   When subagents matter, store the parent root id or give children the parent's
   destination and worker path.

@@ -37,16 +37,22 @@ import {
 import { ensureSlackMessageActorIdentity } from "@/chat/services/message-actor-identity";
 import { lookupSlackUser } from "@/chat/slack/user";
 import { parseActorUserId, type SlackActorProfile } from "@/chat/actor";
-import { isResourceEventSlackMessage } from "@/chat/resource-events/actor";
+import {
+  isResourceEventSlackMessage,
+  RESOURCE_EVENT_AUTHOR_ID,
+} from "@/chat/resource-events/actor";
 import {
   createSlackDestination,
   requireSlackDestination,
 } from "@/chat/destination";
-import { hydrateSlackResourceEventRecords } from "@/chat/task-execution/slack-resource-event";
+import {
+  buildResourceEventSlackMessage,
+  buildResourceEventSlackThread,
+  isPlainResourceEventRecord,
+  resolveSlackResourceEventThread,
+} from "@/chat/task-execution/slack-resource-event";
 import { stripLeadingSteeringOverride } from "@/chat/slack/message-control";
 import { botConfig, type CrossActorMidRunMode } from "@/chat/config";
-
-export { createSlackResourceEventInboundMessage } from "@/chat/task-execution/slack-resource-event";
 
 const slackConversationRouteSchema = z.enum(["mention", "subscribed"]);
 export type SlackConversationRoute = z.output<
@@ -486,6 +492,9 @@ function compareInboundMessages(
 
 function routeForRecords(records: InboundMessage[]): SlackConversationRoute {
   return records.some((record) => {
+    if (isPlainResourceEventRecord(record)) {
+      return false;
+    }
     const metadata = parseSlackMetadata(record.input.metadata);
     if (!metadata) {
       throw new Error("Conversation mailbox record is not Slack metadata");
@@ -499,8 +508,22 @@ function routeForRecords(records: InboundMessage[]): SlackConversationRoute {
 /** Rehydrate the Slack message payload before handing it back to runtime code. */
 function restoreMessage(args: {
   adapter: SlackAdapter;
+  channelId: string;
   record: InboundMessage;
+  threadTs?: string;
 }): Message {
+  if (isPlainResourceEventRecord(args.record)) {
+    if (!args.threadTs) {
+      throw new Error(
+        "Resource-event Slack turn requires a thread timestamp",
+      );
+    }
+    return buildResourceEventSlackMessage({
+      channelId: args.channelId,
+      record: args.record,
+      threadTs: args.threadTs,
+    });
+  }
   const metadata = parseSlackMetadata(args.record.input.metadata);
   if (!metadata) {
     throw new Error("Conversation mailbox record is not a Slack message");
@@ -603,13 +626,8 @@ export function createSlackConversationWorker(
     const state = getConnectedState(options.state);
     await state.connect();
 
-    const records = await hydrateSlackResourceEventRecords({
-      conversationId: context.conversationId,
-      conversationStore: options.conversationStore,
-      destination: context.destination,
-      records: getPendingRecords({
-        execution: { pendingMessages: [...context.attempt.messages] },
-      }),
+    const records = getPendingRecords({
+      execution: { pendingMessages: [...context.attempt.messages] },
     });
     if (records.length === 0) {
       const destination = requireSlackDestination(
@@ -640,13 +658,17 @@ export function createSlackConversationWorker(
     if (!latestRecord) {
       return { status: "completed" };
     }
-    // Hydration may rewrite plain resource-event wakes with Slack metadata.
-    // Publish from the hydrated records, not the pre-hydrate flag.
-    const publishExternally =
-      latestRecord.publishExternally ?? context.publishExternally;
+    const hasPlainResourceEvent = records.some(isPlainResourceEventRecord);
+    // Plain resource-event wakes omit destination/publish. Slack destination
+    // conversations publish by default once the worker runs.
+    const publishExternally = hasPlainResourceEvent
+      ? true
+      : (latestRecord.publishExternally ?? context.publishExternally);
 
-    const latestMetadata = parseSlackMetadata(latestRecord.input.metadata);
-    if (!latestMetadata) {
+    const latestMetadata = isPlainResourceEventRecord(latestRecord)
+      ? undefined
+      : parseSlackMetadata(latestRecord.input.metadata);
+    if (!isPlainResourceEventRecord(latestRecord) && !latestMetadata) {
       throw new Error(
         "Latest conversation mailbox record is not Slack metadata",
       );
@@ -656,17 +678,35 @@ export function createSlackConversationWorker(
       return { status: "lost_lease" };
     }
 
+    const resourceEventThread = hasPlainResourceEvent
+      ? await resolveSlackResourceEventThread({
+          conversationId: context.conversationId,
+          conversationStore: options.conversationStore,
+          destination: context.destination,
+        })
+      : undefined;
+
     const turnResult = await runWithSlackInstallation({
       adapter,
-      installation: getInstallation(records),
+      installation: resourceEventThread
+        ? { teamId: resourceEventThread.destination.teamId }
+        : getInstallation(records),
       state,
       task: async () => {
+        const destination =
+          resourceEventThread?.destination ??
+          requireSlackDestination(
+            context.destination,
+            "Slack conversation work",
+          );
+        const threadTs = resourceEventThread?.threadTs;
         const messages = records.map((record) =>
-          restoreMessage({ adapter, record }),
-        );
-        const destination = requireSlackDestination(
-          context.destination,
-          "Slack conversation work",
+          restoreMessage({
+            adapter,
+            channelId: destination.channelId,
+            record,
+            ...(threadTs ? { threadTs } : undefined),
+          }),
         );
         await bindSlackActorIdentities({
           lookupSlackUser: actorLookup,
@@ -678,19 +718,30 @@ export function createSlackConversationWorker(
           return;
         }
         const route = routeForRecords(records);
-        const thread = restoreThread({
-          adapter,
-          isSubscribedContext: route === "subscribed",
-          message: latestMessage,
-          state,
-          threadJson: latestMetadata.thread,
-        });
+        const thread =
+          isPlainResourceEventRecord(latestRecord) && threadTs
+            ? buildResourceEventSlackThread({
+                adapter,
+                channelId: destination.channelId,
+                message: latestMessage,
+                state,
+                threadTs,
+              })
+            : restoreThread({
+                adapter,
+                isSubscribedContext: route === "subscribed",
+                message: latestMessage,
+                state,
+                threadJson: latestMetadata!.thread,
+              });
         const skipped = messages.slice(0, -1);
         const messageContext: MessageContext = {
           skipped,
           totalSinceLastHandler: messages.length,
         };
-        const activeAuthorId = requireSlackAuthorId(latestMessage);
+        const activeAuthorId = isResourceEventSlackMessage(latestMessage)
+          ? RESOURCE_EVENT_AUTHOR_ID
+          : requireSlackAuthorId(latestMessage);
         let initialMessagesAcked = false;
         const ack = async (): Promise<void> => {
           if (initialMessagesAcked) {
@@ -714,16 +765,24 @@ export function createSlackConversationWorker(
         ): Promise<void> => {
           await context.attempt.drain(async (pendingRecords) => {
             const candidates = pendingRecords
-              .filter(
-                (record) => record.publishExternally === publishExternally,
+              .filter((record) =>
+                isPlainResourceEventRecord(record)
+                  ? publishExternally
+                  : record.publishExternally === publishExternally,
               )
               .map((record) => ({
                 inboundMessageId: record.inboundMessageId,
-                message: restoreMessage({ adapter, record }),
+                message: restoreMessage({
+                  adapter,
+                  channelId: destination.channelId,
+                  record,
+                  ...(threadTs ? { threadTs } : undefined),
+                }),
               }))
               .filter(
                 (candidate) =>
                   crossActorMidRunMode === "steer" ||
+                  isResourceEventSlackMessage(candidate.message) ||
                   requireSlackAuthorId(candidate.message) === activeAuthorId ||
                   hasSteeringOverride(candidate.message.text),
               );
