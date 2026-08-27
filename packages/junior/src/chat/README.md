@@ -151,8 +151,7 @@ delegation without becoming the execution actor or a general task owner.
   move away from Destination and session Source. Its removal TODO defines the
   end of that transition.
 - The final interface uses Conversation, Source, Location, and Delivery. Do not
-  add `DeliveryLocation`, `ProviderSource`, a routing context, or another
-  wrapper for these values.
+  add another type, routing object, or wrapper for the same values.
 - Child Conversations store the Location they need instead of searching parent
   lineage at Run time in the final model.
 - External publish is controlled per turn via `publishExternally`. Slack

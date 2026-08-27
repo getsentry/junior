@@ -102,8 +102,7 @@ Canonical words used across Junior's code and documentation.
 - Keep the current Source and Actor separate from the Conversation's Location.
   Source and Delivery may each contain Location when they need it. Do not infer
   Delivery from Source, Actor, or Location.
-- Use `Location`. Do not create another name such as `DeliveryLocation` or
-  `ProviderLocation` for the same value.
+- Use `Location`. Do not create another name for the same place.
 - For new Source unions, use one discriminant for what produced the work. Keep
   provider-native identifiers inside that provider's Source branch rather than
   adding a second generic provider or thread field.
