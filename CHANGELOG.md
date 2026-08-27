@@ -1,4 +1,27 @@
 # Changelog
+## 0.186.0
+
+### Bug Fixes 🐛
+
+#### Dashboard
+
+- Show turn failure event ids by @sentry-junior in [#1710](https://github.com/getsentry/junior/pull/1710)
+- Lead model handoff rows with target model by @sentry-junior in [#1708](https://github.com/getsentry/junior/pull/1708)
+
+#### Other
+
+- (egress) Only remember shared installation headers by @sentry-junior in [#1711](https://github.com/getsentry/junior/pull/1711)
+- (resource-events) Let conversations own watch routing by @sentry-junior in [#1706](https://github.com/getsentry/junior/pull/1706)
+- (sandbox) Keep current sandbox, return building when not ready by @sentry-junior in [#1709](https://github.com/getsentry/junior/pull/1709)
+- (workspaces) Register core workspace snapshot resource events by @sentry-junior in [#1712](https://github.com/getsentry/junior/pull/1712)
+
+### Internal Changes 🔧
+
+#### Slack
+
+- Remove turn lifecycle parameters by @dcramer in [#1702](https://github.com/getsentry/junior/pull/1702)
+- Move turn lifecycle setup by @dcramer in [#1701](https://github.com/getsentry/junior/pull/1701)
+
 ## 0.185.0
 
 ### New Features ✨
