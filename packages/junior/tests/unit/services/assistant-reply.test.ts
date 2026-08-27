@@ -54,19 +54,15 @@ describe("assistant reply", () => {
   });
 
   it("delivers prose that mentions the no-reply marker", () => {
-    expect(decideReply(assistant(`Done. ${NO_REPLY_MARKER}`))).toEqual({
-      kind: "deliver",
-      text: "Done.",
-    });
     expect(
       decideReply(
         assistant(
-          `next model treated that as the whole ask -> \`${NO_REPLY_MARKER}\``,
+          `next model treated that as the whole ask -> ${NO_REPLY_MARKER}`,
         ),
       ),
     ).toEqual({
       kind: "deliver",
-      text: "next model treated that as the whole ask -> ``",
+      text: "next model treated that as the whole ask ->",
     });
   });
 

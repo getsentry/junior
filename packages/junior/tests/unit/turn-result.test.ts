@@ -275,29 +275,12 @@ describe("buildTurnResult", () => {
       newMessages: [
         {
           role: "assistant",
-          content: [{ type: "text", text: `Done. ${NO_REPLY_MARKER}` }],
-          stopReason: "stop",
-        },
-      ],
-      userInput: "Do whatever makes sense here",
-      toolCalls: [],
-      generatedFileCount: 0,
-      shouldTrace: false,
-      modelId: "test-model",
-      executionProfile,
-    });
-
-    expect(reply.text).toBe("Done.");
-    expect(reply.diagnostics.outcome).toBe("success");
-  });
-
-  it("still delivers answers that discuss the no-reply marker", () => {
-    const text = `next model correctly no-replied on a false done checkpoint -> ${NO_REPLY_MARKER}`;
-    const reply = buildTurnResult({
-      newMessages: [
-        {
-          role: "assistant",
-          content: [{ type: "text", text }],
+          content: [
+            {
+              type: "text",
+              text: `next model treated that as the whole ask -> ${NO_REPLY_MARKER}`,
+            },
+          ],
           stopReason: "stop",
         },
       ],
@@ -309,9 +292,7 @@ describe("buildTurnResult", () => {
       executionProfile,
     });
 
-    expect(reply.text).toBe(
-      "next model correctly no-replied on a false done checkpoint ->",
-    );
+    expect(reply.text).toBe("next model treated that as the whole ask ->");
     expect(reply.diagnostics.outcome).toBe("success");
   });
 

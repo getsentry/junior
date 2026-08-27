@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { fauxAssistantMessage } from "@earendil-works/pi-ai/providers/faux";
+import { NO_REPLY_MARKER } from "@/chat/no-reply";
 import {
   getSlackContinuationMarker,
   getSlackInterruptionMarker,
@@ -158,6 +159,52 @@ describe("Slack behavior: finalized thread replies", () => {
       true,
     );
     expect(secondPost.startsWith("```ts\n")).toBe(true);
+  });
+
+  it("posts answers that mention the no-reply marker instead of going silent", async () => {
+    const answer =
+      `partly. handoff uses the weaker default path. next model treated that as the whole ask -> ${NO_REPLY_MARKER}`;
+    const { slackRuntime } = createTestChatRuntime({
+      services: {
+        agentRunner: createModelAgentRunner(
+          createModelStream([{ type: "text", text: answer }]),
+        ),
+      },
+    });
+
+    const thread = await createTestThread({
+      id: "slack:C0FINAL:1700006008.000",
+    });
+    await slackRuntime.handleNewMention(
+      thread,
+      createTestMessage({
+        id: "m-final-9",
+        text: "<@U0APP> doesnt the handoff prompt keep unfinished instructions?",
+        isMention: true,
+        threadId: thread.id,
+      }),
+      { destination: createTestDestination(thread) },
+    );
+
+    expect(thread.postKinds).toEqual(["value"]);
+    expect(thread.posts.map(toPostedText)).toEqual([
+      "partly. handoff uses the weaker default path. next model treated that as the whole ask ->",
+    ]);
+    expect(toPostedText(thread.posts[0])).not.toContain(NO_REPLY_MARKER);
+    const lifecycle = await loadTurnLifecycleEvents(thread.id);
+    expect(lifecycle.map((event) => event.data)).toEqual([
+      expect.objectContaining({
+        type: "turn_started",
+        turnId: "turn_m-final-9",
+        inputMessageIds: ["m-final-9"],
+        surface: "slack",
+      }),
+      expect.objectContaining({
+        type: "turn_completed",
+        turnId: "turn_m-final-9",
+        outcome: "success",
+      }),
+    ]);
   });
 
   it("marks provider-error replies with partial text as interrupted", async () => {

@@ -3,7 +3,6 @@ import { logInfo, logWarn, summarizeMessageText } from "@/chat/logging";
 import {
   containsNoReplyMarker,
   isNoReplyMarker,
-  stripNoReplyMarkers,
 } from "@/chat/no-reply";
 import type { PiMessage } from "@/chat/pi/messages";
 import { createProviderError } from "@/chat/services/provider-error";
@@ -85,22 +84,22 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
       .join("\n\n"),
   ).trim();
   const exactNoReplyMarker = isNoReplyMarker(rawPrimaryText);
+  const primaryText = terminalAssistantMessages
+    .map((message) => decideReply(message))
+    .filter(
+      (output): output is { kind: "deliver"; text: string } =>
+        output.kind === "deliver",
+    )
+    .map((output) => output.text)
+    .join("\n\n")
+    .trim();
+  // Exact marker, or marker-only residue after strip, means intentional silence.
+  // Mixed marker + prose keeps primaryText and delivers.
+  const noReplyRequested =
+    exactNoReplyMarker ||
+    (!primaryText && containsNoReplyMarker(rawPrimaryText));
   const mixedNoReplyMarker =
     !exactNoReplyMarker && containsNoReplyMarker(rawPrimaryText);
-  const primaryText = exactNoReplyMarker
-    ? ""
-    : terminalAssistantMessages
-        .map((message) => decideReply(message))
-        .filter(
-          (output): output is { kind: "deliver"; text: string } =>
-            output.kind === "deliver",
-        )
-        .map((output) => output.text)
-        .join("\n\n")
-        .trim();
-  // Mixed marker + prose used to silence the whole turn. Keep remaining text.
-  const noReplyRequested =
-    exactNoReplyMarker || (mixedNoReplyMarker && !primaryText);
 
   const toolErrorCount = toolResults.filter((result) => result.isError).length;
   const reactionPerformed = toolResults.some(
@@ -138,9 +137,6 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
       "app.ai.no_reply_marker": true,
       "app.ai.no_reply_marker_mode": "mixed",
       "app.ai.no_reply_marker_delivered": Boolean(primaryText),
-      "app.ai.no_reply_marker_stripped": Boolean(
-        stripNoReplyMarkers(rawPrimaryText),
-      ),
     });
   }
 
