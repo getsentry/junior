@@ -10,12 +10,10 @@ export function containsNoReplyMarker(text: string): boolean {
   return text.includes(NO_REPLY_MARKER);
 }
 
-/**
- * Remove no-reply protocol markers from assistant text.
- *
- * Exact marker-only replies stay empty. Mixed replies keep the remaining text so
- * prose that discusses the marker still delivers.
- */
+/** Remove no-reply markers so mixed replies can still deliver remaining text. */
 export function stripNoReplyMarkers(text: string): string {
-  return text.split(NO_REPLY_MARKER).join("").trim();
+  return text
+    .replaceAll(NO_REPLY_MARKER, "")
+    .replace(/[ \t]{2,}/g, " ")
+    .trim();
 }

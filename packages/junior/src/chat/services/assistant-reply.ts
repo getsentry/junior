@@ -35,7 +35,6 @@ export function decideReply(message: AssistantMessage): ReplyDecision {
 
   const text = sanitizeAssistantText(extractAssistantText(message));
   if (!text) return { kind: "empty" };
-  // Exact marker only means intentional silence. Mixed marker + prose delivers.
   if (isNoReplyMarker(text)) {
     return { kind: "suppress" };
   }

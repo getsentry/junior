@@ -161,9 +161,8 @@ describe("Slack behavior: finalized thread replies", () => {
     expect(secondPost.startsWith("```ts\n")).toBe(true);
   });
 
-  it("posts answers that mention the no-reply marker instead of going silent", async () => {
-    const answer =
-      `partly. handoff uses the weaker default path. next model treated that as the whole ask -> ${NO_REPLY_MARKER}`;
+  it("posts answers that mention the no-reply marker", async () => {
+    const answer = `Earlier turn used ${NO_REPLY_MARKER} and then stopped.`;
     const { slackRuntime } = createTestChatRuntime({
       services: {
         agentRunner: createModelAgentRunner(
@@ -179,7 +178,7 @@ describe("Slack behavior: finalized thread replies", () => {
       thread,
       createTestMessage({
         id: "m-final-9",
-        text: "<@U0APP> doesnt the handoff prompt keep unfinished instructions?",
+        text: "<@U0APP> why was there no reply?",
         isMention: true,
         threadId: thread.id,
       }),
@@ -188,7 +187,7 @@ describe("Slack behavior: finalized thread replies", () => {
 
     expect(thread.postKinds).toEqual(["value"]);
     expect(thread.posts.map(toPostedText)).toEqual([
-      "partly. handoff uses the weaker default path. next model treated that as the whole ask ->",
+      "Earlier turn used and then stopped.",
     ]);
     expect(toPostedText(thread.posts[0])).not.toContain(NO_REPLY_MARKER);
     const lifecycle = await loadTurnLifecycleEvents(thread.id);

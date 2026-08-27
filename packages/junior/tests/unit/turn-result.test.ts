@@ -270,32 +270,6 @@ describe("buildTurnResult", () => {
     expect(reply.diagnostics.usedPrimaryText).toBe(true);
   });
 
-  it("delivers remaining text when a no-reply marker is mixed with prose", () => {
-    const reply = buildTurnResult({
-      newMessages: [
-        {
-          role: "assistant",
-          content: [
-            {
-              type: "text",
-              text: `next model treated that as the whole ask -> ${NO_REPLY_MARKER}`,
-            },
-          ],
-          stopReason: "stop",
-        },
-      ],
-      userInput: "why did you go quiet?",
-      toolCalls: [],
-      generatedFileCount: 0,
-      shouldTrace: false,
-      modelId: "test-model",
-      executionProfile,
-    });
-
-    expect(reply.text).toBe("next model treated that as the whole ask ->");
-    expect(reply.diagnostics.outcome).toBe("success");
-  });
-
   it("keeps no-reply marker silent when side-effect tools also ran", () => {
     const reply = buildTurnResult({
       newMessages: [

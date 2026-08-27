@@ -53,16 +53,14 @@ describe("assistant reply", () => {
     });
   });
 
-  it("delivers prose that mentions the no-reply marker", () => {
+  it("delivers text that mentions the no-reply marker", () => {
     expect(
       decideReply(
-        assistant(
-          `next model treated that as the whole ask -> ${NO_REPLY_MARKER}`,
-        ),
+        assistant(`Earlier turn used ${NO_REPLY_MARKER} and then stopped.`),
       ),
     ).toEqual({
       kind: "deliver",
-      text: "next model treated that as the whole ask ->",
+      text: "Earlier turn used and then stopped.",
     });
   });
 

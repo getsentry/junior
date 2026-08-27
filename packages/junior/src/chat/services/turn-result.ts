@@ -1,9 +1,6 @@
 import { isRetryableAssistantError } from "@earendil-works/pi-ai";
 import { logInfo, logWarn, summarizeMessageText } from "@/chat/logging";
-import {
-  containsNoReplyMarker,
-  isNoReplyMarker,
-} from "@/chat/no-reply";
+import { containsNoReplyMarker, isNoReplyMarker } from "@/chat/no-reply";
 import type { PiMessage } from "@/chat/pi/messages";
 import { createProviderError } from "@/chat/services/provider-error";
 import type { TurnRoute } from "@/chat/services/turn-router";
@@ -83,7 +80,6 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
       .map((message) => extractAssistantText(message))
       .join("\n\n"),
   ).trim();
-  const exactNoReplyMarker = isNoReplyMarker(rawPrimaryText);
   const primaryText = terminalAssistantMessages
     .map((message) => decideReply(message))
     .filter(
@@ -93,11 +89,11 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
     .map((output) => output.text)
     .join("\n\n")
     .trim();
-  // Exact marker, or marker-only residue after strip, means intentional silence.
-  // Mixed marker + prose keeps primaryText and delivers.
+  // decideReply already strips mixed marker mentions. Empty text + marker means
+  // intentional no-reply; empty text without marker is a normal empty response.
   const noReplyRequested =
-    exactNoReplyMarker ||
-    (!primaryText && containsNoReplyMarker(rawPrimaryText));
+    !primaryText && containsNoReplyMarker(rawPrimaryText);
+  const exactNoReplyMarker = isNoReplyMarker(rawPrimaryText);
   const mixedNoReplyMarker =
     !exactNoReplyMarker && containsNoReplyMarker(rawPrimaryText);
 
@@ -136,7 +132,6 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
     logWarn("ai.no_reply_marker.mixed_text", {
       "app.ai.no_reply_marker": true,
       "app.ai.no_reply_marker_mode": "mixed",
-      "app.ai.no_reply_marker_delivered": Boolean(primaryText),
     });
   }
 
