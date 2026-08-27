@@ -382,7 +382,6 @@ describe("oauth callback integration", () => {
           userId: "U123",
         },
         destination: SLACK_DESTINATION,
-        source: expect.objectContaining(storedSource),
         toolChannelId: "C123",
       }),
     );

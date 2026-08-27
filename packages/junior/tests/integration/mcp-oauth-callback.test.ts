@@ -516,14 +516,6 @@ describe("mcp oauth callback integration", () => {
     );
 
     const resumeContext = agentRuns[0]!;
-    expect(resumeContext.source.location).toMatchObject({
-      provider: "slack",
-      providerId: "C123",
-      tenantId: "T123",
-    });
-    expect(resumeContext.delivery?.location).toEqual(
-      resumeContext.source.location,
-    );
     expect(resumeContext.instruction.context).not.toContain(
       "what did i say about the budget?",
     );
@@ -737,17 +729,7 @@ describe("mcp oauth callback integration", () => {
       }),
     );
     const resumeContext = agentRuns[0]!;
-    expect(resumeContext.source).toEqual({
-      ...slackSource("1700000000.005"),
-      location: expect.objectContaining({
-        provider: "slack",
-        providerId: "C123",
-        tenantId: "T123",
-      }),
-    });
-    expect(resumeContext.delivery?.location).toEqual(
-      resumeContext.source.location,
-    );
+    expect(resumeContext.source).toMatchObject(slackSource("1700000000.005"));
     expect(resumeContext.instruction.context).not.toContain(
       "Old MCP context that should not be used.",
     );

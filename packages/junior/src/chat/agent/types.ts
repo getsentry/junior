@@ -128,12 +128,12 @@ export type AgentRunState = {
  * The runner must commit the preceding agent boundary before invoking this
  * port; the accepted reply transaction appends only this message.
  */
-export interface AgentDelivery {
+export type Delivery = {
   /** Location where this capability can send output, when outside Junior. */
   location?: Location;
   /** Send one accepted assistant message. */
   send(message: AssistantMessage): void | Promise<void>;
-}
+};
 
 /** Resume the agent turn after a transient or ambiguous delivery failure. */
 export class RetryableDeliveryError extends Error {
@@ -258,7 +258,7 @@ export type AgentRun = {
   state?: AgentRunState;
   /** Best-effort progress only. */
   onEvent?: (event: AgentEvent) => void | Promise<void>;
-  delivery?: AgentDelivery;
+  delivery?: Delivery;
   durability?: AgentDurability;
 };
 

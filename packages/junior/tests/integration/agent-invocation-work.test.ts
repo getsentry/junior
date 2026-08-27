@@ -421,6 +421,7 @@ describe("agent invocation conversation work", () => {
         surface: "internal",
         runId: created.invocationId,
       });
+      expect(run.mock.calls[0]?.[0].delivery).toBeUndefined();
       expect(fallbackWorker).not.toHaveBeenCalled();
     } finally {
       await fixture.close();

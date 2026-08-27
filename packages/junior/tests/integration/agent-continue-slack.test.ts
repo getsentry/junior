@@ -241,7 +241,8 @@ describe("paused turn Slack integration", () => {
       }),
     ]);
     expect(agentRuns).toHaveLength(1);
-    expect(agentRuns[0]).toMatchObject({
+    const resumedRun = agentRuns[0]!;
+    expect(resumedRun).toMatchObject({
       instruction: {
         text: "resume this request",
         inboundAttachmentCount: 2,
@@ -254,27 +255,21 @@ describe("paused turn Slack integration", () => {
       },
       destination: SLACK_DESTINATION,
       publishExternally: true,
-      source: {
-        ...storedSource,
-        location: {
-          provider: "slack",
-          tenantId: "T123",
-          providerId: "C123",
-        },
-      },
-      delivery: {
-        location: {
-          provider: "slack",
-          tenantId: "T123",
-          providerId: "C123",
-        },
-      },
       toolChannelId: "C123",
       state: expect.objectContaining({
         sandboxRef: undefined,
       }),
     });
-    const resumeContext = agentRuns[0] as {
+    expect(resumedRun.source).toEqual({
+      ...storedSource,
+      location: expect.objectContaining({
+        provider: "slack",
+        tenantId: "T123",
+        providerId: "C123",
+      }),
+    });
+    expect(resumedRun.delivery?.location).toEqual(resumedRun.source.location);
+    const resumeContext = resumedRun as {
       deadlineAtMs?: number;
       environment?: {
         locationConfiguration?: {
