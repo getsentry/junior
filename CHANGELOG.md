@@ -1,4 +1,24 @@
 # Changelog
+## 0.187.0
+
+### Bug Fixes 🐛
+
+#### Chat
+
+- Unify task agent input by @sentry-junior in [#1716](https://github.com/getsentry/junior/pull/1716)
+- Deliver answers that mention [[NO_REPLY]] by @sentry-junior in [#1714](https://github.com/getsentry/junior/pull/1714)
+
+#### Other
+
+- (api) Resume turns as the user who started them by @dcramer in [#1703](https://github.com/getsentry/junior/pull/1703)
+
+### Internal Changes 🔧
+
+#### Chat
+
+- Pass Conversation Location into agent runs by @dcramer in [#1715](https://github.com/getsentry/junior/pull/1715)
+- Normalize resource events with local destinations by @dcramer in [#1713](https://github.com/getsentry/junior/pull/1713)
+
 ## 0.186.0
 
 ### Bug Fixes 🐛
