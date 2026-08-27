@@ -1,0 +1,50 @@
+{
+  "commitSha": "72213182cc60e6d6a5adca85e4d2e29214f1018b",
+  "mode": "path",
+  "reasons": [
+    "packages/junior-dashboard/src/client/conversations/ConversationTranscript.tsx",
+    "packages/junior-dashboard/src/client/conversations/TranscriptFailureView.tsx",
+    "packages/junior-dashboard/src/client/conversations/eventTranscript.ts",
+    "packages/junior-dashboard/src/client/conversations/transcriptFailure.ts",
+    "packages/junior-dashboard/src/client/conversations/transcriptRenderModel.ts",
+    "packages/junior-dashboard/src/client/conversations/transcriptSearch.tsx",
+    "packages/junior-dashboard/src/client/markdownExport.ts",
+    "packages/junior-dashboard/src/client/types.ts",
+    "packages/junior-dashboard/src/mock-reporting/fixtures.ts",
+    "packages/junior-dashboard/tests/markdownExport.test.ts",
+    "packages/junior-dashboard/tests/telemetry-components.test.tsx"
+  ],
+  "scenarioIds": [
+    "gallery-index",
+    "conversations",
+    "conversation-detail",
+    "conversation-detail-focused"
+  ],
+  "shots": [
+    {
+      "file": "gallery-index__desktop.png",
+      "label": "Component gallery index · desktop"
+    },
+    {
+      "file": "conversations__desktop.png",
+      "label": "Conversations · desktop"
+    },
+    {
+      "file": "conversations__mobile.png",
+      "label": "Conversations · mobile"
+    },
+    {
+      "file": "conversation-detail__desktop.png",
+      "label": "Conversation detail · desktop"
+    },
+    {
+      "file": "conversation-detail__mobile.png",
+      "label": "Conversation detail · mobile"
+    },
+    {
+      "file": "conversation-detail-focused__mobile.png",
+      "label": "Conversation detail · focused composer · mobile"
+    }
+  ],
+  "skipped": false
+}
