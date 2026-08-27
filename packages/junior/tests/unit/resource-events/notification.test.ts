@@ -22,8 +22,9 @@ describe("resource event notification framing", () => {
       "[automated update]
 
       This is an automated update, not a message from a person.
-      Follow the instructions below. If they do not call for action or a reply, do not reply.
-      When you reply, summarize what you were acting on and what you did or need next.
+      Follow the instructions below.
+      If they do not call for action or a reply, do not reply.
+      When you reply, follow any reply format in the instructions. Otherwise briefly summarize what you acted on and what you did or need next. Do not narrate instruction conflicts, skills, or templates.
 
       About: GitHub PR getsentry/junior#691
       Instructions: Fix failed checks on this PR.

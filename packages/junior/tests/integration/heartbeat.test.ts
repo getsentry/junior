@@ -689,7 +689,8 @@ describe("plugin heartbeat", () => {
 
       This is a scheduled task, not a new message from a person.
       Follow the instructions below.
-      When you reply, summarize what you were acting on and what you did or need next.
+      If they do not call for action or a reply, do not reply.
+      When you reply, follow any reply format in the instructions. Otherwise briefly summarize what you acted on and what you did or need next. Do not narrate instruction conflicts, skills, or templates.
 
       Instructions: Post a digest. Summarize the latest state."
     `);

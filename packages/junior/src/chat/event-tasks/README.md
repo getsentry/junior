@@ -35,9 +35,12 @@ event-task run history.
 The dispatched input uses plain automated-task framing. It names what changed,
 the stored instructions, the verified summary and details, and external text.
 The stored task text remains the instruction. The update and external text do
-not add instructions. Event-task dispatches set `replyAttribution` so
-destination replies show the same kind of footer note scheduled tasks do
-(`Event task · <trigger label>`). The footer does not expose raw event keys.
+not add instructions. Reply format belongs to the stored instructions: framing
+only requires a short default summary when the task does not specify one, and
+it forbids narrating instruction conflicts, skills, or templates. Event-task
+dispatches set `replyAttribution` so destination replies show the same kind of
+footer note scheduled tasks do (`Event task · <trigger label>`). The footer does
+not expose raw event keys.
 
 Event tasks make the creator's connected credentials available by default when
 the work needs user-bound authorization. The creator may require system
