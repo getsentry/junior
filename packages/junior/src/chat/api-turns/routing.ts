@@ -84,13 +84,11 @@ function parseApiTurnMessages(
     return [];
   }
   if (parsed.some((entry) => !entry.metadata.success)) {
-    throw new Error(
-      "Conversation input mixes dashboard messages and other input",
-    );
+    throw new Error("Conversation input mixes user messages and other input");
   }
   return parsed.map((entry) => {
     if (!entry.metadata.success) {
-      throw new Error("Dashboard message metadata failed validation");
+      throw new Error("Conversation message metadata failed validation");
     }
     return { message: entry.message, metadata: entry.metadata.data };
   });
@@ -125,8 +123,8 @@ function parseLocalResourceEventMessages(
 /**
  * Find a direct Junior Turn from new input or a saved active Turn.
  *
- * Dashboard messages and local resource events run directly in Junior. A
- * resumed Turn has no new input, so saved Turn state identifies it.
+ * User messages and local resource events run directly in Junior. A resumed
+ * Turn has no new input, so saved Turn state identifies it.
  */
 export async function resolveApiTurnWork(
   context: ConversationWorkerContext,
