@@ -110,17 +110,17 @@ export function createPluginToolSandbox(
       await options.handleAuthSignal(normalized.details);
       input.signal?.throwIfAborted();
       const details = record(normalized.details);
-      // Preparing status is a normal sandbox tool result, not a bash outcome.
       if (details.status === "building") {
         const message =
           typeof details.message === "string" && details.message.trim()
             ? details.message.trim()
-            : textContent(normalized.content).trim() ||
-              "The workspace is still preparing its sandbox. Wait for that preparation to finish, then try again.";
+            : textContent(normalized.content).trim();
         return {
           exitCode: 1,
           stdout: "",
-          stderr: message,
+          stderr:
+            message ||
+            "The workspace is still preparing its sandbox. Wait for that preparation to finish, then try again.",
         };
       }
       return {

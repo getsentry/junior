@@ -188,8 +188,7 @@ export function createSandboxRuntime(
   const timeoutMs = options.timeoutMs ?? 1000 * 60 * 30;
   const traceContext = options.traceContext ?? {};
   let activeWorkspace = options.workspace;
-  // Pin the profile of the sandbox this conversation already owns. Latest
-  // recipe hash only applies when creating or switching to a new sandbox.
+  // Keep the hash from the current sandbox when one already exists.
   let dependencyProfileHash =
     options.sandboxRef?.profileHash ??
     profileHash(SANDBOX_RUNTIME, activeWorkspace);
@@ -556,7 +555,6 @@ export function createSandboxRuntime(
   const createFreshSandbox = async (
     signal?: AbortSignal,
   ): Promise<SandboxSession> => {
-    // No restorable pin left. Build from the current recipe, then pin that.
     const nextProfileHash = profileHash(SANDBOX_RUNTIME, activeWorkspace);
     const candidate = await createSandboxCandidate(
       activeWorkspace,
@@ -620,8 +618,6 @@ export function createSandboxRuntime(
     try {
       networkPolicyKey = await applyNetworkPolicy(hintedSandbox);
       await prepareSandbox(hintedSandbox);
-      // Keep the pinned profile from the conversation ref. Recipe changes must
-      // not rewrite what this live sandbox was built from.
       dependencyProfileHash = ref.profileHash ?? dependencyProfileHash;
       await persistSandboxRef({ ...ref, id: hintedSandbox.sandboxId });
       return rememberSandbox(hintedSandbox, networkPolicyKey);
@@ -653,8 +649,7 @@ export function createSandboxRuntime(
         }
 
         signal?.throwIfAborted();
-        // Restore the pinned sandbox first. Never drop a restorable VM just
-        // because the Workspace recipe moved; only switchWorkspace replaces it.
+        // Restore the current sandbox before creating a new one.
         const hintedSandbox = await tryRestoreHintedSandbox(signal);
         if (hintedSandbox) {
           return hintedSandbox;

@@ -9,7 +9,7 @@ export class WorkspaceSnapshotNotReadyError extends Error {
   }
 }
 
-/** Return the typed not-ready error from an error chain, if any. */
+/** Find WorkspaceSnapshotNotReadyError in an error cause chain. */
 export function getWorkspaceSnapshotNotReadyError(
   error: unknown,
 ): WorkspaceSnapshotNotReadyError | undefined {
@@ -23,24 +23,30 @@ export function getWorkspaceSnapshotNotReadyError(
   return undefined;
 }
 
-/** Check an error and its causes for a snapshot that is not ready. */
+/** True when the error chain includes WorkspaceSnapshotNotReadyError. */
 export function isWorkspaceSnapshotNotReadyError(error: unknown): boolean {
   return getWorkspaceSnapshotNotReadyError(error) !== undefined;
 }
 
-/** Explain a not-ready Workspace snapshot in plain language. */
-export function getWorkspaceSnapshotNotReadyUserMessage(
-  error: unknown,
-): string | undefined {
-  const notReady = getWorkspaceSnapshotNotReadyError(error);
-  if (!notReady) return undefined;
+/** Plain user copy for a Workspace that is still preparing. */
+export function workspaceSnapshotNotReadyUserMessage(
+  error: WorkspaceSnapshotNotReadyError,
+): string {
   return (
-    `The ${notReady.workspaceName} workspace is still preparing its sandbox. ` +
+    `The ${error.workspaceName} workspace is still preparing its sandbox. ` +
     "Wait for that preparation to finish, then try again."
   );
 }
 
-/** Build the user-facing turn reply for a not-ready Workspace snapshot. */
+/** Plain user copy when a not-ready Workspace error is present. */
+export function getWorkspaceSnapshotNotReadyUserMessage(
+  error: unknown,
+): string | undefined {
+  const notReady = getWorkspaceSnapshotNotReadyError(error);
+  return notReady ? workspaceSnapshotNotReadyUserMessage(notReady) : undefined;
+}
+
+/** User-facing turn reply for a still-preparing Workspace. */
 export function buildWorkspaceSnapshotNotReadyResponse(
   error: unknown,
   eventId: string,

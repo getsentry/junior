@@ -205,11 +205,7 @@ export function isSandboxCommandStreamInterruptedError(
   });
 }
 
-/**
- * Wrap raw sandbox setup failures into one stable setup error contract.
- * Preserve Workspace snapshot not-ready errors so callers can recover without
- * treating an in-progress build as a fatal internal failure.
- */
+/** Wrap setup failures. Keep WorkspaceSnapshotNotReadyError unchanged. */
 export function wrapSandboxSetupError(
   error: unknown,
 ): Error | WorkspaceSnapshotNotReadyError {

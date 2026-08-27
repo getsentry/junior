@@ -1,7 +1,7 @@
 /**
- * Durable handle for the sandbox this conversation already owns.
- * `id` pins the live VM. `profileHash` records what that VM was built from.
- * Acquire restores this pin first; only switchWorkspace replaces it.
+ * Handle for this conversation's current sandbox.
+ * Acquire restores `id` first. Only switchWorkspace replaces it.
+ * `profileHash` is what this sandbox was built from, not a freshness check.
  */
 export interface SandboxRef {
   id: string;

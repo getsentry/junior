@@ -993,10 +993,10 @@ describe("createTestSandbox", () => {
     });
   });
 
-  it("recreates sandbox when dependency profile hash changed", async () => {
-    const freshSandbox = makeSandbox("sbx_fresh_after_profile_change");
+  it("restores the current sandbox when the dependency profile hash changed", async () => {
+    const restoredSandbox = makeSandbox("sbx_old");
     hashMock.mockReturnValue("current-profile");
-    sandboxCreateMock.mockResolvedValue(freshSandbox);
+    sandboxGetMock.mockResolvedValueOnce(restoredSandbox);
 
     const executor = createTestSandbox({
       sandboxId: "sbx_old",
@@ -1006,9 +1006,12 @@ describe("createTestSandbox", () => {
 
     const sandbox = await executor.createSandbox();
 
-    await expectWorkspaceToDelegate(sandbox, freshSandbox);
-    expect(sandboxGetMock).not.toHaveBeenCalled();
-    expect(sandboxCreateMock).toHaveBeenCalledTimes(1);
+    await expectWorkspaceToDelegate(sandbox, restoredSandbox);
+    expect(sandboxGetMock).toHaveBeenCalledWith({
+      name: "sbx_old",
+      resume: true,
+    });
+    expect(sandboxCreateMock).not.toHaveBeenCalled();
   });
 
   it("replaces a live workspace when the same recipe id has a new profile", async () => {

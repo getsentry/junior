@@ -93,7 +93,7 @@ function getFailureCapture(reply: AgentRunResult): {
           "app.workspace.name": notReady.workspaceName,
           "app.workspace.snapshot.ready": false,
         },
-        body: "Agent turn waited on a Workspace snapshot that was not ready",
+        body: "Workspace snapshot was still preparing",
       };
     }
     const providerError = findProviderError(reply.diagnostics.providerError);
@@ -224,7 +224,7 @@ export function finalizeFailedTurnReply(
   return finalizeFailedTurnReplyWithEvent(args).reply;
 }
 
-/** Build the visible failure reply for one thrown turn error. */
+/** User-facing reply for an error thrown outside a normal agent result. */
 export function buildThrownTurnFailureResponse(args: {
   error: unknown;
   eventId: string;
@@ -235,7 +235,7 @@ export function buildThrownTurnFailureResponse(args: {
   );
 }
 
-/** Return the fixed reason label for one thrown turn error, if any. */
+/** Failure reason for an error thrown outside a normal agent result. */
 export function getThrownTurnFailureReason(
   error: unknown,
 ): ConversationTurnFailureReason | undefined {
