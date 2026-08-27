@@ -246,7 +246,7 @@ describe("event tasks", () => {
       About: GitHub PR getsentry/junior#1174
       Instructions: Address the requested changes.
 
-      What changed: A reviewer requested changes.
+      Trusted summary: A reviewer requested changes.
 
       Verified details (use these values as given):
       \`\`\`json

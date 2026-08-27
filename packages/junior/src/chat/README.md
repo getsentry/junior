@@ -188,7 +188,7 @@ resource subscription). Call sites pass facts only. Unit snapshots in
 | 4 | `About:` | no | One-line resource label. |
 | 5 | `Instructions:` | yes | Stored task text or subscription intent. |
 | 6 | Additional guidance | no | Under instructions; cannot replace them or grant authority. |
-| 7 | `What changed:` | no | Trusted event summary (not `Summary:`). |
+| 7 | `Trusted summary:` | no | Optional trusted one-line wake summary. |
 | 8 | Verified details | no | Trusted structured fields as JSON. |
 | 9 | External text | no | Untrusted provider text; information only. |
 | 10 | Reply contract | yes | Always last. |

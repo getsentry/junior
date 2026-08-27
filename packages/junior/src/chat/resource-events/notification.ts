@@ -49,7 +49,7 @@ export function renderResourceEventNotificationText(
     about: subscription.label,
     instructions: subscription.intent,
     guidance,
-    whatChanged: event.trustedSummary,
+    trustedSummary: event.trustedSummary,
     verifiedDetails: event.data,
     externalText: event.untrustedText,
   });

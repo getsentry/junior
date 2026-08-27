@@ -52,14 +52,14 @@ export function renderTaskInput(args: {
   about?: string;
   /** Plugin guidance scoped under the instructions. */
   guidance?: string;
-  /** Trusted one-line description of what changed. */
-  whatChanged?: string;
-  /** Structured verified event fields. */
+  /** Trusted one-line summary of the wake, when available. */
+  trustedSummary?: string;
+  /** Structured verified fields for the wake. */
   verifiedDetails?: Record<string, unknown>;
   /** Untrusted provider text; never treated as instructions. */
   externalText?: string;
   externalTextMaxLength?: number;
-  whatChangedMaxLength?: number;
+  trustedSummaryMaxLength?: number;
 }): string {
   const instructions = args.instructions.trim();
   if (!instructions) {
@@ -87,11 +87,11 @@ export function renderTaskInput(args: {
     );
   }
 
-  const whatChanged = args.whatChanged?.trim();
-  if (whatChanged) {
+  const trustedSummary = args.trustedSummary?.trim();
+  if (trustedSummary) {
     lines.push(
       "",
-      `What changed: ${clip(whatChanged, args.whatChangedMaxLength)}`,
+      `Trusted summary: ${clip(trustedSummary, args.trustedSummaryMaxLength)}`,
     );
   }
 
