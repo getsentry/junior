@@ -135,6 +135,8 @@ function appendTranscriptMessages(
         conversationTranscript,
         entry.failureCode,
         entry.failureReason,
+        entry.eventId,
+        entry.sentryEventUrl,
         entry.timestamp,
       );
       continue;
@@ -223,6 +225,8 @@ function appendFailure(
   conversationTranscript: ConversationTranscript,
   failureCode: ConversationTurnFailureCode,
   failureReason: ConversationTurnFailureReason | undefined,
+  eventId: string | undefined,
+  sentryEventUrl: string | undefined,
   timestamp: number | undefined,
 ): void {
   lines.push(
@@ -234,6 +238,13 @@ function appendFailure(
   addMetaLine(lines, "Code", failureCode);
   if (failureReason) {
     addMetaLine(lines, "Reason", failureReason);
+  }
+  if (eventId) {
+    addMetaLine(
+      lines,
+      "Event id",
+      sentryEventUrl ? `[${eventId}](${sentryEventUrl})` : eventId,
+    );
   }
 }
 
@@ -250,8 +261,8 @@ function appendContextEvent(
   );
   addEventMeta(lines, conversationTranscript, timestamp);
   if (event.type === "handoff") {
-    addMetaLine(lines, "Profile", event.modelProfile);
     addMetaLine(lines, "Model", event.modelId);
+    addMetaLine(lines, "Profile", event.modelProfile);
     addMetaLine(lines, "Reasoning", event.reasoningLevel);
   } else {
     addMetaLine(lines, "Profile", event.modelProfile);

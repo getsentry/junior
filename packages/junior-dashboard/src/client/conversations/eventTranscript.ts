@@ -418,6 +418,10 @@ export function transcriptMessagesFromEvents(
         ...(data.failureReason
           ? { failureReason: data.failureReason }
           : undefined),
+        ...(data.eventId ? { eventId: data.eventId } : undefined),
+        ...(data.sentryEventUrl
+          ? { sentryEventUrl: data.sentryEventUrl }
+          : undefined),
         parts: [],
         sourceSeq: event.seq,
         timestamp: eventTimestamp(event),

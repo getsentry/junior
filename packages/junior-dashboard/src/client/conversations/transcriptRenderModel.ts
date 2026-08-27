@@ -17,8 +17,10 @@ import type {
 export type RenderedFailureEntry = {
   key: string;
   kind: "failure";
+  eventId?: string;
   failureCode: ConversationTurnFailureCode;
   failureReason?: ConversationTurnFailureReason;
+  sentryEventUrl?: string;
   timestamp?: number;
 };
 
@@ -171,6 +173,10 @@ export function groupTranscriptMessages(
         ...(message.failureReason
           ? { failureReason: message.failureReason }
           : undefined),
+        ...(message.eventId ? { eventId: message.eventId } : undefined),
+        ...(message.sentryEventUrl
+          ? { sentryEventUrl: message.sentryEventUrl }
+          : undefined),
         timestamp: message.timestamp,
       });
     }
@@ -215,8 +221,8 @@ export function messageRawText(message: TranscriptViewMessage): string {
       }
       return [
         "model handoff",
-        `profile ${part.event.modelProfile}`,
         `model ${part.event.modelId}`,
+        `profile ${part.event.modelProfile}`,
         part.event.summary,
         part.event.reasoningLevel
           ? `reasoning ${part.event.reasoningLevel}`

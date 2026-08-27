@@ -893,6 +893,7 @@ describe("conversation report event projection", () => {
       state: "failed",
       failureCode: "model_execution_failed",
       failureReason: "network",
+      eventId,
     });
     expect(projected[4]?.data).toEqual({
       type: "turn_lifecycle",
@@ -911,11 +912,9 @@ describe("conversation report event projection", () => {
       "private-authorization-id",
       "private tool result",
       "private provider error",
-      eventId,
       "private-provider",
       "actorId",
       "authorizationId",
-      "eventId",
       "args",
       "content",
       "meta",

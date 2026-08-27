@@ -27,6 +27,10 @@ import {
   isSandboxUnavailableError,
   throwSandboxOperationError,
 } from "@/chat/sandbox/errors";
+import {
+  getWorkspaceSnapshotNotReadyError,
+  workspaceSnapshotNotReadyUserMessage,
+} from "@/chat/sandbox/snapshot/not-ready-error";
 import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
 import { tryWorkspaceRepoCheckoutPath } from "@/chat/workspaces/checkout-path";
 import {
@@ -126,6 +130,19 @@ function createSandboxUnavailableToolError(
     `The temporary sandbox became unavailable during ${operation}, so the operation did not complete reliably. The next sandbox operation will use a fresh session. It may have produced side effects; retry only if it is safe.`,
     { cause },
   );
+}
+
+/** Tool result when the Workspace sandbox is still preparing. */
+function createWorkspaceSnapshotNotReadyToolResult(cause: unknown) {
+  const notReady = getWorkspaceSnapshotNotReadyError(cause);
+  if (!notReady) {
+    throw new Error("expected WorkspaceSnapshotNotReadyError");
+  }
+  return makeStructuredToolOutput({
+    status: "building" as const,
+    workspace: notReady.workspaceName,
+    message: workspaceSnapshotNotReadyUserMessage(notReady),
+  });
 }
 
 const SANDBOX_TOOL_NAMES = new Set([
@@ -747,6 +764,9 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
       }
     } catch (error) {
       params.signal?.throwIfAborted();
+      if (getWorkspaceSnapshotNotReadyError(error)) {
+        return createWorkspaceSnapshotNotReadyToolResult(error) as T;
+      }
       if (isSandboxUnavailableError(error)) {
         // Do not replay an operation that may already have produced side effects.
         throw createSandboxUnavailableToolError(params.toolName, error);
@@ -770,6 +790,12 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
     try {
       return await callback(await runtime.acquire());
     } catch (error) {
+      const notReady = getWorkspaceSnapshotNotReadyError(error);
+      if (notReady) {
+        throw new ToolInputError(workspaceSnapshotNotReadyUserMessage(notReady), {
+          cause: notReady,
+        });
+      }
       if (isSandboxUnavailableError(error)) {
         throw createSandboxUnavailableToolError(operation, error);
       }

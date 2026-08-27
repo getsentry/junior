@@ -35,7 +35,7 @@ export function TranscriptContextEventView(props: {
       </div>
       <div className="mt-1 text-xs leading-relaxed text-dashboard-text-muted">
         {handoff
-          ? `Execution continued with the ${event.modelProfile} profile (${event.modelId}${event.reasoningLevel ? `, ${event.reasoningLevel}` : ""}).`
+          ? `Handed off to ${event.modelId} via the ${event.modelProfile} profile${event.reasoningLevel ? ` (${event.reasoningLevel})` : ""}.`
           : `Earlier context was summarized${compactionDetail}${compactionModel} before execution continued.`}
       </div>
       {event.summary ? (
