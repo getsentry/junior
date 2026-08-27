@@ -1,18 +1,19 @@
 import { describe, expect, it } from "vitest";
-import { renderAutomatedTaskInput } from "@/chat/automated-task-input";
 import { NO_REPLY_MARKER } from "@/chat/no-reply";
+import { renderTaskInput } from "@/chat/task-input";
 
-describe("renderAutomatedTaskInput", () => {
-  it("renders scheduled-task input with job first and reply contract last", () => {
-    const text = renderAutomatedTaskInput({
-      kind: "scheduled_task",
+describe("renderTaskInput", () => {
+  it("renders a scheduled task as a task with source context", () => {
+    const text = renderTaskInput({
+      source: "schedule",
       instructions: "Post a digest. Summarize the latest state.",
     });
 
     expect(text).toMatchInlineSnapshot(`
-      "[scheduled task]
+      "[task]
 
-      This is a scheduled task, not a message from a person.
+      This is a task, not a message from a person.
+      Source: schedule
 
       Instructions: Post a digest. Summarize the latest state.
 
@@ -22,9 +23,9 @@ describe("renderAutomatedTaskInput", () => {
     `);
   });
 
-  it("renders event-task input with event facts between job and reply contract", () => {
-    const text = renderAutomatedTaskInput({
-      kind: "event_task",
+  it("renders an event-sourced task with facts between job and reply contract", () => {
+    const text = renderTaskInput({
+      source: "event",
       about: "GitHub PR getsentry/junior#691",
       instructions: "Fix failed checks on this PR.",
       whatChanged: "CI failed on workflow test.",
@@ -33,9 +34,10 @@ describe("renderAutomatedTaskInput", () => {
     });
 
     expect(text).toMatchInlineSnapshot(`
-      "[event task]
+      "[task]
 
-      This is an event task, not a message from a person.
+      This is a task, not a message from a person.
+      Source: event
 
       About: GitHub PR getsentry/junior#691
       Instructions: Fix failed checks on this PR.
@@ -59,9 +61,9 @@ describe("renderAutomatedTaskInput", () => {
     `);
   });
 
-  it("renders resource-subscription input and omits empty optional sections", () => {
-    const text = renderAutomatedTaskInput({
-      kind: "resource_subscription",
+  it("renders a subscription-sourced task and omits empty optional sections", () => {
+    const text = renderTaskInput({
+      source: "resource_subscription",
       about: "  label  ",
       instructions: "  Tell me when checks fail.  ",
       guidance: "  ",
@@ -74,9 +76,10 @@ describe("renderAutomatedTaskInput", () => {
 
     expect(text).toBe(
       [
-        "[resource subscription]",
+        "[task]",
         "",
-        "This is a resource subscription update, not a message from a person.",
+        "This is a task, not a message from a person.",
+        "Source: resource subscription",
         "",
         "About: label",
         "Instructions: Tell me when checks fail.",

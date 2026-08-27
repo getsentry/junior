@@ -1,4 +1,4 @@
-import { renderAutomatedTaskInput } from "@/chat/automated-task-input";
+import { renderTaskInput } from "@/chat/task-input";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import {
   appendAndEnqueueInboundMessage,
@@ -44,8 +44,8 @@ export function renderResourceEventNotificationText(
     subscription.resourceType,
     event.eventType,
   );
-  return renderAutomatedTaskInput({
-    kind: "resource_subscription",
+  return renderTaskInput({
+    source: "resource_subscription",
     about: subscription.label,
     instructions: subscription.intent,
     guidance,

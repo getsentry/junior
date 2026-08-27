@@ -1,30 +1,21 @@
 /**
- * Shared agent input for scheduled tasks, event tasks, and resource
- * subscriptions. Call sites supply facts; this module owns layout and the
- * reply contract.
+ * Shared agent input for tasks. A task can come from a schedule, an event, or
+ * a resource subscription. Call sites supply facts; this module owns layout
+ * and the reply contract.
  */
 import { NO_REPLY_MARKER } from "@/chat/no-reply";
 
-/** Which durable or temporary wake produced this agent input. */
-export type AutomatedTaskInputKind =
-  | "scheduled_task"
-  | "event_task"
+/** How this task run was triggered. Optional context only; the job is still a task. */
+export type TaskInputSource =
+  | "schedule"
+  | "event"
   | "resource_subscription";
 
-const KIND_COPY = {
-  scheduled_task: {
-    header: "[scheduled task]",
-    origin: "This is a scheduled task, not a message from a person.",
-  },
-  event_task: {
-    header: "[event task]",
-    origin: "This is an event task, not a message from a person.",
-  },
-  resource_subscription: {
-    header: "[resource subscription]",
-    origin: "This is a resource subscription update, not a message from a person.",
-  },
-} as const;
+const SOURCE_LINE: Record<TaskInputSource, string> = {
+  schedule: "Source: schedule",
+  event: "Source: event",
+  resource_subscription: "Source: resource subscription",
+};
 
 /** Shared closing lines: instructions own reply format; marker owns silence. */
 function replyContractLines(): string[] {
@@ -47,16 +38,17 @@ function clip(value: string, maxLength: number | undefined): string {
 }
 
 /**
- * Render agent input for a scheduled task, event task, or resource subscription.
+ * Render agent input for a task run.
  *
- * Order is intentional: name the wake, give the job, attach event facts, then
- * state how to reply. Empty optional fields are omitted.
+ * Order is intentional: name it as a task, give the job, attach event facts,
+ * then state how to reply. Empty optional fields are omitted.
  */
-export function renderAutomatedTaskInput(args: {
-  kind: AutomatedTaskInputKind;
+export function renderTaskInput(args: {
+  /** Where this run came from. Does not change the product; only orients the agent. */
+  source?: TaskInputSource;
   /** Stored task instruction, or subscription intent. */
   instructions: string;
-  /** Human label for the matched resource, when the wake is event-based. */
+  /** Human label for the matched resource, when the run is event-based. */
   about?: string;
   /** Plugin guidance scoped under the instructions. */
   guidance?: string;
@@ -69,7 +61,6 @@ export function renderAutomatedTaskInput(args: {
   externalTextMaxLength?: number;
   whatChangedMaxLength?: number;
 }): string {
-  const copy = KIND_COPY[args.kind];
   const instructions = args.instructions.trim();
   if (!instructions) {
     throw new Error("Task instructions are required");
@@ -77,9 +68,10 @@ export function renderAutomatedTaskInput(args: {
 
   const about = args.about?.trim();
   const lines = [
-    copy.header,
+    "[task]",
     "",
-    copy.origin,
+    "This is a task, not a message from a person.",
+    ...(args.source ? [SOURCE_LINE[args.source]] : []),
     "",
     ...(about ? [`About: ${oneLine(about)}`] : []),
     `Instructions: ${instructions}`,

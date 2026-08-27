@@ -14,7 +14,7 @@ import {
   type ResourceEvent,
 } from "@sentry/junior-plugin-api";
 import { dispatchEventTask } from "@/chat/agent-dispatch/context";
-import { renderAutomatedTaskInput } from "@/chat/automated-task-input";
+import { renderTaskInput } from "@/chat/task-input";
 import { getDb } from "@/chat/db";
 import { findMatchingEventTasks } from "@/chat/event-tasks/store";
 import type { EventTask } from "@/chat/event-tasks/types";
@@ -56,8 +56,8 @@ function eventInput(task: EventTask, event: ResourceEvent): string {
     task.trigger.resourceType,
     event.eventType,
   );
-  return renderAutomatedTaskInput({
-    kind: "event_task",
+  return renderTaskInput({
+    source: "event",
     about: task.trigger.label,
     instructions: task.task.text,
     guidance,

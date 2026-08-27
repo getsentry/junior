@@ -9,7 +9,7 @@ import {
   getScheduledTaskDispatch,
 } from "@/chat/agent-dispatch/context";
 import { getDispatchConversationId } from "@/chat/agent-dispatch/store";
-import { renderAutomatedTaskInput } from "@/chat/automated-task-input";
+import { renderTaskInput } from "@/chat/task-input";
 import { getDb } from "@/chat/db";
 import { logInfo } from "@/chat/logging";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
@@ -50,8 +50,8 @@ function singleLineMetadataValue(value: string): string {
 
 /** Render the due scheduled task as plain agent input. */
 function buildDispatchInput(task: ScheduledTask): string {
-  return renderAutomatedTaskInput({
-    kind: "scheduled_task",
+  return renderTaskInput({
+    source: "schedule",
     instructions: task.task.text,
   });
 }

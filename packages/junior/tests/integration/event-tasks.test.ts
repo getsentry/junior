@@ -238,9 +238,10 @@ describe("event tasks", () => {
         dispatch.credentialSubject.taskId === first.task.id,
     );
     expect(firstDispatch?.input).toMatchInlineSnapshot(`
-      "[event task]
+      "[task]
 
-      This is an event task, not a message from a person.
+      This is a task, not a message from a person.
+      Source: event
 
       About: GitHub PR getsentry/junior#1174
       Instructions: Address the requested changes.
