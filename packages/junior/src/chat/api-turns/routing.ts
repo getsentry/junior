@@ -25,8 +25,7 @@ export type ApiTurnMailboxMetadata = z.output<
   typeof apiTurnMailboxMetadataSchema
 >;
 
-/** One validated mailbox entry owned by the conversation-only runner. */
-type ConversationMailboxEntry =
+type ConversationInput =
   | { message: InboundMessage; metadata: ApiTurnMailboxMetadata }
   | { message: InboundMessage; metadata: ResourceEventMailboxMetadata };
 
@@ -85,11 +84,13 @@ function parseApiTurnMessages(
     return [];
   }
   if (parsed.some((entry) => !entry.metadata.success)) {
-    throw new Error("Conversation mailbox mixes web turns and other input");
+    throw new Error(
+      "Conversation input mixes dashboard messages and other input",
+    );
   }
   return parsed.map((entry) => {
     if (!entry.metadata.success) {
-      throw new Error("API turn mailbox metadata failed validation");
+      throw new Error("Dashboard message metadata failed validation");
     }
     return { message: entry.message, metadata: entry.metadata.data };
   });
@@ -115,25 +116,24 @@ function parseLocalResourceEventMessages(
   }
   return messages.map((message) => {
     if (!isResourceEventMailboxMetadata(message.input.metadata)) {
-      throw new Error("Resource-event mailbox metadata failed validation");
+      throw new Error("Resource event metadata failed validation");
     }
     return { message, metadata: message.input.metadata };
   });
 }
 
 /**
- * Resolve conversation-only work from mailbox metadata or an active checkpoint.
+ * Find a direct Junior Turn from new input or a saved active Turn.
  *
- * Covers dashboard API turns and local destination resource-event wakes. Empty
- * resume wakes after yield carry no mailbox rows; durable active Turn state keeps
- * those wakes on this runner instead of falling through to Slack.
+ * Dashboard messages and local resource events run directly in Junior. A
+ * resumed Turn has no new input, so saved Turn state identifies it.
  */
 export async function resolveApiTurnWork(
   context: ConversationWorkerContext,
 ): Promise<
   | {
       kind: "mailbox";
-      batch: ConversationMailboxEntry[];
+      batch: ConversationInput[];
     }
   | { kind: "resume"; turnId: string }
   | undefined
@@ -142,8 +142,8 @@ export async function resolveApiTurnWork(
   if (batch.length > 0) {
     return { kind: "mailbox", batch };
   }
-  // Local resource events are ordinary conversation-only mailbox work. Slack
-  // resource events stay on the Slack worker until it has a plain Turn entry.
+  // Local resource events run through Junior directly. Slack resource events
+  // stay with Slack because they still need thread context.
   if (context.destination?.platform === "local") {
     const resourceBatch = parseLocalResourceEventMessages(
       context.attempt.messages,

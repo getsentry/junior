@@ -405,7 +405,7 @@ describe("Conversation API work", () => {
     expect(resolved).toEqual({ kind: "resume", turnId });
   });
 
-  it("runs and resumes resource-event mailbox work as one conversation-only Turn", async () => {
+  it("runs and resumes a local resource event through Junior", async () => {
     const { actor, conversationStore, queue, state } =
       await createApiTurnWorkFixture();
     const conversationId = createApiConversationId({
@@ -470,7 +470,7 @@ describe("Conversation API work", () => {
     const route = routeApiTurnWork({
       apiTurnWorker: worker,
       fallbackWorker: async () => {
-        throw new Error("fallback worker must not run for resource events");
+        throw new Error("Slack must not handle local resource events");
       },
     });
 

@@ -518,7 +518,7 @@ export function createApiTurnWorker(
           `Unable to locate the persisted user message for Turn "${turnId}"`,
         );
       }
-      // Empty resume wakes lose mailbox kind; restore the Actor from the Turn input.
+      // Resume has no new input. Restore the Actor from the saved Turn input.
       if (isResourceEventConversationMessage(userMessage)) {
         isResourceEvent = true;
         actor = localResourceEventActor();
