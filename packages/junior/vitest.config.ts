@@ -19,6 +19,10 @@ export default defineConfig({
         __dirname,
         "../junior-plugin-api/src/index.ts",
       ),
+      "@sentry/junior-memory/testing": path.resolve(
+        __dirname,
+        "../junior-memory/src/testing.ts",
+      ),
       "@sentry/junior-memory": path.resolve(
         __dirname,
         "../junior-memory/src/index.ts",

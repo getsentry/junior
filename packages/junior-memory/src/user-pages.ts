@@ -1,7 +1,7 @@
 /** Render memory in Junior's User page format. */
 import type { PluginUserPageDefinition } from "@sentry/junior-plugin-api";
 import { listMemories, type MemoryVisibility, type MemoryView } from "./viewer";
-import type { MemoryDb } from "./store";
+import type { MemoryDb } from "./memories";
 
 function titleCase(value: string): string {
   return value.charAt(0).toUpperCase() + value.slice(1);

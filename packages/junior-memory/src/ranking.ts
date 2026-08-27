@@ -1,4 +1,4 @@
-import type { MemoryRecord } from "./store";
+import type { Memory } from "./memories";
 
 const RECIPROCAL_RANK_FUSION_K = 60;
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
@@ -8,7 +8,7 @@ export interface MemoryMatch {
   lexical?: {
     rank: number;
   };
-  memory: MemoryRecord;
+  memory: Memory;
   vector?: {
     rank: number;
   };
@@ -32,7 +32,7 @@ function matchScore(
   );
 }
 
-function observedAgeRank(memory: MemoryRecord, nowMs: number): number {
+function observedAgeRank(memory: Memory, nowMs: number): number {
   const ageMs = Math.max(0, nowMs - memory.observedAtMs);
   if (ageMs <= 7 * ONE_DAY_MS) {
     return 3;
@@ -81,7 +81,9 @@ export function rankMemoryMatches(
       ...(!existing.lexical && match.lexical
         ? { lexical: match.lexical }
         : undefined),
-      ...(!existing.vector && match.vector ? { vector: match.vector } : undefined),
+      ...(!existing.vector && match.vector
+        ? { vector: match.vector }
+        : undefined),
     });
   }
   return [...byId.values()].sort((left, right) => {

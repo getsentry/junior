@@ -5,7 +5,7 @@ import type {
 import { and, eq, gt, isNull, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { juniorMemoryEmbeddings, juniorMemoryMemories } from "./db/schema";
-import type { MemoryDb } from "./store";
+import type { MemoryDb } from "./memories";
 
 const DAY_MS = 24 * 60 * 60 * 1_000;
 const WINDOWS = [7, 30, 90] as const;

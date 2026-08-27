@@ -1,7 +1,7 @@
 import { defineConversationEvent } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import { MEMORY_KINDS, MEMORY_SCOPES } from "./types";
-import type { MemoryRecord } from "./store";
+import type { Memory } from "./memories";
 
 const capturedMemoryFields = {
   content: z.string().min(1),
@@ -96,7 +96,7 @@ export const memoriesRecalledEvent = defineConversationEvent({
 });
 
 /** Select the stable, safe memory fields retained in conversation history. */
-export function capturedMemory(memory: MemoryRecord) {
+export function capturedMemory(memory: Memory) {
   return {
     content: memory.content,
     id: memory.id,

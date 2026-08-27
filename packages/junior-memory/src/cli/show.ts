@@ -5,7 +5,7 @@ import type {
 } from "@sentry/junior-plugin-api";
 import { eq } from "drizzle-orm";
 import { juniorMemoryMemories } from "../db/schema";
-import type { MemoryDb } from "../store";
+import type { MemoryDb } from "../memories";
 import { formatMemory } from "./format";
 
 async function runShow(

@@ -1,5 +1,6 @@
 import { Type, type Static } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
+import { and, asc, desc, eq, like, or } from "drizzle-orm";
 import {
   definePluginTool,
   getSourceKey,
@@ -13,13 +14,21 @@ import {
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import {
-  createMemoryStore,
+  createMemory,
   type CreateMemoryInput,
-  type MemoryEmbeddingProvider,
-  type MemoryDb,
-  type MemoryRecord,
   type MemorySupersessionDecider,
-} from "./store";
+} from "./create";
+import type { MemoryEmbeddingProvider } from "./embeddings";
+import { juniorMemoryEmbeddings, juniorMemoryMemories } from "./db/schema";
+import {
+  activeVisiblePredicate,
+  archiveExpiredMemoryBatch,
+  parseMemoryRow,
+  type MemoryDb,
+  type Memory,
+} from "./memories";
+import { retrieveMemories } from "./retrieval";
+import { deriveVisibleMemoryScopes } from "./scope";
 import {
   parseCreateMemoryRequest,
   parseMemoryReview,
@@ -97,19 +106,6 @@ async function memoryRuntimeContext(
     ...(context.locationId ? { locationId: context.locationId } : undefined),
     source: context.source,
     ...(actorUser ? { userId: actorUser.id } : undefined),
-  });
-}
-
-function memoryStore(
-  context: MemoryToolContext,
-  runtimeContext: MemoryRuntimeContext,
-  options: { supersessionDecider?: MemorySupersessionDecider } = {},
-) {
-  return createMemoryStore(context.db, runtimeContext, {
-    embedder: context.embedder,
-    ...(options.supersessionDecider
-      ? { supersessionDecider: options.supersessionDecider }
-      : undefined),
   });
 }
 
@@ -369,15 +365,8 @@ function createInput(
   } satisfies CreateMemoryInput;
 }
 
-function targetForKind(kind: MemoryKind): "actor" | "conversation" {
-  if (kind === "preference") {
-    return "actor";
-  }
-  return "conversation";
-}
-
 /** Return the model-visible projection without hidden ownership/source fields. */
-function compactMemory(memory: MemoryRecord): MemoryToolProjection {
+function compactMemory(memory: Memory): MemoryToolProjection {
   return Value.Parse(memoryToolProjectionSchema, {
     id: memory.id,
     content: memory.content,
@@ -419,9 +408,6 @@ export function createMemoryCreateTool(context: MemoryCreateToolContext) {
       const toolCallId = requireToolCallId(options.toolCallId);
       const requestedExpiresAtMs = parseExpiresAt(parsedInput.expires_at);
       const runtimeContext = await memoryRuntimeContext(context);
-      const store = memoryStore(context, runtimeContext, {
-        supersessionDecider: context.supersessionDecider,
-      });
       const review = await (async () => {
         try {
           return parseMemoryReview(
@@ -476,10 +462,14 @@ export function createMemoryCreateTool(context: MemoryCreateToolContext) {
       );
       const result = await (async () => {
         try {
-          if (targetForKind(review.kind) === "conversation") {
-            return await store.createConversationMemory(memoryInput);
-          }
-          return await store.createMemory(memoryInput);
+          return await createMemory({
+            context: runtimeContext,
+            db: context.db,
+            embedder: context.embedder,
+            input: memoryInput,
+            subjectType: review.kind === "preference" ? "user" : "conversation",
+            supersessionDecider: context.supersessionDecider,
+          });
         } catch (error) {
           asToolInputError(error);
         }
@@ -511,10 +501,48 @@ export function createMemoryRemoveTool(context: MemoryToolContext) {
       const runtimeContext = await memoryRuntimeContext(context);
       const memory = await (async () => {
         try {
-          return await memoryStore(context, runtimeContext).archiveMemory({
-            id: parsedInput.id,
-            reason: "tool_removed",
-          });
+          const nowMs = Date.now();
+          const scopes = deriveVisibleMemoryScopes(runtimeContext).filter(
+            (scope) => scope.scope === "private",
+          );
+          const predicate = activeVisiblePredicate({ nowMs, scopes });
+          const id = parsedInput.id.trim();
+          if (!id) throw new Error("Memory id is required.");
+          const rows = predicate
+            ? await context.db
+                .select()
+                .from(juniorMemoryMemories)
+                .where(
+                  and(
+                    predicate,
+                    or(
+                      eq(juniorMemoryMemories.id, id),
+                      like(juniorMemoryMemories.id, `${id}%`),
+                    ),
+                  ),
+                )
+                .orderBy(asc(juniorMemoryMemories.id))
+                .limit(2)
+            : [];
+          if (rows.length === 0) {
+            throw new Error("Memory was not found in the current context.");
+          }
+          if (rows.length > 1) {
+            throw new Error("Memory id prefix is ambiguous.");
+          }
+          const found = parseMemoryRow(rows[0]);
+          const updated = await context.db
+            .update(juniorMemoryMemories)
+            .set({
+              archivedAtMs: nowMs,
+              archiveReason: "tool_removed",
+            })
+            .where(eq(juniorMemoryMemories.id, found.id))
+            .returning();
+          await context.db
+            .delete(juniorMemoryEmbeddings)
+            .where(eq(juniorMemoryEmbeddings.memoryId, found.id));
+          return parseMemoryRow(updated[0]);
         } catch (error) {
           asToolInputError(error);
         }
@@ -542,11 +570,23 @@ export function createMemoryListTool(context: MemoryToolContext) {
     execute: async (input) => {
       const parsedInput = parseMemoryToolInput(listMemoriesInputSchema, input);
       const runtimeContext = await memoryRuntimeContext(context);
-      const memories = await memoryStore(context, runtimeContext).listMemories({
-        limit: boundedLimit(parsedInput.limit, DEFAULT_RESULT_LIMIT),
-      });
+      const nowMs = Date.now();
+      const scopes = deriveVisibleMemoryScopes(runtimeContext);
+      await archiveExpiredMemoryBatch({ db: context.db, nowMs, scopes });
+      const predicate = activeVisiblePredicate({ nowMs, scopes });
+      const rows = predicate
+        ? await context.db
+            .select()
+            .from(juniorMemoryMemories)
+            .where(predicate)
+            .orderBy(
+              desc(juniorMemoryMemories.createdAtMs),
+              asc(juniorMemoryMemories.id),
+            )
+            .limit(boundedLimit(parsedInput.limit, DEFAULT_RESULT_LIMIT))
+        : [];
       return memoryToolResult("listMemories", {
-        memories: memories.map(compactMemory),
+        memories: rows.map(parseMemoryRow).map(compactMemory),
       });
     },
   });
@@ -571,12 +611,15 @@ export function createMemorySearchTool(context: MemoryToolContext) {
         input,
       );
       const runtimeContext = await memoryRuntimeContext(context);
-      const memories = await memoryStore(
-        context,
-        runtimeContext,
-      ).searchMemories({
-        query: parsedInput.query,
-        limit: boundedLimit(parsedInput.limit, DEFAULT_SEARCH_LIMIT),
+      const memories = await retrieveMemories({
+        context: runtimeContext,
+        db: context.db,
+        embedder: context.embedder,
+        input: {
+          query: parsedInput.query,
+          limit: boundedLimit(parsedInput.limit, DEFAULT_SEARCH_LIMIT),
+        },
+        mode: "search",
       });
       return memoryToolResult("searchMemories", {
         memories: memories.map(compactMemory),
