@@ -45,7 +45,6 @@ export function renderResourceEventNotificationText(
     event.eventType,
   );
   return renderTaskInput({
-    source: "resource_subscription",
     about: subscription.label,
     instructions: subscription.intent,
     guidance,

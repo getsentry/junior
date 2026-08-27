@@ -19,7 +19,6 @@ describe("resource event notification framing", () => {
     );
 
     expect(text).toContain("[task]");
-    expect(text).toContain("Source: resource subscription");
     expect(text).toContain("About: GitHub PR getsentry/junior#691");
     expect(text).toContain("Instructions: Fix failed checks on this PR.");
     expect(text).toContain("Trusted summary: CI failed on workflow test.");

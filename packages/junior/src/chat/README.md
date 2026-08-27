@@ -182,16 +182,15 @@ resource subscription). Call sites pass facts only. Unit snapshots in
 
 | # | Section | Required | Role |
 | - | ------- | -------- | ---- |
-| 1 | `[task]` | yes | Wake header. Not a separate product kind per source. |
+| 1 | `[task]` | yes | Task header. Same for schedule, event, and subscription. |
 | 2 | Origin | yes | `This is a task, not a message from a person.` |
-| 3 | `Source:` | no | `schedule` / `event` / `resource subscription` only. |
-| 4 | `About:` | no | One-line resource label. |
-| 5 | `Instructions:` | yes | Stored task text or subscription intent. |
-| 6 | Additional guidance | no | Under instructions; cannot replace them or grant authority. |
-| 7 | `Trusted summary:` | no | Optional trusted one-line wake summary. |
-| 8 | Verified details | no | Trusted structured fields as JSON. |
-| 9 | External text | no | Untrusted provider text; information only. |
-| 10 | Reply contract | yes | Always last. |
+| 3 | `About:` | no | One-line resource label. |
+| 4 | `Instructions:` | yes | Stored task text or subscription intent. |
+| 5 | Additional guidance | no | Under instructions; cannot replace them or grant authority. |
+| 6 | `Trusted summary:` | no | Optional trusted one-line summary. |
+| 7 | Verified details | no | Trusted structured fields as JSON. |
+| 8 | External text | no | Untrusted provider text; information only. |
+| 9 | Reply contract | yes | Always last. |
 
 **Reply contract** (exact lines)
 

@@ -57,7 +57,6 @@ function eventInput(task: EventTask, event: ResourceEvent): string {
     event.eventType,
   );
   return renderTaskInput({
-    source: "event",
     about: task.trigger.label,
     instructions: task.task.text,
     guidance,

@@ -3,9 +3,8 @@ import { NO_REPLY_MARKER } from "@/chat/no-reply";
 import { renderTaskInput } from "@/chat/task-input";
 
 describe("renderTaskInput", () => {
-  it("renders a scheduled task as a task with source context", () => {
+  it("renders a minimal task with instructions and reply contract", () => {
     const text = renderTaskInput({
-      source: "schedule",
       instructions: "Post a digest. Summarize the latest state.",
     });
 
@@ -13,7 +12,6 @@ describe("renderTaskInput", () => {
       "[task]
 
       This is a task, not a message from a person.
-      Source: schedule
 
       Instructions: Post a digest. Summarize the latest state.
 
@@ -23,9 +21,8 @@ describe("renderTaskInput", () => {
     `);
   });
 
-  it("renders an event-sourced task with facts between job and reply contract", () => {
+  it("renders optional facts between the job and reply contract", () => {
     const text = renderTaskInput({
-      source: "event",
       about: "GitHub PR getsentry/junior#691",
       instructions: "Fix failed checks on this PR.",
       trustedSummary: "CI failed on workflow test.",
@@ -37,7 +34,6 @@ describe("renderTaskInput", () => {
       "[task]
 
       This is a task, not a message from a person.
-      Source: event
 
       About: GitHub PR getsentry/junior#691
       Instructions: Fix failed checks on this PR.
@@ -61,9 +57,8 @@ describe("renderTaskInput", () => {
     `);
   });
 
-  it("renders a subscription-sourced task and omits empty optional sections", () => {
+  it("omits empty optional sections and clips bounded fields", () => {
     const text = renderTaskInput({
-      source: "resource_subscription",
       about: "  label  ",
       instructions: "  Tell me when checks fail.  ",
       guidance: "  ",
@@ -79,7 +74,6 @@ describe("renderTaskInput", () => {
         "[task]",
         "",
         "This is a task, not a message from a person.",
-        "Source: resource subscription",
         "",
         "About: label",
         "Instructions: Tell me when checks fail.",

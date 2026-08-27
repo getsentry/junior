@@ -51,7 +51,6 @@ function singleLineMetadataValue(value: string): string {
 /** Render the due scheduled task as plain agent input. */
 function buildDispatchInput(task: ScheduledTask): string {
   return renderTaskInput({
-    source: "schedule",
     instructions: task.task.text,
   });
 }

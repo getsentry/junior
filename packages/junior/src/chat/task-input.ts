@@ -5,18 +5,6 @@
  */
 import { NO_REPLY_MARKER } from "@/chat/no-reply";
 
-/** How this task run was triggered. Optional context only; the job is still a task. */
-export type TaskInputSource =
-  | "schedule"
-  | "event"
-  | "resource_subscription";
-
-const SOURCE_LINE: Record<TaskInputSource, string> = {
-  schedule: "Source: schedule",
-  event: "Source: event",
-  resource_subscription: "Source: resource subscription",
-};
-
 /** Shared closing lines: instructions own reply format; marker owns silence. */
 function replyContractLines(): string[] {
   return [
@@ -44,17 +32,15 @@ function clip(value: string, maxLength: number | undefined): string {
  * input. Empty optional fields are omitted.
  */
 export function renderTaskInput(args: {
-  /** Where this run came from. Does not change the product; only orients the agent. */
-  source?: TaskInputSource;
   /** Stored task instruction, or subscription intent. */
   instructions: string;
-  /** Human label for the matched resource, when the run is event-based. */
+  /** Human label for the matched resource, when present. */
   about?: string;
   /** Plugin guidance scoped under the instructions. */
   guidance?: string;
-  /** Trusted one-line summary of the wake, when available. */
+  /** Trusted one-line summary, when available. */
   trustedSummary?: string;
-  /** Structured verified fields for the wake. */
+  /** Structured verified fields, when available. */
   verifiedDetails?: Record<string, unknown>;
   /** Untrusted provider text; never treated as instructions. */
   externalText?: string;
@@ -71,7 +57,6 @@ export function renderTaskInput(args: {
     "[task]",
     "",
     "This is a task, not a message from a person.",
-    ...(args.source ? [SOURCE_LINE[args.source]] : []),
     "",
     ...(about ? [`About: ${oneLine(about)}`] : []),
     `Instructions: ${instructions}`,

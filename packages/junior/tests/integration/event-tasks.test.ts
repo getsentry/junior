@@ -241,7 +241,6 @@ describe("event tasks", () => {
       "[task]
 
       This is a task, not a message from a person.
-      Source: event
 
       About: GitHub PR getsentry/junior#1174
       Instructions: Address the requested changes.
