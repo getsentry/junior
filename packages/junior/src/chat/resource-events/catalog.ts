@@ -17,6 +17,30 @@ export type ResourceEventCatalog = Readonly<
   Record<string, ResourceEventRegistration>
 >;
 
+/** Core-owned resource-event namespace. Not a plugin publisher. */
+export const CORE_RESOURCE_EVENT_NAMESPACE = "junior";
+
+/** True when the catalog has any enabled registration. */
+export function hasResourceEventCatalogEntries(
+  catalog: ResourceEventCatalog,
+): boolean {
+  return Object.keys(catalog).length > 0;
+}
+
+/**
+ * True when at least one plugin namespace is enabled.
+ *
+ * Core Workspace snapshot events stay in the catalog for search and temporary
+ * watches. Durable event tasks still require a plugin publisher.
+ */
+export function hasPluginResourceEventCatalogEntries(
+  catalog: ResourceEventCatalog,
+): boolean {
+  return Object.keys(catalog).some(
+    (namespace) => namespace !== CORE_RESOURCE_EVENT_NAMESPACE,
+  );
+}
+
 function enumSchema(values: string[], unavailableMessage: string) {
   if (values.length === 0) {
     return z.string().refine(() => false, unavailableMessage);

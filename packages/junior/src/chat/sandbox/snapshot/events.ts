@@ -3,8 +3,9 @@ import type {
   ResourceEvent,
   SubscribableResource,
 } from "@sentry/junior-plugin-api";
+import { CORE_RESOURCE_EVENT_NAMESPACE } from "@/chat/resource-events/catalog";
 
-export const WORKSPACE_SNAPSHOT_NAMESPACE = "junior";
+export const WORKSPACE_SNAPSHOT_NAMESPACE = CORE_RESOURCE_EVENT_NAMESPACE;
 export const WORKSPACE_SNAPSHOT_RESOURCE_TYPE = "workspace_snapshot";
 export const WORKSPACE_SNAPSHOT_READY_EVENT = "workspace_snapshot.ready";
 export const WORKSPACE_SNAPSHOT_FAILED_EVENT = "workspace_snapshot.failed";

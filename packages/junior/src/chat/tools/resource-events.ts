@@ -1,4 +1,7 @@
-import type { ResourceEventCatalog } from "@/chat/resource-events/catalog";
+import {
+  hasResourceEventCatalogEntries,
+  type ResourceEventCatalog,
+} from "@/chat/resource-events/catalog";
 import type { ToolRegistry } from "@/chat/tools/definition";
 import { createListResourceEventSubscriptionsTool } from "@/chat/tools/list-resource-event-subscriptions";
 import { createSearchResourceEventTypesTool } from "@/chat/tools/search-resource-event-types";
@@ -11,7 +14,7 @@ export function createResourceEventTools(
   context: ToolRuntimeContext,
   catalog: ResourceEventCatalog,
 ): ToolRegistry {
-  const enabled = Object.keys(catalog).length > 0;
+  const enabled = hasResourceEventCatalogEntries(catalog);
   return {
     ...(enabled
       ? {

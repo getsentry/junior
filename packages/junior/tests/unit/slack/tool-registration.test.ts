@@ -280,9 +280,11 @@ describe("Slack tool registration", () => {
       },
     );
 
+    // Core Workspace snapshot events stay searchable/watchable. Durable event
+    // task creation still needs a plugin publisher.
     expect(tools).not.toHaveProperty("createEventTask");
-    expect(tools).not.toHaveProperty("searchResourceEventTypes");
-    expect(tools).not.toHaveProperty("watchResourceEvents");
+    expect(tools).toHaveProperty("searchResourceEventTypes");
+    expect(tools).toHaveProperty("watchResourceEvents");
     expect(tools).toHaveProperty("listEventTasks");
     expect(tools).toHaveProperty("updateEventTask");
     expect(tools).toHaveProperty("deleteEventTask");
