@@ -4,14 +4,19 @@ This module owns Junior's durable conversation record, search, and retention.
 
 ## Location Read Model
 
-`Conversation.location` is the provider-location read model for new code. A
-location keeps Junior's id plus the provider's tenant and location identifiers.
-Conversation privacy remains in `Conversation.visibility`. Provider-specific
-event attribution, such as Slack `threadTs` and `messageTs`, remains in
-`sessionSource`.
+`Conversation.location` is the single Location field for new code. No Location
+means the Conversation stays in Junior's API and UI. A Location names the place
+outside Junior where a provider can deliver the Conversation. For Slack, a
+complete Location identifies the workspace, channel, and thread. Conversation
+privacy remains in `Conversation.visibility`.
 
-During the destination cutover, the linked destination row remains the durable
-location authority. Local conversations have no provider location.
+The current Location projection does not yet include every Slack field.
+
+TODO(dcramer): Remove `sessionSource` after Location stores and reads `threadTs`
+and every reader uses the complete Location.
+
+During this change, the linked destination row remains the stored data used to
+build Location. Local Conversations have no Location.
 
 ## Storage Model
 

@@ -211,11 +211,10 @@ export type AgentRun = {
   credentialContext?: CredentialContext;
   source: Source;
   /**
-   * Transitional provider context for this Run.
+   * Transitional Conversation Location for this Run.
    * TODO(dcramer): Remove top-level Location, Destination, and
-   * publishExternally after provider Source contains its inbound Location and
-   * Delivery contains its target Location and authority across new, resumed,
-   * and child Runs.
+   * publishExternally after Source and Delivery contain Location across new,
+   * resumed, and child Runs.
    */
   location?: Location;
   destination: Destination;

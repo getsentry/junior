@@ -28,8 +28,8 @@ file.
 The local CLI uses `local/runner.ts` directly rather than pretending to be a
 mailbox-backed provider. API-authored root Turns and dashboard continues of
 existing Conversations use the shared mailbox and worker through `api-turns/`.
-A dashboard continue may keep provider context from the Conversation without
-giving the Run provider delivery.
+A dashboard continue may keep the Conversation Location without giving the Run
+Delivery to that Location.
 
 ## Ownership
 
@@ -81,17 +81,18 @@ singleton.
 - **Reply**: one destination-visible assistant message owned by delivery code.
 - **Actor**: human or system principal associated with current work.
 - **Credential subject**: principal whose provider authority may be used.
-- **Source**: the current input that caused a Turn. Provider Source uses
-  Location for its provider coordinates.
-- **Location**: provider coordinates shared by Conversation, Source, and
-  Delivery. A Conversation has zero or one Location.
-- **Delivery**: optional capability that sends Run output. Provider Delivery
-  uses Location for its target coordinates.
+- **Source**: the current input that caused a Turn. Source may include the
+  Conversation's Location so the agent can use it for API and UI input too.
+- **Location**: one place outside Junior where a Conversation can be delivered.
+  A Conversation has zero or one Location. Source and Delivery may each contain
+  that Location.
+- **Delivery**: optional ability to send Run output. Delivery may include the
+  Location where it sends output.
 - **Destination**: explicit target for output or a side effect. Current uses as
-  Conversation provider context are migration debt.
+  a Conversation Location are migration debt.
 - **publishExternally**: per-turn side effect. When true, also publish assistant
-  output through provider Delivery. The Conversation log always stores the
-  Turn. Missing or false means Conversation-only.
+  output through Delivery. The Conversation log always stores the Turn. Missing
+  or false means Conversation-only.
 
 Attribution does not grant authority. `run.actors` records participating actors;
 credential issuance still requires the current actor or an explicit delegated
@@ -138,13 +139,20 @@ delegation without becoming the execution actor or a general task owner.
   after delivery plus steering may still park so steered work can continue.
 - Unexpected failures propagate to the boundary that owns capture and fallback
   delivery.
-- Source and Actor describe the current Turn. Location describes optional
-  provider coordinates. Provider Source and Delivery may use that type, but
-  Location does not select another runtime or grant provider delivery.
-- The final Run interface gets provider coordinates through Source and
-  Delivery. During the cutover, `AgentRun.location` may carry the stored
-  Conversation Location while consumers move away from Destination and session
-  Source. Its removal TODO defines the end of that transition.
+- Source and Actor describe the current Turn. Location names an optional place
+  outside Junior. Source and Delivery may each contain Location, but Location
+  does not select another runtime or allow output to be sent.
+- The final Run interface has Source and optional Delivery. It has no separate
+  Location field. Source carries the Conversation Location when the current
+  input needs it, including API or UI input. Delivery carries the Location where
+  it can send output. A dashboard continuation may therefore keep a Slack
+  Location in Source without getting Slack Delivery. During the cutover,
+  `AgentRun.location` may carry the stored Conversation Location while consumers
+  move away from Destination and session Source. Its removal TODO defines the
+  end of that transition.
+- The final interface uses Conversation, Source, Location, and Delivery. Do not
+  add `DeliveryLocation`, `ProviderSource`, a routing context, or another
+  wrapper for these values.
 - Child Conversations store the Location they need instead of searching parent
   lineage at Run time in the final model.
 - External publish is controlled per turn via `publishExternally`. Slack

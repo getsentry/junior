@@ -38,10 +38,11 @@ export interface ConversationLineage {
 /**
  * Durable Conversation owned by Junior.
  *
- * The final interface has zero or one complete Location. Location contains the
- * provider coordinates shared by provider Source and Delivery. Source still
- * describes the current input. Delivery still grants the authority to send
- * output. Location alone grants neither.
+ * The final interface stores zero or one complete Location here. No Location
+ * means the Conversation stays in Junior's API and UI. A Location names the
+ * outside place where a provider can deliver the Conversation. Source may also
+ * contain this Location so the agent can use it. Delivery contains it when
+ * output may be sent there. Only Delivery allows output to be sent.
  *
  * `destination` and `sessionSource` temporarily duplicate parts of that model.
  * Their field TODOs state when each legacy copy can be removed.
@@ -82,7 +83,7 @@ export interface Conversation {
    * it; never stores per-message ts). Set-once.
    */
   // TODO(dcramer): Remove this locator after every stored Conversation has a
-  // complete Location and all readers use it for provider context.
+  // complete Location and all readers use Location instead.
   sessionSource?: SessionSource;
   title?: string;
   updatedAtMs: number;
