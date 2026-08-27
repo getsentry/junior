@@ -45,11 +45,11 @@ export function renderResourceEventNotificationText(
     event.eventType,
   );
   return renderAutomatedTaskInput({
-    kind: "automated_update",
+    kind: "resource_subscription",
     about: subscription.label,
     instructions: subscription.intent,
     guidance,
-    summary: event.trustedSummary,
+    whatChanged: event.trustedSummary,
     verifiedDetails: event.data,
     externalText: event.untrustedText,
   });

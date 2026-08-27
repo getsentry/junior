@@ -1,21 +1,39 @@
 /**
- * Shared agent-input framing for scheduled tasks, event tasks, and resource
- * subscriptions. Call sites supply facts; this module owns the reply contract.
+ * Shared agent input for scheduled tasks, event tasks, and resource
+ * subscriptions. Call sites supply facts; this module owns layout and the
+ * reply contract.
  */
 import { NO_REPLY_MARKER } from "@/chat/no-reply";
 
-export type AutomatedTaskInputKind = "automated_update" | "scheduled_task";
+/** Which durable or temporary wake produced this agent input. */
+export type AutomatedTaskInputKind =
+  | "scheduled_task"
+  | "event_task"
+  | "resource_subscription";
 
 const KIND_COPY = {
-  automated_update: {
-    header: "[automated update]",
-    origin: "This is an automated update, not a message from a person.",
-  },
   scheduled_task: {
     header: "[scheduled task]",
-    origin: "This is a scheduled task, not a new message from a person.",
+    origin: "This is a scheduled task, not a message from a person.",
+  },
+  event_task: {
+    header: "[event task]",
+    origin: "This is an event task, not a message from a person.",
+  },
+  resource_subscription: {
+    header: "[resource subscription]",
+    origin: "This is a resource subscription update, not a message from a person.",
   },
 } as const;
+
+/** Shared closing lines: instructions own reply format; marker owns silence. */
+function replyContractLines(): string[] {
+  return [
+    "When you reply, follow any reply format in the instructions.",
+    `If no visible reply is needed, make the final message exactly ${NO_REPLY_MARKER}.`,
+    "Otherwise briefly summarize what you acted on and what you did or need next.",
+  ];
+}
 
 function oneLine(value: string): string {
   return value
@@ -29,26 +47,32 @@ function clip(value: string, maxLength: number | undefined): string {
 }
 
 /**
- * Render agent input for automated scheduled, event-task, and subscription work.
+ * Render agent input for a scheduled task, event task, or resource subscription.
  *
- * Kind only changes the header and origin line. Reply rules and optional event
- * sections stay shared. Empty optional fields are omitted.
+ * Order is intentional: name the wake, give the job, attach event facts, then
+ * state how to reply. Empty optional fields are omitted.
  */
 export function renderAutomatedTaskInput(args: {
   kind: AutomatedTaskInputKind;
+  /** Stored task instruction, or subscription intent. */
   instructions: string;
+  /** Human label for the matched resource, when the wake is event-based. */
   about?: string;
+  /** Plugin guidance scoped under the instructions. */
   guidance?: string;
-  summary?: string;
+  /** Trusted one-line description of what changed. */
+  whatChanged?: string;
+  /** Structured verified event fields. */
   verifiedDetails?: Record<string, unknown>;
+  /** Untrusted provider text; never treated as instructions. */
   externalText?: string;
   externalTextMaxLength?: number;
-  summaryMaxLength?: number;
+  whatChangedMaxLength?: number;
 }): string {
   const copy = KIND_COPY[args.kind];
   const instructions = args.instructions.trim();
   if (!instructions) {
-    throw new Error("Automated task instructions are required");
+    throw new Error("Task instructions are required");
   }
 
   const about = args.about?.trim();
@@ -56,9 +80,6 @@ export function renderAutomatedTaskInput(args: {
     copy.header,
     "",
     copy.origin,
-    "Follow the instructions below.",
-    `If they do not need a visible reply, keep tool-calling messages text-free and make the final message exactly ${NO_REPLY_MARKER}.`,
-    "When you reply, follow any reply format in the instructions. Otherwise briefly summarize what you acted on and what you did or need next.",
     "",
     ...(about ? [`About: ${oneLine(about)}`] : []),
     `Instructions: ${instructions}`,
@@ -74,9 +95,12 @@ export function renderAutomatedTaskInput(args: {
     );
   }
 
-  const summary = args.summary?.trim();
-  if (summary) {
-    lines.push("", `Summary: ${clip(summary, args.summaryMaxLength)}`);
+  const whatChanged = args.whatChanged?.trim();
+  if (whatChanged) {
+    lines.push(
+      "",
+      `What changed: ${clip(whatChanged, args.whatChangedMaxLength)}`,
+    );
   }
 
   if (args.verifiedDetails && Object.keys(args.verifiedDetails).length > 0) {
@@ -98,5 +122,6 @@ export function renderAutomatedTaskInput(args: {
     );
   }
 
+  lines.push("", ...replyContractLines());
   return lines.join("\n");
 }

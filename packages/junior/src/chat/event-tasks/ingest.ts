@@ -57,12 +57,12 @@ function eventInput(task: EventTask, event: ResourceEvent): string {
     event.eventType,
   );
   return renderAutomatedTaskInput({
-    kind: "automated_update",
+    kind: "event_task",
     about: task.trigger.label,
     instructions: task.task.text,
     guidance,
-    summary: event.trustedSummary,
-    summaryMaxLength: RESOURCE_EVENT_SUMMARY_MAX_LENGTH,
+    whatChanged: event.trustedSummary,
+    whatChangedMaxLength: RESOURCE_EVENT_SUMMARY_MAX_LENGTH,
     verifiedDetails: event.data,
     externalText: event.untrustedText,
     externalTextMaxLength: RESOURCE_EVENT_TEXT_MAX_LENGTH,
