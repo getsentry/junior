@@ -390,8 +390,9 @@ describe("oauth callback integration", () => {
       ...slackSource("1700000000.009"),
       location: expect.objectContaining({
         provider: "slack",
-        providerId: "C123",
-        tenantId: "T123",
+        teamId: "T123",
+        channelId: "C123",
+        threadTs: "1700000000.009",
       }),
     });
     expect(resumeContext.delivery?.location).toEqual(

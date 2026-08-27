@@ -76,8 +76,8 @@ export interface Conversation {
    * Session-stable (threaded Slack keeps threadTs; channel-level turns omit
    * it; never stores per-message ts). Set-once.
    */
-  // TODO(dcramer): Remove this locator after every stored Conversation has a
-  // complete Location and all readers use Location instead.
+  // TODO(dcramer): Remove sessionSource after resume reads the saved Turn Source
+  // and all Conversation place readers use Location.
   sessionSource?: SessionSource;
   title?: string;
   updatedAtMs: number;

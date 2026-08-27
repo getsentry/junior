@@ -21,21 +21,29 @@ const exactNonBlankStringSchema = nonBlankStringSchema.refine(
   (value) => value === value.trim(),
 );
 
-/** One place outside Junior where a Conversation can be delivered. */
-// TODO(dcramer): Add the fields Location needs to identify the exact provider
-// Conversation. For Slack, this includes threadTs.
-export const locationSchema = z
+/** Fields shared by every Location. */
+export const baseLocationSchema = z
   .object({
-    /** Junior-owned stable identity for this location. */
+    /** Stable SQL identity used by Location configuration and reporting. */
     id: nonBlankStringSchema,
-    /** Provider namespace that owns the provider and tenant identifiers. */
-    provider: nonBlankStringSchema,
-    /** Optional provider-native workspace, account, or tenant scope. */
-    tenantId: nonBlankStringSchema.optional(),
-    /** Provider-native identifier for the container within its tenant scope. */
-    providerId: nonBlankStringSchema,
+    provider: exactNonBlankStringSchema,
   })
   .strict();
+
+/** Complete Slack Location associated with a Conversation. */
+export const slackLocationSchema = baseLocationSchema
+  .extend({
+    provider: z.literal("slack"),
+    teamId: slackTeamIdSchema,
+    channelId: slackConversationIdSchema,
+    threadTs: exactNonBlankStringSchema.optional(),
+  })
+  .strict();
+
+/** Complete Location types supported by Junior. */
+export const locationSchema = z.discriminatedUnion("provider", [
+  slackLocationSchema,
+]);
 
 /** Runtime platform names supported by plugin public contracts. */
 export const platformSchema = z.enum(["slack", "local"]);

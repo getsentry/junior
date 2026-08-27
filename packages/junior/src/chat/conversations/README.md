@@ -10,13 +10,15 @@ outside Junior where a provider can deliver the Conversation. For Slack, a
 complete Location identifies the workspace, channel, and thread. Conversation
 privacy remains in `Conversation.visibility`.
 
-The current Location projection does not yet include every Slack field.
+The Conversation row stores the complete Location in `location_json`. Local
+Conversations have no Location.
 
-TODO(dcramer): Remove `sessionSource` after Location stores and reads `threadTs`
-and every reader uses the complete Location.
+TODO(dcramer): Remove `sessionSource` after resume reads the saved Turn Source
+and every Conversation place reader uses Location.
 
-During this change, the linked destination row remains the stored data used to
-build Location. Local Conversations have no Location.
+TODO(dcramer): Remove the `destination_id` and `source_json` Location read
+fallback after no deployed writer can omit `location_json` and a backfill has
+populated rows that those writers created during deployment.
 
 ## Storage Model
 
