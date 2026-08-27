@@ -9,13 +9,14 @@ import {
   createAndEnqueueApiConversation,
   createApiConversationId,
   createApiTurnWorker,
+  recordApiConversationActivity,
   resolveApiTurnWork,
   routeApiTurnWork,
 } from "@/chat/api-turns/work";
 import type { AgentRun } from "@/chat/agent/types";
 import { getConversationEventStore } from "@/chat/db";
-import { RESOURCE_EVENT_AUTHOR_ID } from "@/chat/resource-events/actor";
-import { persistThreadStateById } from "@/chat/runtime/thread-state";
+import { createResourceEventInboundMessage } from "@/chat/resource-events/notification";
+import { appendAndEnqueueInboundMessage } from "@/chat/task-execution/store";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
 import {
   getTurnRecord,
@@ -404,101 +405,129 @@ describe("Conversation API work", () => {
     expect(resolved).toEqual({ kind: "resume", turnId });
   });
 
-  it("resumes a resource-event turn with the resource-event actor and local source", async () => {
+  it("runs and resumes resource-event mailbox work as one conversation-only Turn", async () => {
     const { actor, conversationStore, queue, state } =
       await createApiTurnWorkFixture();
-    const accepted = await createAndEnqueueApiConversation(
-      {
-        actor,
-        idempotencyKey: "resource-event-resume-1",
-        message: "Seed conversation for resource-event resume.",
+    const conversationId = createApiConversationId({
+      actorEmail: actor.email,
+      idempotencyKey: "resource-event-root-1",
+    });
+    const destination = await recordApiConversationActivity({
+      actor,
+      conversationId,
+      conversationStore,
+      nowMs: 1,
+    });
+    await conversationStore.recordActivity({
+      activityAtMs: 1,
+      conversationId,
+      nowMs: 1,
+      title: "Resource watch",
+    });
+    const message = createResourceEventInboundMessage({
+      event: {
+        eventKey: "checks-failed-1",
+        eventType: "check_suite.completed",
+        identifier: "getsentry/junior#1563",
+        namespace: "github",
+        occurredAtMs: 2,
+        trustedSummary: "PR checks failed",
       },
-      { conversationStore, queue, state },
-    );
-    // Drop the seed mailbox wake; this case drives an empty resume attempt.
-    queue.takeMessage();
+      receivedAtMs: 2,
+      subscription: {
+        conversationId,
+        id: "resource-watch-1",
+      },
+      text: "PR checks failed",
+    });
+    await appendAndEnqueueInboundMessage({
+      conversationStore,
+      message,
+      queue,
+      state,
+    });
 
-    const messageId = "resource-event-msg.resume-1";
+    const messageId = message.inboundMessageId;
     const turnId = apiTurnIdForMessage(messageId);
-    const destination = {
-      platform: "local" as const,
-      conversationId: accepted.conversationId,
-    };
     const eventActor = localResourceEventActor();
-    await persistThreadStateById(accepted.conversationId, {
-      conversation: {
-        schemaVersion: 1,
-        compactions: [],
-        messages: [
-          {
-            id: messageId,
-            role: "user",
-            text: "PR checks failed",
-            createdAtMs: 10,
-            author: {
-              userId: RESOURCE_EVENT_AUTHOR_ID,
-              userName: eventActor.userName,
-              fullName: eventActor.fullName,
-            },
-          },
-        ],
-        processing: { activeTurnId: turnId },
-        vision: { byFileId: {} },
-      },
-    });
-    await saveTurnCheckpoint({
-      mode: "paused",
-      conversationId: accepted.conversationId,
-      turnId,
-      sliceId: 1,
-      reason: "yield",
-      messages: [
-        {
-          role: "user",
-          content: [{ type: "text", text: "PR checks failed" }],
-          timestamp: 10,
-        },
-      ],
-      destination,
-      publishExternally: false,
-      source: createLocalSource(accepted.conversationId),
-      actor: eventActor,
-      surface: "api",
-    });
-
     const agentRuns: AgentRun[] = [];
+    let firstRun = true;
     const worker = createApiTurnWorker(
       createModelAgentRunnerForRun((run) => {
         agentRuns.push(run);
+        if (firstRun) {
+          firstRun = false;
+          return createModelStream([
+            { type: "toolCall", name: "systemTime", arguments: {} },
+            { type: "text", text: "Handled the resource event." },
+          ]);
+        }
         return createModelStream([
-          { type: "text", text: "Handled the resource event resume." },
+          { type: "text", text: "Handled the resource event." },
         ]);
       }),
     );
+    const route = routeApiTurnWork({
+      apiTurnWorker: worker,
+      fallbackWorker: async () => {
+        throw new Error("fallback worker must not run for resource events");
+      },
+    });
 
     await expect(
-      worker({
-        attempt: emptyApiTurnAttempt({
-          conversationId: accepted.conversationId,
-          destination,
-        }),
-        checkIn: async () => true,
-        conversationId: accepted.conversationId,
-        destination,
-        publishExternally: false,
-        shouldYield: () => false,
+      processConversationQueueMessage(queue.takeMessage(), {
+        conversationStore,
+        nowMs: () => 10,
+        queue,
+        run: route,
+        softYieldAfterMs: 0,
+        state,
+      }),
+    ).resolves.toEqual({ status: "yielded" });
+    await expect(getTurnRecord(conversationId, turnId)).resolves.toMatchObject({
+      publishExternally: false,
+      resumeReason: "yield",
+      state: "paused",
+    });
+
+    await expect(
+      processConversationQueueMessage(queue.takeMessage(), {
+        conversationStore,
+        nowMs: () => 20,
+        queue,
+        run: route,
+        state,
       }),
     ).resolves.toEqual({ status: "completed" });
 
-    expect(agentRuns).toHaveLength(1);
-    expect(agentRuns[0]).toEqual(
-      expect.objectContaining({
-        actor: eventActor,
-        publishExternally: false,
-        source: createLocalSource(accepted.conversationId),
-      }),
+    expect(agentRuns).toHaveLength(2);
+    for (const run of agentRuns) {
+      expect(run).toEqual(
+        expect.objectContaining({
+          actor: eventActor,
+          destination,
+          publishExternally: false,
+          source: createLocalSource(conversationId),
+          turnId,
+        }),
+      );
+    }
+    await expect(getTurnRecord(conversationId, turnId)).resolves.toMatchObject({
+      publishExternally: false,
+      state: "completed",
+    });
+    const transcript = (
+      await getConversationEventStore().loadHistory(conversationId)
+    ).flatMap((event) =>
+      event.data.type === "message"
+        ? [{ role: event.data.role, text: event.data.text }]
+        : [],
     );
-  });
+    expect(transcript).toEqual([
+      { role: "user", text: "PR checks failed" },
+      { role: "assistant", text: "Handled the resource event." },
+    ]);
+  }, 10_000);
 
   it("does not claim dispatch resume wakes that share surface api", async () => {
     await createApiTurnWorkFixture();

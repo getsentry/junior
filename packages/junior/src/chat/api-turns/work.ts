@@ -455,7 +455,9 @@ export function createApiTurnWorker(
     );
 
     const isResume = resolved.kind === "resume";
-    let isResourceEvent = resolved.kind === "resource_event";
+    let isResourceEvent =
+      resolved.kind === "mailbox" &&
+      resolved.batch[0]?.metadata.kind === "resource_event";
     let actor: WebActor | LocalActor | undefined;
     let text = "";
     let turnId = "";
@@ -467,7 +469,7 @@ export function createApiTurnWorker(
       conversationId: context.conversationId,
     });
     const mailboxDestination =
-      resolved.kind === "mailbox" || resolved.kind === "resource_event"
+      resolved.kind === "mailbox"
         ? resolved.batch[0]?.message.destination
         : undefined;
     const destination = resolveApiTurnDestination({
@@ -489,22 +491,16 @@ export function createApiTurnWorker(
     if (resolved.kind === "mailbox") {
       const first = resolved.batch[0]!;
       text = joinMailboxText(resolved.batch.map((entry) => entry.message));
-      actor = actorFromMetadata(first.metadata);
-      turnId = apiTurnIdForMessage(first.metadata.messageId);
-      userMessageId = first.metadata.messageId;
       startedAtMs = first.message.createdAtMs;
-      inputMessageIds = resolved.batch.map((entry) => entry.metadata.messageId);
-    } else if (resolved.kind === "resource_event") {
-      // TODO(resource-events): Remove this fork; plain mailbox wakes need no special actor/id path.
-      const first = resolved.batch[0]!;
-      text = joinMailboxText(resolved.batch.map((entry) => entry.message));
-      actor = localResourceEventActor();
-      turnId = apiTurnIdForMessage(first.message.inboundMessageId);
       userMessageId = first.message.inboundMessageId;
-      startedAtMs = first.message.createdAtMs;
+      turnId = apiTurnIdForMessage(userMessageId);
       inputMessageIds = resolved.batch.map(
         (entry) => entry.message.inboundMessageId,
       );
+      actor =
+        first.metadata.kind === "resource_event"
+          ? localResourceEventActor()
+          : actorFromMetadata(first.metadata);
     } else {
       turnId = resolved.turnId;
     }

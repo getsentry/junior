@@ -3,7 +3,10 @@ import {
   getTurnRecord,
   listTurnSummaries,
 } from "@/chat/task-execution/checkpoint";
-import { isResourceEventMailboxMetadata } from "@/chat/resource-events/notification";
+import {
+  isResourceEventMailboxMetadata,
+  type ResourceEventMailboxMetadata,
+} from "@/chat/resource-events/notification";
 import type { InboundMessage } from "@/chat/task-execution/store";
 import type { ConversationWorkerContext } from "@/chat/task-execution/worker";
 
@@ -22,17 +25,10 @@ export type ApiTurnMailboxMetadata = z.output<
   typeof apiTurnMailboxMetadataSchema
 >;
 
-/**
- * Local destination resource-event mailbox rows share the conversation-only runner.
- *
- * TODO(resource-events): Remove the dedicated `resource_event` work kind once
- * local/web destinations run plain mailbox system wakes the same way as any
- * other deferred conversation turn (no special batch/actor fork).
- */
-export type LocalResourceEventMailboxEntry = {
-  message: InboundMessage;
-  kind: "resource_event";
-};
+/** One validated mailbox entry owned by the conversation-only runner. */
+type ConversationMailboxEntry =
+  | { message: InboundMessage; metadata: ApiTurnMailboxMetadata }
+  | { message: InboundMessage; metadata: ResourceEventMailboxMetadata };
 
 /** Return the active root API Turn for one Conversation, if it has one. */
 export async function getActiveApiTurnId(
@@ -101,7 +97,10 @@ function parseApiTurnMessages(
 
 function parseLocalResourceEventMessages(
   messages: readonly InboundMessage[],
-): LocalResourceEventMailboxEntry[] {
+): Array<{
+  message: InboundMessage;
+  metadata: ResourceEventMailboxMetadata;
+}> {
   if (messages.length === 0) {
     return [];
   }
@@ -114,10 +113,12 @@ function parseLocalResourceEventMessages(
   ) {
     return [];
   }
-  return messages.map((message) => ({
-    message,
-    kind: "resource_event" as const,
-  }));
+  return messages.map((message) => {
+    if (!isResourceEventMailboxMetadata(message.input.metadata)) {
+      throw new Error("Resource-event mailbox metadata failed validation");
+    }
+    return { message, metadata: message.input.metadata };
+  });
 }
 
 /**
@@ -132,14 +133,7 @@ export async function resolveApiTurnWork(
 ): Promise<
   | {
       kind: "mailbox";
-      batch: Array<{
-        message: InboundMessage;
-        metadata: ApiTurnMailboxMetadata;
-      }>;
-    }
-  | {
-      kind: "resource_event";
-      batch: LocalResourceEventMailboxEntry[];
+      batch: ConversationMailboxEntry[];
     }
   | { kind: "resume"; turnId: string }
   | undefined
@@ -148,15 +142,14 @@ export async function resolveApiTurnWork(
   if (batch.length > 0) {
     return { kind: "mailbox", batch };
   }
-  // Local destination resource events share the conversation-only runner. Slack
-  // destination resource events stay on the Slack worker for thread metadata.
-  // TODO(resource-events): Fold into normal mailbox work; see LocalResourceEventMailboxEntry.
+  // Local resource events are ordinary conversation-only mailbox work. Slack
+  // resource events stay on the Slack worker until it has a plain Turn entry.
   if (context.destination?.platform === "local") {
     const resourceBatch = parseLocalResourceEventMessages(
       context.attempt.messages,
     );
     if (resourceBatch.length > 0) {
-      return { kind: "resource_event", batch: resourceBatch };
+      return { kind: "mailbox", batch: resourceBatch };
     }
   }
   if (context.attempt.messages.length > 0) {
