@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { CredentialUnavailableError } from "@/chat/credentials/broker";
+import type { UserTokenStore } from "@/chat/credentials/user-token-store";
 import {
   SandboxEgressCredentialError,
   sandboxEgressCredentialLease,
@@ -14,25 +15,28 @@ const {
   getStateAdapter,
   getUserTokenMock,
   createUserTokenStore,
-} = vi.hoisted(() => ({
-  getOAuthConfigMock: vi.fn(),
-  getProvidersMock: vi.fn(() => [
-    {
-      manifest: {
-        name: "sentry",
-        credentials: { domains: ["sentry.io"] },
+} = vi.hoisted(() => {
+  const getUserTokenMock = vi.fn<UserTokenStore["get"]>(async () => undefined);
+  return {
+    getOAuthConfigMock: vi.fn(),
+    getProvidersMock: vi.fn(() => [
+      {
+        manifest: {
+          name: "sentry",
+          credentials: { domains: ["sentry.io"] },
+        },
       },
-    },
-  ]),
-  hasEgressCredentialHooks: vi.fn(),
-  issuePluginCredential: vi.fn(),
-  issueProviderCredentialLease: vi.fn(),
-  getStateAdapter: vi.fn(),
-  getUserTokenMock: vi.fn(async () => undefined),
-  createUserTokenStore: vi.fn(() => ({
-    get: getUserTokenMock,
-  })),
-}));
+    ]),
+    hasEgressCredentialHooks: vi.fn(),
+    issuePluginCredential: vi.fn(),
+    issueProviderCredentialLease: vi.fn(),
+    getStateAdapter: vi.fn(),
+    getUserTokenMock,
+    createUserTokenStore: vi.fn(() => ({
+      get: getUserTokenMock,
+    })),
+  };
+});
 
 vi.mock("@/chat/plugins/catalog-runtime", () => ({
   pluginCatalogRuntime: {
