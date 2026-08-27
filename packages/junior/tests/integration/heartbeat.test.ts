@@ -684,16 +684,12 @@ describe("plugin heartbeat", () => {
     expect(fetchMock).not.toHaveBeenCalled();
     expect(conversationWorkQueue.sentRecords()).toHaveLength(1);
     const dispatchRecord = await getDispatchRecord(running!.dispatchId!);
-    expect(dispatchRecord?.input).toMatchInlineSnapshot(`
-      "[scheduled task]
-
-      This is a scheduled task, not a new message from a person.
-      Follow the instructions below.
-      If they do not need a visible Slack reply, keep tool-calling messages text-free and make the final message exactly [[NO_REPLY]].
-      When you reply, follow any reply format in the instructions. Otherwise briefly summarize what you acted on and what you did or need next. Do not narrate instruction conflicts, skills, or templates.
-
-      Instructions: Post a digest. Summarize the latest state."
-    `);
+    // Full framing contract lives in automated-task-input / notification unit coverage.
+    expect(dispatchRecord?.input).toContain("[scheduled task]");
+    expect(dispatchRecord?.input).toContain("[[NO_REPLY]]");
+    expect(dispatchRecord?.input).toContain(
+      "Instructions: Post a digest. Summarize the latest state.",
+    );
     expect(dispatchRecord?.destination).toEqual(SLACK_DESTINATION);
     expect(dispatchRecord?.destinationVisibility).toBe("public");
     expect(dispatchRecord?.source).toEqual(
