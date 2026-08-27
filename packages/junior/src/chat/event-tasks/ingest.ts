@@ -60,18 +60,12 @@ function eventInput(task: EventTask, event: ResourceEvent): string {
     kind: "automated_update",
     about: task.trigger.label,
     instructions: task.task.text,
-    ...(guidance ? { guidance } : undefined),
+    guidance,
     summary: event.trustedSummary,
     summaryMaxLength: RESOURCE_EVENT_SUMMARY_MAX_LENGTH,
-    ...(event.data && Object.keys(event.data).length > 0
-      ? { verifiedDetails: event.data }
-      : undefined),
-    ...(event.untrustedText?.trim()
-      ? {
-          externalText: event.untrustedText,
-          externalTextMaxLength: RESOURCE_EVENT_TEXT_MAX_LENGTH,
-        }
-      : undefined),
+    verifiedDetails: event.data,
+    externalText: event.untrustedText,
+    externalTextMaxLength: RESOURCE_EVENT_TEXT_MAX_LENGTH,
   });
 }
 

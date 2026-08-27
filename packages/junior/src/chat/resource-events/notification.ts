@@ -48,14 +48,10 @@ export function renderResourceEventNotificationText(
     kind: "automated_update",
     about: subscription.label,
     instructions: subscription.intent,
-    ...(guidance ? { guidance } : undefined),
+    guidance,
     summary: event.trustedSummary,
-    ...(event.data && Object.keys(event.data).length > 0
-      ? { verifiedDetails: event.data }
-      : undefined),
-    ...(event.untrustedText?.trim()
-      ? { externalText: event.untrustedText }
-      : undefined),
+    verifiedDetails: event.data,
+    externalText: event.untrustedText,
   });
 }
 

@@ -684,7 +684,6 @@ describe("plugin heartbeat", () => {
     expect(fetchMock).not.toHaveBeenCalled();
     expect(conversationWorkQueue.sentRecords()).toHaveLength(1);
     const dispatchRecord = await getDispatchRecord(running!.dispatchId!);
-    // Full framing contract lives in automated-task-input / notification unit coverage.
     expect(dispatchRecord?.input).toContain("[scheduled task]");
     expect(dispatchRecord?.input).toContain("[[NO_REPLY]]");
     expect(dispatchRecord?.input).toContain(

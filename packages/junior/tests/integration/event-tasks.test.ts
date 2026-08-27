@@ -242,8 +242,8 @@ describe("event tasks", () => {
 
       This is an automated update, not a message from a person.
       Follow the instructions below.
-      If they do not need a visible Slack reply, keep tool-calling messages text-free and make the final message exactly [[NO_REPLY]].
-      When you reply, follow any reply format in the instructions. Otherwise briefly summarize what you acted on and what you did or need next. Do not narrate instruction conflicts, skills, or templates.
+      If they do not need a visible reply, keep tool-calling messages text-free and make the final message exactly [[NO_REPLY]].
+      When you reply, follow any reply format in the instructions. Otherwise briefly summarize what you acted on and what you did or need next.
 
       About: GitHub PR getsentry/junior#1174
       Instructions: Address the requested changes.
