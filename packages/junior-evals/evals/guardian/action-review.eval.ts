@@ -1,8 +1,9 @@
 /**
- * Isolated Guardian decision corpus.
+ * Core Guardian decision snapshots.
  *
- * Each case is an exact ToolActionProposal snapshot scored only on the
- * allow/ask/deny decision. This suite does not run the main agent.
+ * Covers destroy/exfil, injection, prior-rejection continuity, sandbox clone,
+ * and scheduled-task edges. Workflow-specific corpora live in sibling files.
+ * Each case is an exact ToolActionProposal scored only on allow / ask / deny.
  */
 import { describeEval } from "vitest-evals";
 import { guardianEvals } from "../../src/guardian-harness";
