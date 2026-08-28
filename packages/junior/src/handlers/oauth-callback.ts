@@ -79,7 +79,7 @@ import { getSqlExecutor } from "@/chat/db";
 import { upsertIdentity, upsertLinkedIdentity } from "@/chat/identities/sql";
 import { lookupSlackUserProfile } from "@/chat/slack/users";
 import { parseSlackUserId } from "@/chat/slack/ids";
-import { deleteWebAuthorization } from "@/chat/api-turns/authorization";
+import { deleteWebAuthorization } from "@/chat/conversations/web-authorization";
 import { botConfig } from "@/chat/config";
 
 interface OAuthCallbackOptions {

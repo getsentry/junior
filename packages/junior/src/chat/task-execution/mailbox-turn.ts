@@ -1,4 +1,3 @@
-import { z } from "zod";
 import {
   createLocalSource,
   createWebSource,
@@ -23,22 +22,9 @@ import {
 import { isResourceEventMailboxMetadata } from "@/chat/resource-events/notification";
 import type { InboundMessage } from "@/chat/task-execution/store";
 import type { ConversationWorkerContext } from "@/chat/task-execution/worker";
+import { legacyWebMailboxMetadataSchema } from "@/chat/conversations/web-mailbox";
 
-const apiTurnMailboxMetadataSchema = z
-  .object({
-    authorEmail: z.string().email(),
-    authorFullName: z.string().min(1).optional(),
-    authorUserId: z.string().min(1),
-    authorUserName: z.string().min(1).optional(),
-    kind: z.literal("api_turn"),
-    messageId: z.string().min(1),
-  })
-  .strict();
-
-export type ApiTurnMailboxMetadata = z.output<
-  typeof apiTurnMailboxMetadataSchema
->;
-
+/** Mailbox Message with the Actor and Source facts needed to start a Turn. */
 export type MailboxTurnInput = {
   actor: Actor;
   author: ConversationAuthor;
@@ -48,6 +34,7 @@ export type MailboxTurnInput = {
   source: "resource_event" | "web";
 };
 
+/** Actor and Source facts saved for one Turn. */
 export type TurnInputFacts = Pick<
   MailboxTurnInput,
   "actor" | "author" | "source"
@@ -87,8 +74,8 @@ export function sourceFromTurnInput(args: {
 }): Source {
   switch (args.source) {
     case "resource_event":
-      // TODO(dcramer): Remove this web Source stand-in after Source.kind can
-      // represent resource events in stored Turn checkpoints.
+      // TODO(dcramer): Remove this temporary web Source after Turn checkpoints
+      // can store a resource-event Source.kind.
       return args.location
         ? createWebSource(
             args.conversationId,
@@ -113,13 +100,14 @@ function hasResourceEventActor(actors: readonly Actor[] | undefined): boolean {
   );
 }
 
-/** Return the active root API Turn for one Conversation, if it has one. */
-export async function getActiveApiTurnId(
+/** Return the active web Turn for one Conversation, if it has one. */
+export async function getActiveConversationTurnId(
   conversationId: string,
 ): Promise<string | undefined> {
   const summaries = await listTurnSummaries(conversationId);
-  // Agent dispatch also writes surface "api". Those Turns own a dispatchId
-  // and must stay on the dispatch router.
+  // TODO(dcramer): Remove the surface check after Turn checkpoints store
+  // Source.kind and web Turn lookup reads it. Agent dispatch also writes the
+  // "api" surface, so its Turns must be excluded by dispatchId until then.
   const active = summaries.filter(
     (summary) =>
       summary.surface === "api" &&
@@ -169,16 +157,16 @@ async function getActiveMailboxTurnId(
       `Conversation ${conversationId} has multiple active mailbox Turns`,
     );
   }
-  // TODO(dcramer): Route resumes from Turn Source after checkpoints store
-  // Source.kind. Remove Actor-based resource-event routing at that point.
+  // TODO(dcramer): Remove Actor-based resource-event selection after Turn
+  // checkpoints store Source.kind and resume reads it.
   return active[0]?.turnId;
 }
 
-/** Return the idle auth-paused root API Turn for one Conversation. */
-export async function getAuthPausedApiTurnId(
+/** Return the idle auth-paused web Turn for one Conversation. */
+export async function getAuthPausedConversationTurnId(
   conversationId: string,
 ): Promise<string | undefined> {
-  const turnId = await getActiveApiTurnId(conversationId);
+  const turnId = await getActiveConversationTurnId(conversationId);
   if (!turnId) return undefined;
   const record = await getTurnRecord(conversationId, turnId);
   return record?.state === "paused" && record.resumeReason === "auth"
@@ -186,7 +174,7 @@ export async function getAuthPausedApiTurnId(
     : undefined;
 }
 
-function parseApiTurnMessages(
+function parseWebMessages(
   messages: readonly InboundMessage[],
 ): MailboxTurnInput[] {
   if (messages.length === 0) {
@@ -194,7 +182,7 @@ function parseApiTurnMessages(
   }
   const parsed = messages.map((message) => ({
     message,
-    metadata: apiTurnMailboxMetadataSchema.safeParse(message.input.metadata),
+    metadata: legacyWebMailboxMetadataSchema.safeParse(message.input.metadata),
   }));
   if (parsed.every((entry) => !entry.metadata.success)) {
     return [];
@@ -266,13 +254,13 @@ export type MailboxTurnWork =
   | { kind: "resume"; turnId: string };
 
 /**
- * Resolve web or resource-event work from new mailbox input or a saved Turn.
+ * Select web or resource-event work from new mailbox input or a saved Turn.
  * Saved Actor data identifies a resumed resource-event Turn.
  */
 export async function resolveMailboxTurnWork(
   context: ConversationWorkerContext,
 ): Promise<MailboxTurnWork | undefined> {
-  const batch = parseApiTurnMessages(context.attempt.messages);
+  const batch = parseWebMessages(context.attempt.messages);
   if (batch.length > 0) {
     return { kind: "mailbox", batch };
   }

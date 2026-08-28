@@ -587,7 +587,7 @@ describe("bot handlers (integration)", () => {
     expect(capturedIdentity[0].turnId).toBe("turn_msg-correlation");
   });
 
-  it("answers a follow-up as a fresh turn when the active session is auth-parked", async () => {
+  it("answers a follow-up as a fresh Turn when the active Turn is auth-paused", async () => {
     const conversationId = "slack:C0AUTHPARKED:1700000000.000";
     const activeSessionId = "turn_msg-auth-original";
     let agentRunCount = 0;
@@ -639,7 +639,7 @@ describe("bot handlers (integration)", () => {
       getTurnRecord(conversationId, activeSessionId),
     ).resolves.toMatchObject({
       state: "abandoned",
-      errorMessage: "Auth-parked session superseded by a new user message",
+      errorMessage: "Auth-paused Turn superseded by new input",
     });
     const state = await thread.getState();
     const conversation = (

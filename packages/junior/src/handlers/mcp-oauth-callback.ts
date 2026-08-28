@@ -70,7 +70,7 @@ import type { WaitUntilFn } from "@/handlers/types";
 import { createSlackResumeActor, type Actor } from "@/chat/actor";
 import { requireSlackDestination } from "@/chat/destination";
 import { relayLocalOAuthCallback } from "@/chat/local/oauth-relay";
-import { deleteWebAuthorization } from "@/chat/api-turns/authorization";
+import { deleteWebAuthorization } from "@/chat/conversations/web-authorization";
 
 function callbackPages(botName: string) {
   return {

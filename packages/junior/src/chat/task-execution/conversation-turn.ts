@@ -1,15 +1,10 @@
-/** Conversation-only work runs a native Turn and stores assistant Messages. */
+/** Run a mailbox Turn and store its assistant Messages. */
 import { createHash } from "node:crypto";
-import type { StateAdapter } from "chat";
-import {
-  localDestinationSchema,
-  type Destination,
-  type LocalDestination,
-} from "@sentry/junior-plugin-api";
-import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
-import { type StoredSlackActor, type WebActor } from "@/chat/actor";
-import type { ConversationStore } from "@/chat/conversations/store";
+import {
+  createWebAuthorization,
+  deleteWebAuthorization,
+} from "@/chat/conversations/web-authorization";
 import { loadProjection } from "@/chat/conversations/projection";
 import {
   hydrateConversationMessages,
@@ -18,7 +13,7 @@ import {
 import {
   commitAssistantMessage,
   type PublishMessage,
-} from "@/chat/api-turns/assistant-message";
+} from "@/chat/task-execution/assistant-message";
 import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
 import type { ConversationTurnFailureCode } from "@/chat/conversations/history";
 import { credentialContextForActor } from "@/chat/credentials/context";
@@ -50,14 +45,12 @@ import {
   upsertConversationMessage,
 } from "@/chat/services/conversation-memory";
 import { finalizeFailedTurnReplyWithEvent } from "@/chat/services/turn-failure-response";
-import { coerceThreadConversationState } from "@/chat/state/conversation";
-import { buildDeterministicTurnId } from "@/chat/state/turn-id";
+import { clearPendingAuth } from "@/chat/services/pending-auth";
 import {
-  appendAndEnqueueInboundMessage,
-  appendAndEnqueueExclusiveInboundMessage,
-  type InboundMessage,
-} from "@/chat/task-execution/store";
-import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
+  coerceThreadConversationState,
+  type ThreadConversationState,
+} from "@/chat/state/conversation";
+import { buildDeterministicTurnId } from "@/chat/state/turn-id";
 import {
   abandonTurnRecord,
   getTurnRecord,
@@ -74,63 +67,13 @@ import {
 } from "@/chat/plugins/task-runner";
 import type { SandboxRef } from "@/chat/sandbox/ref";
 import {
-  createWebAuthorization,
-  deleteWebAuthorization,
-} from "@/chat/api-turns/authorization";
-import {
-  completeCancelledApiTurn,
-  type ApiTurnCancellation,
-} from "@/chat/api-turns/cancellation";
-import {
-  resolveMailboxTurnWork,
   sourceFromTurnInput,
   turnInputFactsFromConversationMessage,
-  type ApiTurnMailboxMetadata,
   type MailboxTurnWork,
   type TurnInputFacts,
-} from "@/chat/api-turns/routing";
-import { joinMailboxText } from "@/chat/api-turns/mailbox-input";
-
-export { resolveMailboxTurnWork } from "@/chat/api-turns/routing";
-
-type EnqueueOptions = {
-  conversationStore?: ConversationStore;
-  nowMs?: number;
-  queue: ConversationWorkQueue;
-  state?: StateAdapter;
-};
-
-export interface CreateApiConversationInput {
-  actor: WebActor;
-  message: string;
-  /** Client-supplied idempotency key for the first message. */
-  idempotencyKey: string;
-  /** New roots default public. Continues never rewrite visibility. */
-  visibility?: ConversationPrivacy;
-}
-
-export interface AppendApiConversationMessageInput {
-  actor: WebActor;
-  conversationId: string;
-  message: string;
-  idempotencyKey: string;
-  /** Applied only when this call creates the conversation root. */
-  rootVisibility?: ConversationPrivacy;
-}
-
-export interface ApiConversationMessageAccepted {
-  conversationId: string;
-  messageId: string;
-  status: "accepted" | "duplicate";
-}
-
-export type ApiConversationMessageAdmission =
-  | ApiConversationMessageAccepted
-  | { conversationId: string; messageId: string; status: "active" };
-
-function normalizeEmail(email: string): string {
-  return email.trim().toLowerCase();
-}
+} from "@/chat/task-execution/mailbox-turn";
+import { joinMailboxText } from "@/chat/task-execution/mailbox-input";
+import { resolveConversationDestination } from "@/chat/conversations/destination";
 
 function stableHex(...parts: string[]): string {
   return createHash("sha256")
@@ -139,259 +82,22 @@ function stableHex(...parts: string[]): string {
     .slice(0, 24);
 }
 
-/**
- * Build a durable API conversation id for one viewer + create key.
- *
- * Retries of POST /api/conversations with the same key must address the same
- * conversation before the mailbox message id is derived.
- */
-export function createApiConversationId(args: {
-  actorEmail: string;
-  idempotencyKey: string;
-}): string {
-  return `local:web:${stableHex(
-    normalizeEmail(args.actorEmail),
-    args.idempotencyKey,
-  )}`;
-}
-
-/** Build the retry-stable Message id used by one API mailbox request. */
-export function apiConversationMessageId(args: {
-  conversationId: string;
-  idempotencyKey: string;
-}): string {
-  return `api-msg:${stableHex(args.conversationId, args.idempotencyKey)}`;
-}
-
-/** Stable turn id for one API mailbox message (matches getTurnUserMessage). */
-export function apiTurnIdForMessage(messageId: string): string {
-  return buildDeterministicTurnId(messageId);
-}
-
-function requireLocalDestination(conversationId: string): LocalDestination {
-  const parsed = localDestinationSchema.safeParse({
-    platform: "local",
-    conversationId,
-  });
-  if (!parsed.success) {
-    throw new Error(`Invalid local conversation id: ${conversationId}`);
-  }
-  return parsed.data;
-}
-
-/** Keep an existing destination, or create a local one for new dashboard roots. */
-function resolveApiTurnDestination(args: {
-  conversationId: string;
-  existing?: Destination;
-}): Destination {
-  if (args.existing) {
-    return args.existing;
-  }
-  return requireLocalDestination(args.conversationId);
-}
-
-/** Durable conversation actor fields for web/dashboard participants. */
-function storedActorFromApi(actor: WebActor): StoredSlackActor {
-  return {
-    ...(actor.email ? { email: normalizeEmail(actor.email) } : undefined),
-    ...(actor.fullName ? { fullName: actor.fullName } : undefined),
-  };
-}
-
-/** Rebuild the dashboard actor from durable conversation identity. */
-export function webActorFromEmail(
-  email: string,
-  profile?: { fullName?: string; userName?: string },
-): WebActor {
-  const normalized = normalizeEmail(email);
-  return {
-    platform: "web",
-    userId: `dashboard:${stableHex(normalized)}`,
-    email: normalized,
-    ...(profile?.fullName ? { fullName: profile.fullName } : undefined),
-    ...(profile?.userName ? { userName: profile.userName } : undefined),
-  };
-}
-
-/** Build one API mailbox entry with conversation-only publish. */
-export function buildApiTurnInboundMessage(args: {
-  actor: WebActor;
-  conversationId: string;
-  createdAtMs?: number;
-  /** Existing conversation destination; required when continuing a provider root. */
-  destination?: Destination;
-  message: string;
-  messageId: string;
-  nowMs?: number;
-}): InboundMessage {
-  const text = args.message.trim();
-  if (!text) {
-    throw new Error("API conversation message must not be empty");
-  }
-  if (!args.actor.email) {
-    throw new Error("API conversation actor requires a verified email");
-  }
-  const destination = resolveApiTurnDestination({
-    conversationId: args.conversationId,
-    existing: args.destination,
-  });
-  const nowMs = args.nowMs ?? Date.now();
-  return {
-    conversationId: args.conversationId,
-    createdAtMs: args.createdAtMs ?? nowMs,
-    delivery: "defer",
-    destination,
-    inboundMessageId: args.messageId,
-    input: {
-      authorId: args.actor.userId,
-      text,
-      metadata: {
-        authorEmail: normalizeEmail(args.actor.email),
-        ...(args.actor.fullName && { authorFullName: args.actor.fullName }),
-        authorUserId: args.actor.userId,
-        ...(args.actor.userName && { authorUserName: args.actor.userName }),
-        kind: "api_turn",
-        messageId: args.messageId,
-      } satisfies ApiTurnMailboxMetadata,
-    },
-    receivedAtMs: nowMs,
-    publishExternally: false,
-    source: "web",
-  };
-}
-
-/** Record web activity and materialize a new API Conversation root when needed. */
-export async function recordApiConversationActivity(args: {
-  actor: WebActor;
-  conversationId: string;
-  conversationStore?: ConversationStore;
-  nowMs: number;
-  /** Applied only when this call creates the conversation root. */
-  rootVisibility?: ConversationPrivacy;
-}): Promise<Destination> {
-  const store = args.conversationStore ?? getConversationStore();
-  const existing = await store.get({ conversationId: args.conversationId });
-  const destination = resolveApiTurnDestination({
-    conversationId: args.conversationId,
-    existing: existing?.destination,
-  });
-  // New dashboard roots default public. Continues inherit the existing root
-  // visibility and keep the original session source (set-once).
-  const isNewRoot = !existing;
-  const visibility = args.rootVisibility === "private" ? "private" : "public";
-  const source = isNewRoot
-    ? sourceFromTurnInput({
-        conversationId: args.conversationId,
-        source: "web",
-        visibility,
-      })
-    : undefined;
-  await store.recordActivity({
-    conversationId: args.conversationId,
-    destination,
-    nowMs: args.nowMs,
-    actor: storedActorFromApi(args.actor),
-    // Do not rewrite a Slack root's origin source when a dashboard participant
-    // continues it. Mailbox entries still carry source "web" per turn.
-    ...(isNewRoot ? { source: "web" as const } : undefined),
-    ...(source ? { sessionSource: source } : undefined),
-    ...(isNewRoot ? { visibility } : undefined),
-  });
-  return destination;
-}
-
-/** Create a dashboard root conversation and enqueue its first message. */
-export async function createAndEnqueueApiConversation(
-  input: CreateApiConversationInput,
-  options: EnqueueOptions,
-): Promise<ApiConversationMessageAccepted> {
-  if (!input.actor.email) {
-    throw new Error("API conversation actor requires a verified email");
-  }
-  const conversationId = createApiConversationId({
-    actorEmail: input.actor.email,
-    idempotencyKey: input.idempotencyKey,
-  });
-  return await appendAndEnqueueApiConversationMessage(
-    {
-      actor: input.actor,
-      conversationId,
-      idempotencyKey: input.idempotencyKey,
-      message: input.message,
-      rootVisibility: input.visibility === "private" ? "private" : "public",
-    },
-    options,
-  );
-}
-
-/** Append one Conversation API message and optionally require an idle Conversation. */
-export function appendAndEnqueueApiConversationMessage(
-  input: AppendApiConversationMessageInput,
-  options: EnqueueOptions & { exclusive: true },
-): Promise<ApiConversationMessageAdmission>;
-export function appendAndEnqueueApiConversationMessage(
-  input: AppendApiConversationMessageInput,
-  options: EnqueueOptions,
-): Promise<ApiConversationMessageAccepted>;
-export async function appendAndEnqueueApiConversationMessage(
-  input: AppendApiConversationMessageInput,
-  options: EnqueueOptions & { exclusive?: boolean },
-): Promise<ApiConversationMessageAdmission> {
-  const text = input.message.trim();
-  if (!text) {
-    throw new Error("API conversation message must not be empty");
-  }
-  if (!input.actor.email) {
-    throw new Error("API conversation actor requires a verified email");
-  }
-  const nowMs = options.nowMs ?? Date.now();
-  const messageId = apiConversationMessageId({
-    conversationId: input.conversationId,
-    idempotencyKey: input.idempotencyKey,
-  });
-  const destination = await recordApiConversationActivity({
-    actor: input.actor,
-    conversationId: input.conversationId,
-    conversationStore: options.conversationStore,
-    nowMs,
-    ...(input.rootVisibility && { rootVisibility: input.rootVisibility }),
-  });
-  const enqueue = options.exclusive
-    ? appendAndEnqueueExclusiveInboundMessage
-    : appendAndEnqueueInboundMessage;
-  const result = await enqueue({
-    message: buildApiTurnInboundMessage({
-      actor: input.actor,
-      conversationId: input.conversationId,
-      destination,
-      message: text,
-      messageId,
-      nowMs,
-    }),
-    conversationStore: options.conversationStore,
-    nowMs,
-    queue: options.queue,
-    state: options.state,
-  });
-  const status = result.status === "appended" ? "accepted" : result.status;
-  return {
-    conversationId: input.conversationId,
-    messageId,
-    status,
-  };
-}
-function captureApiBoundaryFailure(args: {
+function captureConversationTurnFailure(args: {
   conversationId: string;
   error: unknown;
   failureCode: ConversationTurnFailureCode;
   runId?: string;
   turnId: string;
 }): string | undefined {
-  const eventId = logException(args.error, `api.turn.${args.failureCode}`, {
-    conversationId: args.conversationId,
-    ...(args.runId ? { runId: args.runId } : undefined),
-    turnId: args.turnId,
-  });
+  const eventId = logException(
+    args.error,
+    `conversation.turn.${args.failureCode}`,
+    {
+      conversationId: args.conversationId,
+      ...(args.runId ? { runId: args.runId } : undefined),
+      turnId: args.turnId,
+    },
+  );
   return typeof eventId === "string" ? eventId : undefined;
 }
 
@@ -400,15 +106,59 @@ function hasLostTurnInputCommit(error: unknown): boolean {
   return isTurnInputCommitLostError(error) || isTurnInputCommitLostError(cause);
 }
 
+async function completeCancelledConversationTurn(args: {
+  acknowledge(): Promise<void>;
+  conversation: ThreadConversationState;
+  conversationId: string;
+  sandboxRef?: SandboxRef;
+  turnId: string;
+  userMessageId: string;
+}): Promise<void> {
+  const pendingAuthorization =
+    args.conversation.processing.pendingAuth?.sessionId === args.turnId
+      ? args.conversation.processing.pendingAuth
+      : undefined;
+  await abandonTurnRecord({
+    conversationId: args.conversationId,
+    turnId: args.turnId,
+    errorMessage: "Turn cancelled",
+  });
+  clearPendingAuth(args.conversation, args.turnId);
+  markConversationMessage(args.conversation, args.userMessageId, {
+    replied: false,
+    skippedReason: "turn cancelled",
+  });
+  markTurnClosed({
+    conversation: args.conversation,
+    nowMs: Date.now(),
+    sessionId: args.turnId,
+  });
+  if (pendingAuthorization) {
+    await deleteWebAuthorization({
+      actorId: pendingAuthorization.actorId,
+      conversationId: args.conversationId,
+    });
+  }
+  await persistThreadStateById(args.conversationId, {
+    conversation: args.conversation,
+    sandboxRef: args.sandboxRef,
+  });
+  await new ConversationTurnLifecycleService(
+    getConversationEventStore(),
+  ).complete({
+    conversationId: args.conversationId,
+    createdAtMs: Date.now(),
+    outcome: "cancelled",
+    turnId: args.turnId,
+  });
+  await args.acknowledge();
+}
+
 /**
  * Create the shared mailbox worker for web and resource-event Turns.
- *
- * TODO(dcramer): Move this worker out of api-turns after Conversation API
- * admission and mailbox Turn execution are separate modules.
  */
-export function createMailboxTurnWorker(
+export function createConversationTurnWorker(
   agentRunner: AgentRunner,
-  cancellation?: ApiTurnCancellation,
   publishMessage?: PublishMessage,
 ) {
   return async (
@@ -434,7 +184,7 @@ export function createMailboxTurnWorker(
       resolved.kind === "mailbox"
         ? resolved.batch[0]?.message.destination
         : undefined;
-    const destination = resolveApiTurnDestination({
+    const destination = resolveConversationDestination({
       conversationId: context.conversationId,
       existing:
         context.destination ??
@@ -446,7 +196,7 @@ export function createMailboxTurnWorker(
       text = joinMailboxText(resolved.batch.map((entry) => entry.message));
       startedAtMs = first.message.createdAtMs;
       userMessageId = first.message.inboundMessageId;
-      turnId = apiTurnIdForMessage(userMessageId);
+      turnId = buildDeterministicTurnId(userMessageId);
       inputMessageIds = resolved.batch.map(
         (entry) => entry.message.inboundMessageId,
       );
@@ -492,14 +242,14 @@ export function createMailboxTurnWorker(
       ? await getTurnRecord(context.conversationId, turnId)
       : undefined;
     // TODO(dcramer): Copy publish from the selected Inbound message after
-    // resource-event ingress stores the final publish fact. Remove this
-    // Location-based default and the missing checkpoint fallback then.
+    // resource-event input stores the final publish fact. Then remove this
+    // Location default and the checkpoint fallback.
     const publish =
       turnInputFacts.source === "resource_event" && storedConversation?.location
         ? (savedTurn?.publishExternally ?? true)
         : false;
-    // TODO(dcramer): Remove this legacy surface choice after Turn routing reads
-    // Source.kind and publish from the Turn checkpoint.
+    // TODO(dcramer): Remove this legacy surface choice after Turn checkpoints
+    // store Source.kind and publish, and resume reads both fields.
     const surface = publish ? ("slack" as const) : ("api" as const);
 
     return await withLogContext(
@@ -534,27 +284,15 @@ export function createMailboxTurnWorker(
         let sandboxRef: SandboxRef | undefined =
           getPersistedSandboxState(persisted);
         const initialSandboxRef = sandboxRef;
-        const appSignal = cancellation?.signal(context.conversationId);
         const stopSignal = context.stopSignal?.();
-        const cancellationSignal =
-          appSignal && stopSignal
-            ? AbortSignal.any([appSignal, stopSignal])
-            : (appSignal ?? stopSignal);
-        const finishCancellation = (): void => {
-          if (appSignal) {
-            cancellation?.finish(context.conversationId, appSignal);
-          }
-        };
         const completeCancelledTurn =
           async (): Promise<ConversationWorkerResult> => {
             try {
-              await completeCancelledApiTurn({
+              await completeCancelledConversationTurn({
                 acknowledge,
-                cancellation,
                 conversation,
                 conversationId: context.conversationId,
                 sandboxRef,
-                signal: appSignal,
                 turnId,
                 userMessageId,
               });
@@ -568,7 +306,7 @@ export function createMailboxTurnWorker(
           };
 
         if (isResume) {
-          if (cancellationSignal?.aborted) {
+          if (stopSignal?.aborted) {
             return await completeCancelledTurn();
           }
         } else {
@@ -597,7 +335,7 @@ export function createMailboxTurnWorker(
             surface,
             turnId,
           });
-          if (cancellationSignal?.aborted) {
+          if (stopSignal?.aborted) {
             return await completeCancelledTurn();
           }
           startActiveTurn({
@@ -656,7 +394,7 @@ export function createMailboxTurnWorker(
         };
 
         try {
-          if (cancellationSignal?.aborted) {
+          if (stopSignal?.aborted) {
             return await completeCancelledTurn();
           }
           if (!isResume) {
@@ -675,7 +413,7 @@ export function createMailboxTurnWorker(
                 summary.resumeReason === "auth",
             );
             for (const parked of authParked) {
-              if (cancellationSignal?.aborted) {
+              if (stopSignal?.aborted) {
                 return await completeCancelledTurn();
               }
               await abandonTurnRecord({
@@ -704,14 +442,14 @@ export function createMailboxTurnWorker(
           await persistThreadStateById(context.conversationId, {
             conversation,
           });
-          if (cancellationSignal?.aborted) {
+          if (stopSignal?.aborted) {
             return await completeCancelledTurn();
           }
           const piMessages = await loadProjection({
             conversationId: context.conversationId,
           });
           failureCode = "agent_run_failed";
-          currentRunId = `api-run:${stableHex(turnId, String(startedAtMs))}`;
+          currentRunId = `conversation-run:${stableHex(turnId, String(startedAtMs))}`;
           setTags({ runId: currentRunId });
 
           const outcome = await executeTurn(
@@ -729,16 +467,18 @@ export function createMailboxTurnWorker(
               history: piMessages,
               actor,
               credentialContext: credentialContextForActor(actor),
+              // TODO(dcramer): Remove AgentRun.destination after agent and tool
+              // code reads AgentRun.location and no Run consumer needs it.
               destination,
+              // TODO(dcramer): Remove AgentRun.publishExternally after the
+              // saved Turn publish choice controls optional Delivery.
               publishExternally: publish,
               source,
               ...(storedConversation?.location
                 ? { location: storedConversation.location }
                 : undefined),
               surface,
-              ...(cancellationSignal
-                ? { signal: cancellationSignal }
-                : undefined),
+              ...(stopSignal ? { signal: stopSignal } : undefined),
               ...(webActor
                 ? {
                     authorization: createWebAuthorization({
@@ -772,14 +512,13 @@ export function createMailboxTurnWorker(
               },
             },
             async (result) => {
-              if (cancellationSignal?.aborted) {
+              if (stopSignal?.aborted) {
                 throw (
-                  cancellationSignal.reason ??
+                  stopSignal.reason ??
                   new DOMException("Turn cancelled", "AbortError")
                 );
               }
 
-              finishCancellation();
               modelFailureCaptureAttempted =
                 result.diagnostics.outcome !== "success";
               const finalized = finalizeFailedTurnReplyWithEvent({
@@ -818,6 +557,8 @@ export function createMailboxTurnWorker(
                   messages: reply.piMessages,
                   durationMs: reply.diagnostics.durationMs,
                   usage: reply.diagnostics.usage,
+                  // TODO(dcramer): Remove checkpoint Destination after resume
+                  // reads the Conversation Location.
                   destination,
                   publishExternally: publish,
                   source,
@@ -844,7 +585,7 @@ export function createMailboxTurnWorker(
             },
           );
 
-          if (outcome.status !== "completed" && cancellationSignal?.aborted) {
+          if (outcome.status !== "completed" && stopSignal?.aborted) {
             return await completeCancelledTurn();
           }
 
@@ -863,9 +604,6 @@ export function createMailboxTurnWorker(
               conversation,
               sandboxRef,
             });
-            if (appSignal) {
-              cancellation?.park(context.conversationId, appSignal);
-            }
             await acknowledge();
             return { status: "paused" };
           }
@@ -883,7 +621,7 @@ export function createMailboxTurnWorker(
                     } catch (error) {
                       logException(
                         error,
-                        "api.plugin.session_completion_task.failed",
+                        "conversation.plugin.session_completion_task.failed",
                         {
                           conversationId: context.conversationId,
                           pluginName: message.plugin,
@@ -896,10 +634,14 @@ export function createMailboxTurnWorker(
                 },
               );
             } catch (error) {
-              logException(error, "api.plugin.session_completion_task.failed", {
-                conversationId: context.conversationId,
-                turnId,
-              });
+              logException(
+                error,
+                "conversation.plugin.session_completion_task.failed",
+                {
+                  conversationId: context.conversationId,
+                  turnId,
+                },
+              );
             }
           }
 
@@ -910,7 +652,7 @@ export function createMailboxTurnWorker(
           if (hasLostTurnInputCommit(failure)) {
             return { status: "lost_lease" };
           }
-          if (cancellationSignal?.aborted) {
+          if (stopSignal?.aborted) {
             return await completeCancelledTurn();
           }
           if (!context.attempt.isFinalAttempt) {
@@ -920,7 +662,7 @@ export function createMailboxTurnWorker(
           const failureEventId =
             modelFailureCaptureAttempted && failureCode === "agent_run_failed"
               ? modelFailureEventId
-              : captureApiBoundaryFailure({
+              : captureConversationTurnFailure({
                   conversationId: context.conversationId,
                   error: failure,
                   failureCode,
@@ -940,7 +682,7 @@ export function createMailboxTurnWorker(
               sandboxRef: initialSandboxRef ?? null,
             });
           } catch (persistenceError) {
-            captureApiBoundaryFailure({
+            captureConversationTurnFailure({
               conversationId: context.conversationId,
               error: persistenceError,
               failureCode: "persistence_failed",
@@ -955,36 +697,10 @@ export function createMailboxTurnWorker(
             failureCode,
             turnId,
           });
-          finishCancellation();
           await acknowledge();
           return { status: "completed" };
         }
       },
     );
-  };
-}
-
-/**
- * Route web and resource-event mailbox Turns before provider webhook work.
- *
- * TODO(dcramer): Delete this router after the worker graph selects work from
- * saved Source, dispatch ID, agent invocation ID, and Destination.
- */
-export function routeMailboxTurnWork(options: {
-  mailboxTurnWorker: (
-    context: ConversationWorkerContext,
-    resolved: MailboxTurnWork,
-  ) => Promise<ConversationWorkerResult>;
-  fallbackWorker: (
-    context: ConversationWorkerContext,
-  ) => Promise<ConversationWorkerResult>;
-}) {
-  return async (
-    context: ConversationWorkerContext,
-  ): Promise<ConversationWorkerResult> => {
-    const resolved = await resolveMailboxTurnWork(context);
-    return resolved
-      ? await options.mailboxTurnWorker(context, resolved)
-      : await options.fallbackWorker(context);
   };
 }

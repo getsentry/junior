@@ -10,10 +10,10 @@ import {
 import type { WebActor } from "@/chat/actor";
 import { executeAgentRun } from "@/chat/agent";
 import {
-  appendAndEnqueueApiConversationMessage,
-  createAndEnqueueApiConversation,
+  appendAndEnqueueWebMessage,
+  createAndEnqueueConversation,
   webActorFromEmail,
-} from "@/chat/api-turns/work";
+} from "@/chat/conversations/web-input";
 import {
   createConversationWork,
   type ConversationWorkCallbackOptions,
@@ -37,49 +37,49 @@ import {
 } from "./conversation-work";
 import { testViewer } from "./user";
 
-/** Default verified dashboard viewer for Conversation API tests. */
-const API_TURN_TEST_EMAIL = "alice@example.com";
-export const apiTurnTestActor = {
+/** Default verified web Actor for Conversation tests. */
+const WEB_TEST_EMAIL = "alice@example.com";
+export const webTestActor = {
   platform: "web" as const,
-  userId: webActorFromEmail(API_TURN_TEST_EMAIL).userId,
-  email: API_TURN_TEST_EMAIL,
+  userId: webActorFromEmail(WEB_TEST_EMAIL).userId,
+  email: WEB_TEST_EMAIL,
   fullName: "Alice Example",
   userName: "alice",
 } as const satisfies WebActor;
 
-export type ApiTurnWorkFixture = {
-  actor: typeof apiTurnTestActor;
+export type ConversationFixture = {
+  actor: typeof webTestActor;
   conversationStore: ConversationStore;
   queue: ConversationWorkQueueTestAdapter;
   state: StateAdapter;
 };
 
 /**
- * Wire the standard product store, queue, and state for Conversation API tests.
+ * Wire the standard product store, queue, and state for Conversation tests.
  *
- * Callers should run `closeApiTurnWorkFixture` from `afterEach`.
+ * Callers should run `closeConversationFixture` from `afterEach`.
  */
-export async function createApiTurnWorkFixture(): Promise<ApiTurnWorkFixture> {
+export async function createConversationFixture(): Promise<ConversationFixture> {
   const conversationStore = getConversationStore();
   const queue = createConversationWorkQueueTestAdapter();
   const state = getStateAdapter();
   await state.connect();
   return {
-    actor: apiTurnTestActor,
+    actor: webTestActor,
     conversationStore,
     queue,
     state,
   };
 }
 
-/** Release state + SQL handles opened by `createApiTurnWorkFixture`. */
-export async function closeApiTurnWorkFixture(): Promise<void> {
+/** Release state + SQL handles opened by `createConversationFixture`. */
+export async function closeConversationFixture(): Promise<void> {
   await disconnectStateAdapter();
   await closeDb();
 }
 
 /** Empty-mailbox worker attempt used by resume-routing cases. */
-export function emptyApiTurnAttempt(args: {
+export function emptyConversationTurnAttempt(args: {
   conversationId: string;
   destination: Destination;
 }): ConversationWorkerContext["attempt"] {
@@ -93,8 +93,8 @@ export function emptyApiTurnAttempt(args: {
   };
 }
 
-export type ConversationWorkWebHarness = {
-  actor: typeof apiTurnTestActor;
+export type ConversationWebHarness = {
+  actor: typeof webTestActor;
   agentRuns: AgentRun[];
   agentRunner: AgentRunner;
   conversationWork: ConversationWorkCallbackOptions;
@@ -113,7 +113,7 @@ export type ConversationWorkWebHarness = {
     idempotencyKey: string;
     message: string;
   }) => Promise<{ messageId: string }>;
-  /** Drain the durable queue through the production Conversation API route. */
+  /** Drain the durable queue through the production Conversation route. */
   drain: () => Promise<void>;
   /** Read participant pending-messages, including authorization prompts. */
   pendingMessages: (
@@ -124,12 +124,12 @@ export type ConversationWorkWebHarness = {
 };
 
 /**
- * Compose the production Conversation API, queue, and agent path.
+ * Build the production Conversation route, queue, and agent path.
  * Fake only model generation at the agent Run boundary.
  */
-export async function createConversationWorkWebHarness(
-  streamFn: StreamFn = streamReplies("Conversation API request complete."),
-): Promise<ConversationWorkWebHarness> {
+export async function createConversationWebHarness(
+  streamFn: StreamFn = streamReplies("Conversation request complete."),
+): Promise<ConversationWebHarness> {
   const conversationStore = getConversationStore();
   const queue = createConversationWorkQueueTestAdapter();
   const state = getStateAdapter();
@@ -149,7 +149,7 @@ export async function createConversationWorkWebHarness(
     queue,
     state,
   });
-  const actor = apiTurnTestActor;
+  const actor = webTestActor;
   const app = new Hono<{ Variables: JuniorApiVariables }>();
   app.use("*", async (context, next) => {
     context.set("viewer", testViewer(actor.email));
@@ -162,7 +162,6 @@ export async function createConversationWorkWebHarness(
     agentRuns,
     agentRunner,
     conversationWork: {
-      apiTurnCancellation: work.apiTurnCancellation,
       conversationStore,
       queue,
       run: work.run,
@@ -175,7 +174,7 @@ export async function createConversationWorkWebHarness(
       modelStream = next;
     },
     start: async ({ idempotencyKey, message }) => {
-      const accepted = await createAndEnqueueApiConversation(
+      const accepted = await createAndEnqueueConversation(
         {
           actor,
           idempotencyKey,
@@ -189,7 +188,7 @@ export async function createConversationWorkWebHarness(
       };
     },
     continue: async ({ conversationId, idempotencyKey, message }) => {
-      const accepted = await appendAndEnqueueApiConversationMessage(
+      const accepted = await appendAndEnqueueWebMessage(
         {
           actor,
           conversationId,

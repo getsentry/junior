@@ -52,7 +52,7 @@ import {
 import { createModelStream } from "../fixtures/model-stream";
 import { createModelAgentRunner } from "../fixtures/agent-runner";
 import { createResourceEventInboundMessage } from "@/chat/resource-events/notification";
-import { apiTurnIdForMessage } from "@/chat/api-turns/work";
+import { conversationTurnIdForMessage } from "@/chat/conversations/web-input";
 
 /**
  * Turn-lifecycle product outcomes for one conversation under the durable queue.
@@ -443,7 +443,7 @@ describe("durable queue contract", () => {
       });
 
       await expect(q.next()).resolves.toEqual({ status: "completed" });
-      const turnId = apiTurnIdForMessage(message.inboundMessageId);
+      const turnId = conversationTurnIdForMessage(message.inboundMessageId);
       const posts = slackApiOutbox.messages();
       expect(posts).toHaveLength(1);
       expect(posts[0]?.params).toMatchObject({

@@ -6,9 +6,9 @@ import {
   conversationPendingMessagesReportSchema,
 } from "@/api/schema";
 import {
-  appendAndEnqueueApiConversationMessage,
-  createAndEnqueueApiConversation,
-} from "@/chat/api-turns/work";
+  appendAndEnqueueWebMessage,
+  createAndEnqueueConversation,
+} from "@/chat/conversations/web-input";
 import { closeDb } from "@/chat/db";
 import {
   appendInboundMessage,
@@ -17,21 +17,21 @@ import {
   startConversationWork,
 } from "@/chat/task-execution/store";
 import {
-  closeApiTurnWorkFixture,
-  createApiTurnWorkFixture,
-} from "../../../fixtures/api-turn";
+  closeConversationFixture,
+  createConversationFixture,
+} from "../../../fixtures/conversation";
 import { testViewer } from "../../../fixtures/user";
 
 describe("conversation cancel pending messages API", () => {
   afterEach(async () => {
-    await closeApiTurnWorkFixture();
+    await closeConversationFixture();
     await closeDb();
   });
 
   it("cancels accepted web mailbox rows for participants", async () => {
     const { actor, conversationStore, queue, state } =
-      await createApiTurnWorkFixture();
-    const created = await createAndEnqueueApiConversation(
+      await createConversationFixture();
+    const created = await createAndEnqueueConversation(
       {
         actor,
         idempotencyKey: "cancel-root",
@@ -39,7 +39,7 @@ describe("conversation cancel pending messages API", () => {
       },
       { conversationStore, queue, state },
     );
-    const continued = await appendAndEnqueueApiConversationMessage(
+    const continued = await appendAndEnqueueWebMessage(
       {
         actor,
         conversationId: created.conversationId,
@@ -117,8 +117,8 @@ describe("conversation cancel pending messages API", () => {
 
   it("keeps messages received after the requested snapshot", async () => {
     const { actor, conversationStore, queue, state } =
-      await createApiTurnWorkFixture();
-    const created = await createAndEnqueueApiConversation(
+      await createConversationFixture();
+    const created = await createAndEnqueueConversation(
       {
         actor,
         idempotencyKey: "cancel-snapshot-root",
@@ -126,7 +126,7 @@ describe("conversation cancel pending messages API", () => {
       },
       { conversationStore, nowMs: 1_000, queue, state },
     );
-    const later = await appendAndEnqueueApiConversationMessage(
+    const later = await appendAndEnqueueWebMessage(
       {
         actor,
         conversationId: created.conversationId,
@@ -165,15 +165,17 @@ describe("conversation cancel pending messages API", () => {
       state,
     });
     expect(
-      work?.execution.pendingMessages.map((message) => message.inboundMessageId),
+      work?.execution.pendingMessages.map(
+        (message) => message.inboundMessageId,
+      ),
     ).toEqual([later.messageId]);
     expect(work?.execution.status).toBe("pending");
   });
 
   it("rejects cancel from non-participants", async () => {
     const { actor, conversationStore, queue, state } =
-      await createApiTurnWorkFixture();
-    const created = await createAndEnqueueApiConversation(
+      await createConversationFixture();
+    const created = await createAndEnqueueConversation(
       {
         actor,
         idempotencyKey: "cancel-forbidden",
@@ -209,8 +211,8 @@ describe("conversation cancel pending messages API", () => {
 
   it("keeps internal mailbox work when cancelling human-facing rows", async () => {
     const { actor, conversationStore, queue, state } =
-      await createApiTurnWorkFixture();
-    const created = await createAndEnqueueApiConversation(
+      await createConversationFixture();
+    const created = await createAndEnqueueConversation(
       {
         actor,
         idempotencyKey: "cancel-keep-internal-root",
@@ -228,7 +230,9 @@ describe("conversation cancel pending messages API", () => {
         conversationId: created.conversationId,
         createdAtMs: Date.now(),
         delivery: "defer",
-        ...(existing?.destination ? { destination: existing.destination } : undefined),
+        ...(existing?.destination
+          ? { destination: existing.destination }
+          : undefined),
         inboundMessageId: "internal:keep-me",
         input: {
           authorId: "system",
@@ -273,7 +277,7 @@ describe("conversation cancel pending messages API", () => {
   });
 
   it("returns 404 for unknown conversations", async () => {
-    await createApiTurnWorkFixture();
+    await createConversationFixture();
     const app = new Hono<{ Variables: JuniorApiVariables }>();
     app.use("*", async (context, next) => {
       context.set("viewer", testViewer("owner@example.com"));

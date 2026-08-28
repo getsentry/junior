@@ -3,13 +3,13 @@ import type { StateAdapter } from "chat";
 import type { User } from "@sentry/junior-plugin-api";
 import { readConversationAccessFromSql } from "@/api/conversations/access";
 import {
-  apiTurnIdForMessage,
-  appendAndEnqueueApiConversationMessage,
-  recordApiConversationActivity,
+  conversationTurnIdForMessage,
+  appendAndEnqueueWebMessage,
+  recordWebConversationActivity,
   webActorFromEmail,
-} from "@/chat/api-turns/work";
-import { getAuthPausedApiTurnId } from "@/chat/api-turns/routing";
-import { stopApiConversationTurn } from "@/chat/api-turns/stop";
+} from "@/chat/conversations/web-input";
+import { getAuthPausedConversationTurnId } from "@/chat/task-execution/mailbox-turn";
+import { stopConversationTurn } from "@/chat/conversations/stop";
 import type { ConversationEventStore } from "@/chat/conversations/history";
 import { projectConversationMessages } from "@/chat/conversations/message-projection";
 import type { ConversationStore } from "@/chat/conversations/store";
@@ -26,7 +26,7 @@ type ConversationMessage = {
   text: string;
 };
 
-type PromptAdmission =
+type PromptResult =
   | {
       afterCursor: number;
       messageId: string;
@@ -59,7 +59,7 @@ export type AcpConversations = {
     idempotencyKey: string;
     text: string;
     user: User;
-  }): Promise<PromptAdmission>;
+  }): Promise<PromptResult>;
   readMessages(conversationId: string): Promise<ConversationMessage[]>;
   readTurn(args: {
     afterCursor: number;
@@ -145,7 +145,7 @@ export function createAcpConversations(
       if (!(await hasConversationAccess(conversationId, user))) {
         return "not_found";
       }
-      await stopApiConversationTurn({
+      await stopConversationTurn({
         conversationId,
         conversationStore: options.conversationStore,
         queue: options.queue,
@@ -155,7 +155,7 @@ export function createAcpConversations(
     },
 
     async create({ conversationId, user }) {
-      await recordApiConversationActivity({
+      await recordWebConversationActivity({
         actor: actorFromUser(user),
         conversationId,
         conversationStore: options.conversationStore,
@@ -176,10 +176,10 @@ export function createAcpConversations(
         options.eventStore,
         conversationId,
       );
-      if (await getAuthPausedApiTurnId(conversationId)) {
+      if (await getAuthPausedConversationTurnId(conversationId)) {
         return { status: "active" };
       }
-      const admission = await appendAndEnqueueApiConversationMessage(
+      const result = await appendAndEnqueueWebMessage(
         {
           actor: actorFromUser(user),
           conversationId,
@@ -193,13 +193,13 @@ export function createAcpConversations(
           state: options.state,
         },
       );
-      if (admission.status === "active") return { status: "active" };
+      if (result.status === "active") return { status: "active" };
 
       return {
-        afterCursor: admission.status === "duplicate" ? 0 : currentCursor,
-        messageId: admission.messageId,
+        afterCursor: result.status === "duplicate" ? 0 : currentCursor,
+        messageId: result.messageId,
         status: "accepted",
-        turnId: apiTurnIdForMessage(admission.messageId),
+        turnId: conversationTurnIdForMessage(result.messageId),
       };
     },
 

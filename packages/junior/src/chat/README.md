@@ -25,24 +25,23 @@ file.
 7. The completed run result supplies diagnostics and artifacts; successful
    delivery or intentional no-reply completion commits the durable turn outcome.
 
-The local CLI uses `local/runner.ts` directly rather than pretending to be a
-mailbox-backed provider. API-authored root Turns and dashboard continues of
-existing Conversations use the shared mailbox and worker through `api-turns/`.
-A dashboard continue may keep the Conversation Location without giving the Run
-Delivery to that Location.
+The local CLI uses `local/runner.ts` directly. `conversations/web-input.ts`
+stores web input in the mailbox. Web input and resource events then use the
+worker in `task-execution/conversation-turn.ts`. A dashboard continue may keep
+the Conversation Location without giving the Run Delivery to that Location.
 
 ## Ownership
 
 - `app/`: composition root only.
 - `ingress/`: source parsing, classification, and routing.
-- `task-execution/`: mailbox, queue, lease, checkpoint, worker, and recovery.
+- `task-execution/`: mailbox, queue, lease, checkpoint, shared Conversation Turn
+  execution, and recovery.
 - `runtime/`: native Turn orchestration and provider-neutral delivery ports.
 - `providers/`: source provider layers around the native runtime. Slack owns
   its provider runtime in `providers/slack/`.
-- `api-turns/`: Conversation API admission and shared mailbox execution for web
-  input and resource events. Slack supplies Delivery for resource-event Turns
-  that publish. Dashboard continues of Slack-associated Conversations remain
-  Conversation-only.
+- `conversations/`: baseline Conversation storage, Message history, and web
+  input. HTTP routes call this code. They do not own another Conversation or
+  Turn.
 - `agent-dispatch/`: durable task and plugin dispatch authority, mailbox
   adaptation, and plugin-facing outcome projection.
 - `agent-invocations/`: durable parent/child bindings, delegated work, and
@@ -57,7 +56,7 @@ Delivery to that Location.
 - `services/`: consumer-owned domain decisions.
 - `attachments/`: provider-neutral attachment metadata, object storage, and garbage collection.
 - `artifacts/`: content-addressed public artifacts, SQL metadata, and their unauthenticated read path.
-- `state/` and `conversations/`: persistence by concern.
+- `state/`: remaining persisted runtime state, grouped by concern.
 - `slack/`: low-level Slack transport, message projection, and formatting.
 - `local/`: local CLI adapter.
 - `plugins/`, `credentials/`, `sandbox/`, and `mcp/`: external capability
