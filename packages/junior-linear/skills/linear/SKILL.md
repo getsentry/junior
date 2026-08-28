@@ -80,6 +80,8 @@ If any gate fails, revise and re-check before calling the Linear create/update t
 
 ## Guardrails
 
+- A create request is authorization to create. When the team and material fields are clear from the user or channel defaults, create the issue and report the link. Do not restate a draft just for a rubber-stamp yes, and do not ask for a second confirm after the user already approved the create.
+- Require explicit confirmation only when a real blocker remains: no valid team, multiple plausible teams, a destructive broad rewrite, or fields the thread leaves genuinely ambiguous.
 - Reuse or update an existing Linear issue when it is clearly the same work instead of creating a duplicate.
 - Label uncertain details as assumptions in the Linear content when the thread leaves them unresolved.
 - Prefer concise, durable ticket text over verbatim Slack quotes or long transcript dumps.
