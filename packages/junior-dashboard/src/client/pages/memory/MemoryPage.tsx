@@ -14,15 +14,15 @@ import { Navigate, useLocation, useNavigate, useParams } from "react-router";
 import type { PluginUserPageLink } from "@sentry/junior-plugin-api";
 
 import { FilterTabList } from "../../components/FilterBar";
-import { LoadingView } from "../../components/LoadingView";
+import { InlineError } from "../../components/InlineError";
+import { PageContentSkeleton } from "../../components/PageContentSkeleton";
 import { LoadMorePagination } from "../../components/Pagination";
 import { SearchInput } from "../../components/SearchInput";
 import { SelectableRow } from "../../components/SelectableRow";
+import { StatusChip } from "../../components/StatusChip";
 import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
-import { PageLayout } from "../../components/layout/PageLayout";
-import { SecondaryNavigation } from "../../components/layout/SecondaryNavigation";
 import {
   type PluginUserPageRecord,
   usePluginUserPageData,
@@ -34,6 +34,7 @@ import {
   useMemoryDashboardData,
 } from "./memoryDashboard";
 import { MemoryDetailsDrawer } from "./MemoryDetailsDrawer";
+import { MemoryPageLayout } from "./MemoryPageLayout";
 import { MemoryTimeline } from "./MemoryTimeline";
 import { MemoryCostChart } from "./MemoryCostChart";
 import { useMemoryRecord } from "./memoryRecord";
@@ -51,27 +52,18 @@ export function MemoryPage(props: { page: PluginUserPageLink }) {
   const libraryHref = pathWithSearch(libraryPath, location.search);
 
   return (
-    <>
-      <SecondaryNavigation
-        ariaLabel="Memory navigation"
-        items={[
-          { end: true, label: "Overview", to: basePath },
-          { label: "Memories", to: libraryHref },
-        ]}
+    <MemoryPageLayout libraryHref={libraryHref}>
+      <PageHeader
+        description={props.page.description}
+        {...(overview ? { onRangeChange: setRange, range } : {})}
+        title={props.page.label}
       />
-      <PageLayout className="gap-6 sm:gap-8">
-        <PageHeader
-          description={props.page.description}
-          {...(overview ? { onRangeChange: setRange, range } : {})}
-          title={props.page.label}
-        />
-        {overview ? (
-          <MemoryOverview range={range} />
-        ) : (
-          <MemoryLibrary libraryPath={libraryPath} page={props.page} />
-        )}
-      </PageLayout>
-    </>
+      {overview ? (
+        <MemoryOverview range={range} />
+      ) : (
+        <MemoryLibrary libraryPath={libraryPath} page={props.page} />
+      )}
+    </MemoryPageLayout>
   );
 }
 
@@ -87,14 +79,11 @@ function MemoryOverview(props: { range: TimeRangeDays }) {
   }
   if (!dashboardQuery.data) {
     return (
-      <>
-        <Card className="min-h-64 animate-pulse">
-          <span className="sr-only">Loading memory history</span>
-        </Card>
-        <div className="h-24 animate-pulse border-y border-white/[0.06]">
-          <span className="sr-only">Loading memory summary</span>
-        </div>
-      </>
+      <PageContentSkeleton
+        className="gap-6 sm:gap-8"
+        label="Loading memory history"
+        variant="overview"
+      />
     );
   }
   return (
@@ -170,9 +159,7 @@ function MemoryLibrary(props: {
     selectedRecord,
   ]);
 
-  if (!query.data && !query.error) {
-    return <LoadingView label="Loading memories" />;
-  }
+  const loading = !query.data && !query.error;
 
   return (
     <section className="grid gap-4" aria-labelledby="memory-library-title">
@@ -220,7 +207,9 @@ function MemoryLibrary(props: {
         value={filter}
       />
 
-      {query.error ? (
+      {loading ? (
+        <PageContentSkeleton label="Loading memories" variant="panel" />
+      ) : query.error ? (
         <Card className="flex items-center gap-3 border-rose-300/20 p-5 text-sm text-rose-200">
           <CircleAlert aria-hidden="true" size={18} />
           {query.error.message}
@@ -267,18 +256,20 @@ function MemoryLibrary(props: {
             onLoadMore={() => void query.fetchNextPage()}
           />
           {action.error ? (
-            <p className="m-0 text-center text-sm text-rose-300">
+            <InlineError className="text-center">
               Could not complete this action. Try again.
-            </p>
+            </InlineError>
           ) : null}
         </div>
       )}
-      <MemoryDetailsDrawer
-        action={action}
-        onAction={runAction}
-        onClose={() => navigate(memoryPath(props.libraryPath))}
-        record={selectedRecord}
-      />
+      {!loading ? (
+        <MemoryDetailsDrawer
+          action={action}
+          onAction={runAction}
+          onClose={() => navigate(memoryPath(props.libraryPath))}
+          record={selectedRecord}
+        />
+      ) : null}
     </section>
   );
 }
@@ -502,13 +493,10 @@ function MemoryRow(props: {
             </div>
           </div>
         </div>
-        <span
-          className={cn(
-            "hidden items-center gap-1.5 rounded border px-2 py-1 font-mono text-2xs uppercase tracking-[0.08em] sm:inline-flex",
-            isPublic
-              ? "border-emerald-300/20 bg-emerald-300/[0.07] text-emerald-100"
-              : "border-white/[0.08] bg-white/[0.025] text-dashboard-text-muted",
-          )}
+        <StatusChip
+          className="max-sm:hidden"
+          size="compact"
+          tone={isPublic ? "success" : "neutral"}
         >
           {isPublic ? (
             <Globe2 aria-hidden="true" size={11} />
@@ -516,15 +504,14 @@ function MemoryRow(props: {
             <LockKeyhole aria-hidden="true" size={11} />
           )}
           {visibility}
-        </span>
-        <span
-          className={cn(
-            "hidden w-fit rounded border px-2 py-1 font-mono text-2xs uppercase tracking-[0.08em] sm:block",
-            memoryKindClass(kind),
-          )}
+        </StatusChip>
+        <StatusChip
+          className="max-sm:hidden"
+          size="compact"
+          tone={memoryKindTone(kind)}
         >
           {kind}
-        </span>
+        </StatusChip>
         <span className="hidden truncate font-mono text-xs text-dashboard-text sm:block">
           {shortDate(remembered)}
         </span>
@@ -551,12 +538,10 @@ function shortDate(value: string): string {
   return value.split(",").slice(0, 2).join(",");
 }
 
-function memoryKindClass(kind: string): string {
-  if (kind === "Preference") {
-    return "border-cyan-300/20 bg-cyan-300/[0.07] text-cyan-100";
-  }
-  if (kind === "Procedure") {
-    return "border-amber-300/20 bg-amber-300/[0.07] text-amber-100";
-  }
-  return "border-violet-300/20 bg-violet-300/[0.07] text-violet-100";
+function memoryKindTone(
+  kind: string,
+): "accent" | "info" | "warning" {
+  if (kind === "Preference") return "info";
+  if (kind === "Procedure") return "warning";
+  return "accent";
 }

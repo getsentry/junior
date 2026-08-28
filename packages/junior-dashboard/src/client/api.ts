@@ -4,6 +4,9 @@ import type { LocationDetailReport } from "@sentry/junior/api/schema";
 import {
   conversationFeedSchema,
   conversationStatsReportSchema,
+  codeOverviewReportSchema,
+  codePersonReportSchema,
+  statsReportSchema,
 } from "@sentry/junior/api/schema";
 import {
   actorDirectoryReportSchema,
@@ -87,11 +90,25 @@ export function usePluginUserPagesData() {
 }
 
 /** Fetch the conversation summary feed used by list-oriented dashboard routes. */
-export function useConversationsData() {
+export function useConversationsData(status: "active" | "archived" = "active") {
   return useQuery({
-    queryKey: ["dashboard", "conversations", "viewer"],
+    queryKey: ["dashboard", "conversations", "viewer", status],
     queryFn: ({ signal }) =>
-      fetchDashboardJson(conversationFeedSchema, "/api/conversations", signal),
+      fetchDashboardJson(
+        conversationFeedSchema,
+        `/api/conversations${status === "archived" ? "?status=archived" : ""}`,
+        signal,
+      ),
+    retry: false,
+  });
+}
+
+/** Fetch repository and code change analytics. */
+export function useCodeOverviewData() {
+  return useQuery({
+    queryKey: ["dashboard", "code"],
+    queryFn: ({ signal }) =>
+      fetchDashboardJson(codeOverviewReportSchema, "/api/code", signal),
     retry: false,
   });
 }
@@ -177,6 +194,21 @@ export function useActorPluginReportsData(email: string | undefined) {
   });
 }
 
+/** Fetch person-scoped native code activity for one People profile. */
+export function useActorCodeData(email: string | undefined) {
+  return useQuery({
+    enabled: Boolean(email),
+    queryKey: ["dashboard", "people", email, "code"],
+    queryFn: ({ signal }) =>
+      fetchDashboardJson(
+        codePersonReportSchema,
+        `/api/people/${encodeURIComponent(email!)}/code`,
+        signal,
+      ),
+    retry: false,
+  });
+}
+
 /** Fetch and refresh the authenticated viewer's rolling model spend. */
 export function usePersonalSpendData(enabled: boolean) {
   return useQuery({
@@ -249,6 +281,16 @@ export function usePluginReportsData() {
   });
 }
 
+/** Fetch named daily counters used by Workspace usage charts. */
+export function useStatsData() {
+  return useQuery({
+    queryKey: ["dashboard", "stats"],
+    queryFn: ({ signal }) =>
+      fetchDashboardJson(statsReportSchema, "/api/stats", signal),
+    retry: false,
+  });
+}
+
 /** Fetch system metrics, plugin inventory, and operational reports. */
 export function useSystemData(coreData: DashboardCoreData) {
   const pluginsQuery = usePluginsData();
@@ -272,12 +314,12 @@ export function useSystemData(coreData: DashboardCoreData) {
           conversationStatsError: Boolean(conversationStatsQuery.error),
           ...(conversationStatsQuery.data
             ? { conversationStats: conversationStatsQuery.data }
-            : {}),
+            : undefined),
           conversationStatsLoading: conversationStatsQuery.isPending,
           pluginReportsError: Boolean(pluginReportsQuery.error),
           ...(pluginReportsQuery.data
             ? { pluginReports: pluginReportsQuery.data }
-            : {}),
+            : undefined),
           pluginReportsLoading: pluginReportsQuery.isPending,
           plugins: pluginsQuery.data,
           skills: skillsQuery.data,

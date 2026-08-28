@@ -4,21 +4,21 @@ import {
   normalizeEventIdentifier,
   pluginSupportsEvent,
   registeredEventTypeSchema,
+  registeredResourceEventMatchSchema,
   registeredResourceTypeSchema,
+  requireSupportedResourceEventMatch,
   type ResourceEventCatalog,
 } from "@/chat/resource-events/catalog";
 import { createResourceEventSubscription } from "@/chat/resource-events/store";
 import {
-  requireResourceWatchConversation,
+  RESOURCE_SUBSCRIPTION_DEFAULT_TTL_MS,
+  RESOURCE_SUBSCRIPTION_MAX_TTL_MS,
   STOP_WATCHING_TOOL_NAME,
 } from "@/chat/resource-events/tool-support";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
-
-const DEFAULT_TTL_MS = 14 * 24 * 60 * 60 * 1000;
-const MAX_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
 function inputSchema(catalog: ResourceEventCatalog) {
   return z
@@ -46,6 +46,7 @@ function inputSchema(catalog: ResourceEventCatalog) {
         .describe(
           "High-signal event names to deliver to this conversation when they occur.",
         ),
+      match: registeredResourceEventMatchSchema(),
       intent: z
         .string()
         .trim()
@@ -102,27 +103,24 @@ const resultDataSchema = z
     subscription_status: z.enum(["active", "cancelled", "completed"]),
     identifier: z.string().min(1),
     events: z.array(z.string().min(1)).min(1),
+    match: z.record(z.string(), z.unknown()).optional(),
     expiresAtMs: z.number().finite(),
     stop_watching: stopWatchingActionSchema,
   })
   .strict();
 
-const outputSchema = juniorToolOutputSchema
-  .extend({
-    ...resultDataSchema.shape,
-  })
-  .strict();
+const outputSchema = juniorToolOutputSchema.merge(resultDataSchema);
 
 function cleanStrings(values: string[]): string[] {
   return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
 }
 
 function ttlMs(input: Input): number {
-  if (input.ttlMs === undefined) return DEFAULT_TTL_MS;
+  if (input.ttlMs === undefined) return RESOURCE_SUBSCRIPTION_DEFAULT_TTL_MS;
   if (!Number.isFinite(input.ttlMs) || input.ttlMs <= 0) {
     throw new ToolInputError("ttlMs must be a positive finite number");
   }
-  if (input.ttlMs > MAX_TTL_MS) {
+  if (input.ttlMs > RESOURCE_SUBSCRIPTION_MAX_TTL_MS) {
     throw new ToolInputError("Resource watches cannot exceed 30 days");
   }
   return input.ttlMs;
@@ -141,11 +139,13 @@ export function createWatchResourceEventsTool(
       readOnlyHint: false,
     },
     description:
-      "Watch one plugin resource in the current Slack thread for a limited time; matching events return to this conversation as updates. Use for watch, notify, or tell-me-when requests. This does not create an event task or execute a durable task instruction. Prefer a subscribable tool result when available.",
+      "Watch one plugin resource in the current conversation for a limited time; matching events return to this conversation as updates. Use for watch, notify, or tell-me-when requests. This does not create an event task or execute a durable task instruction. Prefer a subscribable tool result when available.",
     inputSchema: inputSchema(catalog),
     outputSchema,
     async execute(input: Input) {
-      const conversationId = requireResourceWatchConversation(context);
+      // TODO(subagents): child conversations (`agent:…`) still store watches on
+      // their own id. When subagents matter, store the parent root id or give
+      // children the parent's destination and worker path.
       const events = cleanStrings(input.events);
       for (const eventType of events) {
         if (
@@ -163,14 +163,19 @@ export function createWatchResourceEventsTool(
       }
       const intent = input.intent.trim();
       if (!intent) throw new ToolInputError("intent is required");
+      const match = requireSupportedResourceEventMatch(catalog, {
+        match: input.match,
+        namespace: input.namespace,
+        resourceType: input.resourceType,
+      });
       const nowMs = Date.now();
       const subscription = await createResourceEventSubscription({
-        conversationId,
-        destination: context.destination,
+        conversationId: context.conversationId,
         events,
         expiresAtMs: nowMs + ttlMs(input),
         intent,
         label: input.label.trim(),
+        ...(match ? { match } : undefined),
         namespace: input.namespace.trim(),
         identifier: normalizeEventIdentifier(
           catalog,
@@ -184,6 +189,7 @@ export function createWatchResourceEventsTool(
         subscription_status: subscription.status,
         identifier: subscription.identifier,
         events: subscription.events,
+        ...(subscription.match ? { match: subscription.match } : undefined),
         expiresAtMs: subscription.expiresAtMs,
         stop_watching: {
           execution_tool: "executeTool" as const,

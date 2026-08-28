@@ -1,11 +1,11 @@
 import {
+  type PluginEgress,
   definePluginTool,
   PluginToolInputError,
   pluginToolOutputSchema,
   subscribableResourceSchema,
   type PluginToolOutput,
   type SubscribableResource,
-  type ToolRegistrationHookContext,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import { gitHubRepositorySubscribable } from "../resource-events/repository.js";
@@ -28,10 +28,11 @@ interface Result extends PluginToolOutput, Repository {
   target: "getRepository";
   subscribable?: SubscribableResource;
 }
-const outputSchema = pluginToolOutputSchema.extend({
-  target: z.literal("getRepository"),
-  ...repositorySchema.shape,
-});
+const outputSchema = pluginToolOutputSchema.merge(
+  repositorySchema.extend({
+    target: z.literal("getRepository"),
+  }),
+);
 
 function parseRepo(value: string) {
   const parts = value.split("/").map((part) => part.trim());
@@ -53,7 +54,7 @@ async function readJson(response: Response): Promise<unknown> {
 
 /** Read one repository and expose its stable subscription identity. */
 export function createGitHubGetRepositoryTool(
-  ctx: ToolRegistrationHookContext,
+  ctx: { egress: PluginEgress; resourceEvents: { canSubscribe: boolean } },
 ) {
   return definePluginTool({
     annotations: {
@@ -106,7 +107,7 @@ export function createGitHubGetRepositoryTool(
         description: providerResult.description,
         fullName: providerResult.full_name,
         private: providerResult.private,
-        ...(subscribable ? { subscribable } : {}),
+        ...(subscribable ? { subscribable } : undefined),
         url: providerResult.html_url,
       };
       return {

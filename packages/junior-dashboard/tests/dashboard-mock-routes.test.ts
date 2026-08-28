@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   actorDirectoryReportSchema,
+  codeOverviewReportSchema,
   conversationDetailReportSchema,
   conversationEventPageSchema,
   type ConversationSummaryReport,
@@ -8,8 +9,10 @@ import {
 
 import { createDashboardApp } from "../src/app";
 import {
+  ARCHIVED_CONVERSATION_ID,
   conversationTimeBounds,
   DASHBOARD_QA_CONVERSATION_ID,
+  setMockConversationArchived,
 } from "../src/mock-reporting/fixtures";
 
 const DASHBOARD_QA_CHILD_IDS = [
@@ -18,7 +21,11 @@ const DASHBOARD_QA_CHILD_IDS = [
 ];
 
 describe("dashboard canonical-event mock routes", () => {
-  afterEach(() => vi.useRealTimers());
+  afterEach(() => {
+    // Keep the default archived fixture available for later visual/mock runs.
+    setMockConversationArchived(ARCHIVED_CONVERSATION_ID, true);
+    vi.useRealTimers();
+  });
 
   it("derives public location bounds independently of summary order", () => {
     const summary = (
@@ -75,6 +82,15 @@ describe("dashboard canonical-event mock routes", () => {
       user: { email: "dev@example.com", emailVerified: true },
     });
 
+    const code = await app.fetch(new Request("http://localhost/api/code"));
+    expect(code.status).toBe(200);
+    const codeOverview = codeOverviewReportSchema.parse(await code.json());
+    expect(codeOverview.changes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ repository: "getsentry/junior" }),
+      ]),
+    );
+
     const conversations = await app.fetch(
       new Request("http://localhost/api/conversations"),
     );
@@ -96,9 +112,46 @@ describe("dashboard canonical-event mock routes", () => {
     expect(body.conversations.map((item) => item.conversationId)).toContain(
       DASHBOARD_QA_CONVERSATION_ID,
     );
+    expect(body.conversations.map((item) => item.conversationId)).not.toContain(
+      ARCHIVED_CONVERSATION_ID,
+    );
     expect(body.conversations.map((item) => item.conversationId)).not.toEqual(
       expect.arrayContaining(DASHBOARD_QA_CHILD_IDS),
     );
+
+    const archived = await app.fetch(
+      new Request("http://localhost/api/conversations?status=archived"),
+    );
+    expect(archived.status).toBe(200);
+    const archivedBody = (await archived.json()) as typeof body;
+    expect(
+      archivedBody.conversations.map((item) => item.conversationId),
+    ).toEqual([ARCHIVED_CONVERSATION_ID]);
+
+    const restore = await app.fetch(
+      new Request(
+        `http://localhost/api/conversations/${encodeURIComponent(ARCHIVED_CONVERSATION_ID)}/archive`,
+        {
+          body: JSON.stringify({
+            archived: false,
+            lastSeenAt: "2026-05-30T00:00:00.000Z",
+          }),
+          headers: { "content-type": "application/json" },
+          method: "PATCH",
+        },
+      ),
+    );
+    expect(restore.status).toBe(200);
+    await expect(restore.json()).resolves.toEqual({ archivedAt: null });
+
+    const restoredFeed = await app.fetch(
+      new Request("http://localhost/api/conversations"),
+    );
+    const restoredBody = (await restoredFeed.json()) as typeof body;
+    expect(
+      restoredBody.conversations.map((item) => item.conversationId),
+    ).toContain(ARCHIVED_CONVERSATION_ID);
+    setMockConversationArchived(ARCHIVED_CONVERSATION_ID, true);
     expect(
       body.conversations
         .filter((item) => item.channel?.startsWith("C"))

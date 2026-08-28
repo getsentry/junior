@@ -4,11 +4,22 @@ export type VisualViewport = {
   width: number;
 };
 
+export type VisualScenarioPrepare =
+  | "attachment-entry"
+  | "attachment-modal"
+  | "conversation-detail-focused"
+  | "new-conversation-focused";
+
 export type VisualScenario = {
   componentGallery?: boolean;
   id: string;
   label: string;
   path: string;
+  /**
+   * Optional interaction before the shot. Capture owns the Playwright steps so
+   * this registry stays data-only.
+   */
+  prepare?: VisualScenarioPrepare;
   /** Accessible heading used as the ready-state signal. */
   ready: string;
   viewports: VisualViewport[];
@@ -27,6 +38,8 @@ export const MOBILE: VisualViewport = {
 };
 
 const ACTIVE_CONVERSATION_ID = "slack:CQA123:1770003600.000200";
+const DASHBOARD_QA_CONVERSATION_ID = "internal:dashboard-qa";
+const WORKSPACE_ID = "11111111-1111-4111-8111-111111111111";
 
 /** Named dashboard surfaces CI can screenshot for a PR. */
 export const VISUAL_SCENARIOS: VisualScenario[] = [
@@ -34,7 +47,8 @@ export const VISUAL_SCENARIOS: VisualScenario[] = [
     id: "conversations",
     label: "Conversations",
     path: "/",
-    ready: "Conversations",
+    // Home is the create landing (hero + list), same as desktop empty state.
+    ready: "What do you need?",
     viewports: [DESKTOP, MOBILE],
   },
   {
@@ -45,19 +59,79 @@ export const VISUAL_SCENARIOS: VisualScenario[] = [
     viewports: [DESKTOP, MOBILE],
   },
   {
+    id: "conversation-attachment",
+    label: "Conversation attachment",
+    path: `/conversations/${encodeURIComponent(DASHBOARD_QA_CONVERSATION_ID)}`,
+    prepare: "attachment-entry",
+    ready: "Dashboard QA edge cases",
+    viewports: [DESKTOP, MOBILE],
+  },
+  {
+    id: "conversation-attachment-modal",
+    label: "Conversation attachment modal",
+    path: `/conversations/${encodeURIComponent(DASHBOARD_QA_CONVERSATION_ID)}`,
+    prepare: "attachment-modal",
+    ready: "Dashboard QA edge cases",
+    viewports: [DESKTOP, MOBILE],
+  },
+  {
+    id: "conversation-detail-focused",
+    label: "Conversation detail · focused composer",
+    path: `/conversations/${encodeURIComponent(ACTIVE_CONVERSATION_ID)}`,
+    // Focus the reply composer and shrink the visual viewport so the PR
+    // screenshot shows the input docked above the keyboard with chat chrome.
+    prepare: "conversation-detail-focused",
+    ready: "Investigate checkout latency",
+    viewports: [MOBILE],
+  },
+  {
+    id: "conversation-create-focused",
+    label: "New conversation · landing compose",
+    path: "/",
+    // Home is the create landing. Focus the composer and capture chrome
+    // (header + hero + conversation nav), not a keyboard-docked reply footer.
+    prepare: "new-conversation-focused",
+    ready: "What do you need?",
+    viewports: [DESKTOP, MOBILE],
+  },
+  {
     id: "person-profile",
     label: "Person profile",
     path: `/people/${encodeURIComponent("avery@sentry.io")}`,
-    // Wait for the plugin section so async profile reports are present.
-    ready: "GitHub",
+    // Wait for native code activity so async person code stats are present.
+    ready: "Code",
+    viewports: [DESKTOP, MOBILE],
+  },
+  {
+    id: "code",
+    label: "Code",
+    path: "/code",
+    // Page header, not a buried chart/stat label.
+    ready: "Code",
     viewports: [DESKTOP, MOBILE],
   },
   {
     id: "system",
     label: "System",
     path: "/system",
-    ready: "Model spend",
+    // Page header, not a buried chart/stat label.
+    ready: "System",
     viewports: [DESKTOP],
+  },
+  {
+    id: "workspaces",
+    label: "Workspaces",
+    path: "/system/workspaces",
+    // Baseline card heading proves the list payload rendered.
+    ready: "Baseline snapshot",
+    viewports: [DESKTOP, MOBILE],
+  },
+  {
+    id: "workspace-detail",
+    label: "Workspace detail",
+    path: `/system/workspaces/${WORKSPACE_ID}`,
+    ready: "Current snapshot",
+    viewports: [DESKTOP, MOBILE],
   },
   {
     id: "memories",
@@ -75,13 +149,45 @@ export const VISUAL_SCENARIOS: VisualScenario[] = [
   },
   {
     componentGallery: true,
-    id: "component-gallery",
-    label: "Component gallery",
+    id: "gallery-index",
+    label: "Component gallery index",
     path: "/dev",
     ready: "Component gallery",
     viewports: [DESKTOP],
   },
+  {
+    componentGallery: true,
+    id: "gallery-foundations",
+    label: "Gallery · Foundations",
+    path: "/dev/foundations",
+    ready: "Foundations",
+    viewports: [DESKTOP],
+  },
+  {
+    componentGallery: true,
+    id: "gallery-charts",
+    label: "Gallery · Charts",
+    path: "/dev/charts",
+    ready: "Charts",
+    viewports: [DESKTOP],
+  },
+  {
+    componentGallery: true,
+    id: "gallery-transcripts",
+    label: "Gallery · Transcripts",
+    path: "/dev/transcripts",
+    ready: "Transcripts",
+    viewports: [DESKTOP],
+  },
 ];
+
+/** Prefer these gallery scenarios under the selection cap when kit files change. */
+const GALLERY_SCENARIO_PRIORITY = [
+  "gallery-foundations",
+  "gallery-charts",
+  "gallery-transcripts",
+  "gallery-index",
+] as const;
 
 const SCENARIO_BY_ID = new Map(
   VISUAL_SCENARIOS.map((scenario) => [scenario.id, scenario]),
@@ -95,15 +201,77 @@ type PathRule = {
 const PATH_RULES: PathRule[] = [
   {
     match: (filePath) =>
+      filePath ===
+        "packages/junior-dashboard/src/client/components/ImageAttachment.tsx" ||
+      filePath ===
+        "packages/junior-dashboard/src/client/conversations/TranscriptAttachmentsDeliveredView.tsx",
+    scenarioIds: [
+      "conversation-attachment",
+      "conversation-attachment-modal",
+    ],
+  },
+  {
+    match: (filePath) =>
+      /\/conversations\/Transcript(?:Markdown|Text|ToolView)\.tsx$/.test(
+        filePath,
+      ),
+    scenarioIds: ["gallery-transcripts"],
+  },
+  {
+    // Keep chart-gallery paths ahead of people/system feature rules.
+    match: (filePath) =>
+      filePath.startsWith(
+        "packages/junior-dashboard/src/client/components/charts/",
+      ) ||
+      filePath.startsWith(
+        "packages/junior-dashboard/src/client/pages/people/ContributionGrid",
+      ) ||
+      filePath.startsWith(
+        "packages/junior-dashboard/src/client/pages/locations/LocationDirectoryActivityChart",
+      ) ||
+      filePath.startsWith(
+        "packages/junior-dashboard/src/client/pages/system/ConversationActivityChart",
+      ),
+    scenarioIds: ["gallery-charts"],
+  },
+  {
+    match: (filePath) =>
+      filePath ===
+        "packages/junior-dashboard/src/client/mobileViewport.ts" ||
+      filePath ===
+        "packages/junior-dashboard/src/client/bodyScrollLock.ts" ||
+      filePath ===
+        "packages/junior-dashboard/src/client/components/layout/VisualViewportShell.tsx" ||
       filePath.startsWith(
         "packages/junior-dashboard/src/client/conversations/",
-      ) || filePath.includes("/mock-reporting/"),
-    scenarioIds: ["conversations", "conversation-detail"],
+      ) ||
+      filePath.includes("/mock-reporting/"),
+    scenarioIds: [
+      "conversations",
+      "conversation-detail",
+      "conversation-detail-focused",
+      "conversation-create-focused",
+    ],
   },
   {
     match: (filePath) =>
       filePath.startsWith("packages/junior-dashboard/src/client/pages/people/"),
     scenarioIds: ["person-profile"],
+  },
+  {
+    match: (filePath) =>
+      filePath.startsWith("packages/junior-dashboard/src/client/pages/code/"),
+    scenarioIds: ["code"],
+  },
+  {
+    match: (filePath) =>
+      filePath.startsWith(
+        "packages/junior-dashboard/src/client/pages/system/",
+      ) &&
+      /(?:^|\/)(?:BaselineSnapshot|SnapshotSummary|Workspace|workspace)/.test(
+        filePath,
+      ),
+    scenarioIds: ["workspaces", "workspace-detail"],
   },
   {
     match: (filePath) =>
@@ -132,16 +300,25 @@ const PATH_RULES: PathRule[] = [
       ),
     scenarioIds: [
       "conversations",
-      "conversation-detail",
+      "conversation-detail-focused",
+      "conversation-create-focused",
       "system",
-      "component-gallery",
     ],
   },
   {
     match: (filePath) =>
-      filePath.startsWith("packages/junior-dashboard/src/client/pages/dev/") ||
+      filePath.startsWith("packages/junior-dashboard/src/client/pages/dev/"),
+    scenarioIds: [
+      "gallery-foundations",
+      "gallery-charts",
+      "gallery-transcripts",
+      "gallery-index",
+    ],
+  },
+  {
+    match: (filePath) =>
       filePath.startsWith("packages/junior-dashboard/src/client/components/"),
-    scenarioIds: ["component-gallery"],
+    scenarioIds: ["gallery-foundations", "gallery-index"],
   },
   {
     match: (filePath) =>
@@ -149,7 +326,7 @@ const PATH_RULES: PathRule[] = [
       !filePath.startsWith("packages/junior-dashboard/e2e/") &&
       !filePath.startsWith("packages/junior-dashboard/tests/") &&
       !filePath.startsWith("packages/junior-dashboard/visual/"),
-    scenarioIds: ["component-gallery"],
+    scenarioIds: ["gallery-index"],
   },
 ];
 
@@ -187,9 +364,13 @@ export function selectVisualScenarioIds(
     }
   }
 
-  return VISUAL_SCENARIOS.map((scenario) => scenario.id)
-    .filter((id) => selected.has(id))
-    .slice(0, max);
+  // Prefer focused gallery pages first so shared kit diffs stay reviewable.
+  const galleryIds = GALLERY_SCENARIO_PRIORITY.filter((id) => selected.has(id));
+  const galleryIdSet = new Set<string>(galleryIds);
+  const rest = VISUAL_SCENARIOS.map((scenario) => scenario.id).filter(
+    (id) => selected.has(id) && !galleryIdSet.has(id),
+  );
+  return [...galleryIds, ...rest].slice(0, max);
 }
 
 /** Resolve scenario records for selected ids, preserving registry order. */

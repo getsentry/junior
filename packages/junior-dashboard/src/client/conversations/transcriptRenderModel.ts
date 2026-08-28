@@ -1,4 +1,9 @@
 import type {
+  ConversationTurnFailureCode,
+  ConversationTurnFailureReason,
+} from "@sentry/junior/api/schema";
+
+import type {
   TranscriptViewAttachmentsDeliveredPart,
   TranscriptViewContextEventPart,
   TranscriptViewMessage,
@@ -12,7 +17,10 @@ import type {
 export type RenderedFailureEntry = {
   key: string;
   kind: "failure";
-  outcome: "error" | "delivery_failed";
+  eventId?: string;
+  failureCode: ConversationTurnFailureCode;
+  failureReason?: ConversationTurnFailureReason;
+  sentryEventUrl?: string;
   timestamp?: number;
 };
 
@@ -89,10 +97,16 @@ export function groupTranscriptMessages(
     let textGroup = 0;
     const flushMessage = () => {
       if (textParts.length === 0) return;
+      // Keep the original message object when the whole body is one text group so
+      // memoized message rows can skip work on unchanged history.
+      const nextMessage =
+        textGroup === 0 && textParts.length === message.parts.length
+          ? message
+          : { ...message, parts: textParts };
       entries.push({
         key: `${message.sourceSeq}:message:${textGroup}`,
         kind: "message",
-        message: { ...message, parts: textParts },
+        message: nextMessage as RenderedMessageEntry["message"],
       });
       textParts = [];
       textGroup += 1;
@@ -151,11 +165,18 @@ export function groupTranscriptMessages(
     }
 
     flushMessage();
-    if (message.outcome) {
+    if (message.failureCode) {
       entries.push({
         key: `${message.sourceSeq}:failure`,
         kind: "failure",
-        outcome: message.outcome,
+        failureCode: message.failureCode,
+        ...(message.failureReason
+          ? { failureReason: message.failureReason }
+          : undefined),
+        ...(message.eventId ? { eventId: message.eventId } : undefined),
+        ...(message.sentryEventUrl
+          ? { sentryEventUrl: message.sentryEventUrl }
+          : undefined),
         timestamp: message.timestamp,
       });
     }
@@ -200,8 +221,8 @@ export function messageRawText(message: TranscriptViewMessage): string {
       }
       return [
         "model handoff",
-        `profile ${part.event.modelProfile}`,
         `model ${part.event.modelId}`,
+        `profile ${part.event.modelProfile}`,
         part.event.summary,
         part.event.reasoningLevel
           ? `reasoning ${part.event.reasoningLevel}`

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isExperimentalFeatureEnabled } from "@/chat/experimental";
 import { estimateTextTokens } from "@/chat/services/context-budget";
 import { isProviderRetryError } from "@/chat/services/provider-error";
 import { buildSubscribedReplyRouterPolicy } from "@/chat/services/subscribed-reply-router-policy";
@@ -13,6 +14,7 @@ export enum SubscribedReplyReason {
   SideConversation = "side_conversation",
   LowConfidence = "low_confidence",
   ClassifierError = "classifier_error",
+  PassiveDisabled = "passive_disabled",
 }
 
 export interface SubscribedDecisionInput {
@@ -440,20 +442,8 @@ export async function decideSubscribedThreadReply(args: {
   if (preflightDecision) {
     return preflightDecision;
   }
-  const evidence = buildRouterEvidence(args.input);
   if (!text && !args.input.hasAttachments) {
     return { shouldReply: false, reason: SubscribedReplyReason.EmptyMessage };
-  }
-  if (
-    !args.input.isExplicitMention &&
-    !args.input.hasAttachments &&
-    isAcknowledgmentOnly(text)
-  ) {
-    return {
-      shouldReply: false,
-      reason: SubscribedReplyReason.SideConversation,
-      reasonDetail: "acknowledgment",
-    };
   }
 
   if (args.input.isExplicitMention) {
@@ -471,6 +461,25 @@ export async function decideSubscribedThreadReply(args: {
     };
   }
 
+  // Non-mention replies in subscribed threads stay experimental and off by
+  // default. Forced opt-out and explicit mentions are handled above.
+  if (!isExperimentalFeatureEnabled("passive-routing")) {
+    return {
+      shouldReply: false,
+      reason: SubscribedReplyReason.PassiveDisabled,
+      reasonDetail: "passive-routing",
+    };
+  }
+
+  if (!args.input.hasAttachments && isAcknowledgmentOnly(text)) {
+    return {
+      shouldReply: false,
+      reason: SubscribedReplyReason.SideConversation,
+      reasonDetail: "acknowledgment",
+    };
+  }
+
+  const evidence = buildRouterEvidence(args.input);
   if (
     evidence.assistantWasLastSpeaker &&
     evidence.humanMessagesSinceLastAssistant === 0 &&
@@ -510,7 +519,7 @@ export async function decideSubscribedThreadReply(args: {
     if (parsed.should_unsubscribe) {
       if (parsed.confidence < ROUTER_CONFIDENCE_THRESHOLD) {
         return {
-          ...(result.costUsd !== undefined ? { costUsd: result.costUsd } : {}),
+          ...(result.costUsd !== undefined ? { costUsd: result.costUsd } : undefined),
           shouldReply: false,
           reason: SubscribedReplyReason.LowConfidence,
           reasonDetail: `${parsed.confidence.toFixed(2)}: ${reason}`,
@@ -518,7 +527,7 @@ export async function decideSubscribedThreadReply(args: {
       }
 
       return {
-        ...(result.costUsd !== undefined ? { costUsd: result.costUsd } : {}),
+        ...(result.costUsd !== undefined ? { costUsd: result.costUsd } : undefined),
         shouldReply: false,
         shouldUnsubscribe: true,
         reason: SubscribedReplyReason.ThreadOptOut,
@@ -528,7 +537,7 @@ export async function decideSubscribedThreadReply(args: {
 
     if (!parsed.should_reply) {
       return {
-        ...(result.costUsd !== undefined ? { costUsd: result.costUsd } : {}),
+        ...(result.costUsd !== undefined ? { costUsd: result.costUsd } : undefined),
         shouldReply: false,
         reason: SubscribedReplyReason.SideConversation,
         reasonDetail: reason,
@@ -537,7 +546,7 @@ export async function decideSubscribedThreadReply(args: {
 
     if (parsed.confidence < ROUTER_CONFIDENCE_THRESHOLD) {
       return {
-        ...(result.costUsd !== undefined ? { costUsd: result.costUsd } : {}),
+        ...(result.costUsd !== undefined ? { costUsd: result.costUsd } : undefined),
         shouldReply: false,
         reason: SubscribedReplyReason.LowConfidence,
         reasonDetail: `${parsed.confidence.toFixed(2)}: ${reason}`,
@@ -545,7 +554,7 @@ export async function decideSubscribedThreadReply(args: {
     }
 
     return {
-      ...(result.costUsd !== undefined ? { costUsd: result.costUsd } : {}),
+      ...(result.costUsd !== undefined ? { costUsd: result.costUsd } : undefined),
       shouldReply: true,
       reason: SubscribedReplyReason.Classifier,
       reasonDetail: reason,

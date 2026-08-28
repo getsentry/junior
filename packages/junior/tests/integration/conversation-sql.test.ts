@@ -204,7 +204,10 @@ ORDER BY conversation_id
           provider: "github",
         },
       ]);
-      expect(projectConversationEvents(history).messages).toEqual([]);
+      expect(
+        projectConversationEvents(history, { defaultProfile: "default" })
+          .messages,
+      ).toEqual([]);
     } finally {
       await fixture.close();
     }

@@ -12,6 +12,7 @@ import type {
 import { isPostableObject, Message } from "chat";
 import { SlackAdapter } from "@chat-adapter/slack";
 import type { Destination } from "@sentry/junior-plugin-api";
+import { readProxyProperty } from "./proxy-property";
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
@@ -103,8 +104,8 @@ export function createTestMessage(args: {
     metadata: { dateSent: args.dateSent ?? new Date(), edited: false },
     formatted: args.formatted ?? { type: "root", children: [] },
     raw: args.raw ?? {
-      ...(inferredChannel ? { channel: inferredChannel } : {}),
-      ...(inferredTs ? { ts: inferredTs, thread_ts: inferredTs } : {}),
+      ...(inferredChannel ? { channel: inferredChannel } : undefined),
+      ...(inferredTs ? { ts: inferredTs, thread_ts: inferredTs } : undefined),
     },
   });
 }
@@ -230,7 +231,7 @@ export class FakeSlackAdapter extends SlackAdapter {
             botToken: "xoxb-test-token",
             botUserId: options.botUserId,
           }
-        : {}),
+        : undefined),
     });
   }
 
@@ -282,11 +283,11 @@ export class FakeSlackAdapter extends SlackAdapter {
 function createThreadAdapter(): Adapter {
   const adapter = new FakeSlackAdapter();
   return new Proxy(adapter, {
-    get(target, property, receiver) {
+    get(target, property) {
       if (property === "name") {
         return "test";
       }
-      const value = Reflect.get(target, property, receiver);
+      const value = readProxyProperty(target, property);
       return typeof value === "function" ? value.bind(target) : value;
     },
   });

@@ -136,6 +136,46 @@ Extra OAuth scopes requested for operations that must run as the user.
 </details>
 
 <details class="plugin-config">
+<summary><code>pullRequestEvents</code></summary>
+
+App-configured pull request event behavior. Use this only when the app should always watch certain events after Junior creates a pull request, or should add short guidance when those events arrive.
+
+```ts title="plugins.ts"
+export const plugins = defineJuniorPlugins([
+  githubPlugin({
+    pullRequestEvents: {
+      subscribeAfterCreate: {
+        events: [
+          "pull_request.checks.failed",
+          "pull_request.review.changes_requested",
+          "pull_request.merged",
+        ],
+        intent:
+          "Report failed checks and requested changes. Report when the pull request merges. Stay silent otherwise.",
+      },
+      guidance: {
+        "pull_request.checks.failed":
+          "Inspect the failed checks. Fix failures caused by this change when safe.",
+        "pull_request.review.changes_requested":
+          "Summarize actionable feedback before deciding whether to edit code.",
+      },
+    },
+  }),
+]);
+```
+
+- **Define:** `githubPlugin({ pullRequestEvents: { ... } })` in `plugins.ts`
+- **Default:** Off. Junior only watches a new pull request when asked, or when a tool result includes a subscribable resource and the model chooses to watch it.
+- **Required:** No
+- **Environment override:** None
+
+`subscribeAfterCreate` creates a temporary resource subscription after a successful `github_createPullRequest` call. It only runs in Slack conversations that can host resource subscriptions, and only when GitHub webhooks are enabled. Forced events are removed from the tool result's suggested events so the model does not re-watch them. The subscription still expires like any other watch.
+
+`guidance` adds short app guidance when a matching pull request event reaches the agent. It applies within the subscription or event task instruction. It cannot replace or expand that instruction, grant credentials, or bypass action review. Keep each value short.
+
+</details>
+
+<details class="plugin-config">
 <summary><code>appIdEnv</code></summary>
 
 Names the deployment variable containing the GitHub App ID.
@@ -241,7 +281,9 @@ pnpm exec junior upgrade
 ```
 
 This creates the `junior_github_pull_requests` and `junior_github_issues`
-projections used by webhook ingestion and the `/system` outcome report.
+projections used by webhook ingestion and outcome tracking. Opened pull
+requests also publish native code-change records for the dashboard Code page
+and person profiles.
 
 ## Capabilities
 
@@ -266,6 +308,12 @@ resource subscriptions versus durable event tasks.
 
 Issue and pull request events can target one item with `owner/repo#number`, or
 every item of that kind in a repository with `owner/repo`.
+
+To always watch selected events after Junior creates a pull request in this
+app, set `pullRequestEvents.subscribeAfterCreate` in `plugins.ts`. To add short
+app guidance for one pull request event type, set
+`pullRequestEvents.guidance`. The guidance applies within each subscription or
+event task instruction. It does not replace or expand that instruction.
 
 #### `deployment_source`
 
@@ -360,14 +408,14 @@ One pull request: `owner/repo#number`.
 <details class="resource-event">
 <summary><code>pull_request.checks.failed</code></summary>
 
-A check suite finished with failure or timeout. Trusted data includes the PR, full head SHA, suite id/url, and failed check-run ids/urls when enrichment works. Failed check names are untrusted provider content.
+A check suite finished with failure or timeout. Trusted data includes the PR, full head SHA, suite id/url, and failed check-run ids/urls when Junior can load them. Failed check names are untrusted provider content. When a watch or event task uses `isDraft`, `authorUsername`, or `authorEmail`, Junior loads those pull request fields for same-repo pull requests only.
 
 </details>
 
 <details class="resource-event">
 <summary><code>pull_request.checks.recovered</code></summary>
 
-A check suite finished successfully after a failure. Trusted data includes the PR, full head SHA, and suite id/url. This is for one suite only. It does not mean the whole PR is green.
+A check suite finished successfully after a failure. Trusted data includes the PR, full head SHA, and suite id/url. This is for one suite only. It does not mean the whole PR is green. When a watch or event task uses `isDraft`, `authorUsername`, or `authorEmail`, Junior loads those pull request fields for same-repo pull requests only.
 
 </details>
 

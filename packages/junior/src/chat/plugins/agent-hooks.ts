@@ -1,9 +1,9 @@
 import {
   missingToolAnnotationKeys,
   normalizeResourceEventIdentifier,
+  pluginResourceEventsSchema,
   promptContextSchema,
   promptMessageSchema,
-  pluginResourceEventsSchema,
   resourceEventInputSchema,
 } from "@sentry/junior-plugin-api";
 import type {
@@ -38,7 +38,9 @@ import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
 import { runNonInteractiveCommand } from "@/chat/sandbox/noninteractive-command";
 import type { AnyToolDefinition } from "@/chat/tools/definition";
 import { getDashboardConversationLink } from "@/chat/slack/dashboard-link";
-import { canRouteResourceEvents } from "@/chat/resource-events/workspace";
+import { createResourceEventSubscription } from "@/chat/resource-events/store";
+import { RESOURCE_SUBSCRIPTION_DEFAULT_TTL_MS } from "@/chat/resource-events/tool-support";
+
 import { getSlackToolContext } from "@/chat/slack/tool-support/context";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
@@ -51,6 +53,8 @@ import { resolveChannelCapabilities } from "@/chat/slack/tool-support/channel-ca
 import type { Actor } from "@/chat/actor";
 import { z } from "zod";
 import { workspaceRepoCheckoutPath } from "@/chat/workspaces/checkout-path";
+import { listWorkspaceNamesByRepository } from "@/chat/workspaces/store";
+import { createCodeChangePublisher } from "@/chat/code/publisher";
 
 /** Signal that a plugin intentionally denied a tool execution. */
 export class PluginHookDeniedError extends Error {
@@ -162,10 +166,13 @@ function systemPromptPluginContext(plugin: PluginRegistration) {
 function pluginInvocationContext(
   context: Pick<
     ToolRuntimeContext,
-    "conversationId" | "destination" | "actor" | "source"
+    "conversationId" | "locationId" | "destination" | "actor" | "source"
   >,
 ): InvocationContext {
-  const common = { conversationId: context.conversationId };
+  const common = {
+    conversationId: context.conversationId,
+    locationId: context.locationId,
+  };
   switch (context.source.platform) {
     case "slack": {
       if (context.destination.platform !== "slack") {
@@ -203,7 +210,13 @@ function invocationPluginContext(
   plugin: PluginRegistration,
   context: Pick<
     ToolRuntimeContext,
-    "conversationId" | "destination" | "actor" | "source" | "userText"
+    | "conversationId"
+    | "locationId"
+    | "destination"
+    | "actor"
+    | "resolveActorIdentity"
+    | "source"
+    | "userText"
   >,
   turnId?: string,
 ): UserPromptContext {
@@ -211,6 +224,7 @@ function invocationPluginContext(
   const common = {
     ...base,
     conversationId: context.conversationId,
+    locationId: context.locationId,
     embedder: createPluginEmbedder(plugin.manifest.name),
     ...(context.conversationId && turnId
       ? {
@@ -221,11 +235,14 @@ function invocationPluginContext(
             turnId,
           }),
         }
-      : {}),
+      : undefined),
     model: createPluginModel(plugin.manifest.name, plugin.model),
     source: context.source,
     text: context.userText ?? "",
     state: createPluginState(plugin.manifest.name),
+    users: {
+      resolveActor: context.resolveActorIdentity ?? (async () => undefined),
+    },
   };
   return {
     ...common,
@@ -489,7 +506,13 @@ export async function getPluginSystemPromptContributions(
 export async function getPluginUserPromptContributions(args: {
   context: Pick<
     ToolRuntimeContext,
-    "conversationId" | "destination" | "actor" | "source" | "userText"
+    | "conversationId"
+    | "locationId"
+    | "destination"
+    | "actor"
+    | "resolveActorIdentity"
+    | "source"
+    | "userText"
   >;
   turnId?: string;
 }): Promise<PluginPromptContributionContext[]> {
@@ -590,9 +613,9 @@ export function getPluginTools(
           userId: slackToolContext.actor?.userId,
         })
       : undefined;
-    const dashboardConversationUrl = context.conversationId
-      ? getDashboardConversationLink(context.conversationId)
-      : undefined;
+    const dashboardConversationUrl = getDashboardConversationLink(
+      context.conversationId,
+    );
     const slackContext: SlackToolRegistrationHookContext | undefined =
       slackToolContext
         ? {
@@ -601,37 +624,83 @@ export function getPluginTools(
             ),
             ...(dashboardConversationUrl
               ? { conversationLink: { url: dashboardConversationUrl } }
-              : {}),
-            ...(credentialSubject ? { credentialSubject } : {}),
+              : undefined),
+            ...(credentialSubject ? { credentialSubject } : undefined),
           }
         : undefined;
-    const annotations = context.conversationId
-      ? createPluginAnnotations({
-          conversationId: context.conversationId,
-          db: getDb(),
-          plugin: pluginName,
-        })
-      : undefined;
+    const annotations = createPluginAnnotations({
+      conversationId: context.conversationId,
+      db: getDb(),
+      plugin: pluginName,
+    });
     const mcp = pluginMcpContext(plugin, context);
-    const resourceEvents = {
-      canSubscribe:
-        context.source.platform === "slack" && canRouteResourceEvents(),
+    const canSubscribe =
+      Boolean(plugin.resourceEvents) &&
+      plugin.resourceEvents?.isEnabled?.() !== false;
+    const resourceEvents: ToolRegistrationHookContext["resourceEvents"] = {
+      canSubscribe,
+      async subscribe(input) {
+        if (!canSubscribe) {
+          throw new Error(
+            "Resource subscriptions are not available in this conversation.",
+          );
+        }
+        const registration = plugin.resourceEvents;
+        const resourceType = registration?.resourceTypes.find(
+          (candidate) => candidate.type === input.resource.type,
+        );
+        if (
+          input.resource.namespace !== pluginName ||
+          !resourceType ||
+          input.events.length === 0 ||
+          input.events.some(
+            (eventType) => !resourceType.supportedEvents.includes(eventType),
+          )
+        ) {
+          throw new Error(
+            "Resource subscription contains an event or resource that the plugin does not support.",
+          );
+        }
+        const subscription = await createResourceEventSubscription({
+          conversationId: context.conversationId,
+          events: input.events,
+          expiresAtMs: Date.now() + RESOURCE_SUBSCRIPTION_DEFAULT_TTL_MS,
+          intent: input.intent,
+          label: input.resource.label,
+          namespace: pluginName,
+          identifier: normalizeResourceEventIdentifier(
+            registration,
+            input.resource.identifier,
+          ),
+          resourceType: input.resource.type,
+        });
+        return {
+          events: subscription.events,
+          id: subscription.id,
+        };
+      },
     };
     const resolveActor =
       context.resolveActorIdentity ?? (async () => undefined);
     const common = {
       ...basePluginContext(plugin),
-      ...(annotations ? { annotations } : {}),
+      annotations,
       conversationId: context.conversationId,
+      locationId: context.locationId,
       userText: context.userText,
       embedder: createPluginEmbedder(pluginName),
       egress: context.egress,
-      ...(mcp ? { mcp } : {}),
+      ...(mcp ? { mcp } : undefined),
       model: createPluginModel(pluginName, plugin.model),
       resourceEvents,
       sandbox,
       state: createPluginState(pluginName),
       users: { resolveActor },
+      workspaces: {
+        async findByRepository(input: { provider: string; repo: string }) {
+          return await listWorkspaceNamesByRepository(getDb(), input);
+        },
+      },
     };
     let pluginContext: ToolRegistrationHookContext;
     switch (context.source.platform) {
@@ -687,7 +756,7 @@ export function getPluginTools(
           `Duplicate plugin tool "${name}" from plugin "${pluginName}"`,
         );
       }
-      const definition = tool as unknown as AnyToolDefinition;
+      const definition = tool as AnyToolDefinition;
       const missingAnnotationKeys = missingToolAnnotationKeys(
         definition.annotations,
       );
@@ -767,7 +836,14 @@ function requirePublishedResourceEvent(
 
 /** Collect route handlers exposed by plugins for app-level mounting. */
 export function getPluginRoutes(options: {
-  resourceEvents: { publish(event: ResourceEvent): Promise<void> };
+  resourceEvents: {
+    neededMatchKeys?(input: {
+      eventTypes: string[];
+      identifiers: string[];
+      namespace: string;
+    }): Promise<string[]>;
+    publish(event: ResourceEvent): Promise<void>;
+  };
 }): PluginRouteRegistration[] {
   const routes: PluginRouteRegistration[] = [];
   const seen = new Set<string>();
@@ -789,7 +865,31 @@ export function getPluginRoutes(options: {
             plugin: pluginName,
           }),
       },
+      codeChanges: createCodeChangePublisher(pluginName),
       resourceEvents: {
+        async neededMatchKeys(input) {
+          if (!options.resourceEvents.neededMatchKeys) return [];
+          const identifiers = [
+            ...new Set(
+              input.identifiers
+                .map((identifier) =>
+                  normalizeResourceEventIdentifier(
+                    plugin.resourceEvents,
+                    identifier,
+                  ),
+                )
+                .filter(Boolean),
+            ),
+          ];
+          if (identifiers.length === 0 || input.eventTypes.length === 0) {
+            return [];
+          }
+          return await options.resourceEvents.neededMatchKeys({
+            eventTypes: input.eventTypes,
+            identifiers,
+            namespace: pluginName,
+          });
+        },
         async publish(event) {
           const parsed = resourceEventInputSchema.parse(event);
           requirePublishedResourceEvent(plugin, parsed.eventType);
@@ -1333,7 +1433,7 @@ function createSandboxCapability(
       const signal = preparationSignal(input.signal, ownerSignal);
       const result = await runNonInteractiveCommand(workspace, {
         ...input,
-        ...(signal ? { signal } : {}),
+        ...(signal ? { signal } : undefined),
       });
       return {
         exitCode: result.exitCode,
@@ -1346,7 +1446,7 @@ function createSandboxCapability(
         {
           path: input.path,
           content: input.content,
-          ...(input.mode !== undefined ? { mode: input.mode } : {}),
+          ...(input.mode !== undefined ? { mode: input.mode } : undefined),
         },
       ]);
     },
@@ -1385,8 +1485,8 @@ export function createPluginHookRunner(
             ...basePluginContext(plugin),
             ...(tool.conversationId
               ? { conversationId: tool.conversationId }
-              : {}),
-            ...(annotations ? { annotations } : {}),
+              : undefined),
+            ...(annotations ? { annotations } : undefined),
             result:
               tool.structuredContent !== undefined
                 ? { structuredContent: tool.structuredContent }

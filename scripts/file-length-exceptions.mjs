@@ -20,8 +20,6 @@ export const fileLengthExceptions = {
     "Existing memory store; split by storage concern.",
   "packages/junior-memory/tests/storage.test.ts":
     "Existing broad memory storage suite; split by storage concern.",
-  "packages/junior/src/chat/scheduled-tasks/store.ts":
-    "Existing scheduled-task store; split by storage concern.",
   "packages/junior/src/chat/agent/index.ts":
     "Existing agent run lifecycle; split only at a clear lifecycle boundary.",
   "packages/junior/src/chat/logging.ts":
@@ -30,10 +28,10 @@ export const fileLengthExceptions = {
     "Existing plugin hook runtime; split by hook phase.",
   "packages/junior/src/chat/plugins/manifest.ts":
     "Existing manifest parser; split parsing from validation.",
-  "packages/junior/src/chat/runtime/reply-executor.ts":
-    "Existing reply lifecycle; split only at a clear lifecycle boundary.",
-  "packages/junior/src/chat/runtime/slack-runtime.ts":
-    "Existing Slack runtime; split by runtime phase.",
+  "packages/junior/src/chat/providers/slack/turn.ts":
+    "Existing mixed Slack Turn behavior; shrink as native execution moves to the runtime.",
+  "packages/junior/src/chat/providers/slack/runtime.ts":
+    "Existing Slack provider routing; split only at a clear provider behavior boundary.",
   "packages/junior/src/chat/task-execution/turn-cursor.ts":
     "Turn cursor storage behind checkpoint; split by persistence concern.",
   "packages/junior/src/chat/task-execution/state.ts":

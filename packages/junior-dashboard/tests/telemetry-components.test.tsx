@@ -22,7 +22,6 @@ import { Transcript } from "../src/client/conversations/TranscriptView";
 import { ConversationHeader } from "../src/client/conversations/ConversationHeader";
 import {
   ConversationAnnotations,
-  ConversationSidebarAnnotations,
   ConversationStats,
 } from "../src/client/conversations/ConversationMeta";
 import { conversationFromDetail } from "../src/client/format";
@@ -74,11 +73,14 @@ function conversation(
   };
 }
 
-function renderTranscript(detail: ConversationTranscript): string {
+function renderTranscript(
+  detail: ConversationTranscript,
+  view: "raw" | "rich" = "rich",
+): string {
   return renderToStaticMarkup(
     <QueryClientProvider client={client}>
       <TranscriptSearchProvider query="">
-        <ConversationTranscriptView conversation={detail} view="rich" />
+        <ConversationTranscriptView conversation={detail} view={view} />
       </TranscriptSearchProvider>
     </QueryClientProvider>,
   );
@@ -375,10 +377,12 @@ describe("dashboard canonical-event components", () => {
     );
 
     expect(liveHtml).toContain('role="status"');
-    expect(liveHtml).toContain("Junior is responding");
+    expect(liveHtml).toContain("Junior is thinking…");
+    expect(liveHtml).toContain("junior-text-shimmer");
+    expect(liveHtml).not.toContain("animate-bounce");
     expect(liveHtml).not.toContain(">active</span>");
-    expect(quietHtml).not.toContain("Junior is responding");
-    expect(completedHtml).not.toContain("Junior is responding");
+    expect(quietHtml).not.toContain("Junior is thinking…");
+    expect(completedHtml).not.toContain("Junior is thinking…");
   });
 
   it("does not present partial event counts as conversation totals", () => {
@@ -531,7 +535,7 @@ describe("dashboard canonical-event components", () => {
     const failedHtml = renderConversationPageWithClient(failedClient);
 
     expect(activeHtml).not.toContain(">active</span>");
-    expect(activeHtml).toContain("Junior is responding");
+    expect(activeHtml).toContain("Junior is thinking…");
     expect(failedHtml).not.toContain(">error</span>");
   });
 
@@ -586,96 +590,6 @@ describe("dashboard canonical-event components", () => {
     expect(html).toContain('title="Open pull request"');
   });
 
-  it("labels one or two scopes and clusters the rest on desktop", () => {
-    const single = renderToStaticMarkup(
-      <ConversationSidebarAnnotations
-        annotations={[
-          {
-            icon: "circle-dot",
-            key: "getsentry/junior#2",
-            label: "junior",
-          },
-        ]}
-      />,
-    );
-    expect(single).toContain(">junior<");
-    expect(single).toContain("getsentry/junior#2");
-
-    const dual = renderToStaticMarkup(
-      <ConversationSidebarAnnotations
-        annotations={[
-          {
-            icon: "circle-dot",
-            key: "getsentry/junior#2",
-            label: "junior",
-          },
-          {
-            icon: "git-merge",
-            key: "getsentry/payments#1",
-            label: "payments",
-          },
-        ]}
-      />,
-    );
-    expect(dual).toContain(
-      'aria-label="Linked work, newest first: getsentry/junior#2, getsentry/payments#1"',
-    );
-    expect(dual.indexOf(">junior<")).toBeLessThan(dual.indexOf(">payments<"));
-    expect(dual).not.toContain(">+1<");
-    // Chip icons are decorative; the parent aria-label carries the identity.
-    expect(dual).toContain("lucide-circle-dot");
-    expect(dual).toContain("lucide-git-merge");
-
-    const stacked = renderToStaticMarkup(
-      <ConversationSidebarAnnotations
-        annotations={[
-          {
-            icon: "circle-dashed",
-            key: "getsentry/junior#3",
-            label: "junior",
-          },
-          {
-            icon: "circle-dot",
-            key: "getsentry/payments#2",
-            label: "payments",
-          },
-          {
-            icon: "git-merge",
-            key: "getsentry/relay#1",
-            label: "relay",
-          },
-        ]}
-      />,
-    );
-    expect(stacked).toContain(">junior<");
-    expect(stacked).toContain(">+2<");
-    expect(stacked).not.toContain(">payments<");
-    expect(stacked).not.toContain(">relay<");
-    expect(stacked).toContain("getsentry/payments#2");
-    expect(stacked).toContain("getsentry/relay#1");
-
-    const sameRepo = renderToStaticMarkup(
-      <ConversationSidebarAnnotations
-        annotations={[
-          {
-            icon: "circle-dot",
-            key: "getsentry/junior#2",
-            label: "junior",
-          },
-          {
-            icon: "git-merge",
-            key: "getsentry/junior#1",
-            label: "junior",
-          },
-        ]}
-      />,
-    );
-    expect(sameRepo).toContain(">junior<");
-    expect(sameRepo.match(/>junior</g)).toHaveLength(1);
-    expect(sameRepo).not.toContain(">+1<");
-    expect(sameRepo).toContain("getsentry/junior#1");
-  });
-
   it("distinguishes initial detail failures from stale refresh failures", () => {
     const initialClient = conversationQueryClient();
     const initialError = new Error("initial detail failed");
@@ -728,7 +642,7 @@ describe("dashboard canonical-event components", () => {
     expect(staleHtml).toContain(
       "Transcript refresh failed. Showing the latest available data.",
     );
-    expect(staleHtml).not.toContain("Junior is responding");
+    expect(staleHtml).not.toContain("Junior is thinking…");
   });
 
   it("renders redacted visible events without exposing text", () => {
@@ -762,6 +676,9 @@ describe("dashboard canonical-event components", () => {
   });
 
   it("renders failure and context lifecycle rows", () => {
+    const eventId = "0123456789abcdef0123456789abcdef";
+    const sentryEventUrl =
+      "https://my-org.sentry.io/events/0123456789abcdef0123456789abcdef/?project=4501";
     const html = renderTranscript(
       conversation([
         event(0, { type: "compaction" }),
@@ -774,13 +691,20 @@ describe("dashboard canonical-event components", () => {
           type: "turn_lifecycle",
           turnId: "turn-1",
           state: "failed",
-          failureKind: "agent",
+          failureCode: "model_execution_failed",
+          failureReason: "network",
+          eventId,
+          sentryEventUrl,
         }),
       ]),
     );
     expect(html).toContain("Context compacted");
     expect(html).toContain("Model handoff");
-    expect(html).toContain("Agent response failed");
+    expect(html).toContain("Model connection failed");
+    expect(html).toContain('data-transcript-failure-reason="network"');
+    expect(html).toContain(`data-transcript-failure-event-id="${eventId}"`);
+    expect(html).toContain(`event_id=${eventId}`);
+    expect(html).toContain(`href="${sentryEventUrl}"`);
   });
 
   it("anchors structured events to the transcript rail", () => {
@@ -828,12 +752,16 @@ describe("dashboard canonical-event components", () => {
       ]),
     );
 
-    expect(html).toContain(
+    expect(html).not.toContain(
       'data-transcript-rail-event="attachments_delivered"',
     );
-    expect(html).toContain("2 files delivered");
-    expect(html).toContain("chart.png");
+    expect(html).toContain("Junior");
+    expect(html).not.toContain("files delivered");
+    expect(html).toContain('alt="chart.png"');
     expect(html).toContain("notes.txt");
+    expect(html).toContain("text/plain · 42 B");
+    expect(html).toContain("image/png · 17.8 KB");
+    expect(html).toContain(">Close<");
     expect(html).toContain(
       "/api/conversations/conversation-1/attachments/att-1",
     );
@@ -878,6 +806,7 @@ describe("dashboard canonical-event components", () => {
     );
 
     expect(html).toContain('aria-label="View turn context"');
+    expect(html).toContain("hidden justify-end md:flex");
     expect(html).toContain('aria-expanded="false"');
     expect(html).not.toContain("Release notes live in Notion.");
     expect(html).not.toContain("memory-1");
@@ -890,15 +819,30 @@ describe("dashboard canonical-event components", () => {
           type: "turn_lifecycle",
           turnId: "turn-1",
           state: "failed",
-          failureKind: "delivery",
+          failureCode: "delivery_failed",
         }),
       ]),
     );
     expect(html).toContain("Message delivery failed");
-    expect(html).toContain(
-      "Junior could not deliver this message to its destination.",
+    expect(html).toContain("Junior could not deliver this message.");
+    expect(html).not.toContain("Model connection failed");
+    expect(html).not.toContain("Internal error");
+  });
+
+  it("does not invent an object for an empty raw message", () => {
+    const html = renderTranscript(
+      conversation([
+        event(0, {
+          type: "message",
+          messageId: "assistant-1",
+          role: "assistant",
+          text: "",
+        }),
+      ]),
+      "raw",
     );
-    expect(html).not.toContain("Agent response failed");
+
+    expect(html).not.toContain("{}");
   });
 
   it("renders one in-progress row for a tool start", () => {
@@ -1944,6 +1888,9 @@ describe("dashboard canonical-event components", () => {
     expect(html).toMatch(
       /href="\/tasks\/sched_source_task"[^>]*>Triggered by Scheduled Task<\/a>/,
     );
+    // Full task prompts stay off hover chrome; open the task page for those.
+    expect(html).not.toContain("Update getsentry/yc-scraper");
+    expect(html).not.toContain("Instruction");
     expect(html).not.toContain(
       "Triggered by Scheduled Task · Update getsentry/yc-scraper",
     );

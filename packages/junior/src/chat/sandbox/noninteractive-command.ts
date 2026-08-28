@@ -16,6 +16,7 @@ interface NonInteractiveCommandInput extends NonInteractiveShellOptions {
   login?: boolean;
   signal?: AbortSignal;
   sudo?: boolean;
+  timeoutMs?: number;
 }
 
 const NON_INTERACTIVE_ENV: Readonly<Record<string, string>> = {
@@ -104,9 +105,10 @@ export async function runNonInteractiveCommand(
 ): Promise<SandboxCommandResult> {
   const command: SandboxCommandInput = {
     ...buildNonInteractiveCommand(input),
-    ...(input.cwd ? { cwd: input.cwd } : {}),
-    ...(input.signal ? { signal: input.signal } : {}),
-    ...(input.sudo !== undefined ? { sudo: input.sudo } : {}),
+    ...(input.cwd ? { cwd: input.cwd } : undefined),
+    ...(input.signal ? { signal: input.signal } : undefined),
+    ...(input.sudo !== undefined ? { sudo: input.sudo } : undefined),
+    ...(input.timeoutMs !== undefined ? { timeoutMs: input.timeoutMs } : undefined),
   };
   return await sandbox.runCommand(command);
 }

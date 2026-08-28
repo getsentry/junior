@@ -7,9 +7,8 @@ import {
 } from "@/chat/reasoning-level";
 import {
   type ModelProfile,
-  type ExecutionProfileConfig,
+  type ModelProfileConfig,
   modelProfileSchema,
-  STANDARD_MODEL_PROFILE,
 } from "@/chat/model-profile";
 import { renderCurrentInstruction } from "@/chat/current-instruction";
 import {
@@ -49,7 +48,7 @@ function coerceClassifierConfidence(value: unknown): unknown {
 }
 
 function createTurnRouteSchema(
-  profiles: Readonly<Record<string, ExecutionProfileConfig>>,
+  profiles: Readonly<Record<string, ModelProfileConfig>>,
 ) {
   return z.object({
     reasoning_level: z.enum(TURN_REASONING_LEVELS),
@@ -114,9 +113,12 @@ function trimContextForRouter(text: string | undefined): TrimmedContext | null {
   };
 }
 
-function buildClassifierSystemPrompt(profileNames: string[]): string {
+function buildClassifierSystemPrompt(
+  profileNames: string[],
+  defaultProfile: ModelProfile,
+): string {
   return [
-    "You choose the execution profile most likely to produce a complete, source-grounded answer.",
+    "You choose the model profile most likely to produce a complete, source-grounded answer.",
     "Choose exactly one bucket: none, low, medium, high, or xhigh.",
     `Choose profile from the configured profiles: ${profileNames.join(", ")}.`,
     "Choose profile independently from the reasoning bucket.",
@@ -127,8 +129,9 @@ function buildClassifierSystemPrompt(profileNames: string[]): string {
     "Use high for research-heavy work, non-trivial drafting, or explicit requests to be thorough.",
     "Use xhigh for the most complex tasks: code changes, debugging/root-cause analysis, broad refactors, architecture decisions, multi-file implementation, or any task where deep reasoning across multiple systems or files is required.",
     "When unsure between two non-none buckets, choose the higher bucket. Do not use low as the default.",
-    "Use profile handoff for writing, editing, reviewing, debugging, or substantially reasoning about code; multi-file changes; root-cause analysis; research-heavy synthesis or complex planning; or another task where a more capable model materially improves reliability. Otherwise use standard.",
-    "Any request for a software architecture or component-design decision must use handoff, including advice-only requests with no implementation.",
+    `The default profile is ${defaultProfile}.`,
+    "Profile names are configured labels. Do not assume that a non-default profile is more capable than the default profile.",
+    "Choose a non-default profile only when its label clearly matches the task. Otherwise keep the default profile.",
     "",
     "Classify based on the substance of the task, not the length of the current message. When the current instruction is a short affirmation (for example: 'go', 'do it', 'yes please', 'proceed') and prior thread context contains a pending task, classify the pending task — not the affirmation.",
     "",
@@ -146,13 +149,17 @@ function buildClassifierPrompt(args: {
 
   if (args.conversationContext) {
     const contextText = args.conversationContext.text;
-    if (/^<thread-(compactions|transcript)>/.test(contextText)) {
+    if (
+      /^<(?:thread-context|thread-compactions|thread-transcript|thread-background|recent-thread-messages)(?:\s|>)/.test(
+        contextText,
+      )
+    ) {
       sections.push(contextText, "");
     } else {
       sections.push(
-        "<thread-background>",
+        '<thread-context authority="evidence-only">',
         contextText,
-        "</thread-background>",
+        "</thread-context>",
         "",
       );
     }
@@ -206,9 +213,10 @@ export async function selectTurnRoute(args: {
     threadId?: string;
   };
   currentTurnBlocks?: string[];
+  defaultProfile: ModelProfile;
   fastModelId: string;
   messageText: string;
-  profiles: Readonly<Record<string, ExecutionProfileConfig>>;
+  profiles: Readonly<Record<string, ModelProfileConfig>>;
 }): Promise<TurnRoute> {
   const trimmedContext = trimContextForRouter(args.conversationContext);
   const instructionLength = args.messageText.trim().length;
@@ -253,6 +261,7 @@ export async function selectTurnRoute(args: {
           actorId: args.context?.actorId ?? "",
           runId: args.context?.runId ?? "",
         },
+        defaultProfile: args.defaultProfile,
         profiles: args.profiles,
         prompt,
       });
@@ -272,7 +281,7 @@ export async function selectTurnRoute(args: {
               "gen_ai.request.reasoning.level_confidence":
                 normalizedSelection.confidence,
             }
-          : {}),
+          : undefined),
       });
 
       return { ...normalizedSelection, source: "router" };
@@ -303,7 +312,7 @@ function applyReasoningFloor(
 
 function applyProfileReasoningOverride(
   route: TurnRoute,
-  profiles: Readonly<Record<string, ExecutionProfileConfig>>,
+  profiles: Readonly<Record<string, ModelProfileConfig>>,
 ): TurnRoute {
   const reasoningLevel = profiles[route.profile]?.reasoningLevel;
   if (!reasoningLevel || reasoningLevel === route.reasoningLevel) {
@@ -318,9 +327,10 @@ function applyProfileReasoningOverride(
 
 async function classifyTurn(args: {
   completeObject: Parameters<typeof selectTurnRoute>[0]["completeObject"];
+  defaultProfile: ModelProfile;
   fastModelId: string;
   metadata: Record<string, string>;
-  profiles: Readonly<Record<string, ExecutionProfileConfig>>;
+  profiles: Readonly<Record<string, ModelProfileConfig>>;
   prompt: string;
 }): Promise<TurnRoute> {
   try {
@@ -332,7 +342,10 @@ async function classifyTurn(args: {
       metadata: args.metadata,
       prompt: args.prompt,
       thinkingLevel: "low",
-      system: buildClassifierSystemPrompt(Object.keys(args.profiles)),
+      system: buildClassifierSystemPrompt(
+        Object.keys(args.profiles),
+        args.defaultProfile,
+      ),
       temperature: 0,
       promptName: "junior.thinking_route",
     });
@@ -343,8 +356,10 @@ async function classifyTurn(args: {
     if (parsed.confidence < CLASSIFIER_CONFIDENCE_THRESHOLD) {
       return {
         confidence: parsed.confidence,
-        ...(result.costUsd !== undefined ? { costUsd: result.costUsd } : {}),
-        profile: STANDARD_MODEL_PROFILE,
+        ...(result.costUsd !== undefined
+          ? { costUsd: result.costUsd }
+          : undefined),
+        profile: args.defaultProfile,
         reasoningLevel: CLASSIFIER_FALLBACK_REASONING_LEVEL,
         reason: `low_confidence_medium_default:${reason}`,
         source: "router",
@@ -353,7 +368,9 @@ async function classifyTurn(args: {
 
     return {
       confidence: parsed.confidence,
-      ...(result.costUsd !== undefined ? { costUsd: result.costUsd } : {}),
+      ...(result.costUsd !== undefined
+        ? { costUsd: result.costUsd }
+        : undefined),
       profile: parsed.profile,
       reasoningLevel: parsed.reasoning_level,
       reason,
@@ -365,7 +382,7 @@ async function classifyTurn(args: {
         error instanceof Error ? error.message : String(error),
     });
     return {
-      profile: STANDARD_MODEL_PROFILE,
+      profile: args.defaultProfile,
       reasoningLevel: CLASSIFIER_FALLBACK_REASONING_LEVEL,
       reason: "classifier_error_default",
       source: "router",

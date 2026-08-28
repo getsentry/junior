@@ -104,9 +104,9 @@ export async function readPeopleListFromSql(): Promise<ActorDirectoryReport> {
   const people: ActorSummaryReport[] = rows.map((row) => {
     const actor: ActorIdentity & { email: string } = {
       email: row.email,
-      ...(row.fullName ? { fullName: row.fullName } : {}),
-      ...(row.slackUserId ? { slackUserId: row.slackUserId } : {}),
-      ...(row.slackUserName ? { slackUserName: row.slackUserName } : {}),
+      ...(row.fullName ? { fullName: row.fullName } : undefined),
+      ...(row.slackUserId ? { slackUserId: row.slackUserId } : undefined),
+      ...(row.slackUserName ? { slackUserName: row.slackUserName } : undefined),
     };
     return {
       active: row.active,
@@ -117,7 +117,7 @@ export async function readPeopleListFromSql(): Promise<ActorDirectoryReport> {
       firstSeenAt: row.firstSeenAt.toISOString(),
       lastSeenAt: row.lastSeenAt.toISOString(),
       actor,
-      ...(row.tokens !== null ? { tokens: row.tokens } : {}),
+      ...(row.tokens !== null ? { tokens: row.tokens } : undefined),
     };
   });
 

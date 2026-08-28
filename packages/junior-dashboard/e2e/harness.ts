@@ -540,8 +540,75 @@ export async function mockDashboardApis(page: Page) {
       },
     });
   });
-  await page.route("**/api/workspaces", async (route) => {
-    await route.fulfill({ json: { workspaces: [] } });
+  await page.route("**/api/stats", async (route) => {
+    const end = new Date();
+    end.setUTCHours(0, 0, 0, 0);
+    const start = new Date(end);
+    start.setUTCDate(end.getUTCDate() - 89);
+    const stats = Array.from({ length: 90 }, (_, index) => {
+      const day = new Date(start);
+      day.setUTCDate(start.getUTCDate() + index);
+      const date = day.toISOString().slice(0, 10);
+      // Sparse, readable bars for the Workspace detail chart fixture.
+      const count =
+        index % 11 === 0 ? 5 : index % 7 === 0 ? 3 : index % 4 === 0 ? 1 : 0;
+      return {
+        count,
+        date,
+        metric: "workspace_switch",
+        name: "11111111-1111-4111-8111-111111111111",
+        namespace: "junior",
+      };
+    }).filter((stat) => stat.count > 0);
+    await route.fulfill({
+      json: {
+        generatedAt: end.toISOString(),
+        stats,
+        windowEnd: end.toISOString().slice(0, 10),
+        windowStart: start.toISOString().slice(0, 10),
+      },
+    });
+  });
+  await page.route("**/api/workspaces**", async (route) => {
+    const workspace = {
+      id: "11111111-1111-4111-8111-111111111111",
+      name: "sentry",
+      repos: [
+        {
+          checkoutPath: "repos/sentry",
+          provider: "github",
+          repo: "getsentry/sentry",
+        },
+        {
+          checkoutPath: "repos/getsentry",
+          provider: "github",
+          repo: "getsentry/getsentry",
+        },
+      ],
+      setupScript: "pnpm install",
+      snapshot: {
+        buildDurationMs: 45_000,
+        generatedAt: "2026-08-15T05:40:21.000Z",
+        id: "snap_workspace_123",
+        sizeBytes: 4_194_304,
+      },
+    };
+    const url = new URL(route.request().url());
+    if (url.pathname.endsWith(`/${workspace.id}`)) {
+      await route.fulfill({ json: workspace });
+      return;
+    }
+    await route.fulfill({
+      json: {
+        baselineSnapshot: {
+          buildDurationMs: 102_799,
+          dependencyCount: 38,
+          generatedAt: "2026-08-15T05:30:21.000Z",
+          id: "snap_baseline_Sj16Uz0PH1P3AKI6LgNoTvnqZ46h",
+        },
+        workspaces: [{ ...workspace, snapshot: null }],
+      },
+    });
   });
   await page.route("**/api/plugins", async (route) => {
     await route.fulfill({

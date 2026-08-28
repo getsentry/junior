@@ -29,6 +29,7 @@ export function createSlackChannelJoinTool(context: SlackToolContext) {
       const target = await resolveSlackChannelRef({
         field: "channel_id",
         value: channel_id,
+        teamId: context.teamId,
       });
 
       const access = await checkSlackChannelReadAccess({
@@ -47,7 +48,7 @@ export function createSlackChannelJoinTool(context: SlackToolContext) {
           channel_id: target.channelId,
           ...(access.channelName || target.channelName
             ? { channel_name: access.channelName ?? target.channelName }
-            : {}),
+            : undefined),
           joined: false,
           already_member: true,
         };
@@ -75,7 +76,7 @@ export function createSlackChannelJoinTool(context: SlackToolContext) {
         channel_id: target.channelId,
         ...(access.channelName || target.channelName
           ? { channel_name: access.channelName ?? target.channelName }
-          : {}),
+          : undefined),
         joined: true,
         already_member: false,
       };

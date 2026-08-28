@@ -6,7 +6,7 @@ import {
 } from "@/chat/mcp/auth-store";
 import { listTurnSummaries } from "@/chat/task-execution/checkpoint";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
-import type { ConversationWorkWebHarness } from "./api-turn";
+import type { ConversationWebHarness } from "./conversation";
 import {
   CONVERSATION_ID,
   loadConversationState,
@@ -109,7 +109,7 @@ export async function completeLatestMcpAuth(args: {
     agentRunner: args.agentRunner,
     ...(args.conversationWorkQueue
       ? { conversationWorkQueue: args.conversationWorkQueue }
-      : {}),
+      : undefined),
   });
 }
 
@@ -166,7 +166,7 @@ export async function expectSlackMcpAuthParked(args: {
 
 /** Web delivery: participant pending-messages exposes a connect prompt. */
 export async function expectWebMcpAuthParked(args: {
-  harness: ConversationWorkWebHarness;
+  harness: ConversationWebHarness;
   conversationId: string;
   provider?: string;
 }): Promise<void> {

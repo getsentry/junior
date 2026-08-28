@@ -1,12 +1,11 @@
-import type { ToolRegistrationHookContext } from "@sentry/junior-plugin-api";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createGitHubGetPullRequestTool } from "../src/tools/get-pull-request";
 import { createGitHubApiTestAdapter } from "./github-api-adapter";
-
 const HEAD_SHA = "c610b5d6a88c9da5d65627a1cdb3829b05c14f75";
 
-function toolContext(canSubscribe = true) {
-  const adapter = createGitHubApiTestAdapter([
+function toolContext(
+  canSubscribe = true,
+  responses: Array<{ body?: unknown; status?: number }> = [
     {
       body: {
         base: { ref: "main" },
@@ -19,11 +18,13 @@ function toolContext(canSubscribe = true) {
         title: "Add resource events",
       },
     },
-  ]);
+  ],
+) {
+  const adapter = createGitHubApiTestAdapter(responses);
   const ctx = {
     egress: adapter.egress,
     resourceEvents: { canSubscribe },
-  } as unknown as ToolRegistrationHookContext;
+  };
   return { adapter, tool: createGitHubGetPullRequestTool(ctx) };
 }
 
@@ -82,5 +83,37 @@ describe("getPullRequest", () => {
 
     expect(result).not.toHaveProperty("subscribable");
     expect(result).not.toHaveProperty("data.subscribable");
+  });
+
+  it("reports a missing pull request as a repairable tool error", async () => {
+    const { tool } = toolContext(true, [
+      { body: { message: "Not Found" }, status: 404 },
+    ]);
+
+    await expect(
+      tool.execute?.(
+        { repo: "getsentry/junior", number: 999999 },
+        { toolCallId: "missing-pr" },
+      ),
+    ).rejects.toMatchObject({
+      message: "GitHub pull request lookup failed with HTTP 404",
+      name: "PluginToolInputError",
+    });
+  });
+
+  it("reports non-404 pull request lookup failures as runtime errors", async () => {
+    const { tool } = toolContext(true, [
+      { body: { message: "Internal Server Error" }, status: 500 },
+    ]);
+
+    await expect(
+      tool.execute?.(
+        { repo: "getsentry/junior", number: 691 },
+        { toolCallId: "pr-lookup-500" },
+      ),
+    ).rejects.toMatchObject({
+      message: "GitHub pull request lookup failed with HTTP 500",
+      name: "Error",
+    });
   });
 });

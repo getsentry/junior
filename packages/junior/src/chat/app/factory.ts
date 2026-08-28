@@ -3,22 +3,15 @@ import type { Message } from "chat";
 import {
   createSlackTurnRuntime,
   type AssistantLifecycleEvent,
-} from "@/chat/runtime/slack-runtime";
+} from "@/chat/providers/slack/runtime";
 import { createJuniorRuntimeServices } from "@/chat/app/services";
 import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
-import { logException, logWarn, withSpan } from "@/chat/logging";
-import { createReplyToThread } from "@/chat/runtime/reply-executor";
+import { createSlackTurn } from "@/chat/providers/slack/turn";
 import {
   initializeAssistantThread as initializeAssistantThreadImpl,
   refreshAssistantThreadContext as refreshAssistantThreadContextImpl,
 } from "@/chat/slack/assistant-thread/lifecycle";
-import {
-  getChannelId,
-  getRunId,
-  getThreadId,
-  stripLeadingBotMention,
-} from "@/chat/runtime/thread-context";
 import {
   getLocationConfigurationService,
   persistThreadState,
@@ -36,7 +29,7 @@ import {
 } from "@/chat/services/conversation-memory";
 import type { SubscribedReplyDecision } from "@/chat/services/subscribed-reply-policy";
 import { botConfig } from "@/chat/config";
-import { standardModelId } from "@/chat/model-profile";
+import { defaultModelId } from "@/chat/model-profile";
 import { cancelSubscriptions as cancelEventSubscriptions } from "@/chat/resource-events/store";
 import { recordSubscribedReplyRoute } from "@/chat/conversations/projection";
 import { createSlackDispatchTurnRunner } from "@/chat/slack/dispatch-turn";
@@ -44,10 +37,18 @@ import {
   ensureSlackMessageActorIdentity,
   getMessageActorIdentity,
 } from "@/chat/services/message-actor-identity";
+import { lookupSlackUser } from "@/chat/slack/user";
+import type { ScheduleSessionCompletedPluginTasksOptions } from "@/chat/plugins/task-runner";
+import {
+  createPausedTurns,
+  type PausedTurns,
+} from "@/chat/task-execution/turn-wake";
 
 export interface CreateSlackRuntimeOptions {
   getSlackAdapter: () => SlackAdapter;
   now?: () => number;
+  pausedTurns?: PausedTurns;
+  sendPluginTask?: ScheduleSessionCompletedPluginTasksOptions["send"];
   services?: JuniorRuntimeServiceOverrides;
 }
 
@@ -111,17 +112,20 @@ export function createSlackRuntime(options: CreateSlackRuntimeOptions) {
             ensureSlackMessageActorIdentity(
               message,
               destination.teamId,
-              services.replyExecutor.lookupSlackUser,
+              lookupSlackUser,
             ),
           ),
       );
     },
   });
-  const replyToThread = createReplyToThread({
+  const executeSlackTurn = createSlackTurn({
+    contextCompactor: services.contextCompactor,
+    executeTurn: services.executeTurn,
     getSlackAdapter: options.getSlackAdapter,
+    pausedTurns: options.pausedTurns ?? createPausedTurns(),
     prepareTurnState,
     resolveUserAttachments: services.visionContext.resolveUserAttachments,
-    services: services.replyExecutor,
+    sendPluginTask: options.sendPluginTask,
   });
 
   const runtime = createSlackTurnRuntime<
@@ -130,21 +134,9 @@ export function createSlackRuntime(options: CreateSlackRuntimeOptions) {
   >({
     assistantUserName: botConfig.userName,
     cancelEventSubscriptions,
-    modelId: standardModelId(botConfig),
+    getBotUserId: () => options.getSlackAdapter().botUserId,
+    modelId: defaultModelId(botConfig),
     now: options.now ?? (() => Date.now()),
-    getThreadId,
-    getChannelId,
-    getRunId,
-    stripLeadingBotMention: (text, stripOptions) =>
-      stripLeadingBotMention(text, {
-        ...stripOptions,
-        botUserId: options.getSlackAdapter().botUserId,
-      }),
-    withSpan,
-    logWarn,
-    logException,
-    failConversationTurn: (input) =>
-      services.replyExecutor.turnLifecycle.fail(input),
     prepareTurnState,
     persistPreparedState: async ({ thread, preparedState }) => {
       await persistThreadState(thread, {
@@ -168,7 +160,7 @@ export function createSlackRuntime(options: CreateSlackRuntimeOptions) {
           shouldReply: decision.shouldReply,
           ...(decision.shouldUnsubscribe !== undefined
             ? { shouldUnsubscribe: decision.shouldUnsubscribe }
-            : {}),
+            : undefined),
         });
       }
       return decision;
@@ -229,7 +221,7 @@ export function createSlackRuntime(options: CreateSlackRuntimeOptions) {
         conversation: preparedState.conversation,
       });
     },
-    replyToThread,
+    executeSlackTurn,
     initializeAssistantThread: async ({
       channelId,
       threadTs,
@@ -260,7 +252,7 @@ export function createSlackRuntime(options: CreateSlackRuntimeOptions) {
     runDispatchTurn: createSlackDispatchTurnRunner({
       getLocationConfiguration: getLocationConfigurationService,
       getSlackAdapter: options.getSlackAdapter,
-      replyToThread,
+      executeSlackTurn,
     }),
   };
 }

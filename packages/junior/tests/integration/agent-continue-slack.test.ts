@@ -191,11 +191,24 @@ describe("paused turn Slack integration", () => {
         source: "test",
       });
 
-    const continued = await continueAgentRun({
+    const stateAdapter = stateAdapterModule.getStateAdapter();
+    const oldResumeLock = await stateAdapter.acquireLock(
       conversationId,
-      sessionId,
-      expectedVersion: sessionRecord.version,
-    });
+      90_000,
+    );
+    expect(oldResumeLock).not.toBeNull();
+    let continued: boolean;
+    try {
+      continued = await continueAgentRun({
+        conversationId,
+        sessionId,
+        expectedVersion: sessionRecord.version,
+      });
+    } finally {
+      if (oldResumeLock) {
+        await stateAdapter.releaseLock(oldResumeLock);
+      }
+    }
 
     expect(continued).toBe(true);
 
@@ -228,7 +241,8 @@ describe("paused turn Slack integration", () => {
       }),
     ]);
     expect(agentRuns).toHaveLength(1);
-    expect(agentRuns[0]).toMatchObject({
+    const resumedRun = agentRuns[0]!;
+    expect(resumedRun).toMatchObject({
       instruction: {
         text: "resume this request",
         inboundAttachmentCount: 2,
@@ -240,13 +254,20 @@ describe("paused turn Slack integration", () => {
         userId: "U123",
       },
       destination: SLACK_DESTINATION,
+      location: {
+        provider: "slack",
+        teamId: "T123",
+        channelId: "C123",
+        threadTs: "1712345.0001",
+      },
+      publishExternally: true,
       source: storedSource,
       toolChannelId: "C123",
       state: expect.objectContaining({
         sandboxRef: undefined,
       }),
     });
-    const resumeContext = agentRuns[0] as {
+    const resumeContext = resumedRun as {
       deadlineAtMs?: number;
       environment?: {
         locationConfiguration?: {
@@ -276,7 +297,8 @@ describe("paused turn Slack integration", () => {
       role: "assistant",
       text: "Final resumed answer",
     });
-    const { getConversationEventStore } = await import("@/chat/db");
+    const { getConversationEventStore, getConversationStore } =
+      await import("@/chat/db");
     const lifecycle = (
       await getConversationEventStore().loadHistory(conversationId)
     ).filter((event) => event.data.type.startsWith("turn_"));
@@ -297,6 +319,13 @@ describe("paused turn Slack integration", () => {
         outcome: "success",
       }),
     ]);
+    await expect(
+      getConversationStore().getDestinationVisibility({
+        provider: "slack",
+        providerDestinationId: "C123",
+        providerTenantId: "T123",
+      }),
+    ).resolves.toBeUndefined();
   });
 
   it("resumes and delivers when the continuation record is missing stored actor profile data", async () => {

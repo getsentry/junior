@@ -4,8 +4,10 @@ import {
   AGENTS_REPLACEMENT_NOTICE,
   buildAgentsInstructionsMessage,
   findSingleRepositoryDirectory,
+  listRepositoryDirectories,
   renderAgentsInstructions,
   resolveRepositoryInstructions,
+  resolveRepositoryInstructionsForDirectories,
 } from "@/chat/repository-instructions";
 import type {
   SandboxFileStat,
@@ -101,7 +103,15 @@ describe("repository instructions", () => {
 
     expect(instructions).toMatchObject({
       directory: "/vercel/sandbox/repo/packages/api",
-      text: "root rules\n\napi rules",
+      text: [
+        "## /vercel/sandbox/repo",
+        "",
+        "root rules",
+        "",
+        "## /vercel/sandbox/repo/packages/api",
+        "",
+        "api rules",
+      ].join("\n"),
       sources: [
         { path: "/vercel/sandbox/repo/AGENTS.md" },
         { path: "/vercel/sandbox/repo/packages/api/AGENTS.md" },
@@ -109,13 +119,82 @@ describe("repository instructions", () => {
     });
   });
 
-  it("selects only one Git worktree under repos/", async () => {
+  it("loads AGENTS.md from each selected repository directory", async () => {
+    const fs = new MemoryFileSystem()
+      .directory("/vercel/sandbox")
+      .directory("/vercel/sandbox/repos")
+      .directory("/vercel/sandbox/repos/sentry")
+      .directory("/vercel/sandbox/repos/sentry/.git")
+      .directory("/vercel/sandbox/repos/relay")
+      .directory("/vercel/sandbox/repos/relay/.git")
+      .file("/vercel/sandbox/repos/sentry/AGENTS.md", "sentry rules")
+      .file("/vercel/sandbox/repos/relay/AGENTS.md", "relay rules");
+
+    const instructions = await resolveRepositoryInstructionsForDirectories({
+      directories: [
+        "/vercel/sandbox/repos/sentry",
+        "/vercel/sandbox/repos/relay",
+      ],
+      fs,
+    });
+
+    expect(instructions).toMatchObject({
+      text: [
+        "## /vercel/sandbox/repos/relay",
+        "",
+        "relay rules",
+        "",
+        "## /vercel/sandbox/repos/sentry",
+        "",
+        "sentry rules",
+      ].join("\n"),
+      sources: [
+        { path: "/vercel/sandbox/repos/relay/AGENTS.md" },
+        { path: "/vercel/sandbox/repos/sentry/AGENTS.md" },
+      ],
+    });
+    expect(instructions?.directory).toBeUndefined();
+  });
+
+  it("shares one AGENTS.md byte budget across selected repositories", async () => {
+    const first = "a".repeat(30 * 1024);
+    const second = "b".repeat(8 * 1024);
+    const fs = new MemoryFileSystem()
+      .directory("/vercel/sandbox")
+      .directory("/vercel/sandbox/repos")
+      .directory("/vercel/sandbox/repos/alpha")
+      .directory("/vercel/sandbox/repos/alpha/.git")
+      .directory("/vercel/sandbox/repos/beta")
+      .directory("/vercel/sandbox/repos/beta/.git")
+      .file("/vercel/sandbox/repos/alpha/AGENTS.md", first)
+      .file("/vercel/sandbox/repos/beta/AGENTS.md", second);
+
+    const instructions = await resolveRepositoryInstructionsForDirectories({
+      directories: [
+        "/vercel/sandbox/repos/alpha",
+        "/vercel/sandbox/repos/beta",
+      ],
+      fs,
+    });
+
+    expect(instructions?.sources).toHaveLength(2);
+    expect(instructions?.sources[0]?.content).toBe(first);
+    expect(instructions?.sources[1]?.content.length).toBe(2 * 1024);
+    expect(Buffer.byteLength(instructions!.text, "utf8")).toBeLessThanOrEqual(
+      32 * 1024 + 256,
+    );
+  });
+
+  it("lists Git worktrees under repos/", async () => {
     const fs = new MemoryFileSystem()
       .directory("/vercel/sandbox")
       .directory("/vercel/sandbox/repos")
       .directory("/vercel/sandbox/repos/repo")
       .file("/vercel/sandbox/repos/repo/.git", "gitdir: elsewhere");
 
+    expect(await listRepositoryDirectories(fs)).toEqual([
+      "/vercel/sandbox/repos/repo",
+    ]);
     expect(await findSingleRepositoryDirectory(fs)).toBe(
       "/vercel/sandbox/repos/repo",
     );
@@ -123,6 +202,10 @@ describe("repository instructions", () => {
     fs.directory("/vercel/sandbox/repos/other").directory(
       "/vercel/sandbox/repos/other/.git",
     );
+    expect(await listRepositoryDirectories(fs)).toEqual([
+      "/vercel/sandbox/repos/other",
+      "/vercel/sandbox/repos/repo",
+    ]);
     expect(await findSingleRepositoryDirectory(fs)).toBeUndefined();
   });
 

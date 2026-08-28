@@ -92,7 +92,7 @@ function beforeToolContext(actor: TestActor, actors?: TestActor[]) {
       plugin: { name: "github" },
       db,
       actor,
-      ...(actors ? { actors } : {}),
+      ...(actors ? { actors } : undefined),
       tool: {
         input: { command: "git commit -m test" },
         name: "bash",
@@ -191,7 +191,7 @@ async function captureRequest(request: Request): Promise<CapturedRequest> {
     url: request.url,
     method: request.method,
     headers: Object.fromEntries(request.headers.entries()),
-    ...(text ? { body } : {}),
+    ...(text ? { body } : undefined),
   };
 }
 
@@ -281,9 +281,9 @@ async function grantForEgress(input: {
     log: pluginLog,
     plugin: { name: "github" },
     request: {
-      ...(input.bodyText !== undefined ? { bodyText: input.bodyText } : {}),
+      ...(input.bodyText !== undefined ? { bodyText: input.bodyText } : undefined),
       method: input.method,
-      ...(input.operation ? { operation: input.operation } : {}),
+      ...(input.operation ? { operation: input.operation } : undefined),
       url: input.url,
     },
   });
@@ -303,6 +303,7 @@ function githubToolsContext(input?: {
   }) => Promise<Response>;
   resolveActor?: ToolRegistrationHookContext["users"]["resolveActor"];
   stateSet?: (input: { key: string; value: unknown }) => Promise<void> | void;
+  subscribe?: ToolRegistrationHookContext["resourceEvents"]["subscribe"];
 }) {
   const conversationId = input?.conversationId ?? "local:test:github-tool";
   const annotations: ConversationAnnotationInput[] = [];
@@ -316,7 +317,7 @@ function githubToolsContext(input?: {
     db,
     log: pluginLog,
     plugin: { name: "github" },
-    ...(input?.actor ? { actor: input.actor } : {}),
+    ...(input?.actor ? { actor: input.actor } : undefined),
     annotations: {
       async upsert(annotation: ConversationAnnotationInput) {
         await input?.annotationUpsert?.(annotation);
@@ -333,7 +334,7 @@ function githubToolsContext(input?: {
     embedder: {},
     ...(input?.conversationLink
       ? { slack: { conversationLink: { url: input.conversationLink } } }
-      : {}),
+      : undefined),
     egress: {
       async fetch(request: {
         operation: string;
@@ -354,7 +355,15 @@ function githubToolsContext(input?: {
       },
     },
     model: {},
-    resourceEvents: { canSubscribe: true },
+    resourceEvents: {
+      canSubscribe: true,
+      subscribe:
+        input?.subscribe ??
+        (async ({ events }) => ({
+          events,
+          id: "subscription-1",
+        })),
+    },
     users: {
       resolveActor: input?.resolveActor ?? (async () => undefined),
     },
@@ -410,7 +419,6 @@ function githubIssueCredentialContext(input: {
   };
   grant: {
     access: "read" | "write";
-    leaseScope?: string;
     name: string;
     reason?: string;
   };
@@ -456,14 +464,14 @@ function githubIssueCredentialContext(input: {
     actor,
     ...(input.credentialSubjectToken
       ? { credentialSubject: { type: "user" as const, userId: "U456" } }
-      : {}),
+      : undefined),
     grant: input.grant,
     db,
     log: pluginLog,
     plugin: { name: "github" },
     tokens: {
-      ...(actor.platform !== "system" ? { currentUser } : {}),
-      ...(input.credentialSubjectToken ? { credentialSubject } : {}),
+      ...(actor.platform !== "system" ? { currentUser } : undefined),
+      ...(input.credentialSubjectToken ? { credentialSubject } : undefined),
     },
   };
 }
@@ -521,6 +529,50 @@ describe("github plugin", () => {
         "pull_request.ready_for_review",
         "pull_request.merged",
       ]),
+      matchFields: {
+        authorEmail: {
+          kind: "string",
+          description: "pull request author email when GitHub sends it",
+        },
+        authorUsername: {
+          kind: "string",
+          description: "pull request author login",
+        },
+        isDraft: {
+          kind: "boolean",
+          description: "true when the pull request is a draft",
+        },
+      },
+    });
+  });
+
+  it("registers app guidance for pull request events", () => {
+    const pullRequest = githubPlugin({
+      pullRequestEvents: {
+        guidance: {
+          "pull_request.checks.failed": "Inspect the failed checks.",
+        },
+      },
+    }).resourceEvents?.resourceTypes.find(
+      (resourceType) => resourceType.type === "pull_request",
+    );
+
+    expect(pullRequest?.guidance).toEqual({
+      "pull_request.checks.failed": "Inspect the failed checks.",
+    });
+    expect(pullRequest?.matchFields).toEqual({
+      authorEmail: {
+        kind: "string",
+        description: "pull request author email when GitHub sends it",
+      },
+      authorUsername: {
+        kind: "string",
+        description: "pull request author login",
+      },
+      isDraft: {
+        kind: "boolean",
+        description: "true when the pull request is a draft",
+      },
     });
   });
 
@@ -589,7 +641,6 @@ describe("github plugin", () => {
     ).toMatchObject({
       name: "installation-write",
       access: "write",
-      leaseScope: "repository:getsentry/junior",
       reason: "github.installation-write",
     });
     expect(
@@ -601,7 +652,6 @@ describe("github plugin", () => {
     ).toMatchObject({
       name: "installation-write",
       access: "write",
-      leaseScope: "repository:getsentry/junior",
       reason: "github.installation-write",
     });
     expect(
@@ -613,7 +663,6 @@ describe("github plugin", () => {
     ).toMatchObject({
       name: "installation-write",
       access: "write",
-      leaseScope: "repository:getsentry/junior",
       reason: "github.installation-write",
     });
     expect(
@@ -625,7 +674,6 @@ describe("github plugin", () => {
     ).toMatchObject({
       name: "installation-write",
       access: "write",
-      leaseScope: "repository:getsentry/junior",
       reason: "github.installation-write",
     });
     await expect(
@@ -671,7 +719,6 @@ describe("github plugin", () => {
     ).toMatchObject({
       name: "installation-write",
       access: "write",
-      leaseScope: "repository:getsentry/junior",
       reason: "github.installation-write",
     });
     expect(
@@ -682,7 +729,6 @@ describe("github plugin", () => {
     ).toMatchObject({
       name: "installation-write",
       access: "write",
-      leaseScope: "repository:getsentry/junior",
       reason: "github.installation-write",
     });
     expect(
@@ -693,7 +739,6 @@ describe("github plugin", () => {
     ).toMatchObject({
       name: "installation-write",
       access: "write",
-      leaseScope: "repository:getsentry/junior",
       reason: "github.installation-write",
     });
     expect(
@@ -704,7 +749,6 @@ describe("github plugin", () => {
     ).toMatchObject({
       name: "installation-write",
       access: "write",
-      leaseScope: "repository:getsentry/junior",
       reason: "github.installation-write",
     });
     expect(
@@ -715,7 +759,6 @@ describe("github plugin", () => {
     ).toMatchObject({
       name: "installation-write",
       access: "write",
-      leaseScope: "repository:getsentry/junior",
       reason: "github.installation-write",
     });
   });
@@ -1121,7 +1164,7 @@ Conversation: \`local:test:old-conversation\`
         { toolCallId: "call-completed-storage-fails" },
       ),
     ).rejects.toThrow(
-      "GitHub issue was created, but Junior could not persist the completed issue state.",
+      "GitHub issue was created, but the runtime could not persist the completed issue state.",
     );
     await expect(
       tool?.execute?.(
@@ -1239,6 +1282,106 @@ Conversation: \`local:test:old-conversation\`
         url: "https://github.com/getsentry/junior/pull/691",
       },
     ]);
+  });
+
+  it("subscribes configured events after creating a pull request", async () => {
+    process.env.GITHUB_WEBHOOK_SECRET = "test-secret";
+    const subscribe = vi.fn(async ({ events }) => ({
+      events,
+      id: "subscription-1",
+    }));
+    const ctx = githubToolsContext({ subscribe });
+    const tool = githubPlugin({
+      pullRequestEvents: {
+        subscribeAfterCreate: {
+          events: [
+            "pull_request.checks.failed",
+            "pull_request.review.changes_requested",
+          ],
+          intent: "Report failed checks and requested changes.",
+        },
+      },
+    }).hooks?.tools?.(ctx as any)?.createPullRequest;
+
+    await expect(
+      tool?.execute?.(
+        {
+          repo: "getsentry/junior",
+          title: "Typed PR",
+          head: "feature",
+          base: "main",
+        },
+        { toolCallId: "call-create-pull-request-subscribe" },
+      ),
+    ).resolves.toMatchObject({
+      subscribable: {
+        suggestedEvents: expect.not.arrayContaining([
+          "pull_request.checks.failed",
+          "pull_request.review.changes_requested",
+        ]),
+      },
+      subscription: {
+        events: [
+          "pull_request.checks.failed",
+          "pull_request.review.changes_requested",
+        ],
+        id: "subscription-1",
+      },
+    });
+    expect(subscribe).toHaveBeenCalledWith(
+      expect.objectContaining({
+        intent: "Report failed checks and requested changes.",
+        resource: expect.objectContaining({
+          identifier: "getsentry/junior#660",
+          type: "pull_request",
+        }),
+      }),
+    );
+  });
+
+  it("returns the created pull request when subscribe-after-create fails", async () => {
+    process.env.GITHUB_WEBHOOK_SECRET = "test-secret";
+    const warn = vi.fn();
+    const subscribe = vi.fn(async () => {
+      throw new Error("subscription store unavailable");
+    });
+    const ctx = githubToolsContext({ subscribe });
+    ctx.log = { ...ctx.log, warn };
+    const tool = githubPlugin({
+      pullRequestEvents: {
+        subscribeAfterCreate: {
+          events: ["pull_request.checks.failed"],
+          intent: "Report failed checks.",
+        },
+      },
+    }).hooks?.tools?.(ctx as any)?.createPullRequest;
+
+    const result = await tool?.execute?.(
+      {
+        repo: "getsentry/junior",
+        title: "Typed PR",
+        head: "feature",
+        base: "main",
+      },
+      { toolCallId: "call-create-pull-request-subscribe-fail" },
+    );
+    expect(result).toMatchObject({
+      number: 660,
+      url: "https://github.com/getsentry/junior/issues/660",
+      subscribable: {
+        suggestedEvents: expect.arrayContaining(["pull_request.checks.failed"]),
+      },
+    });
+    expect(result).not.toHaveProperty("subscription");
+    expect(subscribe).toHaveBeenCalledOnce();
+    expect(warn).toHaveBeenCalledWith(
+      "github.pull_request.subscribe_after_create.failed",
+      expect.objectContaining({
+        error: "subscription store unavailable",
+        number: 660,
+        repo: "getsentry/junior",
+      }),
+    );
   });
 
   it("prefers stored identity names for requester attribution", async () => {
@@ -1654,7 +1797,6 @@ Conversation: \`local:test:old-conversation\`
     ).toMatchObject({
       name: "installation-write",
       access: "write",
-      leaseScope: "repository:getsentry/junior",
       reason: "github.installation-write",
     });
     expect(
@@ -1665,12 +1807,11 @@ Conversation: \`local:test:old-conversation\`
     ).toMatchObject({
       name: "installation-write",
       access: "write",
-      leaseScope: "repository:getsentry/junior",
       reason: "github.installation-write",
     });
   });
 
-  it("selects repository-scoped installation identity for Git push discovery", async () => {
+  it("selects installation identity for Git push discovery", async () => {
     expect(
       await grantForEgress({
         method: "GET",
@@ -1679,7 +1820,6 @@ Conversation: \`local:test:old-conversation\`
     ).toMatchObject({
       name: "installation-write",
       access: "write",
-      leaseScope: "repository:getsentry/junior",
       reason: "github.installation-write",
     });
   });
@@ -1799,6 +1939,46 @@ Conversation: \`local:test:old-conversation\`
       access: "read",
       reason: "github.graphql-read",
     });
+  });
+
+  it("allows only the typed resolveReviewThread mutation with repository scope", async () => {
+    const bodyText = JSON.stringify({
+      operationName: "ResolveReviewThread",
+      query:
+        "mutation ResolveReviewThread($threadId: ID!) { resolveReviewThread(input: {threadId: $threadId}) { thread { id isResolved } } }",
+      variables: { threadId: "PRRT_kwDOthread" },
+    });
+    await expect(
+      grantForEgress({
+        method: "POST",
+        operation: "github.pull.review-thread.resolve:getsentry/junior",
+        url: "https://api.github.com/graphql",
+        bodyText,
+      }),
+    ).resolves.toMatchObject({
+      name: "installation-write",
+      access: "write",
+      reason: "github.installation-write",
+    });
+    await expect(
+      grantForEgress({
+        method: "POST",
+        url: "https://api.github.com/graphql",
+        bodyText,
+      }),
+    ).rejects.toThrow("GraphQL mutations are not enabled");
+    await expect(
+      grantForEgress({
+        method: "POST",
+        operation: "github.pull.review-thread.resolve:getsentry/junior",
+        url: "https://api.github.com/graphql",
+        bodyText: JSON.stringify({
+          operationName: "AddIssueComment",
+          query:
+            'mutation AddIssueComment { addComment(input: {subjectId: "I_kwDO", body: "test"}) { clientMutationId } }',
+        }),
+      }),
+    ).rejects.toThrow("GraphQL mutations are not enabled");
   });
 
   it("denies GitHub GraphQL mutations and unparseable bodies", async () => {
@@ -1926,7 +2106,6 @@ Conversation: \`local:test:old-conversation\`
     ).resolves.toMatchObject({
       name: "installation-write",
       access: "write",
-      leaseScope: "repository:getsentry/junior",
       reason: "github.installation-write",
     });
     await expect(
@@ -1938,7 +2117,6 @@ Conversation: \`local:test:old-conversation\`
     ).resolves.toMatchObject({
       name: "installation-write",
       access: "write",
-      leaseScope: "repository:getsentry/junior",
       reason: "github.installation-write",
     });
     await expect(
@@ -1950,7 +2128,6 @@ Conversation: \`local:test:old-conversation\`
     ).resolves.toMatchObject({
       name: "installation-write",
       access: "write",
-      leaseScope: "repository:getsentry/junior",
       reason: "github.installation-write",
     });
     await expect(
@@ -1961,7 +2138,6 @@ Conversation: \`local:test:old-conversation\`
     ).resolves.toMatchObject({
       name: "installation-write",
       access: "write",
-      leaseScope: "repository:getsentry/junior",
       reason: "github.installation-write",
     });
     await expect(
@@ -1972,7 +2148,6 @@ Conversation: \`local:test:old-conversation\`
     ).resolves.toMatchObject({
       name: "installation-write",
       access: "write",
-      leaseScope: "repository:getsentry/junior",
       reason: "github.installation-write",
     });
     await expect(
@@ -1983,7 +2158,6 @@ Conversation: \`local:test:old-conversation\`
     ).resolves.toMatchObject({
       name: "installation-write",
       access: "write",
-      leaseScope: "repository:getsentry/junior",
       reason: "github.installation-write",
     });
     await expect(
@@ -1994,7 +2168,6 @@ Conversation: \`local:test:old-conversation\`
     ).resolves.toMatchObject({
       name: "installation-write",
       access: "write",
-      leaseScope: "repository:getsentry/junior",
       reason: "github.installation-write",
     });
     await expect(
@@ -2005,7 +2178,6 @@ Conversation: \`local:test:old-conversation\`
     ).resolves.toMatchObject({
       name: "installation-write",
       access: "write",
-      leaseScope: "repository:getsentry/junior",
       reason: "github.installation-write",
     });
     await expect(
@@ -2059,7 +2231,7 @@ Conversation: \`local:test:old-conversation\`
     );
   });
 
-  it("preserves installed App permissions on repository-scoped write credentials", async () => {
+  it("issues installation-write credentials without repository filter", async () => {
     const privateKey = generateKeyPairSync("rsa", { modulusLength: 2048 })
       .privateKey.export({ type: "pkcs8", format: "pem" })
       .toString();
@@ -2078,7 +2250,6 @@ Conversation: \`local:test:old-conversation\`
       grant: {
         name: "installation-write",
         access: "write",
-        leaseScope: "repository:getsentry/junior",
         reason: "github.installation-write",
       },
       db,
@@ -2092,9 +2263,7 @@ Conversation: \`local:test:old-conversation\`
     expect(requests[0]).toEqual({
       url: "https://api.github.com/app/installations/456/access_tokens",
       method: "POST",
-      body: {
-        repositories: ["junior"],
-      },
+      body: {},
       headers: expect.any(Object),
     });
   });
@@ -2845,6 +3014,316 @@ Conversation: \`local:test:old-conversation\`
         },
         async run(input: { args?: string[]; env?: Record<string, string> }) {
           runs.push(input);
+          return {
+            exitCode: input.args?.includes("rev-parse") ? 1 : 0,
+            stderr: "",
+            stdout: "",
+          };
+        },
+        async writeFile() {},
+      },
+    } as WorkspacePrepareHookContext;
+
+    await githubPlugin().hooks?.workspacePrepare?.(ctx);
+
+    expect(runs.map((run) => run.args)).toEqual([
+      ["-p", "--", "repos"],
+      ["-C", "repos/sentry", "rev-parse", "--is-inside-work-tree"],
+      ["-rf", "--", "repos/sentry"],
+      [
+        "clone",
+        "--quiet",
+        "--",
+        "https://github.com/getsentry/sentry.git",
+        "repos/sentry",
+      ],
+      ["-p", "--", "repos"],
+      ["-C", "repos/junior", "rev-parse", "--is-inside-work-tree"],
+      ["-rf", "--", "repos/junior"],
+      [
+        "clone",
+        "--quiet",
+        "--",
+        "https://github.com/getsentry/junior.git",
+        "repos/junior",
+      ],
+    ]);
+    expect(runs.filter((run) => run.env)).toHaveLength(4);
+    expect(
+      runs
+        .filter((run) => run.env)
+        .every(
+          (run) =>
+            run.env?.GIT_CONFIG_GLOBAL === "/dev/null" &&
+            run.env.GIT_CONFIG_NOSYSTEM === "1",
+        ),
+    ).toBe(true);
+  });
+
+  it("refreshes an existing workspace repository from its configured origin branch", async () => {
+    const runs: string[][] = [];
+    const ctx = {
+      db,
+      log: pluginLog,
+      plugin: { name: "github" },
+      repos: [{ repo: "getsentry/junior", path: "repos/junior" }],
+      sandbox: {
+        juniorRoot: "/vercel/sandbox/.junior",
+        root: "/vercel/sandbox",
+        async readFile() {
+          return null;
+        },
+        async run(input: {
+          args?: string[];
+          cmd?: string;
+          env?: Record<string, string>;
+        }) {
+          runs.push(input.args ?? []);
+          if (input.cmd === "git") {
+            expect(input.env).toEqual({
+              GIT_CONFIG_GLOBAL: "/dev/null",
+              GIT_CONFIG_NOSYSTEM: "1",
+            });
+          }
+          return {
+            exitCode: 0,
+            stderr: "",
+            stdout: input.args?.includes("symbolic-ref")
+              ? "feature\n"
+              : input.args?.includes("--symbolic-full-name")
+                ? "refs/remotes/origin/stable\n"
+                : input.args?.includes(
+                      "/vercel/sandbox/.junior/workspace-refresh.XXXXXX",
+                    )
+                  ? "/vercel/sandbox/.junior/workspace-refresh.test\n"
+                  : "",
+          };
+        },
+        async writeFile() {},
+      },
+    } as WorkspacePrepareHookContext;
+
+    await githubPlugin().hooks?.workspacePrepare?.(ctx);
+
+    expect(runs).toEqual([
+      ["-p", "--", "repos"],
+      ["-C", "repos/junior", "rev-parse", "--is-inside-work-tree"],
+      ["-C", "repos/junior", "symbolic-ref", "--quiet", "--short", "HEAD"],
+      [
+        "-C",
+        "repos/junior",
+        "rev-parse",
+        "--symbolic-full-name",
+        "@{upstream}",
+      ],
+      ["-d", "/vercel/sandbox/.junior/workspace-refresh.XXXXXX"],
+      [
+        "--git-dir",
+        "/vercel/sandbox/.junior/workspace-refresh.test",
+        "--work-tree",
+        "repos/junior",
+        "init",
+        "--quiet",
+        "--initial-branch",
+        "feature",
+      ],
+      [
+        "--git-dir",
+        "/vercel/sandbox/.junior/workspace-refresh.test",
+        "--work-tree",
+        "repos/junior",
+        "remote",
+        "add",
+        "origin",
+        "https://github.com/getsentry/junior.git",
+      ],
+      [
+        "--git-dir",
+        "/vercel/sandbox/.junior/workspace-refresh.test",
+        "--work-tree",
+        "repos/junior",
+        "fetch",
+        "--quiet",
+        "--prune",
+        "--tags",
+        "origin",
+        "+refs/heads/*:refs/remotes/origin/*",
+      ],
+      [
+        "--git-dir",
+        "/vercel/sandbox/.junior/workspace-refresh.test",
+        "--work-tree",
+        "repos/junior",
+        "reset",
+        "--hard",
+        "refs/remotes/origin/stable",
+      ],
+      [
+        "--git-dir",
+        "/vercel/sandbox/.junior/workspace-refresh.test",
+        "--work-tree",
+        "repos/junior",
+        "branch",
+        "--set-upstream-to=origin/stable",
+        "feature",
+      ],
+      ["-rf", "--", "repos/junior/.git"],
+      [
+        "--",
+        "/vercel/sandbox/.junior/workspace-refresh.test",
+        "repos/junior/.git",
+      ],
+      ["-C", "repos/junior", "clean", "-fd"],
+    ]);
+    expect(runs.some((args) => args[0] === "clone")).toBe(false);
+  });
+
+  it("refreshes a valid checkout without an upstream and preserves setup outputs", async () => {
+    const runs: string[][] = [];
+    const ctx = {
+      db,
+      log: pluginLog,
+      plugin: { name: "github" },
+      repos: [{ repo: "getsentry/junior", path: "repos/junior" }],
+      sandbox: {
+        juniorRoot: "/vercel/sandbox/.junior",
+        root: "/vercel/sandbox",
+        async readFile() {
+          return null;
+        },
+        async run(input: { args?: string[] }) {
+          runs.push(input.args ?? []);
+          if (input.args?.includes("--symbolic-full-name")) {
+            return { exitCode: 1, stderr: "no upstream", stdout: "" };
+          }
+          return {
+            exitCode: 0,
+            stderr: "",
+            stdout: input.args?.includes("symbolic-ref")
+              ? "feature\n"
+              : input.args?.includes(
+                    "/vercel/sandbox/.junior/workspace-refresh.XXXXXX",
+                  )
+                ? "/vercel/sandbox/.junior/workspace-refresh.test\n"
+                : "",
+          };
+        },
+        async writeFile() {},
+      },
+    } as WorkspacePrepareHookContext;
+
+    await githubPlugin().hooks?.workspacePrepare?.(ctx);
+
+    expect(runs).toContainEqual([
+      "--git-dir",
+      "/vercel/sandbox/.junior/workspace-refresh.test",
+      "--work-tree",
+      "repos/junior",
+      "fetch",
+      "--quiet",
+      "--prune",
+      "--tags",
+      "origin",
+      "+refs/heads/*:refs/remotes/origin/*",
+    ]);
+    expect(runs).toContainEqual([
+      "--git-dir",
+      "/vercel/sandbox/.junior/workspace-refresh.test",
+      "--work-tree",
+      "repos/junior",
+      "reset",
+      "--hard",
+      "refs/remotes/origin/feature",
+    ]);
+    expect(runs).toContainEqual([
+      "--git-dir",
+      "/vercel/sandbox/.junior/workspace-refresh.test",
+      "--work-tree",
+      "repos/junior",
+      "branch",
+      "--set-upstream-to=origin/feature",
+      "feature",
+    ]);
+    expect(runs).not.toContainEqual(["-rf", "--", "repos/junior"]);
+  });
+
+  it("refreshes a detached checkout without deleting setup outputs", async () => {
+    const sha = "a".repeat(40);
+    const runs: string[][] = [];
+    const ctx = {
+      db,
+      log: pluginLog,
+      plugin: { name: "github" },
+      repos: [{ repo: "getsentry/junior", path: "repos/junior" }],
+      sandbox: {
+        juniorRoot: "/vercel/sandbox/.junior",
+        root: "/vercel/sandbox",
+        async readFile() {
+          return null;
+        },
+        async run(input: { args?: string[] }) {
+          runs.push(input.args ?? []);
+          if (input.args?.includes("symbolic-ref")) {
+            return { exitCode: 1, stderr: "detached", stdout: "" };
+          }
+          return {
+            exitCode: 0,
+            stderr: "",
+            stdout: input.args?.includes("HEAD^{commit}")
+              ? `${sha}\n`
+              : input.args?.includes(
+                    "/vercel/sandbox/.junior/workspace-refresh.XXXXXX",
+                  )
+                ? "/vercel/sandbox/.junior/workspace-refresh.test\n"
+                : "",
+          };
+        },
+        async writeFile() {},
+      },
+    } as WorkspacePrepareHookContext;
+
+    await githubPlugin().hooks?.workspacePrepare?.(ctx);
+
+    expect(runs).toContainEqual([
+      "--git-dir",
+      "/vercel/sandbox/.junior/workspace-refresh.test",
+      "--work-tree",
+      "repos/junior",
+      "update-ref",
+      "--no-deref",
+      "HEAD",
+      sha,
+    ]);
+    expect(runs).toContainEqual([
+      "--git-dir",
+      "/vercel/sandbox/.junior/workspace-refresh.test",
+      "--work-tree",
+      "repos/junior",
+      "reset",
+      "--hard",
+      sha,
+    ]);
+    expect(runs).not.toContainEqual(["-rf", "--", "repos/junior"]);
+  });
+
+  it("clones a missing workspace repository after detecting no worktree", async () => {
+    const runs: Array<{ args?: string[]; cmd?: string }> = [];
+    const ctx = {
+      db,
+      log: pluginLog,
+      plugin: { name: "github" },
+      repos: [{ repo: "getsentry/junior", path: "repos/junior" }],
+      sandbox: {
+        juniorRoot: "/vercel/sandbox/.junior",
+        root: "/vercel/sandbox",
+        async readFile() {
+          return null;
+        },
+        async run(input: { args?: string[]; cmd?: string }) {
+          runs.push(input);
+          if (input.args?.includes("rev-parse")) {
+            return { exitCode: 1, stderr: "", stdout: "" };
+          }
           return { exitCode: 0, stderr: "", stdout: "" };
         },
         async writeFile() {},
@@ -2855,25 +3334,71 @@ Conversation: \`local:test:old-conversation\`
 
     expect(runs.map((run) => run.args)).toEqual([
       ["-p", "--", "repos"],
+      ["-C", "repos/junior", "rev-parse", "--is-inside-work-tree"],
+      ["-rf", "--", "repos/junior"],
       [
         "clone",
         "--quiet",
-        "--depth=1",
-        "--",
-        "https://github.com/getsentry/sentry.git",
-        "repos/sentry",
-      ],
-      ["-p", "--", "repos"],
-      [
-        "clone",
-        "--quiet",
-        "--depth=1",
         "--",
         "https://github.com/getsentry/junior.git",
         "repos/junior",
       ],
     ]);
-    expect(runs.every((run) => run.env === undefined)).toBe(true);
+  });
+
+  it("replaces a partial checkout when an interrupted clone is retried", async () => {
+    let cloneAttempts = 0;
+    const runs: Array<{ args?: string[]; cmd: string }> = [];
+    const ctx = {
+      db,
+      log: pluginLog,
+      plugin: { name: "github" },
+      repos: [{ repo: "getsentry/junior", path: "repos/junior" }],
+      sandbox: {
+        juniorRoot: "/vercel/sandbox/.junior",
+        root: "/vercel/sandbox",
+        async readFile() {
+          return null;
+        },
+        async run(input: { args?: string[]; cmd: string }) {
+          runs.push(input);
+          if (input.cmd === "git") {
+            if (input.args?.includes("--is-inside-work-tree")) {
+              return {
+                exitCode: cloneAttempts === 0 ? 1 : 0,
+                stderr: "",
+                stdout: "",
+              };
+            }
+            if (input.args?.includes("--symbolic-full-name")) {
+              return { exitCode: 1, stderr: "", stdout: "" };
+            }
+            if (input.args?.[0] === "clone") {
+              cloneAttempts += 1;
+              if (cloneAttempts === 1) {
+                return { exitCode: 130, stderr: "interrupted", stdout: "" };
+              }
+            }
+          }
+          return { exitCode: 0, stderr: "", stdout: "" };
+        },
+        async writeFile() {},
+      },
+    } as WorkspacePrepareHookContext;
+
+    await expect(githubPlugin().hooks?.workspacePrepare?.(ctx)).rejects.toThrow(
+      "GitHub workspace clone failed",
+    );
+    await expect(
+      githubPlugin().hooks?.workspacePrepare?.(ctx),
+    ).resolves.toBeUndefined();
+
+    expect(
+      runs.filter(
+        (run) =>
+          run.cmd === "rm" && run.args?.join(" ") === "-rf -- repos/junior",
+      ),
+    ).toHaveLength(2);
   });
 
   it("rejects reserved workspace checkout paths", async () => {
@@ -2949,6 +3474,23 @@ Conversation: \`local:test:old-conversation\`
     await expect(githubPlugin().hooks?.workspacePrepare?.(ctx)).rejects.toThrow(
       "Workspace checkout path collision: repos/Sentry",
     );
+  });
+
+  it("throws GitHubPluginSetupError when bot identity environment variables are missing", () => {
+    delete process.env.GITHUB_APP_BOT_NAME;
+    delete process.env.GITHUB_APP_BOT_EMAIL;
+
+    const plugin = githubPlugin();
+    const before = beforeToolContext({
+      email: "david@example.com",
+      fullName: "David Cramer",
+      userId: "U039RR91S",
+      userName: "dcramer",
+    });
+
+    expect(() => {
+      plugin.hooks?.beforeToolExecute?.(before.ctx as never);
+    }).toThrow("Missing GITHUB_APP_BOT_NAME");
   });
 
   it("injects Junior author and committer identity", () => {

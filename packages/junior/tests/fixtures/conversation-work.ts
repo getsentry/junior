@@ -34,6 +34,7 @@ import { slackApiOutbox } from "./slack-api-outbox";
 import { createSlackWebhookTestClient } from "./slack/webhook-client";
 import { createWaitUntilCollector } from "./wait-until";
 import { getCapturedSlackApiCalls } from "../msw/handlers/slack-api";
+import { readProxyProperty } from "./proxy-property";
 
 export const CONVERSATION_ID = "slack:C123:1712345.0001";
 export const SLACK_DESTINATION = {
@@ -168,7 +169,7 @@ export function observeConversationMutationLock(args: {
   return {
     isHeld: () => held,
     state: new Proxy(args.state, {
-      get(target, prop, receiver) {
+      get(target, prop) {
         if (prop === "acquireLock") {
           return async (key: string, ttlMs: number) => {
             const lock = await target.acquireLock(key, ttlMs);
@@ -190,7 +191,7 @@ export function observeConversationMutationLock(args: {
             }
           };
         }
-        const value = Reflect.get(target, prop, receiver);
+        const value = readProxyProperty(target, prop);
         return typeof value === "function" ? value.bind(target) : value;
       },
     }) as StateAdapter,
@@ -247,7 +248,7 @@ export function delayIndexLockOnce(state: StateAdapter): StateAdapter {
   let blocked = false;
   const indexLockKey = `${CONVERSATION_BY_ACTIVITY_INDEX_KEY}:lock`;
   return new Proxy(state, {
-    get(target, prop, receiver) {
+    get(target, prop) {
       if (prop === "acquireLock") {
         return async (key: string, ttlMs: number) => {
           if (!blocked && key === indexLockKey) {
@@ -257,7 +258,7 @@ export function delayIndexLockOnce(state: StateAdapter): StateAdapter {
           return target.acquireLock(key, ttlMs);
         };
       }
-      const value = Reflect.get(target, prop, receiver);
+      const value = readProxyProperty(target, prop);
       return typeof value === "function" ? value.bind(target) : value;
     },
   }) as StateAdapter;
@@ -271,7 +272,7 @@ export function delayMutationLockUntil(args: {
 }): StateAdapter {
   const mutationLockKey = `junior:conversation:v2:mutation:${args.conversationId}`;
   return new Proxy(args.state, {
-    get(target, prop, receiver) {
+    get(target, prop) {
       if (prop === "acquireLock") {
         return async (key: string, ttlMs: number) => {
           if (key === mutationLockKey && Date.now() < args.readyAtMs) {
@@ -280,7 +281,7 @@ export function delayMutationLockUntil(args: {
           return target.acquireLock(key, ttlMs);
         };
       }
-      const value = Reflect.get(target, prop, receiver);
+      const value = readProxyProperty(target, prop);
       return typeof value === "function" ? value.bind(target) : value;
     },
   }) as StateAdapter;
@@ -315,7 +316,7 @@ export function slackEnvelope(input: {
       ts,
       event_ts: ts,
       channel_type: channel.startsWith("D") ? "im" : "channel",
-      ...(input.threadTs ? { thread_ts: input.threadTs } : {}),
+      ...(input.threadTs ? { thread_ts: input.threadTs } : undefined),
     },
   };
 }
@@ -419,9 +420,9 @@ export type ConversationWorkSlackHarness = {
   authLinksFor: (userId: string) => ReturnType<typeof getCapturedSlackApiCalls>;
   setModelStream: (next: StreamFn) => void;
   setSubscribedShouldReply: (shouldReply: boolean) => void;
-  next: (requestStartedAtMs?: number) => Promise<
-    Awaited<ReturnType<typeof processConversationQueueMessage>>
-  >;
+  next: (
+    requestStartedAtMs?: number,
+  ) => Promise<Awaited<ReturnType<typeof processConversationQueueMessage>>>;
   drain: () => Promise<void>;
   send: (input?: {
     eventType?: "app_mention" | "message";
@@ -463,7 +464,7 @@ export async function createConversationWorkSlackHarness(
     getSlackAdapter: () => adapter,
     queue: wakes,
     services: {
-      replyExecutor: { agentRunner },
+      agentRunner,
       subscribedReplyPolicy: {
         completeObject: async ({ schema }) => ({
           object: schema.parse({
@@ -507,9 +508,7 @@ export async function createConversationWorkSlackHarness(
       request: slackWebhookRequest(
         slackEnvelope({
           eventType: input.eventType,
-          text: mention
-            ? `<@${SLACK_BOT_USER_ID}> ${input.text}`
-            : input.text,
+          text: mention ? `<@${SLACK_BOT_USER_ID}> ${input.text}` : input.text,
           threadTs: THREAD_TS,
           ts,
           user: input.user,

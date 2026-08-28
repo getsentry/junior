@@ -20,6 +20,7 @@ import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { getConversationStore } from "@/chat/db";
 import { recoverConversationWork } from "@/chat/task-execution/heartbeat";
 import {
+  appendAndEnqueueInboundMessage,
   CONVERSATION_WORK_LEASE_TTL_MS,
   getConversationWorkState,
   requestConversationWork,
@@ -50,6 +51,8 @@ import {
 } from "../msw/handlers/slack-api";
 import { createModelStream } from "../fixtures/model-stream";
 import { createModelAgentRunner } from "../fixtures/agent-runner";
+import { createResourceEventInboundMessage } from "@/chat/resource-events/notification";
+import { conversationTurnIdForMessage } from "@/chat/conversations/web-input";
 
 /**
  * Turn-lifecycle product outcomes for one conversation under the durable queue.
@@ -149,7 +152,7 @@ async function slack(options: { modelStream?: StreamFn } = {}) {
     conversationStore: getConversationStore(),
     getSlackAdapter: () => adapter,
     queue: wakes,
-    services: { replyExecutor: { agentRunner } },
+    services: { agentRunner },
     state,
   });
   return {
@@ -394,6 +397,97 @@ describe("durable queue contract", () => {
       });
       await expectNextTurn(q, "1712345.0010");
     });
+
+    it("publishes a resource wake from a channel-level Slack Location", async () => {
+      const q = await slack({
+        modelStream: createModelStream([
+          { type: "text", text: "The subscribed check failed." },
+        ]),
+      });
+      const store = getConversationStore();
+      await store.recordActivity({
+        conversationId: CONVERSATION_ID,
+        destination: SLACK_DESTINATION,
+        nowMs: 1_000,
+        sessionSource: createSlackSource({
+          teamId: SLACK_DESTINATION.teamId,
+          channelId: SLACK_DESTINATION.channelId,
+          visibility: "public",
+        }),
+        source: "resource_event",
+        visibility: "public",
+      });
+      const message = createResourceEventInboundMessage({
+        event: {
+          eventKey: "checks-failed-1",
+          eventType: "pull_request.checks.failed",
+          identifier: "getsentry/junior#1563",
+          namespace: "github",
+          occurredAtMs: 1_100,
+          trustedSummary: "The subscribed check failed.",
+        },
+        receivedAtMs: 1_100,
+        subscription: {
+          conversationId: CONVERSATION_ID,
+          id: "resource-subscription-channel-1",
+        },
+        text: "The subscribed check failed.",
+      });
+      await appendAndEnqueueInboundMessage({
+        message,
+        queue: q.wakes,
+        state: q.state,
+      });
+      queueSlackApiResponse("chat.postMessage", {
+        body: chatPostMessageOk({ ts: "1712345.0042" }),
+      });
+
+      await expect(q.next()).resolves.toEqual({ status: "completed" });
+      const turnId = conversationTurnIdForMessage(message.inboundMessageId);
+      const posts = slackApiOutbox.messages();
+      expect(posts).toHaveLength(1);
+      expect(posts[0]?.params).toMatchObject({
+        channel: SLACK_DESTINATION.channelId,
+        text: "The subscribed check failed.",
+      });
+      expect(posts[0]?.params).not.toHaveProperty("thread_ts");
+      await expect(
+        getTurnRecord(CONVERSATION_ID, turnId),
+      ).resolves.toMatchObject({
+        actors: [{ platform: "system", name: "resource-event" }],
+        publishExternally: true,
+        state: "completed",
+        surface: "slack",
+      });
+      await expect(
+        store.getConversationIdByProviderConversation({
+          provider: "slack",
+          providerDestinationId: SLACK_DESTINATION.channelId,
+          providerTenantId: SLACK_DESTINATION.teamId,
+          providerConversationId: "1712345.0042",
+        }),
+      ).resolves.toBe(CONVERSATION_ID);
+      const conversation = coerceThreadConversationState(
+        await getPersistedThreadState(CONVERSATION_ID),
+      );
+      await hydrateConversationMessages({
+        conversation,
+        conversationId: CONVERSATION_ID,
+      });
+      expect(conversation.messages).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            role: "assistant",
+            text: "The subscribed check failed.",
+            meta: expect.objectContaining({
+              replied: true,
+              slackTs: "1712345.0042",
+              source: "slack",
+            }),
+          }),
+        ]),
+      );
+    }, 10_000);
   });
 
   describe("long turn survives host limit", () => {

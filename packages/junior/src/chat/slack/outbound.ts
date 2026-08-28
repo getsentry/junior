@@ -1,5 +1,6 @@
 import { SlackActionError } from "@/chat/slack/client";
 import type { SlackMessageBlock } from "@/chat/slack/footer";
+
 import {
   getSlackClient,
   normalizeSlackConversationId,
@@ -113,17 +114,18 @@ export async function postSlackMessage(input: {
         unfurl_media: false,
         ...(input.blocks?.length
           ? {
-              blocks: input.blocks as unknown as Array<Record<string, unknown>>,
+              // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+              blocks: input.blocks as Array<Record<string, unknown>>,
             }
-          : {}),
-        ...(threadTs ? { thread_ts: threadTs } : {}),
+          : undefined),
+        ...(threadTs ? { thread_ts: threadTs } : undefined),
       }),
     3,
     {
       action: "chat.postMessage",
       spanAttributes: {
         "app.slack.channel_id": channelId,
-        ...(threadTs ? { "app.slack.thread_ts": threadTs } : {}),
+        ...(threadTs ? { "app.slack.thread_ts": threadTs } : undefined),
       },
     },
   );
@@ -142,7 +144,7 @@ export async function postSlackMessage(input: {
             messageTs,
           }),
         }
-      : {}),
+      : undefined),
   };
 }
 
@@ -213,7 +215,7 @@ export async function postSlackEphemeralMessage(input: {
         channel: channelId,
         user: userId,
         text,
-        ...(threadTs ? { thread_ts: threadTs } : {}),
+        ...(threadTs ? { thread_ts: threadTs } : undefined),
       }),
     3,
     {
@@ -221,7 +223,7 @@ export async function postSlackEphemeralMessage(input: {
       spanAttributes: {
         "app.slack.channel_id": channelId,
         "app.slack.user_id": userId,
-        ...(threadTs ? { "app.slack.thread_ts": threadTs } : {}),
+        ...(threadTs ? { "app.slack.thread_ts": threadTs } : undefined),
       },
     },
   );
@@ -269,7 +271,7 @@ export async function uploadFilesToConversation(input: {
     () =>
       getSlackClient().filesUploadV2({
         channel_id: channelId,
-        ...(threadTs ? { thread_ts: threadTs } : {}),
+        ...(threadTs ? { thread_ts: threadTs } : undefined),
         file_uploads: fileUploads,
       }),
     3,
@@ -277,7 +279,7 @@ export async function uploadFilesToConversation(input: {
       action: "filesUploadV2",
       spanAttributes: {
         "app.slack.channel_id": channelId,
-        ...(threadTs ? { "app.slack.thread_ts": threadTs } : {}),
+        ...(threadTs ? { "app.slack.thread_ts": threadTs } : undefined),
       },
     },
   );

@@ -1,4 +1,4 @@
-import { sql } from "drizzle-orm";
+import { getTableColumns, sql } from "drizzle-orm";
 import {
   type AnyPgColumn,
   index,
@@ -12,6 +12,7 @@ import { juniorIdentities } from "./identities";
 import { timestamptz } from "./timestamps";
 import type { Destination } from "@sentry/junior-plugin-api";
 import type { StoredSlackActor } from "@/chat/actor";
+import type { Location } from "@/chat/conversations/location";
 import type { SessionSource } from "@/chat/source";
 import type { AgentTurnUsage } from "@/chat/usage";
 import type {
@@ -26,13 +27,21 @@ export const juniorConversations = pgTable(
     schemaVersion: integer("schema_version").notNull().default(1),
     source: text("source").$type<ConversationSource>(),
     /** Structured session Source locator; set-once on the conversation root. */
+    // TODO(dcramer): Remove source_json after resume reads the saved Turn Source
+    // and all provider context readers use Conversation Location.
     sessionSource: jsonb("source_json").$type<SessionSource>(),
     originType: text("origin_type"),
     originId: text("origin_id"),
     originRunId: text("origin_run_id"),
+    /** Complete Location associated with this Conversation. */
+    location: jsonb("location_json").$type<Location>(),
+    // TODO(dcramer): Rename destination_id to location_id after all deployed
+    // readers and writers use the singular Conversation Location contract.
     destinationId: text("destination_id").references(
       () => juniorDestinations.id,
     ),
+    // TODO(dcramer): Drop destination_json after every row uses location_id and
+    // no supported worker writes the legacy JSON value.
     destination: jsonb("destination_json").$type<Destination>(),
     actorIdentityId: text("actor_identity_id").references(
       () => juniorIdentities.id,
@@ -72,7 +81,8 @@ export const juniorConversations = pgTable(
     executionDurationMs: integer("execution_duration_ms").notNull().default(0),
     executionUsage: jsonb("execution_usage_json").$type<AgentTurnUsage>(),
     metricRunId: text("metric_run_id"),
-    archivedAt: timestamptz("archived_at"),
+    // Keep the legacy column in the schema. Runtime code must not read or write it.
+    legacyArchivedAt: timestamptz("archived_at"),
   },
   (table) => [
     index("junior_conversations_last_activity_idx").on(
@@ -103,3 +113,10 @@ export const juniorConversations = pgTable(
     index("junior_conversations_root_idx").on(table.rootConversationId),
   ],
 );
+
+/** Select runtime conversation fields without reading the legacy archive column. */
+export function conversationReadColumns() {
+  const { legacyArchivedAt, ...columns } = getTableColumns(juniorConversations);
+  void legacyArchivedAt;
+  return columns;
+}

@@ -53,9 +53,9 @@ export function getTurnUserReplyAttachmentContext(
   const imagesHydrated = message?.meta?.imagesHydrated === true;
 
   return {
-    ...(inboundAttachmentCount > 0 ? { inboundAttachmentCount } : {}),
+    ...(inboundAttachmentCount > 0 ? { inboundAttachmentCount } : undefined),
     ...(!imagesHydrated && imageAttachmentCount > 0
       ? { omittedImageAttachmentCount: imageAttachmentCount }
-      : {}),
+      : undefined),
   };
 }

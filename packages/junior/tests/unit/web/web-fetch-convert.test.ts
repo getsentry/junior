@@ -118,4 +118,28 @@ describe("web fetch content conversion", () => {
     expect(result.extracted_chars).toBeGreaterThan(result.content.length);
     expect(result.truncated).toBe(true);
   });
+
+  it("reports client-side fetch failures as repairable tool errors", async () => {
+    await expect(
+      extractWebFetchResponse(
+        new URL("https://docs.example.com/missing"),
+        new Response("missing", { status: 404 }),
+      ),
+    ).rejects.toMatchObject({
+      message: "fetch failed: 404",
+      name: "ToolInputError",
+    });
+  });
+
+  it("reports upstream fetch failures as runtime errors", async () => {
+    await expect(
+      extractWebFetchResponse(
+        new URL("https://docs.example.com/broken"),
+        new Response("boom", { status: 500 }),
+      ),
+    ).rejects.toMatchObject({
+      message: "fetch failed: 500",
+      name: "Error",
+    });
+  });
 });

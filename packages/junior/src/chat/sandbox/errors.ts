@@ -1,5 +1,6 @@
 import { setSpanAttributes, setSpanStatus } from "@/chat/logging";
 import { extractHttpErrorDetails } from "@/chat/sandbox/http-error-details";
+import { getWorkspaceSnapshotNotReadyError } from "@/chat/sandbox/snapshot/not-ready-error";
 
 const SANDBOX_ERROR_FIELDS = [
   {
@@ -136,6 +137,53 @@ export function isSnapshottingError(error: unknown): boolean {
   });
 }
 
+/** Detect cancellation so a durable builder stays available for check-in. */
+export function isAbortError(error: unknown): boolean {
+  return findInErrorChain(error, (candidate) => {
+    if (
+      typeof DOMException !== "undefined" &&
+      candidate instanceof DOMException
+    ) {
+      return candidate.name === "AbortError";
+    }
+    if (!(candidate instanceof Error)) return false;
+    if (candidate.name === "AbortError") return true;
+    const message = candidate.message.toLowerCase();
+    return message.startsWith("executeagentrun timed out after");
+  });
+}
+
+/** Detect transient Vercel Sandbox API failures that keep a job resumable. */
+export function isSandboxApiTransientError(error: unknown): boolean {
+  return findInErrorChain(error, (candidate) => {
+    const details = getSandboxErrorDetails(candidate);
+    const searchable =
+      `${details.searchableText} ${details.summary}`.toLowerCase();
+    if (
+      searchable.includes("internal_server_error") ||
+      searchable.includes("status=500") ||
+      searchable.includes("status code 500") ||
+      searchable.includes("status=502") ||
+      searchable.includes("status code 502") ||
+      searchable.includes("status=503") ||
+      searchable.includes("status code 503") ||
+      searchable.includes("status=504") ||
+      searchable.includes("status code 504")
+    ) {
+      return true;
+    }
+
+    if (!isRecord(candidate)) return false;
+    const response = candidate.response;
+    return (
+      isRecord(response) &&
+      typeof response.status === "number" &&
+      response.status >= 500 &&
+      response.status < 600
+    );
+  });
+}
+
 /** Detect interrupted command streams where no reliable exit status is available. */
 export function isSandboxCommandStreamInterruptedError(
   error: unknown,
@@ -154,8 +202,13 @@ export function isSandboxCommandStreamInterruptedError(
   });
 }
 
-/** Wrap raw sandbox setup failures into one stable user-facing error contract. */
+/** Wrap setup failures. Keep WorkspaceSnapshotNotReadyError as-is. */
 export function wrapSandboxSetupError(error: unknown): Error {
+  const notReady = getWorkspaceSnapshotNotReadyError(error);
+  if (notReady) {
+    return notReady;
+  }
+
   try {
     const details = getSandboxErrorDetails(error);
     if (details.summary) {
@@ -201,7 +254,7 @@ export function throwSandboxOperationError(
             details.searchableText.includes("no such file") ||
             details.searchableText.includes("enoent"),
         }
-      : {}),
+      : undefined),
     "app.sandbox.success": false,
   });
   setSpanStatus("error");

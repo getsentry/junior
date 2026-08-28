@@ -160,7 +160,7 @@ function setSandboxEgressSystemActor(input?: {
   activeCredentialToken = createSandboxEgressCredentialToken({
     credentials: {
       actor: { platform: "system", name: input?.name ?? "scheduler" },
-      ...(input?.subject ? { subject: input.subject } : {}),
+      ...(input?.subject ? { subject: input.subject } : undefined),
     },
     egressId: EGRESS_ID,
     ttlMs: 60_000,
@@ -178,7 +178,7 @@ function mockSentryLease(domain = "sentry.io", token = "sentry-token"): void {
         headers: { Authorization: `Bearer ${token}` },
       },
     ],
-    expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    expiresAt: new Date(Date.now() + 30 * 60_000).toISOString(),
   });
 }
 
@@ -208,16 +208,16 @@ function egressRequest(
     headers: {
       "vercel-forwarded-host": input.host ?? "sentry.io",
       ...(input.scheme === null
-        ? {}
+        ? undefined
         : { "vercel-forwarded-scheme": input.scheme ?? "https" }),
       "vercel-sandbox-oidc-token": "signed-token",
       ...(forwardedPath !== null
         ? { "vercel-forwarded-path": forwardedPath }
-        : {}),
-      ...(input.port ? { "vercel-forwarded-port": input.port } : {}),
+        : undefined),
+      ...(input.port ? { "vercel-forwarded-port": input.port } : undefined),
       ...(input.headers ?? {}),
     },
-    ...(input.body === undefined ? {} : { body: input.body }),
+    ...(input.body === undefined ? undefined : { body: input.body }),
   });
 }
 
@@ -614,7 +614,7 @@ describe("sandbox egress proxy composition", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("scopes cached credential leases to the actor", async () => {
+  it("issues separate user credentials per actor", async () => {
     setSandboxEgressUserActor();
     issueProviderCredentialLeaseMock
       .mockResolvedValueOnce({
@@ -627,7 +627,7 @@ describe("sandbox egress proxy composition", () => {
             headers: { Authorization: "Bearer token-u123" },
           },
         ],
-        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+        expiresAt: new Date(Date.now() + 30 * 60_000).toISOString(),
       })
       .mockResolvedValueOnce({
         id: "lease-2",
@@ -639,7 +639,7 @@ describe("sandbox egress proxy composition", () => {
             headers: { Authorization: "Bearer token-u456" },
           },
         ],
-        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+        expiresAt: new Date(Date.now() + 30 * 60_000).toISOString(),
       });
 
     const fetchMock = vi.fn(async (_url: URL | string, init?: RequestInit) => {
@@ -674,7 +674,7 @@ describe("sandbox egress proxy composition", () => {
     });
   });
 
-  it("does not reuse cached credential leases across renewed credential contexts", async () => {
+  it("issues user credentials on every hop instead of remembering them", async () => {
     setSandboxEgressUserActor();
     issueProviderCredentialLeaseMock
       .mockResolvedValueOnce({
@@ -687,7 +687,7 @@ describe("sandbox egress proxy composition", () => {
             headers: { Authorization: "Bearer token-first-session" },
           },
         ],
-        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+        expiresAt: new Date(Date.now() + 30 * 60_000).toISOString(),
       })
       .mockResolvedValueOnce({
         id: "lease-2",
@@ -699,7 +699,7 @@ describe("sandbox egress proxy composition", () => {
             headers: { Authorization: "Bearer token-second-session" },
           },
         ],
-        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+        expiresAt: new Date(Date.now() + 30 * 60_000).toISOString(),
       });
 
     const fetchMock = vi.fn(async (_url: URL | string, init?: RequestInit) => {
@@ -726,56 +726,72 @@ describe("sandbox egress proxy composition", () => {
     expect(issueProviderCredentialLeaseMock).toHaveBeenCalledTimes(2);
   });
 
-  it("passes through upstream 403 responses without overriding the body", async () => {
+  it("retries once on upstream 403 and recovers or records permission denied", async () => {
     setSandboxEgressUserActor();
-    issueProviderCredentialLeaseMock.mockResolvedValue({
-      id: "lease-1",
+    const lease = (token: string) => ({
+      id: `lease-${token}`,
       provider: "sentry",
       env: { SENTRY_AUTH_TOKEN: "host_managed_credential" },
       headerTransforms: [
-        { domain: "sentry.io", headers: { Authorization: "Bearer token" } },
+        { domain: "sentry.io", headers: { Authorization: `Bearer ${token}` } },
       ],
-      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      expiresAt: new Date(Date.now() + 30 * 60_000).toISOString(),
     });
+    issueProviderCredentialLeaseMock
+      .mockResolvedValueOnce(lease("token-1"))
+      .mockResolvedValueOnce(lease("token-2"))
+      .mockResolvedValueOnce(lease("token-3"))
+      .mockResolvedValueOnce(lease("token-4"));
+    const denied = () =>
+      new Response("Permission denied for this organization", { status: 403 });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(denied())
+      .mockResolvedValueOnce(new Response("ok", { status: 200 }))
+      .mockResolvedValueOnce(denied())
+      .mockResolvedValueOnce(denied());
 
-    const fetchMock = vi.fn().mockImplementation(
-      async () =>
-        new Response("Permission denied for this organization", {
-          status: 403,
-        }),
-    );
-
-    const response = await proxy(
+    const recovered = await proxy(
       egressRequest({ path: "/api/0/issues/1" }),
       fetchMock as typeof fetch,
     );
+    expect(recovered.status).toBe(200);
+    await expect(recovered.text()).resolves.toBe("ok");
+    expect(issueProviderCredentialLeaseMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(
+      new Headers(fetchMock.mock.calls[0]?.[1]?.headers).get("authorization"),
+    ).toBe("Bearer token-1");
+    expect(
+      new Headers(fetchMock.mock.calls[1]?.[1]?.headers).get("authorization"),
+    ).toBe("Bearer token-2");
+    await expect(
+      consumeSandboxEgressPermissionDeniedSignal(EGRESS_ID),
+    ).resolves.toBeUndefined();
 
-    expect(response.status).toBe(403);
-    const body = await response.text();
+    const persistent = await proxy(
+      egressRequest({ path: "/api/0/issues/2" }),
+      fetchMock as typeof fetch,
+    );
+    expect(persistent.status).toBe(403);
+    const body = await persistent.text();
     expect(body).toBe("Permission denied for this organization");
     expect(body).not.toContain("junior-auth-required");
+    // User grants are not remembered, so the second hop issues again.
+    expect(issueProviderCredentialLeaseMock).toHaveBeenCalledTimes(4);
+    expect(fetchMock).toHaveBeenCalledTimes(4);
     await expect(
       consumeSandboxEgressPermissionDeniedSignal(EGRESS_ID),
     ).resolves.toMatchObject({
       provider: "sentry",
-      grant: {
-        name: "default",
-        access: "read",
-      },
+      grant: { name: "default", access: "read" },
       message:
-        "sentry returned HTTP 403 after Junior injected the default grant. Junior forwarded the request; this is not a local runtime block.",
+        "sentry returned HTTP 403 after the runtime injected the default grant. The request was forwarded; this is not a local runtime block.",
       source: "upstream",
       status: 403,
       upstreamHost: "sentry.io",
-      upstreamPath: "/api/0/issues/1",
+      upstreamPath: "/api/0/issues/2",
     });
-
-    const secondResponse = await proxy(
-      egressRequest({ path: "/api/0/issues/2" }),
-      fetchMock as typeof fetch,
-    );
-    expect(secondResponse.status).toBe(403);
-    expect(issueProviderCredentialLeaseMock).toHaveBeenCalledTimes(2);
   });
 
   it("does not apply subdomain transforms to the apex host", async () => {

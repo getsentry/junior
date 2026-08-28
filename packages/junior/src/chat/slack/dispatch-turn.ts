@@ -13,23 +13,21 @@ import {
 } from "@/chat/agent-dispatch/store";
 import { buildDispatchRoutingContext } from "@/chat/agent-dispatch/work";
 
-interface DispatchReplyToThread {
-  (
-    thread: ThreadImpl,
-    message: Message,
-    options: {
-      ack?: () => Promise<void>;
-      conversationId?: string;
-      destination: DispatchRecord["destination"];
-      execution: DispatchTurnContext;
-      publishExternally?: boolean;
-      onTurnDeliveryAccepted?: (messageId?: string) => void;
-      onTurnOutcome?: (result: DispatchTurnResult) => void;
-      shouldYield?: () => boolean;
-      skipBackfill?: boolean;
-    },
-  ): Promise<void>;
-}
+type ExecuteSlackTurn = (
+  thread: ThreadImpl,
+  message: Message,
+  options: {
+    ack?: () => Promise<void>;
+    conversationId?: string;
+    destination: DispatchRecord["destination"];
+    execution: DispatchTurnContext;
+    publishExternally?: boolean;
+    onTurnDeliveryAccepted?: (messageId?: string) => void;
+    onTurnOutcome?: (result: DispatchTurnResult) => void;
+    shouldYield?: () => boolean;
+    skipBackfill?: boolean;
+  },
+) => Promise<void>;
 
 /** Build the Slack provider adapter for agent-dispatched conversation turns. */
 export function createSlackDispatchTurnRunner(options: {
@@ -37,7 +35,7 @@ export function createSlackDispatchTurnRunner(options: {
     destination: DispatchRecord["destination"],
   ) => DispatchTurnContext["locationConfiguration"];
   getSlackAdapter: () => SlackAdapter;
-  replyToThread: DispatchReplyToThread;
+  executeSlackTurn: ExecuteSlackTurn;
 }) {
   return async function runSlackDispatchTurn(
     dispatch: DispatchRecord,
@@ -90,7 +88,7 @@ export function createSlackDispatchTurnRunner(options: {
     let errorMessage: string | undefined;
     let resultMessageTs: string | undefined;
     const routing = buildDispatchRoutingContext(dispatch);
-    await options.replyToThread(thread, message, {
+    await options.executeSlackTurn(thread, message, {
       ack: hooks.ack,
       conversationId,
       destination: dispatch.destination,
@@ -119,9 +117,9 @@ export function createSlackDispatchTurnRunner(options: {
       skipBackfill: true,
     });
     return {
-      ...(errorMessage ? { errorMessage } : {}),
-      ...(outcome ? { outcome } : {}),
-      ...(resultMessageTs ? { resultMessageTs } : {}),
+      ...(errorMessage ? { errorMessage } : undefined),
+      ...(outcome ? { outcome } : undefined),
+      ...(resultMessageTs ? { resultMessageTs } : undefined),
     };
   };
 }

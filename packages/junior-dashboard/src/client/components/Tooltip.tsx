@@ -162,7 +162,7 @@ export function Tooltip({
           className={cn(
             "z-50 select-text outline-none",
             className ??
-              "min-w-36 max-w-64 rounded-md border border-white/15 bg-dashboard-surface-raised px-3 py-2 font-mono text-xs leading-relaxed text-dashboard-text-muted shadow-2xl shadow-black/70",
+              "min-w-36 max-w-lg rounded-md border border-dashboard-border-emphasis bg-dashboard-surface-raised px-3 py-2 font-mono text-xs leading-relaxed text-dashboard-text-muted shadow-2xl shadow-black/70",
           )}
           collisionPadding={VIEWPORT_GAP}
           hideWhenDetached
@@ -202,7 +202,7 @@ export function IconButtonTooltip(props: {
 }) {
   return (
     <Tooltip
-      className="min-w-0 rounded-md border border-white/15 bg-dashboard-surface-raised px-2.5 py-1.5 font-sans text-xs leading-none text-dashboard-text shadow-2xl shadow-black/70"
+      className="min-w-0 rounded-md border border-dashboard-border-emphasis bg-dashboard-surface-raised px-2.5 py-1.5 font-sans text-xs leading-none text-dashboard-text shadow-2xl shadow-black/70"
       content={props.label}
       placement={props.placement ?? "above"}
     >

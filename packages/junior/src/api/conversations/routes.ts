@@ -53,13 +53,14 @@ export function createConversationRoutes(options: {
       "Invalid query parameters.",
     ),
     async (context) => {
-      const { actorEmail } = context.req.valid("query");
+      const { actorEmail, status } = context.req.valid("query");
       const viewer = context.get("viewer");
       return jsonResponse(
         conversationFeedSchema,
         await readConversationFeed({
-          ...(actorEmail ? { actorEmail } : {}),
-          ...(viewer ? { viewer } : {}),
+          ...(actorEmail ? { actorEmail } : undefined),
+          status,
+          ...(viewer ? { viewer } : undefined),
         }),
       );
     },
@@ -113,6 +114,7 @@ export function createConversationRoutes(options: {
 
   app.patch(
     "/:conversationId/archive",
+    requireViewer,
     validateRequest(
       "param",
       conversationParamsSchema,
@@ -124,11 +126,12 @@ export function createConversationRoutes(options: {
       "Invalid request body.",
     ),
     async (context) => {
+      const viewer = context.get("viewer");
       const { conversationId } = context.req.valid("param");
       const body = context.req.valid("json");
       return jsonResponse(
         archiveConversationResponseSchema,
-        await archiveConversation(conversationId, body),
+        await archiveConversation(viewer, conversationId, body),
       );
     },
   );
@@ -151,7 +154,7 @@ export function createConversationRoutes(options: {
       const viewer = context.get("viewer");
       const report = await readConversationEvents(conversationId, before, {
         limit,
-        ...(viewer ? { viewer } : {}),
+        ...(viewer ? { viewer } : undefined),
       });
       if (!report) throwApiError(404, "Conversation not found.");
       return jsonResponse(conversationEventPageSchema, report);
@@ -219,7 +222,7 @@ export function createConversationRoutes(options: {
         attachmentId,
         conversationId,
         storage: options.attachmentStorage,
-        ...(viewer ? { viewer } : {}),
+        ...(viewer ? { viewer } : undefined),
       });
       return new Response(opened.body, {
         headers: conversationAttachmentHeaders({
@@ -249,7 +252,7 @@ export function createConversationRoutes(options: {
       const viewer = context.get("viewer");
       const report = await readConversationDetail(conversationId, {
         ...query,
-        ...(viewer ? { viewer } : {}),
+        ...(viewer ? { viewer } : undefined),
       });
       if (!report) throwApiError(404, "Conversation not found.");
       return jsonResponse(conversationDetailReportSchema, report);

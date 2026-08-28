@@ -1,13 +1,17 @@
 import { sql } from "drizzle-orm";
 import { bigint, index, jsonb, pgTable, text } from "drizzle-orm/pg-core";
-import type { ScheduledRun, ScheduledTask } from "@/chat/scheduled-tasks/types";
+import type {
+  ScheduledRun,
+  ScheduledTaskRecord,
+} from "@/chat/scheduled-tasks/types";
 
 export const juniorSchedulerTasks = pgTable(
   "junior_scheduler_tasks",
   {
     id: text("id").primaryKey(),
     teamId: text("team_id").notNull(),
-    // TODO(v0.128.0): Remove after v0.127.x runtimes no longer write this column.
+    // TODO(dcramer): Remove after v0.127.x runtimes are unsupported and no
+    // supported runtime writes this column.
     creatorSlackUserId: text("creator_slack_user_id"),
     creatorIdentityId: text("creator_identity_id"),
     status: text("status").notNull(),
@@ -16,10 +20,11 @@ export const juniorSchedulerTasks = pgTable(
     createdAtMs: bigint("created_at_ms", { mode: "number" }).notNull(),
     /** Short display title generated from the task instruction. */
     title: text("title"),
-    record: jsonb("record").$type<ScheduledTask>().notNull(),
+    record: jsonb("record").$type<ScheduledTaskRecord>().notNull(),
   },
   (table) => [
-    // TODO(v0.128.0): Remove with creatorSlackUserId.
+    // TODO(dcramer): Remove after no supported runtime reads or writes the
+    // legacy creatorSlackUserId column.
     index("junior_scheduler_tasks_creator_idx")
       .on(table.teamId, table.creatorSlackUserId, table.createdAtMs, table.id)
       .where(sql`${table.status} <> 'deleted'`),

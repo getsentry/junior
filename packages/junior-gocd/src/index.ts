@@ -8,13 +8,12 @@
 import {
   defineJuniorPlugin,
   type PluginHooks,
+  type PluginManifest,
   type PluginRegistration,
 } from "@sentry/junior-plugin-api";
-import {
-  hostFromBaseUrl,
-  type GocdPluginOptions,
-} from "./config.js";
+import { hostFromBaseUrl, type GocdPluginOptions } from "./config.js";
 import { createGocdPipelineHistoryTool } from "./tools/pipeline-history.js";
+import { createGocdStageTool } from "./tools/stage.js";
 
 export type GocdCredentialHooks = Pick<
   PluginHooks,
@@ -33,15 +32,9 @@ export interface GocdPluginRegistrationOptions extends GocdPluginOptions {
 function resolveManifestHost(
   options: GocdPluginRegistrationOptions,
 ): string | undefined {
-  const configured = options.host?.trim();
-  if (configured) return configured;
   const baseUrl = (options.baseUrl ?? process.env.GOCD_URL ?? "").trim();
   if (!baseUrl) return undefined;
-  try {
-    return hostFromBaseUrl(baseUrl);
-  } catch {
-    return undefined;
-  }
+  return hostFromBaseUrl(baseUrl);
 }
 
 /** Register read-only GoCD tools that authenticate through Junior egress. */
@@ -53,47 +46,46 @@ export function gocdPlugin(
   const usesCredentialHooks = Boolean(
     credentialHooks?.grantForEgress || credentialHooks?.issueCredential,
   );
+  const manifest: PluginManifest = {
+    description:
+      "Query GoCD pipeline history through host-managed egress credentials",
+    displayName: "GoCD",
+    envVars: {
+      GOCD_ACCESS_TOKEN: {},
+      GOCD_URL: {},
+    },
+    name: "gocd",
+  };
+  if (host) {
+    manifest.domains = [host];
+    if (!usesCredentialHooks) {
+      manifest.apiHeaders = {
+        Authorization: "bearer ${GOCD_ACCESS_TOKEN}",
+      };
+    }
+  }
+  const hooks: PluginHooks = {
+    tools(ctx) {
+      return {
+        pipelineHistory: createGocdPipelineHistoryTool(ctx, options),
+        stage: createGocdStageTool(ctx, options),
+      };
+    },
+  };
+  if (credentialHooks?.grantForEgress) {
+    hooks.grantForEgress = credentialHooks.grantForEgress;
+  }
+  if (credentialHooks?.issueCredential) {
+    hooks.issueCredential = credentialHooks.issueCredential;
+  }
+  if (credentialHooks?.onEgressResponse) {
+    hooks.onEgressResponse = credentialHooks.onEgressResponse;
+  }
 
   return defineJuniorPlugin({
     packageName: "@sentry/junior-gocd",
-    manifest: {
-      ...(host
-        ? {
-            domains: [host],
-            ...(usesCredentialHooks
-              ? {}
-              : {
-                  apiHeaders: {
-                    Authorization: "bearer ${GOCD_ACCESS_TOKEN}",
-                  },
-                }),
-          }
-        : {}),
-      description:
-        "Query GoCD pipeline history through host-managed egress credentials",
-      displayName: "GoCD",
-      envVars: {
-        GOCD_ACCESS_TOKEN: {},
-        GOCD_URL: {},
-      },
-      name: "gocd",
-    },
-    hooks: {
-      ...(credentialHooks?.grantForEgress
-        ? { grantForEgress: credentialHooks.grantForEgress }
-        : {}),
-      ...(credentialHooks?.issueCredential
-        ? { issueCredential: credentialHooks.issueCredential }
-        : {}),
-      ...(credentialHooks?.onEgressResponse
-        ? { onEgressResponse: credentialHooks.onEgressResponse }
-        : {}),
-      tools(ctx) {
-        return {
-          pipelineHistory: createGocdPipelineHistoryTool(ctx, options),
-        };
-      },
-    },
+    manifest,
+    hooks,
   });
 }
 

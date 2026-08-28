@@ -1,4 +1,5 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { setExperimentalFeatures } from "@/chat/experimental";
 import {
   decideSubscribedThreadReply,
   getSubscribedReplyPreflightDecision,
@@ -38,6 +39,60 @@ function classify(
 }
 
 describe("subscribed reply decision", () => {
+  afterEach(() => {
+    setExperimentalFeatures({
+      "passive-routing": true,
+      subagents: true,
+    });
+  });
+
+  it("skips non-mention replies when passive-routing is off", async () => {
+    setExperimentalFeatures(undefined);
+    const completeObject = vi.fn();
+
+    await expect(
+      decideSubscribedThreadReply({
+        botUserName: "junior",
+        modelId: "router-model",
+        input: makeInput({
+          rawText: "what did you just say?",
+          text: "what did you just say?",
+          isExplicitMention: false,
+        }),
+        completeObject,
+        logClassifierFailure: vi.fn(),
+      }),
+    ).resolves.toEqual({
+      shouldReply: false,
+      reason: SubscribedReplyReason.PassiveDisabled,
+      reasonDetail: "passive-routing",
+    });
+    expect(completeObject).not.toHaveBeenCalled();
+  });
+
+  it("still replies to explicit mentions when passive routing is off", async () => {
+    setExperimentalFeatures(undefined);
+    const completeObject = vi.fn();
+
+    await expect(
+      decideSubscribedThreadReply({
+        botUserName: "junior",
+        modelId: "router-model",
+        input: makeInput({
+          rawText: "please continue",
+          text: "please continue",
+          isExplicitMention: true,
+        }),
+        completeObject,
+        logClassifierFailure: vi.fn(),
+      }),
+    ).resolves.toEqual({
+      shouldReply: true,
+      reason: SubscribedReplyReason.ExplicitMention,
+    });
+    expect(completeObject).not.toHaveBeenCalled();
+  });
+
   it.each(["!stop", "!STOP", "!stop don't continue with this task"])(
     "forces unsubscribe for %s without calling the classifier",
     async (text) => {
@@ -189,7 +244,7 @@ describe("subscribed reply decision", () => {
           rawText: "can you check on this?",
           text: "can you check on this?",
           conversationContext: [
-            "<thread-transcript>",
+            '<thread-context authority="evidence-only">',
             '  <message role="user" author="David">',
             "[user] David: investigate the passive router",
             "  </message>",
@@ -197,7 +252,7 @@ describe("subscribed reply decision", () => {
             "[assistant] junior: the confidence gate looks too strict",
             "  </message>",
             "[tool] grep result: must-not-reach-router",
-            "</thread-transcript>",
+            "</thread-context>",
           ].join("\n"),
         }),
         completeObject,

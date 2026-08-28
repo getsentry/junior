@@ -52,7 +52,7 @@ export function sentryConversationUrl(
   return `${parsed.protocol}//${parsed.hostname}${port}/organizations/${orgSlug}/${path}`;
 }
 
-/** Build the Junior session footer, preferring a host-provided dashboard link. */
+/** Build the conversation session footer, preferring a host-provided dashboard link. */
 export function githubConversationFooter(
   conversationId: string,
   dashboardUrl?: string,
@@ -72,7 +72,7 @@ export function githubConversationFooter(
   return `${GITHUB_SESSION_FOOTER_START}\n${conversationMarker}\n\n--\n\n${sessionLinks}\n\n${GITHUB_SESSION_FOOTER_END}`;
 }
 
-/** Read opaque native conversation ids from Junior-owned GitHub footers. */
+/** Read opaque native conversation ids from runtime-owned GitHub footers. */
 export function githubConversationIds(
   body: string | null | undefined,
 ): string[] {
@@ -134,7 +134,7 @@ export function githubLinkedIssues(
 }
 
 /**
- * Append (or replace an existing) Junior session footer to a GitHub body string.
+ * Append (or replace an existing) conversation session footer to a GitHub body string.
  * Without a dashboard or Sentry link, returns the body unchanged (existing footer stripped).
  */
 export function appendGitHubFooter(

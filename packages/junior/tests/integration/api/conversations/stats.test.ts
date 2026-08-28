@@ -119,12 +119,13 @@ describe("conversation stats API", () => {
         visibility: "private",
       });
       await store.recordActivity({
-        conversationId: "scheduler:daily",
+        conversationId: "local:test:scheduler-daily",
+        destination: { platform: "local" as const, conversationId: "local:test:scheduler-daily" },
         source: "scheduler",
         nowMs: Date.parse("2026-06-15T10:00:00.000Z"),
       });
       await store.recordExecution({
-        conversationId: "scheduler:daily",
+        conversationId: "local:test:scheduler-daily",
         createdAtMs: Date.parse("2026-06-15T10:00:00.000Z"),
         execution: {
           runId: "turn-scheduler",

@@ -1,5 +1,6 @@
 import { juniorArtifacts } from "./schema/artifacts";
 import { juniorAttachments } from "./schema/attachments";
+import { juniorCodeChanges, juniorCodeRepositories } from "./schema/code";
 import { juniorConversationAnnotations } from "./schema/conversation-annotations";
 import { juniorApiTokens } from "./schema/api-tokens";
 import { juniorConversationEvents } from "./schema/conversation-events";
@@ -20,12 +21,15 @@ import {
   juniorSchedulerRuns,
   juniorSchedulerTasks,
 } from "./schema/scheduled-tasks";
+import { juniorSnapshots } from "./schema/snapshots";
 import { juniorUsers } from "./schema/users";
 import { juniorWorkspaceRepos, juniorWorkspaces } from "./schema/workspaces";
 
 export {
   juniorArtifacts,
   juniorAttachments,
+  juniorCodeChanges,
+  juniorCodeRepositories,
   juniorConversationAnnotations,
   juniorApiTokens,
   juniorAgentBindings,
@@ -38,6 +42,7 @@ export {
   juniorDestinations,
   juniorEventTasks,
   juniorIdentities,
+  juniorSnapshots,
   juniorStats,
   juniorTaskExecutions,
   juniorSchedulerRuns,
@@ -50,6 +55,8 @@ export {
 export const juniorSqlSchema = {
   juniorArtifacts,
   juniorAttachments,
+  juniorCodeChanges,
+  juniorCodeRepositories,
   juniorConversationAnnotations,
   juniorApiTokens,
   juniorAgentBindings,
@@ -62,6 +69,7 @@ export const juniorSqlSchema = {
   juniorDestinations,
   juniorEventTasks,
   juniorIdentities,
+  juniorSnapshots,
   juniorStats,
   juniorTaskExecutions,
   juniorSchedulerRuns,

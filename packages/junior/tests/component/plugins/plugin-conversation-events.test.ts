@@ -276,7 +276,6 @@ describe("plugin conversation events", () => {
     await db
       .update(juniorConversations)
       .set({
-        archivedAt: new Date(3_000),
         lastActivityAt: new Date(2_000),
         transcriptPurgedAt: new Date(2_500),
         updatedAt: new Date(2_000),
@@ -285,7 +284,6 @@ describe("plugin conversation events", () => {
     const readConversationState = async () => {
       const [row] = await db
         .select({
-          archivedAt: juniorConversations.archivedAt,
           lastActivityAt: juniorConversations.lastActivityAt,
           transcriptPurgedAt: juniorConversations.transcriptPurgedAt,
           updatedAt: juniorConversations.updatedAt,

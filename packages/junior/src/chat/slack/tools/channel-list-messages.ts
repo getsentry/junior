@@ -123,6 +123,7 @@ export function createSlackChannelListMessagesTool(context: SlackToolContext) {
         field: "channel_id",
         value: channel_id,
         defaultChannelId: context.destinationChannelId,
+        teamId: context.teamId,
       });
       const targetChannelId = target.channelId;
 
@@ -231,11 +232,11 @@ export function createSlackChannelListMessagesTool(context: SlackToolContext) {
 
       return {
         channel_id: targetChannelId,
-        ...(channelName ? { channel_name: channelName } : {}),
-        ...(joined ? { joined_channel: true } : {}),
+        ...(channelName ? { channel_name: channelName } : undefined),
+        ...(joined ? { joined_channel: true } : undefined),
         count: result.messages.length,
         messages: result.messages,
-        ...(result.nextCursor ? { next_cursor: result.nextCursor } : {}),
+        ...(result.nextCursor ? { next_cursor: result.nextCursor } : undefined),
       };
     },
   });

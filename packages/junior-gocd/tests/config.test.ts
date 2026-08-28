@@ -14,6 +14,9 @@ describe("GoCD config", () => {
     expect(hostFromBaseUrl("https://gocd.example.com")).toBe(
       "gocd.example.com",
     );
+    expect(hostFromBaseUrl("https://gocd.example.com:8154")).toBe(
+      "gocd.example.com",
+    );
     expect(() => hostFromBaseUrl("http://gocd.example.com")).toThrow(
       "GoCD base URL must use https",
     );
@@ -31,22 +34,19 @@ describe("GoCD config", () => {
     ).toThrow("GoCD API paths must start with /go/");
   });
 
-  it("prefers explicit baseUrl over plugin options and env", () => {
+  it("prefers plugin options over the environment", () => {
     vi.stubEnv("GOCD_URL", "https://env.example.com");
     expect(
-      resolveGocdTarget({
-        baseUrl: "https://call.example.com",
-        options: { baseUrl: "https://option.example.com" },
-      }),
+      resolveGocdTarget({ baseUrl: "https://option.example.com:8154" }),
     ).toEqual({
-      baseUrl: "https://call.example.com",
-      host: "call.example.com",
+      baseUrl: "https://option.example.com:8154",
+      host: "option.example.com",
     });
   });
 
   it("falls back to GOCD_URL", () => {
     vi.stubEnv("GOCD_URL", " https://env.example.com/ ");
-    expect(resolveGocdTarget({})).toEqual({
+    expect(resolveGocdTarget()).toEqual({
       baseUrl: "https://env.example.com",
       host: "env.example.com",
     });
@@ -54,6 +54,15 @@ describe("GoCD config", () => {
 
   it("names a missing base URL", () => {
     vi.stubEnv("GOCD_URL", "");
-    expect(() => resolveGocdTarget({})).toThrow("GoCD base URL is required");
+    expect(() => resolveGocdTarget()).toThrow("GoCD base URL is required");
+  });
+
+  it("validates the configured base URL before use", () => {
+    expect(() =>
+      resolveGocdTarget({ baseUrl: "http://gocd.example.com" }),
+    ).toThrow("GoCD base URL must use https");
+    expect(() =>
+      resolveGocdTarget({ baseUrl: "https://gocd.example.com/go" }),
+    ).toThrow("GoCD base URL must be an origin without a path or query");
   });
 });

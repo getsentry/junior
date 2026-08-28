@@ -15,9 +15,9 @@ export function identityFromActor(
       provider: "slack",
       providerTenantId: actor.teamId,
       providerSubjectId: actor.slackUserId,
-      ...(actor.fullName ? { displayName: actor.fullName } : {}),
-      ...(actor.slackUserName ? { handle: actor.slackUserName } : {}),
-      ...(actor.email ? { email: actor.email, emailVerified: true } : {}),
+      ...(actor.fullName ? { displayName: actor.fullName } : undefined),
+      ...(actor.slackUserName ? { handle: actor.slackUserName } : undefined),
+      ...(actor.email ? { email: actor.email, emailVerified: true } : undefined),
       metadata: { platform: "slack" },
     };
   }
@@ -32,7 +32,7 @@ export function identityFromActor(
     providerSubjectId: email,
     email,
     emailVerified: true,
-    ...(actor?.fullName ? { displayName: actor.fullName } : {}),
+    ...(actor?.fullName ? { displayName: actor.fullName } : undefined),
     metadata: { platform: "web" },
   };
 }
@@ -95,19 +95,19 @@ export function actorFromIdentityRow(
   const email = identity.emailNormalized ?? identity.email ?? undefined;
   if (identity.provider === "slack") {
     return {
-      ...(email ? { email } : {}),
-      ...(fullName ? { fullName } : {}),
+      ...(email ? { email } : undefined),
+      ...(fullName ? { fullName } : undefined),
       platform: "slack",
       slackUserId: identity.providerSubjectId,
-      ...(identity.handle ? { slackUserName: identity.handle } : {}),
-      ...(identity.providerTenantId ? { teamId: identity.providerTenantId } : {}),
+      ...(identity.handle ? { slackUserName: identity.handle } : undefined),
+      ...(identity.providerTenantId ? { teamId: identity.providerTenantId } : undefined),
     };
   }
   // Dashboard/web actors are junior identities keyed by verified email.
   if (identity.provider === "junior" && email) {
     return {
       email,
-      ...(fullName ? { fullName } : {}),
+      ...(fullName ? { fullName } : undefined),
     };
   }
   return undefined;
@@ -135,21 +135,21 @@ export function mergeActor(
     ...current,
     ...((current.email ?? next.email)
       ? { email: current.email ?? next.email }
-      : {}),
+      : undefined),
     ...((current.fullName ?? next.fullName)
       ? { fullName: current.fullName ?? next.fullName }
-      : {}),
+      : undefined),
     ...((current.platform ?? next.platform)
       ? { platform: current.platform ?? next.platform }
-      : {}),
+      : undefined),
     ...((current.slackUserId ?? next.slackUserId)
       ? { slackUserId: current.slackUserId ?? next.slackUserId }
-      : {}),
+      : undefined),
     ...((current.slackUserName ?? next.slackUserName)
       ? { slackUserName: current.slackUserName ?? next.slackUserName }
-      : {}),
+      : undefined),
     ...((current.teamId ?? next.teamId)
       ? { teamId: current.teamId ?? next.teamId }
-      : {}),
+      : undefined),
   };
 }

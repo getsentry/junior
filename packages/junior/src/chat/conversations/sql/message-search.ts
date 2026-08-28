@@ -162,7 +162,7 @@ class SqlConversationMessageSearchStore implements ConversationMessageSearchStor
       messageId: row.messageId,
       providerDestinationId: row.providerDestinationId,
       role: row.role,
-      ...(row.channelName ? { channelName: row.channelName } : {}),
+      ...(row.channelName ? { channelName: row.channelName } : undefined),
     }));
   }
 }

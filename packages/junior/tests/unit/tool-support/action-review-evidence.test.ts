@@ -2,6 +2,11 @@ import { describe, expect, it } from "vitest";
 import type { PiMessage } from "@/chat/pi/messages";
 import { buildToolActionEvidence } from "@/chat/tool-support/action-review-evidence";
 
+/** Incomplete transcript fixtures for evidence selection tests. */
+function piMessage(value: unknown): PiMessage {
+  return value as PiMessage;
+}
+
 describe("tool action review evidence", () => {
   it("keeps user, assistant, tool-call, and tool-result evidence without reasoning", () => {
     const evidence = buildToolActionEvidence([
@@ -29,7 +34,7 @@ describe("tool action review evidence", () => {
         content: [{ type: "text", text: "The weekly report exists." }],
         isError: false,
       },
-    ] as PiMessage[]);
+    ].map((value) => piMessage(value)));
 
     expect(evidence).toEqual({
       entries: [
@@ -53,18 +58,18 @@ describe("tool action review evidence", () => {
   });
 
   it("preserves first and latest user anchors while retaining recent tool evidence", () => {
-    const messages: PiMessage[] = [
+    const messageFixtures = [
       {
         role: "user",
         content: [{ type: "text", text: "first-request" }],
-      } as unknown as PiMessage,
+      },
       ...Array.from(
         { length: 12 },
         (_, index) =>
           ({
             role: "user",
             content: [{ type: "text", text: `${index}-${"x".repeat(8_000)}` }],
-          }) as PiMessage,
+          }),
       ),
       {
         role: "assistant",
@@ -76,21 +81,21 @@ describe("tool action review evidence", () => {
             arguments: { target: "preview-73" },
           },
         ],
-      } as unknown as PiMessage,
+      },
       {
         role: "toolResult",
         toolCallId: "call-latest",
         toolName: "inspectTarget",
         content: [{ type: "text", text: "target is an empty preview" }],
         isError: false,
-      } as PiMessage,
+      },
       {
         role: "user",
         content: [{ type: "text", text: "latest-request" }],
-      } as PiMessage,
+      },
     ];
 
-    const evidence = buildToolActionEvidence(messages);
+    const evidence = buildToolActionEvidence(messageFixtures.map((value) => piMessage(value)));
 
     expect(evidence.entries[0]).toEqual({
       role: "user",

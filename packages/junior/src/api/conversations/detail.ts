@@ -21,10 +21,12 @@ import { conversationDetailReportSchema } from "../schema/conversation";
 import type { ConversationDetailReport } from "../schema/conversation";
 import { listConversationAnnotations } from "@/chat/plugins/annotations";
 import { readConversationSourceTask } from "@/chat/tasks/read";
+import { readConversationArchivedAt } from "./archive";
 
 /** Project stored metadata and a bounded event page into a signed history cursor. */
 function projectConversationDetail(args: {
   access?: ConversationAccess;
+  archivedAtMs?: number;
   auxiliaryCosts?: ConversationDetailReport["auxiliaryCosts"];
   conversation: Conversation;
   durationMs: number;
@@ -47,13 +49,16 @@ function projectConversationDetail(args: {
   return {
     ...conversationSummaryFromStoredConversation({
       access: args.access,
+      ...(args.archivedAtMs === undefined
+        ? undefined
+        : { archivedAtMs: args.archivedAtMs }),
       auxiliaryCosts: args.auxiliaryCosts,
       conversation,
       durationMs: args.durationMs,
-      ...(args.locationId ? { locationId: args.locationId } : {}),
+      ...(args.locationId ? { locationId: args.locationId } : undefined),
       ...(args.teamDomainByTeamId
         ? { teamDomainByTeamId: args.teamDomainByTeamId }
-        : {}),
+        : undefined),
       usage: args.usage,
     }),
     annotations: canExposePayload ? args.annotations : [],
@@ -65,15 +70,15 @@ function projectConversationDetail(args: {
             seq: args.previousSeq,
           }),
         }
-      : {}),
-    ...(modelUsage.length > 0 ? { modelUsage } : {}),
+      : undefined),
+    ...(modelUsage.length > 0 ? { modelUsage } : undefined),
     eventHistory: conversationEventHistory({
       canExposePayload,
-      ...(transcriptPurgedAtMs === undefined ? {} : { transcriptPurgedAtMs }),
+      ...(transcriptPurgedAtMs === undefined ? undefined : { transcriptPurgedAtMs }),
     }),
     generatedAt: new Date().toISOString(),
-    ...(sentryConversationUrl ? { sentryConversationUrl } : {}),
-    ...(args.sourceTask ? { sourceTask: args.sourceTask } : {}),
+    ...(sentryConversationUrl ? { sentryConversationUrl } : undefined),
+    ...(args.sourceTask ? { sourceTask: args.sourceTask } : undefined),
   };
 }
 
@@ -86,6 +91,9 @@ async function readConversationDetailFromSql(
 ): Promise<ConversationDetailReport | undefined> {
   const record = await readConversationRecordFromSql(conversationId);
   if (!record) return undefined;
+  const archivedAtMs = options.viewer
+    ? await readConversationArchivedAt(options.viewer, conversationId)
+    : undefined;
 
   const executor = getSqlExecutor();
   const includeDescendantMetrics = record.rootConversationId === conversationId;
@@ -115,7 +123,7 @@ async function readConversationDetailFromSql(
     ),
     readConversationSourceTask({
       conversationId,
-      ...(options.viewer ? { viewer: options.viewer } : {}),
+      ...(options.viewer ? { viewer: options.viewer } : undefined),
     }),
     resolveSlackTeamDomains(
       record.conversation.sessionSource?.platform === "slack"
@@ -136,15 +144,16 @@ async function readConversationDetailFromSql(
   return projectConversationDetail({
     ...record,
     access,
+    ...(archivedAtMs === undefined ? undefined : { archivedAtMs }),
     annotations,
     auxiliaryCosts: auxiliaryCostsByConversation.get(conversationId),
     durationMs: metrics?.durationMs ?? record.durationMs,
     events: page.events,
     modelUsage,
-    ...(sourceTask ? { sourceTask } : {}),
+    ...(sourceTask ? { sourceTask } : undefined),
     teamDomainByTeamId,
     ...(page.previousSeq === undefined
-      ? {}
+      ? undefined
       : { previousSeq: page.previousSeq }),
     usage: metrics?.usage ?? record.usage ?? undefined,
   });

@@ -22,12 +22,13 @@ import {
   authenticationUnlinkedEvent,
   JUNIOR_NATIVE_EVENT_NAMESPACE,
 } from "@/chat/conversations/structured-events";
+import { botConfig } from "@/chat/config";
 import { getConversationEventStore, getSqlExecutor } from "@/chat/db";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
 import {
   bindProviderConversation,
-  type ProviderConversationBinding,
+  type ProviderConversationReference,
 } from "@/chat/conversations/sql/bindings";
 import { withConversationEventLock } from "@/chat/conversations/sql/event-lock";
 import {
@@ -227,7 +228,9 @@ export async function loadProjection(
   const events = await getConversationEventStore().loadCurrentHistory(
     args.conversationId,
   );
-  return projectConversationEvents(events).messages;
+  return projectConversationEvents(events, {
+    defaultProfile: botConfig.defaultProfile,
+  }).messages;
 }
 
 /** Load current Pi context with aligned provenance and source event sequences. */
@@ -237,7 +240,9 @@ export async function loadConversationProjection(
   const events = await getConversationEventStore().loadCurrentHistory(
     args.conversationId,
   );
-  return projectConversationEvents(events);
+  return projectConversationEvents(events, {
+    defaultProfile: botConfig.defaultProfile,
+  });
 }
 
 /** Load the active Pi projection before a conversation's next request. */
@@ -247,7 +252,9 @@ export async function openConversationProjection(
   const events = await getConversationEventStore().loadCurrentHistory(
     args.conversationId,
   );
-  return projectConversationEvents(events);
+  return projectConversationEvents(events, {
+    defaultProfile: botConfig.defaultProfile,
+  });
 }
 
 /**
@@ -272,6 +279,7 @@ export async function loadTurnProjection(args: {
   if (args.committedSeq < 0) {
     return projectConversationEvents(
       await eventStore.loadCurrentHistory(args.conversationId),
+      { defaultProfile: botConfig.defaultProfile },
     );
   }
   const historyEvents = await eventStore.loadHistoryContaining(
@@ -282,7 +290,9 @@ export async function loadTurnProjection(args: {
   if (!historyEvents) {
     return undefined;
   }
-  return projectConversationEvents(historyEvents);
+  return projectConversationEvents(historyEvents, {
+    defaultProfile: botConfig.defaultProfile,
+  });
 }
 
 /** Load MCP providers the credential subject connected in this conversation. */
@@ -358,9 +368,7 @@ export async function commitAcceptedReply(args: {
   conversation: ThreadConversationState;
   conversationMessageId: string;
   conversationId: string;
-  providerConversationBindings?: Array<
-    Omit<ProviderConversationBinding, "conversationId">
-  >;
+  providerConversationBindings?: ProviderConversationReference[];
   repliedAtMs?: number;
 }): Promise<void> {
   const executor = getSqlExecutor();
@@ -385,7 +393,7 @@ export async function commitAcceptedReply(args: {
           conversation: args.conversation,
           conversationId: args.conversationId,
           ...(args.repliedAtMs === undefined
-            ? {}
+            ? undefined
             : { repliedAtMs: args.repliedAtMs }),
         },
       );
@@ -407,7 +415,9 @@ async function commitMessagesLocked(
   const currentEvents = await eventStore.loadCurrentHistory(
     args.conversationId,
   );
-  const current = projectConversationEvents(currentEvents);
+  const current = projectConversationEvents(currentEvents, {
+    defaultProfile: botConfig.defaultProfile,
+  });
   // Runtime bootstrap is per-run input, not durable agent history. Session
   // records may retain it while a turn is live, but event replay must not need
   // a compensating history rewrite when that bootstrap changes.
@@ -422,13 +432,13 @@ async function commitMessagesLocked(
     existing: current,
     nextMessages: nextLocalMessages,
     matchingPrefix,
-    ...(args.provenance ? { explicitProvenance: args.provenance } : {}),
+    ...(args.provenance ? { explicitProvenance: args.provenance } : undefined),
     ...(args.trailingMessageProvenance
       ? { trailingMessageProvenance: args.trailingMessageProvenance }
-      : {}),
+      : undefined),
     ...(args.newMessageProvenance
       ? { newMessageProvenance: args.newMessageProvenance }
-      : {}),
+      : undefined),
   });
   if (matchingPrefix === current.messages.length) {
     const newMessages = nextLocalMessages.slice(matchingPrefix);
@@ -464,7 +474,9 @@ async function commitMessagesLocked(
   const committedEvents = await eventStore.loadCurrentHistory(
     args.conversationId,
   );
-  const committed = projectConversationEvents(committedEvents);
+  const committed = projectConversationEvents(committedEvents, {
+    defaultProfile: botConfig.defaultProfile,
+  });
   return {
     committedSeq: committedEvents.at(-1)?.seq ?? -1,
     historyVersion: committedEvents.at(-1)?.historyVersion ?? 0,
@@ -605,9 +617,11 @@ async function recordAuthenticationAccountChange(
   const content = definition.parse({
     actorId: args.actorId,
     provider: args.provider,
-    ...(args.accountLabel ? { accountLabel: args.accountLabel } : {}),
-    ...(args.authorizationId ? { authorizationId: args.authorizationId } : {}),
-    ...(args.providerLabel ? { providerLabel: args.providerLabel } : {}),
+    ...(args.accountLabel ? { accountLabel: args.accountLabel } : undefined),
+    ...(args.authorizationId
+      ? { authorizationId: args.authorizationId }
+      : undefined),
+    ...(args.providerLabel ? { providerLabel: args.providerLabel } : undefined),
   });
   await getConversationEventStore().append(args.conversationId, [
     {
@@ -623,7 +637,7 @@ async function recordAuthenticationAccountChange(
         namespace: JUNIOR_NATIVE_EVENT_NAMESPACE,
         name: definition.eventName,
         version: definition.version,
-        ...(args.turnId ? { turnId: args.turnId } : {}),
+        ...(args.turnId ? { turnId: args.turnId } : undefined),
         content,
       },
     },
@@ -716,10 +730,10 @@ export async function recordAgentsInstructionsUpdated(
     action,
     fingerprint,
     sources: instructions?.sources ?? [],
-    ...(instructions ? { directory: instructions.directory } : {}),
+    ...(instructions ? { directory: instructions.directory } : undefined),
     ...(instructions
       ? { textBytes: Buffer.byteLength(instructions.text, "utf8") }
-      : {}),
+      : undefined),
   });
   await getConversationEventStore().append(args.conversationId, [
     {
@@ -766,19 +780,22 @@ export async function recordSubscribedReplyRoute(args: {
           shouldReply: args.shouldReply,
           ...(args.shouldUnsubscribe !== undefined
             ? { shouldUnsubscribe: args.shouldUnsubscribe }
-            : {}),
+            : undefined),
         },
       },
     },
   ]);
 }
 
-/** Load a previously selected execution profile for a resumed turn. */
+/** Load a previously selected model profile for a resumed turn. */
 export async function loadTurnRoute(args: {
   conversationId: string;
   turnId: string;
 }): Promise<
-  Extract<ConversationEvent["data"], { type: "turn_routed" }> | undefined
+  | (Extract<ConversationEvent["data"], { type: "turn_routed" }> & {
+      seq: number;
+    })
+  | undefined
 > {
   const event = await getConversationEventStore().loadByIdempotencyKey(
     args.conversationId,
@@ -790,10 +807,10 @@ export async function loadTurnRoute(args: {
   if (event.data.type !== "turn_routed" || event.data.turnId !== args.turnId) {
     throw new Error(`Turn route key for "${args.turnId}" has invalid data`);
   }
-  return event.data;
+  return { ...event.data, seq: event.seq };
 }
 
-/** Record the execution profile selected for one turn without changing agent history. */
+/** Record the model profile selected for one turn without changing agent history. */
 export async function recordTurnRoute(args: {
   conversationId: string;
   turnId: string;
@@ -813,11 +830,11 @@ export async function recordTurnRoute(args: {
         turnId: args.turnId,
         modelProfile: args.modelProfile,
         modelId: args.modelId,
-        ...(args.costUsd !== undefined ? { costUsd: args.costUsd } : {}),
+        ...(args.costUsd !== undefined ? { costUsd: args.costUsd } : undefined),
         reasoningLevel: args.reasoningLevel,
         ...(args.confidence !== undefined
           ? { confidence: args.confidence }
-          : {}),
+          : undefined),
         source: args.source,
       },
     },
@@ -891,8 +908,8 @@ export async function recordAttachmentsDelivered(args: {
       idempotencyKey: attachmentsDeliveredIdempotencyKey({
         attachments: args.attachments,
         conversationId: args.conversationId,
-        ...(args.toolCallId ? { toolCallId: args.toolCallId } : {}),
-        ...(args.turnId ? { turnId: args.turnId } : {}),
+        ...(args.toolCallId ? { toolCallId: args.toolCallId } : undefined),
+        ...(args.turnId ? { turnId: args.turnId } : undefined),
       }),
       data: {
         type: "attachments_delivered",
@@ -902,8 +919,8 @@ export async function recordAttachmentsDelivered(args: {
           contentType: attachment.contentType,
           bytes: attachment.bytes,
         })),
-        ...(args.toolCallId ? { toolCallId: args.toolCallId } : {}),
-        ...(args.turnId ? { turnId: args.turnId } : {}),
+        ...(args.toolCallId ? { toolCallId: args.toolCallId } : undefined),
+        ...(args.turnId ? { turnId: args.turnId } : undefined),
       },
       createdAtMs: args.createdAtMs ?? Date.now(),
     },
@@ -928,7 +945,7 @@ export async function recordGuardianActionReviewed(args: {
         turnId: args.turnId,
         toolCallId: args.toolCallId,
         toolName: args.toolName,
-        ...(args.costUsd !== undefined ? { costUsd: args.costUsd } : {}),
+        ...(args.costUsd !== undefined ? { costUsd: args.costUsd } : undefined),
         decision: args.decision,
         riskLevel: args.riskLevel,
         userAuthorization: args.userAuthorization,

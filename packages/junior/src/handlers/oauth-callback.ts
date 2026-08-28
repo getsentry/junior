@@ -14,7 +14,7 @@ import { postSlackMessage } from "@/chat/slack/outbound";
 import {
   ResumeTurnBusyError,
   resumeSlackTurn,
-} from "@/chat/runtime/slack-resume";
+} from "@/chat/providers/slack/resume";
 import { persistAuthPauseTurnState } from "@/chat/runtime/auth-pause-state";
 import {
   logException,
@@ -68,17 +68,18 @@ import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { wakePausedTurn } from "@/chat/task-execution/turn-wake";
 import {
   resolveTurnSessionRouting,
-  type TurnSessionRouting,
+  type RequiredTurnSessionRouting,
 } from "@/chat/services/turn-session-routing";
 import type { AgentRunResult } from "@/chat/services/turn-result";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
+import { executeTurn } from "@/chat/runtime/turn-execution";
 import { requireSlackDestination } from "@/chat/destination";
 import { relayLocalOAuthCallback } from "@/chat/local/oauth-relay";
 import { getSqlExecutor } from "@/chat/db";
 import { upsertIdentity, upsertLinkedIdentity } from "@/chat/identities/sql";
 import { lookupSlackUserProfile } from "@/chat/slack/users";
 import { parseSlackUserId } from "@/chat/slack/ids";
-import { deleteWebAuthorization } from "@/chat/api-turns/authorization";
+import { deleteWebAuthorization } from "@/chat/conversations/web-authorization";
 import { botConfig } from "@/chat/config";
 
 interface OAuthCallbackOptions {
@@ -113,7 +114,9 @@ function oauthTokenErrorAttributes(
     "app.credential.provider": provider,
     "app.oauth.error.phase": "token_exchange",
     "server.address": new URL(endpoint).hostname,
-    ...(status !== undefined ? { "http.response.status_code": status } : {}),
+    ...(status !== undefined
+      ? { "http.response.status_code": status }
+      : undefined),
   };
 }
 
@@ -237,7 +240,7 @@ async function resumeOAuthSessionRecordTurn(
     kind: "plugin",
     provider: stored.provider,
     actorId: stored.userId,
-    ...(stored.scope ? { scope: stored.scope } : {}),
+    ...(stored.scope ? { scope: stored.scope } : undefined),
   });
 
   const resolvedSessionId = pendingAuth?.sessionId ?? stored.resumeSessionId;
@@ -300,7 +303,8 @@ async function resumeOAuthSessionRecordTurn(
     messageTs: getTurnUserSlackMessageTs(userMessage),
     lockKey: stored.resumeConversationId,
     initialText: "",
-    agentRunner: options.agentRunner,
+    executeTurn: async (run, saveResult, timeoutMs) =>
+      await executeTurn(options.agentRunner, run, saveResult, timeoutMs),
     beforeStart: async () => {
       const lockedState = await getPersistedThreadState(
         stored.resumeConversationId!,
@@ -315,7 +319,7 @@ async function resumeOAuthSessionRecordTurn(
         kind: "plugin",
         provider: stored.provider,
         actorId: stored.userId,
-        ...(stored.scope ? { scope: stored.scope } : {}),
+        ...(stored.scope ? { scope: stored.scope } : undefined),
       });
       const lockedSessionId =
         lockedPendingAuth?.sessionId ?? stored.resumeSessionId!;
@@ -386,7 +390,7 @@ async function resumeOAuthSessionRecordTurn(
         });
         return false;
       }
-      let routing: TurnSessionRouting;
+      let routing: RequiredTurnSessionRouting;
       try {
         routing = await resolveTurnSessionRouting({
           conversationId: stored.resumeConversationId!,
@@ -418,7 +422,7 @@ async function resumeOAuthSessionRecordTurn(
         sliceId: lockedSessionRecord.sliceId,
         messageTs: lockedMessageTs,
         inputMessageIds: [lockedUserMessage.id],
-        replyContext: {
+        run: {
           instruction: {
             text: lockedUserMessage.text,
             context: lockedConversationContext,
@@ -437,6 +441,7 @@ async function resumeOAuthSessionRecordTurn(
           },
           actor,
           destination,
+          ...(routing.location ? { location: routing.location } : undefined),
           source: routing.source,
           toolChannelId: stored.channelId!,
           environment: {
@@ -690,7 +695,7 @@ export async function GET(
   }
   await userTokenStore.set(stored.userId, provider, {
     ...parsedTokenResponse,
-    ...(account ? { account } : {}),
+    ...(account ? { account } : undefined),
   });
   const slackActor =
     stored.actor?.platform === "slack" ? stored.actor : undefined;
@@ -711,7 +716,7 @@ export async function GET(
           handle: profile.name,
           ...(profile.email
             ? { email: profile.email, emailVerified: true }
-            : {}),
+            : undefined),
         });
         if (!slackIdentity.userId) {
           throw new Error("OAuth Slack identity is not linked to a user");
@@ -738,7 +743,7 @@ export async function GET(
           provider,
           actorId: stored.userId,
           providerLabel,
-          ...(account?.label ? { accountLabel: account.label } : {}),
+          ...(account?.label ? { accountLabel: account.label } : undefined),
           ...(stored.resumeSessionId
             ? {
                 authorizationId: pluginAuthorizationId({
@@ -747,7 +752,7 @@ export async function GET(
                 }),
                 turnId: stored.resumeSessionId,
               }
-            : {}),
+            : undefined),
         });
       },
       "oauth.callback.authentication_event.failed",

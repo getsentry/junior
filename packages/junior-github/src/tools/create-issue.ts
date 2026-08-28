@@ -38,7 +38,7 @@ const createIssueInputSchema = Type.Object(
     }),
     body: Type.Optional(
       Type.String({
-        description: "Issue body. Junior appends the conversation footer.",
+        description: "Issue body. The runtime appends the conversation footer.",
       }),
     ),
     labels: Type.Optional(
@@ -57,7 +57,7 @@ const createIssueToolInputSchema = z
     title: z.string().describe("Issue title."),
     body: z
       .string()
-      .describe("Issue body. Junior appends the conversation footer.")
+      .describe("Issue body. The runtime appends the conversation footer.")
       .optional(),
     labels: z
       .array(z.string())
@@ -112,10 +112,11 @@ const gitHubIssueDataSchema = z.object({
   url: z.string(),
 });
 
-const gitHubIssueOutputSchema = pluginToolOutputSchema.extend({
-  target: z.literal("createIssue"),
-  ...gitHubIssueDataSchema.shape,
-});
+const gitHubIssueOutputSchema = pluginToolOutputSchema.merge(
+  gitHubIssueDataSchema.extend({
+    target: z.literal("createIssue"),
+  }),
+);
 
 function gitHubIssueToolResult(
   input: CreateGitHubIssueInput,
@@ -129,7 +130,7 @@ function gitHubIssueToolResult(
         repo: `${repo.owner}/${repo.name}`,
       })
     : undefined;
-  const data = { ...result, ...(subscribable ? { subscribable } : {}) };
+  const data = { ...result, ...(subscribable ? { subscribable } : undefined) };
   return {
     target: "createIssue",
     ...data,
@@ -236,7 +237,7 @@ async function createGitHubIssueRequest(
       conversationId,
       dashboardUrl,
     ),
-    ...(labels?.length ? { labels } : {}),
+    ...(labels?.length ? { labels } : undefined),
   };
   return new Request(
     `https://api.github.com/repos/${encodeURIComponent(
@@ -310,7 +311,7 @@ export function createGitHubIssueTool(ctx: ToolRegistrationHookContext) {
       readOnlyHint: false,
     },
     description:
-      "Create a GitHub issue with a runtime-owned Junior conversation footer. Use this instead of shelling out to gh issue create when creating issues.",
+      "Create a GitHub issue with a runtime-owned conversation footer. Use this instead of shelling out to gh issue create when creating issues.",
     inputSchema: createIssueToolInputSchema,
     outputSchema: gitHubIssueOutputSchema,
     async execute(
@@ -374,7 +375,7 @@ export function createGitHubIssueTool(ctx: ToolRegistrationHookContext) {
               );
             } catch (error) {
               throw new Error(
-                "GitHub issue was created, but Junior could not persist the completed issue state.",
+                "GitHub issue was created, but the runtime could not persist the completed issue state.",
                 { cause: error },
               );
             }

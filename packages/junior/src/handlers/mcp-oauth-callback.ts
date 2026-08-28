@@ -21,6 +21,7 @@ import { getMcpProviderErrorAttributes } from "@/chat/mcp/errors";
 import { logException, logWarn } from "@/chat/logging";
 import type { AgentRunResult } from "@/chat/services/turn-result";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
+import { executeTurn } from "@/chat/runtime/turn-execution";
 import {
   getLocationConfigurationService,
   getPersistedSandboxState,
@@ -38,7 +39,7 @@ import {
   buildConversationContext,
   markConversationMessage,
 } from "@/chat/services/conversation-memory";
-import { resumeSlackTurn } from "@/chat/runtime/slack-resume";
+import { resumeSlackTurn } from "@/chat/providers/slack/resume";
 import { persistAuthPauseTurnState } from "@/chat/runtime/auth-pause-state";
 import {
   clearPendingAuth,
@@ -62,14 +63,14 @@ import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { wakePausedTurn } from "@/chat/task-execution/turn-wake";
 import {
   resolveTurnSessionRouting,
-  type TurnSessionRouting,
+  type RequiredTurnSessionRouting,
 } from "@/chat/services/turn-session-routing";
 import { htmlCallbackResponse } from "@/handlers/oauth-html";
 import type { WaitUntilFn } from "@/handlers/types";
 import { createSlackResumeActor, type Actor } from "@/chat/actor";
 import { requireSlackDestination } from "@/chat/destination";
 import { relayLocalOAuthCallback } from "@/chat/local/oauth-relay";
-import { deleteWebAuthorization } from "@/chat/api-turns/authorization";
+import { deleteWebAuthorization } from "@/chat/conversations/web-authorization";
 
 function callbackPages(botName: string) {
   return {
@@ -284,7 +285,8 @@ async function resumeAuthorizedMcpTurn(args: {
     messageTs: getTurnUserSlackMessageTs(userMessage),
     lockKey: threadId,
     initialText: "",
-    agentRunner,
+    executeTurn: async (run, saveResult, timeoutMs) =>
+      await executeTurn(agentRunner, run, saveResult, timeoutMs),
     beforeStart: async () => {
       const lockedState = await getPersistedThreadState(threadId);
       const lockedConversation = coerceThreadConversationState(lockedState);
@@ -361,7 +363,7 @@ async function resumeAuthorizedMcpTurn(args: {
         });
         return false;
       }
-      let routing: TurnSessionRouting;
+      let routing: RequiredTurnSessionRouting;
       try {
         routing = await resolveTurnSessionRouting({
           conversationId: authSession.conversationId,
@@ -393,7 +395,7 @@ async function resumeAuthorizedMcpTurn(args: {
         sliceId: lockedSessionRecord.sliceId,
         messageTs: lockedMessageTs,
         inputMessageIds: [lockedUserMessage.id],
-        replyContext: {
+        run: {
           instruction: {
             text: lockedUserMessage.text,
             context: lockedConversationContext,
@@ -407,6 +409,7 @@ async function resumeAuthorizedMcpTurn(args: {
           },
           actor,
           destination,
+          ...(routing.location ? { location: routing.location } : undefined),
           source: routing.source,
           toolChannelId: authSession.toolChannelId ?? authSession.channelId,
           environment: {
@@ -614,7 +617,7 @@ export async function GET(
           sessionId: authSession.sessionId,
         }),
         turnId: authSession.sessionId,
-        ...(providerLabel ? { providerLabel } : {}),
+        ...(providerLabel ? { providerLabel } : undefined),
       });
     } catch (error) {
       logException(error, "mcp.oauth_callback.authentication_event.failed", {

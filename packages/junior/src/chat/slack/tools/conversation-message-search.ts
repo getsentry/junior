@@ -7,6 +7,10 @@ import { CONVERSATIONS_TOOL_SOURCE } from "@/chat/conversations/tool-source";
 import { getConversationMessageSearchStore } from "@/chat/db";
 import { parseSlackThreadId } from "@/chat/slack/context";
 import {
+  parseSlackTeamId,
+  type SlackTeamId,
+} from "@/chat/slack/ids";
+import {
   resolveSlackChannelRef,
   slackChannelRefParam,
 } from "@/chat/slack/tool-support/channel-target";
@@ -62,6 +66,7 @@ async function resolveSearchFilters(input: {
   before?: string | null;
   channel_id?: string | null;
   query?: string | null;
+  teamId: SlackTeamId;
 }): Promise<ConversationMessageSearchFilters> {
   const query = input.query?.trim() || undefined;
   const annotation = input.annotation?.trim() || undefined;
@@ -73,6 +78,7 @@ async function resolveSearchFilters(input: {
     const target = await resolveSlackChannelRef({
       field: "channel_id",
       value: input.channel_id,
+      teamId: input.teamId,
     });
     channelId = target.channelId;
   }
@@ -91,11 +97,11 @@ async function resolveSearchFilters(input: {
   }
 
   return {
-    ...(afterMs !== undefined ? { afterMs } : {}),
-    ...(annotation ? { annotation } : {}),
-    ...(beforeMs !== undefined ? { beforeMs } : {}),
-    ...(channelId ? { channelId } : {}),
-    ...(query ? { query } : {}),
+    ...(afterMs !== undefined ? { afterMs } : undefined),
+    ...(annotation ? { annotation } : undefined),
+    ...(beforeMs !== undefined ? { beforeMs } : undefined),
+    ...(channelId ? { channelId } : undefined),
+    ...(query ? { query } : undefined),
   };
 }
 
@@ -162,7 +168,13 @@ export function createSlackConversationMessageSearchTool(
       .strict(),
     outputSchema: conversationMessageSearchOutputSchema,
     execute: async (input) => {
-      const filters = await resolveSearchFilters(input);
+      const teamId = parseSlackTeamId(scope.providerTenantId);
+      if (!teamId) {
+        throw new ToolInputError(
+          "Cannot search retained messages without a valid Slack workspace id.",
+        );
+      }
+      const filters = await resolveSearchFilters({ ...input, teamId });
       const store = getConversationMessageSearchStore();
       const matches = await store.search({
         currentConversationId,
@@ -193,8 +205,8 @@ export function createSlackConversationMessageSearchTool(
             message_timestamp: new Date(match.messageCreatedAtMs).toISOString(),
             excerpt: match.excerpt,
             channel_id: match.providerDestinationId,
-            ...(match.channelName ? { channel_name: match.channelName } : {}),
-            ...(permalink ? { permalink } : {}),
+            ...(match.channelName ? { channel_name: match.channelName } : undefined),
+            ...(permalink ? { permalink } : undefined),
           };
         }),
       );
@@ -202,13 +214,13 @@ export function createSlackConversationMessageSearchTool(
       return {
         ...(filters.afterMs !== undefined
           ? { after: new Date(filters.afterMs).toISOString() }
-          : {}),
-        ...(filters.annotation ? { annotation: filters.annotation } : {}),
+          : undefined),
+        ...(filters.annotation ? { annotation: filters.annotation } : undefined),
         ...(filters.beforeMs !== undefined
           ? { before: new Date(filters.beforeMs).toISOString() }
-          : {}),
-        ...(filters.query ? { query: filters.query } : {}),
-        ...(filters.channelId ? { channel_id: filters.channelId } : {}),
+          : undefined),
+        ...(filters.query ? { query: filters.query } : undefined),
+        ...(filters.channelId ? { channel_id: filters.channelId } : undefined),
         count: matchesOutput.length,
         matches: matchesOutput,
       };

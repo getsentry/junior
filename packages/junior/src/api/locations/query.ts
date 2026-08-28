@@ -342,12 +342,7 @@ async function recentLocationRows(db: JuniorDatabase, locationId: string) {
       eq(juniorIdentities.id, juniorConversations.actorIdentityId),
     )
     .leftJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
-    .where(
-      and(
-        publicLocationWhere(locationId),
-        isNull(juniorConversations.archivedAt),
-      ),
-    )
+    .where(publicLocationWhere(locationId))
     .orderBy(
       desc(juniorConversations.lastActivityAt),
       asc(juniorConversations.conversationId),
@@ -464,7 +459,7 @@ export async function readLocationDetailFromSql(
       date: row.date,
       durationMs: row.durationMs,
       failed: row.failed,
-      ...(row.tokens !== null ? { tokens: row.tokens } : {}),
+      ...(row.tokens !== null ? { tokens: row.tokens } : undefined),
     });
   }
   const actors: LocationActorSummaryReport[] = [];
@@ -473,12 +468,12 @@ export async function readLocationDetailFromSql(
     const actor: ActorIdentity = {
       ...((row.email ?? row.identityEmail)
         ? { email: row.email ?? row.identityEmail ?? undefined }
-        : {}),
-      ...(row.fullName ? { fullName: row.fullName } : {}),
+        : undefined),
+      ...(row.fullName ? { fullName: row.fullName } : undefined),
       ...(row.identityProvider === "slack" && row.providerSubjectId
         ? { slackUserId: row.providerSubjectId }
-        : {}),
-      ...(row.handle ? { slackUserName: row.handle } : {}),
+        : undefined),
+      ...(row.handle ? { slackUserName: row.handle } : undefined),
     };
     if (!actor.email && !actor.slackUserId) continue;
     const item = emptyActor(actor);

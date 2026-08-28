@@ -12,6 +12,10 @@ import type {
 import type { PluginCredentialSubject } from "./credentials";
 import type { PluginAnnotations } from "./annotations";
 import type { SlackConversationLink } from "./operations";
+import type {
+  ResourceEventSubscriptionResult,
+  SubscribableResource,
+} from "./resource-events";
 import type { PluginState } from "./state";
 import { z, type ZodTypeAny } from "zod";
 
@@ -140,7 +144,11 @@ export interface PluginMcp {
   prepare(): Promise<"authorization_pending" | "ready">;
 }
 
-/** Provider-owned repository preparation for one Workspace snapshot build. */
+/**
+ * Provider-owned, repeatable repository preparation for a Workspace Sandbox.
+ * Implementations should refresh complete checkouts and replace missing or
+ * partial ones.
+ */
 export interface WorkspacePrepareHookContext extends PluginContext {
   repos: Array<{
     path: string;
@@ -447,7 +455,7 @@ function createZodTool<
             return outputSchema.parse(result);
           },
         }
-      : {}),
+      : undefined),
   } as PluginToolDefinition<
     z.output<TInputSchema>,
     z.output<TOutputSchema>,
@@ -516,8 +524,22 @@ export interface SlackToolRegistrationHookContext {
 }
 
 export interface PluginResourceEventToolContext {
-  /** Whether this invocation can create a working resource-event subscription. */
+  /** Whether this invocation can create a working resource subscription. */
   canSubscribe: boolean;
+  /** Create a temporary resource subscription for the current conversation. */
+  subscribe(input: {
+    events: string[];
+    intent: string;
+    resource: SubscribableResource;
+  }): Promise<ResourceEventSubscriptionResult>;
+}
+
+export interface PluginWorkspaceToolContext {
+  /** Find named Workspaces that include one provider repository. */
+  findByRepository(input: {
+    provider: string;
+    repo: string;
+  }): Promise<string[]>;
 }
 
 interface BaseToolRegistrationHookContext extends PluginContext {
@@ -542,6 +564,7 @@ interface BaseToolRegistrationHookContext extends PluginContext {
     resolveActor(): Promise<{ identity: Identity; user?: User } | undefined>;
   };
   userText?: string;
+  workspaces: PluginWorkspaceToolContext;
 }
 
 interface SlackToolRegistrationContext

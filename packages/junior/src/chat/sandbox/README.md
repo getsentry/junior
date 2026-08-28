@@ -51,17 +51,38 @@ traffic through verified host egress.
 - A Workspace recipe is part of the profile hash. One build installs runtime
   dependencies, prepares repositories, runs setup, and captures the complete
   snapshot. Operators manage recipes from `/system/workspaces` or
-  `/api/workspaces`.
+  `/api/workspaces`. The `junior_snapshots` table records each build as
+  `building`, `failed`, or `ready`. A cold build runs on a background job with
+  one named Sandbox for up to one hour. Short job slices create the builder,
+  install dependencies, prepare repositories, start setup, and poll setup. Each
+  slice records its phase in SQL. The next job can continue after a soft yield
+  or a worker stop.
+- When `switchWorkspace` finds no ready snapshot, it returns
+  `status: "building"` and a temporary resource subscription for
+  `workspace_snapshot.ready` and `workspace_snapshot.failed`. It does not keep
+  the tool call open. The build job publishes those core `junior` events when it
+  finishes. The next Turn should call `switchWorkspace` again with the same
+  name. Other sandbox tools use the same plain preparing message when the
+  snapshot is not ready yet.
+- SQL is the only source of Workspace snapshot state. Redis coordinates the
+  build lock and its fencing. It does not store Workspace snapshot pointers.
 - Workspace repositories clone to fixed `repos/{name}` paths. Setup scripts
   receive `JUNIOR_WORKSPACE_ROOT` and `JUNIOR_REPOS_ROOT` so they do not depend
   on the provider's absolute Sandbox path.
-- Repository preparation uses host egress for provider credentials. Snapshot
-  state and Sandbox commands do not receive real provider credentials. Setup
-  runs after Junior removes the credential route from the build Sandbox.
+- Repository preparation uses host egress for provider credentials. Junior
+  full-clones missing repositories so Workspace checkouts keep normal git
+  history. When a checkout already exists, Junior refreshes the current branch
+  to its upstream and removes non-ignored untracked files. Snapshot state and
+  Sandbox commands do not receive real provider credentials. Setup runs after
+  Junior removes the credential route from the build Sandbox.
 - A Workspace switch prepares a candidate Sandbox before it updates durable or
   live state. A failed candidate leaves the current Sandbox unchanged.
 - Missing or invalid snapshots rebuild through the owning snapshot path;
   callers do not mutate a cached snapshot in place.
+- A ready snapshot retains its named builder Sandbox. Deleting that Sandbox
+  would also delete the snapshot it owns. Junior deletes the builder after it
+  discards the ready row because the recipe changed, the snapshot is stale or
+  missing, another snapshot replaced it, or the Workspace was deleted.
 - Snapshot state never contains real provider credentials.
 - The global baseline installs Docker and Compose clients plus
   `junior-ensure-docker`. Sandbox prepare starts `dockerd` so nested

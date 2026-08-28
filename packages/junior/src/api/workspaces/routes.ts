@@ -1,5 +1,12 @@
 import { Hono } from "hono";
 import { getDb } from "@/chat/db";
+import { logException } from "@/chat/logging";
+import {
+  create as createSnapshotProfile,
+  hash as workspaceProfileHash,
+} from "@/chat/sandbox/snapshot/profile";
+import { getCachedSnapshot } from "@/chat/sandbox/snapshot/resolve";
+import { SANDBOX_RUNTIME } from "@/chat/sandbox/snapshot/runtime";
 import { workspaceRepoCheckoutPath } from "@/chat/workspaces/checkout-path";
 import {
   createWorkspace,
@@ -22,6 +29,39 @@ import {
 import { validateRequest } from "../validation";
 import { requireViewer } from "../viewer";
 
+function snapshotView(workspace: Workspace) {
+  const recorded = workspace.snapshot;
+  if (!recorded) return null;
+  const profileHash = workspaceProfileHash(SANDBOX_RUNTIME, workspace);
+  // Hide a recorded snapshot when the recipe no longer matches its profile.
+  if (!profileHash || recorded.profileHash !== profileHash) return null;
+  return {
+    id: recorded.id,
+    generatedAt: recorded.generatedAt.toISOString(),
+    buildDurationMs: recorded.buildDurationMs,
+    sizeBytes: recorded.sizeBytes,
+  };
+}
+
+async function baselineSnapshotView() {
+  try {
+    const profile = createSnapshotProfile(SANDBOX_RUNTIME);
+    if (!profile) return null;
+    const cached = await getCachedSnapshot(profile.hash);
+    if (!cached) return null;
+    return {
+      id: cached.snapshotId,
+      generatedAt: new Date(cached.createdAtMs).toISOString(),
+      buildDurationMs: cached.buildDurationMs,
+      dependencyCount: cached.dependencyCount,
+    };
+  } catch (error) {
+    // Baseline summary is optional. Do not fail Workspace recipe admin on Redis.
+    logException(error, "sandbox.baseline_snapshot.read.failed");
+    return null;
+  }
+}
+
 function view(workspace: Workspace) {
   return {
     id: workspace.id,
@@ -31,8 +71,15 @@ function view(workspace: Workspace) {
       provider: repo.provider,
       repo: repo.repo,
       checkoutPath: workspaceRepoCheckoutPath(repo.repo),
-      isPrimary: repo.isPrimary,
     })),
+    snapshot: null as ReturnType<typeof snapshotView>,
+  };
+}
+
+function detailView(workspace: Workspace) {
+  return {
+    ...view(workspace),
+    snapshot: snapshotView(workspace),
   };
 }
 
@@ -48,8 +95,13 @@ export function createWorkspaceRoutes(): Hono<JuniorApiEnv> {
   const app = new Hono<JuniorApiEnv>();
 
   app.get("/", requireViewer, async () => {
+    const [baselineSnapshot, workspaces] = await Promise.all([
+      baselineSnapshotView(),
+      listWorkspaces(getDb()),
+    ]);
     return jsonResponse(workspaceListSchema, {
-      workspaces: (await listWorkspaces(getDb())).map(view),
+      baselineSnapshot,
+      workspaces: workspaces.map(view),
     });
   });
 
@@ -80,7 +132,7 @@ export function createWorkspaceRoutes(): Hono<JuniorApiEnv> {
       const { id } = context.req.valid("param");
       const workspace = await getWorkspace(getDb(), id);
       if (!workspace) throwApiError(404, "Workspace not found.");
-      return jsonResponse(workspaceSchema, view(workspace));
+      return jsonResponse(workspaceSchema, detailView(workspace));
     },
   );
 

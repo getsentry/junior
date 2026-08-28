@@ -1,7 +1,10 @@
-import { Plus, Star, Trash2 } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 import type { FormEvent } from "react";
 
 import { Button } from "../../components/Button";
+import { Field } from "../../components/Field";
+import { InlineError } from "../../components/InlineError";
+import { TextArea, TextInput } from "../../components/TextInput";
 import { Card } from "../../components/layout/Card";
 import {
   createRepoDraft,
@@ -15,7 +18,6 @@ type WorkspaceEditorProps = {
   draft: WorkspaceDraft;
   error?: string;
   editing: boolean;
-  onCancel(): void;
   onChange(draft: WorkspaceDraft): void;
   onSubmit(): void;
 };
@@ -31,26 +33,12 @@ export function WorkspaceEditor(props: WorkspaceEditorProps) {
     });
   }
 
-  function setPrimary(key: string) {
-    props.onChange({
-      ...props.draft,
-      repos: props.draft.repos.map((repo) => ({
-        ...repo,
-        isPrimary: repo.key === key,
-      })),
-    });
-  }
-
   function removeRepo(key: string) {
     const repos = props.draft.repos.filter((repo) => repo.key !== key);
-    if (repos.length === 0) {
-      props.onChange({ ...props.draft, repos: [createRepoDraft(true)] });
-      return;
-    }
-    if (!repos.some((repo) => repo.isPrimary)) {
-      repos[0] = { ...repos[0]!, isPrimary: true };
-    }
-    props.onChange({ ...props.draft, repos });
+    props.onChange({
+      ...props.draft,
+      repos: repos.length > 0 ? repos : [createRepoDraft()],
+    });
   }
 
   function submit(event: FormEvent<HTMLFormElement>) {
@@ -59,50 +47,61 @@ export function WorkspaceEditor(props: WorkspaceEditorProps) {
   }
 
   return (
-    <Card className="p-5" padding="none">
-      <form className="space-y-5" onSubmit={submit}>
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h3 className="m-0 text-lg font-semibold">
-              {props.editing ? "Edit Workspace" : "New Workspace"}
-            </h3>
-            <p className="mt-1 mb-0 text-sm text-dashboard-text-muted">
-              Repositories use fixed <code>repos/{"{name}"}</code> paths. Mark
-              one primary repository for AGENTS.md.
+    <Card className="mb-0" padding="md" variant="section">
+      <form className="grid gap-6" onSubmit={submit}>
+        {props.editing ? (
+          <div className="grid gap-1">
+            <h2 className="m-0 text-base font-semibold text-dashboard-text">
+              Configuration
+            </h2>
+            <p className="m-0 text-sm leading-relaxed text-dashboard-text-muted">
+              Change the recipe Junior uses the next time this Workspace is
+              prepared.
             </p>
           </div>
-          <Button disabled={props.busy} onClick={props.onCancel} type="button">
-            Cancel
-          </Button>
-        </div>
+        ) : null}
 
-        <label className="block text-sm font-semibold" htmlFor="workspace-name">
-          Name
-        </label>
-        <input
-          autoComplete="off"
-          className="mt-2 block w-full rounded border border-white/15 bg-black px-3 py-2 text-sm text-dashboard-text focus:border-[#beaaff] focus:outline-none"
-          id="workspace-name"
-          maxLength={64}
-          onChange={(event) =>
-            props.onChange({ ...props.draft, name: event.target.value })
-          }
-          placeholder="sentry"
-          value={props.draft.name}
-        />
+        <Field
+          help="Lowercase name used when agents switch into this Workspace."
+          htmlFor="workspace-name"
+          label="Name"
+        >
+          <TextInput
+            autoComplete="off"
+            id="workspace-name"
+            maxLength={64}
+            onChange={(event) =>
+              props.onChange({ ...props.draft, name: event.target.value })
+            }
+            placeholder="sentry"
+            value={props.draft.name}
+          />
+        </Field>
 
-        <div className="space-y-3">
-          <div className="flex items-center justify-between gap-3">
-            <h4 className="m-0 text-sm font-semibold">Repositories</h4>
+        <section className="grid gap-3" aria-labelledby="workspace-repos-title">
+          <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start sm:gap-4">
+            <div className="min-w-0 grid gap-1">
+              <h3
+                className="m-0 text-sm font-semibold text-dashboard-text"
+                id="workspace-repos-title"
+              >
+                Repositories
+              </h3>
+              <p className="m-0 text-xs leading-relaxed text-dashboard-text-muted sm:text-sm">
+                Each repository clones to a fixed{" "}
+                <code className="text-dashboard-text">repos/{"{name}"}</code>{" "}
+                path. Junior loads{" "}
+                <code className="text-dashboard-text">AGENTS.md</code> from each
+                repository and labels those instructions with that directory.
+              </p>
+            </div>
             <Button
+              className="w-full sm:w-auto"
               disabled={props.busy}
               onClick={() =>
                 props.onChange({
                   ...props.draft,
-                  repos: [
-                    ...props.draft.repos,
-                    createRepoDraft(props.draft.repos.length === 0),
-                  ],
+                  repos: [...props.draft.repos, createRepoDraft()],
                 })
               }
               type="button"
@@ -111,90 +110,108 @@ export function WorkspaceEditor(props: WorkspaceEditorProps) {
               Add repository
             </Button>
           </div>
-          {props.draft.repos.map((repo, index) => (
-            <div
-              className="grid gap-2 rounded border border-white/10 p-3 md:grid-cols-[7rem_minmax(0,1fr)_auto]"
-              key={repo.key}
-            >
-              <input
-                aria-label={`Provider ${index + 1}`}
-                className="rounded border border-white/15 bg-black px-3 py-2 text-sm text-dashboard-text focus:border-[#beaaff] focus:outline-none"
-                onChange={(event) =>
-                  updateRepo(repo.key, { provider: event.target.value })
-                }
-                placeholder="github"
-                value={repo.provider}
-              />
-              <input
-                aria-label={`Repository ${index + 1}`}
-                className="min-w-0 rounded border border-white/15 bg-black px-3 py-2 text-sm text-dashboard-text focus:border-[#beaaff] focus:outline-none"
-                onChange={(event) =>
-                  updateRepo(repo.key, { repo: event.target.value })
-                }
-                placeholder="getsentry/sentry"
-                value={repo.repo}
-              />
-              <div className="flex items-center justify-end gap-2">
-                <button
-                  aria-label={`Mark repository ${index + 1} primary`}
-                  aria-pressed={repo.isPrimary}
-                  className={`inline-flex h-9 items-center justify-center gap-1 rounded border px-3 text-xs font-semibold uppercase ${
-                    repo.isPrimary
-                      ? "border-[#beaaff]/50 bg-[#beaaff]/15 text-[#beaaff]"
-                      : "border-white/10 bg-transparent text-dashboard-text-muted hover:border-white/25 hover:text-dashboard-text"
-                  }`}
-                  onClick={() => setPrimary(repo.key)}
-                  type="button"
-                >
-                  <Star aria-hidden="true" size={14} />
-                  Primary
-                </button>
-                <button
-                  aria-label={`Remove repository ${index + 1}`}
-                  className="inline-flex size-9 shrink-0 items-center justify-center rounded border border-white/10 bg-transparent text-dashboard-text-muted hover:border-rose-300/40 hover:text-rose-300"
-                  onClick={() => removeRepo(repo.key)}
-                  type="button"
-                >
-                  <Trash2 aria-hidden="true" size={14} />
-                </button>
+
+          <div className="grid gap-3">
+            {props.draft.repos.map((repo, index) => (
+              <div
+                className="grid gap-3 rounded-lg border border-white/10 bg-black/20 p-3 sm:p-4"
+                key={repo.key}
+              >
+                <div className="grid gap-3 sm:grid-cols-[minmax(0,8.5rem)_minmax(0,1fr)_auto] sm:items-end">
+                  <Field
+                    htmlFor={`workspace-repo-provider-${repo.key}`}
+                    label="Provider"
+                    size="compact"
+                  >
+                    <TextInput
+                      aria-label={`Provider ${index + 1}`}
+                      id={`workspace-repo-provider-${repo.key}`}
+                      onChange={(event) =>
+                        updateRepo(repo.key, { provider: event.target.value })
+                      }
+                      placeholder="github"
+                      value={repo.provider}
+                    />
+                  </Field>
+                  <Field
+                    htmlFor={`workspace-repo-name-${repo.key}`}
+                    label="Repository"
+                    size="compact"
+                  >
+                    <TextInput
+                      aria-label={`Repository ${index + 1}`}
+                      id={`workspace-repo-name-${repo.key}`}
+                      onChange={(event) =>
+                        updateRepo(repo.key, { repo: event.target.value })
+                      }
+                      placeholder="getsentry/sentry"
+                      value={repo.repo}
+                    />
+                  </Field>
+                  <Button
+                    aria-label={`Remove repository ${index + 1}`}
+                    className="w-full sm:w-auto"
+                    onClick={() => removeRepo(repo.key)}
+                    tone="danger"
+                    type="button"
+                  >
+                    <Trash2 aria-hidden="true" size={14} />
+                    Remove
+                  </Button>
+                </div>
               </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        </section>
 
-        <label
-          className="block text-sm font-semibold"
-          htmlFor="workspace-setup"
-        >
-          Setup script
-        </label>
-        <textarea
-          className="mt-2 block min-h-32 w-full rounded border border-white/15 bg-black px-3 py-2 font-mono text-sm text-dashboard-text focus:border-[#beaaff] focus:outline-none"
-          id="workspace-setup"
-          onChange={(event) =>
-            props.onChange({ ...props.draft, setupScript: event.target.value })
+        <Field
+          help={
+            <>
+              Runs once while Junior builds the reusable snapshot. Current
+              working directory is{" "}
+              <code className="text-dashboard-text">$JUNIOR_WORKSPACE_ROOT</code>{" "}
+              (the Sandbox root, usually{" "}
+              <code className="text-dashboard-text">/vercel/sandbox</code>).
+              Cloned repositories live under{" "}
+              <code className="text-dashboard-text">$JUNIOR_REPOS_ROOT</code>{" "}
+              (<code className="text-dashboard-text">$JUNIOR_WORKSPACE_ROOT/repos</code>
+              ). Use those variables instead of hard-coded absolute paths.
+            </>
           }
-          placeholder={"pnpm install\n# repos live under $JUNIOR_REPOS_ROOT"}
-          value={props.draft.setupScript}
-        />
-        <p className="mt-2 mb-0 text-xs text-dashboard-text-muted">
-          Runs once during snapshot build with{" "}
-          <code>JUNIOR_WORKSPACE_ROOT</code> and <code>JUNIOR_REPOS_ROOT</code>.
-        </p>
+          htmlFor="workspace-setup"
+          label="Setup script"
+        >
+          <TextArea
+            id="workspace-setup"
+            onChange={(event) =>
+              props.onChange({
+                ...props.draft,
+                setupScript: event.target.value,
+              })
+            }
+            placeholder={
+              'pnpm install --dir "$JUNIOR_REPOS_ROOT/sentry"\n# cwd is $JUNIOR_WORKSPACE_ROOT'
+            }
+            value={props.draft.setupScript}
+          />
+        </Field>
 
-        {props.error ? (
-          <p className="m-0 text-sm text-rose-300" role="alert">
-            {props.error}
+        {props.error ? <InlineError>{props.error}</InlineError> : null}
+
+        <div className="flex flex-wrap items-center gap-3 border-t border-white/[0.06] pt-5">
+          <Button disabled={!props.canSave} type="submit">
+            {props.busy
+              ? "Saving…"
+              : props.editing
+                ? "Save changes"
+                : "Create Workspace"}
+          </Button>
+          <p className="m-0 text-xs text-dashboard-text-muted">
+            {props.editing
+              ? "Saved changes apply the next time this Workspace is prepared."
+              : "You can edit repositories and setup after create."}
           </p>
-        ) : null}
-
-        <Button disabled={!props.canSave} type="submit">
-          {props.busy
-            ? "Saving…"
-            : props.editing
-              ? "Save changes"
-              : "Create Workspace"}
-        </Button>
+        </div>
       </form>
     </Card>
   );

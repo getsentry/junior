@@ -11,10 +11,7 @@ import {
   type AgentInvocationStatus,
   type CreateAgentInvocationInput,
 } from "./types";
-import {
-  AgentInvocationBusyError,
-  AgentInvocationLimitError,
-} from "./errors";
+import { AgentInvocationBusyError, AgentInvocationLimitError } from "./errors";
 
 const CREATE_LOCK_PREFIX = "junior:agent_invocation:create";
 /** Cap concurrent non-terminal children one parent can keep in flight. */
@@ -84,26 +81,29 @@ function invocationFromRow(
 ): AgentInvocation {
   return agentInvocationSchema.parse({
     actor: row.actor,
-    ...(row.agentName ? { agentName: row.agentName } : {}),
+    ...(row.agentName ? { agentName: row.agentName } : undefined),
     childConversationId: row.childConversationId,
     createdAtMs: row.createdAt.getTime(),
     ...(row.credentialContext
       ? { credentialContext: row.credentialContext }
-      : {}),
+      : undefined),
     destination: row.destination,
-    ...(row.destinationVisibility
-      ? { destinationVisibility: row.destinationVisibility }
-      : {}),
-    ...(row.errorMessage !== null ? { errorMessage: row.errorMessage } : {}),
+    ...(row.errorMessage !== null
+      ? { errorMessage: row.errorMessage }
+      : undefined),
     input: row.input,
     invocationId: row.invocationId,
     mailboxStatus: row.mailboxStatus,
     parentConversationId: row.parentConversationId,
-    ...(row.reasoningLevel ? { reasoningLevel: row.reasoningLevel } : {}),
-    ...(row.result !== null ? { result: row.result } : {}),
+    ...(row.reasoningLevel
+      ? { reasoningLevel: row.reasoningLevel }
+      : undefined),
+    ...(row.result !== null ? { result: row.result } : undefined),
     source: row.source,
     status: row.status,
-    ...(row.terminalAt ? { terminalAtMs: row.terminalAt.getTime() } : {}),
+    ...(row.terminalAt
+      ? { terminalAtMs: row.terminalAt.getTime() }
+      : undefined),
     updatedAtMs: row.updatedAt.getTime(),
   });
 }
@@ -123,7 +123,6 @@ function sameCreateInput(
       JSON.stringify(input.credentialContext) &&
     JSON.stringify(invocation.destination) ===
       JSON.stringify(input.destination) &&
-    invocation.destinationVisibility === input.destinationVisibility &&
     JSON.stringify(invocation.source) === JSON.stringify(input.source)
   );
 }
@@ -306,7 +305,6 @@ export async function createAgentInvocation(
         credentialContext: input.credentialContext ?? null,
         source: input.source,
         destination: input.destination,
-        destinationVisibility: input.destinationVisibility ?? null,
         reasoningLevel: input.reasoningLevel ?? null,
         status: "pending",
         mailboxStatus: "pending",
@@ -429,10 +427,13 @@ export async function completeAgentInvocation(
   return await getAgentInvocation(args.invocationId);
 }
 
-/** Return whether an invocation already owns its immutable terminal result. */
+/** Return whether an agent invocation has finished. */
 export function isTerminalAgentInvocation(
   invocation: AgentInvocation,
-): boolean {
+): invocation is Extract<
+  AgentInvocation,
+  { status: "blocked" | "completed" | "failed" }
+> {
   return TERMINAL_AGENT_INVOCATION_STATUSES.includes(
     invocation.status as (typeof TERMINAL_AGENT_INVOCATION_STATUSES)[number],
   );

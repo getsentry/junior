@@ -7,8 +7,10 @@ import {
   scrollTopAfterPrepend,
   shouldAutoPinTranscriptBottom,
   shouldShowJumpToLatest,
+  terminalReplyPinState,
   transcriptFollowIntent,
   transcriptBottomVersion,
+  transcriptJuniorMessageVersion,
 } from "../src/client/conversations/transcriptBottomPinning";
 import type { ConversationTranscript } from "../src/client/types";
 
@@ -60,6 +62,75 @@ describe("transcript bottom pinning", () => {
         scrollTop: 1_000,
       }),
     ).toBe(false);
+  });
+
+  it("changes the Junior message version when a reply appears", () => {
+    const before = transcriptJuniorMessageVersion(
+      activeTurn({
+        events: [
+          {
+            seq: 0,
+            createdAt: "2026-01-01T00:00:01.000Z",
+            data: {
+              type: "message",
+              messageId: "user-1",
+              role: "user",
+              text: "check the deployment",
+            },
+          },
+        ],
+      }),
+    );
+    const after = transcriptJuniorMessageVersion(
+      activeTurn({ status: "completed" }),
+    );
+
+    expect(before).toBe("empty");
+    expect(after).not.toBe(before);
+  });
+
+  it("changes the Junior message version for assistant message events", () => {
+    const version = transcriptJuniorMessageVersion(
+      activeTurn({
+        events: [
+          {
+            seq: 1,
+            createdAt: "2026-01-01T00:00:02.000Z",
+            data: {
+              type: "assistant_message",
+              parts: [{ type: "reasoning", text: "final reply" }],
+            },
+          },
+        ],
+        status: "completed",
+      }),
+    );
+
+    expect(version).not.toBe("empty");
+  });
+
+  it("keeps the Junior message version stable for later non-message events", () => {
+    const current = activeTurn();
+    const before = transcriptJuniorMessageVersion(current);
+    const after = transcriptJuniorMessageVersion(
+      activeTurn({
+        events: [
+          ...current.events,
+          {
+            seq: 1,
+            createdAt: "2026-01-01T00:00:02.000Z",
+            data: {
+              type: "turn_lifecycle",
+              turnId: "turn-1",
+              state: "succeeded",
+            },
+          },
+        ],
+        status: "completed",
+      }),
+    );
+
+    expect(after).toBe(before);
   });
 
   it("changes the tail version when streamed text grows", () => {
@@ -124,6 +195,28 @@ describe("transcript bottom pinning", () => {
     );
 
     expect(after).not.toBe(before);
+  });
+
+  it("keeps the tail version stable for metadata-only events", () => {
+    const current = activeTurn();
+    const before = transcriptBottomVersion(current);
+    const after = transcriptBottomVersion(
+      activeTurn({
+        events: [
+          ...current.events,
+          {
+            seq: 1,
+            createdAt: "2026-01-01T00:00:02.000Z",
+            data: {
+              type: "message_handled",
+              messageId: "assistant-1",
+            },
+          },
+        ],
+      }),
+    );
+
+    expect(after).toBe(before);
   });
 
   it("keeps the tail version stable when only polling timestamps change", () => {
@@ -234,7 +327,7 @@ describe("transcript bottom pinning", () => {
               type: "turn_lifecycle",
               turnId: "turn-1",
               state: "failed",
-              failureKind: "agent",
+              failureCode: "model_execution_failed",
             },
           },
         ],
@@ -242,6 +335,51 @@ describe("transcript bottom pinning", () => {
     );
 
     expect(after).not.toBe(before);
+  });
+
+  it("keeps a terminal pin pending until the deferred reply arrives", () => {
+    const completion = terminalReplyPinState({
+      enabled: false,
+      following: true,
+      juniorMessageChanged: false,
+      pending: false,
+      wasEnabled: true,
+    });
+    expect(completion).toEqual({ pending: true, pin: false });
+
+    expect(
+      terminalReplyPinState({
+        enabled: false,
+        following: false,
+        juniorMessageChanged: true,
+        pending: completion.pending,
+        wasEnabled: false,
+      }),
+    ).toEqual({ pending: false, pin: true });
+  });
+
+  it("does not queue a terminal pin when the reader paused follow", () => {
+    expect(
+      terminalReplyPinState({
+        enabled: false,
+        following: false,
+        juniorMessageChanged: false,
+        pending: false,
+        wasEnabled: true,
+      }),
+    ).toEqual({ pending: false, pin: false });
+  });
+
+  it("does not pin Junior replies while the turn is live", () => {
+    expect(
+      terminalReplyPinState({
+        enabled: true,
+        following: true,
+        juniorMessageChanged: true,
+        pending: false,
+        wasEnabled: true,
+      }),
+    ).toEqual({ pending: false, pin: false });
   });
 
   it("does not auto-pin after live mode turns off", () => {

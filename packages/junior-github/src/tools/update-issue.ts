@@ -1,11 +1,15 @@
 import {
+  type Identity,
+  type User,
+  type Actor,
+  type PluginLogger,
+  type PluginEgress,
   definePluginTool,
   PluginToolInputError,
   pluginToolOutputSchema,
   subscribableResourceSchema,
   type PluginToolOutput,
   type SubscribableResource,
-  type ToolRegistrationHookContext,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import { gitHubIssueSubscribable } from "../resource-events/issue.js";
@@ -16,12 +20,17 @@ const inputSchema = z
   .object({
     repo: z.string().describe('Repository in "owner/name" format.'),
     number: z.number().int().positive().describe("Issue number."),
-    title: z.string().trim().min(1).optional().describe("Replacement issue title."),
+    title: z
+      .string()
+      .trim()
+      .min(1)
+      .optional()
+      .describe("Replacement issue title."),
     body: z
       .string()
       .optional()
       .describe(
-        "Replacement issue body. Junior appends requester attribution and the conversation footer.",
+        "Replacement issue body. The runtime appends requester attribution and the conversation footer.",
       ),
     state: z
       .enum(["open", "closed"])
@@ -48,10 +57,11 @@ interface Result extends PluginToolOutput, Issue {
   target: "updateIssue";
   subscribable?: SubscribableResource;
 }
-const outputSchema = pluginToolOutputSchema.extend({
-  target: z.literal("updateIssue"),
-  ...issueSchema.shape,
-});
+const outputSchema = pluginToolOutputSchema.merge(
+  issueSchema.extend({
+    target: z.literal("updateIssue"),
+  }),
+);
 
 function nonEmptyString(value: string | undefined, name: string): string {
   if (!value?.trim()) throw new PluginToolInputError(`${name} is required`);
@@ -85,8 +95,18 @@ function githubApiErrorMessage(payload: unknown): string {
   return "GitHub request failed";
 }
 
-/** Update mutable issue metadata while preserving Junior-owned body attribution. */
-export function createGitHubUpdateIssueTool(ctx: ToolRegistrationHookContext) {
+/** Update mutable issue metadata while preserving runtime-owned body attribution. */
+export function createGitHubUpdateIssueTool(ctx: {
+  actor?: Actor;
+  conversationId?: string;
+  egress: PluginEgress;
+  log: PluginLogger;
+  resourceEvents: { canSubscribe: boolean };
+  slack?: { conversationLink?: { url?: string } };
+  users: {
+    resolveActor(): Promise<{ identity?: Identity; user?: User } | undefined>;
+  };
+}) {
   return definePluginTool({
     annotations: {
       destructiveHint: true,
@@ -108,7 +128,7 @@ export function createGitHubUpdateIssueTool(ctx: ToolRegistrationHookContext) {
       const update = parsedInput.data;
       const repo = parseRepo(update.repo);
       const payload = {
-        ...(update.title !== undefined ? { title: update.title } : {}),
+        ...(update.title !== undefined ? { title: update.title } : undefined),
         ...(update.body !== undefined
           ? {
               body: appendGitHubFooter(
@@ -117,8 +137,8 @@ export function createGitHubUpdateIssueTool(ctx: ToolRegistrationHookContext) {
                 ctx.slack?.conversationLink?.url,
               ),
             }
-          : {}),
-        ...(update.state !== undefined ? { state: update.state } : {}),
+          : undefined),
+        ...(update.state !== undefined ? { state: update.state } : undefined),
       };
       const response = await ctx.egress.fetch({
         provider: "github",
@@ -162,7 +182,7 @@ export function createGitHubUpdateIssueTool(ctx: ToolRegistrationHookContext) {
         body: providerResult.body,
         number: providerResult.number,
         state: providerResult.state,
-        ...(subscribable ? { subscribable } : {}),
+        ...(subscribable ? { subscribable } : undefined),
         title: providerResult.title,
         url: providerResult.html_url,
       };

@@ -13,14 +13,6 @@ import {
 
 const inputSchema = z
   .object({
-    baseUrl: z
-      .string()
-      .trim()
-      .url()
-      .optional()
-      .describe(
-        "Optional absolute GoCD base URL. Defaults to gocdPlugin({ baseUrl }) or GOCD_URL.",
-      ),
     pipeline: z.string().trim().min(1).describe("Exact GoCD pipeline name."),
     count: z.number().int().min(1).max(100).default(20),
   })
@@ -63,10 +55,7 @@ export function createGocdPipelineHistoryTool(
     inputSchema,
     outputSchema,
     async execute(input): Promise<Result> {
-      const target = resolveGocdTarget({
-        baseUrl: input.baseUrl,
-        options,
-      });
+      const target = resolveGocdTarget(options);
       // GoCD 25.2.0 rejects page_size outside 10..100 with HTTP 404.
       const pageSize = Math.min(100, Math.max(10, input.count));
       const response = await ctx.egress.fetch({

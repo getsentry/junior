@@ -83,7 +83,9 @@ interface BaseToolRuntimeContext {
    * Scheduled/web turns use an internal id such as `agent-dispatch:{id}`.
    * Do not parse as Slack unless the value starts with `slack:`.
    */
-  conversationId?: string;
+  conversationId: string;
+  /** Location associated with this Conversation. */
+  locationId?: string;
 
   /** Runtime-owned default outbound destination for this invocation. */
   destination: Destination;

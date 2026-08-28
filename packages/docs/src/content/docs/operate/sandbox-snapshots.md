@@ -46,15 +46,17 @@ Any change to those inputs produces a new profile hash and a new snapshot.
 
 Junior stores install-wide Workspace recipes and their repositories in SQL. The agent reads this configuration when it lists a Workspace, resumes an active Workspace, or starts a switch.
 
-Manage recipes from the authenticated dashboard at `/system/workspaces`, or through the `/api/workspaces` REST routes. Each recipe has a stable name, optional setup script, and one or more repositories. Mark exactly one repository as primary when the recipe includes repositories so Junior can select `AGENTS.md`.
+Manage recipes from the authenticated dashboard at `/system/workspaces`, or through the `/api/workspaces` REST routes. Each recipe has a stable name, optional setup script, and one or more repositories. Junior loads `AGENTS.md` from each repository checkout and labels those instructions with the related directory.
 
-Junior builds one complete snapshot for each selected Workspace. The build installs runtime dependencies, prepares repositories, runs the setup script, and then captures the snapshot. The first switch builds the snapshot on demand. Later switches reuse it until its floating profile becomes stale.
+Junior builds one complete snapshot for each selected Workspace. The build installs runtime dependencies, prepares repositories, runs the setup script, and then captures the snapshot. The first switch starts that build in the background and returns `building` with a temporary subscription for ready and failed events. Call `switchWorkspace` again after the ready event. Later switches reuse the snapshot until its floating profile becomes stale.
+
+After a successful Workspace prepare, Junior records the current snapshot id, generation time, build duration, size in bytes when the provider reports it, and profile hash on the Workspace SQL row. The dashboard Workspace details page reads those fields. Repository or setup-script changes clear the recorded snapshot so the page does not show stale build data. Renames preserve it because the Workspace name is not part of the snapshot profile.
 
 Provider plugins prepare repositories through Junior's host egress proxy. Junior removes the credential route before it runs the setup script and captures the snapshot. Real provider credentials do not enter the Sandbox or the captured snapshot.
 
 ## Cache and rebuild behavior
 
-Snapshot metadata is stored in Redis by profile hash. Junior serializes rebuilds for the same profile so concurrent builds do not create duplicate snapshots.
+The hot snapshot registry is stored in Redis by profile hash for locks and fast reuse across instances. Junior serializes rebuilds for the same profile so concurrent builds do not create duplicate snapshots. Workspace operator facts for the dashboard live in SQL, not Redis.
 
 Rebuilds happen when:
 

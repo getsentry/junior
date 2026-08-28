@@ -3,6 +3,7 @@ import type {
   OAuthTokens,
 } from "@modelcontextprotocol/sdk/shared/auth.js";
 import type { OAuthDiscoveryState } from "@modelcontextprotocol/sdk/client/auth.js";
+
 import {
   sourceSchema,
   type Destination,
@@ -131,30 +132,30 @@ function parseMcpAuthSession(value: unknown): McpAuthSessionState | undefined {
       provider: parsed.provider,
       userId: parsed.userId,
       conversationId: parsed.conversationId,
-      ...(destination ? { destination } : {}),
-      ...(source?.success ? { source: source.data } : {}),
+      ...(destination ? { destination } : undefined),
+      ...(source?.success ? { source: source.data } : undefined),
       sessionId: parsed.sessionId,
       userMessage: parsed.userMessage,
       createdAtMs: parsed.createdAtMs,
       updatedAtMs: parsed.updatedAtMs,
       ...(typeof parsed.channelId === "string"
         ? { channelId: parsed.channelId }
-        : {}),
+        : undefined),
       ...(typeof parsed.threadTs === "string"
         ? { threadTs: parsed.threadTs }
-        : {}),
+        : undefined),
       ...(typeof parsed.toolChannelId === "string"
         ? { toolChannelId: parsed.toolChannelId }
-        : {}),
+        : undefined),
       ...(isRecord(parsed.configuration)
         ? { configuration: parsed.configuration }
-        : {}),
+        : undefined),
       ...(typeof parsed.authorizationUrl === "string"
         ? { authorizationUrl: parsed.authorizationUrl }
-        : {}),
+        : undefined),
       ...(typeof parsed.codeVerifier === "string"
         ? { codeVerifier: parsed.codeVerifier }
-        : {}),
+        : undefined),
     };
   } catch {
     return undefined;
@@ -204,16 +205,16 @@ function parseStoredCredentials(
             clientInformation:
               parsed.clientInformation as OAuthClientInformationMixed,
           }
-        : {}),
+        : undefined),
       ...(isRecord(parsed.discoveryState)
         ? {
-            discoveryState:
-              parsed.discoveryState as unknown as OAuthDiscoveryState,
+            // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+            discoveryState: parsed.discoveryState as OAuthDiscoveryState,
           }
-        : {}),
+        : undefined),
       ...(isRecord(parsed.tokens)
         ? { tokens: parsed.tokens as OAuthTokens }
-        : {}),
+        : undefined),
     };
   } catch {
     return undefined;
@@ -273,7 +274,7 @@ export async function patchMcpAuthSession(
     provider: current.provider,
     userId: current.userId,
     conversationId: current.conversationId,
-    ...(current.destination ? { destination: current.destination } : {}),
+    ...(current.destination ? { destination: current.destination } : undefined),
     sessionId: current.sessionId,
     userMessage: current.userMessage,
     createdAtMs: current.createdAtMs,

@@ -1,0 +1,681 @@
+import { randomUUID } from "node:crypto";
+import { Sandbox } from "@vercel/sandbox";
+import { getDb } from "@/chat/db";
+import { logException } from "@/chat/logging";
+import { getTurnRequestDeadline } from "@/chat/runtime/request-deadline";
+import { getVercelSandboxCredentials } from "@/chat/sandbox/credentials";
+import {
+  isAbortError,
+  isSandboxApiTransientError,
+} from "@/chat/sandbox/errors";
+import {
+  prepareWorkspaceRepositories,
+  workspaceSnapshotSetupCommand,
+} from "@/chat/sandbox/prepare-workspace";
+import { getSandboxResources } from "@/chat/sandbox/resources";
+import {
+  deleteWorkspaceSnapshotBuilders,
+  getWorkspaceSnapshotBuilder,
+} from "@/chat/sandbox/snapshot/builder-sandbox";
+import * as install from "@/chat/sandbox/snapshot/install";
+import * as profile from "@/chat/sandbox/snapshot/profile";
+import type { Snapshot } from "@/chat/sandbox/snapshot/resolve";
+import {
+  invalidateReadySnapshot,
+  loadSnapshotsForProfile,
+  setWorkspaceSnapshot,
+  setWorkspaceSnapshotBuild,
+} from "@/chat/sandbox/snapshot/store";
+import { WorkspaceSnapshotNotReadyError } from "@/chat/sandbox/snapshot/not-ready-error";
+import {
+  createSandboxSession,
+  type SandboxSession,
+} from "@/chat/sandbox/workspace";
+import { sleep } from "@/chat/sleep";
+import { getStateAdapter } from "@/chat/state/adapter";
+import { fenceLock, withLock } from "@/chat/state/locks";
+import { getWorkspace } from "@/chat/workspaces/store";
+import type {
+  Workspace,
+  WorkspaceSnapshotBuild,
+} from "@/chat/workspaces/types";
+
+// This module saves build progress and owns the Sandbox that runs the build.
+// Each call completes at most one saved step.
+const BUILD_TIMEOUT_MS = 60 * 60 * 1000;
+const BUILD_TIMEOUT_ERROR = "Workspace snapshot build timed out after 1 hour";
+const BUILD_LOCK_TTL_MS = 2 * 60 * 1000;
+const BUILD_LOCK_PREFIX = "junior:workspace_snapshot_start";
+const WAIT_POLL_MS = 5_000;
+const TRANSIENT_API_RETRY_MS = 2_000;
+const BUILD_COMMAND_TIMEOUT_MS = 10 * 60 * 1000;
+const BUILD_COMMAND_TIMEOUT_ERROR =
+  "Workspace snapshot build phase timed out after 10 minutes";
+const COMMAND_STATUS_POLL_TIMEOUT_MS = 1_000;
+/** Leave time to save the build state before this request ends. */
+const STOP_BUFFER_MS = 40_000;
+
+/** Keep the build open when a request stops or Vercel has a short failure. */
+function isCancelOrTransient(error: unknown): boolean {
+  return isAbortError(error) || isSandboxApiTransientError(error);
+}
+
+function buildLockKey(profileHash: string): string {
+  return `${BUILD_LOCK_PREFIX}:${profileHash}`;
+}
+
+function builderName(): string {
+  return `junior-ws-${randomUUID()}`;
+}
+
+async function snapshotFromSql(
+  workspaceId: string,
+  value: profile.Profile,
+  staleSnapshotId?: string,
+): Promise<Snapshot | null> {
+  const { ready } = await loadSnapshotsForProfile(
+    getDb(),
+    workspaceId,
+    value.hash,
+  );
+  if (!ready) return null;
+  if (
+    ready.id === staleSnapshotId ||
+    profile.isStale(value, ready.generatedAt.getTime())
+  ) {
+    const ownerName = await invalidateReadySnapshot({
+      workspaceId,
+      profileHash: value.hash,
+      snapshotId: ready.id,
+    });
+    try {
+      await deleteBuilder(ownerName);
+    } catch (error) {
+      logException(error, "sandbox.workspace_snapshot.builder.delete_failed", {
+        "app.workspace.id": workspaceId,
+      });
+    }
+    return null;
+  }
+  return {
+    snapshotId: ready.id,
+    profileHash: ready.profileHash,
+    dependencyCount: value.dependencyCount,
+    cacheHit: true,
+    resolveOutcome: "cache_hit",
+    createdAtMs: ready.generatedAt.getTime(),
+    buildDurationMs: ready.buildDurationMs,
+  };
+}
+
+/** Return a build only when it has enough saved state to continue. */
+function activeBuild(
+  build: WorkspaceSnapshotBuild | null,
+): WorkspaceSnapshotBuild | null {
+  if (!build || build.status !== "building" || !build.sandboxName) return null;
+  return build;
+}
+
+async function deleteBuilder(
+  sandboxName: string | null | undefined,
+): Promise<void> {
+  if (!sandboxName) return;
+  await deleteWorkspaceSnapshotBuilders([sandboxName]);
+}
+
+function workspaceDeletedError(workspace: Workspace): Error {
+  return new Error(
+    `Workspace ${workspace.name} was deleted while its snapshot was building`,
+  );
+}
+
+function requireBuildWrite(
+  written: boolean,
+  workspace: Workspace,
+): asserts written {
+  if (!written) {
+    throw new Error(
+      `Workspace ${workspace.name} snapshot build lost SQL ownership`,
+    );
+  }
+}
+
+/** Save a build failure, then delete its Sandbox. */
+async function markFailed(
+  workspace: Workspace,
+  build: WorkspaceSnapshotBuild,
+  error: unknown,
+  beforeWrite: () => Promise<void>,
+): Promise<void> {
+  try {
+    await beforeWrite();
+    const written = await setWorkspaceSnapshotBuild(workspace.id, {
+      ...build,
+      status: "failed",
+      error: error instanceof Error ? error.message : String(error),
+    });
+    requireBuildWrite(written, workspace);
+  } catch (persistError) {
+    logException(
+      persistError,
+      "sandbox.workspace_snapshot.failure_persist_failed",
+      { "app.workspace.id": workspace.id },
+    );
+    // Another job may now use this Sandbox. Do not delete it unless this job
+    // saved the failure.
+    return;
+  }
+  try {
+    await deleteBuilder(build.sandboxName);
+  } catch (cleanupError) {
+    logException(
+      cleanupError,
+      "sandbox.workspace_snapshot.builder.delete_failed",
+      { "app.workspace.id": workspace.id },
+    );
+  }
+}
+
+/** Stop a build after one hour. */
+async function requireRemainingBuildTime(
+  workspace: Workspace,
+  build: WorkspaceSnapshotBuild,
+  beforeWrite: () => Promise<void>,
+): Promise<number> {
+  const remainingMs = build.startedAt.getTime() + BUILD_TIMEOUT_MS - Date.now();
+  if (remainingMs > 0) return remainingMs;
+
+  await markFailed(workspace, build, BUILD_TIMEOUT_ERROR, beforeWrite);
+  throw new Error(BUILD_TIMEOUT_ERROR);
+}
+
+/** Save the snapshot when its setup command ends. */
+async function finishBuild(
+  workspace: Workspace,
+  value: profile.Profile,
+  signal: AbortSignal | undefined,
+  beforeWrite: () => Promise<void>,
+): Promise<Snapshot | null> {
+  const { build: loaded } = await loadSnapshotsForProfile(
+    getDb(),
+    workspace.id,
+    value.hash,
+  );
+  const build = activeBuild(loaded);
+  if (!build?.commandId || !build.sandboxName) return null;
+
+  try {
+    await requireRemainingBuildTime(workspace, build, beforeWrite);
+    const sandbox = await getWorkspaceSnapshotBuilder(
+      build.sandboxName,
+      signal,
+    );
+    const command = await sandbox.getCommand(build.commandId, { signal });
+    const pollSignal = AbortSignal.timeout(COMMAND_STATUS_POLL_TIMEOUT_MS);
+    const waitSignal = signal
+      ? AbortSignal.any([signal, pollSignal])
+      : pollSignal;
+    let finished: Awaited<ReturnType<typeof command.wait>>;
+    try {
+      finished = await command.wait({ signal: waitSignal });
+    } catch (error) {
+      if (pollSignal.aborted && !signal?.aborted) return null;
+      throw error;
+    }
+    if (finished.exitCode !== 0) {
+      const error =
+        (await finished.stderr({ signal })).trim() ||
+        `exit ${finished.exitCode}`;
+      throw new Error(
+        `Workspace ${workspace.name} snapshot setup failed: ${error}`,
+      );
+    }
+
+    await requireRemainingBuildTime(workspace, build, beforeWrite);
+    const snapshot = await sandbox.snapshot({ signal });
+    await requireRemainingBuildTime(workspace, build, beforeWrite);
+    const createdAtMs = Date.now();
+    const buildDurationMs = Math.max(
+      0,
+      createdAtMs - build.startedAt.getTime(),
+    );
+    const sizeBytes =
+      typeof snapshot.sizeBytes === "number" &&
+      Number.isFinite(snapshot.sizeBytes) &&
+      snapshot.sizeBytes >= 0
+        ? snapshot.sizeBytes
+        : null;
+    await beforeWrite();
+    const result = await setWorkspaceSnapshot(
+      workspace.id,
+      {
+        id: snapshot.snapshotId,
+        generatedAt: new Date(createdAtMs),
+        buildDurationMs,
+        sizeBytes,
+        profileHash: value.hash,
+      },
+      { buildId: build.id },
+    );
+    requireBuildWrite(result.written, workspace);
+    try {
+      await deleteWorkspaceSnapshotBuilders(result.replacedBuilderNames);
+    } catch (error) {
+      logException(error, "sandbox.workspace_snapshot.builder.delete_failed", {
+        "app.workspace.id": workspace.id,
+        "app.sandbox.snapshot.builder_count":
+          result.replacedBuilderNames.length,
+      });
+    }
+    return {
+      snapshotId: snapshot.snapshotId,
+      profileHash: value.hash,
+      dependencyCount: value.dependencyCount,
+      cacheHit: false,
+      resolveOutcome: "rebuilt",
+      rebuildReason: "cache_miss",
+      createdAtMs,
+      buildDurationMs,
+    };
+  } catch (error) {
+    if (error instanceof Error && error.message === BUILD_TIMEOUT_ERROR) {
+      throw error;
+    }
+    if (isCancelOrTransient(error)) throw error;
+    await markFailed(workspace, build, error, beforeWrite);
+    throw error;
+  }
+}
+
+/** Create the Sandbox and save its name. */
+async function startBuild(params: {
+  workspace: Workspace;
+  value: profile.Profile;
+  runtime: string;
+  signal?: AbortSignal;
+  beforeWrite: () => Promise<void>;
+}): Promise<void> {
+  const { workspace, value, signal } = params;
+  const credentials = getVercelSandboxCredentials();
+  const resources = getSandboxResources();
+  const name = builderName();
+  const buildId = randomUUID();
+  const startedAt = new Date();
+  try {
+    await Sandbox.create({
+      name,
+      persistent: true,
+      timeout: BUILD_TIMEOUT_MS,
+      runtime: params.runtime,
+      signal,
+      ...(credentials ?? {}),
+      ...(resources ? { resources } : undefined),
+    });
+    await params.beforeWrite();
+    const written = await setWorkspaceSnapshotBuild(
+      workspace.id,
+      {
+        id: buildId,
+        status: "building",
+        phase: "created",
+        profileHash: value.hash,
+        startedAt,
+        sandboxName: name,
+        commandId: null,
+        error: null,
+      },
+      { insertIfMissing: true, expectedRecipe: workspace },
+    );
+    if (!written) {
+      try {
+        await deleteBuilder(name);
+      } catch (cleanupError) {
+        logException(
+          cleanupError,
+          "sandbox.workspace_snapshot.builder.delete_failed",
+          { "app.workspace.id": workspace.id },
+        );
+      }
+      return;
+    }
+  } catch (error) {
+    try {
+      if (!isCancelOrTransient(error)) {
+        try {
+          await params.beforeWrite();
+          await setWorkspaceSnapshotBuild(
+            workspace.id,
+            {
+              id: buildId,
+              status: "failed",
+              phase: "created",
+              profileHash: value.hash,
+              startedAt,
+              sandboxName: name,
+              commandId: null,
+              error: error instanceof Error ? error.message : String(error),
+            },
+            { insertIfMissing: true, expectedRecipe: workspace },
+          );
+        } catch {
+          // The build can still be cleaned up when this save fails.
+        }
+      }
+    } finally {
+      // Vercel can create the Sandbox before it returns an error.
+      try {
+        await deleteBuilder(name);
+      } catch (cleanupError) {
+        logException(
+          cleanupError,
+          "sandbox.workspace_snapshot.builder.delete_failed",
+          { "app.workspace.id": workspace.id },
+        );
+      }
+    }
+    throw error;
+  }
+}
+
+/** Complete one saved setup step in the build Sandbox. */
+async function continueBuild(params: {
+  workspace: Workspace;
+  value: profile.Profile;
+  signal?: AbortSignal;
+  applyNetworkPolicy(sandbox: SandboxSession): Promise<unknown>;
+  prepareRepositories?(
+    sandbox: SandboxSession,
+    workspace: Workspace,
+    signal?: AbortSignal,
+  ): Promise<void>;
+  removeCredentialRoute: boolean;
+  beforeWrite: () => Promise<void>;
+}): Promise<void> {
+  const { build: loaded } = await loadSnapshotsForProfile(
+    getDb(),
+    params.workspace.id,
+    params.value.hash,
+  );
+  const build = activeBuild(loaded);
+  if (!build?.sandboxName || build.commandId) return;
+
+  const remainingMs = await requireRemainingBuildTime(
+    params.workspace,
+    build,
+    params.beforeWrite,
+  );
+  const commandTimeoutMs = Math.min(remainingMs, BUILD_COMMAND_TIMEOUT_MS);
+  const phaseTimeoutSignal = AbortSignal.timeout(commandTimeoutMs);
+  const phaseSignal = params.signal
+    ? AbortSignal.any([params.signal, phaseTimeoutSignal])
+    : phaseTimeoutSignal;
+  try {
+    const sandbox = await getWorkspaceSnapshotBuilder(
+      build.sandboxName,
+      phaseSignal,
+    );
+    const session = createSandboxSession(sandbox);
+    if (build.phase === "created") {
+      await install.dependencies(
+        session,
+        params.value.dependencies,
+        phaseSignal,
+        commandTimeoutMs,
+      );
+      await install.postinstall(
+        session,
+        params.value.postinstall,
+        phaseSignal,
+        commandTimeoutMs,
+      );
+      await requireRemainingBuildTime(
+        params.workspace,
+        build,
+        params.beforeWrite,
+      );
+      await params.beforeWrite();
+      const written = await setWorkspaceSnapshotBuild(params.workspace.id, {
+        ...build,
+        phase: "dependencies_installed",
+      });
+      requireBuildWrite(written, params.workspace);
+      return;
+    }
+
+    if (build.phase === "dependencies_installed") {
+      await prepareWorkspaceRepositories({
+        sandbox: session,
+        workspace: params.workspace,
+        signal: phaseSignal,
+        applyNetworkPolicy: params.applyNetworkPolicy,
+        prepareRepositories: params.prepareRepositories,
+        removeCredentialRoute: params.removeCredentialRoute,
+      });
+      await requireRemainingBuildTime(
+        params.workspace,
+        build,
+        params.beforeWrite,
+      );
+      await params.beforeWrite();
+      const written = await setWorkspaceSnapshotBuild(params.workspace.id, {
+        ...build,
+        phase: "repositories_prepared",
+      });
+      requireBuildWrite(written, params.workspace);
+      return;
+    }
+
+    await params.beforeWrite();
+    const command = await sandbox.runCommand({
+      ...workspaceSnapshotSetupCommand(params.workspace, build.id),
+      detached: true,
+      timeoutMs: remainingMs,
+      signal: phaseSignal,
+    });
+    await params.beforeWrite();
+    const written = await setWorkspaceSnapshotBuild(params.workspace.id, {
+      ...build,
+      commandId: command.cmdId,
+      error: null,
+    });
+    requireBuildWrite(written, params.workspace);
+  } catch (error) {
+    if (phaseTimeoutSignal.aborted && !params.signal?.aborted) {
+      const timeoutError = new Error(BUILD_COMMAND_TIMEOUT_ERROR, {
+        cause: error,
+      });
+      await markFailed(
+        params.workspace,
+        build,
+        timeoutError,
+        params.beforeWrite,
+      );
+      throw timeoutError;
+    }
+    if (error instanceof Error && error.message === BUILD_TIMEOUT_ERROR) {
+      throw error;
+    }
+    if (isCancelOrTransient(error)) throw error;
+    await markFailed(params.workspace, build, error, params.beforeWrite);
+    throw error;
+  }
+}
+
+/** Use a ready snapshot or complete one saved build step. */
+async function advanceWorkspaceSnapshot(params: {
+  workspace: Workspace;
+  runtime: string;
+  staleSnapshotId?: string;
+  signal?: AbortSignal;
+  applyNetworkPolicy(sandbox: SandboxSession): Promise<unknown>;
+  prepareRepositories?(
+    sandbox: SandboxSession,
+    workspace: Workspace,
+    signal?: AbortSignal,
+  ): Promise<void>;
+  removeCredentialRoute: boolean;
+}): Promise<Snapshot | null> {
+  const value = profile.create(params.runtime, params.workspace);
+  if (!value) {
+    throw new Error(
+      `Workspace ${params.workspace.name} has no snapshot profile`,
+    );
+  }
+  const sqlCached = await snapshotFromSql(
+    params.workspace.id,
+    value,
+    params.staleSnapshotId,
+  );
+  if (sqlCached) return sqlCached;
+
+  const state = getStateAdapter();
+  await state.connect();
+  const locked = await withLock(
+    state,
+    buildLockKey(value.hash),
+    async (lock) => {
+      const workspace = await getWorkspace(getDb(), params.workspace.id);
+      if (!workspace) throw workspaceDeletedError(params.workspace);
+      const lockedValue = profile.create(params.runtime, workspace) ?? value;
+      if (lockedValue.hash !== value.hash) return null;
+      const beforeWrite = async () => {
+        await fenceLock(state, lock, BUILD_LOCK_TTL_MS);
+      };
+
+      const sqlInsideLock = await snapshotFromSql(
+        workspace.id,
+        lockedValue,
+        params.staleSnapshotId,
+      );
+      if (sqlInsideLock) return sqlInsideLock;
+
+      const finished = await finishBuild(
+        workspace,
+        lockedValue,
+        params.signal,
+        beforeWrite,
+      );
+      if (finished) return finished;
+
+      const { build: loaded } = await loadSnapshotsForProfile(
+        getDb(),
+        workspace.id,
+        lockedValue.hash,
+      );
+      const build = activeBuild(loaded);
+      if (build && !build.commandId) {
+        await continueBuild({
+          ...params,
+          workspace,
+          value: lockedValue,
+          beforeWrite,
+        });
+      } else if (!build) {
+        if (loaded?.sandboxName) {
+          try {
+            await deleteBuilder(loaded.sandboxName);
+          } catch (cleanupError) {
+            logException(
+              cleanupError,
+              "sandbox.workspace_snapshot.builder.delete_failed",
+              { "app.workspace.id": workspace.id },
+            );
+          }
+        }
+        await startBuild({
+          workspace,
+          value: lockedValue,
+          runtime: params.runtime,
+          signal: params.signal,
+          beforeWrite,
+        });
+      }
+      return null;
+    },
+    { ttlMs: BUILD_LOCK_TTL_MS, keepAlive: true },
+  );
+
+  return locked.acquired ? (locked.value ?? null) : null;
+}
+
+/** Check whether this request must stop soon. */
+function shouldStopForTimeLimit(shouldStop?: () => boolean): boolean {
+  if (shouldStop?.()) return true;
+
+  const deadlineAtMs = getTurnRequestDeadline()?.deadlineAtMs;
+  return (
+    deadlineAtMs !== undefined && Date.now() >= deadlineAtMs - STOP_BUFFER_MS
+  );
+}
+
+/** Return the ready snapshot or report that the Workspace must build one. */
+export async function requireReadyWorkspaceSnapshot(params: {
+  workspace: Workspace;
+  runtime: string;
+  staleSnapshotId?: string;
+}): Promise<Snapshot> {
+  const value = profile.create(params.runtime, params.workspace);
+  if (!value) {
+    throw new Error(
+      `Workspace ${params.workspace.name} has no snapshot profile`,
+    );
+  }
+  const snapshot = await snapshotFromSql(
+    params.workspace.id,
+    value,
+    params.staleSnapshotId,
+  );
+  if (!snapshot)
+    throw new WorkspaceSnapshotNotReadyError(params.workspace.name);
+  return snapshot;
+}
+
+/**
+ * Continue a Workspace snapshot build from its saved state.
+ * The full build can run for up to one hour.
+ */
+export async function resolveWorkspaceSnapshot(params: {
+  workspace: Workspace;
+  runtime: string;
+  staleSnapshotId?: string;
+  signal?: AbortSignal;
+  shouldStop?: () => boolean;
+  applyNetworkPolicy(sandbox: SandboxSession): Promise<unknown>;
+  prepareRepositories?(
+    sandbox: SandboxSession,
+    workspace: Workspace,
+    signal?: AbortSignal,
+  ): Promise<void>;
+  removeCredentialRoute: boolean;
+}): Promise<Snapshot> {
+  // Do some work before the first time check. This prevents empty job runs.
+  let advanced = false;
+  for (;;) {
+    params.signal?.throwIfAborted();
+    const workspace = await getWorkspace(getDb(), params.workspace.id);
+    if (!workspace) throw workspaceDeletedError(params.workspace);
+    const current = { ...params, workspace };
+    if (advanced && shouldStopForTimeLimit(current.shouldStop)) {
+      throw new WorkspaceSnapshotNotReadyError(workspace.name);
+    }
+
+    let snapshot: Snapshot | null;
+    try {
+      snapshot = await advanceWorkspaceSnapshot(current);
+    } catch (error) {
+      if (!isSandboxApiTransientError(error)) throw error;
+      advanced = true;
+      if (shouldStopForTimeLimit(current.shouldStop)) {
+        throw new WorkspaceSnapshotNotReadyError(workspace.name);
+      }
+      await sleep(TRANSIENT_API_RETRY_MS, params.signal);
+      continue;
+    }
+    advanced = true;
+    if (snapshot) return snapshot;
+    if (shouldStopForTimeLimit(current.shouldStop)) {
+      throw new WorkspaceSnapshotNotReadyError(workspace.name);
+    }
+    await sleep(WAIT_POLL_MS, params.signal);
+  }
+}

@@ -39,9 +39,9 @@ if (compose.status !== 0) {
 
 const child = spawn(
   "node",
-  ["--import", "tsx", "scripts/acp-local-server.ts"],
+  ["--import", "tsx", path.join(packageRoot, "scripts", "acp-local-server.ts")],
   {
-    cwd: packageRoot,
+    cwd: exampleRoot,
     env: {
       ...process.env,
       DATABASE_URL: "postgresql://junior:junior@127.0.0.1:54322/junior",

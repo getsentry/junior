@@ -43,17 +43,15 @@ describe("Slack behavior: new mention", () => {
 
     const { slackRuntime } = createTestChatRuntime({
       services: {
-        replyExecutor: {
-          agentRunner: createModelAgentRunnerForRun((request) => {
-            agentRuns.push({
-              prompt: request.instruction.text,
-              piMessages: request.history ? [...request.history] : undefined,
-            });
-            return createModelStream([
-              { type: "text", text: "Handled both updates." },
-            ]);
-          }),
-        },
+        agentRunner: createModelAgentRunnerForRun((request) => {
+          agentRuns.push({
+            prompt: request.instruction.text,
+            piMessages: request.history ? [...request.history] : undefined,
+          });
+          return createModelStream([
+            { type: "text", text: "Handled both updates." },
+          ]);
+        }),
       },
     });
 
@@ -119,24 +117,21 @@ describe("Slack behavior: new mention", () => {
 
     const { slackRuntime } = createTestChatRuntime({
       services: {
-        replyExecutor: {
-          agentRunner: createModelAgentRunnerForRun((request) => {
-            const attachments = request.instruction.attachments ?? [];
-            agentRuns.push({
-              prompt: request.instruction.text,
-              inboundAttachmentCount:
-                request.instruction.inboundAttachmentCount,
-              filenames: attachments.map(
-                (attachment) => attachment.filename ?? "",
-              ),
-              attachmentText: attachments[0]?.data?.toString("utf8"),
-              piMessages: request.history ? [...request.history] : undefined,
-            });
-            return createModelStream([
-              { type: "text", text: "Handled queued attachment." },
-            ]);
-          }),
-        },
+        agentRunner: createModelAgentRunnerForRun((request) => {
+          const attachments = request.instruction.attachments ?? [];
+          agentRuns.push({
+            prompt: request.instruction.text,
+            inboundAttachmentCount: request.instruction.inboundAttachmentCount,
+            filenames: attachments.map(
+              (attachment) => attachment.filename ?? "",
+            ),
+            attachmentText: attachments[0]?.data?.toString("utf8"),
+            piMessages: request.history ? [...request.history] : undefined,
+          });
+          return createModelStream([
+            { type: "text", text: "Handled queued attachment." },
+          ]);
+        }),
       },
     });
 
@@ -194,13 +189,11 @@ describe("Slack behavior: new mention", () => {
     const { slackRuntime } = createTestChatRuntime({
       slackAdapter,
       services: {
-        replyExecutor: {
-          agentRunner: createModelAgentRunner(
-            createModelStream([
-              { type: "error", errorMessage: "model exploded" },
-            ]),
-          ),
-        },
+        agentRunner: createModelAgentRunner(
+          createModelStream([
+            { type: "error", errorMessage: "model exploded" },
+          ]),
+        ),
       },
     });
 

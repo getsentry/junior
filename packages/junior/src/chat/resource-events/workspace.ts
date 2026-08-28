@@ -1,24 +1,26 @@
 import { getSlackBotToken } from "@/chat/config";
 import { getSlackClient } from "@/chat/slack/client";
 
-/** Return whether provider events can be bound to one Slack workspace. */
-export function canRouteResourceEvents(): boolean {
-  return Boolean(getSlackBotToken());
-}
-
-/** Resolve and cache the Slack workspace owned by this app instance. */
+/**
+ * Resolve the single-bot Slack team id for event-task indexing.
+ *
+ * Resource watches do not use this. Event tasks still key by destination team
+ * until that store is conversation-owned. Resource-event delivery itself is
+ * not gated on Slack.
+ */
 export function createResourceEventTeamIdResolver(): () => Promise<
   string | undefined
 > {
   let pending: Promise<string> | undefined;
   return async () => {
-    if (!canRouteResourceEvents()) return undefined;
+    // Event tasks still need a Slack team key. Watches do not.
+    if (!getSlackBotToken()) return undefined;
     pending ??= getSlackClient()
       .auth.test()
       .then((result) => {
         const teamId = result.team_id?.trim();
         if (!teamId) {
-          throw new Error("Slack auth.test did not return a workspace team id");
+          throw new Error("Slack auth.test did not return a team id");
         }
         return teamId;
       })

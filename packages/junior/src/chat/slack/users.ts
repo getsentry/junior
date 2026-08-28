@@ -77,7 +77,7 @@ function normalizeUser(raw: SlackUserRaw): SlackUserProfile {
     is_bot: raw.is_bot ?? false,
     is_deleted: raw.deleted ?? false,
     timezone: raw.tz || undefined,
-    ...(profileFields.length > 0 ? { profile_fields: profileFields } : {}),
+    ...(profileFields.length > 0 ? { profile_fields: profileFields } : undefined),
   };
 }
 
@@ -237,7 +237,7 @@ async function listWorkspaceUsers(options: {
       () =>
         client.users.list({
           limit: 200,
-          ...(cursor ? { cursor } : {}),
+          ...(cursor ? { cursor } : undefined),
         }),
       3,
       { action: "users.list" },

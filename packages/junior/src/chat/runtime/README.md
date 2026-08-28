@@ -1,8 +1,14 @@
 # Chat Runtime
 
-This folder coordinates a chat turn. It loads conversation state, calls the
-agent, delivers replies, saves the result, and schedules more work when a turn
-must continue later. `../agent/` owns the model and tool loop.
+This folder owns native Turn execution and recovery. `../agent/` owns the model
+and tool loop. Callers save input, deliver replies, and save their results.
+
+## Turn Execution
+
+`turn-execution.ts` advances a started Turn by one Run. The caller saves the
+result it owns. Native execution finishes the Turn only after that save works.
+A paused Run leaves the Turn open. If the save fails, the worker can retry or
+recover the Turn.
 
 ## Replies
 

@@ -1,5 +1,6 @@
 import {
   definePluginTool,
+  PluginToolInputError,
   pluginToolOutputSchema,
   subscribableResourceSchema,
   type PluginToolOutput,
@@ -46,10 +47,11 @@ interface Result extends PluginToolOutput, Deployment {
   target: "deployment";
 }
 
-const outputSchema = pluginToolOutputSchema.extend({
-  target: z.literal("deployment"),
-  ...deploymentSchema.shape,
-});
+const outputSchema = pluginToolOutputSchema.merge(
+  deploymentSchema.extend({
+    target: z.literal("deployment"),
+  }),
+);
 
 async function readJson(response: Response): Promise<unknown> {
   const text = await response.text();
@@ -92,9 +94,12 @@ export function createVercelDeploymentTool(ctx: ToolRegistrationHookContext) {
       });
       const parsed = await readJson(response);
       if (!response.ok) {
-        throw new Error(
-          `Vercel project lookup failed with HTTP ${response.status}`,
-        );
+        const message = `Vercel project lookup failed with HTTP ${response.status}`;
+        // Missing project is model-repairable. Auth, rate limit, and 5xx stay system errors.
+        if (response.status === 404) {
+          throw new PluginToolInputError(message);
+        }
+        throw new Error(message);
       }
       const projectId = z
         .object({ id: vercelProjectIdSchema })
@@ -116,7 +121,7 @@ export function createVercelDeploymentTool(ctx: ToolRegistrationHookContext) {
         commitSha: commitSha ?? null,
         deploymentTarget: deploymentTarget ?? null,
         projectId,
-        ...(subscribable ? { subscribable } : {}),
+        ...(subscribable ? { subscribable } : undefined),
       };
       return {
         target: "deployment",

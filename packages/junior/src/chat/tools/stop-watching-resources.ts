@@ -4,10 +4,7 @@ import {
   cancelSubscriptions,
   listResourceEventSubscriptions,
 } from "@/chat/resource-events/store";
-import {
-  requireResourceWatchConversation,
-  RESOURCE_WATCH_TOOL_SOURCE,
-} from "@/chat/resource-events/tool-support";
+import { RESOURCE_WATCH_TOOL_SOURCE } from "@/chat/resource-events/tool-support";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
@@ -20,11 +17,7 @@ const resultDataSchema = z
   })
   .strict();
 
-const outputSchema = juniorToolOutputSchema
-  .extend({
-    ...resultDataSchema.shape,
-  })
-  .strict();
+const outputSchema = juniorToolOutputSchema.merge(resultDataSchema);
 
 /** Create the tool that stops resource watches for this conversation. */
 export function createStopWatchingResourcesTool(context: ToolRuntimeContext) {
@@ -36,7 +29,7 @@ export function createStopWatchingResourcesTool(context: ToolRuntimeContext) {
       readOnlyHint: false,
     },
     description:
-      "Stop one resource watch in the current Slack thread by id. Omit id only when the user explicitly asks to stop every watch in this thread. Infer terse stop requests from context, inspect active watches when the target is unclear, and call this tool before confirming that watching stopped.",
+      "Stop one resource watch in the current conversation by id. Omit id only when the user explicitly asks to stop every watch in this conversation. Infer terse stop requests from context, inspect active watches when the target is unclear, and call this tool before confirming that watching stopped.",
     exposure: "deferred",
     source: RESOURCE_WATCH_TOOL_SOURCE,
     inputSchema: z
@@ -44,24 +37,23 @@ export function createStopWatchingResourcesTool(context: ToolRuntimeContext) {
       .strict(),
     outputSchema,
     async execute({ id }) {
-      const conversationId = requireResourceWatchConversation(context);
       let stoppedIds: string[];
       if (id) {
         const stopped = await cancelResourceEventSubscription({
-          conversationId,
+          conversationId: context.conversationId,
           id,
         });
         if (!stopped) {
           throw new ToolInputError(
-            "Resource watch was not found in the current Slack thread.",
+            "Resource watch was not found in the current conversation.",
           );
         }
         stoppedIds = [stopped.id];
       } else {
         const subscriptions = await listResourceEventSubscriptions({
-          conversationId,
+          conversationId: context.conversationId,
         });
-        await cancelSubscriptions({ conversationId });
+        await cancelSubscriptions({ conversationId: context.conversationId });
         stoppedIds = subscriptions.map((subscription) => subscription.id);
       }
       const details = {

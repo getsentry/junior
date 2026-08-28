@@ -64,6 +64,20 @@
       "when": 1786345372977,
       "tag": "0008_web_memory_source_platform",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1787417688130,
+      "tag": "0009_faithful_whizzer",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1787458882949,
+      "tag": "0010_memories_captured_scope_labels",
+      "breakpoints": true
     }
   ]
 }

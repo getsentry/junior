@@ -1,5 +1,3 @@
-import { getDb } from "@/chat/db";
-import { createSchedulerSqlStore } from "@/chat/scheduled-tasks/store";
 import {
   createSlackScheduleCreateTaskTool,
   createSlackScheduleDeleteTaskTool,
@@ -25,9 +23,8 @@ function scheduledTaskToolContext(
   return {
     actor: context.actor,
     source: context.source,
-    store: createSchedulerSqlStore(getDb()),
     users: { resolveActor: context.resolveActorIdentity },
-    ...(context.userText ? { userText: context.userText } : {}),
+    ...(context.userText ? { userText: context.userText } : undefined),
   };
 }
 

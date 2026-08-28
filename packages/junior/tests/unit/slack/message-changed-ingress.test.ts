@@ -32,7 +32,7 @@ function makeEnvelope(overrides: {
         ts: overrides.messageTs ?? MESSAGE_TS,
         thread_ts: overrides.threadTs ?? THREAD_TS,
         user: overrides.user ?? "U0SENDER",
-        ...(overrides.botId ? { bot_id: overrides.botId } : {}),
+        ...(overrides.botId ? { bot_id: overrides.botId } : undefined),
       },
       previous_message: {
         text: overrides.prevText,

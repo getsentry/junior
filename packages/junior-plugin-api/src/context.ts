@@ -3,6 +3,7 @@ import type { ZodTypeAny } from "zod";
 import {
   destinationSchema,
   identitySchema,
+  locationSchema,
   webActorSchema,
   localActorSchema,
   platformSchema,
@@ -10,6 +11,7 @@ import {
   slackActorSchema,
   systemActorSchema,
   sourceSchema,
+  slackLocationSchema,
   userSchema,
 } from "./schemas";
 
@@ -23,6 +25,10 @@ export type SystemActor = z.output<typeof systemActorSchema>;
 export type Identity = z.output<typeof identitySchema>;
 export type User = z.output<typeof userSchema>;
 export type Source = z.output<typeof sourceSchema>;
+/** Validated Location associated with a Conversation. */
+export type Location = z.output<typeof locationSchema>;
+/** Complete Slack Location associated with a Conversation. */
+export type SlackLocation = z.output<typeof slackLocationSchema>;
 export type SlackSource = Extract<Source, { platform: "slack" }>;
 export type LocalSource = Extract<Source, { platform: "local" }>;
 export type WebSource = Extract<Source, { platform: "web" }>;
@@ -83,6 +89,8 @@ interface BaseInvocationContext {
    * Interactive Slack turns use `slack:{channelId}:{threadTs}`.
    */
   conversationId?: string;
+  /** Location associated with this Conversation. */
+  locationId?: string;
 }
 
 export interface SlackInvocationContext extends BaseInvocationContext {
@@ -128,8 +136,8 @@ export function createSlackSource(input: {
     visibility: input.visibility,
     teamId: input.teamId,
     channelId: input.channelId,
-    ...(input.messageTs ? { messageTs: input.messageTs } : {}),
-    ...(input.threadTs ? { threadTs: input.threadTs } : {}),
+    ...(input.messageTs ? { messageTs: input.messageTs } : undefined),
+    ...(input.threadTs ? { threadTs: input.threadTs } : undefined),
   };
 }
 

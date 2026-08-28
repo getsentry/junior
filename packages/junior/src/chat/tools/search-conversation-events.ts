@@ -128,13 +128,7 @@ export function createSearchConversationEventsTool(
       .strict(),
     outputSchema: searchConversationEventsOutputSchema,
     execute: async (input) => {
-      const currentConversationId = context.conversationId?.trim();
-      if (!currentConversationId) {
-        throw new ToolInputError(
-          "searchConversationEvents requires an active conversation",
-        );
-      }
-
+      const currentConversationId = context.conversationId;
       const conversationId =
         input.conversation_id?.trim() || currentConversationId;
       const afterSeq = input.after_seq ?? undefined;
@@ -167,11 +161,11 @@ export function createSearchConversationEventsTool(
         context,
         currentConversationId,
       );
-      // Child conversations inherit the root destination privacy boundary.
+      // A Conversation with a parent uses the root privacy boundary.
       const targetRootConversationId = await resolveRootConversationId(
         conversationStore,
         conversationId,
-        target.lineage?.parentConversationId,
+        target.parentConversationId,
       );
       const targetRoot =
         targetRootConversationId === conversationId
@@ -189,9 +183,9 @@ export function createSearchConversationEventsTool(
 
       const page = await getConversationEventStore().query(conversationId, {
         limit,
-        ...(afterSeq === undefined ? {} : { afterSeq }),
-        ...(beforeSeq === undefined ? {} : { beforeSeq }),
-        ...(types === undefined ? {} : { types }),
+        ...(afterSeq === undefined ? undefined : { afterSeq }),
+        ...(beforeSeq === undefined ? undefined : { beforeSeq }),
+        ...(types === undefined ? undefined : { types }),
       });
       const newestFirst = afterSeq === undefined;
       const projected = projectEventsForTool(page, { newestFirst });
@@ -206,7 +200,7 @@ export function createSearchConversationEventsTool(
         truncated: projected.omittedEventCount > 0,
         ...(projected.omittedEventCount > 0
           ? { omitted_event_count: projected.omittedEventCount }
-          : {}),
+          : undefined),
       };
     },
   });
@@ -224,7 +218,7 @@ async function resolveAccessScope(
     ? await resolveRootConversationId(
         conversationStore,
         currentConversationId,
-        current.lineage?.parentConversationId,
+        current.parentConversationId,
       )
     : currentConversationId;
 
@@ -276,10 +270,10 @@ async function resolveRootConversationId(
     if (!parent) {
       return conversationId;
     }
-    if (!parent.lineage?.parentConversationId) {
+    if (!parent.parentConversationId) {
       return parent.conversationId;
     }
-    cursor = parent.lineage.parentConversationId;
+    cursor = parent.parentConversationId;
   }
   return conversationId;
 }
@@ -369,7 +363,7 @@ function projectEvent(event: ConversationEvent) {
     seq: event.seq,
     history_version: event.historyVersion,
     created_at: new Date(event.createdAtMs).toISOString(),
-    ...(event.idempotencyKey ? { idempotency_key: event.idempotencyKey } : {}),
+    ...(event.idempotencyKey ? { idempotency_key: event.idempotencyKey } : undefined),
     data,
   };
 }

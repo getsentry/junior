@@ -1,5 +1,9 @@
 # Conversation REST resources
 
+This directory owns the HTTP access checks, request parsing, and response
+format. It does not own a Conversation or Turn. Web input and shared Turn state
+live in `chat/conversations`. The worker lives in `chat/task-execution`.
+
 Conversation reporting is split across authenticated detail and event
 resources:
 

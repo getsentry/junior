@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { Sandbox, type NetworkPolicy } from "@vercel/sandbox";
 import {
-  logInfo,
   setSpanAttributes,
   withSpan,
   type LogContext,
@@ -19,12 +18,17 @@ import {
 import { buildNonInteractiveShellScript } from "@/chat/sandbox/noninteractive-command";
 import { prepareWorkspaceSnapshot } from "@/chat/sandbox/prepare-workspace";
 import { getSandboxResources } from "@/chat/sandbox/resources";
+import { ensureWorkspaceSnapshotBuild } from "@/chat/sandbox/snapshot/job-runner";
+import { isWorkspaceSnapshotNotReadyError } from "@/chat/sandbox/snapshot/not-ready-error";
 import { hash as profileHash } from "@/chat/sandbox/snapshot/profile";
+import { SANDBOX_RUNTIME } from "@/chat/sandbox/snapshot/runtime";
+import { setSnapshotSpanAttributes } from "@/chat/sandbox/snapshot/span";
 import {
   isMissingError,
   resolve as resolveSnapshot,
   type Snapshot,
 } from "@/chat/sandbox/snapshot/resolve";
+import { requireReadyWorkspaceSnapshot } from "@/chat/sandbox/snapshot/workspace";
 import { syncSkillsToSandbox } from "@/chat/sandbox/skill-sync";
 import {
   createSandboxSession,
@@ -38,10 +42,8 @@ import type { SkillMetadata } from "@/chat/skills";
 import type { SandboxRef } from "@/chat/sandbox/ref";
 import type { Workspace } from "@/chat/workspaces/types";
 import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
-
 const DEFAULT_MAX_OUTPUT_LENGTH = 30_000;
 const DEFAULT_BASH_COMMAND_TIMEOUT_MS = 5 * 60 * 1000;
-const SANDBOX_RUNTIME = "node22";
 const SANDBOX_RUNTIME_BIN_DIR = `${SANDBOX_WORKSPACE_ROOT}/.junior/bin`;
 const SNAPSHOT_BOOT_RETRY_COUNT = 3;
 const SNAPSHOT_BOOT_RETRY_DELAY_MS = 1000;
@@ -186,7 +188,10 @@ export function createSandboxRuntime(
   const timeoutMs = options.timeoutMs ?? 1000 * 60 * 30;
   const traceContext = options.traceContext ?? {};
   let activeWorkspace = options.workspace;
-  let dependencyProfileHash = profileHash(SANDBOX_RUNTIME, activeWorkspace);
+  // Prefer the hash stored on the current sandbox over a newly computed one.
+  let dependencyProfileHash =
+    options.sandboxRef?.profileHash ??
+    profileHash(SANDBOX_RUNTIME, activeWorkspace);
   const resolveCommandEnv =
     options.commandEnv ?? (async () => ({}) as Record<string, string>);
 
@@ -243,8 +248,8 @@ export function createSandboxRuntime(
     hash: string | undefined,
   ): SandboxRef => ({
     id: session.sandboxId,
-    ...(hash ? { profileHash: hash } : {}),
-    ...(workspace?.id ? { workspaceId: workspace.id } : {}),
+    ...(hash ? { profileHash: hash } : undefined),
+    ...(workspace?.id ? { workspaceId: workspace.id } : undefined),
   });
 
   const rememberSandbox = (
@@ -350,12 +355,12 @@ export function createSandboxRuntime(
             timeout: timeoutMs,
             ...(networkPolicy
               ? { name: sandboxName, persistent: false, networkPolicy }
-              : {}),
+              : undefined),
             source: {
               type: "snapshot",
               snapshotId,
             },
-            ...(resources ? { resources } : {}),
+            ...(resources ? { resources } : undefined),
             ...(sandboxCredentials ?? {}),
             ...sandboxFetchOptions(signal),
           }),
@@ -374,23 +379,18 @@ export function createSandboxRuntime(
     throw new Error(`Failed to boot sandbox from snapshot ${snapshotId}`);
   };
 
-  const setSnapshotAttributes = (snapshot: Snapshot): void => {
-    setSpanAttributes({
-      "app.sandbox.source": snapshot.snapshotId ? "snapshot" : "created",
-      "app.sandbox.snapshot.cache_hit": snapshot.cacheHit,
-      "app.sandbox.snapshot.resolve_outcome": snapshot.resolveOutcome,
-      ...(snapshot.profileHash
-        ? {
-            "app.sandbox.snapshot.profile_hash": snapshot.profileHash,
-          }
-        : {}),
-      "app.sandbox.snapshot.dependency_count": snapshot.dependencyCount,
-      ...(snapshot.rebuildReason
-        ? {
-            "app.sandbox.snapshot.rebuild_reason": snapshot.rebuildReason,
-          }
-        : {}),
-    });
+  const requireWorkspaceSnapshot = async (params: {
+    workspace: Workspace;
+    runtime: string;
+    staleSnapshotId?: string;
+  }): Promise<Snapshot> => {
+    try {
+      return await requireReadyWorkspaceSnapshot(params);
+    } catch (error) {
+      if (!isWorkspaceSnapshotNotReadyError(error)) throw error;
+      await ensureWorkspaceSnapshotBuild({ workspace: params.workspace });
+      throw error;
+    }
   };
 
   const createSandboxFromResolvedSnapshot = async (params: {
@@ -401,70 +401,65 @@ export function createSandboxRuntime(
     signal?: AbortSignal;
     workspace?: Workspace;
     prepareWorkspace?: (sandbox: SandboxSession) => Promise<void>;
-  }): Promise<SandboxSession> => {
-    const {
-      runtime,
-      snapshot,
-      sandboxCredentials,
-      sandboxName,
-      signal,
-      workspace,
-      prepareWorkspace,
-    } = params;
+  }): Promise<{ session: SandboxSession; snapshot: Snapshot }> => {
+    const { runtime, snapshot, sandboxCredentials, sandboxName, signal } =
+      params;
     signal?.throwIfAborted();
-
     if (!snapshot.snapshotId) {
       const networkPolicy = preflightNetworkPolicy(sandboxName);
       const resources = getSandboxResources();
-      return adaptSandbox(
+      const session = adaptSandbox(
         await Sandbox.create({
           timeout: timeoutMs,
           runtime,
           ...(networkPolicy
             ? { name: sandboxName, persistent: false, networkPolicy }
-            : {}),
-          ...(resources ? { resources } : {}),
+            : undefined),
+          ...(resources ? { resources } : undefined),
           ...(sandboxCredentials ?? {}),
           ...sandboxFetchOptions(signal),
         }),
       );
+      return { session, snapshot };
     }
 
     try {
-      return await createSandboxFromSnapshot(
+      const session = await createSandboxFromSnapshot(
         snapshot.snapshotId,
         sandboxCredentials,
         sandboxName,
         signal,
       );
+      return { session, snapshot };
     } catch (error) {
-      if (!isMissingError(error)) {
-        throw error;
+      if (!isMissingError(error)) throw error;
+      setSpanAttributes({ "app.sandbox.snapshot.rebuild_after_missing": true });
+      let rebuilt: Snapshot;
+      if (params.workspace) {
+        rebuilt = await requireWorkspaceSnapshot({
+          workspace: params.workspace,
+          runtime,
+          staleSnapshotId: snapshot.snapshotId,
+        });
+      } else {
+        rebuilt = await resolveSnapshot({
+          runtime,
+          timeoutMs,
+          forceRebuild: true,
+          staleSnapshotId: snapshot.snapshotId,
+          signal,
+          prepareWorkspace: params.prepareWorkspace,
+        });
       }
-
-      setSpanAttributes({
-        "app.sandbox.snapshot.rebuild_after_missing": true,
-      });
-      const rebuiltSnapshot = await resolveSnapshot({
-        runtime,
-        timeoutMs,
-        forceRebuild: true,
-        staleSnapshotId: snapshot.snapshotId,
-        signal,
-        workspace,
-        prepareWorkspace,
-      });
-      if (!rebuiltSnapshot.snapshotId) {
-        throw error;
-      }
+      if (!rebuilt.snapshotId) throw error;
       signal?.throwIfAborted();
-
-      return await createSandboxFromSnapshot(
-        rebuiltSnapshot.snapshotId,
+      const session = await createSandboxFromSnapshot(
+        rebuilt.snapshotId,
         sandboxCredentials,
         sandboxName,
         signal,
       );
+      return { session, snapshot: rebuilt };
     }
   };
 
@@ -499,16 +494,17 @@ export function createSandboxRuntime(
           "app.sandbox.runtime": runtime,
         },
         async () => {
-          const snapshot = await resolveSnapshot({
-            runtime,
-            timeoutMs,
-            signal,
-            workspace,
-            prepareWorkspace,
-          });
+          const snapshot = workspace
+            ? await requireWorkspaceSnapshot({ workspace, runtime })
+            : await resolveSnapshot({
+                runtime,
+                timeoutMs,
+                signal,
+                prepareWorkspace,
+              });
           signal?.throwIfAborted();
-          setSnapshotAttributes(snapshot);
-          return await createSandboxFromResolvedSnapshot({
+          setSnapshotSpanAttributes(snapshot);
+          const created = await createSandboxFromResolvedSnapshot({
             runtime,
             snapshot,
             sandboxCredentials,
@@ -517,6 +513,7 @@ export function createSandboxRuntime(
             workspace,
             prepareWorkspace,
           });
+          return created.session;
         },
       );
     } catch (error) {
@@ -536,6 +533,9 @@ export function createSandboxRuntime(
     let networkPolicyKey: string | undefined;
     try {
       networkPolicyKey = await applyNetworkPolicy(createdSandbox);
+      if (workspace) {
+        await options.onWorkspacePrepare?.(createdSandbox, workspace, signal);
+      }
       await prepareSandbox(createdSandbox);
     } catch (error) {
       // A Workspace candidate has no durable owner until preparation succeeds.
@@ -555,46 +555,20 @@ export function createSandboxRuntime(
   const createFreshSandbox = async (
     signal?: AbortSignal,
   ): Promise<SandboxSession> => {
+    const nextProfileHash = profileHash(SANDBOX_RUNTIME, activeWorkspace);
     const candidate = await createSandboxCandidate(
       activeWorkspace,
-      dependencyProfileHash,
+      nextProfileHash,
       signal,
     );
     try {
       await persistSandboxRef(candidate.ref);
+      dependencyProfileHash = candidate.profileHash ?? nextProfileHash;
       return rememberSandbox(candidate.session, candidate.networkPolicyKey);
     } catch (error) {
       await stopSession(candidate.session);
       throw error;
     }
-  };
-
-  const discardHintIfProfileChanged = (): void => {
-    if (
-      activeSandbox ||
-      !sandboxRef ||
-      dependencyProfileHash === sandboxRef.profileHash
-    ) {
-      return;
-    }
-    const attrs = {
-      ...(sandboxRef.profileHash
-        ? { "app.sandbox.previous_profile_hash": sandboxRef.profileHash }
-        : {}),
-      ...(dependencyProfileHash
-        ? { "app.sandbox.current_profile_hash": dependencyProfileHash }
-        : {}),
-    };
-    setSpanAttributes({
-      "app.sandbox.reused": false,
-      "app.sandbox.recreate.reason": "dependency_profile_mismatch",
-      ...attrs,
-    });
-    logInfo("sandbox.hint.discarded", {
-      "app.decision.reason": "dependency_profile_mismatch",
-      ...attrs,
-    });
-    sandboxRef = undefined;
   };
 
   const tryReuseCachedSandbox = (): SandboxSession | null =>
@@ -644,6 +618,7 @@ export function createSandboxRuntime(
     try {
       networkPolicyKey = await applyNetworkPolicy(hintedSandbox);
       await prepareSandbox(hintedSandbox);
+      dependencyProfileHash = ref.profileHash ?? dependencyProfileHash;
       await persistSandboxRef({ ...ref, id: hintedSandbox.sandboxId });
       return rememberSandbox(hintedSandbox, networkPolicyKey);
     } catch (error) {
@@ -668,14 +643,13 @@ export function createSandboxRuntime(
         "app.sandbox.skills_count": availableSkills.length,
       },
       async () => {
-        discardHintIfProfileChanged();
-
         const cachedSandbox = await tryReuseCachedSandbox();
         if (cachedSandbox) {
           return cachedSandbox;
         }
 
         signal?.throwIfAborted();
+        // Reopen the current sandbox before starting a new one.
         const hintedSandbox = await tryRestoreHintedSandbox(signal);
         if (hintedSandbox) {
           return hintedSandbox;

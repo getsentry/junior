@@ -39,7 +39,7 @@ function createDirectMessageRequest(
       channel: DM_CHANNEL_ID,
       ts: "1700000100.000100",
       text,
-      ...(options?.threadTs ? { threadTs: options.threadTs } : {}),
+      ...(options?.threadTs ? { threadTs: options.threadTs } : undefined),
     }),
   );
 }
@@ -54,7 +54,7 @@ function createChannelMentionRequest(
       channel: CHANNEL_ID,
       ts: options?.ts ?? CHANNEL_ROOT_TS,
       text,
-      ...(options?.threadTs ? { threadTs: options.threadTs } : {}),
+      ...(options?.threadTs ? { threadTs: options.threadTs } : undefined),
     }),
   );
 }
@@ -85,9 +85,7 @@ async function createDirectMessageBot(modelStream: StreamFn) {
   const slackRuntime = createSlackRuntime({
     getSlackAdapter: () => bot.getAdapter("slack"),
     services: {
-      replyExecutor: {
-        agentRunner: createModelAgentRunner(modelStream),
-      },
+      agentRunner: createModelAgentRunner(modelStream),
     },
   });
 
@@ -115,9 +113,7 @@ async function createMentionBot(modelStream: StreamFn) {
   const slackRuntime = createSlackRuntime({
     getSlackAdapter: () => bot.getAdapter("slack"),
     services: {
-      replyExecutor: {
-        agentRunner: createModelAgentRunner(modelStream),
-      },
+      agentRunner: createModelAgentRunner(modelStream),
     },
   });
 

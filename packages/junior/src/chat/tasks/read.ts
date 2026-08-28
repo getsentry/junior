@@ -29,13 +29,14 @@ import { eventTaskTriggerAvailable } from "@/chat/event-tasks/tool-support";
 import type { EventTask } from "@/chat/event-tasks/types";
 import { getResourceEventCatalog } from "@/chat/resource-events/runtime-catalog";
 import {
-  createViewerScheduledTasks,
+  deleteViewerScheduledTask,
+  listViewerScheduledTasks,
   PersonalScheduledTaskNotFoundError,
 } from "@/chat/scheduled-tasks/personal";
 import {
-  createSchedulerSqlStore,
   listPublicScheduledTasksForTeams,
-} from "@/chat/scheduled-tasks/store";
+  readScheduledTask,
+} from "@/chat/scheduled-tasks/tasks";
 import type { ScheduledTask } from "@/chat/scheduled-tasks/types";
 import { juniorDestinations, juniorIdentities, juniorUsers } from "@/db/schema";
 
@@ -195,10 +196,10 @@ function executionSummaryFields(stats: TaskExecutionSummary | undefined) {
   return {
     ...(stats?.lastConversationId
       ? { lastConversationId: stats.lastConversationId }
-      : {}),
+      : undefined),
     ...(stats?.lastExecutedAtMs
       ? { lastRunAt: new Date(stats.lastExecutedAtMs).toISOString() }
-      : {}),
+      : undefined),
     runsLast7Days: stats?.runsLast7Days ?? 0,
     totalRuns: stats?.totalRuns ?? 0,
   };
@@ -219,7 +220,7 @@ function scheduledTaskSummary(
   return {
     createdAt: new Date(task.createdAtMs).toISOString(),
     createdBy: creatorLabel(task.createdBy),
-    ...(createdByEmail ? { createdByEmail } : {}),
+    ...(createdByEmail ? { createdByEmail } : undefined),
     destination: {
       channelId: task.destination.channelId,
       label: destination.label,
@@ -232,7 +233,7 @@ function scheduledTaskSummary(
     ...executionSummaryFields(stats),
     ...(nextRunAtMs !== undefined
       ? { nextRunAt: new Date(nextRunAtMs).toISOString() }
-      : {}),
+      : undefined),
     ownedByViewer,
     schedule: displayText(task.schedule.description, "Schedule unavailable"),
     status: task.status,
@@ -251,7 +252,7 @@ function eventTaskSummary(
   return {
     createdAt: new Date(task.createdAtMs).toISOString(),
     createdBy: creatorLabel(task.createdBy),
-    ...(createdByEmail ? { createdByEmail } : {}),
+    ...(createdByEmail ? { createdByEmail } : undefined),
     destination: {
       channelId: task.destination.channelId,
       label: destination.label,
@@ -294,7 +295,7 @@ async function resolveViewerTaskCandidate(
   const identityIds = new Set(user.identities.map((identity) => identity.id));
   const teamIds = viewerTeamIds(user);
   if (kind === "scheduled") {
-    const task = await createSchedulerSqlStore(db).getTask(id);
+    const task = await readScheduledTask(db, id);
     if (!task || task.status === "deleted") return undefined;
     const ownedByViewer = identityIds.has(task.creatorIdentityId);
     const destinations = await destinationDetails([task.destination]);
@@ -368,14 +369,11 @@ async function taskSummaryForCandidate(
 /** Read viewer-owned and public-workspace tasks as one bounded newest-first projection. */
 export async function readViewerTasks(user: User): Promise<TaskList> {
   const db = getDb();
-  const schedulerStore = createSchedulerSqlStore(db);
   const identityIds = new Set(user.identities.map((identity) => identity.id));
   const teamIds = viewerTeamIds(user);
   const [scheduledPage, publicScheduled, eventTasks, publicEventTasks] =
     await Promise.all([
-      createViewerScheduledTasks(schedulerStore, user).list({
-        limit: TASK_FETCH_LIMIT,
-      }),
+      listViewerScheduledTasks(db, user, { limit: TASK_FETCH_LIMIT }),
       listPublicScheduledTasksForTeams(db, teamIds, TASK_FETCH_LIMIT),
       listEventTasksCreatedBy(db, user, TASK_FETCH_LIMIT),
       listPublicEventTasksForTeams(db, teamIds, TASK_FETCH_LIMIT),
@@ -584,10 +582,7 @@ export async function deleteViewerTask(
 ): Promise<void> {
   if (kind === "scheduled") {
     try {
-      await createViewerScheduledTasks(
-        createSchedulerSqlStore(getDb()),
-        user,
-      ).delete(id);
+      await deleteViewerScheduledTask(getDb(), user, id);
       return;
     } catch (error) {
       if (error instanceof PersonalScheduledTaskNotFoundError) {

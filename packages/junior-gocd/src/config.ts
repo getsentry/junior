@@ -3,14 +3,9 @@
 export interface GocdPluginOptions {
   /**
    * Optional default GoCD base URL, for example `https://gocd.example.com`.
-   * When omitted, tools require `GOCD_URL` or a per-call `baseUrl`.
+   * When omitted, tools require `GOCD_URL`.
    */
   baseUrl?: string;
-  /**
-   * Hostname used for egress domain ownership and header injection.
-   * Defaults from `baseUrl` / `GOCD_URL` when possible.
-   */
-  host?: string;
 }
 
 export interface ResolvedGocdTarget {
@@ -18,12 +13,7 @@ export interface ResolvedGocdTarget {
   host: string;
 }
 
-function trimTrailingSlash(value: string): string {
-  return value.replace(/\/$/, "");
-}
-
-/** Resolve a GoCD host from an absolute base URL. */
-export function hostFromBaseUrl(baseUrl: string): string {
+function parseBaseUrl(baseUrl: string): URL {
   let url: URL;
   try {
     url = new URL(baseUrl);
@@ -33,7 +23,21 @@ export function hostFromBaseUrl(baseUrl: string): string {
   if (url.protocol !== "https:") {
     throw new Error("GoCD base URL must use https");
   }
-  return url.host;
+  if (
+    url.username ||
+    url.password ||
+    url.pathname !== "/" ||
+    url.search ||
+    url.hash
+  ) {
+    throw new Error("GoCD base URL must be an origin without a path or query");
+  }
+  return url;
+}
+
+/** Resolve a GoCD host from an absolute base URL. */
+export function hostFromBaseUrl(baseUrl: string): string {
+  return parseBaseUrl(baseUrl).hostname;
 }
 
 /** Resolve the absolute request URL for one GoCD API path. */
@@ -41,33 +45,25 @@ export function resolveGocdApiUrl(baseUrl: string, path: string): string {
   if (!path.startsWith("/go/")) {
     throw new Error("GoCD API paths must start with /go/");
   }
-  return `${trimTrailingSlash(baseUrl)}${path}`;
+  return `${parseBaseUrl(baseUrl).origin}${path}`;
 }
 
 /**
- * Resolve the GoCD target for one tool call.
- * Prefer explicit tool input, then plugin options, then `GOCD_URL`.
+ * Resolve the GoCD target from plugin options or `GOCD_URL`.
  */
-export function resolveGocdTarget(input: {
-  baseUrl?: string;
-  options?: GocdPluginOptions;
-}): ResolvedGocdTarget {
-  const baseUrl = trimTrailingSlash(
-    (
-      input.baseUrl ??
-      input.options?.baseUrl ??
-      process.env.GOCD_URL ??
-      ""
-    ).trim(),
-  );
-  if (!baseUrl) {
+export function resolveGocdTarget(
+  options: GocdPluginOptions = {},
+): ResolvedGocdTarget {
+  const configuredBaseUrl = (
+    options.baseUrl ??
+    process.env.GOCD_URL ??
+    ""
+  ).trim();
+  if (!configuredBaseUrl) {
     throw new Error(
-      "GoCD base URL is required. Pass baseUrl, configure gocdPlugin({ baseUrl }), or set GOCD_URL.",
+      "GoCD base URL is required. Configure gocdPlugin({ baseUrl }) or set GOCD_URL.",
     );
   }
-  const host = (input.options?.host ?? hostFromBaseUrl(baseUrl)).trim();
-  if (!host) {
-    throw new Error("GoCD host is required");
-  }
-  return { baseUrl, host };
+  const url = parseBaseUrl(configuredBaseUrl);
+  return { baseUrl: url.origin, host: url.hostname };
 }

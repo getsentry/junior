@@ -1,112 +1,140 @@
 /** Durable scheduled-task domain types owned by Junior core. */
-import type { SlackDestination, SystemActor } from "@sentry/junior-plugin-api";
+import {
+  actorUserIdSchema,
+  slackDestinationSchema,
+} from "@sentry/junior-plugin-api";
 import { z } from "zod";
 
-export type ScheduledTaskStatus =
-  | "active"
-  | "blocked"
-  | "completed"
-  | "deleted";
-export const scheduledTaskCredentialModeSchema = z.enum(["system", "creator"]);
-export type ScheduledTaskCredentialMode = z.infer<
+const scheduledTaskStatusSchema = z.enum([
+  "active",
+  "blocked",
+  "completed",
+  "deleted",
+]);
+export type ScheduledTaskStatus = z.output<typeof scheduledTaskStatusSchema>;
+const scheduledTaskCredentialModeSchema = z.enum(["system", "creator"]);
+export type ScheduledTaskCredentialMode = z.output<
   typeof scheduledTaskCredentialModeSchema
 >;
 
-export type ScheduledRunStatus =
-  | "pending"
-  | "running"
-  | "completed"
-  | "failed"
-  | "blocked"
-  | "skipped";
+const scheduledRunStatusSchema = z.enum([
+  "pending",
+  "running",
+  "completed",
+  "failed",
+  "blocked",
+  "skipped",
+]);
+export type ScheduledRunStatus = z.output<typeof scheduledRunStatusSchema>;
 
-export interface ScheduledTaskPrincipal {
-  slackUserId: string;
-  fullName?: string;
-  userName?: string;
-}
+const scheduledTaskPrincipalSchema = z
+  .object({
+    slackUserId: actorUserIdSchema,
+    fullName: z.string().optional(),
+    userName: z.string().optional(),
+  })
+  .strict();
 
-export type ScheduledTaskExecutionActor = SystemActor;
+const scheduledTaskRecurrenceSchema = z
+  .object({
+    dayOfMonth: z.number().optional(),
+    frequency: z.enum(["daily", "weekly", "monthly", "yearly"]),
+    interval: z.number(),
+    month: z.number().optional(),
+    startDate: z.string(),
+    time: z
+      .object({
+        hour: z.number(),
+        minute: z.number(),
+      })
+      .strict(),
+    weekdays: z.array(z.number()).optional(),
+  })
+  .strict();
+
+const scheduledTaskScheduleSchema = z
+  .object({
+    description: z.string(),
+    kind: z.enum(["one_off", "recurring"]),
+    recurrence: scheduledTaskRecurrenceSchema.optional(),
+    timezone: z.string(),
+  })
+  .strict();
+
+const scheduledTaskExecutionActorSchema = z
+  .object({
+    platform: z.literal("system"),
+    name: z.string(),
+  })
+  .strict();
+
+/** Validate the current scheduled-task domain shape. */
+export const scheduledTaskSchema = z
+  .object({
+    id: z.string(),
+    conversationAccess: z
+      .object({
+        audience: z.enum(["direct", "group", "channel"]),
+        visibility: z.enum(["private", "public"]),
+      })
+      .strict(),
+    createdAtMs: z.number(),
+    createdBy: scheduledTaskPrincipalSchema,
+    /** Authoritative provider identity that created the task. */
+    creatorIdentityId: z.string(),
+    /** Selects system credentials or task-bound creator credential delegation. */
+    credentialMode: scheduledTaskCredentialModeSchema,
+    destination: slackDestinationSchema,
+    executionActor: scheduledTaskExecutionActorSchema.optional(),
+    lastRunAtMs: z.number().optional(),
+    nextRunAtMs: z.number().optional(),
+    originalRequest: z.string().optional(),
+    runNowAtMs: z.number().optional(),
+    schedule: scheduledTaskScheduleSchema,
+    status: scheduledTaskStatusSchema,
+    statusReason: z.string().optional(),
+    task: z.object({ text: z.string() }).strict(),
+    /** SQL-backed short display title generated from the task instruction. */
+    title: z.string().optional(),
+    updatedAtMs: z.number(),
+  })
+  .strict();
+
+/** Validate the current scheduled-run domain shape. */
+export const scheduledRunSchema = z
+  .object({
+    id: z.string(),
+    attempt: z.number(),
+    claimedAtMs: z.number(),
+    completedAtMs: z.number().optional(),
+    dispatchId: z.string().optional(),
+    errorMessage: z.string().optional(),
+    resultMessageTs: z.string().optional(),
+    scheduledForMs: z.number(),
+    startedAtMs: z.number().optional(),
+    status: scheduledRunStatusSchema,
+    taskId: z.string(),
+  })
+  .strict();
+
+export type ScheduledTask = z.output<typeof scheduledTaskSchema>;
+export type ScheduledRun = z.output<typeof scheduledRunSchema>;
+export type ScheduledTaskRecord = Omit<ScheduledTask, "title">;
+export type ScheduledTaskPrincipal = ScheduledTask["createdBy"];
+export type ScheduledTaskExecutionActor = NonNullable<
+  ScheduledTask["executionActor"]
+>;
+export type ScheduledTaskConversationAccess =
+  ScheduledTask["conversationAccess"];
+export type ScheduledTaskSchedule = ScheduledTask["schedule"];
+export type ScheduledTaskRecurrence = NonNullable<
+  ScheduledTaskSchedule["recurrence"]
+>;
+export type ScheduledTaskSpec = ScheduledTask["task"];
+export type ScheduledCalendarFrequency = ScheduledTaskRecurrence["frequency"];
+export type ScheduledLocalTime = ScheduledTaskRecurrence["time"];
 
 export const SCHEDULED_TASK_SYSTEM_ACTOR = Object.freeze({
   platform: "system",
   name: "scheduled-task",
 } satisfies ScheduledTaskExecutionActor);
-
-export interface ScheduledTaskConversationAccess {
-  audience: "direct" | "group" | "channel";
-  visibility: "private" | "public";
-}
-
-export type ScheduledCalendarFrequency =
-  | "daily"
-  | "weekly"
-  | "monthly"
-  | "yearly";
-
-export interface ScheduledLocalTime {
-  hour: number;
-  minute: number;
-}
-
-export interface ScheduledTaskRecurrence {
-  dayOfMonth?: number;
-  frequency: ScheduledCalendarFrequency;
-  interval: number;
-  month?: number;
-  startDate: string;
-  time: ScheduledLocalTime;
-  weekdays?: number[];
-}
-
-export interface ScheduledTaskSchedule {
-  description: string;
-  timezone: string;
-  kind: "one_off" | "recurring";
-  recurrence?: ScheduledTaskRecurrence;
-}
-
-export interface ScheduledTaskSpec {
-  text: string;
-}
-
-export interface ScheduledTask {
-  id: string;
-  createdAtMs: number;
-  createdBy: ScheduledTaskPrincipal;
-  /** Authoritative provider identity that created the task. */
-  creatorIdentityId: string;
-  conversationAccess: ScheduledTaskConversationAccess;
-  /** Selects system credentials or task-bound creator credential delegation. */
-  credentialMode: ScheduledTaskCredentialMode;
-  destination: SlackDestination;
-  executionActor?: ScheduledTaskExecutionActor;
-  lastRunAtMs?: number;
-  nextRunAtMs?: number;
-  originalRequest?: string;
-  runNowAtMs?: number;
-  schedule: ScheduledTaskSchedule;
-  status: ScheduledTaskStatus;
-  statusReason?: string;
-  task: ScheduledTaskSpec;
-  /**
-   * Short display title generated from the task instruction.
-   * SQL-backed column; never stored inside the JSON record payload.
-   */
-  title?: string;
-  updatedAtMs: number;
-}
-
-export interface ScheduledRun {
-  id: string;
-  attempt: number;
-  claimedAtMs: number;
-  completedAtMs?: number;
-  dispatchId?: string;
-  errorMessage?: string;
-  resultMessageTs?: string;
-  scheduledForMs: number;
-  startedAtMs?: number;
-  status: ScheduledRunStatus;
-  taskId: string;
-}

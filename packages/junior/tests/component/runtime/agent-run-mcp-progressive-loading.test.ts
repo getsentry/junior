@@ -1,11 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createSlackSource } from "@sentry/junior-plugin-api";
 import { renderCurrentInstruction } from "@/chat/current-instruction";
 import { getConversationEventStore } from "@/chat/db";
 import { McpProviderError } from "@/chat/mcp/errors";
 import type { PiMessage } from "@/chat/pi/messages";
 import type { ConversationPendingAuthState } from "@/chat/state/conversation";
-
 const {
   DEMO_SKILL,
   agentAfterToolResults,
@@ -243,10 +241,14 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
           throw new Error("searchMcpTools missing");
         }
         try {
-          await this.executeTool(searchMcpTools, "tool-search-provider-failure", {
-            provider: "demo",
-            query: "ping query",
-          });
+          await this.executeTool(
+            searchMcpTools,
+            "tool-search-provider-failure",
+            {
+              provider: "demo",
+              query: "ping query",
+            },
+          );
         } catch {
           if (!this.aborted) {
             this.state.messages.push(
@@ -412,10 +414,14 @@ vi.mock("@/chat/mcp/oauth", () => ({
       conversationId: input.conversationId,
       sessionId: input.sessionId,
       userMessage: input.userMessage,
-      ...(input.channelId ? { channelId: input.channelId } : {}),
-      ...(input.threadTs ? { threadTs: input.threadTs } : {}),
-      ...(input.toolChannelId ? { toolChannelId: input.toolChannelId } : {}),
-      ...(input.configuration ? { configuration: input.configuration } : {}),
+      ...(input.channelId ? { channelId: input.channelId } : undefined),
+      ...(input.threadTs ? { threadTs: input.threadTs } : undefined),
+      ...(input.toolChannelId
+        ? { toolChannelId: input.toolChannelId }
+        : undefined),
+      ...(input.configuration
+        ? { configuration: input.configuration }
+        : undefined),
       createdAtMs: Date.now(),
       updatedAtMs: Date.now(),
     });
@@ -667,6 +673,7 @@ import {
   upsertTurnRecord,
 } from "@/chat/task-execution/turn-cursor";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
+import { createSlackSource } from "@sentry/junior-plugin-api";
 
 function finalReply(outcome: Awaited<ReturnType<typeof executeAgentRun>>) {
   if (outcome.status !== "completed") {
@@ -722,8 +729,7 @@ function makeAgentRun(
       text: messageText,
       ...(instructionOverrides ?? {}),
     },
-    ...(history ? { history } : {}),
-    destinationVisibility: "private",
+    ...(history ? { history } : undefined),
     credentialContext: {
       actor: { type: "user" as const, userId: "U123" },
     },
@@ -736,8 +742,8 @@ function makeAgentRun(
     }),
     actor: TEST_ACTOR,
     ...runOverrides,
-    ...(state ? { state } : {}),
-    ...(onEvent ? { onEvent } : {}),
+    ...(state ? { state } : undefined),
+    ...(onEvent ? { onEvent } : undefined),
     durability: {
       recordPendingAuth: async (pendingAuth) => {
         if (pendingAuth) {
@@ -1142,6 +1148,7 @@ describe("executeAgentRun progressive MCP loading", () => {
     const turnId = "turn-restore-auth-limit";
     const priorMessages = [
       {
+        // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
         input: {
           tool_name: "mcp__demo__ping",
           arguments: { query: "prior" },
@@ -1153,7 +1160,7 @@ describe("executeAgentRun progressive MCP loading", () => {
         content: [{ type: "text", text: "pong" }],
         timestamp: 1,
       },
-    ] as unknown as PiMessage[];
+    ] as PiMessage[];
     await upsertTurnRecord({
       conversationId,
       piMessages: priorMessages,
@@ -1197,7 +1204,7 @@ describe("executeAgentRun progressive MCP loading", () => {
         content: [{ type: "text", text: "pong" }],
         timestamp: 2,
       },
-    ] as unknown as PiMessage[];
+    ] as PiMessage[];
     await recordMcpProviderConnected({
       conversationId: "conversation-restore-auth",
       provider: "demo",

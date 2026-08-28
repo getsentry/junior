@@ -6,7 +6,6 @@ import {
   gt,
   gte,
   inArray,
-  isNotNull,
   lt,
   lte,
   sql,
@@ -32,7 +31,7 @@ import {
   resolveEventActorIdentityId,
   stripPayloadAuthorIdentityId,
 } from "./event-actor";
-import { juniorConversationEvents, juniorConversations } from "@/db/schema";
+import { juniorConversationEvents } from "@/db/schema";
 import { sanitizePostgresJson } from "@/db/postgres-json";
 import { withConversationEventLock } from "./event-lock";
 import { recordConversationParticipant } from "./participants";
@@ -127,7 +126,7 @@ function eventFromRow(row: ConversationEventRow): ConversationEvent {
     schemaVersion: row.schemaVersion,
     seq: row.seq,
     historyVersion: row.historyVersion,
-    ...(row.idempotencyKey ? { idempotencyKey: row.idempotencyKey } : {}),
+    ...(row.idempotencyKey ? { idempotencyKey: row.idempotencyKey } : undefined),
     createdAtMs: row.createdAt.getTime(),
     type: row.type,
     payload,
@@ -207,21 +206,6 @@ class SqlConversationEventStore implements ConversationEventStore {
         newestCreatedAtMs,
         options,
       );
-      if (
-        options.activity !== "preserve" &&
-        pending.some((event) => eventUnarchivesConversation(event.data))
-      ) {
-        await this.executor
-          .db()
-          .update(juniorConversations)
-          .set({ archivedAt: null })
-          .where(
-            and(
-              eq(juniorConversations.conversationId, conversationId),
-              isNotNull(juniorConversations.archivedAt),
-            ),
-          );
-      }
       const cursor = await this.readCursor(conversationId);
       const historyVersion = cursor.maxHistoryVersion ?? 0;
       let seq = cursor.nextSeq;
@@ -249,6 +233,7 @@ class SqlConversationEventStore implements ConversationEventStore {
             actorIdentityId,
             conversationId,
             atMs: event.createdAtMs,
+            restoreArchive: eventUnarchivesConversation(event.data),
           });
         }
       }

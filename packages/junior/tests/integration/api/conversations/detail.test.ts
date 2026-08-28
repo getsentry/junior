@@ -17,8 +17,9 @@ describe("conversation detail API", () => {
   });
 
   it("returns newly appended events when refreshed", async () => {
-    const conversationId = "internal:refreshed-detail";
+    const conversationId = "local:test:refreshed-detail";
     await getConversationStore().recordActivity({
+      destination: { platform: "local" as const, conversationId },
       conversationId,
       nowMs: 1,
       source: "internal",
@@ -159,8 +160,7 @@ describe("conversation detail API", () => {
       await import("@/chat/conversations/sql/migrations");
     const { createSqlStore } = await import("@/chat/conversations/sql/store");
     const { resolveViewerUserFromSql } = await import("@/chat/plugins/viewer");
-    const { createSchedulerSqlStore } =
-      await import("@/chat/scheduled-tasks/store");
+    const { saveScheduledTask } = await import("@/chat/scheduled-tasks/tasks");
     const { recordTaskExecution } =
       await import("@/chat/tasks/execution-stats");
     const fixture = createConfiguredJuniorSqlFixture();
@@ -199,7 +199,7 @@ describe("conversation detail API", () => {
       );
       expect(identity).toBeDefined();
       const nowMs = 2;
-      await createSchedulerSqlStore(fixture.sql.db()).saveTask({
+      await saveScheduledTask(fixture.sql.db(), {
         id: "sched_source_task",
         conversationAccess: { audience: "channel", visibility: "public" },
         createdAtMs: nowMs,

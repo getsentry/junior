@@ -5,15 +5,18 @@ import type { TaskRun } from "@sentry/junior/api/schema";
 import { useTaskRunsData } from "../../api";
 import { ToggleButton } from "../../components/Button";
 import { FilterBar, FilterGroup } from "../../components/FilterBar";
-import { LoadingView } from "../../components/LoadingView";
+import { InlineError } from "../../components/InlineError";
+import { PageContentSkeleton } from "../../components/PageContentSkeleton";
 import {
   pageCount,
   pageItems,
   PagePagination,
 } from "../../components/Pagination";
+import { StatusChip } from "../../components/StatusChip";
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
-import { conversationPath, formatTime } from "../../format";
+import { conversationPath } from "../../conversations/conversationRoutes";
+import { formatTime } from "../../format";
 import {
   useDebouncedSearchParam,
   useSearchParamEnum,
@@ -71,9 +74,7 @@ export function TaskRunsPage(props: { enabled: boolean }) {
     if (page > totalPages) setPage(totalPages);
   }, [page, totalPages]);
 
-  if (!query.data && !query.error) {
-    return <LoadingView label="Loading task runs" />;
-  }
+  const loading = !query.data && !query.error;
 
   return (
     <>
@@ -81,88 +82,92 @@ export function TaskRunsPage(props: { enabled: boolean }) {
         description="Newest runs across your tasks and tasks in public destinations."
         title="Runs"
       />
-      <FilterBar
-        search={{
-          label: "Search runs",
-          onChange: setSearchText,
-          placeholder: "Task, conversation, or status",
-          value: searchText,
-        }}
-      >
-        <FilterGroup label="Type">
-          {RUN_KINDS.map((value) => (
-            <ToggleButton
-              key={value}
-              onClick={() => setKind(value)}
-              pressed={kind === value}
-              variant="pill"
-            >
-              {value}
-            </ToggleButton>
-          ))}
-        </FilterGroup>
-        <FilterGroup label="Status">
-          {RUN_STATUSES.map((value) => (
-            <ToggleButton
-              key={value}
-              onClick={() => setStatus(value)}
-              pressed={status === value}
-              variant="pill"
-            >
-              {value}
-            </ToggleButton>
-          ))}
-        </FilterGroup>
-      </FilterBar>
-      <div className="flex flex-wrap items-baseline justify-between gap-x-5 gap-y-1 border-b border-white/[0.07] pb-3">
-        <p className="m-0 font-display text-lg text-dashboard-text">
-          {visibleRuns.length} {visibleRuns.length === 1 ? "run" : "runs"}
-        </p>
-        <p className="m-0 text-xs text-dashboard-text-muted">
-          Newest first. Click a run to open its conversation.
-        </p>
-      </div>
-      {query.error ? (
-        <Card padding="md">
-          <p className="m-0 text-sm text-rose-300">
-            Task runs could not be loaded. Try again.
-          </p>
-        </Card>
-      ) : visibleRuns.length === 0 ? (
-        <Card padding="md">
-          <p className="m-0 text-sm text-dashboard-text-muted">
-            {emptyRunsText({ kind, search, status })}
-          </p>
-        </Card>
+      {loading ? (
+        <PageContentSkeleton label="Loading task runs" variant="list" />
       ) : (
-        <Card>
-          <div
-            className="sticky top-0 z-[1] hidden grid-cols-[minmax(13rem,1.7fr)_minmax(11rem,1fr)_auto] items-center gap-3 border-b border-white/[0.06] bg-black/25 px-3 py-2.5 font-mono text-xs uppercase tracking-[0.1em] text-dashboard-text-muted md:grid"
-            role="row"
+        <>
+          <FilterBar
+            search={{
+              label: "Search runs",
+              onChange: setSearchText,
+              placeholder: "Task, conversation, or status",
+              value: searchText,
+            }}
           >
-            <div>Run</div>
-            <div>Task</div>
-            <div>Status</div>
+            <FilterGroup label="Type">
+              {RUN_KINDS.map((value) => (
+                <ToggleButton
+                  key={value}
+                  onClick={() => setKind(value)}
+                  pressed={kind === value}
+                  variant="pill"
+                >
+                  {value}
+                </ToggleButton>
+              ))}
+            </FilterGroup>
+            <FilterGroup label="Status">
+              {RUN_STATUSES.map((value) => (
+                <ToggleButton
+                  key={value}
+                  onClick={() => setStatus(value)}
+                  pressed={status === value}
+                  variant="pill"
+                >
+                  {value}
+                </ToggleButton>
+              ))}
+            </FilterGroup>
+          </FilterBar>
+          <div className="flex flex-wrap items-baseline justify-between gap-x-5 gap-y-1 border-b border-white/[0.07] pb-3">
+            <p className="m-0 font-display text-lg text-dashboard-text">
+              {visibleRuns.length} {visibleRuns.length === 1 ? "run" : "runs"}
+            </p>
+            <p className="m-0 text-xs text-dashboard-text-muted">
+              Newest first. Click a run to open its conversation.
+            </p>
           </div>
-          <div className="min-w-0" role="table">
-            {pagedRuns.map((run) => (
-              <TaskRunRow key={`${run.kind}:${run.executionId}`} run={run} />
-            ))}
-          </div>
-        </Card>
+          {query.error ? (
+            <Card padding="md">
+              <InlineError>Task runs could not be loaded. Try again.</InlineError>
+            </Card>
+          ) : visibleRuns.length === 0 ? (
+            <Card padding="md">
+              <p className="m-0 text-sm text-dashboard-text-muted">
+                {emptyRunsText({ kind, search, status })}
+              </p>
+            </Card>
+          ) : (
+            <Card>
+              <div
+                className="sticky top-0 z-[1] hidden grid-cols-[minmax(13rem,1.7fr)_minmax(11rem,1fr)_auto] items-center gap-3 border-b border-white/[0.06] bg-black/25 px-3 py-2.5 font-mono text-xs uppercase tracking-[0.1em] text-dashboard-text-muted md:grid"
+                role="row"
+              >
+                <div>Run</div>
+                <div>Task</div>
+                <div>Status</div>
+              </div>
+              <div className="min-w-0" role="table">
+                {pagedRuns.map((run) => (
+                  <TaskRunRow key={`${run.kind}:${run.executionId}`} run={run} />
+                ))}
+              </div>
+            </Card>
+          )}
+          <PagePagination
+            onPageChange={setPage}
+            page={page}
+            pageCount={totalPages}
+            pageSize={RUN_PAGE_SIZE}
+            total={visibleRuns.length}
+          />
+          {query.data?.truncated ? (
+            <p className="m-0 text-center text-xs text-dashboard-text-muted">
+              Showing the 100 most recent runs.
+            </p>
+          ) : null}
+        </>
       )}
-      <PagePagination
-        onPageChange={setPage}
-        page={page}
-        pageCount={totalPages}
-        pageSize={RUN_PAGE_SIZE}
-        total={visibleRuns.length}
-      />
-      {query.data?.truncated ? (
-        <p className="m-0 text-center text-xs text-dashboard-text-muted">
-          Showing the 100 most recent runs.
-        </p>
-      ) : null}
     </>
   );
 }
@@ -224,21 +229,17 @@ function TaskRunRow(props: { run: TaskRun }) {
           {run.kind}
         </div>
       </div>
-      <span
-        className={cn(
-          "inline-flex w-fit items-center rounded border px-2 py-1 font-mono text-xs uppercase tracking-[0.1em]",
-          run.status === "completed" &&
-            "border-emerald-400/25 bg-emerald-400/10 text-emerald-200",
-          run.status === "failed" &&
-            "border-rose-400/25 bg-rose-400/10 text-rose-200",
-          run.status === "blocked" &&
-            "border-amber-400/25 bg-amber-400/10 text-amber-100",
-        )}
-      >
-        {run.status}
-      </span>
+      <StatusChip tone={runStatusTone(run.status)}>{run.status}</StatusChip>
     </div>
   );
+}
+
+function runStatusTone(
+  status: TaskRun["status"],
+): "danger" | "success" | "warning" {
+  if (status === "failed") return "danger";
+  if (status === "blocked") return "warning";
+  return "success";
 }
 
 function formatRunDate(value: string): string {

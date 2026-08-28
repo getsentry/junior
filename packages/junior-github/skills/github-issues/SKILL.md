@@ -92,8 +92,8 @@ Run [references/issue-quality-checklist.md](references/issue-quality-checklist.m
 
 ### 5. Execute
 
-- Use `github_createIssue` for new issues so Junior owns idempotency and session-link footers.
-- Use `github_updateIssue` for issue title, body, or state changes so Junior preserves requester attribution and the session footer.
+- Use `github_createIssue` for new issues so the runtime owns idempotency and session-link footers.
+- Use `github_updateIssue` for issue title, body, or state changes so the runtime preserves requester attribution and the session footer.
 - Use `gh` commands from [references/api-surface.md](references/api-surface.md) for comments, labels, assignees, and read-only operations.
 - For issue listing or other read-only inspection, prefer `--json` output so empty results still produce deterministic stdout.
 - Check duplicates silently before creating a new issue. Do not mention this check in the final reply unless a duplicate blocks creation.

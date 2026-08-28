@@ -170,7 +170,7 @@ async function createAwaitingMcpTurnRecord(args: {
     destination: SLACK_DESTINATION,
     destinationVisibility: "public",
     ...(args.includeSource === false
-      ? {}
+      ? undefined
       : { source: args.source ?? slackSource(args.threadTs) }),
     piMessages: [
       {
@@ -509,6 +509,11 @@ describe("mcp oauth callback integration", () => {
           userId: "U123",
         },
         destination: SLACK_DESTINATION,
+        location: expect.objectContaining({
+          provider: "slack",
+          teamId: "T123",
+          channelId: "C123",
+        }),
         source: storedSource,
         toolChannelId: "C123",
         state: expect.objectContaining({}),

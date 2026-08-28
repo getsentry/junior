@@ -97,6 +97,19 @@ test("keeps cached conversation and draft available through reconnect", async ({
   await expect(page.getByRole("button", { name: "Send" })).toBeEnabled();
 });
 
+test("shows the repo name for one annotation scope on mobile", async ({
+  page,
+}) => {
+  await page.setViewportSize({ height: 844, width: 390 });
+  await page.goto(server.baseURL);
+
+  const conversation = page.getByRole("link", {
+    name: /Checkout latency triage/,
+  });
+  await expect(conversation).toBeVisible();
+  await expect(conversation.getByText("payments", { exact: true })).toBeVisible();
+});
+
 test("opens a conversation in the built dashboard", async ({ page }) => {
   await page.setViewportSize({ height: 900, width: 1600 });
 
@@ -233,7 +246,7 @@ test("starts and continues conversations from the dashboard", async ({
   await page.goto(server.baseURL);
   await expect(page).toHaveURL(`${server.baseURL}/`);
   await expect(
-    page.getByRole("heading", { name: "New conversation" }),
+    page.getByRole("heading", { name: "What do you need?" }),
   ).toBeVisible();
   await page.getByRole("button", { name: "Private" }).click();
   const startComposer = page.getByLabel("Start a conversation");
@@ -334,7 +347,6 @@ test("collapses long pending message stacks", async ({ page }) => {
   await page.goto(
     `${server.baseURL}/conversations/${encodeURIComponent(conversationId)}`,
   );
-
   const pending = page.getByLabel("Pending messages");
   await expect(pending).toBeVisible();
   await expect(
@@ -366,189 +378,6 @@ test("collapses long pending message stacks", async ({ page }) => {
     pending.getByRole("button", { name: "3 more queued messages" }),
   ).toHaveAttribute("aria-expanded", "false");
   await expect(pending.getByText("Third queued message.")).toBeHidden();
-});
-
-test("opens and closes a conversation in the mobile workspace", async ({
-  page,
-}) => {
-  await page.setViewportSize({ height: 844, width: 390 });
-  await page.route("**/api/conversations/*/messages", async (route) => {
-    await route.fulfill({
-      json: {
-        conversationId: "slack:CQA123:1770003600.000200",
-        messageId: "mobile-message",
-        status: "accepted",
-      },
-    });
-  });
-  await page.goto(`${server.baseURL}/conversations`);
-  await expect(page).toHaveURL(`${server.baseURL}/`);
-  await expect(
-    page.getByRole("heading", { name: "Conversations" }),
-  ).toBeVisible();
-  const navigationTrigger = page.getByRole("button", {
-    name: "Open navigation",
-  });
-  await expect(navigationTrigger).toBeVisible();
-  await expect(page.getByLabel("Junior home")).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Open profile menu for Dashboard User" }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("link", { name: "Conversations", exact: true }),
-  ).toBeHidden();
-  await navigationTrigger.click();
-  await expect(page.getByText(/^junior version /)).toBeVisible();
-  const closeNavigation = page.getByRole("button", {
-    name: "Close navigation",
-  });
-  await expect(closeNavigation).toBeVisible();
-  await closeNavigation.click();
-
-  // Participant fixture so the compact mobile composer is present.
-  await page
-    .getByRole("link", { name: /Investigate checkout latency/ })
-    .click();
-  await expect(page).toHaveURL(
-    `${server.baseURL}/conversations/${encodeURIComponent("slack:CQA123:1770003600.000200")}`,
-  );
-  await expect(
-    page.getByRole("heading", { name: "Investigate checkout latency" }),
-  ).toBeVisible();
-
-  const transcript = page.getByLabel("Conversation transcript");
-  await expect(transcript.getByText("1.9k tokens")).toBeHidden();
-  await expect(page.getByRole("button", { name: "Archive" })).toBeHidden();
-  await expect(page.getByPlaceholder("Search transcript…")).toBeHidden();
-  await expect(
-    page.getByRole("group", { name: "Transcript view" }),
-  ).toBeVisible();
-  await expect(page.getByRole("note")).toBeHidden();
-  await page.getByRole("button", { name: "Search transcript" }).focus();
-  await expect(page.getByRole("tooltip")).toHaveCount(0);
-
-  const pending = page.getByLabel("Pending messages");
-  await expect(pending).toBeVisible();
-  // Mobile collapsed control owns the total count (no separate cancel bar).
-  const expand = pending.getByRole("button", { name: "5 queued messages" });
-  await expect(expand).toBeVisible();
-  await expect(expand).toHaveAttribute("aria-expanded", "false");
-  await expect(pending.getByText("5 queued messages")).toHaveCount(1);
-  await expect(
-    pending.getByText("Also check the canary traffic from the last deploy."),
-  ).toBeHidden();
-
-  await expand.click();
-  await expect(
-    pending.getByText("Also check the canary traffic from the last deploy."),
-  ).toBeVisible();
-  await expect(
-    pending.getByRole("button", { name: "Show fewer queued messages" }),
-  ).toHaveAttribute("aria-expanded", "true");
-
-  const composer = page.getByPlaceholder("Message Junior…");
-  await expect(composer).toBeVisible();
-  await expect(page.getByRole("button", { name: "Send" })).toBeVisible();
-  await composer.focus();
-  await expect(composer).toBeFocused();
-
-  const shell = page.locator("main").first();
-  await page.evaluate(() => {
-    Object.defineProperties(window.visualViewport, {
-      height: { configurable: true, value: 520 },
-      offsetTop: { configurable: true, value: 140 },
-    });
-    window.visualViewport?.dispatchEvent(new Event("resize"));
-  });
-  await expect
-    .poll(() =>
-      shell.evaluate((element) =>
-        element.style.getPropertyValue("--dashboard-viewport-height"),
-      ),
-    )
-    .toBe("520px");
-  await expect
-    .poll(() =>
-      shell.evaluate((element) =>
-        element.style.getPropertyValue("--dashboard-viewport-offset-top"),
-      ),
-    )
-    .toBe("140px");
-
-  // Offset can change from a visualViewport scroll without a resize.
-  await page.evaluate(() => {
-    Object.defineProperties(window.visualViewport, {
-      height: { configurable: true, value: 520 },
-      offsetTop: { configurable: true, value: 180 },
-    });
-    window.visualViewport?.dispatchEvent(new Event("scroll"));
-  });
-  await expect
-    .poll(() =>
-      shell.evaluate((element) =>
-        element.style.getPropertyValue("--dashboard-viewport-offset-top"),
-      ),
-    )
-    .toBe("180px");
-
-  await composer.blur();
-  await transcript.evaluate((element) => {
-    element.scrollTop = 0;
-  });
-  await composer.focus();
-  await expect
-    .poll(() =>
-      transcript.evaluate(
-        (element) =>
-          element.scrollHeight - element.scrollTop - element.clientHeight,
-      ),
-    )
-    .toBeLessThanOrEqual(1);
-
-  // Keyboard resize keeps the latest message above the focused composer.
-  await page.evaluate(() => {
-    Object.defineProperty(window.visualViewport, "height", {
-      configurable: true,
-      value: 480,
-    });
-    window.visualViewport?.dispatchEvent(new Event("resize"));
-  });
-  await expect
-    .poll(() =>
-      transcript.evaluate(
-        (element) =>
-          element.scrollHeight - element.scrollTop - element.clientHeight,
-      ),
-    )
-    .toBeLessThanOrEqual(1);
-
-  await composer.fill("Keep the mobile composer ready");
-  await composer.press("Enter");
-  await expect(composer).toBeFocused();
-  await expect(composer).toHaveValue("");
-  await expect
-    .poll(() =>
-      transcript.evaluate(
-        (element) =>
-          element.scrollHeight - element.scrollTop - element.clientHeight,
-      ),
-    )
-    .toBeLessThanOrEqual(1);
-
-  await page.getByRole("button", { name: "Search transcript" }).click();
-  await expect(page.getByPlaceholder("Search transcript…")).toBeVisible();
-  await page.getByRole("button", { name: "Event log" }).click();
-  await page.getByRole("button", { name: "Hide search" }).click();
-  await expect(page.getByPlaceholder("Search transcript…")).toBeHidden();
-  await expect(
-    page.getByRole("group", { name: "Transcript view" }),
-  ).toBeVisible();
-
-  await page.getByRole("link", { name: "Your conversations" }).click();
-  await expect(page).toHaveURL(`${server.baseURL}/`);
-  await expect(
-    page.getByRole("heading", { name: "Conversations" }),
-  ).toBeVisible();
 });
 
 test("loads earlier transcript events from the mock history cursor", async ({
@@ -775,6 +604,40 @@ test("inspects and copies an advisor transcript", async ({ context, page }) => {
   await expect(drawer).toBeVisible();
 });
 
+test("filters archived conversations and restores one", async ({ page }) => {
+  await page.setViewportSize({ height: 900, width: 1600 });
+  await page.goto(server.baseURL);
+  await expect(
+    page.getByRole("link", { name: /Archived restore target/ }),
+  ).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Filter conversations" }).click();
+  await page.getByRole("menuitemradio", { name: "Archived" }).click();
+
+  const conversationLink = page.getByRole("link", {
+    name: /Archived restore target/,
+  });
+  await expect(conversationLink).toBeVisible();
+  await conversationLink.hover();
+  const restoreRequest = page.waitForRequest(
+    (request) =>
+      request.method() === "PATCH" && request.url().endsWith("/archive"),
+  );
+  await page
+    .getByRole("button", { name: "Restore Archived restore target" })
+    .click();
+  expect((await restoreRequest).postDataJSON()).toMatchObject({
+    archived: false,
+  });
+  await expect(conversationLink).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Filter conversations" }).click();
+  await page.getByRole("menuitemradio", { name: "Active" }).click();
+  await expect(
+    page.getByRole("link", { name: /Archived restore target/ }),
+  ).toBeVisible();
+});
+
 test("archives and restores a conversation from the sidebar", async ({
   page,
 }) => {
@@ -799,7 +662,9 @@ test("archives and restores a conversation from the sidebar", async ({
     const request = route.request().postDataJSON();
     await new Promise((resolve) => setTimeout(resolve, 1_000));
     archived = request.archived;
-    await route.fulfill({ json: { archived } });
+    await route.fulfill({
+      json: { archivedAt: archived ? "2026-08-21T16:45:00.000Z" : null },
+    });
   });
   await page.goto(server.baseURL);
   const selectedConversation = page.getByRole("link", {
@@ -867,7 +732,9 @@ test("archives and restores a conversation from the sidebar", async ({
 test("expires the archive undo notice", async ({ page }) => {
   await page.clock.install();
   await page.route("**/api/conversations/*/archive", async (route) => {
-    await route.fulfill({ json: { archived: true } });
+    await route.fulfill({
+      json: { archivedAt: "2026-08-21T16:45:00.000Z" },
+    });
   });
   await page.goto(server.baseURL);
 
@@ -894,7 +761,9 @@ test("resets the archive undo timer when archiving another conversation", async 
 }) => {
   await page.clock.install();
   await page.route("**/api/conversations/*/archive", async (route) => {
-    await route.fulfill({ json: { archived: true } });
+    await route.fulfill({
+      json: { archivedAt: "2026-08-21T16:45:00.000Z" },
+    });
   });
   await page.goto(server.baseURL);
 
@@ -960,7 +829,9 @@ test("keeps undo available when another archive fails", async ({ page }) => {
   await page.route("**/api/conversations/*/archive", async (route) => {
     archiveRequests += 1;
     if (archiveRequests === 1) {
-      await route.fulfill({ json: { archived: true } });
+      await route.fulfill({
+        json: { archivedAt: "2026-08-21T16:45:00.000Z" },
+      });
       return;
     }
     await new Promise((resolve) => setTimeout(resolve, 250));

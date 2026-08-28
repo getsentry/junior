@@ -32,6 +32,9 @@ export async function sendSlackReply(args: {
     replyAttribution: args.replyAttribution,
   });
   const messageTs: string[] = [];
+  // Keep the thread root. Slack wants the parent message ts, not each reply's ts.
+  // With no inbound thread, the first posted chunk becomes that root.
+  let threadTs = args.threadTs;
 
   for (const [index, text] of chunks.entries()) {
     const isFinalChunk = index === chunks.length - 1;
@@ -45,12 +48,13 @@ export async function sendSlackReply(args: {
         : text;
     const response = await postSlackMessage({
       channelId: args.channelId,
-      threadTs: args.threadTs,
+      threadTs,
       text: fallbackText,
-      ...(blocks ? { blocks } : {}),
+      ...(blocks ? { blocks } : undefined),
     });
     if (response.ts) {
       messageTs.push(response.ts);
+      threadTs ??= response.ts;
     }
   }
 

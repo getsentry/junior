@@ -34,7 +34,7 @@ class MemoryConversationEventStore implements ConversationEventStore {
         historyVersion: 0,
         ...(event.idempotencyKey
           ? { idempotencyKey: event.idempotencyKey }
-          : {}),
+          : undefined),
         createdAtMs: event.createdAtMs,
         data: event.data,
       });

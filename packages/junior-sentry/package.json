@@ -1,6 +1,6 @@
 {
   "name": "@sentry/junior-sentry",
-  "version": "0.163.0",
+  "version": "0.188.0",
   "private": false,
   "publishConfig": {
     "access": "public"
@@ -38,8 +38,9 @@
     "zod": "catalog:"
   },
   "devDependencies": {
+    "@oxlint/plugins": "1.79.0",
     "@types/node": "^25.9.1",
-    "oxlint": "^1.66.0",
+    "oxlint": "^1.79.0",
     "tsup": "^8.5.1",
     "typescript": "^6.0.3",
     "vitest": "^4.1.7"

@@ -67,7 +67,7 @@ interface DurableDispatchTurnResult extends DispatchTurnResult {
 
 type DispatchRoutingContext = Pick<
   DispatchTurnContext,
-  "credentialContext" | "destinationVisibility" | "dispatch" | "surface"
+  "credentialContext" | "dispatch" | "surface"
 > & { actor: DispatchRecord["actor"] };
 
 /** Restore the exact actor, credential, and dispatch routing for every slice. */
@@ -80,7 +80,6 @@ export function buildDispatchRoutingContext(
       dispatch.actor,
       dispatch.credentialSubject,
     ),
-    destinationVisibility: dispatch.destinationVisibility,
     dispatch: {
       actor: dispatch.actor,
       id: dispatch.id,
@@ -146,7 +145,7 @@ export async function enqueueAgentDispatch(
   options: EnqueueAgentDispatchOptions,
 ): Promise<void> {
   const nowMs = options.nowMs ?? Date.now();
-  const claimedDispatch = await claimDispatchMailboxAppend(dispatch.id, nowMs);
+  const claimedDispatch = await claimDispatchMailboxAppend(dispatch.id);
   if (!claimedDispatch) {
     return;
   }
@@ -247,49 +246,13 @@ export async function resolveAgentDispatchId(
     );
   }
   const durableDispatchId = durableDispatchIds.values().next().value;
-  if (durableDispatchId) {
-    const dispatch = await getDispatchRecord(durableDispatchId);
-    if (dispatch && !isTerminalDispatchStatus(dispatch.status)) {
-      return durableDispatchId;
-    }
-  }
-
-  // TODO(v0.116.0): Remove conversation-id recovery for session records
-  // written before dispatchId became durable active-turn state.
-  const prefix = "agent-dispatch:";
-  if (!context.conversationId.startsWith(prefix)) {
+  if (!durableDispatchId) {
     return undefined;
   }
-  const dispatchId = context.conversationId.slice(prefix.length);
-  const dispatch = await getDispatchRecord(dispatchId);
-  if (!dispatch) {
-    return undefined;
-  }
-  return isTerminalDispatchStatus(dispatch.status) ? undefined : dispatch.id;
-}
-
-/**
- * Route leased work through dispatch execution when durable metadata owns it.
- *
- * The fallback retains ownership of every other conversation source.
- */
-export function createAgentDispatchWorkRouter(options: {
-  dispatchWorker: (
-    context: ConversationWorkerContext,
-    dispatchId: string,
-  ) => Promise<ConversationWorkerResult>;
-  fallbackWorker: (
-    context: ConversationWorkerContext,
-  ) => Promise<ConversationWorkerResult>;
-}) {
-  return async (
-    context: ConversationWorkerContext,
-  ): Promise<ConversationWorkerResult> => {
-    const dispatchId = await resolveAgentDispatchId(context);
-    return dispatchId
-      ? await options.dispatchWorker(context, dispatchId)
-      : await options.fallbackWorker(context);
-  };
+  const dispatch = await getDispatchRecord(durableDispatchId);
+  return dispatch && !isTerminalDispatchStatus(dispatch.status)
+    ? durableDispatchId
+    : undefined;
 }
 
 async function readDispatchTurnResult(
@@ -309,9 +272,9 @@ async function readDispatchTurnResult(
   const errorMessage = storedSession?.errorMessage;
   if (dispatchOutcome) {
     return {
-      ...(errorMessage ? { errorMessage } : {}),
+      ...(errorMessage ? { errorMessage } : undefined),
       outcome: dispatchOutcome,
-      ...(resultMessageTs ? { resultMessageTs } : {}),
+      ...(resultMessageTs ? { resultMessageTs } : undefined),
     };
   }
   if (resultMessageTs) {
@@ -336,7 +299,7 @@ async function readDispatchTurnResult(
   }
   return {
     outcome: "completed",
-    ...(resultMessageTs ? { resultMessageTs } : {}),
+    ...(resultMessageTs ? { resultMessageTs } : undefined),
   };
 }
 

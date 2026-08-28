@@ -175,14 +175,18 @@ export function createDurableLocationConfigurationService(args: {
   db: JuniorDatabase;
   loadLegacy: () => Promise<unknown>;
 }): LocationConfigurationService {
-  const storage = createSqlLocationConfigurationStorage(args.db, args.destination);
+  const storage = createSqlLocationConfigurationStorage(
+    args.db,
+    args.destination,
+  );
   let cutover: Promise<void> | undefined;
   const ensureCutover = () =>
     (cutover ??= (async () => {
       if ((await storage.list()).length > 0) {
         return;
       }
-      // TODO(v0.147.0): Remove the 7-day Redis Location configuration import.
+      // TODO(dcramer): Remove this import after no supported deployment can
+      // retain Redis Location configuration from before the SQL cutover.
       const legacy = coerceLegacyLocationConfig(await args.loadLegacy());
       await storage.insertLegacy(legacy);
     })());

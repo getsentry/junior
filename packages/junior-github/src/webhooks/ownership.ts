@@ -1,16 +1,33 @@
-const GITHUB_NOREPLY_DOMAIN = "users.noreply.github.com";
+const GITHUB_BOT_NOREPLY_EMAIL =
+  /^(?<userId>[1-9]\d*)\+(?<login>[^@]+\[bot\])@users\.noreply\.github\.com$/i;
+
+interface GitHubBotIdentity {
+  login: string;
+  userId: number;
+}
+
+/** Parse the bot identity encoded in GitHub's standard noreply address. */
+function parseGitHubBotIdentity(
+  value: string | undefined,
+): GitHubBotIdentity | undefined {
+  const match = GITHUB_BOT_NOREPLY_EMAIL.exec(value?.trim() ?? "");
+  if (!match?.groups) return undefined;
+  return {
+    login: match.groups.login,
+    userId: Number(match.groups.userId),
+  };
+}
 
 /** Derive the provider login encoded in a standard GitHub noreply address. */
 export function botLoginFromEmail(
   value: string | undefined,
 ): string | undefined {
-  const email = value?.trim();
-  if (!email) return undefined;
-  const separator = email.lastIndexOf("@");
-  if (separator <= 0) return undefined;
-  const domain = email.slice(separator + 1).toLowerCase();
-  if (domain !== GITHUB_NOREPLY_DOMAIN) return undefined;
-  const localPart = email.slice(0, separator);
-  const login = localPart.slice(localPart.indexOf("+") + 1).trim();
-  return login.toLowerCase().endsWith("[bot]") ? login : undefined;
+  return parseGitHubBotIdentity(value)?.login;
+}
+
+/** Derive the GitHub user id encoded in a standard GitHub noreply address. */
+export function botUserIdFromEmail(
+  value: string | undefined,
+): number | undefined {
+  return parseGitHubBotIdentity(value)?.userId;
 }

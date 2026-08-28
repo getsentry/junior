@@ -56,7 +56,7 @@ export function createAgentRunner(
                 spawnAgent,
               },
             }
-          : {}),
+          : undefined),
       };
       return await execute(nextRun, streamFn);
     },

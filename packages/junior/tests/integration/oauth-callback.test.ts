@@ -382,6 +382,12 @@ describe("oauth callback integration", () => {
           userId: "U123",
         },
         destination: SLACK_DESTINATION,
+        location: expect.objectContaining({
+          provider: "slack",
+          teamId: "T123",
+          channelId: "C123",
+          threadTs: "1700000000.009",
+        }),
         source: storedSource,
         toolChannelId: "C123",
       }),

@@ -1,10 +1,10 @@
 import {
+  type PluginEgress,
   definePluginTool,
   PluginToolInputError,
   pluginToolOutputSchema,
   type PluginToolOutput,
   type SubscribableResource,
-  type ToolRegistrationHookContext,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import { subscribableResourceSchema } from "@sentry/junior-plugin-api";
@@ -34,10 +34,11 @@ interface Result extends PluginToolOutput, PullRequest {
   target: "getPullRequest";
   subscribable?: SubscribableResource;
 }
-const outputSchema = pluginToolOutputSchema.extend({
-  target: z.literal("getPullRequest"),
-  ...pullRequestSchema.shape,
-});
+const outputSchema = pluginToolOutputSchema.merge(
+  pullRequestSchema.extend({
+    target: z.literal("getPullRequest"),
+  }),
+);
 function parseRepo(value: string) {
   const parts = value.split("/").map((part) => part.trim());
   if (parts.length !== 2 || !parts[0] || !parts[1]) {
@@ -57,7 +58,7 @@ async function readJson(response: Response): Promise<unknown> {
 
 /** Read one PR and expose its stable subscription identity when webhooks are enabled. */
 export function createGitHubGetPullRequestTool(
-  ctx: ToolRegistrationHookContext,
+  ctx: { egress: PluginEgress; resourceEvents: { canSubscribe: boolean } },
 ) {
   return definePluginTool({
     annotations: {
@@ -86,10 +87,14 @@ export function createGitHubGetPullRequestTool(
         ),
       });
       const parsed = await readJson(response);
-      if (!response.ok)
-        throw new Error(
-          `GitHub pull request lookup failed with HTTP ${response.status}`,
-        );
+      if (!response.ok) {
+        const message = `GitHub pull request lookup failed with HTTP ${response.status}`;
+        // Missing PR/repo is model-repairable. Auth, rate limit, and 5xx stay system errors.
+        if (response.status === 404) {
+          throw new PluginToolInputError(message);
+        }
+        throw new Error(message);
+      }
       const providerResult = z
         .object({
           base: z.object({ ref: z.string() }),
@@ -116,7 +121,7 @@ export function createGitHubGetPullRequestTool(
         merged: providerResult.merged,
         number: providerResult.number,
         state: providerResult.state,
-        ...(subscribable ? { subscribable } : {}),
+        ...(subscribable ? { subscribable } : undefined),
         title: providerResult.title,
         url: providerResult.html_url,
       };

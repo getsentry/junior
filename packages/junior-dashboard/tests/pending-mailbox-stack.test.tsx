@@ -1,28 +1,8 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import type { ConversationDetailReport } from "@sentry/junior/api/schema";
 
 import { PendingMailboxStack } from "../src/client/conversations/PendingMailboxStack";
 import type { ConversationMailboxMessage } from "../src/client/conversations/conversationOutbox";
-
-function conversation(): ConversationDetailReport {
-  return {
-    annotations: [],
-    conversationId: "local:web:pending-stack",
-    cumulativeDurationMs: 0,
-    displayTitle: "Pending stack",
-    eventHistory: { status: "available" },
-    events: [],
-    generatedAt: new Date(0).toISOString(),
-    isParticipant: true,
-    lastProgressAt: new Date(0).toISOString(),
-    lastSeenAt: new Date(0).toISOString(),
-    startedAt: new Date(0).toISOString(),
-    status: "active",
-    surface: "api",
-    visibility: "public",
-  };
-}
 
 function message(
   overrides: Partial<ConversationMailboxMessage> = {},
@@ -44,14 +24,12 @@ describe("PendingMailboxStack remove control", () => {
   it("shows remove only for an accepted mailbox row", () => {
     const accepted = renderToStaticMarkup(
       <PendingMailboxStack
-        conversation={conversation()}
         messages={[message()]}
         onCancelMessage={() => undefined}
       />,
     );
     const localOnly = renderToStaticMarkup(
       <PendingMailboxStack
-        conversation={conversation()}
         messages={[
           message({
             clientStatus: "sending",
@@ -70,7 +48,6 @@ describe("PendingMailboxStack remove control", () => {
   it("keeps remove available for accepted rows while a local send is pending", () => {
     const html = renderToStaticMarkup(
       <PendingMailboxStack
-        conversation={conversation()}
         messages={[
           message(),
           message({
@@ -90,7 +67,6 @@ describe("PendingMailboxStack remove control", () => {
     const html = renderToStaticMarkup(
       <PendingMailboxStack
         cancelError
-        conversation={conversation()}
         messages={[
           message({
             clientStatus: "failed",
@@ -112,7 +88,6 @@ describe("PendingMailboxStack remove control", () => {
       <PendingMailboxStack
         cancelError
         cancelTargetInboundMessageId="accepted-1"
-        conversation={conversation()}
         messages={[message()]}
         onCancelMessage={() => undefined}
       />,
@@ -120,6 +95,18 @@ describe("PendingMailboxStack remove control", () => {
 
     expect(html).toContain("Could not remove. Try again.");
     expect(html).toContain('aria-label="Could not remove. Try again."');
+  });
+
+  it("hides mailbox rows already present in committed history", () => {
+    const html = renderToStaticMarkup(
+      <PendingMailboxStack
+        committedMessageIds={["accepted-1"]}
+        messages={[message()]}
+        onCancelMessage={() => undefined}
+      />,
+    );
+
+    expect(html).toBe("");
   });
 
   it("uses the queue count on the mobile expand control", () => {
@@ -132,7 +119,6 @@ describe("PendingMailboxStack remove control", () => {
     );
     const html = renderToStaticMarkup(
       <PendingMailboxStack
-        conversation={conversation()}
         messages={messages}
         onCancelMessage={() => undefined}
       />,

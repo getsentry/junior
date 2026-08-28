@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { StateAdapter } from "chat";
 import {
   SLACK_BOT_USER_ID,
-  SLACK_DESTINATION,
   SLACK_SIGNING_SECRET,
   createConversationWorkQueueTestAdapter,
   deferred,
@@ -129,10 +128,7 @@ function createTurnHarness(args: {
     getSlackAdapter: () => adapter,
     services: {
       ...(args.services ?? {}),
-      replyExecutor: {
-        ...(args.services?.replyExecutor ?? {}),
-        agentRunner: args.agentRunner,
-      },
+      agentRunner: args.agentRunner,
       subscribedReplyPolicy: {
         completeObject:
           args.completeObject ??
@@ -693,7 +689,6 @@ describe("Slack behavior: durable turn steering", () => {
     await createResourceEventSubscription(
       {
         conversationId,
-        destination: SLACK_DESTINATION,
         events: ["pull_request.checks.failed"],
         expiresAtMs: Date.now() + 60_000,
         intent: "Watch CI while this turn is active.",
@@ -786,52 +781,5 @@ describe("Slack behavior: durable turn steering", () => {
         }),
       ]),
     );
-  });
-
-  it("keeps the mailbox pending when the agent fails before input commit", async () => {
-    const state = getStateAdapter();
-    const executeAgentRun: AgentRunner["run"] = async (request) => {
-      expect(request.durability?.onInputCommitted).toEqual(
-        expect.any(Function),
-      );
-      throw new Error("agent crashed before input commit");
-    };
-    const { conversationId, queue, runNextQueuedWork, services } =
-      createTurnHarness({
-        agentRunner: { run: executeAgentRun },
-        state,
-      });
-
-    await expect(
-      handleSlackWebhookAndFlush({
-        request: slackWebhookRequest(
-          makeMessageEvent({
-            eventType: "app_mention",
-            text: `<@${SLACK_BOT_USER_ID}> start the incident summary`,
-            ts: THREAD_TS,
-          }),
-        ),
-        services,
-      }),
-    ).resolves.toMatchObject({ status: 200 });
-
-    await expect(runNextQueuedWork()).resolves.toEqual({
-      status: "pending_requeued",
-    });
-
-    const work = await getConversationWorkState({
-      conversationId,
-      state,
-    });
-    expect(work?.needsRun).toBe(true);
-    expect(work ? countPendingConversationMessages(work) : 0).toBe(1);
-    expect(work?.messages[0]?.injectedAtMs).toBeUndefined();
-    expect(queue.sentRecords()).toEqual([
-      expect.objectContaining({ conversationId }),
-      expect.objectContaining({
-        conversationId,
-        idempotencyKey: expect.stringContaining(`pending:${conversationId}:`),
-      }),
-    ]);
   });
 });

@@ -226,8 +226,8 @@ export function slackEventsApiEnvelope(
       channel,
       ts,
       event_ts: input.eventTs ?? ts,
-      ...(channelType ? { channel_type: channelType } : {}),
-      ...(input.threadTs ? { thread_ts: input.threadTs } : {}),
+      ...(channelType ? { channel_type: channelType } : undefined),
+      ...(input.threadTs ? { thread_ts: input.threadTs } : undefined),
     },
   };
 }

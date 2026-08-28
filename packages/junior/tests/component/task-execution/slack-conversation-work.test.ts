@@ -20,10 +20,10 @@ import {
 } from "@/chat/task-execution/store";
 import { processConversationWork } from "@/chat/task-execution/worker";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
+import { createResourceEventInboundMessage } from "@/chat/resource-events/notification";
 import {
   buildSlackInboundMessage,
   createSlackConversationWorker,
-  createSlackResourceEventInboundMessage,
 } from "@/chat/task-execution/slack-work";
 import { getMessageActorIdentity } from "@/chat/services/message-actor-identity";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
@@ -275,49 +275,49 @@ describe("Slack conversation work execution", () => {
         text: "hello",
         authorId: "U123",
         metadata: {
-                  platform: "slack",
-                  route: "mention",
-                  message: {
-                    _type: "chat:Message",
-                    attachments: [],
-                    author: {
-                      userId: "U123",
-                      userName: "dcramer",
-                      fullName: "David Cramer",
-                      isBot: false,
-                      isMe: false,
+          platform: "slack",
+          route: "mention",
+          message: {
+            _type: "chat:Message",
+            attachments: [],
+            author: {
+              userId: "U123",
+              userName: "dcramer",
+              fullName: "David Cramer",
+              isBot: false,
+              isMe: false,
+            },
+            formatted: {
+              type: "root",
+              children: [
+                {
+                  type: "paragraph",
+                  children: [
+                    {
+                      type: "table",
+                      children: [],
                     },
-                    formatted: {
-                      type: "root",
-                      children: [
-                        {
-                          type: "paragraph",
-                          children: [
-                            {
-                              type: "table",
-                              children: [],
-                            },
-                          ],
-                        },
-                      ],
-                    },
-                    id: "1712345.0002",
-                    metadata: {
-                      dateSent: "2026-07-22T12:00:00.000Z",
-                      edited: false,
-                    },
-                    raw: {},
-                    text: "hello",
-                    threadId: CONVERSATION_ID,
-                  },
-                  thread: {
-                    _type: "chat:Thread",
-                    adapterName: "slack",
-                    channelId: "C123",
-                    id: CONVERSATION_ID,
-                    isDM: false,
-                  },
+                  ],
                 },
+              ],
+            },
+            id: "1712345.0002",
+            metadata: {
+              dateSent: "2026-07-22T12:00:00.000Z",
+              edited: false,
+            },
+            raw: {},
+            text: "hello",
+            threadId: CONVERSATION_ID,
+          },
+          thread: {
+            _type: "chat:Thread",
+            adapterName: "slack",
+            channelId: "C123",
+            id: CONVERSATION_ID,
+            isDM: false,
+          },
+        },
       },
       ...conversationQueueMessage(),
       destination: SLACK_DESTINATION,
@@ -364,65 +364,6 @@ describe("Slack conversation work execution", () => {
     ).rejects.toThrow(
       "Latest conversation mailbox record is not Slack metadata",
     );
-  });
-
-  it("routes resource-event mailbox records without Slack actor lookup", async () => {
-    const queue = createConversationWorkQueueTestAdapter();
-    const state = getStateAdapter();
-    await state.connect();
-    const slackAdapter = createSlackAdapterFixture();
-    const lookupSlackUser = vi.fn(async () => {
-      throw new Error("resource event notifications do not have Slack users");
-    });
-    const calls: Message[] = [];
-
-    await appendInboundMessage({
-      message: createSlackResourceEventInboundMessage({
-        event: {
-          eventKey: "check-suite-1",
-          eventType: "pull_request.checks.failed",
-          occurredAtMs: 1_700_000_000_000,
-          namespace: "github",
-          identifier: "getsentry/junior#691",
-        },
-        subscription: {
-          conversationId: CONVERSATION_ID,
-          destination: SLACK_DESTINATION,
-          id: "resub_1",
-        },
-        text: "[event notification]\n\nA subscribed resource changed.",
-      }),
-      state,
-    });
-    await queue.send(conversationQueueMessage(), {
-      idempotencyKey: "resource-event-test",
-    });
-
-    await expect(
-      processNextQueuedSlackWork({
-        getSlackAdapter: () => slackAdapter,
-        lookupSlackUser,
-        queue,
-        runtime: {
-          handleNewMention: async () => {
-            throw new Error("unexpected mention route");
-          },
-          handleSubscribedMessage: async (_thread, message, hooks) => {
-            await hooks.ack?.();
-            calls.push(message);
-          },
-        },
-        state,
-      }),
-    ).resolves.toEqual({ status: "completed" });
-
-    expect(lookupSlackUser).not.toHaveBeenCalled();
-    expect(calls).toHaveLength(1);
-    expect(calls[0]?.raw).toMatchObject({ event_type: "resource_event" });
-    expect(calls[0]?.raw).not.toHaveProperty("ts");
-    expect(getMessageActorIdentity(calls[0]!)).toEqual({
-      userId: "UJRNEVENT",
-    });
   });
 
   it("does not persist Slack mailbox messages without actor ids", async () => {
@@ -1004,17 +945,17 @@ describe("Slack conversation work execution", () => {
       handleNewMention: async (_thread, _message, hooks) => {
         await hooks.ack?.();
         await appendInboundMessage({
-          message: createSlackResourceEventInboundMessage({
+          message: createResourceEventInboundMessage({
             event: {
               eventKey: "check-suite-1",
               eventType: "check_suite.completed",
               occurredAtMs: 2_000,
               namespace: "github",
               identifier: "getsentry/junior#1010",
+              trustedSummary: "CI failed.",
             },
             subscription: {
               conversationId: CONVERSATION_ID,
-              destination: SLACK_DESTINATION,
               id: "sub-1",
             },
             text: "CI failed.",
@@ -1613,11 +1554,9 @@ describe("Slack conversation work execution", () => {
     const slackAdapter = createSlackAdapterFixture();
     const { slackRuntime } = createTestChatRuntime({
       services: {
-        replyExecutor: {
-          agentRunner: {
-            run: async () => {
-              throw new Error("persistent queued failure");
-            },
+        agentRunner: {
+          run: async () => {
+            throw new Error("persistent queued failure");
           },
         },
       },
@@ -1912,17 +1851,15 @@ describe("Slack conversation work execution", () => {
     let yieldedSessionId: string | undefined;
     const { slackRuntime } = createTestChatRuntime({
       services: {
-        replyExecutor: {
-          agentRunner: {
-            run: async (request) => {
-              const _text = request.instruction.text;
-              const context = request;
+        agentRunner: {
+          run: async (request) => {
+            const _text = request.instruction.text;
+            const context = request;
 
-              await context?.durability?.onInputCommitted?.();
-              currentNowMs = 242_000;
-              yieldedSessionId = context?.turnId;
-              return { status: "suspended", reason: "timeout", resumeVersion: 1 };
-            },
+            await context?.durability?.onInputCommitted?.();
+            currentNowMs = 242_000;
+            yieldedSessionId = context?.turnId;
+            return { status: "suspended", reason: "timeout", resumeVersion: 1 };
           },
         },
       },

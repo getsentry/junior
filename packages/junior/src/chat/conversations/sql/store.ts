@@ -25,6 +25,7 @@ import {
   juniorIdentities,
   juniorUsers,
 } from "@/db/schema";
+import { conversationReadColumns } from "@/db/schema/conversations";
 import type { AgentTurnCost, AgentTurnUsage } from "@/chat/usage";
 import type {
   JuniorDestinationKind,
@@ -41,8 +42,15 @@ import {
   actorIdentityForConversation,
   mergeActor,
 } from "./actor-identity";
-import { locationFromRow, privacyFromLocationRow } from "./location";
-type ConversationRow = typeof juniorConversations.$inferSelect;
+import {
+  locationForWrite,
+  locationFromRow,
+  visibilityFromLocationRow,
+} from "./location";
+type ConversationRow = Omit<
+  typeof juniorConversations.$inferSelect,
+  "legacyArchivedAt"
+>;
 type DestinationRow = typeof juniorDestinations.$inferSelect;
 type IdentityRow = typeof juniorIdentities.$inferSelect;
 interface ConversationReadRow {
@@ -159,7 +167,7 @@ function destinationUpsertFromDestination(args: {
       providerDestinationId: channelId,
       refreshVisibility: args.visibility !== undefined,
       visibility: args.visibility ?? "unknown",
-      ...(args.channelName ? { displayName: args.channelName } : {}),
+      ...(args.channelName ? { displayName: args.channelName } : undefined),
       metadata: { platform: "slack" },
     };
   }
@@ -177,7 +185,8 @@ function destinationUpsertFromDestination(args: {
     metadata: { platform: "local" },
   };
 }
-// TODO(v0.145.0): Migrate SQL execution_status from awaiting_resume to paused, then remove this mapping.
+// TODO(dcramer): Remove awaiting_resume mapping after every SQL row uses paused
+// and no supported worker writes the legacy status.
 function executionStatusFromValue(value: unknown): ConversationStatus {
   if (value === "awaiting_resume" || value === "paused") return "paused";
   if (
@@ -218,7 +227,7 @@ function destinationFromRow(
 /** Decode one SQL row and reject invalid durable conversation records. */
 function conversationFromRow(readRow: ConversationReadRow): Conversation {
   const row = readRow.conversation;
-  const visibility = privacyFromLocationRow(readRow.destination);
+  const visibility = visibilityFromLocationRow(readRow.destination);
   if (row.schemaVersion !== 1) {
     throw new Error("Conversation record schema version is invalid");
   }
@@ -258,11 +267,15 @@ function conversationFromRow(readRow: ConversationReadRow): Conversation {
     status: executionStatusFromValue(row.executionStatus),
     lastCheckpointAtMs: msFromDate(row.lastCheckpointAt),
     lastEnqueuedAtMs: msFromDate(row.lastEnqueuedAt),
-    ...(row.runId ? { runId: row.runId } : {}),
+    ...(row.runId ? { runId: row.runId } : undefined),
     updatedAtMs:
       msFromDate(row.executionUpdatedAt) ?? requiredMsFromDate(row.updatedAt),
   };
-  const location = locationFromRow(readRow.destination);
+  const location = locationFromRow(
+    row.location,
+    readRow.destination,
+    sessionSource,
+  );
 
   return {
     schemaVersion: 1,
@@ -273,30 +286,23 @@ function conversationFromRow(readRow: ConversationReadRow): Conversation {
     execution,
     executionMetrics: {
       durationMs: row.executionDurationMs,
-      ...(row.metricRunId ? { runId: row.metricRunId } : {}),
-      ...(row.executionUsage ? { usage: row.executionUsage } : {}),
+      ...(row.metricRunId ? { runId: row.metricRunId } : undefined),
+      ...(row.executionUsage ? { usage: row.executionUsage } : undefined),
     },
     ...(row.parentConversationId
-      ? {
-          lineage: {
-            parentConversationId: row.parentConversationId,
-          },
-        }
-      : {}),
-    ...(destination ? { destination } : {}),
-    ...(location ? { location } : {}),
-    ...(actor ? { actor } : {}),
-    ...(msFromDate(row.archivedAt) !== undefined
-      ? { archivedAtMs: msFromDate(row.archivedAt) }
-      : {}),
-    ...(row.channelName ? { channelName: row.channelName } : {}),
-    ...(source ? { source } : {}),
-    ...(sessionSource ? { sessionSource } : {}),
-    ...(row.title ? { title: row.title } : {}),
+      ? { parentConversationId: row.parentConversationId }
+      : undefined),
+    ...(destination ? { destination } : undefined),
+    ...(location ? { location } : undefined),
+    ...(actor ? { actor } : undefined),
+    ...(row.channelName ? { channelName: row.channelName } : undefined),
+    ...(source ? { source } : undefined),
+    ...(sessionSource ? { sessionSource } : undefined),
+    ...(row.title ? { title: row.title } : undefined),
     ...(msFromDate(row.transcriptPurgedAt) !== undefined
       ? { transcriptPurgedAtMs: msFromDate(row.transcriptPurgedAt) }
-      : {}),
-    ...(visibility ? { visibility } : {}),
+      : undefined),
+    ...(visibility ? { visibility } : undefined),
   };
 }
 
@@ -313,9 +319,9 @@ function emptyConversation(args: {
     createdAtMs: args.nowMs,
     lastActivityAtMs: args.nowMs,
     updatedAtMs: args.nowMs,
-    ...(args.destination ? { destination: args.destination } : {}),
-    ...(args.source ? { source: args.source } : {}),
-    ...(args.sessionSource ? { sessionSource: args.sessionSource } : {}),
+    ...(args.destination ? { destination: args.destination } : undefined),
+    ...(args.source ? { source: args.source } : undefined),
+    ...(args.sessionSource ? { sessionSource: args.sessionSource } : undefined),
     execution: {
       status: "idle",
       updatedAtMs: args.nowMs,
@@ -426,12 +432,9 @@ export class SqlStore implements ConversationStore {
             conversationId: args.childConversationId,
           });
           if (existing) {
-            if (
-              existing.lineage?.parentConversationId !==
-              args.parentConversationId
-            ) {
+            if (existing.parentConversationId !== args.parentConversationId) {
               throw new Error(
-                `Conversation lineage changed for ${args.childConversationId}`,
+                `Conversation parent changed for ${args.childConversationId}`,
               );
             }
             return;
@@ -444,7 +447,7 @@ export class SqlStore implements ConversationStore {
               `Conversation parent is missing for ${args.childConversationId}`,
             );
           }
-          if (parent.lineage) {
+          if (parent.parentConversationId) {
             throw new Error("Recursive agent delegation is not enabled");
           }
           const child: Conversation = {
@@ -453,9 +456,7 @@ export class SqlStore implements ConversationStore {
               nowMs,
               source: args.source,
             }),
-            lineage: {
-              parentConversationId: args.parentConversationId,
-            },
+            parentConversationId: args.parentConversationId,
           };
           await this.upsertConversation({ conversation: child });
         },
@@ -506,7 +507,7 @@ export class SqlStore implements ConversationStore {
           destination: args.destination,
           nowMs,
           source: args.source,
-          ...(sessionSource ? { sessionSource } : {}),
+          ...(sessionSource ? { sessionSource } : undefined),
         });
       // Persist visibility only from the current event's live signal; the
       // previously stored confirmation must not be replayed as a new signal.
@@ -520,7 +521,7 @@ export class SqlStore implements ConversationStore {
           ...currentWithoutPersistedSignals,
           destination: current.destination ?? args.destination,
           source: current.source ?? args.source,
-          ...(sessionSource ? { sessionSource } : {}),
+          ...(sessionSource ? { sessionSource } : undefined),
           channelName: current.channelName ?? args.channelName,
           actor: mergeActor(current.actor, args.actor),
           title: current.title ?? args.title,
@@ -530,7 +531,7 @@ export class SqlStore implements ConversationStore {
             ...current.execution,
             updatedAtMs: current.execution.updatedAtMs ?? nowMs,
           },
-          ...(args.visibility ? { visibility: args.visibility } : {}),
+          ...(args.visibility ? { visibility: args.visibility } : undefined),
         },
       });
     });
@@ -557,6 +558,11 @@ export class SqlStore implements ConversationStore {
       const existing = existingRow
         ? conversationFromRow(existingRow)
         : undefined;
+      // Execution dual-write updates existing rows or creates roots that already
+      // carry a destination. It does not create roots without a destination.
+      if (!existing && !args.destination) {
+        return;
+      }
       const incomingExecutionAt =
         args.execution.updatedAtMs ?? args.updatedAtMs;
       const existingExecutionAt =
@@ -575,12 +581,16 @@ export class SqlStore implements ConversationStore {
           createdAtMs: args.createdAtMs,
           lastActivityAtMs: args.lastActivityAtMs,
           updatedAtMs: args.updatedAtMs,
-          ...(args.channelName ? { channelName: args.channelName } : {}),
-          ...(args.destination ? { destination: args.destination } : {}),
-          ...(args.actor ? { actor: args.actor } : {}),
-          ...(args.source ? { source: args.source } : {}),
-          ...(args.title ? { title: args.title } : {}),
-          ...(args.visibility ? { visibility: args.visibility } : {}),
+          ...(existing?.parentConversationId
+            ? { parentConversationId: existing.parentConversationId }
+            : undefined),
+          ...(existing?.location ? { location: existing.location } : undefined),
+          ...(args.channelName ? { channelName: args.channelName } : undefined),
+          ...(args.destination ? { destination: args.destination } : undefined),
+          ...(args.actor ? { actor: args.actor } : undefined),
+          ...(args.source ? { source: args.source } : undefined),
+          ...(args.title ? { title: args.title } : undefined),
+          ...(args.visibility ? { visibility: args.visibility } : undefined),
           execution,
         },
       });
@@ -623,7 +633,7 @@ export class SqlStore implements ConversationStore {
     const rows = await this.executor
       .db()
       .select({
-        conversation: juniorConversations,
+        conversation: conversationReadColumns(),
         destination: juniorDestinations,
         actorIdentity: juniorIdentities,
         actorUserDisplayName: juniorUsers.displayName,
@@ -638,7 +648,7 @@ export class SqlStore implements ConversationStore {
         eq(juniorIdentities.id, juniorConversations.actorIdentityId),
       )
       .leftJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
-      // Subagent child conversations are excluded from top-level listings and
+      // Conversations with a parent are excluded from top-level listings and
       // purge with their root on the root's visibility window.
       .where(isNull(juniorConversations.parentConversationId))
       .orderBy(
@@ -688,6 +698,46 @@ export class SqlStore implements ConversationStore {
     return undefined;
   }
 
+  async findSlackDestinationByName(args: {
+    channelName: string;
+    teamId: string;
+  }): Promise<{ channelId: string; channelName?: string } | undefined> {
+    const normalized = args.channelName.trim().replace(/^#/, "").toLowerCase();
+    if (!normalized) {
+      return undefined;
+    }
+
+    // Limit 2 so an ambiguous exact name fails closed instead of guessing.
+    const rows = await this.executor
+      .db()
+      .select({
+        channelId: juniorDestinations.providerDestinationId,
+        channelName: juniorDestinations.displayName,
+      })
+      .from(juniorDestinations)
+      .where(
+        and(
+          eq(juniorDestinations.provider, "slack"),
+          eq(juniorDestinations.providerTenantId, tenantId(args.teamId)),
+          eq(juniorDestinations.kind, "channel"),
+          sql`lower(ltrim(${juniorDestinations.displayName}, '#')) = ${normalized}`,
+        ),
+      )
+      .limit(2);
+
+    if (rows.length !== 1) {
+      return undefined;
+    }
+    const row = rows[0];
+    if (!row?.channelId) {
+      return undefined;
+    }
+    return {
+      channelId: row.channelId,
+      ...(row.channelName ? { channelName: row.channelName } : undefined),
+    };
+  }
+
   /** Serialize all durable mutations for one conversation inside a SQL transaction. */
   private async withConversationMutation<T>(
     conversationId: string,
@@ -706,7 +756,7 @@ export class SqlStore implements ConversationStore {
     const rows = await this.executor
       .db()
       .select({
-        conversation: juniorConversations,
+        conversation: conversationReadColumns(),
         destination: juniorDestinations,
         actorIdentity: juniorIdentities,
         actorUserDisplayName: juniorUsers.displayName,
@@ -730,6 +780,19 @@ export class SqlStore implements ConversationStore {
     conversation: Conversation;
   }): Promise<void> {
     const { conversation } = args;
+    // Root Conversations set Destination on first write. A Conversation with a
+    // parent can omit Destination. Later updates may omit Destination because
+    // onConflict keeps the existing destination_id.
+    if (!conversation.parentConversationId && !conversation.destination) {
+      const existing = await this.get({
+        conversationId: conversation.conversationId,
+      });
+      if (!existing) {
+        throw new Error(
+          `Conversation ${conversation.conversationId} requires a destination at create`,
+        );
+      }
+    }
     const incomingExecutionVersion = sql`coalesce(excluded.execution_updated_at, excluded.updated_at)`;
     const currentExecutionVersion = sql`coalesce(${juniorConversations.executionUpdatedAt}, ${juniorConversations.updatedAt})`;
     const incomingExecutionIsFresh = sql`${incomingExecutionVersion} >= ${currentExecutionVersion}`;
@@ -740,10 +803,16 @@ export class SqlStore implements ConversationStore {
         destination: conversation.destination,
         ...(conversation.visibility
           ? { visibility: conversation.visibility }
-          : {}),
+          : undefined),
       }),
       conversation.updatedAtMs,
     );
+    const location = locationForWrite({
+      destination: conversation.destination,
+      destinationId,
+      location: conversation.location,
+      sessionSource: conversation.sessionSource,
+    });
     const actorIdentityObservation = actorIdentityForConversation(conversation);
     const actorIdentity = actorIdentityObservation
       ? await upsertIdentity(
@@ -752,11 +821,11 @@ export class SqlStore implements ConversationStore {
           conversation.updatedAtMs,
         )
       : undefined;
-    const rootConversationId = conversation.lineage
+    const rootConversationId = conversation.parentConversationId
       ? sql<string | null>`(
           select parent.root_conversation_id
           from junior_conversations parent
-          where parent.conversation_id = ${conversation.lineage.parentConversationId}
+          where parent.conversation_id = ${conversation.parentConversationId}
         )`
       : conversation.conversationId;
     const rows = await this.executor
@@ -770,6 +839,7 @@ export class SqlStore implements ConversationStore {
         originType: originTypeFromSource(conversation.source) ?? null,
         originId: null,
         originRunId: null,
+        location: location ?? null,
         destinationId: destinationId ?? null,
         destination: null,
         actorIdentityId: actorIdentity?.id ?? null,
@@ -795,8 +865,7 @@ export class SqlStore implements ConversationStore {
           conversation.execution.lastEnqueuedAtMs === undefined
             ? null
             : dateFromMs(conversation.execution.lastEnqueuedAtMs),
-        parentConversationId:
-          conversation.lineage?.parentConversationId ?? null,
+        parentConversationId: conversation.parentConversationId ?? null,
         rootConversationId,
       })
       .onConflictDoUpdate({
@@ -808,6 +877,7 @@ export class SqlStore implements ConversationStore {
           originType: sql`coalesce(excluded.origin_type, ${juniorConversations.originType})`,
           originId: sql`coalesce(excluded.origin_id, ${juniorConversations.originId})`,
           originRunId: sql`coalesce(excluded.origin_run_id, ${juniorConversations.originRunId})`,
+          location: sql`coalesce(excluded.location_json, ${juniorConversations.location})`,
           destinationId: sql`coalesce(excluded.destination_id, ${juniorConversations.destinationId})`,
           actorIdentityId: sql`coalesce(excluded.actor_identity_id, ${juniorConversations.actorIdentityId})`,
           creatorIdentityId: sql`coalesce(excluded.creator_identity_id, ${juniorConversations.creatorIdentityId})`,

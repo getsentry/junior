@@ -99,7 +99,7 @@ export async function grepFiles(params: {
   runCommand?: SandboxCommandRunner;
 }): Promise<GrepResult> {
   if (!params.pattern) {
-    throw new Error("pattern is required");
+    throw new ToolInputError("pattern is required");
   }
 
   const root = resolveWorkspacePath(params.path);
@@ -233,15 +233,15 @@ export async function grepFiles(params: {
     path: params.path ?? ".",
     truncated: matchLimitReached || lineTruncated || bounded.truncated,
     context,
-    ...(params.glob ? { glob: params.glob } : {}),
+    ...(params.glob ? { glob: params.glob } : undefined),
     line_count: output.length,
     lines:
       bounded.content === "No matches found" ? [] : bounded.content.split("\n"),
     match_count: matchCount,
     pattern: params.pattern,
-    ...(notices.length > 0 ? { truncation_reasons: notices } : {}),
-    ...(matchLimitReached ? { match_limit_reached: limit } : {}),
-    ...(lineTruncated ? { line_truncated: true } : {}),
+    ...(notices.length > 0 ? { truncation_reasons: notices } : undefined),
+    ...(matchLimitReached ? { match_limit_reached: limit } : undefined),
+    ...(lineTruncated ? { line_truncated: true } : undefined),
   });
 }
 
@@ -329,6 +329,11 @@ async function grepFilesWithRipgrep(params: {
   if (result.exitCode !== 0 && result.exitCode !== 1) {
     const detail =
       result.stderr.trim() || result.stdout.trim() || "command failed";
+    if (/error parsing glob/i.test(detail)) {
+      throw new ToolInputError(`Invalid glob: ${params.glob ?? ""}`, {
+        cause: new Error(detail),
+      });
+    }
     if (/regex parse error|error parsing regex/i.test(detail)) {
       throw new ToolInputError(`Invalid regex pattern: ${params.pattern}`, {
         cause: new Error(detail),
@@ -448,15 +453,15 @@ async function grepFilesWithRipgrep(params: {
     path: params.path ?? ".",
     truncated: matchLimitReached || lineTruncated || bounded.truncated,
     context: params.context,
-    ...(params.glob ? { glob: params.glob } : {}),
+    ...(params.glob ? { glob: params.glob } : undefined),
     line_count: output.length,
     lines:
       bounded.content === "No matches found" ? [] : bounded.content.split("\n"),
     match_count: matchCount,
     pattern: params.pattern,
-    ...(notices.length > 0 ? { truncation_reasons: notices } : {}),
-    ...(matchLimitReached ? { match_limit_reached: params.limit } : {}),
-    ...(lineTruncated ? { line_truncated: true } : {}),
+    ...(notices.length > 0 ? { truncation_reasons: notices } : undefined),
+    ...(matchLimitReached ? { match_limit_reached: params.limit } : undefined),
+    ...(lineTruncated ? { line_truncated: true } : undefined),
   });
   params.onTelemetry?.({
     emittedLineCount: output.length,

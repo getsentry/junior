@@ -1,88 +1,97 @@
 /**
- * Own the remote ACP HTTP edge.
+ * Own the remote ACP v1 Streamable HTTP edge.
  *
- * Every request authenticates one Actor. Connections stay in this app process,
- * and sessions map only to that Actor's private Conversations. This prototype
- * accepts text prompts and durable replay. It does not accept client tools.
+ * Shared state records route short-lived JSON-RPC messages. Junior's
+ * Conversation log remains the source for session replay and Turn output. No
+ * request relies on another request reaching the same app process.
  */
-import { randomUUID } from "node:crypto";
-import type { StateAdapter } from "chat";
+import { createHash } from "node:crypto";
 import type { User } from "@sentry/junior-plugin-api";
 import * as acp from "@agentclientprotocol/sdk";
-import { AcpServer } from "@agentclientprotocol/sdk/experimental/server";
-import { readConversationAccessFromSql } from "@/api/conversations/access";
+import { z } from "zod";
+import type { AcpErrorContext, ReportAcpError } from "./errors";
+import type { AcpConversations } from "./conversations";
 import {
-  apiTurnIdForMessage,
-  appendAndEnqueueApiConversationMessage,
-  recordApiConversationActivity,
-  webActorFromEmail,
-} from "@/chat/api-turns/work";
-import type { WebActor } from "@/chat/actor";
-import type { ConversationEventStore } from "@/chat/conversations/history";
-import { projectConversationMessages } from "@/chat/conversations/message-projection";
-import type { ConversationStore } from "@/chat/conversations/store";
+  ACP_AUTH_METHOD,
+  ACP_AUTH_METHOD_ID,
+  beginAcpAuthorization,
+  createAcpConnectionCredential,
+  expireAcpAuthorization,
+  handleAcpAuthorizationResponse,
+  hasAcpConnectionCredential,
+} from "./auth";
 import {
-  getConversationEventStore,
-  getConversationStore,
-  getDb,
-} from "@/chat/db";
-import { resolveViewerUser } from "@/chat/plugins/viewer";
-import { logException, withSpan } from "@/chat/logging";
-import { sleep } from "@/chat/sleep";
-import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
-import { ensureConversationWake } from "@/chat/task-execution/store";
-import type { ApiTurnCancellation } from "@/chat/api-turns/cancellation";
-import { authenticatePersonalToken } from "@/personal-tokens/store";
-import { JUNIOR_VERSION } from "@/version";
+  acceptAcpRequest,
+  createAcpConnection,
+  deleteAcpConnection,
+  openAcpSse,
+  readAcpConnection,
+  type AcpConnection,
+  type AcpPromptStreamOutput,
+  type AcpRequestReceipt,
+  type AcpStreamRoute,
+} from "./transport";
+import {
+  SESSION_HEADER_METHODS,
+  acpConnectionIdSchema,
+  acpInboundMessageSchema,
+  acpSessionIdSchema,
+  authenticateParamsSchema,
+  cancelParamsSchema,
+  initializeParamsSchema,
+  loadSessionParamsSchema,
+  newSessionParamsSchema,
+  promptParamsSchema,
+  type AcpCall,
+  type AcpResponse,
+  type CancelParams,
+  type LoadSessionParams,
+  type PromptParams,
+  type SessionParams,
+} from "./schema";
+import type { AcpState } from "./state";
 
 const ACP_CONNECTION_ID_HEADER = "Acp-Connection-Id";
+const ACP_SESSION_ID_HEADER = "Acp-Session-Id";
 const ACP_CONVERSATION_PREFIX = "local:acp:";
-const EVENT_PAGE_SIZE = 50;
-const EVENT_POLL_INTERVAL_MS = 25;
+const ACP_EVENT_STREAM_MIME_TYPE = "text/event-stream";
+const ACP_JSON_MIME_TYPE = "application/json";
 const MAX_PROMPT_TEXT_LENGTH = 32_000;
 
-interface AcpRouteOptions {
-  cancellation: ApiTurnCancellation;
-  conversationStore?: ConversationStore;
-  queue: ConversationWorkQueue;
-  state?: StateAdapter;
+/** Dependencies for the serverless-safe remote ACP HTTP handler. */
+type AcpHttpHandlerOptions = {
+  browserAuth?: { baseURL?: string };
+  conversations: AcpConversations;
+  onError?: ReportAcpError;
+  state: AcpState;
+  version: string;
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-interface AuthenticatedAcpActor {
-  actor: WebActor;
-  user: User;
+function authenticatedAcpUser(connection: AcpConnection): User | undefined {
+  return connection.user;
 }
 
-type AcpOperation =
-  | "initialize"
-  | "session_cancel"
-  | "session_load"
-  | "session_new"
-  | "session_prompt";
-
-function bearerToken(request: Request): string | undefined {
-  const authorization = request.headers.get("Authorization");
-  const match = authorization?.match(/^Bearer ([^\s]+)$/);
-  return match?.[1];
+function supportsUrlElicitation(params: unknown): boolean {
+  const parsed = initializeParamsSchema.safeParse(params);
+  if (!parsed.success) return false;
+  const elicitation = parsed.data.clientCapabilities?.elicitation;
+  return isRecord(elicitation) && isRecord(elicitation.url);
 }
 
-/** Resolve one personal token to the Actor and user that own the request. */
-async function authenticateRequest(
-  request: Request,
-): Promise<AuthenticatedAcpActor | undefined> {
-  const token = bearerToken(request);
-  if (!token) return undefined;
-  const email = await authenticatePersonalToken(token);
-  if (!email) return undefined;
-  const user = await resolveViewerUser(email);
-  if (!user) return undefined;
-  return {
-    actor: webActorFromEmail(
-      user.email ?? email,
-      user.displayName ? { fullName: user.displayName } : undefined,
-    ),
-    user,
-  };
+function parseParams<T>(schema: z.ZodType<T>, params: unknown): T {
+  const parsed = schema.safeParse(params);
+  if (parsed.success) return parsed.data;
+  const firstPath = parsed.error.issues[0]?.path[0];
+  throw acp.RequestError.invalidParams({
+    field:
+      typeof firstPath === "string" || typeof firstPath === "number"
+        ? String(firstPath)
+        : "params",
+  });
 }
 
 /** Reject client MCP servers because Junior does not use the client workspace. */
@@ -95,37 +104,35 @@ function rejectUnsupportedMcpServers(mcpServers: readonly unknown[]): void {
   }
 }
 
-/** Require an ACP session that belongs to the authenticated participant. */
-async function requireOwnedSession(
-  sessionId: string,
-  user: User,
-): Promise<void> {
-  if (!sessionId.startsWith(ACP_CONVERSATION_PREFIX)) {
-    throw acp.RequestError.resourceNotFound(sessionId);
-  }
-  const access = (
-    await readConversationAccessFromSql(getDb(), [sessionId], user)
-  ).get(sessionId);
-  if (!access?.isParticipant) {
-    throw acp.RequestError.resourceNotFound(sessionId);
-  }
+function resourceLinkText(
+  block: Extract<PromptParams["prompt"][number], { type: "resource_link" }>,
+): string {
+  return [
+    "Resource link:",
+    `Name: ${block.name}`,
+    `URI: ${block.uri}`,
+    ...(block.title ? [`Title: ${block.title}`] : []),
+    ...(block.description ? [`Description: ${block.description}`] : []),
+    ...(block.mimeType ? [`MIME type: ${block.mimeType}`] : []),
+    ...(block.size !== undefined && block.size !== null
+      ? [`Size: ${block.size} bytes`]
+      : []),
+  ].join("\n");
 }
 
-/** Convert supported ACP text blocks to one bounded API Turn message. */
-function promptText(prompt: readonly acp.ContentBlock[]): string {
+/** Convert supported ACP content blocks to one bounded Conversation Message. */
+function promptText(prompt: PromptParams["prompt"]): string {
   if (prompt.length === 0) {
     throw acp.RequestError.invalidParams(
       { field: "prompt" },
-      "Junior accepts one or more text blocks only",
+      "Junior accepts one or more text or resource link blocks",
     );
   }
   const blocks: string[] = [];
   for (const block of prompt) {
-    if (block.type !== "text") {
-      throw acp.RequestError.invalidParams(
-        { field: "prompt" },
-        "Junior accepts one or more text blocks only",
-      );
+    if (block.type === "resource_link") {
+      blocks.push(resourceLinkText(block));
+      continue;
     }
     if (!block.text.trim()) {
       throw acp.RequestError.invalidParams(
@@ -145,409 +152,614 @@ function promptText(prompt: readonly acp.ContentBlock[]): string {
   return text;
 }
 
-/** Preserve the JSON-RPC id type in one connection-scoped mailbox key. */
-function requestIdKey(requestId: acp.JsonRpcId): string {
-  if (requestId === null) return "null";
-  return `${typeof requestId}:${requestId}`;
+function stableHex(value: string, length = 32): string {
+  return createHash("sha256").update(value).digest("hex").slice(0, length);
 }
 
-async function latestEventSeq(
-  eventStore: ConversationEventStore,
-  conversationId: string,
-): Promise<number> {
-  const page = await eventStore.query(conversationId, { limit: 1 });
-  return page.events.at(-1)?.seq ?? 0;
-}
-
-/** Replay durable user and assistant Messages in their stored order. */
-async function replaySession(
-  eventStore: ConversationEventStore,
-  sessionId: string,
-  client: acp.AgentContext,
-): Promise<void> {
-  const history = await eventStore.loadMessageHistory(sessionId);
-  for (const message of projectConversationMessages(history)) {
-    if (message.role === "system") continue;
-    await client.notify(acp.methods.client.session.update, {
-      sessionId,
-      update: {
-        sessionUpdate:
-          message.role === "user"
-            ? "user_message_chunk"
-            : "agent_message_chunk",
-        content: { type: "text", text: message.text },
-        messageId: message.id,
-      },
-    });
-  }
-}
-
-/** Stream durable assistant Messages until the matching Turn ends or fails. */
-async function waitForTurn(args: {
-  afterSeq: number;
-  cancellation: ApiTurnCancellation;
-  cancellationSignal: AbortSignal;
-  client: acp.AgentContext;
-  eventStore: ConversationEventStore;
-  sessionId: string;
-  signal: AbortSignal;
-  turnId: string;
-}): Promise<acp.PromptResponse> {
-  let cursor = args.afterSeq;
-  const assistantPrefix = `${args.turnId}:assistant:`;
-  const sentMessageIds = new Set<string>();
-
-  while (true) {
-    if (args.signal.aborted) {
-      throw acp.RequestError.requestCancelled();
-    }
-    const page = await args.eventStore.query(args.sessionId, {
-      afterSeq: cursor,
-      limit: EVENT_PAGE_SIZE,
-      types: ["message", "turn_completed", "turn_failed"],
-    });
-    if (page.events.length === 0) {
-      try {
-        await sleep(EVENT_POLL_INTERVAL_MS, args.signal);
-      } catch (error) {
-        if (args.signal.aborted) {
-          throw acp.RequestError.requestCancelled();
-        }
-        throw error;
-      }
-      continue;
-    }
-
-    for (const event of page.events) {
-      cursor = event.seq;
-      const data = event.data;
-      if (
-        data.type === "message" &&
-        data.role === "assistant" &&
-        data.messageId.startsWith(assistantPrefix) &&
-        !sentMessageIds.has(data.messageId)
-      ) {
-        sentMessageIds.add(data.messageId);
-        await args.client.notify(acp.methods.client.session.update, {
-          sessionId: args.sessionId,
-          update: {
-            sessionUpdate: "agent_message_chunk",
-            content: { type: "text", text: data.text },
-            messageId: data.messageId,
-          },
-        });
-        continue;
-      }
-      if (data.type === "turn_completed" && data.turnId === args.turnId) {
-        args.cancellation.finish(args.sessionId, args.cancellationSignal);
-        return {
-          stopReason: data.outcome === "cancelled" ? "cancelled" : "end_turn",
-        };
-      }
-      if (data.type === "turn_failed" && data.turnId === args.turnId) {
-        args.cancellation.finish(args.sessionId, args.cancellationSignal);
-        throw acp.RequestError.internalError(
-          { failureCode: data.failureCode },
-          "Junior Turn failed",
-        );
-      }
-    }
-  }
-}
-
-/** Trace one protocol operation and capture only unexpected edge failures. */
-async function runAcpOperation<T>(
-  authenticated: AuthenticatedAcpActor,
-  operation: AcpOperation,
-  conversationId: string | undefined,
-  callback: () => Promise<T> | T,
-): Promise<T> {
-  const name = `acp.${operation}`;
-  return await withSpan(
-    name,
-    name,
-    {
-      actorId: authenticated.actor.userId,
-      conversationId,
-      platform: "acp",
-      userId: authenticated.actor.userId,
-    },
-    async () => {
-      try {
-        return await callback();
-      } catch (error) {
-        if (!(error instanceof acp.RequestError)) {
-          logException(error, `${name}.failed`);
-        }
-        throw error;
-      }
-    },
+function canonicalJson(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonicalJson);
+  if (!isRecord(value)) return value;
+  return Object.fromEntries(
+    Object.entries(value)
+      .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
+      .map(([key, child]) => [key, canonicalJson(child)]),
   );
 }
 
-/** Build the ACP Agent whose session handlers run as one authenticated Actor. */
-function createActorAgent(
-  authenticated: AuthenticatedAcpActor,
-  connectionNonce: string,
-  options: AcpRouteOptions,
-) {
-  const conversationStore = options.conversationStore ?? getConversationStore();
-  const eventStore = getConversationEventStore();
-
-  return acp
-    .agent({ name: "junior" })
-    .onRequest(acp.methods.agent.initialize, () =>
-      runAcpOperation(authenticated, "initialize", undefined, () => ({
-        protocolVersion: acp.PROTOCOL_VERSION,
-        agentCapabilities: {
-          loadSession: true,
-          promptCapabilities: {
-            image: false,
-            audio: false,
-            embeddedContext: false,
-          },
-        },
-        authMethods: [],
-        agentInfo: { name: "junior", version: JUNIOR_VERSION },
-      })),
-    )
-    .onRequest(acp.methods.agent.session.new, async (context) => {
-      return await runAcpOperation(
-        authenticated,
-        "session_new",
-        undefined,
-        async () => {
-          rejectUnsupportedMcpServers(context.params.mcpServers);
-          const sessionId = `${ACP_CONVERSATION_PREFIX}${randomUUID()}`;
-          await recordApiConversationActivity({
-            actor: authenticated.actor,
-            conversationId: sessionId,
-            conversationStore,
-            nowMs: Date.now(),
-            rootVisibility: "private",
-          });
-          return { sessionId };
-        },
-      );
-    })
-    .onRequest(acp.methods.agent.session.load, async (context) => {
-      return await runAcpOperation(
-        authenticated,
-        "session_load",
-        context.params.sessionId,
-        async () => {
-          rejectUnsupportedMcpServers(context.params.mcpServers);
-          await requireOwnedSession(
-            context.params.sessionId,
-            authenticated.user,
-          );
-          await replaySession(
-            eventStore,
-            context.params.sessionId,
-            context.client,
-          );
-          return {};
-        },
-      );
-    })
-    .onRequest(acp.methods.agent.session.prompt, async (context) => {
-      return await runAcpOperation(
-        authenticated,
-        "session_prompt",
-        context.params.sessionId,
-        async () => {
-          await requireOwnedSession(
-            context.params.sessionId,
-            authenticated.user,
-          );
-          const text = promptText(context.params.prompt);
-          const currentSeq = await latestEventSeq(
-            eventStore,
-            context.params.sessionId,
-          );
-          const cancellationSignal = options.cancellation.begin(
-            context.params.sessionId,
-          );
-          if (!cancellationSignal) {
-            throw acp.RequestError.invalidParams(
-              { field: "sessionId" },
-              "This ACP session already has an active prompt",
-            );
-          }
-          const recordDisconnect = () =>
-            options.cancellation.disconnect(
-              context.params.sessionId,
-              cancellationSignal,
-            );
-          if (context.signal.aborted) {
-            recordDisconnect();
-          } else {
-            context.signal.addEventListener("abort", recordDisconnect, {
-              once: true,
-            });
-          }
-          let accepted: Awaited<
-            ReturnType<typeof appendAndEnqueueApiConversationMessage>
-          >;
-          try {
-            accepted = await appendAndEnqueueApiConversationMessage(
-              {
-                actor: authenticated.actor,
-                conversationId: context.params.sessionId,
-                idempotencyKey: `${connectionNonce}:${requestIdKey(context.requestId)}`,
-                message: text,
-              },
-              {
-                conversationStore,
-                queue: options.queue,
-                state: options.state,
-              },
-            );
-          } catch (error) {
-            options.cancellation.finish(
-              context.params.sessionId,
-              cancellationSignal,
-            );
-            throw error;
-          }
-          // A duplicate request can refer to a Turn that ended before currentSeq.
-          const afterSeq = accepted.status === "duplicate" ? 0 : currentSeq;
-          return await waitForTurn({
-            afterSeq,
-            cancellation: options.cancellation,
-            cancellationSignal,
-            client: context.client,
-            eventStore,
-            sessionId: context.params.sessionId,
-            signal: context.signal,
-            turnId: apiTurnIdForMessage(accepted.messageId),
-          });
-        },
-      );
-    })
-    .onNotification(acp.methods.agent.session.cancel, async (context) => {
-      await runAcpOperation(
-        authenticated,
-        "session_cancel",
-        context.params.sessionId,
-        async () => {
-          await requireOwnedSession(
-            context.params.sessionId,
-            authenticated.user,
-          );
-          if (!options.cancellation.cancel(context.params.sessionId)) {
-            return;
-          }
-          const nowMs = Date.now();
-          await ensureConversationWake({
-            conversationId: context.params.sessionId,
-            conversationStore,
-            idempotencyKey: `acp-cancel:${context.params.sessionId}:${nowMs}`,
-            nowMs,
-            queue: options.queue,
-            replaceExistingWake: true,
-            state: options.state,
-          });
-        },
-      );
-    });
+/** Preserve the JSON-RPC id type and request payload in durable retry keys. */
+function requestKey(call: AcpCall & { id: acp.JsonRpcId }): string {
+  const id =
+    call.id === null
+      ? "null"
+      : `${typeof call.id}:${stableHex(String(call.id))}`;
+  const payload = JSON.stringify(
+    canonicalJson({ method: call.method, params: call.params ?? null }),
+  );
+  return `${id}:${stableHex(payload)}`;
 }
 
-function isJsonRpcId(value: unknown): value is acp.JsonRpcId {
+function sessionIdFromCall(call: AcpCall | undefined): string | undefined {
+  if (!call) return undefined;
+  const schema =
+    call.method === acp.methods.agent.session.load
+      ? loadSessionParamsSchema
+      : call.method === acp.methods.agent.session.prompt
+        ? promptParamsSchema
+        : call.method === acp.methods.agent.session.cancel
+          ? cancelParamsSchema
+          : undefined;
+  if (!schema) return undefined;
+  const parsed = schema.safeParse(call.params);
+  return parsed.success ? parsed.data.sessionId : undefined;
+}
+
+/** Route session methods only from a canonical header and matching strict params. */
+function determineRoute(
+  connectionId: string,
+  call: AcpCall,
+  headerSessionId: string | undefined,
+): AcpStreamRoute | Response {
+  const paramsSessionId = sessionIdFromCall(call);
+  if (SESSION_HEADER_METHODS.has(call.method) && !headerSessionId) {
+    return textResponse("Missing Acp-Session-Id", 400);
+  }
+  if (
+    headerSessionId !== undefined &&
+    paramsSessionId !== undefined &&
+    headerSessionId !== paramsSessionId
+  ) {
+    return textResponse("Mismatched Acp-Session-Id", 400);
+  }
+  return {
+    connectionId,
+    ...(headerSessionId
+      ? { sessionId: headerSessionId }
+      : paramsSessionId
+        ? { sessionId: paramsSessionId }
+        : {}),
+  };
+}
+
+function resultMessage(
+  requestId: acp.JsonRpcId,
+  result: unknown,
+): acp.AnyResponse {
+  return { jsonrpc: "2.0", id: requestId, result };
+}
+
+function errorMessage(
+  requestId: acp.JsonRpcId,
+  error: acp.RequestError,
+): acp.AnyResponse {
+  return {
+    jsonrpc: "2.0",
+    id: requestId,
+    error: error.toErrorResponse(),
+  };
+}
+
+function textResponse(body: string, status: number): Response {
+  return new Response(body, {
+    status,
+    headers: { "Content-Type": "text/plain" },
+  });
+}
+
+function jsonResponse(
+  value: acp.AnyResponse,
+  status: number,
+  headers?: HeadersInit,
+): Response {
+  return new Response(JSON.stringify(value), {
+    status,
+    headers: { "Content-Type": ACP_JSON_MIME_TYPE, ...headers },
+  });
+}
+
+function emptyResponse(status: number): Response {
+  return new Response(null, { status });
+}
+
+/** Create a deterministic private Conversation for one session/new request. */
+async function createSession(args: {
+  call: AcpCall;
+  connection: AcpConnection;
+  conversations: AcpConversations;
+  requestKey: string;
+  user: User;
+}): Promise<string> {
+  const params = parseParams<SessionParams>(
+    newSessionParamsSchema,
+    args.call.params,
+  );
+  rejectUnsupportedMcpServers(params.mcpServers);
+  const sessionId = `${ACP_CONVERSATION_PREFIX}${stableHex(
+    `${args.connection.nonce}:${args.requestKey}`,
+  )}`;
+  await args.conversations.create({
+    conversationId: sessionId,
+    user: args.user,
+  });
+  return sessionId;
+}
+
+/** Accept one prompt into the existing durable Conversation mailbox. */
+async function acceptPrompt(args: {
+  call: AcpCall;
+  connection: AcpConnection;
+  conversations: AcpConversations;
+  requestId: acp.JsonRpcId;
+  requestKey: string;
+  user: User;
+}): Promise<{ output: AcpPromptStreamOutput; sessionId: string }> {
+  const params = parseParams<PromptParams>(
+    promptParamsSchema,
+    args.call.params,
+  );
+  const result = await args.conversations.prompt({
+    conversationId: params.sessionId,
+    idempotencyKey: `${args.connection.nonce}:${args.requestKey}`,
+    text: promptText(params.prompt),
+    user: args.user,
+  });
+  if (result.status === "not_found") {
+    throw acp.RequestError.resourceNotFound(params.sessionId);
+  }
+  if (result.status === "active") {
+    throw acp.RequestError.invalidParams(
+      { field: "sessionId" },
+      "This ACP session already has an active prompt",
+    );
+  }
+  return {
+    output: {
+      afterSeq: result.afterCursor,
+      kind: "prompt",
+      messageId: result.messageId,
+      requestId: args.requestId,
+      turnId: result.turnId,
+    },
+    sessionId: params.sessionId,
+  };
+}
+
+/** Dispatch one connected JSON-RPC request into a durable outbound receipt. */
+async function createRequestReceipt(args: {
+  call: AcpCall & { id: acp.JsonRpcId };
+  connection: AcpConnection;
+  conversations: AcpConversations;
+  requestKey: string;
+  user: User;
+}): Promise<AcpRequestReceipt> {
+  if (args.call.method === acp.methods.agent.session.new) {
+    const sessionId = await createSession(args);
+    return {
+      outputs: [
+        {
+          kind: "message",
+          message: resultMessage(args.call.id, { sessionId }),
+        },
+      ],
+    };
+  }
+
+  if (args.call.method === acp.methods.agent.session.load) {
+    const params = parseParams<LoadSessionParams>(
+      loadSessionParamsSchema,
+      args.call.params,
+    );
+    rejectUnsupportedMcpServers(params.mcpServers);
+    if (
+      !(await args.conversations.hasAccess({
+        conversationId: params.sessionId,
+        user: args.user,
+      }))
+    ) {
+      throw acp.RequestError.resourceNotFound(params.sessionId);
+    }
+    return {
+      sessionId: params.sessionId,
+      outputs: [
+        { kind: "replay" },
+        { kind: "message", message: resultMessage(args.call.id, {}) },
+      ],
+    };
+  }
+
+  if (args.call.method === acp.methods.agent.session.prompt) {
+    const prompt = await acceptPrompt({
+      ...args,
+      requestId: args.call.id,
+    });
+    return {
+      outputs: [prompt.output],
+      sessionId: prompt.sessionId,
+    };
+  }
+
+  throw acp.RequestError.methodNotFound(args.call.method);
+}
+
+/** Handle a session/cancel notification through durable Turn control. */
+async function handleCancelNotification(args: {
+  call: AcpCall;
+  conversations: AcpConversations;
+  user: User;
+}): Promise<void> {
+  const params = parseParams<CancelParams>(
+    cancelParamsSchema,
+    args.call.params,
+  );
+  const result = await args.conversations.cancel({
+    conversationId: params.sessionId,
+    user: args.user,
+  });
+  if (result === "not_found") {
+    throw acp.RequestError.resourceNotFound(params.sessionId);
+  }
+}
+
+/** Require proof that this request controls the named ACP connection. */
+async function requireConnection(args: {
+  connectionId: string;
+  request: Request;
+  state: AcpState;
+}): Promise<AcpConnection | undefined> {
+  const value = await readAcpConnection(args.state, args.connectionId);
+  if (
+    !value ||
+    !hasAcpConnectionCredential(args.request, value.credentialHash)
+  ) {
+    return undefined;
+  }
+  return value;
+}
+
+function isJsonContentType(contentType: string | null): boolean {
   return (
-    value === null ||
-    typeof value === "string" ||
-    (typeof value === "number" && Number.isFinite(value))
+    contentType?.split(";", 1)[0]?.trim().toLowerCase() === ACP_JSON_MIME_TYPE
   );
 }
 
-/** Reject object-shaped messages that would make the SDK log their raw body. */
-async function hasSafeAcpEnvelope(request: Request): Promise<boolean> {
-  if (request.method !== "POST") return true;
-  let value: unknown;
+async function handleInitialize(args: {
+  browserAuthAvailable: boolean;
+  call: AcpCall;
+  request: Request;
+  state: AcpState;
+  version: string;
+}): Promise<Response> {
+  const requestId = args.call.id;
+  if (requestId === undefined) {
+    return textResponse("Initialize request must include an ID", 400);
+  }
   try {
-    value = await request.clone().json();
-  } catch {
-    return true;
+    parseParams(initializeParamsSchema, args.call.params);
+    if (!supportsUrlElicitation(args.call.params)) {
+      throw acp.RequestError.invalidParams(
+        { field: "clientCapabilities.elicitation.url" },
+        "Remote Junior authentication requires URL elicitation support",
+      );
+    }
+    const credential = createAcpConnectionCredential(args.request);
+    const result = {
+      protocolVersion: acp.PROTOCOL_VERSION,
+      agentCapabilities: {
+        loadSession: true,
+        promptCapabilities: {
+          image: false,
+          audio: false,
+          embeddedContext: false,
+        },
+      },
+      authMethods: args.browserAuthAvailable ? [ACP_AUTH_METHOD] : [],
+      agentInfo: { name: "junior", version: args.version },
+    } satisfies acp.InitializeResponse;
+    const connection = await createAcpConnection(
+      args.state,
+      credential.credentialHash,
+    );
+    return jsonResponse(resultMessage(requestId, result), 200, {
+      [ACP_CONNECTION_ID_HEADER]: connection.connectionId,
+      "Set-Cookie": credential.cookie,
+    });
+  } catch (error) {
+    if (!(error instanceof acp.RequestError)) throw error;
+    return jsonResponse(errorMessage(requestId, error), 200);
   }
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    return true;
-  }
-  if (!("jsonrpc" in value) || value.jsonrpc !== "2.0") {
-    return false;
-  }
-  if (!("method" in value) || typeof value.method !== "string") {
-    return false;
-  }
-  return !("id" in value) || isJsonRpcId(value.id);
 }
 
-/** Return whether an SDK initialization response contains a protocol result. */
-async function initializationSucceeded(response: Response): Promise<boolean> {
-  try {
-    const value: unknown = await response.clone().json();
-    return typeof value === "object" && value !== null && "result" in value;
-  } catch {
-    return false;
+async function handleConnectedPost(args: {
+  authenticated?: User;
+  call: AcpCall;
+  connection: AcpConnection;
+  connectionId: string;
+  options: AcpHttpHandlerOptions;
+  request: Request;
+  route: AcpStreamRoute;
+  state: AcpState;
+}): Promise<Response> {
+  const requestId = args.call.id;
+  if (requestId === undefined) {
+    if (
+      args.authenticated &&
+      args.call.method === acp.methods.agent.session.cancel
+    ) {
+      try {
+        await handleCancelNotification({
+          call: args.call,
+          conversations: args.options.conversations,
+          user: args.authenticated,
+        });
+      } catch (error) {
+        if (!(error instanceof acp.RequestError)) throw error;
+      }
+    }
+    return emptyResponse(202);
   }
+
+  const identifiedCall = { ...args.call, id: requestId };
+  const identifiedRequestKey = requestKey(identifiedCall);
+  const acceptance: Parameters<typeof acceptAcpRequest>[0] = {
+    connectionId: args.connectionId,
+    requestKey: identifiedRequestKey,
+    state: args.state,
+    createReceipt: async (): Promise<AcpRequestReceipt> => {
+      try {
+        if (identifiedCall.method === acp.methods.agent.authenticate) {
+          const params = parseParams(
+            authenticateParamsSchema,
+            identifiedCall.params,
+          );
+          if (params.methodId !== ACP_AUTH_METHOD_ID) {
+            throw acp.RequestError.invalidParams(
+              { field: "methodId" },
+              "Junior did not advertise this authentication method",
+            );
+          }
+          if (args.authenticated) {
+            return {
+              outputs: [
+                {
+                  kind: "message",
+                  message: resultMessage(requestId, {}),
+                },
+              ],
+            };
+          }
+          if (!args.options.browserAuth) {
+            throw acp.RequestError.internalError(
+              undefined,
+              "Junior ACP authentication requires an enabled dashboard",
+            );
+          }
+          return await beginAcpAuthorization({
+            baseURL: args.options.browserAuth.baseURL,
+            connectionId: args.connectionId,
+            credentialHash: args.connection.credentialHash,
+            request: args.request,
+            requestId,
+            requestKey: identifiedRequestKey,
+            state: args.state,
+          });
+        }
+        if (!args.authenticated) {
+          throw acp.RequestError.authRequired();
+        }
+        return await createRequestReceipt({
+          call: identifiedCall,
+          connection: args.connection,
+          conversations: args.options.conversations,
+          requestKey: identifiedRequestKey,
+          user: args.authenticated,
+        });
+      } catch (error) {
+        if (!(error instanceof acp.RequestError)) throw error;
+        const receipt: AcpRequestReceipt = {
+          outputs: [
+            {
+              kind: "message",
+              message: errorMessage(requestId, error),
+            },
+          ],
+        };
+        if (args.route.sessionId) receipt.sessionId = args.route.sessionId;
+        return receipt;
+      }
+    },
+  };
+  if (identifiedCall.method === acp.methods.agent.session.prompt) {
+    acceptance.reserveRoute = args.route;
+  }
+  const status = await acceptAcpRequest(acceptance);
+  if (status === "busy") {
+    return textResponse("ACP request is already being accepted", 503);
+  }
+  if (status === "expired") {
+    return textResponse("Unknown Acp-Connection-Id", 404);
+  }
+  if (status === "full") {
+    return textResponse("ACP stream has too much undelivered output", 503);
+  }
+  return emptyResponse(202);
 }
 
-/** Create one app-scoped remote ACP v1 HTTP handler. */
+async function handleConnectedResponse(args: {
+  connectionId: string;
+  response: AcpResponse;
+  state: AcpState;
+}): Promise<Response> {
+  await handleAcpAuthorizationResponse({
+    connectionId: args.connectionId,
+    response: args.response as acp.AnyResponse,
+    state: args.state,
+  });
+  return emptyResponse(202);
+}
+
+/** Create a serverless-safe remote ACP v1 HTTP handler. */
 export function createAcpHttpHandler(
-  options: AcpRouteOptions,
+  options: AcpHttpHandlerOptions,
 ): (request: Request) => Promise<Response> {
-  const server = new AcpServer({ agent: acp.agent({ name: "junior" }) });
-  const connectionActors = new Map<string, string>();
+  const state = options.state;
 
   return async (request) => {
-    const authenticated = await authenticateRequest(request);
-    if (!authenticated) {
-      return new Response("Unauthorized", { status: 401 });
-    }
+    let authenticated: User | undefined;
+    let call: AcpCall | undefined;
+    let connectionId: string | undefined;
+    let sessionId: string | undefined;
+    try {
+      if (request.headers.has("Authorization")) {
+        return new Response("Unauthorized", { status: 401 });
+      }
 
-    const connectionId = request.headers.get(ACP_CONNECTION_ID_HEADER);
-    const connectionActorId = connectionId
-      ? connectionActors.get(connectionId)
-      : undefined;
-    if (connectionId && connectionActorId === undefined) {
-      return new Response("Unknown Acp-Connection-Id", { status: 404 });
-    }
-    if (
-      connectionActorId !== undefined &&
-      connectionActorId !== authenticated.actor.userId
-    ) {
-      return new Response("Unknown Acp-Connection-Id", { status: 404 });
-    }
-    if (!(await hasSafeAcpEnvelope(request))) {
-      return new Response("Invalid JSON-RPC message", { status: 400 });
-    }
+      const connectionHeader = request.headers.get(ACP_CONNECTION_ID_HEADER);
+      if (connectionHeader !== null) {
+        const parsed = acpConnectionIdSchema.safeParse(connectionHeader);
+        if (!parsed.success) {
+          return textResponse("Invalid Acp-Connection-Id", 400);
+        }
+        connectionId = parsed.data;
+      }
+      const sessionHeader = request.headers.get(ACP_SESSION_ID_HEADER);
+      if (sessionHeader !== null) {
+        const parsed = acpSessionIdSchema.safeParse(sessionHeader);
+        if (!parsed.success) {
+          return textResponse("Invalid Acp-Session-Id", 400);
+        }
+        sessionId = parsed.data;
+      }
 
-    const response = await server.handleRequest(request, {
-      agent: createActorAgent(authenticated, randomUUID(), options),
-    });
-    const responseConnectionId = response.headers.get(ACP_CONNECTION_ID_HEADER);
-    if (response.ok && responseConnectionId && !connectionId) {
-      if (await initializationSucceeded(response)) {
-        connectionActors.set(responseConnectionId, authenticated.actor.userId);
-      } else {
-        await server.handleRequest(
-          new Request(request.url, {
-            method: "DELETE",
-            headers: { [ACP_CONNECTION_ID_HEADER]: responseConnectionId },
-          }),
-        );
-        const headers = new Headers(response.headers);
-        headers.delete(ACP_CONNECTION_ID_HEADER);
-        return new Response(response.body, {
-          headers,
-          status: response.status,
-          statusText: response.statusText,
+      if (request.method === "POST") {
+        if (!isJsonContentType(request.headers.get("Content-Type"))) {
+          return textResponse("Unsupported Media Type", 415);
+        }
+        let value: unknown;
+        try {
+          value = await request.json();
+        } catch {
+          return textResponse("Invalid JSON", 400);
+        }
+        if (Array.isArray(value)) {
+          return textResponse(
+            "Batch JSON-RPC requests are not implemented",
+            501,
+          );
+        }
+        const parsedMessage = acpInboundMessageSchema.safeParse(value);
+        if (!parsedMessage.success) {
+          return textResponse("Invalid JSON-RPC message", 400);
+        }
+        const message = parsedMessage.data;
+
+        if (
+          "method" in message &&
+          message.method === acp.methods.agent.initialize
+        ) {
+          call = message;
+          if (connectionId) {
+            return textResponse(
+              "Initialize not allowed on existing connection",
+              400,
+            );
+          }
+          return await handleInitialize({
+            browserAuthAvailable: options.browserAuth !== undefined,
+            call,
+            request,
+            state,
+            version: options.version,
+          });
+        }
+        if (!connectionId) {
+          return textResponse("Missing Acp-Connection-Id", 400);
+        }
+        const connection = await requireConnection({
+          connectionId,
+          request,
+          state,
+        });
+        if (!connection) {
+          return textResponse("Unauthorized", 401);
+        }
+        authenticated = authenticatedAcpUser(connection);
+        if (!("method" in message)) {
+          return await handleConnectedResponse({
+            connectionId,
+            response: message,
+            state,
+          });
+        }
+        call = message;
+        const route = determineRoute(connectionId, call, sessionId);
+        if (route instanceof Response) return route;
+        return await handleConnectedPost({
+          authenticated,
+          call,
+          connection,
+          connectionId,
+          options,
+          request,
+          route,
+          state,
         });
       }
+
+      if (!connectionId) {
+        return textResponse("Missing Acp-Connection-Id", 400);
+      }
+      const connection = await requireConnection({
+        connectionId,
+        request,
+        state,
+      });
+      if (!connection) {
+        return textResponse("Unauthorized", 401);
+      }
+      authenticated = authenticatedAcpUser(connection);
+
+      if (request.method === "GET") {
+        if (request.headers.get("Upgrade")?.toLowerCase() === "websocket") {
+          return textResponse("WebSocket upgrade is not implemented", 426);
+        }
+        const accept = request.headers.get("Accept")?.toLowerCase();
+        if (!accept?.includes(ACP_EVENT_STREAM_MIME_TYPE)) {
+          return textResponse("Not Acceptable", 406);
+        }
+        const route: AcpStreamRoute = { connectionId };
+        if (sessionId) route.sessionId = sessionId;
+        const stream: Parameters<typeof openAcpSse>[0] = {
+          conversations: options.conversations,
+          onError: options.onError,
+          requestSignal: request.signal,
+          route,
+          state,
+        };
+        if (!sessionId) {
+          stream.maintain = async () => {
+            await expireAcpAuthorization({
+              connectionId: route.connectionId,
+              state,
+            });
+          };
+        }
+        if (authenticated) stream.userId = authenticated.id;
+        return await openAcpSse(stream);
+      }
+
+      if (request.method === "DELETE") {
+        await deleteAcpConnection(state, connectionId);
+        return emptyResponse(202);
+      }
+
+      return textResponse("Method Not Allowed", 405);
+    } catch (error) {
+      const conversationId = sessionIdFromCall(call) ?? sessionId;
+      const context: AcpErrorContext = {};
+      if (authenticated) context.userId = authenticated.id;
+      if (connectionId) context.connectionId = connectionId;
+      if (conversationId) context.conversationId = conversationId;
+      options.onError?.(error, "acp.transport.exception", context);
+      return textResponse("ACP transport failed", 500);
     }
-    if (request.method === "DELETE" && response.ok && connectionId) {
-      connectionActors.delete(connectionId);
-    }
-    return response;
   };
 }

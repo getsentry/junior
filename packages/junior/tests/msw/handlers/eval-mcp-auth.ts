@@ -599,7 +599,7 @@ export const evalMcpAuthHandlers = [
       redirectUri,
       ...(url.searchParams.get("scope")
         ? { scope: url.searchParams.get("scope")! }
-        : {}),
+        : undefined),
     };
     const callback = new URL(redirectUri);
     callback.searchParams.set("code", EVAL_MCP_AUTH_CODE);

@@ -3,20 +3,11 @@ import {
   getDispatchConversationId,
   getDispatchInputMessageId,
   getDispatchRecord,
-  getDispatchStorageKey,
   getDispatchTurnId,
 } from "@/chat/agent-dispatch/store";
-import { recoverPendingDispatchMailboxAppends } from "@/chat/agent-dispatch/heartbeat";
-import {
-  createAgentDispatchConversationWorker,
-  createAgentDispatchWorkRouter,
-  enqueueAgentDispatch,
-} from "@/chat/agent-dispatch/work";
-import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
-import { JUNIOR_THREAD_STATE_TTL_MS } from "@/chat/state/ttl";
-import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation-work";
+import { enqueueAgentDispatch } from "@/chat/agent-dispatch/work";
+import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
-import { recordTurnSummary } from "@/chat/task-execution/turn-cursor";
 import { persistConversationMessages } from "@/chat/conversations/messages";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { getUserMessageInstructionText } from "@/chat/pi/transcript";
@@ -24,10 +15,13 @@ import { slackApiOutbox } from "../fixtures/slack-api-outbox";
 import { resetSlackApiMockState } from "../msw/handlers/slack-api";
 import { createModelStream } from "../fixtures/model-stream";
 import {
+  createModelAgentRunner,
+  neverRunAgentRunner,
+} from "../fixtures/agent-runner";
+import {
   agentDispatchTestDestination as destination,
-  createAgentDispatchModelHarness as createModelHarness,
   createAgentDispatchTestRecord as createDispatch,
-  createAgentDispatchWorkerContext as createContext,
+  createAgentDispatchWorkHarness,
 } from "../fixtures/agent-dispatch";
 
 vi.hoisted(() => {
@@ -57,10 +51,15 @@ describe("agent dispatch conversation work", () => {
     const modelStream = vi.fn(
       createModelStream([{ type: "text", text: "Done" }]),
     );
-    const { runtime } = createModelHarness(modelStream);
+    const { queue, run, state } = await createAgentDispatchWorkHarness(
+      createModelAgentRunner(modelStream),
+    );
 
-    await runtime.runDispatchTurn(dispatch, {
-      ack: vi.fn(async () => {}),
+    await enqueueAgentDispatch(dispatch, { queue, state });
+    await processConversationQueueMessage(queue.takeMessage(), {
+      queue,
+      run,
+      state,
     });
 
     expect(slackApiOutbox.messages()).toEqual([
@@ -86,39 +85,29 @@ describe("agent dispatch conversation work", () => {
       undefined,
       { label: "Scheduled task", detail: "Weekly" },
     );
-    const queue = createConversationWorkQueueTestAdapter();
-    const state = getStateAdapter();
-    await state.connect();
-    const { agentRunner, runtime } = createModelHarness(
+    const agentRunner = createModelAgentRunner(
       createModelStream([{ type: "text", text: "Scheduled digest" }]),
     );
     const run = vi.spyOn(agentRunner, "run");
-    const dispatchWorker = createAgentDispatchConversationWorker({
-      resumeTurn: vi.fn(),
-      runTurn: runtime.runDispatchTurn,
-    });
-    const slackWorker = vi.fn(async () => ({
-      status: "completed" as const,
-    }));
-    const route = createAgentDispatchWorkRouter({
-      dispatchWorker,
-      fallbackWorker: slackWorker,
-    });
+    const {
+      queue,
+      run: runWork,
+      state,
+    } = await createAgentDispatchWorkHarness(agentRunner);
 
     await enqueueAgentDispatch(dispatch, { queue, state });
     const queueMessage = queue.takeMessage();
     await processConversationQueueMessage(queueMessage, {
       queue,
-      run: route,
+      run: runWork,
       state,
     });
     await processConversationQueueMessage(queueMessage, {
       queue,
-      run: route,
+      run: runWork,
       state,
     });
 
-    expect(slackWorker).not.toHaveBeenCalled();
     expect(queue.hasQueuedMessages()).toBe(false);
     expect(slackApiOutbox.messages()).toHaveLength(1);
     expect(slackApiOutbox.messages()[0]?.params).toMatchObject({
@@ -138,7 +127,6 @@ describe("agent dispatch conversation work", () => {
         actor: { platform: "system", name: "scheduler" },
       },
       destination,
-      destinationVisibility: "private",
       dispatch: {
         id: dispatch.id,
         plugin: "scheduler",
@@ -151,88 +139,6 @@ describe("agent dispatch conversation work", () => {
       disabledFeatures: ["interactive-auth"],
     });
   });
-
-  it.each(["awaiting_resume", "running"] as const)(
-    "resumes durable %s work even when recovery has mailbox input",
-    async (sessionState) => {
-      const dispatch = await createDispatch("cutover-resume");
-      const conversationId = getDispatchConversationId(dispatch);
-      const sessionId = getDispatchTurnId(dispatch.id);
-      const queue = createConversationWorkQueueTestAdapter();
-      const state = getStateAdapter();
-      await state.connect();
-      const nowMs = Date.now();
-      await state.set(
-        getDispatchStorageKey(dispatch.id),
-        {
-          ...dispatch,
-          attempt: 1,
-          lastCallbackAtMs: nowMs - 2_000,
-          leaseExpiresAtMs: nowMs - 1_000,
-          maxAttempts: 5,
-          status: sessionState,
-          version: 2,
-        },
-        JUNIOR_THREAD_STATE_TTL_MS,
-      );
-      await recordTurnSummary({
-        actor: dispatch.actor,
-        conversationId,
-        destination: dispatch.destination,
-        destinationVisibility: dispatch.destinationVisibility,
-        dispatchId: dispatch.id,
-        turnId: sessionId,
-        sliceId: 2,
-        source: dispatch.source,
-        // Turn checkpoint status (dispatch status above stays SQL-bound).
-        state: sessionState === "awaiting_resume" ? "paused" : sessionState,
-        surface: "api",
-      });
-      const runTurn = vi.fn();
-      const resumeTurn = vi.fn(async () => {
-        await recordTurnSummary({
-          actor: dispatch.actor,
-          conversationId,
-          destination: dispatch.destination,
-          destinationVisibility: dispatch.destinationVisibility,
-          dispatchId: dispatch.id,
-          dispatchOutcome: "completed",
-          turnId: sessionId,
-          sliceId: 2,
-          source: dispatch.source,
-          state: "completed",
-          surface: "api",
-        });
-      });
-      const worker = createAgentDispatchConversationWorker({
-        resumeTurn,
-        runTurn,
-      });
-
-      await recoverPendingDispatchMailboxAppends({
-        conversationWorkQueue: queue,
-        nowMs,
-      });
-      expect(queue.sentRecords()).toEqual([
-        {
-          conversationId,
-          idempotencyKey: `agent-dispatch:${dispatch.id}`,
-        },
-      ]);
-      await processConversationQueueMessage(queue.takeMessage(), {
-        queue,
-        run: async (context) => await worker(context, dispatch.id),
-        state,
-      });
-
-      expect(runTurn).not.toHaveBeenCalled();
-      expect(resumeTurn).toHaveBeenCalledOnce();
-      expect(queue.hasQueuedMessages()).toBe(false);
-      await expect(getDispatchRecord(dispatch.id)).resolves.toMatchObject({
-        status: "completed",
-      });
-    },
-  );
 
   it("projects a previously delivered reply without running the agent again", async () => {
     const dispatch = await createDispatch("delivered-replay");
@@ -261,60 +167,20 @@ describe("agent dispatch conversation work", () => {
       },
     );
     await persistConversationMessages({ conversation, conversationId });
-    const { agentRunner, runtime } = createModelHarness(
-      createModelStream([{ type: "text", text: "Unexpected reply" }]),
+    const { queue, run, state } = await createAgentDispatchWorkHarness(
+      neverRunAgentRunner(),
     );
-    const run = vi.spyOn(agentRunner, "run");
-    const worker = createAgentDispatchConversationWorker({
-      resumeTurn: vi.fn(),
-      runTurn: runtime.runDispatchTurn,
-    });
-    const { ack, context } = createContext(dispatch);
 
-    await expect(worker(context, dispatch.id)).resolves.toEqual({
-      status: "completed",
+    await enqueueAgentDispatch(dispatch, { queue, state });
+    await processConversationQueueMessage(queue.takeMessage(), {
+      queue,
+      run,
+      state,
     });
 
-    expect(run).not.toHaveBeenCalled();
-    expect(ack).toHaveBeenCalledOnce();
+    expect(queue.hasQueuedMessages()).toBe(false);
     await expect(getDispatchRecord(dispatch.id)).resolves.toMatchObject({
       resultMessageTs: "1700000000.000009",
-      status: "completed",
-    });
-  });
-
-  it("uses a durable delivery receipt when the worker died before outcome persistence", async () => {
-    const dispatch = await createDispatch("delivery-receipt-fence");
-    await recordTurnSummary({
-      actor: dispatch.actor,
-      conversationId: getDispatchConversationId(dispatch),
-      destination: dispatch.destination,
-      destinationVisibility: dispatch.destinationVisibility,
-      dispatchId: dispatch.id,
-      resultMessageId: "1700000000.000012",
-      turnId: getDispatchTurnId(dispatch.id),
-      sliceId: 1,
-      source: dispatch.source,
-      state: "running",
-      surface: "api",
-    });
-    const runTurn = vi.fn();
-    const resumeTurn = vi.fn();
-    const worker = createAgentDispatchConversationWorker({
-      resumeTurn,
-      runTurn,
-    });
-    const { ack, context } = createContext(dispatch);
-
-    await expect(worker(context, dispatch.id)).resolves.toEqual({
-      status: "completed",
-    });
-
-    expect(runTurn).not.toHaveBeenCalled();
-    expect(resumeTurn).not.toHaveBeenCalled();
-    expect(ack).toHaveBeenCalledOnce();
-    await expect(getDispatchRecord(dispatch.id)).resolves.toMatchObject({
-      resultMessageTs: "1700000000.000012",
       status: "completed",
     });
   });

@@ -6,29 +6,29 @@ import {
   type ConversationPendingMessagesReport,
 } from "@/api/schema";
 import {
-  appendAndEnqueueApiConversationMessage,
-  createAndEnqueueApiConversation,
-} from "@/chat/api-turns/work";
+  appendAndEnqueueWebMessage,
+  createAndEnqueueConversation,
+} from "@/chat/conversations/web-input";
 import { closeDb, getConversationStore } from "@/chat/db";
 import { appendInboundMessage } from "@/chat/task-execution/store";
 import {
-  closeApiTurnWorkFixture,
-  createApiTurnWorkFixture,
-} from "../../../fixtures/api-turn";
+  closeConversationFixture,
+  createConversationFixture,
+} from "../../../fixtures/conversation";
 import { usersInfoOk } from "../../../fixtures/slack/factories/api";
 import { testViewer } from "../../../fixtures/user";
 import { queueSlackApiResponse } from "../../../msw/handlers/slack-api";
 
 describe("conversation pending messages API", () => {
   afterEach(async () => {
-    await closeApiTurnWorkFixture();
+    await closeConversationFixture();
     await closeDb();
   });
 
   it("returns accepted web mailbox rows before history commit", async () => {
     const { actor, conversationStore, queue, state } =
-      await createApiTurnWorkFixture();
-    const accepted = await createAndEnqueueApiConversation(
+      await createConversationFixture();
+    const accepted = await createAndEnqueueConversation(
       {
         actor,
         idempotencyKey: "pending-web-1",
@@ -51,7 +51,7 @@ describe("conversation pending messages API", () => {
       {
         actorIdentity: {
           email: actor.email,
-          ...(actor.fullName ? { fullName: actor.fullName } : {}),
+          ...(actor.fullName ? { fullName: actor.fullName } : undefined),
         },
         createdAt: expect.any(String),
         delivery: "defer",
@@ -66,7 +66,7 @@ describe("conversation pending messages API", () => {
   });
 
   it("returns accepted slack interrupt mailbox rows before history commit", async () => {
-    const { state } = await createApiTurnWorkFixture();
+    const { state } = await createConversationFixture();
     queueSlackApiResponse("users.info", {
       body: usersInfoOk({
         userId: "U123",
@@ -178,8 +178,8 @@ describe("conversation pending messages API", () => {
 
   it("redacts mailbox content for non-participants on private conversations", async () => {
     const { actor, conversationStore, queue, state } =
-      await createApiTurnWorkFixture();
-    const accepted = await createAndEnqueueApiConversation(
+      await createConversationFixture();
+    const accepted = await createAndEnqueueConversation(
       {
         actor,
         idempotencyKey: "pending-private-1",
@@ -218,7 +218,7 @@ describe("conversation pending messages API", () => {
   });
 
   it("returns 404 for unknown conversations", async () => {
-    await createApiTurnWorkFixture();
+    await createConversationFixture();
     const app = createJuniorApi();
     const response = await app.request(
       "http://localhost/api/conversations/missing/pending-messages",
@@ -228,8 +228,8 @@ describe("conversation pending messages API", () => {
 
   it("keeps append-only web continues visible in the mailbox snapshot", async () => {
     const { actor, conversationStore, queue, state } =
-      await createApiTurnWorkFixture();
-    const created = await createAndEnqueueApiConversation(
+      await createConversationFixture();
+    const created = await createAndEnqueueConversation(
       {
         actor,
         idempotencyKey: "pending-continue-root",
@@ -237,7 +237,7 @@ describe("conversation pending messages API", () => {
       },
       { conversationStore, queue, state },
     );
-    const continued = await appendAndEnqueueApiConversationMessage(
+    const continued = await appendAndEnqueueWebMessage(
       {
         actor,
         conversationId: created.conversationId,

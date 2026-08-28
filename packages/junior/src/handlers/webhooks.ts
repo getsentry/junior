@@ -52,7 +52,8 @@ async function handleAuthenticatedSlackMessageChangedMention(args: {
   waitUntil: WaitUntilFn;
 }): Promise<void> {
   const slackAdapter = args.bot.getAdapter("slack");
-  const authAdapter = slackAdapter as unknown as SlackWebhookAuthAdapter;
+  // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+  const authAdapter = slackAdapter as SlackWebhookAuthAdapter;
   const timestamp = args.request.headers.get("x-slack-request-timestamp");
   const signature = args.request.headers.get("x-slack-signature");
 
@@ -202,7 +203,7 @@ export async function handleWebhookRequest(
                   request.headers.get("x-slack-request-timestamp") ?? undefined,
                 ...(responseBodySnippet
                   ? { "app.webhook.response_body": responseBodySnippet }
-                  : {}),
+                  : undefined),
               });
             }
 

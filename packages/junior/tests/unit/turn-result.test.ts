@@ -270,12 +270,17 @@ describe("buildTurnResult", () => {
     expect(reply.diagnostics.usedPrimaryText).toBe(true);
   });
 
-  it("treats a no-reply marker mixed with text as silent completion", () => {
+  it("treats multiple trailing no-reply markers as silent completion", () => {
     const reply = buildTurnResult({
       newMessages: [
         {
           role: "assistant",
-          content: [{ type: "text", text: `Done. ${NO_REPLY_MARKER}` }],
+          content: [{ type: "text", text: NO_REPLY_MARKER }],
+          stopReason: "stop",
+        },
+        {
+          role: "assistant",
+          content: [{ type: "text", text: NO_REPLY_MARKER }],
           stopReason: "stop",
         },
       ],
@@ -289,6 +294,34 @@ describe("buildTurnResult", () => {
 
     expect(reply.text).toBe("");
     expect(reply.diagnostics.outcome).toBe("success");
+  });
+
+  it("does not treat a tool-call terminal tail as intentional no-reply", () => {
+    const reply = buildTurnResult({
+      newMessages: [
+        {
+          role: "assistant",
+          content: [
+            {
+              type: "toolCall",
+              id: "call-1",
+              name: "bash",
+              arguments: {},
+            },
+          ],
+          stopReason: "toolUse",
+        },
+      ],
+      userInput: "run a command",
+      toolCalls: ["bash"],
+      generatedFileCount: 0,
+      shouldTrace: false,
+      modelId: "test-model",
+      executionProfile,
+    });
+
+    expect(reply.text).toBe("");
+    expect(reply.diagnostics.outcome).toBe("execution_failure");
   });
 
   it("keeps no-reply marker silent when side-effect tools also ran", () => {

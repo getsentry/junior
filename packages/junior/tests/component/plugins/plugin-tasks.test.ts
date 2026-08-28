@@ -7,7 +7,7 @@ import {
 } from "@sentry/junior-plugin-api";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PiMessage } from "@/chat/pi/messages";
-import type { PluginTaskQueueMessage } from "@/chat/plugins/task-message";
+import type { PluginTaskQueueMessage } from "@/chat/plugins/task-queue";
 import type { ConversationMessage } from "@/chat/state/conversation";
 
 const ORIGINAL_ENV = { ...process.env };
@@ -474,6 +474,7 @@ describe("plugin background tasks", () => {
     );
     await processPluginTask(queue.queuedMessages()[0]!);
 
+    expect(loadedRuns[0]!.locationId).toEqual(expect.any(String));
     const transcript = loadedRuns[0]!.transcript;
     expect(transcript).toContainEqual({
       type: "message",

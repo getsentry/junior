@@ -20,8 +20,10 @@ import {
   formatCostTotal,
   formatElapsedDuration,
   formatPayloadSize,
+  formatRelativeMessageTimestamp,
   formatRuntime,
   formatTime,
+  formatTranscriptTimestampDetails,
   formatTranscriptDuration,
   formatUsageTotal,
   parseMarkdownBlocks,
@@ -108,8 +110,8 @@ describe("dashboard conversation formatting", () => {
     expect(formatDuration(999)).toBe("999ms");
     expect(formatDuration(3_500)).toBe("3.5s");
     expect(formatDuration(2_700_000)).toBe("45m");
-    expect(formatDuration(839_497_000)).toBe("9d 17h 11m 37s");
-    expect(formatDuration(11_117_520_000)).toBe("4mo 8d 16h 12m");
+    expect(formatDuration(839_497_000)).toBe("9d 17h");
+    expect(formatDuration(11_117_520_000)).toBe("4mo 8d");
   });
 
   it("formats serialized payload sizes for transcript metadata", () => {
@@ -132,6 +134,23 @@ describe("dashboard conversation formatting", () => {
     expect(formatElapsedDuration(1_000, 4_500)).toBe("3.5s");
     expect(formatElapsedDuration(undefined, 4_500)).toBeUndefined();
     expect(formatElapsedDuration(4_500, 1_000)).toBeUndefined();
+  });
+
+  it("formats old transcript timestamps relative to now", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-10T16:00:00.000Z"));
+    expect(
+      formatRelativeMessageTimestamp(Date.parse("2026-08-09T16:00:00.000Z")),
+    ).toBe("yesterday");
+  });
+
+  it("formats canonical transcript timestamp details in local time and UTC", () => {
+    setDashboardTimeZone("America/Los_Angeles");
+    const details = formatTranscriptTimestampDetails(
+      Date.parse("2026-08-10T16:00:00.000Z"),
+    );
+    expect(details.local).toContain("9:00:00 AM");
+    expect(details.utc).toContain("4:00:00 PM");
   });
 
   it("formats absolute timestamps in the configured dashboard timezone", () => {
@@ -324,6 +343,13 @@ describe("dashboard conversation formatting", () => {
     expect(filterConversationList(rows, { source: "scheduler" })).toHaveLength(
       1,
     );
+    const archivedRows = [
+      ...rows,
+      { ...rows[0]!, archivedAt: "2026-01-02T00:00:00.000Z" },
+    ];
+    expect(
+      filterConversationList(archivedRows, { status: "archived" }),
+    ).toEqual([expect.objectContaining({ archivedAt: expect.any(String) })]);
   });
 
   it("formats actor and Slack labels", () => {

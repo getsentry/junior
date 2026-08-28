@@ -1,26 +1,24 @@
 /**
- * Serve one loopback ACP process, run the official client, and clean up its
- * short-lived personal token. This is test equipment, not a product transport.
+ * Serve one loopback ACP process and run the official client through the
+ * local dashboard authorization route. This is test equipment.
  */
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import type { AddressInfo } from "node:net";
+import path from "node:path";
 import { serve } from "@hono/node-server";
 import { createApp } from "@/app";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { getSqlExecutor } from "@/chat/db";
 import {
-  createPersonalToken,
-  revokePersonalToken,
-} from "@/personal-tokens/store";
-import {
-  closeApiTurnWorkFixture,
-  createConversationWorkWebHarness,
-} from "../tests/fixtures/api-turn";
+  closeConversationFixture,
+  createConversationWebHarness,
+} from "../tests/fixtures/conversation";
 import { streamScript } from "../tests/fixtures/conversation-work";
 
 const DEFAULT_PORT = 3099;
 const DEFAULT_REPLY = "Local Junior ACP completed this Turn.";
+const JUNIOR_PACKAGE_ROOT = path.resolve(import.meta.dirname, "..");
 
 function localPort(): number {
   const raw = process.env.JUNIOR_ACP_LOCAL_PORT?.trim();
@@ -33,18 +31,20 @@ function localPort(): number {
 }
 
 await migrateSchema(getSqlExecutor());
-const harness = await createConversationWorkWebHarness({
-  modelStream: streamScript(
-    process.env.JUNIOR_ACP_LOCAL_REPLY?.trim() || DEFAULT_REPLY,
-  ),
-});
+const harness = await createConversationWebHarness(
+  streamScript(process.env.JUNIOR_ACP_LOCAL_REPLY?.trim() || DEFAULT_REPLY),
+);
+// Use the loopback request origin, not deployed callback origins from env files.
+delete process.env.JUNIOR_BASE_URL;
+delete process.env.VERCEL_PROJECT_PRODUCTION_URL;
+delete process.env.VERCEL_URL;
 const app = await createApp({
   conversationWork: harness.conversationWork,
-  experimental: { acp: true, subagents: true },
+  dashboard: { authRequired: false },
 });
 let drainActive = false;
 
-/** Drain queued API Turn work while the smoke client waits for its response. */
+/** Drain queued Conversation work while the smoke client waits. */
 async function drainQueuedWork(): Promise<void> {
   if (drainActive || !harness.queue.hasQueuedMessages()) return;
   drainActive = true;
@@ -68,10 +68,6 @@ if (!server.listening) {
   await once(server, "listening");
 }
 
-const token = await createPersonalToken({
-  email: harness.actor.email,
-  name: "Local ACP test",
-});
 const address = server.address() as AddressInfo;
 const url = `http://127.0.0.1:${address.port}/api/acp`;
 console.log(`Local ACP URL: ${url}`);
@@ -79,7 +75,7 @@ console.log(`Local ACP URL: ${url}`);
 let smoke: ReturnType<typeof spawn> | undefined;
 let shutdownPromise: Promise<void> | undefined;
 
-/** Stop the HTTP client and server, revoke the token, and close test adapters. */
+/** Stop the HTTP client and server, then close test adapters. */
 function shutdown(): Promise<void> {
   shutdownPromise ??= (async () => {
     clearInterval(drainTimer);
@@ -88,8 +84,7 @@ function shutdown(): Promise<void> {
     }
     server.close();
     await once(server, "close");
-    await revokePersonalToken({ email: harness.actor.email, id: token.id });
-    await closeApiTurnWorkFixture();
+    await closeConversationFixture();
   })();
   return shutdownPromise;
 }
@@ -115,12 +110,12 @@ console.log("Running the official SDK smoke client...");
 let smokeExitCode = 1;
 try {
   smoke = spawn(process.execPath, ["--import", "tsx", "scripts/acp-smoke.ts"], {
-    cwd: process.cwd(),
+    cwd: JUNIOR_PACKAGE_ROOT,
     env: {
       ...process.env,
       JUNIOR_ACP_FOLLOW_UP:
         process.env.JUNIOR_ACP_FOLLOW_UP?.trim() || "Send a follow-up.",
-      JUNIOR_ACP_TOKEN: token.token,
+      JUNIOR_ACP_AUTO_AUTHORIZE: "true",
       JUNIOR_ACP_URL: url,
     },
     stdio: "inherit",

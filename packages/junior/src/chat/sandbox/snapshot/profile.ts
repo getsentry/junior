@@ -87,7 +87,6 @@ function compareCodePoints(left: string, right: string): number {
 
 function workspaceRecipe(workspace: Workspace) {
   // Sort repos so profile hashes stay stable when query order differs.
-  // Omit isPrimary: it only selects AGENTS.md at runtime, not snapshot contents.
   const repos = [...workspace.repos]
     .map(({ provider, repo }) => ({
       provider,
@@ -133,7 +132,7 @@ export function create(runtime: string, workspace?: Workspace): Profile | null {
         rebuildEpoch,
         dependencies,
         postinstall,
-        ...(workspace ? { workspace: workspaceRecipe(workspace) } : {}),
+        ...(workspace ? { workspace: workspaceRecipe(workspace) } : undefined),
       }),
     )
     .digest("hex");

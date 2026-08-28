@@ -14,7 +14,6 @@ import { commitMessages } from "@/chat/conversations/projection";
 import { historyItemFromPiMessage } from "@/chat/pi/conversation-events";
 import { upsertTurnRecord } from "@/chat/task-execution/turn-cursor";
 import { getConversationEventStore } from "@/chat/db";
-import { botConfig } from "@/chat/config";
 import type { AgentRun } from "@/chat/agent/types";
 import { createTestChatRuntime } from "../../fixtures/chat-runtime";
 import {
@@ -23,7 +22,6 @@ import {
   createTestDestination,
 } from "../../fixtures/slack-harness";
 import {
-  createModelAgentRunner,
   createModelAgentRunnerForRun,
   neverRunAgentRunner,
 } from "../../fixtures/agent-runner";
@@ -78,12 +76,10 @@ describe("Slack behavior: message content", () => {
             } as never;
           },
         },
-        replyExecutor: {
-          agentRunner: createModelAgentRunnerForRun((run) => {
-            captureAgentCall(calls, run);
-            return createModelStream([{ type: "text", text: "Summary sent." }]);
-          }),
-        },
+        agentRunner: createModelAgentRunnerForRun((run) => {
+          captureAgentCall(calls, run);
+          return createModelStream([{ type: "text", text: "Summary sent." }]);
+        }),
       },
     });
 
@@ -113,12 +109,10 @@ describe("Slack behavior: message content", () => {
 
     const { slackRuntime } = createTestChatRuntime({
       services: {
-        replyExecutor: {
-          agentRunner: createModelAgentRunnerForRun((run) => {
-            captureAgentCall(calls, run);
-            return createModelStream([{ type: "text", text: "Reviewed." }]);
-          }),
-        },
+        agentRunner: createModelAgentRunnerForRun((run) => {
+          captureAgentCall(calls, run);
+          return createModelStream([{ type: "text", text: "Reviewed." }]);
+        }),
       },
     });
 
@@ -158,12 +152,10 @@ describe("Slack behavior: message content", () => {
 
     const { slackRuntime } = createTestChatRuntime({
       services: {
-        replyExecutor: {
-          agentRunner: createModelAgentRunnerForRun((run) => {
-            captureAgentCall(calls, run);
-            return createModelStream([{ type: "text", text: "Done." }]);
-          }),
-        },
+        agentRunner: createModelAgentRunnerForRun((run) => {
+          captureAgentCall(calls, run);
+          return createModelStream([{ type: "text", text: "Done." }]);
+        }),
       },
     });
 
@@ -191,14 +183,10 @@ describe("Slack behavior: message content", () => {
 
     const { slackRuntime } = createTestChatRuntime({
       services: {
-        replyExecutor: {
-          agentRunner: createModelAgentRunnerForRun((run) => {
-            captureAgentCall(calls, run);
-            return createModelStream([
-              { type: "text", text: "Alert reviewed." },
-            ]);
-          }),
-        },
+        agentRunner: createModelAgentRunnerForRun((run) => {
+          captureAgentCall(calls, run);
+          return createModelStream([{ type: "text", text: "Alert reviewed." }]);
+        }),
       },
     });
 
@@ -242,12 +230,10 @@ describe("Slack behavior: message content", () => {
 
     const { slackRuntime } = createTestChatRuntime({
       services: {
-        replyExecutor: {
-          agentRunner: createModelAgentRunnerForRun((run) => {
-            captureAgentCall(calls, run);
-            return createModelStream([{ type: "text", text: "Review found." }]);
-          }),
-        },
+        agentRunner: createModelAgentRunnerForRun((run) => {
+          captureAgentCall(calls, run);
+          return createModelStream([{ type: "text", text: "Review found." }]);
+        }),
       },
     });
 
@@ -322,9 +308,7 @@ describe("Slack behavior: message content", () => {
   it("does not invoke the agent for self-authored mention messages", async () => {
     const { slackRuntime } = createTestChatRuntime({
       services: {
-        replyExecutor: {
-          agentRunner: neverRunAgentRunner(),
-        },
+        agentRunner: neverRunAgentRunner(),
       },
     });
 
@@ -365,18 +349,15 @@ describe("Slack behavior: message content", () => {
             } as never;
           },
         },
-        replyExecutor: {
-          agentRunner: createModelAgentRunnerForRun((run) => {
-            captureAgentCall(calls, run);
-            return createModelStream([
-              {
-                type: "text",
-                text:
-                  calls.length === 1 ? "First response." : "Second response.",
-              },
-            ]);
-          }),
-        },
+        agentRunner: createModelAgentRunnerForRun((run) => {
+          captureAgentCall(calls, run);
+          return createModelStream([
+            {
+              type: "text",
+              text: calls.length === 1 ? "First response." : "Second response.",
+            },
+          ]);
+        }),
       },
     });
 
@@ -458,12 +439,10 @@ describe("Slack behavior: message content", () => {
             }) as never,
           autoCompactionTriggerTokens: 100,
         },
-        replyExecutor: {
-          agentRunner: createModelAgentRunnerForRun((run) => {
-            captureAgentCall(calls, run);
-            return createModelStream([{ type: "text", text: "Done." }]);
-          }),
-        },
+        agentRunner: createModelAgentRunnerForRun((run) => {
+          captureAgentCall(calls, run);
+          return createModelStream([{ type: "text", text: "Done." }]);
+        }),
       },
     });
 
@@ -505,64 +484,6 @@ describe("Slack behavior: message content", () => {
     expect(JSON.stringify(calls[0]?.piMessages)).not.toContain(
       "<runtime-turn-context>",
     );
-  });
-
-  it("uses the projected handoff model for turn-start context limits", async () => {
-    const modelIds: string[] = [];
-    const priorMessages = [
-      {
-        role: "user",
-        content: [{ type: "text", text: "Continue after handoff." }],
-        timestamp: 1,
-      },
-    ] as PiMessage[];
-    const thread = await createTestThread({
-      id: "slack:C0BEHAVIOR:1700005005.500",
-    });
-    await getConversationEventStore().replaceHistory(thread.id, {
-      createdAtMs: 1,
-      data: {
-        type: "handoff",
-        modelProfile: "handoff",
-        modelId: botConfig.profiles.handoff!.modelId,
-        replacementHistory: priorMessages.map((message) => ({
-          item: historyItemFromPiMessage(message, { authority: "context" }),
-        })),
-      },
-    });
-    await persistThreadState(thread, {
-      conversation: coerceThreadConversationState({}),
-    });
-
-    const { slackRuntime } = createTestChatRuntime({
-      services: {
-        replyExecutor: {
-          contextCompactor: {
-            maybeCompact: async (args) => {
-              modelIds.push(args.modelId);
-              return { compacted: false, reason: "below_threshold" };
-            },
-          },
-          agentRunner: createModelAgentRunner(
-            createModelStream([{ type: "text", text: "Done." }]),
-          ),
-        },
-      },
-    });
-
-    await slackRuntime.handleNewMention(
-      thread,
-      createTestMessage({
-        id: "m-content-handoff-model",
-        text: "<@U0APP> continue",
-        isMention: true,
-        threadId: thread.id,
-        author: { userId: "U0TESTER" },
-      }),
-      { destination: createTestDestination(thread) },
-    );
-
-    expect(modelIds).toEqual([botConfig.profiles.handoff!.modelId]);
   });
 
   it("rejects active-turn history that conflicts with committed conversation history", async () => {
@@ -632,12 +553,10 @@ describe("Slack behavior: message content", () => {
           },
           autoCompactionTriggerTokens: 100,
         },
-        replyExecutor: {
-          agentRunner: createModelAgentRunnerForRun((run) => {
-            captureAgentCall(calls, run);
-            return createModelStream([{ type: "text", text: "Done." }]);
-          }),
-        },
+        agentRunner: createModelAgentRunnerForRun((run) => {
+          captureAgentCall(calls, run);
+          return createModelStream([{ type: "text", text: "Done." }]);
+        }),
       },
     });
 

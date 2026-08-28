@@ -1,16 +1,20 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createSlackSource } from "@sentry/junior-plugin-api";
 import {
-  createSchedulerSqlStore,
   createSlackScheduleCreateTaskTool,
   createSlackScheduleDeleteTaskTool,
   createSlackScheduleListTasksTool,
   createSlackScheduleRunTaskNowTool,
   createSlackScheduleUpdateTaskTool,
-  type ScheduledTask,
-  type SchedulerDb,
   type SchedulerToolContext,
 } from "@/chat/scheduled-tasks";
+import { claimDueScheduledRun } from "@/chat/scheduled-tasks/runs";
+import {
+  listScheduledTasks as listStoredTasks,
+  listScheduledTasksForTeam as listStoredTasksForTeam,
+  readScheduledTask as readStoredTask,
+  saveScheduledTask,
+} from "@/chat/scheduled-tasks/tasks";
+import type { ScheduledTask } from "@/chat/scheduled-tasks/types";
 import * as dbModule from "@/chat/db";
 import { getPluginTools, setPlugins } from "@/chat/plugins/agent-hooks";
 import { createTools } from "@/chat/tools";
@@ -18,29 +22,27 @@ import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import type { ToolExecuteOptions } from "@/chat/tools/definition";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import type { JuniorDatabase } from "@/db/db";
 import {
   createLocalJuniorSqlFixture,
   type LocalJuniorSqlFixture,
 } from "../fixtures/sql";
-
+import {
+  createSlackSource,
+} from "@sentry/junior-plugin-api";
 vi.hoisted(() => {
   process.env.JUNIOR_STATE_ADAPTER = "memory";
 });
 
 const TEST_TEAM_ID = `TSCHEDULE${Date.now()}`;
 let currentFixture: LocalJuniorSqlFixture | undefined;
-let currentSchedulerStore: SchedulerToolContext["store"] | undefined;
 let toolCallSequence = 0;
 
 async function useSchedulerSqlPlugin() {
   const fixture = await createLocalJuniorSqlFixture();
   await migrateSchema(fixture.sql);
-  const db = fixture.sql.db() as unknown as SchedulerDb;
   vi.spyOn(dbModule, "getDb").mockReturnValue(fixture.sql.db());
-  return {
-    fixture,
-    store: createSchedulerSqlStore(db),
-  };
+  return fixture;
 }
 
 function createContext(
@@ -87,9 +89,11 @@ function createContext(
     actor,
     now: () => Date.parse("2026-05-24T12:00:00.000Z"),
     userText: "schedule this weekly",
-    store: schedulerStore(),
     users: {
-      resolveActor: async () => ({ identity, ...(user ? { user } : {}) }),
+      resolveActor: async () => ({
+        identity,
+        ...(user ? { user } : undefined),
+      }),
     },
     ...contextOverrides,
   };
@@ -132,23 +136,32 @@ async function executeRegisteredTool<TDetails>(
   })) as TDetails;
 }
 
-function schedulerStore() {
-  if (!currentSchedulerStore) {
-    throw new Error("Scheduler SQL store is not initialized");
+function schedulerDb(): JuniorDatabase {
+  if (!currentFixture) {
+    throw new Error("Scheduler SQL database is not initialized");
   }
-  return currentSchedulerStore;
+  return currentFixture.sql.db();
+}
+
+async function readScheduledTask(id: string) {
+  return await readStoredTask(schedulerDb(), id);
+}
+
+async function listScheduledTasksForTeam(teamId: string) {
+  return await listStoredTasksForTeam(schedulerDb(), teamId);
+}
+
+async function listScheduledTasks() {
+  return await listStoredTasks(schedulerDb());
 }
 
 async function initializeSchedulerSqlStore(): Promise<void> {
-  const plugin = await useSchedulerSqlPlugin();
-  currentFixture = plugin.fixture;
-  currentSchedulerStore = plugin.store;
+  currentFixture = await useSchedulerSqlPlugin();
 }
 
 async function cleanupSchedulerSqlStore(): Promise<void> {
   await currentFixture?.close();
   currentFixture = undefined;
-  currentSchedulerStore = undefined;
 }
 
 async function createTask(
@@ -249,9 +262,7 @@ describe("Slack schedule tools", () => {
         next_run_at: "2026-05-25T16:00:00.000Z",
       },
     });
-    await expect(
-      schedulerStore().getTask(created.task.id),
-    ).resolves.toMatchObject({
+    await expect(readScheduledTask(created.task.id)).resolves.toMatchObject({
       creatorIdentityId: `identity:${TEST_TEAM_ID}:U123`,
     });
     expect(created).not.toHaveProperty("data");
@@ -288,7 +299,7 @@ describe("Slack schedule tools", () => {
     const context = createContext({ linkedUser: false });
     const created = await createTask(context);
 
-    const stored = await schedulerStore().getTask(created.task.id);
+    const stored = await readScheduledTask(created.task.id);
     expect(stored).toMatchObject({
       creatorIdentityId: `identity:${TEST_TEAM_ID}:U123`,
     });
@@ -317,7 +328,7 @@ describe("Slack schedule tools", () => {
       },
     });
     await expect(
-      schedulerStore().listTasksForTeam(TEST_TEAM_ID),
+      listScheduledTasksForTeam(TEST_TEAM_ID),
     ).resolves.toMatchObject([
       {
         destination: { channelId: "C123" },
@@ -351,9 +362,9 @@ describe("Slack schedule tools", () => {
 
     expect(replay.task.id).toBe(first.task.id);
     expect(replay.task.next_run_at).toBe(first.task.next_run_at);
-    await expect(
-      schedulerStore().listTasksForTeam(TEST_TEAM_ID),
-    ).resolves.toHaveLength(1);
+    await expect(listScheduledTasksForTeam(TEST_TEAM_ID)).resolves.toHaveLength(
+      1,
+    );
   });
 
   it("allows separate create calls to make equivalent tasks", async () => {
@@ -378,9 +389,9 @@ describe("Slack schedule tools", () => {
     });
 
     expect(second.task.id).not.toBe(first.task.id);
-    await expect(
-      schedulerStore().listTasksForTeam(TEST_TEAM_ID),
-    ).resolves.toHaveLength(2);
+    await expect(listScheduledTasksForTeam(TEST_TEAM_ID)).resolves.toHaveLength(
+      2,
+    );
   });
 
   it("does not store Slack ids as creator display identity", async () => {
@@ -396,7 +407,7 @@ describe("Slack schedule tools", () => {
       }),
     )) as { task: { id: string } };
 
-    await expect(schedulerStore().getTask(created.task.id)).resolves.toEqual(
+    await expect(readScheduledTask(created.task.id)).resolves.toEqual(
       expect.objectContaining({
         createdBy: {
           slackUserId: "U039RR91S",
@@ -422,9 +433,7 @@ describe("Slack schedule tools", () => {
     await expect(rejected).rejects.toThrow(
       "No active Slack actor context is available.",
     );
-    await expect(
-      schedulerStore().listTasksForTeam(TEST_TEAM_ID),
-    ).resolves.toEqual([]);
+    await expect(listScheduledTasksForTeam(TEST_TEAM_ID)).resolves.toEqual([]);
   });
 
   it("rejects invalid Slack source before creating a task", async () => {
@@ -444,9 +453,7 @@ describe("Slack schedule tools", () => {
     await expect(rejected).rejects.toThrow(
       "Active Slack conversation workspace is invalid.",
     );
-    await expect(
-      schedulerStore().listTasksForTeam(TEST_TEAM_ID),
-    ).resolves.toEqual([]);
+    await expect(listScheduledTasksForTeam(TEST_TEAM_ID)).resolves.toEqual([]);
   });
 
   it("accepts Slack source message context and stores canonical task destinations", async () => {
@@ -463,7 +470,7 @@ describe("Slack schedule tools", () => {
     );
 
     const taskId = (result as { task: { id: string } }).task.id;
-    await expect(schedulerStore().getTask(taskId)).resolves.toMatchObject({
+    await expect(readScheduledTask(taskId)).resolves.toMatchObject({
       destination: {
         platform: "slack",
         teamId: TEST_TEAM_ID,
@@ -474,13 +481,13 @@ describe("Slack schedule tools", () => {
 
   it("rejects invalid scheduled task routing context at the store boundary", async () => {
     await createTask();
-    const task = (await schedulerStore().listTasks()).at(0);
+    const task = (await listScheduledTasks()).at(0);
     if (!task) {
       throw new Error("Expected scheduled task to be created");
     }
 
     await expect(
-      schedulerStore().saveTask({
+      saveScheduledTask(schedulerDb(), {
         ...task,
         id: "sched_bad_destination",
         destination: {
@@ -490,29 +497,29 @@ describe("Slack schedule tools", () => {
         },
       }),
     ).rejects.toThrow("Scheduled task routing context is invalid.");
-    await expect(
-      schedulerStore().getTask("sched_bad_destination"),
-    ).resolves.toBe(undefined);
+    await expect(readScheduledTask("sched_bad_destination")).resolves.toBe(
+      undefined,
+    );
 
     await expect(
-      schedulerStore().saveTask({
+      saveScheduledTask(schedulerDb(), {
         ...task,
         id: "sched_bad_credential_mode",
         credentialMode: "invalid" as ScheduledTask["credentialMode"],
       }),
     ).rejects.toThrow("Scheduled task routing context is invalid.");
-    await expect(
-      schedulerStore().getTask("sched_bad_credential_mode"),
-    ).resolves.toBe(undefined);
+    await expect(readScheduledTask("sched_bad_credential_mode")).resolves.toBe(
+      undefined,
+    );
 
     await expect(
-      schedulerStore().saveTask({
+      saveScheduledTask(schedulerDb(), {
         ...task,
         id: "sched_bad_creator",
         createdBy: { slackUserId: "unknown" },
       }),
     ).rejects.toThrow("Scheduled task routing context is invalid.");
-    await expect(schedulerStore().getTask("sched_bad_creator")).resolves.toBe(
+    await expect(readScheduledTask("sched_bad_creator")).resolves.toBe(
       undefined,
     );
   });
@@ -547,7 +554,7 @@ describe("Slack schedule tools", () => {
       },
     });
     await expect(
-      schedulerStore().listTasksForTeam(TEST_TEAM_ID),
+      listScheduledTasksForTeam(TEST_TEAM_ID),
     ).resolves.toMatchObject([
       {
         conversationAccess: {
@@ -571,9 +578,7 @@ describe("Slack schedule tools", () => {
         },
       }),
     ).rejects.toThrow("Use a local date in YYYY-MM-DD format.");
-    await expect(
-      schedulerStore().listTasksForTeam(TEST_TEAM_ID),
-    ).resolves.toEqual([]);
+    await expect(listScheduledTasksForTeam(TEST_TEAM_ID)).resolves.toEqual([]);
   });
 
   it("rejects missing structured schedules with a tool error", async () => {
@@ -582,9 +587,7 @@ describe("Slack schedule tools", () => {
         schedule: undefined,
       }),
     ).rejects.toThrow("schedule");
-    await expect(
-      schedulerStore().listTasksForTeam(TEST_TEAM_ID),
-    ).resolves.toEqual([]);
+    await expect(listScheduledTasksForTeam(TEST_TEAM_ID)).resolves.toEqual([]);
   });
 
   it("rejects unsupported recurring frequencies", async () => {
@@ -597,9 +600,7 @@ describe("Slack schedule tools", () => {
         },
       }),
     ).rejects.toThrow("Invalid tool arguments: schedule");
-    await expect(
-      schedulerStore().listTasksForTeam(TEST_TEAM_ID),
-    ).resolves.toEqual([]);
+    await expect(listScheduledTasksForTeam(TEST_TEAM_ID)).resolves.toEqual([]);
   });
 
   it("rejects removed top-level scheduling fields", async () => {
@@ -608,9 +609,7 @@ describe("Slack schedule tools", () => {
         next_run_at: "2026-05-25T16:00:00.000Z",
       }),
     ).rejects.toThrow("Unrecognized key");
-    await expect(
-      schedulerStore().listTasksForTeam(TEST_TEAM_ID),
-    ).resolves.toEqual([]);
+    await expect(listScheduledTasksForTeam(TEST_TEAM_ID)).resolves.toEqual([]);
   });
 
   it("rejects weekly schedules without weekdays", async () => {
@@ -623,9 +622,7 @@ describe("Slack schedule tools", () => {
         },
       }),
     ).rejects.toThrow("Weekly schedules require weekdays.");
-    await expect(
-      schedulerStore().listTasksForTeam(TEST_TEAM_ID),
-    ).resolves.toEqual([]);
+    await expect(listScheduledTasksForTeam(TEST_TEAM_ID)).resolves.toEqual([]);
   });
 
   it("rejects recurring fields that contradict the selected frequency", async () => {
@@ -639,9 +636,7 @@ describe("Slack schedule tools", () => {
         },
       }),
     ).rejects.toThrow("weekdays applies only to weekly schedules.");
-    await expect(
-      schedulerStore().listTasksForTeam(TEST_TEAM_ID),
-    ).resolves.toEqual([]);
+    await expect(listScheduledTasksForTeam(TEST_TEAM_ID)).resolves.toEqual([]);
   });
 
   it("edits and deletes a task from the same Slack destination", async () => {
@@ -672,7 +667,7 @@ describe("Slack schedule tools", () => {
         schedule: "Every week on Tuesday at 10:00 (America/Los_Angeles)",
       },
     });
-    await expect(schedulerStore().getTask(taskId)).resolves.toMatchObject({
+    await expect(readScheduledTask(taskId)).resolves.toMatchObject({
       nextRunAtMs: Date.parse("2026-05-26T17:00:00.000Z"),
       schedule: {
         recurrence: {
@@ -734,14 +729,15 @@ describe("Slack schedule tools", () => {
     const tool = createSlackScheduleUpdateTaskTool(context);
 
     await expect(
-      executeTool(tool, {
-        task_id: created.task.id,
-        next_run_at: "2026-06-01T16:00:00.000Z",
-      } as unknown as Parameters<NonNullable<typeof tool.execute>>[0]),
+      executeTool(
+        tool,
+        ({
+          task_id: created.task.id,
+          next_run_at: "2026-06-01T16:00:00.000Z",
+        } as Parameters<NonNullable<typeof tool.execute>>[0]),
+      ),
     ).rejects.toThrow("Unrecognized key");
-    await expect(
-      schedulerStore().getTask(created.task.id),
-    ).resolves.toMatchObject({
+    await expect(readScheduledTask(created.task.id)).resolves.toMatchObject({
       nextRunAtMs: Date.parse("2026-05-25T16:00:00.000Z"),
     });
   });
@@ -754,18 +750,19 @@ describe("Slack schedule tools", () => {
     const updateTool = createSlackScheduleUpdateTaskTool(context);
 
     await expect(
-      executeTool(updateTool, {
-        task_id: created.task.id,
-        schedule: {
-          kind: "recurring",
-          frequency: "hourly",
-          time: "09:00",
-        },
-      } as unknown as Parameters<NonNullable<typeof updateTool.execute>>[0]),
+      executeTool(
+        updateTool,
+        ({
+          task_id: created.task.id,
+          schedule: {
+            kind: "recurring",
+            frequency: "hourly",
+            time: "09:00",
+          },
+        } as Parameters<NonNullable<typeof updateTool.execute>>[0]),
+      ),
     ).rejects.toThrow("Invalid tool arguments: schedule");
-    await expect(
-      schedulerStore().getTask(created.task.id),
-    ).resolves.toMatchObject({
+    await expect(readScheduledTask(created.task.id)).resolves.toMatchObject({
       schedule: {
         description: "Every week on Monday at 09:00 (America/Los_Angeles)",
       },
@@ -797,9 +794,7 @@ describe("Slack schedule tools", () => {
         schedule: "Once on 2026-06-01 at 09:00 (America/Los_Angeles)",
       },
     });
-    await expect(
-      schedulerStore().getTask(created.task.id),
-    ).resolves.toMatchObject({
+    await expect(readScheduledTask(created.task.id)).resolves.toMatchObject({
       schedule: {
         kind: "one_off",
       },
@@ -839,7 +834,7 @@ describe("Slack schedule tools", () => {
     const taskId = created.task.id;
 
     // Task is bound to the DM channel, not any assistant source channel.
-    await expect(schedulerStore().getTask(taskId)).resolves.toMatchObject({
+    await expect(readScheduledTask(taskId)).resolves.toMatchObject({
       destination: { channelId: "DDM" },
     });
 
@@ -918,9 +913,7 @@ describe("Slack schedule tools", () => {
         status: "deleted",
       },
     });
-    await expect(
-      schedulerStore().getTask(created.task.id),
-    ).resolves.toMatchObject({
+    await expect(readScheduledTask(created.task.id)).resolves.toMatchObject({
       status: "deleted",
       executionActor: {
         platform: "system",
@@ -939,7 +932,7 @@ describe("Slack schedule tools", () => {
       task: { credential_mode: "creator" },
     });
     await expect(
-      schedulerStore().listTasksForTeam(TEST_TEAM_ID),
+      listScheduledTasksForTeam(TEST_TEAM_ID),
     ).resolves.toMatchObject([
       {
         createdBy: { slackUserId: "U123" },
@@ -1001,17 +994,17 @@ describe("Slack schedule tools", () => {
         timezone: "America/Los_Angeles",
       },
     });
-    await expect(
-      schedulerStore().getTask(created.task.id),
-    ).resolves.toMatchObject({ credentialMode: "creator" });
+    await expect(readScheduledTask(created.task.id)).resolves.toMatchObject({
+      credentialMode: "creator",
+    });
 
     await executeTool(createSlackScheduleUpdateTaskTool(otherActor), {
       task_id: created.task.id,
       task: "Weekly issue digest: Summarize open scheduler issues and post a concise summary.",
     });
-    await expect(
-      schedulerStore().getTask(created.task.id),
-    ).resolves.toMatchObject({ credentialMode: "creator" });
+    await expect(readScheduledTask(created.task.id)).resolves.toMatchObject({
+      credentialMode: "creator",
+    });
 
     const updated = await executeTool(
       createSlackScheduleUpdateTaskTool(otherActor),
@@ -1023,9 +1016,9 @@ describe("Slack schedule tools", () => {
     expect(updated).toMatchObject({
       task: { credential_mode: "system" },
     });
-    await expect(
-      schedulerStore().getTask(created.task.id),
-    ).resolves.toMatchObject({ credentialMode: "system" });
+    await expect(readScheduledTask(created.task.id)).resolves.toMatchObject({
+      credentialMode: "system",
+    });
   });
 
   it("updates credential availability and allows only the creator to enable it", async () => {
@@ -1035,7 +1028,7 @@ describe("Slack schedule tools", () => {
       task: { credential_mode: "creator" },
     });
     const taskId = (created as { task: { id: string } }).task.id;
-    const original = await schedulerStore().getTask(taskId);
+    const original = await readScheduledTask(taskId);
     if (!original) {
       throw new Error("Expected scheduled task to exist");
     }
@@ -1055,7 +1048,7 @@ describe("Slack schedule tools", () => {
     ).resolves.toMatchObject({
       task: { credential_mode: "system" },
     });
-    await expect(schedulerStore().getTask(taskId)).resolves.toMatchObject({
+    await expect(readScheduledTask(taskId)).resolves.toMatchObject({
       credentialMode: "system",
       destination: original.destination,
       nextRunAtMs: original.nextRunAtMs,
@@ -1109,7 +1102,7 @@ describe("Slack schedule tools", () => {
         credential_mode: "creator",
       },
     });
-    const tasks = await schedulerStore().listTasksForTeam(TEST_TEAM_ID);
+    const tasks = await listScheduledTasksForTeam(TEST_TEAM_ID);
     expect(tasks).toMatchObject([
       {
         conversationAccess: {
@@ -1147,9 +1140,7 @@ describe("Slack schedule tools", () => {
         },
       ),
     ).rejects.toThrow("Active Slack conversation channel is invalid.");
-    await expect(
-      schedulerStore().listTasksForTeam(TEST_TEAM_ID),
-    ).resolves.toEqual([]);
+    await expect(listScheduledTasksForTeam(TEST_TEAM_ID)).resolves.toEqual([]);
   });
 
   it("stores canonical Slack destinations directly", async () => {
@@ -1169,7 +1160,7 @@ describe("Slack schedule tools", () => {
       },
     });
     await expect(
-      schedulerStore().listTasksForTeam(TEST_TEAM_ID),
+      listScheduledTasksForTeam(TEST_TEAM_ID),
     ).resolves.toMatchObject([
       {
         destination: { channelId: "D123" },
@@ -1229,9 +1220,7 @@ describe("Slack schedule tools", () => {
         },
       }),
     ).rejects.toThrow("timezone must be a valid IANA time zone.");
-    await expect(
-      schedulerStore().listTasksForTeam(TEST_TEAM_ID),
-    ).resolves.toEqual([]);
+    await expect(listScheduledTasksForTeam(TEST_TEAM_ID)).resolves.toEqual([]);
   });
 
   it("preserves a recurring task calendar anchor on content-only edits", async () => {
@@ -1239,13 +1228,12 @@ describe("Slack schedule tools", () => {
     const created = (await createTask(context)) as {
       task: { id: string };
     };
-    const store = schedulerStore();
-    const task = await store.getTask(created.task.id);
+    const task = await readScheduledTask(created.task.id);
     expect(task?.schedule.recurrence).toMatchObject({
       interval: 1,
       startDate: "2026-05-25",
     });
-    await store.saveTask({
+    await saveScheduledTask(schedulerDb(), {
       ...task!,
       nextRunAtMs: Date.parse("2026-06-08T16:00:00.000Z"),
       updatedAtMs: Date.parse("2026-05-26T16:00:00.000Z"),
@@ -1264,7 +1252,7 @@ describe("Slack schedule tools", () => {
         task: "Renamed issue digest: Summarize open scheduler issues.",
       },
     });
-    await expect(store.getTask(created.task.id)).resolves.toMatchObject({
+    await expect(readScheduledTask(created.task.id)).resolves.toMatchObject({
       nextRunAtMs: Date.parse("2026-06-08T16:00:00.000Z"),
       schedule: {
         recurrence: {
@@ -1280,10 +1268,9 @@ describe("Slack schedule tools", () => {
     const created = (await createTask(context)) as {
       task: { id: string };
     };
-    const store = schedulerStore();
-    const task = await store.getTask(created.task.id);
+    const task = await readScheduledTask(created.task.id);
     expect(task).toBeDefined();
-    await store.saveTask({
+    await saveScheduledTask(schedulerDb(), {
       ...task!,
       status: "blocked",
       statusReason: "Missing GitHub credentials.",
@@ -1304,7 +1291,7 @@ describe("Slack schedule tools", () => {
         status: "active",
       },
     });
-    const resumed = await store.getTask(created.task.id);
+    const resumed = await readScheduledTask(created.task.id);
     expect(resumed).toMatchObject({
       status: "active",
     });
@@ -1316,11 +1303,10 @@ describe("Slack schedule tools", () => {
     const created = (await createTask(context)) as {
       task: { id: string };
     };
-    const store = schedulerStore();
-    const task = await store.getTask(created.task.id);
+    const task = await readScheduledTask(created.task.id);
     expect(task).toBeDefined();
     const scheduledNextRunAtMs = Date.parse("2026-06-01T16:00:00.000Z");
-    await store.saveTask({
+    await saveScheduledTask(schedulerDb(), {
       ...task!,
       nextRunAtMs: scheduledNextRunAtMs,
       updatedAtMs: Date.parse("2026-05-25T16:01:00.000Z"),
@@ -1342,7 +1328,7 @@ describe("Slack schedule tools", () => {
         next_run_at: "2026-06-01T16:00:00.000Z",
       },
     });
-    const due = await store.getTask(created.task.id);
+    const due = await readScheduledTask(created.task.id);
     expect(due).toMatchObject({
       status: "active",
       nextRunAtMs: scheduledNextRunAtMs,
@@ -1358,7 +1344,9 @@ describe("Slack schedule tools", () => {
     expect(due?.runNowAtMs).toBeGreaterThanOrEqual(beforeMs);
     expect(due?.runNowAtMs).toBeLessThanOrEqual(afterMs);
 
-    await expect(store.claimDueRun({ nowMs: afterMs })).resolves.toMatchObject({
+    await expect(
+      claimDueScheduledRun(schedulerDb(), { nowMs: afterMs }),
+    ).resolves.toMatchObject({
       taskId: created.task.id,
       scheduledForMs: due?.runNowAtMs,
       status: "pending",
@@ -1370,10 +1358,9 @@ describe("Slack schedule tools", () => {
     const created = (await createTask(context)) as {
       task: { id: string };
     };
-    const store = schedulerStore();
-    const task = await store.getTask(created.task.id);
+    const task = await readScheduledTask(created.task.id);
     expect(task).toBeDefined();
-    await store.saveTask({
+    await saveScheduledTask(schedulerDb(), {
       ...task!,
       status: "blocked",
       statusReason: "Blocked until credentials are available.",
@@ -1384,8 +1371,10 @@ describe("Slack schedule tools", () => {
       executeTool(createSlackScheduleRunTaskNowTool(context), {
         task_id: created.task.id,
       }),
-    ).rejects.toThrow("Scheduled task must be active before it can be run now.");
-    const blocked = await store.getTask(created.task.id);
+    ).rejects.toThrow(
+      "Scheduled task must be active before it can be run now.",
+    );
+    const blocked = await readScheduledTask(created.task.id);
     expect(blocked).toMatchObject({
       status: "blocked",
       statusReason: "Blocked until credentials are available.",
@@ -1403,9 +1392,7 @@ describe("Slack schedule tools", () => {
       task_id: created.task.id,
     });
 
-    await expect(
-      schedulerStore().listTasksForTeam(TEST_TEAM_ID),
-    ).resolves.toEqual([]);
+    await expect(listScheduledTasksForTeam(TEST_TEAM_ID)).resolves.toEqual([]);
   });
 
   it("claims due runs idempotently", async () => {
@@ -1413,17 +1400,16 @@ describe("Slack schedule tools", () => {
     const created = (await createTask(context)) as {
       task: { id: string };
     };
-    const store = schedulerStore();
-    const task = await store.getTask(created.task.id);
+    const task = await readScheduledTask(created.task.id);
     expect(task).toBeDefined();
-    await store.saveTask({
+    await saveScheduledTask(schedulerDb(), {
       ...task!,
       nextRunAtMs: 1000,
       updatedAtMs: 1000,
     });
 
-    const first = await store.claimDueRun({ nowMs: 2000 });
-    const second = await store.claimDueRun({ nowMs: 2000 });
+    const first = await claimDueScheduledRun(schedulerDb(), { nowMs: 2000 });
+    const second = await claimDueScheduledRun(schedulerDb(), { nowMs: 2000 });
 
     expect(first).toMatchObject({
       taskId: created.task.id,
@@ -1604,15 +1590,16 @@ describe("Slack schedule tools", () => {
       "Scheduled tasks can only be managed within the same Slack workspace.",
     );
 
-    const store = schedulerStore();
-    const task = await store.getTask(created.task.id);
+    const task = await readScheduledTask(created.task.id);
     expect(task).toBeDefined();
-    await store.saveTask({
+    await saveScheduledTask(schedulerDb(), {
       ...task!,
       nextRunAtMs: 1000,
       updatedAtMs: 1000,
     });
-    await expect(store.claimDueRun({ nowMs: 2000 })).resolves.toMatchObject({
+    await expect(
+      claimDueScheduledRun(schedulerDb(), { nowMs: 2000 }),
+    ).resolves.toMatchObject({
       taskId: created.task.id,
       status: "pending",
     });
@@ -1631,7 +1618,7 @@ describe("Slack schedule tools", () => {
       "Scheduled task cannot be moved while an occurrence is already running",
     );
 
-    await expect(store.getTask(created.task.id)).resolves.toMatchObject({
+    await expect(readScheduledTask(created.task.id)).resolves.toMatchObject({
       destination: { channelId: "CSOURCE" },
     });
   });
@@ -1650,7 +1637,7 @@ describe("Slack schedule tool wiring via createTools", () => {
     // Verifies that real getPluginTools wiring passes Source through to
     // the scheduler, which stores it as the task destination.
     const previous = setPlugins([]);
-    const { fixture, store } = await useSchedulerSqlPlugin();
+    const fixture = await useSchedulerSqlPlugin();
     try {
       const TEAM_ID = `TWIRING${Date.now()}`;
       const identity = {
@@ -1669,6 +1656,7 @@ describe("Slack schedule tool wiring via createTools", () => {
         [],
         {},
         {
+          conversationId: `slack:DDM:1700000000.100000`,
           source: createSlackSource({
             teamId: TEAM_ID,
             channelId: "DDM",
@@ -1719,7 +1707,7 @@ describe("Slack schedule tool wiring via createTools", () => {
       const taskId = result.task.id;
 
       // Task destination must be the raw DM channel, NOT the assistant context.
-      const stored = await store.getTask(taskId);
+      const stored = await readStoredTask(fixture.sql.db(), taskId);
       expect(stored).toMatchObject({
         destination: { channelId: "DDM", teamId: TEAM_ID },
         conversationAccess: { audience: "direct", visibility: "private" },

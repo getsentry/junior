@@ -14,7 +14,8 @@ import {
 import { useTasksData } from "../../api";
 import { Button, ToggleButton } from "../../components/Button";
 import { FilterBar, FilterGroup } from "../../components/FilterBar";
-import { LoadingView } from "../../components/LoadingView";
+import { InlineError } from "../../components/InlineError";
+import { PageContentSkeleton } from "../../components/PageContentSkeleton";
 import {
   pageCount,
   pageItems,
@@ -26,7 +27,7 @@ import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
 import { StatCard } from "../../components/metrics/StatCard";
 import { deleteDashboardResource } from "../../http";
-import { formatTime } from "../../format";
+import { formatTime, taskPath } from "../../format";
 import {
   pathWithSearch,
   useDebouncedSearchParam,
@@ -105,6 +106,7 @@ export function TasksPage(props: {
   const listPath = "/tasks/list";
   const tasksPath = (pathname: string) =>
     pathWithSearch(pathname, location.search);
+  const selectedTaskPath = (id: string) => tasksPath(taskPath(id));
   const tasks = query.data?.tasks ?? EMPTY_TASKS;
   const mineCount = tasks.filter((task) => task.ownedByViewer).length;
   const publicCount = tasks.filter(
@@ -163,9 +165,7 @@ export function TasksPage(props: {
     },
   });
 
-  if (!query.data && !query.error) {
-    return <LoadingView label="Loading tasks" />;
-  }
+  const loading = !query.data && !query.error;
 
   return (
     <>
@@ -180,7 +180,13 @@ export function TasksPage(props: {
           : {})}
         title={props.view === "overview" ? "Tasks" : "All tasks"}
       />
-      {props.view === "overview" ? (
+      {loading ? (
+        <PageContentSkeleton
+          label="Loading tasks"
+          variant={props.view === "overview" ? "stats" : "list"}
+        />
+      ) : null}
+      {!loading && props.view === "overview" ? (
         <>
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             <StatCard
@@ -213,7 +219,7 @@ export function TasksPage(props: {
           ) : null}
         </>
       ) : null}
-      {props.view === "list" ? (
+      {!loading && props.view === "list" ? (
         <>
           <FilterBar
             search={{
@@ -268,9 +274,7 @@ export function TasksPage(props: {
           </div>
           {query.error ? (
             <Card padding="md">
-              <p className="m-0 text-sm text-rose-300">
-                Tasks could not be loaded. Try again.
-              </p>
+              <InlineError>Tasks could not be loaded. Try again.</InlineError>
             </Card>
           ) : visibleTaskCount === 0 ? (
             <Card padding="md">
@@ -297,11 +301,9 @@ export function TasksPage(props: {
                       }}
                       onSelect={() =>
                         navigate(
-                          tasksPath(
-                            taskId === task.id
-                              ? listPath
-                              : `${listPath}/${encodeURIComponent(task.id)}`,
-                          ),
+                          taskId === task.id
+                            ? tasksPath(listPath)
+                            : selectedTaskPath(task.id),
                         )
                       }
                       selected={taskId === task.id}
@@ -325,9 +327,9 @@ export function TasksPage(props: {
             </p>
           ) : null}
           {deletion.error ? (
-            <p className="m-0 text-center text-sm text-rose-300">
+            <InlineError className="text-center">
               The task could not be deleted. Try again.
-            </p>
+            </InlineError>
           ) : null}
           <TaskDetailsDrawer
             onClose={() => navigate(tasksPath(listPath))}

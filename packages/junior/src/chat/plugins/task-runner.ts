@@ -20,6 +20,7 @@ import { createPluginConversationEvents } from "@/chat/plugins/conversation-even
 import { createPluginEmbedder, createPluginModel } from "@/chat/plugins/model";
 import { createPluginState } from "@/chat/plugins/state";
 import type { PiMessage } from "@/chat/pi/messages";
+
 import {
   getPiMessageRole,
   instructionTextForProjection,
@@ -31,6 +32,7 @@ import {
 import { getPersistedThreadState } from "@/chat/runtime/thread-state";
 import { resolveTurnSessionRouting } from "@/chat/services/turn-session-routing";
 import { getDispatchRecord } from "@/chat/agent-dispatch/store";
+import { readActorIdentity } from "@/chat/plugins/viewer";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { hydrateConversationMessages } from "@/chat/conversations/messages";
 import type { ConversationMessage } from "@/chat/state/conversation";
@@ -47,10 +49,10 @@ import { getPlugins } from "./agent-hooks";
 import {
   pluginTaskId,
   pluginTaskParamsSchema,
+  sendVercelPluginTask,
   type PluginTaskParams,
   type PluginTaskQueueMessage,
-} from "./task-message";
-import { sendVercelPluginTask } from "./task-queue";
+} from "./task-queue";
 import { getStateAdapter } from "@/chat/state/adapter";
 import type { Lock } from "chat";
 
@@ -91,7 +93,8 @@ function messageText(message: PiMessage): string {
 }
 
 function toolResultText(message: PiMessage): string {
-  const record = message as unknown as Record<string, unknown>;
+  // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+  const record = message as Record<string, unknown>;
   const parts = [
     messageText(message),
     record.output,
@@ -125,7 +128,7 @@ function messageProvenance(
 ): PluginRunTranscriptProvenance {
   return {
     authority: provenance.authority,
-    ...(provenance.actor ? { actor: provenance.actor } : {}),
+    ...(provenance.actor ? { actor: provenance.actor } : undefined),
   };
 }
 
@@ -170,7 +173,7 @@ function runTranscriptEntry(
     type: "toolResult",
     toolName,
     isError: isToolResultError(message),
-    ...(text ? { text } : {}),
+    ...(text ? { text } : undefined),
   };
 }
 
@@ -214,8 +217,12 @@ function slackContextAuthor(
     platform: "slack",
     teamId: source.teamId,
     userId,
-    ...(message.author?.userName ? { userName: message.author.userName } : {}),
-    ...(message.author?.fullName ? { fullName: message.author.fullName } : {}),
+    ...(message.author?.userName
+      ? { userName: message.author.userName }
+      : undefined),
+    ...(message.author?.fullName
+      ? { fullName: message.author.fullName }
+      : undefined),
   };
 }
 
@@ -296,7 +303,7 @@ async function loadConversationContextTranscriptEntries(
       text,
       provenance: {
         authority: "context",
-        ...(author ? { actor: author } : {}),
+        ...(author ? { actor: author } : undefined),
       },
       isRunActor: sameActorIdentity(author, runActor),
     });
@@ -347,6 +354,9 @@ async function loadPluginRun(
     (record.dispatchId
       ? (await getDispatchRecord(record.dispatchId))?.actor
       : undefined);
+  const actorUser = runActor
+    ? (await readActorIdentity(runActor))?.user
+    : undefined;
   const runEntries = turnMessagesWithProvenance(record)
     .map(({ message, provenance }) =>
       runTranscriptEntry(message, provenance, runActor),
@@ -367,13 +377,15 @@ async function loadPluginRun(
     (entry) => entry.type !== "message" || !runMessageTexts.has(entry.text),
   );
   return pluginRunContextSchema.parse({
+    ...(actorUser ? { actorUserId: actorUser.id } : undefined),
     completedAtMs: record.updatedAtMs,
     conversationId: record.conversationId,
     destination: routing.destination,
-    // Derived from the full run provenance on the record, not the sliced or
-    // stripped transcript, so it reflects every committed instruction actor.
+    ...(routing.location ? { locationId: routing.location.id } : undefined),
+    // Read Actors from the full run record, not the shorter transcript.
+    // This includes every Actor that supplied an instruction.
     actors: record.actors,
-    ...(runActor ? { actor: runActor } : {}),
+    ...(runActor ? { actor: runActor } : undefined),
     runId: record.turnId,
     source: routing.source,
     transcript: [...contextEntries, ...runEntries],

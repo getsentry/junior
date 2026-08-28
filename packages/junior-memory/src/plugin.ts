@@ -46,18 +46,24 @@ function memoryToolContext(ctx: {
   conversationId?: string;
   db: MemoryToolContext["db"];
   embedder?: MemoryToolContext["embedder"];
+  locationId?: string;
   actor?: MemoryToolContext["actor"];
   source: MemoryToolContext["source"];
+  users: MemoryToolContext["users"];
   userText?: string;
 }): MemoryToolContext {
   return {
     agent: ctx.agent,
-    ...(ctx.conversationId ? { conversationId: ctx.conversationId } : {}),
-    ...(ctx.actor ? { actor: ctx.actor } : {}),
+    ...(ctx.conversationId
+      ? { conversationId: ctx.conversationId }
+      : undefined),
+    ...(ctx.actor ? { actor: ctx.actor } : undefined),
     db: ctx.db,
-    ...(ctx.embedder ? { embedder: ctx.embedder } : {}),
+    ...(ctx.embedder ? { embedder: ctx.embedder } : undefined),
+    ...(ctx.locationId ? { locationId: ctx.locationId } : undefined),
     source: ctx.source,
-    ...(ctx.userText ? { userText: ctx.userText } : {}),
+    users: ctx.users,
+    ...(ctx.userText ? { userText: ctx.userText } : undefined),
   };
 }
 
@@ -66,9 +72,11 @@ function memoryCreateToolContext(ctx: {
   conversationId?: string;
   db: MemoryCreateToolContext["db"];
   embedder?: MemoryCreateToolContext["embedder"];
+  locationId?: string;
   actor?: MemoryCreateToolContext["actor"];
   source: MemoryCreateToolContext["source"];
   supersessionDecider: MemoryCreateToolContext["supersessionDecider"];
+  users: MemoryCreateToolContext["users"];
   userText?: string;
 }): MemoryCreateToolContext {
   return {
@@ -157,18 +165,22 @@ export function memoryPlugin(options: MemoryPluginOptions = {}) {
                 agent: createMemoryAgent(ctx.model),
                 ...(ctx.conversationId
                   ? { conversationId: ctx.conversationId }
-                  : {}),
-                ...(ctx.actor ? { actor: ctx.actor } : {}),
+                  : undefined),
+                ...(ctx.actor ? { actor: ctx.actor } : undefined),
                 db: ctx.db as MemoryDb,
                 embedder: ctx.embedder,
                 events: ctx.events,
+                ...(ctx.locationId
+                  ? { locationId: ctx.locationId }
+                  : undefined),
                 log: ctx.log,
                 source: ctx.source,
                 text: ctx.text,
+                users: ctx.users,
               });
             },
           }
-        : {}),
+        : undefined),
     },
   });
 }

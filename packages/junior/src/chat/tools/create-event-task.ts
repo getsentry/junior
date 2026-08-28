@@ -112,7 +112,7 @@ export function createEventTaskTool(
     async execute(input, options) {
       const { actor, destination, source } =
         requireEventTaskSlackContext(context);
-      requireSupportedEventTaskTrigger(catalog, input.trigger);
+      const match = requireSupportedEventTaskTrigger(catalog, input.trigger);
       const id = buildEventTaskId({
         channelId: destination.channelId,
         teamId: destination.teamId,
@@ -141,13 +141,13 @@ export function createEventTaskTool(
         createdAtMs: Date.now(),
         createdBy: {
           slackUserId: actor.userId,
-          ...(actor.fullName ? { fullName: actor.fullName } : {}),
-          ...(actor.userName ? { userName: actor.userName } : {}),
+          ...(actor.fullName ? { fullName: actor.fullName } : undefined),
+          ...(actor.userName ? { userName: actor.userName } : undefined),
         },
         credentialMode: input.credentialMode ?? "creator",
         destination,
         task: { text: input.task },
-        ...(title ? { title } : {}),
+        ...(title ? { title } : undefined),
         trigger: {
           namespace: input.trigger.namespace,
           identifier: normalizeEventIdentifier(
@@ -158,6 +158,7 @@ export function createEventTaskTool(
           resourceType: input.trigger.resourceType,
           label: input.trigger.label,
           events: [...new Set(input.trigger.events)],
+          ...(match ? { match } : undefined),
         },
       };
       return eventTaskSuccess(await createEventTask(db, task), catalog);

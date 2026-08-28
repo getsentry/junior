@@ -4,7 +4,6 @@ const workspaceRepoInputSchema = z
   .object({
     provider: z.string(),
     repo: z.string(),
-    isPrimary: z.boolean().optional(),
   })
   .strict();
 
@@ -13,7 +12,25 @@ export const workspaceRepoSchema = z
     provider: z.string(),
     repo: z.string(),
     checkoutPath: z.string(),
-    isPrimary: z.boolean(),
+  })
+  .strict();
+
+const workspaceSnapshotSchema = z
+  .object({
+    id: z.string(),
+    generatedAt: z.iso.datetime(),
+    buildDurationMs: z.number().int().nonnegative(),
+    sizeBytes: z.number().int().nonnegative().nullable(),
+  })
+  .strict();
+
+/** Install-wide baseline Sandbox snapshot used when no Workspace recipe is selected. */
+export const baselineSnapshotSchema = z
+  .object({
+    id: z.string(),
+    generatedAt: z.iso.datetime(),
+    buildDurationMs: z.number().int().nonnegative(),
+    dependencyCount: z.number().int().nonnegative(),
   })
   .strict();
 
@@ -23,11 +40,15 @@ export const workspaceSchema = z
     name: z.string(),
     setupScript: z.string(),
     repos: z.array(workspaceRepoSchema),
+    snapshot: workspaceSnapshotSchema.nullable(),
   })
   .strict();
 
 export const workspaceListSchema = z
-  .object({ workspaces: z.array(workspaceSchema) })
+  .object({
+    baselineSnapshot: baselineSnapshotSchema.nullable(),
+    workspaces: z.array(workspaceSchema),
+  })
   .strict();
 
 export const workspaceBodySchema = z
@@ -46,4 +67,5 @@ export const deleteWorkspaceResponseSchema = z
   .object({ deleted: z.literal(true) })
   .strict();
 
+export type BaselineSnapshotReport = z.infer<typeof baselineSnapshotSchema>;
 export type WorkspaceReport = z.infer<typeof workspaceSchema>;

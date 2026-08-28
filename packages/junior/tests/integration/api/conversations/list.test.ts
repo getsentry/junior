@@ -14,6 +14,7 @@ import { createSqlConversationEventStore } from "@/chat/conversations/sql/histor
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import { setPlugins } from "@/chat/plugins/agent-hooks";
+import { resolveViewerUser } from "@/chat/plugins/viewer";
 import {
   juniorConversationEvents,
   juniorConversationParticipants,
@@ -33,11 +34,39 @@ describe("conversation list API", () => {
     const fixture = createConfiguredJuniorSqlFixture();
     try {
       await migrateSchema(fixture.sql);
+      const store = createSqlStore(fixture.sql);
+      const archivedId = "slack:C123:archived";
+      await store.recordActivity({ conversationId: archivedId, nowMs: 1_000, destination: { platform: "slack" as const, teamId: "T123", channelId: "C123" }});
+      const viewer = await resolveViewerUser("viewer@example.com");
+      expect(viewer).toBeDefined();
+      await fixture.sql.db().insert(juniorConversationParticipants).values({
+        archivedAt: new Date(2_000),
+        lastMessageAt: new Date(1_000),
+        rootConversationId: archivedId,
+        userId: viewer!.id,
+      });
       const app = createJuniorApi();
 
-      const response = await app.request("http://localhost/api/conversations");
+      const response = await app.request(
+        "http://localhost/api/conversations?actorEmail=viewer%40example.com",
+      );
       expect(response.status).toBe(200);
-      conversationFeedSchema.parse(await response.json());
+      expect(
+        conversationFeedSchema.parse(await response.json()).conversations,
+      ).toEqual([]);
+      const archivedResponse = await app.request(
+        "http://localhost/api/conversations?actorEmail=viewer%40example.com&status=archived",
+      );
+      expect(archivedResponse.status).toBe(200);
+      expect(
+        conversationFeedSchema.parse(await archivedResponse.json())
+          .conversations,
+      ).toEqual([
+        expect.objectContaining({
+          archivedAt: new Date(2_000).toISOString(),
+          conversationId: archivedId,
+        }),
+      ]);
 
       const invalid = await app.request(
         "http://localhost/api/conversations?actorEmail=not-an-email",
@@ -63,14 +92,17 @@ describe("conversation list API", () => {
       await migrateSchema(fixture.sql);
       await store.recordActivity({
         conversationId: unfinishedId,
+        destination: { platform: "slack" as const, teamId: "T123", channelId: "C123" },
         nowMs: nowMs - 60_000,
       });
       await store.recordActivity({
         conversationId: finishedUpdatedId,
+        destination: { platform: "slack" as const, teamId: "T123", channelId: "C123" },
         nowMs: nowMs - 30_000,
       });
       await store.recordActivity({
         conversationId: finishedId,
+        destination: { platform: "slack" as const, teamId: "T123", channelId: "C123" },
         nowMs: nowMs - 120_000,
       });
       await fixture.sql.db().insert(juniorConversationEvents).values([
@@ -244,7 +276,7 @@ describe("conversation list API", () => {
       const fixture = createConfiguredJuniorSqlFixture();
       const store = createSqlStore(fixture.sql);
       const conversationId = `slack:C123:${visibility}-visibility`;
-      const channelId = `C-${visibility}`;
+      const channelId = `C${visibility.toUpperCase()}`;
       try {
         await migrateSchema(fixture.sql);
         await store.recordActivity({
@@ -291,6 +323,7 @@ describe("conversation list API", () => {
           teamId: "T1",
         },
         conversationId: "slack:C1:canonical-name",
+        destination: { platform: "slack" as const, teamId: "T1", channelId: "C1" },
         nowMs: 1_000,
         source: "slack",
       });
@@ -304,6 +337,7 @@ describe("conversation list API", () => {
           teamId: "T1",
         },
         conversationId: "slack:C1:provider-name",
+        destination: { platform: "slack" as const, teamId: "T1", channelId: "C1" },
         nowMs: 2_000,
         source: "slack",
       });
@@ -316,6 +350,7 @@ describe("conversation list API", () => {
           teamId: "T1",
         },
         conversationId: "slack:C1:unlinked-name",
+        destination: { platform: "slack" as const, teamId: "T1", channelId: "C1" },
         nowMs: 3_000,
         source: "slack",
       });
@@ -397,6 +432,7 @@ describe("conversation list API", () => {
           teamId: "T1",
         },
         conversationId: "slack:C1:newest-overall",
+        destination: { platform: "slack" as const, teamId: "T1", channelId: "C1" },
         nowMs: 4_000,
         source: "slack",
       });
@@ -426,6 +462,7 @@ describe("conversation list API", () => {
           teamId: "T1",
         },
         conversationId: "slack:C1:morgan-newest",
+        destination: { platform: "slack" as const, teamId: "T1", channelId: "C1" },
         nowMs: 3_000,
         source: "slack",
       });
@@ -437,6 +474,7 @@ describe("conversation list API", () => {
           teamId: "T1",
         },
         conversationId: "slack:C1:morgan-older",
+        destination: { platform: "slack" as const, teamId: "T1", channelId: "C1" },
         nowMs: 1_000,
         source: "slack",
       });
@@ -449,6 +487,7 @@ describe("conversation list API", () => {
           teamId: "T1",
         },
         conversationId: "slack:D1:morgan-linked",
+        destination: { platform: "slack" as const, teamId: "T1", channelId: "D1" },
         nowMs: 2_000,
         source: "slack",
         visibility: "private",
@@ -535,6 +574,7 @@ describe("conversation list API", () => {
           teamId: "T1",
         },
         conversationId: "slack:C1:shared-thread",
+        destination: { platform: "slack" as const, teamId: "T1", channelId: "C1" },
         nowMs: 5_000,
         source: "slack",
       });
@@ -546,6 +586,7 @@ describe("conversation list API", () => {
           teamId: "T1",
         },
         conversationId: "slack:C1:unrelated",
+        destination: { platform: "slack" as const, teamId: "T1", channelId: "C1" },
         nowMs: 4_000,
         source: "slack",
       });
@@ -643,6 +684,7 @@ describe("conversation list API", () => {
           teamId: "T1",
         },
         conversationId: "slack:C1:dashboard-author",
+        destination: { platform: "slack" as const, teamId: "T1", channelId: "C1" },
         nowMs: 5_000,
         source: "slack",
       });
@@ -744,6 +786,7 @@ describe("conversation list API", () => {
       await migrateSchema(fixture.sql);
       await store.recordActivity({
         conversationId: "slack:C1:root",
+        destination: { platform: "slack" as const, teamId: "T1", channelId: "C1" },
         nowMs: 1_000,
         source: "slack",
       });
@@ -831,6 +874,7 @@ describe("conversation list API", () => {
       await migrateSchema(fixture.sql);
       await store.recordActivity({
         conversationId: "slack:C1:invalid-root",
+        destination: { platform: "slack" as const, teamId: "T1", channelId: "C1" },
         nowMs: 1_000,
         source: "slack",
       });

@@ -90,24 +90,24 @@ export function parseOAuthStatePayload(
   return {
     userId: value.userId,
     provider: value.provider,
-    ...(actor?.success ? { actor: actor.data } : {}),
+    ...(actor?.success ? { actor: actor.data } : undefined),
     ...(optionalString(value.channelId)
       ? { channelId: optionalString(value.channelId) }
-      : {}),
-    ...(destination ? { destination } : {}),
-    ...(source?.success ? { source: source.data } : {}),
+      : undefined),
+    ...(destination ? { destination } : undefined),
+    ...(source?.success ? { source: source.data } : undefined),
     ...(optionalString(value.threadTs)
       ? { threadTs: optionalString(value.threadTs) }
-      : {}),
+      : undefined),
     ...(optionalString(value.resumeConversationId)
       ? { resumeConversationId: optionalString(value.resumeConversationId) }
-      : {}),
+      : undefined),
     ...(optionalString(value.resumeSessionId)
       ? { resumeSessionId: optionalString(value.resumeSessionId) }
-      : {}),
+      : undefined),
     ...(optionalString(value.scope)
       ? { scope: optionalString(value.scope) }
-      : {}),
+      : undefined),
   };
 }
 
@@ -267,18 +267,18 @@ export async function startOAuthFlow(
     {
       userId: input.actorId,
       provider,
-      ...(input.actor ? { actor: input.actor } : {}),
-      ...(input.channelId ? { channelId: input.channelId } : {}),
-      ...(input.destination ? { destination: input.destination } : {}),
-      ...(input.source ? { source: input.source } : {}),
-      ...(input.threadTs ? { threadTs: input.threadTs } : {}),
+      ...(input.actor ? { actor: input.actor } : undefined),
+      ...(input.channelId ? { channelId: input.channelId } : undefined),
+      ...(input.destination ? { destination: input.destination } : undefined),
+      ...(input.source ? { source: input.source } : undefined),
+      ...(input.threadTs ? { threadTs: input.threadTs } : undefined),
       ...(input.resumeConversationId
         ? { resumeConversationId: input.resumeConversationId }
-        : {}),
+        : undefined),
       ...(input.resumeSessionId
         ? { resumeSessionId: input.resumeSessionId }
-        : {}),
-      ...(requestedScope ? { scope: requestedScope } : {}),
+        : undefined),
+      ...(requestedScope ? { scope: requestedScope } : undefined),
     } satisfies OAuthStatePayload,
     OAUTH_STATE_TTL_MS,
   );
@@ -302,7 +302,7 @@ export async function startOAuthFlow(
     "app.credential.provider": provider,
     ...(input.activeSkillName
       ? { "app.skill.name": input.activeSkillName }
-      : {}),
+      : undefined),
   });
 
   const authorizationUrl = `${providerConfig.authorizeEndpoint}?${authorizeParams.toString()}`;

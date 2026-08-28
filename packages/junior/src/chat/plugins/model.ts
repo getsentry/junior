@@ -4,7 +4,7 @@ import type {
   PluginModelConfig,
 } from "@sentry/junior-plugin-api";
 import { botConfig } from "@/chat/config";
-import { standardModelId } from "@/chat/model-profile";
+import { defaultModelId } from "@/chat/model-profile";
 import { completeObject, embedTexts } from "@/chat/pi/client";
 
 /** Create the host-owned structured model capability exposed to plugins. */
@@ -18,16 +18,16 @@ export function createPluginModel(
       const modelId =
         options.structuredModelId ??
         (options.structuredModel === "default"
-          ? standardModelId(botConfig)
+          ? defaultModelId(botConfig)
           : botConfig.fastModelId);
       const result = await completeObject({
         modelId,
         schema: input.schema,
         prompt: input.prompt,
-        ...(input.system !== undefined ? { system: input.system } : {}),
+        ...(input.system !== undefined ? { system: input.system } : undefined),
         ...(input.maxTokens !== undefined
           ? { maxTokens: input.maxTokens }
-          : {}),
+          : undefined),
         signal: runtime.signal,
         promptName: `${pluginName}.structured_completion`,
         metadata: {
@@ -37,7 +37,7 @@ export function createPluginModel(
       });
       return {
         object: result.object,
-        ...(result.costUsd !== undefined ? { costUsd: result.costUsd } : {}),
+        ...(result.costUsd !== undefined ? { costUsd: result.costUsd } : undefined),
       };
     },
   };

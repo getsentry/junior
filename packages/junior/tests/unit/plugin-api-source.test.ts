@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createSlackSource } from "@sentry/junior-plugin-api";
+import { createSlackSource, sourceSchema } from "@sentry/junior-plugin-api";
 
 describe("plugin source helpers", () => {
   it("accepts Slack source visibility from the runtime boundary", () => {
@@ -42,5 +42,30 @@ describe("plugin source helpers", () => {
         visibility: "private",
       }),
     ).toMatchObject({ visibility: "private" });
+  });
+
+  it("removes Location from a stored legacy Source", () => {
+    expect(
+      sourceSchema.parse({
+        platform: "slack",
+        teamId: "T123",
+        channelId: "C123",
+        threadTs: "1712345.0001",
+        visibility: "private",
+        location: {
+          id: "location-123",
+          provider: "slack",
+          teamId: "T123",
+          channelId: "C123",
+          threadTs: "1712345.0001",
+        },
+      }),
+    ).toEqual({
+      platform: "slack",
+      teamId: "T123",
+      channelId: "C123",
+      threadTs: "1712345.0001",
+      visibility: "private",
+    });
   });
 });

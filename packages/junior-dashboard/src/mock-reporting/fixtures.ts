@@ -14,6 +14,8 @@ import type {
   ConversationStatsItem,
   ConversationStatsReport,
   ConversationSummaryReport,
+  CodeOverviewReport,
+  CodePersonReport,
   LocationDetailReport,
   LocationActorSummaryReport,
   LocationActivityDayReport,
@@ -27,6 +29,86 @@ import type {
   TaskSummary,
 } from "@sentry/junior/api/schema";
 
+/** Build code activity for local dashboard development and QA. */
+export function readMockCodeOverview(nowMs = Date.now()): CodeOverviewReport {
+  const windowEnd = new Date(nowMs).toISOString();
+  const windowStart = new Date(nowMs - 30 * 86_400_000).toISOString();
+  const activityDays = Array.from({ length: 90 }, (_, index) => {
+    const date = new Date(nowMs - (89 - index) * 86_400_000)
+      .toISOString()
+      .slice(0, 10);
+    const created = index === 84 || index === 88 ? 1 : index === 83 ? 2 : 0;
+    const merged = index === 86 ? 1 : 0;
+    const closed = index === 85 ? 1 : 0;
+    return { closed, created, date, merged };
+  });
+  return {
+    activityDays,
+    changes: [
+      {
+        id: "00000000-0000-4000-8000-000000000001",
+        number: 42,
+        openedAt: new Date(nowMs - 2 * 86_400_000).toISOString(),
+        provider: "github",
+        repository: "getsentry/payments",
+        state: "open",
+        title: "Reduce checkout latency",
+        url: "https://github.com/getsentry/payments/pull/42",
+      },
+      {
+        id: "00000000-0000-4000-8000-000000000002",
+        mergedAt: new Date(nowMs - 4 * 86_400_000).toISOString(),
+        number: 781,
+        openedAt: new Date(nowMs - 6 * 86_400_000).toISOString(),
+        provider: "github",
+        repository: "getsentry/junior",
+        state: "merged",
+        title: "Keep repository context across turns",
+        url: "https://github.com/getsentry/junior/pull/781",
+      },
+    ],
+    generatedAt: windowEnd,
+    repositories: [
+      {
+        closed: 1,
+        created: 5,
+        id: "00000000-0000-4000-8000-000000000003",
+        medianCostUsd: 4.25,
+        merged: 4,
+        mergeRate: 4 / 5,
+        name: "getsentry/junior",
+        open: 1,
+        provider: "github",
+        url: "https://github.com/getsentry/junior",
+      },
+      {
+        closed: 0,
+        created: 3,
+        id: "00000000-0000-4000-8000-000000000004",
+        medianCostUsd: 2.1,
+        merged: 2,
+        mergeRate: 1,
+        name: "getsentry/payments",
+        open: 1,
+        provider: "github",
+        url: "https://github.com/getsentry/payments",
+      },
+    ],
+    summary: {
+      closed: 1,
+      costUsd: 18.4,
+      created: 8,
+      medianCostUsd: 3.5,
+      medianMergeTimeMs: 2 * 86_400_000,
+      merged: 6,
+      mergeRate: 6 / 7,
+      open: 2,
+    },
+    windowEnd,
+    windowStart,
+  };
+}
+
 const ACTIVE_CONVERSATION_ID = "slack:CQA123:1770003600.000200";
 const INCIDENT_CONVERSATION_ID = "slack:CQA123:1770000000.000100";
 const PRIVATE_CONVERSATION_ID = "slack:DQA123:1770007200.000300";
@@ -35,8 +117,11 @@ const FAILED_CONVERSATION_ID = "slack:CQA777:1770014400.000500";
 const LONG_CONVERSATION_ID = "slack:CQA456:1770021600.000600";
 const SCHEDULER_CONVERSATION_ID = "scheduler:daily-ops-digest";
 export const DASHBOARD_QA_CONVERSATION_ID = "internal:dashboard-qa";
+export const ARCHIVED_CONVERSATION_ID = "internal:archived-restore-qa";
 const DASHBOARD_QA_PLAN_ID = "junior:internal:dashboard-qa:advisor-plan";
 const DASHBOARD_QA_REVIEW_ID = "junior:internal:dashboard-qa:advisor-review";
+/** Process-local archive state so mock restore can be exercised in visual QA. */
+const mockArchivedConversationIds = new Set<string>([ARCHIVED_CONVERSATION_ID]);
 const PEOPLE_ACTIVITY_DAYS = 90;
 const PEOPLE_PROFILE_ACTIVITY_DAYS = 365;
 const PUBLIC_MOCK_CHANNEL_IDS = new Set([
@@ -281,6 +366,12 @@ function activeConversation(nowMs: number): ConversationDetailReport {
           "- canary hosts show the same `checkout.latency` shape",
           "- error volume is flat, so this looks like slow path not hard fail",
           "",
+          "| Window | Region | Host class | p50 | p95 | p99 | Errors | Notes |",
+          "| --- | --- | --- | ---: | ---: | ---: | ---: | --- |",
+          "| pre-deploy | us-west1 | canary + stable | 120ms | 210ms | 340ms | 0.4% | baseline |",
+          "| post-deploy | us-west1 | stable | 310ms | **890ms** | 1.4s | 0.5% | spike after payments-v42 |",
+          "| canary only | us-west1 | canary | 280ms | 860ms | 1.3s | 0.5% | same shape as stable |",
+          "",
           "Useful query:",
           "```sql",
           "SELECT percentile(duration, 0.95) AS p95",
@@ -338,7 +429,7 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
     unfinishedWork: true,
     isPriority: true,
     // Newest-first GitHub sidebar order with mixed finished/unfinished work for
-    // the same repo label. Collapse must prefer unfinished over merged.
+    // the same label. Badges keep every status icon under one shared label.
     sidebarAnnotations: [
       {
         icon: "git-merge",
@@ -1007,7 +1098,8 @@ function privateConversation(nowMs: number): ConversationDetailReport {
     surface: "slack",
     visibility: "private",
     channel: "DQA123",
-    channelName: "Private conversation",
+    // Owner-visible private DM: type label, not a privacy restatement.
+    channelName: "Direct Message",
     channelNameRedacted: true,
     actorIdentity: actor("avery@sentry.io", "Avery Chen", "avery"),
     cumulativeDurationMs: 42_000,
@@ -1093,7 +1185,11 @@ function failedConversation(nowMs: number): ConversationDetailReport {
         type: "turn_lifecycle",
         turnId: "failed-turn",
         state: "failed",
-        failureKind: "agent",
+        failureCode: "model_execution_failed",
+        failureReason: "network",
+        eventId: "0123456789abcdef0123456789abcdef",
+        sentryEventUrl:
+          "https://sentry.example/organizations/acme/events/0123456789abcdef0123456789abcdef/?project=1",
       }),
     ],
   });
@@ -1107,6 +1203,7 @@ function simpleConversation(
     surface: "internal" | "scheduler" | "slack";
     channel?: string;
     sourceTask?: ConversationDetailReport["sourceTask"];
+    archivedAt?: string;
   },
 ): ConversationDetailReport {
   // Finished work stays in Today even when it was active in the last 24 hours.
@@ -1134,7 +1231,7 @@ function actor(
   fullName: string,
   slackUserName: string,
 ): ActorIdentity {
-  return { ...(email ? { email } : {}), fullName, slackUserName };
+  return { ...(email ? { email } : undefined), fullName, slackUserName };
 }
 
 function usage(cost: number) {
@@ -1182,6 +1279,12 @@ function mockConversations(nowMs: number): MockConversation[] {
         title: "Weekly project summary",
       },
     }),
+    simpleConversation(nowMs, {
+      conversationId: ARCHIVED_CONVERSATION_ID,
+      displayTitle: "Archived restore target",
+      surface: "internal",
+      archivedAt: iso(nowMs, -2 * 24 * 60 * 60_000),
+    }),
   ];
 }
 
@@ -1199,9 +1302,19 @@ function summaryFromConversation(
     sourceTask: _sourceTask,
     ...summary
   } = conversation;
-  return summary.channel && PUBLIC_MOCK_CHANNEL_IDS.has(summary.channel)
-    ? { ...summary, locationId: `mock:${summary.channel}` }
-    : summary;
+  const withArchiveState = mockArchivedConversationIds.has(
+    conversation.conversationId,
+  )
+    ? {
+        ...summary,
+        archivedAt:
+          summary.archivedAt ?? iso(Date.now(), -2 * 24 * 60 * 60_000),
+      }
+    : { ...summary, archivedAt: undefined };
+  return withArchiveState.channel &&
+    PUBLIC_MOCK_CHANNEL_IDS.has(withArchiveState.channel)
+    ? { ...withArchiveState, locationId: `mock:${withArchiveState.channel}` }
+    : withArchiveState;
 }
 
 function mockConversationFeed(nowMs: number): ConversationFeed {
@@ -1212,6 +1325,13 @@ function mockConversationFeed(nowMs: number): ConversationFeed {
       .filter((conversation) => !conversation.parentConversationId)
       .map(summaryFromConversation),
   };
+}
+
+/** Active root summaries used by mock aggregates and directories. */
+function activeMockSummaries(nowMs: number): ConversationSummaryReport[] {
+  return mockConversationFeed(nowMs).conversations.filter(
+    (summary) => !summary.archivedAt,
+  );
 }
 
 function summaryTokenTotal(summary: ConversationSummaryReport): number {
@@ -1321,7 +1441,7 @@ function mockGuardianStats(nowMs: number): ConversationStatsReport["guardian"] {
     return {
       allow,
       ask,
-      ...(requests ? { costUsd: requests * 0.0009 } : {}),
+      ...(requests ? { costUsd: requests * 0.0009 } : undefined),
       date: date.toISOString().slice(0, 10),
       deny,
       requests,
@@ -1343,17 +1463,36 @@ function mockGuardianStats(nowMs: number): ConversationStatsReport["guardian"] {
 /** Return the explicit canonical-event visual-QA feed, optionally scoped by actor. */
 export function readMockConversationFeed(
   actorEmail?: string,
+  status: "active" | "archived" = "active",
 ): ConversationFeed {
   const feed = mockConversationFeed(Date.now());
-  if (!actorEmail) return feed;
-  return {
-    ...feed,
-    conversations: feed.conversations.filter(
+  const conversations = feed.conversations
+    .filter((conversation) =>
+      status === "archived"
+        ? Boolean(conversation.archivedAt)
+        : !conversation.archivedAt,
+    )
+    .filter(
       (conversation) =>
+        !actorEmail ||
         conversation.actorIdentity?.email?.toLowerCase() ===
-        actorEmail.toLowerCase(),
-    ),
-  };
+          actorEmail.toLowerCase(),
+    );
+  return { ...feed, conversations };
+}
+
+/** Archive or restore one mock conversation for local dashboard visual QA. */
+export function setMockConversationArchived(
+  conversationId: string,
+  archived: boolean,
+): { archivedAt: string | null } | undefined {
+  const exists = mockConversations(Date.now()).some(
+    (conversation) => conversation.conversationId === conversationId,
+  );
+  if (!exists) return undefined;
+  if (archived) mockArchivedConversationIds.add(conversationId);
+  else mockArchivedConversationIds.delete(conversationId);
+  return { archivedAt: archived ? new Date().toISOString() : null };
 }
 
 /** Return accepted mailbox rows for local dashboard visual QA. */
@@ -1445,15 +1584,21 @@ export function readMockConversationDetail(
   if (!conversation) return undefined;
   const { parentConversationId: _parentConversationId, ...detail } =
     conversation;
-  const events = detail.events.slice(-limit);
+  const withArchiveState = mockArchivedConversationIds.has(conversationId)
+    ? {
+        ...detail,
+        archivedAt: detail.archivedAt ?? iso(Date.now(), -2 * 24 * 60 * 60_000),
+      }
+    : { ...detail, archivedAt: undefined };
+  const events = withArchiveState.events.slice(-limit);
   const bounded =
-    events.length < detail.events.length && events[0]
+    events.length < withArchiveState.events.length && events[0]
       ? {
-          ...detail,
+          ...withArchiveState,
           events,
           previousCursor: mockBeforeCursor(conversationId, events[0].seq),
         }
-      : detail;
+      : withArchiveState;
   return bounded.channel && PUBLIC_MOCK_CHANNEL_IDS.has(bounded.channel)
     ? { ...bounded, locationId: `mock:${bounded.channel}` }
     : bounded;
@@ -1520,12 +1665,10 @@ function parseMockBeforeCursor(
 export function readMockConversationStats(): ConversationStatsReport {
   const nowMs = Date.now();
   const windowStartMs = statsWindowStartMs(nowMs);
-  const summaries = mockConversationFeed(nowMs).conversations.filter(
-    (summary) => {
-      const lastSeenAtMs = Date.parse(summary.lastSeenAt);
-      return lastSeenAtMs >= windowStartMs && lastSeenAtMs <= nowMs;
-    },
-  );
+  const summaries = activeMockSummaries(nowMs).filter((summary) => {
+    const lastSeenAtMs = Date.parse(summary.lastSeenAt);
+    return lastSeenAtMs >= windowStartMs && lastSeenAtMs <= nowMs;
+  });
   const total = statsItem("All conversations");
   const actorItems = new Map<string, ConversationStatsItem>();
   const locationItems = new Map<string, ConversationStatsItem>();
@@ -1551,14 +1694,14 @@ export function readMockConversationStats(): ConversationStatsReport {
   return {
     active: total.active,
     actors: [...actorItems.values()],
-    ...(cachedInputTokens ? { cachedInputTokens } : {}),
+    ...(cachedInputTokens ? { cachedInputTokens } : undefined),
     conversations: total.conversations,
     costUsd: total.costUsd,
     durationMs: total.durationMs,
     failed: total.failed,
     generatedAt: iso(nowMs),
     guardian: mockGuardianStats(nowMs),
-    ...(inputTokens ? { inputTokens } : {}),
+    ...(inputTokens ? { inputTokens } : undefined),
     locations: [...locationItems.values()],
     metricDays: conversationMetricDays(nowMs, summaries),
     source: "conversation_index",
@@ -1607,7 +1750,7 @@ function activityDates(nowMs: number, days = PEOPLE_ACTIVITY_DAYS): string[] {
 /** Build mock People analytics from canonical-event mock conversations. */
 export function readMockPeopleDirectory(): ActorDirectoryReport {
   const nowMs = Date.now();
-  const summaries = mockConversationFeed(nowMs).conversations;
+  const summaries = activeMockSummaries(nowMs);
   const byEmail = new Map<
     string,
     ActorSummaryReport & { dates: Set<string> }
@@ -1667,7 +1810,7 @@ export function readMockPeopleProfile(
 ): ActorProfileReport | undefined {
   const nowMs = Date.now();
   const normalized = email.toLowerCase();
-  const summaries = mockConversationFeed(nowMs).conversations.filter(
+  const summaries = activeMockSummaries(nowMs).filter(
     (summary) => summary.actorIdentity?.email?.toLowerCase() === normalized,
   );
   const identity = summaries[0]?.actorIdentity;
@@ -1762,77 +1905,30 @@ export function readMockPeopleProfile(
 
 /** Build mock person-scoped plugin reports for local profile QA. */
 export function readMockPeoplePluginReports(
-  email: string,
+  _email: string,
 ): PluginOperationalReportFeed {
   const nowMs = Date.now();
+  return {
+    generatedAt: new Date(nowMs).toISOString(),
+    reports: [],
+    source: "plugins",
+  };
+}
+
+/** Build mock person-scoped code activity for local profile QA. */
+export function readMockPeopleCode(email: string): CodePersonReport | undefined {
   const directory = readMockPeopleDirectory();
   const person = directory.people.find(
     (entry) => entry.actor.email.toLowerCase() === email.trim().toLowerCase(),
   );
-  if (!person) {
-    return {
-      generatedAt: new Date(nowMs).toISOString(),
-      reports: [],
-      source: "plugins",
-    };
-  }
-
-  const end = new Date(nowMs);
-  end.setUTCHours(0, 0, 0, 0);
-  const days = Array.from({ length: 90 }, (_, index) => {
-    const date = new Date(end);
-    date.setUTCDate(date.getUTCDate() - (89 - index));
-    const key = date.toISOString().slice(0, 10);
-    const wave = (index % 7) + (index % 3);
-    return {
-      id: key,
-      label: key,
-      values: {
-        created: wave === 0 ? 0 : wave % 4,
-      },
-    };
-  });
-
+  if (!person) return undefined;
+  const overview = readMockCodeOverview();
   return {
-    generatedAt: new Date(nowMs).toISOString(),
-    source: "plugins",
-    reports: [
-      {
-        pluginName: "github",
-        title: "GitHub",
-        generatedAt: new Date(nowMs).toISOString(),
-        metrics: [
-          { label: "PRs opened · 30d", value: "12" },
-          { label: "PRs merged · 30d", value: "9" },
-          { label: "Issues opened · 30d", value: "4" },
-          { label: "PR merge rate · 30d", value: "75%" },
-        ],
-        widgets: [
-          {
-            id: "pull-requests-created",
-            type: "bar_chart",
-            title: "Pull requests opened",
-            description:
-              "Junior-owned pull requests opened for this person per day",
-            timeRangeDays: [7, 30, 90],
-            series: [{ key: "created", label: "Opened" }],
-            categories: days,
-          },
-          {
-            id: "issues-created",
-            type: "bar_chart",
-            title: "Issues opened",
-            description: "Junior-owned issues opened for this person per day",
-            timeRangeDays: [7, 30, 90],
-            series: [{ key: "created", label: "Opened" }],
-            categories: days.map((day, index) => ({
-              ...day,
-              values: { created: index % 5 === 0 ? 1 : 0 },
-            })),
-          },
-        ],
-      },
-    ],
+    activityDays: overview.activityDays,
+    generatedAt: overview.generatedAt,
+    summary: overview.summary,
+    windowEnd: overview.windowEnd,
+    windowStart: overview.windowStart,
   };
 }
 
@@ -1907,7 +2003,7 @@ function publicLocation(
 /** Build the mock public-location directory from canonical-event summaries. */
 export function readMockLocationDirectory(): LocationDirectoryReport {
   const nowMs = Date.now();
-  const summaries = mockConversationFeed(nowMs).conversations;
+  const summaries = activeMockSummaries(nowMs);
   const channels = [
     ...new Set(
       summaries
@@ -1963,7 +2059,7 @@ export function readMockLocationDetail(
   const directory = readMockLocationDirectory();
   const location = directory.locations.find((item) => item.id === locationId);
   if (!location) return undefined;
-  const recentConversations = mockConversationFeed(nowMs).conversations.filter(
+  const recentConversations = activeMockSummaries(nowMs).filter(
     (summary) => summary.channel === location.providerDestinationId,
   );
   const actorItems = new Map<string, LocationActorSummaryReport>();
@@ -2166,7 +2262,7 @@ export function readMockTaskExecutions(
                 : ACTIVE_CONVERSATION_ID,
             title: titles[index % titles.length],
           }
-        : {}),
+        : undefined),
       executedAt: new Date(
         nowMs - index * 86_400_000 - 3_600_000,
       ).toISOString(),

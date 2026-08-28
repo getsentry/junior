@@ -5,12 +5,14 @@ const slackConversationIdSchema = z.string().regex(/^(C|G|D)[A-Z0-9]+$/);
 const localConversationIdSchema = z
   .string()
   .regex(/^local:[a-z0-9_-]+:[a-z0-9][a-z0-9_-]*$/);
-const exactActorUserIdSchema = z
+/** Exact non-blank actor user id that rejects the sentinel "unknown". */
+export const actorUserIdSchema = z
   .string()
   .min(1)
   .refine(
     (value) => value === value.trim() && value.toLowerCase() !== "unknown",
   );
+const exactActorUserIdSchema = actorUserIdSchema;
 
 export const nonBlankStringSchema = z
   .string()
@@ -18,6 +20,30 @@ export const nonBlankStringSchema = z
 const exactNonBlankStringSchema = nonBlankStringSchema.refine(
   (value) => value === value.trim(),
 );
+
+/** Fields shared by every Location. */
+const baseLocationSchema = z
+  .object({
+    /** Stable SQL identity used by Location configuration and reporting. */
+    id: nonBlankStringSchema,
+    provider: exactNonBlankStringSchema,
+  })
+  .strict();
+
+/** Complete Slack Location associated with a Conversation. */
+export const slackLocationSchema = baseLocationSchema
+  .extend({
+    provider: z.literal("slack"),
+    teamId: slackTeamIdSchema,
+    channelId: slackConversationIdSchema,
+    threadTs: exactNonBlankStringSchema.optional(),
+  })
+  .strict();
+
+/** Complete Location types supported by Junior. */
+export const locationSchema = z.discriminatedUnion("provider", [
+  slackLocationSchema,
+]);
 
 /** Runtime platform names supported by plugin public contracts. */
 export const platformSchema = z.enum(["slack", "local"]);
@@ -81,12 +107,20 @@ export const webSourceSchema = z
   })
   .strict();
 
-/** Runtime-owned provider-neutral coordinates for the inbound invocation. */
-export const sourceSchema = z.discriminatedUnion("platform", [
-  slackSourceSchema,
-  localSourceSchema,
-  webSourceSchema,
+// TODO(dcramer): Replace Source.platform with Source.kind after every input
+// owner emits a first-class Source kind and deployed readers accept it.
+const sourceWithLegacyLocationSchema = z.discriminatedUnion("platform", [
+  slackSourceSchema.extend({ location: locationSchema.optional() }).strict(),
+  localSourceSchema.extend({ location: locationSchema.optional() }).strict(),
+  webSourceSchema.extend({ location: locationSchema.optional() }).strict(),
 ]);
+
+/** Runtime-owned input Source. Legacy stored Location is accepted and removed. */
+// TODO(dcramer): Parse sourceSchema directly from the three Source schemas after
+// no stored SQL, Redis, queue, or public Source can contain Location.
+export const sourceSchema = sourceWithLegacyLocationSchema.transform(
+  ({ location: _legacyLocation, ...source }) => source,
+);
 
 /** Stable user credential subject shape accepted from plugins. */
 export const pluginCredentialSubjectSchema = z.discriminatedUnion(
@@ -147,6 +181,8 @@ export const systemActorSchema = z
   })
   .strict();
 
+// TODO(dcramer): Separate actor kind from provider platform.
+// System actors should not use `platform: "system"`.
 /** Runtime-provided actor identity visible to plugin hooks. */
 export const actorSchema = z.discriminatedUnion("platform", [
   slackActorSchema,

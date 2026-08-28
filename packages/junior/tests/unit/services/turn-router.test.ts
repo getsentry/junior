@@ -19,8 +19,11 @@ const profiles = {
   handoff: { modelId: "openai/gpt-5.6-sol" },
 };
 const routeTurn = (
-  args: Omit<Parameters<typeof selectTurnRoute>[0], "profiles">,
-) => selectTurnRoute({ ...args, profiles });
+  args: Omit<
+    Parameters<typeof selectTurnRoute>[0],
+    "defaultProfile" | "profiles"
+  >,
+) => selectTurnRoute({ ...args, defaultProfile: "standard", profiles });
 
 describe("selectTurnRoute", () => {
   beforeEach(() => {
@@ -64,6 +67,9 @@ describe("selectTurnRoute", () => {
         modelId: "openai/gpt-5.4-mini",
         thinkingLevel: "low",
         promptName: "junior.thinking_route",
+        system: expect.stringContaining(
+          "Do not assume that a non-default profile is more capable",
+        ),
       }),
     );
     expect(toPiReasoningLevel(profile.reasoningLevel)).toBe("off");
@@ -160,6 +166,7 @@ describe("selectTurnRoute", () => {
 
     const profile = await selectTurnRoute({
       completeObject,
+      defaultProfile: "standard",
       fastModelId: "openai/gpt-5.4-mini",
       messageText: "research this architecture",
       profiles: {
@@ -202,18 +209,52 @@ describe("selectTurnRoute", () => {
     expect(toPiReasoningLevel(profile.reasoningLevel)).toBe("medium");
   });
 
+  it("falls back to the configured default profile when confidence is low", async () => {
+    const completeObject = vi.fn(async () => ({
+      object: {
+        reasoning_level: "high",
+        profile: "coding",
+        confidence: 0.4,
+        reason: "not confident",
+      },
+    }));
+
+    const profile = await selectTurnRoute({
+      completeObject,
+      defaultProfile: "expert",
+      fastModelId: "openai/gpt-5.4-mini",
+      messageText: "can you confirm this repo plan?",
+      profiles: {
+        expert: { modelId: "anthropic/claude-opus-5" },
+        coding: { modelId: "openai/gpt-5.6-sol" },
+      },
+    });
+
+    expect(profile).toMatchObject({
+      reasoningLevel: "medium",
+      profile: "expert",
+      reason: "low_confidence_medium_default:not confident",
+    });
+  });
+
   it("falls back to medium effort when the classifier fails", async () => {
     const completeObject = vi.fn(async () => {
       throw new Error("router failed");
     });
 
-    const profile = await routeTurn({
+    const profile = await selectTurnRoute({
       completeObject,
+      defaultProfile: "expert",
       fastModelId: "openai/gpt-5.4-mini",
       messageText: "can you confirm this repo plan?",
+      profiles: {
+        expert: { modelId: "anthropic/claude-opus-5" },
+        coding: { modelId: "openai/gpt-5.6-sol" },
+      },
     });
 
     expect(profile).toMatchObject({
+      profile: "expert",
       reasoningLevel: "medium",
       reason: "classifier_error_default",
     });
@@ -346,6 +387,10 @@ describe("selectTurnRoute", () => {
     expect(capturedPrompt).toContain(headMarker);
     expect(capturedPrompt).toContain(tailMarker);
     expect(capturedPrompt).toContain("…[truncated]…");
+    expect(capturedPrompt).toContain(
+      '<thread-context authority="evidence-only">',
+    );
+    expect(capturedPrompt).toContain("</thread-context>");
   });
 
   it("does not floor xhigh classifications", async () => {

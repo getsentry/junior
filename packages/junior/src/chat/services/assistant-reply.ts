@@ -1,5 +1,5 @@
 import type { AssistantMessage } from "@earendil-works/pi-ai";
-import { containsNoReplyMarker, isNoReplyMarker } from "@/chat/no-reply";
+import { isNoReplyMarker } from "@/chat/no-reply";
 import { extractAssistantText } from "@/chat/pi/transcript";
 
 const THINKING_XML_BLOCK_PATTERN =
@@ -35,7 +35,8 @@ export function decideReply(message: AssistantMessage): ReplyDecision {
 
   const text = sanitizeAssistantText(extractAssistantText(message));
   if (!text) return { kind: "empty" };
-  if (isNoReplyMarker(text) || containsNoReplyMarker(text)) {
+  // Only an exact whole-message marker is intentional silence.
+  if (isNoReplyMarker(text)) {
     return { kind: "suppress" };
   }
   return { kind: "deliver", text };

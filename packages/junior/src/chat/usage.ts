@@ -117,15 +117,15 @@ export function addAgentTurnUsage(
   if (totalOnlyTokens !== undefined) {
     return {
       totalTokens: totalOnlyTokens + (componentTotal ?? 0),
-      ...(reasoningTokens !== undefined ? { reasoningTokens } : {}),
-      ...(Object.keys(cost).length > 0 ? { cost } : {}),
+      ...(reasoningTokens !== undefined ? { reasoningTokens } : undefined),
+      ...(Object.keys(cost).length > 0 ? { cost } : undefined),
     };
   }
 
   const result: AgentTurnUsage = {
     ...components,
-    ...(reasoningTokens !== undefined ? { reasoningTokens } : {}),
-    ...(Object.keys(cost).length > 0 ? { cost } : {}),
+    ...(reasoningTokens !== undefined ? { reasoningTokens } : undefined),
+    ...(Object.keys(cost).length > 0 ? { cost } : undefined),
   };
   return hasAgentTurnUsage(result) ? result : undefined;
 }

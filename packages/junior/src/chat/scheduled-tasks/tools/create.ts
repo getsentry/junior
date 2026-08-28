@@ -1,11 +1,13 @@
 import { logInfo } from "@/chat/logging";
 import { completeText } from "@/chat/pi/client";
+import { getDb } from "@/chat/db";
 import {
   resolveTaskTitle,
   SHORT_TITLE_MAX_LENGTH,
 } from "@/chat/services/short-title";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { z } from "zod";
+import { createScheduledTask, readScheduledTask } from "../tasks";
 import {
   compileScheduleIntent,
   ScheduleIntentError,
@@ -24,7 +26,6 @@ import {
   sameDestination,
   scheduleTaskToolResult,
   scheduleTaskToolResultSchema,
-  schedulerStore,
   throwToolInputError,
   type SchedulerToolContext,
 } from "../tool-support";
@@ -92,14 +93,14 @@ export function createSlackScheduleCreateTaskTool(
     execute: async (input, options) => {
       const destination = requireActiveConversation(context);
       const actor = requireActor(context, destination);
-      const store = schedulerStore(context);
       const id = buildTaskId({
         actor,
         destination,
         toolCallId: options.toolCallId,
       });
       // Replaying a durable tool call returns its original task instead of duplicating it.
-      const existing = await store.getTask(id);
+      const db = getDb();
+      const existing = await readScheduledTask(db, id);
       if (existing) {
         if (
           !sameDestination(existing, destination) ||
@@ -165,10 +166,10 @@ export function createSlackScheduleCreateTaskTool(
         task: {
           text: input.task,
         },
-        ...(title ? { title } : {}),
+        ...(title ? { title } : undefined),
       };
 
-      const committed = await store.createTask(task);
+      const committed = await createScheduledTask(db, task);
       if (
         !sameDestination(committed, destination) ||
         committed.createdBy.slackUserId !== actor.slackUserId

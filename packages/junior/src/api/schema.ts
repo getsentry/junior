@@ -1,6 +1,21 @@
 export { dailyConversationActivitySchema } from "./activity";
 export type { DailyConversationActivity } from "./activity";
 export {
+  codeActivityDaySchema,
+  codeChangeSummaryReportSchema,
+  codeChangeSummarySchema,
+  codeOverviewReportSchema,
+  codePersonReportSchema,
+  codeRepositorySummarySchema,
+} from "./schema/code";
+export type {
+  CodeActivityDay,
+  CodeChangeSummaryReport,
+  CodeOverviewReport,
+  CodePersonReport,
+  CodeRepositorySummary,
+} from "./schema/code";
+export {
   acceptedConversationMessageSchema,
   archiveConversationBodySchema,
   archiveConversationResponseSchema,
@@ -21,6 +36,8 @@ export {
   conversationPendingMessagesReportSchema,
   conversationReportEventDataSchema,
   conversationReportEventSchema,
+  conversationTurnFailureCodeSchema,
+  conversationTurnFailureReasonSchema,
   conversationStatsReportSchema,
   conversationSummaryReportSchema,
   createConversationBodySchema,
@@ -45,6 +62,8 @@ export type {
   ConversationReportEvent,
   ConversationReportEventData,
   ConversationReportStatus,
+  ConversationTurnFailureCode,
+  ConversationTurnFailureReason,
   ConversationMetricDay,
   ConversationModelUsage,
   ConversationParams,
@@ -101,6 +120,7 @@ export {
 } from "./schema/personal-token";
 export type { PersonalTokenMetadata } from "./schema/personal-token";
 export {
+  baselineSnapshotSchema,
   deleteWorkspaceResponseSchema,
   workspaceBodySchema,
   workspaceListSchema,
@@ -108,7 +128,10 @@ export {
   workspaceRepoSchema,
   workspaceSchema,
 } from "./schema/workspace";
-export type { WorkspaceReport } from "./schema/workspace";
+export type {
+  BaselineSnapshotReport,
+  WorkspaceReport,
+} from "./schema/workspace";
 export {
   eventTaskSummarySchema,
   scheduledTaskSummarySchema,

@@ -14,8 +14,8 @@ import { createModelAgentRunner } from "../../fixtures/agent-runner";
 import { createModelStream } from "../../fixtures/model-stream";
 import { queueSlackApiError } from "../../msw/handlers/slack-api";
 import {
+  createPausedTurns,
   getPausedTurnRequest,
-  wakePausedTurn as schedulePausedTurnWake,
 } from "@/chat/task-execution/turn-wake";
 import { buildDeterministicTurnId } from "@/chat/runtime/turn";
 import {
@@ -81,20 +81,11 @@ async function createEditedDmBot(args: {
   });
   const slackRuntime = createSlackRuntime({
     getSlackAdapter: () => bot.getAdapter("slack"),
+    ...(args.queue
+      ? { pausedTurns: createPausedTurns({ queue: args.queue, state }) }
+      : undefined),
     services: {
-      replyExecutor: {
-        agentRunner: args.agentRunner,
-        ...(args.queue
-          ? {
-              wakePausedTurn: async (request) => {
-                await schedulePausedTurnWake(request, {
-                  queue: args.queue,
-                  state,
-                });
-              },
-            }
-          : {}),
-      },
+      agentRunner: args.agentRunner,
     },
   });
 

@@ -4,20 +4,20 @@ const { dependenciesMock, globalPostinstall, postinstallMock } = vi.hoisted(
   () => ({
     dependenciesMock: vi.fn(),
     globalPostinstall: [] as Array<{ cmd: string; args?: string[] }>,
-    postinstallMock: vi.fn(),
+    postinstallMock: vi.fn()
   }),
 );
 
 vi.mock("@/chat/plugins/catalog-runtime", () => ({
   pluginCatalogRuntime: {
     getRuntimeDependencies: dependenciesMock,
-    getRuntimePostinstall: postinstallMock,
-  },
+    getRuntimePostinstall: postinstallMock
+  }
 }));
 
 vi.mock("@/chat/sandbox/runtime-dependencies", () => ({
   GLOBAL_RUNTIME_DEPENDENCIES: [],
-  GLOBAL_RUNTIME_POSTINSTALL: globalPostinstall,
+  GLOBAL_RUNTIME_POSTINSTALL: globalPostinstall
 }));
 
 import { create, isStale } from "@/chat/sandbox/snapshot/profile";
@@ -82,23 +82,24 @@ describe("snapshot dependency profile", () => {
       id: "workspace-1",
       name: "sentry",
       setupScript: "pnpm install",
+      snapshot: null,
       repos: [
         {
           provider: "github",
-          repo: "getsentry/sentry",
-          isPrimary: true,
+          repo: "getsentry/sentry"
         },
-      ],
+      ]
     };
 
     const first = create("node22", workspace);
     const changedSetup = create("node22", {
       ...workspace,
       setupScript: "pnpm install --frozen-lockfile",
+      snapshot: null,
     });
     const changedRepo = create("node22", {
       ...workspace,
-      repos: [{ ...workspace.repos[0]!, repo: "getsentry/junior" }],
+      repos: [{ ...workspace.repos[0]!, repo: "getsentry/junior" }]
     });
 
     expect(first?.hash).not.toBe(changedSetup?.hash);
@@ -106,32 +107,30 @@ describe("snapshot dependency profile", () => {
     expect(first?.floating).toBe(true);
   });
 
-  it("normalizes repository order and ignores the primary selection", () => {
+  it("normalizes repository order when hashing workspace profiles", () => {
     const repos = [
       {
         provider: "github",
         repo: "getsentry/sentry",
-        isPrimary: true,
       },
       {
         provider: "github",
         repo: "getsentry/relay",
-        isPrimary: false,
       },
     ];
     const first = create("node22", {
       id: "workspace-1",
       name: "sentry",
       setupScript: "",
+      snapshot: null,
       repos,
     });
     const reordered = create("node22", {
       id: "workspace-1",
       name: "sentry",
       setupScript: "",
-      repos: [...repos]
-        .reverse()
-        .map((repo) => ({ ...repo, isPrimary: !repo.isPrimary })),
+      snapshot: null,
+      repos: [...repos].reverse(),
     });
 
     expect(first?.hash).toBe(reordered?.hash);
@@ -142,13 +141,11 @@ describe("snapshot dependency profile", () => {
     const reposA = [
       {
         provider: "github",
-        repo: "getsentry/Zulu",
-        isPrimary: true,
+        repo: "getsentry/Zulu"
       },
       {
         provider: "github",
-        repo: "getsentry/alpha",
-        isPrimary: false,
+        repo: "getsentry/alpha"
       },
     ];
     const reposB = [...reposA].reverse();
@@ -156,53 +153,16 @@ describe("snapshot dependency profile", () => {
       id: "workspace-1",
       name: "sentry",
       setupScript: "pnpm install",
-      repos: reposA,
+      snapshot: null,
+      repos: reposA
     });
     const second = create("node22", {
       id: "workspace-1",
       name: "sentry",
       setupScript: "pnpm install",
-      repos: reposB,
+      snapshot: null,
+      repos: reposB
     });
-    expect(first?.hash).toBe(second?.hash);
-  });
-
-  it("ignores isPrimary when hashing workspace profiles", () => {
-    const first = create("node22", {
-      id: "workspace-1",
-      name: "sentry",
-      setupScript: "pnpm install",
-      repos: [
-        {
-          provider: "github",
-          repo: "getsentry/sentry",
-          isPrimary: true,
-        },
-        {
-          provider: "github",
-          repo: "getsentry/relay",
-          isPrimary: false,
-        },
-      ],
-    });
-    const second = create("node22", {
-      id: "workspace-1",
-      name: "sentry",
-      setupScript: "pnpm install",
-      repos: [
-        {
-          provider: "github",
-          repo: "getsentry/sentry",
-          isPrimary: false,
-        },
-        {
-          provider: "github",
-          repo: "getsentry/relay",
-          isPrimary: true,
-        },
-      ],
-    });
-
     expect(first?.hash).toBe(second?.hash);
   });
 
@@ -214,7 +174,8 @@ describe("snapshot dependency profile", () => {
       id: "workspace-1",
       name: "sentry",
       setupScript: "",
-      repos: [],
+      snapshot: null,
+      repos: []
     };
     const first = create("node22", workspace);
 
@@ -255,7 +216,7 @@ describe("snapshot dependency profile", () => {
           runtime: "node22",
           rebuildEpoch: "",
           dependencies: [{ type: "npm", package: "example", version: "1.2.3" }],
-          postinstall: [],
+          postinstall: []
         }),
       )
       .digest("hex");
@@ -272,7 +233,7 @@ describe("snapshot dependency profile", () => {
               { type: "npm", package: "example", version: "1.2.3" },
             ],
             postinstall: [],
-            workspace: null,
+            workspace: null
           }),
         )
         .digest("hex"),

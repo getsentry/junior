@@ -80,8 +80,8 @@ export async function checkSlackChannelReadAccess(args: {
     return {
       allowed: true,
       isPublic: true,
-      ...(info.name ? { channelName: info.name } : {}),
-      ...(typeof info.isMember === "boolean" ? { isMember: info.isMember } : {}),
+      ...(info.name ? { channelName: info.name } : undefined),
+      ...(typeof info.isMember === "boolean" ? { isMember: info.isMember } : undefined),
     };
   } catch (error) {
     if (error instanceof SlackActionError) {
@@ -115,7 +115,7 @@ export async function joinPublicChannelForRead(args: {
     await joinPublicChannel(args.targetChannelId);
     return {
       ok: true,
-      ...(args.channelName ? { channelName: args.channelName } : {}),
+      ...(args.channelName ? { channelName: args.channelName } : undefined),
     };
   } catch (error) {
     if (error instanceof SlackActionError) {

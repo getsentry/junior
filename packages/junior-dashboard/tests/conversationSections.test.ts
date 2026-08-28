@@ -17,7 +17,7 @@ function conversation(
     startedAt: lastSeenAt,
     status: "completed",
     surface: "internal",
-    ...(options.isPriority ? { isPriority: true } : {}),
+    ...(options.isPriority ? { isPriority: true } : undefined),
   };
 }
 

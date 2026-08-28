@@ -21,6 +21,7 @@ const githubPullRequestOutcomeInputSchema = z
     repositoryFullName: z.string().min(1),
     repositoryId: z.string().min(1),
     state: githubPullRequestStateSchema,
+    title: z.string().min(1).optional(),
     updatedAt: z.date(),
   })
   .strict();
@@ -66,7 +67,7 @@ function projectionValues(input: GitHubPullRequestOutcomeInput) {
     closedAt: input.closedAt ?? null,
     ...(input.commitComposition
       ? { commitComposition: input.commitComposition }
-      : {}),
+      : undefined),
     mergedAt: input.mergedAt ?? null,
     number: input.number,
     openedAt: input.openedAt,

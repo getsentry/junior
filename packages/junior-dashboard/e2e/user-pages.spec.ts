@@ -144,6 +144,7 @@ test("opens scheduled and event tasks in the native Tasks view", async ({
     name: "View task details: Weekly project summary",
   });
   await taskDetailsTrigger.click();
+  await expect(page).toHaveURL(`${server.baseURL}/tasks/scheduled-1`);
   const details = page.getByRole("dialog", { name: "Weekly project summary" });
   await expect(details).toBeVisible();
   await expect
@@ -167,6 +168,7 @@ test("opens scheduled and event tasks in the native Tasks view", async ({
   );
   await page.keyboard.press("Escape");
   await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page).toHaveURL(`${server.baseURL}/tasks/list`);
   await expect
     .poll(() => page.evaluate(() => document.body.style.overflow))
     .toBe("");
@@ -247,6 +249,12 @@ test("opens memory details in a slide-out drawer", async ({ page }) => {
     name: /^View memory details: I prefer concise summaries/,
   });
   await memory.click();
+  await expect(page).toHaveURL(/\/memories\/memory-1/);
+  await expect(
+    page
+      .getByRole("navigation", { name: "Memory navigation" })
+      .getByRole("link", { name: "Memories" }),
+  ).toHaveAttribute("aria-current", "page");
   const details = page.getByRole("dialog", { name: "What Junior remembers" });
   await expect(details).toBeVisible();
   await expect
@@ -362,7 +370,7 @@ test("searches, paginates, and forgets plugin page records", async ({
         emptyText: query
           ? "No memories matched your search."
           : "No memories yet.",
-        ...(!query && !cursor ? { nextCursor: "page-2" } : {}),
+        ...(!query && !cursor ? { nextCursor: "page-2" } : undefined),
         records,
         searchPlaceholder: "Search memories",
       },

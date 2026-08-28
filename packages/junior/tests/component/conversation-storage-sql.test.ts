@@ -200,7 +200,11 @@ it("rejects unsupported conversation event schema versions", () => {
       seq: 0,
       historyVersion: 0,
       createdAtMs: 1_000,
-      data: { type: "mcp_provider_connected", provider: "github", credentialSubjectId: "U123" },
+      data: {
+        type: "mcp_provider_connected",
+        provider: "github",
+        credentialSubjectId: "U123",
+      },
     }).success,
   ).toBe(false);
 });
@@ -278,10 +282,13 @@ it("keeps actor-owned MCP connections across history replacement", async () => {
   ).resolves.toMatchObject({
     messages: [],
     modelProfile: "standard",
-    modelId: "test-model",
+    replacementSeq: 1,
   });
   await expect(
-    loadConnectedMcpProviders({ conversationId, credentialSubjectId: "UALICE" }),
+    loadConnectedMcpProviders({
+      conversationId,
+      credentialSubjectId: "UALICE",
+    }),
   ).resolves.toEqual(["linear"]);
   await expect(
     loadConnectedMcpProviders({ conversationId, credentialSubjectId: "UBOB" }),
@@ -301,7 +308,7 @@ async function seedConversation(
         conversationId,
         ...(parentConversationId
           ? { parentConversationId, rootConversationId: parentConversationId }
-          : {}),
+          : undefined),
       }),
     );
 }
@@ -342,7 +349,7 @@ function userMessageEvent(
                       userId: "user-1",
                     },
           }
-        : {}),
+        : undefined),
     },
   };
 }
@@ -412,7 +419,11 @@ describe("SQL conversation storage", () => {
       ]);
       await store.append(CONVERSATION_ID, [
         {
-          data: { type: "mcp_provider_connected", provider: "github", credentialSubjectId: "U123" },
+          data: {
+            type: "mcp_provider_connected",
+            provider: "github",
+            credentialSubjectId: "U123",
+          },
           createdAtMs: 3_000,
         },
       ]);
@@ -519,7 +530,11 @@ describe("SQL conversation storage", () => {
           createdAtMs: 2_000,
         },
         {
-          data: { type: "mcp_provider_connected", provider: "github", credentialSubjectId: "U123" },
+          data: {
+            type: "mcp_provider_connected",
+            provider: "github",
+            credentialSubjectId: "U123",
+          },
           createdAtMs: 3_000,
         },
         {
@@ -540,7 +555,7 @@ describe("SQL conversation storage", () => {
     }
   });
 
-  it("does not refresh or unarchive a conversation for duplicate appends", async () => {
+  it("does not refresh a conversation for duplicate appends", async () => {
     const fixture = await createLocalJuniorSqlFixture();
 
     try {
@@ -556,17 +571,13 @@ describe("SQL conversation storage", () => {
       await fixture.sql
         .db()
         .update(juniorConversations)
-        .set({
-          archivedAt: new Date(2_000),
-          transcriptPurgedAt: new Date(2_500),
-        })
+        .set({ transcriptPurgedAt: new Date(2_500) })
         .where(eq(juniorConversations.conversationId, CONVERSATION_ID));
 
       const readConversationTimestamps = async () => {
         const [row] = await fixture.sql
           .db()
           .select({
-            archivedAt: juniorConversations.archivedAt,
             lastActivityAt: juniorConversations.lastActivityAt,
             transcriptPurgedAt: juniorConversations.transcriptPurgedAt,
             updatedAt: juniorConversations.updatedAt,
@@ -593,7 +604,6 @@ describe("SQL conversation storage", () => {
       ]);
 
       expect(await readConversationTimestamps()).toEqual({
-        archivedAt: null,
         lastActivityAt: new Date(8_000),
         transcriptPurgedAt: null,
         updatedAt: new Date(8_000),
@@ -612,152 +622,6 @@ describe("SQL conversation storage", () => {
     }
   });
 
-  it("keeps archive through system noise and restores only on human activity", async () => {
-    const fixture = await createLocalJuniorSqlFixture();
-
-    try {
-      await migrateSchema(fixture.sql);
-      const store = createSqlConversationEventStore(fixture.sql);
-      await store.append(CONVERSATION_ID, [
-        {
-          data: userMessageEvent("seed", "instruction", { platform: "slack" }),
-          idempotencyKey: "event:seed",
-          createdAtMs: 1_000,
-        },
-      ]);
-      await fixture.sql
-        .db()
-        .update(juniorConversations)
-        .set({
-          archivedAt: new Date(2_000),
-          transcriptPurgedAt: new Date(2_500),
-        })
-        .where(eq(juniorConversations.conversationId, CONVERSATION_ID));
-
-      const readConversationTimestamps = async () => {
-        const [row] = await fixture.sql
-          .db()
-          .select({
-            archivedAt: juniorConversations.archivedAt,
-            lastActivityAt: juniorConversations.lastActivityAt,
-            transcriptPurgedAt: juniorConversations.transcriptPurgedAt,
-            updatedAt: juniorConversations.updatedAt,
-          })
-          .from(juniorConversations)
-          .where(eq(juniorConversations.conversationId, CONVERSATION_ID));
-        return row;
-      };
-      const archived = await readConversationTimestamps();
-
-      await store.append(CONVERSATION_ID, [
-        {
-          data: {
-            type: "turn_started",
-            turnId: "turn-1",
-            inputMessageIds: ["msg-resource"],
-            surface: "slack",
-          },
-          idempotencyKey: "event:turn-started",
-          createdAtMs: 3_000,
-        },
-        {
-          data: {
-            type: "message",
-            messageId: "msg-resource",
-            role: "user",
-            text: "Pull request checks failed.",
-            meta: {
-              eventType: "pull_request.checks.failed",
-              author: {
-                userId: "UJRNEVENT",
-                userName: "junior-event",
-                isBot: true,
-              },
-            },
-          },
-          idempotencyKey: "event:resource",
-          createdAtMs: 3_100,
-        },
-        {
-          data: userMessageEvent("ambient", "context"),
-          idempotencyKey: "event:context",
-          createdAtMs: 3_200,
-        },
-        {
-          data: userMessageEvent("system", "instruction", {
-            platform: "system",
-            name: "resource-event",
-          }),
-          idempotencyKey: "event:system-instruction",
-          createdAtMs: 3_300,
-        },
-        {
-          data: {
-            type: "message_updated",
-            messageId: "msg-seed",
-            role: "user",
-            text: "seed (hydrated)",
-            meta: {
-              author: {
-                userId: "U123",
-                userName: "pierre",
-                isBot: false,
-              },
-            },
-          },
-          idempotencyKey: "event:message-updated",
-          createdAtMs: 3_400,
-        },
-      ]);
-
-      expect(await readConversationTimestamps()).toEqual({
-        ...archived,
-        lastActivityAt: new Date(3_400),
-        transcriptPurgedAt: null,
-        updatedAt: new Date(3_400),
-      });
-
-      await store.replaceHistory(CONVERSATION_ID, {
-        createdAtMs: 4_000,
-        data: {
-          type: "compaction",
-          modelProfile: "coding",
-          modelId: "openai/gpt-5.4",
-          replacementHistory: [
-            {
-              item: userMessageEvent("summary", "instruction", {
-                platform: "slack",
-              }),
-            },
-          ],
-        },
-      });
-
-      expect((await readConversationTimestamps())?.archivedAt).toEqual(
-        archived?.archivedAt,
-      );
-
-      await store.append(CONVERSATION_ID, [
-        {
-          data: userMessageEvent("follow up", "instruction", {
-            platform: "slack",
-          }),
-          idempotencyKey: "event:human",
-          createdAtMs: 5_000,
-        },
-      ]);
-
-      const restored = await readConversationTimestamps();
-      expect(restored?.archivedAt).toBeNull();
-      expect(restored?.transcriptPurgedAt).toBeNull();
-      // replaceHistory refreshes activity with Date.now(); the human append
-      // must still clear archive without regressing that clock.
-      expect(restored?.lastActivityAt?.getTime()).toBeGreaterThanOrEqual(5_000);
-    } finally {
-      await fixture.close();
-    }
-  });
-
   it("deduplicates repeated keys within one append without leaving seq gaps", async () => {
     const fixture = await createLocalJuniorSqlFixture();
     const store = createSqlConversationEventStore(fixture.sql);
@@ -768,17 +632,29 @@ describe("SQL conversation storage", () => {
         {
           idempotencyKey: "event:repeated",
           createdAtMs: 1_000,
-          data: { type: "mcp_provider_connected", provider: "github", credentialSubjectId: "U123" },
+          data: {
+            type: "mcp_provider_connected",
+            provider: "github",
+            credentialSubjectId: "U123",
+          },
         },
         {
           idempotencyKey: "event:repeated",
           createdAtMs: 2_000,
-          data: { type: "mcp_provider_connected", provider: "linear", credentialSubjectId: "U123" },
+          data: {
+            type: "mcp_provider_connected",
+            provider: "linear",
+            credentialSubjectId: "U123",
+          },
         },
         {
           idempotencyKey: "event:next",
           createdAtMs: 3_000,
-          data: { type: "mcp_provider_connected", provider: "sentry", credentialSubjectId: "U123" },
+          data: {
+            type: "mcp_provider_connected",
+            provider: "sentry",
+            credentialSubjectId: "U123",
+          },
         },
       ]);
 
@@ -939,7 +815,11 @@ describe("SQL conversation storage", () => {
       });
       await store.append(CONVERSATION_ID, [
         {
-          data: { type: "mcp_provider_connected", provider: "github", credentialSubjectId: "U123" },
+          data: {
+            type: "mcp_provider_connected",
+            provider: "github",
+            credentialSubjectId: "U123",
+          },
           createdAtMs: 4_000,
         },
       ]);
@@ -992,7 +872,11 @@ describe("SQL conversation storage", () => {
           createdAtMs: 1_000,
         },
         {
-          data: { type: "mcp_provider_connected", provider: "github", credentialSubjectId: "U123" },
+          data: {
+            type: "mcp_provider_connected",
+            provider: "github",
+            credentialSubjectId: "U123",
+          },
           createdAtMs: 2_000,
         },
       ]);

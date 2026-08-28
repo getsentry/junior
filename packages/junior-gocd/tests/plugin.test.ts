@@ -22,7 +22,7 @@ describe("gocdPlugin", () => {
   });
 
   it("declares egress domains and bearer injection from the host base URL", () => {
-    const plugin = gocdPlugin({ baseUrl: "https://gocd.example.com" });
+    const plugin = gocdPlugin({ baseUrl: "https://gocd.example.com:8154" });
     expect(plugin.manifest).toMatchObject({
       apiHeaders: {
         Authorization: "bearer ${GOCD_ACCESS_TOKEN}",
@@ -33,12 +33,21 @@ describe("gocdPlugin", () => {
       plugin.hooks?.tools?.({
         egress: { fetch: vi.fn() },
       } as never),
-    ).toHaveProperty("pipelineHistory");
+    ).toMatchObject({
+      pipelineHistory: expect.any(Object),
+      stage: expect.any(Object),
+    });
   });
 
   it("can derive the egress domain from GOCD_URL", () => {
     vi.stubEnv("GOCD_URL", "https://ci.example.org");
     expect(gocdPlugin().manifest.domains).toEqual(["ci.example.org"]);
+  });
+
+  it("rejects invalid configured base URLs during registration", () => {
+    expect(() => gocdPlugin({ baseUrl: "http://gocd.example.com" })).toThrow(
+      "GoCD base URL must use https",
+    );
   });
 
   it("uses host credential hooks instead of static apiHeaders", () => {

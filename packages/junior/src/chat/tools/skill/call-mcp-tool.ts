@@ -52,7 +52,7 @@ function missingToolMessage(toolName: string, provider: string | undefined) {
 }
 
 /** Create the stable dispatcher for active MCP provider tools. */
-// TODO(future): Fold MCP execution into executeTool once searchTools can
+// TODO(dcramer): Fold MCP execution into executeTool once searchTools can
 // disclose MCP tool schemas and the execution catalog keeps them active.
 export function createCallMcpToolTool(mcpToolManager: CallMcpToolManager) {
   return zodTool({
@@ -89,7 +89,7 @@ export function createCallMcpToolTool(mcpToolManager: CallMcpToolManager) {
       return {
         ...(activeTool.annotations
           ? { annotations: activeTool.annotations }
-          : {}),
+          : undefined),
         description: activeTool.description,
         name: tool_name,
         source: {
@@ -111,7 +111,9 @@ export function createCallMcpToolTool(mcpToolManager: CallMcpToolManager) {
           : [];
         setSpanAttributes({
           "app.mcp.requested_tool_name": tool_name,
-          ...(provider ? { "app.mcp.requested_provider": provider } : {}),
+          ...(provider
+            ? { "app.mcp.requested_provider": provider }
+            : undefined),
           "app.mcp.active_provider_names": activeProviderNames(activeTools),
           "app.mcp.active_tool_count": activeTools.length,
           ...(provider
@@ -121,7 +123,7 @@ export function createCallMcpToolTool(mcpToolManager: CallMcpToolManager) {
                   .map((candidate) => candidate.name)
                   .sort((a, b) => a.localeCompare(b)),
               }
-            : {}),
+            : undefined),
         });
         throw new McpToolError(missingToolMessage(tool_name, provider));
       }
@@ -129,7 +131,9 @@ export function createCallMcpToolTool(mcpToolManager: CallMcpToolManager) {
         resolveMcpArguments(input as Record<string, unknown>),
         {
           conversationPrivacy: options?.conversationPrivacy ?? "private",
-          ...(options?.toolCallId ? { toolCallId: options.toolCallId } : {}),
+          ...(options?.toolCallId
+            ? { toolCallId: options.toolCallId }
+            : undefined),
         },
       );
       return { content: result.content };

@@ -104,7 +104,7 @@ export interface ToolActionReviewer {
 /** Core-owned context used to prepare one exact action for Guardian. */
 export interface ToolActionReviewContext {
   actor?: Actor;
-  conversationId?: string;
+  conversationId: string;
   credentialContext?: CredentialContext;
   destination: Destination;
   source: Source;
@@ -276,14 +276,14 @@ function actionCredential(
           ...(credentialContext.subject.allowedWhen !==
           "private-direct-conversation"
             ? { taskId: credentialContext.subject.taskId }
-            : {}),
+            : undefined),
           type: credentialContext.subject.type,
           userId: credentialContext.subject.userId,
         }
       : undefined;
   return {
     actor,
-    ...(subject ? { subject } : {}),
+    ...(subject ? { subject } : undefined),
   };
 }
 
@@ -291,12 +291,8 @@ function assertAuthoritativeContext(
   context: ToolActionReviewContext,
 ): asserts context is ToolActionReviewContext & {
   actor: Actor;
-  conversationId: string;
   userIntent: () => string;
 } {
-  if (!context.conversationId?.trim()) {
-    throw new ToolActionReviewUnavailableError();
-  }
   if (!context.actor) {
     throw new ToolActionReviewUnavailableError();
   }
@@ -345,12 +341,12 @@ function buildProposal(
     context: {
       actor: actionActor(context.actor),
       conversationId: context.conversationId,
-      ...(credential ? { credential } : {}),
+      ...(credential ? { credential } : undefined),
       destination: context.destination,
       source: context.source,
       userIntent: context.userIntent(),
     },
-    ...(context.evidence ? { evidence: context.evidence() } : {}),
+    ...(context.evidence ? { evidence: context.evidence() } : undefined),
     input,
     ...(priorRejections.length > 0
       ? {
@@ -358,19 +354,19 @@ function buildProposal(
             ...rejection,
           })),
         }
-      : {}),
+      : undefined),
     tool: {
       ...((resolved?.annotations ?? tool.annotations)
         ? { annotations: resolved?.annotations ?? tool.annotations }
-        : {}),
+        : undefined),
       description: resolved?.description ?? tool.description,
-      ...(name !== toolName ? { dispatcherName: toolName } : {}),
-      ...(tool.identity ? { identity: tool.identity } : {}),
+      ...(name !== toolName ? { dispatcherName: toolName } : undefined),
+      ...(tool.identity ? { identity: tool.identity } : undefined),
       name,
-      ...(proposalDescription ? { proposalDescription } : {}),
+      ...(proposalDescription ? { proposalDescription } : undefined),
       ...((resolved?.source ?? tool.source)
         ? { catalogSource: resolved?.source ?? tool.source }
-        : {}),
+        : undefined),
     },
   };
 }
@@ -548,7 +544,7 @@ export function createToolActionReview(options: {
         userAuthorization: decision.userAuthorization,
         ...(exhausted
           ? { instructions: ACTION_REVIEW_LIMIT_INSTRUCTIONS }
-          : {}),
+          : undefined),
       });
     },
     projectToolResult(toolCallId, result) {

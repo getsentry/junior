@@ -325,6 +325,7 @@ export async function wireAgentTools(
   );
   const commonToolRuntimeContext = {
     conversationId: args.run.conversationId,
+    ...(args.run.location ? { locationId: args.run.location.id } : undefined),
     userText: args.userInput,
     configuration: args.configurationValues,
     egress: createPluginEgress({
@@ -335,7 +336,7 @@ export async function wireAgentTools(
             auth_required: {
               ...(signal.authorization
                 ? { authorization: signal.authorization }
-                : {}),
+                : undefined),
               createdAtMs: Date.now(),
               grant: signal.grant,
               kind: signal.kind,
@@ -355,11 +356,11 @@ export async function wireAgentTools(
           resolveActorIdentity: async () =>
             await readActorIdentity(args.currentActor!),
         }
-      : {}),
+      : undefined),
     ...(args.durability.spawnAgent
       ? { spawnAgent: args.durability.spawnAgent }
-      : {}),
-    ...(args.requestHandoff ? { handoff: args.requestHandoff } : {}),
+      : undefined),
+    ...(args.requestHandoff ? { handoff: args.requestHandoff } : undefined),
   };
   const toolRoute = resolveToolRuntimeRoute({
     actor: args.currentActor,
@@ -373,7 +374,7 @@ export async function wireAgentTools(
       activeWorkspaceId: () => agentSandbox.sandboxRef()?.workspaceId,
       switch: agentSandbox.switchWorkspace,
     },
-  } as ToolRuntimeContext;
+  } satisfies ToolRuntimeContext;
   const actionReview = createToolActionReview({
     context: {
       actor: args.currentActor,

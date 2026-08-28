@@ -24,9 +24,9 @@ export const plugins = defineJuniorPlugins([
 
 ## Environment
 
-| Variable | Required | Notes |
-| --- | --- | --- |
-| `GOCD_URL` | when `baseUrl` is omitted | Absolute https GoCD origin, for example `https://gocd.example.com` |
+| Variable            | Required                    | Notes                                                                       |
+| ------------------- | --------------------------- | --------------------------------------------------------------------------- |
+| `GOCD_URL`          | when `baseUrl` is omitted   | Absolute https GoCD origin, for example `https://gocd.example.com`          |
 | `GOCD_ACCESS_TOKEN` | for the default bearer path | Read-only GoCD API token. Injected by Junior as `Authorization: bearer ...` |
 
 ### Static bearer headers
@@ -80,15 +80,18 @@ gocdPlugin({
 ## Tools
 
 - `pipelineHistory`: recent runs for one exact pipeline name
+- `stage`: one exact stage run with its jobs and failed job names
 
 API usage is checked against GoCD **25.2.0**:
 
 - bearer auth: `Authorization: bearer <token>`
 - history: `GET /go/api/pipelines/:name/history` with `Accept: application/vnd.go.cd.v1+json`
+- stage: `GET /go/api/stages/:pipeline_name/:stage_name/instance/:pipeline_counter/:stage_counter` with `Accept: application/vnd.go.cd.v3+json`
 - `page_size` clamped to 10..100 per server rules
 
 ## Notes
 
-Register this package from the host app that owns your GoCD deployment. Keep
-environment-specific pipeline names, regions, and deploy topology in host
-skills or private plugins.
+Register this package from the host app that owns your GoCD deployment. The
+base URL is fixed at registration because Junior binds egress domains and auth
+headers to that host. Keep environment-specific pipeline names, regions, and
+deploy topology in host skills or private plugins.

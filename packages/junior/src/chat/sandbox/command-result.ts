@@ -35,9 +35,9 @@ export function formatSandboxCommandResult(params: SandboxCommandOutcome) {
     stderr: params.stderr,
     stdout_truncated: params.stdout_truncated,
     stderr_truncated: params.stderr_truncated,
-    ...(params.auth_required ? { auth_required: params.auth_required } : {}),
+    ...(params.auth_required ? { auth_required: params.auth_required } : undefined),
     ...(params.permission_denied
       ? { permission_denied: params.permission_denied }
-      : {}),
+      : undefined),
   });
 }

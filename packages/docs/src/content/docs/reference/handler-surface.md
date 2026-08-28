@@ -20,7 +20,7 @@ Handled `GET` routes:
 - `/api/oauth/callback/:provider`
 - `/api/oauth/callback/mcp/:provider`
 
-When `createApp({ dashboard })` mounts `@sentry/junior-dashboard`, the dashboard package owns `/`, `/conversations`, `/conversations/*`, `/locations`, `/locations/*`, `/people`, `/people/*`, `/system`, `/system/*`, `/_junior/dashboard/client.js`, `/auth/login`, `/api/auth/*`, and the authenticated product API routes `/api/health`, `/api/runtime`, `/api/plugins`, `/api/plugins/*`, `/api/plugin-reports`, `/api/skills`, `/api/conversations`, `/api/conversations/*`, `/api/locations`, `/api/locations/*`, `/api/people`, `/api/people/*`, `/api/config`, and `/api/me`; use `/health` for unauthenticated health checks. Plugin API routes are mounted under `/api/plugins/:plugin/*` and inherit auth.
+When `createApp({ dashboard })` mounts `@sentry/junior-dashboard`, the dashboard package owns `/`, `/conversations`, `/conversations/*`, `/locations`, `/locations/*`, `/people`, `/people/*`, `/system`, `/system/*`, `/_junior/dashboard/client.js`, `/auth/login`, `/api/auth/*`, and the authenticated product API routes `/api/health`, `/api/runtime`, `/api/plugins`, `/api/plugins/*`, `/api/plugin-reports`, `/api/skills`, `/api/conversations`, `/api/conversations/*`, `/api/locations`, `/api/locations/*`, `/api/people`, `/api/people/*`, `/api/config`, and `/api/me`; use `/health` for unauthenticated health checks. Plugin API routes are mounted under `/api/plugins/:plugin/*` and inherit auth. The dashboard also authenticates the ACP browser confirmation route.
 
 Handled `POST` routes:
 
@@ -29,11 +29,15 @@ Handled `POST` routes:
 - `/api/internal/plugin/tasks`
 - `/api/webhooks/:platform` (Slack path is `/api/webhooks/slack`)
 
-When `createApp({ experimental: { acp: true } })` is set, `GET`, `POST`, and
-`DELETE /api/acp` expose ACP v1 Streamable HTTP. Every request requires a Junior
-personal token in the bearer authorization header. This experimental route
-keeps connection state in one Node process. Do not enable it on a multi-process
-deployment.
+`GET`, `POST`, and `DELETE /api/acp` always expose ACP v1 Streamable HTTP.
+When the app configures the dashboard, it also mounts the authenticated
+`/_junior/acp/auth/:transactionId` browser route. Clients authenticate through
+ACP URL elicitation. The user enters the verification code shown by the client,
+then completes the dashboard Google sign-in flow. Personal tokens do not grant
+access. ACP stores transport records in the configured `StateAdapter`.
+Production Redis state supports requests from different app instances. Live
+SSE requests still end at the deployment request limit. Clients must reconnect
+and call `session/load` after that limit.
 
 ## Expected behavior
 

@@ -62,8 +62,8 @@ async function ensureConversationTitleOnce(args: {
     if (stored?.title?.trim()) {
       return undefined;
     }
-    // Child conversations are execution machinery, not listable threads.
-    if (stored?.lineage) {
+    // Conversations with a parent are execution machinery, not listable threads.
+    if (stored?.parentConversationId) {
       return undefined;
     }
 

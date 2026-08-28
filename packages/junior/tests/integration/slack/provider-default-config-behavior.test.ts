@@ -29,9 +29,7 @@ describe("Slack behavior: provider default configuration", () => {
   it("sets an explicit default GitHub repo without starting an agent turn", async () => {
     const { slackRuntime } = createTestChatRuntime({
       services: {
-        replyExecutor: {
-          agentRunner: neverRunAgentRunner(),
-        },
+        agentRunner: neverRunAgentRunner(),
       },
     });
     const thread = await createTestThread({
@@ -66,14 +64,12 @@ describe("Slack behavior: provider default configuration", () => {
     let agentRunCount = 0;
     const { slackRuntime } = createTestChatRuntime({
       services: {
-        replyExecutor: {
-          agentRunner: createModelAgentRunnerForRun(() => {
-            agentRunCount += 1;
-            return createModelStream([
-              { type: "text", text: "Created the issue." },
-            ]);
-          }),
-        },
+        agentRunner: createModelAgentRunnerForRun(() => {
+          agentRunCount += 1;
+          return createModelStream([
+            { type: "text", text: "Created the issue." },
+          ]);
+        }),
       },
     });
     const thread = await createTestThread({

@@ -134,7 +134,7 @@ export async function fetchDashboardJson<T>(
 ): Promise<T> {
   const response = await fetch(path, {
     credentials: "same-origin",
-    ...(signal ? { signal } : {}),
+    ...(signal ? { signal } : undefined),
   });
   if (response.status === 401) {
     restartDashboardSignIn();

@@ -27,11 +27,15 @@ import {
   isSandboxUnavailableError,
   throwSandboxOperationError,
 } from "@/chat/sandbox/errors";
+import {
+  getWorkspaceSnapshotNotReadyError,
+  workspaceSnapshotNotReadyUserMessage,
+} from "@/chat/sandbox/snapshot/not-ready-error";
 import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
 import { tryWorkspaceRepoCheckoutPath } from "@/chat/workspaces/checkout-path";
 import {
-  findSingleRepositoryDirectory,
-  resolveRepositoryInstructions,
+  listRepositoryDirectories,
+  resolveRepositoryInstructionsForDirectories,
   type RepositoryInstructions,
 } from "@/chat/repository-instructions";
 import { createSandboxRuntime } from "@/chat/sandbox/session";
@@ -82,7 +86,7 @@ export interface SandboxTools {
 }
 
 export interface SandboxAccess {
-  /** Resolve the AGENTS.md bundle for the selected repository directory. */
+  /** Resolve AGENTS.md instructions for each repository directory in the Workspace. */
   captureRepositoryInstructions(): Promise<RepositoryInstructions | undefined>;
   readonly tools: SandboxTools;
   readonly workspace: SandboxWorkspace;
@@ -126,6 +130,19 @@ function createSandboxUnavailableToolError(
     `The temporary sandbox became unavailable during ${operation}, so the operation did not complete reliably. The next sandbox operation will use a fresh session. It may have produced side effects; retry only if it is safe.`,
     { cause },
   );
+}
+
+/** Tool result when the Workspace sandbox is still preparing. */
+function createWorkspaceSnapshotNotReadyToolResult(cause: unknown) {
+  const notReady = getWorkspaceSnapshotNotReadyError(cause);
+  if (!notReady) {
+    throw new Error("expected WorkspaceSnapshotNotReadyError");
+  }
+  return makeStructuredToolOutput({
+    status: "building" as const,
+    workspace: notReady.workspaceName,
+    message: workspaceSnapshotNotReadyUserMessage(notReady),
+  });
 }
 
 const SANDBOX_TOOL_NAMES = new Set([
@@ -205,8 +222,8 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
       consumeSandboxEgressPermissionDeniedSignal(egressId),
     ]);
     return {
-      ...(authRequired ? { authRequired } : {}),
-      ...(permissionDenied ? { permissionDenied } : {}),
+      ...(authRequired ? { authRequired } : undefined),
+      ...(permissionDenied ? { permissionDenied } : undefined),
     };
   };
   let activeWorkspace = options.workspace;
@@ -226,7 +243,7 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
                 ? {
                     credentialToken: sandboxEgressCredentialTokenFor(sessionId),
                   }
-                : {}),
+                : undefined),
               traceConfig: tracePropagation,
               traceHeaders,
             })
@@ -261,7 +278,7 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
             return async (input) =>
               await runCommand({
                 ...input,
-                ...(signal ? { signal } : {}),
+                ...(signal ? { signal } : undefined),
               });
           }));
       },
@@ -359,9 +376,9 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
           const response = await executeBash({
             command,
             cwd,
-            ...(env ? { env } : {}),
-            ...(timeoutMs ? { timeoutMs } : {}),
-            ...(context.signal ? { signal: context.signal } : {}),
+            ...(env ? { env } : undefined),
+            ...(timeoutMs ? { timeoutMs } : undefined),
+            ...(context.signal ? { signal: context.signal } : undefined),
           });
           setSpanAttributes({
             "process.exit.code": response.exitCode,
@@ -413,8 +430,8 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
       stderr: result.stderr,
       stdout_truncated: result.stdoutTruncated,
       stderr_truncated: result.stderrTruncated,
-      ...(authRequired ? { auth_required: authRequired } : {}),
-      ...(permissionDenied ? { permission_denied: permissionDenied } : {}),
+      ...(authRequired ? { auth_required: authRequired } : undefined),
+      ...(permissionDenied ? { permission_denied: permissionDenied } : undefined),
     }) as T;
   };
 
@@ -437,7 +454,7 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
         try {
           const content = await fs.readFile(hostPath, {
             encoding: "utf8",
-            ...(context.signal ? { signal: context.signal } : {}),
+            ...(context.signal ? { signal: context.signal } : undefined),
           });
           setSpanAttributes({
             "app.sandbox.path.length": filePath.length,
@@ -616,16 +633,16 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
               context.setToolCallSpanAttributes,
             ),
           pattern,
-          ...(typeof rawInput.path === "string" ? { path: rawInput.path } : {}),
-          ...(typeof rawInput.glob === "string" ? { glob: rawInput.glob } : {}),
+          ...(typeof rawInput.path === "string" ? { path: rawInput.path } : undefined),
+          ...(typeof rawInput.glob === "string" ? { glob: rawInput.glob } : undefined),
           ...(typeof rawInput.ignoreCase === "boolean"
             ? { ignoreCase: rawInput.ignoreCase }
-            : {}),
+            : undefined),
           ...(typeof rawInput.literal === "boolean"
             ? { literal: rawInput.literal }
-            : {}),
-          ...(contextLines ? { context: contextLines } : {}),
-          ...(limit ? { limit } : {}),
+            : undefined),
+          ...(contextLines ? { context: contextLines } : undefined),
+          ...(limit ? { limit } : undefined),
         });
         setSpanStatus("ok");
         return response;
@@ -664,8 +681,8 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
               context.setToolCallSpanAttributes,
             ),
           pattern,
-          ...(typeof rawInput.path === "string" ? { path: rawInput.path } : {}),
-          ...(limit ? { limit } : {}),
+          ...(typeof rawInput.path === "string" ? { path: rawInput.path } : undefined),
+          ...(limit ? { limit } : undefined),
         });
         setSpanStatus("ok");
         return response;
@@ -689,8 +706,8 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
       async () => {
         const response = await listDir({
           fs: fileSystem,
-          ...(typeof rawInput.path === "string" ? { path: rawInput.path } : {}),
-          ...(limit ? { limit } : {}),
+          ...(typeof rawInput.path === "string" ? { path: rawInput.path } : undefined),
+          ...(limit ? { limit } : undefined),
         });
         setSpanStatus("ok");
         return response;
@@ -747,6 +764,9 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
       }
     } catch (error) {
       params.signal?.throwIfAborted();
+      if (getWorkspaceSnapshotNotReadyError(error)) {
+        return createWorkspaceSnapshotNotReadyToolResult(error) as T;
+      }
       if (isSandboxUnavailableError(error)) {
         // Do not replay an operation that may already have produced side effects.
         throw createSandboxUnavailableToolError(params.toolName, error);
@@ -770,6 +790,12 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
     try {
       return await callback(await runtime.acquire());
     } catch (error) {
+      const notReady = getWorkspaceSnapshotNotReadyError(error);
+      if (notReady) {
+        throw new ToolInputError(workspaceSnapshotNotReadyUserMessage(notReady), {
+          cause: notReady,
+        });
+      }
       if (isSandboxUnavailableError(error)) {
         throw createSandboxUnavailableToolError(operation, error);
       }
@@ -799,16 +825,20 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
         return undefined;
       }
       const { fs } = await runtime.tools();
-      const primary = activeWorkspace?.repos.find((repo) => repo.isPrimary);
-      const primaryPath = primary
-        ? tryWorkspaceRepoCheckoutPath(primary.repo)
-        : undefined;
-      const selected = primaryPath
-        ? `${SANDBOX_WORKSPACE_ROOT}/${primaryPath}`
-        : await findSingleRepositoryDirectory(fs);
-      if (!selected) return undefined;
-      return await resolveRepositoryInstructions({
-        cwd: selected,
+      const workspaceDirectories =
+        activeWorkspace?.repos
+          .map((repo) => tryWorkspaceRepoCheckoutPath(repo.repo))
+          .filter((checkoutPath): checkoutPath is string =>
+            Boolean(checkoutPath),
+          )
+          .map((checkoutPath) => `${SANDBOX_WORKSPACE_ROOT}/${checkoutPath}`) ??
+        [];
+      const directories =
+        workspaceDirectories.length > 0
+          ? workspaceDirectories
+          : await listRepositoryDirectories(fs);
+      return await resolveRepositoryInstructionsForDirectories({
+        directories,
         fs,
       });
     },

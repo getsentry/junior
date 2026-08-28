@@ -1,3 +1,4 @@
+import type { ConversationTurnFailureReason } from "@/chat/conversations/history";
 import { buildTurnFailureResponse } from "@/chat/logging";
 import { getInterruptionMarker } from "@/chat/interruption-marker";
 import {
@@ -43,6 +44,28 @@ function getExecutionFailureReason(reply: {
     return "assistant returned no text";
   }
   return "empty assistant turn";
+}
+
+/** Return a fixed reason label for a failed model turn. */
+export function getTurnFailureReason(
+  reply: AgentRunResult,
+): ConversationTurnFailureReason | undefined {
+  if (reply.diagnostics.outcome === "success") {
+    return undefined;
+  }
+  if (reply.diagnostics.outcome === "provider_error") {
+    return findProviderError(reply.diagnostics.providerError)?.kind ?? "unknown";
+  }
+  if (reply.diagnostics.toolErrorCount > 0) {
+    return "tool_errors";
+  }
+  if (
+    reply.diagnostics.usedPrimaryText &&
+    reply.diagnostics.assistantMessageCount > 0
+  ) {
+    return "suppressed_output";
+  }
+  return "empty_output";
 }
 
 function getFailureCapture(reply: AgentRunResult): {
@@ -94,22 +117,23 @@ export function getAgentTurnDiagnosticsAttributes(
       ? {
           "gen_ai.request.reasoning.level": reply.diagnostics.reasoningLevel,
         }
-      : {}),
+      : undefined),
     ...(reply.diagnostics.stopReason
       ? {
           "gen_ai.response.finish_reasons": [reply.diagnostics.stopReason],
         }
-      : {}),
+      : undefined),
     ...(reply.diagnostics.errorMessage &&
     reply.diagnostics.outcome !== "provider_error"
       ? { "exception.message": reply.diagnostics.errorMessage }
-      : {}),
+      : undefined),
   };
 }
 
 /** Sanitized failure fallback plus its optional captured event ID. */
 export interface FinalizedTurnFailure {
   eventId?: string;
+  failureReason?: ConversationTurnFailureReason;
   reply: AgentRunResult;
 }
 
@@ -123,12 +147,16 @@ export function finalizeFailedTurnReplyWithEvent(args: {
     return { reply: args.reply };
   }
 
+  const failureReason = getTurnFailureReason(args.reply);
   const capture = getFailureCapture(args.reply);
   const eventId = requireTurnFailureEventId(
     args.logException(capture.error, capture.eventName, {
       ...getAgentTurnDiagnosticsAttributes(args.reply),
       ...args.attributes,
       ...capture.attributes,
+      ...(failureReason
+        ? { "app.ai.failure_reason": failureReason }
+        : undefined),
     }),
     capture.eventName,
   );
@@ -152,6 +180,7 @@ export function finalizeFailedTurnReplyWithEvent(args: {
 
   return {
     eventId,
+    ...(failureReason ? { failureReason } : undefined),
     reply: {
       ...args.reply,
       text: providerPartialText

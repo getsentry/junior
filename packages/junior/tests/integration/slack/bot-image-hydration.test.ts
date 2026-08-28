@@ -74,9 +74,7 @@ describe("bot image hydration", () => {
           visionContext: {
             listThreadReplies: listThreadRepliesMock,
           },
-          replyExecutor: {
-            agentRunner: createReplyAgentRunner(),
-          },
+          agentRunner: createReplyAgentRunner(),
         },
       },
       {
@@ -199,9 +197,7 @@ describe("bot image hydration", () => {
             downloadFile: downloadFileMock,
             completeText: completeTextMock,
           },
-          replyExecutor: {
-            agentRunner: createReplyAgentRunner(),
-          },
+          agentRunner: createReplyAgentRunner(),
         },
       },
       { AI_VISION_MODEL: "openai/gpt-5.4" },
@@ -261,9 +257,7 @@ describe("bot image hydration", () => {
         visionContext: {
           listThreadReplies: listThreadRepliesMock,
         },
-        replyExecutor: {
-          agentRunner: createReplyAgentRunner(),
-        },
+        agentRunner: createReplyAgentRunner(),
       },
     });
     const thread = await createTestThread({
@@ -340,9 +334,7 @@ describe("bot image hydration", () => {
         visionContext: {
           listThreadReplies: listThreadRepliesMock,
         },
-        replyExecutor: {
-          agentRunner: createReplyAgentRunner(),
-        },
+        agentRunner: createReplyAgentRunner(),
       },
     });
     const firstThread = await createTestThread({
@@ -415,9 +407,7 @@ describe("bot image hydration", () => {
             downloadFile: downloadFileMock,
             completeText: completeTextMock,
           },
-          replyExecutor: {
-            agentRunner: createReplyAgentRunner(),
-          },
+          agentRunner: createReplyAgentRunner(),
         },
       },
       {
@@ -519,9 +509,7 @@ describe("bot image hydration", () => {
             downloadFile: downloadFileMock,
             completeText: completeTextMock,
           },
-          replyExecutor: {
-            agentRunner: createModelAgentRunnerForRun(streamForRun),
-          },
+          agentRunner: createModelAgentRunnerForRun(streamForRun),
         },
       },
       {
@@ -659,9 +647,7 @@ describe("bot image hydration", () => {
             downloadFile: downloadFileMock,
             completeText: completeTextMock,
           },
-          replyExecutor: {
-            agentRunner: createModelAgentRunnerForRun(streamForRun),
-          },
+          agentRunner: createModelAgentRunnerForRun(streamForRun),
         },
       },
       {
@@ -796,9 +782,7 @@ describe("bot image hydration", () => {
             downloadFile: downloadFileMock,
             completeText: completeTextMock,
           },
-          replyExecutor: {
-            agentRunner: createModelAgentRunnerForRun(streamForRun),
-          },
+          agentRunner: createModelAgentRunnerForRun(streamForRun),
         },
       },
       {
@@ -897,9 +881,7 @@ describe("bot image hydration", () => {
             listThreadReplies: listThreadRepliesMock,
             completeText: completeTextMock,
           },
-          replyExecutor: {
-            agentRunner: createModelAgentRunnerForRun(streamForRun),
-          },
+          agentRunner: createModelAgentRunnerForRun(streamForRun),
         },
       },
       {

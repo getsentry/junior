@@ -68,22 +68,24 @@ function buildImageContextSuffix(
     return "";
   }
 
-  return ` [image context: ${summaries.join(" | ")}]`;
+  return ` [image context: ${escapeXml(summaries.join(" | "))}]`;
 }
 
 function renderConversationMessageLine(
   message: ConversationMessage,
   conversation?: ThreadConversationState,
 ): string {
-  const displayName = conversationAuthorDisplayName(message);
-  const text = message.text
-    .replace(/\s+/g, " ")
-    .slice(0, CONTEXT_MAX_MESSAGE_CHARS);
+  const displayName = escapeXml(conversationAuthorDisplayName(message));
+  const text = escapeXml(
+    message.text.replace(/\s+/g, " ").slice(0, CONTEXT_MAX_MESSAGE_CHARS),
+  );
 
   const markers: string[] = [];
   if (message.meta?.replied === false) {
     markers.push(
-      `assistant skipped: ${message.meta?.skippedReason ?? "no-reply route"}`,
+      escapeXml(
+        `assistant skipped: ${message.meta?.skippedReason ?? "no-reply route"}`,
+      ),
     );
   }
   if (message.meta?.explicitMention) {
@@ -175,7 +177,7 @@ export function recordDeliveredAssistantMessage(args: {
     },
     meta: {
       replied: true,
-      ...(args.source ? { source: args.source } : {}),
+      ...(args.source ? { source: args.source } : undefined),
     },
   });
   return messageId;
@@ -251,7 +253,7 @@ export function buildConversationContext(
     if (lines.length > 0) {
       lines.push("");
     }
-    lines.push("<thread-transcript>");
+    lines.push('<thread-context authority="evidence-only">');
     for (const [index, message] of messages.entries()) {
       const author = escapeXml(conversationAuthorDisplayName(message));
       const actorIdAttr = message.author?.userId
@@ -267,9 +269,41 @@ export function buildConversationContext(
         "  </message>",
       );
     }
-    lines.push("</thread-transcript>");
+    lines.push("</thread-context>");
   }
   return lines.join("\n");
+}
+
+const THREAD_CONTEXT_OPEN = '<thread-context authority="evidence-only">';
+const THREAD_CONTEXT_CLOSE = "</thread-context>";
+
+/**
+ * Keep ambient history as one evidence-only block.
+ *
+ * When durable context already ends a thread-context envelope, append message
+ * lines inside that envelope. Otherwise wrap the new messages in one envelope.
+ */
+export function appendThreadContextMessages(
+  baseContext: string | undefined,
+  messageLines: string[],
+): string | undefined {
+  const base = baseContext?.trim();
+  if (messageLines.length === 0) {
+    return base || undefined;
+  }
+  const entryBlock = messageLines.join("\n");
+  if (!base) {
+    return [THREAD_CONTEXT_OPEN, entryBlock, THREAD_CONTEXT_CLOSE].join("\n");
+  }
+  const closeIdx = base.lastIndexOf(THREAD_CONTEXT_CLOSE);
+  if (closeIdx >= 0) {
+    const before = base.slice(0, closeIdx).replace(/\s*$/, "");
+    const after = base.slice(closeIdx);
+    return `${before}\n${entryBlock}\n${after}`;
+  }
+  return [base, "", THREAD_CONTEXT_OPEN, entryBlock, THREAD_CONTEXT_CLOSE].join(
+    "\n",
+  );
 }
 
 function pruneCompactions(

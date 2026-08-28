@@ -62,14 +62,12 @@ reports, and other typed hook surfaces exported by this package.
 - Profile report hooks return the same bounded operational report content for
   one subject user on a person profile. Core owns viewer authorization,
   collection, sanitization, and browser rendering.
-- Tool hooks may lazily resolve the active actor's canonical identity and linked
-  user through `ctx.users.resolveActor()`.
+- Tool hooks may resolve the active Actor's Identity and User through
+  `ctx.users.resolveActor()`.
 - Authenticated API route hooks receive `ctx.users.resolve(email)` for lazy
-  canonical user resolution. Routes that do not need personal ownership do not
-  query identity storage.
-- User page readers receive the canonical viewer `User` with linked identities.
-  Plugins return bounded data and do not mount their own page routes or browser
-  code.
+  User lookup. Routes that do not need User data do not query identity storage.
+- User page readers receive the signed-in `User`. Plugins return limited data.
+  They do not mount their own page routes or browser code.
 
 ## User Pages
 

@@ -48,11 +48,16 @@ describe("assistant reply", () => {
     expect(decideReply(assistant(NO_REPLY_MARKER))).toEqual({
       kind: "suppress",
     });
-    expect(decideReply(assistant(`Done. ${NO_REPLY_MARKER}`))).toEqual({
-      kind: "suppress",
-    });
     expect(decideReply(assistant("Let me do that now.", true))).toEqual({
       kind: "suppress",
+    });
+  });
+
+  it("delivers text that mentions the no-reply marker", () => {
+    const text = `Earlier turn used ${NO_REPLY_MARKER} and then stopped.`;
+    expect(decideReply(assistant(text))).toEqual({
+      kind: "deliver",
+      text,
     });
   });
 

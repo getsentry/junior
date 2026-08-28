@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 import {
   type DashboardE2eServer,
   mockDashboardApis,
-  startDashboardE2eServer,
+  startDashboardE2eServer
 } from "./harness";
 
 let server: DashboardE2eServer;
@@ -42,7 +42,7 @@ test("shows system usage and plugin details", async ({ page }) => {
   ]);
   const pluginsLink = systemNavigation.getByRole("link", {
     name: "Plugins",
-    exact: true,
+    exact: true
   });
   await pluginsLink.click();
   await expect(page).toHaveURL(`${server.baseURL}/system/plugins`);
@@ -53,7 +53,7 @@ test("shows system usage and plugin details", async ({ page }) => {
 
   const pluginPanels = page.getByRole("region", { name: "Plugins" });
   const githubPanel = pluginPanels.getByRole("link", {
-    name: /GitHub/,
+    name: /GitHub/
   });
 
   await githubPanel.click();
@@ -77,24 +77,25 @@ test("creates a Workspace recipe", async ({ page }) => {
           id: "11111111-1111-4111-8111-111111111111",
           name: "sentry",
           setupScript: "pnpm install",
+          snapshot: null,
           repos: [
             {
               checkoutPath: "repos/sentry",
-              isPrimary: true,
               provider: "github",
-              repo: "getsentry/sentry",
+              repo: "getsentry/sentry"
             },
-          ],
+          ]
         },
-        status: 201,
+        status: 201
       });
       return;
     }
-    await route.fulfill({ json: { workspaces: [] } });
+    await route.fulfill({ json: { baselineSnapshot: null, workspaces: [] } });
   });
 
   await page.goto(`${server.baseURL}/system/workspaces`);
-  await page.getByRole("button", { name: "New Workspace" }).click();
+  await page.getByRole("link", { name: "New Workspace" }).click();
+  await expect(page).toHaveURL(`${server.baseURL}/system/workspaces/new`);
   await page.getByLabel("Name").fill("sentry");
   await page
     .getByLabel("Repository 1", { exact: true })
@@ -102,18 +103,59 @@ test("creates a Workspace recipe", async ({ page }) => {
   await page.getByLabel("Setup script").fill("pnpm install");
   await page.getByRole("button", { name: "Create Workspace" }).click();
 
+  await expect(page).toHaveURL(`${server.baseURL}/system/workspaces`);
   await expect(page.getByText("github:getsentry/sentry")).toBeVisible();
   expect(createdBody).toEqual({
     name: "sentry",
     repos: [
       {
-        isPrimary: true,
         provider: "github",
-        repo: "getsentry/sentry",
+        repo: "getsentry/sentry"
       },
     ],
-    setupScript: "pnpm install",
+    setupScript: "pnpm install"
   });
+});
+
+test("shows Workspace snapshot details on its direct route", async ({ page }) => {
+  const workspaceId = "11111111-1111-4111-8111-111111111111";
+  await page.route(`**/api/workspaces/${workspaceId}`, async (route) => {
+    await route.fulfill({
+      json: {
+        id: workspaceId,
+        name: "sentry",
+        setupScript: "pnpm install",
+        snapshot: {
+          id: "snap_workspace_123",
+          generatedAt: new Date(Date.now() - 60_000).toISOString(),
+          buildDurationMs: 45_000,
+          sizeBytes: 4_194_304,
+        },
+        repos: [
+          {
+            checkoutPath: "repos/sentry",
+            provider: "github",
+            repo: "getsentry/sentry"
+          },
+        ]
+      }
+    });
+  });
+
+  await page.goto(`${server.baseURL}/system/workspaces/${workspaceId}`);
+
+  await expect(
+    page.getByRole("heading", { name: "Current snapshot" }),
+  ).toBeVisible();
+  await expect(page.getByText("snap_workspace_123")).toBeVisible();
+  await expect(page.getByText("45s")).toBeVisible();
+  await expect(page.getByLabel("Name")).toHaveValue("sentry");
+  await expect(
+    page.getByLabel("System navigation").getByRole("link", {
+      name: "Workspaces",
+      exact: true,
+    }),
+  ).toHaveAttribute("href", "/system/workspaces");
 });
 
 test("keeps System navigation usable on mobile", async ({ page }) => {

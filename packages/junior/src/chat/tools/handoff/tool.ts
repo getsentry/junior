@@ -7,7 +7,7 @@ import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 
 export const HANDOFF_TOOL_NAME = "handoff";
 
-/** Create the runtime control for an in-place execution-profile switch. */
+/** Create the tool that switches the active model profile. */
 export function createHandoffTool(
   handoff: NonNullable<ToolRuntimeContext["handoff"]>,
 ) {
@@ -25,11 +25,11 @@ export function createHandoffTool(
       openWorldHint: false,
       readOnlyHint: false,
     },
-    description: `Switch to another execution profile and continue the same task. Profiles: ${profileNames}. Call this as the only tool.`,
+    description: `Switch to another model profile and continue the same task. Profiles: ${profileNames}. Call this as the only tool.`,
     executionMode: "sequential",
     inputSchema: z
       .object({
-        profile: profileSchema.describe("Target execution profile"),
+        profile: profileSchema.describe("Target model profile"),
       })
       .strict(),
     outputSchema: handoffResultSchema,
@@ -39,7 +39,7 @@ export function createHandoffTool(
         throw new ToolInputError("Handoff requires an active tool call ID");
       }
       await handoff.execute(profile, {
-        ...(options.signal ? { signal: options.signal } : {}),
+        ...(options.signal ? { signal: options.signal } : undefined),
         toolCallId: options.toolCallId,
       });
       return {

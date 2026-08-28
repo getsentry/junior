@@ -84,7 +84,7 @@ export function buildSlackReplyFooter(args: {
     ? {
         ...(args.replyAttribution
           ? { attribution: args.replyAttribution }
-          : {}),
+          : undefined),
         items,
       }
     : undefined;

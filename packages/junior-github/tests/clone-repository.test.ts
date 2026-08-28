@@ -1,8 +1,11 @@
-import type { ToolRegistrationHookContext } from "@sentry/junior-plugin-api";
+import { PluginToolInputError } from "@sentry/junior-plugin-api";
 import { describe, expect, it, vi } from "vitest";
 import { createGitHubCloneRepositoryTool } from "../src/tools/clone-repository.js";
 
-function context(run: ReturnType<typeof vi.fn>): ToolRegistrationHookContext {
+function context(
+  run: ReturnType<typeof vi.fn>,
+  findByRepository = vi.fn().mockResolvedValue([]),
+) {
   return {
     log: { error: vi.fn(), info: vi.fn(), warn: vi.fn() },
     sandbox: {
@@ -12,7 +15,8 @@ function context(run: ReturnType<typeof vi.fn>): ToolRegistrationHookContext {
       readFile: vi.fn(),
       writeFile: vi.fn(),
     },
-  } as unknown as ToolRegistrationHookContext;
+    workspaces: { findByRepository },
+  };
 }
 
 describe("cloneRepository", () => {
@@ -33,6 +37,14 @@ describe("cloneRepository", () => {
     ).toBe(
       "Shallow-clone getsentry/junior into the local sandbox at repos/junior for inspection (no GitHub mutation).",
     );
+    expect(
+      tool.describeProposal?.({
+        allowAdHoc: true,
+        repo: "getsentry/junior",
+      }),
+    ).toBe(
+      "Shallow-clone getsentry/junior into the local sandbox as an intentional ad-hoc checkout for inspection (no GitHub mutation).",
+    );
   });
 
   it("clones into a new sandbox directory", async () => {
@@ -42,13 +54,20 @@ describe("cloneRepository", () => {
       .mockResolvedValueOnce({ exitCode: 0, stdout: "", stderr: "" })
       .mockResolvedValueOnce({ exitCode: 1, stdout: "", stderr: "" })
       .mockResolvedValueOnce({ exitCode: 0, stdout: "", stderr: "" });
-    const tool = createGitHubCloneRepositoryTool(context(run));
+    const findByRepository = vi.fn().mockResolvedValue([]);
+    const tool = createGitHubCloneRepositoryTool(
+      context(run, findByRepository),
+    );
 
     const result = await tool.execute!(
       { repo: "getsentry/junior", directory: "repos/junior" },
       { signal },
     );
 
+    expect(findByRepository).toHaveBeenCalledWith({
+      provider: "github",
+      repo: "getsentry/junior",
+    });
     expect(run).toHaveBeenNthCalledWith(1, {
       cmd: "mkdir",
       args: ["-p", "--", "/vercel/sandbox/repos"],
@@ -68,6 +87,74 @@ describe("cloneRepository", () => {
       cwd: "/vercel/sandbox",
       signal: expect.any(AbortSignal),
     });
+    expect(result).toMatchObject({
+      path: "/vercel/sandbox/repos/junior",
+      repo: "getsentry/junior",
+    });
+  });
+
+  it("rejects matching Workspaces as a tool input error before cloning", async () => {
+    const run = vi.fn();
+    const findByRepository = vi.fn().mockResolvedValue(["junior", "sentry"]);
+    const tool = createGitHubCloneRepositoryTool(
+      context(run, findByRepository),
+    );
+
+    const error = await tool.execute!(
+      { repo: "getsentry/junior" },
+      {} as never,
+    ).catch((value) => value);
+    expect(error).toBeInstanceOf(PluginToolInputError);
+    expect(error).toMatchObject({
+      name: "PluginToolInputError",
+      message:
+        'Repository getsentry/junior is part of Workspaces "junior", "sentry". Call switchWorkspace with one of those names; the checkout is already present after the switch. Pass allowAdHoc=true only for an intentional ad-hoc checkout.',
+    });
+    expect(findByRepository).toHaveBeenCalledWith({
+      provider: "github",
+      repo: "getsentry/junior",
+    });
+    expect(run).not.toHaveBeenCalled();
+  });
+
+  it("rejects a single matching Workspace as a tool input error", async () => {
+    const run = vi.fn();
+    const findByRepository = vi.fn().mockResolvedValue(["junior"]);
+    const tool = createGitHubCloneRepositoryTool(
+      context(run, findByRepository),
+    );
+
+    await expect(
+      tool.execute!({ repo: "getsentry/junior" }, {} as never),
+    ).rejects.toMatchObject({
+      name: "PluginToolInputError",
+      message:
+        'Repository getsentry/junior is part of Workspace "junior". Call switchWorkspace with that name; the checkout is already present after the switch. Pass allowAdHoc=true only for an intentional ad-hoc checkout.',
+    });
+    expect(run).not.toHaveBeenCalled();
+  });
+
+  it("clones when allowAdHoc overrides matching Workspaces", async () => {
+    const run = vi
+      .fn()
+      .mockResolvedValueOnce({ exitCode: 0, stdout: "", stderr: "" })
+      .mockResolvedValueOnce({ exitCode: 1, stdout: "", stderr: "" })
+      .mockResolvedValueOnce({ exitCode: 0, stdout: "", stderr: "" });
+    const findByRepository = vi.fn().mockResolvedValue(["junior", "sentry"]);
+    const tool = createGitHubCloneRepositoryTool(
+      context(run, findByRepository),
+    );
+
+    const result = await tool.execute!(
+      { allowAdHoc: true, repo: "getsentry/junior" },
+      {} as never,
+    );
+
+    expect(findByRepository).toHaveBeenCalledWith({
+      provider: "github",
+      repo: "getsentry/junior",
+    });
+    expect(run).toHaveBeenCalled();
     expect(result).toMatchObject({
       path: "/vercel/sandbox/repos/junior",
       repo: "getsentry/junior",
@@ -147,5 +234,35 @@ describe("cloneRepository", () => {
       cwd: "/vercel/sandbox",
       signal: expect.any(AbortSignal),
     });
+  });
+
+  it("keeps cloning when Workspace lookup fails", async () => {
+    const lookup = new Error("workspace lookup failed");
+    const run = vi
+      .fn()
+      .mockResolvedValueOnce({ exitCode: 0, stdout: "", stderr: "" })
+      .mockResolvedValueOnce({ exitCode: 1, stdout: "", stderr: "" })
+      .mockResolvedValueOnce({ exitCode: 0, stdout: "", stderr: "" });
+    const findByRepository = vi.fn().mockRejectedValue(lookup);
+    const ctx = context(run, findByRepository);
+    const tool = createGitHubCloneRepositoryTool(ctx);
+
+    const result = await tool.execute!(
+      { repo: "getsentry/junior" },
+      {} as never,
+    );
+
+    expect(result).toMatchObject({
+      path: "/vercel/sandbox/repos/junior",
+      repo: "getsentry/junior",
+    });
+    expect(ctx.log.error).toHaveBeenCalledWith(
+      "github.clone.workspaces_lookup.failed",
+      {
+        repo: "getsentry/junior",
+        error: "workspace lookup failed",
+      },
+    );
+    expect(run).toHaveBeenCalledTimes(3);
   });
 });

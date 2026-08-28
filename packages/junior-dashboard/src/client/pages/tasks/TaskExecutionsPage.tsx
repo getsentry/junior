@@ -13,11 +13,14 @@ import type {
 } from "@sentry/junior/api/schema";
 
 import { useTaskExecutionsData } from "../../api";
-import { LoadingView } from "../../components/LoadingView";
+import { InlineError } from "../../components/InlineError";
+import { PageContentSkeleton } from "../../components/PageContentSkeleton";
+import { StatusChip } from "../../components/StatusChip";
 import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
-import { conversationPath, formatTime } from "../../format";
+import { conversationPath } from "../../conversations/conversationRoutes";
+import { formatTime, taskPath } from "../../format";
 import { DashboardApiError } from "../../http";
 import { pathWithSearch } from "../../searchParams";
 import { cn } from "../../styles";
@@ -34,7 +37,7 @@ export function TaskExecutionsPage(props: { enabled: boolean }) {
     taskId,
   );
   const backTo = pathWithSearch(
-    taskId ? `/tasks/list/${encodeURIComponent(taskId)}` : "/tasks/list",
+    taskId ? taskPath(taskId) : "/tasks/list",
     searchParams,
   );
 
@@ -42,7 +45,15 @@ export function TaskExecutionsPage(props: { enabled: boolean }) {
     return <Navigate replace to="/tasks" />;
   }
   if (!query.data && !query.error) {
-    return <LoadingView label="Loading task executions" />;
+    return (
+      <>
+        <PageHeader
+          description="Terminal runs for one scheduled or event task."
+          title="Task executions"
+        />
+        <PageContentSkeleton label="Loading task executions" variant="list" />
+      </>
+    );
   }
   if (query.error || !query.data) {
     return (
@@ -52,15 +63,15 @@ export function TaskExecutionsPage(props: { enabled: boolean }) {
           title="Task executions"
         />
         <Card padding="md">
-          <p className="m-0 text-sm text-rose-300">
+          <InlineError>
             {query.error instanceof DashboardApiError &&
             query.error.status === 404
               ? "This task was not found or is not visible to you."
               : "Task executions could not be loaded. Try again."}
-          </p>
+          </InlineError>
           <Link
             className="mt-3 inline-flex items-center gap-2 font-mono text-xs text-dashboard-text-muted no-underline hover:text-dashboard-text"
-            to="/tasks/list"
+            to={taskId ? taskPath(taskId) : "/tasks/list"}
           >
             <ArrowLeft aria-hidden="true" size={14} />
             Back to tasks
@@ -204,28 +215,20 @@ function ExecutionRow(props: {
         </div>
       </div>
       <div className="grid min-w-0 justify-items-end gap-1 text-right max-md:justify-items-start max-md:text-left">
-        <StatusBadge status={execution.status} />
+        <StatusChip tone={runStatusTone(execution.status)}>
+          {execution.status}
+        </StatusChip>
       </div>
     </div>
   );
 }
 
-function StatusBadge(props: { status: TaskExecution["status"] }) {
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center rounded border px-2 py-1 font-mono text-xs uppercase tracking-[0.1em]",
-        props.status === "completed" &&
-          "border-emerald-400/25 bg-emerald-400/10 text-emerald-200",
-        props.status === "failed" &&
-          "border-rose-400/25 bg-rose-400/10 text-rose-200",
-        props.status === "blocked" &&
-          "border-amber-400/25 bg-amber-400/10 text-amber-100",
-      )}
-    >
-      {props.status}
-    </span>
-  );
+function runStatusTone(
+  status: TaskExecution["status"],
+): "danger" | "success" | "warning" {
+  if (status === "failed") return "danger";
+  if (status === "blocked") return "warning";
+  return "success";
 }
 
 function countByStatus(executions: TaskExecution[]) {

@@ -1,7 +1,8 @@
 import {
+  actorUserIdSchema,
   destinationVisibilitySchema,
+  resourceEventMatchSchema,
   resourceEventTypeSchema,
-  slackActorSchema,
   slackDestinationSchema,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
@@ -12,7 +13,7 @@ export const EVENT_TASK_IDENTIFIER_MAX_LENGTH = 300;
 /** Validate the persisted Slack creator identity for an event task. */
 export const eventTaskPrincipalSchema = z
   .object({
-    slackUserId: slackActorSchema.shape.userId,
+    slackUserId: actorUserIdSchema,
     fullName: z.string().optional(),
     userName: z.string().optional(),
   })
@@ -23,6 +24,7 @@ const eventTaskTriggerSchema = z
   .object({
     events: z.array(resourceEventTypeSchema).min(1),
     label: z.string().min(1),
+    match: resourceEventMatchSchema.optional(),
     namespace: z.string().min(1),
     identifier: z.string().min(1).max(EVENT_TASK_IDENTIFIER_MAX_LENGTH),
     resourceType: z.string().min(1),

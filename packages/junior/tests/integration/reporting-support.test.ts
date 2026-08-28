@@ -83,8 +83,8 @@ describe("reporting support", () => {
   it.each([
     {
       name: "a G-prefixed private conversation",
-      conversationId: "slack:G-reporting-support:private",
-      channelId: undefined,
+      conversationId: "slack:GREPORTSUPPORT:private",
+      channelId: "GREPORTSUPPORT",
       channelName: "reporting-support-private-room",
       title: "Reporting support sensitive escalation",
       visibility: undefined,
@@ -112,19 +112,15 @@ describe("reporting support", () => {
     await getConversationStore().recordActivity({
       conversationId: testCase.conversationId,
       channelName: testCase.channelName,
-      ...(testCase.channelId
-        ? {
-            destination: {
-              platform: "slack" as const,
-              teamId: "TREPORTSUPPORT",
-              channelId: testCase.channelId,
-            },
-          }
-        : {}),
+      destination: {
+        platform: "slack" as const,
+        teamId: "TREPORTSUPPORT",
+        channelId: testCase.channelId,
+      },
       nowMs: Date.now(),
       source: "slack",
       title: testCase.title,
-      ...(testCase.visibility ? { visibility: testCase.visibility } : {}),
+      ...(testCase.visibility ? { visibility: testCase.visibility } : undefined),
     });
 
     const summaries = (await readConversationFeed()).conversations;

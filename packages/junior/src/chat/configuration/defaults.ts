@@ -17,9 +17,7 @@ function isConfigDefaultsRecord(
 }
 
 /** Store install-wide configuration defaults. */
-export function setConfigDefaults(
-  defaults: Record<string, unknown> | undefined,
-): void {
+export function setConfigDefaults(defaults: unknown): void {
   if (defaults === undefined) {
     installDefaults = {};
     return;

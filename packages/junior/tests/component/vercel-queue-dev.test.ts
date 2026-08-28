@@ -1,8 +1,92 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ConversationWorkerContext } from "@/chat/task-execution/worker";
 
+type PluginQueueCall =
+  | [
+      (
+        message: unknown,
+        metadata: {
+          consumerGroup: string;
+          createdAt: Date;
+          deliveryCount: number;
+          expiresAt: Date;
+          messageId: string;
+          region: string;
+          topicName: string;
+        },
+      ) => Promise<void>,
+      {
+        retry?: (
+          error: unknown,
+          metadata: {
+            consumerGroup: string;
+            createdAt: Date;
+            deliveryCount: number;
+            expiresAt: Date;
+            messageId: string;
+            region: string;
+            topicName: string;
+          },
+        ) => unknown;
+      },
+    ]
+  | undefined;
+
+type WorkspaceQueueMetadata = Parameters<
+  NonNullable<PluginQueueCall>[0]
+>[1];
+
+type WorkspaceDevConsumer = {
+  client: {
+    send(
+      topic: string,
+      message: Record<string, unknown>,
+      options?: { idempotencyKey?: string; retentionSeconds: number },
+    ): Promise<{ messageId: string }>;
+  };
+  consumerGroup: string;
+  handler: (message: unknown, metadata: WorkspaceQueueMetadata) => Promise<void>;
+  retry: (error: unknown, metadata: WorkspaceQueueMetadata) => unknown;
+  topic: string;
+};
+
+type ConversationQueueCall =
+  | [
+      (
+        message: unknown,
+        metadata: {
+          consumerGroup: string;
+          createdAt: Date;
+          deliveryCount: number;
+          expiresAt: Date;
+          messageId: string;
+          region: string;
+          topicName: string;
+        },
+      ) => Promise<void>,
+      {
+        retry?: (
+          error: unknown,
+          metadata: {
+            consumerGroup: string;
+            createdAt: Date;
+            deliveryCount: number;
+            expiresAt: Date;
+            messageId: string;
+            region: string;
+            topicName: string;
+          },
+        ) => unknown;
+        visibilityTimeoutSeconds?: number;
+      },
+    ]
+  | undefined;
+
+
 const originalNodeEnv = process.env.NODE_ENV;
 const originalQueueTopic = process.env.JUNIOR_CONVERSATION_WORK_QUEUE_TOPIC;
+const originalConversationWorkEnabled =
+  process.env.JUNIOR_CONVERSATION_WORK_ENABLED;
 const originalJuniorSecret = process.env.JUNIOR_SECRET;
 
 afterEach(async () => {
@@ -14,6 +98,12 @@ afterEach(async () => {
   } else {
     process.env.JUNIOR_CONVERSATION_WORK_QUEUE_TOPIC = originalQueueTopic;
   }
+  if (originalConversationWorkEnabled === undefined) {
+    delete process.env.JUNIOR_CONVERSATION_WORK_ENABLED;
+  } else {
+    process.env.JUNIOR_CONVERSATION_WORK_ENABLED =
+      originalConversationWorkEnabled;
+  }
   if (originalJuniorSecret === undefined) {
     delete process.env.JUNIOR_SECRET;
   } else {
@@ -21,7 +111,111 @@ afterEach(async () => {
   }
   vi.doUnmock("@vercel/queue");
   vi.doUnmock("@/chat/plugins/task-runner");
+  vi.doUnmock("@/chat/sandbox/snapshot/job-runner");
+  vi.doUnmock("@/chat/vercel-queue-client");
   vi.resetModules();
+});
+
+describe("Workspace snapshot Vercel queue integration", () => {
+  it("runs only messages signed by the snapshot queue sender", async () => {
+    const routeHandler = vi.fn();
+    const handleCallback = vi.fn(
+      (..._args: NonNullable<PluginQueueCall>) => routeHandler,
+    );
+    const send = vi.fn(
+      async (
+        _topic: string,
+        _message: Record<string, unknown>,
+        _options?: { idempotencyKey?: string; retentionSeconds: number },
+      ) => ({ messageId: "msg_snapshot" }),
+    );
+    const processWorkspaceSnapshotJob = vi.fn(async () => undefined);
+    const unregister = vi.fn();
+    const registerDevConsumer = vi.fn(
+      (_input: WorkspaceDevConsumer) => unregister,
+    );
+
+    vi.doMock("@vercel/queue", () => ({
+      QueueClient: vi.fn(),
+      handleCallback,
+      registerDevConsumer,
+    }));
+    vi.doMock("@/chat/vercel-queue-client", () => ({
+      createVercelQueueClient: () => ({ send }),
+    }));
+    vi.doMock("@/chat/sandbox/snapshot/job-runner", () => ({
+      processWorkspaceSnapshotJob,
+    }));
+
+    const {
+      createVercelWorkspaceSnapshotJobCallback,
+      registerVercelWorkspaceSnapshotJobDevConsumer,
+    } = await import("@/chat/sandbox/snapshot/job-callback");
+    const { sendNextWorkspaceSnapshotJob, sendWorkspaceSnapshotJob } =
+      await import("@/chat/sandbox/snapshot/job-queue");
+
+    expect(createVercelWorkspaceSnapshotJobCallback()).toBe(routeHandler);
+    const call = handleCallback.mock.calls[0];
+    const handler = call?.[0];
+    const retry = call?.[1].retry;
+    if (!handler || !retry) {
+      throw new Error(
+        "Expected Workspace snapshot queue handler and retry hook",
+      );
+    }
+    const metadata: WorkspaceQueueMetadata = {
+      consumerGroup: "workspace-snapshots",
+      createdAt: new Date(1_000),
+      deliveryCount: 1,
+      expiresAt: new Date(2_000),
+      messageId: "msg_snapshot",
+      region: "iad1",
+      topicName: "junior_workspace_snapshots",
+    };
+    const message = {
+      workspaceId: "11111111-1111-4111-8111-111111111111",
+      profileHash: "profile-hash",
+    };
+
+    await expect(handler(message, metadata)).resolves.toBeUndefined();
+    expect(processWorkspaceSnapshotJob).not.toHaveBeenCalled();
+
+    process.env.JUNIOR_SECRET = "workspace-snapshot-secret";
+    await sendWorkspaceSnapshotJob(message);
+    const sendCall = send.mock.calls[0];
+    const signedMessage = sendCall?.[1];
+    if (!signedMessage) throw new Error("Expected signed queue message");
+    await expect(handler(signedMessage, metadata)).resolves.toBeUndefined();
+    expect(processWorkspaceSnapshotJob).toHaveBeenCalledWith(message);
+
+    await expect(
+      handler({ ...signedMessage, profileHash: "tampered" }, metadata),
+    ).resolves.toBeUndefined();
+    expect(processWorkspaceSnapshotJob).toHaveBeenCalledTimes(1);
+
+    await sendNextWorkspaceSnapshotJob(message);
+    expect(send).toHaveBeenLastCalledWith(
+      "junior_workspace_snapshots",
+      expect.objectContaining(message),
+      { retentionSeconds: 3_600 },
+    );
+
+    expect(retry(new Error("build failed"), metadata)).toBeUndefined();
+    expect(
+      retry(new Error("build failed"), { ...metadata, deliveryCount: 5 }),
+    ).toBeUndefined();
+
+    process.env.NODE_ENV = "development";
+    expect(registerVercelWorkspaceSnapshotJobDevConsumer()).toBe(unregister);
+    const registered = registerDevConsumer.mock.calls[0]?.[0];
+    expect(registered).toMatchObject({
+      client: { send },
+      consumerGroup: "junior_workspace_snapshots_dev",
+      topic: "junior_workspace_snapshots",
+    });
+    expect(typeof registered?.handler).toBe("function");
+    expect(typeof registered?.retry).toBe("function");
+  });
 });
 
 describe("plugin task Vercel queue integration", () => {
@@ -39,10 +233,8 @@ describe("plugin task Vercel queue integration", () => {
       processPluginTask,
     }));
 
-    const { createVercelPluginTaskCallback } =
-      await import("@/chat/plugins/task-callback");
-    const { signPluginTaskQueueMessage } =
-      await import("@/chat/plugins/task-signing");
+    const { createVercelPluginTaskCallback, signPluginTaskQueueMessage } =
+      await import("@/chat/plugins/task-queue");
 
     expect(createVercelPluginTaskCallback()).toBe(routeHandler);
 
@@ -64,14 +256,8 @@ describe("plugin task Vercel queue integration", () => {
       region: "iad1",
       topicName: "topic",
     };
-    const call = handleCallback.mock.calls[0] as unknown as
-      | [
-          (message: unknown, metadata: TestQueueMetadata) => Promise<void>,
-          {
-            retry?: (error: unknown, metadata: TestQueueMetadata) => unknown;
-          },
-        ]
-      | undefined;
+    // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+    const call = handleCallback.mock.calls[0] as PluginQueueCall;
     const handler = call?.[0];
     const retry = call?.[1].retry;
     expect(handler).toEqual(expect.any(Function));
@@ -130,13 +316,8 @@ describe("plugin task Vercel queue integration", () => {
 
     process.env.JUNIOR_SECRET = "plugin-task-secret";
 
-    const [
-      { PLUGIN_TASK_QUEUE_TOPIC, sendVercelPluginTask },
-      { pluginTaskId },
-    ] = await Promise.all([
-      import("@/chat/plugins/task-queue"),
-      import("@/chat/plugins/task-message"),
-    ]);
+    const { PLUGIN_TASK_QUEUE_TOPIC, pluginTaskId, sendVercelPluginTask } =
+      await import("@/chat/plugins/task-queue");
     const message = {
       name: "extractMemories",
       params: {
@@ -246,15 +427,8 @@ describe("registerVercelConversationWorkDevConsumer", () => {
       region: "iad1",
       topicName: "topic",
     };
-    const call = handleCallback.mock.calls[0] as unknown as
-      | [
-          (message: unknown, metadata: TestQueueMetadata) => Promise<void>,
-          {
-            retry?: (error: unknown, metadata: TestQueueMetadata) => unknown;
-            visibilityTimeoutSeconds?: number;
-          },
-        ]
-      | undefined;
+    // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+    const call = handleCallback.mock.calls[0] as ConversationQueueCall;
     const handler = call?.[0];
     const retry = call?.[1].retry;
     expect(handler).toEqual(expect.any(Function));
@@ -335,11 +509,62 @@ describe("registerVercelConversationWorkDevConsumer", () => {
       missingSecretError = error;
     });
     expect(missingSecretError).toMatchObject({
-      message:
-        "Conversation queue message verification unavailable: missing_secret",
+      message: "Queue message verification unavailable: missing_secret",
     });
     expect(retry(missingSecretError, metadata)).toBeUndefined();
     expect(retry(new Error("runner failed"), metadata)).toBeUndefined();
+  });
+
+  it("acks disabled conversation work before sign checks", async () => {
+    const routeHandler = vi.fn();
+    const handleCallback = vi.fn(() => routeHandler);
+
+    vi.doMock("@vercel/queue", () => ({
+      QueueClient: vi.fn(),
+      handleCallback,
+      registerDevConsumer: vi.fn(),
+    }));
+
+    process.env.JUNIOR_CONVERSATION_WORK_ENABLED = "false";
+    delete process.env.JUNIOR_SECRET;
+
+    const { createVercelConversationWorkCallback } =
+      await import("@/chat/task-execution/vercel-callback");
+
+    const run = vi.fn(async (context: ConversationWorkerContext) => {
+      await context.attempt.ack();
+      return { status: "completed" as const };
+    });
+    createVercelConversationWorkCallback({ run });
+
+    // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+    const call = (handleCallback.mock.calls[0]) as | [ ( message: unknown, metadata: { consumerGroup: string; createdAt: Date; deliveryCount: number; expiresAt: Date; messageId: string; region: string; topicName: string; }, ) => Promise<void>, ] | undefined;
+    const handler = call?.[0];
+    if (!handler) {
+      throw new Error("Expected conversation queue handler");
+    }
+
+    await expect(
+      handler(
+        {
+          schemaVersion: 2,
+          conversationId: "slack:C123:1712345.0001",
+          signature: "signature",
+          signatureVersion: "v2",
+          signedAtMs: 1_000,
+        },
+        {
+          consumerGroup: "consumer",
+          createdAt: new Date(1_000),
+          deliveryCount: 3,
+          expiresAt: new Date(2_000),
+          messageId: "msg_disabled",
+          region: "iad1",
+          topicName: "topic",
+        },
+      ),
+    ).resolves.toBeUndefined();
+    expect(run).not.toHaveBeenCalled();
   });
 
   it("does not register outside local development", async () => {

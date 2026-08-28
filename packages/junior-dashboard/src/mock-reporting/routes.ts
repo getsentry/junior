@@ -4,6 +4,8 @@ import {
   apiErrorSchema,
   actorDirectoryReportSchema,
   actorProfileReportSchema,
+  archiveConversationBodySchema,
+  archiveConversationResponseSchema,
   conversationDetailQuerySchema,
   conversationDetailReportSchema,
   conversationEventPageSchema,
@@ -13,6 +15,8 @@ import {
   conversationParamsSchema,
   conversationPendingMessagesReportSchema,
   conversationStatsReportSchema,
+  codeOverviewReportSchema,
+  codePersonReportSchema,
   locationDetailReportSchema,
   locationDirectoryReportSchema,
   locationParamsSchema,
@@ -31,14 +35,17 @@ import {
   readMockConversationFeed,
   readMockConversationPendingMessages,
   readMockConversationStats,
+  readMockCodeOverview,
   readMockLocationDetail,
   readMockLocationDirectory,
+  readMockPeopleCode,
   readMockPeopleDirectory,
   readMockPeoplePluginReports,
   readMockPeopleProfile,
   readMockPersonalSpend,
   readMockTaskExecutions,
   readMockTaskList,
+  setMockConversationArchived,
 } from "./fixtures";
 
 function errorResponse(error: string, status: 400 | 404): Response {
@@ -50,6 +57,10 @@ export function createMockReportingApi(): Hono<{
   Variables: JuniorApiVariables;
 }> {
   const app = new Hono<{ Variables: JuniorApiVariables }>();
+
+  app.get("/code", () =>
+    jsonResponse(codeOverviewReportSchema, readMockCodeOverview()),
+  );
 
   app.get("/people", () =>
     jsonResponse(actorDirectoryReportSchema, readMockPeopleDirectory()),
@@ -70,6 +81,16 @@ export function createMockReportingApi(): Hono<{
       pluginOperationalReportFeedSchema,
       readMockPeoplePluginReports(params.data.email),
     );
+  });
+  app.get("/people/:email/code", (c) => {
+    const params = personParamsSchema.safeParse(c.req.param());
+    if (!params.success) {
+      return errorResponse("Invalid route parameters.", 400);
+    }
+    const report = readMockPeopleCode(params.data.email);
+    return report
+      ? jsonResponse(codePersonReportSchema, report)
+      : errorResponse("Person not found.", 404);
   });
   app.get("/people/:email", (c) => {
     const params = personParamsSchema.safeParse(c.req.param());
@@ -103,7 +124,7 @@ export function createMockReportingApi(): Hono<{
     }
     return jsonResponse(
       conversationFeedSchema,
-      readMockConversationFeed(query.data.actorEmail),
+      readMockConversationFeed(query.data.actorEmail, query.data.status),
     );
   });
   app.get("/conversations/stats", () =>
@@ -155,6 +176,23 @@ export function createMockReportingApi(): Hono<{
     const report = readMockConversationDetail(conversationId, query.data.limit);
     return report
       ? jsonResponse(conversationDetailReportSchema, report)
+      : errorResponse("Conversation not found.", 404);
+  });
+  app.patch("/conversations/:conversationId/archive", async (c) => {
+    const params = conversationParamsSchema.safeParse(c.req.param());
+    if (!params.success) {
+      return errorResponse("Invalid route parameters.", 400);
+    }
+    const body = archiveConversationBodySchema.safeParse(await c.req.json());
+    if (!body.success) {
+      return errorResponse("Invalid request body.", 400);
+    }
+    const result = setMockConversationArchived(
+      params.data.conversationId,
+      body.data.archived,
+    );
+    return result
+      ? jsonResponse(archiveConversationResponseSchema, result)
       : errorResponse("Conversation not found.", 404);
   });
   // Fixed bodies so dashboard mock can exercise image/file attachment cards.

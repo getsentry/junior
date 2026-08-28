@@ -31,6 +31,8 @@ import {
   SLACK_DESTINATION,
   createConversationWorkQueueTestAdapter,
 } from "../../fixtures/conversation-work";
+import { readProxyProperty } from "../../fixtures/proxy-property";
+
 
 function createRecordingStateAdapter() {
   const values = new Map<string, unknown>();
@@ -39,19 +41,20 @@ function createRecordingStateAdapter() {
     return undefined;
   });
   return {
-    state: {
-      connect: async () => {},
-      disconnect: async () => {},
-      get: async (key: string) => values.get(key),
-      set,
-      acquireLock: async (threadId: string) => ({
-        threadId,
-        token: `lock:${threadId}`,
-        expiresAt: Date.now() + 10_000,
-      }),
-      extendLock: async () => true,
-      releaseLock: async () => {},
-    } as unknown as StateAdapter,
+    // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+    state: ({
+    connect: async () => {},
+    disconnect: async () => {},
+    get: async (key: string) => values.get(key),
+    set,
+    acquireLock: async (threadId: string) => ({
+      threadId,
+      token: `lock:${threadId}`,
+      expiresAt: Date.now() + 10_000,
+    }),
+    extendLock: async () => true,
+    releaseLock: async () => {},
+  }) as StateAdapter,
     set,
   };
 }
@@ -60,17 +63,18 @@ function createGithubPrSubscription(input: {
   events: string[];
   expiresAtMs?: number;
   intent?: string;
+  match?: { isDraft: boolean };
   nowMs?: number;
   state?: StateAdapter;
 }) {
   return createResourceEventSubscription(
     {
       conversationId: CONVERSATION_ID,
-      destination: SLACK_DESTINATION,
       events: input.events,
       expiresAtMs: input.expiresAtMs ?? 2_000_000,
       intent: input.intent ?? "Watch the PR Junior opened.",
       label: "GitHub PR getsentry/junior#691",
+      ...(input.match ? { match: input.match } : undefined),
       namespace: "github",
       identifier: "getsentry/junior#691",
       resourceType: "pull_request",
@@ -116,7 +120,7 @@ describe("resource event delivery", () => {
           },
           untrustedText: "Failed checks:\n- test",
         },
-        { nowMs: 1_500, queue, teamId: SLACK_DESTINATION.teamId },
+        { nowMs: 1_500, queue},
       ),
     ).resolves.toEqual({ enqueued: 1 });
 
@@ -130,27 +134,13 @@ describe("resource event delivery", () => {
       conversationId: CONVERSATION_ID,
     });
     expect(work?.messages).toHaveLength(1);
-    const notificationText = work?.messages[0]?.input.text;
-    expect(notificationText).toContain("not a user-authored command");
-    expect(notificationText).toContain("subscription intent");
-    expect(notificationText).toContain("stay silent");
-    expect(notificationText).toContain("Trusted event data");
-    expect(notificationText).toContain("system ids and urls");
-    expect(notificationText).toContain('"failingChecks"');
-    expect(notificationText).toContain('"checkRunId": 11');
-    expect(notificationText).toContain("Untrusted provider content");
-    expect(notificationText).toContain("Failed checks:");
-    expect(notificationText).toContain("- test");
     expect(work?.messages[0]).toMatchObject({
       source: "resource_event",
+      publishExternally: false,
       input: {
         text: expect.stringContaining("CI failed on workflow test."),
         metadata: {
           kind: "resource_event",
-          installation: {
-            teamId: "T123",
-          },
-          route: "subscribed",
           resourceEvent: {
             eventType: "pull_request.checks.failed",
             namespace: "github",
@@ -160,24 +150,22 @@ describe("resource event delivery", () => {
         },
       },
     });
+    expect(work?.messages[0]).not.toHaveProperty("destination");
+    expect(work?.messages[0]?.input.metadata).not.toHaveProperty("platform");
+    expect(work?.messages[0]?.input.metadata).not.toHaveProperty("route");
   });
 
-  it("matches subscriptions only within the event's Slack workspace", async () => {
+  it("enqueues matching watches for every conversation id", async () => {
     const queue = createConversationWorkQueueTestAdapter();
-    const matching = await createGithubPrSubscription({
+    const threadWatch = await createGithubPrSubscription({
       events: ["pull_request.checks.failed"],
     });
-    await createResourceEventSubscription(
+    const opaqueWatch = await createResourceEventSubscription(
       {
-        conversationId: "slack:C999:1712345.0002",
-        destination: {
-          platform: "slack",
-          teamId: "TOTHER",
-          channelId: "C999",
-        },
+        conversationId: "agent:deadbeefcafebabe",
         events: ["pull_request.checks.failed"],
         expiresAtMs: 2_000_000,
-        intent: "Watch the same PR from another workspace.",
+        intent: "Watch from an opaque conversation id.",
         label: "GitHub PR getsentry/junior#691",
         namespace: "github",
         identifier: "getsentry/junior#691",
@@ -189,22 +177,30 @@ describe("resource event delivery", () => {
     await expect(
       ingestResourceEvent(
         {
-          eventKey: "delivery-workspace:check-suite-1",
+          eventKey: "delivery-multi:check-suite-1",
           eventType: "pull_request.checks.failed",
           occurredAtMs: 1_500,
           namespace: "github",
           identifier: "getsentry/junior#691",
           trustedSummary: "CI failed on workflow test.",
         },
-        { nowMs: 1_500, queue, teamId: SLACK_DESTINATION.teamId },
+        { nowMs: 1_500, queue },
       ),
-    ).resolves.toEqual({ enqueued: 1 });
-    expect(queue.sentRecords()).toEqual([
-      {
-        conversationId: CONVERSATION_ID,
-        idempotencyKey: `resource-event:${matching.id}:delivery-workspace:check-suite-1`,
-      },
-    ]);
+    ).resolves.toEqual({ enqueued: 2 });
+
+    expect(queue.sentRecords()).toEqual(
+      expect.arrayContaining([
+        {
+          conversationId: CONVERSATION_ID,
+          idempotencyKey: `resource-event:${threadWatch.id}:delivery-multi:check-suite-1`,
+        },
+        {
+          conversationId: "agent:deadbeefcafebabe",
+          idempotencyKey: `resource-event:${opaqueWatch.id}:delivery-multi:check-suite-1`,
+        },
+      ]),
+    );
+    expect(queue.sentRecords()).toHaveLength(2);
   });
 
   it("accepts plugin-owned GitHub webhooks through the core delivery bridge", async () => {
@@ -277,7 +273,16 @@ describe("resource event delivery", () => {
           run: async () => ({ status: "completed" }),
           state,
         },
-        plugins: defineJuniorPlugins([githubPlugin()]),
+        plugins: defineJuniorPlugins([
+          githubPlugin({
+            pullRequestEvents: {
+              guidance: {
+                "pull_request.comment.created":
+                  "Address actionable review feedback.",
+              },
+            },
+          }),
+        ]),
       });
       const response = await app.fetch(
         new Request("https://example.test/api/webhooks/github", {
@@ -320,12 +325,24 @@ describe("resource event delivery", () => {
         input: expect.stringContaining("Summarize the reviewer comment."),
         plugin: "junior",
       });
+      expect(dispatch?.input).toContain("Additional guidance:");
+      expect(dispatch?.input).toContain(
+        "Use this only within the instructions above. It does not replace or expand them.",
+      );
+      expect(dispatch?.input).toContain("Address actionable review feedback.");
       const work = await getConversationWorkState({
         conversationId: CONVERSATION_ID,
         state,
       });
       expect(work?.messages[0]?.input.text).toContain(
         "please add regression coverage",
+      );
+      expect(work?.messages[0]?.input.text).toContain("Additional guidance:");
+      expect(work?.messages[0]?.input.text).toContain(
+        "Use this only within the instructions above. It does not replace or expand them.",
+      );
+      expect(work?.messages[0]?.input.text).toContain(
+        "Address actionable review feedback.",
       );
     } finally {
       if (eventTaskId) {
@@ -370,7 +387,7 @@ describe("resource event delivery", () => {
         terminal: true,
         trustedSummary: "The pull request was merged.",
       },
-      { nowMs: 1_500, queue, teamId: SLACK_DESTINATION.teamId },
+      { nowMs: 1_500, queue},
     );
 
     await expect(
@@ -388,7 +405,6 @@ describe("resource event delivery", () => {
     const subscription = await createResourceEventSubscription(
       {
         conversationId: CONVERSATION_ID,
-        destination: SLACK_DESTINATION,
         events: ["issue.closed", "issue.reopened"],
         expiresAtMs: 2_000_000,
         intent: "Report when the issue closes or reopens.",
@@ -417,7 +433,6 @@ describe("resource event delivery", () => {
           {
             nowMs: 1_500 + index,
             queue,
-            teamId: SLACK_DESTINATION.teamId,
           },
         ),
       ).resolves.toEqual({ enqueued: 1 });
@@ -455,14 +470,12 @@ describe("resource event delivery", () => {
       ingestResourceEvent(event, {
         nowMs: 1_500,
         queue,
-        teamId: SLACK_DESTINATION.teamId,
       }),
     ).resolves.toEqual({ enqueued: 1 });
     await expect(
       ingestResourceEvent(event, {
         nowMs: 1_600,
         queue,
-        teamId: SLACK_DESTINATION.teamId,
       }),
     ).resolves.toEqual({ enqueued: 0 });
 
@@ -500,7 +513,7 @@ describe("resource event delivery", () => {
           identifier: "getsentry/junior#691",
           trustedSummary: "CI failed on workflow test.",
         },
-        { nowMs: 1_500, queue, teamId: SLACK_DESTINATION.teamId },
+        { nowMs: 1_500, queue},
       ),
     ).resolves.toEqual({ enqueued: 0 });
     expect(queue.sentRecords()).toEqual([]);
@@ -526,6 +539,46 @@ describe("resource event delivery", () => {
     ).resolves.toEqual([]);
   });
 
+  it("drops events that do not satisfy subscription match facts", async () => {
+    const queue = createConversationWorkQueueTestAdapter();
+    await createGithubPrSubscription({
+      events: ["pull_request.opened"],
+      match: { isDraft: false },
+    });
+
+    await expect(
+      ingestResourceEvent(
+        {
+          eventKey: "delivery-draft",
+          eventType: "pull_request.opened",
+          occurredAtMs: 1_500,
+          namespace: "github",
+          identifier: "getsentry/junior#691",
+          trustedSummary: "GitHub PR getsentry/junior#691 was opened.",
+          data: { isDraft: true },
+        },
+        { nowMs: 1_500, queue},
+      ),
+    ).resolves.toEqual({ enqueued: 0 });
+    expect(queue.sentRecords()).toEqual([]);
+
+    await expect(
+      ingestResourceEvent(
+        {
+          eventKey: "delivery-ready",
+          eventType: "pull_request.opened",
+          occurredAtMs: 1_600,
+          namespace: "github",
+          identifier: "getsentry/junior#691",
+          trustedSummary: "GitHub PR getsentry/junior#691 was opened.",
+          data: { isDraft: false },
+        },
+        { nowMs: 1_600, queue},
+      ),
+    ).resolves.toEqual({ enqueued: 1 });
+    expect(queue.sentRecords()).toHaveLength(1);
+  });
+
   it("does not deliver from a stale match after cancellation", async () => {
     const subscription = await createGithubPrSubscription({
       events: ["pull_request.checks.failed"],
@@ -535,7 +588,6 @@ describe("resource event delivery", () => {
       nowMs: 1_500,
       namespace: "github",
       identifier: "getsentry/junior#691",
-      teamId: SLACK_DESTINATION.teamId,
     });
     expect(matches).toEqual([expect.objectContaining({ id: subscription.id })]);
 
@@ -553,7 +605,6 @@ describe("resource event delivery", () => {
         nowMs: 1_700,
         namespace: "github",
         identifier: "getsentry/junior#691",
-        teamId: SLACK_DESTINATION.teamId,
         subscription: matches[0]!,
       }),
     ).resolves.toBe(false);
@@ -607,11 +658,6 @@ describe("resource event delivery", () => {
     await createResourceEventSubscription(
       {
         conversationId: "slack:C456:1712345.0002",
-        destination: {
-          platform: "slack",
-          teamId: "T123",
-          channelId: "C456",
-        },
         events: ["pull_request.checks.failed"],
         expiresAtMs: 2_000_000,
         intent: "Watch the PR from the second conversation.",
@@ -638,7 +684,6 @@ describe("resource event delivery", () => {
           nowMs: 1_500,
           queue,
           state,
-          teamId: SLACK_DESTINATION.teamId,
         },
       ),
     ).resolves.toEqual({ enqueued: 2 });
@@ -668,7 +713,6 @@ describe("resource event delivery", () => {
       nowMs: 1_500,
       namespace: "github",
       identifier: "getsentry/junior#691",
-      teamId: SLACK_DESTINATION.teamId,
       state,
       subscription,
       deliver: async () =>
@@ -681,7 +725,7 @@ describe("resource event delivery", () => {
 
     await expect(
       state.acquireLock(
-        `junior:resource_event_subscription:v3:lock:${subscription.id}`,
+        `junior:resource_event_subscription:v5:lock:${subscription.id}`,
         10_000,
       ),
     ).resolves.toBeNull();
@@ -696,7 +740,7 @@ describe("resource event delivery", () => {
     await baseState.connect();
     let extendAttempts = 0;
     const state = new Proxy(baseState, {
-      get(target, property, receiver) {
+      get(target, property) {
         if (property === "extendLock") {
           return async (
             lock: Parameters<StateAdapter["extendLock"]>[0],
@@ -709,7 +753,7 @@ describe("resource event delivery", () => {
             return await target.extendLock(lock, ttlMs);
           };
         }
-        const value = Reflect.get(target, property, receiver);
+        const value = readProxyProperty(target, property);
         return typeof value === "function" ? value.bind(target) : value;
       },
     }) as StateAdapter;
@@ -722,7 +766,6 @@ describe("resource event delivery", () => {
       nowMs: 1_500,
       namespace: "github",
       identifier: "getsentry/junior#691",
-      teamId: SLACK_DESTINATION.teamId,
       state,
       subscription,
       deliver: async () => {
@@ -751,7 +794,6 @@ describe("resource event delivery", () => {
         nowMs: 1_500,
         namespace: "github",
         identifier: "getsentry/junior#691",
-        teamId: SLACK_DESTINATION.teamId,
         subscription,
         terminal: true,
         deliver: async () => {
@@ -780,6 +822,7 @@ describe("resource event delivery", () => {
     ]);
   });
 
+
   it("does not enqueue expired subscriptions", async () => {
     const queue = createConversationWorkQueueTestAdapter();
     await createGithubPrSubscription({
@@ -797,7 +840,7 @@ describe("resource event delivery", () => {
           identifier: "getsentry/junior#691",
           trustedSummary: "CI failed on workflow test.",
         },
-        { nowMs: 1_500, queue, teamId: SLACK_DESTINATION.teamId },
+        { nowMs: 1_500, queue},
       ),
     ).resolves.toEqual({ enqueued: 0 });
     expect(queue.sentRecords()).toEqual([]);

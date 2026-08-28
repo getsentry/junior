@@ -299,6 +299,8 @@ vi.mock("@/chat/plugins/catalog-runtime", () => ({
   pluginCatalogRuntime: {
     getMcpProviders: () => [],
     getProviders: () => [],
+    getRuntimeDependencies: () => [],
+    getRuntimePostinstall: () => [],
   },
 }));
 
@@ -321,7 +323,7 @@ vi.mock("@/chat/task-execution/checkpoint", () => ({
                   turnStartMessageIndex:
                     sessionRecordTurnStartMessageIndex.value,
                 }
-              : {}),
+              : undefined),
           }
         : undefined,
   }),

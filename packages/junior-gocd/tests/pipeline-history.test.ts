@@ -23,10 +23,7 @@ describe("GoCD pipeline history", () => {
     const { fetch, tool } = toolFixture();
 
     await expect(
-      tool.execute?.(
-        { pipeline: "demo", count: 5 },
-        { toolCallId: "history" },
-      ),
+      tool.execute?.({ pipeline: "demo", count: 5 }, { toolCallId: "history" }),
     ).resolves.toMatchObject({
       baseUrl: "https://gocd.example.com",
       pipeline: "demo",
@@ -43,9 +40,7 @@ describe("GoCD pipeline history", () => {
       }),
     });
     const request = fetch.mock.calls[0]?.[0]?.request as Request;
-    expect(request.headers.get("Accept")).toBe(
-      "application/vnd.go.cd.v1+json",
-    );
+    expect(request.headers.get("Accept")).toBe("application/vnd.go.cd.v1+json");
     expect(request.headers.get("Authorization")).toBeNull();
   });
 

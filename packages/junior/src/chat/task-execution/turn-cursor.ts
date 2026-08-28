@@ -26,6 +26,7 @@ import { projectConversationEvents } from "@/chat/pi/conversation-events";
 import type { AgentTurnUsage } from "@/chat/usage";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { fenceLock, MUTATION_LOCK_TTL_MS, withLock } from "@/chat/state/locks";
+import { botConfig } from "@/chat/config";
 import { getConversationEventStore, getConversationStore } from "@/chat/db";
 import { isAgentsInstructionsMessage } from "@/chat/repository-instructions";
 import {
@@ -343,17 +344,22 @@ async function recordConversationActivityMetadata(args: {
   const conversation = await conversationStore.get({
     conversationId: args.summary.conversationId,
   });
-  const isChild = Boolean(conversation?.lineage);
-  // Nested destination/source/actor stay off Redis cursor payloads; callers
-  // pass live routing/identity here for SQL dual-write. Child conversations stay
-  // destinationless.
-  const destination = isChild ? undefined : args.destination;
+  const hasParent = Boolean(conversation?.parentConversationId);
+  // Nested Destination, Source, and Actor stay off Redis cursor payloads.
+  // Callers pass live values here for the SQL write. Conversations with a
+  // parent keep no Destination.
+  const destination = hasParent ? undefined : args.destination;
+  // Root dual-write requires a destination on first create. Cursor-only writes
+  // without destination stay Redis-only until a real root upsert lands.
+  if (!hasParent && !destination && !conversation) {
+    return;
+  }
   // Only derive ConversationSource when routing is known. Abandon/fail no longer
   // carry nested destination, and SQL coalesce(excluded, existing) would otherwise
   // overwrite a durable `local` source with surface `internal`.
   // Prefer the typed session Source branch when present so web/dashboard turns
   // are not collapsed to local just because delivery uses a local destination.
-  const activitySource = isChild
+  const activitySource = hasParent
     ? "internal"
     : args.source?.platform === "web"
       ? "web"
@@ -370,8 +376,8 @@ async function recordConversationActivityMetadata(args: {
     nowMs: args.nowMs,
     actor: sessionLogActor(args.actor),
     ...definedProps({ source: activitySource }),
-    ...(args.source ? { sessionSource: args.source } : {}),
-    visibility: isChild ? undefined : args.destinationVisibility,
+    ...(args.source ? { sessionSource: args.source } : undefined),
+    visibility: hasParent ? undefined : args.destinationVisibility,
   });
   await conversationStore.recordExecution({
     channelName: args.summary.channelName,
@@ -384,12 +390,12 @@ async function recordConversationActivityMetadata(args: {
       durationMs: args.summary.cumulativeDurationMs,
       ...(args.summary.cumulativeUsage
         ? { usage: args.summary.cumulativeUsage }
-        : {}),
+        : undefined),
     },
     actor: sessionLogActor(args.actor),
     ...definedProps({ source: activitySource }),
     updatedAtMs: args.nowMs,
-    visibility: isChild ? undefined : args.destinationVisibility,
+    visibility: hasParent ? undefined : args.destinationVisibility,
   });
 }
 
@@ -535,7 +541,9 @@ async function materializeStoredTurnRecord(
     parsed.historyVersion !== undefined &&
     parsed.historyVersion !== currentHistoryVersion;
   const piProjection = followsReplacement
-    ? projectConversationEvents(currentHistory)
+    ? projectConversationEvents(currentHistory, {
+        defaultProfile: botConfig.defaultProfile,
+      })
     : pinnedProjection;
   const turnStartMessageIndex = followsReplacement
     ? 0
@@ -834,10 +842,10 @@ async function upsertTurnRecordLocked(
     messages: args.piMessages,
     ...(instructionActor
       ? { newMessageProvenance: instructionProvenanceFor(instructionActor) }
-      : {}),
+      : undefined),
     ...(args.trailingMessageProvenance
       ? { trailingMessageProvenance: args.trailingMessageProvenance }
-      : {}),
+      : undefined),
     ...(args.turnContexts && args.turnContexts.length > 0
       ? {
           turnContext: {
@@ -845,7 +853,7 @@ async function upsertTurnRecordLocked(
             turnId: args.turnId,
           },
         }
-      : {}),
+      : undefined),
   });
   const durableTurnStartMessageIndex =
     args.turnStartMessageIndex === undefined
