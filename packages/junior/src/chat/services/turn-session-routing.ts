@@ -10,15 +10,16 @@ import type {
   SlackDestination,
   Source,
 } from "@sentry/junior-plugin-api";
-import type { Location } from "@/chat/conversations/location";
 import type {
   Conversation,
   ConversationStore,
 } from "@/chat/conversations/store";
+import type { Location } from "@/chat/conversations/location";
 import type { SessionSource } from "@/chat/source";
 
-// TODO(dcramer): Remove TurnSessionRouting and this module after callers read
-// Source, Conversation Location, and provider Delivery from their owners.
+// TODO(dcramer): Remove TurnSessionRouting and this module after every resume
+// reads Source from its Turn and Location from its Conversation, and no caller
+// uses Destination as the Conversation place.
 export interface TurnSessionRouting {
   destination: Destination;
   location?: Location;
@@ -79,7 +80,7 @@ function slackSourceForDestination(args: {
 }
 
 /**
- * Resolve the Conversation's Location, Destination, and session Source.
+ * Resolve the Conversation Location, Destination, and session Source.
  *
  * Reads parent Conversations when this Conversation has no Destination.
  */
@@ -97,7 +98,7 @@ export async function resolveConversationRouting(args: {
 
   let destination: Destination | undefined;
   let source: SessionSource | undefined;
-  let location: Location | undefined;
+  let location: Conversation["location"];
 
   for (const conversation of chain) {
     destination ??= conversation.destination;
@@ -117,20 +118,14 @@ export async function resolveConversationRouting(args: {
     return {
       destination,
       ...(location ? { location } : undefined),
-      ...(slackSource
-        ? {
-            source: location ? { ...slackSource, location } : slackSource,
-          }
-        : undefined),
+      ...(slackSource ? { source: slackSource } : undefined),
     };
   }
 
   return {
     destination,
     ...(location ? { location } : undefined),
-    ...(source
-      ? { source: location ? { ...source, location } : source }
-      : undefined),
+    ...(source ? { source } : undefined),
   };
 }
 
@@ -147,7 +142,7 @@ export async function resolveTurnSessionRouting(args: {
   }
   return {
     destination: routing.destination,
-    source: routing.source,
     ...(routing.location ? { location: routing.location } : undefined),
+    source: routing.source,
   };
 }

@@ -969,10 +969,8 @@ describe("agent run continuation", () => {
       destination: TEST_DESTINATION,
       source: TEST_SOURCE,
       actor: { platform: "slack", teamId: "T123", userId: "U123" },
-      delivery: {
-        send(message) {
-          delivered.push({ text: extractAssistantText(message) });
-        },
+      delivery(message) {
+        delivered.push({ text: extractAssistantText(message) });
       },
       durability: {
         drainSteeringMessages: async (inject) => {
@@ -1009,10 +1007,8 @@ describe("agent run continuation", () => {
       destination: TEST_DESTINATION,
       source: TEST_SOURCE,
       actor: { platform: "slack", teamId: "T123", userId: "U123" },
-      delivery: {
-        send(message) {
-          delivered.push({ text: extractAssistantText(message) });
-        },
+      delivery(message) {
+        delivered.push({ text: extractAssistantText(message) });
       },
       durability: { shouldYield: () => true },
     });
@@ -1034,10 +1030,8 @@ describe("agent run continuation", () => {
       destination: TEST_DESTINATION,
       source: TEST_SOURCE,
       actor: { platform: "slack", teamId: "T123", userId: "U123" },
-      delivery: {
-        send(message) {
-          delivered.push({ text: extractAssistantText(message) });
-        },
+      delivery(message) {
+        delivered.push({ text: extractAssistantText(message) });
       },
       durability: {
         drainSteeringMessages: async (inject) => {
@@ -1197,10 +1191,8 @@ describe("agent run continuation", () => {
         destination: TEST_DESTINATION,
         source: TEST_SOURCE,
         actor: { platform: "slack", teamId: "T123", userId: "U123" },
-        delivery: {
-          send(message) {
-            delivered.push({ text: extractAssistantText(message) });
-          },
+        delivery(message) {
+          delivered.push({ text: extractAssistantText(message) });
         },
       }),
     );

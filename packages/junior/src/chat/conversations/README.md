@@ -10,6 +10,10 @@ outside Junior where a provider can deliver the Conversation. For Slack, a
 complete Location identifies the workspace, channel, and thread. Conversation
 privacy remains in `Conversation.visibility`.
 
+A Run carries the Conversation Location when the agent or tools need it.
+Source describes the input and does not contain Location. Delivery is created
+for the Location and does not repeat it.
+
 The Conversation row stores the complete Location in `location_json`. Local
 Conversations have no Location.
 

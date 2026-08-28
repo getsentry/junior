@@ -82,7 +82,6 @@ export const destinationSchema = z.discriminatedUnion("platform", [
 /** Runtime-owned Slack coordinates for the inbound invocation. */
 export const slackSourceSchema = slackAddressSchema
   .extend({
-    location: locationSchema.optional(),
     visibility: sourceVisibilitySchema,
     messageTs: nonBlankStringSchema.optional(),
     threadTs: nonBlankStringSchema.optional(),
@@ -92,7 +91,6 @@ export const slackSourceSchema = slackAddressSchema
 /** Runtime-owned local CLI coordinates for the inbound invocation. */
 export const localSourceSchema = z
   .object({
-    location: locationSchema.optional(),
     platform: z.literal("local"),
     visibility: z.literal("private"),
     conversationId: localConversationIdSchema,
@@ -102,7 +100,6 @@ export const localSourceSchema = z
 /** Runtime-owned dashboard/web coordinates for the inbound invocation. */
 export const webSourceSchema = z
   .object({
-    location: locationSchema.optional(),
     platform: z.literal("web"),
     visibility: sourceVisibilitySchema,
     // Web can continue any existing conversation id, including Slack roots.
@@ -110,12 +107,20 @@ export const webSourceSchema = z
   })
   .strict();
 
-/** Runtime-owned provider-neutral coordinates for the inbound invocation. */
-export const sourceSchema = z.discriminatedUnion("platform", [
-  slackSourceSchema,
-  localSourceSchema,
-  webSourceSchema,
+// TODO(dcramer): Replace Source.platform with Source.kind after every input
+// owner emits a first-class Source kind and deployed readers accept it.
+const sourceWithLegacyLocationSchema = z.discriminatedUnion("platform", [
+  slackSourceSchema.extend({ location: locationSchema.optional() }).strict(),
+  localSourceSchema.extend({ location: locationSchema.optional() }).strict(),
+  webSourceSchema.extend({ location: locationSchema.optional() }).strict(),
 ]);
+
+/** Runtime-owned input Source. Legacy stored Location is accepted and removed. */
+// TODO(dcramer): Parse sourceSchema directly from the three Source schemas after
+// no stored SQL, Redis, queue, or public Source can contain Location.
+export const sourceSchema = sourceWithLegacyLocationSchema.transform(
+  ({ location: _legacyLocation, ...source }) => source,
+);
 
 /** Stable user credential subject shape accepted from plugins. */
 export const pluginCredentialSubjectSchema = z.discriminatedUnion(

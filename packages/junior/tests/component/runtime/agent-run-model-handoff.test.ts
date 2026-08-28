@@ -655,7 +655,7 @@ describe("model handoff composition", () => {
       instruction: { text: "Check the details." },
       destination: { platform: "local", conversationId },
       source: createLocalSource(conversationId),
-      delivery: { send: (message) => void delivered.push(message) },
+      delivery: (message) => void delivered.push(message),
     });
 
     expect(outcome.status).toBe("completed");
@@ -679,10 +679,8 @@ describe("model handoff composition", () => {
         instruction: { text: "Check the details." },
         destination: { platform: "local", conversationId },
         source: createLocalSource(conversationId),
-        delivery: {
-          send: () => {
-            throw deliveryError;
-          },
+        delivery: () => {
+          throw deliveryError;
         },
         onEvent: async (event) => {
           if (event.type === "status") {
@@ -710,15 +708,13 @@ describe("model handoff composition", () => {
       instruction: { text: "Check the details." },
       destination: { platform: "local" as const, conversationId },
       source: createLocalSource(conversationId),
-      delivery: {
-        send: (message) => {
-          deliveryAttempts += 1;
-          if (deliveryAttempts === 1) {
-            throw new RetryableDeliveryError(new Error("Slack unavailable"));
-          }
-          const text = getAssistantReplyText(message);
-          if (text) delivered.push({ text });
-        },
+      delivery: (message) => {
+        deliveryAttempts += 1;
+        if (deliveryAttempts === 1) {
+          throw new RetryableDeliveryError(new Error("Slack unavailable"));
+        }
+        const text = getAssistantReplyText(message);
+        if (text) delivered.push({ text });
       },
     };
 

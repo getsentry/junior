@@ -415,17 +415,15 @@ describe("agent invocation conversation work", () => {
         reasoning: "medium",
         actor: slackInvocationInput.actor,
         destination: slackDestination,
-        publishExternally: false,
-        source: {
-          ...slackInvocationInput.source,
-          location: {
-            id: expect.any(String),
-            provider: "slack",
-            teamId: "T123",
-            channelId: "C123",
-            threadTs: "1712345.0001",
-          },
+        location: {
+          id: expect.any(String),
+          provider: "slack",
+          teamId: "T123",
+          channelId: "C123",
+          threadTs: "1712345.0001",
         },
+        publishExternally: false,
+        source: slackInvocationInput.source,
         surface: "internal",
         runId: created.invocationId,
       });

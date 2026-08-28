@@ -474,6 +474,7 @@ describe("plugin background tasks", () => {
     );
     await processPluginTask(queue.queuedMessages()[0]!);
 
+    expect(loadedRuns[0]!.locationId).toEqual(expect.any(String));
     const transcript = loadedRuns[0]!.transcript;
     expect(transcript).toContainEqual({
       type: "message",

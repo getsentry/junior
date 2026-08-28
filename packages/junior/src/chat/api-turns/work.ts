@@ -700,9 +700,10 @@ export function createApiTurnWorker(
               credentialContext: credentialContextForActor(actor),
               destination,
               publishExternally: false,
-              source: storedConversation?.location
-                ? { ...source, location: storedConversation.location }
-                : source,
+              source,
+              ...(storedConversation?.location
+                ? { location: storedConversation.location }
+                : undefined),
               surface: "api",
               ...(cancellationSignal
                 ? { signal: cancellationSignal }
@@ -719,7 +720,7 @@ export function createApiTurnWorker(
                 pendingAuth: conversation.processing.pendingAuth,
                 sandboxRef,
               },
-              delivery: { send: deliverAssistantMessage },
+              delivery: deliverAssistantMessage,
               durability: {
                 onInputCommitted: acknowledge,
                 shouldYield: context.shouldYield,

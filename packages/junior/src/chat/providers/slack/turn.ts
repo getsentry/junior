@@ -1112,7 +1112,8 @@ export function createSlackTurn(deps: SlackTurnDeps) {
             // carry the system principal; interactive turns carry the Slack user.
             actor: executionActor,
             slackConversation,
-            source: location ? { ...source, location } : source,
+            source,
+            ...(location ? { location } : undefined),
             destination,
             publishExternally: shouldPublishExternally(
               options.publishExternally,
@@ -1147,12 +1148,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
                 });
               }
             },
-            delivery: {
-              ...(location && shouldPublishExternally(options.publishExternally)
-                ? { location }
-                : undefined),
-              send: deliverAssistantMessage,
-            },
+            delivery: deliverAssistantMessage,
             durability: {
               onInputCommitted: options.ack,
               drainSteeringMessages,

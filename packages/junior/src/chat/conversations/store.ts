@@ -35,9 +35,9 @@ export interface ConversationExecution {
  *
  * The final interface stores zero or one complete Location here. No Location
  * means the Conversation stays in Junior's API and UI. A Location names the
- * outside place where a provider can deliver the Conversation. Source may also
- * contain this Location so the agent can use it. Delivery contains it when
- * output may be sent there. Only Delivery allows output to be sent.
+ * outside place where a provider can deliver the Conversation. A Run carries
+ * this Location when the agent or tools need it. Source stays about the input.
+ * Delivery is created for the Location and allows output to be sent there.
  *
  * `destination` and `sessionSource` temporarily duplicate parts of that model.
  * Their field TODOs state when each legacy copy can be removed.

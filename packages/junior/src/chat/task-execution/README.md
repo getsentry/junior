@@ -38,26 +38,27 @@ Runtime and Redis status is `paused`. SQL free-text / enum rows may still say
 
 ## State Model
 
-- A conversation mailbox contains pending work. Each item has an `interrupt`
-  or `defer` mailbox delivery and a `publishExternally` flag. The worker keeps
-  different publish choices in separate turns.
+- A Conversation mailbox contains pending work. Each item has a Source, an
+  `interrupt` or `defer` mailbox delivery, and the legacy
+  `publishExternally` field. The worker keeps different publish choices in
+  separate Turns and saves the selected choice as the Turn's `publish` fact.
 - A queue message identifies the conversation to wake. The stored work controls
   delivery. A provider conversation stores its destination. Child work without
   a destination gets its authority from its stored agent invocation.
-- `publishExternally` means the turn also publishes assistant output to the
-  conversation destination. The conversation log always stores the turn.
-  Dashboard and destinationless work leave the flag false. Slack ingress and
-  Slack resume default to publish when the flag is unset. Destination presence
-  must not invent publish.
+- `publish` means the Turn also sends assistant output to the Conversation
+  Location. The Conversation always stores each completed assistant Message.
+  Dashboard and destinationless work do not publish. A resource event can
+  publish to a Slack Location without becoming a Slack Source. Destination or
+  Location presence must not invent publish.
 - A lease grants one worker temporary execution ownership.
 - Dispatch projection updates take a short dispatch lock only while the
   conversation lease is already held. They never wait for conversation work,
   which keeps lock ordering one-way.
 - Check-ins extend active ownership and allow heartbeat recovery to distinguish
   slow work from abandoned work.
-- Delivery state prevents a completed turn from being posted twice. The turn
-  checkpoint keeps `publishExternally` across pause and yield; worker execution
-  state does not duplicate it.
+- Delivery state prevents a completed Turn from being posted twice. The Turn
+  checkpoint keeps the publish choice across pause and yield. Its stored field
+  remains `publishExternally` until the durable data contract is migrated.
 
 Redis execution state uses the new v2 keys. This release does not read or move
 old Redis state. Old mailbox, lease, and turn-cursor state can be lost.
