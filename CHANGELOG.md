@@ -1,4 +1,17 @@
 # Changelog
+## 0.188.0
+
+### Bug Fixes 🐛
+
+- (chat) Ack-drop resource wakes missing Slack thread by @sentry-junior in [#1721](https://github.com/getsentry/junior/pull/1721)
+
+### Internal Changes 🔧
+
+#### Chat
+
+- Move Location into Source and Delivery by @dcramer in [#1719](https://github.com/getsentry/junior/pull/1719)
+- Store parent on Conversation directly by @dcramer in [#1718](https://github.com/getsentry/junior/pull/1718)
+
 ## 0.187.0
 
 ### Bug Fixes 🐛
