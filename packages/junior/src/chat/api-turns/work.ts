@@ -15,7 +15,10 @@ import {
   hydrateConversationMessages,
   persistConversationMessages,
 } from "@/chat/conversations/messages";
-import { commitAssistantMessage } from "@/chat/api-turns/assistant-message";
+import {
+  commitAssistantMessage,
+  type PublishMessage,
+} from "@/chat/api-turns/assistant-message";
 import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
 import type { ConversationTurnFailureCode } from "@/chat/conversations/history";
 import { credentialContextForActor } from "@/chat/credentials/context";
@@ -79,16 +82,16 @@ import {
   type ApiTurnCancellation,
 } from "@/chat/api-turns/cancellation";
 import {
-  isApiTurnWork,
-  resolveApiTurnWork,
+  resolveMailboxTurnWork,
   sourceFromTurnInput,
-  turnIdentityFromConversationMessage,
+  turnInputFactsFromConversationMessage,
   type ApiTurnMailboxMetadata,
-  type TurnIdentity,
+  type MailboxTurnWork,
+  type TurnInputFacts,
 } from "@/chat/api-turns/routing";
 import { joinMailboxText } from "@/chat/api-turns/mailbox-input";
 
-export { resolveApiTurnWork } from "@/chat/api-turns/routing";
+export { resolveMailboxTurnWork } from "@/chat/api-turns/routing";
 
 type EnqueueOptions = {
   conversationStore?: ConversationStore;
@@ -397,32 +400,27 @@ function hasLostTurnInputCommit(error: unknown): boolean {
   return isTurnInputCommitLostError(error) || isTurnInputCommitLostError(cause);
 }
 
-/** Create the worker for Turns that need no provider delivery. */
-export function createApiTurnWorker(
+/**
+ * Create the shared mailbox worker for web and resource-event Turns.
+ *
+ * TODO(dcramer): Move this worker out of api-turns after Conversation API
+ * admission and mailbox Turn execution are separate modules.
+ */
+export function createMailboxTurnWorker(
   agentRunner: AgentRunner,
   cancellation?: ApiTurnCancellation,
+  publishMessage?: PublishMessage,
 ) {
   return async (
     context: ConversationWorkerContext,
+    resolved: MailboxTurnWork,
   ): Promise<ConversationWorkerResult> => {
-    const resolved = await resolveApiTurnWork(context);
-    if (!resolved) {
-      throw new Error(
-        `Unsupported input for Conversation ${context.conversationId}`,
-      );
-    }
-    if (context.publishExternally) {
-      throw new Error(
-        `publishExternally must be false for Conversation ${context.conversationId}`,
-      );
-    }
-
     const lifecycle = new ConversationTurnLifecycleService(
       getConversationEventStore(),
     );
 
     const isResume = resolved.kind === "resume";
-    let turnIdentity: TurnIdentity | undefined;
+    let turnInputFacts: TurnInputFacts | undefined;
     let text = "";
     let turnId = "";
     let userMessageId = "";
@@ -452,7 +450,7 @@ export function createApiTurnWorker(
       inputMessageIds = resolved.batch.map(
         (entry) => entry.message.inboundMessageId,
       );
-      turnIdentity = first;
+      turnInputFacts = first;
     } else {
       turnId = resolved.turnId;
     }
@@ -471,24 +469,38 @@ export function createApiTurnWorker(
         );
       }
       // Resume has no new input. Restore the Actor from the saved Turn input.
-      turnIdentity = turnIdentityFromConversationMessage(userMessage);
+      turnInputFacts = turnInputFactsFromConversationMessage(userMessage);
       userMessageId = userMessage.id;
       text = userMessage.text;
       startedAtMs = userMessage.createdAtMs;
       inputMessageIds = [userMessageId];
     }
-    if (!turnIdentity) {
+    if (!turnInputFacts) {
       throw new Error(
         `Resumed Turn is missing an Actor for Conversation ${context.conversationId}`,
       );
     }
-    const { actor, author } = turnIdentity;
+    const { actor, author } = turnInputFacts;
     const source = sourceFromTurnInput({
       conversationId: context.conversationId,
-      source: turnIdentity.source,
+      location: storedConversation?.location,
+      source: turnInputFacts.source,
       visibility: storedConversation?.visibility,
     });
     const webActor = actor.platform === "web" ? actor : undefined;
+    const savedTurn = isResume
+      ? await getTurnRecord(context.conversationId, turnId)
+      : undefined;
+    // TODO(dcramer): Copy publish from the selected Inbound message after
+    // resource-event ingress stores the final publish fact. Remove this
+    // Location-based default and the missing checkpoint fallback then.
+    const publish =
+      turnInputFacts.source === "resource_event" && storedConversation?.location
+        ? (savedTurn?.publishExternally ?? true)
+        : false;
+    // TODO(dcramer): Remove this legacy surface choice after Turn routing reads
+    // Source.kind and publish from the Turn checkpoint.
+    const surface = publish ? ("slack" as const) : ("api" as const);
 
     return await withLogContext(
       {
@@ -513,7 +525,7 @@ export function createApiTurnWorker(
             await context.attempt.ack();
           } catch {
             throw new TurnInputCommitLostError(
-              `Conversation work lease lost before Conversation API message acknowledgement for ${context.conversationId}`,
+              `Conversation work lease lost before mailbox Message acknowledgement for ${context.conversationId}`,
             );
           }
           acknowledged = true;
@@ -569,7 +581,7 @@ export function createApiTurnWorker(
             meta: {
               explicitMention: true,
               replied: false,
-              ...(turnIdentity.source === "web"
+              ...(turnInputFacts.source === "web"
                 ? { source: "web" as const }
                 : undefined),
             },
@@ -582,7 +594,7 @@ export function createApiTurnWorker(
             conversationId: context.conversationId,
             createdAtMs: Date.now(),
             inputMessageIds,
-            surface: "api",
+            surface,
             turnId,
           });
           if (cancellationSignal?.aborted) {
@@ -611,16 +623,35 @@ export function createApiTurnWorker(
             return;
           }
           failureCode = "delivery_failed";
-          assistantMessageDelivered = true;
+          const location = storedConversation?.location;
+          if (publish && (!location || !publishMessage)) {
+            throw new Error(
+              `Conversation ${context.conversationId} cannot publish its system Turn`,
+            );
+          }
+          const publishedMessage =
+            publish && location && publishMessage
+              ? await publishMessage({
+                  conversationId: context.conversationId,
+                  location,
+                  text: replyText,
+                })
+              : undefined;
           await commitAssistantMessage({
             ...(agentMessage ? { agentMessage } : undefined),
             conversation,
             conversationId: context.conversationId,
+            ...(publishedMessage ? { publishedMessage } : undefined),
             sessionId: turnId,
-            ...(turnIdentity.source === "web" ? { source: "web" } : undefined),
+            ...(publishedMessage
+              ? { source: "slack" as const }
+              : turnInputFacts.source === "web"
+                ? { source: "web" as const }
+                : undefined),
             text: replyText,
             userMessageId,
           });
+          assistantMessageDelivered = true;
           failureCode = "agent_run_failed";
         };
 
@@ -699,12 +730,12 @@ export function createApiTurnWorker(
               actor,
               credentialContext: credentialContextForActor(actor),
               destination,
-              publishExternally: false,
+              publishExternally: publish,
               source,
               ...(storedConversation?.location
                 ? { location: storedConversation.location }
                 : undefined),
-              surface: "api",
+              surface,
               ...(cancellationSignal
                 ? { signal: cancellationSignal }
                 : undefined),
@@ -788,10 +819,10 @@ export function createApiTurnWorker(
                   durationMs: reply.diagnostics.durationMs,
                   usage: reply.diagnostics.usage,
                   destination,
-                  publishExternally: false,
+                  publishExternally: publish,
                   source,
                   actor,
-                  surface: "api",
+                  surface,
                 });
               }
 
@@ -933,10 +964,16 @@ export function createApiTurnWorker(
   };
 }
 
-/** Route Conversation API work before other work. */
-export function routeApiTurnWork(options: {
-  apiTurnWorker: (
+/**
+ * Route web and resource-event mailbox Turns before provider webhook work.
+ *
+ * TODO(dcramer): Delete this router after the worker graph selects work from
+ * saved Source, dispatch ID, agent invocation ID, and Destination.
+ */
+export function routeMailboxTurnWork(options: {
+  mailboxTurnWorker: (
     context: ConversationWorkerContext,
+    resolved: MailboxTurnWork,
   ) => Promise<ConversationWorkerResult>;
   fallbackWorker: (
     context: ConversationWorkerContext,
@@ -945,8 +982,9 @@ export function routeApiTurnWork(options: {
   return async (
     context: ConversationWorkerContext,
   ): Promise<ConversationWorkerResult> => {
-    return (await isApiTurnWork(context))
-      ? await options.apiTurnWorker(context)
+    const resolved = await resolveMailboxTurnWork(context);
+    return resolved
+      ? await options.mailboxTurnWorker(context, resolved)
       : await options.fallbackWorker(context);
   };
 }

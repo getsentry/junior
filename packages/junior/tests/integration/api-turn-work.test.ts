@@ -7,10 +7,10 @@ import {
   buildApiTurnInboundMessage,
   createAndEnqueueApiConversation,
   createApiConversationId,
-  createApiTurnWorker,
+  createMailboxTurnWorker,
   recordApiConversationActivity,
-  resolveApiTurnWork,
-  routeApiTurnWork,
+  resolveMailboxTurnWork,
+  routeMailboxTurnWork,
 } from "@/chat/api-turns/work";
 import type { AgentRun } from "@/chat/agent/types";
 import { getConversationEventStore } from "@/chat/db";
@@ -136,7 +136,7 @@ describe("Conversation API work", () => {
     });
 
     const agentRuns: AgentRun[] = [];
-    const worker = createApiTurnWorker(
+    const worker = createMailboxTurnWorker(
       createModelAgentRunnerForRun((run) => {
         agentRuns.push(run);
         return createModelStream([
@@ -144,8 +144,8 @@ describe("Conversation API work", () => {
         ]);
       }),
     );
-    const route = routeApiTurnWork({
-      apiTurnWorker: worker,
+    const route = routeMailboxTurnWork({
+      mailboxTurnWorker: worker,
       fallbackWorker: async () => {
         throw new Error(
           "fallback worker must not run for Conversation API work",
@@ -264,7 +264,7 @@ describe("Conversation API work", () => {
     });
 
     const agentRuns: AgentRun[] = [];
-    const worker = createApiTurnWorker(
+    const worker = createMailboxTurnWorker(
       createModelAgentRunnerForRun((run) => {
         agentRuns.push(run);
         return createModelStream([
@@ -272,8 +272,8 @@ describe("Conversation API work", () => {
         ]);
       }),
     );
-    const route = routeApiTurnWork({
-      apiTurnWorker: worker,
+    const route = routeMailboxTurnWork({
+      mailboxTurnWorker: worker,
       fallbackWorker: async () => {
         throw new Error(
           "fallback worker must not run for Conversation API work",
@@ -322,7 +322,7 @@ describe("Conversation API work", () => {
     if (!signal) throw new Error("Expected an active Turn signal");
     cancellation.cancel(accepted.conversationId);
     const agentRuns: AgentRun[] = [];
-    const worker = createApiTurnWorker(
+    const worker = createMailboxTurnWorker(
       createModelAgentRunnerForRun((run) => {
         agentRuns.push(run);
         return createModelStream([
@@ -331,9 +331,15 @@ describe("Conversation API work", () => {
       }),
       cancellation,
     );
+    const route = routeMailboxTurnWork({
+      mailboxTurnWorker: worker,
+      fallbackWorker: async () => {
+        throw new Error("Fallback worker must not run for API Turn work");
+      },
+    });
 
     await expect(
-      worker({
+      route({
         attempt: {
           ack: async () => {
             throw new Error("lease lost");
@@ -391,7 +397,7 @@ describe("Conversation API work", () => {
       surface: "api",
     });
 
-    const resolved = await resolveApiTurnWork({
+    const resolved = await resolveMailboxTurnWork({
       attempt: emptyApiTurnAttempt({
         conversationId: accepted.conversationId,
         destination,
@@ -404,6 +410,111 @@ describe("Conversation API work", () => {
     });
     expect(resolved).toEqual({ kind: "resume", turnId });
   });
+
+  it("resumes a paused dashboard Turn before a deferred resource event", async () => {
+    const { actor, conversationStore, queue, state } =
+      await createApiTurnWorkFixture();
+    const accepted = await createAndEnqueueApiConversation(
+      {
+        actor,
+        idempotencyKey: "dashboard-before-resource-event",
+        message: "Check the current state.",
+      },
+      { conversationStore, queue, state },
+    );
+    const dashboardTurnId = apiTurnIdForMessage(accepted.messageId);
+    const resourceMessage = createResourceEventInboundMessage({
+      event: {
+        eventKey: "checks-failed-after-dashboard-yield",
+        eventType: "pull_request.checks.failed",
+        identifier: "getsentry/junior#1563",
+        namespace: "github",
+        occurredAtMs: 2,
+        trustedSummary: "Code change checks failed",
+      },
+      receivedAtMs: 2,
+      subscription: {
+        conversationId: accepted.conversationId,
+        id: "resource-subscription-after-dashboard-yield",
+      },
+      text: "Code change checks failed",
+    });
+    const resourceTurnId = apiTurnIdForMessage(
+      resourceMessage.inboundMessageId,
+    );
+    const agentRuns: AgentRun[] = [];
+    let dashboardStarted = false;
+    const worker = createMailboxTurnWorker(
+      createModelAgentRunnerForRun((run) => {
+        agentRuns.push(run);
+        if (run.turnId === dashboardTurnId && !dashboardStarted) {
+          dashboardStarted = true;
+          return createModelStream([
+            { type: "toolCall", name: "systemTime", arguments: {} },
+            { type: "text", text: "Dashboard Turn finished." },
+          ]);
+        }
+        return createModelStream([
+          {
+            type: "text",
+            text:
+              run.turnId === dashboardTurnId
+                ? "Dashboard Turn finished."
+                : "Resource event handled.",
+          },
+        ]);
+      }),
+    );
+    const route = routeMailboxTurnWork({
+      mailboxTurnWorker: worker,
+      fallbackWorker: async () => {
+        throw new Error("Provider must not receive local mailbox work");
+      },
+    });
+
+    await expect(
+      processConversationQueueMessage(queue.takeMessage(), {
+        conversationStore,
+        queue,
+        run: route,
+        softYieldAfterMs: 0,
+        state,
+      }),
+    ).resolves.toEqual({ status: "yielded" });
+    await expect(
+      getTurnRecord(accepted.conversationId, dashboardTurnId),
+    ).resolves.toMatchObject({
+      resumeReason: "yield",
+      state: "paused",
+    });
+
+    await appendAndEnqueueInboundMessage({
+      conversationStore,
+      message: resourceMessage,
+      queue,
+      state,
+    });
+    await expect(
+      processConversationQueueMessage(queue.takeMessage(), {
+        conversationStore,
+        queue,
+        run: route,
+        state,
+      }),
+    ).resolves.toEqual({ status: "completed" });
+
+    expect(agentRuns.map((run) => run.turnId)).toEqual([
+      dashboardTurnId,
+      dashboardTurnId,
+      resourceTurnId,
+    ]);
+    await expect(
+      getTurnRecord(accepted.conversationId, dashboardTurnId),
+    ).resolves.toMatchObject({ state: "completed" });
+    await expect(
+      getTurnRecord(accepted.conversationId, resourceTurnId),
+    ).resolves.toMatchObject({ state: "completed" });
+  }, 10_000);
 
   it("runs and resumes a resource event with a local Destination", async () => {
     const { actor, conversationStore, queue, state } =
@@ -451,7 +562,7 @@ describe("Conversation API work", () => {
     const turnId = apiTurnIdForMessage(messageId);
     const agentRuns: AgentRun[] = [];
     let firstRun = true;
-    const worker = createApiTurnWorker(
+    const worker = createMailboxTurnWorker(
       createModelAgentRunnerForRun((run) => {
         agentRuns.push(run);
         if (firstRun) {
@@ -466,8 +577,8 @@ describe("Conversation API work", () => {
         ]);
       }),
     );
-    const route = routeApiTurnWork({
-      apiTurnWorker: worker,
+    const route = routeMailboxTurnWork({
+      mailboxTurnWorker: worker,
       fallbackWorker: async () => {
         throw new Error("Provider must not receive this resource event");
       },
@@ -573,7 +684,7 @@ describe("Conversation API work", () => {
       surface: "api",
     });
 
-    const resolved = await resolveApiTurnWork({
+    const resolved = await resolveMailboxTurnWork({
       attempt: emptyApiTurnAttempt({ conversationId, destination }),
       conversationId,
       destination,
@@ -662,7 +773,7 @@ describe("Conversation API work", () => {
     });
 
     const agentRuns: AgentRun[] = [];
-    const worker = createApiTurnWorker(
+    const worker = createMailboxTurnWorker(
       createModelAgentRunnerForRun((run) => {
         agentRuns.push(run);
         return createModelStream([
@@ -670,8 +781,8 @@ describe("Conversation API work", () => {
         ]);
       }),
     );
-    const route = routeApiTurnWork({
-      apiTurnWorker: worker,
+    const route = routeMailboxTurnWork({
+      mailboxTurnWorker: worker,
       fallbackWorker: async () => {
         throw new Error("fallback worker must not run for web continues");
       },

@@ -19,7 +19,6 @@ import {
   hydrateConversationMessages,
   persistConversationMessages,
 } from "@/chat/conversations/messages";
-import { getConversationEventStore } from "@/chat/db";
 import {
   coerceThreadConversationState,
   type ConversationMessage,
@@ -405,9 +404,8 @@ describe("mcp auth runtime slack integration", () => {
     pluginApp = await createPluginAppFixture([EVAL_MCP_PLUGIN_ROOT]);
 
     vi.resetModules();
-    const { restoreSuiteExperimentalFeatures } = await import(
-      "../../fixtures/experimental-setup"
-    );
+    const { restoreSuiteExperimentalFeatures } =
+      await import("../../fixtures/experimental-setup");
     restoreSuiteExperimentalFeatures();
     chatRuntimeModule = await import("../../fixtures/chat-runtime");
     mcpAuthStoreModule = await import("@/chat/mcp/auth-store");
@@ -906,72 +904,6 @@ describe("mcp auth runtime slack integration", () => {
       },
     });
     expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([]);
-  });
-
-  it("does not restore prior user MCP providers for credentialless resource events", async () => {
-    agentProbe.shouldBypassSkill = true;
-    const threadId = "slack:C130:1700000000.011";
-    const { createTestChatRuntime } = chatRuntimeModule;
-    const { slackRuntime } = createTestChatRuntime({
-      services: {
-        visionContext: {
-          listThreadReplies: async () => [],
-        },
-      },
-    });
-    const destination = {
-      platform: "slack" as const,
-      teamId: "T123",
-      channelId: "C130",
-    };
-    const thread = await createTestThread({ id: threadId });
-    await mirrorThreadStateToAdapter(thread);
-    await getConversationEventStore().append(threadId, [
-      {
-        createdAtMs: 1,
-        data: {
-          type: "tool_result",
-          toolCallId: "prior-linear-call",
-          toolName: "callMcpTool",
-          isError: false,
-          content: [{ type: "text", text: "prior result" }],
-          timestamp: 1,
-        },
-      },
-    ]);
-
-    await slackRuntime.handleSubscribedMessage(
-      thread,
-      createTestMessage({
-        id: "resource-event-resub-1-check-suite-1",
-        threadId,
-        text: "[event notification]\n\nA subscribed GitHub check changed.",
-        isMention: false,
-        author: {
-          userId: "UJRNEVENT",
-          userName: "junior-event",
-          fullName: "Junior event",
-          isBot: true,
-        },
-        raw: {
-          channel: "C130",
-          event_type: "resource_event",
-          thread_ts: "1700000000.011",
-          ts: "resource-event-resub-1-check-suite-1",
-          type: "message",
-          user: "UJRNEVENT",
-        },
-      }),
-      { destination },
-    );
-
-    expect(agentProbe.promptCallCount).toBe(1);
-    expect(getCapturedSlackApiCalls("chat.postEphemeral")).toEqual([]);
-    expect(thread.posts.at(-1)).toEqual(
-      expect.objectContaining({
-        markdown: unrelatedAuthPendingReply,
-      }),
-    );
   });
 
   it("parks and resumes an MCP auth challenge from direct provider activation", async () => {

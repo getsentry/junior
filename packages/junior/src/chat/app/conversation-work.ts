@@ -16,7 +16,10 @@ import {
   createAgentInvocationWorker,
   routeAgentInvocationWork,
 } from "@/chat/agent-invocations/work";
-import { createApiTurnWorker, routeApiTurnWork } from "@/chat/api-turns/work";
+import {
+  createMailboxTurnWorker,
+  routeMailboxTurnWork,
+} from "@/chat/api-turns/work";
 import {
   createApiTurnCancellation,
   type ApiTurnCancellation,
@@ -27,6 +30,7 @@ import {
 } from "@/chat/agent-dispatch/store";
 import { createSlackRuntime } from "./factory";
 import type { JuniorRuntimeServiceOverrides } from "./services";
+import { createSlackSystemTurnPublisher } from "@/chat/providers/slack/system-turn";
 
 interface ConversationWorkOptions {
   agentRunner: AgentRunner;
@@ -68,7 +72,6 @@ export function createConversationWork(
   });
   const slackWorker = createSlackConversationWorker({
     getSlackAdapter: options.getSlackAdapter,
-    conversationStore: options.conversationStore,
     runNextPausedTurn: async (conversationId, runOptions) =>
       await runNextPausedTurn(
         conversationId,
@@ -110,9 +113,8 @@ export function createConversationWork(
     if (destination.platform === "slack") {
       return await slackWorker(context);
     }
-    // Local destination resource-event and dashboard wakes are claimed earlier
-    // by routeApiTurnWork. Reaching here with a local destination means no
-    // matching conversation-only work.
+    // Local resource-event and dashboard wakes are claimed earlier by
+    // routeMailboxTurnWork. A local Destination here has no matching work.
     throw new Error(
       `Conversation ${context.conversationId} has a ${destination.platform} destination but no matching conversation worker`,
     );
@@ -125,10 +127,14 @@ export function createConversationWork(
     apiTurnCancellation,
     conversationStore: options.conversationStore,
     queue: options.queue,
-    run: routeApiTurnWork({
-      apiTurnWorker: createApiTurnWorker(
+    run: routeMailboxTurnWork({
+      mailboxTurnWorker: createMailboxTurnWorker(
         options.agentRunner,
         apiTurnCancellation,
+        createSlackSystemTurnPublisher({
+          getSlackAdapter: options.getSlackAdapter,
+          state: options.state,
+        }),
       ),
       fallbackWorker: routeAgentInvocationWork({
         invocationWorker: createAgentInvocationWorker(options.agentRunner),

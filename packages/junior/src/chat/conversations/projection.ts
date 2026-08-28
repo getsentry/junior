@@ -28,7 +28,7 @@ import type { JuniorSqlDatabase } from "@/db/db";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
 import {
   bindProviderConversation,
-  type ProviderConversationBinding,
+  type ProviderConversationReference,
 } from "@/chat/conversations/sql/bindings";
 import { withConversationEventLock } from "@/chat/conversations/sql/event-lock";
 import {
@@ -368,9 +368,7 @@ export async function commitAcceptedReply(args: {
   conversation: ThreadConversationState;
   conversationMessageId: string;
   conversationId: string;
-  providerConversationBindings?: Array<
-    Omit<ProviderConversationBinding, "conversationId">
-  >;
+  providerConversationBindings?: ProviderConversationReference[];
   repliedAtMs?: number;
 }): Promise<void> {
   const executor = getSqlExecutor();
@@ -620,7 +618,9 @@ async function recordAuthenticationAccountChange(
     actorId: args.actorId,
     provider: args.provider,
     ...(args.accountLabel ? { accountLabel: args.accountLabel } : undefined),
-    ...(args.authorizationId ? { authorizationId: args.authorizationId } : undefined),
+    ...(args.authorizationId
+      ? { authorizationId: args.authorizationId }
+      : undefined),
     ...(args.providerLabel ? { providerLabel: args.providerLabel } : undefined),
   });
   await getConversationEventStore().append(args.conversationId, [

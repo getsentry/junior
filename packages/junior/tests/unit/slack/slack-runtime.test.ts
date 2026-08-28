@@ -288,28 +288,6 @@ describe("createSlackTurnRuntime", () => {
         expect.objectContaining({ conversationContext: "some context" }),
       );
     });
-
-    it("prepares resource-event notifications without a actor", async () => {
-      const deps = createMockDeps();
-      const runtime = createSlackTurnRuntime<TestState>(deps);
-      const thread = await createTestThread({});
-      const message = createTestMessage({
-        author: { userId: "UJRNEVENT", isBot: true },
-        raw: { event_type: "resource_event" },
-      });
-
-      await runtime.handleSubscribedMessage(thread, message, {
-        destination: createTestDestination(thread),
-      });
-
-      expect(deps.prepareTurnState).toHaveBeenCalledWith(
-        expect.objectContaining({
-          context: expect.objectContaining({
-            actorId: undefined,
-          }),
-        }),
-      );
-    });
   });
 
   describe("handleAssistantThreadStarted", () => {

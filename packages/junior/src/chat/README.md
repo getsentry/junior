@@ -39,9 +39,10 @@ Delivery to that Location.
 - `runtime/`: native Turn orchestration and provider-neutral delivery ports.
 - `providers/`: source provider layers around the native runtime. Slack owns
   its provider runtime in `providers/slack/`.
-- `api-turns/`: Conversation API admission and conversation-only execution for
-  user messages and resource events with a local Destination. This includes
-  continues of Slack-associated Conversations by verified participants.
+- `api-turns/`: Conversation API admission and shared mailbox execution for web
+  input and resource events. Slack supplies Delivery for resource-event Turns
+  that publish. Dashboard continues of Slack-associated Conversations remain
+  Conversation-only.
 - `agent-dispatch/`: durable task and plugin dispatch authority, mailbox
   adaptation, and plugin-facing outcome projection.
 - `agent-invocations/`: durable parent/child bindings, delegated work, and

@@ -58,7 +58,6 @@ import {
   type TurnToolInvocation,
 } from "@/chat/runtime/turn-input";
 import { getMessageActorIdentity } from "@/chat/services/message-actor-identity";
-import { isResourceEventSlackMessage } from "@/chat/resource-events/actor";
 import {
   getTurnLifecycle,
   type FailConversationTurnInput,
@@ -317,10 +316,7 @@ export interface SlackTurnRuntime<
     message: Message,
     hooks: SlackTurnOptions,
   ) => Promise<void>;
-  // Webhook-shaped entry: real Slack traffic arrives as Message + Thread.
-  // TODO(slack-runtime): Add a plain turn entry from conversation destination +
-  // session source so resource-event wakes (and similar system wakes) do not
-  // build synthetic Message/Thread objects just to call this path.
+  /** Webhook entry for subscribed Slack Message traffic. */
   handleSubscribedMessage: (
     thread: Thread,
     message: Message,
@@ -903,11 +899,7 @@ export function createSlackTurnRuntime<
         const threadId = getThreadId(thread, message);
         const channelId = getChannelId(thread, message);
         const runId = getRunId(thread, message);
-        const isResourceEventNotification =
-          isResourceEventSlackMessage(message);
-        const actorId = isResourceEventNotification
-          ? undefined
-          : message.author.userId;
+        const actorId = message.author.userId;
         const turnContext = logContext({
           threadId,
           actorId,
@@ -944,14 +936,12 @@ export function createSlackTurnRuntime<
           const turnIsExplicitMention =
             Boolean(message.isMention) ||
             queuedMessages.some((queued) => queued.explicitMention);
-          const preflightDecision = isResourceEventNotification
-            ? undefined
-            : getSubscribedReplyPreflightDecision({
-                botUserName: deps.assistantUserName,
-                rawText: combinedText.rawText,
-                text: combinedText.userText,
-                isExplicitMention: turnIsExplicitMention,
-              });
+          const preflightDecision = getSubscribedReplyPreflightDecision({
+            botUserName: deps.assistantUserName,
+            rawText: combinedText.rawText,
+            text: combinedText.userText,
+            isExplicitMention: turnIsExplicitMention,
+          });
 
           if (preflightDecision && !preflightDecision.shouldReply) {
             const reason = preflightDecision.reasonDetail
@@ -971,7 +961,6 @@ export function createSlackTurnRuntime<
           // When non-mention replies are off, skip prepare and stay quiet unless
           // the decision unsubscribes the thread (!stop).
           if (
-            !isResourceEventNotification &&
             !turnIsExplicitMention &&
             !isExperimentalFeatureEnabled("passive-routing")
           ) {
@@ -1017,21 +1006,20 @@ export function createSlackTurnRuntime<
             preparedState,
           });
 
-          const decision: SubscribedReplyDecision = isResourceEventNotification
-            ? { shouldReply: true, reason: "resource_event" }
-            : await deps.decideSubscribedReply({
-                rawText: combinedText.rawText,
-                text: combinedText.userText,
-                conversationContext:
-                  deps.getPreparedConversationContext(preparedState),
-                hasAttachments:
-                  content.hasAttachments ||
-                  queuedMessages.some(
-                    (queued) => queued.message.attachments.length > 0,
-                  ),
-                isExplicitMention: turnIsExplicitMention,
-                context: threadContext,
-              });
+          const decision: SubscribedReplyDecision =
+            await deps.decideSubscribedReply({
+              rawText: combinedText.rawText,
+              text: combinedText.userText,
+              conversationContext:
+                deps.getPreparedConversationContext(preparedState),
+              hasAttachments:
+                content.hasAttachments ||
+                queuedMessages.some(
+                  (queued) => queued.message.attachments.length > 0,
+                ),
+              isExplicitMention: turnIsExplicitMention,
+              context: threadContext,
+            });
 
           if (
             await maybeHandleThreadOptOutDecision({

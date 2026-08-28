@@ -1183,12 +1183,17 @@ async function appendInboundMessageWithAdmission(args: {
         return { status: "active" };
       }
 
-      const status =
-        current.execution.lease && current.execution.status === "running"
-          ? "running"
-          : current.execution.lease
-            ? "paused"
-            : "pending";
+      let status: ExecutionStatus;
+      if (current.execution.lease) {
+        status = current.execution.status === "running" ? "running" : "paused";
+      } else if (
+        current.execution.status === "paused" &&
+        args.message.delivery === "defer"
+      ) {
+        status = "paused";
+      } else {
+        status = "pending";
+      }
       const next: Conversation = {
         ...current,
         destination: current.destination ?? args.message.destination,
