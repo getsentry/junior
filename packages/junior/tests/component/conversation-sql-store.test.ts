@@ -823,7 +823,7 @@ describe("conversation SQL store", () => {
     }
   });
 
-  it("fails closed for unsigned Slack destinations without confirming visibility", async () => {
+  it("leaves Slack visibility missing without a live signal", async () => {
     const fixture = await createLocalJuniorSqlFixture();
 
     try {
@@ -831,7 +831,7 @@ describe("conversation SQL store", () => {
       await migrateSchema(fixture.sql);
 
       // A write without a live source signal remains unknown even though the
-      // channel id is C-prefixed. Conversation reads still fail closed.
+      // channel id is C-prefixed. The Run treats the missing value as private.
       await store.recordActivity({
         conversationId: CONVERSATION_ID,
         destination: inboundMessage("unsigned").destination,
@@ -840,7 +840,7 @@ describe("conversation SQL store", () => {
       const conversation = await store.get({
         conversationId: CONVERSATION_ID,
       });
-      expect(conversation?.visibility).toBe("private");
+      expect(conversation).not.toHaveProperty("visibility");
       await expect(
         store.getDestinationVisibility({
           provider: "slack",

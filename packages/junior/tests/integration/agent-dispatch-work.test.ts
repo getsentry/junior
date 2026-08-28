@@ -127,7 +127,6 @@ describe("agent dispatch conversation work", () => {
         actor: { platform: "system", name: "scheduler" },
       },
       destination,
-      destinationVisibility: "private",
       dispatch: {
         id: dispatch.id,
         plugin: "scheduler",

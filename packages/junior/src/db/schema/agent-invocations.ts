@@ -68,6 +68,8 @@ export const juniorAgentInvocations = pgTable(
     ).$type<CredentialContext>(),
     source: jsonb("source_json").$type<Source>().notNull(),
     destination: jsonb("destination_json").$type<Destination>().notNull(),
+    // TODO(dcramer): Remove destinationVisibility after all deployed Agent
+    // invocation readers ignore the destination_visibility SQL column.
     destinationVisibility: text(
       "destination_visibility",
     ).$type<ConversationPrivacy>(),

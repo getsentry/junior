@@ -91,12 +91,15 @@ export function locationFromRow(
   });
 }
 
-/** Resolve conversation privacy from one linked provider-location row. */
-export function privacyFromLocationRow(
+/** Read confirmed visibility from one linked Location row. */
+export function visibilityFromLocationRow(
   row: LocationRow | null,
 ): ConversationPrivacy | undefined {
   if (!row) {
     return undefined;
   }
-  return row.visibility === "public" ? "public" : "private";
+  if (row.visibility === "public" || row.visibility === "private") {
+    return row.visibility;
+  }
+  return undefined;
 }

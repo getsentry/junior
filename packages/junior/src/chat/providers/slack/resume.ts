@@ -81,6 +81,7 @@ import {
 } from "@/chat/services/conversation-memory";
 import { persistWithRetry } from "@/chat/services/persist-retry";
 import { isRetryableSlackPostError } from "@/chat/slack/errors";
+import { getConversationStore } from "@/chat/db";
 
 function resolveReplyTimeoutMs(): number | undefined {
   const raw = process.env.EVAL_AGENT_REPLY_TIMEOUT_MS?.trim();
@@ -513,6 +514,8 @@ async function resumeSlackTurnInContext(
     status.update(runArgs.initialStatus);
 
     const conversationId = runArgs.conversationId;
+    const visibility = (await getConversationStore().get({ conversationId }))
+      ?.visibility;
     const visibleConversationId = lockKey;
     const sessionId = runArgs.turnId;
     let deliveryConversation:
@@ -633,7 +636,7 @@ async function resumeSlackTurnInContext(
             recordTurnSummary({
               conversationId: runArgs.conversationId,
               destination: savedRun.destination,
-              destinationVisibility: savedRun.destinationVisibility,
+              destinationVisibility: visibility,
               dispatchId,
               resultMessageId: messageTs,
               turnId: runArgs.turnId,
@@ -702,7 +705,7 @@ async function resumeSlackTurnInContext(
             durationMs: reply.diagnostics.durationMs,
             usage: reply.diagnostics.usage,
             destination: run.destination,
-            destinationVisibility: run.destinationVisibility,
+            destinationVisibility: visibility,
             dispatchId: run.dispatch?.id,
             dispatchOutcome:
               reply.diagnostics.outcome === "success" ? "completed" : "failed",
@@ -721,7 +724,7 @@ async function resumeSlackTurnInContext(
           await recordTurnSummary({
             conversationId: runArgs.conversationId,
             destination: run.destination,
-            destinationVisibility: run.destinationVisibility,
+            destinationVisibility: visibility,
             dispatchId: run.dispatch?.id,
             dispatchOutcome:
               reply.diagnostics.outcome === "success" ? "completed" : "failed",

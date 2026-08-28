@@ -67,7 +67,7 @@ interface DurableDispatchTurnResult extends DispatchTurnResult {
 
 type DispatchRoutingContext = Pick<
   DispatchTurnContext,
-  "credentialContext" | "destinationVisibility" | "dispatch" | "surface"
+  "credentialContext" | "dispatch" | "surface"
 > & { actor: DispatchRecord["actor"] };
 
 /** Restore the exact actor, credential, and dispatch routing for every slice. */
@@ -80,7 +80,6 @@ export function buildDispatchRoutingContext(
       dispatch.actor,
       dispatch.credentialSubject,
     ),
-    destinationVisibility: dispatch.destinationVisibility,
     dispatch: {
       actor: dispatch.actor,
       id: dispatch.id,

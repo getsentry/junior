@@ -667,7 +667,6 @@ describe("agent run continuation", () => {
         instruction: {
           text: "Make a large generated-file edit.",
         },
-        destinationVisibility: "private",
         source: TEST_SOURCE,
         destination: TEST_DESTINATION,
         actor: { platform: "slack", teamId: "T123", userId: "U123" },
@@ -717,7 +716,6 @@ describe("agent run continuation", () => {
           text: currentInstruction,
         },
         history: priorMessages,
-        destinationVisibility: "private",
         source: TEST_SOURCE,
         destination: TEST_DESTINATION,
         actor: { platform: "slack", teamId: "T123", userId: "U123" },
@@ -739,7 +737,6 @@ describe("agent run continuation", () => {
       instruction: {
         text: "help me",
       },
-      destinationVisibility: "private",
       destination: TEST_DESTINATION,
       source: TEST_SOURCE,
       actor: { platform: "slack", teamId: "T123", userId: "U123" },
@@ -819,7 +816,6 @@ describe("agent run continuation", () => {
       instruction: {
         text: "help me",
       },
-      destinationVisibility: "private",
       destination: TEST_DESTINATION,
       source: TEST_SOURCE,
       actor: { platform: "slack", teamId: "T123", userId: "U123" },
@@ -856,7 +852,6 @@ describe("agent run continuation", () => {
       instruction: {
         text: "help me",
       },
-      destinationVisibility: "private",
       destination: TEST_DESTINATION,
       source: TEST_SOURCE,
       actor: { platform: "slack", teamId: "T123", userId: "U123" },
@@ -909,7 +904,6 @@ describe("agent run continuation", () => {
           text: "help me",
         },
         history: priorMessages,
-        destinationVisibility: "private",
         destination: TEST_DESTINATION,
         source: TEST_SOURCE,
         actor: { platform: "slack", teamId: "T123", userId: "U123" },
@@ -972,7 +966,6 @@ describe("agent run continuation", () => {
       instruction: {
         text: "help me",
       },
-      destinationVisibility: "private",
       destination: TEST_DESTINATION,
       source: TEST_SOURCE,
       actor: { platform: "slack", teamId: "T123", userId: "U123" },
@@ -1013,7 +1006,6 @@ describe("agent run continuation", () => {
       instruction: {
         text: "help me",
       },
-      destinationVisibility: "private",
       destination: TEST_DESTINATION,
       source: TEST_SOURCE,
       actor: { platform: "slack", teamId: "T123", userId: "U123" },
@@ -1039,7 +1031,6 @@ describe("agent run continuation", () => {
       instruction: {
         text: "help me",
       },
-      destinationVisibility: "private",
       destination: TEST_DESTINATION,
       source: TEST_SOURCE,
       actor: { platform: "slack", teamId: "T123", userId: "U123" },
@@ -1087,7 +1078,6 @@ describe("agent run continuation", () => {
       instruction: {
         text: "help me",
       },
-      destinationVisibility: "private",
       destination: TEST_DESTINATION,
       source: TEST_SOURCE,
       actor: { platform: "slack", teamId: "T123", userId: "U123" },
@@ -1204,7 +1194,6 @@ describe("agent run continuation", () => {
         conversationId,
         turnId,
         instruction: { text: "Delete preview-42 after I confirm." },
-        destinationVisibility: "private",
         destination: TEST_DESTINATION,
         source: TEST_SOURCE,
         actor: { platform: "slack", teamId: "T123", userId: "U123" },
@@ -1232,7 +1221,6 @@ describe("agent run continuation", () => {
       instruction: {
         text: "help me",
       },
-      destinationVisibility: "private",
       actor: { platform: "slack", teamId: "T123", userId: "U123" },
       destination: TEST_DESTINATION,
       source: TEST_SOURCE,
@@ -1291,7 +1279,6 @@ describe("agent run continuation", () => {
       instruction: {
         text: "help me",
       },
-      destinationVisibility: "private",
       destination: TEST_DESTINATION,
       source: TEST_SOURCE,
       actor: { platform: "slack", teamId: "T123", userId: "U123" },
@@ -1325,7 +1312,6 @@ describe("agent run continuation", () => {
         instruction: {
           text: "run the tool",
         },
-        destinationVisibility: "private",
         destination: TEST_DESTINATION,
         source: TEST_SOURCE,
         actor: { platform: "slack", teamId: "T123", userId: "U123" },
@@ -1363,7 +1349,6 @@ describe("agent run continuation", () => {
         turnId: sessionId,
         instruction: { text: "help me" },
         history: [checkpointedPrompt],
-        destinationVisibility: "private",
         destination: TEST_DESTINATION,
         source: TEST_SOURCE,
         actor: { platform: "slack", teamId: "T123", userId: "U123" },
@@ -1395,7 +1380,6 @@ describe("agent run continuation", () => {
       instruction: {
         text: "help me",
       },
-      destinationVisibility: "private",
       destination: TEST_DESTINATION,
       source: TEST_SOURCE,
       actor: { platform: "slack", teamId: "T123", userId: "U123" },

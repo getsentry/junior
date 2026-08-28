@@ -37,6 +37,7 @@ import {
   createLocalSource,
   createSlackSource,
 } from "@sentry/junior-plugin-api";
+import { getCurrentConversationPrivacy } from "@/chat/conversation-privacy";
 const parentConversationId = "local:test:parent-agent";
 const destination = {
   conversationId: parentConversationId,
@@ -45,7 +46,6 @@ const destination = {
 const invocationInput = {
   actor: { name: "parent-agent", platform: "system" } as const,
   destination,
-  destinationVisibility: "private" as const,
   input: "Summarize the durable task.",
   parentConversationId,
   reasoningLevel: "medium" as const,
@@ -61,7 +61,7 @@ const slackSource = createSlackSource({
   channelId: "C123",
   teamId: "T123",
   threadTs: "1712345.0001",
-  visibility: "private",
+  visibility: "public",
 });
 const slackInvocationInput = {
   ...invocationInput,
@@ -93,7 +93,7 @@ async function prepareSlackParentConversation() {
     nowMs: 1_000,
     sessionSource: slackSource,
     source: "slack",
-    visibility: "private",
+    visibility: "public",
   });
   return { conversationStore, fixture };
 }
@@ -232,7 +232,6 @@ describe("agent invocation conversation work", () => {
           actor: { type: "user", userId: "local-user" },
         },
         destination,
-        destinationVisibility: "private",
         source: createLocalSource(parentConversationId),
       } satisfies AgentRun;
       const spawnAgent = bindSpawnAgent(request, {
@@ -261,7 +260,6 @@ describe("agent invocation conversation work", () => {
           actor: { type: "user", userId: "local-user" },
         },
         destination,
-        destinationVisibility: "private",
         input: "Inspect the failing checks.",
         parentConversationId,
         reasoningLevel: "high",
@@ -287,7 +285,7 @@ describe("agent invocation conversation work", () => {
     }
   });
 
-  it("reads the parent Location without delivering child output", async () => {
+  it("reads the parent Location and visibility without delivering child output", async () => {
     const { conversationStore, fixture } =
       await prepareSlackParentConversation();
     const queue = createConversationWorkQueueTestAdapter();
@@ -315,8 +313,18 @@ describe("agent invocation conversation work", () => {
       expect(child).not.toHaveProperty("destination");
       expect(child).not.toHaveProperty("location");
       expect(child).not.toHaveProperty("sessionSource");
+      expect(child).not.toHaveProperty("visibility");
+      let observedVisibility: ReturnType<typeof getCurrentConversationPrivacy>;
       const agentRunner = createModelAgentRunner(
-        createModelStream([{ type: "text", text: "Durable child result" }]),
+        createModelStream([
+          {
+            type: "text",
+            text: "Durable child result",
+            onRequest: () => {
+              observedVisibility = getCurrentConversationPrivacy();
+            },
+          },
+        ]),
       );
       const run = vi.spyOn(agentRunner, "run");
       const fallbackWorker = vi.fn(async () => ({
@@ -407,7 +415,6 @@ describe("agent invocation conversation work", () => {
         reasoning: "medium",
         actor: slackInvocationInput.actor,
         destination: slackDestination,
-        destinationVisibility: "private",
         publishExternally: false,
         source: {
           ...slackInvocationInput.source,
@@ -423,6 +430,7 @@ describe("agent invocation conversation work", () => {
         runId: created.invocationId,
       });
       expect(run.mock.calls[0]?.[0].delivery).toBeUndefined();
+      expect(observedVisibility).toBe("public");
       expect(fallbackWorker).not.toHaveBeenCalled();
     } finally {
       await fixture.close();

@@ -195,6 +195,7 @@ async function runLocalAgentTurnInContext(
     destination,
     nowMs: Date.now(),
     source: "local",
+    visibility: "private",
   });
   const persisted = await getPersistedThreadState(input.conversationId);
   const conversation = coerceThreadConversationState(persisted);

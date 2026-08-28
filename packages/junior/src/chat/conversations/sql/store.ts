@@ -45,7 +45,7 @@ import {
 import {
   locationForWrite,
   locationFromRow,
-  privacyFromLocationRow,
+  visibilityFromLocationRow,
 } from "./location";
 type ConversationRow = Omit<
   typeof juniorConversations.$inferSelect,
@@ -227,7 +227,7 @@ function destinationFromRow(
 /** Decode one SQL row and reject invalid durable conversation records. */
 function conversationFromRow(readRow: ConversationReadRow): Conversation {
   const row = readRow.conversation;
-  const visibility = privacyFromLocationRow(readRow.destination);
+  const visibility = visibilityFromLocationRow(readRow.destination);
   if (row.schemaVersion !== 1) {
     throw new Error("Conversation record schema version is invalid");
   }

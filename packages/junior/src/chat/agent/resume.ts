@@ -35,12 +35,10 @@ import {
 } from "@/chat/agent/types";
 import { TurnSliceLimitExceededError } from "@/chat/services/turn-limit";
 import type { PluginTurnContext } from "@/chat/plugins/prompt";
-import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 
 interface ResumeStateArgs {
   channelName?: string;
   destination: Destination;
-  destinationVisibility?: ConversationPrivacy;
   dispatchId?: string;
   durability: AgentDurability;
   recordActiveMcpProviders: () => Promise<void>;
@@ -119,7 +117,6 @@ export function createResumeState(args: ResumeStateArgs) {
     turnId: args.turnId,
     channelName: args.channelName,
     destination: args.destination,
-    destinationVisibility: args.destinationVisibility,
     dispatchId: args.dispatchId,
     publishExternally: args.publishExternally,
     source: args.runSource,
@@ -253,7 +250,9 @@ export function createResumeState(args: ResumeStateArgs) {
         return {
           status: "awaiting_auth",
           providerDisplayName: pause.providerDisplayName,
-          ...(pause.requestText ? { requestText: pause.requestText } : undefined),
+          ...(pause.requestText
+            ? { requestText: pause.requestText }
+            : undefined),
           ...(usage ? { usage } : undefined),
         };
       } catch (error) {
