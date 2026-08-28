@@ -6,6 +6,7 @@ import {
 } from "@sentry/junior-plugin-api";
 import { createActor, type Actor, type WebActor } from "@/chat/actor";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
+import type { Location } from "@/chat/conversations/location";
 import type {
   ConversationAuthor,
   ConversationMessage,
@@ -38,19 +39,24 @@ export type ApiTurnMailboxMetadata = z.output<
   typeof apiTurnMailboxMetadataSchema
 >;
 
-export interface TurnInput {
+export type MailboxTurnInput = {
   actor: Actor;
   author: ConversationAuthor;
   message: InboundMessage;
+  // TODO(dcramer): Replace this legacy source name with Source after mailbox
+  // Inbound messages store Source.kind.
   source: "resource_event" | "web";
-}
+};
 
-export type TurnIdentity = Pick<TurnInput, "actor" | "author" | "source">;
+export type TurnInputFacts = Pick<
+  MailboxTurnInput,
+  "actor" | "author" | "source"
+>;
 
-/** Restore normalized Turn identity from one saved Message. */
-export function turnIdentityFromConversationMessage(
+/** Restore the Turn input facts kept on one saved Message. */
+export function turnInputFactsFromConversationMessage(
   message: ConversationMessage,
-): TurnIdentity | undefined {
+): TurnInputFacts | undefined {
   if (isResourceEventConversationMessage(message)) {
     return {
       actor: RESOURCE_EVENT_SYSTEM_ACTOR,
@@ -75,18 +81,36 @@ export function turnIdentityFromConversationMessage(
 /** Build the AgentRun Source for one Turn input. */
 export function sourceFromTurnInput(args: {
   conversationId: string;
-  source: TurnInput["source"];
+  location?: Location;
+  source: MailboxTurnInput["source"];
   visibility?: ConversationPrivacy;
 }): Source {
   switch (args.source) {
     case "resource_event":
-      return createLocalSource(args.conversationId);
+      // TODO(dcramer): Remove this web Source stand-in after Source.kind can
+      // represent resource events in stored Turn checkpoints.
+      return args.location
+        ? createWebSource(
+            args.conversationId,
+            args.visibility === "private" ? "private" : "public",
+          )
+        : createLocalSource(args.conversationId);
     case "web":
       return createWebSource(
         args.conversationId,
         args.visibility === "private" ? "private" : "public",
       );
   }
+}
+
+function hasResourceEventActor(actors: readonly Actor[] | undefined): boolean {
+  return Boolean(
+    actors?.some(
+      (actor) =>
+        actor.platform === "system" &&
+        actor.name === RESOURCE_EVENT_SYSTEM_ACTOR.name,
+    ),
+  );
 }
 
 /** Return the active root API Turn for one Conversation, if it has one. */
@@ -118,6 +142,38 @@ export async function getActiveApiTurnId(
     : undefined;
 }
 
+/** Return the active web or resource-event mailbox Turn. */
+async function getActiveMailboxTurnId(
+  conversationId: string,
+): Promise<string | undefined> {
+  const summaries = await listTurnSummaries(conversationId);
+  const active = (
+    await Promise.all(
+      summaries
+        .filter(
+          (summary) =>
+            !summary.dispatchId &&
+            (summary.state === "paused" || summary.state === "running"),
+        )
+        .map((summary) => getTurnRecord(conversationId, summary.turnId)),
+    )
+  ).filter(
+    (record) =>
+      record &&
+      !record.dispatchId &&
+      (record.surface === "api" || hasResourceEventActor(record.actors)) &&
+      (record.state === "paused" || record.state === "running"),
+  );
+  if (active.length > 1) {
+    throw new Error(
+      `Conversation ${conversationId} has multiple active mailbox Turns`,
+    );
+  }
+  // TODO(dcramer): Route resumes from Turn Source after checkpoints store
+  // Source.kind. Remove Actor-based resource-event routing at that point.
+  return active[0]?.turnId;
+}
+
 /** Return the idle auth-paused root API Turn for one Conversation. */
 export async function getAuthPausedApiTurnId(
   conversationId: string,
@@ -132,7 +188,7 @@ export async function getAuthPausedApiTurnId(
 
 function parseApiTurnMessages(
   messages: readonly InboundMessage[],
-): TurnInput[] {
+): MailboxTurnInput[] {
   if (messages.length === 0) {
     return [];
   }
@@ -178,7 +234,7 @@ function parseApiTurnMessages(
 
 function parseResourceEventMessages(
   messages: readonly InboundMessage[],
-): TurnInput[] {
+): MailboxTurnInput[] {
   if (messages.length === 0) {
     return [];
   }
@@ -204,45 +260,30 @@ function parseResourceEventMessages(
   });
 }
 
+/** Web or resource-event mailbox work selected for one lease. */
+export type MailboxTurnWork =
+  | { kind: "mailbox"; batch: MailboxTurnInput[] }
+  | { kind: "resume"; turnId: string };
+
 /**
- * Resolve conversation-only work from new input or a saved Turn.
- *
- * User messages from the Conversation API run here. Resource events with a
- * local Destination run here too. Saved state identifies a resumed Turn.
+ * Resolve web or resource-event work from new mailbox input or a saved Turn.
+ * Saved Actor data identifies a resumed resource-event Turn.
  */
-export async function resolveApiTurnWork(
+export async function resolveMailboxTurnWork(
   context: ConversationWorkerContext,
-): Promise<
-  | {
-      kind: "mailbox";
-      batch: TurnInput[];
-    }
-  | { kind: "resume"; turnId: string }
-  | undefined
-> {
+): Promise<MailboxTurnWork | undefined> {
   const batch = parseApiTurnMessages(context.attempt.messages);
   if (batch.length > 0) {
     return { kind: "mailbox", batch };
   }
-  // The Slack provider owns its thread context. Resource events with a local
-  // Destination need no provider work and run here.
-  if (context.destination?.platform === "local") {
-    const resourceBatch = parseResourceEventMessages(context.attempt.messages);
-    if (resourceBatch.length > 0) {
-      return { kind: "mailbox", batch: resourceBatch };
-    }
+  const resourceBatch = parseResourceEventMessages(context.attempt.messages);
+  if (resourceBatch.length > 0) {
+    return { kind: "mailbox", batch: resourceBatch };
   }
   if (context.attempt.messages.length > 0) {
     return undefined;
   }
 
-  const turnId = await getActiveApiTurnId(context.conversationId);
+  const turnId = await getActiveMailboxTurnId(context.conversationId);
   return turnId ? { kind: "resume", turnId } : undefined;
-}
-
-/** Return whether the leased attempt belongs to an API Turn. */
-export async function isApiTurnWork(
-  context: ConversationWorkerContext,
-): Promise<boolean> {
-  return (await resolveApiTurnWork(context)) !== undefined;
 }

@@ -54,7 +54,7 @@ export function renderResourceEventNotificationText(
   });
 }
 
-/** Resource-event identity stamped on plain mailbox input. */
+/** Resource-event metadata stored on plain mailbox input. */
 export type ResourceEventMailboxMetadata = {
   kind: "resource_event";
   resourceEvent: {
@@ -119,8 +119,9 @@ export function createResourceEventInboundMessage(input: {
     delivery: "defer",
     source: "resource_event",
     receivedAtMs: input.receivedAtMs ?? Date.now(),
-    // Destination and external publish come from the conversation when the
-    // worker runs. Resource events only wake the mailbox.
+    // TODO(dcramer): Store the final publish fact here after resource-event
+    // ingress loads the Conversation. Then remove the worker's Location-based
+    // publish default. Resource events only wake the mailbox until that change.
     publishExternally: false,
     input: {
       text: input.text,

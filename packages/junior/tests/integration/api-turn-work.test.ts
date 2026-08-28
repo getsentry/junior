@@ -7,10 +7,10 @@ import {
   buildApiTurnInboundMessage,
   createAndEnqueueApiConversation,
   createApiConversationId,
-  createApiTurnWorker,
+  createMailboxTurnWorker,
   recordApiConversationActivity,
-  resolveApiTurnWork,
-  routeApiTurnWork,
+  resolveMailboxTurnWork,
+  routeMailboxTurnWork,
 } from "@/chat/api-turns/work";
 import type { AgentRun } from "@/chat/agent/types";
 import { getConversationEventStore } from "@/chat/db";
@@ -136,7 +136,7 @@ describe("Conversation API work", () => {
     });
 
     const agentRuns: AgentRun[] = [];
-    const worker = createApiTurnWorker(
+    const worker = createMailboxTurnWorker(
       createModelAgentRunnerForRun((run) => {
         agentRuns.push(run);
         return createModelStream([
@@ -144,8 +144,8 @@ describe("Conversation API work", () => {
         ]);
       }),
     );
-    const route = routeApiTurnWork({
-      apiTurnWorker: worker,
+    const route = routeMailboxTurnWork({
+      mailboxTurnWorker: worker,
       fallbackWorker: async () => {
         throw new Error(
           "fallback worker must not run for Conversation API work",
@@ -264,7 +264,7 @@ describe("Conversation API work", () => {
     });
 
     const agentRuns: AgentRun[] = [];
-    const worker = createApiTurnWorker(
+    const worker = createMailboxTurnWorker(
       createModelAgentRunnerForRun((run) => {
         agentRuns.push(run);
         return createModelStream([
@@ -272,8 +272,8 @@ describe("Conversation API work", () => {
         ]);
       }),
     );
-    const route = routeApiTurnWork({
-      apiTurnWorker: worker,
+    const route = routeMailboxTurnWork({
+      mailboxTurnWorker: worker,
       fallbackWorker: async () => {
         throw new Error(
           "fallback worker must not run for Conversation API work",
@@ -322,7 +322,7 @@ describe("Conversation API work", () => {
     if (!signal) throw new Error("Expected an active Turn signal");
     cancellation.cancel(accepted.conversationId);
     const agentRuns: AgentRun[] = [];
-    const worker = createApiTurnWorker(
+    const worker = createMailboxTurnWorker(
       createModelAgentRunnerForRun((run) => {
         agentRuns.push(run);
         return createModelStream([
@@ -331,9 +331,15 @@ describe("Conversation API work", () => {
       }),
       cancellation,
     );
+    const route = routeMailboxTurnWork({
+      mailboxTurnWorker: worker,
+      fallbackWorker: async () => {
+        throw new Error("Fallback worker must not run for API Turn work");
+      },
+    });
 
     await expect(
-      worker({
+      route({
         attempt: {
           ack: async () => {
             throw new Error("lease lost");
@@ -391,7 +397,7 @@ describe("Conversation API work", () => {
       surface: "api",
     });
 
-    const resolved = await resolveApiTurnWork({
+    const resolved = await resolveMailboxTurnWork({
       attempt: emptyApiTurnAttempt({
         conversationId: accepted.conversationId,
         destination,
@@ -451,7 +457,7 @@ describe("Conversation API work", () => {
     const turnId = apiTurnIdForMessage(messageId);
     const agentRuns: AgentRun[] = [];
     let firstRun = true;
-    const worker = createApiTurnWorker(
+    const worker = createMailboxTurnWorker(
       createModelAgentRunnerForRun((run) => {
         agentRuns.push(run);
         if (firstRun) {
@@ -466,8 +472,8 @@ describe("Conversation API work", () => {
         ]);
       }),
     );
-    const route = routeApiTurnWork({
-      apiTurnWorker: worker,
+    const route = routeMailboxTurnWork({
+      mailboxTurnWorker: worker,
       fallbackWorker: async () => {
         throw new Error("Provider must not receive this resource event");
       },
@@ -573,7 +579,7 @@ describe("Conversation API work", () => {
       surface: "api",
     });
 
-    const resolved = await resolveApiTurnWork({
+    const resolved = await resolveMailboxTurnWork({
       attempt: emptyApiTurnAttempt({ conversationId, destination }),
       conversationId,
       destination,
@@ -662,7 +668,7 @@ describe("Conversation API work", () => {
     });
 
     const agentRuns: AgentRun[] = [];
-    const worker = createApiTurnWorker(
+    const worker = createMailboxTurnWorker(
       createModelAgentRunnerForRun((run) => {
         agentRuns.push(run);
         return createModelStream([
@@ -670,8 +676,8 @@ describe("Conversation API work", () => {
         ]);
       }),
     );
-    const route = routeApiTurnWork({
-      apiTurnWorker: worker,
+    const route = routeMailboxTurnWork({
+      mailboxTurnWorker: worker,
       fallbackWorker: async () => {
         throw new Error("fallback worker must not run for web continues");
       },

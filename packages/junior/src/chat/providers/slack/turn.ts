@@ -101,10 +101,6 @@ import {
 import { lookupSlackUser } from "@/chat/slack/user";
 import { parseActorUserId, type Actor } from "@/chat/actor";
 import { ensureSlackMessageActorIdentity } from "@/chat/services/message-actor-identity";
-import {
-  isResourceEventSlackMessage,
-  RESOURCE_EVENT_SYSTEM_ACTOR,
-} from "@/chat/resource-events/actor";
 import type { PausedTurns } from "@/chat/task-execution/turn-wake";
 import {
   ConversationTurnBoundaryError,
@@ -370,15 +366,13 @@ export function createSlackTurn(deps: SlackTurnDeps) {
           userText: replaceTopLevelText(content, strippedUserText),
         };
         await Promise.all(
-          (options.queuedMessages ?? [])
-            .filter((queued) => !isResourceEventSlackMessage(queued.message))
-            .map((queued) =>
-              ensureSlackMessageActorIdentity(
-                queued.message,
-                teamId,
-                lookupSlackUser,
-              ),
+          (options.queuedMessages ?? []).map((queued) =>
+            ensureSlackMessageActorIdentity(
+              queued.message,
+              teamId,
+              lookupSlackUser,
             ),
+          ),
         );
         const effectiveUserText = currentText.userText;
         // Actor first, then credential projection. Dispatch already binds both
@@ -389,9 +383,6 @@ export function createSlackTurn(deps: SlackTurnDeps) {
           // Dispatch always owns actor + credentials (including subject).
           executionActor = options.execution.dispatch.actor;
           credentialContext = options.execution.credentialContext;
-        } else if (isResourceEventSlackMessage(message)) {
-          executionActor = RESOURCE_EVENT_SYSTEM_ACTOR;
-          credentialContext = credentialContextForActor(executionActor);
         } else {
           executionActor = await ensureSlackMessageActorIdentity(
             message,
@@ -496,9 +487,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
                     : 0,
                 attachments: await deps.resolveUserAttachments(attachments, {
                   threadId,
-                  actorId: isResourceEventSlackMessage(queued.message)
-                    ? undefined
-                    : queued.message.author.userId,
+                  actorId: queued.message.author.userId,
                   channelId,
                   runId,
                   conversation: preparedState.conversation,
@@ -1108,8 +1097,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
             },
             history: piMessages,
             credentialContext,
-            // Always set the execution actor when known. Resource-event turns
-            // carry the system principal; interactive turns carry the Slack user.
+            // Always set the execution Actor when known.
             actor: executionActor,
             slackConversation,
             source,

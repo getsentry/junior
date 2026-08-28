@@ -2,7 +2,6 @@ import type { Message, Thread } from "chat";
 import type { AgentSteeringMessage } from "@/chat/agent/types";
 import { createActor, parseActorUserId } from "@/chat/actor";
 import {
-  contextProvenance,
   instructionProvenanceFor,
   type ConversationMessageProvenance,
 } from "@/chat/conversations/provenance";
@@ -11,7 +10,6 @@ import {
   loadConversationProjection,
 } from "@/chat/conversations/projection";
 import type { PiMessage } from "@/chat/pi/messages";
-import { isResourceEventSlackMessage } from "@/chat/resource-events/actor";
 import type { QueuedTurnMessage } from "@/chat/runtime/turn-input";
 import { getMessageTimestamp } from "@/chat/slack/message/identity";
 import { appendThreadContextMessages } from "@/chat/services/conversation-memory";
@@ -105,9 +103,6 @@ export function inboundMessageProvenance(
   queued: QueuedTurnMessage,
   teamId: string,
 ): ConversationMessageProvenance {
-  if (isResourceEventSlackMessage(queued.message)) {
-    return contextProvenance;
-  }
   const identity = getMessageActorIdentity(queued.message);
   const author =
     identity && "platform" in identity
