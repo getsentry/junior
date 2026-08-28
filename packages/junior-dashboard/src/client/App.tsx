@@ -1,11 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import {
-  Navigate,
-  Route,
-  Routes,
-  useLocation,
-  useParams,
-} from "react-router";
+import { Navigate, Route, Routes, useLocation } from "react-router";
 
 import {
   useConversationsData,
@@ -258,10 +252,6 @@ export function DashboardShell() {
           path="/tasks/list"
         />
         <Route
-          element={<LegacyTaskListRedirect />}
-          path="/tasks/list/:taskId"
-        />
-        <Route
           element={
             loading ? (
               <TasksPageLayout>
@@ -492,18 +482,6 @@ export function DashboardShell() {
         <Route
           element={
             loading || userPagesQuery.isPending ? (
-              <MemoryRouteLoading label="Loading memory" />
-            ) : loggedIn && userPagesQuery.data ? (
-              <MemoryPermalinkRoute pages={userPagesQuery.data} />
-            ) : (
-              <Navigate replace to="/" />
-            )
-          }
-          path="/memories/:memoryId?"
-        />
-        <Route
-          element={
-            loading || userPagesQuery.isPending ? (
               <MemoryRouteLoading label="Loading memories" />
             ) : loggedIn && userPagesQuery.data ? (
               <MemoryPermalinkRoute pages={userPagesQuery.data} />
@@ -512,6 +490,18 @@ export function DashboardShell() {
             )
           }
           path="/memories/library"
+        />
+        <Route
+          element={
+            loading || userPagesQuery.isPending ? (
+              <MemoryRouteLoading label="Loading memory" />
+            ) : loggedIn && userPagesQuery.data ? (
+              <MemoryPermalinkRoute pages={userPagesQuery.data} />
+            ) : (
+              <Navigate replace to="/" />
+            )
+          }
+          path="/memories/:memoryId?"
         />
         <Route
           element={
@@ -558,18 +548,6 @@ function LegacySystemRedirect(props: { section: "locations" | "people" }) {
       replace
       to={`/system/${props.section}${suffix}${location.search}${location.hash}`}
     />
-  );
-}
-
-/** Keep old /tasks/list/:taskId links working as /tasks/:taskId. */
-function LegacyTaskListRedirect() {
-  const location = useLocation();
-  const { taskId } = useParams();
-  const target = taskId
-    ? `/tasks/${encodeURIComponent(taskId)}`
-    : "/tasks/list";
-  return (
-    <Navigate replace to={`${target}${location.search}${location.hash}`} />
   );
 }
 

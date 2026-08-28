@@ -9,6 +9,18 @@ import { pathWithSearch } from "../../searchParams";
 
 const MEMORY_BASE_PATH = "/memories";
 const MEMORY_LIBRARY_PATH = `${MEMORY_BASE_PATH}/library`;
+const RESERVED_MEMORY_SEGMENTS = new Set(["library"]);
+
+function isMemoriesLibraryPath(pathname: string): boolean {
+  if (
+    pathname === MEMORY_LIBRARY_PATH ||
+    pathname.startsWith(`${MEMORY_LIBRARY_PATH}/`)
+  ) {
+    return true;
+  }
+  const match = pathname.match(/^\/memories\/([^/]+)$/);
+  return Boolean(match?.[1] && !RESERVED_MEMORY_SEGMENTS.has(match[1]));
+}
 
 /** Place the shared secondary navigation above one Memories page. */
 export function MemoryPageLayout(props: {
@@ -22,6 +34,7 @@ export function MemoryPageLayout(props: {
         items={[
           { end: true, label: "Overview", to: MEMORY_BASE_PATH },
           {
+            isActive: isMemoriesLibraryPath,
             label: "Memories",
             to: props.libraryHref ?? MEMORY_LIBRARY_PATH,
           },

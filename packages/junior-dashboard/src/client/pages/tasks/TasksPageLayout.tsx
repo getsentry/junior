@@ -11,9 +11,7 @@ import { SecondaryNavigation } from "../../components/layout/SecondaryNavigation
 const RESERVED_TASK_SEGMENTS = new Set(["list", "runs"]);
 
 function isTasksListPath(pathname: string): boolean {
-  if (pathname === "/tasks/list" || pathname.startsWith("/tasks/list/")) {
-    return true;
-  }
+  if (pathname === "/tasks/list") return true;
   const match = pathname.match(/^\/tasks\/([^/]+)$/);
   return Boolean(match?.[1] && !RESERVED_TASK_SEGMENTS.has(match[1]));
 }
