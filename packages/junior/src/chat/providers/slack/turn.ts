@@ -601,9 +601,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
               await abandonTurnRecord({
                 conversationId,
                 turnId: activeTurnId,
-                // TODO(dcramer): Rename this legacy text in Slack and Conversation API Turn records together.
-                errorMessage:
-                  "Auth-parked session superseded by a new user message",
+                errorMessage: "Auth-paused Turn superseded by new input",
               });
               markTurnClosed({
                 conversation: preparedState.conversation,

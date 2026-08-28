@@ -11,9 +11,9 @@ import { getConversationEventStore } from "@/chat/db";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
 import { recordConversationExecution } from "@/chat/task-execution/state";
 import {
-  closeApiTurnWorkFixture,
-  createConversationWorkWebHarness,
-} from "../fixtures/api-turn";
+  closeConversationFixture,
+  createConversationWebHarness,
+} from "../fixtures/conversation";
 import { streamMcpSearch } from "../fixtures/mcp-auth-orchestration";
 import {
   ACP_TEST_URL,
@@ -47,14 +47,14 @@ const EVAL_MCP_PLUGIN_ROOT = path.resolve(
 describe("remote ACP recovery", () => {
   afterEach(async () => {
     vi.unstubAllEnvs();
-    await closeApiTurnWorkFixture();
+    await closeConversationFixture();
   });
 
   it("finishes an abandoned authenticate request when browser sign-in expires", async () => {
     vi.stubEnv("JUNIOR_BASE_URL", "");
     vi.stubEnv("VERCEL_PROJECT_PRODUCTION_URL", "junior.example.com");
     vi.stubEnv("VERCEL_URL", "preview.example.com");
-    const harness = await createConversationWorkWebHarness();
+    const harness = await createConversationWebHarness();
     const app = await createApp({
       conversationWork: harness.conversationWork,
       dashboard: {
@@ -163,7 +163,7 @@ describe("remote ACP recovery", () => {
     vi.stubEnv("JUNIOR_BASE_URL", "");
     vi.stubEnv("VERCEL_PROJECT_PRODUCTION_URL", "");
     vi.stubEnv("VERCEL_URL", "");
-    const harness = await createConversationWorkWebHarness();
+    const harness = await createConversationWebHarness();
     const app = await createApp({
       conversationWork: harness.conversationWork,
       dashboard: { authRequired: false },
@@ -228,7 +228,7 @@ describe("remote ACP recovery", () => {
   });
 
   it("rejects a second authenticate request without replacing the pending sign-in", async () => {
-    const harness = await createConversationWorkWebHarness();
+    const harness = await createConversationWebHarness();
     const app = await createApp({
       conversationWork: harness.conversationWork,
     });
@@ -322,7 +322,7 @@ describe("remote ACP recovery", () => {
   it("rejects a second active prompt from another app instance", async () => {
     const modelStarted = deferred();
     const releaseModel = deferred();
-    const harness = await createConversationWorkWebHarness(
+    const harness = await createConversationWebHarness(
       createModelStream([
         {
           type: "text",
@@ -410,7 +410,7 @@ describe("remote ACP recovery", () => {
         SLACK_BOT_TOKEN: "xoxb-test-token",
       };
       pluginApp = await createPluginAppFixture([EVAL_MCP_PLUGIN_ROOT]);
-      const harness = await createConversationWorkWebHarness(
+      const harness = await createConversationWebHarness(
         streamMcpSearch("Auth-paused Turn must not reply."),
       );
       const app = await createApp({
@@ -489,7 +489,7 @@ describe("remote ACP recovery", () => {
   }, 20_000);
 
   it("cancels a yielded Turn from another app instance", async () => {
-    const harness = await createConversationWorkWebHarness(
+    const harness = await createConversationWebHarness(
       createModelStream([
         { type: "toolCall", name: "systemTime", arguments: {} },
         { type: "text", text: "Cancelled resume must not reply." },
@@ -552,7 +552,7 @@ describe("remote ACP recovery", () => {
   it("holds terminal output until acknowledgement, then accepts a follow-up", async () => {
     const terminalPersisted = deferred();
     const releaseWorker = deferred();
-    const harness = await createConversationWorkWebHarness(
+    const harness = await createConversationWebHarness(
       streamReplies("Follow-up complete."),
     );
     const run = harness.conversationWork.run;
@@ -741,7 +741,7 @@ describe("remote ACP recovery", () => {
   }, 20_000);
 
   it("returns a terminal after failed cleanup and during a later Turn", async () => {
-    const harness = await createConversationWorkWebHarness(
+    const harness = await createConversationWebHarness(
       streamReplies("First Turn complete."),
     );
     const conversations = createAcpConversations({
@@ -815,8 +815,8 @@ describe("remote ACP recovery", () => {
     });
   });
 
-  it("recovers prompt admission after the first queue send fails", async () => {
-    const harness = await createConversationWorkWebHarness(
+  it("recovers prompt acceptance after the first queue send fails", async () => {
+    const harness = await createConversationWebHarness(
       streamReplies("Recovered queue reply."),
     );
     const app = await createApp({
@@ -881,8 +881,8 @@ describe("remote ACP recovery", () => {
     ]);
   }, 20_000);
 
-  it("rejects a prompt before admission when its output stream is full", async () => {
-    const harness = await createConversationWorkWebHarness();
+  it("rejects a prompt before acceptance when its output stream is full", async () => {
+    const harness = await createConversationWebHarness();
     const app = await createApp({
       conversationWork: harness.conversationWork,
     });

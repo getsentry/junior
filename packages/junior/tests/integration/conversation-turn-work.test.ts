@@ -1,49 +1,71 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createLocalSource, createWebSource } from "@sentry/junior-plugin-api";
-import { createApiTurnCancellation } from "@/chat/api-turns/cancellation";
 import {
-  appendAndEnqueueApiConversationMessage,
-  apiTurnIdForMessage,
-  buildApiTurnInboundMessage,
-  createAndEnqueueApiConversation,
-  createApiConversationId,
-  createMailboxTurnWorker,
-  recordApiConversationActivity,
+  appendAndEnqueueWebMessage,
+  buildWebInboundMessage,
+  conversationTurnIdForMessage,
+  createAndEnqueueConversation,
+  createConversationId,
+  recordWebConversationActivity,
+} from "@/chat/conversations/web-input";
+import { createConversationTurnWorker } from "@/chat/task-execution/conversation-turn";
+import {
   resolveMailboxTurnWork,
-  routeMailboxTurnWork,
-} from "@/chat/api-turns/work";
+  type MailboxTurnWork,
+} from "@/chat/task-execution/mailbox-turn";
 import type { AgentRun } from "@/chat/agent/types";
 import { getConversationEventStore } from "@/chat/db";
 import { RESOURCE_EVENT_SYSTEM_ACTOR } from "@/chat/resource-events/actor";
 import { createResourceEventInboundMessage } from "@/chat/resource-events/notification";
 import { appendAndEnqueueInboundMessage } from "@/chat/task-execution/store";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
+import type {
+  ConversationWorkerContext,
+  ConversationWorkerResult,
+} from "@/chat/task-execution/worker";
 import {
   getTurnRecord,
   saveTurnCheckpoint,
 } from "@/chat/task-execution/checkpoint";
 import {
-  closeApiTurnWorkFixture,
-  createApiTurnWorkFixture,
-  emptyApiTurnAttempt,
-} from "../fixtures/api-turn";
+  closeConversationFixture,
+  createConversationFixture,
+  emptyConversationTurnAttempt,
+} from "../fixtures/conversation";
 import { createModelAgentRunnerForRun } from "../fixtures/agent-runner";
 import { createModelStream } from "../fixtures/model-stream";
 
-describe("Conversation API work", () => {
+function requireConversationTurn(
+  worker: (
+    context: ConversationWorkerContext,
+    resolved: MailboxTurnWork,
+  ) => Promise<ConversationWorkerResult>,
+) {
+  return async (
+    context: ConversationWorkerContext,
+  ): Promise<ConversationWorkerResult> => {
+    const resolved = await resolveMailboxTurnWork(context);
+    if (!resolved) {
+      throw new Error("Expected Conversation mailbox work");
+    }
+    return await worker(context, resolved);
+  };
+}
+
+describe("Conversation mailbox Turn work", () => {
   afterEach(async () => {
-    await closeApiTurnWorkFixture();
+    await closeConversationFixture();
     vi.restoreAllMocks();
   });
 
   it("derives a durable create id and returns the same conversation on retry", async () => {
     const { actor, conversationStore, queue, state } =
-      await createApiTurnWorkFixture();
-    const expectedConversationId = createApiConversationId({
+      await createConversationFixture();
+    const expectedConversationId = createConversationId({
       actorEmail: actor.email,
       idempotencyKey: "create-1",
     });
-    const accepted = await createAndEnqueueApiConversation(
+    const accepted = await createAndEnqueueConversation(
       {
         actor,
         idempotencyKey: "create-1",
@@ -57,7 +79,7 @@ describe("Conversation API work", () => {
       status: "accepted",
     });
 
-    const createRetry = await createAndEnqueueApiConversation(
+    const createRetry = await createAndEnqueueConversation(
       {
         actor,
         idempotencyKey: "create-1",
@@ -78,7 +100,7 @@ describe("Conversation API work", () => {
       visibility: "private",
     });
 
-    const appendDuplicate = await appendAndEnqueueApiConversationMessage(
+    const appendDuplicate = await appendAndEnqueueWebMessage(
       {
         actor,
         conversationId: accepted.conversationId,
@@ -94,10 +116,10 @@ describe("Conversation API work", () => {
     });
   });
 
-  it("runs a public Conversation API message with public source visibility", async () => {
+  it("runs a public web Message with public Source visibility", async () => {
     const { actor, conversationStore, queue, state } =
-      await createApiTurnWorkFixture();
-    const accepted = await createAndEnqueueApiConversation(
+      await createConversationFixture();
+    const accepted = await createAndEnqueueConversation(
       {
         actor,
         idempotencyKey: "create-public-1",
@@ -124,7 +146,7 @@ describe("Conversation API work", () => {
       },
     });
 
-    const inbound = buildApiTurnInboundMessage({
+    const inbound = buildWebInboundMessage({
       actor,
       conversationId: accepted.conversationId,
       message: "Start a dashboard turn.",
@@ -136,7 +158,7 @@ describe("Conversation API work", () => {
     });
 
     const agentRuns: AgentRun[] = [];
-    const worker = createMailboxTurnWorker(
+    const worker = createConversationTurnWorker(
       createModelAgentRunnerForRun((run) => {
         agentRuns.push(run);
         return createModelStream([
@@ -144,20 +166,13 @@ describe("Conversation API work", () => {
         ]);
       }),
     );
-    const route = routeMailboxTurnWork({
-      mailboxTurnWorker: worker,
-      fallbackWorker: async () => {
-        throw new Error(
-          "fallback worker must not run for Conversation API work",
-        );
-      },
-    });
+    const run = requireConversationTurn(worker);
 
     await expect(
       processConversationQueueMessage(queue.takeMessage(), {
         conversationStore,
         queue,
-        run: route,
+        run,
         state,
       }),
     ).resolves.toMatchObject({ status: "completed" });
@@ -209,7 +224,7 @@ describe("Conversation API work", () => {
     await expect(
       getTurnRecord(
         accepted.conversationId,
-        apiTurnIdForMessage(accepted.messageId),
+        conversationTurnIdForMessage(accepted.messageId),
       ),
     ).resolves.toMatchObject({
       publishExternally: false,
@@ -229,14 +244,14 @@ describe("Conversation API work", () => {
       expect.objectContaining({
         data: expect.objectContaining({
           surface: "api",
-          turnId: apiTurnIdForMessage(accepted.messageId),
+          turnId: conversationTurnIdForMessage(accepted.messageId),
           type: "turn_started",
         }),
       }),
       expect.objectContaining({
         data: expect.objectContaining({
           outcome: "success",
-          turnId: apiTurnIdForMessage(accepted.messageId),
+          turnId: conversationTurnIdForMessage(accepted.messageId),
           type: "turn_completed",
         }),
       }),
@@ -245,8 +260,8 @@ describe("Conversation API work", () => {
 
   it("feeds private source visibility into the agent run", async () => {
     const { actor, conversationStore, queue, state } =
-      await createApiTurnWorkFixture();
-    const accepted = await createAndEnqueueApiConversation(
+      await createConversationFixture();
+    const accepted = await createAndEnqueueConversation(
       {
         actor,
         idempotencyKey: "create-private-1",
@@ -264,7 +279,7 @@ describe("Conversation API work", () => {
     });
 
     const agentRuns: AgentRun[] = [];
-    const worker = createMailboxTurnWorker(
+    const worker = createConversationTurnWorker(
       createModelAgentRunnerForRun((run) => {
         agentRuns.push(run);
         return createModelStream([
@@ -272,20 +287,13 @@ describe("Conversation API work", () => {
         ]);
       }),
     );
-    const route = routeMailboxTurnWork({
-      mailboxTurnWorker: worker,
-      fallbackWorker: async () => {
-        throw new Error(
-          "fallback worker must not run for Conversation API work",
-        );
-      },
-    });
+    const run = requireConversationTurn(worker);
 
     await expect(
       processConversationQueueMessage(queue.takeMessage(), {
         conversationStore,
         queue,
-        run: route,
+        run,
         state,
       }),
     ).resolves.toMatchObject({ status: "completed" });
@@ -295,10 +303,10 @@ describe("Conversation API work", () => {
     );
   });
 
-  it("reports a lost lease and releases cancellation when ack fails", async () => {
+  it("reports a lost lease when cancelled input acknowledgement fails", async () => {
     const { actor, conversationStore, queue, state } =
-      await createApiTurnWorkFixture();
-    const accepted = await createAndEnqueueApiConversation(
+      await createConversationFixture();
+    const accepted = await createAndEnqueueConversation(
       {
         actor,
         idempotencyKey: "cancel-lost-lease-1",
@@ -310,36 +318,28 @@ describe("Conversation API work", () => {
       platform: "local" as const,
       conversationId: accepted.conversationId,
     };
-    const inbound = buildApiTurnInboundMessage({
+    const inbound = buildWebInboundMessage({
       actor,
       conversationId: accepted.conversationId,
       destination,
       message: "Cancel before this Turn starts.",
       messageId: accepted.messageId,
     });
-    const cancellation = createApiTurnCancellation();
-    const signal = cancellation.begin(accepted.conversationId);
-    if (!signal) throw new Error("Expected an active Turn signal");
-    cancellation.cancel(accepted.conversationId);
+    const stop = new AbortController();
+    stop.abort(new DOMException("Turn cancelled", "AbortError"));
     const agentRuns: AgentRun[] = [];
-    const worker = createMailboxTurnWorker(
+    const worker = createConversationTurnWorker(
       createModelAgentRunnerForRun((run) => {
         agentRuns.push(run);
         return createModelStream([
           { type: "text", text: "Cancelled Turn must not reach the agent." },
         ]);
       }),
-      cancellation,
     );
-    const route = routeMailboxTurnWork({
-      mailboxTurnWorker: worker,
-      fallbackWorker: async () => {
-        throw new Error("Fallback worker must not run for API Turn work");
-      },
-    });
+    const run = requireConversationTurn(worker);
 
     await expect(
-      route({
+      run({
         attempt: {
           ack: async () => {
             throw new Error("lease lost");
@@ -355,16 +355,16 @@ describe("Conversation API work", () => {
         destination,
         publishExternally: false,
         shouldYield: () => false,
+        stopSignal: () => stop.signal,
       }),
     ).resolves.toEqual({ status: "lost_lease" });
     expect(agentRuns).toHaveLength(0);
-    expect(cancellation.begin(accepted.conversationId)).toBeDefined();
   });
 
   it("routes an empty resume wake to the active Turn", async () => {
     const { actor, conversationStore, queue, state } =
-      await createApiTurnWorkFixture();
-    const accepted = await createAndEnqueueApiConversation(
+      await createConversationFixture();
+    const accepted = await createAndEnqueueConversation(
       {
         actor,
         idempotencyKey: "resume-1",
@@ -372,7 +372,7 @@ describe("Conversation API work", () => {
       },
       { conversationStore, queue, state },
     );
-    const turnId = apiTurnIdForMessage(accepted.messageId);
+    const turnId = conversationTurnIdForMessage(accepted.messageId);
     const destination = {
       platform: "local" as const,
       conversationId: accepted.conversationId,
@@ -398,7 +398,7 @@ describe("Conversation API work", () => {
     });
 
     const resolved = await resolveMailboxTurnWork({
-      attempt: emptyApiTurnAttempt({
+      attempt: emptyConversationTurnAttempt({
         conversationId: accepted.conversationId,
         destination,
       }),
@@ -413,8 +413,8 @@ describe("Conversation API work", () => {
 
   it("resumes a paused dashboard Turn before a deferred resource event", async () => {
     const { actor, conversationStore, queue, state } =
-      await createApiTurnWorkFixture();
-    const accepted = await createAndEnqueueApiConversation(
+      await createConversationFixture();
+    const accepted = await createAndEnqueueConversation(
       {
         actor,
         idempotencyKey: "dashboard-before-resource-event",
@@ -422,7 +422,7 @@ describe("Conversation API work", () => {
       },
       { conversationStore, queue, state },
     );
-    const dashboardTurnId = apiTurnIdForMessage(accepted.messageId);
+    const dashboardTurnId = conversationTurnIdForMessage(accepted.messageId);
     const resourceMessage = createResourceEventInboundMessage({
       event: {
         eventKey: "checks-failed-after-dashboard-yield",
@@ -439,12 +439,12 @@ describe("Conversation API work", () => {
       },
       text: "Code change checks failed",
     });
-    const resourceTurnId = apiTurnIdForMessage(
+    const resourceTurnId = conversationTurnIdForMessage(
       resourceMessage.inboundMessageId,
     );
     const agentRuns: AgentRun[] = [];
     let dashboardStarted = false;
-    const worker = createMailboxTurnWorker(
+    const worker = createConversationTurnWorker(
       createModelAgentRunnerForRun((run) => {
         agentRuns.push(run);
         if (run.turnId === dashboardTurnId && !dashboardStarted) {
@@ -465,18 +465,13 @@ describe("Conversation API work", () => {
         ]);
       }),
     );
-    const route = routeMailboxTurnWork({
-      mailboxTurnWorker: worker,
-      fallbackWorker: async () => {
-        throw new Error("Provider must not receive local mailbox work");
-      },
-    });
+    const run = requireConversationTurn(worker);
 
     await expect(
       processConversationQueueMessage(queue.takeMessage(), {
         conversationStore,
         queue,
-        run: route,
+        run,
         softYieldAfterMs: 0,
         state,
       }),
@@ -498,7 +493,7 @@ describe("Conversation API work", () => {
       processConversationQueueMessage(queue.takeMessage(), {
         conversationStore,
         queue,
-        run: route,
+        run,
         state,
       }),
     ).resolves.toEqual({ status: "completed" });
@@ -518,12 +513,12 @@ describe("Conversation API work", () => {
 
   it("runs and resumes a resource event with a local Destination", async () => {
     const { actor, conversationStore, queue, state } =
-      await createApiTurnWorkFixture();
-    const conversationId = createApiConversationId({
+      await createConversationFixture();
+    const conversationId = createConversationId({
       actorEmail: actor.email,
       idempotencyKey: "resource-event-root-1",
     });
-    const destination = await recordApiConversationActivity({
+    const destination = await recordWebConversationActivity({
       actor,
       conversationId,
       conversationStore,
@@ -559,10 +554,10 @@ describe("Conversation API work", () => {
     });
 
     const messageId = message.inboundMessageId;
-    const turnId = apiTurnIdForMessage(messageId);
+    const turnId = conversationTurnIdForMessage(messageId);
     const agentRuns: AgentRun[] = [];
     let firstRun = true;
-    const worker = createMailboxTurnWorker(
+    const worker = createConversationTurnWorker(
       createModelAgentRunnerForRun((run) => {
         agentRuns.push(run);
         if (firstRun) {
@@ -577,19 +572,14 @@ describe("Conversation API work", () => {
         ]);
       }),
     );
-    const route = routeMailboxTurnWork({
-      mailboxTurnWorker: worker,
-      fallbackWorker: async () => {
-        throw new Error("Provider must not receive this resource event");
-      },
-    });
+    const run = requireConversationTurn(worker);
 
     await expect(
       processConversationQueueMessage(queue.takeMessage(), {
         conversationStore,
         nowMs: () => 10,
         queue,
-        run: route,
+        run,
         softYieldAfterMs: 0,
         state,
       }),
@@ -605,7 +595,7 @@ describe("Conversation API work", () => {
         conversationStore,
         nowMs: () => 20,
         queue,
-        run: route,
+        run,
         state,
       }),
     ).resolves.toEqual({ status: "completed" });
@@ -657,7 +647,7 @@ describe("Conversation API work", () => {
   }, 10_000);
 
   it("does not claim dispatch resume wakes that share surface api", async () => {
-    await createApiTurnWorkFixture();
+    await createConversationFixture();
     const conversationId = "agent-dispatch:dispatch_shared_surface";
     const turnId = "dispatch:dispatch_shared_surface";
     const destination = {
@@ -685,7 +675,7 @@ describe("Conversation API work", () => {
     });
 
     const resolved = await resolveMailboxTurnWork({
-      attempt: emptyApiTurnAttempt({ conversationId, destination }),
+      attempt: emptyConversationTurnAttempt({ conversationId, destination }),
       conversationId,
       destination,
       publishExternally: true,
@@ -697,7 +687,7 @@ describe("Conversation API work", () => {
 
   it("continues a Slack-rooted conversation without publishing externally", async () => {
     const { actor, conversationStore, queue, state } =
-      await createApiTurnWorkFixture();
+      await createConversationFixture();
     const conversationId = "slack:C1200:1712345.1200";
     const slackDestination = {
       platform: "slack" as const,
@@ -726,7 +716,7 @@ describe("Conversation API work", () => {
       visibility: "public",
     });
 
-    const accepted = await appendAndEnqueueApiConversationMessage(
+    const accepted = await appendAndEnqueueWebMessage(
       {
         actor,
         conversationId,
@@ -759,7 +749,7 @@ describe("Conversation API work", () => {
       },
     });
 
-    const inbound = buildApiTurnInboundMessage({
+    const inbound = buildWebInboundMessage({
       actor,
       conversationId,
       destination: slackDestination,
@@ -773,7 +763,7 @@ describe("Conversation API work", () => {
     });
 
     const agentRuns: AgentRun[] = [];
-    const worker = createMailboxTurnWorker(
+    const worker = createConversationTurnWorker(
       createModelAgentRunnerForRun((run) => {
         agentRuns.push(run);
         return createModelStream([
@@ -781,18 +771,13 @@ describe("Conversation API work", () => {
         ]);
       }),
     );
-    const route = routeMailboxTurnWork({
-      mailboxTurnWorker: worker,
-      fallbackWorker: async () => {
-        throw new Error("fallback worker must not run for web continues");
-      },
-    });
+    const run = requireConversationTurn(worker);
 
     await expect(
       processConversationQueueMessage(queue.takeMessage(), {
         conversationStore,
         queue,
-        run: route,
+        run,
         state,
       }),
     ).resolves.toMatchObject({ status: "completed" });
@@ -822,7 +807,10 @@ describe("Conversation API work", () => {
     ]);
 
     await expect(
-      getTurnRecord(conversationId, apiTurnIdForMessage(accepted.messageId)),
+      getTurnRecord(
+        conversationId,
+        conversationTurnIdForMessage(accepted.messageId),
+      ),
     ).resolves.toMatchObject({
       publishExternally: false,
       state: "completed",

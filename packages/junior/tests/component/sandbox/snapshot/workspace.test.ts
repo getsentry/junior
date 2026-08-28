@@ -17,7 +17,6 @@ vi.mock("@vercel/sandbox", () => ({
 
 import { closeDb, getDb } from "@/chat/db";
 import { FUNCTION_TIMEOUT_BUFFER_SECONDS, getChatConfig } from "@/chat/config";
-import { createApiTurnCancellation } from "@/chat/api-turns/cancellation";
 import { runWithTurnRequestDeadline } from "@/chat/runtime/request-deadline";
 import { deleteWorkspaceSnapshotBuilders } from "@/chat/sandbox/snapshot/builder-sandbox";
 import * as profile from "@/chat/sandbox/snapshot/profile";
@@ -201,7 +200,7 @@ describe("Workspace snapshot completion", () => {
     });
   });
 
-  it("keeps a build open when Conversation API cancellation stops it", async () => {
+  it("keeps a build open when the Turn stops it", async () => {
     const workspace = await createWorkspace({
       name: `snapshot-cancelled-${randomUUID()}`,
       setupScript: "printf ready",
@@ -224,19 +223,17 @@ describe("Workspace snapshot completion", () => {
       },
       { insertIfMissing: true },
     );
-    const cancellation = createApiTurnCancellation();
-    const signal = cancellation.begin("conversation-1");
-    if (!signal) throw new Error("Expected an active Turn signal");
+    const stop = new AbortController();
     sandboxGetMock.mockImplementation(async () => {
-      cancellation.cancel("conversation-1");
-      throw signal.reason;
+      stop.abort(new DOMException("Turn cancelled", "AbortError"));
+      throw stop.signal.reason;
     });
 
     await expect(
       resolveWorkspaceSnapshot({
         workspace,
         runtime: SANDBOX_RUNTIME,
-        signal,
+        signal: stop.signal,
         shouldStop: () => false,
         applyNetworkPolicy: async () => {},
         removeCredentialRoute: false,

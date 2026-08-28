@@ -166,7 +166,7 @@ export interface JuniorDashboardOptions {
   componentGallery?: boolean;
   /** Disable dashboard route mounting while preserving serializable config shape. */
   disabled?: boolean;
-  /** Replace conversation API responses with dashboard visual-QA fixtures. */
+  /** Replace Conversation route responses with dashboard visual-QA fixtures. */
   mockConversations?: boolean;
   /** Browser session lifetime in seconds. */
   sessionMaxAgeSeconds?: number;

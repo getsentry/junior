@@ -1,6 +1,6 @@
 import type { StateAdapter } from "chat";
 import type { ConversationStore } from "@/chat/conversations/store";
-import { getAuthPausedApiTurnId } from "@/chat/api-turns/routing";
+import { getAuthPausedConversationTurnId } from "@/chat/task-execution/mailbox-turn";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import {
   ensureConversationWake,
@@ -10,8 +10,8 @@ import {
   type StopConversationWorkResult,
 } from "@/chat/task-execution/store";
 
-/** Stop the current API Turn and wake an idle durable resume when needed. */
-export async function stopApiConversationTurn(args: {
+/** Stop the current Conversation Turn and wake an idle resume when needed. */
+export async function stopConversationTurn(args: {
   conversationId: string;
   conversationStore?: ConversationStore;
   nowMs?: number;
@@ -30,7 +30,7 @@ export async function stopApiConversationTurn(args: {
 
   if (
     result.status === "no_work" &&
-    (await getAuthPausedApiTurnId(args.conversationId))
+    (await getAuthPausedConversationTurnId(args.conversationId))
   ) {
     const conversation = await getConversation({
       conversationId: args.conversationId,
@@ -50,7 +50,7 @@ export async function stopApiConversationTurn(args: {
     await ensureConversationWake({
       conversationId: args.conversationId,
       conversationStore: args.conversationStore,
-      idempotencyKey: `api-stop:${args.conversationId}:${result.runId}`,
+      idempotencyKey: `conversation-stop:${args.conversationId}:${result.runId}`,
       nowMs,
       queue: args.queue,
       replaceExistingWake: true,

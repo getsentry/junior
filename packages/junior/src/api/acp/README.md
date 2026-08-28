@@ -8,8 +8,8 @@ method. The dashboard completes Google OAuth and binds the verified Junior user
 to the ACP connection after the user enters the verification code shown by the
 client. Personal tokens do not grant ACP access.
 
-ACP maps a session to a private Conversation. It uses the existing
-web Actor, API Turn mailbox, worker, event store, and Conversation access rules.
+ACP maps a session to a private Conversation. It uses the existing web Actor,
+Conversation mailbox, Turn worker, event store, and Conversation access rules.
 Client paths do not select the Junior sandbox. ACP prompt resource links are
 accepted by reference and stored as text. Junior does not fetch their URIs.
 Client MCP servers, embedded resources, media, filesystem callbacks, and
@@ -21,7 +21,7 @@ reason.
 
 This directory owns ACP JSON-RPC, SSE, connection state, browser authorization,
 and its direct Conversation calls. `conversations.ts` uses Junior's existing
-access, mailbox admission, cancellation, queue, and event projection code. No
+access, mailbox input, cancellation, queue, and reporting code. No
 general adapter or plugin contract sits between ACP and the runtime. No ACP type
 enters the agent loop.
 
@@ -40,7 +40,7 @@ The memory adapter remains process-local and is suitable only for local use.
 Each stream preserves up to 1,024 undelivered items. It returns `503` instead
 of dropping an item when that limit is full.
 
-Junior admits a prompt only while the Conversation has no runnable work. The
+Junior accepts a prompt only while the Conversation has no runnable work. The
 Conversation mutation lock protects this check and the mailbox append. This
 prevents retryable work from overlapping a follow-up.
 

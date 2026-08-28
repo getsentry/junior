@@ -255,30 +255,6 @@ export async function resolveAgentDispatchId(
     : undefined;
 }
 
-/**
- * Route leased work through dispatch execution when durable metadata owns it.
- *
- * The fallback retains ownership of every other conversation source.
- */
-export function createAgentDispatchWorkRouter(options: {
-  dispatchWorker: (
-    context: ConversationWorkerContext,
-    dispatchId: string,
-  ) => Promise<ConversationWorkerResult>;
-  fallbackWorker: (
-    context: ConversationWorkerContext,
-  ) => Promise<ConversationWorkerResult>;
-}) {
-  return async (
-    context: ConversationWorkerContext,
-  ): Promise<ConversationWorkerResult> => {
-    const dispatchId = await resolveAgentDispatchId(context);
-    return dispatchId
-      ? await options.dispatchWorker(context, dispatchId)
-      : await options.fallbackWorker(context);
-  };
-}
-
 async function readDispatchTurnResult(
   dispatch: DispatchRecord,
 ): Promise<DurableDispatchTurnResult> {

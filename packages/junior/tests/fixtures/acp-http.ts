@@ -6,7 +6,7 @@ import { vi } from "vitest";
 import { completeAcpAuthorization } from "@/api/acp/auth";
 import { createConversationWork } from "@/chat/app/conversation-work";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
-import type { ConversationWorkWebHarness } from "./api-turn";
+import type { ConversationWebHarness } from "./conversation";
 import { createSlackAdapterFixture } from "./conversation-work";
 
 export const ACP_TEST_URL = "http://junior.test/api/acp";
@@ -79,7 +79,7 @@ export function appFetch(...apps: Hono[]): typeof globalThis.fetch {
 
 /** Build another app-scoped Conversation worker over the shared test stores. */
 export function createIndependentConversationWork(
-  harness: ConversationWorkWebHarness,
+  harness: ConversationWebHarness,
   state: StateAdapter = harness.state,
 ) {
   return createConversationWork({

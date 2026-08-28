@@ -1,6 +1,6 @@
 import type { SlackAdapter } from "@chat-adapter/slack";
 import type { StateAdapter } from "chat";
-import type { PublishMessage } from "@/chat/api-turns/assistant-message";
+import type { PublishMessage } from "@/chat/task-execution/assistant-message";
 import { RetryableDeliveryError } from "@/chat/agent/types";
 import { runWithSlackInstallation } from "@/chat/slack/adapter-context";
 import { isRetryableSlackPostError } from "@/chat/slack/errors";

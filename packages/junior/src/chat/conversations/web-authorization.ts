@@ -5,6 +5,7 @@ import { getStateAdapter } from "@/chat/state/adapter";
 const WEB_AUTHORIZATION_PREFIX = "junior:web_authorization:v1";
 const WEB_AUTHORIZATION_TTL_MS = 24 * 60 * 60 * 1000;
 
+/** Pending web authorization saved for one Actor and Conversation. */
 export interface WebAuthorizationState extends OAuthAuthorizationRequest {
   actorId: string;
   conversationId: string;
