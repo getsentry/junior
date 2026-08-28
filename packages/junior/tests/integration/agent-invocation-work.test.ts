@@ -414,8 +414,9 @@ describe("agent invocation conversation work", () => {
           location: {
             id: expect.any(String),
             provider: "slack",
-            tenantId: "T123",
-            providerId: "C123",
+            teamId: "T123",
+            channelId: "C123",
+            threadTs: "1712345.0001",
           },
         },
         surface: "internal",

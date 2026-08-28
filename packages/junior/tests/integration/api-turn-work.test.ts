@@ -635,8 +635,9 @@ describe("Conversation API work", () => {
       destination: slackDestination,
       location: {
         provider: "slack",
-        tenantId: "T1200",
-        providerId: "C1200",
+        teamId: "T1200",
+        channelId: "C1200",
+        threadTs: "1712345.1200",
       },
       visibility: "public",
       sessionSource: {

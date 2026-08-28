@@ -1,10 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
-import {
-  upsertIdentity,
-  upsertLinkedIdentity,
-} from "@/chat/identities/sql";
+import { upsertIdentity, upsertLinkedIdentity } from "@/chat/identities/sql";
 import {
   appendInboundMessage,
   drainConversationMailbox,
@@ -196,11 +193,22 @@ describe("conversation SQL store", () => {
     try {
       const store = createSqlStore(fixture.sql);
       await migrateSchema(fixture.sql);
+      const destination = inboundMessage("activity").destination;
+
+      await store.recordExecution({
+        conversationId: CONVERSATION_ID,
+        createdAtMs: 2_000,
+        destination,
+        execution: { status: "idle", updatedAtMs: 2_000 },
+        lastActivityAtMs: 2_000,
+        metrics: null,
+        updatedAtMs: 2_000,
+      });
 
       await store.recordActivity({
         conversationId: CONVERSATION_ID,
         channelName: "eng-runtime",
-        destination: inboundMessage("activity").destination,
+        destination,
         actor: {
           email: "user@example.com",
           fullName: "Runtime User",
@@ -237,8 +245,9 @@ describe("conversation SQL store", () => {
           location: {
             id: expect.any(String),
             provider: "slack",
-            tenantId: "T123",
-            providerId: "C123",
+            teamId: "T123",
+            channelId: "C123",
+            threadTs: "1700000000.000100",
           },
           actor: {
             platform: "slack",
@@ -259,6 +268,7 @@ describe("conversation SQL store", () => {
         .select({
           actorIdentityId: juniorConversations.actorIdentityId,
           actorJson: juniorConversations.actor,
+          location: juniorConversations.location,
           destinationId: juniorConversations.destinationId,
           destinationJson: juniorConversations.destination,
           destinationKind: juniorDestinations.kind,
@@ -286,6 +296,13 @@ describe("conversation SQL store", () => {
         {
           actorIdentityId: linkedRows[0]?.actorIdentityId,
           actorJson: null,
+          location: {
+            id: linkedRows[0]?.destinationId,
+            provider: "slack",
+            teamId: "T123",
+            channelId: "C123",
+            threadTs: "1700000000.000100",
+          },
           destinationId: linkedRows[0]?.destinationId,
           destinationJson: null,
           destinationKind: "channel",
@@ -329,8 +346,9 @@ describe("conversation SQL store", () => {
         location: {
           id: expect.any(String),
           provider: "slack",
-          tenantId: "T123",
-          providerId: "C123",
+          teamId: "T123",
+          channelId: "C123",
+          threadTs: "1700000000.000100",
         },
         actor: {
           platform: "slack",

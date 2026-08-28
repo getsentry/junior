@@ -118,8 +118,9 @@ describe("resolveConversationRouting", () => {
             location: {
               id: "location-123",
               provider: "slack",
-              tenantId: "T123",
-              providerId: "C123",
+              teamId: "T123",
+              channelId: "C123",
+              threadTs: "1712345.0001",
             },
             sessionSource: SOURCE,
           });
@@ -138,16 +139,18 @@ describe("resolveConversationRouting", () => {
       location: {
         id: "location-123",
         provider: "slack",
-        tenantId: "T123",
-        providerId: "C123",
+        teamId: "T123",
+        channelId: "C123",
+        threadTs: "1712345.0001",
       },
       source: {
         ...SOURCE,
         location: {
           id: "location-123",
           provider: "slack",
-          tenantId: "T123",
-          providerId: "C123",
+          teamId: "T123",
+          channelId: "C123",
+          threadTs: "1712345.0001",
         },
       },
     });

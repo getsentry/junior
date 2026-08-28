@@ -133,11 +133,19 @@ function conversationFromRow(row: ConversationRow): Conversation {
           ...(row.identitySubjectId
             ? { slackUserId: row.identitySubjectId }
             : undefined),
-          ...(row.identityHandle ? { slackUserName: row.identityHandle } : undefined),
-          ...(row.identityTenantId ? { teamId: row.identityTenantId } : undefined),
+          ...(row.identityHandle
+            ? { slackUserName: row.identityHandle }
+            : undefined),
+          ...(row.identityTenantId
+            ? { teamId: row.identityTenantId }
+            : undefined),
         }
       : undefined;
-  const location = locationFromRow(row.destination);
+  const location = locationFromRow(
+    value.location,
+    row.destination,
+    sessionSource,
+  );
   return {
     schemaVersion: 1,
     conversationId: value.conversationId,

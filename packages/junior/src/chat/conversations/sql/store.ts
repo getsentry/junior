@@ -42,7 +42,11 @@ import {
   actorIdentityForConversation,
   mergeActor,
 } from "./actor-identity";
-import { locationFromRow, privacyFromLocationRow } from "./location";
+import {
+  locationForWrite,
+  locationFromRow,
+  privacyFromLocationRow,
+} from "./location";
 type ConversationRow = Omit<
   typeof juniorConversations.$inferSelect,
   "legacyArchivedAt"
@@ -267,7 +271,11 @@ function conversationFromRow(readRow: ConversationReadRow): Conversation {
     updatedAtMs:
       msFromDate(row.executionUpdatedAt) ?? requiredMsFromDate(row.updatedAt),
   };
-  const location = locationFromRow(readRow.destination);
+  const location = locationFromRow(
+    row.location,
+    readRow.destination,
+    sessionSource,
+  );
 
   return {
     schemaVersion: 1,
@@ -424,9 +432,7 @@ export class SqlStore implements ConversationStore {
             conversationId: args.childConversationId,
           });
           if (existing) {
-            if (
-              existing.parentConversationId !== args.parentConversationId
-            ) {
+            if (existing.parentConversationId !== args.parentConversationId) {
               throw new Error(
                 `Conversation parent changed for ${args.childConversationId}`,
               );
@@ -578,6 +584,7 @@ export class SqlStore implements ConversationStore {
           ...(existing?.parentConversationId
             ? { parentConversationId: existing.parentConversationId }
             : undefined),
+          ...(existing?.location ? { location: existing.location } : undefined),
           ...(args.channelName ? { channelName: args.channelName } : undefined),
           ...(args.destination ? { destination: args.destination } : undefined),
           ...(args.actor ? { actor: args.actor } : undefined),
@@ -800,6 +807,12 @@ export class SqlStore implements ConversationStore {
       }),
       conversation.updatedAtMs,
     );
+    const location = locationForWrite({
+      destination: conversation.destination,
+      destinationId,
+      location: conversation.location,
+      sessionSource: conversation.sessionSource,
+    });
     const actorIdentityObservation = actorIdentityForConversation(conversation);
     const actorIdentity = actorIdentityObservation
       ? await upsertIdentity(
@@ -826,6 +839,7 @@ export class SqlStore implements ConversationStore {
         originType: originTypeFromSource(conversation.source) ?? null,
         originId: null,
         originRunId: null,
+        location: location ?? null,
         destinationId: destinationId ?? null,
         destination: null,
         actorIdentityId: actorIdentity?.id ?? null,
@@ -863,6 +877,7 @@ export class SqlStore implements ConversationStore {
           originType: sql`coalesce(excluded.origin_type, ${juniorConversations.originType})`,
           originId: sql`coalesce(excluded.origin_id, ${juniorConversations.originId})`,
           originRunId: sql`coalesce(excluded.origin_run_id, ${juniorConversations.originRunId})`,
+          location: sql`coalesce(excluded.location_json, ${juniorConversations.location})`,
           destinationId: sql`coalesce(excluded.destination_id, ${juniorConversations.destinationId})`,
           actorIdentityId: sql`coalesce(excluded.actor_identity_id, ${juniorConversations.actorIdentityId})`,
           creatorIdentityId: sql`coalesce(excluded.creator_identity_id, ${juniorConversations.creatorIdentityId})`,

@@ -264,8 +264,9 @@ describe("paused turn Slack integration", () => {
       ...storedSource,
       location: expect.objectContaining({
         provider: "slack",
-        tenantId: "T123",
-        providerId: "C123",
+        teamId: "T123",
+        channelId: "C123",
+        threadTs: "1712345.0001",
       }),
     });
     expect(resumedRun.delivery?.location).toEqual(resumedRun.source.location);
