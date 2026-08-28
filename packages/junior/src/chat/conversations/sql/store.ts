@@ -43,7 +43,7 @@ import {
   mergeActor,
 } from "./actor-identity";
 import {
-  conversationLocationForWrite,
+  locationForWrite,
   locationFromRow,
   privacyFromLocationRow,
 } from "./location";
@@ -807,7 +807,7 @@ export class SqlStore implements ConversationStore {
       }),
       conversation.updatedAtMs,
     );
-    const location = conversationLocationForWrite({
+    const location = locationForWrite({
       destination: conversation.destination,
       destinationId,
       location: conversation.location,

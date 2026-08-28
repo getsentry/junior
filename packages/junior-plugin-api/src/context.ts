@@ -1,7 +1,6 @@
 import { z } from "zod";
 import type { ZodTypeAny } from "zod";
 import {
-  baseLocationSchema,
   destinationSchema,
   identitySchema,
   locationSchema,
@@ -26,8 +25,6 @@ export type SystemActor = z.output<typeof systemActorSchema>;
 export type Identity = z.output<typeof identitySchema>;
 export type User = z.output<typeof userSchema>;
 export type Source = z.output<typeof sourceSchema>;
-/** Fields shared by every provider Location. */
-export type BaseLocation = z.output<typeof baseLocationSchema>;
 /** Validated Location associated with a Conversation. */
 export type Location = z.output<typeof locationSchema>;
 /** Complete Slack Location associated with a Conversation. */

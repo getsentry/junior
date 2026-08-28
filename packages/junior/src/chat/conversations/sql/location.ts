@@ -7,19 +7,37 @@ import type { juniorDestinations } from "@/db/schema";
 type LocationRow = typeof juniorDestinations.$inferSelect;
 
 /** Build the complete Location for one Conversation SQL write. */
-export function conversationLocationForWrite(args: {
+// TODO(dcramer): Remove Destination and SessionSource inputs after every
+// Conversation writer supplies Location directly.
+export function locationForWrite(args: {
   destination: Destination | undefined;
   destinationId: string | undefined;
   location: Location | undefined;
   sessionSource: SessionSource | undefined;
 }): Location | undefined {
-  if (args.location) {
-    return locationSchema.parse(args.location);
-  }
+  const location = args.location
+    ? locationSchema.parse(args.location)
+    : undefined;
   const destination =
     args.destination?.platform === "slack" ? args.destination : undefined;
   const source =
     args.sessionSource?.platform === "slack" ? args.sessionSource : undefined;
+  if (location) {
+    if (
+      (destination &&
+        (location.id !== args.destinationId ||
+          location.teamId !== destination.teamId ||
+          location.channelId !== destination.channelId)) ||
+      (source &&
+        (location.teamId !== source.teamId ||
+          location.channelId !== source.channelId))
+    ) {
+      throw new Error("Conversation Location changed");
+    }
+    return source?.threadTs && !location.threadTs
+      ? { ...location, threadTs: source.threadTs }
+      : location;
+  }
   if (
     destination &&
     source &&
@@ -59,14 +77,11 @@ export function locationFromRow(
   // deployed writer can omit location_json and a backfill has populated rows
   // that those writers created during deployment.
   const slackSource =
-    sessionSource?.platform === "slack" ? sessionSource : undefined;
-  if (
-    slackSource &&
-    (slackSource.teamId !== row.providerTenantId ||
-      slackSource.channelId !== row.providerDestinationId)
-  ) {
-    throw new Error("Conversation Location does not match its session Source");
-  }
+    sessionSource?.platform === "slack" &&
+    sessionSource.teamId === row.providerTenantId &&
+    sessionSource.channelId === row.providerDestinationId
+      ? sessionSource
+      : undefined;
   return locationSchema.parse({
     id: row.id,
     provider: "slack",

@@ -22,7 +22,7 @@ const exactNonBlankStringSchema = nonBlankStringSchema.refine(
 );
 
 /** Fields shared by every Location. */
-export const baseLocationSchema = z
+const baseLocationSchema = z
   .object({
     /** Stable SQL identity used by Location configuration and reporting. */
     id: nonBlankStringSchema,

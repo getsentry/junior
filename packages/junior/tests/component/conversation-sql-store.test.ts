@@ -193,11 +193,22 @@ describe("conversation SQL store", () => {
     try {
       const store = createSqlStore(fixture.sql);
       await migrateSchema(fixture.sql);
+      const destination = inboundMessage("activity").destination;
+
+      await store.recordExecution({
+        conversationId: CONVERSATION_ID,
+        createdAtMs: 2_000,
+        destination,
+        execution: { status: "idle", updatedAtMs: 2_000 },
+        lastActivityAtMs: 2_000,
+        metrics: null,
+        updatedAtMs: 2_000,
+      });
 
       await store.recordActivity({
         conversationId: CONVERSATION_ID,
         channelName: "eng-runtime",
-        destination: inboundMessage("activity").destination,
+        destination,
         actor: {
           email: "user@example.com",
           fullName: "Runtime User",

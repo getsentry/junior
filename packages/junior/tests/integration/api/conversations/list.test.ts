@@ -276,7 +276,7 @@ describe("conversation list API", () => {
       const fixture = createConfiguredJuniorSqlFixture();
       const store = createSqlStore(fixture.sql);
       const conversationId = `slack:C123:${visibility}-visibility`;
-      const channelId = `C-${visibility}`;
+      const channelId = `C${visibility.toUpperCase()}`;
       try {
         await migrateSchema(fixture.sql);
         await store.recordActivity({
