@@ -1,5 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import { Navigate, Route, Routes, useLocation } from "react-router";
+import {
+  Navigate,
+  Route,
+  Routes,
+  useLocation,
+  useParams,
+} from "react-router";
 
 import {
   useConversationsData,
@@ -249,7 +255,32 @@ export function DashboardShell() {
               <Navigate replace to="/" />
             )
           }
-          path="/tasks/list/:taskId?"
+          path="/tasks/list"
+        />
+        <Route
+          element={<LegacyTaskListRedirect />}
+          path="/tasks/list/:taskId"
+        />
+        <Route
+          element={
+            loading ? (
+              <TasksPageLayout>
+                <TasksRouteLoading
+                  description="Find and manage tasks across your linked workspaces."
+                  label="Loading tasks"
+                  title="All tasks"
+                  variant="list"
+                />
+              </TasksPageLayout>
+            ) : loggedIn ? (
+              <TasksPageLayout>
+                <TasksPage enabled={loggedIn} view="list" />
+              </TasksPageLayout>
+            ) : (
+              <Navigate replace to="/" />
+            )
+          }
+          path="/tasks/:taskId"
         />
         <Route
           element={
@@ -527,6 +558,18 @@ function LegacySystemRedirect(props: { section: "locations" | "people" }) {
       replace
       to={`/system/${props.section}${suffix}${location.search}${location.hash}`}
     />
+  );
+}
+
+/** Keep old /tasks/list/:taskId links working as /tasks/:taskId. */
+function LegacyTaskListRedirect() {
+  const location = useLocation();
+  const { taskId } = useParams();
+  const target = taskId
+    ? `/tasks/${encodeURIComponent(taskId)}`
+    : "/tasks/list";
+  return (
+    <Navigate replace to={`${target}${location.search}${location.hash}`} />
   );
 }
 

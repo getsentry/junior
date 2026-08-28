@@ -1,4 +1,4 @@
-import { NavLink } from "react-router";
+import { NavLink, useLocation } from "react-router";
 
 import {
   cn,
@@ -9,15 +9,29 @@ import { SecondaryNavigationPortal } from "./DashboardChrome";
 
 export type SecondaryNavigationItem = {
   end?: boolean;
+  /** Override default NavLink matching when a path family should stay active. */
+  isActive?: (pathname: string) => boolean;
   label: string;
   to: string;
 };
+
+function navigationLinkClass(
+  baseClass: (state: { isActive: boolean }) => string,
+  item: SecondaryNavigationItem,
+  pathname: string,
+) {
+  return (state: { isActive: boolean }) =>
+    baseClass({
+      isActive: item.isActive ? item.isActive(pathname) : state.isActive,
+    });
+}
 
 /** Render page navigation in the desktop chrome and mobile drawer. */
 export function SecondaryNavigation(props: {
   ariaLabel: string;
   items: SecondaryNavigationItem[];
 }) {
+  const location = useLocation();
   const desktopLinkClass = ({ isActive }: { isActive: boolean }) =>
     cn(
       "relative flex h-12 shrink-0 items-center px-3 font-display text-xs font-medium no-underline transition-colors after:absolute after:inset-x-3 after:bottom-0 after:h-0.5 after:transition-colors sm:text-sm",
@@ -49,7 +63,11 @@ export function SecondaryNavigation(props: {
           >
             {props.items.map((item) => (
               <NavLink
-                className={desktopLinkClass}
+                className={navigationLinkClass(
+                  desktopLinkClass,
+                  item,
+                  location.pathname,
+                )}
                 end={item.end}
                 key={item.to}
                 to={item.to}
@@ -67,7 +85,11 @@ export function SecondaryNavigation(props: {
         >
           {props.items.map((item) => (
             <NavLink
-              className={mobileLinkClass}
+              className={navigationLinkClass(
+                mobileLinkClass,
+                item,
+                location.pathname,
+              )}
               end={item.end}
               key={item.to}
               to={item.to}

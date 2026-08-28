@@ -144,6 +144,7 @@ test("opens scheduled and event tasks in the native Tasks view", async ({
     name: "View task details: Weekly project summary",
   });
   await taskDetailsTrigger.click();
+  await expect(page).toHaveURL(`${server.baseURL}/tasks/scheduled-1`);
   const details = page.getByRole("dialog", { name: "Weekly project summary" });
   await expect(details).toBeVisible();
   await expect
@@ -167,6 +168,7 @@ test("opens scheduled and event tasks in the native Tasks view", async ({
   );
   await page.keyboard.press("Escape");
   await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page).toHaveURL(`${server.baseURL}/tasks/list`);
   await expect
     .poll(() => page.evaluate(() => document.body.style.overflow))
     .toBe("");

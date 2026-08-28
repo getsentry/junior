@@ -27,7 +27,7 @@ import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
 import { StatCard } from "../../components/metrics/StatCard";
 import { deleteDashboardResource } from "../../http";
-import { formatTime } from "../../format";
+import { formatTime, taskPath } from "../../format";
 import {
   pathWithSearch,
   useDebouncedSearchParam,
@@ -106,6 +106,7 @@ export function TasksPage(props: {
   const listPath = "/tasks/list";
   const tasksPath = (pathname: string) =>
     pathWithSearch(pathname, location.search);
+  const selectedTaskPath = (id: string) => tasksPath(taskPath(id));
   const tasks = query.data?.tasks ?? EMPTY_TASKS;
   const mineCount = tasks.filter((task) => task.ownedByViewer).length;
   const publicCount = tasks.filter(
@@ -300,11 +301,9 @@ export function TasksPage(props: {
                       }}
                       onSelect={() =>
                         navigate(
-                          tasksPath(
-                            taskId === task.id
-                              ? listPath
-                              : `${listPath}/${encodeURIComponent(task.id)}`,
-                          ),
+                          taskId === task.id
+                            ? tasksPath(listPath)
+                            : selectedTaskPath(task.id),
                         )
                       }
                       selected={taskId === task.id}
