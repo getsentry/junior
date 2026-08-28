@@ -552,7 +552,7 @@ describe("Slack conversation work execution", () => {
       conversationId: CONVERSATION_ID,
       state,
     });
-    expect(countPendingConversationMessages(after)).toBe(0);
+    expect(after ? countPendingConversationMessages(after) : 0).toBe(0);
     expect(after?.execution.retryCount ?? 0).toBe(0);
   });
 
