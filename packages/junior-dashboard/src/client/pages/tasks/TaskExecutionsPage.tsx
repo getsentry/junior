@@ -20,7 +20,7 @@ import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector"
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
 import { conversationPath } from "../../conversations/conversationRoutes";
-import { formatTime } from "../../format";
+import { formatTime, taskPath } from "../../format";
 import { DashboardApiError } from "../../http";
 import { pathWithSearch } from "../../searchParams";
 import { cn } from "../../styles";
@@ -37,7 +37,7 @@ export function TaskExecutionsPage(props: { enabled: boolean }) {
     taskId,
   );
   const backTo = pathWithSearch(
-    taskId ? `/tasks/list/${encodeURIComponent(taskId)}` : "/tasks/list",
+    taskId ? taskPath(taskId) : "/tasks/list",
     searchParams,
   );
 
@@ -71,7 +71,7 @@ export function TaskExecutionsPage(props: { enabled: boolean }) {
           </InlineError>
           <Link
             className="mt-3 inline-flex items-center gap-2 font-mono text-xs text-dashboard-text-muted no-underline hover:text-dashboard-text"
-            to="/tasks/list"
+            to={taskId ? taskPath(taskId) : "/tasks/list"}
           >
             <ArrowLeft aria-hidden="true" size={14} />
             Back to tasks
