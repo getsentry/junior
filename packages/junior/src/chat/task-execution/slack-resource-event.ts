@@ -28,12 +28,24 @@ import { isResourceEventMailboxMetadata } from "@/chat/resource-events/notificat
 import { resolveConversationRouting } from "@/chat/services/turn-session-routing";
 import type { InboundMessage } from "@/chat/task-execution/store";
 
-/** Load Slack destination and threadTs for a resource-event wake. */
+/** Resolved Slack place for one plain resource-event wake, when a thread exists. */
+export type SlackResourceEventThread = {
+  destination: SlackDestination;
+  threadTs: string;
+};
+
+/**
+ * Load Slack destination and threadTs for a resource-event wake.
+ *
+ * Returns undefined when the Conversation has no Slack thread. The temporary
+ * synthetic Message/Thread bridge cannot invent one; the Slack worker must drop
+ * that wake instead of retrying.
+ */
 export async function resolveSlackResourceEventThread(args: {
   conversationId: string;
   conversationStore?: ConversationStore;
   destination?: Destination;
-}): Promise<{ destination: SlackDestination; threadTs: string }> {
+}): Promise<SlackResourceEventThread | undefined> {
   const routing = await resolveConversationRouting({
     conversationId: args.conversationId,
     conversationStore: args.conversationStore,
@@ -47,9 +59,7 @@ export async function resolveSlackResourceEventThread(args: {
       ? routing.source.threadTs?.trim()
       : undefined;
   if (!threadTs) {
-    throw new Error(
-      `Conversation ${args.conversationId} is missing a Slack thread for resource-event delivery`,
-    );
+    return undefined;
   }
   return { destination, threadTs };
 }

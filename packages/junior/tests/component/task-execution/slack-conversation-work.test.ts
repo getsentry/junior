@@ -468,6 +468,94 @@ describe("Slack conversation work execution", () => {
     });
   });
 
+  it("acks and drops plain resource-event wakes when Slack has no thread", async () => {
+    const queue = createConversationWorkQueueTestAdapter();
+    const state = getStateAdapter();
+    await state.connect();
+    const slackAdapter = createSlackAdapterFixture();
+    const conversationStore: ConversationStore = {
+      createChild: vi.fn(),
+      get: vi.fn(async () => ({
+        conversationId: CONVERSATION_ID,
+        createdAtMs: 1,
+        lastActivityAtMs: 1,
+        updatedAtMs: 1,
+        schemaVersion: 1 as const,
+        execution: { status: "paused" as const },
+        destination: SLACK_DESTINATION,
+        // Channel-level / event-task Sources omit threadTs. The temporary
+        // synthetic bridge cannot invent one, so the worker must ack-drop.
+        sessionSource: {
+          platform: "slack" as const,
+          teamId: SLACK_DESTINATION.teamId,
+          channelId: SLACK_DESTINATION.channelId,
+          visibility: "public" as const,
+        },
+      })),
+      getConversationIdByProviderConversation: vi.fn(async () => undefined),
+      bindProviderConversation: vi.fn(),
+      getDestinationVisibility: vi.fn(async () => undefined),
+      findSlackDestinationByName: vi.fn(async () => undefined),
+      recordActivity: vi.fn(),
+      recordExecution: vi.fn(),
+      listByActivity: vi.fn(async () => []),
+    };
+
+    await requestConversationWork({
+      conversationId: CONVERSATION_ID,
+      destination: SLACK_DESTINATION,
+      state,
+    });
+    await appendInboundMessage({
+      message: createResourceEventInboundMessage({
+        event: {
+          eventKey: "check-suite-missing-thread",
+          eventType: "pull_request.checks.failed",
+          occurredAtMs: 1_700_000_000_000,
+          namespace: "github",
+          identifier: "getsentry/junior#691",
+          trustedSummary: "A subscribed resource changed.",
+        },
+        subscription: {
+          conversationId: CONVERSATION_ID,
+          id: "resub_missing_thread",
+        },
+        text: "[event notification]\n\nA subscribed resource changed.",
+      }),
+      state,
+    });
+    await queue.send(conversationQueueMessage(), {
+      idempotencyKey: "resource-event-missing-thread",
+    });
+
+    await expect(
+      processNextQueuedSlackWork({
+        conversationStore,
+        getSlackAdapter: () => slackAdapter,
+        lookupSlackUser: async () => {
+          throw new Error("resource event notifications do not have Slack users");
+        },
+        queue,
+        runtime: {
+          handleNewMention: async () => {
+            throw new Error("unexpected mention route");
+          },
+          handleSubscribedMessage: async () => {
+            throw new Error("missing-thread resource event must not run a turn");
+          },
+        },
+        state,
+      }),
+    ).resolves.toEqual({ status: "completed" });
+
+    const after = await getConversationWorkState({
+      conversationId: CONVERSATION_ID,
+      state,
+    });
+    expect(countPendingConversationMessages(after)).toBe(0);
+    expect(after?.execution.retryCount ?? 0).toBe(0);
+  });
+
   it("does not persist Slack mailbox messages without actor ids", async () => {
     const queue = createConversationWorkQueueTestAdapter();
     const state = getStateAdapter();
