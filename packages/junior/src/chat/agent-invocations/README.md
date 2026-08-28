@@ -51,7 +51,8 @@ It uses the same Conversation type as all other work. It does not copy the
 parent Conversation's Location or receive Delivery. Its Run reads the parent
 Conversation's Location when tools need it. Output stays inside Junior. Agent
 invocation fields still carry the Actor, credentials, Source, and Destination
-until the final Run interface removes these older fields.
+until the final Run interface removes Destination. The final Run carries the
+parent Location once, separate from Source and Delivery.
 
 ## Current Boundary
 

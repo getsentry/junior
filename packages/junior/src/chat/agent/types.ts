@@ -126,13 +126,12 @@ export type AgentRunState = {
  *
  * The runner must commit the preceding agent boundary before invoking this
  * port; the accepted reply transaction appends only this message.
+ *
+ * TODO(dcramer): Remove Conversation Message persistence from Delivery
+ * implementations after the core Turn lifecycle stores each completed
+ * assistant Message.
  */
-export type Delivery = {
-  /** Location where this capability can send output, when outside Junior. */
-  location?: Location;
-  /** Send one accepted assistant message. */
-  send(message: AssistantMessage): void | Promise<void>;
-};
+export type Delivery = (message: AssistantMessage) => void | Promise<void>;
 
 /** Resume the agent turn after a transient or ambiguous delivery failure. */
 export class RetryableDeliveryError extends Error {
@@ -214,11 +213,13 @@ export type AgentRun = {
   /** Credential authority projected from actor (plus optional subject). */
   credentialContext?: CredentialContext;
   source: Source;
+  /** Conversation Location available to this Run. */
+  location?: Location;
   // TODO(dcramer): Remove AgentRun.destination after tool side effects use
-  // feature-owned targets and place context comes from Source or Delivery.
+  // feature-owned targets and place context comes from Location.
   destination: Destination;
-  // TODO(dcramer): Remove AgentRun.publishExternally after each provider builds
-  // the correct Delivery before every new or resumed Run.
+  // TODO(dcramer): Remove AgentRun.publishExternally after Turn checkpoints
+  // store publish and each provider uses it to supply Delivery before every Run.
   publishExternally?: boolean;
   surface?: AgentTurnSurface;
   dispatch?: AgentDispatch;
@@ -288,17 +289,14 @@ export function assertRunConsistency(
     AgentRun,
     | "conversationId"
     | "source"
+    | "location"
     | "destination"
     | "surface"
-    | "publishExternally"
     | "actor"
     | "dispatch"
   >,
 ): void {
   const { destination, source } = run;
-  // Source records what produced the work. Destination is the conversation's
-  // reply container and may already be Slack when a dashboard turn continues a
-  // Slack-rooted conversation without publishing externally.
   switch (source.platform) {
     case "slack": {
       if (destination.platform !== "slack") {
@@ -356,16 +354,8 @@ export function assertRunConsistency(
           }
           break;
         }
-        case "slack": {
-          // Dashboard continues keep the Slack destination for location/context
-          // but must stay conversation-log only.
-          if (run.publishExternally) {
-            throw new TypeError(
-              "Web turns on Slack destinations must not publish externally",
-            );
-          }
+        case "slack":
           break;
-        }
       }
       break;
     }
@@ -375,32 +365,17 @@ export function assertRunConsistency(
   if (!actor || actor.platform === "system") {
     return;
   }
-  const actorMatchesDestination = (() => {
-    switch (actor.platform) {
-      case "slack":
-        return destination.platform === "slack";
-      case "local":
-        return destination.platform === "local";
-      case "web":
-        // Web actors may write on local roots or continue Slack-rooted
-        // conversations without publishing externally.
-        return (
-          destination.platform === "local" ||
-          (destination.platform === "slack" && run.publishExternally !== true)
-        );
-    }
-  })();
-  if (!actorMatchesDestination) {
+  if (actor.platform !== source.platform) {
     throw new TypeError(
-      `Actor platform "${actor.platform}" does not match destination platform "${destination.platform}"`,
+      `Actor platform "${actor.platform}" does not match Source platform "${source.platform}"`,
     );
   }
   if (
     actor.platform === "slack" &&
-    destination.platform === "slack" &&
-    actor.teamId !== destination.teamId
+    source.platform === "slack" &&
+    actor.teamId !== source.teamId
   ) {
-    throw new TypeError("Slack actor team does not match destination team");
+    throw new TypeError("Slack Actor team does not match Source team");
   }
 }
 

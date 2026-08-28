@@ -143,16 +143,7 @@ describe("resolveConversationRouting", () => {
         channelId: "C123",
         threadTs: "1712345.0001",
       },
-      source: {
-        ...SOURCE,
-        location: {
-          id: "location-123",
-          provider: "slack",
-          teamId: "T123",
-          channelId: "C123",
-          threadTs: "1712345.0001",
-        },
-      },
+      source: SOURCE,
     });
   });
 

@@ -16,23 +16,26 @@ Canonical words used across Junior's code and documentation.
 - **Conversation**: the durable container for visible history and execution
   state, identified by a globally unique `conversationId`. A Conversation may
   have one parent Conversation. Parent and Location are independent.
-- **Source**: the current input that caused a Turn, such as a Slack message,
-  local CLI input, dashboard input, scheduled task, or plugin dispatch. Source
-  may include the Conversation's Location so the agent can use that place even
-  when the input came through Junior's API or UI.
+- **Source**: the input that caused work, such as a Slack message, local CLI
+  input, dashboard input, resource event, scheduled task, plugin dispatch, or
+  Agent invocation. Every Inbound message has one Source. A Turn stores the
+  Source selected from the input that started it.
 - **Destination**: an explicit target for output or a side effect. Do not use
-  Destination as another name for a Conversation's Location.
+  Destination as another name for a Conversation's Location. A feature may use
+  Destination before a Conversation exists. If that target becomes the linked
+  place for a new Conversation, store it as the Conversation's Location.
 - **Location**: one place outside Junior where a Conversation can be delivered,
   such as a Slack channel or thread. A Conversation has zero or one Location.
-  Source and Delivery may each contain that Location. Location does not allow
-  output to be sent. Conversation visibility is separate.
-- **Delivery**: an optional ability to send Run output. Delivery may include the
-  Location where it sends output. The Conversation log does not depend on
-  Delivery.
-- **publishExternally**: whether one turn also publishes assistant output to the
-  provider through Delivery. The Conversation log always stores the Turn.
-  Slack surfaces treat missing as publish; non-Slack work treats missing as
-  Conversation-only. Explicit false always means Conversation-only.
+  A Run carries this same Location when the agent or tools need it. Location
+  does not allow output to be sent. Conversation visibility is separate.
+- **Delivery**: an optional function that sends Run output to the Conversation
+  Location. Only Delivery allows output to be sent there. Storing a completed
+  assistant Message in the Conversation does not depend on Delivery.
+- **publish**: whether one Turn also sends assistant output to the Conversation
+  Location through Delivery. The Conversation always stores each completed
+  assistant Message. `publishExternally` is the legacy mailbox, Turn checkpoint,
+  and Run field for this fact until those interfaces use `publish` or Delivery
+  alone.
 - **User**: one person-level record. A user may have several linked identities.
 - **Identity**: one provider account, such as a Slack account in one workspace,
   optionally linked to a user.
@@ -41,7 +44,8 @@ Canonical words used across Junior's code and documentation.
   fields that the agent or tools need. Those fields do not select the runtime.
 - **Resource event**: one normalized change identified by namespace, identifier,
   event type, and an idempotency key. Plugins and core can publish them.
-  Delivery wakes the Conversation; Location stays on that Conversation.
+  A Resource event can wake a Conversation. Location stays on that
+  Conversation.
 - **Resource subscription**: a temporary conversation association that delivers
   matching resource events back into that conversation.
 - **Event task**: a durable instruction that dispatches when a matching
@@ -100,13 +104,13 @@ Canonical words used across Junior's code and documentation.
 
 - Use `provider` on provider-owned references such as Identity and Location; it
   names the namespace that owns their provider ids.
-- Keep the current Source and Actor separate from the Conversation's Location.
-  Source and Delivery may each contain Location when they need it. Do not infer
-  Delivery from Source, Actor, or Location.
+- Keep Source and Actor separate from the Conversation's Location. Pass
+  Location once on the Run. Do not put Location inside Source or Delivery. Do
+  not infer Delivery from Source, Actor, or Location.
 - Use `Location`. Do not create another name for the same place.
-- For new Source unions, use one discriminant for what produced the work. Keep
-  provider-native identifiers inside that provider's Source branch rather than
-  adding a second generic provider or thread field.
+- Use `kind` on Source to state what produced the work. Keep provider
+  identifiers inside that Source kind. Do not use `platform` for this field
+  because many Source kinds are not providers.
 - Use `turn`, `run`, and `slice` only with the meanings above.
 - Use `agent invocation` for delegated child work; do not shorten it to
   `invocation` where it could be confused with a model or serverless

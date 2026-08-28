@@ -357,7 +357,7 @@ async function runLocalAgentTurnInContext(
             await deps.onToolResult?.(event.report);
           }
         },
-        delivery: { send: deliverAssistantMessage },
+        delivery: deliverAssistantMessage,
         durability: {
           onSandboxRefChanged: async (nextSandboxRef) => {
             sandboxRef = nextSandboxRef;

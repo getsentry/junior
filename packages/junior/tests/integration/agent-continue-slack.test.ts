@@ -254,22 +254,19 @@ describe("paused turn Slack integration", () => {
         userId: "U123",
       },
       destination: SLACK_DESTINATION,
+      location: {
+        provider: "slack",
+        teamId: "T123",
+        channelId: "C123",
+        threadTs: "1712345.0001",
+      },
       publishExternally: true,
+      source: storedSource,
       toolChannelId: "C123",
       state: expect.objectContaining({
         sandboxRef: undefined,
       }),
     });
-    expect(resumedRun.source).toEqual({
-      ...storedSource,
-      location: expect.objectContaining({
-        provider: "slack",
-        teamId: "T123",
-        channelId: "C123",
-        threadTs: "1712345.0001",
-      }),
-    });
-    expect(resumedRun.delivery?.location).toEqual(resumedRun.source.location);
     const resumeContext = resumedRun as {
       deadlineAtMs?: number;
       environment?: {

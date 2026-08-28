@@ -530,8 +530,11 @@ async function runPausedTurnInContext(
             credentialContext,
             destination: routingDestination,
             ...(dispatch ? { dispatch } : undefined),
+            ...(routing.location ? { location: routing.location } : undefined),
             // Slack resume publishes unless the checkpoint opted out.
             // Missing means legacy/in-flight Slack turns still post.
+            // TODO(dcramer): Remove this missing-as-publish fallback after no
+            // stored Turn checkpoint can omit publishExternally.
             publishExternally: activeTurn.publishExternally !== false,
             source,
             ...(surface ? { surface } : undefined),

@@ -565,6 +565,8 @@ async function resumeSlackTurnInContext(
       const deliveryState = await getDeliveryConversation();
       let slackMessageTs: string[] = [];
       try {
+        // TODO(dcramer): Remove this missing-as-publish fallback after no stored
+        // Turn checkpoint can omit publishExternally.
         if (runArgs.run?.publishExternally !== false) {
           slackMessageTs = await sendSlackReply({
             channelId: runArgs.channelId,
@@ -657,13 +659,7 @@ async function resumeSlackTurnInContext(
       deliveryState.conversation,
       sessionId,
     );
-    const run = buildResumedRun(runArgs, status, {
-      ...(runArgs.run?.publishExternally !== false &&
-      runArgs.run?.source.location
-        ? { location: runArgs.run.source.location }
-        : undefined),
-      send: deliverAssistantMessage,
-    });
+    const run = buildResumedRun(runArgs, status, deliverAssistantMessage);
     if (runArgs.inputMessageIds?.length) {
       await turnLifecycle.start({
         conversationId: runArgs.conversationId,

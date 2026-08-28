@@ -233,9 +233,10 @@ export async function executeAgentRun(
         ? run.conversationId
         : run.source.conversationId,
     destinationName:
-      run.destination.platform === "slack"
-        ? run.destination.channelId
-        : run.destination.conversationId,
+      run.location?.channelId ??
+      (run.source.platform === "slack"
+        ? run.source.channelId
+        : run.source.conversationId),
     userId: userActor?.userId,
     userName: userActor?.userName,
     userEmail: userActor?.email,
@@ -391,8 +392,7 @@ async function executeAgentRunInPrivacyContext(
   const surface = surfaceFromRun(run);
   const runSource = routing.source;
   const slackSource = runSource.platform === "slack" ? runSource : undefined;
-  const slackDestination =
-    routing.destination.platform === "slack" ? routing.destination : undefined;
+  const slackChannelId = run.location?.channelId ?? slackSource?.channelId;
   const slackActor = actor?.platform === "slack" ? actor : undefined;
   const userInput = input.messageText;
   const credentialUserId = run.credentialContext
@@ -624,7 +624,7 @@ async function executeAgentRunInPrivacyContext(
         conversationContext: input.conversationContext,
         context: {
           threadId: conversationId,
-          channelId: slackDestination?.channelId,
+          channelId: slackChannelId,
           actorId: slackActor?.userId,
           runId,
         },
@@ -775,7 +775,7 @@ async function executeAgentRunInPrivacyContext(
           target,
           metadata: {
             threadId: conversationId,
-            channelId: slackDestination?.channelId,
+            channelId: slackChannelId,
             actorId: slackActor?.userId,
             runId,
           },
@@ -1025,7 +1025,7 @@ async function executeAgentRunInPrivacyContext(
           conversationId,
           metadata: {
             threadId: conversationId,
-            channelId: slackDestination?.channelId,
+            channelId: slackChannelId,
             actorId: slackActor?.userId,
             runId,
           },
@@ -1087,7 +1087,7 @@ async function executeAgentRunInPrivacyContext(
         return;
       }
       try {
-        await delivery.send(message);
+        await delivery(message);
         acceptedToolFreeAssistant = true;
       } catch (error) {
         assistantMessageDeliveryError = new AssistantMessageDeliveryError(
