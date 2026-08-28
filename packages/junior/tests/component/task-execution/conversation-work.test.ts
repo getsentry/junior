@@ -1097,18 +1097,20 @@ describe("conversation work execution", () => {
             },
             { queue, nowMs: currentNowMs },
           );
-          await appendInboundMessage({
-            message: inboundMessage("m2", {
-              createdAtMs: 2_000,
-              delivery: "defer",
-              receivedAtMs: 2_000,
-            }),
-            nowMs: currentNowMs,
-          });
           return { status: "completed" };
         },
       }),
     ).resolves.toEqual({ status: "yielded" });
+
+    currentNowMs = 2_100;
+    await appendInboundMessage({
+      message: inboundMessage("m2", {
+        createdAtMs: currentNowMs,
+        delivery: "defer",
+        receivedAtMs: currentNowMs,
+      }),
+      nowMs: currentNowMs,
+    });
 
     currentNowMs = 3_000;
     await expect(
