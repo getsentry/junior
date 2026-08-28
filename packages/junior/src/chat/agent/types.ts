@@ -7,7 +7,6 @@ import type {
 } from "@sentry/junior-plugin-api";
 import type { Location } from "@/chat/conversations/location";
 import type { LocationConfigurationService } from "@/chat/configuration/types";
-import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import type { CredentialContext } from "@/chat/credentials/context";
 import type { PiMessage } from "@/chat/pi/messages";
 import type { Actor } from "@/chat/actor";
@@ -221,9 +220,6 @@ export type AgentRun = {
   // TODO(dcramer): Remove AgentRun.publishExternally after each provider builds
   // the correct Delivery before every new or resumed Run.
   publishExternally?: boolean;
-  // TODO(dcramer): Remove AgentRun.destinationVisibility after privacy reads
-  // the Conversation visibility at its owning boundary.
-  destinationVisibility?: ConversationPrivacy;
   surface?: AgentTurnSurface;
   dispatch?: AgentDispatch;
 

@@ -346,6 +346,16 @@ export function createSlackTurn(deps: SlackTurnDeps) {
         modelId: defaultModelId(botConfig),
       },
       async () => {
+        // Save Location and visibility before the agent reads the Conversation.
+        await getConversationStore().recordActivity({
+          activityAtMs: message.metadata.dateSent.getTime(),
+          channelName,
+          conversationId,
+          destination,
+          sessionSource: source,
+          source: "slack",
+          visibility: destinationVisibility,
+        });
         const content = parseContent(message);
         const strippedUserText = stripLeadingBotMention(
           stripLeadingSteeringOverride(content.topLevelText),
@@ -693,9 +703,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
         }
         if (conversationId) {
           const turnStartedAtMs = message.metadata.dateSent.getTime();
-          // Fire-and-forget: both calls are best-effort and must not delay
-          // reply generation. Keep them independent so a failure in one does
-          // not suppress observability of the other.
+          // Record the diagnostic summary without delaying the reply.
           void recordTurnSummary({
             channelName,
             conversationId,
@@ -1109,7 +1117,6 @@ export function createSlackTurn(deps: SlackTurnDeps) {
             publishExternally: shouldPublishExternally(
               options.publishExternally,
             ),
-            ...(destinationVisibility ? { destinationVisibility } : undefined),
             surface: options.execution?.surface ?? "slack",
             dispatch: options.execution?.dispatch,
             toolChannelId,

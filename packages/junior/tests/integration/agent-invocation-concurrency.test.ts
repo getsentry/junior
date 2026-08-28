@@ -33,7 +33,6 @@ const destination = {
 const baseInput = {
   actor: { name: "parent-agent", platform: "system" } as const,
   destination,
-  destinationVisibility: "private" as const,
   input: "Do the delegated work.",
   parentConversationId,
   source: createLocalSource(parentConversationId),

@@ -87,7 +87,7 @@ export interface Conversation {
    * rather than privacy-redacted (`../../../../../policies/data-redaction.md`).
    */
   transcriptPurgedAtMs?: number;
-  /** Persisted destination visibility. Undefined means no destination row exists. */
+  /** Confirmed Conversation visibility. Undefined means no confirmation exists. */
   visibility?: ConversationPrivacy;
 }
 

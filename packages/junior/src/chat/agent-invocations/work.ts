@@ -280,7 +280,6 @@ async function saveAgentInvocationResult(args: {
       durationMs: args.result.diagnostics.durationMs,
       usage: args.result.diagnostics.usage,
       destination: args.invocation.destination,
-      destinationVisibility: args.invocation.destinationVisibility,
       ...(failed
         ? {
             errorMessage:
@@ -441,7 +440,6 @@ export function createAgentInvocationWorker(agentRunner: AgentRunner) {
           actor: invocation.actor,
           credentialContext: invocation.credentialContext,
           destination: invocation.destination,
-          destinationVisibility: invocation.destinationVisibility,
           publishExternally: context.publishExternally,
           source: location
             ? { ...invocation.source, location }

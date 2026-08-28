@@ -300,7 +300,8 @@ describe("paused turn Slack integration", () => {
       role: "assistant",
       text: "Final resumed answer",
     });
-    const { getConversationEventStore } = await import("@/chat/db");
+    const { getConversationEventStore, getConversationStore } =
+      await import("@/chat/db");
     const lifecycle = (
       await getConversationEventStore().loadHistory(conversationId)
     ).filter((event) => event.data.type.startsWith("turn_"));
@@ -321,6 +322,13 @@ describe("paused turn Slack integration", () => {
         outcome: "success",
       }),
     ]);
+    await expect(
+      getConversationStore().getDestinationVisibility({
+        provider: "slack",
+        providerDestinationId: "C123",
+        providerTenantId: "T123",
+      }),
+    ).resolves.toBeUndefined();
   });
 
   it("resumes and delivers when the continuation record is missing stored actor profile data", async () => {

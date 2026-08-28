@@ -20,9 +20,7 @@ import {
 import type { ConversationWorkerContext } from "@/chat/task-execution/worker";
 import { neverRunAgentRunner } from "../fixtures/agent-runner";
 import { createConfiguredJuniorSqlFixture } from "../fixtures/sql";
-import {
-  createLocalSource,
-} from "@sentry/junior-plugin-api";
+import { createLocalSource } from "@sentry/junior-plugin-api";
 const PARENT_CONVERSATION_ID = "local:test:component-parent-agent";
 const DESTINATION = {
   conversationId: PARENT_CONVERSATION_ID,
@@ -31,7 +29,6 @@ const DESTINATION = {
 const INVOCATION_INPUT = {
   actor: { name: "parent-agent", platform: "system" } as const,
   destination: DESTINATION,
-  destinationVisibility: "private" as const,
   input: "Summarize the durable task.",
   parentConversationId: PARENT_CONVERSATION_ID,
   reasoningLevel: "medium" as const,
@@ -76,7 +73,7 @@ describe("agent invocation worker", () => {
         actor: INVOCATION_INPUT.actor,
         conversationId: created.childConversationId,
         destination: DESTINATION,
-        piMessages: ([
+        piMessages: [
           {
             role: "assistant",
             content: [{ type: "text", text: "partial output" }],
@@ -100,7 +97,7 @@ describe("agent invocation worker", () => {
             stopReason: "stop",
             timestamp: 2,
           },
-        ] as PiMessage[]),
+        ] as PiMessage[],
         turnId,
         sliceId: 1,
         source: INVOCATION_INPUT.source,
