@@ -53,6 +53,7 @@ import {
 } from "@/chat/task-execution/slack-resource-event";
 import { stripLeadingSteeringOverride } from "@/chat/slack/message-control";
 import { botConfig, type CrossActorMidRunMode } from "@/chat/config";
+import { logWarn } from "@/chat/logging";
 
 const slackConversationRouteSchema = z.enum(["mention", "subscribed"]);
 export type SlackConversationRoute = z.output<
@@ -688,6 +689,20 @@ export function createSlackConversationWorker(
           destination: context.destination,
         })
       : undefined;
+    // TODO(dcramer): Temporary stopgap for JUNIOR-90 / #1563. This synthetic
+    // Message/Thread bridge requires a real Slack threadTs and cannot invent
+    // one. Event-task and channel-level Slack Locations often have none, so a
+    // throw here only multiplies worker retries and Sentry noise while delivery
+    // stays impossible. Ack-drop the wake once; remove this branch when Slack
+    // system turns start from Conversation Location without this bridge
+    // (slack-resource-event.ts deleted under #1563).
+    if (hasPlainResourceEvent && !resourceEventThread) {
+      logWarn("conversation.work.resource_event.missing_thread", {
+        "app.inbound.message_count": records.length,
+      });
+      await context.attempt.ack();
+      return { status: "completed" };
+    }
 
     const turnResult = await runWithSlackInstallation({
       adapter,
