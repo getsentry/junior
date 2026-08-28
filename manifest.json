@@ -1,0 +1,43 @@
+{
+  "commitSha": "100bb50eff813036f361b42328bc07f6cd6a27a4",
+  "mode": "path",
+  "reasons": [
+    "packages/junior-dashboard/e2e/user-pages.spec.ts",
+    "packages/junior-dashboard/src/client/App.tsx",
+    "packages/junior-dashboard/src/client/pages/memory/MemoryPageLayout.tsx",
+    "packages/junior-dashboard/src/client/pages/tasks/TasksPageLayout.tsx"
+  ],
+  "scenarioIds": [
+    "gallery-index",
+    "conversations",
+    "conversation-detail-focused",
+    "conversation-create-focused"
+  ],
+  "shots": [
+    {
+      "file": "gallery-index__desktop.png",
+      "label": "Component gallery index · desktop"
+    },
+    {
+      "file": "conversations__desktop.png",
+      "label": "Conversations · desktop"
+    },
+    {
+      "file": "conversations__mobile.png",
+      "label": "Conversations · mobile"
+    },
+    {
+      "file": "conversation-detail-focused__mobile.png",
+      "label": "Conversation detail · focused composer · mobile"
+    },
+    {
+      "file": "conversation-create-focused__desktop.png",
+      "label": "New conversation · landing compose · desktop"
+    },
+    {
+      "file": "conversation-create-focused__mobile.png",
+      "label": "New conversation · landing compose · mobile"
+    }
+  ],
+  "skipped": false
+}
