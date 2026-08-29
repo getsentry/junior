@@ -76,12 +76,24 @@ import { runScheduledTaskHeartbeat } from "@/chat/scheduled-tasks/heartbeat";
 import {
   buildDispatchRoutingContext,
   createAgentDispatchConversationWorker,
-  createAgentDispatchWorkRouter,
+  resolveAgentDispatchId,
 } from "@/chat/agent-dispatch/work";
 import {
+  createAgentInvocationWorker,
+  resolveAgentInvocationId,
+} from "@/chat/agent-invocations/work";
+import {
+  getDispatchConversationId,
   getDispatchInputMessageId,
   getDispatchRecord,
 } from "@/chat/agent-dispatch/store";
+import { createConversationTurnWorker } from "@/chat/task-execution/conversation-turn";
+import { resolveMailboxTurnWork } from "@/chat/task-execution/mailbox-turn";
+import type {
+  ConversationWorkerContext,
+  ConversationWorkerResult,
+} from "@/chat/task-execution/worker";
+import { createSlackSystemTurnPublisher } from "@/chat/providers/slack/system-turn";
 import { ingestResourceEvent } from "@/chat/resource-events/ingest";
 import { createResourceEventSubscription } from "@/chat/resource-events/store";
 import { ingestEventTasks } from "@/chat/event-tasks/ingest";
@@ -2134,55 +2146,95 @@ async function processEvents(args: {
   };
 
   const drainQueuedConversationWork = async (): Promise<void> => {
+    const wakePausedTurnForQueue = async (
+      request: Parameters<typeof wakePausedTurn>[0],
+    ) => {
+      await wakePausedTurn(request, {
+        queue: conversationWorkQueue,
+        state: env.stateAdapter,
+      });
+    };
+    const scheduleSessionCompletedPluginTasksForEval = async (
+      params: Parameters<typeof scheduleSessionCompletedPluginTasks>[0],
+    ) => {
+      await scheduleSessionCompletedPluginTasks(params, {
+        send: async (message) => {
+          await processEvalPluginTask(message);
+        },
+      });
+    };
     const slackWorker = createSlackConversationWorker({
       getSlackAdapter: () => getSlackAdapter() as unknown as SlackAdapter,
-      runNextPausedTurn: async (conversationId) =>
-        await runNextPausedTurn(conversationId, {
-          agentRunner,
-          wakePausedTurn: async (request) => {
-            await wakePausedTurn(request, {
-              queue: conversationWorkQueue,
-              state: env.stateAdapter,
-            });
+      runNextPausedTurn: async (conversationId, runOptions) =>
+        await runNextPausedTurn(
+          conversationId,
+          {
+            agentRunner,
+            wakePausedTurn: wakePausedTurnForQueue,
+            scheduleSessionCompletedPluginTasks:
+              scheduleSessionCompletedPluginTasksForEval,
           },
-          scheduleSessionCompletedPluginTasks: async (params) => {
-            await scheduleSessionCompletedPluginTasks(params, {
-              send: async (message) => {
-                await processEvalPluginTask(message);
-              },
-            });
-          },
-        }),
+          runOptions,
+        ),
       runtime: workerRuntime,
       state: env.stateAdapter,
     });
     const dispatchWorker = createAgentDispatchConversationWorker({
       resumeTurn: async (dispatch, hooks) => {
         await runNextPausedTurn(
-          `agent-dispatch:${dispatch.id}`,
+          getDispatchConversationId(dispatch),
           {
             agentRunner,
             inputMessageIds: [getDispatchInputMessageId(dispatch.id)],
             routingContext: buildDispatchRoutingContext(dispatch),
-            wakePausedTurn: async (request) => {
-              await wakePausedTurn(request, {
-                queue: conversationWorkQueue,
-                state: env.stateAdapter,
-              });
-            },
-            scheduleSessionCompletedPluginTasks: async (params) => {
-              await scheduleSessionCompletedPluginTasks(params, {
-                send: async (message) => {
-                  await processEvalPluginTask(message);
-                },
-              });
-            },
+            wakePausedTurn: wakePausedTurnForQueue,
+            scheduleSessionCompletedPluginTasks:
+              scheduleSessionCompletedPluginTasksForEval,
           },
           { shouldYield: hooks.shouldYield },
         );
       },
       runTurn: workerRuntime.runDispatchTurn,
     });
+    const invocationWorker = createAgentInvocationWorker(agentRunner);
+    const conversationTurnWorker = createConversationTurnWorker(
+      agentRunner,
+      createSlackSystemTurnPublisher({
+        getSlackAdapter: () => getSlackAdapter() as unknown as SlackAdapter,
+        state: env.stateAdapter,
+      }),
+    );
+    // Match createConversationWork routing: mailbox turns, invocations,
+    // dispatches, then destination workers. Keep the eval Slack runtime
+    // wrapper so replies land on harness TestThreads.
+    const run = async (
+      context: ConversationWorkerContext,
+    ): Promise<ConversationWorkerResult> => {
+      const mailboxTurn = await resolveMailboxTurnWork(context);
+      if (mailboxTurn) {
+        return await conversationTurnWorker(context, mailboxTurn);
+      }
+      const invocationId = await resolveAgentInvocationId(context);
+      if (invocationId) {
+        return await invocationWorker(context, invocationId);
+      }
+      const dispatchId = await resolveAgentDispatchId(context);
+      if (dispatchId) {
+        return await dispatchWorker(context, dispatchId);
+      }
+      const destination = context.destination;
+      if (!destination) {
+        throw new Error(
+          `Conversation ${context.conversationId} is missing a destination`,
+        );
+      }
+      if (destination.platform === "slack") {
+        return await slackWorker(context);
+      }
+      throw new Error(
+        `Conversation ${context.conversationId} has a ${destination.platform} destination but no matching conversation worker`,
+      );
+    };
     let processed = 0;
     while (conversationWorkQueue.hasQueuedMessages()) {
       processed += 1;
@@ -2193,10 +2245,7 @@ async function processEvents(args: {
         conversationWorkQueue.takeMessage(),
         {
           queue: conversationWorkQueue,
-          run: createAgentDispatchWorkRouter({
-            dispatchWorker,
-            fallbackWorker: slackWorker,
-          }),
+          run,
           state: env.stateAdapter,
         },
       );
