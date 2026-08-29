@@ -1,4 +1,4 @@
-/** Host-configurable GoCD connection settings. */
+/** GoCD connection settings supplied by the app. */
 
 export interface GocdPluginOptions {
   /**
@@ -6,11 +6,6 @@ export interface GocdPluginOptions {
    * When omitted, tools require `GOCD_URL`.
    */
   baseUrl?: string;
-}
-
-export interface ResolvedGocdTarget {
-  baseUrl: string;
-  host: string;
 }
 
 function parseBaseUrl(baseUrl: string): URL {
@@ -30,13 +25,15 @@ function parseBaseUrl(baseUrl: string): URL {
     url.search ||
     url.hash
   ) {
-    throw new Error("GoCD base URL must be an origin without a path or query");
+    throw new Error(
+      "GoCD base URL cannot include credentials, a path, a query, or a fragment",
+    );
   }
   return url;
 }
 
-/** Resolve a GoCD host from an absolute base URL. */
-export function hostFromBaseUrl(baseUrl: string): string {
+/** Return the hostname from a valid GoCD base URL. */
+export function hostnameFromBaseUrl(baseUrl: string): string {
   return parseBaseUrl(baseUrl).hostname;
 }
 
@@ -48,12 +45,8 @@ export function resolveGocdApiUrl(baseUrl: string, path: string): string {
   return `${parseBaseUrl(baseUrl).origin}${path}`;
 }
 
-/**
- * Resolve the GoCD target from plugin options or `GOCD_URL`.
- */
-export function resolveGocdTarget(
-  options: GocdPluginOptions = {},
-): ResolvedGocdTarget {
+/** Return the configured GoCD base URL. */
+export function resolveGocdBaseUrl(options: GocdPluginOptions = {}): string {
   const configuredBaseUrl = (
     options.baseUrl ??
     process.env.GOCD_URL ??
@@ -64,6 +57,5 @@ export function resolveGocdTarget(
       "GoCD base URL is required. Configure gocdPlugin({ baseUrl }) or set GOCD_URL.",
     );
   }
-  const url = parseBaseUrl(configuredBaseUrl);
-  return { baseUrl: url.origin, host: url.hostname };
+  return parseBaseUrl(configuredBaseUrl).origin;
 }

@@ -7,7 +7,7 @@ import {
 import { z } from "zod";
 import {
   resolveGocdApiUrl,
-  resolveGocdTarget,
+  resolveGocdBaseUrl,
   type GocdPluginOptions,
 } from "../config.js";
 
@@ -77,7 +77,7 @@ interface Result extends PluginToolOutput {
   failedJobs: string[];
 }
 
-/** Return one exact GoCD stage run and its jobs through Junior egress. */
+/** Return one exact GoCD stage run and its jobs. */
 export function createGocdStageTool(
   ctx: ToolRegistrationHookContext,
   options: GocdPluginOptions = {},
@@ -90,11 +90,11 @@ export function createGocdStageTool(
       readOnlyHint: true,
     },
     description:
-      "Fetch one exact GoCD stage run, its jobs, and failed job names. Identify the run with pipeline name, pipeline counter, stage name, and stage counter. Auth is injected at egress from host-managed credentials.",
+      "Fetch one exact GoCD stage run, its jobs, and failed job names. Identify the run with its pipeline name, pipeline counter, stage name, and stage counter.",
     inputSchema,
     outputSchema,
     async execute(input): Promise<Result> {
-      const target = resolveGocdTarget(options);
+      const baseUrl = resolveGocdBaseUrl(options);
       const path =
         `/go/api/stages/${encodeURIComponent(input.pipeline)}` +
         `/${encodeURIComponent(input.stage)}/instance` +
@@ -102,7 +102,7 @@ export function createGocdStageTool(
       const response = await ctx.egress.fetch({
         operation: "gocd.stage",
         provider: "gocd",
-        request: new Request(resolveGocdApiUrl(target.baseUrl, path), {
+        request: new Request(resolveGocdApiUrl(baseUrl, path), {
           headers: { Accept: "application/vnd.go.cd.v3+json" },
           method: "GET",
         }),
@@ -117,14 +117,14 @@ export function createGocdStageTool(
         state: job.state ?? "Unknown",
       }));
       const link = resolveGocdApiUrl(
-        target.baseUrl,
+        baseUrl,
         `/go/pipelines/${encodeURIComponent(input.pipeline)}` +
           `/${input.pipelineCounter}/${encodeURIComponent(input.stage)}` +
           `/${input.stageCounter}`,
       );
       return {
         target: "stage",
-        baseUrl: target.baseUrl,
+        baseUrl,
         link,
         pipeline: input.pipeline,
         pipelineCounter: input.pipelineCounter,

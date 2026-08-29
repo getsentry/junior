@@ -19,7 +19,7 @@ function toolFixture(
 }
 
 describe("GoCD pipeline history", () => {
-  it("fetches history through egress without reading secrets", async () => {
+  it("fetches history without reading credentials", async () => {
     const { fetch, tool } = toolFixture();
 
     await expect(
@@ -53,7 +53,7 @@ describe("GoCD pipeline history", () => {
     expect(fetch.mock.calls[0]?.[0]?.request.url).toContain("page_size=10");
   });
 
-  it("reports upstream failures", async () => {
+  it("reports GoCD failures", async () => {
     const { tool } = toolFixture(new Response("nope", { status: 403 }));
     await expect(
       tool.execute?.(

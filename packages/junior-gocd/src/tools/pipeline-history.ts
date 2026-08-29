@@ -7,7 +7,7 @@ import {
 import { z } from "zod";
 import {
   resolveGocdApiUrl,
-  resolveGocdTarget,
+  resolveGocdBaseUrl,
   type GocdPluginOptions,
 } from "../config.js";
 
@@ -33,11 +33,10 @@ interface Result extends PluginToolOutput {
 }
 
 /**
- * Return recent runs for one GoCD pipeline through Junior egress.
+ * Return recent runs for one GoCD pipeline.
  *
  * Uses GoCD 25.2.0 `GET /go/api/pipelines/:name/history` with Accept v1.
- * `page_size` must stay in 10..100; smaller counts are clamped then sliced.
- * Auth headers are injected by the runtime, not read in this tool.
+ * `page_size` must stay in 10..100. Smaller counts are clamped, then sliced.
  */
 export function createGocdPipelineHistoryTool(
   ctx: ToolRegistrationHookContext,
@@ -51,11 +50,11 @@ export function createGocdPipelineHistoryTool(
       readOnlyHint: true,
     },
     description:
-      "Fetch recent runs for an exact GoCD pipeline. Use this to inspect deployment history and stage or job outcomes. Auth is injected at egress from host-managed credentials.",
+      "Fetch recent runs for an exact GoCD pipeline. Use this to inspect deployment history and stage or job results.",
     inputSchema,
     outputSchema,
     async execute(input): Promise<Result> {
-      const target = resolveGocdTarget(options);
+      const baseUrl = resolveGocdBaseUrl(options);
       // GoCD 25.2.0 rejects page_size outside 10..100 with HTTP 404.
       const pageSize = Math.min(100, Math.max(10, input.count));
       const response = await ctx.egress.fetch({
@@ -63,7 +62,7 @@ export function createGocdPipelineHistoryTool(
         provider: "gocd",
         request: new Request(
           resolveGocdApiUrl(
-            target.baseUrl,
+            baseUrl,
             `/go/api/pipelines/${encodeURIComponent(input.pipeline)}/history?page_size=${pageSize}`,
           ),
           {
@@ -84,7 +83,7 @@ export function createGocdPipelineHistoryTool(
         .passthrough()
         .parse(await response.json());
       return {
-        baseUrl: target.baseUrl,
+        baseUrl,
         pipeline: input.pipeline,
         runs: body.pipelines.slice(0, input.count),
         target: "pipeline_history",

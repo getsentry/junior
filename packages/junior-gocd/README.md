@@ -1,12 +1,6 @@
 # @sentry/junior-gocd
 
-`@sentry/junior-gocd` adds generic read-only GoCD tools to Junior.
-
-This package is host-agnostic:
-
-- tools call GoCD through `ctx.egress.fetch`
-- Junior injects host-managed auth headers at egress
-- deploy topology and private host defaults stay out of this package
+`@sentry/junior-gocd` adds read-only GoCD tools to Junior. The package does not contain settings for a specific GoCD deployment.
 
 ## Install
 
@@ -16,33 +10,22 @@ import { gocdPlugin } from "@sentry/junior-gocd";
 
 export const plugins = defineJuniorPlugins([
   gocdPlugin({
-    // Optional. You can also set GOCD_URL in the host environment.
+    // Optional. You can set GOCD_URL instead.
     baseUrl: "https://gocd.example.com",
   }),
 ]);
 ```
 
-## Environment
+## Configuration
 
-| Variable            | Required                    | Notes                                                                       |
-| ------------------- | --------------------------- | --------------------------------------------------------------------------- |
-| `GOCD_URL`          | when `baseUrl` is omitted   | Absolute https GoCD origin, for example `https://gocd.example.com`          |
-| `GOCD_ACCESS_TOKEN` | for the default bearer path | Read-only GoCD API token. Injected by Junior as `Authorization: bearer ...` |
+| Variable            | Required                  | Use                                                                 |
+| ------------------- | ------------------------- | ------------------------------------------------------------------- |
+| `GOCD_URL`          | when `baseUrl` is omitted | The HTTPS base URL for GoCD, such as `https://gocd.example.com`     |
+| `GOCD_ACCESS_TOKEN` | for token authentication  | A read-only GoCD API token used as the `Authorization` bearer token |
 
-### Static bearer headers
+The configured base URL cannot change during a tool call. Junior allows network access and adds credentials for the domain when it registers the plugin.
 
-When you pass only `baseUrl` / `GOCD_URL`, the plugin declares:
-
-- `domains: [<host>]`
-- `apiHeaders.Authorization: bearer ${GOCD_ACCESS_TOKEN}`
-
-### Host credential hooks
-
-Hosts that need extra headers (for example Google IAP `Proxy-Authorization`)
-should pass `hooks.grantForEgress` and `hooks.issueCredential`. In that mode the
-plugin keeps `domains` and omits static `apiHeaders`, matching Junior's egress
-credential contract. Keep private proxy defaults and service-account names in
-the host app, not this package.
+For services such as Google IAP, the app can supply `grantForEgress` and `issueCredential` hooks instead of `GOCD_ACCESS_TOKEN`:
 
 ```ts
 gocdPlugin({
@@ -52,11 +35,10 @@ gocdPlugin({
       return {
         access: "read",
         name: "gocd-read",
-        reason: "read-only GoCD API access",
+        reason: "read GoCD data",
       };
     },
     async issueCredential() {
-      // Mint short-lived header transforms for owned domains.
       return {
         type: "lease",
         lease: {
@@ -79,19 +61,13 @@ gocdPlugin({
 
 ## Tools
 
-- `pipelineHistory`: recent runs for one exact pipeline name
-- `stage`: one exact stage run with its jobs and failed job names
+- `pipelineHistory`: returns recent runs for one pipeline
+- `stage`: returns one stage run, its jobs, and failed job names
 
-API usage is checked against GoCD **25.2.0**:
+The tools use the GoCD 25.2.0 API:
 
-- bearer auth: `Authorization: bearer <token>`
-- history: `GET /go/api/pipelines/:name/history` with `Accept: application/vnd.go.cd.v1+json`
-- stage: `GET /go/api/stages/:pipeline_name/:stage_name/instance/:pipeline_counter/:stage_counter` with `Accept: application/vnd.go.cd.v3+json`
-- `page_size` clamped to 10..100 per server rules
+- pipeline history: `GET /go/api/pipelines/:name/history` with `Accept: application/vnd.go.cd.v1+json`
+- stage run: `GET /go/api/stages/:pipeline_name/:stage_name/instance/:pipeline_counter/:stage_counter` with `Accept: application/vnd.go.cd.v3+json`
+- pipeline history limits `page_size` to 10 through 100
 
-## Notes
-
-Register this package from the host app that owns your GoCD deployment. The
-base URL is fixed at registration because Junior binds egress domains and auth
-headers to that host. Keep environment-specific pipeline names, regions, and
-deploy topology in host skills or private plugins.
+Keep pipeline names and other deployment-specific settings in the app that registers this plugin.

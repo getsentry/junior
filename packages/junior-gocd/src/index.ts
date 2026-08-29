@@ -1,9 +1,8 @@
 /**
  * GoCD plugin runtime boundary.
  *
- * This package owns generic read-only GoCD tools. Host deployments supply the
- * GoCD base URL and inject authentication at Junior egress. Do not put
- * environment-specific deploy topology or private host defaults here.
+ * This package owns general read-only GoCD tools. The app supplies the GoCD
+ * base URL and authentication. Keep deployment-specific settings in the app.
  */
 import {
   defineJuniorPlugin,
@@ -11,7 +10,7 @@ import {
   type PluginManifest,
   type PluginRegistration,
 } from "@sentry/junior-plugin-api";
-import { hostFromBaseUrl, type GocdPluginOptions } from "./config.js";
+import { hostnameFromBaseUrl, type GocdPluginOptions } from "./config.js";
 import { createGocdPipelineHistoryTool } from "./tools/pipeline-history.js";
 import { createGocdStageTool } from "./tools/stage.js";
 
@@ -22,33 +21,31 @@ export type GocdCredentialHooks = Pick<
 
 export interface GocdPluginRegistrationOptions extends GocdPluginOptions {
   /**
-   * Optional host-owned egress credential hooks.
-   * When set, the plugin declares domains only and lets the host mint headers.
-   * When omitted and a host is known, static bearer `apiHeaders` are used.
+   * Optional credential hooks supplied by the app.
+   * When omitted, Junior uses `GOCD_ACCESS_TOKEN` for the configured domain.
    */
   hooks?: GocdCredentialHooks;
 }
 
-function resolveManifestHost(
+function resolveManifestHostname(
   options: GocdPluginRegistrationOptions,
 ): string | undefined {
   const baseUrl = (options.baseUrl ?? process.env.GOCD_URL ?? "").trim();
   if (!baseUrl) return undefined;
-  return hostFromBaseUrl(baseUrl);
+  return hostnameFromBaseUrl(baseUrl);
 }
 
-/** Register read-only GoCD tools that authenticate through Junior egress. */
+/** Register read-only GoCD tools. */
 export function gocdPlugin(
   options: GocdPluginRegistrationOptions = {},
 ): PluginRegistration {
-  const host = resolveManifestHost(options);
+  const hostname = resolveManifestHostname(options);
   const credentialHooks = options.hooks;
   const usesCredentialHooks = Boolean(
     credentialHooks?.grantForEgress || credentialHooks?.issueCredential,
   );
   const manifest: PluginManifest = {
-    description:
-      "Query GoCD pipeline history through host-managed egress credentials",
+    description: "Read GoCD pipeline and stage results",
     displayName: "GoCD",
     envVars: {
       GOCD_ACCESS_TOKEN: {},
@@ -56,8 +53,8 @@ export function gocdPlugin(
     },
     name: "gocd",
   };
-  if (host) {
-    manifest.domains = [host];
+  if (hostname) {
+    manifest.domains = [hostname];
     if (!usesCredentialHooks) {
       manifest.apiHeaders = {
         Authorization: "bearer ${GOCD_ACCESS_TOKEN}",
@@ -90,9 +87,8 @@ export function gocdPlugin(
 }
 
 export {
-  hostFromBaseUrl,
+  hostnameFromBaseUrl,
   resolveGocdApiUrl,
-  resolveGocdTarget,
+  resolveGocdBaseUrl,
   type GocdPluginOptions,
-  type ResolvedGocdTarget,
 } from "./config.js";

@@ -6,7 +6,7 @@ afterEach(() => {
 });
 
 describe("gocdPlugin", () => {
-  it("stays host-agnostic until a base URL is configured", () => {
+  it("omits network settings until a base URL is configured", () => {
     vi.stubEnv("GOCD_URL", "");
     const plugin = gocdPlugin();
     expect(plugin.packageName).toBe("@sentry/junior-gocd");
@@ -21,7 +21,7 @@ describe("gocdPlugin", () => {
     expect(plugin.manifest.apiHeaders).toBeUndefined();
   });
 
-  it("declares egress domains and bearer injection from the host base URL", () => {
+  it("allows the configured domain and adds the bearer token", () => {
     const plugin = gocdPlugin({ baseUrl: "https://gocd.example.com:8154" });
     expect(plugin.manifest).toMatchObject({
       apiHeaders: {
@@ -39,7 +39,7 @@ describe("gocdPlugin", () => {
     });
   });
 
-  it("can derive the egress domain from GOCD_URL", () => {
+  it("uses the domain from GOCD_URL", () => {
     vi.stubEnv("GOCD_URL", "https://ci.example.org");
     expect(gocdPlugin().manifest.domains).toEqual(["ci.example.org"]);
   });

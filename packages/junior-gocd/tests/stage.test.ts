@@ -33,7 +33,7 @@ const input = {
 };
 
 describe("GoCD stage", () => {
-  it("returns the HAL stage jobs, failed job names, and a stable link", async () => {
+  it("returns stage jobs, failed job names, and a link", async () => {
     const { fetch, tool } = toolFixture();
 
     await expect(
@@ -69,7 +69,7 @@ describe("GoCD stage", () => {
     expect(request.headers.get("Authorization")).toBeNull();
   });
 
-  it("reports upstream failures", async () => {
+  it("reports GoCD failures", async () => {
     const { tool } = toolFixture(new Response("nope", { status: 404 }));
     await expect(
       tool.execute?.(input, { toolCallId: "stage-missing" }),
