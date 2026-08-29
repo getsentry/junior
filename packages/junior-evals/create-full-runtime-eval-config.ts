@@ -32,7 +32,7 @@ export type FullRuntimeEvalSuiteOptions = {
  * Shared Vitest config for full Slack/runtime eval suites.
  *
  * Suite configs stay thin: name, include/exclude, and optional env/setup only.
- * Guardian stays on its own lightweight config.
+ * Guardian and output-router stay on their own lightweight configs.
  */
 export function createFullRuntimeEvalConfig(
   options: FullRuntimeEvalSuiteOptions,

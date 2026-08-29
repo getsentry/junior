@@ -1,23 +1,16 @@
 /**
- * Conversation coverage for the optional visible-reply prepare path.
+ * Isolated visible-reply prepare corpus.
  *
- * These cases run the full Slack/runtime harness with scripted assistant
- * text, then assert what actually posts after prepare. Fixtures are
- * transcript-shaped (real long answers, silence tags, protocol explanations).
+ * Each case feeds real assistant-message text into prepareAssistantReply and
+ * asserts silent vs reply. This suite does not run the main agent or Slack
+ * transport. Delivery wiring is covered elsewhere.
  */
 import { describeEval } from "vitest-evals";
-import { expect } from "vitest";
 import { NO_REPLY_MARKER } from "@/chat/no-reply";
 import { OUTPUT_REPLY_SOFT_MAX_CHARS } from "@/chat/services/output-router";
-import {
-  mention,
-  rubric,
-  slackEvals,
-  visibleAssistantText,
-  visibleThreadReplies,
-} from "../../src/helpers";
+import { outputRouterEvals } from "../../src/output-router-harness";
 
-/** Real long steering comparison that should not post as a wall of text. */
+/** Real long steering comparison that should not remain a wall of text. */
 const LONG_STEERING_ESSAY = [
   "**yeah — steering is the weaker half of this comparison.** openclaw treats mid-run guidance as the default path; junior treats it as a gated special case. that mismatch is the reliability gap.",
   "",
@@ -76,99 +69,62 @@ const LONG_STEERING_ESSAY = [
   "want me to turn that into a concrete junior issue/PR plan?",
 ].join("\n");
 
-describeEval("Visible Reply Prepare", slackEvals, (it) => {
-  it("when the assistant writes a long explanatory essay, post a short reply", async ({
+/** Real maintain-PR status chatter that should stay silent. */
+const STATUS_ONLY_WITH_MARKER = [
+  "Same main baseline miss on createAgentDispatchWorkRouter — not caused by this PR. No PR fix.",
+  "",
+  NO_REPLY_MARKER,
+].join("\n");
+
+/** Real explanation of silence that must stay a reply. */
+const SILENCE_PROTOCOL_EXPLANATION = [
+  `Intentional silence uses the exact whole-message marker ${NO_REPLY_MARKER}.`,
+  "If the marker is only mentioned in a normal answer, that answer should still post.",
+  "Only a message that is exactly the marker stays silent.",
+].join(" ");
+
+describeEval("Visible Reply Prepare", outputRouterEvals, (it) => {
+  it("when the assistant writes a long explanatory essay, return a short reply", async ({
     run,
   }) => {
-    expect(LONG_STEERING_ESSAY.length).toBeGreaterThan(
-      OUTPUT_REPLY_SOFT_MAX_CHARS,
-    );
+    if (LONG_STEERING_ESSAY.length <= OUTPUT_REPLY_SOFT_MAX_CHARS) {
+      throw new Error("fixture must exceed the soft max length");
+    }
 
-    const result = await run({
-      overrides: {
-        reply_texts: [LONG_STEERING_ESSAY],
-      },
-      initialEvents: [
-        mention(
-          "how does junior steering compare to openclaw? keep it practical",
-        ),
-      ],
-      requireSandboxReady: false,
-      criteria: rubric({
-        pass: [
-          "The reply is short and readable for Slack (about a few sentences or a tight bullet list).",
-          "The reply still covers the core gap: junior steers less by default and later than openclaw.",
-        ],
-        fail: [
-          "Do not post the full multi-section essay, markdown table, or long numbered parity plan as the visible reply.",
-          "Do not open with process narration about checking docs or writing an essay.",
-        ],
-      }),
+    await run({
+      text: LONG_STEERING_ESSAY,
+      expectedKind: "reply",
+      maxChars: OUTPUT_REPLY_SOFT_MAX_CHARS,
+      mustInclude: ["steer"],
+      mustNotInclude: ["### what openclaw does", "| situation | junior |"],
     });
-
-    expect(visibleThreadReplies(result.session)).toHaveLength(1);
-    expect(visibleAssistantText(result.session).length).toBeLessThanOrEqual(
-      OUTPUT_REPLY_SOFT_MAX_CHARS,
-    );
   });
 
   it("when maintain work ends with status chatter and a silence marker, stay silent", async ({
     run,
   }) => {
-    const result = await run({
-      overrides: {
-        reply_texts: [
-          [
-            "Same main baseline miss on createAgentDispatchWorkRouter — not caused by this PR. No PR fix.",
-            "",
-            NO_REPLY_MARKER,
-          ].join("\n"),
-        ],
-      },
-      initialEvents: [
-        mention(
-          "check the PR checks for the guardian ordinary-writes change and only ping if something needs a fix",
-        ),
-      ],
-      requireSandboxReady: false,
+    await run({
+      text: STATUS_ONLY_WITH_MARKER,
+      expectedKind: "silent",
     });
-
-    expect(visibleThreadReplies(result.session)).toEqual([]);
-    expect(visibleAssistantText(result.session)).not.toContain(NO_REPLY_MARKER);
   });
 
-  it("when asked how silence works, keep the explanation visible", async ({
+  it("when the message explains how silence works, keep the explanation", async ({
     run,
   }) => {
-    const result = await run({
-      overrides: {
-        reply_texts: [
-          [
-            `Intentional silence uses the exact whole-message marker ${NO_REPLY_MARKER}.`,
-            "If the marker is only mentioned in a normal answer, that answer should still post.",
-            "Only a message that is exactly the marker stays silent.",
-          ].join(" "),
-        ],
-      },
-      initialEvents: [
-        mention(
-          "how does junior's no-reply marker work? when does a message stay silent?",
-        ),
-      ],
-      requireSandboxReady: false,
-      criteria: rubric({
-        pass: [
-          "The reply explains that silence requires the whole message to be the marker, and that ordinary answers can still mention it.",
-        ],
-        fail: [
-          "Do not stay silent or drop the explanation just because the marker string appears in the answer.",
-        ],
-      }),
+    await run({
+      text: SILENCE_PROTOCOL_EXPLANATION,
+      expectedKind: "reply",
+      mustInclude: ["marker", "exact"],
     });
+  });
 
-    expect(visibleThreadReplies(result.session)).toHaveLength(1);
-    const text = visibleAssistantText(result.session);
-    expect(text.length).toBeGreaterThan(0);
-    expect(/silence|marker|exact/i.test(text)).toBe(true);
+  it("when the whole message is only the silence marker, stay silent", async ({
+    run,
+  }) => {
+    await run({
+      text: NO_REPLY_MARKER,
+      expectedKind: "silent",
+    });
   });
 });

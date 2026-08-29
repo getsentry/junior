@@ -1,7 +1,7 @@
 import { createFullRuntimeEvalConfig } from "./create-full-runtime-eval-config";
 
-// Behavioral quality cases. Integration, Guardian, and output-router have their
-// own suite configs.
+// Behavioral quality cases. Integration, Guardian, and output-router each have
+// their own suite configs.
 export default createFullRuntimeEvalConfig({
   name: "behavioral",
   include: ["evals/**/*.eval.ts"],
