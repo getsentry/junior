@@ -494,7 +494,10 @@ async function executeAgentRunInPrivacyContext(
         return text ? [text] : [];
       }) ?? [];
     if (!resumedFromSessionRecord || guardianIntentParts.length === 0) {
-      guardianIntentParts.push(userInput);
+      // Bare @mentions are normal Slack "continue this thread" nudges. After
+      // bot-mention strip the instruction is empty; keep a non-blank marker so
+      // action review can still run against thread evidence.
+      guardianIntentParts.push(userInput.trim() || "[empty]");
     }
     const currentUserIntent = (): string => guardianIntentParts.join("\n\n");
     resume = createResumeState({
