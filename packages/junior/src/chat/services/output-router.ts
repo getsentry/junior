@@ -76,9 +76,10 @@ function buildSystemPrompt(): string {
     "- reason: one short sentence",
     "",
     "Rules:",
-    `- Set text to null when there is no user-facing answer: empty text, only ${NO_REPLY_MARKER}, or status/process chatter that only exists to stay silent.`,
-    `- If the message mixes ${NO_REPLY_MARKER} with a real answer, keep the answer and remove the marker from visible text.`,
-    `- Do not silence a message only because it contains the string ${NO_REPLY_MARKER}. Judge whether the user still needs a visible reply.`,
+    `- Set text to null only when there is no user-facing answer: empty text, only ${NO_REPLY_MARKER}, or status/process chatter that only exists to stay silent.`,
+    `- A real answer must stay a reply even if it contains ${NO_REPLY_MARKER}. That includes explanations of how silence works, quotes of the marker, or discussion of the protocol.`,
+    `- If ${NO_REPLY_MARKER} is only a trailing silence tag after a real answer, keep the answer and drop the tag.`,
+    `- If the answer itself is about the marker, keep the marker text when the user needs it.`,
     `- Keep short clear replies as-is (about ${OUTPUT_REPLY_SOFT_MAX_CHARS} characters or less).`,
     "- If the reply is too long, shorten it. Keep the answer, key facts, links, and next steps. Do not add facts.",
     "- Prefer 1-5 short sentences when shortening.",
@@ -92,16 +93,6 @@ function buildUserPrompt(text: string): string {
       ? text
       : `${text.slice(0, OUTPUT_ROUTER_PROMPT_MAX_CHARS)}\n…[truncated]…`;
   return body;
-}
-
-function stripNoReplyMarker(text: string): string {
-  return sanitizeAssistantText(
-    text
-      .split(NO_REPLY_MARKER)
-      .join(" ")
-      .replace(/[ \t]+\n/g, "\n")
-      .replace(/\n{3,}/g, "\n\n"),
-  );
 }
 
 function capVisibleText(text: string): string {
@@ -161,19 +152,15 @@ function finalizeModelResult(
     return silent(reason, costUsd);
   }
 
-  let text = sanitizeAssistantText(parsed.text);
+  const text = sanitizeAssistantText(parsed.text);
   if (!text) {
     // Model returned blank text. Keep the original visible reply.
     return reply(originalText, `empty_model_text:${reason}`, costUsd);
   }
+  // Exact marker-only output is silence. Otherwise trust the model text,
+  // including answers that mention or explain the marker.
   if (isNoReplyMarker(text)) {
     return silent(`model_no_reply:${reason}`, costUsd);
-  }
-  if (text.includes(NO_REPLY_MARKER)) {
-    text = stripNoReplyMarker(text);
-    if (!text) {
-      return silent(`model_no_reply:${reason}`, costUsd);
-    }
   }
   return reply(capVisibleText(text), reason, costUsd);
 }

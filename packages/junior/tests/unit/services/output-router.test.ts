@@ -106,6 +106,31 @@ describe("prepare assistant reply", () => {
     expect(completeObject).toHaveBeenCalledOnce();
   });
 
+  it("keeps explanations that mention the silence marker", async () => {
+    const explanation = [
+      `Intentional silence uses the exact whole-message marker ${NO_REPLY_MARKER}.`,
+      "Normal answers that mention the marker should still post.",
+    ].join(" ");
+    const completeObject = vi.fn(async () => ({
+      object: {
+        text: explanation,
+        reason: "explains silence protocol",
+      },
+    }));
+
+    await expect(
+      prepareAssistantReply({
+        completeObject,
+        fastModelId: "openai/gpt-5.6-luna",
+        text: explanation,
+      }),
+    ).resolves.toEqual({
+      kind: "reply",
+      text: explanation,
+      reason: "explains silence protocol",
+    });
+  });
+
   it("asks the fast model to shorten long replies", async () => {
     const completeObject = vi.fn(async () => ({
       costUsd: 0.0004,

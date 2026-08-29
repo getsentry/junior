@@ -44,9 +44,23 @@ describeEval("Visible Reply Prepare", outputRouterEvals, (it) => {
     if (!text.toLowerCase().includes("earlier turn")) {
       throw new Error(`Expected the real answer to remain visible, got: ${text}`);
     }
-    if (text.includes(NO_REPLY_MARKER)) {
+  });
+
+  it("when the message explains how the silence marker works, keep the answer", async ({
+    run,
+  }) => {
+    const result = await run({
+      expectedKind: "reply",
+      text: [
+        `Intentional silence uses the exact whole-message marker ${NO_REPLY_MARKER}.`,
+        "If the marker is only mentioned in a normal answer, that answer should still post.",
+        "Only a message that is exactly the marker stays silent.",
+      ].join(" "),
+    });
+    const text = String(result.output.text ?? "");
+    if (!/silence|marker|exact/i.test(text)) {
       throw new Error(
-        `Expected the marker removed from visible text, got: ${text}`,
+        `Expected the explanation to remain visible, got: ${text}`,
       );
     }
   });
