@@ -1,4 +1,4 @@
-name: Guardian evals
+name: Output-router evals
 
 permissions:
   contents: read
@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   select:
-    name: guardian / select
+    name: output-router / select
     runs-on: blacksmith-4vcpu-ubuntu-2404
     outputs:
       should_run: ${{ steps.decision.outputs.should_run }}
@@ -29,14 +29,14 @@ jobs:
         with:
           filters: |
             relevant:
-              - 'packages/junior-evals/evals/guardian/**'
-              - 'packages/junior-evals/src/guardian-harness.ts'
-              - 'packages/junior-evals/src/guardian-setup.ts'
+              - 'packages/junior-evals/evals/output-router/**'
+              - 'packages/junior-evals/src/output-router-harness.ts'
+              - 'packages/junior-evals/src/output-router-setup.ts'
               - 'packages/junior-evals/src/eval-ai-gateway-dispatcher.ts'
-              - 'packages/junior-evals/guardian-global-setup.ts'
-              - 'packages/junior-evals/vitest.evals.guardian.config.ts'
+              - 'packages/junior-evals/output-router-global-setup.ts'
+              - 'packages/junior-evals/vitest.evals.output-router.config.ts'
               - 'packages/junior-evals/package.json'
-              - 'packages/junior/src/chat/services/guardian-action-policy.ts'
+              - 'packages/junior/src/chat/services/output-router.ts'
       - id: decision
         env:
           AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
@@ -50,7 +50,7 @@ jobs:
           [[ -n "${AI_GATEWAY_API_KEY:-}" || -n "${VERCEL_OIDC_TOKEN:-}" ]] && gateway_ready=true
           IFS=',' read -r -a labels <<< "${PR_LABELS:-}"
           for label in "${labels[@]}"; do
-            if [[ "$label" == "trigger-evals" || "$label" == "trigger-evals-guardian" ]]; then
+            if [[ "$label" == "trigger-evals" || "$label" == "trigger-evals-output-router" ]]; then
               requested=true
             fi
           done
@@ -58,7 +58,7 @@ jobs:
           [[ "$gateway_ready" == "true" && ( "$RELEVANT" == "true" || "$requested" == "true" ) ]] && should_run=true
           echo "should_run=$should_run" >> "$GITHUB_OUTPUT"
           {
-            echo "## Guardian eval selection"
+            echo "## Output-router eval selection"
             echo
             echo "- relevant_files_changed: $RELEVANT"
             echo "- requested: $requested"
@@ -66,8 +66,8 @@ jobs:
             echo "- will_run: $should_run"
           } >> "$GITHUB_STEP_SUMMARY"
 
-  guardian:
-    name: guardian / run
+  output_router:
+    name: output-router / run
     needs: select
     if: needs.select.outputs.should_run == 'true'
     runs-on: blacksmith-4vcpu-ubuntu-2404
@@ -77,36 +77,36 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node-pnpm
-      - name: Run Guardian evals
+      - name: Run output-router evals
         id: run
         continue-on-error: true
         env:
-          VITEST_EVALS_OUTPUT_FILE: guardian-results.json
+          VITEST_EVALS_OUTPUT_FILE: output-router-results.json
           VITEST_EVALS_REPORT_LEVEL: info
-        run: pnpm --filter @sentry/junior-evals evals:guardian
-      - name: Require Guardian eval results
+        run: pnpm --filter @sentry/junior-evals evals:output-router
+      - name: Require output-router eval results
         id: results
         if: steps.run.conclusion != 'skipped'
         run: |
           set -euo pipefail
-          result_file="packages/junior-evals/guardian-results.json"
+          result_file="packages/junior-evals/output-router-results.json"
           if [[ ! -f "$result_file" ]]; then
-            echo "::error::missing guardian eval results ($result_file). Treat setup/runtime crashes as hard failures."
+            echo "::error::missing output-router eval results ($result_file). Treat setup/runtime crashes as hard failures."
             exit 1
           fi
-      - name: Publish Guardian eval summary
+      - name: Publish output-router eval summary
         if: steps.results.conclusion == 'success'
         uses: getsentry/vitest-evals@v0.16.1
         with:
-          results: packages/junior-evals/guardian-results.json
+          results: packages/junior-evals/output-router-results.json
           publish-check: true
-          check-name: guardian / score
+          check-name: output-router / score
           fail-on-failures: true
-      - name: Upload Guardian eval results
+      - name: Upload output-router eval results
         if: steps.results.conclusion == 'success'
         uses: actions/upload-artifact@v4
         with:
-          name: guardian-evals
-          path: packages/junior-evals/guardian-results.json
+          name: output-router-evals
+          path: packages/junior-evals/output-router-results.json
           if-no-files-found: error
           retention-days: 7

@@ -1,5 +1,5 @@
 /**
- * Isolated output-router harness.
+ * Isolated visible-reply prepare harness.
  *
  * Feeds exact assistant message text to prepareAssistantReply without running
  * the main agent, Slack transport, sandbox egress, or Postgres.
@@ -48,7 +48,7 @@ function resolveFastModelId(): string {
   return "openai/gpt-5.6-luna";
 }
 
-/** Run one assistant message through the production output-router boundary. */
+/** Run one assistant message through the production prepare path. */
 export async function prepareOutputRouterReply(
   text: string,
   options?: { signal?: AbortSignal },
@@ -64,7 +64,7 @@ export async function prepareOutputRouterReply(
   });
 }
 
-/** Lightweight vitest-evals harness for isolated output-router cases. */
+/** Lightweight vitest-evals harness for isolated visible-reply prepare cases. */
 export const outputRouterHarness = createHarness<
   OutputRouterEvalInput,
   OutputRouterEvalOutput
@@ -92,7 +92,7 @@ export const outputRouterHarness = createHarness<
 
     if (kind !== input.expectedKind) {
       throw new Error(
-        `Output router decided ${kind} (${prepared.reason}); expected ${input.expectedKind}`,
+        `Prepare path decided ${kind} (${prepared.reason}); expected ${input.expectedKind}`,
       );
     }
     if (
@@ -101,7 +101,7 @@ export const outputRouterHarness = createHarness<
       (text?.length ?? 0) > input.maxVisibleChars
     ) {
       throw new Error(
-        `Output router reply length ${text?.length ?? 0} exceeds maxVisibleChars ${input.maxVisibleChars}`,
+        `Visible reply length ${text?.length ?? 0} exceeds maxVisibleChars ${input.maxVisibleChars}`,
       );
     }
 
@@ -141,7 +141,7 @@ export const outputRouterHarness = createHarness<
   },
 });
 
-/** Shared vitest-evals suite options for isolated output-router evals. */
+/** Shared vitest-evals suite options for isolated visible-reply prepare evals. */
 export const outputRouterEvals = {
   harness: outputRouterHarness,
   // Exact kind match is asserted in the harness; no rubric judge.

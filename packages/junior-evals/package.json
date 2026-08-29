@@ -10,6 +10,7 @@
     "evals:behavioral": "vitest run -c vitest.evals.behavioral.config.ts",
     "evals:integration": "vitest run -c vitest.evals.integration.config.ts",
     "evals:guardian": "vitest run -c vitest.evals.guardian.config.ts",
+    "evals:output-router": "vitest run -c vitest.evals.output-router.config.ts",
     "evals:record": "VITEST_EVALS_REPLAY_MODE=record vitest run -c vitest.evals.behavioral.config.ts"
   },
   "devDependencies": {

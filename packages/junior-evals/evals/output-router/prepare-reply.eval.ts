@@ -1,16 +1,15 @@
 /**
- * Isolated output-router corpus.
+ * Isolated visible-reply prepare cases.
  *
  * Each case feeds exact assistant message text to prepareAssistantReply and
- * asserts only silent vs reply. Fixtures are real failure shapes, not product
- * prompt examples.
+ * asserts only silent vs reply. Keep fixtures real-world and transcript-shaped.
  */
 import { describeEval } from "vitest-evals";
 import { NO_REPLY_MARKER } from "@/chat/no-reply";
 import { OUTPUT_REPLY_SOFT_MAX_CHARS } from "@/chat/services/output-router";
 import { outputRouterEvals } from "../../src/output-router-harness";
 
-describeEval("Output Router Snapshots", outputRouterEvals, (it) => {
+describeEval("Visible Reply Prepare", outputRouterEvals, (it) => {
   it("when the whole message is the silence marker, stay silent", async ({
     run,
   }) => {
@@ -23,7 +22,7 @@ describeEval("Output Router Snapshots", outputRouterEvals, (it) => {
   it("when status-only chatter ends with the silence marker, stay silent", async ({
     run,
   }) => {
-    // Real maintain-PR shape: process note + protocol silence, no user answer.
+    // Real maintain-PR shape: process note + silence marker, no user answer.
     await run({
       expectedKind: "silent",
       text: [
@@ -46,7 +45,9 @@ describeEval("Output Router Snapshots", outputRouterEvals, (it) => {
       throw new Error(`Expected the real answer to remain visible, got: ${text}`);
     }
     if (text.includes(NO_REPLY_MARKER)) {
-      throw new Error(`Expected the marker stripped from visible text, got: ${text}`);
+      throw new Error(
+        `Expected the marker removed from visible text, got: ${text}`,
+      );
     }
   });
 
