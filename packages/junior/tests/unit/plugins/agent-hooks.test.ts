@@ -1991,10 +1991,11 @@ describe("getPluginTools channel resolution", () => {
     expect(ctx.slack?.channelCapabilities.canPostToChannel).toBe(false);
   });
 
-  it("exposes Slack context for system work in a Slack Conversation", () => {
+  it("exposes Slack context and Actor for an Agent invocation", () => {
     const ctx = capturePluginContext({
-      conversationId: "agent-dispatch:dispatch-1",
-      source: { kind: "scheduled_task" },
+      conversationId: "agent-invocation:invocation-1",
+      source: { kind: "agent_invocation" },
+      actor: TEST_ACTOR,
       destination: SLACK_DESTINATION,
       location: {
         id: "location:T123:DDM",
@@ -2006,7 +2007,8 @@ describe("getPluginTools channel resolution", () => {
       workspace: {} as any,
     });
 
-    expect(ctx.source).toEqual({ kind: "scheduled_task" });
+    expect(ctx.source).toEqual({ kind: "agent_invocation" });
+    expect(ctx.actor).toEqual(TEST_ACTOR);
     expect(ctx.slack?.channelCapabilities.canCreateCanvas).toBe(true);
   });
 

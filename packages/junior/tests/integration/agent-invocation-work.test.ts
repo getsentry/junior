@@ -64,6 +64,11 @@ const slackSource = createSlackSource({
 });
 const slackInvocationInput = {
   ...invocationInput,
+  actor: {
+    platform: "slack",
+    teamId: "T123",
+    userId: "U123",
+  } as const,
   destination: slackDestination,
   parentConversationId: slackParentConversationId,
 };

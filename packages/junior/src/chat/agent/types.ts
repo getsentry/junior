@@ -361,7 +361,8 @@ export function assertRunConsistency(
     case "event_task":
     case "plugin_dispatch":
     case "agent_invocation":
-      break;
+      // These Sources do not identify the Actor's platform.
+      return;
   }
 
   const actor = run.dispatch?.actor ?? run.actor;

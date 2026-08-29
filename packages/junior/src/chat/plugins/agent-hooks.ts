@@ -211,7 +211,7 @@ function pluginInvocationContext(
     case "agent_invocation":
       return {
         ...common,
-        actor: context.actor?.platform === "system" ? context.actor : undefined,
+        actor: context.actor,
         destination: context.destination,
         source: context.source,
       };
@@ -759,8 +759,7 @@ export function getPluginTools(
       case "agent_invocation":
         pluginContext = {
           ...common,
-          actor:
-            context.actor?.platform === "system" ? context.actor : undefined,
+          actor: context.actor,
           destination: context.destination,
           source: context.source,
         };

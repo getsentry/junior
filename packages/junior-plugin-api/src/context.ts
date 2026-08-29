@@ -129,7 +129,7 @@ export interface WebInvocationContext extends BaseInvocationContext {
 export interface ResourceEventInvocationContext extends BaseInvocationContext {
   /** Existing conversation destination used for tool context. */
   destination: Destination;
-  actor?: SystemActor;
+  actor?: Actor;
   /** Runtime-owned Resource event Source for this invocation. */
   source: ResourceEventSource;
 }
@@ -140,7 +140,7 @@ export type InvocationContext =
   | WebInvocationContext
   | (BaseInvocationContext & {
       destination: Destination;
-      actor?: SystemActor;
+      actor?: Actor;
       source:
         | AgentInvocationSource
         | EventTaskSource

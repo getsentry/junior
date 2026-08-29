@@ -173,7 +173,6 @@ describe("plugin background tasks", () => {
     await getConversationStore().recordActivity({
       conversationId: runConversationId,
       destination: runDestination,
-      sessionSource: createLocalSource(runConversationId),
       source: "internal",
     });
     await upsertTurnRecord({

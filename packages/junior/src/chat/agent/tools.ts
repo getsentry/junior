@@ -16,7 +16,6 @@ import type {
   PluginDispatchSource,
   ResourceEventSource,
   ScheduledTaskSource,
-  SystemActor,
 } from "@sentry/junior-plugin-api";
 import type { FileUpload } from "chat";
 import { createUserTokenStore } from "@/chat/capabilities/factory";
@@ -152,7 +151,7 @@ type ToolRuntimeRoute =
       "actor" | "destination" | "source"
     >
   | {
-      actor?: SystemActor;
+      actor?: Actor;
       destination: Destination;
       source:
         | AgentInvocationSource
@@ -206,7 +205,7 @@ function resolveToolRuntimeRoute(args: {
     case "agent_invocation":
       return {
         destination,
-        actor: args.actor?.platform === "system" ? args.actor : undefined,
+        actor: args.actor,
         source: args.run.source,
       };
   }

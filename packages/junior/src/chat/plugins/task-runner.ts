@@ -30,7 +30,7 @@ import {
   stripRuntimeTurnContext,
 } from "@/chat/pi/transcript";
 import { getPersistedThreadState } from "@/chat/runtime/thread-state";
-import { resolveTurnSessionRouting } from "@/chat/services/turn-session-routing";
+import { resolveConversationRouting } from "@/chat/services/turn-session-routing";
 import { getDispatchRecord } from "@/chat/agent-dispatch/store";
 import { readActorIdentity } from "@/chat/plugins/viewer";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
@@ -345,12 +345,20 @@ async function loadPluginRun(
   if (record.state !== "completed") {
     throw new Error("Completed plugin task session record is not completed");
   }
-  const routing = await resolveTurnSessionRouting({
+  const routing = await resolveConversationRouting({
     conversationId: params.conversationId,
   });
+  if (!routing) {
+    throw new Error(
+      `Conversation ${params.conversationId} is missing durable routing metadata`,
+    );
+  }
   // TODO(dcramer): Remove the session Source fallback after every deployed
   // Turn cursor stores Source.
   const source = record.source ?? routing.source;
+  if (!source) {
+    throw new Error("Completed plugin task session record is missing Source");
+  }
   // The Turn Actor owns the run.
   // TODO(dcramer): Remove the provenance and dispatch Actor fallbacks after no
   // deployed Turn cursor can omit Actor.
@@ -374,11 +382,9 @@ async function loadPluginRun(
       .map((entry) => entry.text),
   );
   const contextEntries = (
-    await loadConversationContextTranscriptEntries(
-      record,
-      routing.source,
-      runActor,
-    )
+    source.kind === "slack" || source.kind === "web" || source.kind === "local"
+      ? await loadConversationContextTranscriptEntries(record, source, runActor)
+      : []
   ).filter(
     (entry) => entry.type !== "message" || !runMessageTexts.has(entry.text),
   );

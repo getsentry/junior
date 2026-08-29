@@ -15,7 +15,6 @@ import type {
   SlackSource,
   Source,
   ScheduledTaskSource,
-  SystemActor,
   User,
 } from "@sentry/junior-plugin-api";
 import type { McpToolManager } from "@/chat/mcp/tool-manager";
@@ -152,7 +151,7 @@ export type ToolRuntimeContext =
   | WebToolRuntimeContext
   | (BaseToolRuntimeContext & {
       destination: Destination;
-      actor?: SystemActor;
+      actor?: Actor;
       source:
         | AgentInvocationSource
         | EventTaskSource
