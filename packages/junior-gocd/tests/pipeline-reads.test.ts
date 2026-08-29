@@ -70,6 +70,27 @@ describe("GoCD pipeline reads", () => {
     });
   });
 
+  it("uses the GoCD pipeline instance endpoint", async () => {
+    const fetch = vi
+      .fn()
+      .mockResolvedValue(
+        Response.json({ name: "deploy-api", counter: 42, label: "42" }),
+      );
+    const tool = createGocdPipelineRunTool(
+      { egress: { fetch } } as never,
+      options,
+    );
+
+    await tool.execute?.(
+      { pipeline: "deploy-api", pipelineCounter: 42 },
+      { toolCallId: "run-path" },
+    );
+
+    expect(fetch.mock.calls[0]?.[0]?.request.url).toBe(
+      "https://gocd.example.com/go/api/pipelines/deploy-api/42",
+    );
+  });
+
   it("classifies a missing pipeline run as model-repairable", async () => {
     const tool = createGocdPipelineRunTool(
       context(new Response("missing", { status: 404 })),
@@ -111,6 +132,23 @@ describe("GoCD pipeline reads", () => {
       locked: false,
       schedulable: false,
     });
+  });
+
+  it("uses GoCD job history page_size pagination", async () => {
+    const fetch = vi.fn().mockResolvedValue(Response.json({ jobs: [] }));
+    const tool = createGocdJobHistoryTool(
+      { egress: { fetch } } as never,
+      options,
+    );
+
+    await tool.execute?.(
+      { pipeline: "deploy-api", stage: "deploy", job: "deploy", count: 20 },
+      { toolCallId: "job-path" },
+    );
+
+    expect(fetch.mock.calls[0]?.[0]?.request.url).toBe(
+      "https://gocd.example.com/go/api/jobs/deploy-api/deploy/deploy/history?page_size=20",
+    );
   });
 
   it("returns job history without agent identifiers", async () => {
