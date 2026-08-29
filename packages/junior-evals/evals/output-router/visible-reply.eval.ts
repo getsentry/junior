@@ -7,7 +7,10 @@
  */
 import { describeEval } from "vitest-evals";
 import { NO_REPLY_MARKER } from "@/chat/no-reply";
-import { OUTPUT_REPLY_SOFT_MAX_CHARS } from "@/chat/services/output-router";
+import {
+  OUTPUT_REPLY_HARD_MAX_CHARS,
+  OUTPUT_REPLY_SOFT_MAX_CHARS,
+} from "@/chat/services/output-router";
 import { outputRouterEvals } from "../../src/output-router-harness";
 
 /** Real long steering comparison that should not remain a wall of text. */
@@ -94,7 +97,10 @@ describeEval("Visible Reply Prepare", outputRouterEvals, (it) => {
     await run({
       text: LONG_STEERING_ESSAY,
       expectedKind: "reply",
-      maxChars: OUTPUT_REPLY_SOFT_MAX_CHARS,
+      // Soft max is the model target. Hard max is the product ceiling.
+      maxChars: OUTPUT_REPLY_HARD_MAX_CHARS,
+      // Condensation, not a near-full essay under the hard cap.
+      maxOriginalRatio: 0.5,
       mustInclude: ["steer"],
       mustNotInclude: ["### what openclaw does", "| situation | junior |"],
     });

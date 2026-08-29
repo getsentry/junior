@@ -28,6 +28,11 @@ export interface OutputRouterEvalInput {
    * expectedKind is reply and this is omitted.
    */
   maxChars?: number;
+  /**
+   * Optional max ratio of original length for a reply. Use for long-input
+   * condensation checks without requiring the soft max exactly.
+   */
+  maxOriginalRatio?: number;
   /** Substrings that must appear in a reply (case-insensitive). */
   mustInclude?: string[];
   /** Substrings that must not appear in a reply (case-insensitive). */
@@ -92,6 +97,17 @@ function assertPreparedReply(
     throw new Error(
       `output-router reply length ${prepared.text.length} exceeds max ${maxChars} (${preparedSummary(prepared)})`,
     );
+  }
+
+  if (input.maxOriginalRatio !== undefined) {
+    const maxFromOriginal = Math.floor(
+      input.text.length * input.maxOriginalRatio,
+    );
+    if (prepared.text.length > maxFromOriginal) {
+      throw new Error(
+        `output-router reply length ${prepared.text.length} exceeds ${input.maxOriginalRatio} of original ${input.text.length} (${preparedSummary(prepared)})`,
+      );
+    }
   }
 
   for (const needle of input.mustInclude ?? []) {
