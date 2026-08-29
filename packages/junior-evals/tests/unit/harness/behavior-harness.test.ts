@@ -406,6 +406,118 @@ describe("behavior harness", () => {
     ]);
   });
 
+  it("routes Resource event fixtures through Conversation work", async () => {
+    executeAgentRunMock.mockImplementationOnce(async (request) => {
+      await (
+        request as {
+          durability?: { onInputCommitted?: () => Promise<void> };
+        }
+      ).durability?.onInputCommitted?.();
+      return {
+        status: "completed",
+        result: {
+          text: "",
+          diagnostics: {
+            assistantMessageCount: 0,
+            modelId: "fake-resource-event",
+            outcome: "success",
+            toolCalls: [],
+            toolErrorCount: 0,
+            toolResultCount: 0,
+            usedPrimaryText: false,
+          },
+        },
+      } as never;
+    });
+
+    const result = await runEvalScenario({
+      initialEvents: [],
+      events: [
+        {
+          type: "resource_event",
+          thread: {
+            id: "fixture-resource-event",
+            channel_id: "CRESOURCE",
+            thread_ts: "1700000000.0005",
+          },
+          event_key: "resource-event-1",
+          event_type: "pull_request.merged",
+          intent: "Report when the pull request merges.",
+          label: "GitHub PR getsentry/junior#1730",
+          namespace: "github",
+          identifier: "getsentry/junior#1730",
+          resource_type: "pull_request",
+          trusted_summary: "GitHub PR getsentry/junior#1730 was merged.",
+        },
+        {
+          type: "steer",
+          events: [
+            {
+              type: "new_mention",
+              thread: {
+                id: "fixture-resource-event",
+                channel_id: "CRESOURCE",
+                thread_ts: "1700000000.0005",
+              },
+              message: {
+                id: "resource-event-steer-1",
+                text: "The owner is Alice. Tell the thread.",
+                is_mention: true,
+                author: { user_id: "URESOURCE" },
+              },
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(handleSubscribedMessageMock).not.toHaveBeenCalled();
+    expect(executeAgentRunMock).toHaveBeenCalledTimes(1);
+    expect(result.posts).toEqual([
+      {
+        channel: "CRESOURCE",
+        files: [],
+        text: "observed",
+        thread_ts: "1700000000.0005",
+      },
+    ]);
+    expect(executeAgentRunMock.mock.calls[0]?.[0]).toMatchObject({
+      location: {
+        provider: "slack",
+        teamId: "TEVAL",
+        channelId: "CRESOURCE",
+        threadTs: "1700000000.0005",
+      },
+      source: {
+        kind: "resource_event",
+        eventKey: "resource-event-1",
+        eventType: "pull_request.merged",
+        namespace: "github",
+        identifier: "getsentry/junior#1730",
+      },
+    });
+  });
+
+  it("rejects steering without a preceding event", async () => {
+    await expect(
+      runEvalScenario({
+        initialEvents: [],
+        events: [
+          {
+            type: "steer",
+            events: [
+              {
+                type: "new_mention",
+                thread: { id: "fixture-leading-steer" },
+                message: { text: "This has no preceding event." },
+              },
+            ],
+          },
+        ],
+      }),
+    ).rejects.toThrow("steer() requires a preceding event");
+  });
+
   it("preserves attached file metadata on assistant thread posts", async () => {
     handleNewMentionMock.mockImplementationOnce(
       async (
