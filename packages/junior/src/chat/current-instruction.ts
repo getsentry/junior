@@ -1,5 +1,13 @@
 import { escapeXml, unescapeXml } from "@/chat/xml";
 
+/** Marker used when the live instruction has no text after bot-mention strip. */
+export const EMPTY_INSTRUCTION_TEXT = "[empty]";
+
+/** Keep a non-blank live instruction for action review and prompt boundaries. */
+export function normalizeLiveInstructionText(text: string): string {
+  return text.trim() || EMPTY_INSTRUCTION_TEXT;
+}
+
 const CURRENT_INSTRUCTION_TAG = "current-instruction";
 const CURRENT_INSTRUCTION_OPEN_PREFIX = `<${CURRENT_INSTRUCTION_TAG}`;
 const CURRENT_INSTRUCTION_OPEN_BARE = `<${CURRENT_INSTRUCTION_TAG}>`;

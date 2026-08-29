@@ -10,7 +10,10 @@ import {
   type ModelProfileConfig,
   modelProfileSchema,
 } from "@/chat/model-profile";
-import { renderCurrentInstruction } from "@/chat/current-instruction";
+import {
+  normalizeLiveInstructionText,
+  renderCurrentInstruction,
+} from "@/chat/current-instruction";
 import {
   logWarn,
   setSpanAttributes,
@@ -165,7 +168,9 @@ function buildClassifierPrompt(args: {
     }
   }
 
-  sections.push(renderCurrentInstruction(args.messageText.trim() || "[empty]"));
+  sections.push(
+    renderCurrentInstruction(normalizeLiveInstructionText(args.messageText)),
+  );
 
   for (const block of args.currentTurnBlocks ?? []) {
     const trimmed = block.trim();

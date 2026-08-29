@@ -65,6 +65,7 @@ import {
 } from "@/chat/pi/client";
 import type { PiMessage } from "@/chat/pi/messages";
 import { renderAgentsInstructions } from "@/chat/repository-instructions";
+import { normalizeLiveInstructionText } from "@/chat/current-instruction";
 import { createRepositoryInstructionsContext } from "@/chat/agent/repository-context";
 import {
   extractAssistantText,
@@ -494,10 +495,10 @@ async function executeAgentRunInPrivacyContext(
         return text ? [text] : [];
       }) ?? [];
     if (!resumedFromSessionRecord || guardianIntentParts.length === 0) {
-      // Bare @mentions are normal Slack "continue this thread" nudges. After
-      // bot-mention strip the instruction is empty; keep a non-blank marker so
-      // action review can still run against thread evidence.
-      guardianIntentParts.push(userInput.trim() || "[empty]");
+      // Bare bot mentions are normal Slack "continue this thread" nudges. After
+      // mention strip the instruction can be empty; keep the shared empty marker
+      // so action review can still run.
+      guardianIntentParts.push(normalizeLiveInstructionText(userInput));
     }
     const currentUserIntent = (): string => guardianIntentParts.join("\n\n");
     resume = createResumeState({
