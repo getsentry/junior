@@ -115,7 +115,8 @@ describeEval("Visible Reply Prepare", outputRouterEvals, (it) => {
     await run({
       text: SILENCE_PROTOCOL_EXPLANATION,
       expectedKind: "reply",
-      mustInclude: ["marker", "exact"],
+      // Keep the marker when explaining the protocol; do not assert incidental wording.
+      mustInclude: [NO_REPLY_MARKER],
     });
   });
 

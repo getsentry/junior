@@ -66,13 +66,20 @@ export async function prepareVisibleReply(
   });
 }
 
+function preparedSummary(prepared: PreparedAssistantReply): string {
+  if (prepared.kind === "silent") {
+    return `kind=silent reason=${JSON.stringify(prepared.reason)}`;
+  }
+  return `kind=reply reason=${JSON.stringify(prepared.reason)} text=${JSON.stringify(prepared.text)}`;
+}
+
 function assertPreparedReply(
   input: OutputRouterEvalInput,
   prepared: PreparedAssistantReply,
 ): void {
   if (prepared.kind !== input.expectedKind) {
     throw new Error(
-      `output-router prepared ${prepared.kind} (${prepared.reason}); expected ${input.expectedKind}`,
+      `output-router prepared ${prepared.kind}; expected ${input.expectedKind} (${preparedSummary(prepared)})`,
     );
   }
 
@@ -83,14 +90,14 @@ function assertPreparedReply(
   const maxChars = input.maxChars ?? OUTPUT_REPLY_SOFT_MAX_CHARS;
   if (prepared.text.length > maxChars) {
     throw new Error(
-      `output-router reply length ${prepared.text.length} exceeds max ${maxChars}`,
+      `output-router reply length ${prepared.text.length} exceeds max ${maxChars} (${preparedSummary(prepared)})`,
     );
   }
 
   for (const needle of input.mustInclude ?? []) {
     if (!includesInsensitive(prepared.text, needle)) {
       throw new Error(
-        `output-router reply missing required text ${JSON.stringify(needle)}`,
+        `output-router reply missing required text ${JSON.stringify(needle)} (${preparedSummary(prepared)})`,
       );
     }
   }
@@ -98,7 +105,7 @@ function assertPreparedReply(
   for (const needle of input.mustNotInclude ?? []) {
     if (includesInsensitive(prepared.text, needle)) {
       throw new Error(
-        `output-router reply contains forbidden text ${JSON.stringify(needle)}`,
+        `output-router reply contains forbidden text ${JSON.stringify(needle)} (${preparedSummary(prepared)})`,
       );
     }
   }
