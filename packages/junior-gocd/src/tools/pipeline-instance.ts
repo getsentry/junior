@@ -10,6 +10,7 @@ import {
   resolveGocdBaseUrl,
   type GocdPluginOptions,
 } from "../config.js";
+import { throwGocdReadError } from "../errors.js";
 
 const inputSchema = z
   .object({
@@ -103,8 +104,10 @@ export function createGocdPipelineInstanceTool(
         ),
       });
       if (!response.ok) {
-        throw new Error(
+        throwGocdReadError(
           `GoCD pipeline instance failed with HTTP ${response.status}`,
+          response.status,
+          { missingResourceIsInput: true },
         );
       }
       const body = bodySchema.parse(await response.json());

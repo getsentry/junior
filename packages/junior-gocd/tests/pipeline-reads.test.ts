@@ -70,6 +70,23 @@ describe("GoCD pipeline reads", () => {
     });
   });
 
+  it("classifies a missing pipeline run as model-repairable", async () => {
+    const tool = createGocdPipelineInstanceTool(
+      context(new Response("missing", { status: 404 })),
+      options,
+    );
+
+    await expect(
+      tool.execute?.(
+        { pipeline: "missing", pipelineCounter: 42 },
+        { toolCallId: "missing-instance" },
+      ),
+    ).rejects.toMatchObject({
+      name: "PluginToolInputError",
+      message: "GoCD pipeline instance failed with HTTP 404",
+    });
+  });
+
   it("returns pipeline status without pause details", async () => {
     const tool = createGocdPipelineStatusTool(
       context(

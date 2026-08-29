@@ -10,6 +10,7 @@ import {
   resolveGocdBaseUrl,
   type GocdPluginOptions,
 } from "../config.js";
+import { throwGocdReadError } from "../errors.js";
 
 const stageSchema = z
   .object({
@@ -128,7 +129,11 @@ export function createGocdDashboardTool(
         }),
       });
       if (!response.ok) {
-        throw new Error(`GoCD dashboard failed with HTTP ${response.status}`);
+        throwGocdReadError(
+          `GoCD dashboard failed with HTTP ${response.status}`,
+          response.status,
+          { missingResourceIsInput: false },
+        );
       }
       const body = dashboardSchema.parse(await response.json())._embedded;
       const query = input.query?.toLocaleLowerCase();

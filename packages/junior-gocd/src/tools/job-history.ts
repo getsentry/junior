@@ -10,6 +10,7 @@ import {
   resolveGocdBaseUrl,
   type GocdPluginOptions,
 } from "../config.js";
+import { throwGocdReadError } from "../errors.js";
 
 const inputSchema = z
   .object({
@@ -92,7 +93,11 @@ export function createGocdJobHistoryTool(
         ),
       });
       if (!response.ok) {
-        throw new Error(`GoCD job history failed with HTTP ${response.status}`);
+        throwGocdReadError(
+          `GoCD job history failed with HTTP ${response.status}`,
+          response.status,
+          { missingResourceIsInput: true },
+        );
       }
       const body = bodySchema.parse(await response.json());
       return {
