@@ -70,7 +70,7 @@ Four independent workflows run on pull requests:
 - `Behavioral evals` runs Slack/agent evals when behavioral eval files/harness changed or the PR has `trigger-evals-behavioral` / `trigger-evals`
 - `Integration evals` runs system evals when integration eval files/harness changed or the PR has `trigger-evals-integration` / `trigger-evals`
 - `Guardian evals` runs isolated action-review snapshots when Guardian eval files/harness changed, Guardian policy changed, or the PR has `trigger-evals-guardian` / `trigger-evals`
-- `Output-router evals` runs isolated prepare snapshots when those eval files/harness changed, `output-router.ts` changed, or the PR has `trigger-evals-output-router` / `trigger-evals`
+- `Output-router evals` runs isolated prepare-reply cases when those eval files/harness changed, `output-router.ts` changed, or the PR has `trigger-evals-output-router` / `trigger-evals`
 
 Suite labels follow `trigger-evals-[domain]`. Adding a trigger label fires immediately. If the label is already on the PR, future `synchronize` events still run the matching suite(s). Product source under `packages/junior/src/**` does not auto-run evals, except Guardian policy changes in `packages/junior/src/chat/services/guardian-action-policy.ts` and prepare-path changes in `packages/junior/src/chat/services/output-router.ts`.
 
@@ -102,7 +102,7 @@ If Check Run publishing is skipped or fails, the report step still fails on a re
 
 When the aggregate gate passes, individual case misses are warnings rather than failures. Setup crashes and missing result files still fail the report job hard.
 
-Integration shards fail hard on any case miss and do not use the aggregate floor. Guardian snapshots assert exact `allow` / `ask` / `deny` decisions, publish their own job summary, and fail `guardian / run` on mismatch. Output-router snapshots assert prepare `silent` / `reply` outcomes, publish their own job summary, and fail `output-router / run` on mismatch.
+Integration shards fail hard on any case miss and do not use the aggregate floor. Guardian snapshots assert exact `allow` / `ask` / `deny` decisions, publish their own job summary, and fail `guardian / run` on mismatch. Output-router cases assert prepare `silent` / `reply` outcomes, publish their own job summary, and fail `output-router / run` on mismatch.
 
 If `sandbox_ready` is false, either `VERCEL_OIDC_TOKEN` is missing or the fallback token set is incomplete.
 

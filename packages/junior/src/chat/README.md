@@ -21,7 +21,7 @@ file.
    one awaited delivery port with the completed Pi message that produced it;
    provider adapters deliver, then commit that agent message before the visible
    reply in one transaction. When experimental `output-router` is enabled, a
-   fast-model pass may change only the visible reply text (silence, cleanup, or
+   fast-model pass may change only the visible reply text (silence or
    shortening) while keeping the `SOUL.md` personality voice. The original agent
    message stays in history. Tool-bearing assistant text remains internal to the
    agent loop.

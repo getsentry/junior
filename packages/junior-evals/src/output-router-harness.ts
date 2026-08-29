@@ -1,8 +1,8 @@
 /**
- * Isolated visible-reply prepare harness.
+ * Isolated prepare-reply harness.
  *
- * Feeds one assistant message text into prepareAssistantReply without the main
- * agent, Slack transport, sandbox egress, or Postgres.
+ * Calls prepareAssistantReply with one assistant message. No main agent, Slack
+ * transport, sandbox egress, or Postgres.
  */
 import {
   createHarness,
@@ -111,7 +111,7 @@ function assertPreparedReply(
   }
 }
 
-/** Lightweight vitest-evals harness for isolated prepare cases. */
+/** Vitest-evals harness for isolated prepare-reply cases. */
 export const outputRouterHarness = createHarness<
   OutputRouterEvalInput,
   OutputRouterEvalOutput
@@ -169,10 +169,10 @@ export const outputRouterHarness = createHarness<
   },
 });
 
-/** Shared vitest-evals suite options for isolated prepare evals. */
+/** Shared suite options for isolated prepare-reply evals. */
 export const outputRouterEvals = {
   harness: outputRouterHarness,
-  // Kind/length/content contracts are asserted in the harness; no rubric judge.
+  // Kind, length, and required text are checked in the harness.
   judges: [],
   judgeThreshold: null,
 } satisfies DescribeEvalOptions<

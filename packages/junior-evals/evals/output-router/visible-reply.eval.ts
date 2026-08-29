@@ -1,9 +1,9 @@
 /**
- * Isolated visible-reply prepare corpus.
+ * Isolated prepare-reply cases.
  *
- * Each case feeds real assistant-message text into prepareAssistantReply and
- * asserts silent vs reply. This suite does not run the main agent or Slack
- * transport. Delivery wiring is covered elsewhere.
+ * Each case feeds real assistant message text into prepareAssistantReply and
+ * checks silent vs reply. This suite does not run the main agent or Slack
+ * transport. Delivery is covered elsewhere.
  */
 import { describeEval } from "vitest-evals";
 import { NO_REPLY_MARKER } from "@/chat/no-reply";
@@ -115,7 +115,7 @@ describeEval("Visible Reply Prepare", outputRouterEvals, (it) => {
     await run({
       text: SILENCE_PROTOCOL_EXPLANATION,
       expectedKind: "reply",
-      // Keep the marker when explaining the protocol; do not assert incidental wording.
+      // Keep the marker when explaining silence. Do not assert incidental wording.
       mustInclude: [NO_REPLY_MARKER],
     });
   });

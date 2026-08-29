@@ -9,7 +9,7 @@ There are four independently runnable suites:
 1. **Integration** (`evals/integration/**`) — full agent/runtime runs for primary system functionality that should never regress. Failures are hard pass/fail.
 2. **Behavioral** (domain folders under `evals/` except `integration/`, `guardian/`, and `output-router/`) — full agent/runtime runs that measure agent behavior and tolerate bounded variability. CI reports a suite score and only blocks below the configured floor.
 3. **Guardian** (`evals/guardian/**`) — isolated action-review snapshots scored only on `allow` / `ask` / `deny`. Failures are hard pass/fail.
-4. **Visible-reply prepare** (`evals/output-router/**`) — isolated `prepareAssistantReply` snapshots scored on `silent` / `reply`. Failures are hard pass/fail.
+4. **Prepare reply** (`evals/output-router/**`) — isolated `prepareAssistantReply` checks scored on `silent` / `reply`. Failures are hard pass/fail.
 
 - We define conversation cases inline in TypeScript using `describeEval()` and the shared `slackEvals` harness options.
 - We run the real runtime/harness against those fixtures.
@@ -58,7 +58,7 @@ Not in scope:
   - `evals/sentry/`
 - Isolated Guardian decisions: `evals/guardian/`
   - exact `ToolActionProposal` snapshots scored only on `allow` / `ask` / `deny`
-- Isolated visible-reply prepare snapshots: `evals/output-router/`
+- Isolated prepare-reply cases: `evals/output-router/`
   - one assistant message through `prepareAssistantReply`
 - Helpers and event builders: `src/helpers.ts`
 - Guardian harness: `src/guardian-harness.ts`
@@ -113,11 +113,11 @@ Tool replay:
 - `pnpm evals` / `pnpm evals:behavioral`: Run the behavioral suite
 - `pnpm evals:integration`: Run the integration suite
 - `pnpm evals:guardian`: Run isolated Guardian action-review snapshots
-- `pnpm evals:output-router`: Run isolated visible-reply prepare snapshots
+- `pnpm evals:output-router`: Run isolated prepare-reply cases
 - `pnpm --filter @sentry/junior-evals evals:behavioral`: Run behavioral from any directory
 - `pnpm --filter @sentry/junior-evals evals:integration`: Run integration from any directory
 - `pnpm --filter @sentry/junior-evals evals:guardian`: Run Guardian from any directory
-- `pnpm --filter @sentry/junior-evals evals:output-router`: Run isolated prepare snapshots from any directory
+- `pnpm --filter @sentry/junior-evals evals:output-router`: Run isolated prepare-reply cases from any directory
 - `pnpm --filter @sentry/junior-evals evals:behavioral evals/sentry/skills.eval.ts`: Run one behavioral file
 - `pnpm --filter @sentry/junior-evals evals:integration evals/integration/conversation/actions.eval.ts`: Run one integration file
 - `pnpm --filter @sentry/junior-evals evals:guardian evals/guardian/action-review.eval.ts -t "deny"`: Run one Guardian case
@@ -133,7 +133,7 @@ Pass eval file paths, `-t` filters, and shard options directly after the suite s
   - `Behavioral evals`: Slack/agent evals (`behavioral / shard *` + `behavioral / report` → `behavioral / score` Check Run)
   - `Integration evals`: system evals (`integration / shard *`)
   - `Guardian evals`: isolated action-review snapshots (`guardian / run`)
-  - `Output-router evals`: isolated prepare snapshots (`output-router / run`)
+  - `Output-router evals`: isolated prepare-reply cases (`output-router / run`)
 - Suite labels follow `trigger-evals-[domain]`:
   - `trigger-evals` starts all suites
   - `trigger-evals-behavioral`, `trigger-evals-integration`, `trigger-evals-guardian`, and `trigger-evals-output-router` start one suite
@@ -163,7 +163,7 @@ Behavioral and integration evals require real Vercel Sandbox access and public Q
 - Put full-runtime integration cases that must never regress under `evals/integration/**` using `describeEval()` with `slackEvals`. Prefer deterministic assertions; keep criteria only when the case still needs light quality scoring.
 - Put behavioral cases under `evals/conversation/`, `evals/agent/`, or `evals/<feature>/` using `describeEval()` with `slackEvals`.
 - Add isolated Guardian decision snapshots under `evals/guardian/` using `describeEval()` with `guardianEvals`. Feed exact `ToolActionProposal` objects and assert only the expected `allow` / `ask` / `deny` decision.
-- Add isolated visible-reply prepare snapshots under `evals/output-router/` using `describeEval()` with `outputRouterEvals`. Feed real assistant-message text and assert `silent` or `reply`.
+- Add isolated prepare-reply cases under `evals/output-router/` using `describeEval()` with `outputRouterEvals`. Feed real assistant message text and check `silent` or `reply`.
 - Put messages that should be pending before processing starts in `initialEvents`.
 - Put ordinary later events in `events`; each is delivered after preceding work settles.
 - Wrap messages with `steer(...)` when they should arrive through normal ingress while the preceding agent run is active.
@@ -221,7 +221,7 @@ Organize files by suite policy first, then by the user-visible area they exercis
 - `evals/integration/`: strict full-runtime integration cases (hard pass/fail).
 - `evals/conversation/`, `evals/agent/`, `evals/<feature>/`: agent-behavior cases (score-gated in CI).
 - `evals/guardian/`: isolated action-review snapshots (no main agent; hard pass/fail).
-- `evals/output-router/`: isolated prepare snapshots (no main agent; hard pass/fail).
+- `evals/output-router/`: isolated prepare-reply cases (no main agent; hard pass/fail).
 - Use short behavior nouns for filenames: `routing.eval.ts`, `delivery.eval.ts`, `credentials.eval.ts`.
 - Keep one coherent behavior area per file. Split files when cases exercise independently understandable journeys.
 - Keep shared setup in a nearby `helpers.ts`; helpers are not eval files and do not define suites.

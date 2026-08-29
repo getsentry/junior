@@ -61,35 +61,34 @@ type CompleteObject = (args: {
 }) => Promise<{ costUsd?: number; object: unknown }>;
 
 /**
- * Prompt design:
- * - task first, short imperative rules
- * - one structured output contract
- * - personality from SOUL.md so rewrites keep the bot's voice
- * OpenAI structured outputs + short instructions; Anthropic: be direct.
+ * Prompt shape follows current lab guidance:
+ * - put the task and rules first
+ * - keep rules short, specific, and direct
+ * - put the message body in the user turn, separate from instructions
+ * - let the JSON schema own the output shape; do not restate it at length
+ * - include SOUL personality so rewrites keep the bot voice
+ *
+ * Refs: OpenAI prompt engineering + structured outputs; Anthropic clear/direct.
  */
 function buildSystemPrompt(personality: string = JUNIOR_PERSONALITY): string {
   return [
-    "Edit one assistant message into the final user-visible reply.",
+    "Edit one assistant message into the final reply the user will see.",
     "You receive only that message. No other conversation context.",
-    "",
-    "Return JSON:",
-    "- text: the visible reply, or null for no visible reply",
-    "- reason: one short sentence",
+    "Fields: text is the reply or null. reason is one short sentence.",
     "",
     "Rules:",
-    `- Set text to null when there is no user-facing answer: empty text, only ${NO_REPLY_MARKER}, or internal status/process notes meant only for silence.`,
-    `- Treat trailing ${NO_REPLY_MARKER} as intentional silence when the rest is internal work status, not an answer to the user. Do not keep those notes as a reply.`,
-    `- A real user-facing answer must stay a reply even if it contains ${NO_REPLY_MARKER}. That includes explanations of how silence works, quotes of the marker, or discussion of the protocol.`,
-    `- If ${NO_REPLY_MARKER} is only a trailing silence tag after a real user-facing answer, keep the answer and drop the tag.`,
-    `- If the answer itself is about the marker, keep the marker text when the user needs it.`,
+    `- Set text to null when there is nothing to show the user: empty text, only ${NO_REPLY_MARKER}, or internal work notes that are not an answer.`,
+    `- If the message ends with ${NO_REPLY_MARKER} and the rest is only internal work status, set text to null. Do not keep those notes.`,
+    `- If the message answers the user, keep it as a reply even when it contains ${NO_REPLY_MARKER}.`,
+    `- If ${NO_REPLY_MARKER} is only a trailing tag after a real answer, keep the answer and drop the tag.`,
+    `- If the answer explains ${NO_REPLY_MARKER}, keep the marker text the user needs.`,
     `- Keep short clear replies as-is (about ${OUTPUT_REPLY_SOFT_MAX_CHARS} characters or less).`,
-    "- If the reply is too long, shorten it. Keep the answer, key facts, links, and next steps. Do not add facts.",
-    "- Prefer 1-5 short sentences when shortening.",
-    "- Do not add a preface or meta commentary.",
-    "- These rules override personality when they conflict.",
+    "- If the reply is longer than that, shorten it to 1-5 short sentences. Keep the answer, key facts, links, and next steps. Do not add facts.",
+    "- Do not add a preface or commentary about editing.",
+    "- These rules win over personality when they conflict.",
     "",
-    "# Personality",
-    "When you keep or rewrite text, match this voice and tone:",
+    "Personality",
+    "Match this voice and tone when you keep or rewrite text:",
     personality.trim(),
   ].join("\n");
 }
@@ -99,7 +98,8 @@ function buildUserPrompt(text: string): string {
     text.length <= OUTPUT_ROUTER_PROMPT_MAX_CHARS
       ? text
       : `${text.slice(0, OUTPUT_ROUTER_PROMPT_MAX_CHARS)}\n…[truncated]…`;
-  return body;
+  // Keep instructions in the system prompt. Put only the message body here.
+  return ["Message:", '"""', body, '"""'].join("\n");
 }
 
 function capVisibleText(text: string): string {
@@ -132,7 +132,7 @@ function reply(
 
 /**
  * Cheap local checks before calling the model.
- * Only exact silence stays local. Mixed marker cases need judgment.
+ * Only exact silence stays local. Mixed marker text needs the model.
  */
 export function prepareAssistantReplyLocal(
   text: string,
@@ -164,7 +164,7 @@ function finalizeModelResult(
     // Model returned blank text. Keep the original visible reply.
     return reply(originalText, `empty_model_text:${reason}`, costUsd);
   }
-  // Exact marker-only output is silence. Otherwise trust the model text,
+  // Exact marker-only output is silence. Otherwise keep the model text,
   // including answers that mention or explain the marker.
   if (isNoReplyMarker(text)) {
     return silent(`model_no_reply:${reason}`, costUsd);
