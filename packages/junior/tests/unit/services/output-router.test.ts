@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { NO_REPLY_MARKER } from "@/chat/no-reply";
+import { JUNIOR_PERSONALITY } from "@/chat/prompt";
 import {
   OUTPUT_REPLY_HARD_MAX_CHARS,
   prepareAssistantMessage,
@@ -158,7 +159,13 @@ describe("prepare assistant reply", () => {
         promptName: "junior.prepare_assistant_reply",
         temperature: 0,
         thinkingLevel: "low",
+        system: expect.stringContaining(JUNIOR_PERSONALITY.trim()),
       }),
+    );
+    const system = completeObject.mock.calls[0]?.[0]?.system as string;
+    expect(system).toContain("# Personality");
+    expect(system).toContain(
+      "These rules override personality when they conflict.",
     );
   });
 

@@ -8,6 +8,7 @@ import {
   withSpan,
   type LogContext,
 } from "@/chat/logging";
+import { JUNIOR_PERSONALITY } from "@/chat/prompt";
 import {
   decideReply,
   sanitizeAssistantText,
@@ -63,13 +64,13 @@ type CompleteObject = (args: {
  * Prompt design:
  * - task first, short imperative rules
  * - one structured output contract
- * - no extra context, no roleplay
+ * - personality from SOUL.md so rewrites keep the bot's voice
  * OpenAI structured outputs + short instructions; Anthropic: be direct.
  */
-function buildSystemPrompt(): string {
+function buildSystemPrompt(personality: string = JUNIOR_PERSONALITY): string {
   return [
     "Edit one assistant message into the final user-visible reply.",
-    "You receive only that message. No other context.",
+    "You receive only that message. No other conversation context.",
     "",
     "Return JSON:",
     "- text: the visible reply, or null for no visible reply",
@@ -84,6 +85,11 @@ function buildSystemPrompt(): string {
     "- If the reply is too long, shorten it. Keep the answer, key facts, links, and next steps. Do not add facts.",
     "- Prefer 1-5 short sentences when shortening.",
     "- Do not add a preface or meta commentary.",
+    "- These rules override personality when they conflict.",
+    "",
+    "# Personality",
+    "When you keep or rewrite text, match this voice and tone:",
+    personality.trim(),
   ].join("\n");
 }
 
