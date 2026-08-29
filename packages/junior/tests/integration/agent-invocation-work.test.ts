@@ -422,7 +422,6 @@ describe("agent invocation conversation work", () => {
           channelId: "C123",
           threadTs: "1712345.0001",
         },
-        publishExternally: false,
         source: slackInvocationInput.source,
         surface: "internal",
         runId: created.invocationId,

@@ -260,7 +260,6 @@ describe("paused turn Slack integration", () => {
         channelId: "C123",
         threadTs: "1712345.0001",
       },
-      publishExternally: true,
       source: storedSource,
       toolChannelId: "C123",
       state: expect.objectContaining({

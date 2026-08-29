@@ -136,7 +136,6 @@ describe("resource event delivery", () => {
     expect(work?.messages).toHaveLength(1);
     expect(work?.messages[0]).toMatchObject({
       source: "resource_event",
-      publishExternally: false,
       input: {
         text: expect.stringContaining("CI failed on workflow test."),
         metadata: {

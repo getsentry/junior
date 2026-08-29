@@ -21,7 +21,6 @@ type ExecuteSlackTurn = (
     conversationId?: string;
     destination: DispatchRecord["destination"];
     execution: DispatchTurnContext;
-    publishExternally?: boolean;
     onTurnDeliveryAccepted?: (messageId?: string) => void;
     onTurnOutcome?: (result: DispatchTurnResult) => void;
     shouldYield?: () => boolean;
@@ -48,6 +47,8 @@ export function createSlackDispatchTurnRunner(options: {
     await state.connect();
     const conversationId = getDispatchConversationId(dispatch);
     const adapter = options.getSlackAdapter();
+    // TODO(dcramer): Remove this synthetic Slack Message and Thread after
+    // dispatch work supplies Slack Delivery to the shared Turn path.
     const message = new Message({
       id: getDispatchInputMessageId(dispatch.id),
       threadId: conversationId,
@@ -92,7 +93,6 @@ export function createSlackDispatchTurnRunner(options: {
       ack: hooks.ack,
       conversationId,
       destination: dispatch.destination,
-      publishExternally: true,
       execution: {
         disabledFeatures: ["interactive-auth"],
         locationConfiguration: options.getLocationConfiguration(

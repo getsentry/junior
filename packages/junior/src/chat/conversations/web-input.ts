@@ -174,9 +174,6 @@ export function buildWebInboundMessage(args: {
       } satisfies LegacyWebMailboxMetadata,
     },
     receivedAtMs: nowMs,
-    // TODO(dcramer): Rename this stored field to publish after deployed
-    // mailbox readers and writers use the new name.
-    publishExternally: false,
     // TODO(dcramer): Replace this string after deployed mailbox readers and
     // writers use a complete web Source.
     source: "web",

@@ -299,7 +299,6 @@ async function executeAgentRunInPrivacyContext(
     slackConversation: run.slackConversation,
     slackActionToken: run.slackActionToken,
     destination: run.destination,
-    publishExternally: run.publishExternally,
     surface: run.surface,
     dispatch: run.dispatch,
     toolChannelId: run.toolChannelId,
@@ -512,10 +511,6 @@ async function executeAgentRunInPrivacyContext(
         : undefined),
       durability,
       recordActiveMcpProviders,
-      publishExternally:
-        checkpoint.record?.publishExternally ??
-        routing.publishExternally ??
-        false,
       actor,
       runSource,
       conversationId,

@@ -12,7 +12,8 @@ import {
 } from "@/chat/conversations/messages";
 import {
   commitAssistantMessage,
-  type PublishMessage,
+  type DeliverMessage,
+  type DeliveryResult,
 } from "@/chat/task-execution/assistant-message";
 import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
 import type { ConversationTurnFailureCode } from "@/chat/conversations/history";
@@ -160,7 +161,7 @@ async function completeCancelledConversationTurn(args: {
  */
 export function createConversationTurnWorker(
   agentRunner: AgentRunner,
-  publishMessage?: PublishMessage,
+  deliverMessage?: DeliverMessage,
 ) {
   return async (
     context: ConversationWorkerContext,
@@ -215,7 +216,7 @@ export function createConversationTurnWorker(
     const savedTurn = isResume
       ? await getTurnRecord(context.conversationId, turnId)
       : undefined;
-    let resumedResourceEvent = false;
+    let savedMessageIsResourceEvent = false;
     if (isResume) {
       const userMessage = getTurnUserMessage(conversation, turnId);
       if (!userMessage) {
@@ -223,7 +224,8 @@ export function createConversationTurnWorker(
           `Unable to locate the persisted user message for Turn "${turnId}"`,
         );
       }
-      resumedResourceEvent = isResourceEventConversationMessage(userMessage);
+      savedMessageIsResourceEvent =
+        isResourceEventConversationMessage(userMessage);
       // Resume has no new input. Restore Source and Actor from the Turn.
       // TODO(dcramer): Remove the saved Message fallback after no deployed Turn
       // cursor can omit Source or Actor.
@@ -251,18 +253,18 @@ export function createConversationTurnWorker(
       visibility: storedConversation?.visibility,
     });
     const webActor = actor.platform === "web" ? actor : undefined;
-    // TODO(dcramer): Copy publish from the selected Inbound message after
-    // resource-event input stores the final publish fact. Then remove this
-    // Location default and the checkpoint fallback.
-    const publish =
-      savedTurn?.publishExternally ??
-      Boolean(
-        storedConversation?.location &&
-        (source.kind === "resource_event" || resumedResourceEvent),
-      );
-    // TODO(dcramer): Remove this legacy surface choice after Turn checkpoints
-    // store Source.kind and publish, and resume reads both fields.
-    const surface = publish ? ("slack" as const) : ("api" as const);
+    const conversationLocation = storedConversation?.location;
+    // TODO(dcramer): Remove the saved Message check after every deployed Turn
+    // cursor stores Resource event Source.
+    // TODO(dcramer): Remove this Source-based Delivery choice after the core
+    // Turn lifecycle stores assistant Messages and web and Resource event work
+    // each supplies optional provider Delivery. Source must not select Delivery.
+    const deliverToProvider =
+      Boolean(conversationLocation) &&
+      (source.kind === "resource_event" || savedMessageIsResourceEvent);
+    // TODO(dcramer): Stop deriving surface from Delivery after active Turn
+    // lookup and reporting read Source for web and Resource event Turns.
+    const surface = deliverToProvider ? ("slack" as const) : ("api" as const);
 
     return await withLogContext(
       {
@@ -373,27 +375,26 @@ export function createConversationTurnWorker(
             return;
           }
           failureCode = "delivery_failed";
-          const location = storedConversation?.location;
-          if (publish && (!location || !publishMessage)) {
-            throw new Error(
-              `Conversation ${context.conversationId} cannot publish its system Turn`,
-            );
+          let deliveryResult: DeliveryResult | undefined;
+          if (deliverToProvider) {
+            if (!conversationLocation || !deliverMessage) {
+              throw new Error(
+                `Conversation ${context.conversationId} cannot deliver to its Location`,
+              );
+            }
+            deliveryResult = await deliverMessage({
+              conversationId: context.conversationId,
+              location: conversationLocation,
+              text: replyText,
+            });
           }
-          const publishedMessage =
-            publish && location && publishMessage
-              ? await publishMessage({
-                  conversationId: context.conversationId,
-                  location,
-                  text: replyText,
-                })
-              : undefined;
           await commitAssistantMessage({
             ...(agentMessage ? { agentMessage } : undefined),
             conversation,
             conversationId: context.conversationId,
-            ...(publishedMessage ? { publishedMessage } : undefined),
+            ...(deliveryResult ? { deliveryResult } : undefined),
             sessionId: turnId,
-            ...(publishedMessage
+            ...(deliveryResult
               ? { source: "slack" as const }
               : source.kind === "web"
                 ? { source: "web" as const }
@@ -482,12 +483,9 @@ export function createConversationTurnWorker(
               // TODO(dcramer): Remove AgentRun.destination after agent and tool
               // code reads AgentRun.location and no Run consumer needs it.
               destination,
-              // TODO(dcramer): Remove AgentRun.publishExternally after the
-              // saved Turn publish choice controls optional Delivery.
-              publishExternally: publish,
               source,
-              ...(storedConversation?.location
-                ? { location: storedConversation.location }
+              ...(conversationLocation
+                ? { location: conversationLocation }
                 : undefined),
               surface,
               ...(stopSignal ? { signal: stopSignal } : undefined),
@@ -572,7 +570,6 @@ export function createConversationTurnWorker(
                   // TODO(dcramer): Remove checkpoint Destination after resume
                   // reads the Conversation Location.
                   destination,
-                  publishExternally: publish,
                   source,
                   actor,
                   surface,

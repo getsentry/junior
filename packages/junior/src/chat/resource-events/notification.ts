@@ -119,10 +119,6 @@ export function createResourceEventInboundMessage(input: {
     delivery: "defer",
     source: "resource_event",
     receivedAtMs: input.receivedAtMs ?? Date.now(),
-    // TODO(dcramer): Store the final publish fact here after resource-event
-    // ingress loads the Conversation. Then remove the worker's Location-based
-    // publish default. Resource events only wake the mailbox until that change.
-    publishExternally: false,
     input: {
       text: input.text,
       authorId: RESOURCE_EVENT_AUTHOR_ID,

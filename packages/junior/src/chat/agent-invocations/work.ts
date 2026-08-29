@@ -85,7 +85,6 @@ export function buildAgentInvocationInboundMessage(
       },
     },
     receivedAtMs: nowMs,
-    publishExternally: false,
     source: "internal",
   };
 }
@@ -437,7 +436,6 @@ export function createAgentInvocationWorker(agentRunner: AgentRunner) {
           actor: invocation.actor,
           credentialContext: invocation.credentialContext,
           destination: invocation.destination,
-          publishExternally: context.publishExternally,
           source: invocation.source,
           ...(location ? { location } : undefined),
           surface: "internal",

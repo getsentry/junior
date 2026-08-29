@@ -140,7 +140,6 @@ describe("conversation pending messages API", () => {
           text: "slack interrupt",
         },
         receivedAtMs: 3_100,
-        publishExternally: true,
         source: "slack",
       },
       nowMs: 3_100,

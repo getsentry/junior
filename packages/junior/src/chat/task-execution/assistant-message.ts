@@ -10,31 +10,31 @@ import {
 import { persistWithRetry } from "@/chat/services/persist-retry";
 import type { ThreadConversationState } from "@/chat/state/conversation";
 
-/** Facts returned after a provider publishes one Message. */
-export type PublishedMessage = {
+/** Facts returned after provider Delivery. */
+export type DeliveryResult = {
   providerMessageId?: string;
   providerConversationBindings?: ProviderConversationReference[];
 };
 
 /**
- * Publish one Message through the provider that owns its Location.
+ * Deliver one Message through the provider that owns its Location.
  *
- * TODO(dcramer): Delete PublishedMessage and PublishMessage after the core Turn
+ * TODO(dcramer): Delete DeliveryResult and DeliverMessage after the core Turn
  * lifecycle stores completed assistant Messages and the mailbox worker can
  * accept provider Delivery directly.
  */
-export type PublishMessage = (input: {
+export type DeliverMessage = (input: {
   conversationId: string;
   location: Location;
   text: string;
-}) => Promise<PublishedMessage>;
+}) => Promise<DeliveryResult>;
 
 /** Store one assistant Message and its Agent history. */
 export async function commitAssistantMessage(args: {
   agentMessage?: AssistantMessage;
   conversation: ThreadConversationState;
   conversationId: string;
-  publishedMessage?: PublishedMessage;
+  deliveryResult?: DeliveryResult;
   sessionId: string;
   source?: "slack" | "web";
   text: string;
@@ -47,11 +47,11 @@ export async function commitAssistantMessage(args: {
     text: args.text,
     userMessageId: args.userMessageId,
   });
-  if (args.publishedMessage?.providerMessageId) {
+  if (args.deliveryResult?.providerMessageId) {
     // TODO(dcramer): Remove this Slack-only branch after Message update can
     // store a provider Message ID.
     markConversationMessage(args.conversation, conversationMessageId, {
-      slackTs: args.publishedMessage.providerMessageId,
+      slackTs: args.deliveryResult.providerMessageId,
     });
   }
   try {
@@ -64,7 +64,7 @@ export async function commitAssistantMessage(args: {
         conversationMessageId,
         conversationId: args.conversationId,
         providerConversationBindings:
-          args.publishedMessage?.providerConversationBindings,
+          args.deliveryResult?.providerConversationBindings,
       }),
     );
   } catch (error) {

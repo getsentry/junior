@@ -138,7 +138,6 @@ export interface TurnRecord {
    */
   actors: Actor[];
   resumeReason?: TurnPauseReason;
-  publishExternally?: boolean;
   /** Input that started this Turn; absent only on stored legacy cursors. */
   source?: Source;
   resumedFromSliceId?: number;
@@ -178,6 +177,8 @@ interface StoredTurnRecord extends Omit<
   | "piMessageProvenance"
   | "turnStartMessageIndex"
 > {
+  /** Redis field kept for deployed workers that still read publishExternally. */
+  publishExternally?: boolean;
   /**
    * `seq` of the last event in `junior_conversation_events` whose projection reproduces
    * this record's committed Pi messages; -1 when nothing was committed.
@@ -457,7 +458,6 @@ function materializeTurnRecord(
       dispatchOutcome: stored.dispatchOutcome,
       errorMessage: stored.errorMessage,
       resumeReason: stored.resumeReason,
-      publishExternally: stored.publishExternally,
       source: stored.source,
       resultMessageId: stored.resultMessageId,
       resumedFromSliceId: stored.resumedFromSliceId,
@@ -779,7 +779,7 @@ async function updateTurnState(args: {
         errorMessage: args.errorMessage ?? args.existing.errorMessage,
         historyVersion: parsed.historyVersion,
         resumeReason: args.existing.resumeReason,
-        publishExternally: args.existing.publishExternally,
+        publishExternally: parsed.publishExternally,
         source: args.existing.source,
         resultMessageId: args.resultMessageId ?? args.existing.resultMessageId,
         resumedFromSliceId: args.existing.resumedFromSliceId,
@@ -815,7 +815,6 @@ export async function upsertTurnRecord(args: {
   trailingMessageProvenance?: ConversationMessageProvenance[];
   actor?: Actor;
   resumeReason?: TurnPauseReason;
-  publishExternally?: boolean;
   errorMessage?: string;
   resumedFromSliceId?: number;
   traceId?: string;
@@ -909,6 +908,20 @@ async function upsertTurnRecordLocked(
       ? undefined
       : commit.messageSeqs.filter((seq) => seq <= turnStartSeq).length);
 
+  // TODO(dcramer): Remove the stored publishExternally field after no deployed
+  // Turn cursor reader requires it. Current workers ignore the field.
+  const turnSource = args.source ?? existingRecord?.source;
+  const dispatchId = args.dispatchId ?? existingRecord?.dispatchId;
+  const hasProviderLocation =
+    Boolean(conversation?.location) || args.destination?.platform === "slack";
+  const publishExternally =
+    dispatchId || turnSource
+      ? hasProviderLocation &&
+        (Boolean(dispatchId) ||
+          turnSource?.kind === "slack" ||
+          turnSource?.kind === "resource_event")
+      : (existingRecord?.publishExternally ?? false);
+
   return await setStoredRecord({
     actor: existingRecord?.actor ?? args.actor,
     fence,
@@ -941,14 +954,13 @@ async function upsertTurnRecordLocked(
       historyVersion: commit.historyVersion,
       previousVersion: existingRecord?.version,
       ...definedProps({
-        dispatchId: args.dispatchId ?? existingRecord?.dispatchId,
+        dispatchId,
         dispatchOutcome:
           args.dispatchOutcome ?? existingRecord?.dispatchOutcome,
         errorMessage: args.errorMessage,
         lastProgressAtMs: args.lastProgressAtMs,
         resumeReason: args.resumeReason,
-        publishExternally:
-          args.publishExternally ?? existingRecord?.publishExternally,
+        publishExternally,
         source: args.source ?? existingRecord?.source,
         resultMessageId:
           args.resultMessageId ?? existingRecord?.resultMessageId,

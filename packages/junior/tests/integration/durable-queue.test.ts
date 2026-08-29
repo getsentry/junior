@@ -455,7 +455,6 @@ describe("durable queue contract", () => {
         getTurnRecord(CONVERSATION_ID, turnId),
       ).resolves.toMatchObject({
         actors: [{ platform: "system", name: "resource-event" }],
-        publishExternally: true,
         state: "completed",
         surface: "slack",
       });

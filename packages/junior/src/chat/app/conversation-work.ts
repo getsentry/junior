@@ -28,7 +28,7 @@ import {
 } from "@/chat/agent-dispatch/store";
 import { createSlackRuntime } from "./factory";
 import type { JuniorRuntimeServiceOverrides } from "./services";
-import { createSlackSystemTurnPublisher } from "@/chat/providers/slack/system-turn";
+import { createSlackSystemTurnDelivery } from "@/chat/providers/slack/system-turn";
 import {
   scheduleSessionCompletedPluginTasks,
   type ScheduleSessionCompletedPluginTasksOptions,
@@ -134,7 +134,7 @@ export function createConversationWork(
   const invocationWorker = createAgentInvocationWorker(options.agentRunner);
   const conversationTurnWorker = createConversationTurnWorker(
     options.agentRunner,
-    createSlackSystemTurnPublisher({
+    createSlackSystemTurnDelivery({
       getSlackAdapter: options.getSlackAdapter,
       state: options.state,
     }),

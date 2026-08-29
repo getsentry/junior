@@ -239,7 +239,6 @@ describe("conversation cancel pending messages API", () => {
           text: "internal wake",
         },
         receivedAtMs: Date.now(),
-        publishExternally: false,
         source: "internal",
       },
       state,
