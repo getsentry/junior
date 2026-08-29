@@ -9,7 +9,7 @@ There are four independently runnable suites:
 1. **Integration** (`evals/integration/**`) — full agent/runtime runs for primary system functionality that should never regress. Failures are hard pass/fail.
 2. **Behavioral** (domain folders under `evals/` except `integration/`, `guardian/`, and `output-router/`) — full agent/runtime runs that measure agent behavior and tolerate bounded variability. CI reports a suite score and only blocks below the configured floor.
 3. **Guardian** (`evals/guardian/**`) — isolated action-review snapshots scored only on `allow` / `ask` / `deny`. Failures are hard pass/fail.
-4. **Visible-reply prepare** (`evals/output-router/**`) — isolated prepare snapshots scored only on `silent` / `reply`. Failures are hard pass/fail.
+4. **Visible-reply prepare** (`evals/output-router/**`) — full Slack/runtime conversation cases for the optional prepare path. Failures are hard pass/fail.
 
 - We define conversation cases inline in TypeScript using `describeEval()` and the shared `slackEvals` harness options.
 - We run the real runtime/harness against those fixtures.
@@ -58,11 +58,10 @@ Not in scope:
   - `evals/sentry/`
 - Isolated Guardian decisions: `evals/guardian/`
   - exact `ToolActionProposal` snapshots scored only on `allow` / `ask` / `deny`
-- Isolated visible-reply prepare decisions: `evals/output-router/`
-  - exact assistant message text snapshots scored only on `silent` / `reply`
+- Visible-reply prepare conversation cases: `evals/output-router/`
+  - scripted assistant text through the real prepare + delivery path
 - Helpers and event builders: `src/helpers.ts`
 - Guardian harness: `src/guardian-harness.ts`
-- Visible-reply prepare harness: `src/output-router-harness.ts`
 - Harness/runtime adapter: `src/behavior-harness.ts`
 
 ## Execution Model
@@ -110,15 +109,15 @@ Tool replay:
 - `pnpm evals` / `pnpm evals:behavioral`: Run the behavioral suite
 - `pnpm evals:integration`: Run the integration suite
 - `pnpm evals:guardian`: Run isolated Guardian action-review snapshots
-- `pnpm evals:output-router`: Run isolated visible-reply prepare snapshots
+- `pnpm evals:output-router`: Run visible-reply prepare conversation cases
 - `pnpm --filter @sentry/junior-evals evals:behavioral`: Run behavioral from any directory
 - `pnpm --filter @sentry/junior-evals evals:integration`: Run integration from any directory
 - `pnpm --filter @sentry/junior-evals evals:guardian`: Run Guardian from any directory
-- `pnpm --filter @sentry/junior-evals evals:output-router`: Run visible-reply prepare from any directory
+- `pnpm --filter @sentry/junior-evals evals:output-router`: Run visible-reply prepare conversation cases from any directory
 - `pnpm --filter @sentry/junior-evals evals:behavioral evals/sentry/skills.eval.ts`: Run one behavioral file
 - `pnpm --filter @sentry/junior-evals evals:integration evals/integration/conversation/actions.eval.ts`: Run one integration file
 - `pnpm --filter @sentry/junior-evals evals:guardian evals/guardian/action-review.eval.ts -t "deny"`: Run one Guardian case
-- `pnpm --filter @sentry/junior-evals evals:output-router evals/output-router/prepare-reply.eval.ts`: Run one prepare file
+- `pnpm --filter @sentry/junior-evals evals:output-router evals/output-router/visible-reply.eval.ts`: Run one prepare file
 - `pnpm --filter @sentry/junior-evals evals:behavioral --shard=1/4`: Run one of the four CI behavioral shards
 
 Pass eval file paths, `-t` filters, and shard options directly after the suite script. Do not use `pnpm exec vitest` directly, and do not insert `--` before eval arguments.
@@ -129,37 +128,37 @@ Pass eval file paths, `-t` filters, and shard options directly after the suite s
   - `Behavioral evals`: Slack/agent evals (`behavioral / shard *` + `behavioral / report` → `behavioral / score` Check Run)
   - `Integration evals`: system evals (`integration / shard *`)
   - `Guardian evals`: isolated action-review snapshots (`guardian / run`)
-  - `Output-router evals`: isolated visible-reply prepare snapshots (`output-router / run`)
+  - `Output-router evals`: visible-reply prepare conversation cases (`output-router / run`)
 - Suite labels follow `trigger-evals-[domain]`:
   - `trigger-evals` starts all suites
   - `trigger-evals-behavioral`, `trigger-evals-integration`, `trigger-evals-guardian`, and `trigger-evals-output-router` start one suite
-- Behavioral and integration evals require both gateway and sandbox secrets. Guardian and output-router only need gateway credentials.
+- Behavioral, integration, and output-router evals require both gateway and sandbox secrets. Guardian only needs gateway credentials.
 - Adding a trigger label fires immediately; unrelated labels do not.
 - Behavioral path triggers cover domain folders under `evals/{agent,conversation,github,memory,scheduler,sentry}/` and shared harness/config files under `packages/junior-evals/`.
 - Integration path triggers cover `evals/integration/**`, the integration config, and shared harness files under `packages/junior-evals/`.
 - Guardian path triggers cover `evals/guardian/**`, the Guardian harness/config under `packages/junior-evals/`, and `packages/junior/src/chat/services/guardian-action-policy.ts`.
-- Output-router path triggers cover `evals/output-router/**`, the prepare harness/config under `packages/junior-evals/`, and `packages/junior/src/chat/services/output-router.ts`.
+- Output-router path triggers cover `evals/output-router/**`, shared conversation harness/config under `packages/junior-evals/`, `packages/junior/src/chat/services/output-router.ts`, and the agent delivery wire-up.
 - Other product source under `packages/junior/src/**` does not auto-run evals; use a `trigger-evals*` label for that.
 - Behavioral shards still fail individual cases under the per-case judge threshold (`0.75`), but the workflow no longer fails the shard job on those case failures alone. Each behavioral shard, Guardian job, and output-router job publishes its own `vitest-evals` job summary (pass rate, scores, quality misses).
 - After all behavioral shards finish, `behavioral / report` combines results, writes the aggregate job summary, and publishes a `behavioral / score` Check Run. The Check Run title carries the gate line (for example `Eval pass rate 90.2% — floor 80.0%`). When that check publishes, the report step soft-fails so the Check Run owns green/red instead of canned job failure text.
 - The behavioral floor is `EVAL_MIN_PASS_RATE=0.8` (`80%` of cases passed). `vitest-evals@0.16` owns the aggregate gate math; individual case misses are warnings when the floor still passes. Missing shard result files or setup/runtime crashes before results are written remain hard failures on the report job.
 - Integration cases fail the `integration / shard *` jobs hard on any miss. They do not use the aggregate pass-rate floor.
 - Guardian cases assert exact `allow` / `ask` / `deny` decisions and fail the `guardian / run` job hard on mismatch. They do not use the aggregate pass-rate floor.
-- Output-router cases assert exact `silent` / `reply` decisions and fail the `output-router / run` job hard on mismatch. They do not use the aggregate pass-rate floor.
+- Output-router cases assert delivered conversation replies (or silence) and fail the `output-router / run` job hard on mismatch. They do not use the aggregate pass-rate floor.
 - The simplest Gateway and Sandbox setup is `VERCEL_OIDC_TOKEN` alone.
 - The fallback CI setup is `AI_GATEWAY_API_KEY` plus `VERCEL_TOKEN` + `VERCEL_TEAM_ID` + `VERCEL_PROJECT_ID`.
 - Behavioral and integration global setup starts one Cloudflare Quick Tunnel for the suite so Vercel Sandbox can reach the eval egress proxy. Transient tunnel allocation failures retry up to five times with backoff. Local runs require `cloudflared` on `PATH`; CI installs a pinned binary.
 - Behavioral and integration state always uses a loopback Redis. Local runs default to `redis://127.0.0.1:6382`; CI sets `JUNIOR_EVAL_REDIS_URL` for its Redis service.
 - Setup details for GitHub Actions live in `evals/github-actions.md`.
 
-Behavioral and integration evals require real Vercel Sandbox access and public Quick Tunnel connectivity. If either bootstrap fails, the eval fails immediately with no local fallback path. Guardian and output-router evals only need AI Gateway access.
+Behavioral, integration, and output-router evals require real Vercel Sandbox access and public Quick Tunnel connectivity. If either bootstrap fails, the eval fails immediately with no local fallback path. Guardian evals only need AI Gateway access.
 
 ## Authoring Rules
 
 - Put full-runtime integration cases that must never regress under `evals/integration/**` using `describeEval()` with `slackEvals`. Prefer deterministic assertions; keep criteria only when the case still needs light quality scoring.
 - Put behavioral cases under `evals/conversation/`, `evals/agent/`, or `evals/<feature>/` using `describeEval()` with `slackEvals`.
 - Add isolated Guardian decision snapshots under `evals/guardian/` using `describeEval()` with `guardianEvals`. Feed exact `ToolActionProposal` objects and assert only the expected `allow` / `ask` / `deny` decision.
-- Add isolated visible-reply prepare snapshots under `evals/output-router/` using `describeEval()` with `outputRouterEvals`. Feed exact assistant message text and assert only `silent` / `reply`.
+- Add visible-reply prepare conversation cases under `evals/output-router/` using `describeEval()` with `slackEvals`. Prefer scripted `reply_texts` from real transcripts, then assert what actually posts after prepare.
 - Put messages that should be pending before processing starts in `initialEvents`.
 - Put ordinary later events in `events`; each is delivered after preceding work settles.
 - Wrap messages with `steer(...)` when they should arrive through normal ingress while the preceding agent run is active.
@@ -217,7 +216,7 @@ Organize files by suite policy first, then by the user-visible area they exercis
 - `evals/integration/`: strict full-runtime integration cases (hard pass/fail).
 - `evals/conversation/`, `evals/agent/`, `evals/<feature>/`: agent-behavior cases (score-gated in CI).
 - `evals/guardian/`: isolated action-review snapshots (no main agent; hard pass/fail).
-- `evals/output-router/`: isolated visible-reply prepare snapshots (no main agent; hard pass/fail).
+- `evals/output-router/`: visible-reply prepare conversation cases (full runtime; hard pass/fail).
 - Use short behavior nouns for filenames: `routing.eval.ts`, `delivery.eval.ts`, `credentials.eval.ts`.
 - Keep one coherent behavior area per file. Split files when cases exercise independently understandable journeys.
 - Keep shared setup in a nearby `helpers.ts`; helpers are not eval files and do not define suites.

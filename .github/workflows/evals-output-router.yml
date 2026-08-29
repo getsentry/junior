@@ -30,24 +30,36 @@ jobs:
           filters: |
             relevant:
               - 'packages/junior-evals/evals/output-router/**'
-              - 'packages/junior-evals/src/output-router-harness.ts'
               - 'packages/junior-evals/src/output-router-setup.ts'
+              - 'packages/junior-evals/src/behavior-harness.ts'
+              - 'packages/junior-evals/src/helpers.ts'
+              - 'packages/junior-evals/src/setup.ts'
               - 'packages/junior-evals/src/eval-ai-gateway-dispatcher.ts'
-              - 'packages/junior-evals/output-router-global-setup.ts'
+              - 'packages/junior-evals/src/eval-context.ts'
+              - 'packages/junior-evals/src/eval-egress.ts'
+              - 'packages/junior-evals/global-setup.ts'
+              - 'packages/junior-evals/postgres-global-setup.ts'
               - 'packages/junior-evals/vitest.evals.output-router.config.ts'
               - 'packages/junior-evals/package.json'
               - 'packages/junior/src/chat/services/output-router.ts'
+              - 'packages/junior/src/chat/agent/index.ts'
+              - 'packages/junior/src/chat/experimental.ts'
       - id: decision
         env:
           AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
           VERCEL_OIDC_TOKEN: ${{ secrets.VERCEL_OIDC_TOKEN }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_TEAM_ID: ${{ secrets.VERCEL_TEAM_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
           RELEVANT: ${{ steps.changes.outputs.relevant }}
           PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
         run: |
           set -euo pipefail
           gateway_ready=false
+          sandbox_ready=false
           requested=false
           [[ -n "${AI_GATEWAY_API_KEY:-}" || -n "${VERCEL_OIDC_TOKEN:-}" ]] && gateway_ready=true
+          [[ -n "${VERCEL_OIDC_TOKEN:-}" || ( -n "${VERCEL_TOKEN:-}" && -n "${VERCEL_TEAM_ID:-}" && -n "${VERCEL_PROJECT_ID:-}" ) ]] && sandbox_ready=true
           IFS=',' read -r -a labels <<< "${PR_LABELS:-}"
           for label in "${labels[@]}"; do
             if [[ "$label" == "trigger-evals" || "$label" == "trigger-evals-output-router" ]]; then
@@ -55,7 +67,7 @@ jobs:
             fi
           done
           should_run=false
-          [[ "$gateway_ready" == "true" && ( "$RELEVANT" == "true" || "$requested" == "true" ) ]] && should_run=true
+          [[ "$gateway_ready" == "true" && "$sandbox_ready" == "true" && ( "$RELEVANT" == "true" || "$requested" == "true" ) ]] && should_run=true
           echo "should_run=$should_run" >> "$GITHUB_OUTPUT"
           {
             echo "## Output-router eval selection"
@@ -63,6 +75,7 @@ jobs:
             echo "- relevant_files_changed: $RELEVANT"
             echo "- requested: $requested"
             echo "- gateway_ready: $gateway_ready"
+            echo "- sandbox_ready: $sandbox_ready"
             echo "- will_run: $should_run"
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -71,12 +84,50 @@ jobs:
     needs: select
     if: needs.select.outputs.should_run == 'true'
     runs-on: blacksmith-4vcpu-ubuntu-2404
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: junior
+          POSTGRES_PASSWORD: junior
+          POSTGRES_DB: junior
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U junior -d junior"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     env:
+      JUNIOR_EVAL_REDIS_URL: redis://127.0.0.1:6379
+      DATABASE_URL: postgres://junior:junior@localhost:5432/junior
       AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_TEAM_ID: ${{ secrets.VERCEL_TEAM_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
       VERCEL_OIDC_TOKEN: ${{ secrets.VERCEL_OIDC_TOKEN }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node-pnpm
+      - name: Install cloudflared
+        run: |
+          set -euo pipefail
+          curl --fail --location --silent --show-error \
+            https://github.com/cloudflare/cloudflared/releases/download/2026.7.2/cloudflared-linux-amd64 \
+            --output "$RUNNER_TEMP/cloudflared"
+          echo "ec905ea7b7e327ff8abdde8cb64697a2152de74dbcdbf6aec9db8364eb3886cd  $RUNNER_TEMP/cloudflared" | sha256sum --check
+          chmod +x "$RUNNER_TEMP/cloudflared"
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/cloudflared" version
       - name: Run output-router evals
         id: run
         continue-on-error: true
