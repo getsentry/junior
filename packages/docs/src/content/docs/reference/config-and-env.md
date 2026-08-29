@@ -174,10 +174,11 @@ repository for a loopback test with the official ACP SDK client. ACP remains a
 pre-stable surface.
 
 `output-router` uses the fast model (`AI_FAST_MODEL`) to prepare the visible
-reply for each completed tool-free assistant message. Pure `[[NO_REPLY]]` stays
-silent, mixed markers are removed, and long replies can be shortened. The
-original agent text remains in conversation history. Leave it unset unless you
-are testing that path.
+reply for each completed tool-free assistant message. Exact `[[NO_REPLY]]` stays
+silent. Mixed marker text is judged (status-only chatter can stay silent; a real
+answer that mentions the marker still delivers). Long replies can be shortened.
+The original agent text remains in conversation history. Leave it unset unless
+you are testing that path.
 
 `passive-routing` turns on replies to non-mention messages in threads Junior
 already joined. Leave it unset in production unless you are testing that path.

@@ -64,7 +64,11 @@ export default defineConfig({
     globalSetup: [path.resolve(__dirname, "global-setup.ts")],
     // Behavioral quality cases. Integration and Guardian suites have their own configs.
     include: ["evals/**/*.eval.ts"],
-    exclude: ["evals/guardian/**", "evals/integration/**"],
+    exclude: [
+      "evals/guardian/**",
+      "evals/integration/**",
+      "evals/output-router/**",
+    ],
     maxWorkers: 1,
     setupFiles: [
       path.resolve(__dirname, "src/setup.ts"),

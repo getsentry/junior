@@ -23,13 +23,14 @@ loadJuniorTestEnvFiles({
 
 process.env.JUNIOR_SECRET = "junior-test-secret";
 process.env.JUNIOR_BASE_URL ??= "https://junior.example.com";
-// Guardian cases do not touch Redis state, but keep a loopback default so any
-// accidental shared import that reads REDIS_URL stays sandboxed.
+// Guardian/output-router cases do not touch Redis state, but keep a loopback
+// default so any accidental shared import that reads REDIS_URL stays sandboxed.
 process.env.JUNIOR_STATE_ADAPTER = "redis";
 process.env.JUNIOR_STATE_KEY_PREFIX ??= `junior:eval-guardian:${randomUUID()}`;
 process.env.REDIS_URL =
   process.env.JUNIOR_EVAL_REDIS_URL?.trim() || "redis://127.0.0.1:6382";
 process.env.AI_GUARDIAN_MODEL ??= "openai/gpt-5.6-luna";
+process.env.AI_FAST_MODEL ??= "openai/gpt-5.6-luna";
 
 export default defineConfig({
   resolve: {
@@ -49,7 +50,10 @@ export default defineConfig({
     environment: "node",
     fileParallelism: false,
     globalSetup: [path.resolve(__dirname, "guardian-global-setup.ts")],
-    include: ["evals/guardian/**/*.eval.ts"],
+    include: [
+      "evals/guardian/**/*.eval.ts",
+      "evals/output-router/**/*.eval.ts",
+    ],
     maxWorkers: 1,
     setupFiles: [path.resolve(__dirname, "src/guardian-setup.ts")],
     outputFile: { json: evalReportPath },

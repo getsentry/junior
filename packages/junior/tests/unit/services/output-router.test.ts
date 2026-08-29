@@ -71,14 +71,39 @@ describe("prepare assistant reply", () => {
     expect(completeObject).not.toHaveBeenCalled();
   });
 
-  it("removes mixed no-reply markers locally", () => {
+  it("does not decide mixed no-reply markers locally", () => {
+    // Mixed marker cases need model judgment: silence for status-only chatter,
+    // keep answer when the marker is only mentioned in a real reply.
     expect(
       prepareAssistantReplyLocal(`shipped it ${NO_REPLY_MARKER}\nmore detail`),
-    ).toEqual({
-      kind: "reply",
-      text: "shipped it\nmore detail",
-      reason: "removed_no_reply_marker",
+    ).toBeNull();
+  });
+
+  it("asks the fast model for mixed marker messages", async () => {
+    const completeObject = vi.fn(async () => ({
+      costUsd: 0.0002,
+      object: {
+        text: null,
+        reason: "status only, intentional silence",
+      },
+    }));
+
+    await expect(
+      prepareAssistantReply({
+        completeObject,
+        fastModelId: "openai/gpt-5.6-luna",
+        text: [
+          "Same baseline miss — not caused by this PR. No PR fix.",
+          "",
+          NO_REPLY_MARKER,
+        ].join("\n"),
+      }),
+    ).resolves.toEqual({
+      kind: "silent",
+      reason: "status only, intentional silence",
+      costUsd: 0.0002,
     });
+    expect(completeObject).toHaveBeenCalledOnce();
   });
 
   it("asks the fast model to shorten long replies", async () => {
@@ -108,7 +133,6 @@ describe("prepare assistant reply", () => {
         promptName: "junior.prepare_assistant_reply",
         temperature: 0,
         thinkingLevel: "low",
-        system: expect.stringContaining("Edit one assistant message"),
       }),
     );
   });

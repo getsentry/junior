@@ -8,7 +8,7 @@ There are three independently runnable suites:
 
 1. **Integration** (`evals/integration/**`) — full agent/runtime runs for primary system functionality that should never regress. Failures are hard pass/fail.
 2. **Behavioral** (domain folders under `evals/` except `integration/` and `guardian/`) — full agent/runtime runs that measure agent behavior and tolerate bounded variability. CI reports a suite score and only blocks below the configured floor.
-3. **Guardian** (`evals/guardian/**`) — isolated decision snapshots scored only on `allow` / `ask` / `deny`. Failures are hard pass/fail.
+3. **Guardian** (`evals/guardian/**` and `evals/output-router/**`) — isolated decision snapshots. Guardian scores only `allow` / `ask` / `deny`. Output-router scores only `silent` / `reply`. Failures are hard pass/fail.
 
 - We define conversation cases inline in TypeScript using `describeEval()` and the shared `slackEvals` harness options.
 - We run the real runtime/harness against those fixtures.
@@ -57,8 +57,11 @@ Not in scope:
   - `evals/sentry/`
 - Isolated Guardian decisions: `evals/guardian/`
   - exact `ToolActionProposal` snapshots scored only on `allow` / `ask` / `deny`
+- Isolated output-router decisions: `evals/output-router/`
+  - exact assistant message text snapshots scored only on `silent` / `reply`
 - Helpers and event builders: `src/helpers.ts`
 - Guardian harness: `src/guardian-harness.ts`
+- Output-router harness: `src/output-router-harness.ts`
 - Harness/runtime adapter: `src/behavior-harness.ts`
 
 ## Execution Model
@@ -105,13 +108,14 @@ Tool replay:
 
 - `pnpm evals` / `pnpm evals:behavioral`: Run the behavioral suite
 - `pnpm evals:integration`: Run the integration suite
-- `pnpm evals:guardian`: Run isolated Guardian decision snapshots
+- `pnpm evals:guardian`: Run isolated Guardian + output-router decision snapshots
 - `pnpm --filter @sentry/junior-evals evals:behavioral`: Run behavioral from any directory
 - `pnpm --filter @sentry/junior-evals evals:integration`: Run integration from any directory
 - `pnpm --filter @sentry/junior-evals evals:guardian`: Run Guardian from any directory
 - `pnpm --filter @sentry/junior-evals evals:behavioral evals/sentry/skills.eval.ts`: Run one behavioral file
 - `pnpm --filter @sentry/junior-evals evals:integration evals/integration/conversation/actions.eval.ts`: Run one integration file
 - `pnpm --filter @sentry/junior-evals evals:guardian evals/guardian/action-review.eval.ts -t "deny"`: Run one Guardian case
+- `pnpm --filter @sentry/junior-evals evals:guardian evals/output-router/prepare-reply.eval.ts`: Run output-router snapshots
 - `pnpm --filter @sentry/junior-evals evals:behavioral --shard=1/4`: Run one of the four CI behavioral shards
 
 Pass eval file paths, `-t` filters, and shard options directly after the suite script. Do not use `pnpm exec vitest` directly, and do not insert `--` before eval arguments.
@@ -129,7 +133,7 @@ Pass eval file paths, `-t` filters, and shard options directly after the suite s
 - Adding a trigger label fires immediately; unrelated labels do not.
 - Behavioral path triggers cover domain folders under `evals/{agent,conversation,github,memory,scheduler,sentry}/` and shared harness/config files under `packages/junior-evals/`.
 - Integration path triggers cover `evals/integration/**`, the integration config, and shared harness files under `packages/junior-evals/`.
-- Guardian path triggers cover `evals/guardian/**`, the Guardian harness/config under `packages/junior-evals/`, and `packages/junior/src/chat/services/guardian-action-policy.ts`.
+- Guardian path triggers cover `evals/guardian/**`, `evals/output-router/**`, the Guardian/output-router harness/config under `packages/junior-evals/`, `packages/junior/src/chat/services/guardian-action-policy.ts`, and `packages/junior/src/chat/services/output-router.ts`.
 - Other product source under `packages/junior/src/**` does not auto-run evals; use a `trigger-evals*` label for that.
 - Behavioral shards still fail individual cases under the per-case judge threshold (`0.75`), but the workflow no longer fails the shard job on those case failures alone. Each behavioral shard and the Guardian job publishes its own `vitest-evals` job summary (pass rate, scores, quality misses).
 - After all behavioral shards finish, `behavioral / report` combines results, writes the aggregate job summary, and publishes a `behavioral / score` Check Run. The Check Run title carries the gate line (for example `Eval pass rate 90.2% — floor 80.0%`). When that check publishes, the report step soft-fails so the Check Run owns green/red instead of canned job failure text.
@@ -149,6 +153,7 @@ Behavioral and integration evals require real Vercel Sandbox access and public Q
 - Put full-runtime integration cases that must never regress under `evals/integration/**` using `describeEval()` with `slackEvals`. Prefer deterministic assertions; keep criteria only when the case still needs light quality scoring.
 - Put behavioral cases under `evals/conversation/`, `evals/agent/`, or `evals/<feature>/` using `describeEval()` with `slackEvals`.
 - Add isolated Guardian decision snapshots under `evals/guardian/` using `describeEval()` with `guardianEvals`. Feed exact `ToolActionProposal` objects and assert only the expected `allow` / `ask` / `deny` decision.
+- Add isolated output-router snapshots under `evals/output-router/` using `describeEval()` with `outputRouterEvals`. Feed exact assistant message text and assert only `silent` / `reply`.
 - Put messages that should be pending before processing starts in `initialEvents`.
 - Put ordinary later events in `events`; each is delivered after preceding work settles.
 - Wrap messages with `steer(...)` when they should arrive through normal ingress while the preceding agent run is active.
@@ -206,6 +211,7 @@ Organize files by suite policy first, then by the user-visible area they exercis
 - `evals/integration/`: strict full-runtime integration cases (hard pass/fail).
 - `evals/conversation/`, `evals/agent/`, `evals/<feature>/`: agent-behavior cases (score-gated in CI).
 - `evals/guardian/`: isolated Guardian decision snapshots (no main agent; hard pass/fail).
+- `evals/output-router/`: isolated visible-reply prepare snapshots (no main agent; hard pass/fail).
 - Use short behavior nouns for filenames: `routing.eval.ts`, `delivery.eval.ts`, `credentials.eval.ts`.
 - Keep one coherent behavior area per file. Split files when cases exercise independently understandable journeys.
 - Keep shared setup in a nearby `helpers.ts`; helpers are not eval files and do not define suites.

@@ -30,13 +30,16 @@ jobs:
           filters: |
             relevant:
               - 'packages/junior-evals/evals/guardian/**'
+              - 'packages/junior-evals/evals/output-router/**'
               - 'packages/junior-evals/src/guardian-harness.ts'
+              - 'packages/junior-evals/src/output-router-harness.ts'
               - 'packages/junior-evals/src/guardian-setup.ts'
               - 'packages/junior-evals/src/eval-ai-gateway-dispatcher.ts'
               - 'packages/junior-evals/guardian-global-setup.ts'
               - 'packages/junior-evals/vitest.evals.guardian.config.ts'
               - 'packages/junior-evals/package.json'
               - 'packages/junior/src/chat/services/guardian-action-policy.ts'
+              - 'packages/junior/src/chat/services/output-router.ts'
       - id: decision
         env:
           AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}

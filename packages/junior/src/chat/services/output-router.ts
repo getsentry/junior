@@ -60,13 +60,11 @@ type CompleteObject = (args: {
 }) => Promise<{ costUsd?: number; object: unknown }>;
 
 /**
- * Prompt design notes:
- * - short imperative system instructions first
- * - one clear output contract (structured JSON)
- * - rules as a short checklist
- * - no roleplay / no extra context
- * Related: OpenAI structured outputs + short instruction prompts;
- * Anthropic: put the task first, be direct, prefer positive rules.
+ * Prompt design:
+ * - task first, short imperative rules
+ * - one structured output contract
+ * - no extra context, no roleplay
+ * OpenAI structured outputs + short instructions; Anthropic: be direct.
  */
 function buildSystemPrompt(): string {
   return [
@@ -78,10 +76,11 @@ function buildSystemPrompt(): string {
     "- reason: one short sentence",
     "",
     "Rules:",
-    `- Set text to null only when the message is empty or only ${NO_REPLY_MARKER}.`,
-    `- If ${NO_REPLY_MARKER} appears with real answer text, remove the marker and keep the answer.`,
+    `- Set text to null when there is no user-facing answer: empty text, only ${NO_REPLY_MARKER}, or status/process chatter that only exists to stay silent.`,
+    `- If the message mixes ${NO_REPLY_MARKER} with a real answer, keep the answer and remove the marker from visible text.`,
+    `- Do not silence a message only because it contains the string ${NO_REPLY_MARKER}. Judge whether the user still needs a visible reply.`,
     `- Keep short clear replies as-is (about ${OUTPUT_REPLY_SOFT_MAX_CHARS} characters or less).`,
-    `- If the reply is too long, shorten it. Keep the answer, key facts, links, and next steps. Do not add facts.`,
+    "- If the reply is too long, shorten it. Keep the answer, key facts, links, and next steps. Do not add facts.",
     "- Prefer 1-5 short sentences when shortening.",
     "- Do not add a preface or meta commentary.",
   ].join("\n");
@@ -133,7 +132,10 @@ function reply(
   };
 }
 
-/** Cheap local checks before calling the model. */
+/**
+ * Cheap local checks before calling the model.
+ * Only exact silence stays local. Mixed marker cases need judgment.
+ */
 export function prepareAssistantReplyLocal(
   text: string,
 ): PreparedAssistantReply | null {
@@ -143,13 +145,6 @@ export function prepareAssistantReplyLocal(
   }
   if (isNoReplyMarker(trimmed)) {
     return silent("no_reply");
-  }
-  if (trimmed.includes(NO_REPLY_MARKER)) {
-    const stripped = stripNoReplyMarker(trimmed);
-    if (!stripped) {
-      return silent("no_reply");
-    }
-    return reply(capVisibleText(stripped), "removed_no_reply_marker");
   }
   return null;
 }
