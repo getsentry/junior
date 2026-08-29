@@ -14,6 +14,10 @@ export function createEventTaskTools(
   context: ToolRuntimeContext,
   catalog: ResourceEventCatalog,
 ): ToolRegistry {
+  // TODO(dcramer): Let users manage Event tasks from web and other Junior
+  // Conversations. Remove these Slack checks when task storage can identify
+  // its Conversation and User without Slack-only fields. Location provides
+  // Slack context; the work owner decides Delivery.
   if (
     context.source.kind !== "slack" ||
     context.destination.platform !== "slack" ||

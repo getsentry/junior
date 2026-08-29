@@ -162,6 +162,8 @@ export function getConversationAccess(
   destination: SlackDestination,
   source: SlackSource | undefined,
 ): ScheduledTaskConversationAccess {
+  // TODO(dcramer): Read Conversation visibility after Scheduled tasks no longer
+  // require Slack Source. Source describes the input, not the Conversation.
   if (isDmChannel(destination.channelId)) {
     return { audience: "direct", visibility: "private" };
   }
