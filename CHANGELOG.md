@@ -1,4 +1,18 @@
 # Changelog
+## 0.190.0
+
+### Breaking Changes 🛠
+
+- (chat) Add Resource event Source by @dcramer in [#1730](https://github.com/getsentry/junior/pull/1730)
+
+### New Features ✨
+
+- (gocd) Expand read-only pipeline tools by @sentry-junior in [#1734](https://github.com/getsentry/junior/pull/1734)
+
+### Internal Changes 🔧
+
+- (chat) Store Actor on the Turn by @dcramer in [#1735](https://github.com/getsentry/junior/pull/1735)
+
 ## 0.189.0
 
 ### New Features ✨
