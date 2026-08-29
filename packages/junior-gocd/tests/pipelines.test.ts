@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
-import { createGocdDashboardTool } from "../src/tools/dashboard";
+import { createGocdPipelinesTool } from "../src/tools/pipelines";
 
-describe("GoCD dashboard", () => {
+describe("GoCD pipelines", () => {
   it("returns pipeline discovery data without user or permission fields", async () => {
     const fetch = vi.fn().mockResolvedValue(
       Response.json({
@@ -58,14 +58,14 @@ describe("GoCD dashboard", () => {
         },
       }),
     );
-    const tool = createGocdDashboardTool({ egress: { fetch } } as never, {
+    const tool = createGocdPipelinesTool({ egress: { fetch } } as never, {
       baseUrl: "https://gocd.example.com",
     });
 
-    const result = await tool.execute?.({}, { toolCallId: "dashboard" });
+    const result = await tool.execute?.({}, { toolCallId: "pipelines" });
 
     expect(result).toEqual({
-      target: "dashboard",
+      target: "pipelines",
       baseUrl: "https://gocd.example.com",
       pipelines: [
         {
@@ -73,8 +73,7 @@ describe("GoCD dashboard", () => {
           lastUpdatedAt: 123,
           locked: false,
           paused: true,
-          fromConfigRepo: true,
-          instances: [
+          runs: [
             {
               label: "42",
               counter: 42,

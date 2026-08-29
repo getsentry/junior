@@ -61,9 +61,9 @@ gocdPlugin({
 
 ## Tools
 
-- `dashboard`: returns visible pipeline names, groups, environments, and recent run state
+- `pipelines`: returns visible pipeline names, groups, environments, and recent run state
 - `pipelineHistory`: returns recent runs for one pipeline
-- `pipelineInstance`: returns one pipeline run with stage and job results
+- `pipelineRun`: returns one pipeline run with stage and job results
 - `pipelineStatus`: returns whether one pipeline is paused, locked, and schedulable
 - `stage`: returns one stage run, its jobs, and failed job names
 - `jobHistory`: returns recent runs for one job
@@ -74,7 +74,7 @@ The tools use the GoCD 25.2.0 API:
 
 - dashboard: `GET /go/api/dashboard` with `Accept: application/vnd.go.cd.v4+json`
 - pipeline history: `GET /go/api/pipelines/:name/history` with `Accept: application/vnd.go.cd.v1+json`
-- pipeline instance: `GET /go/api/pipelines/:name/:counter` with `Accept: application/vnd.go.cd.v1+json`
+- pipeline run: `GET /go/api/pipelines/:name/:counter` with `Accept: application/vnd.go.cd.v1+json`
 - pipeline status: `GET /go/api/pipelines/:name/status` with `Accept: application/vnd.go.cd.v1+json`
 - stage run: `GET /go/api/stages/:pipeline_name/:stage_name/instance/:pipeline_counter/:stage_counter` with `Accept: application/vnd.go.cd.v3+json`
 - job history: `GET /go/api/jobs/:pipeline_name/:stage_name/:job_name/history` with `Accept: application/vnd.go.cd.v1+json`

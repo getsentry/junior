@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createGocdJobHistoryTool } from "../src/tools/job-history";
-import { createGocdPipelineInstanceTool } from "../src/tools/pipeline-instance";
+import { createGocdPipelineRunTool } from "../src/tools/pipeline-run";
 import { createGocdPipelineStatusTool } from "../src/tools/pipeline-status";
 
 function context(response: Response) {
@@ -11,7 +11,7 @@ const options = { baseUrl: "https://gocd.example.com" };
 
 describe("GoCD pipeline reads", () => {
   it("returns a pipeline run without source or user fields", async () => {
-    const tool = createGocdPipelineInstanceTool(
+    const tool = createGocdPipelineRunTool(
       context(
         Response.json({
           name: "deploy-api",
@@ -48,10 +48,10 @@ describe("GoCD pipeline reads", () => {
     await expect(
       tool.execute?.(
         { pipeline: "deploy-api", pipelineCounter: 42 },
-        { toolCallId: "instance" },
+        { toolCallId: "run" },
       ),
     ).resolves.toEqual({
-      target: "pipeline_instance",
+      target: "pipeline_run",
       baseUrl: "https://gocd.example.com",
       pipeline: "deploy-api",
       pipelineCounter: 42,
@@ -71,7 +71,7 @@ describe("GoCD pipeline reads", () => {
   });
 
   it("classifies a missing pipeline run as model-repairable", async () => {
-    const tool = createGocdPipelineInstanceTool(
+    const tool = createGocdPipelineRunTool(
       context(new Response("missing", { status: 404 })),
       options,
     );
@@ -79,11 +79,11 @@ describe("GoCD pipeline reads", () => {
     await expect(
       tool.execute?.(
         { pipeline: "missing", pipelineCounter: 42 },
-        { toolCallId: "missing-instance" },
+        { toolCallId: "missing-run" },
       ),
     ).rejects.toMatchObject({
       name: "PluginToolInputError",
-      message: "GoCD pipeline instance failed with HTTP 404",
+      message: "GoCD pipeline run failed with HTTP 404",
     });
   });
 

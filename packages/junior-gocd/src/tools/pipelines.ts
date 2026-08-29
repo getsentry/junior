@@ -36,7 +36,6 @@ const pipelineSchema = z
     last_updated_timestamp: z.number().nullable().optional(),
     locked: z.boolean(),
     pause_info: z.object({ paused: z.boolean() }),
-    from_config_repo: z.boolean(),
     _embedded: z.object({ instances: z.array(instanceSchema).default([]) }),
   })
   .passthrough();
@@ -80,7 +79,7 @@ const inputSchema = z
   .strict();
 
 const outputSchema = pluginToolOutputSchema.extend({
-  target: z.literal("dashboard"),
+  target: z.literal("pipelines"),
   baseUrl: z.string(),
   pipelines: z.array(
     z.object({
@@ -88,8 +87,7 @@ const outputSchema = pluginToolOutputSchema.extend({
       lastUpdatedAt: z.number().nullable(),
       locked: z.boolean(),
       paused: z.boolean(),
-      fromConfigRepo: z.boolean(),
-      instances: z.array(instanceOutputSchema),
+      runs: z.array(instanceOutputSchema),
     }),
   ),
   environments: z.array(
@@ -103,7 +101,7 @@ const outputSchema = pluginToolOutputSchema.extend({
 type Result = PluginToolOutput & z.infer<typeof outputSchema>;
 
 /** Return the pipelines visible to the current GoCD user with recent run state. */
-export function createGocdDashboardTool(
+export function createGocdPipelinesTool(
   ctx: ToolRegistrationHookContext,
   options: GocdPluginOptions = {},
 ) {
@@ -115,7 +113,7 @@ export function createGocdDashboardTool(
       readOnlyHint: true,
     },
     description:
-      "Search visible GoCD pipelines and return their groups, environments, and recent run state. Use this to discover exact pipeline names. The result excludes user identities, permissions, and pause reasons.",
+      "Search visible GoCD pipelines. Returns groups, environments, and recent runs. Use this to find an exact pipeline name.",
     inputSchema,
     outputSchema,
     async execute(input): Promise<Result> {
@@ -130,7 +128,7 @@ export function createGocdDashboardTool(
       });
       if (!response.ok) {
         throwGocdReadError(
-          `GoCD dashboard failed with HTTP ${response.status}`,
+          `GoCD pipelines failed with HTTP ${response.status}`,
           response.status,
           { missingResourceIsInput: false },
         );
@@ -145,15 +143,14 @@ export function createGocdDashboardTool(
         .slice(0, input.count);
       const pipelineNames = new Set(pipelines.map((pipeline) => pipeline.name));
       return {
-        target: "dashboard",
+        target: "pipelines",
         baseUrl,
         pipelines: pipelines.map((pipeline) => ({
           name: pipeline.name,
           lastUpdatedAt: pipeline.last_updated_timestamp ?? null,
           locked: pipeline.locked,
           paused: pipeline.pause_info.paused,
-          fromConfigRepo: pipeline.from_config_repo,
-          instances: pipeline._embedded.instances.map((instance) => ({
+          runs: pipeline._embedded.instances.map((instance) => ({
             label: instance.label,
             counter: instance.counter,
             scheduledAt: instance.scheduled_at ?? null,

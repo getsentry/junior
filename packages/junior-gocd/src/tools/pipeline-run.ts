@@ -15,7 +15,11 @@ import { throwGocdReadError } from "../errors.js";
 const inputSchema = z
   .object({
     pipeline: z.string().trim().min(1).describe("Exact GoCD pipeline name."),
-    pipelineCounter: z.number().int().min(1).describe("Pipeline run counter."),
+    pipelineCounter: z
+      .number()
+      .int()
+      .min(1)
+      .describe("GoCD counter for the pipeline run."),
   })
   .strict();
 
@@ -49,7 +53,7 @@ const bodySchema = z
   .passthrough();
 
 const outputSchema = pluginToolOutputSchema.extend({
-  target: z.literal("pipeline_instance"),
+  target: z.literal("pipeline_run"),
   baseUrl: z.string(),
   pipeline: z.string(),
   pipelineCounter: z.number(),
@@ -72,7 +76,7 @@ const outputSchema = pluginToolOutputSchema.extend({
 type Result = PluginToolOutput & z.infer<typeof outputSchema>;
 
 /** Return the operational state for one exact GoCD pipeline run. */
-export function createGocdPipelineInstanceTool(
+export function createGocdPipelineRunTool(
   ctx: ToolRegistrationHookContext,
   options: GocdPluginOptions = {},
 ) {
@@ -90,7 +94,7 @@ export function createGocdPipelineInstanceTool(
     async execute(input): Promise<Result> {
       const baseUrl = resolveGocdBaseUrl(options);
       const response = await ctx.egress.fetch({
-        operation: "gocd.pipeline.instance",
+        operation: "gocd.pipeline.run",
         provider: "gocd",
         request: new Request(
           resolveGocdApiUrl(
@@ -105,14 +109,14 @@ export function createGocdPipelineInstanceTool(
       });
       if (!response.ok) {
         throwGocdReadError(
-          `GoCD pipeline instance failed with HTTP ${response.status}`,
+          `GoCD pipeline run failed with HTTP ${response.status}`,
           response.status,
           { missingResourceIsInput: true },
         );
       }
       const body = bodySchema.parse(await response.json());
       return {
-        target: "pipeline_instance",
+        target: "pipeline_run",
         baseUrl,
         pipeline: body.name,
         pipelineCounter: body.counter,
