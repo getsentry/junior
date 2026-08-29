@@ -124,6 +124,9 @@ export type AgentRunState = {
 /**
  * Delivers completed tool-free assistant messages in model order.
  *
+ * `message` is the original agent message for history. `text` is the
+ * destination-visible reply when it differs from the agent message text.
+ *
  * The runner must commit the preceding agent boundary before invoking this
  * port; the accepted reply transaction appends only this message.
  *
@@ -131,7 +134,10 @@ export type AgentRunState = {
  * implementations after the core Turn lifecycle stores each completed
  * assistant Message.
  */
-export type Delivery = (message: AssistantMessage) => void | Promise<void>;
+export type Delivery = (
+  message: AssistantMessage,
+  text?: string,
+) => void | Promise<void>;
 
 /** Resume the agent turn after a transient or ambiguous delivery failure. */
 export class RetryableDeliveryError extends Error {

@@ -260,10 +260,12 @@ async function runLocalAgentTurnInContext(
   /** Print and record one completed assistant message in local conversation order. */
   const deliverAssistantMessage = async (
     reply: AssistantMessage | string,
+    visibleText?: string,
   ): Promise<void> => {
     const message = typeof reply === "string" ? undefined : reply;
     const text =
-      typeof reply === "string" ? reply : getAssistantReplyText(reply);
+      visibleText ??
+      (typeof reply === "string" ? reply : getAssistantReplyText(reply));
     if (!text?.trim()) {
       return;
     }

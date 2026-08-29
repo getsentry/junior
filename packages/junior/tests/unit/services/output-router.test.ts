@@ -2,11 +2,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { NO_REPLY_MARKER } from "@/chat/no-reply";
 import {
-  applyAssistantOutputText,
-  decideOutputRouteDeterministic,
   OUTPUT_REPLY_HARD_MAX_CHARS,
-  routeAssistantMessage,
-  routeAssistantOutput,
+  prepareAssistantMessage,
+  prepareAssistantReply,
+  prepareAssistantReplyLocal,
 } from "@/chat/services/output-router";
 
 const mocks = vi.hoisted(() => ({
@@ -52,90 +51,83 @@ function assistant(text: string, withToolCall = false): AssistantMessage {
   };
 }
 
-describe("output router", () => {
+describe("prepare assistant reply", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it("suppresses exact no-reply markers without a model call", async () => {
+  it("stays silent for exact no-reply markers without a model call", async () => {
     const completeObject = vi.fn();
     await expect(
-      routeAssistantOutput({
+      prepareAssistantReply({
         completeObject,
         fastModelId: "openai/gpt-5.6-luna",
         text: NO_REPLY_MARKER,
       }),
     ).resolves.toEqual({
-      action: "suppress",
-      reason: "no_reply_marker",
-      source: "deterministic",
+      kind: "silent",
+      reason: "no_reply",
     });
     expect(completeObject).not.toHaveBeenCalled();
   });
 
-  it("strips mixed no-reply markers deterministically", () => {
+  it("removes mixed no-reply markers locally", () => {
     expect(
-      decideOutputRouteDeterministic(
-        `shipped it ${NO_REPLY_MARKER}\nmore detail`,
-      ),
+      prepareAssistantReplyLocal(`shipped it ${NO_REPLY_MARKER}\nmore detail`),
     ).toEqual({
-      action: "deliver",
+      kind: "reply",
       text: "shipped it\nmore detail",
-      reason: "stripped_mixed_no_reply_marker",
-      source: "deterministic",
+      reason: "removed_no_reply_marker",
     });
   });
 
-  it("routes long answers through the fast model", async () => {
+  it("asks the fast model to shorten long replies", async () => {
     const completeObject = vi.fn(async () => ({
       costUsd: 0.0004,
       object: {
-        action: "rewrite",
         text: "Short answer with the outcome.",
         reason: "too long",
       },
     }));
 
-    const route = await routeAssistantOutput({
+    const prepared = await prepareAssistantReply({
       completeObject,
       fastModelId: "openai/gpt-5.6-luna",
       text: "A".repeat(900),
     });
 
-    expect(route).toEqual({
-      action: "deliver",
+    expect(prepared).toEqual({
+      kind: "reply",
       text: "Short answer with the outcome.",
       reason: "too long",
-      source: "router",
       costUsd: 0.0004,
     });
     expect(completeObject).toHaveBeenCalledWith(
       expect.objectContaining({
         modelId: "openai/gpt-5.6-luna",
-        promptName: "junior.output_route",
+        promptName: "junior.prepare_assistant_reply",
         temperature: 0,
         thinkingLevel: "low",
-        system: expect.stringContaining("final output router"),
+        system: expect.stringContaining("Edit one assistant message"),
       }),
     );
   });
 
-  it("fails open to the original text when the classifier errors", async () => {
+  it("keeps the original text when the model call fails", async () => {
     const completeObject = vi.fn(async () => {
       throw new Error("boom");
     });
 
     await expect(
-      routeAssistantOutput({
+      prepareAssistantReply({
         completeObject,
         fastModelId: "openai/gpt-5.6-luna",
         text: "Keep this answer.",
       }),
     ).resolves.toEqual({
-      action: "deliver",
+      kind: "reply",
       text: "Keep this answer.",
-      reason: "classifier_error_passthrough",
-      source: "fallback",
+      reason: "prepare_failed",
     });
     expect(mocks.logWarn).toHaveBeenCalledWith(
       "ai.output_router.failed",
@@ -143,78 +135,58 @@ describe("output router", () => {
     );
   });
 
-  it("hard-caps oversized routed text", async () => {
+  it("caps oversized model text", async () => {
     const completeObject = vi.fn(async () => ({
       object: {
-        action: "rewrite",
         text: "B".repeat(OUTPUT_REPLY_HARD_MAX_CHARS + 50),
         reason: "still long",
       },
     }));
 
-    const route = await routeAssistantOutput({
+    const prepared = await prepareAssistantReply({
       completeObject,
       fastModelId: "openai/gpt-5.6-luna",
       text: "A".repeat(900),
     });
 
-    expect(route.action).toBe("deliver");
-    expect(route.text?.length).toBe(OUTPUT_REPLY_HARD_MAX_CHARS);
-    expect(route.text?.endsWith("…")).toBe(true);
+    expect(prepared.kind).toBe("reply");
+    if (prepared.kind !== "reply") return;
+    expect(prepared.text.length).toBe(OUTPUT_REPLY_HARD_MAX_CHARS);
+    expect(prepared.text.endsWith("…")).toBe(true);
   });
 
-  it("rewrites the assistant message in place before delivery", async () => {
-    const message = assistant("A".repeat(900));
+  it("returns visible text without changing the agent message", async () => {
+    const original = "A".repeat(900);
+    const message = assistant(original);
     const completeObject = vi.fn(async () => ({
       object: {
-        action: "rewrite",
         text: "Condensed reply.",
         reason: "too long",
       },
     }));
 
-    const routed = await routeAssistantMessage({
+    const prepared = await prepareAssistantMessage({
       completeObject,
       fastModelId: "openai/gpt-5.6-luna",
       message,
     });
 
-    expect(routed).toMatchObject({
-      kind: "deliver",
-      route: { action: "deliver", text: "Condensed reply." },
+    expect(prepared).toMatchObject({
+      kind: "reply",
+      text: "Condensed reply.",
     });
-    expect(message.content).toEqual([{ type: "text", text: "Condensed reply." }]);
+    expect(message.content).toEqual([{ type: "text", text: original }]);
   });
 
   it("skips tool-bearing assistant messages", async () => {
     const completeObject = vi.fn();
     await expect(
-      routeAssistantMessage({
+      prepareAssistantMessage({
         completeObject,
         fastModelId: "openai/gpt-5.6-luna",
         message: assistant("working", true),
       }),
     ).resolves.toEqual({ kind: "skip" });
     expect(completeObject).not.toHaveBeenCalled();
-  });
-
-  it("applies rewritten text while preserving non-text parts", () => {
-    const message = assistant("old");
-    message.content.push({
-      type: "toolCall",
-      id: "call-2",
-      name: "bash",
-      arguments: {},
-    });
-    applyAssistantOutputText(message, "new");
-    expect(message.content).toEqual([
-      { type: "text", text: "new" },
-      {
-        type: "toolCall",
-        id: "call-2",
-        name: "bash",
-        arguments: {},
-      },
-    ]);
   });
 });

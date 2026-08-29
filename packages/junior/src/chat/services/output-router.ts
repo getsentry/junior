@@ -12,39 +12,44 @@ import {
   decideReply,
   sanitizeAssistantText,
 } from "@/chat/services/assistant-reply";
-import { extractAssistantText } from "@/chat/pi/transcript";
 
-/**
- * Destination reply length budget used by the optional output router.
- * Matches the Slack output prompt target (~1–5 sentences).
- */
+/** Soft length target for visible replies. */
 export const OUTPUT_REPLY_SOFT_MAX_CHARS = 800;
-/** Hard cap after rewrite; longer routed text is truncated deterministically. */
+/** Absolute max for a rewritten visible reply. */
 export const OUTPUT_REPLY_HARD_MAX_CHARS = 1_200;
-const OUTPUT_ROUTER_MAX_TOKENS = 1_600;
+
+const OUTPUT_ROUTER_MAX_TOKENS = 1_200;
 const OUTPUT_ROUTER_PROMPT_MAX_CHARS = 12_000;
 
-const outputRouteSchema = z
+/**
+ * Model output is intentionally small:
+ * - text=null → no visible reply
+ * - text=string → that string is the visible reply
+ */
+const preparedReplySchema = z
   .object({
-    action: z.enum(["deliver", "suppress", "rewrite"]),
-    text: z.string().optional(),
+    text: z.string().nullable(),
     reason: z.string().min(1),
   })
   .strict();
 
-export type OutputRouteAction = z.infer<typeof outputRouteSchema>["action"];
-
-export type OutputRoute = {
-  action: "deliver" | "suppress";
-  costUsd?: number;
-  reason: string;
-  source: "deterministic" | "router" | "fallback";
-  text?: string;
-};
+export type PreparedAssistantReply =
+  | {
+      kind: "silent";
+      costUsd?: number;
+      reason: string;
+    }
+  | {
+      kind: "reply";
+      costUsd?: number;
+      reason: string;
+      /** Visible reply text. May differ from the original agent text. */
+      text: string;
+    };
 
 type CompleteObject = (args: {
   modelId: string;
-  schema: typeof outputRouteSchema;
+  schema: typeof preparedReplySchema;
   maxTokens: number;
   metadata: Record<string, string>;
   prompt: string;
@@ -54,55 +59,40 @@ type CompleteObject = (args: {
   promptName?: string;
 }) => Promise<{ costUsd?: number; object: unknown }>;
 
-function buildOutputRouterSystemPrompt(): string {
-  // Tight output guardrail. Pattern: OpenAI cookbook "output guardrails"
-  // (validate LLM output before delivery) + structured JSON decisions.
-  // https://developers.openai.com/cookbook/examples/how_to_use_guardrails/
+/**
+ * Prompt design notes:
+ * - short imperative system instructions first
+ * - one clear output contract (structured JSON)
+ * - rules as a short checklist
+ * - no roleplay / no extra context
+ * Related: OpenAI structured outputs + short instruction prompts;
+ * Anthropic: put the task first, be direct, prefer positive rules.
+ */
+function buildSystemPrompt(): string {
   return [
-    "You are Junior's final output router.",
-    "Input is one completed assistant message. No other context is available.",
-    "Decide the destination-visible reply before delivery.",
+    "Edit one assistant message into the final user-visible reply.",
+    "You receive only that message. No other context.",
     "",
-    "Actions:",
-    "- suppress: no visible reply should be delivered",
-    "- deliver: keep the message text as-is",
-    "- rewrite: replace the message with shorter destination-visible text",
+    "Return JSON:",
+    "- text: the visible reply, or null for no visible reply",
+    "- reason: one short sentence",
     "",
     "Rules:",
-    `1. suppress when the whole message is intentional silence (exact ${NO_REPLY_MARKER}, or equivalent pure no-reply protocol text with no other answer).`,
-    `2. if ${NO_REPLY_MARKER} appears mixed with real answer text, rewrite: strip the marker and keep the answer.`,
-    "3. deliver short complete answers unchanged.",
-    `4. rewrite long answers that exceed ~${OUTPUT_REPLY_SOFT_MAX_CHARS} characters unless the user clearly asked for full detail, a long dump, or a large code/config block that must stay intact.`,
-    "5. rewrites must stay faithful: keep the outcome, decisive evidence, blockers, links, and required next actions. Do not invent facts.",
-    `6. rewritten text should usually be 1–5 sentences and under ${OUTPUT_REPLY_SOFT_MAX_CHARS} characters. Prefer a short summary plus a pointer (for example a canvas/doc link) when detail is too long.`,
-    "7. preserve fenced code only when it is essential and still short enough; otherwise summarize and point to where the full content lives.",
-    "8. never add preamble, meta commentary, or process narration.",
-    "",
-    "Return JSON only with action, reason, and text.",
-    "text is required for deliver and rewrite; omit text for suppress.",
-    "reason is one short sentence.",
+    `- Set text to null only when the message is empty or only ${NO_REPLY_MARKER}.`,
+    `- If ${NO_REPLY_MARKER} appears with real answer text, remove the marker and keep the answer.`,
+    `- Keep short clear replies as-is (about ${OUTPUT_REPLY_SOFT_MAX_CHARS} characters or less).`,
+    `- If the reply is too long, shorten it. Keep the answer, key facts, links, and next steps. Do not add facts.`,
+    "- Prefer 1-5 short sentences when shortening.",
+    "- Do not add a preface or meta commentary.",
   ].join("\n");
 }
 
-function buildOutputRouterPrompt(text: string): string {
+function buildUserPrompt(text: string): string {
   const body =
     text.length <= OUTPUT_ROUTER_PROMPT_MAX_CHARS
       ? text
       : `${text.slice(0, OUTPUT_ROUTER_PROMPT_MAX_CHARS)}\n…[truncated]…`;
-  return ["<assistant-message>", body, "</assistant-message>"].join("\n");
-}
-
-function normalizeRoutedText(text: string | undefined): string | undefined {
-  if (text === undefined) return undefined;
-  const normalized = sanitizeAssistantText(text);
-  return normalized || undefined;
-}
-
-function enforceHardCap(text: string): string {
-  if (text.length <= OUTPUT_REPLY_HARD_MAX_CHARS) {
-    return text;
-  }
-  return `${text.slice(0, OUTPUT_REPLY_HARD_MAX_CHARS - 1).trimEnd()}…`;
+  return body;
 }
 
 function stripNoReplyMarker(text: string): string {
@@ -115,97 +105,89 @@ function stripNoReplyMarker(text: string): string {
   );
 }
 
-/** Deterministic pre-checks before spending a model call. */
-export function decideOutputRouteDeterministic(text: string): OutputRoute | null {
-  const trimmed = sanitizeAssistantText(text);
-  if (!trimmed) {
-    return {
-      action: "suppress",
-      reason: "empty_text",
-      source: "deterministic",
-    };
+function capVisibleText(text: string): string {
+  if (text.length <= OUTPUT_REPLY_HARD_MAX_CHARS) {
+    return text;
   }
-  if (isNoReplyMarker(trimmed)) {
-    return {
-      action: "suppress",
-      reason: "no_reply_marker",
-      source: "deterministic",
-    };
-  }
-  if (trimmed.includes(NO_REPLY_MARKER)) {
-    const stripped = stripNoReplyMarker(trimmed);
-    if (!stripped) {
-      return {
-        action: "suppress",
-        reason: "no_reply_marker_only_after_strip",
-        source: "deterministic",
-      };
-    }
-    return {
-      action: "deliver",
-      text: enforceHardCap(stripped),
-      reason: "stripped_mixed_no_reply_marker",
-      source: "deterministic",
-    };
-  }
-  return null;
+  return `${text.slice(0, OUTPUT_REPLY_HARD_MAX_CHARS - 1).trimEnd()}…`;
 }
 
-function finalizeRouterObject(
-  object: unknown,
-  originalText: string,
-  costUsd?: number,
-): OutputRoute {
-  const parsed = outputRouteSchema.parse(object);
-  const reason = parsed.reason.trim() || "router";
-
-  if (parsed.action === "suppress") {
-    return {
-      action: "suppress",
-      reason,
-      source: "router",
-      ...(costUsd !== undefined ? { costUsd } : undefined),
-    };
-  }
-
-  const candidate =
-    normalizeRoutedText(parsed.text) ??
-    (parsed.action === "deliver" ? originalText : undefined);
-  if (!candidate) {
-    return {
-      action: "deliver",
-      text: originalText,
-      reason: `router_missing_text:${reason}`,
-      source: "fallback",
-      ...(costUsd !== undefined ? { costUsd } : undefined),
-    };
-  }
-
-  // Never let a rewrite reintroduce pure silence unless suppress was chosen.
-  if (isNoReplyMarker(candidate)) {
-    return {
-      action: "suppress",
-      reason: `router_rewrote_to_no_reply:${reason}`,
-      source: "router",
-      ...(costUsd !== undefined ? { costUsd } : undefined),
-    };
-  }
-
+function silent(reason: string, costUsd?: number): PreparedAssistantReply {
   return {
-    action: "deliver",
-    text: enforceHardCap(
-      candidate.includes(NO_REPLY_MARKER)
-        ? stripNoReplyMarker(candidate)
-        : candidate,
-    ),
+    kind: "silent",
     reason,
-    source: "router",
     ...(costUsd !== undefined ? { costUsd } : undefined),
   };
 }
 
-/** Route one assistant message text before destination delivery. */
-export async function routeAssistantOutput(args: {
+function reply(
+  text: string,
+  reason: string,
+  costUsd?: number,
+): PreparedAssistantReply {
+  return {
+    kind: "reply",
+    text,
+    reason,
+    ...(costUsd !== undefined ? { costUsd } : undefined),
+  };
+}
+
+/** Cheap local checks before calling the model. */
+export function prepareAssistantReplyLocal(
+  text: string,
+): PreparedAssistantReply | null {
+  const trimmed = sanitizeAssistantText(text);
+  if (!trimmed) {
+    return silent("empty");
+  }
+  if (isNoReplyMarker(trimmed)) {
+    return silent("no_reply");
+  }
+  if (trimmed.includes(NO_REPLY_MARKER)) {
+    const stripped = stripNoReplyMarker(trimmed);
+    if (!stripped) {
+      return silent("no_reply");
+    }
+    return reply(capVisibleText(stripped), "removed_no_reply_marker");
+  }
+  return null;
+}
+
+function finalizeModelResult(
+  object: unknown,
+  originalText: string,
+  costUsd?: number,
+): PreparedAssistantReply {
+  const parsed = preparedReplySchema.parse(object);
+  const reason = parsed.reason.trim() || "prepared";
+
+  if (parsed.text === null) {
+    return silent(reason, costUsd);
+  }
+
+  let text = sanitizeAssistantText(parsed.text);
+  if (!text) {
+    // Model returned blank text. Keep the original visible reply.
+    return reply(originalText, `empty_model_text:${reason}`, costUsd);
+  }
+  if (isNoReplyMarker(text)) {
+    return silent(`model_no_reply:${reason}`, costUsd);
+  }
+  if (text.includes(NO_REPLY_MARKER)) {
+    text = stripNoReplyMarker(text);
+    if (!text) {
+      return silent(`model_no_reply:${reason}`, costUsd);
+    }
+  }
+  return reply(capVisibleText(text), reason, costUsd);
+}
+
+/**
+ * Prepare the visible reply for one assistant message.
+ * Does not change the original agent message text.
+ */
+export async function prepareAssistantReply(args: {
   completeObject: CompleteObject;
   context?: {
     conversationId?: string;
@@ -213,11 +195,11 @@ export async function routeAssistantOutput(args: {
   };
   fastModelId: string;
   text: string;
-}): Promise<OutputRoute> {
+}): Promise<PreparedAssistantReply> {
   const originalText = sanitizeAssistantText(args.text);
-  const deterministic = decideOutputRouteDeterministic(originalText);
-  if (deterministic) {
-    return deterministic;
+  const local = prepareAssistantReplyLocal(originalText);
+  if (local) {
+    return local;
   }
 
   const logContext: LogContext = {
@@ -227,8 +209,8 @@ export async function routeAssistantOutput(args: {
   };
 
   return withSpan(
-    "chat.route_assistant_output",
-    "chat.route_assistant_output",
+    "chat.prepare_assistant_reply",
+    "chat.prepare_assistant_reply",
     logContext,
     async () => {
       setSpanAttributes({
@@ -239,91 +221,58 @@ export async function routeAssistantOutput(args: {
       try {
         const result = await args.completeObject({
           modelId: args.fastModelId,
-          schema: outputRouteSchema,
+          schema: preparedReplySchema,
           maxTokens: OUTPUT_ROUTER_MAX_TOKENS,
           metadata: {
             modelId: args.fastModelId,
             conversationId: args.context?.conversationId ?? "",
             runId: args.context?.runId ?? "",
           },
-          prompt: buildOutputRouterPrompt(originalText),
+          prompt: buildUserPrompt(originalText),
           thinkingLevel: "low",
-          system: buildOutputRouterSystemPrompt(),
+          system: buildSystemPrompt(),
           temperature: 0,
-          promptName: "junior.output_route",
+          promptName: "junior.prepare_assistant_reply",
         });
 
-        const routed = finalizeRouterObject(
+        const prepared = finalizeModelResult(
           result.object,
           originalText,
           result.costUsd,
         );
         setSpanAttributes({
-          "app.ai.output_router.action": routed.action,
-          "app.ai.output_router.source": routed.source,
-          "app.ai.output_router.reason": routed.reason,
-          ...(routed.text
-            ? { "app.ai.output_router.output_char_count": routed.text.length }
+          "app.ai.output_router.kind": prepared.kind,
+          "app.ai.output_router.reason": prepared.reason,
+          ...(prepared.kind === "reply"
+            ? { "app.ai.output_router.output_char_count": prepared.text.length }
             : undefined),
         });
         logInfo("ai.output_router.decided", {
-          "app.ai.output_router.action": routed.action,
-          "app.ai.output_router.source": routed.source,
-          "app.ai.output_router.reason": routed.reason,
+          "app.ai.output_router.kind": prepared.kind,
+          "app.ai.output_router.reason": prepared.reason,
           "app.ai.output_router.input_char_count": originalText.length,
-          ...(routed.text
-            ? { "app.ai.output_router.output_char_count": routed.text.length }
+          ...(prepared.kind === "reply"
+            ? { "app.ai.output_router.output_char_count": prepared.text.length }
             : undefined),
         });
-        return routed;
+        return prepared;
       } catch (error) {
         logWarn("ai.output_router.failed", {
           "exception.message":
             error instanceof Error ? error.message : String(error),
         });
-        // Fail open: keep the original deliverable text rather than blocking the turn.
-        return {
-          action: "deliver",
-          text: originalText,
-          reason: "classifier_error_passthrough",
-          source: "fallback",
-        };
+        // On failure, show the original text rather than dropping the reply.
+        return reply(originalText, "prepare_failed");
       }
     },
   );
 }
 
 /**
- * Replace assistant text content parts while preserving non-text parts.
- * Mutates in place so agent-history object identity stays stable for delivery.
+ * Decide the visible reply for a completed assistant message.
+ * Returns silent/skip without changing the agent message.
  */
-export function applyAssistantOutputText(
-  message: AssistantMessage,
-  text: string,
-): AssistantMessage {
-  const content = message.content ?? [];
-  let replaced = false;
-  const nextContent = content.map((part) => {
-    if (part.type !== "text") {
-      return part;
-    }
-    if (replaced) {
-      return { ...part, text: "" };
-    }
-    replaced = true;
-    return { ...part, text };
-  });
-  if (!replaced) {
-    nextContent.unshift({ type: "text", text });
-  }
-  message.content = nextContent.filter(
-    (part) => part.type !== "text" || part.text.length > 0,
-  ) as AssistantMessage["content"];
-  return message;
-}
-
-/** Route one completed assistant message when the experimental feature is on. */
-export async function routeAssistantMessage(args: {
+export async function prepareAssistantMessage(args: {
   completeObject: CompleteObject;
   context?: {
     conversationId?: string;
@@ -332,32 +281,24 @@ export async function routeAssistantMessage(args: {
   fastModelId: string;
   message: AssistantMessage;
 }): Promise<
-  | { kind: "deliver"; message: AssistantMessage; route: OutputRoute }
-  | { kind: "suppress"; route: OutputRoute }
   | { kind: "skip" }
+  | { kind: "silent"; prepared: PreparedAssistantReply }
+  | { kind: "reply"; text: string; prepared: PreparedAssistantReply }
 > {
   const decision = decideReply(args.message);
   if (decision.kind !== "deliver") {
     return { kind: "skip" };
   }
 
-  const route = await routeAssistantOutput({
+  const prepared = await prepareAssistantReply({
     completeObject: args.completeObject,
     context: args.context,
     fastModelId: args.fastModelId,
     text: decision.text,
   });
 
-  if (route.action === "suppress") {
-    return { kind: "suppress", route };
+  if (prepared.kind === "silent") {
+    return { kind: "silent", prepared };
   }
-
-  const nextText = route.text ?? decision.text;
-  if (nextText !== decision.text) {
-    applyAssistantOutputText(args.message, nextText);
-  } else if (sanitizeAssistantText(extractAssistantText(args.message)) !== nextText) {
-    applyAssistantOutputText(args.message, nextText);
-  }
-
-  return { kind: "deliver", message: args.message, route };
+  return { kind: "reply", text: prepared.text, prepared };
 }

@@ -353,10 +353,12 @@ export function createConversationTurnWorker(
 
         const deliverAssistantMessage = async (
           value: AssistantMessage | string,
+          visibleText?: string,
         ): Promise<void> => {
           const agentMessage = typeof value === "string" ? undefined : value;
           const replyText =
-            typeof value === "string" ? value : getAssistantReplyText(value);
+            visibleText ??
+            (typeof value === "string" ? value : getAssistantReplyText(value));
           if (!replyText?.trim()) {
             return;
           }

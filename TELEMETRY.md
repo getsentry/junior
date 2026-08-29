@@ -182,7 +182,7 @@ consecutive action-review denials. The agent still receives a normal tool
 rejection that says not to keep retrying.
 
 Spans: `ai.generate_assistant_reply`, `ai.chat_completion`,
-`chat.route_thinking`, `chat.route_assistant_output`, `gen_ai.invoke_agent`,
+`chat.route_thinking`, `chat.prepare_assistant_reply`, `gen_ai.invoke_agent`,
 `gen_ai.chat`
 
 Attributes: `gen_ai.operation.name`, `gen_ai.request.model`,

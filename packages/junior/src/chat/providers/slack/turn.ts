@@ -810,11 +810,13 @@ export function createSlackTurn(deps: SlackTurnDeps) {
         /** Post and record one completed assistant message in the active thread. */
         const deliverAssistantMessage = async (
           reply: AssistantMessage | string,
+          visibleText?: string,
           terminalDispatchOutcome?: "blocked" | "failed",
         ): Promise<void> => {
           const agentMessage = typeof reply === "string" ? undefined : reply;
           const text =
-            typeof reply === "string" ? reply : getAssistantReplyText(reply);
+            visibleText ??
+            (typeof reply === "string" ? reply : getAssistantReplyText(reply));
           if (!text?.trim()) {
             return;
           }
