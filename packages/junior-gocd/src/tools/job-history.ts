@@ -75,6 +75,7 @@ export function createGocdJobHistoryTool(
     outputSchema,
     async execute(input): Promise<Result> {
       const baseUrl = resolveGocdBaseUrl(options);
+      // GoCD 25.2 accepts page_size from 10 through 100 on job history requests.
       const pageSize = Math.min(100, Math.max(10, input.count));
       const response = await ctx.egress.fetch({
         operation: "gocd.job.history",

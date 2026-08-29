@@ -93,6 +93,7 @@ export function createGocdPipelineRunTool(
     outputSchema,
     async execute(input): Promise<Result> {
       const baseUrl = resolveGocdBaseUrl(options);
+      // GoCD 25.2 calls this a pipeline instance, but its v1 route has no /instance segment.
       const response = await ctx.egress.fetch({
         operation: "gocd.pipeline.run",
         provider: "gocd",
