@@ -18,19 +18,63 @@ const inputSchema = z
   })
   .strict();
 
+const jobSchema = z
+  .object({
+    name: z.string(),
+    result: z.string().optional(),
+    state: z.string().optional(),
+  })
+  .passthrough();
+
+const stageSchema = z
+  .object({
+    name: z.string(),
+    counter: z.union([z.string(), z.number()]),
+    result: z.string().optional(),
+    status: z.string().optional(),
+    jobs: z.array(jobSchema).default([]),
+  })
+  .passthrough();
+
+const runSchema = z
+  .object({
+    name: z.string(),
+    counter: z.number(),
+    label: z.string().optional(),
+    scheduled_date: z.number().nullable().optional(),
+    stages: z.array(stageSchema).default([]),
+  })
+  .passthrough();
+
 const outputSchema = pluginToolOutputSchema.extend({
   target: z.literal("pipeline_history"),
   baseUrl: z.string(),
   pipeline: z.string(),
-  runs: z.array(z.unknown()),
+  runs: z.array(
+    z.object({
+      counter: z.number(),
+      label: z.string(),
+      scheduledAt: z.number().nullable(),
+      stages: z.array(
+        z.object({
+          name: z.string(),
+          counter: z.string(),
+          result: z.string(),
+          status: z.string(),
+          jobs: z.array(
+            z.object({
+              name: z.string(),
+              result: z.string(),
+              state: z.string(),
+            }),
+          ),
+        }),
+      ),
+    }),
+  ),
 });
 
-interface Result extends PluginToolOutput {
-  target: "pipeline_history";
-  baseUrl: string;
-  pipeline: string;
-  runs: unknown[];
-}
+type Result = PluginToolOutput & z.infer<typeof outputSchema>;
 
 /**
  * Return recent runs for one GoCD pipeline.
@@ -50,7 +94,7 @@ export function createGocdPipelineHistoryTool(
       readOnlyHint: true,
     },
     description:
-      "Fetch recent runs for an exact GoCD pipeline. Use this to inspect deployment history and stage or job results.",
+      "Fetch recent runs for an exact GoCD pipeline with stage and job results. The result excludes source material, commit messages, user identities, and environment variables.",
     inputSchema,
     outputSchema,
     async execute(input): Promise<Result> {
@@ -79,13 +123,28 @@ export function createGocdPipelineHistoryTool(
         );
       }
       const body = z
-        .object({ pipelines: z.array(z.unknown()) })
+        .object({ pipelines: z.array(runSchema) })
         .passthrough()
         .parse(await response.json());
       return {
         baseUrl,
         pipeline: input.pipeline,
-        runs: body.pipelines.slice(0, input.count),
+        runs: body.pipelines.slice(0, input.count).map((run) => ({
+          counter: run.counter,
+          label: run.label ?? String(run.counter),
+          scheduledAt: run.scheduled_date ?? null,
+          stages: run.stages.map((stage) => ({
+            name: stage.name,
+            counter: String(stage.counter),
+            result: stage.result ?? "Unknown",
+            status: stage.status ?? "Unknown",
+            jobs: stage.jobs.map((job) => ({
+              name: job.name,
+              result: job.result ?? "Unknown",
+              state: job.state ?? "Unknown",
+            })),
+          })),
+        })),
         target: "pipeline_history",
       };
     },

@@ -3,7 +3,13 @@ import { createGocdPipelineHistoryTool } from "../src/tools/pipeline-history";
 
 function toolFixture(
   response: Response = Response.json({
-    pipelines: [{ name: "demo", counter: 1 }],
+    pipelines: [
+      {
+        name: "demo",
+        counter: 1,
+        build_cause: { trigger_message: "person", material_revisions: [] },
+      },
+    ],
   }),
 ) {
   const fetch = vi.fn().mockResolvedValue(response);
@@ -27,7 +33,14 @@ describe("GoCD pipeline history", () => {
     ).resolves.toMatchObject({
       baseUrl: "https://gocd.example.com",
       pipeline: "demo",
-      runs: [{ name: "demo", counter: 1 }],
+      runs: [
+        {
+          counter: 1,
+          label: "1",
+          scheduledAt: null,
+          stages: [],
+        },
+      ],
       target: "pipeline_history",
     });
 

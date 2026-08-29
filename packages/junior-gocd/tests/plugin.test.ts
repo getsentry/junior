@@ -12,6 +12,8 @@ describe("gocdPlugin", () => {
     expect(plugin.packageName).toBe("@sentry/junior-gocd");
     expect(plugin.manifest).toMatchObject({
       name: "gocd",
+      configKeys: ["pipeline"],
+      target: { configKey: "pipeline", type: "pipeline" },
       envVars: {
         GOCD_ACCESS_TOKEN: {},
         GOCD_URL: {},
@@ -34,7 +36,11 @@ describe("gocdPlugin", () => {
         egress: { fetch: vi.fn() },
       } as never),
     ).toMatchObject({
+      pipelines: expect.any(Object),
+      jobHistory: expect.any(Object),
       pipelineHistory: expect.any(Object),
+      pipelineRun: expect.any(Object),
+      pipelineStatus: expect.any(Object),
       stage: expect.any(Object),
     });
   });

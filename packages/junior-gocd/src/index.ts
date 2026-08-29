@@ -11,7 +11,11 @@ import {
   type PluginRegistration,
 } from "@sentry/junior-plugin-api";
 import { hostnameFromBaseUrl, type GocdPluginOptions } from "./config.js";
+import { createGocdPipelinesTool } from "./tools/pipelines.js";
+import { createGocdJobHistoryTool } from "./tools/job-history.js";
 import { createGocdPipelineHistoryTool } from "./tools/pipeline-history.js";
+import { createGocdPipelineRunTool } from "./tools/pipeline-run.js";
+import { createGocdPipelineStatusTool } from "./tools/pipeline-status.js";
 import { createGocdStageTool } from "./tools/stage.js";
 
 export type GocdCredentialHooks = Pick<
@@ -45,6 +49,7 @@ export function gocdPlugin(
     credentialHooks?.grantForEgress || credentialHooks?.issueCredential,
   );
   const manifest: PluginManifest = {
+    configKeys: ["pipeline"],
     description: "Read GoCD pipeline and stage results",
     displayName: "GoCD",
     envVars: {
@@ -52,6 +57,10 @@ export function gocdPlugin(
       GOCD_URL: {},
     },
     name: "gocd",
+    target: {
+      configKey: "pipeline",
+      type: "pipeline",
+    },
   };
   if (hostname) {
     manifest.domains = [hostname];
@@ -64,7 +73,11 @@ export function gocdPlugin(
   const hooks: PluginHooks = {
     tools(ctx) {
       return {
+        pipelines: createGocdPipelinesTool(ctx, options),
+        jobHistory: createGocdJobHistoryTool(ctx, options),
         pipelineHistory: createGocdPipelineHistoryTool(ctx, options),
+        pipelineRun: createGocdPipelineRunTool(ctx, options),
+        pipelineStatus: createGocdPipelineStatusTool(ctx, options),
         stage: createGocdStageTool(ctx, options),
       };
     },
