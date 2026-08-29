@@ -175,11 +175,10 @@ pre-stable surface.
 
 `output-router` uses the fast model (`AI_FAST_MODEL`) to prepare the visible
 reply for each completed tool-free assistant message. Exact `[[NO_REPLY]]` stays
-silent. Mixed marker text goes through the model: internal work notes can stay
-silent; a real answer that mentions the marker still delivers. Long replies can
-be shortened while keeping the `SOUL.md` personality voice. The original agent
-text remains in conversation history. Leave it unset unless you are testing that
-path.
+silent. A final whole-line `[[NO_REPLY]]` also stays silent. Answers that mention
+the marker inline still deliver. Long replies can be shortened while keeping the
+`SOUL.md` personality voice. The original agent text remains in conversation
+history. Leave it unset unless you are testing that path.
 
 `passive-routing` turns on replies to non-mention messages in threads Junior
 already joined. Leave it unset in production unless you are testing that path.

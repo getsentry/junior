@@ -41,7 +41,7 @@ function assistant(text: string, withToolCall = false): AssistantMessage {
 }
 
 describe("prepare assistant reply", () => {
-  it("handles empty and exact silence markers locally", () => {
+  it("handles empty, exact, and trailing silence markers locally", () => {
     expect(prepareAssistantReplyLocal("")).toEqual({
       kind: "silent",
       reason: "empty",
@@ -50,7 +50,16 @@ describe("prepare assistant reply", () => {
       kind: "silent",
       reason: "no_reply",
     });
-    // Mixed marker text needs model judgment.
+    // A final whole-line marker suppresses the whole message.
+    expect(
+      prepareAssistantReplyLocal(
+        [`status only note`, "", NO_REPLY_MARKER].join("\n"),
+      ),
+    ).toEqual({
+      kind: "silent",
+      reason: "trailing_no_reply",
+    });
+    // Inline marker mentions still need the model.
     expect(
       prepareAssistantReplyLocal(`shipped it ${NO_REPLY_MARKER}\nmore detail`),
     ).toBeNull();

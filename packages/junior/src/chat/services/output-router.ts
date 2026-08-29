@@ -61,6 +61,25 @@ type CompleteObject = (args: {
 }) => Promise<{ costUsd?: number; object: unknown }>;
 
 /**
+ * True when the last non-empty line is exactly the silence marker.
+ * That trailing line is a suppress-this-message signal.
+ */
+function hasTrailingNoReplyLine(text: string): boolean {
+  const lines = text
+    .replace(/\s+$/u, "")
+    .split("\n")
+    .map((line) => line.trimEnd());
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    const line = lines[index]?.trim() ?? "";
+    if (!line) {
+      continue;
+    }
+    return line === NO_REPLY_MARKER;
+  }
+  return false;
+}
+
+/**
  * Prompt shape follows current lab guidance:
  * - put the task and rules first
  * - keep rules short, specific, and direct
@@ -77,11 +96,9 @@ function buildSystemPrompt(personality: string = JUNIOR_PERSONALITY): string {
     "Fields: text is the reply or null. reason is one short sentence.",
     "",
     "Rules:",
-    `- Set text to null when there is nothing to show the user: empty text, only ${NO_REPLY_MARKER}, or internal work notes that are not an answer.`,
-    `- If the message ends with ${NO_REPLY_MARKER} and the rest is only internal work status, set text to null. Do not keep those notes.`,
-    `- If the message answers the user, keep it as a reply even when it contains ${NO_REPLY_MARKER}.`,
-    `- If ${NO_REPLY_MARKER} is only a trailing tag after a real answer, keep the answer and drop the tag.`,
-    `- If the answer explains ${NO_REPLY_MARKER}, keep the marker text the user needs.`,
+    `- Set text to null for empty text or only ${NO_REPLY_MARKER}.`,
+    `- If the message answers the user, keep it as a reply even when it mentions ${NO_REPLY_MARKER}.`,
+    `- If the message explains how ${NO_REPLY_MARKER} or silence works, keep it as a reply and keep the marker text the user needs.`,
     `- Keep short clear replies as-is (about ${OUTPUT_REPLY_SOFT_MAX_CHARS} characters or less).`,
     "- If the reply is longer than that, shorten it to 1-5 short sentences. Keep the answer, key facts, links, and next steps. Do not add facts.",
     "- Do not add a preface or commentary about editing.",
@@ -132,7 +149,8 @@ function reply(
 
 /**
  * Cheap local checks before calling the model.
- * Only exact silence stays local. Mixed marker text needs the model.
+ * Exact marker and trailing whole-line marker silence stay local.
+ * Inline marker mentions still need the model.
  */
 export function prepareAssistantReplyLocal(
   text: string,
@@ -143,6 +161,11 @@ export function prepareAssistantReplyLocal(
   }
   if (isNoReplyMarker(trimmed)) {
     return silent("no_reply");
+  }
+  // A final line that is only the marker means suppress the whole message.
+  // Inline mentions of the marker still go to the model.
+  if (hasTrailingNoReplyLine(trimmed)) {
+    return silent("trailing_no_reply");
   }
   return null;
 }
