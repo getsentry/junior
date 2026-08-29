@@ -626,8 +626,6 @@ export function createSlackConversationWorker(
     if (!latestRecord) {
       return { status: "completed" };
     }
-    const publishExternally =
-      latestRecord.publishExternally ?? context.publishExternally;
     const latestMetadata = parseSlackMetadata(latestRecord.input.metadata);
     if (!latestMetadata) {
       throw new Error(
@@ -700,9 +698,6 @@ export function createSlackConversationWorker(
         ): Promise<void> => {
           await context.attempt.drain(async (pendingRecords) => {
             const candidates = pendingRecords
-              .filter(
-                (record) => record.publishExternally === publishExternally,
-              )
               .map((record) => ({
                 inboundMessageId: record.inboundMessageId,
                 message: restoreMessage({
@@ -724,7 +719,6 @@ export function createSlackConversationWorker(
             await options.runtime.handleNewMention(thread, latestMessage, {
               conversationId: context.conversationId,
               destination,
-              publishExternally,
               messageContext,
               drainSteeringMessages,
               ack,
@@ -738,7 +732,6 @@ export function createSlackConversationWorker(
               {
                 conversationId: context.conversationId,
                 destination,
-                publishExternally,
                 messageContext,
                 drainSteeringMessages,
                 ack,
@@ -805,7 +798,6 @@ export function buildSlackInboundMessage(args: {
     source: "slack",
     createdAtMs: args.message.metadata.dateSent.getTime(),
     receivedAtMs: args.receivedAtMs,
-    publishExternally: true,
     input: {
       text: args.message.text || " ",
       authorId,

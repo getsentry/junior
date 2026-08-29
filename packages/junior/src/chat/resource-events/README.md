@@ -16,8 +16,8 @@ conversation.
   before the Slack thread is marked unsubscribed.
 - Plugin route code validates and normalizes incoming events before calling
   the ingestion boundary.
-- Every conversation can hold a resource-event watch. Delivery wakes that
-  conversation mailbox; the conversation destination chooses the worker.
+- Every conversation can hold a resource-event watch. A matching event wakes
+  that conversation mailbox; the conversation destination chooses the worker.
 - Plugin-owned routes publish normalized events through the route-hook resource
   event publisher; core binds the plugin namespace and never needs the raw
   provider webhook. Publication requires an active registration that declares

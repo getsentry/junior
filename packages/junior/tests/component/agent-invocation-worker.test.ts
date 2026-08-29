@@ -115,7 +115,6 @@ describe("agent invocation worker", () => {
         },
         checkIn: vi.fn(),
         conversationId: created.childConversationId,
-        publishExternally: false,
         shouldYield: () => false,
       } satisfies ConversationWorkerContext;
 
@@ -174,7 +173,6 @@ describe("agent invocation worker", () => {
           },
           checkIn: vi.fn(),
           conversationId: created.childConversationId,
-          publishExternally: false,
           shouldYield: () => false,
         }) satisfies ConversationWorkerContext;
       const firstAck = vi.fn(async () => {});
@@ -227,7 +225,6 @@ describe("agent invocation worker", () => {
         checkIn: vi.fn(),
         conversationId: created.childConversationId,
         destination: DESTINATION,
-        publishExternally: false,
         shouldYield: () => false,
       } satisfies ConversationWorkerContext;
 

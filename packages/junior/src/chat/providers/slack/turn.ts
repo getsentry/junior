@@ -248,11 +248,6 @@ interface SlackTurnDeps {
   sendPluginTask?: ScheduleSessionCompletedPluginTasksOptions["send"];
 }
 
-/** Return whether the Slack caller should publish destination output. */
-function shouldPublishExternally(publishExternally?: boolean): boolean {
-  return publishExternally !== false;
-}
-
 /** Build the Slack caller that prepares input and delivers output for a Turn. */
 export function createSlackTurn(deps: SlackTurnDeps) {
   const turnLifecycle = getTurnLifecycle();
@@ -273,7 +268,6 @@ export function createSlackTurn(deps: SlackTurnDeps) {
       onTurnStatePersisted?: () => Promise<void>;
       preparedState?: PreparedTurnState;
       queuedMessages?: QueuedTurnMessage[];
-      publishExternally?: boolean;
       execution?: DispatchTurnContext;
       skipBackfill?: boolean;
       drainSteeringMessages?: (
@@ -445,9 +439,6 @@ export function createSlackTurn(deps: SlackTurnDeps) {
           );
           try {
             await beforeFirstResponsePost();
-            if (!shouldPublishExternally(options.publishExternally)) {
-              return;
-            }
             if (channelId && threadTs) {
               await sendSlackReply({
                 channelId,
@@ -636,9 +627,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
             });
         if (configReply) {
           await beforeFirstResponsePost();
-          if (shouldPublishExternally(options.publishExternally)) {
-            await thread.post(buildSlackOutputMessage(configReply.text));
-          }
+          await thread.post(buildSlackOutputMessage(configReply.text));
           markConversationMessage(
             preparedState.conversation,
             preparedState.userMessageId,
@@ -824,24 +813,21 @@ export function createSlackTurn(deps: SlackTurnDeps) {
           // classified as retryable delivery errors.
           await beforeFirstResponsePost();
           try {
-            if (shouldPublishExternally(options.publishExternally)) {
-              if (channelId && thread.adapter.name === "slack") {
-                slackMessageTs = await sendSlackReply({
-                  channelId,
-                  conversationId,
-                  replyAttribution:
-                    options.execution?.dispatch?.replyAttribution,
-                  text,
-                  ...(threadTs ? { threadTs } : undefined),
-                });
-              } else {
-                for (const part of splitSlackReplyText(text)) {
-                  const postedMessageTs = (
-                    await thread.post(buildSlackOutputMessage(part))
-                  ).id;
-                  if (postedMessageTs) {
-                    slackMessageTs.push(postedMessageTs);
-                  }
+            if (channelId && thread.adapter.name === "slack") {
+              slackMessageTs = await sendSlackReply({
+                channelId,
+                conversationId,
+                replyAttribution: options.execution?.dispatch?.replyAttribution,
+                text,
+                ...(threadTs ? { threadTs } : undefined),
+              });
+            } else {
+              for (const part of splitSlackReplyText(text)) {
+                const postedMessageTs = (
+                  await thread.post(buildSlackOutputMessage(part))
+                ).id;
+                if (postedMessageTs) {
+                  slackMessageTs.push(postedMessageTs);
                 }
               }
             }
@@ -1101,9 +1087,6 @@ export function createSlackTurn(deps: SlackTurnDeps) {
             source,
             ...(location ? { location } : undefined),
             destination,
-            publishExternally: shouldPublishExternally(
-              options.publishExternally,
-            ),
             surface: options.execution?.surface ?? "slack",
             dispatch: options.execution?.dispatch,
             toolChannelId,

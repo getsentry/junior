@@ -39,29 +39,31 @@ Runtime and Redis status is `paused`. SQL free-text / enum rows may still say
 
 ## State Model
 
-- A Conversation mailbox contains pending work. Each item has a Source, an
-  `interrupt` or `defer` mailbox delivery, and the legacy
-  `publishExternally` field. The worker keeps different publish choices in
-  separate Turns and saves the selected choice as the Turn's `publish` fact.
+- A Conversation mailbox contains pending work. Each item has a Source and an
+  `interrupt` or `defer` mailbox delivery.
 - A Turn cursor saves the Source and Actor selected from the input that started
   the Turn. Steering input keeps its own Actor in message provenance.
 - A queue message identifies the conversation to wake. The stored work controls
   delivery. A provider conversation stores its destination. Child work without
   a destination gets its authority from its stored agent invocation.
-- `publish` means the Turn also sends assistant output to the Conversation
-  Location. The Conversation always stores each completed assistant Message.
-  Dashboard and destinationless work do not publish. A resource event can
-  publish to a Slack Location without becoming a Slack Source. Destination or
-  Location presence must not invent publish.
+- The Conversation always stores each completed assistant Message. Slack input
+  delivers to Slack. Web and local input stay in Junior. Resource events use the
+  Conversation Location. Scheduled, Event task, and plugin dispatch work uses
+  its explicit Destination. Agent invocation has no Delivery. A child
+  Conversation does not use its parent's Location for Delivery.
+- The shared web and Resource event worker still uses Run Delivery to store the
+  completed assistant Message. It checks Resource event Source before it also
+  calls Slack. This is temporary. The owning code has a removal TODO for the
+  Source check and for storing the Message through Run Delivery.
 - A lease grants one worker temporary execution ownership.
 - Dispatch projection updates take a short dispatch lock only while the
   conversation lease is already held. They never wait for conversation work,
   which keeps lock ordering one-way.
 - Check-ins extend active ownership and allow heartbeat recovery to distinguish
   slow work from abandoned work.
-- Delivery state prevents a completed Turn from being posted twice. The Turn
-  checkpoint keeps the publish choice across pause and yield. Its stored field
-  remains `publishExternally` until the durable data contract is migrated.
+- Delivery state prevents a completed Turn from being posted twice. Redis
+  mailbox and Turn cursor records still write `publishExternally` for deployed
+  readers. Current workers ignore that compatibility field.
 
 Redis execution state uses the new v2 keys. This release does not read or move
 old Redis state. Old mailbox, lease, and turn-cursor state can be lost.

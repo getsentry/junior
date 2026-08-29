@@ -218,9 +218,6 @@ export type AgentRun = {
   // TODO(dcramer): Remove AgentRun.destination after tool side effects use
   // feature-owned targets and place context comes from Location.
   destination: Destination;
-  // TODO(dcramer): Remove AgentRun.publishExternally after Turn checkpoints
-  // store publish and each provider uses it to supply Delivery before every Run.
-  publishExternally?: boolean;
   surface?: AgentTurnSurface;
   dispatch?: AgentDispatch;
 

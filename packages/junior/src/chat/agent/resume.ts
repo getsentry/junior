@@ -42,7 +42,6 @@ interface ResumeStateArgs {
   dispatchId?: string;
   durability: AgentDurability;
   recordActiveMcpProviders: () => Promise<void>;
-  publishExternally: boolean;
   actor?: Actor;
   runSource: Source;
   conversationId: string;
@@ -118,7 +117,6 @@ export function createResumeState(args: ResumeStateArgs) {
     channelName: args.channelName,
     destination: args.destination,
     dispatchId: args.dispatchId,
-    publishExternally: args.publishExternally,
     source: args.runSource,
     actor: args.actor,
     surface: args.surface,

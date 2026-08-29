@@ -300,7 +300,6 @@ describe("remote ACP HTTP", () => {
     ]);
     expect(harness.agentRuns).toHaveLength(1);
     expect(harness.agentRuns[0]).toMatchObject({
-      publishExternally: false,
       source: { kind: "web", visibility: "private" },
     });
     await expect(harness.historyTexts(sessionId)).resolves.toEqual([

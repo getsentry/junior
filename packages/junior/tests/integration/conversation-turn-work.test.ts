@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createResourceEventSource,
+  createSlackSource,
   createWebSource,
 } from "@sentry/junior-plugin-api";
 import {
@@ -157,7 +158,6 @@ describe("Conversation mailbox Turn work", () => {
       messageId: accepted.messageId,
     });
     expect(inbound).toMatchObject({
-      publishExternally: false,
       source: "web",
     });
 
@@ -184,7 +184,6 @@ describe("Conversation mailbox Turn work", () => {
     expect(agentRuns).toHaveLength(1);
     expect(agentRuns[0]).toEqual(
       expect.objectContaining({
-        publishExternally: false,
         source: createWebSource(accepted.conversationId, "public"),
         actor: expect.objectContaining({ platform: "web" }),
       }),
@@ -231,7 +230,6 @@ describe("Conversation mailbox Turn work", () => {
         conversationTurnIdForMessage(accepted.messageId),
       ),
     ).resolves.toMatchObject({
-      publishExternally: false,
       state: "completed",
       surface: "api",
     });
@@ -357,7 +355,6 @@ describe("Conversation mailbox Turn work", () => {
         checkIn: async () => true,
         conversationId: accepted.conversationId,
         destination,
-        publishExternally: false,
         shouldYield: () => false,
         stopSignal: () => stop.signal,
       }),
@@ -395,7 +392,6 @@ describe("Conversation mailbox Turn work", () => {
         },
       ],
       destination,
-      publishExternally: false,
       source: createWebSource(accepted.conversationId),
       actor,
       surface: "api",
@@ -408,7 +404,6 @@ describe("Conversation mailbox Turn work", () => {
       }),
       conversationId: accepted.conversationId,
       destination,
-      publishExternally: false,
       shouldYield: () => false,
       checkIn: async () => true,
     });
@@ -596,7 +591,6 @@ describe("Conversation mailbox Turn work", () => {
     ).resolves.toEqual({ status: "yielded" });
     await expect(getTurnRecord(conversationId, turnId)).resolves.toMatchObject({
       actor: RESOURCE_EVENT_SYSTEM_ACTOR,
-      publishExternally: false,
       resumeReason: "yield",
       source,
       state: "paused",
@@ -620,7 +614,6 @@ describe("Conversation mailbox Turn work", () => {
           credentialContext: { actor: RESOURCE_EVENT_SYSTEM_ACTOR },
           destination,
           disabledFeatures: ["interactive-auth"],
-          publishExternally: false,
           source,
           turnId,
         }),
@@ -629,7 +622,6 @@ describe("Conversation mailbox Turn work", () => {
     }
     await expect(getTurnRecord(conversationId, turnId)).resolves.toMatchObject({
       actor: RESOURCE_EVENT_SYSTEM_ACTOR,
-      publishExternally: false,
       source,
       state: "completed",
     });
@@ -660,7 +652,7 @@ describe("Conversation mailbox Turn work", () => {
     ]);
   }, 10_000);
 
-  it("keeps legacy resource event publishing on after resume", async () => {
+  it("delivers a resumed resource event from the Conversation Location", async () => {
     const { conversationStore, queue, state } =
       await createConversationFixture();
     const conversationId = "slack:C123";
@@ -707,7 +699,7 @@ describe("Conversation mailbox Turn work", () => {
     });
     const agentRuns: AgentRun[] = [];
     let firstRun = true;
-    const publishMessage = vi.fn(async () => ({
+    const deliverMessage = vi.fn(async () => ({
       providerMessageId: "1712346.0001",
     }));
     const worker = createConversationTurnWorker(
@@ -724,7 +716,7 @@ describe("Conversation mailbox Turn work", () => {
           { type: "text", text: "Review request handled." },
         ]);
       }),
-      publishMessage,
+      deliverMessage,
     );
     const run = requireConversationTurn(worker);
 
@@ -737,11 +729,12 @@ describe("Conversation mailbox Turn work", () => {
         state,
       }),
     ).resolves.toEqual({ status: "yielded" });
-    await expect(getTurnRecord(conversationId, turnId)).resolves.toMatchObject({
-      publishExternally: true,
+    const pausedTurn = await getTurnRecord(conversationId, turnId);
+    expect(pausedTurn).toMatchObject({
       source,
       state: "paused",
     });
+    expect(pausedTurn).not.toHaveProperty("publishExternally");
 
     const storedCursor = await state.get(turnCursorKey(conversationId, turnId));
     if (!storedCursor || typeof storedCursor !== "object") {
@@ -772,17 +765,15 @@ describe("Conversation mailbox Turn work", () => {
     expect(agentRuns).toHaveLength(2);
     expect(agentRuns[0]).toEqual(
       expect.objectContaining({
-        publishExternally: true,
         source,
       }),
     );
     expect(agentRuns[1]).toEqual(
       expect.objectContaining({
-        publishExternally: true,
         source: createWebSource(conversationId),
       }),
     );
-    expect(publishMessage).toHaveBeenCalledOnce();
+    expect(deliverMessage).toHaveBeenCalledOnce();
   }, 10_000);
 
   it("does not claim dispatch resume wakes that share surface api", async () => {
@@ -808,7 +799,6 @@ describe("Conversation mailbox Turn work", () => {
         },
       ],
       destination,
-      publishExternally: true,
       dispatchId: "dispatch_shared_surface",
       surface: "api",
     });
@@ -817,14 +807,13 @@ describe("Conversation mailbox Turn work", () => {
       attempt: emptyConversationTurnAttempt({ conversationId, destination }),
       conversationId,
       destination,
-      publishExternally: true,
       shouldYield: () => false,
       checkIn: async () => true,
     });
     expect(resolved).toBeUndefined();
   });
 
-  it("continues a Slack-rooted conversation without publishing externally", async () => {
+  it("keeps dashboard input in Junior without abandoning a Slack auth pause", async () => {
     const { actor, conversationStore, queue, state } =
       await createConversationFixture();
     const conversationId = "slack:C1200:1712345.1200";
@@ -853,6 +842,29 @@ describe("Conversation mailbox Turn work", () => {
         threadTs: "1712345.1200",
       },
       visibility: "public",
+    });
+    const slackAuthTurnId = "turn-slack-auth";
+    await saveTurnCheckpoint({
+      mode: "paused",
+      conversationId,
+      turnId: slackAuthTurnId,
+      sliceId: 1,
+      reason: "auth",
+      messages: [
+        {
+          role: "user",
+          content: [{ type: "text", text: "Slack Turn waiting for auth." }],
+          timestamp: 1,
+        },
+      ],
+      destination: slackDestination,
+      source: createSlackSource({
+        channelId: "C1200",
+        teamId: "T1200",
+        threadTs: "1712345.1200",
+        visibility: "public",
+      }),
+      surface: "slack",
     });
 
     const accepted = await appendAndEnqueueWebMessage(
@@ -897,11 +909,11 @@ describe("Conversation mailbox Turn work", () => {
     });
     expect(inbound).toMatchObject({
       destination: slackDestination,
-      publishExternally: false,
       source: "web",
     });
 
     const agentRuns: AgentRun[] = [];
+    const deliverMessage = vi.fn(async () => ({}));
     const worker = createConversationTurnWorker(
       createModelAgentRunnerForRun((run) => {
         agentRuns.push(run);
@@ -909,6 +921,7 @@ describe("Conversation mailbox Turn work", () => {
           { type: "text", text: "Dashboard-only reply." },
         ]);
       }),
+      deliverMessage,
     );
     const run = requireConversationTurn(worker);
 
@@ -926,10 +939,10 @@ describe("Conversation mailbox Turn work", () => {
       expect.objectContaining({
         destination: expect.objectContaining({ platform: "slack" }),
         location: storedConversation?.location,
-        publishExternally: false,
         source: expect.objectContaining({ kind: "web" }),
       }),
     );
+    expect(deliverMessage).not.toHaveBeenCalled();
 
     const messages = (
       await getConversationEventStore().loadMessageHistory(conversationId)
@@ -951,9 +964,15 @@ describe("Conversation mailbox Turn work", () => {
         conversationTurnIdForMessage(accepted.messageId),
       ),
     ).resolves.toMatchObject({
-      publishExternally: false,
       state: "completed",
       surface: "api",
+    });
+    await expect(
+      getTurnRecord(conversationId, slackAuthTurnId),
+    ).resolves.toMatchObject({
+      resumeReason: "auth",
+      state: "paused",
+      surface: "slack",
     });
   });
 });

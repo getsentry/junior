@@ -265,7 +265,6 @@ describe("turn checkpoint", () => {
       source: SLACK_SOURCE,
       piMessages: priorMessages,
       resumeReason: "auth",
-      publishExternally: false,
       errorMessage: "initial auth pause",
     });
 
@@ -287,7 +286,6 @@ describe("turn checkpoint", () => {
       sliceId: 2,
       resumedFromSliceId: 1,
       resumeReason: "auth",
-      publishExternally: false,
       source: SLACK_SOURCE,
       errorMessage: "plugin auth pause",
       piMessages: [priorMessages[0]],
@@ -458,7 +456,6 @@ describe("turn checkpoint", () => {
           destination: SLACK_DESTINATION,
           inboundMessageId: "turn-activity-message",
           receivedAtMs: 9_000,
-          publishExternally: true,
           delivery: "defer",
           source: "slack",
         },
@@ -545,6 +542,7 @@ describe("turn checkpoint", () => {
     expect(stored).not.toHaveProperty("destination");
     expect(stored).toMatchObject({
       actor: SLACK_ACTOR,
+      publishExternally: true,
       source: SLACK_SOURCE,
     });
 

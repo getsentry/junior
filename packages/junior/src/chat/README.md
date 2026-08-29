@@ -93,10 +93,6 @@ singleton.
 - **Destination**: explicit target for output or a side effect. Current uses as
   a Conversation Location are migration debt. A feature may use Destination
   before it creates a Conversation at that target.
-- **publish**: Turn fact that says whether assistant output is also sent to the
-  Conversation Location through Delivery. The Conversation always stores each
-  completed assistant Message. `publishExternally` is the legacy field for this
-  fact.
 
 ## Target Interface
 
@@ -126,14 +122,12 @@ type InboundMessage = {
   source: Source;
   actor?: Actor;
   input: AgentInput;
-  publish: boolean;
 };
 
 type Turn = {
   turnId: string;
   source: Source;
   actor?: Actor;
-  publish: boolean;
 };
 
 type Delivery = (message: AssistantMessage) => void | Promise<void>;
@@ -148,11 +142,15 @@ type AgentRun = {
 };
 ```
 
-`Source.kind` states what produced the input. The worker copies Source and
-publish from the selected input to the Turn. It loads Location from the
-Conversation. Before every new or resumed Run, the provider supplies Delivery
-when the Turn publishes. A feature may use Destination to select a target before
-it creates a Conversation. That target becomes the new Conversation Location.
+`Source.kind` states what produced the input. The worker copies Source from the
+selected input to the Turn. It loads Location from the Conversation. Before
+every new or resumed Run, the work owner supplies Delivery. Slack input gets
+Slack Delivery. Web and local input do not get provider Delivery. Resource
+events get Delivery for the Conversation Location. Scheduled, Event task, and
+plugin dispatch work gets Delivery for its explicit Destination. Agent
+invocation does not get Delivery. A feature may use Destination to select a
+target before it creates a Conversation. That target becomes the new
+Conversation Location.
 
 Attribution does not grant authority. `run.actors` records participating actors;
 credential issuance still requires the current actor or an explicit delegated
@@ -204,19 +202,16 @@ delegation without becoming the execution actor or a general task owner.
   separate.
 - The final Run interface has Source, optional Location, and optional Delivery.
   Source does not contain Location. Delivery is created for the Location and
-  does not repeat it. A dashboard continuation may therefore carry a Slack
-  Location without getting Slack Delivery.
+  does not repeat it. A dashboard continuation in a Slack Conversation carries
+  its Location for tools but does not get Slack Delivery.
 - The final interface uses Conversation, Source, Location, and Delivery. Do not
   add another type, routing object, or wrapper for the same values.
 - A Conversation may have one parent Conversation. It stores that relation as
   `parentConversationId`. Location is independent and is not copied from the
   parent. A Run may read the parent Conversation when it needs that Location.
-- Each Turn stores `publish`. The worker gets Source from the selected input and
-  Location from the Conversation. Before every new or resumed Run, the owning
-  provider supplies Delivery only when the Turn publishes. Source, Actor,
-  Destination, and Location do not invent Delivery. The legacy
-  `publishExternally` field remains only until mailbox and Turn checkpoint data
-  use the final fact.
+- Before each new or resumed Run, the work owner supplies optional Delivery.
+  Source, Actor, and Location do not select Delivery. A child Conversation does
+  not get Delivery from its parent's Location.
 - Host-owned runtime context and the actor's current instruction are separate
   user messages. The context message immediately precedes the instruction,
   remains context-authority on resume, and may be replaced before a later model

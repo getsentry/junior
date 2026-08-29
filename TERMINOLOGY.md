@@ -28,14 +28,8 @@ Canonical words used across Junior's code and documentation.
   such as a Slack channel or thread. A Conversation has zero or one Location.
   A Run carries this same Location when the agent or tools need it. Location
   does not allow output to be sent. Conversation visibility is separate.
-- **Delivery**: an optional function that sends Run output to the Conversation
-  Location. Only Delivery allows output to be sent there. Storing a completed
-  assistant Message in the Conversation does not depend on Delivery.
-- **publish**: whether one Turn also sends assistant output to the Conversation
-  Location through Delivery. The Conversation always stores each completed
-  assistant Message. `publishExternally` is the legacy mailbox, Turn checkpoint,
-  and Run field for this fact until those interfaces use `publish` or Delivery
-  alone.
+- **Delivery**: a function that sends Run output to the Conversation Location.
+  A Conversation without Delivery stores completed assistant Messages only.
 - **User**: one person-level record. A user may have several linked identities.
 - **Identity**: one provider account, such as a Slack account in one workspace,
   optionally linked to a user.

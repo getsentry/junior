@@ -99,9 +99,6 @@ export type AgentInput = z.output<typeof agentInputSchema>;
 /** Durable delivery modes for pending inbound mailbox work. */
 export const inboundMessageDeliverySchema = z.enum(["defer", "interrupt"]);
 
-/** Whether this turn also publishes assistant output to the conversation destination. */
-export const publishExternallySchema = z.boolean();
-
 export type InboundMessageDelivery = z.output<
   typeof inboundMessageDeliverySchema
 >;
@@ -118,12 +115,18 @@ export const inboundMessageSchema = z
     injectedAtMs: z.number().finite().optional(),
     input: agentInputSchema,
     receivedAtMs: z.number().finite(),
-    publishExternally: publishExternallySchema,
     source: inboundMessageSourceSchema,
   })
   .strict();
 
 export type InboundMessage = z.output<typeof inboundMessageSchema>;
+
+/** Redis mailbox shape kept for deployed workers that still require this field. */
+const storedInboundMessageSchema = inboundMessageSchema.extend({
+  publishExternally: z.boolean(),
+});
+
+type StoredInboundMessage = z.output<typeof storedInboundMessageSchema>;
 
 export interface Lease {
   acquiredAtMs: number;
@@ -363,8 +366,19 @@ function normalizeExecutionStatus(value: unknown): ExecutionStatus | undefined {
 }
 
 function normalizeMessage(value: unknown): InboundMessage | undefined {
-  const parsed = inboundMessageSchema.safeParse(value);
-  return parsed.success ? parsed.data : undefined;
+  const parsed = storedInboundMessageSchema.safeParse(value);
+  if (!parsed.success) {
+    return undefined;
+  }
+  const { publishExternally: _publishExternally, ...message } = parsed.data;
+  return message;
+}
+
+function storeMessage(
+  message: InboundMessage,
+  publishExternally: boolean,
+): StoredInboundMessage {
+  return { ...message, publishExternally };
 }
 
 /** Whether this is the final attempt before an unacked message is dead-lettered. */
@@ -1004,9 +1018,29 @@ async function writeConversation(
   if (!fenced) {
     throw new ConversationMutationFencedError(next.conversationId);
   }
+  // TODO(dcramer): Remove the stored publishExternally field after no deployed
+  // mailbox reader requires it. Destination is used only to write this old
+  // Redis shape. Current workers ignore the field.
+  const hasSlackDestination = next.destination?.platform === "slack";
+  const stored = {
+    ...next,
+    execution: {
+      ...next.execution,
+      pendingMessages: next.execution.pendingMessages.map((message) =>
+        storeMessage(
+          message,
+          hasSlackDestination &&
+            (message.source === "slack" ||
+              message.source === "resource_event" ||
+              message.source === "plugin" ||
+              message.source === "scheduler"),
+        ),
+      ),
+    },
+  };
   await state.set(
     conversationKey(next.conversationId),
-    next,
+    stored,
     JUNIOR_THREAD_STATE_TTL_MS,
   );
   await upsertIndexEntry({

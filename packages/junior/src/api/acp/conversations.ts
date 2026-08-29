@@ -93,7 +93,7 @@ async function hasConversationAccess(
   return Boolean(access?.isParticipant);
 }
 
-/** Return whether one Turn can publish its terminal result without racing cleanup. */
+/** Return whether one Turn can return its terminal result without racing cleanup. */
 async function turnTerminalIsReady(args: {
   conversationId: string;
   eventStore: ConversationEventStore;
