@@ -403,6 +403,8 @@ export function surfaceFromRun(
   if (run.surface) {
     return run.surface;
   }
+  // TODO(dcramer): Remove Source-based inference after every work owner and
+  // deployed Turn checkpoint provides surface.
   if (run.source.kind === "slack") {
     return "slack";
   }

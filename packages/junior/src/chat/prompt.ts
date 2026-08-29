@@ -702,7 +702,7 @@ const STATIC_SYSTEM_PROMPTS: Record<PromptPlatform, string> = {
   slack: buildStaticSystemPrompt("slack"),
 };
 
-/** Return byte-stable platform instructions shared by every Conversation and Turn. */
+/** Return the fixed instructions shared by every Conversation and Turn. */
 export function buildSystemPrompt(platform: PromptPlatform): string {
   return STATIC_SYSTEM_PROMPTS[platform];
 }

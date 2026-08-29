@@ -223,8 +223,8 @@ export async function processMemorySession(
   context: PluginTaskContext,
 ): Promise<void> {
   const run = await context.run.load();
-  // TODO(dcramer): Replace this Source kind allowlist when plugin runs expose
-  // an explicit capability for passive memory extraction.
+  // TODO(dcramer): Replace this hardcoded Source check when a plugin Run can
+  // state whether passive memory extraction should run.
   if (run.source.kind !== "slack" && run.source.kind !== "web") {
     return;
   }

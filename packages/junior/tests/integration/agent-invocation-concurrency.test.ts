@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { StreamFn } from "@earendil-works/pi-agent-core";
-import { createLocalSource } from "@sentry/junior-plugin-api";
 import type { AgentRun } from "@/chat/agent/types";
 import { AgentInvocationLimitError } from "@/chat/agent-invocations/errors";
 import {
@@ -35,7 +34,6 @@ const baseInput = {
   destination,
   input: "Do the delegated work.",
   parentConversationId,
-  source: createLocalSource(parentConversationId),
 };
 
 function taskModel(request: AgentRun): StreamFn {

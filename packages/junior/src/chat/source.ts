@@ -2,14 +2,14 @@ import { sourceSchema, type Source } from "@sentry/junior-plugin-api";
 
 // TODO(dcramer): Delete SessionSource and this module after resume and SQL
 // Location reads no longer use Conversation.sessionSource.
-/** Legacy Source coordinates stored as a Conversation locator. */
+/** Legacy provider Source fields stored on a Conversation. */
 export type SessionSource =
   | Extract<Source, { kind: "web" }>
   | Extract<Source, { kind: "local" }>
   | Omit<Extract<Source, { kind: "slack" }>, "messageTs">;
 
 /**
- * Normalize a Turn Source into the legacy locator stored on a Conversation.
+ * Normalize a Turn Source into legacy provider fields stored on a Conversation.
  * System Sources do not contain a Conversation Location.
  */
 export function normalizeSessionSource(
@@ -51,7 +51,7 @@ export function normalizeSessionSource(
   };
 }
 
-/** Parse a serialized Source into the stable locator stored on a conversation. */
+/** Parse a serialized Source into legacy provider fields stored on a Conversation. */
 export function parseSessionSource(value: unknown): SessionSource | undefined {
   const parsed = sourceSchema.safeParse(value);
   return parsed.success ? normalizeSessionSource(parsed.data) : undefined;

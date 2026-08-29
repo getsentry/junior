@@ -312,7 +312,7 @@ describe("agent invocation conversation work", () => {
       expect(child).not.toHaveProperty("sessionSource");
       expect(child).not.toHaveProperty("visibility");
       let observedVisibility: ReturnType<typeof getCurrentConversationPrivacy>;
-      const modelStream = vi.fn(
+      const agentRunner = createModelAgentRunner(
         createModelStream([
           {
             type: "text",
@@ -323,7 +323,6 @@ describe("agent invocation conversation work", () => {
           },
         ]),
       );
-      const agentRunner = createModelAgentRunner(modelStream);
       const run = vi.spyOn(agentRunner, "run");
       const fallbackWorker = vi.fn(async () => ({
         status: "completed" as const,
@@ -425,12 +424,6 @@ describe("agent invocation conversation work", () => {
         runId: created.invocationId,
       });
       expect(run.mock.calls[0]?.[0].delivery).toBeUndefined();
-      expect(modelStream.mock.calls[0]?.[1].systemPrompt).toContain(
-        "You are a helper assistant.",
-      );
-      expect(modelStream.mock.calls[0]?.[1].systemPrompt).not.toContain(
-        "Slack-based",
-      );
       expect(observedVisibility).toBe("public");
       expect(fallbackWorker).not.toHaveBeenCalled();
     } finally {

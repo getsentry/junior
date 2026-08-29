@@ -505,8 +505,8 @@ export function definePluginTool<
 
 export interface SlackToolRegistrationHookContext {
   /**
-   * Capabilities of the Slack Conversation Location exposed to this plugin.
-   * Recomputed from Location, not from Source or Destination.
+   * What Slack tools can do in the Conversation Location.
+   * Computed from Location, not from Source or Destination.
    */
   channelCapabilities: {
     canAddReactions: boolean;
@@ -567,6 +567,6 @@ interface BaseToolRegistrationHookContext extends PluginContext {
 
 export type ToolRegistrationHookContext = BaseToolRegistrationHookContext &
   InvocationContext & {
-    /** Slack capabilities when the Conversation has a Slack Location. */
+    /** Slack tool details when the Conversation has a Slack Location. */
     slack?: SlackToolRegistrationHookContext;
   };
