@@ -76,7 +76,7 @@ import { runScheduledTaskHeartbeat } from "@/chat/scheduled-tasks/heartbeat";
 import {
   buildDispatchRoutingContext,
   createAgentDispatchConversationWorker,
-  createAgentDispatchWorkRouter,
+  resolveAgentDispatchId,
 } from "@/chat/agent-dispatch/work";
 import {
   getDispatchInputMessageId,
@@ -2193,10 +2193,12 @@ async function processEvents(args: {
         conversationWorkQueue.takeMessage(),
         {
           queue: conversationWorkQueue,
-          run: createAgentDispatchWorkRouter({
-            dispatchWorker,
-            fallbackWorker: slackWorker,
-          }),
+          run: async (context) => {
+            const dispatchId = await resolveAgentDispatchId(context);
+            return dispatchId
+              ? await dispatchWorker(context, dispatchId)
+              : await slackWorker(context);
+          },
           state: env.stateAdapter,
         },
       );
