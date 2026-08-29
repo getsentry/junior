@@ -42,6 +42,8 @@ Canonical words used across Junior's code and documentation.
 - **Actor**: the runtime participant for one source invocation. Actor ids are
   provider-scoped and are not canonical user ids. An Actor may keep provider
   fields that the agent or tools need. Those fields do not select the runtime.
+  A Turn stores the Actor selected from the input that started it. Steering
+  inputs keep their own Actors.
 - **Resource event**: one normalized change identified by namespace, identifier,
   event type, and an idempotency key. Plugins and core can publish them.
   A Resource event can wake a Conversation. Location stays on that

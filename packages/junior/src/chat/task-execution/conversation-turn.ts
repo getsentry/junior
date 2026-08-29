@@ -224,11 +224,12 @@ export function createConversationTurnWorker(
         );
       }
       resumedResourceEvent = isResourceEventConversationMessage(userMessage);
-      // Resume has no new input. Restore Source from the Turn and Actor from
-      // the saved instruction until Actor is also a first-class Turn field.
+      // Resume has no new input. Restore Source and Actor from the Turn.
+      // Deployed cursors without these fields still use the saved Message.
       turnInputFacts = turnInputFactsFromConversationMessage(userMessage, {
         conversationId: context.conversationId,
         location: storedConversation?.location,
+        savedActor: savedTurn?.actor,
         savedSource: savedTurn?.source,
         visibility: storedConversation?.visibility,
       });

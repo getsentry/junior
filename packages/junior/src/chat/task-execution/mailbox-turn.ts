@@ -39,19 +39,20 @@ export type TurnInputFacts = Pick<
   "actor" | "author" | "source"
 >;
 
-/** Restore the Turn input facts kept on one saved Message. */
+/** Restore Turn input facts, with saved Message fallback for legacy cursors. */
 export function turnInputFactsFromConversationMessage(
   message: ConversationMessage,
   args: {
     conversationId: string;
     location?: Location;
+    savedActor?: Actor;
     savedSource?: Source;
     visibility?: ConversationPrivacy;
   },
 ): TurnInputFacts | undefined {
   if (isResourceEventConversationMessage(message)) {
     return {
-      actor: RESOURCE_EVENT_SYSTEM_ACTOR,
+      actor: args.savedActor ?? RESOURCE_EVENT_SYSTEM_ACTOR,
       author: message.author ?? RESOURCE_EVENT_MESSAGE_AUTHOR,
       // Stored Turns written before Source was saved can only restore the old
       // provider stand-in from the Conversation.
@@ -65,10 +66,12 @@ export function turnInputFactsFromConversationMessage(
           : createLocalSource(args.conversationId)),
     };
   }
-  const actor = createActor(message.author, {
-    platform: "web",
-    userId: message.author?.userId,
-  });
+  const actor =
+    args.savedActor ??
+    createActor(message.author, {
+      platform: "web",
+      userId: message.author?.userId,
+    });
   if (actor?.platform !== "web") {
     return undefined;
   }

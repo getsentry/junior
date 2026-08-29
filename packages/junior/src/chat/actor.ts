@@ -275,7 +275,7 @@ export function toStoredSlackActor(actor: SlackActor): StoredSlackActor {
 
 /** Resolve a Slack resume actor from stored profile data and the active actor. */
 export function createSlackResumeActor(args: {
-  actor?: UserActor;
+  actor?: Actor;
   teamId: string;
   userId: string;
 }): SlackActor {

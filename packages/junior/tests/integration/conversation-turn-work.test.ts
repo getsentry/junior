@@ -595,6 +595,7 @@ describe("Conversation mailbox Turn work", () => {
       }),
     ).resolves.toEqual({ status: "yielded" });
     await expect(getTurnRecord(conversationId, turnId)).resolves.toMatchObject({
+      actor: RESOURCE_EVENT_SYSTEM_ACTOR,
       publishExternally: false,
       resumeReason: "yield",
       source,
@@ -627,6 +628,7 @@ describe("Conversation mailbox Turn work", () => {
       expect(run.authorization).toBeUndefined();
     }
     await expect(getTurnRecord(conversationId, turnId)).resolves.toMatchObject({
+      actor: RESOURCE_EVENT_SYSTEM_ACTOR,
       publishExternally: false,
       source,
       state: "completed",
