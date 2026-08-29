@@ -1,4 +1,36 @@
 # Changelog
+## 0.189.0
+
+### New Features ✨
+
+- (gocd) Add read-only pipeline and stage tools by @sentry-junior in [#1570](https://github.com/getsentry/junior/pull/1570)
+
+### Bug Fixes 🐛
+
+#### Dashboard
+
+- Keep Memories nav active and drop legacy task redirect by @sentry-junior in [#1726](https://github.com/getsentry/junior/pull/1726)
+- Mount task details at /tasks/:taskId by @sentry-junior in [#1725](https://github.com/getsentry/junior/pull/1725)
+
+#### Other
+
+- (chat) Keep bare @mentions reviewable by @sentry-junior in [#1733](https://github.com/getsentry/junior/pull/1733)
+- (evals) Route behavior harness through production conversation work by @sentry-junior in [#1731](https://github.com/getsentry/junior/pull/1731)
+- (guardian) Allow ordinary reversible creates without product carve-outs by @sentry-junior in [#1729](https://github.com/getsentry/junior/pull/1729)
+
+### Internal Changes 🔧
+
+#### Chat
+
+- Use one Conversation Turn worker by @dcramer in [#1727](https://github.com/getsentry/junior/pull/1727)
+- Keep Location on AgentRun by @dcramer in [#1723](https://github.com/getsentry/junior/pull/1723)
+- Remove destination visibility from AgentRun by @dcramer in [#1722](https://github.com/getsentry/junior/pull/1722)
+- Store complete Conversation Location by @dcramer in [#1720](https://github.com/getsentry/junior/pull/1720)
+
+#### Other
+
+- (slack) Run system turns without webhook messages by @dcramer in [#1724](https://github.com/getsentry/junior/pull/1724)
+
 ## 0.188.0
 
 ### Bug Fixes 🐛
