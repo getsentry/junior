@@ -1,0 +1,43 @@
+{
+  "name": "@sentry/junior-gocd",
+  "version": "0.163.0",
+  "private": false,
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/getsentry/junior.git",
+    "directory": "packages/junior-gocd"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "skills"
+  ],
+  "scripts": {
+    "build": "tsup && tsc -p tsconfig.build.json --emitDeclarationOnly",
+    "lint": "oxlint --config ../junior/.oxlintrc.json --deny-warnings src tests tsup.config.ts vitest.config.ts",
+    "prepare": "pnpm run build",
+    "prepack": "pnpm run build",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@sentry/junior-plugin-api": "workspace:*",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.1",
+    "oxlint": "^1.66.0",
+    "tsup": "^8.5.1",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.7"
+  }
+}

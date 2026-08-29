@@ -75,6 +75,7 @@ jobs:
               - packages/junior-cloudflare/**
               - packages/junior-datadog/**
               - packages/junior-github/**
+              - packages/junior-gocd/**
               - packages/junior-hex/**
               - packages/junior-linear/**
               - packages/junior-maintenance/**
@@ -258,10 +259,12 @@ jobs:
       - uses: ./.github/actions/setup-node-pnpm
       - run: pnpm --filter @sentry/junior-memory build
       - run: pnpm --filter @sentry/junior-github build
+      - run: pnpm --filter @sentry/junior-gocd build
       - run: pnpm --filter @sentry/junior-sentry build
       - run: pnpm --filter @sentry/junior-vercel build
       - run: pnpm --filter @sentry/junior-memory test
       - run: pnpm --filter @sentry/junior-github test
+      - run: pnpm --filter @sentry/junior-gocd test
       - run: pnpm --filter @sentry/junior-sentry test
       - run: pnpm --filter @sentry/junior-vercel test
 
@@ -398,6 +401,7 @@ jobs:
           pnpm --filter @sentry/junior-dashboard pack --pack-destination artifacts
           pnpm --filter @sentry/junior-datadog pack --pack-destination artifacts
           pnpm --filter @sentry/junior-github pack --pack-destination artifacts
+          pnpm --filter @sentry/junior-gocd pack --pack-destination artifacts
           pnpm --filter @sentry/junior-hex pack --pack-destination artifacts
           pnpm --filter @sentry/junior-linear pack --pack-destination artifacts
           pnpm --filter @sentry/junior-memory pack --pack-destination artifacts
