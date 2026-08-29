@@ -2,6 +2,8 @@
 
 `@sentry/junior-gocd` adds read-only GoCD tools to Junior. The package does not contain settings for a specific GoCD deployment.
 
+Full setup guide: https://junior.sentry.dev/extend/gocd-plugin/
+
 ## Install
 
 ```ts
