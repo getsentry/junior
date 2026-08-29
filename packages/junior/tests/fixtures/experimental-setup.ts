@@ -6,6 +6,7 @@ import { setExperimentalFeatures } from "@/chat/experimental";
  * exercises the real wiring path without an env flag.
  */
 export const SUITE_EXPERIMENTAL = {
+  "output-router": false,
   "passive-routing": true,
   subagents: true,
 } as const;
