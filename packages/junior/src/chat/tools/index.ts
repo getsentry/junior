@@ -184,7 +184,7 @@ export function createTools(
     }
     // Always register public search in Slack turns. Without an action token the
     // tool stays visible and returns an honest interactive-turn limit.
-    if (context.source.platform === "slack") {
+    if (context.source.kind === "slack") {
       tools.slackPublicSearch = createSlackPublicSearchTool(
         context.slackActionToken,
       );

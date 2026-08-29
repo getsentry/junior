@@ -47,7 +47,7 @@ function actionReview(
         conversationId: "local:tool-review",
       },
       source: {
-        platform: "local",
+        kind: "local",
         visibility: "private",
         conversationId: "local:tool-review",
       },
@@ -571,7 +571,9 @@ describe("Pi tool adapter", () => {
 
     await expect(
       demoTool!.execute("tool-limit", { cadence: "weekly" }),
-    ).rejects.toThrow("Do not retry this action or an equivalent write this turn.");
+    ).rejects.toThrow(
+      "Do not retry this action or an equivalent write this turn.",
+    );
     expect(review).toHaveBeenCalledTimes(3);
     expect(onFatal).not.toHaveBeenCalled();
     expect(

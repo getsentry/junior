@@ -215,7 +215,7 @@ describe("conversation list API", () => {
         },
         nowMs: 1_000,
         sessionSource: {
-          platform: "slack",
+          kind: "slack",
           visibility: "public",
           teamId: "T123",
           channelId: "C123",
@@ -244,7 +244,7 @@ describe("conversation list API", () => {
         },
         nowMs: 2_000,
         sessionSource: {
-          platform: "slack",
+          kind: "slack",
           visibility: "private",
           teamId: "T123",
           channelId: "D123",

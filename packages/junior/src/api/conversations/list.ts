@@ -296,7 +296,7 @@ export async function readConversationFeedFromSql(
     readRootConversationMetricsFromSql(db, conversationIds),
     resolveSlackTeamDomains(
       conversations.flatMap((conversation) =>
-        conversation.sessionSource?.platform === "slack"
+        conversation.sessionSource?.kind === "slack"
           ? [conversation.sessionSource.teamId]
           : [],
       ),

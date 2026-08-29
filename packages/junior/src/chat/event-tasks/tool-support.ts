@@ -107,7 +107,7 @@ export function requireSupportedEventTaskTrigger(
 /** Require the active Slack authority used for event-task management. */
 export function requireEventTaskSlackContext(context: ToolRuntimeContext) {
   if (
-    context.source.platform !== "slack" ||
+    context.source.kind !== "slack" ||
     context.destination.platform !== "slack" ||
     context.actor?.platform !== "slack" ||
     context.actor.teamId !== context.source.teamId
@@ -159,9 +159,8 @@ export function eventTaskTriggerAvailable(
 ): boolean {
   // resourceType is presentation metadata; runtime matching uses namespace,
   // identifier, and event type. Core snapshot events never dispatch tasks.
-  const registration = pluginResourceEventCatalog(catalog)[
-    task.trigger.namespace
-  ];
+  const registration =
+    pluginResourceEventCatalog(catalog)[task.trigger.namespace];
   return Boolean(
     registration &&
     task.trigger.events.every((eventType) =>

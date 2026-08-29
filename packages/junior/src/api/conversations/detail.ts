@@ -74,7 +74,9 @@ function projectConversationDetail(args: {
     ...(modelUsage.length > 0 ? { modelUsage } : undefined),
     eventHistory: conversationEventHistory({
       canExposePayload,
-      ...(transcriptPurgedAtMs === undefined ? undefined : { transcriptPurgedAtMs }),
+      ...(transcriptPurgedAtMs === undefined
+        ? undefined
+        : { transcriptPurgedAtMs }),
     }),
     generatedAt: new Date().toISOString(),
     ...(sentryConversationUrl ? { sentryConversationUrl } : undefined),
@@ -126,7 +128,7 @@ async function readConversationDetailFromSql(
       ...(options.viewer ? { viewer: options.viewer } : undefined),
     }),
     resolveSlackTeamDomains(
-      record.conversation.sessionSource?.platform === "slack"
+      record.conversation.sessionSource?.kind === "slack"
         ? [record.conversation.sessionSource.teamId]
         : [],
     ),

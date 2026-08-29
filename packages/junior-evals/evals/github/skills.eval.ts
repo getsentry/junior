@@ -2,7 +2,7 @@ import { describeEval, toolCalls } from "vitest-evals";
 import { beforeAll, expect } from "vitest";
 import {
   mention,
-  resourceEventNotification,
+  resourceEvent,
   rubric,
   slackEvals,
   threadMessage,
@@ -25,7 +25,7 @@ describeEval("GitHub Skill Workflows", slackEvals, (it) => {
         skill_dirs: ["fixtures/github-headless-skills"],
       },
       initialEvents: [
-        resourceEventNotification({
+        resourceEvent({
           eventType: "pull_request.checks.failed",
           intent:
             "Fix failing checks on this pull request and push the update.",

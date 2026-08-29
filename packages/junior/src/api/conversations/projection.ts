@@ -83,7 +83,7 @@ function sourceUrlFromConversation(args: {
   const { conversation } = args;
   if (
     !args.canViewPrivateContent ||
-    conversation.sessionSource?.platform !== "slack"
+    conversation.sessionSource?.kind !== "slack"
   ) {
     return undefined;
   }
@@ -105,7 +105,9 @@ function actorIdentityReport(
   if (!actor) return undefined;
   const identity: ActorIdentity = {
     ...(actor.email !== undefined ? { email: actor.email } : undefined),
-    ...(actor.fullName !== undefined ? { fullName: actor.fullName } : undefined),
+    ...(actor.fullName !== undefined
+      ? { fullName: actor.fullName }
+      : undefined),
     ...(actor.slackUserId !== undefined
       ? { slackUserId: actor.slackUserId }
       : undefined),
@@ -262,7 +264,9 @@ export function conversationSummaryFromStoredConversation(args: {
     startedAt: new Date(conversation.createdAtMs).toISOString(),
     status: statusFromConversation(conversation),
     surface,
-    ...(args.auxiliaryCosts ? { auxiliaryCosts: args.auxiliaryCosts } : undefined),
+    ...(args.auxiliaryCosts
+      ? { auxiliaryCosts: args.auxiliaryCosts }
+      : undefined),
     ...(usage ? { cumulativeUsage: usage } : undefined),
     ...(actorIdentity ? { actorIdentity } : undefined),
     ...(sourceUrl ? { sourceUrl } : undefined),

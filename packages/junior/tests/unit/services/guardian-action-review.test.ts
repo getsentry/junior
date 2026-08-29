@@ -23,7 +23,7 @@ const proposal: ToolActionProposal = {
       conversationId: "local:guardian-test",
     },
     source: {
-      platform: "local",
+      kind: "local",
       visibility: "private",
       conversationId: "local:guardian-test",
     },

@@ -5,9 +5,10 @@ import { fileURLToPath } from "node:url";
 import { vi } from "vitest";
 import type { SlackAdapter } from "@chat-adapter/slack";
 import { Message as ChatMessage, ThreadImpl, type Message } from "chat";
-import type {
-  Destination,
-  PluginRegistration,
+import {
+  createSlackSource,
+  type Destination,
+  type PluginRegistration,
 } from "@sentry/junior-plugin-api";
 import { executeWithReplay } from "vitest-evals/replay";
 import type { JsonValue } from "vitest-evals/harness";
@@ -17,7 +18,11 @@ import {
 } from "@earendil-works/pi-ai/providers/faux";
 import { createConversationWork } from "@/chat/app/conversation-work";
 import { botConfig } from "@/chat/config";
-import { getConversationEventStore, getConversationStore, getDb } from "@/chat/db";
+import {
+  getConversationEventStore,
+  getConversationStore,
+  getDb,
+} from "@/chat/db";
 import type { AssistantLifecycleEvent } from "@/chat/providers/slack/runtime";
 import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
 import { createUserTokenStore } from "@/chat/capabilities/factory";
@@ -266,6 +271,20 @@ interface EventTaskMatchedEvent extends EvalBaseEvent {
   untrusted_text?: string;
 }
 
+interface ResourceEventFixture extends EvalBaseEvent {
+  type: "resource_event";
+  data?: Record<string, unknown>;
+  event_key: string;
+  event_type: string;
+  intent: string;
+  label: string;
+  namespace: string;
+  identifier: string;
+  resource_type: string;
+  trusted_summary: string;
+  untrusted_text?: string;
+}
+
 interface GitHubWebhookEvent extends EvalBaseEvent {
   body: unknown;
   delivery_id: string;
@@ -287,6 +306,7 @@ export type EvalEvent =
   | AssistantContextChangedEvent
   | ScheduledTaskDueEvent
   | EventTaskMatchedEvent
+  | ResourceEventFixture
   | GitHubWebhookEvent;
 
 type SlackMessageEvent = MentionEvent | SubscribedMessageEvent;
@@ -2305,6 +2325,63 @@ async function processEvents(args: {
     await drainQueuedConversationWork();
   };
 
+  const runResourceEvent = async (
+    event: ResourceEventFixture,
+  ): Promise<void> => {
+    const { thread } = await getThreadRecord(event.thread);
+    const nowMs = Date.now();
+    const destination = createEvalDestination(thread);
+    await getConversationStore().recordActivity({
+      conversationId: thread.id,
+      destination,
+      nowMs,
+      sessionSource: createSlackSource({
+        channelId: destination.channelId,
+        teamId: destination.teamId,
+        ...(thread.threadTs ? { threadTs: thread.threadTs } : undefined),
+        visibility: "public",
+      }),
+      source: "slack",
+      visibility: "public",
+    });
+    await createResourceEventSubscription(
+      {
+        conversationId: thread.id,
+        events: [event.event_type],
+        expiresAtMs: nowMs + 14 * 24 * 60 * 60 * 1000,
+        intent: event.intent,
+        label: event.label,
+        namespace: event.namespace,
+        identifier: event.identifier,
+        resourceType: event.resource_type,
+      },
+      { nowMs, state: env.stateAdapter },
+    );
+    const result = await ingestResourceEvent(
+      {
+        data: event.data,
+        eventKey: event.event_key,
+        eventType: event.event_type,
+        identifier: event.identifier,
+        namespace: event.namespace,
+        occurredAtMs: nowMs,
+        trustedSummary: event.trusted_summary,
+        untrustedText: event.untrusted_text,
+      },
+      {
+        nowMs,
+        queue: conversationWorkQueue,
+        state: env.stateAdapter,
+      },
+    );
+    if (result.enqueued !== 1) {
+      throw new Error(
+        `Resource event eval expected one queued input, got ${result.enqueued}`,
+      );
+    }
+    await drainQueuedConversationWork();
+  };
+
   const runEventTaskMatched = async (
     event: EventTaskMatchedEvent,
   ): Promise<void> => {
@@ -2361,6 +2438,8 @@ async function processEvents(args: {
       await runScheduledTaskDue(event);
     } else if (event.type === "event_task_matched") {
       await runEventTaskMatched(event);
+    } else if (event.type === "resource_event") {
+      await runResourceEvent(event);
     } else if (event.type === "github_webhook") {
       await runGitHubWebhook(event);
     } else {
@@ -2373,24 +2452,31 @@ async function processEvents(args: {
     }
   };
 
+  const stageSteering = (
+    preceding: readonly EvalBaseEvent[],
+    steering: SteerEvent,
+  ): void => {
+    const conversationIds = new Set(
+      [...preceding, ...steering.events].map((event) =>
+        buildRuntimeThreadId(event.thread),
+      ),
+    );
+    if (conversationIds.size !== 1) {
+      throw new Error(
+        "steer() messages must target the preceding Conversation",
+      );
+    }
+    steeringDelivery.deliver = async () => {
+      await appendMailboxMessages(steering.events);
+    };
+  };
+
   const processMessageGroup = async (
     messages: Array<MentionEvent | SubscribedMessageEvent>,
     steering?: SteerEvent,
   ): Promise<void> => {
     if (steering) {
-      const conversationIds = new Set(
-        [...messages, ...steering.events].map((event) =>
-          buildRuntimeThreadId(event.thread),
-        ),
-      );
-      if (conversationIds.size !== 1) {
-        throw new Error(
-          "steer() messages must target the preceding Slack conversation",
-        );
-      }
-      steeringDelivery.deliver = async () => {
-        await appendMailboxMessages(steering.events);
-      };
+      stageSteering(messages, steering);
     }
     await appendMailboxMessages(messages);
     await maybeAutoCompleteAuth();
@@ -2403,12 +2489,31 @@ async function processEvents(args: {
     }
   };
 
+  const processResourceEvent = async (
+    event: ResourceEventFixture,
+    steering?: SteerEvent,
+  ): Promise<void> => {
+    if (steering) {
+      stageSteering([event], steering);
+    }
+    await processSettledEvent(event);
+    if (steeringDelivery.deliver) {
+      steeringDelivery.deliver = undefined;
+      throw new Error(
+        "steer() requires the preceding Resource event to start an agent run",
+      );
+    }
+  };
+
   const remainingEvents = scenario.events ?? [];
   let nextIndex = 0;
   const initialSteering =
     remainingEvents[0]?.type === "steer" ? remainingEvents[0] : undefined;
   if (initialSteering) {
     nextIndex = 1;
+  }
+  if (initialSteering && scenario.initialEvents.length === 0) {
+    throw new Error("steer() requires a preceding event");
   }
 
   const initialMessages = Array.from(scenario.initialEvents).filter(
@@ -2421,14 +2526,23 @@ async function processEvents(args: {
   ) {
     await processMessageGroup(initialMessages, initialSteering);
   } else {
-    if (scenario.initialEvents.length > 1 || initialSteering !== undefined) {
+    if (scenario.initialEvents.length > 1) {
       throw new Error(
         "Multiple initialEvents and steer() require Slack message events",
       );
     }
     const initialEvent = scenario.initialEvents[0];
     if (initialEvent) {
-      await processSettledEvent(initialEvent);
+      if (initialSteering) {
+        if (initialEvent.type !== "resource_event") {
+          throw new Error(
+            "steer() must follow a Slack message or Resource event",
+          );
+        }
+        await processResourceEvent(initialEvent, initialSteering);
+      } else {
+        await processSettledEvent(initialEvent);
+      }
     }
   }
 
@@ -2438,15 +2552,23 @@ async function processEvents(args: {
       break;
     }
     if (event.type === "steer") {
-      throw new Error("steer() must follow a Slack message event");
+      throw new Error("steer() requires a preceding event");
     }
     const nextEvent = remainingEvents[nextIndex + 1];
     const steering = nextEvent?.type === "steer" ? nextEvent : undefined;
     if (steering) {
-      if (event.type !== "new_mention" && event.type !== "subscribed_message") {
-        throw new Error("steer() must follow a Slack message event");
+      if (event.type === "resource_event") {
+        await processResourceEvent(event, steering);
+      } else if (
+        event.type === "new_mention" ||
+        event.type === "subscribed_message"
+      ) {
+        await processMessageGroup([event], steering);
+      } else {
+        throw new Error(
+          "steer() must follow a Slack message or Resource event",
+        );
       }
-      await processMessageGroup([event], steering);
       nextIndex += 2;
       continue;
     }

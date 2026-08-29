@@ -227,16 +227,20 @@ export async function executeAgentRun(
   const userActor = actor && "userId" in actor ? actor : undefined;
   const runLogContext: LogContext = {
     conversationId: run.conversationId,
-    platform: run.source.platform,
+    platform: run.source.kind,
     messageConversationId:
-      run.source.platform === "slack"
+      run.source.kind === "slack"
         ? run.conversationId
-        : run.source.conversationId,
+        : run.source.kind === "web" || run.source.kind === "local"
+          ? run.source.conversationId
+          : run.conversationId,
     destinationName:
       run.location?.channelId ??
-      (run.source.platform === "slack"
+      (run.source.kind === "slack"
         ? run.source.channelId
-        : run.source.conversationId),
+        : run.source.kind === "web" || run.source.kind === "local"
+          ? run.source.conversationId
+          : run.conversationId),
     userId: userActor?.userId,
     userName: userActor?.userName,
     userEmail: userActor?.email,
@@ -391,7 +395,7 @@ async function executeAgentRunInPrivacyContext(
   const actor = actorFromRun(run);
   const surface = surfaceFromRun(run);
   const runSource = routing.source;
-  const slackSource = runSource.platform === "slack" ? runSource : undefined;
+  const slackSource = runSource.kind === "slack" ? runSource : undefined;
   const slackChannelId = run.location?.channelId ?? slackSource?.channelId;
   const slackActor = actor?.platform === "slack" ? actor : undefined;
   const userInput = input.messageText;

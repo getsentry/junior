@@ -20,7 +20,6 @@ import {
   type TranscriptEvent,
 } from "vitest-evals/harness";
 import { registerLogRecordSink, type EmittedLogRecord } from "@/chat/logging";
-import { renderResourceEventNotificationText } from "@/chat/resource-events/notification";
 import {
   slackEventThread,
   slackMentionEvent,
@@ -1011,7 +1010,7 @@ export function steer(
   };
 }
 
-interface ResourceEventNotificationOptions {
+interface ResourceEventOptions {
   eventKey?: string;
   eventType: string;
   intent: string;
@@ -1019,7 +1018,6 @@ interface ResourceEventNotificationOptions {
   namespace?: string;
   identifier: string;
   resourceType: string;
-  subscriptionId?: string;
   thread?: ThreadOverrides;
   trustedSummary: string;
   data?: Record<string, unknown>;
@@ -1064,60 +1062,28 @@ export function githubWebhook(opts: GitHubWebhookOptions) {
   };
 }
 
-function resourceEventNotificationText(
-  opts: ResourceEventNotificationOptions,
-): string {
-  return renderResourceEventNotificationText(
-    {
-      intent: opts.intent,
-      label: opts.label,
-      resourceType: opts.resourceType,
-    },
-    {
-      namespace: opts.namespace ?? "github",
-      eventType: opts.eventType,
-      trustedSummary: opts.trustedSummary,
-      data: opts.data,
-      untrustedText: opts.untrustedText,
-    },
-  );
-}
-
-/** Builds a runtime-owned subscribed resource-event notification for Slack evals. */
-export function resourceEventNotification(
-  opts: ResourceEventNotificationOptions,
-) {
+/** Builds a Resource event for the production mailbox path. */
+export function resourceEvent(opts: ResourceEventOptions) {
   const seq = nextId();
   const eventKey = opts.eventKey ?? `eval-resource-event-${seq}`;
-  const subscriptionId = opts.subscriptionId ?? `eval-subscription-${seq}`;
   return {
-    type: "subscribed_message" as const,
+    type: "resource_event" as const,
     thread: {
       id: `thread-${seq}`,
       channel_id: `C${seq}`,
       thread_ts: `17000000.${seq}`,
       ...opts.thread,
     },
-    message: {
-      id: `resource-event-${subscriptionId}-${eventKey}`,
-      text: resourceEventNotificationText(opts),
-      is_mention: false,
-      author: {
-        user_id: "UJRNEVENT",
-        user_name: "junior-event",
-        full_name: "Junior event",
-        is_me: false,
-        is_bot: true,
-      },
-      raw: {
-        event_type: "resource_event",
-        namespace: opts.namespace ?? "github",
-        identifier: opts.identifier,
-        subscription_id: subscriptionId,
-        type: "message",
-        user: "UJRNEVENT",
-      },
-    },
+    event_key: eventKey,
+    event_type: opts.eventType,
+    intent: opts.intent,
+    label: opts.label,
+    namespace: opts.namespace ?? "github",
+    identifier: opts.identifier,
+    resource_type: opts.resourceType,
+    trusted_summary: opts.trustedSummary,
+    ...(opts.data ? { data: opts.data } : {}),
+    ...(opts.untrustedText ? { untrusted_text: opts.untrustedText } : {}),
   };
 }
 

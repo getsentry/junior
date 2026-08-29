@@ -63,7 +63,7 @@ function slackSourceForDestination(args: {
   source?: SessionSource;
 }): SessionSource | undefined {
   if (
-    args.source?.platform !== "slack" ||
+    args.source?.kind !== "slack" ||
     args.source.channelId !== args.destination.channelId
   ) {
     return undefined;
@@ -71,7 +71,7 @@ function slackSourceForDestination(args: {
 
   const threadTs = args.source.threadTs?.trim();
   return {
-    platform: "slack",
+    kind: "slack",
     visibility: args.source.visibility ?? "public",
     teamId: args.source.teamId?.trim() || args.destination.teamId,
     channelId: args.source.channelId,

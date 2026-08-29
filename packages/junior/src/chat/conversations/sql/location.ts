@@ -21,7 +21,7 @@ export function locationForWrite(args: {
   const destination =
     args.destination?.platform === "slack" ? args.destination : undefined;
   const source =
-    args.sessionSource?.platform === "slack" ? args.sessionSource : undefined;
+    args.sessionSource?.kind === "slack" ? args.sessionSource : undefined;
   if (location) {
     if (
       (destination &&
@@ -77,7 +77,7 @@ export function locationFromRow(
   // deployed writer can omit location_json and a backfill has populated rows
   // that those writers created during deployment.
   const slackSource =
-    sessionSource?.platform === "slack" &&
+    sessionSource?.kind === "slack" &&
     sessionSource.teamId === row.providerTenantId &&
     sessionSource.channelId === row.providerDestinationId
       ? sessionSource

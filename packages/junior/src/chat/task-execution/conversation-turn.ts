@@ -74,6 +74,7 @@ import {
 } from "@/chat/task-execution/mailbox-turn";
 import { joinMailboxText } from "@/chat/task-execution/mailbox-input";
 import { resolveConversationDestination } from "@/chat/conversations/destination";
+import { isResourceEventConversationMessage } from "@/chat/resource-events/actor";
 
 function stableHex(...parts: string[]): string {
   return createHash("sha256")
@@ -211,6 +212,10 @@ export function createConversationTurnWorker(
       conversation,
       conversationId: context.conversationId,
     });
+    const savedTurn = isResume
+      ? await getTurnRecord(context.conversationId, turnId)
+      : undefined;
+    let resumedResourceEvent = false;
     if (isResume) {
       const userMessage = getTurnUserMessage(conversation, turnId);
       if (!userMessage) {
@@ -218,8 +223,15 @@ export function createConversationTurnWorker(
           `Unable to locate the persisted user message for Turn "${turnId}"`,
         );
       }
-      // Resume has no new input. Restore the Actor from the saved Turn input.
-      turnInputFacts = turnInputFactsFromConversationMessage(userMessage);
+      resumedResourceEvent = isResourceEventConversationMessage(userMessage);
+      // Resume has no new input. Restore Source from the Turn and Actor from
+      // the saved instruction until Actor is also a first-class Turn field.
+      turnInputFacts = turnInputFactsFromConversationMessage(userMessage, {
+        conversationId: context.conversationId,
+        location: storedConversation?.location,
+        savedSource: savedTurn?.source,
+        visibility: storedConversation?.visibility,
+      });
       userMessageId = userMessage.id;
       text = userMessage.text;
       startedAtMs = userMessage.createdAtMs;
@@ -233,21 +245,19 @@ export function createConversationTurnWorker(
     const { actor, author } = turnInputFacts;
     const source = sourceFromTurnInput({
       conversationId: context.conversationId,
-      location: storedConversation?.location,
       source: turnInputFacts.source,
       visibility: storedConversation?.visibility,
     });
     const webActor = actor.platform === "web" ? actor : undefined;
-    const savedTurn = isResume
-      ? await getTurnRecord(context.conversationId, turnId)
-      : undefined;
     // TODO(dcramer): Copy publish from the selected Inbound message after
     // resource-event input stores the final publish fact. Then remove this
     // Location default and the checkpoint fallback.
     const publish =
-      turnInputFacts.source === "resource_event" && storedConversation?.location
-        ? (savedTurn?.publishExternally ?? true)
-        : false;
+      savedTurn?.publishExternally ??
+      Boolean(
+        storedConversation?.location &&
+        (source.kind === "resource_event" || resumedResourceEvent),
+      );
     // TODO(dcramer): Remove this legacy surface choice after Turn checkpoints
     // store Source.kind and publish, and resume reads both fields.
     const surface = publish ? ("slack" as const) : ("api" as const);
@@ -319,7 +329,7 @@ export function createConversationTurnWorker(
             meta: {
               explicitMention: true,
               replied: false,
-              ...(turnInputFacts.source === "web"
+              ...(source.kind === "web"
                 ? { source: "web" as const }
                 : undefined),
             },
@@ -383,7 +393,7 @@ export function createConversationTurnWorker(
             sessionId: turnId,
             ...(publishedMessage
               ? { source: "slack" as const }
-              : turnInputFacts.source === "web"
+              : source.kind === "web"
                 ? { source: "web" as const }
                 : undefined),
             text: replyText,

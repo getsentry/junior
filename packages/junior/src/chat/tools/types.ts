@@ -1,6 +1,7 @@
 import type { FileUpload } from "chat";
 import type {
   WebSource,
+  ResourceEventSource,
   Destination,
   Identity,
   LocalDestination,
@@ -9,6 +10,7 @@ import type {
   SlackDestination,
   SlackSource,
   Source,
+  SystemActor,
   User,
 } from "@sentry/junior-plugin-api";
 import type { McpToolManager } from "@/chat/mcp/tool-manager";
@@ -134,8 +136,17 @@ interface WebToolRuntimeContext extends BaseToolRuntimeContext {
   slackActionToken?: never;
 }
 
+interface ResourceEventToolRuntimeContext extends BaseToolRuntimeContext {
+  destination: Destination;
+  actor?: SystemActor;
+  source: ResourceEventSource;
+  slack?: never;
+  slackActionToken?: never;
+}
+
 export type ToolRuntimeContext =
   | LocalToolRuntimeContext
+  | ResourceEventToolRuntimeContext
   | SlackToolRuntimeContext
   | WebToolRuntimeContext;
 

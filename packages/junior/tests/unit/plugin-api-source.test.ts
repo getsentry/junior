@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { createSlackSource, sourceSchema } from "@sentry/junior-plugin-api";
+import {
+  createResourceEventSource,
+  createSlackSource,
+  sourceSchema,
+} from "@sentry/junior-plugin-api";
 
 describe("plugin source helpers", () => {
   it("accepts Slack source visibility from the runtime boundary", () => {
@@ -9,7 +13,7 @@ describe("plugin source helpers", () => {
         channelId: "C123",
         visibility: "public",
       }),
-    ).toMatchObject({ visibility: "public" });
+    ).toMatchObject({ kind: "slack", visibility: "public" });
     // Modern Slack private channels also use C-prefixed ids.
     expect(
       createSlackSource({
@@ -61,11 +65,37 @@ describe("plugin source helpers", () => {
         },
       }),
     ).toEqual({
-      platform: "slack",
+      kind: "slack",
       teamId: "T123",
       channelId: "C123",
       threadTs: "1712345.0001",
       visibility: "private",
     });
+  });
+
+  it("builds a Resource event Source from event identity", () => {
+    expect(
+      createResourceEventSource({
+        eventKey: "delivery-1",
+        eventType: "issue.updated",
+        identifier: "PROJ-123",
+        namespace: "sentry",
+      }),
+    ).toEqual({
+      kind: "resource_event",
+      eventKey: "delivery-1",
+      eventType: "issue.updated",
+      identifier: "PROJ-123",
+      namespace: "sentry",
+    });
+    expect(
+      sourceSchema.safeParse({
+        platform: "resource_event",
+        eventKey: "delivery-1",
+        eventType: "issue.updated",
+        identifier: "PROJ-123",
+        namespace: "sentry",
+      }).success,
+    ).toBe(false);
   });
 });

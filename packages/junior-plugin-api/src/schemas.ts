@@ -79,47 +79,80 @@ export const destinationSchema = z.discriminatedUnion("platform", [
   localDestinationSchema,
 ]);
 
-/** Runtime-owned Slack coordinates for the inbound invocation. */
-export const slackSourceSchema = slackAddressSchema
-  .extend({
+/** Runtime-owned Slack input Source. */
+export const slackSourceSchema = z
+  .object({
+    kind: z.literal("slack"),
+    teamId: slackTeamIdSchema,
+    channelId: slackConversationIdSchema,
     visibility: sourceVisibilitySchema,
     messageTs: nonBlankStringSchema.optional(),
     threadTs: nonBlankStringSchema.optional(),
   })
   .strict();
 
-/** Runtime-owned local CLI coordinates for the inbound invocation. */
+/** Runtime-owned local CLI input Source. */
 export const localSourceSchema = z
   .object({
-    platform: z.literal("local"),
+    kind: z.literal("local"),
     visibility: z.literal("private"),
     conversationId: localConversationIdSchema,
   })
   .strict();
 
-/** Runtime-owned dashboard/web coordinates for the inbound invocation. */
+/** Runtime-owned dashboard input Source. */
 export const webSourceSchema = z
   .object({
-    platform: z.literal("web"),
+    kind: z.literal("web"),
     visibility: sourceVisibilitySchema,
     // Web can continue any existing conversation id, including Slack roots.
     conversationId: exactNonBlankStringSchema,
   })
   .strict();
 
-// TODO(dcramer): Replace Source.platform with Source.kind after every input
-// owner emits a first-class Source kind and deployed readers accept it.
-const sourceWithLegacyLocationSchema = z.discriminatedUnion("platform", [
-  slackSourceSchema.extend({ location: locationSchema.optional() }).strict(),
-  localSourceSchema.extend({ location: locationSchema.optional() }).strict(),
-  webSourceSchema.extend({ location: locationSchema.optional() }).strict(),
+/** Runtime-owned Resource event input Source. */
+export const resourceEventSourceSchema = z
+  .object({
+    kind: z.literal("resource_event"),
+    eventKey: exactNonBlankStringSchema,
+    eventType: exactNonBlankStringSchema,
+    identifier: exactNonBlankStringSchema,
+    namespace: exactNonBlankStringSchema,
+  })
+  .strict();
+
+const currentSourceSchema = z.discriminatedUnion("kind", [
+  slackSourceSchema,
+  localSourceSchema,
+  webSourceSchema,
+  resourceEventSourceSchema,
 ]);
 
-/** Runtime-owned input Source. Legacy stored Location is accepted and removed. */
-// TODO(dcramer): Parse sourceSchema directly from the three Source schemas after
-// no stored SQL, Redis, queue, or public Source can contain Location.
-export const sourceSchema = sourceWithLegacyLocationSchema.transform(
-  ({ location: _legacyLocation, ...source }) => source,
+function normalizeStoredSource(value: unknown): unknown {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return value;
+  }
+  const source = value as Record<string, unknown>;
+  if ("kind" in source || !("platform" in source)) {
+    return value;
+  }
+  if (
+    source.platform !== "slack" &&
+    source.platform !== "local" &&
+    source.platform !== "web"
+  ) {
+    return value;
+  }
+  const { location: _location, platform: kind, ...fields } = source;
+  return { ...fields, kind };
+}
+
+/** Runtime-owned input Source. Stored `platform` and Location fields normalize on read. */
+// TODO(dcramer): Remove stored Source normalization after deployed SQL, Redis,
+// queue, and OAuth values can only contain `kind` and no Location copy.
+export const sourceSchema = z.preprocess(
+  normalizeStoredSource,
+  currentSourceSchema,
 );
 
 /** Stable user credential subject shape accepted from plugins. */

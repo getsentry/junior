@@ -281,7 +281,9 @@ async function grantForEgress(input: {
     log: pluginLog,
     plugin: { name: "github" },
     request: {
-      ...(input.bodyText !== undefined ? { bodyText: input.bodyText } : undefined),
+      ...(input.bodyText !== undefined
+        ? { bodyText: input.bodyText }
+        : undefined),
       method: input.method,
       ...(input.operation ? { operation: input.operation } : undefined),
       url: input.url,
@@ -327,7 +329,7 @@ function githubToolsContext(input?: {
     conversationId,
     destination: { platform: "local" as const, conversationId },
     source: {
-      platform: "local" as const,
+      kind: "local" as const,
       visibility: "private" as const,
       conversationId,
     },

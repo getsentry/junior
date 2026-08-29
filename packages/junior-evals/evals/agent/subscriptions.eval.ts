@@ -3,7 +3,7 @@ import { expect } from "vitest";
 import {
   githubWebhook,
   mention,
-  resourceEventNotification,
+  resourceEvent,
   rubric,
   slackEvals,
   visibleAssistantText,
@@ -177,7 +177,7 @@ describeEval("Resource Event Subscriptions", slackEvals, (it) => {
   }) => {
     const result = await run({
       initialEvents: [
-        resourceEventNotification({
+        resourceEvent({
           eventKey: "github-delivery-checks-failed",
           eventType: "pull_request.checks.failed",
           intent:
@@ -234,7 +234,7 @@ describeEval("Resource Event Subscriptions", slackEvals, (it) => {
   }) => {
     const result = await run({
       initialEvents: [
-        resourceEventNotification({
+        resourceEvent({
           eventKey: "github-delivery-pr-merged",
           eventType: "pull_request.merged",
           intent:

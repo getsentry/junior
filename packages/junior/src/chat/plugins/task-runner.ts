@@ -268,7 +268,7 @@ async function loadConversationContextTranscriptEntries(
   runActor: Actor | undefined,
 ): Promise<PluginRunTranscriptEntry[]> {
   // Prior conversation evidence is a Slack public-channel concern only.
-  switch (source.platform) {
+  switch (source.kind) {
     case "slack":
       if (source.visibility === "private") {
         return [];
@@ -276,6 +276,7 @@ async function loadConversationContextTranscriptEntries(
       break;
     case "web":
     case "local":
+    case "resource_event":
       return [];
   }
   const state = await getPersistedThreadState(record.conversationId);

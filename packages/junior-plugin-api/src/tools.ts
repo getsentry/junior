@@ -2,6 +2,7 @@ import type {
   Actor,
   Identity,
   LocalInvocationContext,
+  ResourceEventInvocationContext,
   PluginContext,
   PluginEmbedder,
   PluginModel,
@@ -582,7 +583,13 @@ interface WebToolRegistrationContext
   slack?: never;
 }
 
+interface ResourceEventToolRegistrationContext
+  extends BaseToolRegistrationHookContext, ResourceEventInvocationContext {
+  slack?: never;
+}
+
 export type ToolRegistrationHookContext =
   | LocalToolRegistrationContext
+  | ResourceEventToolRegistrationContext
   | SlackToolRegistrationContext
   | WebToolRegistrationContext;

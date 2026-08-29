@@ -10,7 +10,7 @@ import {
 } from "@/chat/tool-support/action-review";
 
 const LOCAL_SOURCE = {
-  platform: "local",
+  kind: "local",
   visibility: "private",
   conversationId: "local:approval-test",
 } as const;

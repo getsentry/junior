@@ -35,11 +35,11 @@ function resourceEventPlugin(enabled = true) {
   });
 }
 
-function ctx(): Extract<ToolRuntimeContext, { source: { platform: "local" } }>;
+function ctx(): Extract<ToolRuntimeContext, { source: { kind: "local" } }>;
 function ctx(
   channelId: string,
   sourceVisibility?: "private" | "public",
-): Extract<ToolRuntimeContext, { source: { platform: "slack" } }>;
+): Extract<ToolRuntimeContext, { source: { kind: "slack" } }>;
 function ctx(
   channelId?: string,
   sourceVisibility?: "private" | "public",
@@ -340,7 +340,6 @@ describe("Slack tool registration", () => {
     expect(tools).toHaveProperty("stopWatchingResources");
     expect(tools).toHaveProperty("searchConversationEvents");
   });
-
 
   it("registers image generation only when artifact persistence is available", () => {
     expect(createTools([], {}, ctx())).not.toHaveProperty("imageGenerate");

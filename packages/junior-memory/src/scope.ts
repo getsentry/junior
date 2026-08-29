@@ -32,7 +32,7 @@ function privateMemoryScope(userId: string): ResolvedMemoryScope {
 export function deriveMemoryScope(
   ctx: MemoryRuntimeContext,
 ): ResolvedMemoryScope {
-  if (ctx.source.visibility === "public") {
+  if ("visibility" in ctx.source && ctx.source.visibility === "public") {
     return publicMemoryScope;
   }
   if (!ctx.userId) {

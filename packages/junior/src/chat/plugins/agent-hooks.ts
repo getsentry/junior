@@ -173,7 +173,7 @@ function pluginInvocationContext(
     conversationId: context.conversationId,
     locationId: context.locationId,
   };
-  switch (context.source.platform) {
+  switch (context.source.kind) {
     case "slack": {
       if (context.destination.platform !== "slack") {
         throw new TypeError("Slack plugin context requires Slack destination");
@@ -200,6 +200,13 @@ function pluginInvocationContext(
       return {
         ...common,
         actor: context.actor?.platform === "web" ? context.actor : undefined,
+        destination: context.destination,
+        source: context.source,
+      };
+    case "resource_event":
+      return {
+        ...common,
+        actor: context.actor?.platform === "system" ? context.actor : undefined,
         destination: context.destination,
         source: context.source,
       };
@@ -458,7 +465,7 @@ export async function getPluginSystemPromptContributions(
       const pluginContributions = await hook({
         ...systemPromptPluginContext(plugin),
         // Plugin system prompts only distinguish Slack vs non-Slack surfaces.
-        platform: source.platform === "slack" ? "slack" : "local",
+        platform: source.kind === "slack" ? "slack" : "local",
       });
       const result =
         systemPromptMessageArraySchema.safeParse(pluginContributions);
@@ -703,7 +710,7 @@ export function getPluginTools(
       },
     };
     let pluginContext: ToolRegistrationHookContext;
-    switch (context.source.platform) {
+    switch (context.source.kind) {
       case "slack":
         if (context.destination.platform !== "slack") {
           throw new TypeError(
@@ -737,6 +744,15 @@ export function getPluginTools(
         pluginContext = {
           ...common,
           actor: context.actor?.platform === "web" ? context.actor : undefined,
+          destination: context.destination,
+          source: context.source,
+        };
+        break;
+      case "resource_event":
+        pluginContext = {
+          ...common,
+          actor:
+            context.actor?.platform === "system" ? context.actor : undefined,
           destination: context.destination,
           source: context.source,
         };

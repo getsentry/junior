@@ -8,6 +8,7 @@ import {
   type LocalPgliteFixture,
 } from "@sentry/junior-testing/pglite";
 import {
+  createResourceEventSource,
   createWebSource,
   createLocalSource,
   createSlackSource,
@@ -1003,6 +1004,32 @@ describe("memory plugin storage", () => {
     } finally {
       await fixture.close();
     }
+  });
+
+  it("does not extract Memory from Resource event Turns", async () => {
+    const actor = { platform: "system", name: "resource-event" } as const;
+    await expect(
+      processMemorySession(
+        processSessionContext({
+          model: throwingExtractionModel,
+          run: {
+            async load() {
+              return completedRun({
+                actor,
+                actorUserId: undefined,
+                actors: [actor],
+                source: createResourceEventSource({
+                  eventKey: "event-1",
+                  eventType: "issue.updated",
+                  identifier: "PROJ-123",
+                  namespace: "sentry",
+                }),
+              });
+            },
+          },
+        }),
+      ),
+    ).resolves.toBeUndefined();
   });
 
   it("supersedes old preferences from passive completed-session extraction", async () => {
@@ -3574,7 +3601,7 @@ WHERE id = '${superseded.memory.id}'
             userId: "U123",
           },
           source: {
-            platform: "slack",
+            kind: "slack",
             visibility: "private",
             teamId: "T123",
             channelId: "D123",
