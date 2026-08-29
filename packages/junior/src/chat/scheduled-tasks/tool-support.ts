@@ -98,7 +98,7 @@ export function requireActiveConversation(
   if (!parsed.success) {
     const source = context.source as Partial<SlackSource> | undefined;
     const issues = parsed.error.issues as readonly SchemaIssue[];
-    if (!source || source.platform !== "slack") {
+    if (!source || source.kind !== "slack") {
       throwToolInputError("No active Slack conversation is available.");
     }
     if (issues.some((issue) => issue.code === "unrecognized_keys")) {
@@ -115,7 +115,7 @@ export function requireActiveConversation(
     throwToolInputError("No active Slack conversation is available.");
   }
 
-  if (parsed.data.platform !== "slack") {
+  if (parsed.data.kind !== "slack") {
     throwToolInputError("No active Slack conversation is available.");
   }
 
@@ -144,8 +144,12 @@ export function requireActor(
 
   return sanitizeScheduledTaskPrincipal({
     slackUserId: userId,
-    ...(context.actor?.userName ? { userName: context.actor.userName } : undefined),
-    ...(context.actor?.fullName ? { fullName: context.actor.fullName } : undefined),
+    ...(context.actor?.userName
+      ? { userName: context.actor.userName }
+      : undefined),
+    ...(context.actor?.fullName
+      ? { fullName: context.actor.fullName }
+      : undefined),
   });
 }
 

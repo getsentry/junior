@@ -15,7 +15,7 @@ export function createEventTaskTools(
   catalog: ResourceEventCatalog,
 ): ToolRegistry {
   if (
-    context.source.platform !== "slack" ||
+    context.source.kind !== "slack" ||
     context.destination.platform !== "slack" ||
     context.actor?.platform !== "slack"
   ) {

@@ -28,7 +28,7 @@ export interface SlackToolContext {
 export function getSlackToolContext(
   context: ToolRuntimeContext,
 ): SlackToolContext | undefined {
-  if (context.source.platform !== "slack") {
+  if (context.source.kind !== "slack") {
     return undefined;
   }
   if (context.destination.platform !== "slack") {

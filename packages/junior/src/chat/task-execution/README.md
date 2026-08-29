@@ -13,7 +13,8 @@ checkpoint and is private to this module.
 
 `turn-wake.ts` wakes paused turns. `paused-turn.ts` runs them under the
 conversation lease. SQL conversation events store history. The Redis turn
-cursor stores only the data that is needed to resume a turn.
+cursor stores only the data that is needed to resume a turn, including the
+Source that started it.
 
 The reliability rules are small:
 

@@ -1,4 +1,5 @@
 import {
+  createResourceEventSource,
   createLocalSource,
   createWebSource,
   type Source,
@@ -29,9 +30,7 @@ export type MailboxTurnInput = {
   actor: Actor;
   author: ConversationAuthor;
   message: InboundMessage;
-  // TODO(dcramer): Replace this legacy source name with Source after mailbox
-  // Inbound messages store Source.kind.
-  source: "resource_event" | "web";
+  source: Source;
 };
 
 /** Actor and Source facts saved for one Turn. */
@@ -43,12 +42,27 @@ export type TurnInputFacts = Pick<
 /** Restore the Turn input facts kept on one saved Message. */
 export function turnInputFactsFromConversationMessage(
   message: ConversationMessage,
+  args: {
+    conversationId: string;
+    location?: Location;
+    savedSource?: Source;
+    visibility?: ConversationPrivacy;
+  },
 ): TurnInputFacts | undefined {
   if (isResourceEventConversationMessage(message)) {
     return {
       actor: RESOURCE_EVENT_SYSTEM_ACTOR,
       author: message.author ?? RESOURCE_EVENT_MESSAGE_AUTHOR,
-      source: "resource_event",
+      // Stored Turns written before Source was saved can only restore the old
+      // provider stand-in from the Conversation.
+      source:
+        args.savedSource ??
+        (args.location
+          ? createWebSource(
+              args.conversationId,
+              args.visibility === "private" ? "private" : "public",
+            )
+          : createLocalSource(args.conversationId)),
     };
   }
   const actor = createActor(message.author, {
@@ -61,33 +75,29 @@ export function turnInputFactsFromConversationMessage(
   return {
     actor,
     author: message.author ?? { userId: actor.userId },
-    source: "web",
+    source:
+      args.savedSource?.kind === "web"
+        ? args.savedSource
+        : createWebSource(
+            args.conversationId,
+            args.visibility === "private" ? "private" : "public",
+          ),
   };
 }
 
-/** Build the AgentRun Source for one Turn input. */
+/** Normalize the selected mailbox Source with current Conversation visibility. */
 export function sourceFromTurnInput(args: {
   conversationId: string;
-  location?: Location;
-  source: MailboxTurnInput["source"];
+  source: Source;
   visibility?: ConversationPrivacy;
 }): Source {
-  switch (args.source) {
-    case "resource_event":
-      // TODO(dcramer): Remove this temporary web Source after Turn checkpoints
-      // can store a resource-event Source.kind.
-      return args.location
-        ? createWebSource(
-            args.conversationId,
-            args.visibility === "private" ? "private" : "public",
-          )
-        : createLocalSource(args.conversationId);
-    case "web":
-      return createWebSource(
-        args.conversationId,
-        args.visibility === "private" ? "private" : "public",
-      );
+  if (args.source.kind === "web") {
+    return createWebSource(
+      args.conversationId,
+      args.visibility === "private" ? "private" : "public",
+    );
   }
+  return args.source;
 }
 
 function hasResourceEventActor(actors: readonly Actor[] | undefined): boolean {
@@ -123,7 +133,8 @@ export async function getActiveConversationTurnId(
   if (!turnId) return undefined;
   const record = await getTurnRecord(conversationId, turnId);
   return record &&
-    record.surface === "api" &&
+    (record.source?.kind === "web" ||
+      (!record.source && record.surface === "api")) &&
     !record.dispatchId &&
     (record.state === "paused" || record.state === "running")
     ? turnId
@@ -149,7 +160,11 @@ async function getActiveMailboxTurnId(
     (record) =>
       record &&
       !record.dispatchId &&
-      (record.surface === "api" || hasResourceEventActor(record.actors)) &&
+      (record.source?.kind === "web" ||
+        record.source?.kind === "resource_event" ||
+        (!record.source &&
+          (record.surface === "api" ||
+            hasResourceEventActor(record.actors)))) &&
       (record.state === "paused" || record.state === "running"),
   );
   if (active.length > 1) {
@@ -157,8 +172,8 @@ async function getActiveMailboxTurnId(
       `Conversation ${conversationId} has multiple active mailbox Turns`,
     );
   }
-  // TODO(dcramer): Remove Actor-based resource-event selection after Turn
-  // checkpoints store Source.kind and resume reads it.
+  // TODO(dcramer): Remove the legacy surface and Actor checks after deployed
+  // Turn cursors all store Source.kind.
   return active[0]?.turnId;
 }
 
@@ -215,7 +230,7 @@ function parseWebMessages(
         ...(actor.userName ? { userName: actor.userName } : undefined),
       },
       message: entry.message,
-      source: "web" as const,
+      source: createWebSource(entry.message.conversationId),
     };
   });
 }
@@ -243,7 +258,12 @@ function parseResourceEventMessages(
       actor: RESOURCE_EVENT_SYSTEM_ACTOR,
       author: RESOURCE_EVENT_MESSAGE_AUTHOR,
       message,
-      source: "resource_event" as const,
+      source: createResourceEventSource({
+        eventKey: message.input.metadata.resourceEvent.eventKey,
+        eventType: message.input.metadata.resourceEvent.eventType,
+        identifier: message.input.metadata.resourceEvent.identifier,
+        namespace: message.input.metadata.resourceEvent.namespace,
+      }),
     };
   });
 }

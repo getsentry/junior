@@ -762,7 +762,7 @@ export async function GET(
 
   if (
     stored.destination?.platform !== "local" &&
-    stored.source?.platform !== "web"
+    stored.source?.kind !== "web"
   ) {
     waitUntil(async () => {
       try {
@@ -778,7 +778,7 @@ export async function GET(
   }
 
   const resumesWebTurn = Boolean(
-    stored.source?.platform === "web" &&
+    stored.source?.kind === "web" &&
     stored.destination &&
     stored.resumeConversationId &&
     stored.resumeSessionId,

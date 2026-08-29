@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createLocalSource, createWebSource } from "@sentry/junior-plugin-api";
+import {
+  createResourceEventSource,
+  createWebSource,
+} from "@sentry/junior-plugin-api";
 import {
   appendAndEnqueueWebMessage,
   buildWebInboundMessage,
@@ -27,6 +30,7 @@ import {
   getTurnRecord,
   saveTurnCheckpoint,
 } from "@/chat/task-execution/checkpoint";
+import { turnCursorKey } from "@/chat/task-execution/turn-cursor-keys";
 import {
   closeConversationFixture,
   createConversationFixture,
@@ -555,6 +559,12 @@ describe("Conversation mailbox Turn work", () => {
 
     const messageId = message.inboundMessageId;
     const turnId = conversationTurnIdForMessage(messageId);
+    const source = createResourceEventSource({
+      eventKey: "checks-failed-1",
+      eventType: "check_suite.completed",
+      identifier: "getsentry/junior#1563",
+      namespace: "github",
+    });
     const agentRuns: AgentRun[] = [];
     let firstRun = true;
     const worker = createConversationTurnWorker(
@@ -587,6 +597,7 @@ describe("Conversation mailbox Turn work", () => {
     await expect(getTurnRecord(conversationId, turnId)).resolves.toMatchObject({
       publishExternally: false,
       resumeReason: "yield",
+      source,
       state: "paused",
     });
 
@@ -609,7 +620,7 @@ describe("Conversation mailbox Turn work", () => {
           destination,
           disabledFeatures: ["interactive-auth"],
           publishExternally: false,
-          source: createLocalSource(conversationId),
+          source,
           turnId,
         }),
       );
@@ -617,6 +628,7 @@ describe("Conversation mailbox Turn work", () => {
     }
     await expect(getTurnRecord(conversationId, turnId)).resolves.toMatchObject({
       publishExternally: false,
+      source,
       state: "completed",
     });
     const transcript = (
@@ -644,6 +656,131 @@ describe("Conversation mailbox Turn work", () => {
         text: "Handled the resource event.",
       },
     ]);
+  }, 10_000);
+
+  it("keeps legacy resource event publishing on after resume", async () => {
+    const { conversationStore, queue, state } =
+      await createConversationFixture();
+    const conversationId = "slack:C123";
+    const destination = {
+      platform: "slack" as const,
+      teamId: "T123",
+      channelId: "C123",
+    };
+    await conversationStore.recordActivity({
+      conversationId,
+      destination,
+      nowMs: 1,
+      source: "slack",
+    });
+    const message = createResourceEventInboundMessage({
+      event: {
+        eventKey: "legacy-review-requested-1",
+        eventType: "pull_request.review.requested",
+        identifier: "getsentry/junior#1563",
+        namespace: "github",
+        occurredAtMs: 2,
+        trustedSummary: "Code change review requested",
+      },
+      receivedAtMs: 2,
+      subscription: {
+        conversationId,
+        id: "legacy-resource-subscription-1",
+      },
+      text: "Code change review requested",
+    });
+    await appendAndEnqueueInboundMessage({
+      conversationStore,
+      message,
+      queue,
+      state,
+    });
+
+    const turnId = conversationTurnIdForMessage(message.inboundMessageId);
+    const source = createResourceEventSource({
+      eventKey: "legacy-review-requested-1",
+      eventType: "pull_request.review.requested",
+      identifier: "getsentry/junior#1563",
+      namespace: "github",
+    });
+    const agentRuns: AgentRun[] = [];
+    let firstRun = true;
+    const publishMessage = vi.fn(async () => ({
+      providerMessageId: "1712346.0001",
+    }));
+    const worker = createConversationTurnWorker(
+      createModelAgentRunnerForRun((run) => {
+        agentRuns.push(run);
+        if (firstRun) {
+          firstRun = false;
+          return createModelStream([
+            { type: "toolCall", name: "systemTime", arguments: {} },
+            { type: "text", text: "Review request handled." },
+          ]);
+        }
+        return createModelStream([
+          { type: "text", text: "Review request handled." },
+        ]);
+      }),
+      publishMessage,
+    );
+    const run = requireConversationTurn(worker);
+
+    await expect(
+      processConversationQueueMessage(queue.takeMessage(), {
+        conversationStore,
+        queue,
+        run,
+        softYieldAfterMs: 0,
+        state,
+      }),
+    ).resolves.toEqual({ status: "yielded" });
+    await expect(getTurnRecord(conversationId, turnId)).resolves.toMatchObject({
+      publishExternally: true,
+      source,
+      state: "paused",
+    });
+
+    const storedCursor = await state.get(turnCursorKey(conversationId, turnId));
+    if (!storedCursor || typeof storedCursor !== "object") {
+      throw new Error("Expected stored Turn cursor");
+    }
+    const {
+      publishExternally: storedPublish,
+      source: storedSource,
+      ...legacyCursor
+    } = storedCursor as Record<string, unknown>;
+    expect(storedPublish).toBe(true);
+    expect(storedSource).toEqual(source);
+    await state.set(
+      turnCursorKey(conversationId, turnId),
+      legacyCursor,
+      60_000,
+    );
+
+    await expect(
+      processConversationQueueMessage(queue.takeMessage(), {
+        conversationStore,
+        queue,
+        run,
+        state,
+      }),
+    ).resolves.toEqual({ status: "completed" });
+
+    expect(agentRuns).toHaveLength(2);
+    expect(agentRuns[0]).toEqual(
+      expect.objectContaining({
+        publishExternally: true,
+        source,
+      }),
+    );
+    expect(agentRuns[1]).toEqual(
+      expect.objectContaining({
+        publishExternally: true,
+        source: createWebSource(conversationId),
+      }),
+    );
+    expect(publishMessage).toHaveBeenCalledOnce();
   }, 10_000);
 
   it("does not claim dispatch resume wakes that share surface api", async () => {
@@ -707,7 +844,7 @@ describe("Conversation mailbox Turn work", () => {
       },
       source: "slack",
       sessionSource: {
-        platform: "slack",
+        kind: "slack",
         visibility: "public",
         teamId: "T1200",
         channelId: "C1200",
@@ -742,7 +879,7 @@ describe("Conversation mailbox Turn work", () => {
       },
       visibility: "public",
       sessionSource: {
-        platform: "slack",
+        kind: "slack",
         teamId: "T1200",
         channelId: "C1200",
         threadTs: "1712345.1200",
@@ -788,7 +925,7 @@ describe("Conversation mailbox Turn work", () => {
         destination: expect.objectContaining({ platform: "slack" }),
         location: storedConversation?.location,
         publishExternally: false,
-        source: expect.objectContaining({ platform: "web" }),
+        source: expect.objectContaining({ kind: "web" }),
       }),
     );
 

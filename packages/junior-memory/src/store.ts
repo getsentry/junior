@@ -37,6 +37,7 @@ import {
   MEMORY_KINDS,
   memoryRuntimeContextSchema,
   type MemoryRuntimeContext,
+  type MemorySourcePlatform,
 } from "./types";
 import {
   deriveMemoryScope,
@@ -182,6 +183,15 @@ const memoryRowSchema = z
       });
     }
   });
+
+function storedMemorySource(
+  source: MemoryRuntimeContext["source"],
+): MemorySourcePlatform {
+  if (source.kind === "resource_event") {
+    throw new Error("Resource event Source cannot own a Memory.");
+  }
+  return source.kind;
+}
 
 const memoryRecordSchema = z
   .object({
@@ -772,7 +782,7 @@ async function rememberDuplicateIdempotency(args: {
       scope: args.scope.scope,
       scopeKey: args.scope.scopeKey,
       sourceKey: sourceKey(args.runtimeContext),
-      sourcePlatform: args.runtimeContext.source.platform,
+      sourcePlatform: storedMemorySource(args.runtimeContext.source),
       subjectKey: args.subject.subjectKey,
       subjectType: args.subject.subjectType,
       supersededAtMs: args.nowMs,
@@ -1288,7 +1298,7 @@ export function createMemoryStore(
           scope: scope.scope,
           scopeKey: scope.scopeKey,
           sourceKey: sourceKey(runtimeContext),
-          sourcePlatform: runtimeContext.source.platform,
+          sourcePlatform: storedMemorySource(runtimeContext.source),
           subjectKey: subject.subjectKey,
           subjectType: subject.subjectType,
           kind: input.kind,

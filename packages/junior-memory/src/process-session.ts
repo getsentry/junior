@@ -223,7 +223,7 @@ export async function processMemorySession(
   context: PluginTaskContext,
 ): Promise<void> {
   const run = await context.run.load();
-  if (run.source.platform === "local") {
+  if (run.source.kind === "local" || run.source.kind === "resource_event") {
     return;
   }
   // Memory tool turns already own memory management or recall; do not reinterpret

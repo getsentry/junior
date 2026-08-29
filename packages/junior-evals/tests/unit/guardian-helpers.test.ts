@@ -27,7 +27,7 @@ describe("guardian eval helpers", () => {
           conversationId: "local:guardian-eval",
         },
         source: {
-          platform: "local",
+          kind: "local",
           visibility: "private",
           conversationId: "local:guardian-eval",
         },
@@ -50,7 +50,9 @@ describe("guardian eval helpers", () => {
     };
     const snapshot = proposal({
       context: slackContext("Clean up preview-42 if needed."),
-      evidence: evidence([{ role: "user", text: "Clean up preview-42 if needed." }]),
+      evidence: evidence([
+        { role: "user", text: "Clean up preview-42 if needed." },
+      ]),
       input: { workspace: "preview-42" },
       priorRejectedActions: [
         priorRejection({

@@ -2,9 +2,9 @@ import { sourceSchema, type Source } from "@sentry/junior-plugin-api";
 
 /** Source coordinates reduced to the stable locator for one conversation. */
 export type SessionSource =
-  | Extract<Source, { platform: "web" }>
-  | Extract<Source, { platform: "local" }>
-  | Omit<Extract<Source, { platform: "slack" }>, "messageTs">;
+  | Extract<Source, { kind: "web" }>
+  | Extract<Source, { kind: "local" }>
+  | Omit<Extract<Source, { kind: "slack" }>, "messageTs">;
 
 /**
  * Normalize a turn Source into the session-stable locator persisted on a
@@ -18,23 +18,26 @@ export function normalizeSessionSource(
   if (!value) {
     return undefined;
   }
-  if (value.platform === "local") {
+  if (value.kind === "local") {
     return {
-      platform: "local",
+      kind: "local",
       visibility: value.visibility,
       conversationId: value.conversationId,
     };
   }
-  if (value.platform === "web") {
+  if (value.kind === "web") {
     return {
-      platform: "web",
+      kind: "web",
       visibility: value.visibility,
       conversationId: value.conversationId,
     };
+  }
+  if (value.kind === "resource_event") {
+    return undefined;
   }
   const threadTs = value.threadTs?.trim();
   return {
-    platform: "slack",
+    kind: "slack",
     visibility: value.visibility,
     teamId: value.teamId,
     channelId: value.channelId,

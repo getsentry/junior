@@ -55,7 +55,9 @@ conversation.
 - Ingestion appends a system-authored conversation message and sends a normal
   task-execution wake-up. Resource-event identity constants and detection live
   in `actor.ts` (`RESOURCE_EVENT_SYSTEM_ACTOR`, synthetic author id, and message
-  markers). Live and resume paths both execute as that system actor.
+  markers). The mailbox worker builds a Resource event Source from the stored
+  event identity. The Turn stores that Source, and resume restores it. Live and
+  resume paths both execute as the system actor.
 - Notification text stays short and uses plain language: what the update is
   about, the instructions for this update, a verified summary and details, and
   external text. When the agent replies, it should summarize what it was acting

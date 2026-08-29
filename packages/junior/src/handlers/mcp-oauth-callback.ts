@@ -513,7 +513,7 @@ function mcpConversationId(
 ): string | undefined {
   if (
     authSession.destination?.platform === "local" ||
-    authSession.source?.platform === "web"
+    authSession.source?.kind === "web"
   ) {
     return authSession.conversationId;
   }
@@ -632,7 +632,7 @@ export async function GET(
       });
     }
 
-    if (authSession.source?.platform === "web" && authSession.destination) {
+    if (authSession.source?.kind === "web" && authSession.destination) {
       waitUntil(async () => {
         const turn = await getTurnRecord(
           authSession.conversationId,
@@ -684,7 +684,7 @@ export async function GET(
       // Only the CLI path should get the local-client success copy.
       local:
         authSession.destination?.platform === "local" &&
-        authSession.source?.platform !== "web",
+        authSession.source?.kind !== "web",
     });
   } catch (callbackError) {
     if (callbackError instanceof McpOAuthAttemptExpiredError) {

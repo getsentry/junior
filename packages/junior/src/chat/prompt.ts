@@ -442,16 +442,16 @@ function buildRuntimeSection(params: {
 }
 
 function formatSourceLines(source: Source): string[] {
-  switch (source.platform) {
+  switch (source.kind) {
     case "web":
     case "local":
       return [
-        `- source.platform: ${source.platform}`,
+        `- source.kind: ${source.kind}`,
         `- source.conversation_id: ${escapeXml(source.conversationId)}`,
       ];
     case "slack":
       return [
-        "- source.platform: slack",
+        "- source.kind: slack",
         `- source.team_id: ${escapeXml(source.teamId)}`,
         `- source.channel_id: ${escapeXml(source.channelId)}`,
         ...(source.messageTs
@@ -460,6 +460,13 @@ function formatSourceLines(source: Source): string[] {
         ...(source.threadTs
           ? [`- source.thread_ts: ${escapeXml(source.threadTs)}`]
           : []),
+      ];
+    case "resource_event":
+      return [
+        "- source.kind: resource_event",
+        `- source.namespace: ${escapeXml(source.namespace)}`,
+        `- source.identifier: ${escapeXml(source.identifier)}`,
+        `- source.event_type: ${escapeXml(source.eventType)}`,
       ];
   }
 }
@@ -694,7 +701,7 @@ const STATIC_SYSTEM_PROMPTS: Record<PromptPlatform, string> = {
 export function buildSystemPrompt(params: { source: Source }): string {
   // web/dashboard turns use the local (non-Slack) instruction surface.
   const platform: PromptPlatform =
-    params.source.platform === "slack" ? "slack" : "local";
+    params.source.kind === "slack" ? "slack" : "local";
   return STATIC_SYSTEM_PROMPTS[platform];
 }
 

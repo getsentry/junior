@@ -76,7 +76,7 @@ function dispatchOptionsErrorMessage(
     return "Dispatch source must not include unknown fields";
   }
   if (hasIssueAtPath(issues, ["source"])) {
-    return "Dispatch source platform is required";
+    return "Dispatch Source kind is required";
   }
   if (hasIssueUnderPath(issues, ["source", "teamId"])) {
     return "Dispatch source teamId must be a Slack team id";

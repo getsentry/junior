@@ -1,5 +1,6 @@
 import { and, eq, or, sql } from "drizzle-orm";
 import { parseActorUserId } from "@/chat/actor";
+import { parseSessionSource } from "@/chat/source";
 import type { IdentityUpsert } from "@/chat/identities/identity";
 import { upsertIdentity } from "@/chat/identities/sql";
 import type { JuniorSqlDatabase } from "@/db/db";
@@ -32,8 +33,12 @@ function readAuthor(meta: unknown): {
     ...(typeof author.fullName === "string"
       ? { fullName: author.fullName }
       : undefined),
-    ...(typeof author.isBot === "boolean" ? { isBot: author.isBot } : undefined),
-    ...(typeof author.userId === "string" ? { userId: author.userId } : undefined),
+    ...(typeof author.isBot === "boolean"
+      ? { isBot: author.isBot }
+      : undefined),
+    ...(typeof author.userId === "string"
+      ? { userId: author.userId }
+      : undefined),
     ...(typeof author.userName === "string"
       ? { userName: author.userName }
       : undefined),
@@ -61,14 +66,9 @@ async function loadConversationSlackTenantId(
   if (destinationTenant) {
     return destinationTenant;
   }
-  const sessionSource = row?.sessionSource;
-  if (
-    isRecord(sessionSource) &&
-    sessionSource.platform === "slack" &&
-    typeof sessionSource.teamId === "string" &&
-    sessionSource.teamId.trim()
-  ) {
-    return sessionSource.teamId.trim();
+  const sessionSource = parseSessionSource(row?.sessionSource);
+  if (sessionSource?.kind === "slack") {
+    return sessionSource.teamId;
   }
   return undefined;
 }

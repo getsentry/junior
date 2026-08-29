@@ -7,7 +7,11 @@
  * keeps resume metadata and a committed `seq` cursor into
  * `junior_conversation_events`.
  */
-import type { Destination, Source } from "@sentry/junior-plugin-api";
+import {
+  sourceSchema,
+  type Destination,
+  type Source,
+} from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import { piMessageSchema, type PiMessage } from "@/chat/pi/messages";
 import { toStoredSlackActor, type Actor } from "@/chat/actor";
@@ -127,6 +131,8 @@ export interface TurnRecord {
   actors: Actor[];
   resumeReason?: TurnPauseReason;
   publishExternally?: boolean;
+  /** Input that started this Turn; absent only on stored legacy cursors. */
+  source?: Source;
   resumedFromSliceId?: number;
   turnId: string;
   sliceId: number;
@@ -235,6 +241,7 @@ const storedTurnRecordSchema = z
     lastProgressAtMs: nonNegativeNumberSchema,
     resumeReason: turnPauseReasonSchema.optional(),
     publishExternally: z.boolean().optional(),
+    source: sourceSchema.optional(),
     resumedFromSliceId: z.number().int().nonnegative().optional(),
     turnId: z.string().min(1),
     sliceId: z.number().int().nonnegative(),
@@ -345,9 +352,9 @@ async function recordConversationActivityMetadata(args: {
     conversationId: args.summary.conversationId,
   });
   const hasParent = Boolean(conversation?.parentConversationId);
-  // Nested Destination, Source, and Actor stay off Redis cursor payloads.
-  // Callers pass live values here for the SQL write. Conversations with a
-  // parent keep no Destination.
+  // Destination and Actor stay off Redis cursor payloads. Source is stored on
+  // the Turn. Callers also pass it here for the SQL Conversation write.
+  // Conversations with a parent keep no Destination.
   const destination = hasParent ? undefined : args.destination;
   // Root dual-write requires a destination on first create. Cursor-only writes
   // without destination stay Redis-only until a real root upsert lands.
@@ -361,7 +368,7 @@ async function recordConversationActivityMetadata(args: {
   // are not collapsed to local just because delivery uses a local destination.
   const activitySource = hasParent
     ? "internal"
-    : args.source?.platform === "web"
+    : args.source?.kind === "web"
       ? "web"
       : destination?.platform === "local"
         ? "local"
@@ -440,6 +447,7 @@ function materializeTurnRecord(
       errorMessage: stored.errorMessage,
       resumeReason: stored.resumeReason,
       publishExternally: stored.publishExternally,
+      source: stored.source,
       resultMessageId: stored.resultMessageId,
       resumedFromSliceId: stored.resumedFromSliceId,
       surface: stored.surface,
@@ -601,6 +609,7 @@ function buildStoredRecord(args: {
   surface?: AgentTurnSurface;
   resumeReason?: TurnPauseReason;
   publishExternally?: boolean;
+  source?: Source;
   errorMessage?: string;
   resumedFromSliceId?: number;
   traceId?: string;
@@ -626,6 +635,7 @@ function buildStoredRecord(args: {
       historyVersion: args.historyVersion,
       resumeReason: args.resumeReason,
       publishExternally: args.publishExternally,
+      source: args.source,
       resultMessageId: args.resultMessageId,
       resumedFromSliceId: args.resumedFromSliceId,
       runtimeContext:
@@ -755,6 +765,7 @@ async function updateTurnState(args: {
         historyVersion: parsed.historyVersion,
         resumeReason: args.existing.resumeReason,
         publishExternally: args.existing.publishExternally,
+        source: args.existing.source,
         resultMessageId: args.resultMessageId ?? args.existing.resultMessageId,
         resumedFromSliceId: args.existing.resumedFromSliceId,
         surface: args.existing.surface,
@@ -920,7 +931,9 @@ async function upsertTurnRecordLocked(
         errorMessage: args.errorMessage,
         lastProgressAtMs: args.lastProgressAtMs,
         resumeReason: args.resumeReason,
-        publishExternally: args.publishExternally ?? existingRecord?.publishExternally,
+        publishExternally:
+          args.publishExternally ?? existingRecord?.publishExternally,
+        source: args.source ?? existingRecord?.source,
         resultMessageId:
           args.resultMessageId ?? existingRecord?.resultMessageId,
         resumedFromSliceId: args.resumedFromSliceId,

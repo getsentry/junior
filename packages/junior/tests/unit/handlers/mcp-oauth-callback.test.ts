@@ -35,9 +35,7 @@ vi.mock("@/chat/runtime/thread-state", async (importOriginal) => ({
 }));
 
 vi.mock("@/chat/conversations/projection", async (importOriginal) => ({
-  ...(await importOriginal<
-    typeof import("@/chat/conversations/projection")
-  >()),
+  ...(await importOriginal<typeof import("@/chat/conversations/projection")>()),
   recordAuthenticationLinked: vi.fn(async () => undefined),
 }));
 
@@ -306,7 +304,11 @@ describe("mcp oauth callback handler", () => {
       userId: "dashboard:alice",
       conversationId: "local:web:alice",
       destination: { platform: "local", conversationId: "local:web:alice" },
-      source: { platform: "web", conversationId: "local:web:alice" },
+      source: {
+        kind: "web",
+        conversationId: "local:web:alice",
+        visibility: "private",
+      },
       sessionId: "turn-1",
       userMessage: "use MCP",
       createdAtMs: 1,

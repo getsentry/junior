@@ -297,7 +297,7 @@ export function assertRunConsistency(
   >,
 ): void {
   const { destination, source } = run;
-  switch (source.platform) {
+  switch (source.kind) {
     case "slack": {
       if (destination.platform !== "slack") {
         throw new TypeError(
@@ -359,20 +359,22 @@ export function assertRunConsistency(
       }
       break;
     }
+    case "resource_event":
+      break;
   }
 
   const actor = run.dispatch?.actor ?? run.actor;
   if (!actor || actor.platform === "system") {
     return;
   }
-  if (actor.platform !== source.platform) {
+  if (actor.platform !== source.kind) {
     throw new TypeError(
-      `Actor platform "${actor.platform}" does not match Source platform "${source.platform}"`,
+      `Actor platform "${actor.platform}" does not match Source kind "${source.kind}"`,
     );
   }
   if (
     actor.platform === "slack" &&
-    source.platform === "slack" &&
+    source.kind === "slack" &&
     actor.teamId !== source.teamId
   ) {
     throw new TypeError("Slack Actor team does not match Source team");
@@ -400,10 +402,10 @@ export function surfaceFromRun(
   if (run.surface) {
     return run.surface;
   }
-  if (run.source.platform === "slack") {
+  if (run.source.kind === "slack") {
     return "slack";
   }
-  if (run.source.platform === "web") {
+  if (run.source.kind === "web") {
     // Web/dashboard turns share the non-Slack api surface with agent-dispatch.
     return "api";
   }

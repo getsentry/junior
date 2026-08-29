@@ -222,7 +222,7 @@ async function resolveAccessScope(
       )
     : currentConversationId;
 
-  if (context.source.platform === "slack") {
+  if (context.source.kind === "slack") {
     return {
       currentConversationId,
       currentRootConversationId,
@@ -363,7 +363,9 @@ function projectEvent(event: ConversationEvent) {
     seq: event.seq,
     history_version: event.historyVersion,
     created_at: new Date(event.createdAtMs).toISOString(),
-    ...(event.idempotencyKey ? { idempotency_key: event.idempotencyKey } : undefined),
+    ...(event.idempotencyKey
+      ? { idempotency_key: event.idempotencyKey }
+      : undefined),
     data,
   };
 }

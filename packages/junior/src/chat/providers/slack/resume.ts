@@ -369,7 +369,7 @@ function buildResumedRun(
       text: args.messageText,
     },
     source:
-      source.platform === "slack"
+      source.kind === "slack"
         ? {
             ...source,
             channelId: args.channelId,

@@ -131,15 +131,19 @@ async function tryRecordSkillLoadStat(skill: Skill) {
 
 type ToolRuntimeRoute =
   | Pick<
-      Extract<ToolRuntimeContext, { source: { platform: "slack" } }>,
+      Extract<ToolRuntimeContext, { source: { kind: "slack" } }>,
       "actor" | "destination" | "source" | "slackActionToken"
     >
   | Pick<
-      Extract<ToolRuntimeContext, { source: { platform: "local" } }>,
+      Extract<ToolRuntimeContext, { source: { kind: "local" } }>,
       "actor" | "destination" | "source"
     >
   | Pick<
-      Extract<ToolRuntimeContext, { source: { platform: "web" } }>,
+      Extract<ToolRuntimeContext, { source: { kind: "web" } }>,
+      "actor" | "destination" | "source"
+    >
+  | Pick<
+      Extract<ToolRuntimeContext, { source: { kind: "resource_event" } }>,
       "actor" | "destination" | "source"
     >;
 
@@ -152,7 +156,7 @@ function resolveToolRuntimeRoute(args: {
   >;
 }): ToolRuntimeRoute {
   const destination = toolInvocationDestination(args.run);
-  switch (args.run.source.platform) {
+  switch (args.run.source.kind) {
     case "slack": {
       if (destination.platform !== "slack") {
         throw new TypeError("Slack tool runtime requires a Slack destination");
@@ -178,6 +182,12 @@ function resolveToolRuntimeRoute(args: {
       return {
         destination,
         actor: args.actor?.platform === "web" ? args.actor : undefined,
+        source: args.run.source,
+      };
+    case "resource_event":
+      return {
+        destination,
+        actor: args.actor?.platform === "system" ? args.actor : undefined,
         source: args.run.source,
       };
   }
@@ -260,9 +270,7 @@ export async function wireAgentTools(
     destination: args.run.destination,
     source: runSource,
     threadTs:
-      args.run.source.platform === "slack"
-        ? args.run.source.threadTs
-        : undefined,
+      args.run.source.kind === "slack" ? args.run.source.threadTs : undefined,
     toolChannelId: args.run.toolChannelId,
     userMessage: args.userInput,
     pendingAuth: args.state.pendingAuth,
@@ -284,9 +292,7 @@ export async function wireAgentTools(
     destination: args.run.destination,
     source: runSource,
     threadTs:
-      args.run.source.platform === "slack"
-        ? args.run.source.threadTs
-        : undefined,
+      args.run.source.kind === "slack" ? args.run.source.threadTs : undefined,
     userMessage: args.userInput,
     pendingAuth: args.state.pendingAuth,
     recordPendingAuth: args.durability.recordPendingAuth,

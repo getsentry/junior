@@ -219,7 +219,7 @@ describe("conversation SQL store", () => {
         },
         source: "slack",
         sessionSource: {
-          platform: "slack",
+          kind: "slack",
           visibility: "public",
           teamId: "T123",
           channelId: "C123",
@@ -366,7 +366,7 @@ describe("conversation SQL store", () => {
         },
         nowMs: 4_000,
         sessionSource: {
-          platform: "local",
+          kind: "local",
           visibility: "private",
           conversationId: localConversationId,
         },
@@ -706,7 +706,7 @@ describe("conversation SQL store", () => {
         destination,
         source: "slack",
         sessionSource: {
-          platform: "slack",
+          kind: "slack",
           visibility: "public",
           teamId: "T123",
           channelId: "C123",
@@ -719,7 +719,7 @@ describe("conversation SQL store", () => {
         store.get({ conversationId: CONVERSATION_ID }),
       ).resolves.toMatchObject({
         sessionSource: {
-          platform: "slack",
+          kind: "slack",
           visibility: "public",
           teamId: "T123",
           channelId: "C123",
@@ -732,7 +732,7 @@ describe("conversation SQL store", () => {
         conversationId: CONVERSATION_ID,
         destination,
         sessionSource: {
-          platform: "slack",
+          kind: "slack",
           visibility: "private",
           teamId: "T123",
           channelId: "C123",
@@ -744,7 +744,7 @@ describe("conversation SQL store", () => {
         store.get({ conversationId: CONVERSATION_ID }),
       ).resolves.toMatchObject({
         sessionSource: {
-          platform: "slack",
+          kind: "slack",
           visibility: "public",
           teamId: "T123",
           channelId: "C123",

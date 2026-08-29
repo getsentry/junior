@@ -104,12 +104,14 @@ describe("turn checkpoint", () => {
     await upsertTurnRecord({
       conversationId: "local:ttl-split:turn",
       piMessages: [runtimeContext],
+      source: SLACK_SOURCE,
       turnId: "turn-ttl-split",
       sliceId: 1,
       state: "running",
     });
     expect(set.mock.calls.at(-1)?.[1]).toMatchObject({
       runtimeContext: [runtimeContext],
+      source: SLACK_SOURCE,
     });
     expect(set.mock.calls.at(-1)?.[1]).not.toHaveProperty("modelId");
     expect(set.mock.calls.at(-1)?.[2]).toBe(24 * 60 * 60 * 1000);
@@ -120,6 +122,10 @@ describe("turn checkpoint", () => {
     // Recovery index stays on the resume window so terminal writes cannot
     // expire unfinished sibling summaries.
     expect(appendToList.mock.calls[0]?.[2]?.ttlMs).toBe(24 * 60 * 60 * 1000);
+    const { getTurnRecord } = await import("@/chat/task-execution/turn-cursor");
+    await expect(
+      getTurnRecord("local:ttl-split:turn", "turn-ttl-split"),
+    ).resolves.toMatchObject({ source: SLACK_SOURCE });
 
     set.mockClear();
     appendToList.mockClear();
@@ -277,11 +283,11 @@ describe("turn checkpoint", () => {
       resumedFromSliceId: 1,
       resumeReason: "auth",
       publishExternally: false,
+      source: SLACK_SOURCE,
       errorMessage: "plugin auth pause",
       piMessages: [priorMessages[0]],
     });
-    // Nested routing stays off redis; SQL dual-write is the authority.
-    expect(sessionRecord).not.toHaveProperty("source");
+    // Source stays on the Turn. Destination and Actor remain live write facts.
     expect(sessionRecord).not.toHaveProperty("destination");
     expect(sessionRecord).not.toHaveProperty("actor");
   });
@@ -489,7 +495,7 @@ describe("turn checkpoint", () => {
     }
   });
 
-  it("keeps nested destination/source out of redis while dual-writing sql", async () => {
+  it("stores Source on the Turn while keeping Destination and Actor out of Redis", async () => {
     const { getStateAdapter } = await import("@/chat/state/adapter");
     const { getTurnRecord, listTurnSummaries, upsertTurnRecord } =
       await import("@/chat/task-execution/turn-cursor");
@@ -534,7 +540,7 @@ describe("turn checkpoint", () => {
       }),
     );
     expect(stored).not.toHaveProperty("destination");
-    expect(stored).not.toHaveProperty("source");
+    expect(stored).toMatchObject({ source: SLACK_SOURCE });
     expect(stored).not.toHaveProperty("actor");
 
     const summaries = await listTurnSummaries(conversationId);
@@ -543,7 +549,7 @@ describe("turn checkpoint", () => {
     expect(summaries[0]).not.toHaveProperty("source");
     expect(summaries[0]).not.toHaveProperty("actor");
 
-    // Materialized reads no longer surface nested routing/identity from redis.
+    // Materialized reads restore Source without restoring Destination or Actor.
     const record = await getTurnRecord(conversationId, turnId);
     expect(record).toMatchObject({
       conversationId,
@@ -551,7 +557,7 @@ describe("turn checkpoint", () => {
       state: "running",
     });
     expect(record).not.toHaveProperty("destination");
-    expect(record).not.toHaveProperty("source");
+    expect(record).toMatchObject({ source: SLACK_SOURCE });
     expect(record).not.toHaveProperty("actor");
 
     expect(conversationStore.recordActivity).toHaveBeenCalledWith(
@@ -627,7 +633,7 @@ describe("turn checkpoint", () => {
     const record = await getTurnRecord(conversationId, turnId);
     expect(record).toMatchObject({ schemaVersion: 2, state: "paused" });
     expect(record).not.toHaveProperty("destination");
-    expect(record).not.toHaveProperty("source");
+    expect(record).toMatchObject({ source: SLACK_SOURCE });
     expect(record).not.toHaveProperty("actor");
     expect(record).not.toHaveProperty("deprecatedFlag");
   });

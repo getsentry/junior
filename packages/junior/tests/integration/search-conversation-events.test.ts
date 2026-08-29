@@ -14,7 +14,7 @@ const CURRENT_CONVERSATION_ID = "slack:C123:1700000000.100000";
 
 type SlackToolRuntimeContext = Extract<
   ToolRuntimeContext,
-  { source: { platform: "slack" } }
+  { source: { kind: "slack" } }
 >;
 
 function context(): SlackToolRuntimeContext {

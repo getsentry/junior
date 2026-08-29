@@ -17,7 +17,7 @@ const DESTINATION = {
 } as const satisfies Destination;
 
 const SOURCE = {
-  platform: "slack",
+  kind: "slack",
   teamId: "T123",
   channelId: "C123",
   threadTs: "1712345.0001",
@@ -173,7 +173,7 @@ describe("resolveConversationRouting", () => {
           conversationId: "opaque-root",
           destination: DESTINATION,
           sessionSource: {
-            platform: "slack",
+            kind: "slack",
             teamId: "T123",
             channelId: "C123",
             visibility: "public",
@@ -190,7 +190,7 @@ describe("resolveConversationRouting", () => {
     ).resolves.toEqual({
       destination: DESTINATION,
       source: {
-        platform: "slack",
+        kind: "slack",
         teamId: "T123",
         channelId: "C123",
         visibility: "public",
@@ -208,7 +208,7 @@ describe("resolveConversationRouting", () => {
             conversationId: "local:web:abc",
           },
           sessionSource: {
-            platform: "local",
+            kind: "local",
             visibility: "private",
             conversationId: "local:web:abc",
           },
@@ -227,7 +227,7 @@ describe("resolveConversationRouting", () => {
         conversationId: "local:web:abc",
       },
       source: {
-        platform: "local",
+        kind: "local",
         visibility: "private",
         conversationId: "local:web:abc",
       },
@@ -244,7 +244,7 @@ describe("resolveConversationRouting", () => {
             conversationId: "local:web:dashboard",
           },
           sessionSource: {
-            platform: "web",
+            kind: "web",
             visibility: "public",
             conversationId: "local:web:dashboard",
           },
@@ -263,7 +263,7 @@ describe("resolveConversationRouting", () => {
         conversationId: "local:web:dashboard",
       },
       source: {
-        platform: "web",
+        kind: "web",
         visibility: "public",
         conversationId: "local:web:dashboard",
       },
