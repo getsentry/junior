@@ -30,7 +30,7 @@ jobs:
           filters: |
             relevant:
               - 'packages/junior-evals/evals/output-router/**'
-              - 'packages/junior-evals/src/output-router-setup.ts'
+              - 'packages/junior-evals/create-full-runtime-eval-config.ts'
               - 'packages/junior-evals/src/behavior-harness.ts'
               - 'packages/junior-evals/src/helpers.ts'
               - 'packages/junior-evals/src/setup.ts'
@@ -44,6 +44,7 @@ jobs:
               - 'packages/junior/src/chat/services/output-router.ts'
               - 'packages/junior/src/chat/agent/index.ts'
               - 'packages/junior/src/chat/experimental.ts'
+              - 'packages/junior/tests/fixtures/experimental-setup.ts'
       - id: decision
         env:
           AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}

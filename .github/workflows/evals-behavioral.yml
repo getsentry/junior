@@ -52,6 +52,7 @@ jobs:
               - 'packages/junior-evals/src/slack-link.ts'
               - 'packages/junior-evals/src/snapshot-warmup.ts'
               - 'packages/junior-evals/tests/**'
+              - 'packages/junior-evals/create-full-runtime-eval-config.ts'
               - 'packages/junior-evals/vitest.evals.config.ts'
               - 'packages/junior-evals/vitest.evals.behavioral.config.ts'
 

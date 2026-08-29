@@ -41,6 +41,7 @@ jobs:
               - 'packages/junior-evals/src/setup.ts'
               - 'packages/junior-evals/src/slack-link.ts'
               - 'packages/junior-evals/src/snapshot-warmup.ts'
+              - 'packages/junior-evals/create-full-runtime-eval-config.ts'
               - 'packages/junior-evals/vitest.evals.integration.config.ts'
       - id: decision
         env:
