@@ -108,7 +108,12 @@ interface ConversationMessageProjection {
 }
 
 export interface TurnRecord {
-  /** Actor that started this Turn; absent only on stored legacy cursors. */
+  /**
+   * Actor that started this Turn; absent only on stored legacy cursors.
+   *
+   * TODO(dcramer): Make this field required after no deployed Turn cursor can
+   * omit Actor.
+   */
   actor?: Actor;
   channelName?: string;
   schemaVersion: 2;
@@ -235,6 +240,7 @@ const storedTurnSummarySchema = z
 /** Full resume cursor stored for one turn. */
 const storedTurnRecordSchema = z
   .object({
+    // TODO(dcramer): Require Actor after no deployed Turn cursor can omit it.
     actor: actorSchema.optional(),
     schemaVersion: z.literal(TURN_CURSOR_SCHEMA_VERSION),
     version: z.number().int().nonnegative(),

@@ -39,7 +39,12 @@ export type TurnInputFacts = Pick<
   "actor" | "author" | "source"
 >;
 
-/** Restore Turn input facts, with saved Message fallback for legacy cursors. */
+/**
+ * Restore Turn input facts, with saved Message fallback for legacy cursors.
+ *
+ * TODO(dcramer): Remove Actor and Source reconstruction from the saved Message
+ * after no deployed Turn cursor can omit either field.
+ */
 export function turnInputFactsFromConversationMessage(
   message: ConversationMessage,
   args: {

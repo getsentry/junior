@@ -347,8 +347,9 @@ async function loadPluginRun(
   const routing = await resolveTurnSessionRouting({
     conversationId: params.conversationId,
   });
-  // The Turn Actor owns the run. The later fallbacks cover deployed cursors
-  // written before Turn Actor persistence.
+  // The Turn Actor owns the run.
+  // TODO(dcramer): Remove the provenance and dispatch Actor fallbacks after no
+  // deployed Turn cursor can omit Actor.
   const runActor =
     record.actor ??
     record.actors[0] ??

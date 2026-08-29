@@ -273,7 +273,12 @@ export function toStoredSlackActor(actor: SlackActor): StoredSlackActor {
   };
 }
 
-/** Resolve a Slack resume actor from stored profile data and the active actor. */
+/**
+ * Resolve a Slack resume actor from stored profile data and the active actor.
+ *
+ * TODO(dcramer): Require Actor and remove ID-only construction after no
+ * deployed Turn cursor can omit Actor.
+ */
 export function createSlackResumeActor(args: {
   actor?: Actor;
   teamId: string;

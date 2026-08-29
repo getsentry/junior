@@ -257,6 +257,9 @@ async function resolveSlackResumeUserActor(args: {
  * 1. Actor saved on the Turn.
  * 2. Actor and credentials supplied by dispatch or OAuth.
  * 3. Legacy Resource event or Slack Message data.
+ *
+ * TODO(dcramer): Remove the routing and Message Actor fallbacks after no
+ * deployed Turn cursor can omit Actor.
  */
 async function resolveResumeExecutionIdentity(args: {
   actor?: Actor;

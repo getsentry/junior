@@ -292,7 +292,8 @@ describe("turn checkpoint", () => {
       errorMessage: "plugin auth pause",
       piMessages: [priorMessages[0]],
     });
-    // This legacy-shaped fixture omits Actor. Source still survives the update.
+    // TODO(dcramer): Remove this legacy fixture after no deployed Turn cursor
+    // can omit Actor.
     expect(sessionRecord).not.toHaveProperty("destination");
     expect(sessionRecord).not.toHaveProperty("actor");
   });
