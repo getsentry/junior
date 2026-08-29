@@ -11,7 +11,11 @@ import {
   type PluginRegistration,
 } from "@sentry/junior-plugin-api";
 import { hostnameFromBaseUrl, type GocdPluginOptions } from "./config.js";
+import { createGocdDashboardTool } from "./tools/dashboard.js";
+import { createGocdJobHistoryTool } from "./tools/job-history.js";
 import { createGocdPipelineHistoryTool } from "./tools/pipeline-history.js";
+import { createGocdPipelineInstanceTool } from "./tools/pipeline-instance.js";
+import { createGocdPipelineStatusTool } from "./tools/pipeline-status.js";
 import { createGocdStageTool } from "./tools/stage.js";
 
 export type GocdCredentialHooks = Pick<
@@ -64,7 +68,11 @@ export function gocdPlugin(
   const hooks: PluginHooks = {
     tools(ctx) {
       return {
+        dashboard: createGocdDashboardTool(ctx, options),
+        jobHistory: createGocdJobHistoryTool(ctx, options),
         pipelineHistory: createGocdPipelineHistoryTool(ctx, options),
+        pipelineInstance: createGocdPipelineInstanceTool(ctx, options),
+        pipelineStatus: createGocdPipelineStatusTool(ctx, options),
         stage: createGocdStageTool(ctx, options),
       };
     },

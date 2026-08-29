@@ -34,7 +34,11 @@ describe("gocdPlugin", () => {
         egress: { fetch: vi.fn() },
       } as never),
     ).toMatchObject({
+      dashboard: expect.any(Object),
+      jobHistory: expect.any(Object),
       pipelineHistory: expect.any(Object),
+      pipelineInstance: expect.any(Object),
+      pipelineStatus: expect.any(Object),
       stage: expect.any(Object),
     });
   });
