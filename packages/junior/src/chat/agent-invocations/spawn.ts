@@ -41,7 +41,6 @@ export function bindSpawnAgent(
         ...(input.reasoningLevel
           ? { reasoningLevel: input.reasoningLevel }
           : undefined),
-        source: run.source,
       },
       { ...options, queue },
     );

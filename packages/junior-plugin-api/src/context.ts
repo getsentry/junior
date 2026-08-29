@@ -34,6 +34,13 @@ export type SlackSource = Extract<Source, { kind: "slack" }>;
 export type LocalSource = Extract<Source, { kind: "local" }>;
 export type WebSource = Extract<Source, { kind: "web" }>;
 export type ResourceEventSource = Extract<Source, { kind: "resource_event" }>;
+export type ScheduledTaskSource = Extract<Source, { kind: "scheduled_task" }>;
+export type EventTaskSource = Extract<Source, { kind: "event_task" }>;
+export type PluginDispatchSource = Extract<Source, { kind: "plugin_dispatch" }>;
+export type AgentInvocationSource = Extract<
+  Source,
+  { kind: "agent_invocation" }
+>;
 export type SourceVisibility = z.output<typeof sourceVisibilitySchema>;
 
 export type Destination = z.output<typeof destinationSchema>;
@@ -129,9 +136,18 @@ export interface ResourceEventInvocationContext extends BaseInvocationContext {
 
 export type InvocationContext =
   | LocalInvocationContext
-  | ResourceEventInvocationContext
   | SlackInvocationContext
-  | WebInvocationContext;
+  | WebInvocationContext
+  | (BaseInvocationContext & {
+      destination: Destination;
+      actor?: SystemActor;
+      source:
+        | AgentInvocationSource
+        | EventTaskSource
+        | PluginDispatchSource
+        | ResourceEventSource
+        | ScheduledTaskSource;
+    });
 
 /** Build a normalized Slack source from runtime-owned Slack coordinates. */
 export function createSlackSource(input: {
@@ -209,6 +225,11 @@ export function getSourceKey(source: Source): string | undefined {
     }
     case "resource_event":
       return `resource-event:${source.namespace}:${source.eventKey}`;
+    case "scheduled_task":
+    case "event_task":
+    case "plugin_dispatch":
+    case "agent_invocation":
+      return undefined;
   }
 }
 

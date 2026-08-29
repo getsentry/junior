@@ -97,9 +97,10 @@ describe("agent dispatch conversation work", () => {
       undefined,
       { label: "Scheduled task", detail: "Weekly" },
     );
-    const agentRunner = createModelAgentRunner(
+    const modelStream = vi.fn(
       createModelStream([{ type: "text", text: "Scheduled digest" }]),
     );
+    const agentRunner = createModelAgentRunner(modelStream);
     const run = vi.spyOn(agentRunner, "run");
     const {
       queue,
@@ -147,9 +148,13 @@ describe("agent dispatch conversation work", () => {
           detail: "Weekly",
         },
       },
+      source: { kind: "scheduled_task" },
       surface: "api",
       disabledFeatures: ["interactive-auth"],
     });
+    expect(modelStream.mock.calls[0]?.[1].systemPrompt).toContain(
+      "You are a Slack-based helper assistant.",
+    );
   });
 
   it("projects a previously delivered reply without running the agent again", async () => {

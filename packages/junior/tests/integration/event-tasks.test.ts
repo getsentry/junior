@@ -315,7 +315,7 @@ describe("event tasks", () => {
       ).resolves.toMatchObject({
         destination: { channelId },
         destinationVisibility,
-        source: { channelId, visibility: sourceVisibility },
+        source: { kind: "event_task" },
       });
     },
   );

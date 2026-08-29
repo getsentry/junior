@@ -9,6 +9,15 @@
  * here so the run parks before prompting.
  */
 import type { AgentTool } from "@earendil-works/pi-agent-core";
+import type {
+  AgentInvocationSource,
+  Destination,
+  EventTaskSource,
+  PluginDispatchSource,
+  ResourceEventSource,
+  ScheduledTaskSource,
+  SystemActor,
+} from "@sentry/junior-plugin-api";
 import type { FileUpload } from "chat";
 import { createUserTokenStore } from "@/chat/capabilities/factory";
 import {
@@ -142,10 +151,16 @@ type ToolRuntimeRoute =
       Extract<ToolRuntimeContext, { source: { kind: "web" } }>,
       "actor" | "destination" | "source"
     >
-  | Pick<
-      Extract<ToolRuntimeContext, { source: { kind: "resource_event" } }>,
-      "actor" | "destination" | "source"
-    >;
+  | {
+      actor?: SystemActor;
+      destination: Destination;
+      source:
+        | AgentInvocationSource
+        | EventTaskSource
+        | PluginDispatchSource
+        | ResourceEventSource
+        | ScheduledTaskSource;
+    };
 
 /** Resolve provider-specific tool routing without changing turn delivery. */
 function resolveToolRuntimeRoute(args: {
@@ -185,6 +200,10 @@ function resolveToolRuntimeRoute(args: {
         source: args.run.source,
       };
     case "resource_event":
+    case "scheduled_task":
+    case "event_task":
+    case "plugin_dispatch":
+    case "agent_invocation":
       return {
         destination,
         actor: args.actor?.platform === "system" ? args.actor : undefined,
@@ -331,7 +350,13 @@ export async function wireAgentTools(
   );
   const commonToolRuntimeContext = {
     conversationId: args.run.conversationId,
-    ...(args.run.location ? { locationId: args.run.location.id } : undefined),
+    ...(args.run.location
+      ? {
+          location: args.run.location,
+          locationId: args.run.location.id,
+        }
+      : undefined),
+    conversationPrivacy: args.conversationPrivacy,
     userText: args.userInput,
     configuration: args.configurationValues,
     egress: createPluginEgress({

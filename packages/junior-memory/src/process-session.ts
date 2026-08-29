@@ -223,7 +223,9 @@ export async function processMemorySession(
   context: PluginTaskContext,
 ): Promise<void> {
   const run = await context.run.load();
-  if (run.source.kind === "local" || run.source.kind === "resource_event") {
+  // TODO(dcramer): Replace this Source kind allowlist when plugin runs expose
+  // an explicit capability for passive memory extraction.
+  if (run.source.kind !== "slack" && run.source.kind !== "web") {
     return;
   }
   // Memory tool turns already own memory management or recall; do not reinterpret

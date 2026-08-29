@@ -144,7 +144,8 @@ describe("plugin background tasks", () => {
       ...destination,
       conversationId: runConversationId,
     };
-    const runSource = createLocalSource(runConversationId);
+    const runSource = { kind: "plugin_dispatch" } as const;
+    const runActor = { name: "plugin", platform: "system" } as const;
     const queue = new PluginTaskQueueTestAdapter();
     const loadedRuns: PluginRunContext[] = [];
     const { setPlugins } = await import("@/chat/plugins/agent-hooks");
@@ -168,6 +169,13 @@ describe("plugin background tasks", () => {
         },
       }),
     ]);
+    const { getConversationStore } = await import("@/chat/db");
+    await getConversationStore().recordActivity({
+      conversationId: runConversationId,
+      destination: runDestination,
+      sessionSource: createLocalSource(runConversationId),
+      source: "internal",
+    });
     await upsertTurnRecord({
       conversationId: runConversationId,
       destination: runDestination,
@@ -209,12 +217,7 @@ describe("plugin background tasks", () => {
       turnId: runSessionId,
       sliceId: 1,
       source: runSource,
-      actor: {
-        fullName: "Local CLI",
-        platform: "local",
-        userId: "local-cli",
-        userName: "local",
-      },
+      actor: runActor,
       state: "completed",
       surface: "internal",
       turnStartMessageIndex: 2,
@@ -236,14 +239,7 @@ describe("plugin background tasks", () => {
         destination: runDestination,
         runId: runSessionId,
         // Exposed from the full-run provenance: the single instruction author.
-        actors: [
-          {
-            fullName: "Local CLI",
-            platform: "local",
-            userId: "local-cli",
-            userName: "local",
-          },
-        ],
+        actors: [runActor],
         transcript: [
           {
             type: "message",
@@ -251,12 +247,7 @@ describe("plugin background tasks", () => {
             text: "I prefer pull request summaries with test evidence.",
             provenance: {
               authority: "instruction",
-              actor: {
-                fullName: "Local CLI",
-                platform: "local",
-                userId: "local-cli",
-                userName: "local",
-              },
+              actor: runActor,
             },
             isRunActor: true,
           },
@@ -272,12 +263,7 @@ describe("plugin background tasks", () => {
             text: "Understood.",
           },
         ],
-        actor: {
-          fullName: "Local CLI",
-          platform: "local",
-          userId: "local-cli",
-          userName: "local",
-        },
+        actor: runActor,
         source: runSource,
       }),
     ]);

@@ -67,26 +67,6 @@ function dispatchOptionsErrorMessage(
   if (hasIssueUnderPath(issues, ["destination", "channelId"])) {
     return "Dispatch destination channelId must be a Slack channel id";
   }
-  if (
-    issues.some(
-      (issue) =>
-        issue.code === "unrecognized_keys" && issue.path[0] === "source",
-    )
-  ) {
-    return "Dispatch source must not include unknown fields";
-  }
-  if (hasIssueAtPath(issues, ["source"])) {
-    return "Dispatch Source kind is required";
-  }
-  if (hasIssueUnderPath(issues, ["source", "teamId"])) {
-    return "Dispatch source teamId must be a Slack team id";
-  }
-  if (hasIssueUnderPath(issues, ["source", "channelId"])) {
-    return "Dispatch source channelId must be a Slack channel id";
-  }
-  if (hasIssueUnderPath(issues, ["source", "conversationId"])) {
-    return "Dispatch source conversationId must be a local conversation id";
-  }
   if (hasIssueUnderPath(issues, ["idempotencyKey"])) {
     const tooLong = issues.some(
       (issue) => issue.path[0] === "idempotencyKey" && issue.code === "too_big",
@@ -162,7 +142,7 @@ export function validateDispatchOptions(
 
 /** Verify runtime-owned access requirements for delegated dispatch credentials. */
 export async function verifyDispatchCredentialSubjectAccess(
-  options: BoundDispatchOptions,
+  options: Pick<BoundDispatchOptions, "credentialSubject" | "destination">,
   plugin: string,
 ): Promise<void> {
   if (!options.credentialSubject) {

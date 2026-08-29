@@ -357,6 +357,10 @@ export function assertRunConsistency(
       break;
     }
     case "resource_event":
+    case "scheduled_task":
+    case "event_task":
+    case "plugin_dispatch":
+    case "agent_invocation":
       break;
   }
 

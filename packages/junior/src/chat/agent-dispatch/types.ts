@@ -1,7 +1,10 @@
 import type {
   DispatchOptions,
   DestinationVisibility,
+  EventTaskSource,
+  PluginDispatchSource,
   ReplyAttribution,
+  ScheduledTaskSource,
   Source,
   SlackDestination,
 } from "@sentry/junior-plugin-api";
@@ -31,6 +34,7 @@ export interface BoundDispatchOptions extends Omit<
   "credentialSubject"
 > {
   credentialSubject?: CredentialSubject;
+  source: EventTaskSource | PluginDispatchSource | ScheduledTaskSource;
 }
 
 export interface DispatchRecord {

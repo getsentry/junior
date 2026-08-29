@@ -1,16 +1,16 @@
 import { sourceSchema, type Source } from "@sentry/junior-plugin-api";
 
-/** Source coordinates reduced to the stable locator for one conversation. */
+// TODO(dcramer): Delete SessionSource and this module after resume and SQL
+// Location reads no longer use Conversation.sessionSource.
+/** Legacy Source coordinates stored as a Conversation locator. */
 export type SessionSource =
   | Extract<Source, { kind: "web" }>
   | Extract<Source, { kind: "local" }>
   | Omit<Extract<Source, { kind: "slack" }>, "messageTs">;
 
 /**
- * Normalize a turn Source into the session-stable locator persisted on a
- * conversation. Drops per-message timestamps. Threaded Slack turns keep their
- * thread anchor; channel-level turns (scheduled/event dispatch) keep the
- * channel locator without inventing a threadTs.
+ * Normalize a Turn Source into the legacy locator stored on a Conversation.
+ * System Sources do not contain a Conversation Location.
  */
 export function normalizeSessionSource(
   value: Source | undefined,
@@ -32,7 +32,13 @@ export function normalizeSessionSource(
       conversationId: value.conversationId,
     };
   }
-  if (value.kind === "resource_event") {
+  if (
+    value.kind === "resource_event" ||
+    value.kind === "scheduled_task" ||
+    value.kind === "event_task" ||
+    value.kind === "plugin_dispatch" ||
+    value.kind === "agent_invocation"
+  ) {
     return undefined;
   }
   const threadTs = value.threadTs?.trim();

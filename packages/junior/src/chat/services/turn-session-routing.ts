@@ -5,11 +5,7 @@
  * parent reads through that relation. Later Turns and mailbox wakes use the
  * same Destination so tools stay consistent for the whole Conversation.
  */
-import type {
-  Destination,
-  SlackDestination,
-  Source,
-} from "@sentry/junior-plugin-api";
+import type { Destination, SlackDestination } from "@sentry/junior-plugin-api";
 import type {
   Conversation,
   ConversationStore,
@@ -24,12 +20,12 @@ export interface TurnSessionRouting {
   destination: Destination;
   location?: Location;
   /** Present when the conversation already stores a session source. */
-  source?: Source;
+  source?: SessionSource;
 }
 
 /** Conversation data with a required Destination and Source. */
 export type RequiredTurnSessionRouting = TurnSessionRouting & {
-  source: Source;
+  source: SessionSource;
 };
 
 async function loadConversationChain(

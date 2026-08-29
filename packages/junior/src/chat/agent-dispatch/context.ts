@@ -31,7 +31,7 @@ function bindDispatchCredentialSubject(
 ): BoundDispatchOptions {
   const { credentialSubject, ...baseOptions } = options;
   if (!credentialSubject) {
-    return baseOptions;
+    return { ...baseOptions, source: { kind: "plugin_dispatch" } };
   }
   if ("binding" in credentialSubject) {
     throw new Error("Dispatch credentialSubject binding is runtime-owned");
@@ -55,6 +55,7 @@ function bindDispatchCredentialSubject(
   return {
     ...baseOptions,
     credentialSubject: boundSubject,
+    source: { kind: "plugin_dispatch" },
   };
 }
 
@@ -155,6 +156,7 @@ export async function dispatchEventTask(args: {
   const options: BoundDispatchOptions = {
     ...unboundOptions,
     ...(boundSubject ? { credentialSubject: boundSubject } : undefined),
+    source: { kind: "event_task" },
   };
   return await dispatch({
     conversationWorkQueue: args.conversationWorkQueue,
@@ -192,6 +194,7 @@ export async function dispatchScheduledTask(args: {
   const options: BoundDispatchOptions = {
     ...unboundOptions,
     ...(boundSubject ? { credentialSubject: boundSubject } : undefined),
+    source: { kind: "scheduled_task" },
   };
   return await dispatch({
     conversationWorkQueue: args.conversationWorkQueue,

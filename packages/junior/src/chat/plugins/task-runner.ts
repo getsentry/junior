@@ -55,6 +55,7 @@ import {
 } from "./task-queue";
 import { getStateAdapter } from "@/chat/state/adapter";
 import type { Lock } from "chat";
+import type { SessionSource } from "@/chat/source";
 
 const PLUGIN_TASK_LOCK_TTL_MS = 5 * 60 * 1000;
 
@@ -259,15 +260,16 @@ function messageExistedAtRunCompletion(
  *
  * Prior public Slack messages are durable conversation evidence a completed run
  * may have acted on, so passive consumers can cite them. They are always
- * context authority (never instruction), and only public Slack sources
- * contribute; private and local sources add nothing here.
+ * context authority (never instruction), and only public Slack Conversations
+ * contribute; private and local Conversations add nothing here.
  */
 async function loadConversationContextTranscriptEntries(
   record: TurnRecord,
-  source: PluginRunContext["source"],
+  source: SessionSource,
   runActor: Actor | undefined,
 ): Promise<PluginRunTranscriptEntry[]> {
-  // Prior conversation evidence is a Slack public-channel concern only.
+  // TODO(dcramer): Read Location and visibility directly after plugin tasks no
+  // longer depend on turn-session-routing and its legacy session Source.
   switch (source.kind) {
     case "slack":
       if (source.visibility === "private") {
@@ -276,7 +278,6 @@ async function loadConversationContextTranscriptEntries(
       break;
     case "web":
     case "local":
-    case "resource_event":
       return [];
   }
   const state = await getPersistedThreadState(record.conversationId);
@@ -347,6 +348,9 @@ async function loadPluginRun(
   const routing = await resolveTurnSessionRouting({
     conversationId: params.conversationId,
   });
+  // TODO(dcramer): Remove the session Source fallback after every deployed
+  // Turn cursor stores Source.
+  const source = record.source ?? routing.source;
   // The Turn Actor owns the run.
   // TODO(dcramer): Remove the provenance and dispatch Actor fallbacks after no
   // deployed Turn cursor can omit Actor.
@@ -389,7 +393,7 @@ async function loadPluginRun(
     actors: record.actors,
     ...(runActor ? { actor: runActor } : undefined),
     runId: record.turnId,
-    source: routing.source,
+    source,
     transcript: [...contextEntries, ...runEntries],
   });
 }

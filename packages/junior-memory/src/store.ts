@@ -187,10 +187,18 @@ const memoryRowSchema = z
 function storedMemorySource(
   source: MemoryRuntimeContext["source"],
 ): MemorySourcePlatform {
-  if (source.kind === "resource_event") {
-    throw new Error("Resource event Source cannot own a Memory.");
+  switch (source.kind) {
+    case "slack":
+    case "local":
+    case "web":
+      return source.kind;
+    case "resource_event":
+    case "scheduled_task":
+    case "event_task":
+    case "plugin_dispatch":
+    case "agent_invocation":
+      throw new Error(`${source.kind} Source cannot own a Memory.`);
   }
-  return source.kind;
 }
 
 const memoryRecordSchema = z

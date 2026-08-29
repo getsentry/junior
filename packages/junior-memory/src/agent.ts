@@ -302,6 +302,11 @@ function sourceLabel(source: z.output<typeof sourceSchema>): string {
       return `${source.kind}:${source.conversationId}`;
     case "resource_event":
       return `resource-event:${source.namespace}:${source.eventKey}`;
+    case "scheduled_task":
+    case "event_task":
+    case "plugin_dispatch":
+    case "agent_invocation":
+      return source.kind;
   }
 }
 

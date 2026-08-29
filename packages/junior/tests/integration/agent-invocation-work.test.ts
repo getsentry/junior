@@ -49,7 +49,6 @@ const invocationInput = {
   input: "Summarize the durable task.",
   parentConversationId,
   reasoningLevel: "medium" as const,
-  source: createLocalSource(parentConversationId),
 };
 const slackParentConversationId = "slack:C123:1712345.0001";
 const slackDestination = {
@@ -67,7 +66,6 @@ const slackInvocationInput = {
   ...invocationInput,
   destination: slackDestination,
   parentConversationId: slackParentConversationId,
-  source: slackSource,
 };
 
 async function prepareParentConversation() {
@@ -263,7 +261,6 @@ describe("agent invocation conversation work", () => {
         input: "Inspect the failing checks.",
         parentConversationId,
         reasoningLevel: "high",
-        source: createLocalSource(parentConversationId),
       });
       expect(queue.sentRecords()).toHaveLength(1);
       await expect(
@@ -315,7 +312,7 @@ describe("agent invocation conversation work", () => {
       expect(child).not.toHaveProperty("sessionSource");
       expect(child).not.toHaveProperty("visibility");
       let observedVisibility: ReturnType<typeof getCurrentConversationPrivacy>;
-      const agentRunner = createModelAgentRunner(
+      const modelStream = vi.fn(
         createModelStream([
           {
             type: "text",
@@ -326,6 +323,7 @@ describe("agent invocation conversation work", () => {
           },
         ]),
       );
+      const agentRunner = createModelAgentRunner(modelStream);
       const run = vi.spyOn(agentRunner, "run");
       const fallbackWorker = vi.fn(async () => ({
         status: "completed" as const,
@@ -422,11 +420,17 @@ describe("agent invocation conversation work", () => {
           channelId: "C123",
           threadTs: "1712345.0001",
         },
-        source: slackInvocationInput.source,
+        source: { kind: "agent_invocation" },
         surface: "internal",
         runId: created.invocationId,
       });
       expect(run.mock.calls[0]?.[0].delivery).toBeUndefined();
+      expect(modelStream.mock.calls[0]?.[1].systemPrompt).toContain(
+        "You are a helper assistant.",
+      );
+      expect(modelStream.mock.calls[0]?.[1].systemPrompt).not.toContain(
+        "Slack-based",
+      );
       expect(observedVisibility).toBe("public");
       expect(fallbackWorker).not.toHaveBeenCalled();
     } finally {
@@ -644,7 +648,7 @@ describe("agent invocation conversation work", () => {
         ] as PiMessage[],
         turnId: getAgentInvocationTurnId(created.invocationId),
         sliceId: 1,
-        source: invocationInput.source,
+        source: { kind: "agent_invocation" },
         state: "completed",
         surface: "internal",
       });

@@ -121,11 +121,35 @@ export const resourceEventSourceSchema = z
   })
   .strict();
 
+/** Runtime-owned Scheduled task input Source. */
+export const scheduledTaskSourceSchema = z
+  .object({ kind: z.literal("scheduled_task") })
+  .strict();
+
+/** Runtime-owned Event task input Source. */
+export const eventTaskSourceSchema = z
+  .object({ kind: z.literal("event_task") })
+  .strict();
+
+/** Runtime-owned Plugin dispatch input Source. */
+export const pluginDispatchSourceSchema = z
+  .object({ kind: z.literal("plugin_dispatch") })
+  .strict();
+
+/** Runtime-owned Agent invocation input Source. */
+export const agentInvocationSourceSchema = z
+  .object({ kind: z.literal("agent_invocation") })
+  .strict();
+
 const currentSourceSchema = z.discriminatedUnion("kind", [
   slackSourceSchema,
   localSourceSchema,
   webSourceSchema,
   resourceEventSourceSchema,
+  scheduledTaskSourceSchema,
+  eventTaskSourceSchema,
+  pluginDispatchSourceSchema,
+  agentInvocationSourceSchema,
 ]);
 
 function normalizeStoredSource(value: unknown): unknown {
@@ -320,6 +344,5 @@ export const dispatchOptionsSchema = z
     input: nonBlankStringSchema.pipe(z.string().max(32_000)),
     metadata: dispatchMetadataSchema.optional(),
     replyAttribution: replyAttributionSchema.optional(),
-    source: sourceSchema,
   })
   .strict();

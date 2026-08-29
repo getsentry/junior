@@ -89,11 +89,7 @@ export function createSlackThreadReadTool(context: SlackToolContext) {
       readOnlyHint: true,
     },
     inputSchema: z.object({
-      url: z
-        .string()
-        .min(1)
-        .describe("Slack message archive URL.")
-        .optional(),
+      url: z.string().min(1).describe("Slack message archive URL.").optional(),
       channel_id: slackChannelRefParam.optional(),
       ts: slackTimestampParam(
         "Slack message timestamp. May be the thread root or any message in the thread.",
@@ -148,7 +144,7 @@ export function createSlackThreadReadTool(context: SlackToolContext) {
       const access = await checkSlackChannelReadAccess({
         currentChannelIds: [
           context.destinationChannelId,
-          context.sourceChannelId,
+          context.locationChannelId,
         ],
         targetChannelId: channelId,
         teamId: context.teamId,

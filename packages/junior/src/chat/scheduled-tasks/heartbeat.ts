@@ -1,8 +1,6 @@
 import {
-  createSlackSource,
   type Dispatch,
   type ReplyAttribution,
-  type Source,
 } from "@sentry/junior-plugin-api";
 import {
   dispatchScheduledTask,
@@ -96,14 +94,6 @@ function replyAttribution(task: ScheduledTask): ReplyAttribution {
         label: "Scheduled task",
         detail: `Every ${recurrence.interval} ${frequency.unit}s`,
       };
-}
-
-function dispatchSource(task: ScheduledTask): Source {
-  return createSlackSource({
-    teamId: task.destination.teamId,
-    channelId: task.destination.channelId,
-    visibility: task.conversationAccess.visibility,
-  });
 }
 
 function shouldSkipRun(
@@ -430,7 +420,6 @@ export async function runScheduledTaskHeartbeat(args: {
           input: buildDispatchInput(task),
           metadata,
           replyAttribution: replyAttribution(task),
-          source: dispatchSource(task),
         },
       });
     } catch (error) {

@@ -98,4 +98,15 @@ describe("plugin source helpers", () => {
       }).success,
     ).toBe(false);
   });
+
+  it("accepts Scheduled task, event task, Plugin dispatch, and Agent invocation Sources", () => {
+    for (const kind of [
+      "scheduled_task",
+      "event_task",
+      "plugin_dispatch",
+      "agent_invocation",
+    ] as const) {
+      expect(sourceSchema.parse({ kind })).toEqual({ kind });
+    }
+  });
 });

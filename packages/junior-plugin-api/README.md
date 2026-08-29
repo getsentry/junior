@@ -42,9 +42,10 @@ reports, and other typed hook surfaces exported by this package.
 
 - Hook context carries the active source, actor, conversation, plugin metadata,
   database, logging, and only the host capabilities required by that hook.
-- Source uses `kind` to state what produced the input, including input such as
-  a Resource event that has no provider platform. Actor and Destination keep
-  `platform` for their provider scope.
+- Source uses `kind` to state what produced the input. Resource events,
+  scheduled tasks, event tasks, Plugin dispatches, and Agent invocations have
+  no provider platform. Actor and Destination keep `platform` for their
+  provider scope.
 - Prompt hooks return bounded structured prompt messages rather than mutate the
   core prompt.
 - `formatMarkdown` is a pure text rewrite into ordinary Markdown before delivery.

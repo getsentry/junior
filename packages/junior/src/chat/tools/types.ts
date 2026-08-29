@@ -1,15 +1,20 @@
 import type { FileUpload } from "chat";
 import type {
+  AgentInvocationSource,
+  EventTaskSource,
   WebSource,
   ResourceEventSource,
   Destination,
   Identity,
+  Location,
   LocalDestination,
   LocalSource,
+  PluginDispatchSource,
   PluginEgress,
   SlackDestination,
   SlackSource,
   Source,
+  ScheduledTaskSource,
   SystemActor,
   User,
 } from "@sentry/junior-plugin-api";
@@ -25,6 +30,7 @@ import type { GeneratedArtifactFileRef } from "@/chat/tools/sandbox/file-uploads
 import type { SpawnAgent } from "@/chat/agent/types";
 import type { AttachmentStorage } from "@/chat/attachments/storage";
 import type { Workspace } from "@/chat/workspaces/types";
+import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 
 interface HandoffControl {
   /** Non-empty catalog of configured targets. */
@@ -87,7 +93,13 @@ interface BaseToolRuntimeContext {
    */
   conversationId: string;
   /** Location associated with this Conversation. */
+  location?: Location;
+  // TODO(dcramer): Remove locationId after memory and plugin contexts read
+  // Location directly.
+  /** Legacy Location identity used by memory and plugin contexts. */
   locationId?: string;
+  /** Stored Conversation visibility used by tools. */
+  conversationPrivacy?: ConversationPrivacy;
 
   /** Runtime-owned default outbound destination for this invocation. */
   destination: Destination;
@@ -124,7 +136,6 @@ interface LocalToolRuntimeContext extends BaseToolRuntimeContext {
   destination: LocalDestination;
   actor?: LocalActor;
   source: LocalSource;
-  slack?: never;
   slackActionToken?: never;
 }
 
@@ -132,23 +143,24 @@ interface WebToolRuntimeContext extends BaseToolRuntimeContext {
   destination: Destination;
   actor?: WebActor;
   source: WebSource;
-  slack?: never;
-  slackActionToken?: never;
-}
-
-interface ResourceEventToolRuntimeContext extends BaseToolRuntimeContext {
-  destination: Destination;
-  actor?: SystemActor;
-  source: ResourceEventSource;
-  slack?: never;
   slackActionToken?: never;
 }
 
 export type ToolRuntimeContext =
   | LocalToolRuntimeContext
-  | ResourceEventToolRuntimeContext
   | SlackToolRuntimeContext
-  | WebToolRuntimeContext;
+  | WebToolRuntimeContext
+  | (BaseToolRuntimeContext & {
+      destination: Destination;
+      actor?: SystemActor;
+      source:
+        | AgentInvocationSource
+        | EventTaskSource
+        | PluginDispatchSource
+        | ResourceEventSource
+        | ScheduledTaskSource;
+      slackActionToken?: never;
+    });
 
 export interface ToolState {
   getOperationResult: <T>(operationKey: string) => T | undefined;
