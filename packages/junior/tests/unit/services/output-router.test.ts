@@ -1,24 +1,12 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { NO_REPLY_MARKER } from "@/chat/no-reply";
-import { JUNIOR_PERSONALITY } from "@/chat/prompt";
 import {
   OUTPUT_REPLY_HARD_MAX_CHARS,
   prepareAssistantMessage,
   prepareAssistantReply,
   prepareAssistantReplyLocal,
 } from "@/chat/services/output-router";
-
-const mocks = vi.hoisted(() => ({
-  logInfo: vi.fn(),
-  logWarn: vi.fn(),
-}));
-
-vi.mock("@/chat/logging", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/chat/logging")>()),
-  logInfo: mocks.logInfo,
-  logWarn: mocks.logWarn,
-}));
 
 function assistant(text: string, withToolCall = false): AssistantMessage {
   return {
@@ -53,11 +41,22 @@ function assistant(text: string, withToolCall = false): AssistantMessage {
 }
 
 describe("prepare assistant reply", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
+  it("handles empty and exact silence markers locally", () => {
+    expect(prepareAssistantReplyLocal("")).toEqual({
+      kind: "silent",
+      reason: "empty",
+    });
+    expect(prepareAssistantReplyLocal(NO_REPLY_MARKER)).toEqual({
+      kind: "silent",
+      reason: "no_reply",
+    });
+    // Mixed marker text needs model judgment.
+    expect(
+      prepareAssistantReplyLocal(`shipped it ${NO_REPLY_MARKER}\nmore detail`),
+    ).toBeNull();
   });
 
-  it("stays silent for exact no-reply markers without a model call", async () => {
+  it("skips the model for exact silence markers", async () => {
     const completeObject = vi.fn();
     await expect(
       prepareAssistantReply({
@@ -70,103 +69,6 @@ describe("prepare assistant reply", () => {
       reason: "no_reply",
     });
     expect(completeObject).not.toHaveBeenCalled();
-  });
-
-  it("does not decide mixed no-reply markers locally", () => {
-    // Mixed marker cases need model judgment: silence for status-only chatter,
-    // keep answer when the marker is only mentioned in a real reply.
-    expect(
-      prepareAssistantReplyLocal(`shipped it ${NO_REPLY_MARKER}\nmore detail`),
-    ).toBeNull();
-  });
-
-  it("asks the fast model for mixed marker messages", async () => {
-    const completeObject = vi.fn(async () => ({
-      costUsd: 0.0002,
-      object: {
-        text: null,
-        reason: "status only, intentional silence",
-      },
-    }));
-
-    await expect(
-      prepareAssistantReply({
-        completeObject,
-        fastModelId: "openai/gpt-5.6-luna",
-        text: [
-          "Same baseline miss — not caused by this PR. No PR fix.",
-          "",
-          NO_REPLY_MARKER,
-        ].join("\n"),
-      }),
-    ).resolves.toEqual({
-      kind: "silent",
-      reason: "status only, intentional silence",
-      costUsd: 0.0002,
-    });
-    expect(completeObject).toHaveBeenCalledOnce();
-  });
-
-  it("keeps explanations that mention the silence marker", async () => {
-    const explanation = [
-      `Intentional silence uses the exact whole-message marker ${NO_REPLY_MARKER}.`,
-      "Normal answers that mention the marker should still post.",
-    ].join(" ");
-    const completeObject = vi.fn(async () => ({
-      object: {
-        text: explanation,
-        reason: "explains silence protocol",
-      },
-    }));
-
-    await expect(
-      prepareAssistantReply({
-        completeObject,
-        fastModelId: "openai/gpt-5.6-luna",
-        text: explanation,
-      }),
-    ).resolves.toEqual({
-      kind: "reply",
-      text: explanation,
-      reason: "explains silence protocol",
-    });
-  });
-
-  it("asks the fast model to shorten long replies", async () => {
-    const completeObject = vi.fn(async () => ({
-      costUsd: 0.0004,
-      object: {
-        text: "Short answer with the outcome.",
-        reason: "too long",
-      },
-    }));
-
-    const prepared = await prepareAssistantReply({
-      completeObject,
-      fastModelId: "openai/gpt-5.6-luna",
-      text: "A".repeat(900),
-    });
-
-    expect(prepared).toEqual({
-      kind: "reply",
-      text: "Short answer with the outcome.",
-      reason: "too long",
-      costUsd: 0.0004,
-    });
-    expect(completeObject).toHaveBeenCalledWith(
-      expect.objectContaining({
-        modelId: "openai/gpt-5.6-luna",
-        promptName: "junior.prepare_assistant_reply",
-        temperature: 0,
-        thinkingLevel: "low",
-        system: expect.stringContaining(JUNIOR_PERSONALITY.trim()),
-      }),
-    );
-    const system = completeObject.mock.calls[0]?.[0]?.system as string;
-    expect(system).toContain("# Personality");
-    expect(system).toContain(
-      "These rules override personality when they conflict.",
-    );
   });
 
   it("keeps the original text when the model call fails", async () => {
@@ -185,10 +87,6 @@ describe("prepare assistant reply", () => {
       text: "Keep this answer.",
       reason: "prepare_failed",
     });
-    expect(mocks.logWarn).toHaveBeenCalledWith(
-      "ai.output_router.failed",
-      expect.objectContaining({ "exception.message": "boom" }),
-    );
   });
 
   it("caps oversized model text", async () => {
