@@ -254,14 +254,15 @@ async function resolveSlackResumeUserActor(args: {
  * Resolve the Actor and credentials for a resumed Turn.
  *
  * Sources, in order:
- * 1. Actor and credentials supplied by dispatch or OAuth.
- * 2. Resource event markers.
- * 3. Slack author and team.
+ * 1. Actor saved on the Turn.
+ * 2. Actor and credentials supplied by dispatch or OAuth.
+ * 3. Legacy Resource event or Slack Message data.
  *
- * Do not read the Actor from the Turn checkpoint. Use supplied credentials when
- * present. Otherwise, derive them from the Actor.
+ * TODO(dcramer): Remove the routing and Message Actor fallbacks after no
+ * deployed Turn cursor can omit Actor.
  */
 async function resolveResumeExecutionIdentity(args: {
+  actor?: Actor;
   conversationId: string;
   routingContext?: PausedTurnOptions["routingContext"];
   teamId: string;
@@ -278,6 +279,7 @@ async function resolveResumeExecutionIdentity(args: {
   // credential subject.
   if (routing?.credentialContext) {
     const actor =
+      args.actor ??
       routing.dispatch?.actor ??
       routing.actor ??
       (!("type" in routing.credentialContext.actor)
@@ -288,7 +290,7 @@ async function resolveResumeExecutionIdentity(args: {
       : undefined;
   }
 
-  let actor: Actor | undefined = routing?.actor;
+  let actor: Actor | undefined = args.actor ?? routing?.actor;
   if (!actor && isResourceEventConversationMessage(args.userMessage)) {
     actor = RESOURCE_EVENT_SYSTEM_ACTOR;
   }
@@ -450,6 +452,7 @@ async function runPausedTurnInContext(
         }
 
         const identity = await resolveResumeExecutionIdentity({
+          actor: activeTurn.actor,
           conversationId: payload.conversationId,
           routingContext: options.routingContext,
           teamId: destination.teamId,

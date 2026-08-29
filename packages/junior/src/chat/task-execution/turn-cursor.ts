@@ -8,6 +8,7 @@
  * `junior_conversation_events`.
  */
 import {
+  actorSchema,
   sourceSchema,
   type Destination,
   type Source,
@@ -107,6 +108,13 @@ interface ConversationMessageProjection {
 }
 
 export interface TurnRecord {
+  /**
+   * Actor that started this Turn; absent only on stored legacy cursors.
+   *
+   * TODO(dcramer): Make this field required after no deployed Turn cursor can
+   * omit Actor.
+   */
+  actor?: Actor;
   channelName?: string;
   schemaVersion: 2;
   version: number;
@@ -232,6 +240,8 @@ const storedTurnSummarySchema = z
 /** Full resume cursor stored for one turn. */
 const storedTurnRecordSchema = z
   .object({
+    // TODO(dcramer): Require Actor after no deployed Turn cursor can omit it.
+    actor: actorSchema.optional(),
     schemaVersion: z.literal(TURN_CURSOR_SCHEMA_VERSION),
     version: z.number().int().nonnegative(),
     conversationId: z.string().min(1),
@@ -426,6 +436,7 @@ function materializeTurnRecord(
       ? restoreRuntimeContext(piProjection, stored.runtimeContext)
       : piProjection;
   return {
+    ...definedProps({ actor: stored.actor }),
     schemaVersion: stored.schemaVersion,
     version: stored.version,
     conversationId: stored.conversationId,
@@ -594,6 +605,7 @@ export async function getTurnRecordForResume(
 
 /** Build the storage record that advances optimistic resume versioning. */
 function buildStoredRecord(args: {
+  actor?: Actor;
   conversationId: string;
   dispatchId?: string;
   dispatchOutcome?: AgentDispatchOutcome;
@@ -629,6 +641,7 @@ function buildStoredRecord(args: {
     updatedAtMs: nowMs,
     committedSeq: args.committedSeq,
     ...definedProps({
+      actor: args.actor,
       dispatchId: args.dispatchId,
       dispatchOutcome: args.dispatchOutcome,
       errorMessage: args.errorMessage,
@@ -735,6 +748,7 @@ async function updateTurnState(args: {
   }
 
   return await setStoredRecord({
+    actor: args.existing.actor,
     fence: args.fence,
     piMessages: args.existing.piMessages,
     piMessageProvenance: args.existing.piMessageProvenance,
@@ -750,6 +764,7 @@ async function updateTurnState(args: {
       turnStartMessageIndex: args.existing.turnStartMessageIndex,
     }),
     record: buildStoredRecord({
+      actor: args.existing.actor,
       conversationId: args.existing.conversationId,
       turnId: args.existing.turnId,
       sliceId: args.existing.sliceId,
@@ -845,8 +860,8 @@ async function upsertTurnRecordLocked(
   // Attribute new user input to the turn's actor as an instruction; the event
   // store reuses committed provenance for the unchanged prefix and defaults the
   // rest to context. Platform-neutral so local identities are preserved too.
-  // Execution actor is not stored in Redis — callers pass it live for SQL
-  // dual-write and fresh instruction attribution only.
+  // The Turn keeps the starting Actor. New instruction provenance can still
+  // record other Actors that steer the same Turn.
   const instructionActor = args.actor;
   const commit = await commitMessages({
     conversationId: args.conversationId,
@@ -895,7 +910,7 @@ async function upsertTurnRecordLocked(
       : commit.messageSeqs.filter((seq) => seq <= turnStartSeq).length);
 
   return await setStoredRecord({
-    actor: args.actor,
+    actor: existingRecord?.actor ?? args.actor,
     fence,
     conversationStore: args.conversationStore,
     destination: args.destination,
@@ -917,6 +932,7 @@ async function upsertTurnRecordLocked(
     ...definedProps({ indexTtlMs: args.ttlMs }),
     turnStartMessageIndex,
     record: buildStoredRecord({
+      actor: existingRecord?.actor ?? args.actor,
       conversationId: args.conversationId,
       turnId: args.turnId,
       sliceId: args.sliceId,

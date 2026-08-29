@@ -12,9 +12,9 @@ accept the result.
 checkpoint and is private to this module.
 
 `turn-wake.ts` wakes paused turns. `paused-turn.ts` runs them under the
-conversation lease. SQL conversation events store history. The Redis turn
-cursor stores only the data that is needed to resume a turn, including the
-Source that started it.
+conversation lease. SQL conversation events store history. The Redis Turn
+cursor stores only the data that is needed to resume a Turn, including the
+Source and Actor that started it.
 
 The reliability rules are small:
 
@@ -43,6 +43,8 @@ Runtime and Redis status is `paused`. SQL free-text / enum rows may still say
   `interrupt` or `defer` mailbox delivery, and the legacy
   `publishExternally` field. The worker keeps different publish choices in
   separate Turns and saves the selected choice as the Turn's `publish` fact.
+- A Turn cursor saves the Source and Actor selected from the input that started
+  the Turn. Steering input keeps its own Actor in message provenance.
 - A queue message identifies the conversation to wake. The stored work controls
   delivery. A provider conversation stores its destination. Child work without
   a destination gets its authority from its stored agent invocation.

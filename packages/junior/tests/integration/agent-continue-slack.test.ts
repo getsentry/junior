@@ -328,7 +328,7 @@ describe("paused turn Slack integration", () => {
     ).resolves.toBeUndefined();
   });
 
-  it("resumes and delivers when the continuation record is missing stored actor profile data", async () => {
+  it("restores the Turn Actor when the saved Message has no profile data", async () => {
     const conversationId = "slack:C123:1712345.0008";
     const sessionId = "turn_msg_8";
     const sessionRecord = await turnSessionStoreModule.upsertTurnRecord({
@@ -349,9 +349,12 @@ describe("paused turn Slack integration", () => {
       resumedFromSliceId: 1,
       errorMessage: "Agent turn timed out",
       actor: {
+        email: "alice@example.com",
+        fullName: "Alice Example",
         platform: "slack",
         teamId: SLACK_DESTINATION.teamId,
         userId: "U123",
+        userName: "alice",
       },
     });
 
@@ -399,9 +402,12 @@ describe("paused turn Slack integration", () => {
     expect(agentRuns[0]).toMatchObject({
       instruction: { text: "resume this request" },
       actor: {
+        email: "alice@example.com",
+        fullName: "Alice Example",
         platform: "slack",
         teamId: "T123",
         userId: "U123",
+        userName: "alice",
       },
     });
   });

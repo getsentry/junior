@@ -347,10 +347,11 @@ async function loadPluginRun(
   const routing = await resolveTurnSessionRouting({
     conversationId: params.conversationId,
   });
-  // Singular run.actor comes from committed instruction provenance, or the
-  // dispatch record for system-only runs. Optional only for legacy actor-less
-  // records (plugins must fail closed on authority-sensitive work).
+  // The Turn Actor owns the run.
+  // TODO(dcramer): Remove the provenance and dispatch Actor fallbacks after no
+  // deployed Turn cursor can omit Actor.
   const runActor =
+    record.actor ??
     record.actors[0] ??
     (record.dispatchId
       ? (await getDispatchRecord(record.dispatchId))?.actor

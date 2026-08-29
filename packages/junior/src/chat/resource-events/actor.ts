@@ -2,8 +2,8 @@
  * System Actor for resource-event Turns.
  *
  * Resource-event mailbox Messages are not from a person. They use this Actor
- * for credentials and attribution. Mailbox input stores the author ID. Resume
- * rebuilds the same Actor from the saved Turn input.
+ * for credentials and attribution. The Turn saves this Actor for resume.
+ * Mailbox input keeps the author ID for deployed cursors without Actor.
  */
 import type { Actor } from "@/chat/actor";
 
@@ -35,8 +35,8 @@ export const RESOURCE_EVENT_SYSTEM_ACTOR = {
 /**
  * Whether a saved Message started a resource-event Turn.
  *
- * TODO(dcramer): Delete this marker check after resumes read Source.kind from
- * the Turn checkpoint. `eventType` only supports saved synthetic Slack input.
+ * TODO(dcramer): Delete this marker check after deployed Turn cursors all store
+ * Source and Actor. `eventType` only supports saved synthetic Slack input.
  */
 export function isResourceEventConversationMessage(message: {
   author?: { userId?: string };

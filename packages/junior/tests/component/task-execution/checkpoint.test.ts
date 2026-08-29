@@ -21,6 +21,11 @@ const SLACK_SOURCE = createSlackSource({
   threadTs: "1700000000.001",
   visibility: "private",
 }) satisfies Source;
+const SLACK_ACTOR = {
+  platform: "slack",
+  teamId: "T123",
+  userId: "U123",
+} as const;
 
 function userMessage(text: string): PiMessage {
   return {
@@ -287,7 +292,8 @@ describe("turn checkpoint", () => {
       errorMessage: "plugin auth pause",
       piMessages: [priorMessages[0]],
     });
-    // Source stays on the Turn. Destination and Actor remain live write facts.
+    // TODO(dcramer): Remove this legacy fixture after no deployed Turn cursor
+    // can omit Actor.
     expect(sessionRecord).not.toHaveProperty("destination");
     expect(sessionRecord).not.toHaveProperty("actor");
   });
@@ -299,15 +305,10 @@ describe("turn checkpoint", () => {
     const { getConversationStore } = await import("@/chat/db");
     const stateAdapter = getStateAdapter();
     const set = vi.spyOn(stateAdapter, "set");
-    const actor = {
-      platform: "slack",
-      teamId: "T123",
-      userId: "U123",
-    } as const;
     const usage = { inputTokens: 7, outputTokens: 3 };
 
     await upsertTurnRecord({
-      actor,
+      actor: SLACK_ACTOR,
       channelName: "runtime-team",
       conversationId: "slack:C123:ops-bag",
       cumulativeDurationMs: 1_500,
@@ -332,6 +333,7 @@ describe("turn checkpoint", () => {
     ]) {
       expect(redisRecord).not.toHaveProperty(field);
     }
+    expect(redisRecord).toMatchObject({ actor: SLACK_ACTOR });
     await expect(
       getConversationStore().get({ conversationId: "slack:C123:ops-bag" }),
     ).resolves.toMatchObject({
@@ -495,7 +497,7 @@ describe("turn checkpoint", () => {
     }
   });
 
-  it("stores Source on the Turn while keeping Destination and Actor out of Redis", async () => {
+  it("stores Source and Actor on the Turn while keeping Destination out of Redis", async () => {
     const { getStateAdapter } = await import("@/chat/state/adapter");
     const { getTurnRecord, listTurnSummaries, upsertTurnRecord } =
       await import("@/chat/task-execution/turn-cursor");
@@ -516,6 +518,7 @@ describe("turn checkpoint", () => {
     };
 
     await upsertTurnRecord({
+      actor: SLACK_ACTOR,
       conversationId,
       conversationStore,
       destination: SLACK_DESTINATION,
@@ -540,8 +543,10 @@ describe("turn checkpoint", () => {
       }),
     );
     expect(stored).not.toHaveProperty("destination");
-    expect(stored).toMatchObject({ source: SLACK_SOURCE });
-    expect(stored).not.toHaveProperty("actor");
+    expect(stored).toMatchObject({
+      actor: SLACK_ACTOR,
+      source: SLACK_SOURCE,
+    });
 
     const summaries = await listTurnSummaries(conversationId);
     expect(summaries).toHaveLength(1);
@@ -549,7 +554,7 @@ describe("turn checkpoint", () => {
     expect(summaries[0]).not.toHaveProperty("source");
     expect(summaries[0]).not.toHaveProperty("actor");
 
-    // Materialized reads restore Source without restoring Destination or Actor.
+    // Materialized reads restore Source and Actor without restoring Destination.
     const record = await getTurnRecord(conversationId, turnId);
     expect(record).toMatchObject({
       conversationId,
@@ -557,8 +562,10 @@ describe("turn checkpoint", () => {
       state: "running",
     });
     expect(record).not.toHaveProperty("destination");
-    expect(record).toMatchObject({ source: SLACK_SOURCE });
-    expect(record).not.toHaveProperty("actor");
+    expect(record).toMatchObject({
+      actor: SLACK_ACTOR,
+      source: SLACK_SOURCE,
+    });
 
     expect(conversationStore.recordActivity).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -633,8 +640,10 @@ describe("turn checkpoint", () => {
     const record = await getTurnRecord(conversationId, turnId);
     expect(record).toMatchObject({ schemaVersion: 2, state: "paused" });
     expect(record).not.toHaveProperty("destination");
-    expect(record).toMatchObject({ source: SLACK_SOURCE });
-    expect(record).not.toHaveProperty("actor");
+    expect(record).toMatchObject({
+      actor: SLACK_ACTOR,
+      source: SLACK_SOURCE,
+    });
     expect(record).not.toHaveProperty("deprecatedFlag");
   });
 
@@ -830,17 +839,17 @@ describe("turn checkpoint", () => {
 
     const record = await getTurnRecord(conversationId, sessionId);
     expect(record).toMatchObject({
+      actor,
       piMessages: [userMessage],
       state: "paused",
     });
-    expect(record).not.toHaveProperty("actor");
 
     const stateAdapter = getStateAdapter();
     await stateAdapter.connect();
     const stored = await stateAdapter.get(
       turnCursorKey(conversationId, sessionId),
     );
-    expect(stored).not.toHaveProperty("actor");
+    expect(stored).toMatchObject({ actor });
 
     await expect(
       getConversationStore().get({ conversationId }),
@@ -900,7 +909,7 @@ describe("turn checkpoint", () => {
       turnStartMessageIndex: 1,
       piMessages: [previousQuestion, currentQuestion],
     });
-    expect(scoped).not.toHaveProperty("actor");
+    expect(scoped).toMatchObject({ actor: SLACK_ACTOR });
     const projection = await loadConversationProjection({
       conversationId: "conversation-turn-scope",
     });
@@ -1025,7 +1034,7 @@ describe("turn checkpoint", () => {
       "conversation-multi-actor",
       "turn-multi-actor",
     );
-    expect(record).not.toHaveProperty("actor");
+    expect(record).toMatchObject({ actor: alice });
     expect(record?.piMessageProvenance).toEqual([
       { authority: "instruction", actor: alice },
       { authority: "instruction", actor: bob },

@@ -351,6 +351,7 @@ async function resumeAuthorizedMcpTurn(args: {
       let actor: Actor;
       try {
         actor = createSlackResumeActor({
+          actor: lockedSessionRecord.actor,
           teamId: destination.teamId,
           userId: authSession.userId,
         });

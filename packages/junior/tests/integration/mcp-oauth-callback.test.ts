@@ -504,9 +504,12 @@ describe("mcp oauth callback integration", () => {
           context: expect.stringContaining("You need the budget by Friday."),
         }),
         actor: {
+          email: "stored@example.com",
+          fullName: "Stored User",
           platform: "slack",
           teamId: "T123",
           userId: "U123",
+          userName: "stored-user",
         },
         destination: SLACK_DESTINATION,
         location: expect.objectContaining({
