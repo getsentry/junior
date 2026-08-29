@@ -15,9 +15,9 @@ import {
   createFauxCore,
   fauxAssistantMessage,
 } from "@earendil-works/pi-ai/providers/faux";
-import { createSlackRuntime } from "@/chat/app/factory";
+import { createConversationWork } from "@/chat/app/conversation-work";
 import { botConfig } from "@/chat/config";
-import { getConversationEventStore, getDb } from "@/chat/db";
+import { getConversationEventStore, getConversationStore, getDb } from "@/chat/db";
 import type { AssistantLifecycleEvent } from "@/chat/providers/slack/runtime";
 import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
 import { createUserTokenStore } from "@/chat/capabilities/factory";
@@ -40,10 +40,7 @@ import {
   defineJuniorPlugins,
   pluginCatalogConfigFromPluginSet,
 } from "@/plugins";
-import {
-  processPluginTask,
-  scheduleSessionCompletedPluginTasks,
-} from "@/chat/plugins/task-runner";
+import { processPluginTask } from "@/chat/plugins/task-runner";
 import type { PluginTaskQueueMessage } from "@/chat/plugins/task-queue";
 import { buildSlackInboundMessage } from "@/chat/task-execution/slack-work";
 import { appendAndEnqueueInboundMessage } from "@/chat/task-execution/store";
@@ -55,11 +52,6 @@ import type { PiMessage } from "@/chat/pi/messages";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import { addAgentTurnUsage, type AgentTurnUsage } from "@/chat/usage";
-import { runNextPausedTurn } from "@/chat/task-execution/paused-turn";
-import {
-  createPausedTurns,
-  wakePausedTurn,
-} from "@/chat/task-execution/turn-wake";
 import { ACTIVE_TURN_COMPACTION_SUMMARY_PREFIX } from "@/chat/services/context-compaction-marker";
 import { TURN_CONTEXT_TAG } from "@/chat/turn-context-tag";
 import { listIncompleteScheduledRuns } from "@/chat/scheduled-tasks/runs";
@@ -73,15 +65,7 @@ import { memoryPlugin } from "@sentry/junior-memory";
 import { sentryPlugin } from "@sentry/junior-sentry";
 import { runPluginHeartbeats } from "@/chat/agent-dispatch/heartbeat";
 import { runScheduledTaskHeartbeat } from "@/chat/scheduled-tasks/heartbeat";
-import {
-  buildDispatchRoutingContext,
-  createAgentDispatchConversationWorker,
-  resolveAgentDispatchId,
-} from "@/chat/agent-dispatch/work";
-import {
-  getDispatchInputMessageId,
-  getDispatchRecord,
-} from "@/chat/agent-dispatch/store";
+import { getDispatchRecord } from "@/chat/agent-dispatch/store";
 import { ingestResourceEvent } from "@/chat/resource-events/ingest";
 import { createResourceEventSubscription } from "@/chat/resource-events/store";
 import { ingestEventTasks } from "@/chat/event-tasks/ingest";
@@ -130,7 +114,6 @@ import {
   TEST_USER_ID,
 } from "@junior-tests/fixtures/slack/factories/ids";
 import { createSlackDestination } from "@/chat/destination";
-import { createSlackConversationWorker } from "@/chat/task-execution/slack-work";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
 import { normalizeGitHubResourceEvents } from "@sentry/junior-github/testing";
 import { createMemoryAttachmentStorage } from "./fixtures/attachment-storage";
@@ -2046,11 +2029,10 @@ async function processEvents(args: {
   agentRunner: AgentRunner;
   getSlackAdapter: () => FakeSlackAdapter;
   conversationWorkQueue: ConversationWorkQueueTestAdapter;
-  slackRuntime: ReturnType<typeof createSlackRuntime>;
+  conversationWork: ReturnType<typeof createConversationWork>;
   getThreadRecord: (
     fixture: EvalEventThreadFixture,
   ) => Promise<EvalThreadRecord>;
-  findEvalThread: (threadId: string) => TestThread | undefined;
   observations: RuntimeObservations;
   readyQueueDeliveries: QueueDelivery[];
   steeringDelivery: SteeringDelivery;
@@ -2061,12 +2043,12 @@ async function processEvents(args: {
     agentRunner,
     getSlackAdapter,
     conversationWorkQueue,
-    slackRuntime,
+    conversationWork,
     getThreadRecord,
-    findEvalThread,
     readyQueueDeliveries,
     steeringDelivery,
   } = args;
+  const slackRuntime = conversationWork.runtime;
 
   const consumedOauthStates = new Set<string>();
   const consumedMcpOauthStates = new Set<string>();
@@ -2112,77 +2094,7 @@ async function processEvents(args: {
     return true;
   };
 
-  // Deliver worker-claimed turns through the harness TestThread so replies
-  // are captured like direct deliveries; the worker's restored thread has no
-  // posting surface on the eval adapter.
-  const workerRuntime: typeof slackRuntime = {
-    ...slackRuntime,
-    async handleNewMention(thread, message, hooks) {
-      await slackRuntime.handleNewMention(
-        findEvalThread(thread.id) ?? thread,
-        message,
-        hooks,
-      );
-    },
-    async handleSubscribedMessage(thread, message, hooks) {
-      await slackRuntime.handleSubscribedMessage(
-        findEvalThread(thread.id) ?? thread,
-        message,
-        hooks,
-      );
-    },
-  };
-
   const drainQueuedConversationWork = async (): Promise<void> => {
-    const slackWorker = createSlackConversationWorker({
-      getSlackAdapter: () => getSlackAdapter() as unknown as SlackAdapter,
-      runNextPausedTurn: async (conversationId) =>
-        await runNextPausedTurn(conversationId, {
-          agentRunner,
-          wakePausedTurn: async (request) => {
-            await wakePausedTurn(request, {
-              queue: conversationWorkQueue,
-              state: env.stateAdapter,
-            });
-          },
-          scheduleSessionCompletedPluginTasks: async (params) => {
-            await scheduleSessionCompletedPluginTasks(params, {
-              send: async (message) => {
-                await processEvalPluginTask(message);
-              },
-            });
-          },
-        }),
-      runtime: workerRuntime,
-      state: env.stateAdapter,
-    });
-    const dispatchWorker = createAgentDispatchConversationWorker({
-      resumeTurn: async (dispatch, hooks) => {
-        await runNextPausedTurn(
-          `agent-dispatch:${dispatch.id}`,
-          {
-            agentRunner,
-            inputMessageIds: [getDispatchInputMessageId(dispatch.id)],
-            routingContext: buildDispatchRoutingContext(dispatch),
-            wakePausedTurn: async (request) => {
-              await wakePausedTurn(request, {
-                queue: conversationWorkQueue,
-                state: env.stateAdapter,
-              });
-            },
-            scheduleSessionCompletedPluginTasks: async (params) => {
-              await scheduleSessionCompletedPluginTasks(params, {
-                send: async (message) => {
-                  await processEvalPluginTask(message);
-                },
-              });
-            },
-          },
-          { shouldYield: hooks.shouldYield },
-        );
-      },
-      runTurn: workerRuntime.runDispatchTurn,
-    });
     let processed = 0;
     while (conversationWorkQueue.hasQueuedMessages()) {
       processed += 1;
@@ -2193,12 +2105,7 @@ async function processEvents(args: {
         conversationWorkQueue.takeMessage(),
         {
           queue: conversationWorkQueue,
-          run: async (context) => {
-            const dispatchId = await resolveAgentDispatchId(context);
-            return dispatchId
-              ? await dispatchWorker(context, dispatchId)
-              : await slackWorker(context);
-          },
+          run: conversationWork.run,
           state: env.stateAdapter,
         },
       );
@@ -2697,14 +2604,33 @@ export async function runEvalScenario(
       throw new Error("Eval agent runner was not configured.");
     }
 
-    const slackRuntime = createSlackRuntime({
-      getSlackAdapter: () => slackAdapter as any,
-      pausedTurns: createPausedTurns({
-        queue: conversationWorkQueue,
-        state: env.stateAdapter,
-      }),
+    // Compose the same Conversation work path as production. Wrap Delivery so
+    // worker-claimed turns post through harness TestThreads.
+    const conversationWork = createConversationWork({
+      agentRunner: evalAgentRunner,
+      conversationStore: getConversationStore(),
+      getSlackAdapter: () => slackAdapter as unknown as SlackAdapter,
+      queue: conversationWorkQueue,
       sendPluginTask: processEvalPluginTask,
       services,
+      state: env.stateAdapter,
+      wrapRuntime: (runtime) => ({
+        ...runtime,
+        async handleNewMention(thread, message, hooks) {
+          await runtime.handleNewMention(
+            threadRecordsById.get(thread.id)?.thread ?? thread,
+            message,
+            hooks,
+          );
+        },
+        async handleSubscribedMessage(thread, message, hooks) {
+          await runtime.handleSubscribedMessage(
+            threadRecordsById.get(thread.id)?.thread ?? thread,
+            message,
+            hooks,
+          );
+        },
+      }),
     });
 
     await processEvents({
@@ -2713,9 +2639,8 @@ export async function runEvalScenario(
       agentRunner: evalAgentRunner,
       getSlackAdapter: () => slackAdapter,
       conversationWorkQueue,
-      slackRuntime,
+      conversationWork,
       getThreadRecord,
-      findEvalThread: (threadId) => threadRecordsById.get(threadId)?.thread,
       observations,
       readyQueueDeliveries,
       steeringDelivery,
