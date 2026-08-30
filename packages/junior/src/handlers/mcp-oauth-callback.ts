@@ -14,6 +14,8 @@ import { hydrateConversationMessages } from "@/chat/conversations/messages";
 import {
   deleteMcpAuthSession,
   getMcpAuthSession,
+  getMcpStoredOAuthCredentials,
+  putMcpStoredOAuthCredentials,
   type McpAuthSessionState,
 } from "@/chat/mcp/auth-store";
 import { finalizeMcpAuthorization } from "@/chat/mcp/oauth";
@@ -572,6 +574,32 @@ export async function GET(
     return htmlResponse("missing_state");
   }
   if (error) {
+    // Provider denied or failed auth. Drop stale DCR client/discovery so the
+    // next attempt can re-run discovery instead of rebuilding the same dead link.
+    try {
+      const pendingSession = await getMcpAuthSession(state);
+      if (pendingSession && pendingSession.provider === provider) {
+        const credentials = await getMcpStoredOAuthCredentials(
+          pendingSession.userId,
+          provider,
+        );
+        if (credentials?.clientInformation || credentials?.discoveryState) {
+          const nextCredentials = credentials.tokens
+            ? { tokens: credentials.tokens }
+            : {};
+          await putMcpStoredOAuthCredentials(
+            pendingSession.userId,
+            provider,
+            nextCredentials,
+          );
+        }
+        await deleteMcpAuthSession(pendingSession.authSessionId);
+      }
+    } catch (cleanupError) {
+      logException(cleanupError, "mcp.oauth_callback.provider_error_cleanup.failed", {
+        "app.credential.provider": provider,
+      });
+    }
     return htmlResponse("provider_error");
   }
   if (!code) {
