@@ -223,7 +223,7 @@ describe("buildHomeView", () => {
   it("shows MCP provider Unlink when only DCR client/discovery state exists", async () => {
     vi.mocked(getMcpStoredOAuthCredentials).mockResolvedValue({
       clientInformation: { client_id: "stale-client" },
-      discoveryState: { authorization_server: "https://old.example.com" },
+      discoveryState: { authorizationServerUrl: "https://old.example.com" },
     });
 
     const store = createMockTokenStore({});

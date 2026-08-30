@@ -152,7 +152,7 @@ describe("mcp oauth callback handler", () => {
   it("clears stale DCR client and discovery state on provider error callbacks", async () => {
     getMcpStoredOAuthCredentialsMock.mockResolvedValue({
       clientInformation: { client_id: "stale-client" },
-      discoveryState: { authorization_server: "https://old.example.com" },
+      discoveryState: { authorizationServerUrl: "https://old.example.com" },
       tokens: {
         access_token: "keep-me",
         token_type: "Bearer",
