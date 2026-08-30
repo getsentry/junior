@@ -574,24 +574,28 @@ export async function GET(
     return htmlResponse("missing_state");
   }
   if (error) {
-    // Provider denied or failed auth. Drop stale DCR client/discovery so the
-    // next attempt can re-run discovery instead of rebuilding the same dead link.
+    // Provider denied or failed auth. Only the current attempt may drop DCR
+    // client/discovery; a superseded state must not wipe a live connection.
     try {
       const pendingSession = await getMcpAuthSession(state);
       if (pendingSession && pendingSession.provider === provider) {
-        const credentials = await getMcpStoredOAuthCredentials(
-          pendingSession.userId,
-          provider,
-        );
-        if (credentials?.clientInformation || credentials?.discoveryState) {
-          const nextCredentials = credentials.tokens
-            ? { tokens: credentials.tokens }
-            : {};
-          await putMcpStoredOAuthCredentials(
+        if (
+          await isCurrentMcpAuthorizationAttempt(pendingSession, provider)
+        ) {
+          const credentials = await getMcpStoredOAuthCredentials(
             pendingSession.userId,
             provider,
-            nextCredentials,
           );
+          if (credentials?.clientInformation || credentials?.discoveryState) {
+            const nextCredentials = credentials.tokens
+              ? { tokens: credentials.tokens }
+              : {};
+            await putMcpStoredOAuthCredentials(
+              pendingSession.userId,
+              provider,
+              nextCredentials,
+            );
+          }
         }
         await deleteMcpAuthSession(pendingSession.authSessionId);
       }

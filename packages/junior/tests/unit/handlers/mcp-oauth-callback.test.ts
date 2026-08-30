@@ -180,6 +180,46 @@ describe("mcp oauth callback handler", () => {
     expect(waitUntil.pendingCount()).toBe(0);
   });
 
+  it("does not clear durable MCP credentials for a superseded provider-error session", async () => {
+    getMcpStoredOAuthCredentialsMock.mockResolvedValue({
+      clientInformation: { client_id: "live-client" },
+      discoveryState: { authorizationServerUrl: "https://live.example.com" },
+      tokens: {
+        access_token: "live-token",
+        token_type: "Bearer",
+      },
+    });
+    getPersistedThreadStateMock.mockResolvedValue({
+      conversation: {
+        processing: {
+          pendingAuth: {
+            authSessionId: "state-newer",
+            kind: "mcp",
+            provider: "demo",
+            actorId: "U123",
+            sessionId: "turn-2",
+            linkSentAtMs: 2,
+          },
+        },
+      },
+    });
+
+    const response = await GET(
+      makeRequest(
+        "https://example.com/api/oauth/callback/mcp/demo?state=state-123&error=access_denied",
+      ),
+      "demo",
+      waitUntil.fn,
+      { agentRunner: testAgentRunner },
+    );
+
+    expect(response.status).toBe(400);
+    expect(putMcpStoredOAuthCredentialsMock).not.toHaveBeenCalled();
+    expect(deleteMcpAuthSessionMock).toHaveBeenCalledWith("state-123");
+    expect(finalizeMcpAuthorizationMock).not.toHaveBeenCalled();
+    expect(waitUntil.pendingCount()).toBe(0);
+  });
+
   it("logs safe metadata for callback provider failures", async () => {
     finalizeMcpAuthorizationMock.mockRejectedValueOnce(
       new McpProviderError({
