@@ -187,7 +187,7 @@ function oneLineLabel(value: string, maxLength = 80): string {
     .slice(0, maxLength);
 }
 
-/** Read a non-empty branch name from a webhook string. */
+/** Non-empty branch name from a webhook string. */
 function checkSuiteHeadBranch(
   value: string | null | undefined,
 ): string | undefined {
@@ -208,7 +208,7 @@ export function buildCheckSuiteResourceEvent(args: {
   headSha?: string;
   isDraft?: boolean;
   latestCheckRunsCount?: number;
-  /** Same-repo pull request number when GitHub attached one. */
+  /** Pull request number when GitHub attached one. */
   pullRequestNumber?: number;
   repo: string;
   suiteConclusion: string;
@@ -342,7 +342,7 @@ export function selectFailingChecks(
   return failing.slice(0, 12);
 }
 
-/** Normalize a completed check suite for each attached pull request. */
+/** Normalize a completed check suite for attached PRs, or the repository alone. */
 export function normalizeCheckSuiteEvents(
   deliveryId: string,
   body: unknown,
@@ -382,8 +382,7 @@ export function normalizeCheckSuiteEvents(
   const sameRepoPullRequests = suite.pull_requests.filter((pullRequest) =>
     isCheckSuiteRepositoryPullRequest(pullRequest, repository.id),
   );
-  // Bare branch suites (typical for main) have no same-repo PRs. Publish one
-  // repository event so watches can match headBranch without a PR target.
+  // No same-repo PR (common on main): one repository event with headBranch.
   if (sameRepoPullRequests.length === 0) {
     return [
       buildCheckSuiteResourceEvent({

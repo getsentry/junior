@@ -542,7 +542,7 @@ describe("github plugin", () => {
         },
         headBranch: {
           kind: "string",
-          description: "head branch name from the webhook payload",
+          description: "head branch name from the webhook",
         },
         isDraft: {
           kind: "boolean",
@@ -577,7 +577,7 @@ describe("github plugin", () => {
       },
       headBranch: {
         kind: "string",
-        description: "head branch name from the webhook payload",
+        description: "head branch name from the webhook",
       },
       isDraft: {
         kind: "boolean",

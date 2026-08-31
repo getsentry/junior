@@ -33,7 +33,7 @@ whenever an issue is reopened in this repository, summarize why in this channel
 whenever a non-draft pull request opens in this repository, review it
 ```
 
-Optional `match` values come from the resource type. Junior drops events that do not match before it wakes the agent. Use a match key only when that resource type lists it. For GitHub, `isDraft`, `authorUsername`, `authorEmail`, and `headBranch` work on `pull_request` and on `repository` watches that receive those events. `headBranch` comes from the webhook payload only. Check suite events without an attached same-repo pull request still publish to the repository identifier, so a repository watch can match bare branch builds such as `main`. If a listed value is missing on the event, Junior does not match.
+Optional `match` values come from the resource type. Junior drops events that do not match before it wakes the agent. Use a match key only when that resource type lists it. For GitHub, `isDraft`, `authorUsername`, `authorEmail`, and `headBranch` work on `pull_request` and on `repository` watches that receive pull request events. `headBranch` is the branch GitHub sent on the webhook. Check suites with no pull request still publish to the repository, so you can watch builds on `main`. If a listed value is missing on the event, Junior does not match.
 
 ## Limits
 

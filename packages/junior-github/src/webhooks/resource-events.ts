@@ -36,7 +36,7 @@ function pullRequestDraftData(
   return typeof draft === "boolean" ? { isDraft: draft } : undefined;
 }
 
-/** Trusted head branch when GitHub sent a non-empty ref. */
+/** Head branch when GitHub sent a non-empty ref. */
 function pullRequestHeadBranchData(
   headRef: string | null | undefined,
 ): { headBranch: string } | undefined {

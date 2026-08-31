@@ -56,7 +56,7 @@ export const GITHUB_PULL_REQUEST_MATCH_FIELDS = resourceEventMatchFieldsSchema.p
   },
   headBranch: {
     kind: "string",
-    description: "head branch name from the webhook payload",
+    description: "head branch name from the webhook",
   },
   isDraft: {
     kind: "boolean",
