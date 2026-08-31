@@ -16,7 +16,11 @@ import { useTaskExecutionsData } from "../../api";
 import { InlineError } from "../../components/InlineError";
 import { PageContentSkeleton } from "../../components/PageContentSkeleton";
 import { StatusChip } from "../../components/StatusChip";
-import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
+import {
+  selectTimeSeries,
+  timeRangeBucketUnit,
+  type TimeRangeDays,
+} from "../../components/controls/TimeRangeSelector";
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
 import { conversationPath } from "../../conversations/conversationRoutes";
@@ -119,7 +123,15 @@ function TaskExecutionsView(props: {
       </div>
 
       {data.executionDays.length > 0 ? (
-        <TaskExecutionStatusChart days={data.executionDays} range={range} />
+        <TaskExecutionStatusChart
+          bucketUnit={timeRangeBucketUnit(range)}
+          days={selectTimeSeries({
+            days: data.executionDays,
+            hours: data.executionHours,
+            range,
+          })}
+          range={range}
+        />
       ) : null}
 
       <div className="flex flex-wrap items-baseline justify-between gap-x-5 gap-y-1 border-b border-white/[0.07] pb-3">

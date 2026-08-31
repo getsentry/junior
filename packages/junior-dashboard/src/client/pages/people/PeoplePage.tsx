@@ -6,7 +6,12 @@ import type { ActorDirectoryReport } from "@sentry/junior/api/schema";
 import { useActorDirectoryData } from "../../api";
 import { EmptyTelemetry } from "../../components/EmptyTelemetry";
 import { LoadingView } from "../../components/LoadingView";
-import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
+import {
+  selectTimeSeries,
+  timeRangeBucketUnit,
+  timeRangeDetail,
+  type TimeRangeDays,
+} from "../../components/controls/TimeRangeSelector";
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
 import { getDashboardAgentName } from "../../agentName";
@@ -60,7 +65,14 @@ export function PeoplePageContent(props: {
   }
 
   const data = props.data;
-  const visibleActivity = data?.activityDays.slice(-range) ?? [];
+  const visibleActivity = data
+    ? selectTimeSeries({
+        days: data.activityDays,
+        hours: data.activityHours,
+        range,
+      })
+    : [];
+  const bucketUnit = timeRangeBucketUnit(range);
   const people = data
     ? filterPeople(data.people, peopleQuery, deferredSort)
     : [];
@@ -99,7 +111,7 @@ export function PeoplePageContent(props: {
         <>
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             <StatCard
-              detail={`Verified actors seen in the last ${range} days`}
+              detail={`Verified actors seen in the ${timeRangeDetail(range)}`}
               icon={Users}
               label="Active people"
               value={formatCompactNumber(activePeople)}
@@ -117,13 +129,13 @@ export function PeoplePageContent(props: {
               value={<Duration value={runtimeMs} />}
             />
             <StatCard
-              detail={`Highest distinct daily count in ${range} days`}
+              detail={`Highest distinct ${bucketUnit}ly count in the ${timeRangeDetail(range)}`}
               icon={Activity}
               label="Peak daily active"
               value={formatCompactNumber(peak)}
             />
           </div>
-          <PeopleActivityChart days={visibleActivity} />
+          <PeopleActivityChart bucketUnit={bucketUnit} days={visibleActivity} />
           <PeopleDirectory
             loading={sort !== deferredSort}
             onQueryChange={setPeopleSearch}

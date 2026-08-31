@@ -51,7 +51,7 @@ const activityDaySchema = z
   .object({
     closed: z.number().int().nonnegative(),
     created: z.number().int().nonnegative(),
-    date: z.string().date(),
+    date: z.string().regex(/^\d{4}-\d{2}-\d{2}(T\d{2})?$/),
     merged: z.number().int().nonnegative(),
   })
   .strict();
@@ -143,7 +143,12 @@ async function readCodeWindows(args: {
   const changes = juniorCodeChanges;
   const ownership = ownershipFilter(args.userId);
   const conversationTreeCost = conversationTreeCostExpr();
-  const [summaryResult, activityResult] = await Promise.all([
+  const activityHourEnd = new Date(args.nowMs);
+  activityHourEnd.setUTCMinutes(0, 0, 0);
+  const activityHourStart = new Date(
+    activityHourEnd.getTime() - 23 * (DAY_MS / 24),
+  );
+  const [summaryResult, activityResult, activityHourResult] = await Promise.all([
     db.execute(sql`
       WITH recent_changes AS (
         SELECT
@@ -244,6 +249,47 @@ async function readCodeWindows(args: {
       LEFT JOIN daily ON daily.day = days.day
       ORDER BY days.day
     `),
+    db.execute(sql`
+      WITH hours AS (
+        SELECT generate_series(
+          date_trunc('hour', ${activityHourStart}::timestamptz AT TIME ZONE 'UTC'),
+          date_trunc('hour', ${activityHourEnd}::timestamptz AT TIME ZONE 'UTC'),
+          interval '1 hour'
+        ) AS hour
+      ), hourly AS (
+        SELECT
+          date_trunc('hour', event_at AT TIME ZONE 'UTC') AS hour,
+          count(*) FILTER (WHERE kind = 'created')::integer AS created,
+          count(*) FILTER (WHERE kind = 'merged')::integer AS merged,
+          count(*) FILTER (WHERE kind = 'closed')::integer AS closed
+        FROM (
+          SELECT ${changes.openedAt} AS event_at, 'created'::text AS kind
+          FROM ${changes}
+          WHERE ${changes.openedAt} >= ${activityHourStart}
+            ${ownership ? sql`AND ${ownership}` : sql``}
+          UNION ALL
+          SELECT ${changes.mergedAt} AS event_at, 'merged'::text AS kind
+          FROM ${changes}
+          WHERE ${changes.mergedAt} >= ${activityHourStart}
+            ${ownership ? sql`AND ${ownership}` : sql``}
+          UNION ALL
+          SELECT ${changes.closedAt} AS event_at, 'closed'::text AS kind
+          FROM ${changes}
+          WHERE ${changes.state} = 'closed'
+            AND ${changes.closedAt} >= ${activityHourStart}
+            ${ownership ? sql`AND ${ownership}` : sql``}
+        ) AS events
+        GROUP BY date_trunc('hour', event_at AT TIME ZONE 'UTC')
+      )
+      SELECT
+        to_char(hours.hour, 'YYYY-MM-DD"T"HH24') AS "date",
+        coalesce(hourly.created, 0)::integer AS "created",
+        coalesce(hourly.merged, 0)::integer AS "merged",
+        coalesce(hourly.closed, 0)::integer AS "closed"
+      FROM hours
+      LEFT JOIN hourly ON hourly.hour = hours.hour
+      ORDER BY hours.hour
+    `),
   ]);
   const summary = summaryRowSchema.parse(
     queryRows(summaryResult)[0] ?? {
@@ -258,6 +304,9 @@ async function readCodeWindows(args: {
   );
   return {
     activityDays: z.array(activityDaySchema).parse(queryRows(activityResult)),
+    activityHours: z
+      .array(activityDaySchema)
+      .parse(queryRows(activityHourResult)),
     summary: {
       ...summary,
       mergeRate: mergeRate(summary.merged, summary.closed),
@@ -362,6 +411,7 @@ export async function readCodeOverview(nowMs = Date.now()) {
   ]);
   return codeOverviewReportSchema.parse({
     activityDays: windows.activityDays,
+    activityHours: windows.activityHours,
     changes: recentChanges.map((change) => ({
       ...change,
       closedAt: change.closedAt?.toISOString(),
@@ -400,6 +450,7 @@ export async function readPersonCodeOverview(args: {
   });
   return codePersonReportSchema.parse({
     activityDays: windows.activityDays,
+    activityHours: windows.activityHours,
     generatedAt: windows.windowEnd.toISOString(),
     summary: windows.summary,
     windowEnd: windows.windowEnd.toISOString(),

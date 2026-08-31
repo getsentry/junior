@@ -20,10 +20,14 @@ const series = [
 
 /** Render one task's terminal executions stacked by status over a trailing window. */
 export function TaskExecutionStatusChart(props: {
+  bucketUnit?: "day" | "hour";
+
   days: TaskExecutionStatusDay[];
   range: TimeRangeDays;
 }) {
-  const days = props.days.slice(-props.range);
+  const bucketUnit = props.bucketUnit ?? "day";
+
+  const days = props.days;
   const layout = createActivityChartLayout(220);
   const totals = days.map((day) => day.completed + day.failed + day.blocked);
   const maximum = Math.max(1, ...totals);
@@ -47,7 +51,7 @@ export function TaskExecutionStatusChart(props: {
 
       <div className="relative mt-3 overflow-hidden">
         <ChartSvg
-          aria-label={`Task executions during the last ${props.range} days`}
+          aria-label={`Task executions during the last ${props.range === 1 ? "24 hours" : `${props.range} days`}`}
           className="min-h-40"
           layout={layout}
         >

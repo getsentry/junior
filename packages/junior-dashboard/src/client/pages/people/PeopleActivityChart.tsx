@@ -35,8 +35,12 @@ function chartPoint(
 
 /** Plot distinct verified people with recorded conversation activity each day. */
 export function PeopleActivityChart(props: {
+  bucketUnit?: "day" | "hour";
+
   days: PeopleActivityDayReport[];
 }) {
+  const bucketUnit = props.bucketUnit ?? "day";
+
   const layout = createActivityChartLayout(260);
   const values = props.days.map((day) => day.activePeople);
   const maximum = Math.max(1, ...values);
@@ -121,6 +125,7 @@ export function PeopleActivityChart(props: {
             );
           })}
           <ActivityChartAverageLine
+            unit={bucketUnit}
             average={average}
             format={formatActivityChartAverage}
             layout={layout}

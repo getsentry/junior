@@ -18,10 +18,14 @@ const EXECUTION_COLOR = "#fbbf24";
 
 /** Render completed task executions over a trailing window. */
 export function TaskExecutionChart(props: {
+  bucketUnit?: "day" | "hour";
+
   days: TaskExecutionDay[];
   range: TimeRangeDays;
 }) {
-  const days = props.days.slice(-props.range);
+  const bucketUnit = props.bucketUnit ?? "day";
+
+  const days = props.days;
   const layout = createActivityChartLayout(200);
   const step =
     days.length > 0 ? layout.plotWidth / days.length : layout.plotWidth;
@@ -44,7 +48,7 @@ export function TaskExecutionChart(props: {
 
       <div className="relative mt-5 overflow-hidden">
         <ChartSvg
-          aria-label={`Task executions during the last ${props.range} days`}
+          aria-label={`Task executions during the last ${props.range === 1 ? "24 hours" : `${props.range} days`}`}
           className="min-h-40"
           layout={layout}
         >
@@ -84,6 +88,7 @@ export function TaskExecutionChart(props: {
             );
           })}
           <ActivityChartAverageLine
+            unit={bucketUnit}
             average={average}
             format={formatActivityChartAverage}
             layout={layout}

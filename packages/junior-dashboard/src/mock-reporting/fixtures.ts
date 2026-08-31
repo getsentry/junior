@@ -1803,6 +1803,21 @@ function mockPeopleActivityDays(
   }));
 }
 
+
+function trailingMetricHours<T extends { date: string }>(
+  nowMs: number,
+  empty: (date: string) => T,
+): T[] {
+  const end = new Date(nowMs);
+  end.setUTCMinutes(0, 0, 0);
+  return Array.from({ length: 24 }, (_, index) => {
+    const date = new Date(end.getTime() - (23 - index) * 60 * 60 * 1_000)
+      .toISOString()
+      .slice(0, 13);
+    return empty(date);
+  });
+}
+
 function activityDates(nowMs: number, days = PEOPLE_ACTIVITY_DAYS): string[] {
   const end = new Date(nowMs);
   end.setUTCHours(0, 0, 0, 0);
@@ -2275,6 +2290,11 @@ function mockTasks(): TaskSummary[] {
 export function readMockTaskList(nowMs = Date.now()): TaskList {
   return {
     executionDays: mockTaskExecutionDays(nowMs),
+    executionHours: trailingMetricHours(nowMs, (date) => ({
+      date,
+      event: 0,
+      scheduled: 0,
+    })),
     tasks: mockTasks(),
     truncated: false,
   };
@@ -2305,6 +2325,12 @@ export function readMockTaskExecutions(
   if (task.totalRuns === 0) {
     return {
       executionDays: mockStatusDays(nowMs),
+      executionHours: trailingMetricHours(nowMs, (date) => ({
+        blocked: 0,
+        completed: 0,
+        date,
+        failed: 0,
+      })),
       executions: [],
       task,
       truncated: false,
@@ -2338,6 +2364,12 @@ export function readMockTaskExecutions(
   });
   return {
     executionDays: mockStatusDays(nowMs),
+    executionHours: trailingMetricHours(nowMs, (date) => ({
+      blocked: 0,
+      completed: 0,
+      date,
+      failed: 0,
+    })),
     executions,
     task,
     truncated: task.totalRuns > executions.length,

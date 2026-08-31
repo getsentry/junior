@@ -224,6 +224,51 @@ export async function readTaskExecutionDays(
   return [...byDate.values()];
 }
 
+
+/** Load a fixed trailing window of completed executions stacked by hour. */
+export async function readTaskExecutionHours(
+  hourCount = 24,
+  options: { nowMs?: number } = {},
+): Promise<TaskExecutionDay[]> {
+  const nowMs = options.nowMs ?? Date.now();
+  const end = new Date(nowMs);
+  end.setUTCMinutes(0, 0, 0);
+  const endMs = end.getTime() + 3_599_999;
+  const startMs = end.getTime() - (hourCount - 1) * 3_600_000;
+  const executionHour = sql<string>`to_char(to_timestamp(${juniorTaskExecutions.executedAtMs} / 1000.0) at time zone 'UTC', 'YYYY-MM-DD"T"HH24')`;
+  const rows = await getDb()
+    .select({
+      count: count(),
+      date: executionHour,
+      kind: juniorTaskExecutions.kind,
+    })
+    .from(juniorTaskExecutions)
+    .where(
+      and(
+        gte(juniorTaskExecutions.executedAtMs, startMs),
+        lte(juniorTaskExecutions.executedAtMs, endMs),
+        eq(juniorTaskExecutions.status, "completed"),
+      ),
+    )
+    .groupBy(executionHour, juniorTaskExecutions.kind)
+    .orderBy(asc(executionHour), asc(juniorTaskExecutions.kind));
+
+  const byHour = new Map<string, TaskExecutionDay>();
+  for (let offset = 0; offset < hourCount; offset += 1) {
+    const date = new Date(startMs + offset * 3_600_000)
+      .toISOString()
+      .slice(0, 13);
+    byHour.set(date, emptyDay(date));
+  }
+  for (const row of rows) {
+    const hour = byHour.get(row.date);
+    if (!hour) continue;
+    if (row.kind === "scheduled") hour.scheduled = row.count;
+    else if (row.kind === "event") hour.event = row.count;
+  }
+  return [...byHour.values()];
+}
+
 /** Load the newest terminal task execution linked to one conversation, if any. */
 export async function readTaskExecutionByConversationId(args: {
   conversationId: string;
@@ -407,3 +452,57 @@ export async function readTaskExecutionStatusDays(args: {
   }
   return [...byDate.values()];
 }
+
+/** Load a fixed trailing window of terminal executions for one task by hour. */
+export async function readTaskExecutionStatusHours(args: {
+  hourCount?: number;
+  kind: TaskExecutionType;
+  namespace?: string;
+  nowMs?: number;
+  taskId: string;
+}): Promise<TaskExecutionStatusDay[]> {
+  const hourCount = args.hourCount ?? 24;
+  const namespace = args.namespace ?? "junior";
+  const nowMs = args.nowMs ?? Date.now();
+  const end = new Date(nowMs);
+  end.setUTCMinutes(0, 0, 0);
+  const endMs = end.getTime() + 3_599_999;
+  const startMs = end.getTime() - (hourCount - 1) * 3_600_000;
+  const executionHour = sql<string>`to_char(to_timestamp(${juniorTaskExecutions.executedAtMs} / 1000.0) at time zone 'UTC', 'YYYY-MM-DD"T"HH24')`;
+  const rows = await getDb()
+    .select({
+      count: count(),
+      date: executionHour,
+      status: juniorTaskExecutions.status,
+    })
+    .from(juniorTaskExecutions)
+    .where(
+      and(
+        eq(juniorTaskExecutions.kind, args.kind),
+        eq(juniorTaskExecutions.namespace, namespace),
+        eq(juniorTaskExecutions.taskId, args.taskId),
+        gte(juniorTaskExecutions.executedAtMs, startMs),
+        lte(juniorTaskExecutions.executedAtMs, endMs),
+        inArray(juniorTaskExecutions.status, [...TASK_EXECUTION_STATUSES]),
+      ),
+    )
+    .groupBy(executionHour, juniorTaskExecutions.status)
+    .orderBy(asc(executionHour), asc(juniorTaskExecutions.status));
+
+  const byHour = new Map<string, TaskExecutionStatusDay>();
+  for (let offset = 0; offset < hourCount; offset += 1) {
+    const date = new Date(startMs + offset * 3_600_000)
+      .toISOString()
+      .slice(0, 13);
+    byHour.set(date, emptyStatusDay(date));
+  }
+  for (const row of rows) {
+    const hour = byHour.get(row.date);
+    if (!hour) continue;
+    if (row.status === "completed") hour.completed = row.count;
+    else if (row.status === "failed") hour.failed = row.count;
+    else if (row.status === "blocked") hour.blocked = row.count;
+  }
+  return [...byHour.values()];
+}
+

@@ -1,7 +1,11 @@
 import type { CodePersonReport } from "@sentry/junior/api/schema";
 import { Coins, GitPullRequest, LibraryBig, Timer } from "lucide-react";
 import { formatDuration } from "../../components/Duration";
-import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
+import {
+  selectTimeSeries,
+  timeRangeBucketUnit,
+  type TimeRangeDays,
+} from "../../components/controls/TimeRangeSelector";
 import { SectionIntro } from "../../components/layout/SectionIntro";
 import { StatCard } from "../../components/metrics/StatCard";
 import { formatCompactNumber, formatCostSummary } from "../../format";
@@ -66,7 +70,15 @@ export function ProfileCodeActivity(props: {
           value={costUsd(summary.costUsd)}
         />
       </div>
-      <CodeActivityChart days={props.report.activityDays} range={props.range} />
+      <CodeActivityChart
+        bucketUnit={timeRangeBucketUnit(props.range)}
+        days={selectTimeSeries({
+          days: props.report.activityDays,
+          hours: props.report.activityHours,
+          range: props.range,
+        })}
+        range={props.range}
+      />
     </section>
   );
 }

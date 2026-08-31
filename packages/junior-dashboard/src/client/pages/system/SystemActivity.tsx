@@ -6,6 +6,7 @@ import { CircleDollarSign, Gauge, MessageSquare, Sigma } from "lucide-react";
 
 import { EmptyTelemetry } from "../../components/EmptyTelemetry";
 import {
+  selectTimeSeries,
   timeRangeBucketUnit,
   timeRangeDetail,
   type TimeRangeDays,
@@ -63,13 +64,16 @@ export function SystemActivity(props: {
     );
   }
 
-  const hourly = props.range === 1;
-  const days = hourly
-    ? (props.stats.metricHours ?? [])
-    : props.stats.metricDays.slice(-props.range);
-  const guardianDays = hourly
-    ? (props.stats.guardian.metricHours ?? [])
-    : props.stats.guardian.metricDays.slice(-props.range);
+  const days = selectTimeSeries({
+    days: props.stats.metricDays,
+    hours: props.stats.metricHours,
+    range: props.range,
+  });
+  const guardianDays = selectTimeSeries({
+    days: props.stats.guardian.metricDays,
+    hours: props.stats.guardian.metricHours,
+    range: props.range,
+  });
   const totals = periodTotals(days);
   const bucketUnit = timeRangeBucketUnit(props.range);
   return (

@@ -17,12 +17,16 @@ import type { MemoryCostDay } from "./memoryDashboard";
 
 /** Render stacked memory extraction and recall cost from durable plugin events. */
 export function MemoryCostChart(props: {
+  bucketUnit?: "day" | "hour";
+
   extractionDays: MemoryCostDay[];
   range: TimeRangeDays;
   recallDays: MemoryCostDay[];
 }) {
+  const bucketUnit = props.bucketUnit ?? "day";
+
   const recallByDate = new Map(props.recallDays.map((day) => [day.date, day]));
-  const days = props.extractionDays.slice(-props.range).map((extraction) => ({
+  const days = props.extractionDays.map((extraction) => ({
     date: extraction.date,
     extraction,
     recall: recallByDate.get(extraction.date) ?? {
@@ -83,7 +87,7 @@ export function MemoryCostChart(props: {
 
       <div className="relative mt-4 overflow-hidden">
         <ChartSvg
-          aria-label={`Memory extraction and recall cost during the last ${props.range} days`}
+          aria-label={`Memory extraction and recall cost during the last ${props.range === 1 ? "24 hours" : `${props.range} days`}`}
           className="min-h-40"
           layout={layout}
         >
@@ -158,6 +162,7 @@ export function MemoryCostChart(props: {
             );
           })}
           <ActivityChartAverageLine
+            unit={bucketUnit}
             average={average}
             format={(value) => formatCostSummary({ total: value })}
             layout={layout}

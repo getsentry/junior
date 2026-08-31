@@ -21,10 +21,14 @@ const CLOSED_COLOR = "#fb7185";
 
 /** Render created, merged, and closed code changes over a trailing window. */
 export function CodeActivityChart(props: {
+  bucketUnit?: "day" | "hour";
+
   days: CodeActivityDay[];
   range: TimeRangeDays;
 }) {
-  const days = props.days.slice(-props.range);
+  const bucketUnit = props.bucketUnit ?? "day";
+
+  const days = props.days;
   const layout = createActivityChartLayout(220, { left: 40 });
   const step =
     days.length > 0 ? layout.plotWidth / days.length : layout.plotWidth;
@@ -59,7 +63,7 @@ export function CodeActivityChart(props: {
 
       <div className="relative mt-5 overflow-hidden">
         <ChartSvg
-          aria-label={`Code changes during the last ${props.range} days`}
+          aria-label={`Code changes during the last ${props.range === 1 ? "24 hours" : `${props.range} days`}`}
           className="min-h-40"
           layout={layout}
         >
@@ -129,6 +133,7 @@ export function CodeActivityChart(props: {
             );
           })}
           <ActivityChartAverageLine
+            unit={bucketUnit}
             average={average}
             format={formatActivityChartAverage}
             layout={layout}

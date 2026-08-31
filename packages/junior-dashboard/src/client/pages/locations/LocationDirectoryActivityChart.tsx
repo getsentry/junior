@@ -15,8 +15,12 @@ import { Tooltip } from "../../components/Tooltip";
 
 /** Compare public and privacy-preserving private conversation volume by day. */
 export function LocationDirectoryActivityChart(props: {
+  bucketUnit?: "day" | "hour";
+
   days: LocationActivityDayReport[];
 }) {
+  const bucketUnit = props.bucketUnit ?? "day";
+
   const layout = createActivityChartLayout(260);
   const maximum = Math.max(
     1,

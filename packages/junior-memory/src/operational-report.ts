@@ -8,7 +8,7 @@ import { juniorMemoryEmbeddings, juniorMemoryMemories } from "./db/schema";
 import type { MemoryDb } from "./store";
 
 const DAY_MS = 24 * 60 * 60 * 1_000;
-const WINDOWS = [7, 30, 90] as const;
+const WINDOWS = [1, 7, 30, 90] as const;
 
 const memoryDaySchema = z
   .object({

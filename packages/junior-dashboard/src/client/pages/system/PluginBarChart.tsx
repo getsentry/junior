@@ -155,15 +155,9 @@ export function PluginBarChart(props: {
 }
 
 function supportedRange(widget: Widget, range: TimeRangeDays | undefined) {
-  const availableRanges = widget.timeRangeDays ?? [];
-  if (
-    range &&
-    range !== 1 &&
-    (availableRanges as TimeRangeDays[]).includes(range)
-  ) {
-    return range;
-  }
-  // Plugin widgets are still daily series; map 24h onto the shortest day window.
+  const availableRanges = (widget.timeRangeDays ?? []) as TimeRangeDays[];
+  if (range && availableRanges.includes(range)) return range;
+  // Daily-only widgets: map 24h onto the shortest day window.
   if (range === 1 && availableRanges.includes(7)) return 7;
   return availableRanges.includes(30) ? 30 : (availableRanges[0] ?? 30);
 }

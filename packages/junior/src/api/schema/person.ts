@@ -12,12 +12,17 @@ export const personParamsSchema = z
 export const peopleConversationStatsItemSchema =
   conversationStatsItemSchema.omit({ costUsd: true });
 
+/** UTC day (`YYYY-MM-DD`) or hour (`YYYY-MM-DDTHH`) activity bucket key. */
+export const peopleMetricBucketSchema = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}(T\d{2})?$/);
+
 export const actorActivityDayReportSchema = z
   .object({
     active: z.number(),
     conversations: z.number(),
     costUsd: z.number().optional(),
-    date: z.string(),
+    date: peopleMetricBucketSchema,
     durationMs: z.number(),
     failed: z.number(),
     tokens: z.number().optional(),
@@ -28,7 +33,7 @@ export const peopleActivityDayReportSchema = z
   .object({
     activePeople: z.number(),
     conversations: z.number(),
-    date: z.string(),
+    date: peopleMetricBucketSchema,
   })
   .strict();
 
@@ -58,6 +63,7 @@ export const actorSummaryReportSchema = actorTotalsReportSchema
 export const actorDirectoryReportSchema = z
   .object({
     activityDays: z.array(peopleActivityDayReportSchema),
+    activityHours: z.array(peopleActivityDayReportSchema).optional(),
     generatedAt: z.string(),
     people: z.array(actorSummaryReportSchema),
     source: z.literal("conversation_index"),
@@ -69,6 +75,7 @@ export const actorDirectoryReportSchema = z
 export const actorProfileReportSchema = z
   .object({
     activityDays: z.array(actorActivityDayReportSchema),
+    activityHours: z.array(actorActivityDayReportSchema).optional(),
     generatedAt: z.string(),
     locations: z.array(peopleConversationStatsItemSchema),
     recentConversations: z.array(conversationSummaryReportSchema),
