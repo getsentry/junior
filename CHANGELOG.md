@@ -1,4 +1,20 @@
 # Changelog
+## 0.191.0
+
+### New Features ✨
+
+- (github) Match check suites by headBranch without PR API loads by @sentry-junior in [#1743](https://github.com/getsentry/junior/pull/1743)
+- (linear) Add teamKey match filter by @sentry-junior in [#1742](https://github.com/getsentry/junior/pull/1742)
+
+### Bug Fixes 🐛
+
+- (mcp) Reset dead sign-in state after auth errors by @sentry-junior in [#1740](https://github.com/getsentry/junior/pull/1740)
+
+### Internal Changes 🔧
+
+- (chat) Remove per-Turn delivery choice by @dcramer in [#1736](https://github.com/getsentry/junior/pull/1736)
+- (deps) Bump zod to 4.5.4 by @sentry-junior in [#1738](https://github.com/getsentry/junior/pull/1738)
+
 ## 0.190.0
 
 ### Breaking Changes 🛠
