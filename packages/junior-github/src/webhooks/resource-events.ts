@@ -36,6 +36,14 @@ function pullRequestDraftData(
   return typeof draft === "boolean" ? { isDraft: draft } : undefined;
 }
 
+/** Trusted head branch when GitHub sent a non-empty ref. */
+function pullRequestHeadBranchData(
+  headRef: string | null | undefined,
+): { headBranch: string } | undefined {
+  const headBranch = headRef?.trim();
+  return headBranch ? { headBranch } : undefined;
+}
+
 /** Trusted author values from a GitHub user object when present. */
 function pullRequestAuthorData(user: {
   email?: string | null;
@@ -418,6 +426,12 @@ const pullRequestReviewCommentWebhookSchema = z.object({
   }),
   pull_request: z.object({
     draft: z.boolean().optional(),
+    head: z
+      .object({
+        ref: z.string().optional().nullable(),
+      })
+      .optional()
+      .nullable(),
     number: z.number(),
     user: z
       .object({
@@ -447,6 +461,7 @@ function normalizePullRequestReviewCommentEvent(
   const data = pullRequestMatchData([
     pullRequestDraftData(parsed.data.pull_request.draft),
     pullRequestAuthorData(parsed.data.pull_request.user),
+    pullRequestHeadBranchData(parsed.data.pull_request.head?.ref),
   ]);
   return pullRequestTargets(
     {
@@ -466,6 +481,12 @@ const pullRequestReviewWebhookSchema = z.object({
   action: z.string(),
   pull_request: z.object({
     draft: z.boolean().optional(),
+    head: z
+      .object({
+        ref: z.string().optional().nullable(),
+      })
+      .optional()
+      .nullable(),
     number: z.number(),
     user: z
       .object({
@@ -509,6 +530,7 @@ function normalizePullRequestReviewEvent(
   const data = pullRequestMatchData([
     pullRequestDraftData(parsed.data.pull_request.draft),
     pullRequestAuthorData(parsed.data.pull_request.user),
+    pullRequestHeadBranchData(parsed.data.pull_request.head?.ref),
   ]);
   return pullRequestTargets(
     {
@@ -536,6 +558,12 @@ const pullRequestWebhookSchema = z.object({
     closed_at: z.string().optional().nullable(),
     created_at: z.string().optional(),
     draft: z.boolean().optional(),
+    head: z
+      .object({
+        ref: z.string().optional().nullable(),
+      })
+      .optional()
+      .nullable(),
     merged: z.boolean().optional(),
     merged_at: z.string().optional().nullable(),
     number: z.number(),
@@ -576,6 +604,7 @@ function pullRequestLifecycleEvents(input: {
   authorUsername?: string;
   deliveryId: string;
   eventType: string;
+  headBranch?: string;
   isDraft?: boolean;
   occurredAtMs: number;
   repo: string;
@@ -590,6 +619,7 @@ function pullRequestLifecycleEvents(input: {
       email: input.authorEmail,
       login: input.authorUsername,
     }),
+    pullRequestHeadBranchData(input.headBranch),
   ]);
   return pullRequestTargets(
     {
@@ -622,6 +652,9 @@ function normalizePullRequestEvent(
   const draft = parsed.data.pull_request.draft;
   const isDraft = typeof draft === "boolean" ? draft : undefined;
   const author = pullRequestAuthorData(parsed.data.pull_request.user);
+  const headBranch = pullRequestHeadBranchData(
+    parsed.data.pull_request.head?.ref,
+  )?.headBranch;
   const untrustedText = pullRequestEventText(parsed.data.pull_request);
 
   if (parsed.data.action === "opened") {
@@ -631,6 +664,7 @@ function normalizePullRequestEvent(
       ...author,
       deliveryId,
       eventType: "pull_request.opened",
+      ...(headBranch ? { headBranch } : undefined),
       ...(isDraft !== undefined ? { isDraft } : undefined),
       occurredAtMs: openedAtMs,
       repo,
@@ -646,6 +680,7 @@ function normalizePullRequestEvent(
           ...author,
           deliveryId,
           eventType: "pull_request.ready_for_review",
+          ...(headBranch ? { headBranch } : undefined),
           isDraft: false,
           occurredAtMs: openedAtMs,
           repo,
@@ -663,6 +698,7 @@ function normalizePullRequestEvent(
       ...author,
       deliveryId,
       eventType: "pull_request.ready_for_review",
+      ...(headBranch ? { headBranch } : undefined),
       isDraft: false,
       occurredAtMs:
         providerTime(parsed.data.pull_request.updated_at) ?? Date.now(),
@@ -681,6 +717,7 @@ function normalizePullRequestEvent(
     ...author,
     deliveryId,
     eventType,
+    ...(headBranch ? { headBranch } : undefined),
     ...(isDraft !== undefined ? { isDraft } : undefined),
     occurredAtMs:
       providerTime(

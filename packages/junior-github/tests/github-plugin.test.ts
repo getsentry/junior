@@ -540,6 +540,10 @@ describe("github plugin", () => {
           kind: "string",
           description: "pull request author login",
         },
+        headBranch: {
+          kind: "string",
+          description: "head branch name from the webhook payload",
+        },
         isDraft: {
           kind: "boolean",
           description: "true when the pull request is a draft",
@@ -570,6 +574,10 @@ describe("github plugin", () => {
       authorUsername: {
         kind: "string",
         description: "pull request author login",
+      },
+      headBranch: {
+        kind: "string",
+        description: "head branch name from the webhook payload",
       },
       isDraft: {
         kind: "boolean",
