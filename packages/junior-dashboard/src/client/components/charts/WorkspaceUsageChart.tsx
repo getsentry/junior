@@ -22,14 +22,10 @@ const USAGE_COLOR = "#a78bfa";
 
 /** Plot successful Workspace switches for one recipe over a trailing window. */
 export function WorkspaceUsageChart(props: {
-  bucketUnit?: "day" | "hour";
-
   days: WorkspaceUsageDay[];
   range: TimeRangeDays;
   workspaceName: string;
 }) {
-  const bucketUnit = props.bucketUnit ?? "day";
-
   const layout = createActivityChartLayout(200);
   const step =
     props.days.length > 0
@@ -48,11 +44,11 @@ export function WorkspaceUsageChart(props: {
         description={`Successful switches into “${props.workspaceName}”.`}
         title="Usage"
         total={formatCompactNumber(total)}
-        totalLabel={`${props.range === 1 ? "last 24 hours" : `last ${props.range} days`}`}
+        totalLabel={`last ${props.range} days`}
       />
       <div className="relative px-2 py-3 sm:px-4 sm:py-4">
         <ChartSvg
-          aria-label={`Usage for ${props.workspaceName} during the last ${props.range === 1 ? "24 hours" : `${props.range} days`}`}
+          aria-label={`Usage for ${props.workspaceName} during the last ${props.range} days`}
           className="min-h-40 overflow-visible"
           layout={layout}
         >
@@ -94,7 +90,6 @@ export function WorkspaceUsageChart(props: {
             );
           })}
           <ActivityChartAverageLine
-            unit={bucketUnit}
             average={average}
             format={formatActivityChartAverage}
             layout={layout}

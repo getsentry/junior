@@ -81,12 +81,20 @@ export function PeoplePageContent(props: {
     0;
   const runtimeMs =
     data?.people.reduce((total, person) => total + person.durationMs, 0) ?? 0;
-  const firstDate = visibleActivity[0]?.date;
-  const activePeople = firstDate
-    ? (data?.people.filter(
-        (person) => person.lastSeenAt.slice(0, 10) >= firstDate,
-      ).length ?? 0)
-    : 0;
+  const firstBucket = visibleActivity[0]?.date;
+  const windowStartMs = firstBucket
+    ? Date.parse(
+        /^\d{4}-\d{2}-\d{2}T\d{2}$/.test(firstBucket)
+          ? `${firstBucket}:00:00.000Z`
+          : `${firstBucket}T00:00:00.000Z`,
+      )
+    : undefined;
+  const activePeople =
+    windowStartMs === undefined
+      ? 0
+      : (data?.people.filter(
+          (person) => Date.parse(person.lastSeenAt) >= windowStartMs,
+        ).length ?? 0);
   const peak = Math.max(0, ...visibleActivity.map((day) => day.activePeople));
 
   return (
@@ -131,7 +139,7 @@ export function PeoplePageContent(props: {
             <StatCard
               detail={`Highest distinct ${bucketUnit}ly count in the ${timeRangeDetail(range)}`}
               icon={Activity}
-              label="Peak daily active"
+              label={bucketUnit === "hour" ? "Peak hourly active" : "Peak daily active"}
               value={formatCompactNumber(peak)}
             />
           </div>

@@ -9,6 +9,9 @@ import {
 
 import { EmptyTelemetry } from "../../components/EmptyTelemetry";
 import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
+
+/** Workspace switch stats are daily counters only. */
+const WORKSPACE_RANGE_OPTIONS: TimeRangeDays[] = [7, 30, 90];
 import { LoadingView } from "../../components/LoadingView";
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
@@ -117,7 +120,11 @@ export function WorkspaceFormPage() {
               : "Name the recipe, choose repositories, and optionally add a one-time setup script."
           }
           {...(editing
-            ? { onRangeChange: setRange, range }
+            ? {
+                onRangeChange: setRange,
+                range,
+                rangeOptions: WORKSPACE_RANGE_OPTIONS,
+              }
             : {})}
           title={
             editing

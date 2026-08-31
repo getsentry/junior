@@ -147,7 +147,7 @@ describe("memory operational report", () => {
         expect.objectContaining({
           id: "extraction-cost",
           series: [{ format: "usd", key: "costUsd", label: "Cost" }],
-          timeRangeDays: [1, 7, 30, 90],
+          timeRangeDays: [7, 30, 90],
           title: "Extraction cost",
           type: "bar_chart",
         }),
@@ -157,7 +157,7 @@ describe("memory operational report", () => {
             { key: "private", label: "Private" },
             { key: "public", label: "Public" },
           ],
-          timeRangeDays: [1, 7, 30, 90],
+          timeRangeDays: [7, 30, 90],
           title: "Memories created",
           type: "bar_chart",
         }),

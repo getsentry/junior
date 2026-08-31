@@ -7,10 +7,7 @@ import { useStatsData } from "../../api";
 import { EmptyTelemetry } from "../../components/EmptyTelemetry";
 import { WorkspaceUsageChart } from "../../components/charts/WorkspaceUsageChart";
 import { workspaceUsageDays } from "../../components/charts/workspaceUsage";
-import {
-  timeRangeBucketUnit,
-  type TimeRangeDays,
-} from "../../components/controls/TimeRangeSelector";
+import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
 import { Card } from "../../components/layout/Card";
 import { SnapshotSummary } from "./SnapshotSummary";
 
@@ -66,13 +63,13 @@ export function WorkspaceDetailsContent(props: {
             </p>
           ) : null}
           <WorkspaceUsageChart
-            bucketUnit={timeRangeBucketUnit(props.range)}
             days={workspaceUsageDays({
               workspaceId: props.workspace.id,
-              range: props.range,
+              // Daily counters only; keep 24h off this chart via page range options.
+              range: props.range === 1 ? 7 : props.range,
               stats: props.stats.stats,
             })}
-            range={props.range}
+            range={props.range === 1 ? 7 : props.range}
             workspaceName={props.workspace.name}
           />
         </div>
