@@ -1,0 +1,55 @@
+{
+  "commitSha": "02f5dde464369cf55f074a8f5b15b92e3ab5614f",
+  "mode": "path",
+  "reasons": [
+    "packages/junior-dashboard/src/client/components/charts/ActivityChart.tsx",
+    "packages/junior-dashboard/src/client/components/charts/SystemMetricCharts.tsx",
+    "packages/junior-dashboard/src/client/components/charts/workspaceUsage.ts",
+    "packages/junior-dashboard/src/client/components/controls/TimeRangeSelector.tsx",
+    "packages/junior-dashboard/src/client/components/layout/PageHeader.tsx",
+    "packages/junior-dashboard/src/client/pages/code/CodeActivityChart.tsx",
+    "packages/junior-dashboard/src/client/pages/code/CodePage.tsx",
+    "packages/junior-dashboard/src/client/pages/locations/LocationActivityChart.tsx",
+    "packages/junior-dashboard/src/client/pages/locations/LocationDetailPage.tsx",
+    "packages/junior-dashboard/src/client/pages/locations/LocationDirectoryActivityChart.tsx",
+    "packages/junior-dashboard/src/client/pages/locations/LocationsPage.tsx",
+    "packages/junior-dashboard/src/client/pages/memory/MemoryCostChart.tsx",
+    "packages/junior-dashboard/src/client/pages/memory/MemoryPage.tsx",
+    "packages/junior-dashboard/src/client/pages/memory/MemoryTimeline.tsx",
+    "packages/junior-dashboard/src/client/pages/memory/memoryDashboard.ts",
+    "packages/junior-dashboard/src/client/pages/people/PeopleActivityChart.tsx",
+    "packages/junior-dashboard/src/client/pages/people/PeoplePage.tsx",
+    "packages/junior-dashboard/src/client/pages/people/PersonProfilePage.tsx",
+    "packages/junior-dashboard/src/client/pages/people/ProfileCodeActivity.tsx",
+    "packages/junior-dashboard/src/client/pages/system/ConversationActivityChart.tsx"
+  ],
+  "scenarioIds": [
+    "gallery-foundations",
+    "gallery-charts",
+    "gallery-index",
+    "conversations"
+  ],
+  "shots": [
+    {
+      "file": "gallery-foundations__desktop.png",
+      "label": "Gallery · Foundations · desktop"
+    },
+    {
+      "file": "gallery-charts__desktop.png",
+      "label": "Gallery · Charts · desktop"
+    },
+    {
+      "file": "gallery-index__desktop.png",
+      "label": "Component gallery index · desktop"
+    },
+    {
+      "file": "conversations__desktop.png",
+      "label": "Conversations · desktop"
+    },
+    {
+      "file": "conversations__mobile.png",
+      "label": "Conversations · mobile"
+    }
+  ],
+  "skipped": false
+}
