@@ -408,14 +408,14 @@ One pull request: `owner/repo#number`.
 <details class="resource-event">
 <summary><code>pull_request.checks.failed</code></summary>
 
-A check suite finished with failure or timeout. Trusted data includes the PR, full head SHA, suite id/url, and failed check-run ids/urls when Junior can load them. Failed check names are untrusted provider content. When a watch or event task uses `isDraft`, `authorUsername`, or `authorEmail`, Junior loads those pull request fields for same-repo pull requests only.
+A check suite finished with failure or timeout. Trusted data includes the full head SHA, suite id/url, optional `headBranch`, the PR number when one is attached, and failed check-run ids/urls when Junior can load them. Failed check names are untrusted provider content. Suites with no pull request publish only to the repository. When a watch or event task uses `isDraft`, `authorUsername`, or `authorEmail`, Junior loads those pull request fields for same-repo pull requests only. `headBranch` comes from the webhook and does not need that load.
 
 </details>
 
 <details class="resource-event">
 <summary><code>pull_request.checks.recovered</code></summary>
 
-A check suite finished successfully after a failure. Trusted data includes the PR, full head SHA, and suite id/url. This is for one suite only. It does not mean the whole PR is green. When a watch or event task uses `isDraft`, `authorUsername`, or `authorEmail`, Junior loads those pull request fields for same-repo pull requests only.
+A check suite finished successfully after a failure. Trusted data includes the full head SHA, suite id/url, optional `headBranch`, and the PR number when one is attached. This is for one suite only. It does not mean the whole PR or branch is green. Suites with no pull request publish only to the repository. When a watch or event task uses `isDraft`, `authorUsername`, or `authorEmail`, Junior loads those pull request fields for same-repo pull requests only. `headBranch` comes from the webhook and does not need that load.
 
 </details>
 
@@ -497,7 +497,8 @@ A release was published.
 #### `repository`
 
 Every issue and pull request in `owner/repo`. Supports the same `issue` and
-`pull_request` events listed above.
+`pull_request` events listed above. Check suites with no pull request also
+publish here, so you can match branch builds with `headBranch`.
 
 ## Verify
 

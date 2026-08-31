@@ -54,6 +54,10 @@ export const GITHUB_PULL_REQUEST_MATCH_FIELDS = resourceEventMatchFieldsSchema.p
     kind: "string",
     description: "pull request author login",
   },
+  headBranch: {
+    kind: "string",
+    description: "head branch name from the webhook",
+  },
   isDraft: {
     kind: "boolean",
     description: "true when the pull request is a draft",

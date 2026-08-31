@@ -51,9 +51,14 @@ function checkSuitePullRequest(
   number: number,
   repo = "getsentry/junior",
   repositoryId = 1,
+  headRef?: string,
 ): {
   base: { repo: { id: number; name: string; url: string }; sha: string };
-  head: { repo: { id: number; name: string; url: string }; sha: string };
+  head: {
+    ref?: string;
+    repo: { id: number; name: string; url: string };
+    sha: string;
+  };
   id: number;
   number: number;
   url: string;
@@ -65,6 +70,7 @@ function checkSuitePullRequest(
     number,
     url: `${repoUrl}/pulls/${number}`,
     head: {
+      ...(headRef ? { ref: headRef } : undefined),
       sha: "abcdef1234567890",
       repo: { id: repositoryId, name: name!, url: repoUrl },
     },
@@ -705,6 +711,112 @@ describe("GitHub webhook resource events", () => {
         ]),
       );
     }
+  });
+
+  it("emits repository check suite events for bare branch builds", () => {
+    expect(
+      normalizeGitHubResourceEvents({
+        body: {
+          action: "completed",
+          repository: checkSuiteRepository("getsentry/junior"),
+          check_suite: {
+            app: { name: "GitHub Actions" },
+            conclusion: "failure",
+            head_branch: "main",
+            head_sha: "abcdef1234567890",
+            id: 55,
+            latest_check_runs_count: 2,
+            pull_requests: [],
+          },
+        },
+        deliveryId: "delivery-bare-branch",
+        eventName: "check_suite",
+      }),
+    ).toEqual([
+      {
+        eventKey: "github:delivery-bare-branch:pull_request.checks.failed",
+        eventType: "pull_request.checks.failed",
+        occurredAtMs: 1_000,
+        identifier: "getsentry/junior",
+        trustedSummary:
+          "GitHub repository getsentry/junior checks failed for abcdef123456 on main.",
+        data: {
+          repo: "getsentry/junior",
+          scope: "check_suite",
+          suiteConclusion: "failure",
+          headBranch: "main",
+          headSha: "abcdef1234567890",
+          checkSuiteId: 55,
+          checkSuiteUrl:
+            "https://github.com/getsentry/junior/commit/abcdef1234567890/checks?check_suite_id=55",
+          appName: "GitHub Actions",
+          latestCheckRunsCount: 2,
+        },
+      },
+    ]);
+  });
+
+  it("attaches headBranch from the check suite webhook without a pull request API load", () => {
+    expect(needsCheckSuitePullRequestFacts(["headBranch"])).toBe(false);
+    expect(
+      normalizeGitHubResourceEvents({
+        body: {
+          action: "completed",
+          repository: checkSuiteRepository("getsentry/junior"),
+          check_suite: {
+            app: { name: "GitHub Actions" },
+            conclusion: "failure",
+            head_branch: "feature/checks",
+            head_sha: "abcdef1234567890",
+            id: 66,
+            pull_requests: [checkSuitePullRequest(946, "getsentry/junior", 1, "feature/checks")],
+          },
+        },
+        deliveryId: "delivery-head-branch",
+        eventName: "check_suite",
+      }),
+    ).toEqual([
+      {
+        eventKey: "github:delivery-head-branch:pull_request.checks.failed:946",
+        eventType: "pull_request.checks.failed",
+        occurredAtMs: 1_000,
+        identifier: "getsentry/junior#946",
+        trustedSummary:
+          "GitHub PR getsentry/junior#946 checks failed for abcdef123456 on feature/checks.",
+        data: {
+          repo: "getsentry/junior",
+          pullRequest: 946,
+          scope: "check_suite",
+          suiteConclusion: "failure",
+          headBranch: "feature/checks",
+          headSha: "abcdef1234567890",
+          checkSuiteId: 66,
+          checkSuiteUrl:
+            "https://github.com/getsentry/junior/commit/abcdef1234567890/checks?check_suite_id=66",
+          appName: "GitHub Actions",
+        },
+      },
+      {
+        eventKey: "github:delivery-head-branch:pull_request.checks.failed:946",
+        eventType: "pull_request.checks.failed",
+        occurredAtMs: 1_000,
+        identifier: "getsentry/junior",
+        trustedSummary:
+          "GitHub PR getsentry/junior#946 checks failed for abcdef123456 on feature/checks.",
+        data: {
+          repo: "getsentry/junior",
+          pullRequest: 946,
+          scope: "check_suite",
+          suiteConclusion: "failure",
+          headBranch: "feature/checks",
+          headSha: "abcdef1234567890",
+          checkSuiteId: 66,
+          checkSuiteUrl:
+            "https://github.com/getsentry/junior/commit/abcdef1234567890/checks?check_suite_id=66",
+          appName: "GitHub Actions",
+        },
+      },
+    ]);
   });
 
   it("emits recovered check suite events without draft or author fields", () => {
