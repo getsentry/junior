@@ -43,7 +43,9 @@ export function TaskExecutionStatusChart(props: {
           Executions over time
         </h2>
         <p className="mt-1 mb-0 font-mono text-xs leading-relaxed text-dashboard-text-muted">
-          Terminal runs for this task each day.
+          {bucketUnit === "hour"
+            ? "Terminal runs for this task each hour."
+            : "Terminal runs for this task each day."}
         </p>
       </div>
 

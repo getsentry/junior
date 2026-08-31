@@ -42,7 +42,9 @@ export function MemoryTimeline(props: {
           Activity over time
         </h2>
         <p className="mt-1 mb-0 font-mono text-xs leading-relaxed text-dashboard-text-muted">
-          Stacked personal + public memories created each day.
+          {bucketUnit === "hour"
+            ? "Stacked personal + public memories created each hour."
+            : "Stacked personal + public memories created each day."}
         </p>
       </div>
 

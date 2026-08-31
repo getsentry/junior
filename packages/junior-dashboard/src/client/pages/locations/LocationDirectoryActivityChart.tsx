@@ -20,6 +20,8 @@ export function LocationDirectoryActivityChart(props: {
   days: LocationActivityDayReport[];
 }) {
   const bucketUnit = props.bucketUnit ?? "day";
+  const perBucket =
+    bucketUnit === "hour" ? "Conversations per hour" : "Conversations per day";
 
   const layout = createActivityChartLayout(260);
   const maximum = Math.max(
@@ -36,8 +38,12 @@ export function LocationDirectoryActivityChart(props: {
   return (
     <Card>
       <CardHeader
-        description="Daily public volume compared with private activity in aggregate."
-        title="Conversations per day"
+        description={
+          bucketUnit === "hour"
+            ? "Hourly public volume compared with private activity in aggregate."
+            : "Daily public volume compared with private activity in aggregate."
+        }
+        title={perBucket}
         trailing={
           <ChartLegend
             ariaLabel="Conversation visibility legend"
@@ -51,7 +57,7 @@ export function LocationDirectoryActivityChart(props: {
       />
       <div className="px-2 py-3 sm:px-4 sm:py-4">
         <ChartSvg
-          aria-label="Public and private conversations per day"
+          aria-label={`Public and private ${perBucket.toLowerCase()}`}
           className="min-h-56 w-full overflow-visible"
           layout={layout}
         >
