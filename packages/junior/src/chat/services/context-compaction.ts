@@ -29,6 +29,7 @@ import { getConversationEventStore } from "@/chat/db";
 import type { ThreadConversationState } from "@/chat/state/conversation";
 import { logWarn, setSpanAttributes } from "@/chat/logging";
 import {
+  getUserMessageInstructionText,
   retainRuntimeTurnContext,
   stripRuntimeTurnContext,
   trimTrailingAssistantMessages,
@@ -667,7 +668,25 @@ export async function compactContextForHandoff(
     throw new Error("Handoff requires the current runtime turn context");
   }
   const generatedSummary = await summarizeContext(args, deps);
-  const summary = `${MODEL_HANDOFF_SUMMARY_PREFIX}\n${generatedSummary}`;
+  const currentInstruction = [...args.piMessages]
+    .reverse()
+    .map(getUserMessageInstructionText)
+    .find((text) => text && !isCompactionSummary(text));
+  const boundedCurrentInstruction = currentInstruction
+    ? sanitizeText(currentInstruction).slice(0, MAX_RENDERED_MESSAGE_CHARS)
+    : undefined;
+  const summary = [
+    MODEL_HANDOFF_SUMMARY_PREFIX,
+    ...(boundedCurrentInstruction
+      ? [
+          "Current user instruction at handoff:",
+          boundedCurrentInstruction,
+          "",
+        ]
+      : []),
+    "Continuation summary:",
+    generatedSummary,
+  ].join("\n");
   const instructionMessage = {
     role: "user",
     content: [{ type: "text", text: renderCurrentInstruction(summary) }],
