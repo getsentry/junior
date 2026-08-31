@@ -19,10 +19,14 @@ const series = [
 
 /** Render viewer memory creation as a stacked personal/public timeline. */
 export function MemoryTimeline(props: {
+  bucketUnit?: "day" | "hour";
+
   days: MemoryDay[];
   range: TimeRangeDays;
 }) {
-  const days = props.days.slice(-props.range);
+  const bucketUnit = props.bucketUnit ?? "day";
+
+  const days = props.days;
   const layout = createActivityChartLayout(200);
   const step =
     days.length > 0 ? layout.plotWidth / days.length : layout.plotWidth;
@@ -38,7 +42,9 @@ export function MemoryTimeline(props: {
           Activity over time
         </h2>
         <p className="mt-1 mb-0 font-mono text-xs leading-relaxed text-dashboard-text-muted">
-          Stacked personal + public memories created each day.
+          {bucketUnit === "hour"
+            ? "Stacked personal + public memories created each hour."
+            : "Stacked personal + public memories created each day."}
         </p>
       </div>
 
@@ -46,7 +52,7 @@ export function MemoryTimeline(props: {
 
       <div className="relative mt-3 overflow-hidden">
         <ChartSvg
-          aria-label={`Memories learned during the last ${props.range} days`}
+          aria-label={`Memories learned during the last ${props.range === 1 ? "24 hours" : `${props.range} days`}`}
           className="min-h-40"
           layout={layout}
         >

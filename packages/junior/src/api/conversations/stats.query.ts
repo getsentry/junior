@@ -143,18 +143,71 @@ function statsWindow(nowMs: number) {
   return { end, start };
 }
 
-function metricDays(
-  rows: Array<{
-    cachedInputTokens: number | null;
-    conversations: number;
-    costUsd: number | null;
-    date: string;
-    durationMs: number;
-    inputTokens: number | null;
-    tokens: number | null;
-  }>,
-  endMs: number,
-): ConversationMetricDay[] {
+const HOUR_MS = 60 * 60 * 1_000;
+const WINDOW_HOURS = 24;
+
+type MetricRow = {
+  cachedInputTokens: number | null;
+  conversations: number;
+  costUsd: number | null;
+  date: string;
+  durationMs: number;
+  inputTokens: number | null;
+  tokens: number | null;
+};
+
+type GuardianRow = {
+  allow: number;
+  ask: number;
+  costUsd: number | null;
+  date: string;
+  deny: number;
+  requests: number;
+};
+
+function startOfUtcHour(valueMs: number): Date {
+  const date = new Date(valueMs);
+  date.setUTCMinutes(0, 0, 0);
+  return date;
+}
+
+function utcHourKey(value: Date): string {
+  return value.toISOString().slice(0, 13);
+}
+
+function metricPoint(
+  date: string,
+  row:
+    | {
+        cachedInputTokens?: number | null;
+        conversations?: number;
+        costUsd?: number | null;
+        durationMs?: number;
+        inputTokens?: number | null;
+        tokens?: number | null;
+      }
+    | undefined,
+): ConversationMetricDay {
+  return {
+    conversations: row?.conversations ?? 0,
+    date,
+    durationMs: row?.durationMs ?? 0,
+    ...(row?.cachedInputTokens !== null && row?.cachedInputTokens !== undefined
+      ? { cachedInputTokens: row.cachedInputTokens }
+      : undefined),
+    ...(row?.costUsd !== null && row?.costUsd !== undefined
+      ? { costUsd: addUsd(undefined, row.costUsd) }
+      : undefined),
+    ...(row?.inputTokens !== null && row?.inputTokens !== undefined
+      ? { inputTokens: row.inputTokens }
+      : undefined),
+    ...(row?.tokens !== null && row?.tokens !== undefined
+      ? { tokens: row.tokens }
+      : undefined),
+  };
+}
+
+function metricDays(rows: MetricRow[], endMs: number): ConversationMetricDay[] {
   const byDate = new Map(rows.map((row) => [row.date, row]));
   const end = new Date(endMs);
   end.setUTCHours(0, 0, 0, 0);
@@ -167,41 +220,49 @@ function metricDays(
     cursor.setUTCDate(cursor.getUTCDate() + 1)
   ) {
     const date = cursor.toISOString().slice(0, 10);
-    const row = byDate.get(date);
-    days.push({
-      conversations: row?.conversations ?? 0,
-      date,
-      durationMs: row?.durationMs ?? 0,
-      ...(row?.cachedInputTokens !== null &&
-      row?.cachedInputTokens !== undefined
-        ? { cachedInputTokens: row.cachedInputTokens }
-        : undefined),
-      ...(row?.costUsd !== null && row?.costUsd !== undefined
-        ? { costUsd: addUsd(undefined, row.costUsd) }
-        : undefined),
-      ...(row?.inputTokens !== null && row?.inputTokens !== undefined
-        ? { inputTokens: row.inputTokens }
-        : undefined),
-      ...(row?.tokens !== null && row?.tokens !== undefined
-        ? { tokens: row.tokens }
-        : undefined),
-    });
+    days.push(metricPoint(date, byDate.get(date)));
   }
   return days;
 }
 
+function metricHours(rows: MetricRow[], endMs: number): ConversationMetricDay[] {
+  const byHour = new Map(rows.map((row) => [row.date, row]));
+  const end = startOfUtcHour(endMs);
+  const start = new Date(end.getTime() - (WINDOW_HOURS - 1) * HOUR_MS);
+  const hours: ConversationMetricDay[] = [];
+  for (
+    const cursor = new Date(start);
+    cursor.getTime() <= end.getTime();
+    cursor.setTime(cursor.getTime() + HOUR_MS)
+  ) {
+    const date = utcHourKey(cursor);
+    hours.push(metricPoint(date, byHour.get(date)));
+  }
+  return hours;
+}
+
+function guardianPoint(
+  date: string,
+  row: GuardianRow | undefined,
+): GuardianMetricDay {
+  return {
+    allow: row?.allow ?? 0,
+    ask: row?.ask ?? 0,
+    date,
+    deny: row?.deny ?? 0,
+    requests: row?.requests ?? 0,
+    ...(row?.costUsd !== null && row?.costUsd !== undefined
+      ? { costUsd: row.costUsd }
+      : undefined),
+  };
+}
+
 function guardianStats(
-  rows: Array<{
-    allow: number;
-    ask: number;
-    costUsd: number | null;
-    date: string;
-    deny: number;
-    requests: number;
-  }>,
+  dayRows: GuardianRow[],
+  hourRows: GuardianRow[],
   endMs: number,
 ): GuardianStats {
-  const byDate = new Map(rows.map((row) => [row.date, row]));
+  const byDate = new Map(dayRows.map((row) => [row.date, row]));
   const end = new Date(endMs);
   end.setUTCHours(0, 0, 0, 0);
   const start = new Date(end);
@@ -227,16 +288,20 @@ function guardianStats(
     if (row?.costUsd !== null && row?.costUsd !== undefined) {
       costUsd = addUsd(costUsd, row.costUsd);
     }
-    metricDays.push({
-      allow: row?.allow ?? 0,
-      ask: row?.ask ?? 0,
-      date,
-      deny: row?.deny ?? 0,
-      requests: row?.requests ?? 0,
-      ...(row?.costUsd !== null && row?.costUsd !== undefined
-        ? { costUsd: row.costUsd }
-        : undefined),
-    });
+    metricDays.push(guardianPoint(date, row));
+  }
+
+  const byHour = new Map(hourRows.map((row) => [row.date, row]));
+  const hourEnd = startOfUtcHour(endMs);
+  const hourStart = new Date(hourEnd.getTime() - (WINDOW_HOURS - 1) * HOUR_MS);
+  const metricHours: GuardianMetricDay[] = [];
+  for (
+    const cursor = new Date(hourStart);
+    cursor.getTime() <= hourEnd.getTime();
+    cursor.setTime(cursor.getTime() + HOUR_MS)
+  ) {
+    const date = utcHourKey(cursor);
+    metricHours.push(guardianPoint(date, byHour.get(date)));
   }
 
   return {
@@ -244,6 +309,7 @@ function guardianStats(
     ask,
     deny,
     metricDays,
+    metricHours,
     requests,
     ...(costUsd !== undefined ? { costUsd } : undefined),
   };
@@ -255,7 +321,17 @@ async function aggregateStats(db: JuniorDatabase, start: Date, end: Date) {
     ${juniorConversations.lastActivityAt} AT TIME ZONE 'UTC',
     'YYYY-MM-DD'
   )`;
-  const [totalsRows, actorRows, locationRows, metricRows] = await Promise.all([
+  const activityHour = sql<string>`TO_CHAR(
+    ${juniorConversations.lastActivityAt} AT TIME ZONE 'UTC',
+    'YYYY-MM-DD"T"HH24'
+  )`;
+  const [
+    totalsRows,
+    actorRows,
+    locationRows,
+    metricRows,
+    metricHourRows,
+  ] = await Promise.all([
     db
       .select(treeAggregateColumns)
       .from(juniorConversations)
@@ -350,8 +426,34 @@ async function aggregateStats(db: JuniorDatabase, start: Date, end: Date) {
       )
       .where(where)
       .groupBy(activityDate),
+    db
+      .select({
+        cachedInputTokens: treeAggregateColumns.cachedInputTokens,
+        conversations: treeAggregateColumns.conversations,
+        costUsd: treeAggregateColumns.costUsd,
+        date: activityHour,
+        durationMs: treeAggregateColumns.durationMs,
+        inputTokens: treeAggregateColumns.inputTokens,
+        tokens: treeAggregateColumns.tokens,
+      })
+      .from(juniorConversations)
+      .innerJoin(
+        treeConversation,
+        eq(
+          treeConversation.rootConversationId,
+          juniorConversations.conversationId,
+        ),
+      )
+      .where(where)
+      .groupBy(activityHour),
   ]);
-  return { actorRows, locationRows, metricRows, totals: totalsRows[0] };
+  return {
+    actorRows,
+    locationRows,
+    metricHourRows,
+    metricRows,
+    totals: totalsRows[0],
+  };
 }
 
 async function aggregateGuardianStats(
@@ -359,9 +461,13 @@ async function aggregateGuardianStats(
   start: Date,
   end: Date,
 ) {
-  const date = sql<string>`TO_CHAR(
+  const day = sql<string>`TO_CHAR(
     ${juniorConversationEvents.createdAt} AT TIME ZONE 'UTC',
     'YYYY-MM-DD'
+  )`;
+  const hour = sql<string>`TO_CHAR(
+    ${juniorConversationEvents.createdAt} AT TIME ZONE 'UTC',
+    'YYYY-MM-DD"T"HH24'
   )`;
   const decision = sql`${juniorConversationEvents.payload}->>'decision'`;
   const cost = sql<number | null>`CASE
@@ -369,24 +475,31 @@ async function aggregateGuardianStats(
       THEN (${juniorConversationEvents.payload}->>'costUsd')::double precision
     ELSE NULL
   END`;
-  return await db
-    .select({
-      allow: sql<number>`COUNT(*) FILTER (WHERE ${decision} = 'allow')::integer`,
-      ask: sql<number>`COUNT(*) FILTER (WHERE ${decision} = 'ask')::integer`,
-      costUsd: sql<number | null>`SUM(${cost})::double precision`,
-      date,
-      deny: sql<number>`COUNT(*) FILTER (WHERE ${decision} = 'deny')::integer`,
-      requests: sql<number>`COUNT(*)::integer`,
-    })
-    .from(juniorConversationEvents)
-    .where(
-      and(
-        eq(juniorConversationEvents.type, "guardian_action_reviewed"),
-        gte(juniorConversationEvents.createdAt, start),
-        lte(juniorConversationEvents.createdAt, end),
-      ),
-    )
-    .groupBy(date);
+  const selectColumns = {
+    allow: sql<number>`COUNT(*) FILTER (WHERE ${decision} = 'allow')::integer`,
+    ask: sql<number>`COUNT(*) FILTER (WHERE ${decision} = 'ask')::integer`,
+    costUsd: sql<number | null>`SUM(${cost})::double precision`,
+    deny: sql<number>`COUNT(*) FILTER (WHERE ${decision} = 'deny')::integer`,
+    requests: sql<number>`COUNT(*)::integer`,
+  };
+  const where = and(
+    eq(juniorConversationEvents.type, "guardian_action_reviewed"),
+    gte(juniorConversationEvents.createdAt, start),
+    lte(juniorConversationEvents.createdAt, end),
+  );
+  const [dayRows, hourRows] = await Promise.all([
+    db
+      .select({ ...selectColumns, date: day })
+      .from(juniorConversationEvents)
+      .where(where)
+      .groupBy(day),
+    db
+      .select({ ...selectColumns, date: hour })
+      .from(juniorConversationEvents)
+      .where(where)
+      .groupBy(hour),
+  ]);
+  return { dayRows, hourRows };
 }
 
 /** Build complete 90-day dashboard stats from normalized durable SQL records. */
@@ -394,11 +507,13 @@ export async function readConversationStatsFromSql(): Promise<ConversationStatsR
   const nowMs = Date.now();
   const { end, start } = statsWindow(nowMs);
   const db = getDb();
-  const [{ actorRows, locationRows, metricRows, totals }, guardianRows] =
-    await Promise.all([
-      aggregateStats(db, start, end),
-      aggregateGuardianStats(db, start, end),
-    ]);
+  const [
+    { actorRows, locationRows, metricHourRows, metricRows, totals },
+    guardian,
+  ] = await Promise.all([
+    aggregateStats(db, start, end),
+    aggregateGuardianStats(db, start, end),
+  ]);
   const actors = new Map<string, ConversationStatsItem>();
   const locations = new Map<string, ConversationStatsItem>();
 
@@ -419,8 +534,9 @@ export async function readConversationStatsFromSql(): Promise<ConversationStatsR
     durationMs: totals?.durationMs ?? 0,
     failed: totals?.failed ?? 0,
     generatedAt: new Date(nowMs).toISOString(),
-    guardian: guardianStats(guardianRows, nowMs),
+    guardian: guardianStats(guardian.dayRows, guardian.hourRows, nowMs),
     metricDays: metricDays(metricRows, nowMs),
+    metricHours: metricHours(metricHourRows, nowMs),
     locations: statsItems(locations),
     actors: statsItems(actors),
     source: "conversation_index",

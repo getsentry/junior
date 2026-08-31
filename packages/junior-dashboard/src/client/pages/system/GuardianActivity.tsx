@@ -1,16 +1,15 @@
 import type { GuardianMetricDay } from "@sentry/junior/api/schema";
 
-import { ChartAxisHtmlLabel } from "../../components/charts/ActivityChart";
+import {
+  ChartAxisHtmlLabel,
+  formatActivityDate,
+} from "../../components/charts/ActivityChart";
 import { Tooltip } from "../../components/Tooltip";
 import { Card } from "../../components/layout/Card";
 import { formatCompactNumber, formatCostSummary } from "../../format";
 
 function shortDate(date: string): string {
-  return new Date(`${date}T00:00:00.000Z`).toLocaleDateString(undefined, {
-    day: "numeric",
-    month: "short",
-    timeZone: "UTC",
-  });
+  return formatActivityDate(date);
 }
 
 function totals(days: GuardianMetricDay[]) {
@@ -43,8 +42,12 @@ function Stat(props: {
   );
 }
 
-/** Show Guardian request volume, result mix, and estimated cost by day. */
-export function GuardianActivity(props: { days: GuardianMetricDay[] }) {
+/** Show Guardian request volume, result mix, and estimated cost by bucket. */
+export function GuardianActivity(props: {
+  bucketUnit?: "day" | "hour";
+  days: GuardianMetricDay[];
+}) {
+  const bucketUnit = props.bucketUnit ?? "day";
   const period = totals(props.days);
   const maximum = Math.max(1, ...props.days.map((day) => day.requests));
   const labels = [
@@ -65,7 +68,8 @@ export function GuardianActivity(props: { days: GuardianMetricDay[] }) {
               Guardian reviews
             </h3>
             <p className="mt-1 mb-0 font-mono text-xs leading-relaxed text-dashboard-text-muted">
-              Daily decisions before reviewed actions execute.
+              {bucketUnit === "hour" ? "Hourly" : "Daily"} decisions before
+              reviewed actions execute.
             </p>
           </div>
           <div className="font-mono text-xs uppercase tracking-[0.1em] text-dashboard-text-muted">
@@ -99,7 +103,7 @@ export function GuardianActivity(props: { days: GuardianMetricDay[] }) {
       </div>
       <div className="px-4 pt-5 pb-3">
         <div
-          aria-label="Daily Guardian review results"
+          aria-label={`${bucketUnit === "hour" ? "Hourly" : "Daily"} Guardian review results`}
           className="flex h-36 items-end gap-px"
           role="img"
         >

@@ -1276,7 +1276,8 @@ function sanitizeOperationalReport(args: {
         sanitizedWidget.emptyText = emptyText;
       }
       const timeRangeDays = widget.timeRangeDays?.filter(
-        (days): days is 7 | 30 | 90 => days === 7 || days === 30 || days === 90,
+        (days): days is 1 | 7 | 30 | 90 =>
+          days === 1 || days === 7 || days === 30 || days === 90,
       );
       if (timeRangeDays?.length) {
         sanitizedWidget.timeRangeDays = [...new Set(timeRangeDays)];

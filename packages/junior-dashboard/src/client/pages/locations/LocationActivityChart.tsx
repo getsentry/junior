@@ -18,8 +18,12 @@ import { formatActivityChartAverage } from "../../format";
 
 /** Plot daily conversation volume across one public location. */
 export function LocationActivityChart(props: {
+  bucketUnit?: "day" | "hour";
+
   days: DailyConversationActivity[];
 }) {
+  const bucketUnit = props.bucketUnit ?? "day";
+
   const layout = createActivityChartLayout(240);
   const values = props.days.map((day) => day.conversations);
   const maximum = Math.max(1, ...values);
@@ -86,6 +90,7 @@ export function LocationActivityChart(props: {
             );
           })}
           <ActivityChartAverageLine
+            unit={bucketUnit}
             average={average}
             format={formatActivityChartAverage}
             layout={layout}

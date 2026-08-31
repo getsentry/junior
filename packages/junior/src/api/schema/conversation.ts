@@ -748,12 +748,17 @@ export const conversationStatsItemSchema = z
   })
   .strict();
 
+/** UTC day (`YYYY-MM-DD`) or hour (`YYYY-MM-DDTHH`) activity bucket key. */
+export const conversationMetricBucketSchema = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}(T\d{2})?$/);
+
 export const conversationMetricDaySchema = z
   .object({
     cachedInputTokens: z.number().optional(),
     conversations: z.number(),
     costUsd: z.number().optional(),
-    date: z.string(),
+    date: conversationMetricBucketSchema,
     durationMs: z.number(),
     inputTokens: z.number().optional(),
     tokens: z.number().optional(),
@@ -765,7 +770,7 @@ export const guardianMetricDaySchema = z
     allow: z.number(),
     ask: z.number(),
     costUsd: z.number().optional(),
-    date: z.string(),
+    date: conversationMetricBucketSchema,
     deny: z.number(),
     requests: z.number(),
   })
@@ -778,6 +783,7 @@ export const guardianStatsSchema = z
     costUsd: z.number().optional(),
     deny: z.number(),
     metricDays: z.array(guardianMetricDaySchema),
+    metricHours: z.array(guardianMetricDaySchema).optional(),
     requests: z.number(),
   })
   .strict();
@@ -792,6 +798,7 @@ export const conversationStatsReportSchema = z
     generatedAt: z.string(),
     guardian: guardianStatsSchema,
     metricDays: z.array(conversationMetricDaySchema),
+    metricHours: z.array(conversationMetricDaySchema).optional(),
     locations: z.array(conversationStatsItemSchema),
     actors: z.array(conversationStatsItemSchema),
     source: z.literal("conversation_index"),

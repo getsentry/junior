@@ -18,10 +18,12 @@ import {
   formatCompactNumber,
 } from "../../format";
 
-/** Plot root conversations with recorded activity each day. */
+/** Plot root conversations with recorded activity each day or hour. */
 export function ConversationActivityChart(props: {
+  bucketUnit?: "day" | "hour";
   days: ConversationMetricDay[];
 }) {
+  const bucketUnit = props.bucketUnit ?? "day";
   const layout = createActivityChartLayout(280);
   const maximum = Math.max(1, ...props.days.map((day) => day.conversations));
   const step = layout.plotWidth / Math.max(1, props.days.length);
@@ -33,13 +35,13 @@ export function ConversationActivityChart(props: {
   return (
     <Card>
       <ChartHeader
-        description="Root conversations with recorded activity, bucketed by day."
+        description={`Root conversations with recorded activity, bucketed by ${bucketUnit}.`}
         title="Conversation activity"
         total={formatCompactNumber(total)}
       />
       <div className="px-2 py-3 sm:px-4 sm:py-4">
         <ChartSvg
-          aria-label="Conversations per day"
+          aria-label={`Conversations per ${bucketUnit}`}
           className="min-h-60 overflow-visible"
           layout={layout}
         >
@@ -91,6 +93,7 @@ export function ConversationActivityChart(props: {
             layout={layout}
             maximum={maximum}
             stroke="#22d3ee"
+            unit={bucketUnit}
           />
           <ActivityChartDateLabels
             dates={props.days.map((day) => day.date)}

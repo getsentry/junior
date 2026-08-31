@@ -45,46 +45,56 @@ function compactDuration(value: number): string {
   return formatDuration(value);
 }
 
-const tokenChart: ChartConfig = {
-  axisFormat: formatCompactNumber,
-  color: "#22d3ee",
-  description: "Daily model tokens",
-  format: formatCompactNumber,
-  metric: "tokens",
-  title: "Token usage",
-  type: "bar",
-};
+function tokenChart(bucketUnit: "day" | "hour"): ChartConfig {
+  return {
+    axisFormat: formatCompactNumber,
+    color: "#22d3ee",
+    description: bucketUnit === "hour" ? "Hourly model tokens" : "Daily model tokens",
+    format: formatCompactNumber,
+    metric: "tokens",
+    title: "Token usage",
+    type: "bar",
+  };
+}
 
-const inputCacheChart: ChartConfig = {
-  axisFormat: formatCompactNumber,
-  color: "#22d3ee",
-  description: "Daily cache mix",
-  format: formatCompactNumber,
-  metric: "inputTokens",
-  title: "Input token cache",
-  type: "bar",
-};
+function inputCacheChart(bucketUnit: "day" | "hour"): ChartConfig {
+  return {
+    axisFormat: formatCompactNumber,
+    color: "#22d3ee",
+    description: bucketUnit === "hour" ? "Hourly cache mix" : "Daily cache mix",
+    format: formatCompactNumber,
+    metric: "inputTokens",
+    title: "Input token cache",
+    type: "bar",
+  };
+}
 
-const supportingCharts: ChartConfig[] = [
-  {
-    axisFormat: compactCurrency,
-    color: "#fbbf24",
-    description: "Daily estimated cost",
-    format: (value) => formatCostSummary({ total: value }),
-    metric: "costUsd",
-    title: "Model spend",
-    type: "area",
-  },
-  {
-    axisFormat: compactDuration,
-    color: "#a78bfa",
-    description: "Daily cumulative runtime",
-    format: formatDuration,
-    metric: "durationMs",
-    title: "Runtime",
-    type: "scatter",
-  },
-];
+function supportingCharts(bucketUnit: "day" | "hour"): ChartConfig[] {
+  return [
+    {
+      axisFormat: compactCurrency,
+      color: "#fbbf24",
+      description:
+        bucketUnit === "hour" ? "Hourly estimated cost" : "Daily estimated cost",
+      format: (value) => formatCostSummary({ total: value }),
+      metric: "costUsd",
+      title: "Model spend",
+      type: "area",
+    },
+    {
+      axisFormat: compactDuration,
+      color: "#a78bfa",
+      description:
+        bucketUnit === "hour"
+          ? "Hourly cumulative runtime"
+          : "Daily cumulative runtime",
+      format: formatDuration,
+      metric: "durationMs",
+      title: "Runtime",
+      type: "scatter",
+    },
+  ];
+}
 
 function metricValue(day: ConversationMetricDay, metric: Metric): number {
   if (metric === "inputTokens") {
@@ -93,25 +103,33 @@ function metricValue(day: ConversationMetricDay, metric: Metric): number {
   return day[metric] ?? 0;
 }
 
-/** Plot daily model usage, spend, and runtime in complementary chart forms. */
+/** Plot model usage, spend, and runtime in complementary chart forms. */
 export function SystemMetricCharts(props: {
+  bucketUnit?: "day" | "hour";
   cacheBreakdown?: boolean;
   days: ConversationMetricDay[];
 }) {
+  const bucketUnit = props.bucketUnit ?? "day";
   const charts = [
-    props.cacheBreakdown ? inputCacheChart : tokenChart,
-    ...supportingCharts,
+    props.cacheBreakdown ? inputCacheChart(bucketUnit) : tokenChart(bucketUnit),
+    ...supportingCharts(bucketUnit),
   ];
   return (
     <div className="grid gap-4 lg:grid-cols-3">
       {charts.map((chart) => (
-        <MetricChart chart={chart} days={props.days} key={chart.metric} />
+        <MetricChart
+          bucketUnit={bucketUnit}
+          chart={chart}
+          days={props.days}
+          key={chart.metric}
+        />
       ))}
     </div>
   );
 }
 
 function MetricChart(props: {
+  bucketUnit: "day" | "hour";
   chart: ChartConfig;
   days: ConversationMetricDay[];
 }) {
@@ -160,7 +178,7 @@ function MetricChart(props: {
       ) : null}
       <div className="px-2 py-3">
         <ChartSvg
-          aria-label={`${chart.title} per day`}
+          aria-label={`${chart.title} per ${props.bucketUnit}`}
           className="min-h-52 overflow-hidden"
           layout={layout}
         >
@@ -286,6 +304,7 @@ function MetricChart(props: {
             layout={layout}
             maximum={maximum}
             stroke={chart.color}
+            unit={props.bucketUnit}
           />
           <ActivityChartDateLabels
             dates={days.map((day) => day.date)}

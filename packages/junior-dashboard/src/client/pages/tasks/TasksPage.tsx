@@ -22,7 +22,11 @@ import {
   PagePagination,
 } from "../../components/Pagination";
 import { SelectableRow } from "../../components/SelectableRow";
-import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
+import {
+  selectTimeSeries,
+  timeRangeBucketUnit,
+  type TimeRangeDays,
+} from "../../components/controls/TimeRangeSelector";
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
 import { StatCard } from "../../components/metrics/StatCard";
@@ -215,7 +219,15 @@ export function TasksPage(props: {
             />
           </div>
           {query.data?.executionDays?.length ? (
-            <TaskExecutionChart days={query.data.executionDays} range={range} />
+            <TaskExecutionChart
+              bucketUnit={timeRangeBucketUnit(range)}
+              days={selectTimeSeries({
+                days: query.data.executionDays,
+                hours: query.data.executionHours,
+                range,
+              })}
+              range={range}
+            />
           ) : null}
         </>
       ) : null}

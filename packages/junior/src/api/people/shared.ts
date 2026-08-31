@@ -13,6 +13,7 @@ import type {
   ConversationStatsItem,
   ActorTotalsReport,
 } from "../schema/person";
+import { fillUtcDays, fillUtcHours } from "../reporting-window";
 
 export const RECENT_LIMIT = 25;
 export const ACTIVITY_DAYS = 365;
@@ -119,21 +120,24 @@ export function activityDays(
   days: Map<string, ActorActivityDayReport>,
   nowMs: number,
 ): ActorActivityDayReport[] {
-  const items: ActorActivityDayReport[] = [];
-  const end = new Date(nowMs);
-  end.setUTCHours(0, 0, 0, 0);
-  const start = new Date(end);
-  start.setUTCDate(start.getUTCDate() - (ACTIVITY_DAYS - 1));
+  return fillUtcDays({
+    count: ACTIVITY_DAYS,
+    empty: emptyActivityDay,
+    nowMs,
+    rows: days,
+  });
+}
 
-  for (
-    const cursor = new Date(start);
-    cursor.getTime() <= end.getTime();
-    cursor.setUTCDate(cursor.getUTCDate() + 1)
-  ) {
-    const date = cursor.toISOString().slice(0, 10);
-    items.push(days.get(date) ?? emptyActivityDay(date));
-  }
-  return items;
+/** Fill the trailing 24-hour people activity window from sparse hour totals. */
+export function activityHours(
+  hours: Map<string, ActorActivityDayReport>,
+  nowMs: number,
+): ActorActivityDayReport[] {
+  return fillUtcHours({
+    empty: emptyActivityDay,
+    nowMs,
+    rows: hours,
+  });
 }
 
 /** Return deterministic stats rows for people API responses. */

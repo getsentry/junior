@@ -14,11 +14,16 @@ export const codeChangeSummarySchema = z
   })
   .strict();
 
+/** UTC day (`YYYY-MM-DD`) or hour (`YYYY-MM-DDTHH`) activity bucket key. */
+export const codeMetricBucketSchema = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}(T\d{2})?$/);
+
 export const codeActivityDaySchema = z
   .object({
     closed: z.number().int().nonnegative(),
     created: z.number().int().nonnegative(),
-    date: z.string().date(),
+    date: codeMetricBucketSchema,
     merged: z.number().int().nonnegative(),
   })
   .strict();
@@ -56,6 +61,7 @@ export const codeChangeSummaryReportSchema = z
 export const codeOverviewReportSchema = z
   .object({
     activityDays: z.array(codeActivityDaySchema),
+    activityHours: z.array(codeActivityDaySchema).optional(),
     changes: z.array(codeChangeSummaryReportSchema),
     generatedAt: z.string(),
     repositories: z.array(codeRepositorySummarySchema),
@@ -69,6 +75,7 @@ export const codeOverviewReportSchema = z
 export const codePersonReportSchema = z
   .object({
     activityDays: z.array(codeActivityDaySchema),
+    activityHours: z.array(codeActivityDaySchema).optional(),
     generatedAt: z.string(),
     summary: codeChangeSummarySchema,
     windowEnd: z.string(),

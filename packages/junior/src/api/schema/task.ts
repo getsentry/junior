@@ -49,10 +49,15 @@ export const taskSummarySchema = z.discriminatedUnion("kind", [
   eventTaskSummarySchema,
 ]);
 
-/** One UTC day of completed task executions stacked by task type. */
+/** UTC day (`YYYY-MM-DD`) or hour (`YYYY-MM-DDTHH`) execution bucket key. */
+export const taskMetricBucketSchema = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}(T\d{2})?$/);
+
+/** One UTC day/hour of completed task executions stacked by task type. */
 export const taskExecutionDaySchema = z
   .object({
-    date: z.string().min(1),
+    date: taskMetricBucketSchema,
     event: z.number().int().nonnegative(),
     scheduled: z.number().int().nonnegative(),
   })
@@ -61,6 +66,7 @@ export const taskExecutionDaySchema = z
 export const taskListSchema = z
   .object({
     executionDays: z.array(taskExecutionDaySchema),
+    executionHours: z.array(taskExecutionDaySchema).optional(),
     tasks: z.array(taskSummarySchema),
     truncated: z.boolean(),
   })
@@ -89,12 +95,12 @@ export const taskExecutionSchema = z
   })
   .strict();
 
-/** One UTC day of terminal executions for a single task, stacked by status. */
+/** One UTC day/hour of terminal executions for a single task, stacked by status. */
 export const taskExecutionStatusDaySchema = z
   .object({
     blocked: z.number().int().nonnegative(),
     completed: z.number().int().nonnegative(),
-    date: z.string().min(1),
+    date: taskMetricBucketSchema,
     failed: z.number().int().nonnegative(),
   })
   .strict();
@@ -102,6 +108,7 @@ export const taskExecutionStatusDaySchema = z
 export const taskExecutionListSchema = z
   .object({
     executionDays: z.array(taskExecutionStatusDaySchema),
+    executionHours: z.array(taskExecutionStatusDaySchema).optional(),
     executions: z.array(taskExecutionSchema),
     task: taskSummarySchema,
     truncated: z.boolean(),

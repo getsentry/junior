@@ -271,6 +271,7 @@ describe("Tasks API", () => {
       expect(response.status).toBe(200);
       expect(taskListSchema.parse(await response.json())).toEqual({
         executionDays: expect.any(Array),
+        executionHours: expect.any(Array),
         tasks: [
           expect.objectContaining({
             createdBy: "Aisha Patel",
@@ -371,6 +372,7 @@ describe("Tasks API", () => {
         .slice(0, 10);
       expect(executionList).toEqual({
         executionDays: expect.any(Array),
+        executionHours: expect.any(Array),
         executions: [
           {
             conversationId: "agent-dispatch:sched-run-2",

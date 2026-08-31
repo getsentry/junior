@@ -11,8 +11,10 @@ import { fallbackShortTitle } from "@/chat/services/short-title";
 import {
   readTaskExecutionByConversationId,
   readTaskExecutionDays,
+  readTaskExecutionHours,
   readTaskExecutions,
   readTaskExecutionStatusDays,
+  readTaskExecutionStatusHours,
   readTaskExecutionSummaries,
   readTaskRuns,
   type TaskExecutionSummary,
@@ -425,11 +427,13 @@ export async function readViewerTasks(user: User): Promise<TaskList> {
       destinations.get(destinationKey(candidate.task.destination))
         ?.visibility === "public",
   );
-  const [executionDays, scheduledStats, eventStats] = await Promise.all([
-    readTaskExecutionDays(),
-    readTaskExecutionSummaries("scheduled", "junior"),
-    readTaskExecutionSummaries("event", "junior"),
-  ]);
+  const [executionDays, executionHours, scheduledStats, eventStats] =
+    await Promise.all([
+      readTaskExecutionDays(),
+      readTaskExecutionHours(),
+      readTaskExecutionSummaries("scheduled", "junior"),
+      readTaskExecutionSummaries("event", "junior"),
+    ]);
   const tasks = visible.map((candidate): TaskSummary => {
     const destination = destinations.get(
       destinationKey(candidate.task.destination),
@@ -462,6 +466,7 @@ export async function readViewerTasks(user: User): Promise<TaskList> {
   });
   return {
     executionDays,
+    executionHours,
     tasks,
     truncated:
       ownedCandidates.length > TASK_LIST_LIMIT ||
@@ -506,7 +511,7 @@ export async function readViewerTaskExecutions(
 ): Promise<TaskExecutionList> {
   const candidate = await resolveViewerTaskCandidate(user, kind, id);
   if (!candidate) throw new ViewerTaskNotFoundError();
-  const [task, executions, executionDays] = await Promise.all([
+  const [task, executions, executionDays, executionHours] = await Promise.all([
     taskSummaryForCandidate(candidate),
     readTaskExecutions({
       kind,
@@ -517,9 +522,14 @@ export async function readViewerTaskExecutions(
       kind,
       taskId: id,
     }),
+    readTaskExecutionStatusHours({
+      kind,
+      taskId: id,
+    }),
   ]);
   return {
     executionDays,
+    executionHours,
     executions: executions.slice(0, TASK_EXECUTION_LIST_LIMIT),
     task,
     truncated: executions.length > TASK_EXECUTION_LIST_LIMIT,

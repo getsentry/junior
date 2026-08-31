@@ -6,7 +6,13 @@ import type { ActorDirectoryReport } from "@sentry/junior/api/schema";
 import { useActorDirectoryData } from "../../api";
 import { EmptyTelemetry } from "../../components/EmptyTelemetry";
 import { LoadingView } from "../../components/LoadingView";
-import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
+import { activityBucketStartMs } from "../../components/charts/ActivityChart";
+import {
+  selectTimeSeries,
+  timeRangeBucketUnit,
+  timeRangeDetail,
+  type TimeRangeDays,
+} from "../../components/controls/TimeRangeSelector";
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
 import { getDashboardAgentName } from "../../agentName";
@@ -60,7 +66,14 @@ export function PeoplePageContent(props: {
   }
 
   const data = props.data;
-  const visibleActivity = data?.activityDays.slice(-range) ?? [];
+  const visibleActivity = data
+    ? selectTimeSeries({
+        days: data.activityDays,
+        hours: data.activityHours,
+        range,
+      })
+    : [];
+  const bucketUnit = timeRangeBucketUnit(range);
   const people = data
     ? filterPeople(data.people, peopleQuery, deferredSort)
     : [];
@@ -69,12 +82,16 @@ export function PeoplePageContent(props: {
     0;
   const runtimeMs =
     data?.people.reduce((total, person) => total + person.durationMs, 0) ?? 0;
-  const firstDate = visibleActivity[0]?.date;
-  const activePeople = firstDate
-    ? (data?.people.filter(
-        (person) => person.lastSeenAt.slice(0, 10) >= firstDate,
-      ).length ?? 0)
-    : 0;
+  const firstBucket = visibleActivity[0]?.date;
+  const windowStartMs = firstBucket
+    ? activityBucketStartMs(firstBucket)
+    : undefined;
+  const activePeople =
+    windowStartMs === undefined
+      ? 0
+      : (data?.people.filter(
+          (person) => Date.parse(person.lastSeenAt) >= windowStartMs,
+        ).length ?? 0);
   const peak = Math.max(0, ...visibleActivity.map((day) => day.activePeople));
 
   return (
@@ -99,7 +116,7 @@ export function PeoplePageContent(props: {
         <>
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             <StatCard
-              detail={`Verified actors seen in the last ${range} days`}
+              detail={`Verified actors seen in the ${timeRangeDetail(range)}`}
               icon={Users}
               label="Active people"
               value={formatCompactNumber(activePeople)}
@@ -117,13 +134,19 @@ export function PeoplePageContent(props: {
               value={<Duration value={runtimeMs} />}
             />
             <StatCard
-              detail={`Highest distinct daily count in ${range} days`}
+              detail={
+                bucketUnit === "hour"
+                  ? `Highest distinct hourly count in the ${timeRangeDetail(range)}`
+                  : `Highest distinct daily count in the ${timeRangeDetail(range)}`
+              }
               icon={Activity}
-              label="Peak daily active"
+              label={
+                bucketUnit === "hour" ? "Peak hourly active" : "Peak daily active"
+              }
               value={formatCompactNumber(peak)}
             />
           </div>
-          <PeopleActivityChart days={visibleActivity} />
+          <PeopleActivityChart bucketUnit={bucketUnit} days={visibleActivity} />
           <PeopleDirectory
             loading={sort !== deferredSort}
             onQueryChange={setPeopleSearch}

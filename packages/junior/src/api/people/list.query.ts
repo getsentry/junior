@@ -21,33 +21,44 @@ import {
   peopleTreeMetricsJoin,
   verifiedActorWhere,
 } from "./shared";
+import {
+  fillUtcDays,
+  fillUtcHours,
+  trailingUtcDayWindow,
+  trailingUtcHourWindow,
+} from "../reporting-window";
 
 const DIRECTORY_ACTIVITY_DAYS = 90;
 
 function activityWindow(nowMs: number) {
-  const end = new Date(nowMs);
-  end.setUTCHours(0, 0, 0, 0);
-  const start = new Date(end);
-  start.setUTCDate(start.getUTCDate() - (DIRECTORY_ACTIVITY_DAYS - 1));
-  return { end, start };
+  return trailingUtcDayWindow(nowMs, DIRECTORY_ACTIVITY_DAYS);
+}
+
+function emptyDirectoryDay(date: string): PeopleActivityDayReport {
+  return { activePeople: 0, conversations: 0, date };
 }
 
 function directoryActivityDays(
   rows: PeopleActivityDayReport[],
   nowMs: number,
 ): PeopleActivityDayReport[] {
-  const days = new Map(rows.map((row) => [row.date, row]));
-  const { end, start } = activityWindow(nowMs);
-  const items: PeopleActivityDayReport[] = [];
-  for (
-    const cursor = new Date(start);
-    cursor.getTime() <= end.getTime();
-    cursor.setUTCDate(cursor.getUTCDate() + 1)
-  ) {
-    const date = cursor.toISOString().slice(0, 10);
-    items.push(days.get(date) ?? { activePeople: 0, conversations: 0, date });
-  }
-  return items;
+  return fillUtcDays({
+    count: DIRECTORY_ACTIVITY_DAYS,
+    empty: emptyDirectoryDay,
+    nowMs,
+    rows: new Map(rows.map((row) => [row.date, row])),
+  });
+}
+
+function directoryActivityHours(
+  rows: PeopleActivityDayReport[],
+  nowMs: number,
+): PeopleActivityDayReport[] {
+  return fillUtcHours({
+    empty: emptyDirectoryDay,
+    nowMs,
+    rows: new Map(rows.map((row) => [row.date, row])),
+  });
 }
 
 /** Load the complete People directory with grouping and metrics owned by SQL. */
@@ -58,7 +69,12 @@ export async function readPeopleListFromSql(): Promise<ActorDirectoryReport> {
     ${juniorConversations.lastActivityAt} AT TIME ZONE 'UTC',
     'YYYY-MM-DD'
   )`;
-  const [rows, activityRows] = await Promise.all([
+  const activityHour = sql<string>`TO_CHAR(
+    ${juniorConversations.lastActivityAt} AT TIME ZONE 'UTC',
+    'YYYY-MM-DD"T"HH24'
+  )`;
+  const hourWindow = trailingUtcHourWindow(nowMs);
+  const [rows, activityRows, activityHourRows] = await Promise.all([
     getDb()
       .select({
         email: juniorUsers.primaryEmailNormalized,
@@ -99,6 +115,25 @@ export async function readPeopleListFromSql(): Promise<ActorDirectoryReport> {
         ),
       )
       .groupBy(activityDate),
+    getDb()
+      .select({
+        activePeople: sql<number>`COUNT(DISTINCT ${juniorUsers.id})::int`,
+        conversations: sql<number>`COUNT(*)::int`,
+        date: activityHour,
+      })
+      .from(juniorConversations)
+      .innerJoin(
+        juniorIdentities,
+        eq(juniorIdentities.id, juniorConversations.actorIdentityId),
+      )
+      .innerJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
+      .where(
+        and(
+          verifiedActorWhere(),
+          gte(juniorConversations.lastActivityAt, hourWindow.start),
+        ),
+      )
+      .groupBy(activityHour),
   ]);
 
   const people: ActorSummaryReport[] = rows.map((row) => {
@@ -123,6 +158,7 @@ export async function readPeopleListFromSql(): Promise<ActorDirectoryReport> {
 
   return {
     activityDays: directoryActivityDays(activityRows, nowMs),
+    activityHours: directoryActivityHours(activityHourRows, nowMs),
     generatedAt: new Date(nowMs).toISOString(),
     people: people.sort(
       (left, right) =>

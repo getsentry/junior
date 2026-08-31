@@ -1428,6 +1428,45 @@ function conversationMetricDays(
   return [...days.values()];
 }
 
+function conversationMetricHours(
+  nowMs: number,
+  summaries: ConversationSummaryReport[],
+): NonNullable<ConversationStatsReport["metricHours"]> {
+  const hours = new Map<
+    string,
+    NonNullable<ConversationStatsReport["metricHours"]>[number]
+  >();
+  const end = new Date(nowMs);
+  end.setUTCMinutes(0, 0, 0);
+  for (let offset = 23; offset >= 0; offset -= 1) {
+    const date = new Date(end.getTime() - offset * 60 * 60 * 1_000);
+    const key = date.toISOString().slice(0, 13);
+    hours.set(key, { conversations: 0, date: key, durationMs: 0 });
+  }
+  for (const summary of summaries) {
+    const key = summary.lastSeenAt.slice(0, 13);
+    const hour = hours.get(key);
+    if (!hour) continue;
+    hour.conversations += 1;
+    hour.durationMs += summary.cumulativeDurationMs;
+    const tokens = summaryTokenTotal(summary);
+    if (tokens) hour.tokens = (hour.tokens ?? 0) + tokens;
+    const inputTokens = summary.cumulativeUsage?.inputTokens;
+    if (inputTokens !== undefined) {
+      hour.inputTokens = (hour.inputTokens ?? 0) + inputTokens;
+    }
+    const cachedInputTokens = summary.cumulativeUsage?.cachedInputTokens;
+    if (cachedInputTokens !== undefined) {
+      hour.cachedInputTokens = (hour.cachedInputTokens ?? 0) + cachedInputTokens;
+    }
+    const costUsd = summary.cumulativeUsage?.cost?.total;
+    if (costUsd !== undefined) {
+      hour.costUsd = (hour.costUsd ?? 0) + costUsd;
+    }
+  }
+  return [...hours.values()];
+}
+
 function mockGuardianStats(nowMs: number): ConversationStatsReport["guardian"] {
   const metricDays = Array.from({ length: 90 }, (_, index) => {
     const date = new Date(nowMs);
@@ -1447,6 +1486,23 @@ function mockGuardianStats(nowMs: number): ConversationStatsReport["guardian"] {
       requests,
     };
   });
+  const end = new Date(nowMs);
+  end.setUTCMinutes(0, 0, 0);
+  const metricHours = Array.from({ length: 24 }, (_, index) => {
+    const date = new Date(end.getTime() - (23 - index) * 60 * 60 * 1_000);
+    const requests = index > 12 ? (index % 4) + 1 : 0;
+    const deny = requests > 2 && index % 5 === 0 ? 1 : 0;
+    const ask = requests > 1 && index % 3 === 0 ? 1 : 0;
+    const allow = requests - ask - deny;
+    return {
+      allow,
+      ask,
+      ...(requests ? { costUsd: requests * 0.0009 } : undefined),
+      date: date.toISOString().slice(0, 13),
+      deny,
+      requests,
+    };
+  });
   return metricDays.reduce<ConversationStatsReport["guardian"]>(
     (result, day) => ({
       allow: result.allow + day.allow,
@@ -1454,9 +1510,18 @@ function mockGuardianStats(nowMs: number): ConversationStatsReport["guardian"] {
       costUsd: (result.costUsd ?? 0) + (day.costUsd ?? 0),
       deny: result.deny + day.deny,
       metricDays,
+      metricHours,
       requests: result.requests + day.requests,
     }),
-    { allow: 0, ask: 0, costUsd: 0, deny: 0, metricDays, requests: 0 },
+    {
+      allow: 0,
+      ask: 0,
+      costUsd: 0,
+      deny: 0,
+      metricDays,
+      metricHours,
+      requests: 0,
+    },
   );
 }
 
@@ -1704,6 +1769,7 @@ export function readMockConversationStats(): ConversationStatsReport {
     ...(inputTokens ? { inputTokens } : undefined),
     locations: [...locationItems.values()],
     metricDays: conversationMetricDays(nowMs, summaries),
+    metricHours: conversationMetricHours(nowMs, summaries),
     source: "conversation_index",
     tokens: total.tokens,
     ...windowBounds(nowMs),
@@ -1735,6 +1801,21 @@ function mockPeopleActivityDays(
     conversations: byDate.get(date)?.conversations ?? 0,
     date,
   }));
+}
+
+
+function trailingMetricHours<T extends { date: string }>(
+  nowMs: number,
+  empty: (date: string) => T,
+): T[] {
+  const end = new Date(nowMs);
+  end.setUTCMinutes(0, 0, 0);
+  return Array.from({ length: 24 }, (_, index) => {
+    const date = new Date(end.getTime() - (23 - index) * 60 * 60 * 1_000)
+      .toISOString()
+      .slice(0, 13);
+    return empty(date);
+  });
 }
 
 function activityDates(nowMs: number, days = PEOPLE_ACTIVITY_DAYS): string[] {
@@ -2209,6 +2290,11 @@ function mockTasks(): TaskSummary[] {
 export function readMockTaskList(nowMs = Date.now()): TaskList {
   return {
     executionDays: mockTaskExecutionDays(nowMs),
+    executionHours: trailingMetricHours(nowMs, (date) => ({
+      date,
+      event: 0,
+      scheduled: 0,
+    })),
     tasks: mockTasks(),
     truncated: false,
   };
@@ -2239,6 +2325,12 @@ export function readMockTaskExecutions(
   if (task.totalRuns === 0) {
     return {
       executionDays: mockStatusDays(nowMs),
+      executionHours: trailingMetricHours(nowMs, (date) => ({
+        blocked: 0,
+        completed: 0,
+        date,
+        failed: 0,
+      })),
       executions: [],
       task,
       truncated: false,
@@ -2272,6 +2364,12 @@ export function readMockTaskExecutions(
   });
   return {
     executionDays: mockStatusDays(nowMs),
+    executionHours: trailingMetricHours(nowMs, (date) => ({
+      blocked: 0,
+      completed: 0,
+      date,
+      failed: 0,
+    })),
     executions,
     task,
     truncated: task.totalRuns > executions.length,

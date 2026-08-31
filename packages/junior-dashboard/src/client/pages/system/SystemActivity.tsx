@@ -5,7 +5,12 @@ import type {
 import { CircleDollarSign, Gauge, MessageSquare, Sigma } from "lucide-react";
 
 import { EmptyTelemetry } from "../../components/EmptyTelemetry";
-import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
+import {
+  selectTimeSeries,
+  timeRangeBucketUnit,
+  timeRangeDetail,
+  type TimeRangeDays,
+} from "../../components/controls/TimeRangeSelector";
 import { Card } from "../../components/layout/Card";
 import { StatCard } from "../../components/metrics/StatCard";
 import { SystemMetricCharts } from "../../components/charts/SystemMetricCharts";
@@ -59,9 +64,18 @@ export function SystemActivity(props: {
     );
   }
 
-  const days = props.stats.metricDays.slice(-props.range);
-  const guardianDays = props.stats.guardian.metricDays.slice(-props.range);
+  const days = selectTimeSeries({
+    days: props.stats.metricDays,
+    hours: props.stats.metricHours,
+    range: props.range,
+  });
+  const guardianDays = selectTimeSeries({
+    days: props.stats.guardian.metricDays,
+    hours: props.stats.guardian.metricHours,
+    range: props.range,
+  });
   const totals = periodTotals(days);
+  const bucketUnit = timeRangeBucketUnit(props.range);
   return (
     <section aria-label="Runtime telemetry" className="grid gap-4">
       {props.error ? (
@@ -71,7 +85,7 @@ export function SystemActivity(props: {
       ) : null}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatCard
-          detail={`Root conversations in the last ${props.range} days`}
+          detail={`Root conversations in the ${timeRangeDetail(props.range)}`}
           icon={MessageSquare}
           label="Conversations"
           value={formatCompactNumber(totals.conversations)}
@@ -98,9 +112,13 @@ export function SystemActivity(props: {
           )}
         />
       </div>
-      <ConversationActivityChart days={days} />
-      <SystemMetricCharts cacheBreakdown days={days} />
-      <GuardianActivity days={guardianDays} />
+      <ConversationActivityChart bucketUnit={bucketUnit} days={days} />
+      <SystemMetricCharts
+        bucketUnit={bucketUnit}
+        cacheBreakdown
+        days={days}
+      />
+      <GuardianActivity bucketUnit={bucketUnit} days={guardianDays} />
     </section>
   );
 }

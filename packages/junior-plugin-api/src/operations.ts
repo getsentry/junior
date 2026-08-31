@@ -91,7 +91,7 @@ export interface PluginOperationalBarChartWidget {
   emptyText?: string;
   id: string;
   series: PluginOperationalChartSeries[];
-  timeRangeDays?: Array<7 | 30 | 90>;
+  timeRangeDays?: Array<1 | 7 | 30 | 90>;
   title: string;
   type: "bar_chart";
 }

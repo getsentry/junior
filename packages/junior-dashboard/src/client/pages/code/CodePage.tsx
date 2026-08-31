@@ -6,7 +6,11 @@ import { formatDuration } from "../../components/Duration";
 import { EmptyTelemetry } from "../../components/EmptyTelemetry";
 import { LoadingView } from "../../components/LoadingView";
 import { StatusChip } from "../../components/StatusChip";
-import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
+import {
+  selectTimeSeries,
+  timeRangeBucketUnit,
+  type TimeRangeDays,
+} from "../../components/controls/TimeRangeSelector";
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
 import { PageLayout } from "../../components/layout/PageLayout";
@@ -94,7 +98,15 @@ function CodeOverview(props: {
           value={costUsd(data.summary.costUsd)}
         />
       </div>
-      <CodeActivityChart days={data.activityDays} range={props.range} />
+      <CodeActivityChart
+        bucketUnit={timeRangeBucketUnit(props.range)}
+        days={selectTimeSeries({
+          days: data.activityDays,
+          hours: data.activityHours,
+          range: props.range,
+        })}
+        range={props.range}
+      />
       <Card as="section">
         <div className="border-b border-dashboard-border-subtle px-4 py-3 font-display text-lg text-dashboard-text">
           Repositories

@@ -16,7 +16,11 @@ import {
 } from "../../api";
 import { ContributionGrid } from "./ContributionGrid";
 import { SystemMetricCharts } from "../../components/charts/SystemMetricCharts";
-import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
+import {
+  selectTimeSeries,
+  timeRangeBucketUnit,
+  type TimeRangeDays,
+} from "../../components/controls/TimeRangeSelector";
 import { EmptyTelemetry } from "../../components/EmptyTelemetry";
 import { LoadingView } from "../../components/LoadingView";
 import { Card } from "../../components/layout/Card";
@@ -112,7 +116,14 @@ export function Profile(props: {
           id="profile-metrics-title"
           title="Usage over time"
         />
-        <SystemMetricCharts days={profile.activityDays.slice(-range)} />
+        <SystemMetricCharts
+          bucketUnit={timeRangeBucketUnit(range)}
+          days={selectTimeSeries({
+            days: profile.activityDays,
+            hours: profile.activityHours,
+            range,
+          })}
+        />
       </section>
 
       {props.codeError ? (

@@ -20,7 +20,11 @@ import { LoadMorePagination } from "../../components/Pagination";
 import { SearchInput } from "../../components/SearchInput";
 import { SelectableRow } from "../../components/SelectableRow";
 import { StatusChip } from "../../components/StatusChip";
-import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
+import {
+  selectTimeSeries,
+  timeRangeBucketUnit,
+  type TimeRangeDays,
+} from "../../components/controls/TimeRangeSelector";
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
 import {
@@ -89,11 +93,28 @@ function MemoryOverview(props: { range: TimeRangeDays }) {
   return (
     <>
       <section className="grid gap-4 xl:grid-cols-2">
-        <MemoryTimeline days={dashboardQuery.data.days} range={props.range} />
-        <MemoryCostChart
-          extractionDays={dashboardQuery.data.extractionDays}
+        <MemoryTimeline
+          bucketUnit={timeRangeBucketUnit(props.range)}
+          days={selectTimeSeries({
+            days: dashboardQuery.data.days,
+            hours: dashboardQuery.data.hours,
+            range: props.range,
+          })}
           range={props.range}
-          recallDays={dashboardQuery.data.recallDays}
+        />
+        <MemoryCostChart
+          bucketUnit={timeRangeBucketUnit(props.range)}
+          extractionDays={selectTimeSeries({
+            days: dashboardQuery.data.extractionDays,
+            hours: dashboardQuery.data.extractionHours,
+            range: props.range,
+          })}
+          range={props.range}
+          recallDays={selectTimeSeries({
+            days: dashboardQuery.data.recallDays,
+            hours: dashboardQuery.data.recallHours,
+            range: props.range,
+          })}
         />
       </section>
       <MemorySummary data={dashboardQuery.data} />

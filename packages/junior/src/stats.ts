@@ -20,6 +20,7 @@ function utcDate(nowMs: number): string {
   return new Date(nowMs).toISOString().slice(0, 10);
 }
 
+// TODO: accept hour keys when junior_stats can store them for 24h workspace usage.
 /** Increment one daily named counter. */
 export async function incrementStat(
   key: StatKey,

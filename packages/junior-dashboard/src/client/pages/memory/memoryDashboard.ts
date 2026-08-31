@@ -3,9 +3,11 @@ import { z } from "zod";
 
 import { fetchDashboardJson } from "../../http";
 
+const memoryBucketSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}(T\d{2})?$/);
+
 const memoryDaySchema = z
   .object({
-    date: z.iso.date(),
+    date: memoryBucketSchema,
     personal: z.number().int().min(0),
     public: z.number().int().min(0),
   })
@@ -14,7 +16,7 @@ const memoryDaySchema = z
 const memoryCostDaySchema = z
   .object({
     costUsd: z.number().finite().min(0),
-    date: z.iso.date(),
+    date: memoryBucketSchema,
     events: z.number().int().min(0),
   })
   .strict();
@@ -23,8 +25,11 @@ export const memoryDashboardSchema = z
   .object({
     days: z.array(memoryDaySchema).length(90),
     extractionDays: z.array(memoryCostDaySchema).length(90),
+    extractionHours: z.array(memoryCostDaySchema).length(24).optional(),
     generatedAt: z.iso.datetime(),
+    hours: z.array(memoryDaySchema).length(24).optional(),
     recallDays: z.array(memoryCostDaySchema).length(90),
+    recallHours: z.array(memoryCostDaySchema).length(24).optional(),
     stats: z
       .object({
         active: z.number().int().min(0),

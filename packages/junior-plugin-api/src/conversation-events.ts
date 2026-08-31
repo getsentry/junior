@@ -129,4 +129,8 @@ export interface PluginConversationEventStats {
     days: 7 | 30 | 90;
     eventName: string;
   }): Promise<PluginConversationEventCostDay[]>;
+  costsByHour(input: {
+    eventName: string;
+    hours?: number;
+  }): Promise<PluginConversationEventCostDay[]>;
 }
