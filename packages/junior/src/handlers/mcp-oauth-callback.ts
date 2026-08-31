@@ -14,6 +14,8 @@ import { hydrateConversationMessages } from "@/chat/conversations/messages";
 import {
   deleteMcpAuthSession,
   getMcpAuthSession,
+  getMcpStoredOAuthCredentials,
+  putMcpStoredOAuthCredentials,
   type McpAuthSessionState,
 } from "@/chat/mcp/auth-store";
 import { finalizeMcpAuthorization } from "@/chat/mcp/oauth";
@@ -572,6 +574,52 @@ export async function GET(
     return htmlResponse("missing_state");
   }
   if (error) {
+    // Provider denied or failed auth. Clear client/discovery only while this
+    // attempt still owns the conversation lock, matching success-path writes.
+    try {
+      const pendingSession = await getMcpAuthSession(state);
+      if (pendingSession && pendingSession.provider === provider) {
+        try {
+          await runCurrentMcpCredentialMutation(
+            pendingSession,
+            provider,
+            async () => {
+              const credentials = await getMcpStoredOAuthCredentials(
+                pendingSession.userId,
+                provider,
+              );
+              if (
+                !credentials?.clientInformation &&
+                !credentials?.discoveryState
+              ) {
+                return;
+              }
+              const nextCredentials = credentials.tokens
+                ? { tokens: credentials.tokens }
+                : {};
+              await putMcpStoredOAuthCredentials(
+                pendingSession.userId,
+                provider,
+                nextCredentials,
+              );
+            },
+          );
+        } catch (cleanupError) {
+          if (!(cleanupError instanceof McpOAuthAttemptExpiredError)) {
+            logException(
+              cleanupError,
+              "mcp.oauth_callback.provider_error_cleanup.failed",
+              { "app.credential.provider": provider },
+            );
+          }
+        }
+        await deleteMcpAuthSession(pendingSession.authSessionId);
+      }
+    } catch (cleanupError) {
+      logException(cleanupError, "mcp.oauth_callback.provider_error_cleanup.failed", {
+        "app.credential.provider": provider,
+      });
+    }
     return htmlResponse("provider_error");
   }
   if (!code) {

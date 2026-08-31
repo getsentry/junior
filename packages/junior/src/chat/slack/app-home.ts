@@ -97,14 +97,21 @@ async function hasConnectedMcpAccount(
   userId: string,
   plugin: PluginDefinition,
 ): Promise<boolean> {
-  if (plugin.manifest.mcp) {
-    return Boolean(
-      (await getMcpStoredOAuthCredentials(userId, plugin.manifest.name))
-        ?.tokens,
-    );
+  if (!plugin.manifest.mcp) {
+    return false;
   }
 
-  return false;
+  // Any stored MCP credential state counts, including DCR client/discovery
+  // left behind when authorization never finished.
+  const credentials = await getMcpStoredOAuthCredentials(
+    userId,
+    plugin.manifest.name,
+  );
+  return Boolean(
+    credentials?.tokens ||
+      credentials?.clientInformation ||
+      credentials?.discoveryState,
+  );
 }
 
 /** Build the Slack App Home tab view showing skills, connected accounts, and version. */

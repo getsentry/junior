@@ -83,7 +83,10 @@ async function handleUnlink(
     return;
   }
 
-  if (!pluginCatalogRuntime.getOAuthConfig(provider)) {
+  const supportsUnlink =
+    Boolean(pluginCatalogRuntime.getOAuthConfig(provider)) ||
+    Boolean(pluginCatalogRuntime.getDefinition(provider)?.manifest.mcp);
+  if (!supportsUnlink) {
     await postEphemeral(
       event,
       `${formatProviderLabel(provider)} doesn't support account unlinking.`,

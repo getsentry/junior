@@ -4,14 +4,18 @@ const {
   deleteMcpAuthSessionMock,
   finalizeMcpAuthorizationMock,
   getMcpAuthSessionMock,
+  getMcpStoredOAuthCredentialsMock,
   getPersistedThreadStateMock,
   logExceptionMock,
+  putMcpStoredOAuthCredentialsMock,
 } = vi.hoisted(() => ({
   deleteMcpAuthSessionMock: vi.fn(),
   finalizeMcpAuthorizationMock: vi.fn(),
   getMcpAuthSessionMock: vi.fn(),
+  getMcpStoredOAuthCredentialsMock: vi.fn(),
   getPersistedThreadStateMock: vi.fn(),
   logExceptionMock: vi.fn(),
+  putMcpStoredOAuthCredentialsMock: vi.fn(),
 }));
 
 vi.mock("@/chat/logging", async (importOriginal) => ({
@@ -27,6 +31,8 @@ vi.mock("@/chat/mcp/auth-store", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/chat/mcp/auth-store")>()),
   deleteMcpAuthSession: deleteMcpAuthSessionMock,
   getMcpAuthSession: getMcpAuthSessionMock,
+  getMcpStoredOAuthCredentials: getMcpStoredOAuthCredentialsMock,
+  putMcpStoredOAuthCredentials: putMcpStoredOAuthCredentialsMock,
 }));
 
 vi.mock("@/chat/runtime/thread-state", async (importOriginal) => ({
@@ -66,8 +72,12 @@ describe("mcp oauth callback handler", () => {
     deleteMcpAuthSessionMock.mockReset();
     finalizeMcpAuthorizationMock.mockReset();
     getMcpAuthSessionMock.mockReset();
+    getMcpStoredOAuthCredentialsMock.mockReset();
     getPersistedThreadStateMock.mockReset();
     logExceptionMock.mockReset();
+    putMcpStoredOAuthCredentialsMock.mockReset();
+    getMcpStoredOAuthCredentialsMock.mockResolvedValue(undefined);
+    putMcpStoredOAuthCredentialsMock.mockResolvedValue(undefined);
     getMcpAuthSessionMock.mockResolvedValue({
       schemaVersion: 2,
       authSessionId: "state-123",
@@ -136,6 +146,77 @@ describe("mcp oauth callback handler", () => {
     const body = await response.text();
     expect(body).toContain("The provider returned an authorization error.");
     expect(body).not.toContain("<script>alert(1)</script>");
+    expect(waitUntil.pendingCount()).toBe(0);
+  });
+
+  it("clears stale DCR client and discovery state on provider error callbacks", async () => {
+    getMcpStoredOAuthCredentialsMock.mockResolvedValue({
+      clientInformation: { client_id: "stale-client" },
+      discoveryState: { authorizationServerUrl: "https://old.example.com" },
+      tokens: {
+        access_token: "keep-me",
+        token_type: "Bearer",
+      },
+    });
+
+    const response = await GET(
+      makeRequest(
+        "https://example.com/api/oauth/callback/mcp/demo?state=state-123&error=access_denied",
+      ),
+      "demo",
+      waitUntil.fn,
+      { agentRunner: testAgentRunner },
+    );
+
+    expect(response.status).toBe(400);
+    expect(putMcpStoredOAuthCredentialsMock).toHaveBeenCalledWith("U123", "demo", {
+      tokens: {
+        access_token: "keep-me",
+        token_type: "Bearer",
+      },
+    });
+    expect(deleteMcpAuthSessionMock).toHaveBeenCalledWith("state-123");
+    expect(finalizeMcpAuthorizationMock).not.toHaveBeenCalled();
+    expect(waitUntil.pendingCount()).toBe(0);
+  });
+
+  it("does not clear durable MCP credentials for a superseded provider-error session", async () => {
+    getMcpStoredOAuthCredentialsMock.mockResolvedValue({
+      clientInformation: { client_id: "live-client" },
+      discoveryState: { authorizationServerUrl: "https://live.example.com" },
+      tokens: {
+        access_token: "live-token",
+        token_type: "Bearer",
+      },
+    });
+    getPersistedThreadStateMock.mockResolvedValue({
+      conversation: {
+        processing: {
+          pendingAuth: {
+            authSessionId: "state-newer",
+            kind: "mcp",
+            provider: "demo",
+            actorId: "U123",
+            sessionId: "turn-2",
+            linkSentAtMs: 2,
+          },
+        },
+      },
+    });
+
+    const response = await GET(
+      makeRequest(
+        "https://example.com/api/oauth/callback/mcp/demo?state=state-123&error=access_denied",
+      ),
+      "demo",
+      waitUntil.fn,
+      { agentRunner: testAgentRunner },
+    );
+
+    expect(response.status).toBe(400);
+    expect(putMcpStoredOAuthCredentialsMock).not.toHaveBeenCalled();
+    expect(deleteMcpAuthSessionMock).toHaveBeenCalledWith("state-123");
+    expect(finalizeMcpAuthorizationMock).not.toHaveBeenCalled();
     expect(waitUntil.pendingCount()).toBe(0);
   });
 
