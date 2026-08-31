@@ -4,6 +4,8 @@ import { Navigate, useLocation } from "react-router";
 
 import { agentNamePossessive, getDashboardAgentName } from "../../agentName";
 import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
+
+const SYSTEM_RANGE_OPTIONS: TimeRangeDays[] = [1, 7, 30, 90];
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
 import type { SystemData } from "../../types";
@@ -81,6 +83,7 @@ function OverviewSystemPage(props: {
         description={`A live read on ${agentNamePossessive()} runtime and model usage.`}
         onRangeChange={props.onRangeChange}
         range={props.range}
+        rangeOptions={SYSTEM_RANGE_OPTIONS}
         title="System"
       />
       <SystemActivity
@@ -132,7 +135,11 @@ function PluginSystemPage(props: {
       <PageHeader
         description={props.plugin.description}
         {...(rangeRelevant
-          ? { onRangeChange: props.onRangeChange, range: props.range }
+          ? {
+              onRangeChange: props.onRangeChange,
+              range: props.range,
+              rangeOptions: SYSTEM_RANGE_OPTIONS,
+            }
           : {})}
         title={props.plugin.displayName}
       />

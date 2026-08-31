@@ -156,11 +156,25 @@ export function PluginBarChart(props: {
 
 function supportedRange(widget: Widget, range: TimeRangeDays | undefined) {
   const availableRanges = widget.timeRangeDays ?? [];
-  if (range && availableRanges.includes(range)) return range;
+  if (
+    range &&
+    range !== 1 &&
+    (availableRanges as TimeRangeDays[]).includes(range)
+  ) {
+    return range;
+  }
+  // Plugin widgets are still daily series; map 24h onto the shortest day window.
+  if (range === 1 && availableRanges.includes(7)) return 7;
   return availableRanges.includes(30) ? 30 : (availableRanges[0] ?? 30);
 }
 
 function formatCategoryLabel(label: string): string {
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}$/.test(label)) {
+    return new Date(`${label}:00:00.000Z`).toLocaleTimeString(undefined, {
+      hour: "numeric",
+      timeZone: "UTC",
+    });
+  }
   if (!/^\d{4}-\d{2}-\d{2}$/.test(label)) return label;
   return new Date(`${label}T00:00:00.000Z`).toLocaleDateString(undefined, {
     day: "numeric",

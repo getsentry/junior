@@ -11,6 +11,7 @@ import {
   ChartCategoryLabels,
   ChartSvg,
   createActivityChartLayout,
+  formatActivityDate,
 } from "../src/client/components/charts/ActivityChart";
 import { ChartHeader } from "../src/client/components/charts/ChartHeader";
 import { SystemMetricCharts } from "../src/client/components/charts/SystemMetricCharts";
@@ -106,6 +107,16 @@ describe("ChartHeader", () => {
     const primaryClass = html.match(/class="([^"]*font-mono[^"]*)"/)?.[1];
     expect(primaryClass).toBeTruthy();
     expect(html.split(primaryClass!).length - 1).toBeGreaterThanOrEqual(2);
+  });
+});
+
+describe("formatActivityDate", () => {
+  it("formats day buckets as short UTC dates", () => {
+    expect(formatActivityDate("2026-05-01")).toContain("May");
+  });
+
+  it("formats hour buckets as UTC clock hours", () => {
+    expect(formatActivityDate("2026-05-01T15")).toMatch(/3|15/);
   });
 });
 
