@@ -1770,6 +1770,42 @@ describe("dashboard canonical-event components", () => {
     expect(html).not.toContain('aria-label="Reporting period"');
   });
 
+  it("renders 24 trailing hour categories for the 24h range", () => {
+    const categories = Array.from({ length: 48 }, (_, index) => {
+      const date = new Date("2026-07-30T00:00:00.000Z");
+      date.setUTCHours(date.getUTCHours() + index);
+      const label = date.toISOString().slice(0, 13);
+      return {
+        id: label,
+        label,
+        values: { created: index },
+      };
+    });
+    const html = renderToStaticMarkup(
+      <PluginReports
+        range={1}
+        reports={[
+          {
+            pluginName: "github",
+            widgets: [
+              {
+                categories,
+                id: "hourly-outcomes",
+                series: [{ key: "created", label: "Created" }],
+                timeRangeDays: [1, 7, 30, 90],
+                title: "Pull request outcomes",
+                type: "bar_chart",
+              },
+            ],
+          },
+        ]}
+      />,
+    );
+    expect(html).toContain('aria-label="2026-07-31T23, Created: 47"');
+    expect(html).toContain('aria-label="2026-07-31T00, Created: 24"');
+    expect(html).not.toContain('aria-label="2026-07-30T23, Created: 23"');
+  });
+
   it("renders an all-zero chart with a stable zero scale", () => {
     const html = renderToStaticMarkup(
       <PluginReports

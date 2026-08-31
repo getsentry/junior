@@ -156,21 +156,26 @@ export function PluginBarChart(props: {
   );
 }
 
+/** Trailing hour categories for a 24h plugin chart window. */
+const HOURLY_CATEGORY_COUNT = 24;
+
 /**
  * How many trailing categories to show for the page range.
- * 24h only applies when the widget already ships hour buckets and lists `1`.
- * Daily-only widgets fall back to their shortest multi-day window.
+ * `1` means last 24 hours: take 24 hour buckets when present, else the
+ * shortest multi-day window (daily widgets cannot plot true hourly bars).
  */
 function visibleCategoryCount(
   widget: Widget,
   range: TimeRangeDays | undefined,
-): TimeRangeDays {
+): number {
   const availableRanges = (widget.timeRangeDays ?? []) as TimeRangeDays[];
   const firstCategory = widget.categories[0];
   const firstKey = firstCategory?.id || firstCategory?.label || "";
   const hasHourBuckets = isActivityHourBucket(firstKey);
   if (range === 1) {
-    if (hasHourBuckets && availableRanges.includes(1)) return 1;
+    if (hasHourBuckets && availableRanges.includes(1)) {
+      return HOURLY_CATEGORY_COUNT;
+    }
     // TODO: ship hour categories from daily-only plugin widgets so 24h can
     // plot true hourly bars instead of falling back to 7d/30d day series.
     if (availableRanges.includes(7)) return 7;
