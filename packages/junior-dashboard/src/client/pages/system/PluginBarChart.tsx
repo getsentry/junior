@@ -5,6 +5,8 @@ import {
   ChartCategoryLabels,
   ChartSvg,
   createActivityChartLayout,
+  formatActivityDate,
+  isActivityHourBucket,
 } from "../../components/charts/ActivityChart";
 import { ChartLegend } from "../../components/charts/ChartLegend";
 import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
@@ -28,7 +30,7 @@ export function PluginBarChart(props: {
 }) {
   const { widget } = props;
   const categories = widget.timeRangeDays
-    ? widget.categories.slice(-supportedRange(widget, props.range))
+    ? widget.categories.slice(-visibleCategoryCount(widget, props.range))
     : widget.categories;
   const seriesFormat = commonSeriesFormat(widget);
   const layout = createActivityChartLayout(250, {
@@ -154,14 +156,23 @@ export function PluginBarChart(props: {
   );
 }
 
-function supportedRange(widget: Widget, range: TimeRangeDays | undefined) {
+/**
+ * How many trailing categories to show for the page range.
+ * 24h only applies when the widget already ships hour buckets and lists `1`.
+ * Daily-only widgets fall back to their shortest multi-day window.
+ */
+function visibleCategoryCount(
+  widget: Widget,
+  range: TimeRangeDays | undefined,
+): TimeRangeDays {
   const availableRanges = (widget.timeRangeDays ?? []) as TimeRangeDays[];
   const firstCategory = widget.categories[0];
   const firstKey = firstCategory?.id || firstCategory?.label || "";
-  const categoriesAreHours = /^\d{4}-\d{2}-\d{2}T\d{2}$/.test(firstKey);
-  // 24h only applies when the widget already ships hour buckets.
+  const hasHourBuckets = isActivityHourBucket(firstKey);
   if (range === 1) {
-    if (categoriesAreHours && availableRanges.includes(1)) return 1;
+    if (hasHourBuckets && availableRanges.includes(1)) return 1;
+    // TODO: ship hour categories from daily-only plugin widgets so 24h can
+    // plot true hourly bars instead of falling back to 7d/30d day series.
     if (availableRanges.includes(7)) return 7;
     return availableRanges.includes(30) ? 30 : (availableRanges[0] ?? 30);
   }
@@ -170,18 +181,10 @@ function supportedRange(widget: Widget, range: TimeRangeDays | undefined) {
 }
 
 function formatCategoryLabel(label: string): string {
-  if (/^\d{4}-\d{2}-\d{2}T\d{2}$/.test(label)) {
-    return new Date(`${label}:00:00.000Z`).toLocaleTimeString(undefined, {
-      hour: "numeric",
-      timeZone: "UTC",
-    });
+  if (isActivityHourBucket(label) || /^\d{4}-\d{2}-\d{2}$/.test(label)) {
+    return formatActivityDate(label);
   }
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(label)) return label;
-  return new Date(`${label}T00:00:00.000Z`).toLocaleDateString(undefined, {
-    day: "numeric",
-    month: "short",
-    timeZone: "UTC",
-  });
+  return label;
 }
 
 function formatChartNumber(value: number): string {

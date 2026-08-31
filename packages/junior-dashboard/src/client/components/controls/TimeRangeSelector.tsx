@@ -1,20 +1,24 @@
 import { ToggleButton } from "../Button";
 
+/**
+ * Fixed dashboard reporting window.
+ * `1` means last 24 hours (hourly charts). Other values are trailing day counts.
+ */
 export type TimeRangeDays = 1 | 7 | 30 | 90;
 
 const DEFAULT_OPTIONS: TimeRangeDays[] = [1, 7, 30, 90];
 
-/** Label a fixed reporting window without hiding the active range. */
+/** Short control label for a reporting window. */
 export function timeRangeLabel(days: TimeRangeDays): string {
   return days === 1 ? "24h" : `${days}d`;
 }
 
-/** Describe a selected reporting window in plain copy. */
+/** Plain-language description of a reporting window. */
 export function timeRangeDetail(days: TimeRangeDays): string {
   return days === 1 ? "last 24 hours" : `last ${days} days`;
 }
 
-/** Chart axis/average unit for the selected reporting window. */
+/** Chart axis and average unit for a reporting window. */
 export function timeRangeBucketUnit(days: TimeRangeDays): "day" | "hour" {
   return days === 1 ? "hour" : "day";
 }
@@ -26,7 +30,7 @@ export function isHourlyTimeRange(days: TimeRangeDays): boolean {
 
 /**
  * Choose the day or hour series for a reporting window.
- * Falls back to the trailing day window when hour data is absent.
+ * Uses hours for 24h when present; otherwise the latest day only.
  */
 export function selectTimeSeries<T>(args: {
   days: readonly T[];
@@ -42,7 +46,7 @@ export function selectTimeSeries<T>(args: {
   return args.days.slice(-args.range);
 }
 
-/** Select a fixed reporting window without hiding the active range. */
+/** Control for a fixed reporting window. */
 export function TimeRangeSelector(props: {
   onChange(value: TimeRangeDays): void;
   options?: TimeRangeDays[];

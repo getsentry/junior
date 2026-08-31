@@ -65,11 +65,11 @@ export function WorkspaceDetailsContent(props: {
           <WorkspaceUsageChart
             days={workspaceUsageDays({
               workspaceId: props.workspace.id,
-              // Daily counters only; keep 24h off this chart via page range options.
-              range: props.range === 1 ? 7 : props.range,
+              // Workspace switch counters are daily-only (`junior_stats.date`).
+              range: props.range,
               stats: props.stats.stats,
             })}
-            range={props.range === 1 ? 7 : props.range}
+            range={props.range}
             workspaceName={props.workspace.name}
           />
         </div>

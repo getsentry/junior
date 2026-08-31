@@ -9,9 +9,6 @@ import {
 
 import { EmptyTelemetry } from "../../components/EmptyTelemetry";
 import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
-
-/** Workspace switch stats are daily counters only. */
-const WORKSPACE_RANGE_OPTIONS: TimeRangeDays[] = [7, 30, 90];
 import { LoadingView } from "../../components/LoadingView";
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
@@ -30,6 +27,10 @@ import {
   type WorkspaceDraft,
   workspaceDraftBody,
 } from "./workspaceDraft";
+
+// TODO: support 24h once junior_stats can store hour keys (date column is day-only).
+/** Workspace switch stats are daily counters only. */
+const WORKSPACE_RANGE_OPTIONS: TimeRangeDays[] = [7, 30, 90];
 
 /** Create or edit one Workspace at a stable dashboard route. */
 export function WorkspaceFormPage() {

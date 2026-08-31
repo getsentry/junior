@@ -11,7 +11,7 @@ import {
 } from "@/db/schema";
 import {
   activityDays,
-  emptyActivityDay,
+  activityHours,
   type DailyConversationActivity,
 } from "../activity";
 import {
@@ -317,7 +317,6 @@ function directoryActivityHours(
   });
 }
 
-
 /** Load public locations plus one complete privacy-safe aggregate for non-public activity. */
 export async function readLocationDirectoryFromSql(): Promise<LocationDirectoryReport> {
   const nowMs = Date.now();
@@ -568,6 +567,7 @@ export async function readLocationDetailFromSql(
   }
 
   const activity = activityDays(days, nowMs, ACTIVITY_DAYS);
+  const hourlyActivity = activityHours(hours, nowMs);
   const recentConversationIds = recentRows.map((row) => row.conversationId);
   const [accessByConversation, metricsByRoot] = await Promise.all([
     readConversationAccessFromSql(
@@ -580,6 +580,7 @@ export async function readLocationDetailFromSql(
   return {
     ...location,
     activityDays: activity,
+    activityHours: hourlyActivity,
     actors: actors.sort(
       (left, right) =>
         right.conversations - left.conversations ||

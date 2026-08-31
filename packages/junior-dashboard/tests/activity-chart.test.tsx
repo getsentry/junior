@@ -5,6 +5,7 @@ import {
   ActivityChartAverageLine,
   ActivityChartDateLabels,
   ActivityChartGrid,
+  activityBucketStartMs,
   activityChartAverage,
   ChartAxisHtmlLabel,
   ChartAxisLabel,
@@ -117,6 +118,15 @@ describe("formatActivityDate", () => {
 
   it("formats hour buckets as UTC clock hours", () => {
     expect(formatActivityDate("2026-05-01T15")).toMatch(/3|15/);
+  });
+
+  it("parses day and hour bucket starts in UTC", () => {
+    expect(activityBucketStartMs("2026-05-01")).toBe(
+      Date.parse("2026-05-01T00:00:00.000Z"),
+    );
+    expect(activityBucketStartMs("2026-05-01T15")).toBe(
+      Date.parse("2026-05-01T15:00:00.000Z"),
+    );
   });
 });
 

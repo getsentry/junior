@@ -58,6 +58,15 @@ export function isActivityHourBucket(date: string): boolean {
   return /^\d{4}-\d{2}-\d{2}T\d{2}$/.test(date);
 }
 
+/** UTC start of a day (`YYYY-MM-DD`) or hour (`YYYY-MM-DDTHH`) bucket key. */
+export function activityBucketStartMs(date: string): number {
+  return Date.parse(
+    isActivityHourBucket(date)
+      ? `${date}:00:00.000Z`
+      : `${date}T00:00:00.000Z`,
+  );
+}
+
 /** Format an activity day or hour bucket without applying the browser zone. */
 export function formatActivityDate(date: string): string {
   if (isActivityHourBucket(date)) {

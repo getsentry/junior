@@ -6,6 +6,7 @@ import type { ActorDirectoryReport } from "@sentry/junior/api/schema";
 import { useActorDirectoryData } from "../../api";
 import { EmptyTelemetry } from "../../components/EmptyTelemetry";
 import { LoadingView } from "../../components/LoadingView";
+import { activityBucketStartMs } from "../../components/charts/ActivityChart";
 import {
   selectTimeSeries,
   timeRangeBucketUnit,
@@ -83,11 +84,7 @@ export function PeoplePageContent(props: {
     data?.people.reduce((total, person) => total + person.durationMs, 0) ?? 0;
   const firstBucket = visibleActivity[0]?.date;
   const windowStartMs = firstBucket
-    ? Date.parse(
-        /^\d{4}-\d{2}-\d{2}T\d{2}$/.test(firstBucket)
-          ? `${firstBucket}:00:00.000Z`
-          : `${firstBucket}T00:00:00.000Z`,
-      )
+    ? activityBucketStartMs(firstBucket)
     : undefined;
   const activePeople =
     windowStartMs === undefined
@@ -137,9 +134,15 @@ export function PeoplePageContent(props: {
               value={<Duration value={runtimeMs} />}
             />
             <StatCard
-              detail={`Highest distinct ${bucketUnit}ly count in the ${timeRangeDetail(range)}`}
+              detail={
+                bucketUnit === "hour"
+                  ? `Highest distinct hourly count in the ${timeRangeDetail(range)}`
+                  : `Highest distinct daily count in the ${timeRangeDetail(range)}`
+              }
               icon={Activity}
-              label={bucketUnit === "hour" ? "Peak hourly active" : "Peak daily active"}
+              label={
+                bucketUnit === "hour" ? "Peak hourly active" : "Peak daily active"
+              }
               value={formatCompactNumber(peak)}
             />
           </div>
