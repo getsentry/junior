@@ -84,6 +84,33 @@ afterEach(() => {
 });
 
 describe("Linear webhook resource events", () => {
+  it("registers teamKey match fields on issue and team resources", () => {
+    const resourceTypes = linearPlugin().resourceEvents?.resourceTypes ?? [];
+
+    expect(resourceTypes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "issue",
+          matchFields: {
+            teamKey: {
+              kind: "string",
+              description: "Linear team key for the issue, such as SRE",
+            },
+          },
+        }),
+        expect.objectContaining({
+          type: "team",
+          matchFields: {
+            teamKey: {
+              kind: "string",
+              description: "Linear team key for the issue, such as SRE",
+            },
+          },
+        }),
+      ]),
+    );
+  });
+
   it("normalizes a created issue for the issue and team", () => {
     expect(
       normalizeLinearResourceEvents({
