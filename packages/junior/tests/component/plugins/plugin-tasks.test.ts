@@ -383,19 +383,8 @@ describe("plugin background tasks", () => {
     const channelId = "C123";
     const slackConversationId = "slack:C123:1700000000.000000";
     const slackSessionId = "slack-session-context";
-    const alice = {
-      platform: "slack",
-      teamId,
-      userId: "U_ALICE",
-      userName: "alice",
-    } as const;
-    const source = createSlackSource({
-      teamId,
-      channelId,
-      visibility: "public",
-      messageTs: "1700000000.000100",
-      threadTs: "1700000000.000000",
-    });
+    const runActor = { platform: "system", name: "scheduler" } as const;
+    const source = { kind: "scheduled_task" } as const;
     const loadedRuns: PluginRunContext[] = [];
     const queue = new PluginTaskQueueTestAdapter();
     const { setPlugins } = await import("@/chat/plugins/agent-hooks");
@@ -419,6 +408,14 @@ describe("plugin background tasks", () => {
         },
       }),
     ]);
+
+    const { getConversationStore } = await import("@/chat/db");
+    await getConversationStore().recordActivity({
+      conversationId: slackConversationId,
+      destination: { platform: "slack", teamId, channelId },
+      source: "scheduler",
+      visibility: "public",
+    });
 
     await seedVisibleMessages(slackConversationId, [
       {
@@ -447,7 +444,7 @@ describe("plugin background tasks", () => {
       turnId: slackSessionId,
       sliceId: 1,
       source,
-      actor: alice,
+      actor: runActor,
       state: "completed",
       surface: "slack",
       turnStartMessageIndex: 0,
@@ -483,7 +480,7 @@ describe("plugin background tasks", () => {
         type: "message",
         role: "user",
         text: "Deploy the release now.",
-        provenance: { authority: "instruction", actor: alice },
+        provenance: { authority: "instruction", actor: runActor },
         isRunActor: true,
       },
     ]);
@@ -531,6 +528,14 @@ describe("plugin background tasks", () => {
         },
       }),
     ]);
+
+    const { getConversationStore } = await import("@/chat/db");
+    await getConversationStore().recordActivity({
+      conversationId: slackConversationId,
+      destination: { platform: "slack", teamId, channelId },
+      source: "slack",
+      visibility: "public",
+    });
 
     vi.useFakeTimers({ now: completionMs });
     await upsertTurnRecord({
@@ -671,24 +676,13 @@ describe("plugin background tasks", () => {
     });
   });
 
-  it("adds no context transcript entries for private Slack sources", async () => {
+  it("adds no context transcript entries for private Slack Conversations", async () => {
     const teamId = "T123";
     const channelId = "D123";
     const slackConversationId = "slack:D123:1700000000.000000";
     const slackSessionId = "slack-session-private";
-    const alice = {
-      platform: "slack",
-      teamId,
-      userId: "U_ALICE",
-      userName: "alice",
-    } as const;
-    const source = createSlackSource({
-      teamId,
-      channelId,
-      visibility: "private",
-      messageTs: "1700000000.000100",
-      threadTs: "1700000000.000000",
-    });
+    const runActor = { platform: "system", name: "scheduler" } as const;
+    const source = { kind: "scheduled_task" } as const;
     const loadedRuns: PluginRunContext[] = [];
     const queue = new PluginTaskQueueTestAdapter();
     const { setPlugins } = await import("@/chat/plugins/agent-hooks");
@@ -717,6 +711,14 @@ describe("plugin background tasks", () => {
       }),
     ]);
 
+    const { getConversationStore } = await import("@/chat/db");
+    await getConversationStore().recordActivity({
+      conversationId: slackConversationId,
+      destination: { platform: "slack", teamId, channelId },
+      source: "scheduler",
+      visibility: "private",
+    });
+
     await persistThreadStateById(slackConversationId, {
       conversation: coerceThreadConversationState({
         conversation: {
@@ -743,7 +745,7 @@ describe("plugin background tasks", () => {
       turnId: slackSessionId,
       sliceId: 1,
       source,
-      actor: alice,
+      actor: runActor,
       state: "completed",
       surface: "slack",
       turnStartMessageIndex: 0,

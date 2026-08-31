@@ -7,6 +7,7 @@
  */
 import type {
   Actor,
+  Location,
   PluginRegistration,
   PluginRunContext,
   PluginRunTranscriptEntry,
@@ -14,7 +15,8 @@ import type {
   PluginTaskContext,
 } from "@sentry/junior-plugin-api";
 import { pluginRunContextSchema } from "@sentry/junior-plugin-api";
-import { getDb } from "@/chat/db";
+import { getConversationStore, getDb } from "@/chat/db";
+import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import { createPluginLogger } from "@/chat/plugins/logging";
 import { createPluginConversationEvents } from "@/chat/plugins/conversation-events";
 import { createPluginEmbedder, createPluginModel } from "@/chat/plugins/model";
@@ -55,7 +57,6 @@ import {
 } from "./task-queue";
 import { getStateAdapter } from "@/chat/state/adapter";
 import type { Lock } from "chat";
-import type { SessionSource } from "@/chat/source";
 
 const PLUGIN_TASK_LOCK_TTL_MS = 5 * 60 * 1000;
 
@@ -207,7 +208,7 @@ function turnMessagesWithProvenance(
 
 /** Recover the Slack context author identity from a persisted thread message. */
 function slackContextAuthor(
-  source: { teamId: string },
+  location: { teamId: string },
   message: ConversationMessage,
 ): Actor | undefined {
   const userId = message.author?.userId?.trim();
@@ -216,7 +217,7 @@ function slackContextAuthor(
   }
   return {
     platform: "slack",
-    teamId: source.teamId,
+    teamId: location.teamId,
     userId,
     ...(message.author?.userName
       ? { userName: message.author.userName }
@@ -258,27 +259,19 @@ function messageExistedAtRunCompletion(
 /**
  * Project bounded public-thread context into the run transcript.
  *
- * Prior public Slack messages are durable conversation evidence a completed run
- * may have acted on, so passive consumers can cite them. They are always
- * context authority (never instruction), and only public Slack Conversations
- * contribute; private and local Conversations add nothing here.
+ * Prior public Slack messages from the current Conversation are durable
+ * evidence a completed run may have acted on, so passive consumers can cite
+ * them. They are always context authority (never instruction), and private or
+ * local Conversations add nothing here.
  */
 async function loadConversationContextTranscriptEntries(
   record: TurnRecord,
-  source: SessionSource,
+  location: Location | undefined,
+  visibility: ConversationPrivacy | undefined,
   runActor: Actor | undefined,
 ): Promise<PluginRunTranscriptEntry[]> {
-  // TODO(dcramer): Read Location and visibility directly after plugin tasks no
-  // longer depend on turn-session-routing and its legacy session Source.
-  switch (source.kind) {
-    case "slack":
-      if (source.visibility === "private") {
-        return [];
-      }
-      break;
-    case "web":
-    case "local":
-      return [];
+  if (location?.provider !== "slack" || visibility !== "public") {
+    return [];
   }
   const state = await getPersistedThreadState(record.conversationId);
   const conversation = coerceThreadConversationState(state);
@@ -298,7 +291,7 @@ async function loadConversationContextTranscriptEntries(
     if (!text) {
       continue;
     }
-    const author = slackContextAuthor(source, message);
+    const author = slackContextAuthor(location, message);
     entries.push({
       type: "message",
       role: "user",
@@ -345,8 +338,10 @@ async function loadPluginRun(
   if (record.state !== "completed") {
     throw new Error("Completed plugin task session record is not completed");
   }
+  const conversationStore = getConversationStore();
   const routing = await resolveConversationRouting({
     conversationId: params.conversationId,
+    conversationStore,
   });
   if (!routing) {
     throw new Error(
@@ -359,6 +354,9 @@ async function loadPluginRun(
   if (!source) {
     throw new Error("Completed plugin task session record is missing Source");
   }
+  const conversation = await conversationStore.get({
+    conversationId: params.conversationId,
+  });
   // The Turn Actor owns the run.
   // TODO(dcramer): Remove the provenance and dispatch Actor fallbacks after no
   // deployed Turn cursor can omit Actor.
@@ -382,9 +380,12 @@ async function loadPluginRun(
       .map((entry) => entry.text),
   );
   const contextEntries = (
-    source.kind === "slack" || source.kind === "web" || source.kind === "local"
-      ? await loadConversationContextTranscriptEntries(record, source, runActor)
-      : []
+    await loadConversationContextTranscriptEntries(
+      record,
+      conversation?.location,
+      conversation?.visibility,
+      runActor,
+    )
   ).filter(
     (entry) => entry.type !== "message" || !runMessageTexts.has(entry.text),
   );
