@@ -574,26 +574,42 @@ export async function GET(
     return htmlResponse("missing_state");
   }
   if (error) {
-    // Provider denied or failed auth. Only the current attempt may drop DCR
-    // client/discovery; a superseded state must not wipe a live connection.
+    // Provider denied or failed auth. Clear client/discovery only while this
+    // attempt still owns the conversation lock, matching success-path writes.
     try {
       const pendingSession = await getMcpAuthSession(state);
       if (pendingSession && pendingSession.provider === provider) {
-        if (
-          await isCurrentMcpAuthorizationAttempt(pendingSession, provider)
-        ) {
-          const credentials = await getMcpStoredOAuthCredentials(
-            pendingSession.userId,
+        try {
+          await runCurrentMcpCredentialMutation(
+            pendingSession,
             provider,
+            async () => {
+              const credentials = await getMcpStoredOAuthCredentials(
+                pendingSession.userId,
+                provider,
+              );
+              if (
+                !credentials?.clientInformation &&
+                !credentials?.discoveryState
+              ) {
+                return;
+              }
+              const nextCredentials = credentials.tokens
+                ? { tokens: credentials.tokens }
+                : {};
+              await putMcpStoredOAuthCredentials(
+                pendingSession.userId,
+                provider,
+                nextCredentials,
+              );
+            },
           );
-          if (credentials?.clientInformation || credentials?.discoveryState) {
-            const nextCredentials = credentials.tokens
-              ? { tokens: credentials.tokens }
-              : {};
-            await putMcpStoredOAuthCredentials(
-              pendingSession.userId,
-              provider,
-              nextCredentials,
+        } catch (cleanupError) {
+          if (!(cleanupError instanceof McpOAuthAttemptExpiredError)) {
+            logException(
+              cleanupError,
+              "mcp.oauth_callback.provider_error_cleanup.failed",
+              { "app.credential.provider": provider },
             );
           }
         }
