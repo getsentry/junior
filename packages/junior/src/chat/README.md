@@ -20,8 +20,11 @@ file.
 6. `agent/` emits every completed, tool-free visible assistant message through
    one awaited delivery port with the completed Pi message that produced it;
    provider adapters deliver, then commit that agent message before the visible
-   reply in one transaction. Tool-bearing assistant text remains internal to
-   the agent loop.
+   reply in one transaction. When experimental `output-router` is enabled, a
+   fast-model pass may change only the visible reply text (silence or
+   shortening) while keeping the `SOUL.md` personality voice. The original agent
+   message stays in history. Tool-bearing assistant text remains internal to the
+   agent loop.
 7. The completed run result supplies diagnostics and artifacts; successful
    delivery or intentional no-reply completion commits the durable turn outcome.
 

@@ -554,10 +554,12 @@ async function resumeSlackTurnInContext(
     /** Post and record one completed assistant message for the resumed turn. */
     const deliverAssistantMessage = async (
       reply: AssistantMessage | string,
+      visibleText?: string,
     ): Promise<void> => {
       const message = typeof reply === "string" ? undefined : reply;
       const text =
-        typeof reply === "string" ? reply : getAssistantReplyText(reply);
+        visibleText ??
+        (typeof reply === "string" ? reply : getAssistantReplyText(reply));
       if (!text?.trim()) {
         return;
       }

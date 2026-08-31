@@ -139,6 +139,10 @@ import { createApp } from "@sentry/junior";
 
 const app = await createApp({
   experimental: {
+    // Prepare the visible reply with the fast model before delivery.
+    // Can stay silent for [[NO_REPLY]] and shorten long replies. Off by default.
+    // Original agent text stays in history; only the visible reply may change.
+    "output-router": true,
     // Reply to non-mention messages in Slack threads Junior already joined.
     // Off by default. Without this, Junior only replies to explicit @mentions
     // and resource-event notifications in those threads.
@@ -168,6 +172,13 @@ one process. A client must reconnect and call `session/load` when its live SSE
 request reaches the deployment request limit. Run `pnpm acp:local` in this
 repository for a loopback test with the official ACP SDK client. ACP remains a
 pre-stable surface.
+
+`output-router` uses the fast model (`AI_FAST_MODEL`) to prepare the visible
+reply for each completed tool-free assistant message. Exact `[[NO_REPLY]]` stays
+silent. A final whole-line `[[NO_REPLY]]` also stays silent. Answers that mention
+the marker inline still deliver. Long replies can be shortened while keeping the
+`SOUL.md` personality voice. The original agent text remains in conversation
+history. Leave it unset unless you are testing that path.
 
 `passive-routing` turns on replies to non-mention messages in threads Junior
 already joined. Leave it unset in production unless you are testing that path.

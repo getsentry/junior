@@ -1,0 +1,112 @@
+name: Output-router evals
+
+permissions:
+  contents: read
+  checks: write
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, reopened, synchronize, labeled]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  select:
+    name: output-router / select
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    outputs:
+      should_run: ${{ steps.decision.outputs.should_run }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: getsentry/action-filter-paths@98a158469c63115591d1c2952d34450838ab3bc1 # v0.1.0
+        id: changes
+        with:
+          filters: |
+            relevant:
+              - 'packages/junior-evals/evals/output-router/**'
+              - 'packages/junior-evals/src/output-router-harness.ts'
+              - 'packages/junior-evals/src/output-router-setup.ts'
+              - 'packages/junior-evals/src/eval-ai-gateway-dispatcher.ts'
+              - 'packages/junior-evals/output-router-global-setup.ts'
+              - 'packages/junior-evals/vitest.evals.output-router.config.ts'
+              - 'packages/junior-evals/package.json'
+              - 'packages/junior/src/chat/services/output-router.ts'
+      - id: decision
+        env:
+          AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
+          VERCEL_OIDC_TOKEN: ${{ secrets.VERCEL_OIDC_TOKEN }}
+          RELEVANT: ${{ steps.changes.outputs.relevant }}
+          PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+        run: |
+          set -euo pipefail
+          gateway_ready=false
+          requested=false
+          [[ -n "${AI_GATEWAY_API_KEY:-}" || -n "${VERCEL_OIDC_TOKEN:-}" ]] && gateway_ready=true
+          IFS=',' read -r -a labels <<< "${PR_LABELS:-}"
+          for label in "${labels[@]}"; do
+            if [[ "$label" == "trigger-evals" || "$label" == "trigger-evals-output-router" ]]; then
+              requested=true
+            fi
+          done
+          should_run=false
+          [[ "$gateway_ready" == "true" && ( "$RELEVANT" == "true" || "$requested" == "true" ) ]] && should_run=true
+          echo "should_run=$should_run" >> "$GITHUB_OUTPUT"
+          {
+            echo "## Output-router eval selection"
+            echo
+            echo "- relevant_files_changed: $RELEVANT"
+            echo "- requested: $requested"
+            echo "- gateway_ready: $gateway_ready"
+            echo "- will_run: $should_run"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  output_router:
+    name: output-router / run
+    needs: select
+    if: needs.select.outputs.should_run == 'true'
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    env:
+      AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
+      VERCEL_OIDC_TOKEN: ${{ secrets.VERCEL_OIDC_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node-pnpm
+      - name: Run output-router evals
+        id: run
+        continue-on-error: true
+        env:
+          VITEST_EVALS_OUTPUT_FILE: output-router-results.json
+          VITEST_EVALS_REPORT_LEVEL: info
+        run: pnpm --filter @sentry/junior-evals evals:output-router
+      - name: Require output-router eval results
+        id: results
+        if: steps.run.conclusion != 'skipped'
+        run: |
+          set -euo pipefail
+          result_file="packages/junior-evals/output-router-results.json"
+          if [[ ! -f "$result_file" ]]; then
+            echo "::error::missing output-router eval results ($result_file). Treat setup/runtime crashes as hard failures."
+            exit 1
+          fi
+      - name: Publish output-router eval summary
+        if: steps.results.conclusion == 'success'
+        uses: getsentry/vitest-evals@v0.16.1
+        with:
+          results: packages/junior-evals/output-router-results.json
+          publish-check: true
+          check-name: output-router / score
+          fail-on-failures: true
+      - name: Upload output-router eval results
+        if: steps.results.conclusion == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: output-router-evals
+          path: packages/junior-evals/output-router-results.json
+          if-no-files-found: error
+          retention-days: 7

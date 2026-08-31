@@ -8,11 +8,13 @@ Suite policy:
 
 - **Integration** (`evals/integration/**`): full-runtime integration coverage
   that must never regress. Failures are hard pass/fail.
-- **Behavioral** (domain folders under `evals/` except `integration/` and
-  `guardian/`): agent behavior with bounded variability. CI gates on the
-  aggregate suite floor, not a single weak case.
-- **Guardian** (`evals/guardian/**`): isolated decision snapshots with exact
-  `allow` / `ask` / `deny` assertions. Failures are hard pass/fail.
+- **Behavioral** (domain folders under `evals/` except `integration/`,
+  `guardian/`, and `output-router/`): agent behavior with bounded variability.
+  CI gates on the aggregate suite floor, not a single weak case.
+- **Guardian** (`evals/guardian/**`): isolated action-review snapshots with
+  exact `allow` / `ask` / `deny` assertions. Failures are hard pass/fail.
+- **Prepare reply** (`evals/output-router/**`): isolated prepare checks over
+  one assistant message (`silent` / `reply`). Failures are hard pass/fail.
 
 ## Policy
 
@@ -20,6 +22,8 @@ Suite policy:
 - Assert behavior rules, not incidental wording or execution sequence.
 - Put never-break full-runtime integration coverage under `evals/integration/**`.
   Put agent-behavior measurement under behavioral domain folders.
+  Put isolated action-review snapshots under `evals/guardian/**`.
+  Put isolated prepare-reply cases under `evals/output-router/**`.
 - Do not patch product prompts with eval-shaped examples, fixture names, exact
   user messages, expected answers, or distinctive scenario phrases from eval
   files.

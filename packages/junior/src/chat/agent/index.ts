@@ -78,6 +78,8 @@ import { isTurnInputCommitLostError } from "@/chat/runtime/turn";
 import type { AgentRunOutcome } from "@/chat/runtime/agent-run-outcome";
 import { buildTurnResult } from "@/chat/services/turn-result";
 import { decideReply } from "@/chat/services/assistant-reply";
+import { prepareAssistantMessage } from "@/chat/services/output-router";
+import { isExperimentalFeatureEnabled } from "@/chat/experimental";
 import {
   findProviderError,
   getProviderErrorAttributes,
@@ -1084,12 +1086,36 @@ async function executeAgentRunInPrivacyContext(
     const deliverAssistantMessage = async (
       message: Parameters<typeof extractAssistantText>[0],
     ): Promise<void> => {
-      const decision = decideReply(message);
-      if (decision.kind !== "deliver" || !delivery) {
+      if (!delivery) {
         return;
       }
+
+      // Keep the original agent message for history. Only the visible reply text
+      // may change when output-router is on.
+      let visibleText: string | undefined;
+      if (isExperimentalFeatureEnabled("output-router")) {
+        const prepared = await prepareAssistantMessage({
+          completeObject,
+          context: {
+            conversationId,
+            runId,
+          },
+          fastModelId: botConfig.fastModelId,
+          message,
+        });
+        if (prepared.kind === "skip" || prepared.kind === "silent") {
+          return;
+        }
+        visibleText = prepared.text;
+      } else {
+        const decision = decideReply(message);
+        if (decision.kind !== "deliver") {
+          return;
+        }
+      }
+
       try {
-        await delivery(message);
+        await delivery(message, visibleText);
         acceptedToolFreeAssistant = true;
       } catch (error) {
         assistantMessageDeliveryError = new AssistantMessageDeliveryError(

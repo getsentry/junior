@@ -174,6 +174,7 @@ Events: `agent.message.received`, `agent.message.generated`,
 `agent.turn.provider_error`, `agent.turn.execution.failed`,
 `agent.turn.empty_output.retrying`,
 `agent.turn.empty_output.exhausted`, `assistant.reply.generation.failed`,
+`ai.output_router.decided`, `ai.output_router.failed`,
 `guardian.action_review.retrying`, `guardian.action_review.exhausted`
 
 `guardian.action_review.exhausted` is a tool-boundary Sentry capture after three
@@ -181,7 +182,8 @@ consecutive action-review denials. The agent still receives a normal tool
 rejection that says not to keep retrying.
 
 Spans: `ai.generate_assistant_reply`, `ai.chat_completion`,
-`chat.route_thinking`, `gen_ai.invoke_agent`, `gen_ai.chat`
+`chat.route_thinking`, `chat.prepare_assistant_reply`, `gen_ai.invoke_agent`,
+`gen_ai.chat`
 
 Attributes: `gen_ai.operation.name`, `gen_ai.request.model`,
 `gen_ai.response.finish_reasons`, `app.ai.outcome`,
