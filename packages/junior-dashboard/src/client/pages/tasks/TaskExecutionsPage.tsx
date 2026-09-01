@@ -24,7 +24,7 @@ import {
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
 import { conversationPath } from "../../conversations/conversationRoutes";
-import { formatTime, taskPath } from "../../format";
+import { formatCostSummary, formatTime, taskPath } from "../../format";
 import { DashboardApiError } from "../../http";
 import { pathWithSearch } from "../../searchParams";
 import { cn } from "../../styles";
@@ -153,10 +153,11 @@ function TaskExecutionsView(props: {
       ) : (
         <Card>
           <div
-            className="sticky top-0 z-[1] hidden grid-cols-[minmax(13rem,1.7fr)_minmax(10rem,1fr)] items-center gap-3 border-b border-white/[0.06] bg-black/25 px-3 py-2.5 font-mono text-xs uppercase tracking-[0.1em] text-dashboard-text-muted md:grid"
+            className="sticky top-0 z-[1] hidden grid-cols-[minmax(13rem,1.6fr)_5.5rem_auto] items-center gap-3 border-b border-dashboard-border-subtle bg-dashboard-overlay-soft px-3 py-2.5 font-mono text-xs uppercase tracking-[0.1em] text-dashboard-text-muted md:grid"
             role="row"
           >
             <div>Conversation</div>
+            <div className="justify-self-end">Cost</div>
             <div className="justify-self-end">Status</div>
           </div>
           <div className="min-w-0" role="table">
@@ -189,10 +190,13 @@ function ExecutionRow(props: {
   const title =
     execution.title?.trim() ||
     (execution.conversationId ? fallbackTitle : "No conversation");
-  const subtitle = [
-    formatRunDate(execution.executedAt),
-    execution.conversationId ?? "not linked",
-  ].join(" · ");
+  const subtitle = formatRunDate(execution.executedAt);
+  const costLabel =
+    formatCostSummary(
+      execution.costUsd === undefined
+        ? undefined
+        : { total: execution.costUsd },
+    ) || "—";
   const openConversation = () => {
     if (!execution.conversationId) return;
     navigate(conversationPath(execution.conversationId));
@@ -202,7 +206,7 @@ function ExecutionRow(props: {
     <div
       aria-disabled={!execution.conversationId}
       className={cn(
-        "group grid min-w-0 grid-cols-[minmax(13rem,1.7fr)_minmax(10rem,1fr)] items-center gap-3 overflow-hidden border-b border-b-white/[0.055] px-3 py-3 text-left text-inherit transition-colors max-md:grid-cols-1 max-md:px-4 max-md:py-4",
+        "group grid min-w-0 grid-cols-[minmax(13rem,1.6fr)_5.5rem_auto] items-center gap-3 overflow-hidden border-b border-b-white/[0.055] px-3 py-3 text-left text-inherit transition-colors max-md:grid-cols-1 max-md:px-4 max-md:py-4",
         execution.conversationId
           ? "cursor-pointer hover:bg-white/[0.035]"
           : "cursor-default opacity-80",
@@ -219,14 +223,26 @@ function ExecutionRow(props: {
       tabIndex={execution.conversationId ? 0 : undefined}
     >
       <div className="min-w-0">
-        <div className="min-w-0 truncate text-base font-bold leading-tight text-dashboard-text">
+        <div className="min-w-0 truncate text-sm font-semibold leading-snug text-dashboard-text">
           {title}
         </div>
-        <div className="mt-1 break-words text-sm leading-relaxed text-dashboard-text-muted md:truncate">
+        <div className="mt-1 break-words text-xs leading-relaxed text-dashboard-text-muted md:truncate">
           {subtitle}
         </div>
       </div>
-      <div className="grid min-w-0 justify-items-end gap-1 text-right max-md:justify-items-start max-md:text-left">
+      <div className="justify-self-end text-right max-md:justify-self-start max-md:text-left">
+        <div
+          aria-hidden="true"
+          className="mb-1 hidden font-mono text-2xs uppercase tracking-[0.1em] text-dashboard-text-muted max-md:block"
+        >
+          Cost
+        </div>
+        <div className="whitespace-nowrap font-mono text-xs text-dashboard-text-muted">
+          <span className="sr-only">Cost: </span>
+          {costLabel}
+        </div>
+      </div>
+      <div className="justify-self-end max-md:justify-self-start">
         <StatusChip tone={runStatusTone(execution.status)}>
           {execution.status}
         </StatusChip>

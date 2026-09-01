@@ -74,6 +74,24 @@ function getComponentTotal(usage: AgentTurnUsage): number | undefined {
   return total;
 }
 
+/** Estimated total USD cost from one usage record, when any cost field is present. */
+export function agentTurnCostUsd(
+  usage: AgentTurnUsage | undefined,
+): number | undefined {
+  if (!usage?.cost) return undefined;
+  const total = getFiniteCost(usage.cost.total);
+  if (total !== undefined) return total;
+  let componentTotal = 0;
+  let hasComponent = false;
+  for (const field of COST_COMPONENT_FIELDS) {
+    const value = getFiniteCost(usage.cost[field]);
+    if (value === undefined) continue;
+    hasComponent = true;
+    componentTotal = addCost(componentTotal, value);
+  }
+  return hasComponent ? componentTotal : undefined;
+}
+
 /** Aggregate token usage across slices without double-counting provider totals. */
 export function addAgentTurnUsage(
   ...usages: Array<AgentTurnUsage | undefined>

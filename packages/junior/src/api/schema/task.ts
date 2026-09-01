@@ -88,6 +88,8 @@ export const taskExecutionStatusSchema = z.enum([
 export const taskExecutionSchema = z
   .object({
     conversationId: z.string().min(1).optional(),
+    /** Estimated model cost for the linked conversation, when known. */
+    costUsd: z.number().finite().nonnegative().optional(),
     executedAt: z.string().datetime(),
     executionId: z.string().min(1),
     status: taskExecutionStatusSchema,

@@ -13,6 +13,7 @@ import {
 } from "drizzle-orm";
 import { getDb } from "@/chat/db";
 import { logWarn } from "@/chat/logging";
+import { agentTurnCostUsd } from "@/chat/usage";
 import { juniorConversations } from "@/db/schema/conversations";
 import {
   juniorTaskExecutions,
@@ -43,6 +44,7 @@ export type TaskExecutionSummary = {
 
 export type TaskExecutionRecord = {
   conversationId?: string;
+  costUsd?: number;
   executedAt: string;
   executionId: string;
   status: TaskExecutionStatus;
@@ -314,6 +316,7 @@ export async function readTaskExecutions(args: {
       executionId: juniorTaskExecutions.executionId,
       status: juniorTaskExecutions.status,
       title: juniorConversations.title,
+      usage: juniorConversations.usage,
     })
     .from(juniorTaskExecutions)
     .leftJoin(
@@ -337,8 +340,10 @@ export async function readTaskExecutions(args: {
     .limit(args.limit);
   return rows.map((row) => {
     const title = row.title?.trim();
+    const costUsd = agentTurnCostUsd(row.usage ?? undefined);
     return {
       ...(row.conversationId ? { conversationId: row.conversationId } : undefined),
+      ...(costUsd !== undefined ? { costUsd } : undefined),
       executedAt: new Date(row.executedAtMs).toISOString(),
       executionId: row.executionId,
       status: row.status,
@@ -370,6 +375,7 @@ export async function readTaskRuns(args: {
       status: juniorTaskExecutions.status,
       taskId: juniorTaskExecutions.taskId,
       title: juniorConversations.title,
+      usage: juniorConversations.usage,
     })
     .from(juniorTaskExecutions)
     .leftJoin(
@@ -388,9 +394,11 @@ export async function readTaskRuns(args: {
   return rows.flatMap((row) => {
     if (row.kind !== "scheduled" && row.kind !== "event") return [];
     const title = row.title?.trim();
+    const costUsd = agentTurnCostUsd(row.usage ?? undefined);
     return [
       {
         ...(row.conversationId ? { conversationId: row.conversationId } : undefined),
+        ...(costUsd !== undefined ? { costUsd } : undefined),
         executedAt: new Date(row.executedAtMs).toISOString(),
         executionId: row.executionId,
         kind: row.kind,

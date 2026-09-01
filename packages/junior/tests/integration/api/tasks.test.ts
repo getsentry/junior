@@ -1,3 +1,4 @@
+import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { describe, expect, test } from "vitest";
 import {
@@ -17,6 +18,7 @@ import {
 import { saveScheduledTask } from "@/chat/scheduled-tasks/tasks";
 import type { ScheduledTask } from "@/chat/scheduled-tasks/types";
 import { recordTaskExecution } from "@/chat/tasks/execution-stats";
+import { juniorConversations } from "@/db/schema/conversations";
 import { createConfiguredJuniorSqlFixture } from "../../fixtures/sql";
 
 function authenticatedApi(email: string) {
@@ -239,6 +241,16 @@ describe("Tasks API", () => {
           visibility: "public",
         });
       }
+      await fixture.sql
+        .db()
+        .update(juniorConversations)
+        .set({ usage: { cost: { total: 0.42 }, totalTokens: 1200 } })
+        .where(eq(juniorConversations.conversationId, "agent-dispatch:sched-run-2"));
+      await fixture.sql
+        .db()
+        .update(juniorConversations)
+        .set({ usage: { cost: { total: 0.18 }, totalTokens: 400 } })
+        .where(eq(juniorConversations.conversationId, "agent-dispatch:sched-run-1"));
 
       await recordTaskExecution("scheduled", "sched_tasks_api", {
         conversationId: "agent-dispatch:sched-run-1",
@@ -337,6 +349,7 @@ describe("Tasks API", () => {
       expect(taskRunListSchema.parse(await runsResponse.json())).toEqual({
         runs: [
           expect.objectContaining({
+            costUsd: 0.42,
             executionId: "sched-run-2",
             kind: "scheduled",
             status: "failed",
@@ -344,6 +357,7 @@ describe("Tasks API", () => {
             taskTitle: "Untitled scheduled task",
           }),
           expect.objectContaining({
+            costUsd: 0.18,
             executionId: "sched-run-1",
             kind: "scheduled",
             status: "completed",
@@ -376,6 +390,7 @@ describe("Tasks API", () => {
         executions: [
           {
             conversationId: "agent-dispatch:sched-run-2",
+            costUsd: 0.42,
             executedAt: new Date(scheduledRun2AtMs).toISOString(),
             executionId: "sched-run-2",
             status: "failed",
@@ -383,6 +398,7 @@ describe("Tasks API", () => {
           },
           {
             conversationId: "agent-dispatch:sched-run-1",
+            costUsd: 0.18,
             executedAt: new Date(scheduledRun1AtMs).toISOString(),
             executionId: "sched-run-1",
             status: "completed",

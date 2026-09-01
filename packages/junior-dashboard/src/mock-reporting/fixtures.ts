@@ -2450,9 +2450,11 @@ export function readMockTaskExecutions(
     "Ops digest for #project-updates",
   ];
   const statuses = ["completed", "failed", "blocked", "completed"] as const;
+  const costs = [0.42, 0.18, 0.07, 1.25, 0.03, undefined, 0.56, 0.09] as const;
   const executions = Array.from({ length: 8 }, (_, index) => {
     const status = statuses[index % statuses.length]!;
     const hasConversation = index !== 5;
+    const costUsd = costs[index % costs.length];
     return {
       ...(hasConversation
         ? {
@@ -2461,6 +2463,7 @@ export function readMockTaskExecutions(
                 ? SCHEDULER_CONVERSATION_ID
                 : ACTIVE_CONVERSATION_ID,
             title: titles[index % titles.length],
+            ...(costUsd !== undefined ? { costUsd } : undefined),
           }
         : undefined),
       executedAt: new Date(

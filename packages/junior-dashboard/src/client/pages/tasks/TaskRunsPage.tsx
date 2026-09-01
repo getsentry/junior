@@ -16,7 +16,7 @@ import { StatusChip } from "../../components/StatusChip";
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
 import { conversationPath } from "../../conversations/conversationRoutes";
-import { formatTime } from "../../format";
+import { formatCostSummary, formatTime } from "../../format";
 import {
   useDebouncedSearchParam,
   useSearchParamEnum,
@@ -27,6 +27,8 @@ const RUN_PAGE_SIZE = 25;
 const RUN_KINDS = ["all", "scheduled", "event"] as const;
 const RUN_STATUSES = ["all", "completed", "failed", "blocked"] as const;
 const EMPTY_RUNS: TaskRun[] = [];
+const RUN_GRID =
+  "grid-cols-[minmax(14rem,1.6fr)_minmax(10rem,1fr)_5.5rem_auto]";
 
 type RunKindFilter = (typeof RUN_KINDS)[number];
 type RunStatusFilter = (typeof RUN_STATUSES)[number];
@@ -119,12 +121,13 @@ export function TaskRunsPage(props: { enabled: boolean }) {
               ))}
             </FilterGroup>
           </FilterBar>
-          <div className="flex flex-wrap items-baseline justify-between gap-x-5 gap-y-1 border-b border-white/[0.07] pb-3">
-            <p className="m-0 font-display text-lg text-dashboard-text">
+          <div className="flex flex-wrap items-baseline justify-between gap-x-5 gap-y-1 border-b border-dashboard-border-subtle pb-3">
+            <p className="m-0 text-sm text-dashboard-text-muted">
               {visibleRuns.length} {visibleRuns.length === 1 ? "run" : "runs"}
-            </p>
-            <p className="m-0 text-xs text-dashboard-text-muted">
-              Newest first. Click a run to open its conversation.
+              <span className="text-dashboard-text-muted/70">
+                {" "}
+                · newest first
+              </span>
             </p>
           </div>
           {query.error ? (
@@ -140,12 +143,16 @@ export function TaskRunsPage(props: { enabled: boolean }) {
           ) : (
             <Card>
               <div
-                className="sticky top-0 z-[1] hidden grid-cols-[minmax(13rem,1.7fr)_minmax(11rem,1fr)_auto] items-center gap-3 border-b border-white/[0.06] bg-black/25 px-3 py-2.5 font-mono text-xs uppercase tracking-[0.1em] text-dashboard-text-muted md:grid"
+                className={cn(
+                  "sticky top-0 z-[1] hidden items-center gap-3 border-b border-dashboard-border-subtle bg-dashboard-overlay-soft px-3 py-2.5 font-mono text-xs uppercase tracking-[0.1em] text-dashboard-text-muted md:grid",
+                  RUN_GRID,
+                )}
                 role="row"
               >
                 <div>Run</div>
                 <div>Task</div>
-                <div>Status</div>
+                <div className="justify-self-end">Cost</div>
+                <div className="justify-self-end">Status</div>
               </div>
               <div className="min-w-0" role="table">
                 {pagedRuns.map((run) => (
@@ -189,6 +196,10 @@ function TaskRunRow(props: { run: TaskRun }) {
   const title =
     run.title?.trim() ||
     (run.conversationId ? run.taskTitle : "No conversation");
+  const costLabel =
+    formatCostSummary(
+      run.costUsd === undefined ? undefined : { total: run.costUsd },
+    ) || "—";
   const openConversation = () => {
     if (run.conversationId) navigate(conversationPath(run.conversationId));
   };
@@ -197,7 +208,8 @@ function TaskRunRow(props: { run: TaskRun }) {
     <div
       aria-disabled={!run.conversationId}
       className={cn(
-        "group grid min-w-0 grid-cols-[minmax(13rem,1.7fr)_minmax(11rem,1fr)_auto] items-center gap-3 overflow-hidden border-b border-b-white/[0.055] px-3 py-3 text-left text-inherit transition-colors max-md:grid-cols-1 max-md:px-4 max-md:py-4",
+        "group grid min-w-0 items-center gap-3 overflow-hidden border-b border-b-white/[0.055] px-3 py-3 text-left text-inherit transition-colors max-md:grid-cols-1 max-md:px-4 max-md:py-4 md:grid",
+        RUN_GRID,
         run.conversationId
           ? "cursor-pointer hover:bg-white/[0.035]"
           : "cursor-default opacity-80",
@@ -214,22 +226,34 @@ function TaskRunRow(props: { run: TaskRun }) {
       tabIndex={run.conversationId ? 0 : undefined}
     >
       <div className="min-w-0">
-        <div className="truncate text-base font-bold leading-tight text-dashboard-text">
+        <div className="truncate text-sm font-semibold leading-snug text-dashboard-text">
           {title}
         </div>
-        <div className="mt-1 truncate text-sm text-dashboard-text-muted">
+        <div className="mt-1 truncate text-xs text-dashboard-text-muted">
           {formatRunDate(run.executedAt)}
         </div>
       </div>
       <div className="min-w-0">
-        <div className="truncate text-sm font-medium text-dashboard-text">
-          {run.taskTitle}
-        </div>
-        <div className="mt-1 font-mono text-xs uppercase tracking-[0.1em] text-dashboard-text-muted">
+        <div className="truncate text-sm text-dashboard-text">{run.taskTitle}</div>
+        <div className="mt-1 font-mono text-2xs uppercase tracking-[0.1em] text-dashboard-text-muted">
           {run.kind}
         </div>
       </div>
-      <StatusChip tone={runStatusTone(run.status)}>{run.status}</StatusChip>
+      <div className="justify-self-end text-right max-md:justify-self-start max-md:text-left">
+        <div
+          aria-hidden="true"
+          className="mb-1 hidden font-mono text-2xs uppercase tracking-[0.1em] text-dashboard-text-muted max-md:block"
+        >
+          Cost
+        </div>
+        <div className="whitespace-nowrap font-mono text-xs text-dashboard-text-muted">
+          <span className="sr-only">Cost: </span>
+          {costLabel}
+        </div>
+      </div>
+      <div className="justify-self-end max-md:justify-self-start">
+        <StatusChip tone={runStatusTone(run.status)}>{run.status}</StatusChip>
+      </div>
     </div>
   );
 }
