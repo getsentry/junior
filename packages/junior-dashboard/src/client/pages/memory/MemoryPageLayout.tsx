@@ -5,7 +5,6 @@ import { PageContentSkeleton } from "../../components/PageContentSkeleton";
 import { PageHeader } from "../../components/layout/PageHeader";
 import { PageLayout } from "../../components/layout/PageLayout";
 import { SecondaryNavigation } from "../../components/layout/SecondaryNavigation";
-import { pathWithSearch } from "../../searchParams";
 
 const MEMORY_BASE_PATH = "/memories";
 const MEMORY_LIBRARY_PATH = `${MEMORY_BASE_PATH}/library`;
@@ -23,10 +22,7 @@ function isMemoriesLibraryPath(pathname: string): boolean {
 }
 
 /** Place the shared secondary navigation above one Memories page. */
-export function MemoryPageLayout(props: {
-  children: ReactNode;
-  libraryHref?: string;
-}) {
+export function MemoryPageLayout(props: { children: ReactNode }) {
   return (
     <>
       <SecondaryNavigation
@@ -36,7 +32,7 @@ export function MemoryPageLayout(props: {
           {
             isActive: isMemoriesLibraryPath,
             label: "Memories",
-            to: props.libraryHref ?? MEMORY_LIBRARY_PATH,
+            to: MEMORY_LIBRARY_PATH,
           },
         ]}
       />
@@ -54,9 +50,7 @@ export function MemoryRouteLoading(props: {
   const location = useLocation();
   const overview = location.pathname === MEMORY_BASE_PATH;
   return (
-    <MemoryPageLayout
-      libraryHref={pathWithSearch(MEMORY_LIBRARY_PATH, location.search)}
-    >
+    <MemoryPageLayout>
       <PageHeader
         description={
           props.description ??

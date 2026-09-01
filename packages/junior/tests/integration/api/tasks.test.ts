@@ -114,6 +114,17 @@ describe("Tasks API", () => {
       const eventRunAtMs = yesterdayUtcMs - 12 * 60 * 60 * 1000;
       const scheduledRun1AtMs = yesterdayUtcMs + 12 * 60 * 60 * 1000;
       const scheduledRun2AtMs = yesterdayUtcMs + 13 * 60 * 60 * 1000;
+      const runWindows = (...runAtMs: number[]) => {
+        const dayMs = 24 * 60 * 60 * 1000;
+        const countSince = (agoMs: number) =>
+          runAtMs.filter((value) => value >= nowMs - agoMs).length;
+        return {
+          1: countSince(1 * dayMs),
+          7: countSince(7 * dayMs),
+          30: countSince(30 * dayMs),
+          90: countSince(90 * dayMs),
+        };
+      };
       const startDate = todayUtc.toISOString().slice(0, 10);
       const scheduledTask: ScheduledTask = {
         id: "sched_tasks_api",
@@ -322,7 +333,7 @@ describe("Tasks API", () => {
             lastConversationId: "agent-dispatch:event-run-1",
             lastRunAt: new Date(eventRunAtMs).toISOString(),
             ownedByViewer: true,
-            runsLast7Days: 1,
+            runs: runWindows(eventRunAtMs),
             source: "linear",
             totalRuns: 1,
             triggerAvailable: false,
@@ -338,7 +349,7 @@ describe("Tasks API", () => {
             lastConversationId: "agent-dispatch:sched-run-2",
             lastRunAt: new Date(scheduledRun2AtMs).toISOString(),
             ownedByViewer: true,
-            runsLast7Days: 2,
+            runs: runWindows(scheduledRun1AtMs, scheduledRun2AtMs),
             schedule: "Schedule unavailable",
             status: "active",
             title: "Untitled scheduled task",

@@ -108,20 +108,24 @@ test("opens scheduled and event tasks in the native Tasks view", async ({
   await expect(page.getByLabel("Tasks navigation")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Tasks" })).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "Executions over time" }),
+    page.getByLabel("Task executions during the last 30 days"),
+  ).toBeVisible();
+  await expect(
+    page.getByLabel("Task execution spend during the last 30 days"),
   ).toBeVisible();
   await expect(page.getByText("Total tasks")).toBeVisible();
   await expect(page.getByText("Your tasks")).toBeVisible();
   await expect(page.getByText("Public tasks")).toBeVisible();
   await expect(page.getByText("Private tasks")).toBeVisible();
-  await expect(
-    page.getByLabel("Task executions during the last 30 days"),
-  ).toBeVisible();
   const reportingPeriod = page.getByLabel("Reporting period");
   await expect(reportingPeriod).toHaveCount(1);
   await reportingPeriod.getByRole("button", { name: "7d" }).click();
+  await expect(page).toHaveURL(/[?&]range=7(?:&|$)/);
   await expect(
     page.getByLabel("Task executions during the last 7 days"),
+  ).toBeVisible();
+  await expect(
+    page.getByLabel("Task execution spend during the last 7 days"),
   ).toBeVisible();
   await expect(page.getByText("2 tasks")).not.toBeVisible();
   await expect(page.getByText("Weekly project summary")).not.toBeVisible();
@@ -129,15 +133,36 @@ test("opens scheduled and event tasks in the native Tasks view", async ({
     .getByLabel("Tasks navigation")
     .getByRole("link", { name: "Tasks" })
     .click();
-  await expect(page).toHaveURL(`${server.baseURL}/tasks/list`);
+  await expect(page).toHaveURL(/\/tasks\/list(?:\?|$)/);
+  await expect(page).toHaveURL(/[?&]range=7(?:&|$)/);
   await expect(page.getByRole("heading", { name: "All tasks" })).toBeVisible();
   await expect(page.getByLabel("Search tasks")).toBeVisible();
+  const listReportingPeriod = page.getByLabel("Reporting period");
+  await expect(listReportingPeriod).toHaveCount(1);
+  await expect(listReportingPeriod.getByRole("button", { name: "7d" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await expect(
+    page.getByLabel("Task executions during the last 7 days"),
+  ).toBeVisible();
+  await expect(
+    page.getByLabel("Task execution spend during the last 7 days"),
+  ).toBeVisible();
   await expect(page.getByText("2 tasks")).toBeVisible();
   await expect(page.getByText("Weekly project summary")).toBeVisible();
   await expect(page.getByText("Closed issue summary")).toBeVisible();
   await expect(page.getByLabel("Scheduled task")).toBeVisible();
   await expect(page.getByLabel("GitHub event task")).toBeVisible();
   await expect(page.getByText("#project-updates").last()).toBeVisible();
+  // Assert the range-aware run count on the row. Bare "Runs" also matches nav.
+  const weeklyRow = page
+    .getByRole("listitem")
+    .filter({ hasText: "Weekly project summary" });
+  await expect(weeklyRow).toContainText("3");
+  await listReportingPeriod.getByRole("button", { name: "30d" }).click();
+  await expect(page).toHaveURL(/\/tasks\/list(?:\?|$)/);
+  await expect(weeklyRow).toContainText("12");
   await expect(page.getByText("Assigned to")).toHaveCount(0);
   await expect(page.getByRole("dialog")).toHaveCount(0);
   const taskDetailsTrigger = page.getByRole("button", {

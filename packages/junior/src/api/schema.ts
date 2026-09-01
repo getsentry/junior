@@ -145,6 +145,7 @@ export {
   taskParamsSchema,
   taskRunListSchema,
   taskRunSchema,
+  taskRunWindowsSchema,
   taskSummarySchema,
 } from "./schema/task";
 export type {
@@ -155,6 +156,7 @@ export type {
   TaskList,
   TaskRun,
   TaskRunList,
+  TaskRunWindows,
   TaskSummary,
 } from "./schema/task";
 export { statSchema, statsReportSchema } from "./schema/stats";

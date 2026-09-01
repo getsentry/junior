@@ -31,17 +31,19 @@ import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
 import { StatCard } from "../../components/metrics/StatCard";
 import { deleteDashboardResource } from "../../http";
-import { formatTime, taskPath } from "../../format";
+import { formatRelativeTime, formatTime, taskPath } from "../../format";
 import {
   pathWithSearch,
   useDebouncedSearchParam,
   useSearchParamEnum,
 } from "../../searchParams";
 import { cn } from "../../styles";
+import { TaskCostChart } from "./TaskCostChart";
 import { TaskDetailsDrawer } from "./TaskDetailsDrawer";
 import { TaskExecutionChart } from "./TaskExecutionChart";
 
 const TASK_PAGE_SIZE = 25;
+const TASK_RANGE_OPTIONS = ["1", "7", "30", "90"] as const;
 
 type TaskFilter = "all" | TaskSummary["kind"];
 type TaskScope = "mine" | "public";
@@ -52,6 +54,13 @@ const TASK_FILTERS = [
   "event",
 ] as const satisfies readonly TaskFilter[];
 const TASK_SCOPES = ["mine", "public"] as const satisfies readonly TaskScope[];
+
+function parseTaskRange(value: string): TimeRangeDays {
+  const days = Number(value);
+  return (days === 1 || days === 7 || days === 30 || days === 90
+    ? days
+    : 30) as TimeRangeDays;
+}
 
 function formatDate(value: string): string {
   return formatTime(value, {
@@ -96,12 +105,19 @@ export function TasksPage(props: {
   enabled: boolean;
   view: "list" | "overview";
 }) {
-  const [range, setRange] = useState<TimeRangeDays>(30);
   const query = useTasksData(props.enabled);
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const location = useLocation();
   const { taskId } = useParams();
+  const [rangeParam, setRangeParam] = useSearchParamEnum(
+    "range",
+    "30",
+    TASK_RANGE_OPTIONS,
+  );
+  const range = parseTaskRange(rangeParam);
+  const setRange = (value: TimeRangeDays) =>
+    setRangeParam(String(value) as (typeof TASK_RANGE_OPTIONS)[number]);
   const [filter, setFilter] = useSearchParamEnum("type", "all", TASK_FILTERS);
   const [scope, setScope] = useSearchParamEnum("scope", "mine", TASK_SCOPES);
   const [searchText, setSearchText, searchQuery] = useDebouncedSearchParam();
@@ -170,6 +186,14 @@ export function TasksPage(props: {
   });
 
   const loading = !query.data && !query.error;
+  const executionSeries = query.data?.executionDays?.length
+    ? selectTimeSeries({
+        days: query.data.executionDays,
+        hours: query.data.executionHours,
+        range,
+      })
+    : [];
+  const showExecutionCharts = executionSeries.length > 0;
 
   return (
     <>
@@ -179,9 +203,8 @@ export function TasksPage(props: {
             ? "Scheduled and event-driven work created by users."
             : "Find and manage tasks across your linked workspaces."
         }
-        {...(props.view === "overview" && query.data?.executionDays?.length
-          ? { onRangeChange: setRange, range }
-          : {})}
+        onRangeChange={setRange}
+        range={range}
         title={props.view === "overview" ? "Tasks" : "All tasks"}
       />
       {loading ? (
@@ -218,21 +241,38 @@ export function TasksPage(props: {
               value={privateCount}
             />
           </div>
-          {query.data?.executionDays?.length ? (
-            <TaskExecutionChart
-              bucketUnit={timeRangeBucketUnit(range)}
-              days={selectTimeSeries({
-                days: query.data.executionDays,
-                hours: query.data.executionHours,
-                range,
-              })}
-              range={range}
-            />
+          {showExecutionCharts ? (
+            <section className="grid gap-4 xl:grid-cols-2">
+              <TaskExecutionChart
+                bucketUnit={timeRangeBucketUnit(range)}
+                days={executionSeries}
+                range={range}
+              />
+              <TaskCostChart
+                bucketUnit={timeRangeBucketUnit(range)}
+                days={executionSeries}
+                range={range}
+              />
+            </section>
           ) : null}
         </>
       ) : null}
       {!loading && props.view === "list" ? (
         <>
+          {showExecutionCharts ? (
+            <section className="grid gap-4 xl:grid-cols-2">
+              <TaskExecutionChart
+                bucketUnit={timeRangeBucketUnit(range)}
+                days={executionSeries}
+                range={range}
+              />
+              <TaskCostChart
+                bucketUnit={timeRangeBucketUnit(range)}
+                days={executionSeries}
+                range={range}
+              />
+            </section>
+          ) : null}
           <FilterBar
             search={{
               label: "Search tasks",
@@ -318,6 +358,7 @@ export function TasksPage(props: {
                             : selectedTaskPath(task.id),
                         )
                       }
+                      range={range}
                       selected={taskId === task.id}
                       task={task}
                     />
@@ -345,6 +386,7 @@ export function TasksPage(props: {
           ) : null}
           <TaskDetailsDrawer
             onClose={() => navigate(tasksPath(listPath))}
+            range={range}
             task={selectedTask}
           />
         </>
@@ -376,11 +418,13 @@ function TaskListHeader() {
   return (
     <div
       aria-hidden="true"
-      className="hidden grid-cols-[repeat(3,minmax(0,1fr))_auto_auto] items-center gap-3 border-b border-white/[0.07] px-4 py-2.5 text-left font-mono text-xs uppercase tracking-[0.12em] text-dashboard-text-muted lg:grid"
+      className="hidden grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,1fr)_4.5rem_7.5rem_auto_auto] items-center gap-3 border-b border-white/[0.07] px-4 py-2.5 text-left font-mono text-xs uppercase tracking-[0.12em] text-dashboard-text-muted lg:grid"
     >
       <span>Task</span>
       <span>Destination</span>
       <span>Trigger</span>
+      <span>Runs</span>
+      <span>Last run</span>
       <span aria-hidden="true" className="size-8" />
       <span aria-hidden="true" className="size-9" />
     </div>
@@ -391,14 +435,16 @@ function TaskRow(props: {
   deleting: boolean;
   onDelete(): void;
   onSelect(): void;
+  range: TimeRangeDays;
   selected: boolean;
   task: TaskSummary;
 }) {
-  const { task } = props;
+  const { range, task } = props;
+  const runCount = task.runs[range];
   return (
     <article role="listitem">
       <SelectableRow
-        className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 px-4 py-3 md:grid-cols-[repeat(2,minmax(0,1fr))_auto_auto] lg:grid-cols-[repeat(3,minmax(0,1fr))_auto_auto]"
+        className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 px-4 py-3 md:grid-cols-[repeat(2,minmax(0,1fr))_auto_auto] lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,1fr)_4.5rem_7.5rem_auto_auto]"
         onSelect={props.onSelect}
         selected={props.selected}
       >
@@ -439,6 +485,19 @@ function TaskRow(props: {
                 ? `Next ${formatRunDate(task.nextRunAt)}`
                 : "No next run"
               : task.events.join(", ")}
+          </div>
+        </div>
+        <div className="hidden min-w-0 lg:block">
+          <div className="truncate text-sm font-medium text-dashboard-text">
+            {runCount}
+          </div>
+        </div>
+        <div className="hidden min-w-0 lg:block">
+          <div className="truncate text-sm text-dashboard-text">
+            {task.lastRunAt ? formatRelativeTime(task.lastRunAt) : "Never"}
+          </div>
+          <div className="mt-1 truncate font-mono text-xs text-dashboard-text-muted">
+            {task.lastRunAt ? formatRunDate(task.lastRunAt) : "No executions"}
           </div>
         </div>
         <button

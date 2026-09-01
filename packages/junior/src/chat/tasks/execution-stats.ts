@@ -11,6 +11,7 @@ import {
   or,
   sql,
 } from "drizzle-orm";
+import { conversationUsageCostExpr } from "@/api/conversations/aggregate";
 import { getDb } from "@/chat/db";
 import { logWarn } from "@/chat/logging";
 import { agentTurnCostUsd, agentTurnTotalTokens } from "@/chat/usage";
@@ -30,17 +31,36 @@ export const TASK_EXECUTION_STATUSES = [
 export type TaskExecutionType = (typeof TASK_EXECUTION_TYPES)[number];
 
 export type TaskExecutionDay = {
+  costUsd: number;
   date: string;
   event: number;
   scheduled: number;
 };
 
+function addUsd(current: number, next: number): number {
+  return Math.round((current + next) * 1e12) / 1e12;
+}
+
+export type TaskRunWindows = {
+  1: number;
+  7: number;
+  30: number;
+  90: number;
+};
+
 export type TaskExecutionSummary = {
   lastConversationId?: string;
   lastExecutedAtMs?: number;
-  runsLast7Days: number;
+  runs: TaskRunWindows;
   totalRuns: number;
 };
+
+const EMPTY_RUN_WINDOWS: TaskRunWindows = { 1: 0, 7: 0, 30: 0, 90: 0 };
+
+/** Empty run windows for tasks with no execution history. */
+export function emptyTaskRunWindows(): TaskRunWindows {
+  return { ...EMPTY_RUN_WINDOWS };
+}
 
 export type TaskExecutionRecord = {
   conversationId?: string;
@@ -70,7 +90,7 @@ function utcDate(nowMs: number): string {
 }
 
 function emptyDay(date: string): TaskExecutionDay {
-  return { date, event: 0, scheduled: 0 };
+  return { costUsd: 0, date, event: 0, scheduled: 0 };
 }
 
 function emptyStatusDay(date: string): TaskExecutionStatusDay {
@@ -131,8 +151,11 @@ export async function readTaskExecutionSummaries(
   namespace: string,
   options: { nowMs?: number } = {},
 ): Promise<Map<string, TaskExecutionSummary>> {
-  const sevenDaysAgoMs =
-    (options.nowMs ?? Date.now()) - 7 * 24 * 60 * 60 * 1000;
+  const nowMs = options.nowMs ?? Date.now();
+  const oneDayAgoMs = nowMs - 1 * 24 * 60 * 60 * 1000;
+  const sevenDaysAgoMs = nowMs - 7 * 24 * 60 * 60 * 1000;
+  const thirtyDaysAgoMs = nowMs - 30 * 24 * 60 * 60 * 1000;
+  const ninetyDaysAgoMs = nowMs - 90 * 24 * 60 * 60 * 1000;
   const db = getDb();
   const latest = db
     .selectDistinctOn([juniorTaskExecutions.taskId], {
@@ -156,7 +179,10 @@ export async function readTaskExecutionSummaries(
     .select({
       lastConversationId: latest.conversationId,
       lastExecutedAtMs: max(juniorTaskExecutions.executedAtMs),
+      runsLast1Day: sql<number>`count(*) filter (where ${juniorTaskExecutions.executedAtMs} >= ${oneDayAgoMs})::int`,
       runsLast7Days: sql<number>`count(*) filter (where ${juniorTaskExecutions.executedAtMs} >= ${sevenDaysAgoMs})::int`,
+      runsLast30Days: sql<number>`count(*) filter (where ${juniorTaskExecutions.executedAtMs} >= ${thirtyDaysAgoMs})::int`,
+      runsLast90Days: sql<number>`count(*) filter (where ${juniorTaskExecutions.executedAtMs} >= ${ninetyDaysAgoMs})::int`,
       taskId: juniorTaskExecutions.taskId,
       totalRuns: sql<number>`count(*)::int`,
     })
@@ -179,7 +205,12 @@ export async function readTaskExecutionSummaries(
         ...(row.lastExecutedAtMs !== null
           ? { lastExecutedAtMs: row.lastExecutedAtMs }
           : undefined),
-        runsLast7Days: row.runsLast7Days,
+        runs: {
+          1: row.runsLast1Day,
+          7: row.runsLast7Days,
+          30: row.runsLast30Days,
+          90: row.runsLast90Days,
+        },
         totalRuns: row.totalRuns,
       },
     ]),
@@ -197,13 +228,22 @@ export async function readTaskExecutionDays(
   const startMs =
     Date.parse(`${end}T00:00:00.000Z`) - (dayCount - 1) * 86_400_000;
   const executionDate = sql<string>`to_char(to_timestamp(${juniorTaskExecutions.executedAtMs} / 1000.0) at time zone 'UTC', 'YYYY-MM-DD')`;
+  const conversationCost = conversationUsageCostExpr(juniorConversations.usage);
   const rows = await getDb()
     .select({
       count: count(),
+      costUsd: sql<number | null>`SUM(${conversationCost})::double precision`,
       date: executionDate,
       kind: juniorTaskExecutions.kind,
     })
     .from(juniorTaskExecutions)
+    .leftJoin(
+      juniorConversations,
+      eq(
+        juniorConversations.conversationId,
+        juniorTaskExecutions.conversationId,
+      ),
+    )
     .where(
       and(
         gte(juniorTaskExecutions.executedAtMs, startMs),
@@ -224,6 +264,9 @@ export async function readTaskExecutionDays(
     if (!day) continue;
     if (row.kind === "scheduled") day.scheduled = row.count;
     else if (row.kind === "event") day.event = row.count;
+    if (row.costUsd !== null && row.costUsd > 0) {
+      day.costUsd = addUsd(day.costUsd, row.costUsd);
+    }
   }
   return [...byDate.values()];
 }
@@ -240,13 +283,22 @@ export async function readTaskExecutionHours(
   const endMs = end.getTime() + 3_599_999;
   const startMs = end.getTime() - (hourCount - 1) * 3_600_000;
   const executionHour = sql<string>`to_char(to_timestamp(${juniorTaskExecutions.executedAtMs} / 1000.0) at time zone 'UTC', 'YYYY-MM-DD"T"HH24')`;
+  const conversationCost = conversationUsageCostExpr(juniorConversations.usage);
   const rows = await getDb()
     .select({
       count: count(),
+      costUsd: sql<number | null>`SUM(${conversationCost})::double precision`,
       date: executionHour,
       kind: juniorTaskExecutions.kind,
     })
     .from(juniorTaskExecutions)
+    .leftJoin(
+      juniorConversations,
+      eq(
+        juniorConversations.conversationId,
+        juniorTaskExecutions.conversationId,
+      ),
+    )
     .where(
       and(
         gte(juniorTaskExecutions.executedAtMs, startMs),
@@ -269,6 +321,9 @@ export async function readTaskExecutionHours(
     if (!hour) continue;
     if (row.kind === "scheduled") hour.scheduled = row.count;
     else if (row.kind === "event") hour.event = row.count;
+    if (row.costUsd !== null && row.costUsd > 0) {
+      hour.costUsd = addUsd(hour.costUsd, row.costUsd);
+    }
   }
   return [...byHour.values()];
 }

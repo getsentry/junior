@@ -2316,10 +2316,15 @@ function mockTaskExecutionDays(nowMs: number): TaskList["executionDays"] {
     const date = new Date(nowMs - (89 - index) * 86_400_000)
       .toISOString()
       .slice(0, 10);
+    const event = index % 11 === 0 ? 1 : 0;
+    const scheduled = index % 5 === 0 ? 2 : index % 3 === 0 ? 1 : 0;
     return {
+      costUsd:
+        Math.round((event * 0.12 + scheduled * 0.08 + (index % 7) * 0.01) * 100) /
+        100,
       date,
-      event: index % 11 === 0 ? 1 : 0,
-      scheduled: index % 5 === 0 ? 2 : index % 3 === 0 ? 1 : 0,
+      event,
+      scheduled,
     };
   });
 }
@@ -2343,7 +2348,7 @@ function mockTasks(): TaskSummary[] {
       lastRunAt: "2026-08-06T16:00:00.000Z",
       nextRunAt: "2026-08-10T16:00:00.000Z",
       ownedByViewer: true,
-      runsLast7Days: 3,
+      runs: { 1: 1, 7: 3, 30: 12, 90: 48 },
       schedule: "Every Monday at 9:00 AM",
       status: "active",
       title: "Weekly project summary",
@@ -2363,9 +2368,11 @@ function mockTasks(): TaskSummary[] {
       id: "event-1",
       instruction: "Summarize the closed issue",
       kind: "event",
+      lastConversationId: "agent-dispatch:event-1",
+      lastRunAt: "2026-08-05T18:30:00.000Z",
       ownedByViewer: true,
       resource: "Issue · ACME-42",
-      runsLast7Days: 1,
+      runs: { 1: 0, 7: 1, 30: 4, 90: 7 },
       source: "github",
       title: "Closed issue summary",
       totalRuns: 7,
@@ -2387,7 +2394,7 @@ function mockTasks(): TaskSummary[] {
       kind: "event",
       ownedByViewer: false,
       resource: "Incident · INC-17",
-      runsLast7Days: 0,
+      runs: { 1: 0, 7: 0, 30: 0, 90: 0 },
       source: "pagerduty",
       title: "Incident change alerts",
       totalRuns: 0,
@@ -2401,6 +2408,7 @@ export function readMockTaskList(nowMs = Date.now()): TaskList {
   return {
     executionDays: mockTaskExecutionDays(nowMs),
     executionHours: trailingMetricHours(nowMs, (date) => ({
+      costUsd: 0,
       date,
       event: 0,
       scheduled: 0,
