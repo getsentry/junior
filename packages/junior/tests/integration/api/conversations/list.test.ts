@@ -204,10 +204,13 @@ describe("conversation list API", () => {
   test("returns a link for a viewable Slack Location", async () => {
     const fixture = createConfiguredJuniorSqlFixture();
     const store = createSqlStore(fixture.sql);
+    const conversationId = "slack:C123:location-url";
+    const locationUrl =
+      "https://example.slack.com/archives/C123/p1700000000000100?thread_ts=1700000000.000100&cid=C123";
     try {
       await migrateSchema(fixture.sql);
       await store.recordActivity({
-        conversationId: "slack:C123:location-url",
+        conversationId,
         destination: {
           platform: "slack",
           teamId: "T123",
@@ -228,19 +231,42 @@ describe("conversation list API", () => {
         .db()
         .update(juniorConversations)
         .set({ sessionSource: null })
-        .where(
-          eq(
-            juniorConversations.conversationId,
-            "slack:C123:location-url",
-          ),
-        );
+        .where(eq(juniorConversations.conversationId, conversationId));
 
       await expect(readConversationFeedFromSql()).resolves.toMatchObject({
         conversations: [
           expect.objectContaining({
-            conversationId: "slack:C123:location-url",
-            locationUrl:
-              "https://example.slack.com/archives/C123/p1700000000000100?thread_ts=1700000000.000100&cid=C123",
+            conversationId,
+            locationUrl,
+          }),
+        ],
+      });
+
+      await fixture.sql
+        .db()
+        .update(juniorConversations)
+        .set({
+          location: {
+            id: "slack:T123:C123",
+            provider: "slack",
+            teamId: "T123",
+            channelId: "C123",
+          },
+          sessionSource: {
+            kind: "slack",
+            visibility: "public",
+            teamId: "T123",
+            channelId: "C123",
+            threadTs: "1700000000.000100",
+          },
+        })
+        .where(eq(juniorConversations.conversationId, conversationId));
+
+      await expect(readConversationFeedFromSql()).resolves.toMatchObject({
+        conversations: [
+          expect.objectContaining({
+            conversationId,
+            locationUrl,
           }),
         ],
       });
