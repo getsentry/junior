@@ -1,0 +1,44 @@
+{
+  "commitSha": "eec2e5eb9ec3dc305ee32897a0937d64a180143d",
+  "mode": "path",
+  "reasons": [
+    "packages/junior-dashboard/package.json",
+    "packages/junior-dashboard/src/client/conversations/ConversationMeta.tsx",
+    "packages/junior-dashboard/src/client/format.ts",
+    "packages/junior-dashboard/src/client/types.ts",
+    "packages/junior-dashboard/src/mock-reporting/fixtures.ts"
+  ],
+  "scenarioIds": [
+    "gallery-index",
+    "conversations",
+    "conversation-detail",
+    "conversation-detail-focused"
+  ],
+  "shots": [
+    {
+      "file": "gallery-index__desktop.png",
+      "label": "Component gallery index · desktop"
+    },
+    {
+      "file": "conversations__desktop.png",
+      "label": "Conversations · desktop"
+    },
+    {
+      "file": "conversations__mobile.png",
+      "label": "Conversations · mobile"
+    },
+    {
+      "file": "conversation-detail__desktop.png",
+      "label": "Conversation detail · desktop"
+    },
+    {
+      "file": "conversation-detail__mobile.png",
+      "label": "Conversation detail · mobile"
+    },
+    {
+      "file": "conversation-detail-focused__mobile.png",
+      "label": "Conversation detail · focused composer · mobile"
+    }
+  ],
+  "skipped": false
+}
