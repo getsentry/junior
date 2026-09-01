@@ -1,4 +1,58 @@
 import { expect, test } from "./test";
+import { captureDashboardScreenshot, MOBILE } from "./screenshot";
+
+const FOCUSED_COMPOSER_HEIGHT_PX = 520;
+const FOCUSED_COMPOSER_OFFSET_TOP_PX = 140;
+
+test("captures focused mobile conversation composer", async ({
+  page,
+  dashboard,
+}) => {
+  await page.setViewportSize(MOBILE);
+  await page.goto(
+    `${dashboard.baseURL}/conversations/${encodeURIComponent(
+      "slack:CQA123:1770003600.000200",
+    )}`,
+    { waitUntil: "networkidle" },
+  );
+  await expect(
+    page.getByRole("heading", { name: "Investigate checkout latency" }),
+  ).toBeVisible();
+
+  const composer = page.getByPlaceholder("Message Junior…");
+  await composer.focus();
+  await page.evaluate(
+    ({ height, offsetTop }) => {
+      Object.defineProperties(window.visualViewport, {
+        height: { configurable: true, value: height },
+        offsetTop: { configurable: true, value: offsetTop },
+      });
+      window.visualViewport?.dispatchEvent(new Event("resize"));
+    },
+    {
+      height: FOCUSED_COMPOSER_HEIGHT_PX,
+      offsetTop: FOCUSED_COMPOSER_OFFSET_TOP_PX,
+    },
+  );
+  const shell = page.locator("main").first();
+  await expect
+    .poll(() =>
+      shell.evaluate((element) =>
+        element.style.getPropertyValue("--dashboard-keyboard-open"),
+      ),
+    )
+    .toBe("1");
+  await expect(composer).toBeFocused();
+  await captureDashboardScreenshot(page, "conversation-detail-focused", {
+    clip: {
+      height: FOCUSED_COMPOSER_HEIGHT_PX,
+      width: MOBILE.width,
+      x: 0,
+      y: FOCUSED_COMPOSER_OFFSET_TOP_PX,
+    },
+    viewport: MOBILE,
+  });
+});
 
 /**
  * Focused composers must stay in the bottom of the visual viewport.
@@ -222,6 +276,7 @@ test("opens and closes a conversation in the mobile workspace", async ({
   await expect(
     page.getByRole("heading", { name: "Investigate checkout latency" }),
   ).toBeVisible();
+
   await expect(
     page.getByRole("link", { name: "Back to conversations" }),
   ).toBeVisible();

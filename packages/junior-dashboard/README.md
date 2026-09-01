@@ -45,10 +45,11 @@ Assert the user-visible outcome or external contract named by the journey.
 
 Shared browser setup lives in `e2e/test.ts` and `e2e/harness.ts`. Specs import
 `test` from `./test` so every page gets the fixed current time and common API
-stubs. Page behavior does not belong in a cross-page aggregate spec.
-`e2e/screenshots.spec.ts` is the one exception. It records a complete screenshot
-set for Frameshift and does not assert page behavior. Tests under `tests/` cover
-modules and component integration without standing in for browser E2E.
+stubs. Keep one Playwright spec per user-facing route. Capture Frameshift
+screenshots from those route journeys with `e2e/screenshot.ts` once the page is
+loaded. Page behavior does not belong in a cross-page aggregate spec. Tests under
+`tests/` cover modules and component integration without standing in for browser
+E2E.
 
 Mock reports and browser tests use one fixed current time: `NOW`
 (`2026-08-07T12:00:00.000Z`). History in the mocks is relative to that time, so

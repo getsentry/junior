@@ -1,4 +1,5 @@
 import { expect, test } from "./test";
+import { captureDashboardScreenshots } from "./screenshot";
 
 test("shows code activity", async ({ page, dashboard }) => {
   await page.goto(`${dashboard.baseURL}/code`);
@@ -9,4 +10,5 @@ test("shows code activity", async ({ page, dashboard }) => {
   await expect(
     page.getByText("Repositories and code changes created by Junior."),
   ).toBeVisible();
+  await captureDashboardScreenshots(page, "code");
 });
