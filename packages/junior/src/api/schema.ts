@@ -100,10 +100,13 @@ export type {
 } from "./schema/location";
 export type {
   ActorActivityDayReport,
+  ActorDirectoryRange,
   ActorDirectoryReport,
+  ActorDirectoryWindows,
   ActorProfileReport,
   ActorSummaryReport,
   ActorTotalsReport,
+  ActorWindowMetrics,
   PeopleActivityDayReport,
   PersonalSpendReport,
   PersonParams,

@@ -1,7 +1,14 @@
-import { Duration } from "../../components/Duration";
 import { useDeferredValue, useState } from "react";
-import { Activity, Clock3, MessageSquare, Users } from "lucide-react";
-import type { ActorDirectoryReport } from "@sentry/junior/api/schema";
+import {
+  Activity,
+  CircleDollarSign,
+  TrendingUp,
+  Users,
+} from "lucide-react";
+import type {
+  ActorDirectoryReport,
+  ActorSummaryReport,
+} from "@sentry/junior/api/schema";
 
 import { useActorDirectoryData } from "../../api";
 import { EmptyTelemetry } from "../../components/EmptyTelemetry";
@@ -17,7 +24,7 @@ import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
 import { getDashboardAgentName } from "../../agentName";
 import { StatCard } from "../../components/metrics/StatCard";
-import { formatCompactNumber } from "../../format";
+import { formatCompactNumber, formatCostSummary } from "../../format";
 import {
   useDebouncedSearchParam,
   useSearchParamEnum,
@@ -26,16 +33,24 @@ import { SystemPageLayout } from "../system/SystemPageLayout";
 import { PeopleActivityChart } from "./PeopleActivityChart";
 import {
   filterPeople,
+  formatSpendDelta,
   PeopleDirectory,
   type PeopleSort,
 } from "./PeopleDirectory";
 
 const PEOPLE_SORTS = [
-  "activeDays",
+  "spend",
+  "spendDelta",
   "conversations",
   "recent",
   "runtime",
 ] as const satisfies readonly PeopleSort[];
+
+function actorName(person: ActorSummaryReport): string {
+  return (
+    person.actor.fullName ?? person.actor.slackUserName ?? person.actor.email
+  );
+}
 
 /** Render the actor directory returned by the REST API. */
 export function PeoplePage() {
@@ -50,12 +65,8 @@ export function PeoplePageContent(props: {
 }) {
   const [peopleSearch, setPeopleSearch, peopleQuery] =
     useDebouncedSearchParam();
-  const [range, setRange] = useState<TimeRangeDays>(90);
-  const [sort, setSort] = useSearchParamEnum(
-    "sort",
-    "conversations",
-    PEOPLE_SORTS,
-  );
+  const [range, setRange] = useState<TimeRangeDays>(7);
+  const [sort, setSort] = useSearchParamEnum("sort", "spend", PEOPLE_SORTS);
   const deferredSort = useDeferredValue(sort);
   if (!props.data && !props.error) {
     return (
@@ -75,13 +86,8 @@ export function PeoplePageContent(props: {
     : [];
   const bucketUnit = timeRangeBucketUnit(range);
   const people = data
-    ? filterPeople(data.people, peopleQuery, deferredSort)
+    ? filterPeople(data.people, peopleQuery, deferredSort, range)
     : [];
-  const indexedConversations =
-    data?.people.reduce((total, person) => total + person.conversations, 0) ??
-    0;
-  const runtimeMs =
-    data?.people.reduce((total, person) => total + person.durationMs, 0) ?? 0;
   const firstBucket = visibleActivity[0]?.date;
   const windowStartMs = firstBucket
     ? activityBucketStartMs(firstBucket)
@@ -92,7 +98,36 @@ export function PeoplePageContent(props: {
       : (data?.people.filter(
           (person) => Date.parse(person.lastSeenAt) >= windowStartMs,
         ).length ?? 0);
-  const peak = Math.max(0, ...visibleActivity.map((day) => day.activePeople));
+  const fleetSpend =
+    data?.people.reduce(
+      (total, person) => total + person.windows[range].costUsd,
+      0,
+    ) ?? 0;
+  const topSpender = data?.people.reduce<ActorSummaryReport | undefined>(
+    (best, person) => {
+      if (!best) return person;
+      return person.windows[range].costUsd > best.windows[range].costUsd
+        ? person
+        : best;
+    },
+    undefined,
+  );
+  const largestIncrease = data?.people.reduce<ActorSummaryReport | undefined>(
+    (best, person) => {
+      const delta =
+        person.windows[range].costUsd - person.windows[range].priorCostUsd;
+      if (!best) return delta > 0 ? person : undefined;
+      const bestDelta =
+        best.windows[range].costUsd - best.windows[range].priorCostUsd;
+      return delta > bestDelta ? person : best;
+    },
+    undefined,
+  );
+  const topSpend = topSpender?.windows[range].costUsd ?? 0;
+  const largestIncreaseDelta = largestIncrease
+    ? largestIncrease.windows[range].costUsd -
+      largestIncrease.windows[range].priorCostUsd
+    : 0;
 
   return (
     <SystemPageLayout>
@@ -100,7 +135,7 @@ export function PeoplePageContent(props: {
         description={
           props.error
             ? "People failed to load."
-            : `See who's been working with ${getDashboardAgentName()}, how often, and for how long.`
+            : `See who's driving ${getDashboardAgentName()} spend, and who increased versus the prior ${range === 1 ? "24 hours" : `${range} days`}.`
         }
         onRangeChange={setRange}
         range={range}
@@ -122,28 +157,38 @@ export function PeoplePageContent(props: {
               value={formatCompactNumber(activePeople)}
             />
             <StatCard
-              detail="Across the complete conversation index"
-              icon={MessageSquare}
-              label="Conversations"
-              value={formatCompactNumber(indexedConversations)}
-            />
-            <StatCard
-              detail="Cumulative persisted conversation runtime"
-              icon={Clock3}
-              label="Total runtime"
-              value={<Duration value={runtimeMs} />}
+              detail={`Estimated model cost in the ${timeRangeDetail(range)}`}
+              icon={CircleDollarSign}
+              label="Fleet spend"
+              value={formatCostSummary({ total: fleetSpend }) || "$0.00"}
             />
             <StatCard
               detail={
-                bucketUnit === "hour"
-                  ? `Highest distinct hourly count in the ${timeRangeDetail(range)}`
-                  : `Highest distinct daily count in the ${timeRangeDetail(range)}`
+                topSpender && topSpend > 0
+                  ? actorName(topSpender)
+                  : "No spend in this window"
               }
               icon={Activity}
-              label={
-                bucketUnit === "hour" ? "Peak hourly active" : "Peak daily active"
+              label="Top contributor"
+              value={
+                topSpender && topSpend > 0
+                  ? formatCostSummary({ total: topSpend }) || "$0.00"
+                  : "—"
               }
-              value={formatCompactNumber(peak)}
+            />
+            <StatCard
+              detail={
+                largestIncrease && largestIncreaseDelta > 0
+                  ? `${actorName(largestIncrease)} vs prior ${range === 1 ? "24h" : `${range}d`}`
+                  : "No spend increases in this window"
+              }
+              icon={TrendingUp}
+              label="Largest increase"
+              value={
+                largestIncrease && largestIncreaseDelta > 0
+                  ? formatSpendDelta(largestIncreaseDelta)
+                  : "—"
+              }
             />
           </div>
           <PeopleActivityChart bucketUnit={bucketUnit} days={visibleActivity} />
@@ -153,6 +198,7 @@ export function PeoplePageContent(props: {
             onSortChange={setSort}
             people={people}
             query={peopleSearch}
+            range={range}
             sort={sort}
             totalPeople={data.people.length}
           />

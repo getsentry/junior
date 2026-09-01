@@ -655,6 +655,32 @@ export async function mockDashboardApis(page: Page) {
               email: "avery@example.com",
               fullName: "Avery Example",
             },
+            windows: {
+              1: {
+                conversations: 4,
+                costUsd: 1.25,
+                durationMs: 8_000,
+                priorCostUsd: 0.4,
+              },
+              7: {
+                conversations: 28,
+                costUsd: 8.5,
+                durationMs: 24_000,
+                priorCostUsd: 3.1,
+              },
+              30: {
+                conversations: 90,
+                costUsd: 22.4,
+                durationMs: 40_000,
+                priorCostUsd: 18.2,
+              },
+              90: {
+                conversations: 180,
+                costUsd: 48.75,
+                durationMs: 60_000,
+                priorCostUsd: 12.1,
+              },
+            },
           },
         ],
         source: "conversation_index",
