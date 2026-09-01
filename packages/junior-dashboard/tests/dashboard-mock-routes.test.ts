@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import {
   actorDirectoryReportSchema,
   codeOverviewReportSchema,
@@ -12,6 +12,7 @@ import {
   ARCHIVED_CONVERSATION_ID,
   conversationTimeBounds,
   DASHBOARD_QA_CONVERSATION_ID,
+  NOW,
   setMockConversationArchived,
 } from "../src/mock-reporting/fixtures";
 
@@ -24,7 +25,6 @@ describe("dashboard canonical-event mock routes", () => {
   afterEach(() => {
     // Keep the default archived fixture available for later visual/mock runs.
     setMockConversationArchived(ARCHIVED_CONVERSATION_ID, true);
-    vi.useRealTimers();
   });
 
   it("derives public location bounds independently of summary order", () => {
@@ -70,7 +70,6 @@ describe("dashboard canonical-event mock routes", () => {
   });
 
   it("serves canonical detail, directory, and aggregate reports", async () => {
-    vi.useFakeTimers({ now: new Date("2026-05-30T00:00:00.000Z") });
     const app = createDashboardApp({
       authRequired: false,
       allowedGoogleDomains: [],
@@ -134,7 +133,7 @@ describe("dashboard canonical-event mock routes", () => {
         {
           body: JSON.stringify({
             archived: false,
-            lastSeenAt: "2026-05-30T00:00:00.000Z",
+            lastSeenAt: NOW,
           }),
           headers: { "content-type": "application/json" },
           method: "PATCH",
@@ -189,9 +188,8 @@ describe("dashboard canonical-event mock routes", () => {
       ),
     );
     expect(statsBody.costUsd).toBeGreaterThan(0);
-    expect(
-      Date.parse(statsBody.windowEnd) - Date.parse(statsBody.windowStart),
-    ).toBe(89 * 24 * 60 * 60 * 1000);
+    expect(statsBody.windowEnd).toBe(NOW);
+    expect(statsBody.windowStart).toBe("2026-05-10T00:00:00.000Z");
 
     const people = await app.fetch(new Request("http://localhost/api/people"));
     const peopleBody = actorDirectoryReportSchema.parse(await people.json());

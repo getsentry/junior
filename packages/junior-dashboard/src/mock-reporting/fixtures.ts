@@ -31,8 +31,13 @@ import type {
   TaskSummary,
 } from "@sentry/junior/api/schema";
 
+/** Fixed current time for mock reports and browser tests. */
+export const NOW = "2026-08-07T12:00:00.000Z";
+/** Milliseconds for {@link NOW}. */
+export const NOW_MS = Date.parse(NOW);
+
 /** Build code activity for local dashboard development and QA. */
-export function readMockCodeOverview(nowMs = Date.now()): CodeOverviewReport {
+export function readMockCodeOverview(nowMs = NOW_MS): CodeOverviewReport {
   const windowEnd = new Date(nowMs).toISOString();
   const windowStart = new Date(nowMs - 30 * 86_400_000).toISOString();
   const activityDays = Array.from({ length: 90 }, (_, index) => {
@@ -1309,8 +1314,7 @@ function summaryFromConversation(
   )
     ? {
         ...summary,
-        archivedAt:
-          summary.archivedAt ?? iso(Date.now(), -2 * 24 * 60 * 60_000),
+        archivedAt: summary.archivedAt ?? iso(NOW_MS, -2 * 24 * 60 * 60_000),
       }
     : { ...summary, archivedAt: undefined };
   return withArchiveState.channel &&
@@ -1533,7 +1537,7 @@ export function readMockConversationFeed(
   actorEmail?: string,
   status: "active" | "archived" = "active",
 ): ConversationFeed {
-  const feed = mockConversationFeed(Date.now());
+  const feed = mockConversationFeed(NOW_MS);
   const conversations = feed.conversations
     .filter((conversation) =>
       status === "archived"
@@ -1554,25 +1558,25 @@ export function setMockConversationArchived(
   conversationId: string,
   archived: boolean,
 ): { archivedAt: string | null } | undefined {
-  const exists = mockConversations(Date.now()).some(
+  const exists = mockConversations(NOW_MS).some(
     (conversation) => conversation.conversationId === conversationId,
   );
   if (!exists) return undefined;
   if (archived) mockArchivedConversationIds.add(conversationId);
   else mockArchivedConversationIds.delete(conversationId);
-  return { archivedAt: archived ? new Date().toISOString() : null };
+  return { archivedAt: archived ? NOW : null };
 }
 
 /** Return accepted mailbox rows for local dashboard visual QA. */
 export function readMockConversationPendingMessages(
   conversationId: string,
 ): ConversationPendingMessagesReport | undefined {
-  const conversation = mockConversations(Date.now()).find(
+  const conversation = mockConversations(NOW_MS).find(
     (candidate) => candidate.conversationId === conversationId,
   );
   if (!conversation) return undefined;
 
-  const nowMs = Date.now();
+  const nowMs = NOW_MS;
   const messages =
     conversationId === ACTIVE_CONVERSATION_ID
       ? [
@@ -1646,7 +1650,7 @@ export function readMockConversationDetail(
   conversationId: string,
   limit = 500,
 ): ConversationDetailReport | undefined {
-  const conversation = mockConversations(Date.now()).find(
+  const conversation = mockConversations(NOW_MS).find(
     (candidate) => candidate.conversationId === conversationId,
   );
   if (!conversation) return undefined;
@@ -1655,7 +1659,7 @@ export function readMockConversationDetail(
   const withArchiveState = mockArchivedConversationIds.has(conversationId)
     ? {
         ...detail,
-        archivedAt: detail.archivedAt ?? iso(Date.now(), -2 * 24 * 60 * 60_000),
+        archivedAt: detail.archivedAt ?? iso(NOW_MS, -2 * 24 * 60 * 60_000),
       }
     : { ...detail, archivedAt: undefined };
   const events = withArchiveState.events.slice(-limit);
@@ -1678,7 +1682,7 @@ export function readMockConversationEvents(
   before: string,
   limit = 500,
 ): ConversationEventPage | undefined {
-  const conversation = mockConversations(Date.now()).find(
+  const conversation = mockConversations(NOW_MS).find(
     (candidate) => candidate.conversationId === conversationId,
   );
   if (!conversation) return undefined;
@@ -1693,7 +1697,7 @@ export function readMockConversationEvents(
         }),
       ],
       eventHistory: conversation.eventHistory,
-      generatedAt: new Date().toISOString(),
+      generatedAt: NOW,
     };
   }
 
@@ -1706,7 +1710,7 @@ export function readMockConversationEvents(
   return {
     events,
     eventHistory: conversation.eventHistory,
-    generatedAt: new Date().toISOString(),
+    generatedAt: NOW,
     ...(events.length < olderEvents.length && events[0]
       ? { previousCursor: mockBeforeCursor(conversationId, events[0].seq) }
       : conversation.previousCursor
@@ -1731,7 +1735,7 @@ function parseMockBeforeCursor(
 
 /** Build mock dashboard stats from canonical-event mock conversations. */
 export function readMockConversationStats(): ConversationStatsReport {
-  const nowMs = Date.now();
+  const nowMs = NOW_MS;
   const windowStartMs = statsWindowStartMs(nowMs);
   const summaries = activeMockSummaries(nowMs).filter((summary) => {
     const lastSeenAtMs = Date.parse(summary.lastSeenAt);
@@ -1927,7 +1931,7 @@ function activityDates(nowMs: number, days = PEOPLE_ACTIVITY_DAYS): string[] {
 
 /** Build mock People analytics from canonical-event mock conversations. */
 export function readMockPeopleDirectory(): ActorDirectoryReport {
-  const nowMs = Date.now();
+  const nowMs = NOW_MS;
   const summaries = activeMockSummaries(nowMs);
   const byEmail = new Map<
     string,
@@ -1997,7 +2001,7 @@ export function readMockPeopleDirectory(): ActorDirectoryReport {
 export function readMockPeopleProfile(
   email: string,
 ): ActorProfileReport | undefined {
-  const nowMs = Date.now();
+  const nowMs = NOW_MS;
   const normalized = email.toLowerCase();
   const summaries = activeMockSummaries(nowMs).filter(
     (summary) => summary.actorIdentity?.email?.toLowerCase() === normalized,
@@ -2096,7 +2100,7 @@ export function readMockPeopleProfile(
 export function readMockPeoplePluginReports(
   _email: string,
 ): PluginOperationalReportFeed {
-  const nowMs = Date.now();
+  const nowMs = NOW_MS;
   return {
     generatedAt: new Date(nowMs).toISOString(),
     reports: [],
@@ -2193,7 +2197,7 @@ function publicLocation(
 
 /** Build the mock public-location directory from canonical-event summaries. */
 export function readMockLocationDirectory(): LocationDirectoryReport {
-  const nowMs = Date.now();
+  const nowMs = NOW_MS;
   const summaries = activeMockSummaries(nowMs);
   const channels = [
     ...new Set(
@@ -2246,7 +2250,7 @@ export function readMockLocationDirectory(): LocationDirectoryReport {
 export function readMockLocationDetail(
   locationId: string,
 ): LocationDetailReport | undefined {
-  const nowMs = Date.now();
+  const nowMs = NOW_MS;
   const directory = readMockLocationDirectory();
   const location = directory.locations.find((item) => item.id === locationId);
   if (!location) return undefined;
@@ -2320,8 +2324,9 @@ function mockTaskExecutionDays(nowMs: number): TaskList["executionDays"] {
     const scheduled = index % 5 === 0 ? 2 : index % 3 === 0 ? 1 : 0;
     return {
       costUsd:
-        Math.round((event * 0.12 + scheduled * 0.08 + (index % 7) * 0.01) * 100) /
-        100,
+        Math.round(
+          (event * 0.12 + scheduled * 0.08 + (index % 7) * 0.01) * 100,
+        ) / 100,
       date,
       event,
       scheduled,
@@ -2404,7 +2409,7 @@ function mockTasks(): TaskSummary[] {
 }
 
 /** Build mock Tasks list for local dashboard development. */
-export function readMockTaskList(nowMs = Date.now()): TaskList {
+export function readMockTaskList(nowMs = NOW_MS): TaskList {
   return {
     executionDays: mockTaskExecutionDays(nowMs),
     executionHours: trailingMetricHours(nowMs, (date) => ({
@@ -2434,7 +2439,7 @@ function mockStatusDays(nowMs: number): TaskExecutionList["executionDays"] {
 export function readMockTaskExecutions(
   kind: "scheduled" | "event",
   id: string,
-  nowMs = Date.now(),
+  nowMs = NOW_MS,
 ): TaskExecutionList | undefined {
   const task = mockTasks().find(
     (candidate) => candidate.kind === kind && candidate.id === id,
@@ -2462,7 +2467,14 @@ export function readMockTaskExecutions(
   const statuses = ["completed", "failed", "blocked", "completed"] as const;
   const costs = [0.42, 0.18, 0.07, 1.25, 0.03, undefined, 0.56, 0.09] as const;
   const durations = [
-    42_000, 18_000, 7_500, 95_000, 3_200, undefined, 61_000, 12_000,
+    42_000,
+    18_000,
+    7_500,
+    95_000,
+    3_200,
+    undefined,
+    61_000,
+    12_000,
   ] as const;
   const tokens = [1_200, 480, 210, 3_400, 90, undefined, 1_800, 320] as const;
   const executions = Array.from({ length: 8 }, (_, index) => {

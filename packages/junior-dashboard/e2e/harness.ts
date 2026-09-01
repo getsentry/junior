@@ -6,6 +6,7 @@ import {
 import type { AddressInfo } from "node:net";
 import { Readable } from "node:stream";
 import type { Page } from "@playwright/test";
+import { NOW, NOW_MS } from "../src/mock-reporting/fixtures";
 
 export type DashboardE2eServer = {
   baseURL: string;
@@ -102,8 +103,17 @@ export async function startDashboardE2eServer(
   };
 }
 
-/** Stubs APIs shared by dashboard page specs. */
-export async function mockDashboardApis(page: Page) {
+/** Stub shared APIs and pin browser current time for dashboard page specs. */
+export async function mockDashboardApis(
+  page: Page,
+  options: { controlTimers?: boolean } = {},
+) {
+  // Pin Date for relative labels. Keep real timers unless a test needs fast-forward.
+  if (options.controlTimers) {
+    await page.clock.install({ time: NOW_MS });
+  } else {
+    await page.clock.setFixedTime(NOW_MS);
+  }
   await page.route("**/api/user-pages", async (route) => {
     await route.fulfill({
       json: [
@@ -464,9 +474,8 @@ export async function mockDashboardApis(page: Page) {
             triggerAvailable: true,
           }),
     };
-    const nowMs = Date.parse("2026-08-07T12:00:00.000Z");
     const executionDays = Array.from({ length: 90 }, (_, index) => {
-      const date = new Date(nowMs - (89 - index) * 86_400_000)
+      const date = new Date(NOW_MS - (89 - index) * 86_400_000)
         .toISOString()
         .slice(0, 10);
       return {
@@ -552,7 +561,7 @@ export async function mockDashboardApis(page: Page) {
     });
   });
   await page.route("**/api/stats", async (route) => {
-    const end = new Date();
+    const end = new Date(NOW_MS);
     end.setUTCHours(0, 0, 0, 0);
     const start = new Date(end);
     start.setUTCDate(end.getUTCDate() - 89);
@@ -573,7 +582,7 @@ export async function mockDashboardApis(page: Page) {
     }).filter((stat) => stat.count > 0);
     await route.fulfill({
       json: {
-        generatedAt: end.toISOString(),
+        generatedAt: NOW,
         stats,
         windowEnd: end.toISOString().slice(0, 10),
         windowStart: start.toISOString().slice(0, 10),

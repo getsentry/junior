@@ -1,10 +1,6 @@
 import path from "node:path";
-import { expect, test, type Page } from "@playwright/test";
-import {
-  type DashboardE2eServer,
-  mockDashboardApis,
-  startDashboardE2eServer,
-} from "./harness";
+import type { Page } from "@playwright/test";
+import { expect, test } from "./test";
 
 const DESKTOP = { height: 900, name: "desktop", width: 1440 } as const;
 const MOBILE = { height: 844, name: "mobile", width: 390 } as const;
@@ -145,20 +141,6 @@ const SCREENSHOT_SCENARIOS: ScreenshotScenario[] = [
   },
 ];
 
-let server: DashboardE2eServer;
-
-test.beforeAll(async () => {
-  server = await startDashboardE2eServer({ componentGallery: true });
-});
-
-test.afterAll(async () => {
-  await server.close();
-});
-
-test.beforeEach(async ({ page }) => {
-  await mockDashboardApis(page);
-});
-
 function attachmentImage(page: Page) {
   return page
     .locator('a[href*="/attachments/qa-chart-png"]')
@@ -218,9 +200,12 @@ async function prepareScreenshot(page: Page, prepare?: ScreenshotPrepare) {
 
 for (const scenario of SCREENSHOT_SCENARIOS) {
   for (const viewport of scenario.viewports) {
-    test(`captures ${scenario.id} on ${viewport.name}`, async ({ page }) => {
+    test(`captures ${scenario.id} on ${viewport.name}`, async ({
+      page,
+      dashboard,
+    }) => {
       await page.setViewportSize(viewport);
-      await page.goto(new URL(scenario.path, server.baseURL).toString(), {
+      await page.goto(new URL(scenario.path, dashboard.baseURL).toString(), {
         waitUntil: "networkidle",
       });
       await page
