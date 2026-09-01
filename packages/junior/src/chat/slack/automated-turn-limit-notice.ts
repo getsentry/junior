@@ -2,22 +2,45 @@
  * Destination-visible pause notice for the consecutive automated-turn limit.
  *
  * Best-effort: a failed post must not fail the Turn or re-enable event wakes.
+ * The consecutive-turn limit claims the notice slot before this post. Clear that
+ * claim when the post fails or is skipped so a later paused wake can try again.
  */
 import type { Destination } from "@sentry/junior-plugin-api";
 import { getConversationStore } from "@/chat/db";
 import { logException, logWarn } from "@/chat/logging";
 import {
   buildAutomatedTurnLimitResponse,
+  clearAutomatedTurnLimitNoticeClaim,
+  type AutomatedTurnLimitScope,
   type AutomatedTurnLimitUpdate,
 } from "@/chat/services/automated-turn-limit";
 import { postSlackMessage } from "@/chat/slack/outbound";
+
+async function releaseFailedNoticeClaim(args: {
+  nowMs?: number;
+  scope: AutomatedTurnLimitScope;
+}): Promise<void> {
+  try {
+    await clearAutomatedTurnLimitNoticeClaim(args);
+  } catch (error) {
+    logException(error, "automated_turn_limit.notice_claim_clear_failed");
+  }
+}
 
 /** Post the pause notice for one Conversation Location when known. */
 export async function postAutomatedTurnLimitNoticeForConversation(args: {
   conversationId: string;
   maxTurns: number;
+  nowMs?: number;
   resumeIn?: "thread" | "channel";
-}): Promise<void> {
+  scope?: AutomatedTurnLimitScope;
+}): Promise<boolean> {
+  const scope =
+    args.scope ??
+    ({
+      kind: "conversation",
+      conversationId: args.conversationId,
+    } satisfies AutomatedTurnLimitScope);
   try {
     const conversation = await getConversationStore().get({
       conversationId: args.conversationId,
@@ -30,7 +53,11 @@ export async function postAutomatedTurnLimitNoticeForConversation(args: {
           ? "unsupported_location"
           : "missing_location",
       });
-      return;
+      await releaseFailedNoticeClaim({
+        nowMs: args.nowMs,
+        scope,
+      });
+      return false;
     }
     await postSlackMessage({
       channelId: location.channelId,
@@ -40,10 +67,16 @@ export async function postAutomatedTurnLimitNoticeForConversation(args: {
       }),
       ...(location.threadTs ? { threadTs: location.threadTs } : undefined),
     });
+    return true;
   } catch (error) {
     logException(error, "automated_turn_limit.notice_failed", {
       conversationId: args.conversationId,
     });
+    await releaseFailedNoticeClaim({
+      nowMs: args.nowMs,
+      scope,
+    });
+    return false;
   }
 }
 
@@ -51,14 +84,26 @@ export async function postAutomatedTurnLimitNoticeForConversation(args: {
 export async function postAutomatedTurnLimitNoticeForDestination(args: {
   destination: Destination;
   maxTurns: number;
+  nowMs?: number;
   resumeIn?: "thread" | "channel";
+  scope?: AutomatedTurnLimitScope;
   threadTs?: string;
-}): Promise<void> {
+}): Promise<boolean> {
+  const scope =
+    args.scope ??
+    ({
+      kind: "destination",
+      destination: args.destination,
+    } satisfies AutomatedTurnLimitScope);
   if (args.destination.platform !== "slack") {
     logWarn("automated_turn_limit.notice_skipped", {
       "app.automated_turn_limit.reason": "unsupported_destination",
     });
-    return;
+    await releaseFailedNoticeClaim({
+      nowMs: args.nowMs,
+      scope,
+    });
+    return false;
   }
   try {
     await postSlackMessage({
@@ -69,11 +114,17 @@ export async function postAutomatedTurnLimitNoticeForDestination(args: {
       }),
       ...(args.threadTs ? { threadTs: args.threadTs } : undefined),
     });
+    return true;
   } catch (error) {
     logException(error, "automated_turn_limit.notice_failed", {
       "app.slack.channel_id": args.destination.channelId,
       "app.slack.team_id": args.destination.teamId,
     });
+    await releaseFailedNoticeClaim({
+      nowMs: args.nowMs,
+      scope,
+    });
+    return false;
   }
 }
 
@@ -85,6 +136,7 @@ export async function maybePostAutomatedTurnLimitNotice(args: {
   conversationId: string;
   destination?: Destination;
   maxTurns: number;
+  nowMs?: number;
   threadTs?: string;
   update: AutomatedTurnLimitUpdate | undefined;
 }): Promise<void> {
@@ -95,7 +147,12 @@ export async function maybePostAutomatedTurnLimitNotice(args: {
     await postAutomatedTurnLimitNoticeForConversation({
       conversationId: args.conversationId,
       maxTurns: args.maxTurns,
+      nowMs: args.nowMs,
       resumeIn: "thread",
+      scope: {
+        kind: "conversation",
+        conversationId: args.conversationId,
+      },
     });
     return;
   }
@@ -103,7 +160,9 @@ export async function maybePostAutomatedTurnLimitNotice(args: {
     await postAutomatedTurnLimitNoticeForDestination({
       destination: args.destination,
       maxTurns: args.maxTurns,
+      nowMs: args.nowMs,
       resumeIn: "channel",
+      scope: { kind: "destination", destination: args.destination },
       threadTs: args.threadTs,
     });
     return;
@@ -111,6 +170,11 @@ export async function maybePostAutomatedTurnLimitNotice(args: {
   await postAutomatedTurnLimitNoticeForConversation({
     conversationId: args.conversationId,
     maxTurns: args.maxTurns,
+    nowMs: args.nowMs,
     resumeIn: args.update.resumeIn,
+    scope: {
+      kind: "conversation",
+      conversationId: args.conversationId,
+    },
   });
 }

@@ -186,7 +186,8 @@ export async function getAutomatedTurnLimitState(args: {
 
 /**
  * Allow one automated wake, or refuse once the consecutive-turn limit is full.
- * If a prior pause never posted its notice, ask the caller to post it once.
+ * If a prior pause never posted its notice, claim the notice slot so one caller
+ * posts it. Clear the claim if that post fails or is skipped.
  */
 export async function admitAutomatedTurn(args: {
   maxTurns: number;
@@ -212,6 +213,8 @@ export async function admitAutomatedTurn(args: {
         ),
         paused: true,
         updatedAtMs: nowMs,
+        // Claim the notice slot so concurrent paused wakes do not all post.
+        // Callers must mark success or clear the claim if the post fails.
         ...(shouldPostNotice
           ? { noticePostedAtMs: nowMs }
           : current.noticePostedAtMs !== undefined
@@ -257,6 +260,8 @@ export async function countAutomatedTurn(args: {
       consecutiveAutomatedTurns,
       paused,
       updatedAtMs: nowMs,
+      // Claim the notice slot before the destination post. Mark success after
+      // the post lands; clear the claim if the post fails or is skipped.
       ...(shouldPostNotice
         ? { noticePostedAtMs: nowMs }
         : current.noticePostedAtMs !== undefined
@@ -270,6 +275,36 @@ export async function countAutomatedTurn(args: {
       shouldPostNotice,
       resumeIn,
     };
+  });
+}
+
+/**
+ * Drop a failed notice claim so a later paused wake can post the notice.
+ * Keeps the pause and consecutive count.
+ */
+export async function clearAutomatedTurnLimitNoticeClaim(args: {
+  nowMs?: number;
+  scope: AutomatedTurnLimitScope;
+  state?: StateAdapter;
+}): Promise<void> {
+  const state = args.state ?? getStateAdapter();
+  await state.connect();
+  const nowMs = args.nowMs ?? Date.now();
+  const key = scopeKey(args.scope);
+  await withScopeLock(state, key, async () => {
+    const current = parseState(await state.get(key));
+    if (!current || current.noticePostedAtMs === undefined) {
+      return;
+    }
+    const { noticePostedAtMs: _noticePostedAtMs, ...rest } = current;
+    await state.set(
+      key,
+      {
+        ...rest,
+        updatedAtMs: nowMs,
+      },
+      JUNIOR_THREAD_STATE_TTL_MS,
+    );
   });
 }
 

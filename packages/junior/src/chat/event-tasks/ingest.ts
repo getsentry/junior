@@ -116,7 +116,9 @@ export async function ingestEventTasks(
           await postAutomatedTurnLimitNoticeForDestination({
             destination: task.destination,
             maxTurns,
+            nowMs,
             resumeIn: "channel",
+            scope: { kind: "destination", destination: task.destination },
           });
         }
         continue;

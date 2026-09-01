@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   admitAutomatedTurn,
   buildAutomatedTurnLimitResponse,
+  clearAutomatedTurnLimitNoticeClaim,
   countAutomatedTurn,
   getAutomatedTurnLimitState,
   isAutomatedTurnSource,
@@ -90,6 +91,44 @@ describe("automated turn limit", () => {
       consecutiveAutomatedTurns: 3,
       paused: true,
       noticePostedAtMs: 1_002,
+    });
+  });
+
+  it("clears a failed notice claim so a later paused wake can post again", async () => {
+    const scope = {
+      kind: "conversation" as const,
+      conversationId: "slack:C1:notice-claim",
+    };
+
+    for (let i = 0; i < 2; i += 1) {
+      await countAutomatedTurn({ maxTurns: 2, nowMs: 1_000 + i, scope });
+    }
+
+    await expect(getAutomatedTurnLimitState({ scope })).resolves.toMatchObject({
+      consecutiveAutomatedTurns: 2,
+      paused: true,
+      noticePostedAtMs: 1_001,
+    });
+
+    await clearAutomatedTurnLimitNoticeClaim({ nowMs: 1_500, scope });
+
+    await expect(getAutomatedTurnLimitState({ scope })).resolves.toEqual({
+      consecutiveAutomatedTurns: 2,
+      paused: true,
+      updatedAtMs: 1_500,
+    });
+
+    await expect(
+      admitAutomatedTurn({ maxTurns: 2, nowMs: 2_000, scope }),
+    ).resolves.toEqual({
+      status: "paused",
+      consecutiveAutomatedTurns: 2,
+      shouldPostNotice: true,
+    });
+    await expect(getAutomatedTurnLimitState({ scope })).resolves.toMatchObject({
+      consecutiveAutomatedTurns: 2,
+      paused: true,
+      noticePostedAtMs: 2_000,
     });
   });
 

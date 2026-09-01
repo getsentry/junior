@@ -167,7 +167,12 @@ export async function enqueueResourceEventNotification(args: {
       await postAutomatedTurnLimitNoticeForConversation({
         conversationId: args.subscription.conversationId,
         maxTurns,
+        nowMs: args.event.occurredAtMs,
         resumeIn: "thread",
+        scope: {
+          kind: "conversation",
+          conversationId: args.subscription.conversationId,
+        },
       });
     }
     // Do not enqueue a Turn. Terminal watches may still complete after this.
