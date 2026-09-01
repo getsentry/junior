@@ -8,7 +8,7 @@ test("explores people activity", async ({ page, dashboard }) => {
     page.getByRole("heading", { name: "People", exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByRole("img", { name: "Active people per day" }),
+    page.getByRole("img", { name: "Active people per 6 hours" }),
   ).toBeVisible();
   await expect(page.getByRole("button", { name: "7d" })).toHaveAttribute(
     "aria-pressed",

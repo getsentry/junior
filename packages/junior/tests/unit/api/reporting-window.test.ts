@@ -34,7 +34,8 @@ describe("reporting-window six-hour buckets", () => {
       rows: new Map(),
     });
     expect(hours).toHaveLength(168);
-    expect(hours[0]?.date).toBe("2026-06-08T14");
+    // 168 inclusive hours ending at 14:00 start at 15:00 the prior week.
+    expect(hours[0]?.date).toBe("2026-06-08T15");
     expect(hours.at(-1)?.date).toBe("2026-06-15T14");
 
     const six = fillUtcSixHours({
@@ -47,6 +48,8 @@ describe("reporting-window six-hour buckets", () => {
   });
 
   it("sums hour rows into six-hour buckets", () => {
+    // End in the 18:00 bucket so both the 12:00 and 18:00 rolls are in-window.
+    const endInEighteenMs = Date.parse("2026-06-15T19:30:00.000Z");
     const hours = [
       { date: "2026-06-15T12", value: 1 },
       { date: "2026-06-15T13", value: 2 },
@@ -56,7 +59,7 @@ describe("reporting-window six-hour buckets", () => {
     const six = sumUtcHoursIntoSixHours({
       empty: (date) => ({ date, value: 0 }),
       hours,
-      nowMs,
+      nowMs: endInEighteenMs,
     });
     expect(six).toHaveLength(WINDOW_SIX_HOURS);
     expect(six.find((row) => row.date === "2026-06-15T12")).toEqual({
@@ -67,6 +70,7 @@ describe("reporting-window six-hour buckets", () => {
       date: "2026-06-15T18",
       value: 8,
     });
+    expect(six.at(-1)?.date).toBe("2026-06-15T18");
   });
 
   it("sums hour-keyed values after filling the hour window", () => {

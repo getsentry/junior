@@ -19,7 +19,6 @@ import {
   WINDOW_SEVEN_DAY_HOURS,
   fillUtcDays,
   fillUtcHours,
-  fillUtcSixHours,
   sumUtcHoursIntoSixHours,
   trailingUtcDayWindow,
   trailingUtcHourWindow,
