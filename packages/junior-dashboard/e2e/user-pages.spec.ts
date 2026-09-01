@@ -211,9 +211,7 @@ test("lists runs across tasks", async ({ page }) => {
   await expect(
     page.getByText("scheduled", { exact: true }).first(),
   ).toBeVisible();
-  await expect(
-    page.getByText("completed", { exact: true }).first(),
-  ).toBeVisible();
+  await expect(page.getByTitle("completed").first()).toBeVisible();
 });
 
 test("opens one task's execution history", async ({ page }) => {
@@ -234,9 +232,8 @@ test("opens one task's execution history", async ({ page }) => {
   await expect(
     page.getByRole("link", { name: /Weekly project summary/ }),
   ).toBeVisible();
-  await expect(
-    page.getByText("completed", { exact: true }).first(),
-  ).toBeVisible();
+  await expect(page.getByTitle("completed").first()).toBeVisible();
+  await expect(page.getByText("$0.42").first()).toBeVisible();
   await expect(
     page.getByText("No conversation", { exact: true }),
   ).toBeVisible();

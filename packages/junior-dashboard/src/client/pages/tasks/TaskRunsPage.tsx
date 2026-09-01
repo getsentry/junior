@@ -12,7 +12,8 @@ import {
   pageItems,
   PagePagination,
 } from "../../components/Pagination";
-import { StatusChip } from "../../components/StatusChip";
+import type { StatusChipTone } from "../../components/StatusChip";
+import { StatusDot } from "../../components/StatusDot";
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
 import { conversationPath } from "../../conversations/conversationRoutes";
@@ -27,8 +28,9 @@ const RUN_PAGE_SIZE = 25;
 const RUN_KINDS = ["all", "scheduled", "event"] as const;
 const RUN_STATUSES = ["all", "completed", "failed", "blocked"] as const;
 const EMPTY_RUNS: TaskRun[] = [];
+/** Label column flexes; metric columns share equal fixed widths. */
 const RUN_GRID =
-  "grid-cols-[minmax(14rem,1.6fr)_minmax(10rem,1fr)_5.5rem_auto]";
+  "grid-cols-[minmax(0,1fr)_minmax(0,1fr)_5.5rem_1.25rem]";
 
 type RunKindFilter = (typeof RUN_KINDS)[number];
 type RunStatusFilter = (typeof RUN_STATUSES)[number];
@@ -142,22 +144,29 @@ export function TaskRunsPage(props: { enabled: boolean }) {
             </Card>
           ) : (
             <Card>
-              <div
-                className={cn(
-                  "sticky top-0 z-[1] hidden items-center gap-3 border-b border-dashboard-border-subtle bg-dashboard-overlay-soft px-3 py-2.5 font-mono text-xs uppercase tracking-[0.1em] text-dashboard-text-muted md:grid",
-                  RUN_GRID,
-                )}
-                role="row"
-              >
-                <div>Run</div>
-                <div>Task</div>
-                <div className="justify-self-end">Cost</div>
-                <div className="justify-self-end">Status</div>
-              </div>
-              <div className="min-w-0" role="table">
-                {pagedRuns.map((run) => (
-                  <TaskRunRow key={`${run.kind}:${run.executionId}`} run={run} />
-                ))}
+              <div className="min-w-0 overflow-x-auto">
+                <div className="min-w-[36rem]">
+                  <div
+                    className={cn(
+                      "sticky top-0 z-[1] hidden items-center gap-4 border-b border-dashboard-border-subtle bg-dashboard-overlay-soft px-4 py-2.5 font-mono text-xs uppercase tracking-[0.1em] text-dashboard-text-muted md:grid",
+                      RUN_GRID,
+                    )}
+                    role="row"
+                  >
+                    <div>Run</div>
+                    <div>Task</div>
+                    <div>Cost</div>
+                    <div className="sr-only">Status</div>
+                  </div>
+                  <div className="min-w-0" role="table">
+                    {pagedRuns.map((run) => (
+                      <TaskRunRow
+                        key={`${run.kind}:${run.executionId}`}
+                        run={run}
+                      />
+                    ))}
+                  </div>
+                </div>
               </div>
             </Card>
           )}
@@ -208,10 +217,10 @@ function TaskRunRow(props: { run: TaskRun }) {
     <div
       aria-disabled={!run.conversationId}
       className={cn(
-        "group grid min-w-0 items-center gap-3 overflow-hidden border-b border-b-white/[0.055] px-3 py-3 text-left text-inherit transition-colors max-md:grid-cols-1 max-md:px-4 max-md:py-4 md:grid",
+        "group grid min-w-0 items-center gap-4 overflow-hidden border-b border-dashboard-border-subtle px-4 py-3 text-left text-inherit transition-colors last:border-b-0 max-md:grid-cols-[minmax(0,1fr)_auto] max-md:gap-x-3 max-md:gap-y-2 max-md:px-4 max-md:py-3.5 md:grid",
         RUN_GRID,
         run.conversationId
-          ? "cursor-pointer hover:bg-white/[0.035]"
+          ? "cursor-pointer hover:bg-dashboard-fill-soft"
           : "cursor-default opacity-80",
       )}
       onClick={openConversation}
@@ -225,42 +234,41 @@ function TaskRunRow(props: { run: TaskRun }) {
       role={run.conversationId ? "link" : "row"}
       tabIndex={run.conversationId ? 0 : undefined}
     >
-      <div className="min-w-0">
-        <div className="truncate text-sm font-semibold leading-snug text-dashboard-text">
-          {title}
+      <div className="min-w-0 max-md:col-span-1">
+        <div className="flex min-w-0 items-center gap-2">
+          <StatusDot
+            className="md:hidden"
+            label={run.status}
+            tone={runStatusTone(run.status)}
+          />
+          <div className="min-w-0 truncate text-sm font-medium leading-snug text-dashboard-text">
+            {title}
+          </div>
         </div>
         <div className="mt-1 truncate text-xs text-dashboard-text-muted">
           {formatRunDate(run.executedAt)}
         </div>
       </div>
-      <div className="min-w-0">
+      <div className="min-w-0 max-md:col-span-2 max-md:pl-3.5">
         <div className="truncate text-sm text-dashboard-text">{run.taskTitle}</div>
         <div className="mt-1 font-mono text-2xs uppercase tracking-[0.1em] text-dashboard-text-muted">
           {run.kind}
         </div>
       </div>
-      <div className="justify-self-end text-right max-md:justify-self-start max-md:text-left">
-        <div
-          aria-hidden="true"
-          className="mb-1 hidden font-mono text-2xs uppercase tracking-[0.1em] text-dashboard-text-muted max-md:block"
-        >
-          Cost
-        </div>
-        <div className="whitespace-nowrap font-mono text-xs text-dashboard-text-muted">
+      <div className="min-w-0 max-md:col-start-1 max-md:row-start-3 max-md:pl-3.5">
+        <div className="whitespace-nowrap font-mono text-xs text-dashboard-text-muted md:text-sm md:text-dashboard-text">
           <span className="sr-only">Cost: </span>
           {costLabel}
         </div>
       </div>
-      <div className="justify-self-end max-md:justify-self-start">
-        <StatusChip tone={runStatusTone(run.status)}>{run.status}</StatusChip>
+      <div className="hidden justify-self-center md:block">
+        <StatusDot label={run.status} tone={runStatusTone(run.status)} />
       </div>
     </div>
   );
 }
 
-function runStatusTone(
-  status: TaskRun["status"],
-): "danger" | "success" | "warning" {
+function runStatusTone(status: TaskRun["status"]): StatusChipTone {
   if (status === "failed") return "danger";
   if (status === "blocked") return "warning";
   return "success";
