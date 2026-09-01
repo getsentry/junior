@@ -27,6 +27,7 @@ import {
   withSpan,
   withLogContext,
 } from "@/chat/logging";
+import { buildTurnErrorResponse } from "@/chat/services/turn-limit";
 import { getSlackErrorObservabilityAttributes } from "@/chat/slack/errors";
 import type {
   SubscribedReplyDecision,
@@ -469,10 +470,17 @@ export function createSlackTurnRuntime<
   const postFallbackErrorReplyWithLogging = async (args: {
     thread: Thread;
     eventId: string;
+    error?: unknown;
     postFailureEventName: string;
   }): Promise<void> => {
     try {
-      await args.thread.post(buildTurnFailureResponse(args.eventId));
+      await args.thread.post(
+        buildTurnErrorResponse(
+          args.error,
+          args.eventId,
+          buildTurnFailureResponse,
+        ),
+      );
     } catch (postError) {
       logException(postError, args.postFailureEventName, {
         "app.slack.reply_stage": "error_fallback_post",
@@ -838,6 +846,7 @@ export function createSlackTurnRuntime<
         await postFallbackErrorReplyWithLogging({
           thread,
           eventId,
+          error: failureCause,
           postFailureEventName: "mention.handler.failure_reply_post.failed",
         });
         if (lifecycleError) throw lifecycleError;
@@ -1170,6 +1179,7 @@ export function createSlackTurnRuntime<
         await postFallbackErrorReplyWithLogging({
           thread,
           eventId,
+          error: failureCause,
           postFailureEventName:
             "subscribed_message.handler.failure_reply_post.failed",
         });

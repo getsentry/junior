@@ -3,6 +3,7 @@ import {
   TurnSliceLimitExceededError,
   TurnToolCallLimitExceededError,
   assertTurnToolCallLimit,
+  buildTurnErrorResponse,
   buildTurnLimitResponse,
   isTurnExecutionLimitExceededError,
 } from "@/chat/services/turn-limit";
@@ -41,5 +42,28 @@ describe("turn execution limit", () => {
       TurnToolCallLimitExceededError,
     );
     expect(() => assertTurnToolCallLimit(151, 150)).toThrow(/150 tool calls/);
+  });
+
+  it("uses the limit reply for thrown execution-limit errors", () => {
+    const generic = (eventId: string) => `generic ${eventId}`;
+    expect(
+      buildTurnErrorResponse(
+        new TurnToolCallLimitExceededError(150),
+        "abc123",
+        generic,
+      ),
+    ).toBe(buildTurnLimitResponse("abc123"));
+    expect(
+      buildTurnErrorResponse(
+        new Error("boundary", {
+          cause: new TurnToolCallLimitExceededError(150),
+        }),
+        "abc123",
+        generic,
+      ),
+    ).toBe(buildTurnLimitResponse("abc123"));
+    expect(buildTurnErrorResponse(new Error("boom"), "abc123", generic)).toBe(
+      "generic abc123",
+    );
   });
 });

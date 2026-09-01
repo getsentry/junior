@@ -41,3 +41,34 @@ export function buildTurnLimitResponse(eventId: string): string {
     `Reference: \`event_id=${eventId}\`.`
   );
 }
+
+/** Walk Error.cause so boundary wrappers still surface the limit stop. */
+function isTurnExecutionLimitCause(error: unknown): boolean {
+  let current: unknown = error;
+  const seen = new Set<unknown>();
+  while (current != null && !seen.has(current)) {
+    if (isTurnExecutionLimitExceededError(current)) {
+      return true;
+    }
+    seen.add(current);
+    current =
+      current instanceof Error && "cause" in current
+        ? current.cause
+        : undefined;
+  }
+  return false;
+}
+
+/**
+ * Pick the user-facing failure reply for a thrown turn error.
+ * Execution-limit stops use the limit copy; everything else stays generic.
+ */
+export function buildTurnErrorResponse(
+  error: unknown,
+  eventId: string,
+  buildGenericFailureResponse: (eventId: string) => string,
+): string {
+  return isTurnExecutionLimitCause(error)
+    ? buildTurnLimitResponse(eventId)
+    : buildGenericFailureResponse(eventId);
+}

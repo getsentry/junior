@@ -62,10 +62,7 @@ import {
   CooperativeTurnYieldError,
   isCooperativeTurnYieldError,
 } from "@/chat/runtime/turn";
-import {
-  buildTurnLimitResponse,
-  isTurnExecutionLimitExceededError,
-} from "@/chat/services/turn-limit";
+import { buildTurnErrorResponse } from "@/chat/services/turn-limit";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { hydrateConversationMessages } from "@/chat/conversations/messages";
 import { commitAcceptedReply } from "@/chat/conversations/projection";
@@ -250,10 +247,11 @@ async function postResumeFailureReply(args: {
   await postSlackApiMessage({
     channelId: args.channelId,
     threadTs: args.threadTs,
-    text:
-      isTurnExecutionLimitExceededError(args.error)
-        ? buildTurnLimitResponse(args.eventId)
-        : buildTurnFailureResponse(args.eventId),
+    text: buildTurnErrorResponse(
+      args.error,
+      args.eventId,
+      buildTurnFailureResponse,
+    ),
   });
 }
 
