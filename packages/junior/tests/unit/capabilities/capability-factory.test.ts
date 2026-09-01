@@ -27,6 +27,10 @@ vi.mock("@/chat/state/adapter", () => ({
   }),
 }));
 
+vi.mock("@/chat/slack/workspace-context", () => ({
+  getWorkspaceTeamId: () => undefined,
+}));
+
 describe("capability factory", () => {
   afterEach(() => {
     createBrokerMock.mockReset();
@@ -82,6 +86,69 @@ describe("capability factory", () => {
       reason: "test:api-headers",
     });
     expect(lease.provider).toBe("example");
+  });
+
+  it("scopes installation brokers from credential workspace id without ALS", async () => {
+    const firstBroker = {
+      issue: vi.fn(async () => ({
+        id: "lease-1",
+        provider: "linear",
+        env: {},
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      })),
+    };
+    const secondBroker = {
+      issue: vi.fn(async () => ({
+        id: "lease-2",
+        provider: "linear",
+        env: {},
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      })),
+    };
+    createBrokerMock
+      .mockReturnValueOnce(firstBroker)
+      .mockReturnValueOnce(secondBroker);
+    getProvidersMock.mockReturnValue([
+      {
+        manifest: {
+          name: "linear",
+          displayName: "Linear",
+          description: "Linear",
+          configKeys: [],
+          credentials: {
+            type: "oauth-bearer",
+            domains: ["api.linear.app"],
+            authTokenEnv: "LINEAR_ACCESS_TOKEN",
+          },
+        },
+        dir: "/tmp/linear",
+        skillsDir: "/tmp/linear/skills",
+      },
+    ]);
+
+    const { issueProviderCredentialLease } =
+      await import("@/chat/capabilities/factory");
+
+    await issueProviderCredentialLease({
+      context: {
+        actor: { type: "user", userId: "U123" },
+        workspaceId: "T111",
+      },
+      provider: "linear",
+      reason: "test:workspace-a",
+    });
+    await issueProviderCredentialLease({
+      context: {
+        actor: { type: "user", userId: "U123" },
+        workspaceId: "T222",
+      },
+      provider: "linear",
+      reason: "test:workspace-b",
+    });
+
+    expect(createBrokerMock).toHaveBeenCalledTimes(2);
+    expect(firstBroker.issue).toHaveBeenCalledTimes(1);
+    expect(secondBroker.issue).toHaveBeenCalledTimes(1);
   });
 
   it("skips domain-only providers in the generic credential router", async () => {

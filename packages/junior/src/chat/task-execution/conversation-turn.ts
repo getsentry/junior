@@ -479,7 +479,15 @@ export function createConversationTurnWorker(
               },
               history: piMessages,
               actor,
-              credentialContext: credentialContextForActor(actor),
+              credentialContext: credentialContextForActor(
+                actor,
+                undefined,
+                destination.platform === "slack"
+                  ? destination.teamId
+                  : conversationLocation?.provider === "slack"
+                    ? conversationLocation.teamId
+                    : undefined,
+              ),
               // TODO(dcramer): Remove AgentRun.destination after agent and tool
               // code reads AgentRun.location and no Run consumer needs it.
               destination,

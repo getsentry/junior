@@ -5,6 +5,7 @@ import type {
   CredentialLease,
 } from "@/chat/credentials/broker";
 import type { CredentialContext } from "@/chat/credentials/context";
+import { credentialWorkspaceId } from "@/chat/credentials/context";
 import {
   StateAdapterInstallationTokenStore,
   StateAdapterTokenStore,
@@ -58,18 +59,19 @@ function createProviderCredentialRouter(
   return new ProviderCredentialRouter({ brokersByProvider });
 }
 
-function getSandboxEgressRouter(): ProviderCredentialRouter {
+function getSandboxEgressRouter(workspaceId?: string): ProviderCredentialRouter {
   const stateAdapter = getStateAdapter();
-  const workspaceId = getWorkspaceTeamId() ?? "local";
+  const scopedWorkspaceId =
+    workspaceId?.trim() || getWorkspaceTeamId() || "local";
   let routers = sandboxEgressRouters.get(stateAdapter);
   if (!routers) {
     routers = new Map();
     sandboxEgressRouters.set(stateAdapter, routers);
   }
-  let router = routers.get(workspaceId);
+  let router = routers.get(scopedWorkspaceId);
   if (!router) {
-    router = createProviderCredentialRouter(stateAdapter, workspaceId);
-    routers.set(workspaceId, router);
+    router = createProviderCredentialRouter(stateAdapter, scopedWorkspaceId);
+    routers.set(scopedWorkspaceId, router);
   }
   return router;
 }
@@ -80,5 +82,7 @@ export async function issueProviderCredentialLease(input: {
   provider: string;
   reason: string;
 }): Promise<CredentialLease> {
-  return await getSandboxEgressRouter().issue(input);
+  return await getSandboxEgressRouter(credentialWorkspaceId(input.context)).issue(
+    input,
+  );
 }

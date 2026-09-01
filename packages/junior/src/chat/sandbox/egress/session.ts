@@ -52,13 +52,16 @@ function isSharedInstallationGrant(
  * Build the host key for a shared installation grant.
  *
  * Only installation grants are remembered. User and other grants issue live
- * headers each time, so they never write a host key.
+ * headers each time, so they never write a host key. Keys stay scoped to the
+ * Slack workspace that owns the installation token.
  */
 function leaseKey(
   provider: string,
   grant: SandboxEgressCredentialLease["grant"],
+  workspaceId?: string,
 ): string {
-  return `${SANDBOX_EGRESS_LEASE_PREFIX}:${provider}:${grant.name}:shared`;
+  const scopedWorkspaceId = workspaceId?.trim() || "local";
+  return `${SANDBOX_EGRESS_LEASE_PREFIX}:${provider}:${grant.name}:${scopedWorkspaceId}`;
 }
 
 /**
@@ -214,7 +217,7 @@ export function parseSandboxEgressCredentialToken(
  * it does not shorten a shared installation grant for other sandboxes.
  */
 export async function setSandboxEgressCredentialLease(
-  _context: SandboxEgressCredentialContext,
+  context: SandboxEgressCredentialContext,
   lease: SandboxEgressCredentialLease,
 ): Promise<void> {
   if (!isSharedInstallationGrant(lease.grant)) {
@@ -227,35 +230,45 @@ export async function setSandboxEgressCredentialLease(
   const ttlMs = Math.max(1, leaseExpiresAtMs - Date.now());
   const state = getStateAdapter();
   await state.connect();
-  await state.set(leaseKey(lease.provider, lease.grant), lease, ttlMs);
+  await state.set(
+    leaseKey(lease.provider, lease.grant, context.credentials.workspaceId),
+    lease,
+    ttlMs,
+  );
 }
 
 /** Load remembered auth headers for a shared installation grant. */
 export async function getSandboxEgressCredentialLease(
   provider: string,
   grant: SandboxEgressCredentialLease["grant"],
-  _context: SandboxEgressCredentialContext,
+  context: SandboxEgressCredentialContext,
 ): Promise<SandboxEgressCredentialLease | undefined> {
   if (!isSharedInstallationGrant(grant)) {
     return undefined;
   }
   const state = getStateAdapter();
   await state.connect();
-  return parseLease(await state.get(leaseKey(provider, grant)));
+  return parseLease(
+    await state.get(
+      leaseKey(provider, grant, context.credentials.workspaceId),
+    ),
+  );
 }
 
 /** Drop remembered installation headers after the upstream rejects them. */
 export async function clearSandboxEgressCredentialLease(
   provider: string,
   grant: SandboxEgressCredentialLease["grant"],
-  _context: SandboxEgressCredentialContext,
+  context: SandboxEgressCredentialContext,
 ): Promise<void> {
   if (!isSharedInstallationGrant(grant)) {
     return;
   }
   const state = getStateAdapter();
   await state.connect();
-  await state.delete(leaseKey(provider, grant));
+  await state.delete(
+    leaseKey(provider, grant, context.credentials.workspaceId),
+  );
 }
 
 /**

@@ -79,6 +79,9 @@ export function buildDispatchRoutingContext(
     credentialContext: credentialContextForActor(
       dispatch.actor,
       dispatch.credentialSubject,
+      dispatch.destination.platform === "slack"
+        ? dispatch.destination.teamId
+        : undefined,
     ),
     dispatch: {
       actor: dispatch.actor,
