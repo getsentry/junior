@@ -59,10 +59,17 @@ function createProviderCredentialRouter(
   return new ProviderCredentialRouter({ brokersByProvider });
 }
 
+function installationWorkspaceScope(workspaceId?: string): string {
+  const scoped = workspaceId?.trim();
+  return scoped && scoped.length > 0 ? scoped : "local";
+}
+
 function getSandboxEgressRouter(workspaceId?: string): ProviderCredentialRouter {
   const stateAdapter = getStateAdapter();
-  const scopedWorkspaceId =
-    workspaceId?.trim() || getWorkspaceTeamId() || "local";
+  // Egress leases are issued from a signed credential context, not webhook ALS.
+  // Keep the router slot aligned with lease-key scope so a missing stamp cannot
+  // pair ALS-backed tokens with a shared "local" cache entry.
+  const scopedWorkspaceId = installationWorkspaceScope(workspaceId);
   let routers = sandboxEgressRouters.get(stateAdapter);
   if (!routers) {
     routers = new Map();

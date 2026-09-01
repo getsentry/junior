@@ -55,13 +55,17 @@ function isSharedInstallationGrant(
  * headers each time, so they never write a host key. Keys stay scoped to the
  * Slack workspace that owns the installation token.
  */
+function installationWorkspaceScope(workspaceId?: string): string {
+  const scoped = workspaceId?.trim();
+  return scoped && scoped.length > 0 ? scoped : "local";
+}
+
 function leaseKey(
   provider: string,
   grant: SandboxEgressCredentialLease["grant"],
   workspaceId?: string,
 ): string {
-  const scopedWorkspaceId = workspaceId?.trim() || "local";
-  return `${SANDBOX_EGRESS_LEASE_PREFIX}:${provider}:${grant.name}:${scopedWorkspaceId}`;
+  return `${SANDBOX_EGRESS_LEASE_PREFIX}:${provider}:${grant.name}:${installationWorkspaceScope(workspaceId)}`;
 }
 
 /**
