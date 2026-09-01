@@ -105,7 +105,6 @@ import {
 } from "@/chat/services/auth-pause";
 import {
   assertTurnToolCallLimit,
-  countTurnToolCalls,
   isTurnExecutionLimitExceededError,
 } from "@/chat/services/turn-limit";
 import {
@@ -1204,17 +1203,16 @@ async function executeAgentRunInPrivacyContext(
             reason: `${exclusiveTool} must be the only tool call in its assistant message; reissue it alone`,
           };
         }
-        // The current assistant message is already in agent history, so this
-        // count includes the pending tool batch. beforeToolCall exceptions are
-        // turned into tool errors, so block the batch and rethrow after the
-        // agent step finishes.
-        const turnMessages =
-          turnStartMessageIndex !== undefined
-            ? currentAgentMessages().slice(turnStartMessageIndex)
-            : currentAgentMessages().slice(runResume.beforeMessageCount);
+        // Charge against the durable turn total, not the live message slice.
+        // Compaction and handoff rewrite history and reset turnStartMessageIndex
+        // to 0, so recounting messages undercounts after a replacement.
+        // beforeToolCall runs once per tool, so advance the total by one when
+        // this call is admitted. Exceptions become tool errors, so block +
+        // terminate and rethrow after the agent step settles.
+        const nextToolCallCount = runResume.cumulativeToolCallCount + 1;
         try {
           assertTurnToolCallLimit(
-            countTurnToolCalls(turnMessages),
+            nextToolCallCount,
             botConfig.maxToolCallsPerTurn,
           );
         } catch (error) {
@@ -1227,6 +1225,7 @@ async function executeAgentRunInPrivacyContext(
             terminate: true,
           };
         }
+        runResume.setCumulativeToolCallCount(nextToolCallCount);
         return undefined;
       },
       afterToolCall: async ({ result, toolCall }, signal) => {

@@ -120,6 +120,12 @@ export interface TurnRecord {
   version: number;
   conversationId: string;
   cumulativeDurationMs: number;
+  /**
+   * Tool calls already charged to this turn across slices and history
+   * replacements. Kept on the Redis resume cursor so compaction cannot reset
+   * the hard tool-call limit by dropping older tool-call parts.
+   */
+  cumulativeToolCallCount?: number;
   cumulativeUsage?: AgentTurnUsage;
   dispatchId?: string;
   dispatchOutcome?: AgentDispatchOutcome;
@@ -264,6 +270,7 @@ const storedTurnRecordSchema = z
     committedSeq: seqCursorSchema,
     historyVersion: z.number().int().nonnegative().optional(),
     errorMessage: z.string().optional(),
+    cumulativeToolCallCount: z.number().int().nonnegative().optional(),
     turnStartSeq: seqCursorSchema.optional(),
     runtimeContext: z.array(piMessageSchema).optional(),
   })
@@ -453,6 +460,7 @@ function materializeTurnRecord(
     cumulativeDurationMs: runtimeMetrics?.cumulativeDurationMs ?? 0,
     ...definedProps({
       channelName: runtimeMetrics?.channelName,
+      cumulativeToolCallCount: stored.cumulativeToolCallCount,
       cumulativeUsage: runtimeMetrics?.cumulativeUsage,
       dispatchId: stored.dispatchId,
       dispatchOutcome: stored.dispatchOutcome,
@@ -625,6 +633,7 @@ function buildStoredRecord(args: {
   errorMessage?: string;
   resumedFromSliceId?: number;
   traceId?: string;
+  cumulativeToolCallCount?: number;
   turnStartSeq?: number;
   runtimeContext?: PiMessage[];
 }): StoredTurnRecord {
@@ -642,6 +651,7 @@ function buildStoredRecord(args: {
     committedSeq: args.committedSeq,
     ...definedProps({
       actor: args.actor,
+      cumulativeToolCallCount: args.cumulativeToolCallCount,
       dispatchId: args.dispatchId,
       dispatchOutcome: args.dispatchOutcome,
       errorMessage: args.errorMessage,
@@ -774,6 +784,7 @@ async function updateTurnState(args: {
       lastProgressAtMs: parsed.lastProgressAtMs,
       previousVersion: parsed.version,
       ...definedProps({
+        cumulativeToolCallCount: args.existing.cumulativeToolCallCount,
         dispatchId: args.existing.dispatchId,
         dispatchOutcome: args.existing.dispatchOutcome,
         errorMessage: args.errorMessage ?? args.existing.errorMessage,
@@ -796,6 +807,7 @@ export async function upsertTurnRecord(args: {
   channelName?: string;
   conversationId: string;
   cumulativeDurationMs?: number;
+  cumulativeToolCallCount?: number;
   cumulativeUsage?: AgentTurnUsage;
   destination?: Destination;
   dispatchId?: string;
@@ -954,6 +966,8 @@ async function upsertTurnRecordLocked(
       historyVersion: commit.historyVersion,
       previousVersion: existingRecord?.version,
       ...definedProps({
+        cumulativeToolCallCount:
+          args.cumulativeToolCallCount ?? existingRecord?.cumulativeToolCallCount,
         dispatchId,
         dispatchOutcome:
           args.dispatchOutcome ?? existingRecord?.dispatchOutcome,

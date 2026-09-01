@@ -35,6 +35,7 @@ import {
 } from "@/chat/agent/types";
 import {
   TurnSliceLimitExceededError,
+  countTurnToolCalls,
   isTurnExecutionLimitExceededError,
 } from "@/chat/services/turn-limit";
 import type { PluginTurnContext } from "@/chat/plugins/prompt";
@@ -99,16 +100,30 @@ export function createResumeState(args: ResumeStateArgs) {
   let resumeMessages: PiMessage[] = [];
   let turnContexts: PluginTurnContext[] = [];
   let turnStartMessageIndex: number | undefined;
+  // Absolute tool-call count for this turn. Survives compaction/handoff history
+  // replacement because the live message slice no longer contains older calls.
+  // Legacy cursors without the field fall back to counting the current turn
+  // slice once; after the first checkpoint write the durable field owns it.
+  let cumulativeToolCallCount = 0;
   let advancedPastResume = !args.checkpoint.resumed;
   let resumedBoundaryKey = "";
 
-  if (args.checkpoint.resumed && args.checkpoint.record.piMessages.length) {
+  if (args.checkpoint.record) {
     const prior = args.checkpoint.record;
-    latestSafeBoundaryMessages = [...prior.piMessages];
-    resumeMessages = [...prior.piMessages];
-    resumedBoundaryKey = boundaryKey(
-      continuableMessages(prior.piMessages, prior.piMessages),
-    );
+    if (typeof prior.cumulativeToolCallCount === "number") {
+      cumulativeToolCallCount = prior.cumulativeToolCallCount;
+    } else if (prior.turnStartMessageIndex !== undefined) {
+      cumulativeToolCallCount = countTurnToolCalls(
+        prior.piMessages.slice(prior.turnStartMessageIndex),
+      );
+    }
+    if (args.checkpoint.resumed && prior.piMessages.length) {
+      latestSafeBoundaryMessages = [...prior.piMessages];
+      resumeMessages = [...prior.piMessages];
+      resumedBoundaryKey = boundaryKey(
+        continuableMessages(prior.piMessages, prior.piMessages),
+      );
+    }
   }
 
   const currentSliceId = args.checkpoint.sliceId;
@@ -140,6 +155,13 @@ export function createResumeState(args: ResumeStateArgs) {
     },
     setBeforeMessageCount(count: number): void {
       beforeMessageCount = count;
+    },
+    get cumulativeToolCallCount(): number {
+      return cumulativeToolCallCount;
+    },
+    /** Raise the durable tool-call total when a batch is admitted. */
+    setCumulativeToolCallCount(count: number): void {
+      cumulativeToolCallCount = Math.max(0, Math.floor(count));
     },
     setTurnContexts(contexts: PluginTurnContext[]): void {
       turnContexts = contexts;
@@ -179,6 +201,7 @@ export function createResumeState(args: ResumeStateArgs) {
         trailingMessageProvenance,
         turnContexts: turnContexts.length > 0 ? turnContexts : undefined,
         turnStartMessageIndex,
+        cumulativeToolCallCount,
       });
       if (!saved) {
         return false;
@@ -244,6 +267,7 @@ export function createResumeState(args: ResumeStateArgs) {
           usage,
           messages: resumeMessages,
           errorMessage: pause.message,
+          cumulativeToolCallCount,
         });
         if (!record) {
           throw new AuthPausePersistenceError(args.conversationId, args.turnId);
@@ -321,6 +345,7 @@ export function createResumeState(args: ResumeStateArgs) {
           messages: parkMessages,
           errorMessage:
             "Turn made no progress: continue parked at the same boundary",
+          cumulativeToolCallCount,
         });
         throw new Error(
           `Turn made no progress for conversation=${args.conversationId} turn=${args.turnId}`,
@@ -340,6 +365,7 @@ export function createResumeState(args: ResumeStateArgs) {
         usage,
         messages: parkMessages,
         errorMessage: error instanceof Error ? error.message : String(error),
+        cumulativeToolCallCount,
       });
       if (!record) {
         throw new Error(

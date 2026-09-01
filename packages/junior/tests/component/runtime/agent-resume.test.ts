@@ -82,6 +82,42 @@ describe("agent resume", () => {
     ).resolves.toBeUndefined();
   });
 
+  it("restores and checkpoints the durable tool-call total", async () => {
+    const conversationId = "local:test:tool-call-total";
+    const turnId = "turn-tool-call-total";
+    const first: PiMessage = {
+      role: "user",
+      content: [{ type: "text", text: "keep going" }],
+      timestamp: 1,
+    };
+    const second: PiMessage = {
+      role: "user",
+      content: [{ type: "text", text: "after tools" }],
+      timestamp: 2,
+    };
+    await saveTurnCheckpoint({
+      mode: "paused",
+      reason: "yield",
+      conversationId,
+      turnId,
+      sliceId: 1,
+      messages: [first],
+      cumulativeToolCallCount: 17,
+      surface: "internal",
+    });
+    const { resume } = await resumeState(conversationId, turnId);
+    expect(resume.cumulativeToolCallCount).toBe(17);
+
+    resume.setCumulativeToolCallCount(19);
+    await expect(resume.persistSafeBoundary([first, second])).resolves.toBe(
+      true,
+    );
+    await expect(getTurnRecord(conversationId, turnId)).resolves.toMatchObject({
+      cumulativeToolCallCount: 19,
+      state: "running",
+    });
+  });
+
   it("preserves the execution-limit error while parking for auth", async () => {
     const conversationId = "local:test:auth-slice-limit";
     const turnId = "turn-auth-slice-limit";

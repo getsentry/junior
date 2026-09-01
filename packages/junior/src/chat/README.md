@@ -191,9 +191,10 @@ delegation without becoming the execution actor or a general task owner.
 - Cooperative yield preserves the exact agent history and occurs only at a user
   or tool-result tail. Unlike timeout or auth recovery, it never rolls history
   back past delivered assistant output.
-- One turn has a hard tool-call limit across its execution slices. When the turn
-  history already has too many tool calls, the turn stops with the shared
-  execution-limit reply.
+- One turn has a hard tool-call limit across its execution slices. The turn
+  cursor keeps a durable tool-call total so compaction or handoff cannot reset
+  the limit by rewriting history. When that total is already too high, the turn
+  stops with the shared execution-limit reply.
 - Once destination accepts a tool-free assistant reply, the turn is finished for
   that reply. Hard timeout must complete the turn. It must not park a shorter
   history. Soft yield after a pure assistant tail already cannot park; soft yield

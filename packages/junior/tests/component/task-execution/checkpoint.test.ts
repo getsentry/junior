@@ -340,6 +340,35 @@ describe("turn checkpoint", () => {
     });
   });
 
+  it("keeps the durable tool-call total on the Redis resume cursor", async () => {
+    const { getStateAdapter } = await import("@/chat/state/adapter");
+    const { getTurnRecord, upsertTurnRecord } =
+      await import("@/chat/task-execution/turn-cursor");
+    const stateAdapter = getStateAdapter();
+    const set = vi.spyOn(stateAdapter, "set");
+
+    await upsertTurnRecord({
+      conversationId: "local:tool-call-total",
+      cumulativeToolCallCount: 42,
+      piMessages: [userMessage("keep counting")],
+      turnId: "turn-tool-call-total",
+      sliceId: 1,
+      state: "running",
+      turnStartMessageIndex: 0,
+    });
+
+    const redisRecord = set.mock.calls.at(-1)?.[1];
+    expect(redisRecord).toMatchObject({ cumulativeToolCallCount: 42 });
+    expect(redisRecord).not.toHaveProperty("cumulativeDurationMs");
+
+    await expect(
+      getTurnRecord("local:tool-call-total", "turn-tool-call-total"),
+    ).resolves.toMatchObject({
+      cumulativeToolCallCount: 42,
+      turnStartMessageIndex: 0,
+    });
+  });
+
   it("keeps session metrics when a work-lease mirror advances the execution run", async () => {
     const { getConversationStore } = await import("@/chat/db");
     const { getTurnRecord, upsertTurnRecord } =
