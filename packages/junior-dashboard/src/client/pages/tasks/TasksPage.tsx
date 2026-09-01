@@ -39,10 +39,12 @@ import {
   useSearchParamEnum,
 } from "../../searchParams";
 import { cn } from "../../styles";
+import { TaskCostChart } from "./TaskCostChart";
 import { TaskDetailsDrawer } from "./TaskDetailsDrawer";
 import { TaskExecutionChart } from "./TaskExecutionChart";
 
 const TASK_PAGE_SIZE = 25;
+const TASK_RANGE_OPTIONS = ["1", "7", "30", "90"] as const;
 
 type TaskFilter = "all" | TaskSummary["kind"];
 type TaskScope = "mine" | "public";
@@ -53,6 +55,13 @@ const TASK_FILTERS = [
   "event",
 ] as const satisfies readonly TaskFilter[];
 const TASK_SCOPES = ["mine", "public"] as const satisfies readonly TaskScope[];
+
+function parseTaskRange(value: string): TimeRangeDays {
+  const days = Number(value);
+  return (days === 1 || days === 7 || days === 30 || days === 90
+    ? days
+    : 30) as TimeRangeDays;
+}
 
 function formatDate(value: string): string {
   return formatTime(value, {
@@ -97,12 +106,19 @@ export function TasksPage(props: {
   enabled: boolean;
   view: "list" | "overview";
 }) {
-  const [range, setRange] = useState<TimeRangeDays>(30);
   const query = useTasksData(props.enabled);
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const location = useLocation();
   const { taskId } = useParams();
+  const [rangeParam, setRangeParam] = useSearchParamEnum(
+    "range",
+    "30",
+    TASK_RANGE_OPTIONS,
+  );
+  const range = parseTaskRange(rangeParam);
+  const setRange = (value: TimeRangeDays) =>
+    setRangeParam(String(value) as (typeof TASK_RANGE_OPTIONS)[number]);
   const [filter, setFilter] = useSearchParamEnum("type", "all", TASK_FILTERS);
   const [scope, setScope] = useSearchParamEnum("scope", "mine", TASK_SCOPES);
   const [searchText, setSearchText, searchQuery] = useDebouncedSearchParam();
@@ -171,6 +187,14 @@ export function TasksPage(props: {
   });
 
   const loading = !query.data && !query.error;
+  const executionSeries = query.data?.executionDays?.length
+    ? selectTimeSeries({
+        days: query.data.executionDays,
+        hours: query.data.executionHours,
+        range,
+      })
+    : [];
+  const showExecutionCharts = executionSeries.length > 0;
 
   return (
     <>
@@ -180,11 +204,8 @@ export function TasksPage(props: {
             ? "Scheduled and event-driven work created by users."
             : "Find and manage tasks across your linked workspaces."
         }
-        {...(props.view === "overview"
-          ? query.data?.executionDays?.length
-            ? { onRangeChange: setRange, range }
-            : {}
-          : { onRangeChange: setRange, range })}
+        onRangeChange={setRange}
+        range={range}
         title={props.view === "overview" ? "Tasks" : "All tasks"}
       />
       {loading ? (
@@ -221,21 +242,38 @@ export function TasksPage(props: {
               value={privateCount}
             />
           </div>
-          {query.data?.executionDays?.length ? (
-            <TaskExecutionChart
-              bucketUnit={timeRangeBucketUnit(range)}
-              days={selectTimeSeries({
-                days: query.data.executionDays,
-                hours: query.data.executionHours,
-                range,
-              })}
-              range={range}
-            />
+          {showExecutionCharts ? (
+            <section className="grid gap-4 xl:grid-cols-2">
+              <TaskExecutionChart
+                bucketUnit={timeRangeBucketUnit(range)}
+                days={executionSeries}
+                range={range}
+              />
+              <TaskCostChart
+                bucketUnit={timeRangeBucketUnit(range)}
+                days={executionSeries}
+                range={range}
+              />
+            </section>
           ) : null}
         </>
       ) : null}
       {!loading && props.view === "list" ? (
         <>
+          {showExecutionCharts ? (
+            <section className="grid gap-4 xl:grid-cols-2">
+              <TaskExecutionChart
+                bucketUnit={timeRangeBucketUnit(range)}
+                days={executionSeries}
+                range={range}
+              />
+              <TaskCostChart
+                bucketUnit={timeRangeBucketUnit(range)}
+                days={executionSeries}
+                range={range}
+              />
+            </section>
+          ) : null}
           <FilterBar
             search={{
               label: "Search tasks",

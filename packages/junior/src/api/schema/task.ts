@@ -67,6 +67,8 @@ export const taskMetricBucketSchema = z
 /** One UTC day/hour of completed task executions stacked by task type. */
 export const taskExecutionDaySchema = z
   .object({
+    /** Linked conversation spend for executions in this bucket. */
+    costUsd: z.number().finite().nonnegative(),
     date: taskMetricBucketSchema,
     event: z.number().int().nonnegative(),
     scheduled: z.number().int().nonnegative(),

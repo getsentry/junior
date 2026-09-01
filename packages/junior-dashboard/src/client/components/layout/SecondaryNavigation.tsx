@@ -1,5 +1,6 @@
 import { Link, NavLink, useLocation } from "react-router";
 
+import { pathWithSearch } from "../../searchParams";
 import {
   cn,
   dashboardContainerClass,
@@ -21,15 +22,18 @@ function SecondaryNavItem(props: {
   className: (state: LinkClassState) => string;
   item: SecondaryNavigationItem;
   pathname: string;
+  search: string;
 }) {
-  const { className, item, pathname } = props;
+  const { className, item, pathname, search } = props;
+  // Keep page filters (range, scope, q) when moving across secondary sections.
+  const to = pathWithSearch(item.to, search);
   if (item.isActive) {
     const isActive = item.isActive(pathname);
     return (
       <Link
         aria-current={isActive ? "page" : undefined}
         className={className({ isActive })}
-        to={item.to}
+        to={to}
       >
         {item.label}
       </Link>
@@ -37,7 +41,7 @@ function SecondaryNavItem(props: {
   }
 
   return (
-    <NavLink className={className} end={item.end} to={item.to}>
+    <NavLink className={className} end={item.end} to={to}>
       {item.label}
     </NavLink>
   );
@@ -84,6 +88,7 @@ export function SecondaryNavigation(props: {
                 item={item}
                 key={item.to}
                 pathname={location.pathname}
+                search={location.search}
               />
             ))}
           </nav>
@@ -100,6 +105,7 @@ export function SecondaryNavigation(props: {
               item={item}
               key={item.to}
               pathname={location.pathname}
+              search={location.search}
             />
           ))}
         </nav>

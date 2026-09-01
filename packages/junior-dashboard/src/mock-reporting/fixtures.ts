@@ -2314,10 +2314,15 @@ function mockTaskExecutionDays(nowMs: number): TaskList["executionDays"] {
     const date = new Date(nowMs - (89 - index) * 86_400_000)
       .toISOString()
       .slice(0, 10);
+    const event = index % 11 === 0 ? 1 : 0;
+    const scheduled = index % 5 === 0 ? 2 : index % 3 === 0 ? 1 : 0;
     return {
+      costUsd:
+        Math.round((event * 0.12 + scheduled * 0.08 + (index % 7) * 0.01) * 100) /
+        100,
       date,
-      event: index % 11 === 0 ? 1 : 0,
-      scheduled: index % 5 === 0 ? 2 : index % 3 === 0 ? 1 : 0,
+      event,
+      scheduled,
     };
   });
 }
@@ -2401,6 +2406,7 @@ export function readMockTaskList(nowMs = Date.now()): TaskList {
   return {
     executionDays: mockTaskExecutionDays(nowMs),
     executionHours: trailingMetricHours(nowMs, (date) => ({
+      costUsd: 0,
       date,
       event: 0,
       scheduled: 0,
