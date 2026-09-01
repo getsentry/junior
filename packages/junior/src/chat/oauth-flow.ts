@@ -253,7 +253,10 @@ export async function startOAuthFlow(
       };
     }
     if (
-      await new StateAdapterInstallationTokenStore(getStateAdapter()).get(provider)
+      await new StateAdapterInstallationTokenStore(
+        getStateAdapter(),
+        input.actor.teamId,
+      ).get(provider)
     ) {
       return {
         ok: false,

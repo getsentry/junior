@@ -19,8 +19,8 @@ function tokenKey(userId: string, provider: string): string {
   return `${KEY_PREFIX}:${userId}:${provider}`;
 }
 
-function installationTokenKey(provider: string): string {
-  return `${INSTALLATION_KEY_PREFIX}:${provider}`;
+function installationTokenKey(provider: string, workspaceId?: string): string {
+  return `${INSTALLATION_KEY_PREFIX}:${provider}:${workspaceId ?? "local"}`;
 }
 
 function tokenTtlMs(tokens: StoredTokens): number {
@@ -100,12 +100,16 @@ export class StateAdapterTokenStore implements UserTokenStore {
   }
 }
 
+/** Store installation OAuth tokens in the current Slack workspace scope. */
 export class StateAdapterInstallationTokenStore implements InstallationTokenStore {
-  constructor(private readonly state: StateAdapter) {}
+  constructor(
+    private readonly state: StateAdapter,
+    private readonly workspaceId?: string,
+  ) {}
 
   async get(provider: string): Promise<StoredTokens | undefined> {
     const stored = await this.state.get<unknown>(
-      installationTokenKey(provider),
+      installationTokenKey(provider, this.workspaceId),
     );
     return stored === null || stored === undefined
       ? undefined
@@ -115,14 +119,14 @@ export class StateAdapterInstallationTokenStore implements InstallationTokenStor
   async set(provider: string, tokens: StoredTokens): Promise<void> {
     const parsed = storedTokensSchema.parse(tokens);
     await this.state.set(
-      installationTokenKey(provider),
+      installationTokenKey(provider, this.workspaceId),
       parsed,
       tokenTtlMs(parsed),
     );
   }
 
   async delete(provider: string): Promise<void> {
-    await this.state.delete(installationTokenKey(provider));
+    await this.state.delete(installationTokenKey(provider, this.workspaceId));
   }
 
   async withRefresh<T>(
@@ -131,7 +135,7 @@ export class StateAdapterInstallationTokenStore implements InstallationTokenStor
   ): Promise<T> {
     return await withTokenRefresh(
       this.state,
-      installationTokenKey(provider),
+      installationTokenKey(provider, this.workspaceId),
       callback,
     );
   }

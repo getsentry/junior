@@ -74,9 +74,9 @@ describe("StateAdapterTokenStore", () => {
     );
   });
 
-  it("stores installation tokens outside user slots", async () => {
+  it("stores installation tokens in workspace slots", async () => {
     const adapter = createAdapter();
-    const store = new StateAdapterInstallationTokenStore(adapter);
+    const store = new StateAdapterInstallationTokenStore(adapter, "T123");
 
     await store.set("linear", {
       accessToken: "access-token",
@@ -84,10 +84,42 @@ describe("StateAdapterTokenStore", () => {
     });
 
     expect(adapter.set).toHaveBeenCalledWith(
-      "oauth-installation-token:linear",
+      "oauth-installation-token:linear:T123",
       {
         accessToken: "access-token",
         refreshToken: "refresh-token",
+      },
+      365 * 24 * 60 * 60 * 1000,
+    );
+  });
+
+  it("keeps installation token writes isolated by workspace", async () => {
+    const adapter = createAdapter();
+
+    await new StateAdapterInstallationTokenStore(adapter, "T123").set("linear", {
+      accessToken: "first-workspace-token",
+      refreshToken: "first-workspace-refresh-token",
+    });
+    await new StateAdapterInstallationTokenStore(adapter, "T456").set("linear", {
+      accessToken: "second-workspace-token",
+      refreshToken: "second-workspace-refresh-token",
+    });
+
+    expect(adapter.set).toHaveBeenNthCalledWith(
+      1,
+      "oauth-installation-token:linear:T123",
+      {
+        accessToken: "first-workspace-token",
+        refreshToken: "first-workspace-refresh-token",
+      },
+      365 * 24 * 60 * 60 * 1000,
+    );
+    expect(adapter.set).toHaveBeenNthCalledWith(
+      2,
+      "oauth-installation-token:linear:T456",
+      {
+        accessToken: "second-workspace-token",
+        refreshToken: "second-workspace-refresh-token",
       },
       365 * 24 * 60 * 60 * 1000,
     );

@@ -13,10 +13,11 @@ import type { InstallationTokenStore } from "@/chat/credentials/installation-tok
 import type { UserTokenStore } from "@/chat/credentials/user-token-store";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import { getStateAdapter } from "@/chat/state/adapter";
+import { getWorkspaceTeamId } from "@/chat/slack/workspace-context";
 
 const sandboxEgressRouters = new WeakMap<
   StateAdapter,
-  ProviderCredentialRouter
+  Map<string, ProviderCredentialRouter>
 >();
 
 /** Create the user token store used by OAuth-backed credential brokers. */
@@ -25,12 +26,18 @@ export function createUserTokenStore(): UserTokenStore {
 }
 
 /** Create the token store used by installation OAuth grants. */
-export function createInstallationTokenStore(): InstallationTokenStore {
-  return new StateAdapterInstallationTokenStore(getStateAdapter());
+export function createInstallationTokenStore(
+  workspaceId?: string,
+): InstallationTokenStore {
+  return new StateAdapterInstallationTokenStore(
+    getStateAdapter(),
+    workspaceId ?? getWorkspaceTeamId(),
+  );
 }
 
 function createProviderCredentialRouter(
   stateAdapter: StateAdapter,
+  workspaceId?: string,
 ): ProviderCredentialRouter {
   const brokersByProvider: Record<string, CredentialBroker> = {};
 
@@ -42,6 +49,7 @@ function createProviderCredentialRouter(
     brokersByProvider[name] = pluginCatalogRuntime.createBroker(name, {
       installationTokenStore: new StateAdapterInstallationTokenStore(
         stateAdapter,
+        workspaceId,
       ),
       userTokenStore: new StateAdapterTokenStore(stateAdapter),
     });
@@ -52,10 +60,16 @@ function createProviderCredentialRouter(
 
 function getSandboxEgressRouter(): ProviderCredentialRouter {
   const stateAdapter = getStateAdapter();
-  let router = sandboxEgressRouters.get(stateAdapter);
+  const workspaceId = getWorkspaceTeamId() ?? "local";
+  let routers = sandboxEgressRouters.get(stateAdapter);
+  if (!routers) {
+    routers = new Map();
+    sandboxEgressRouters.set(stateAdapter, routers);
+  }
+  let router = routers.get(workspaceId);
   if (!router) {
-    router = createProviderCredentialRouter(stateAdapter);
-    sandboxEgressRouters.set(stateAdapter, router);
+    router = createProviderCredentialRouter(stateAdapter, workspaceId);
+    routers.set(workspaceId, router);
   }
   return router;
 }

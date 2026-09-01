@@ -1,6 +1,6 @@
 import type { StoredTokens } from "@/chat/credentials/user-token-store";
 
-/** Persistent OAuth token storage shared by one Junior installation. */
+/** Persistent OAuth token storage scoped to one Slack workspace or local app. */
 export interface InstallationTokenStore {
   get(provider: string): Promise<StoredTokens | undefined>;
   set(provider: string, tokens: StoredTokens): Promise<void>;

@@ -564,7 +564,9 @@ describe("oauth callback handler", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(await createInstallationTokenStore().get("linear")).toMatchObject({
+    expect(
+      await createInstallationTokenStore("T777").get("linear"),
+    ).toMatchObject({
       accessToken: "linear-access-token",
       refreshToken: "linear-refresh-token",
     });
@@ -593,12 +595,14 @@ describe("oauth callback handler", () => {
 
     expect(response.status).toBe(403);
     expect(await response.text()).toContain("Only a Slack workspace admin");
-    expect(await createInstallationTokenStore().get("linear")).toBeUndefined();
+    expect(
+      await createInstallationTokenStore("T777").get("linear"),
+    ).toBeUndefined();
   });
 
   it("does not replace an existing installation token", async () => {
     configureLinearOAuthEnv();
-    await createInstallationTokenStore().set("linear", {
+    await createInstallationTokenStore("T777").set("linear", {
       accessToken: "existing-access-token",
       refreshToken: "existing-refresh-token",
       scope: "read,write",
@@ -622,7 +626,9 @@ describe("oauth callback handler", () => {
     );
 
     expect(response.status).toBe(409);
-    expect(await createInstallationTokenStore().get("linear")).toMatchObject({
+    expect(
+      await createInstallationTokenStore("T777").get("linear"),
+    ).toMatchObject({
       accessToken: "existing-access-token",
     });
   });

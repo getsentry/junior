@@ -586,7 +586,11 @@ export async function GET(
 
   await stateAdapter.delete(stateKey);
 
-  const installationTokenStore = createInstallationTokenStore();
+  const installationWorkspaceId =
+    stored.actor?.platform === "slack" ? stored.actor.teamId : undefined;
+  const installationTokenStore = createInstallationTokenStore(
+    installationWorkspaceId,
+  );
   if (providerConfig.tokenSubject === "installation") {
     if (
       stored.actor?.platform !== "slack" ||
