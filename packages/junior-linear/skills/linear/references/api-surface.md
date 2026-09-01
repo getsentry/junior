@@ -2,36 +2,39 @@
 
 Use this reference for any Linear operation.
 
-## Provider capabilities
+## Native tools
 
-Linear's hosted MCP server is intended for authenticated remote MCP access to Linear data.
-The current public docs describe support for finding, creating, and updating objects such as issues, projects, and comments.
+- `linear_getIssue`: get one issue by UUID or identifier.
+- `linear_searchIssues`: find issues before creation or mutation.
+- `linear_createIssue`: create an issue as the installed Junior app.
+- `linear_updateIssue`: update selected issue fields as the installed Junior app.
+- `linear_createComment`: add a comment as the installed Junior app.
+- `linear_listTeams`: resolve a team UUID.
+- `linear_listProjects`: resolve an active project UUID.
+- `linear_listWorkflowStates`: resolve one team's workflow state UUID.
+
+The tools call Linear's GraphQL API through Junior's credential broker. They do not use hosted MCP and do not use the requesting user's Linear identity.
 
 ## Linear issue model constraints
 
 - Every issue belongs to exactly one team.
-- A new issue requires a title and a status; all other properties are optional.
-- Workflow states are team-specific. The common default order is `Backlog > Todo > In Progress > Done > Canceled`, but teams can customize names and ordering.
-- Priority is optional and limited to `low`, `medium`, `high`, or `urgent`.
-- Labels can be workspace-scoped or team-scoped.
-- Estimates are optional and team-configured.
+- A new issue requires a title and team UUID.
+- Workflow states are team-specific. Never infer a state UUID from a name.
+- Linear priorities use numeric API values: `0` no priority, `1` urgent, `2` high, `3` medium, `4` low.
+- Resolve project, state, team, and issue identifiers before a write.
 
 ## Operation patterns
 
-| Intent               | Minimum tool pattern                                                                                                         |
-| -------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| Inspect an issue     | Resolve the issue by key, URL, or search query, then fetch current state before answering.                                   |
-| Create an issue      | Confirm the team first, then create via the live hosted MCP tools with grounded title/body content and only fields justified by the current schema. |
-| Update fields        | Fetch current issue state first, then mutate via the live hosted MCP tools with only the requested fields.                                                      |
-| Add a comment        | Resolve the exact issue first, then add a concise comment with durable links and next steps.                                 |
-| Move state or assign | Read the current issue and team workflow first when state, workflow, or assignee ambiguity could cause the wrong mutation.   |
-| Check for duplicates | Search for an existing matching issue before opening a new one when the request appears related to ongoing work.             |
+- Inspect: resolve the issue, then fetch current state.
+- Create: search for duplicates, resolve the team, then call `linear_createIssue`.
+- Update: fetch current state, then send only requested fields to `linear_updateIssue`.
+- Comment: resolve the exact issue before `linear_createComment`.
+- Move state: list the team's states before updating `stateId`.
 
-## Content expectations
+## Credential policy
 
-- Translate Slack-thread wording into stable product or engineering language.
-- Preserve material links already present in the conversation, such as Sentry, GitHub, docs, repro, or dashboard URLs.
-- Keep provenance concise. Mention Slack origin only when it helps future readers understand why the issue exists.
-- Treat team, status, labels, estimate, cycle, and project as structured properties, not prose-only body content, when those fields are available and the values are actually known.
-- Prefer partial updates over full rewrites.
-- Label assumptions clearly when the thread leaves important details uncertain.
+- One workspace admin installs the OAuth app with `actor=app`.
+- Junior stores that OAuth grant for the installation and refreshes it behind a provider lock.
+- Routine interactive, scheduled, and event work uses the same app credential.
+- Mutations are attributed to the Junior Linear app. Do not claim that they were made as the Slack user.
+- A rejected refresh requires an admin to reinstall the app. Do not fall back to per-user OAuth.

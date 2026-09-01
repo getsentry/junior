@@ -308,7 +308,10 @@ export async function startOAuthFlow(
   const authorizationUrl = `${providerConfig.authorizeEndpoint}?${authorizeParams.toString()}`;
   const authorizationRequest = {
     authorizationUrl,
-    label: `Click here to link your ${formatProviderLabel(provider)} account`,
+    label:
+      providerConfig.tokenSubject === "installation"
+        ? `Click here to install ${formatProviderLabel(provider)}`
+        : `Click here to link your ${formatProviderLabel(provider)} account`,
     completionText: input.resumeSessionId
       ? "Once you've authorized, Junior will continue automatically."
       : "Once you've authorized, you'll see a confirmation in Slack.",

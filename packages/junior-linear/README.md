@@ -1,41 +1,31 @@
 # @sentry/junior-linear
 
-`@sentry/junior-linear` adds Linear issue workflows to Junior through Linear's hosted MCP server.
+`@sentry/junior-linear` adds native Linear GraphQL tools and issue webhooks to Junior.
 
-Install it alongside `@sentry/junior`:
+Install it alongside `@sentry/junior`, then register `linearPlugin()` in `plugins.ts`.
 
-```bash
-pnpm add @sentry/junior @sentry/junior-linear
-```
+## OAuth app
 
-Then add the plugin to the set exported from `plugins.ts`:
+Create a Linear OAuth application and configure:
 
-```ts title="plugins.ts"
-import { defineJuniorPlugins } from "@sentry/junior";
-import { linearPlugin } from "@sentry/junior-linear";
+- Callback: `https://<junior-host>/api/oauth/callback/linear`
+- Scopes: `read,write`
+- Environment: `LINEAR_CLIENT_ID` and `LINEAR_CLIENT_SECRET`
 
-export const plugins = defineJuniorPlugins([linearPlugin()]);
-```
+Junior sends `actor=app`. A workspace admin authorizes the app once. Junior stores the access and refresh tokens for the installation, refreshes them behind a provider lock, and uses the app credential for interactive, scheduled, and event work.
 
-This package does not require a shared `LINEAR_API_KEY` or a custom OAuth app for the default setup. Each user connects their own Linear account the first time Junior calls a Linear MCP tool. Junior sends the authorization link privately and resumes the same Slack thread automatically after the user authorizes.
+The initial policy is a hard cutover from MCP: mutations use Junior app attribution, per-user OAuth is not retained, and the Linear workspace is the access boundary. There is no separate team allowlist in this version. A rejected refresh token is removed and requires an admin reinstall.
 
-Linear operations use Linear's hosted MCP tools directly. When an issue is created through that path, Junior links it to the current conversation.
+The native tools cover issue get/search/create/update, comment creation, and team, project, and workflow-state lookup. Created issues are linked to the current Junior conversation.
+
+## Webhooks
 
 To run watches or event tasks when Linear issues are created:
 
-1. Set `LINEAR_WEBHOOK_SECRET` to the Linear webhook signing secret.
+1. Set `LINEAR_WEBHOOK_SECRET`.
 2. Create a Linear webhook for the `Issue` resource at `https://<junior-host>/api/webhooks/linear`.
 3. Redeploy Junior.
 
-The plugin verifies the `Linear-Signature` header and publishes `issue.created` for the issue identifier and the team key. Team event tasks use the Linear team key, such as `SRE`. Issue and team watches also accept an optional `match.teamKey` filter on trusted event data.
+The plugin verifies `Linear-Signature` and publishes `issue.created` for the issue identifier and team key.
 
-Optional: set channel defaults when a Slack thread usually routes work to the same Linear destination:
-
-```bash
-jr-rpc config set linear.team Platform
-jr-rpc config set linear.project "Cross-team reliability"
-```
-
-These defaults are only fallbacks. If the user names a different team or project in the request, Junior should follow the explicit request instead.
-
-Full setup guide: https://junior.sentry.dev/extend/linear-plugin/
+Optional conversation defaults remain available through `linear.team` and `linear.project`. Explicit user input wins over these defaults.

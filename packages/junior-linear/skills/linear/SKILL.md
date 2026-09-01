@@ -1,6 +1,6 @@
 ---
 name: linear
-description: Manage Linear issues through Linear's hosted MCP server. Use when users ask to create a Linear ticket, update a Linear issue, add a Linear comment, move work between states, assign work, or look up Linear issue, team, or project details from Slack context.
+description: Manage Linear issues through Junior's native Linear GraphQL tools and installed OAuth app. Use when users ask to create a Linear ticket, update a Linear issue, add a Linear comment, move work between states, assign work, or look up Linear issue, team, or project details from Slack context.
 ---
 
 # Linear Operations
@@ -69,7 +69,7 @@ If any gate fails, revise and re-check before calling the Linear create/update t
 
 6. Execute:
 
-- Create or update issues with Linear's live hosted MCP tools. Discover the current create/update tool and copy only fields justified by its live schema.
+- Use the native `linear_*` tools. Resolve team, project, workflow state, and issue IDs with read tools before writes.
 - For updates, prefer partial changes over full rewrites. Fetch current issue state first if the mutation could overwrite structured fields or duplicate an existing comment.
 - Check for duplicates silently before creating a new issue when the request appears related to existing work.
 

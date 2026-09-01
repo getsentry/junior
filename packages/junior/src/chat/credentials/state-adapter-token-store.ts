@@ -3,11 +3,13 @@ import type {
   StoredTokens,
   UserTokenStore,
 } from "@/chat/credentials/user-token-store";
+import type { InstallationTokenStore } from "@/chat/credentials/installation-token-store";
 import { storedTokensSchema } from "@/chat/credentials/user-token-store";
 import { sleep } from "@/chat/sleep";
 import { acquireActiveLock } from "@/chat/state/locks";
 
 const KEY_PREFIX = "oauth-token";
+const INSTALLATION_KEY_PREFIX = "oauth-installation-token";
 const BUFFER_MS = 24 * 60 * 60 * 1000; // 24h buffer for refresh token lifetime
 const LONG_LIVED_TTL_MS = 365 * 24 * 60 * 60 * 1000;
 const REFRESH_LOCK_WAIT_MS = 30_000;
@@ -17,8 +19,37 @@ function tokenKey(userId: string, provider: string): string {
   return `${KEY_PREFIX}:${userId}:${provider}`;
 }
 
-function refreshLockKey(userId: string, provider: string): string {
-  return `${tokenKey(userId, provider)}:refresh`;
+function installationTokenKey(provider: string): string {
+  return `${INSTALLATION_KEY_PREFIX}:${provider}`;
+}
+
+function tokenTtlMs(tokens: StoredTokens): number {
+  const expiresAt = tokens.refreshTokenExpiresAt ?? tokens.expiresAt;
+  return expiresAt
+    ? Math.max(expiresAt - Date.now() + BUFFER_MS, BUFFER_MS)
+    : LONG_LIVED_TTL_MS;
+}
+
+async function withTokenRefresh<T>(
+  state: StateAdapter,
+  key: string,
+  callback: () => Promise<T>,
+): Promise<T> {
+  const deadline = Date.now() + REFRESH_LOCK_WAIT_MS;
+  while (true) {
+    const lock = await acquireActiveLock(state, `${key}:refresh`);
+    if (lock) {
+      try {
+        return await callback();
+      } finally {
+        await state.releaseLock(lock);
+      }
+    }
+    if (Date.now() >= deadline) {
+      throw new Error("Could not acquire OAuth token refresh lock");
+    }
+    await sleep(REFRESH_LOCK_RETRY_MS);
+  }
 }
 
 export class StateAdapterTokenStore implements UserTokenStore {
@@ -44,11 +75,11 @@ export class StateAdapterTokenStore implements UserTokenStore {
     tokens: StoredTokens,
   ): Promise<void> {
     const parsed = storedTokensSchema.parse(tokens);
-    const expiresAt = parsed.refreshTokenExpiresAt ?? parsed.expiresAt;
-    const ttlMs = expiresAt
-      ? Math.max(expiresAt - Date.now() + BUFFER_MS, BUFFER_MS)
-      : LONG_LIVED_TTL_MS;
-    await this.state.set(tokenKey(userId, provider), parsed, ttlMs);
+    await this.state.set(
+      tokenKey(userId, provider),
+      parsed,
+      tokenTtlMs(parsed),
+    );
   }
 
   async delete(userId: string, provider: string): Promise<void> {
@@ -61,21 +92,47 @@ export class StateAdapterTokenStore implements UserTokenStore {
     provider: string,
     callback: () => Promise<T>,
   ): Promise<T> {
-    const lockKey = refreshLockKey(userId, provider);
-    const deadline = Date.now() + REFRESH_LOCK_WAIT_MS;
-    while (true) {
-      const lock = await acquireActiveLock(this.state, lockKey);
-      if (lock) {
-        try {
-          return await callback();
-        } finally {
-          await this.state.releaseLock(lock);
-        }
-      }
-      if (Date.now() >= deadline) {
-        throw new Error(`Could not acquire OAuth token refresh lock`);
-      }
-      await sleep(REFRESH_LOCK_RETRY_MS);
-    }
+    return await withTokenRefresh(
+      this.state,
+      tokenKey(userId, provider),
+      callback,
+    );
+  }
+}
+
+export class StateAdapterInstallationTokenStore implements InstallationTokenStore {
+  constructor(private readonly state: StateAdapter) {}
+
+  async get(provider: string): Promise<StoredTokens | undefined> {
+    const stored = await this.state.get<unknown>(
+      installationTokenKey(provider),
+    );
+    return stored === null || stored === undefined
+      ? undefined
+      : storedTokensSchema.parse(stored);
+  }
+
+  async set(provider: string, tokens: StoredTokens): Promise<void> {
+    const parsed = storedTokensSchema.parse(tokens);
+    await this.state.set(
+      installationTokenKey(provider),
+      parsed,
+      tokenTtlMs(parsed),
+    );
+  }
+
+  async delete(provider: string): Promise<void> {
+    await this.state.delete(installationTokenKey(provider));
+  }
+
+  async withRefresh<T>(
+    provider: string,
+    callback: () => Promise<T>,
+  ): Promise<T> {
+    return await withTokenRefresh(
+      this.state,
+      installationTokenKey(provider),
+      callback,
+    );
   }
 }

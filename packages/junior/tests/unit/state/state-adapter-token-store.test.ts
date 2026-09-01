@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import type { StateAdapter } from "chat";
-import { StateAdapterTokenStore } from "@/chat/credentials/state-adapter-token-store";
+import {
+  StateAdapterInstallationTokenStore,
+  StateAdapterTokenStore,
+} from "@/chat/credentials/state-adapter-token-store";
 import { ACTIVE_LOCK_TTL_MS } from "@/chat/state/locks";
 
 describe("StateAdapterTokenStore", () => {
@@ -68,6 +71,25 @@ describe("StateAdapterTokenStore", () => {
         refreshTokenExpiresAt: new Date("2026-12-21T00:00:00Z").getTime(),
       },
       181 * 24 * 60 * 60 * 1000,
+    );
+  });
+
+  it("stores installation tokens outside user slots", async () => {
+    const adapter = createAdapter();
+    const store = new StateAdapterInstallationTokenStore(adapter);
+
+    await store.set("linear", {
+      accessToken: "access-token",
+      refreshToken: "refresh-token",
+    });
+
+    expect(adapter.set).toHaveBeenCalledWith(
+      "oauth-installation-token:linear",
+      {
+        accessToken: "access-token",
+        refreshToken: "refresh-token",
+      },
+      365 * 24 * 60 * 60 * 1000,
     );
   });
 

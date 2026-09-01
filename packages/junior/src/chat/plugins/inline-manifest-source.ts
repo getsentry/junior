@@ -79,6 +79,7 @@ function inlineOauthSource(oauth: PluginManifest["oauth"]): unknown {
   setDefined(result, "authorize-endpoint", oauth.authorizeEndpoint);
   setDefined(result, "token-endpoint", oauth.tokenEndpoint);
   setDefined(result, "scope", oauth.scope);
+  setDefined(result, "token-subject", oauth.tokenSubject);
   setDefined(result, "authorize-params", oauth.authorizeParams);
   setDefined(result, "token-auth-method", oauth.tokenAuthMethod);
   setDefined(result, "token-extra-headers", oauth.tokenExtraHeaders);

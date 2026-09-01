@@ -1,4 +1,7 @@
-import { createUserTokenStore } from "@/chat/capabilities/factory";
+import {
+  createInstallationTokenStore,
+  createUserTokenStore,
+} from "@/chat/capabilities/factory";
 import { hasRequiredOAuthScope } from "@/chat/credentials/oauth-scope";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { hydrateConversationMessages } from "@/chat/conversations/messages";
@@ -681,6 +684,7 @@ export async function GET(
   }
 
   const userTokenStore = createUserTokenStore();
+  const installationTokenStore = createInstallationTokenStore();
   let account: Awaited<ReturnType<typeof resolvePluginOAuthAccount>>;
   try {
     account = await resolvePluginOAuthAccount({
@@ -694,13 +698,18 @@ export async function GET(
       500,
     );
   }
-  await userTokenStore.set(stored.userId, provider, {
+  const storedTokens = {
     ...parsedTokenResponse,
     ...(account ? { account } : undefined),
-  });
+  };
+  if (providerConfig.tokenSubject === "installation") {
+    await installationTokenStore.set(provider, storedTokens);
+  } else {
+    await userTokenStore.set(stored.userId, provider, storedTokens);
+  }
   const slackActor =
     stored.actor?.platform === "slack" ? stored.actor : undefined;
-  if (account && slackActor) {
+  if (providerConfig.tokenSubject !== "installation" && account && slackActor) {
     await runBestEffort(
       async () => {
         const slackUserId = parseSlackUserId(slackActor.userId);

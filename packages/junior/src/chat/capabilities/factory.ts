@@ -5,7 +5,11 @@ import type {
   CredentialLease,
 } from "@/chat/credentials/broker";
 import type { CredentialContext } from "@/chat/credentials/context";
-import { StateAdapterTokenStore } from "@/chat/credentials/state-adapter-token-store";
+import {
+  StateAdapterInstallationTokenStore,
+  StateAdapterTokenStore,
+} from "@/chat/credentials/state-adapter-token-store";
+import type { InstallationTokenStore } from "@/chat/credentials/installation-token-store";
 import type { UserTokenStore } from "@/chat/credentials/user-token-store";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import { getStateAdapter } from "@/chat/state/adapter";
@@ -20,8 +24,13 @@ export function createUserTokenStore(): UserTokenStore {
   return new StateAdapterTokenStore(getStateAdapter());
 }
 
+/** Create the token store used by installation OAuth grants. */
+export function createInstallationTokenStore(): InstallationTokenStore {
+  return new StateAdapterInstallationTokenStore(getStateAdapter());
+}
+
 function createProviderCredentialRouter(
-  userTokenStore: UserTokenStore,
+  stateAdapter: StateAdapter,
 ): ProviderCredentialRouter {
   const brokersByProvider: Record<string, CredentialBroker> = {};
 
@@ -31,7 +40,10 @@ function createProviderCredentialRouter(
       continue;
     }
     brokersByProvider[name] = pluginCatalogRuntime.createBroker(name, {
-      userTokenStore,
+      installationTokenStore: new StateAdapterInstallationTokenStore(
+        stateAdapter,
+      ),
+      userTokenStore: new StateAdapterTokenStore(stateAdapter),
     });
   }
 
@@ -42,9 +54,7 @@ function getSandboxEgressRouter(): ProviderCredentialRouter {
   const stateAdapter = getStateAdapter();
   let router = sandboxEgressRouters.get(stateAdapter);
   if (!router) {
-    router = createProviderCredentialRouter(
-      new StateAdapterTokenStore(stateAdapter),
-    );
+    router = createProviderCredentialRouter(stateAdapter);
     sandboxEgressRouters.set(stateAdapter, router);
   }
   return router;
