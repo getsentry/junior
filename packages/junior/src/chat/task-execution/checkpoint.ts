@@ -83,6 +83,8 @@ interface TurnCheckpointWrite {
   source?: Source;
   surface?: AgentTurnSurface;
   turnStartMessageIndex?: number;
+  /** Tool calls charged to this turn; survives history replacement. */
+  cumulativeToolCallCount?: number;
   trailingMessageProvenance?: ConversationMessageProvenance[];
   turnContexts?: PluginTurnContext[];
   durationMs?: number;
@@ -188,6 +190,8 @@ function sharedWrite(args: TurnCheckpointWrite, latest?: TurnRecord) {
       traceId: getActiveTraceId() ?? latest?.traceId,
       turnStartMessageIndex:
         args.turnStartMessageIndex ?? latest?.turnStartMessageIndex,
+      cumulativeToolCallCount:
+        args.cumulativeToolCallCount ?? latest?.cumulativeToolCallCount,
     }),
   };
 }

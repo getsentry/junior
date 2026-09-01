@@ -103,7 +103,7 @@ import {
   AuthorizationFlowDisabledError,
   AuthorizationPauseError,
 } from "@/chat/services/auth-pause";
-import { TurnSliceLimitExceededError } from "@/chat/services/turn-limit";
+import { isTurnExecutionLimitExceededError } from "@/chat/services/turn-limit";
 import {
   resolveConversationPrivacy,
   runWithConversationPrivacy,
@@ -1200,6 +1200,20 @@ async function executeAgentRunInPrivacyContext(
             reason: `${exclusiveTool} must be the only tool call in its assistant message; reissue it alone`,
           };
         }
+        // Charge the durable turn total here. Exceptions become tool errors,
+        // so block + terminate and rethrow after the step settles.
+        try {
+          runResume.admitToolCall();
+        } catch (error) {
+          const limitError =
+            error instanceof Error ? error : new Error(String(error));
+          pendingPiHookError ??= limitError;
+          return {
+            block: true,
+            reason: limitError.message,
+            terminate: true,
+          };
+        }
         return undefined;
       },
       afterToolCall: async ({ result, toolCall }, signal) => {
@@ -1438,6 +1452,11 @@ async function executeAgentRunInPrivacyContext(
                   runResume.getResumeSnapshot(currentAgentMessages()),
                 );
                 throw pendingAuthPause;
+              }
+              if (pendingPiHookError) {
+                const hookError = pendingPiHookError;
+                pendingPiHookError = undefined;
+                throw hookError;
               }
               throw error;
             } finally {
@@ -1702,7 +1721,7 @@ async function executeAgentRunInPrivacyContext(
         : error;
     if (
       runError instanceof AuthPausePersistenceError ||
-      runError instanceof TurnSliceLimitExceededError
+      isTurnExecutionLimitExceededError(runError)
     ) {
       throw runError;
     }

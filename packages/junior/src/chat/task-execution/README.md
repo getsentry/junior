@@ -22,8 +22,9 @@ The reliability rules are small:
 - A turn may run, pause at a committed boundary, complete, or fail.
 - Soft yield and retry may continue only after the boundary advances; parking
   the same boundary twice fails the turn. Hard timeout may re-park without new
-  work so a slow model call can try again on a later wake. The slice limit still
-  stops endless attempts.
+  work so a slow model call can try again on a later wake. The slice limit and
+  the durable tool-call total still stop endless attempts, including after
+  compaction rewrites history.
 - After a hard timeout park, the worker hands the lease back. The next slice
   starts from a fresh queue wake and full request deadline, not leftover scraps.
 - A paused turn can continue under the current lease while the host request has

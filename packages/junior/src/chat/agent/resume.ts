@@ -33,7 +33,11 @@ import {
   RetryableDeliveryError,
   type AgentDurability,
 } from "@/chat/agent/types";
-import { TurnSliceLimitExceededError } from "@/chat/services/turn-limit";
+import {
+  TurnSliceLimitExceededError,
+  assertTurnToolCallLimit,
+  isTurnExecutionLimitExceededError,
+} from "@/chat/services/turn-limit";
 import type { PluginTurnContext } from "@/chat/plugins/prompt";
 
 interface ResumeStateArgs {
@@ -96,6 +100,9 @@ export function createResumeState(args: ResumeStateArgs) {
   let resumeMessages: PiMessage[] = [];
   let turnContexts: PluginTurnContext[] = [];
   let turnStartMessageIndex: number | undefined;
+  // Durable across slices and history replacement; not derived from live messages.
+  let cumulativeToolCallCount =
+    args.checkpoint.record?.cumulativeToolCallCount ?? 0;
   let advancedPastResume = !args.checkpoint.resumed;
   let resumedBoundaryKey = "";
 
@@ -115,6 +122,7 @@ export function createResumeState(args: ResumeStateArgs) {
     conversationId: args.conversationId,
     turnId: args.turnId,
     channelName: args.channelName,
+    cumulativeToolCallCount,
     destination: args.destination,
     dispatchId: args.dispatchId,
     source: args.runSource,
@@ -137,6 +145,12 @@ export function createResumeState(args: ResumeStateArgs) {
     },
     setBeforeMessageCount(count: number): void {
       beforeMessageCount = count;
+    },
+    /** Admit one tool call against the durable turn total, or throw the limit. */
+    admitToolCall(): void {
+      const next = cumulativeToolCallCount + 1;
+      assertTurnToolCallLimit(next, botConfig.maxToolCallsPerTurn);
+      cumulativeToolCallCount = next;
     },
     setTurnContexts(contexts: PluginTurnContext[]): void {
       turnContexts = contexts;
@@ -256,7 +270,7 @@ export function createResumeState(args: ResumeStateArgs) {
       } catch (error) {
         if (
           error instanceof AuthPausePersistenceError ||
-          error instanceof TurnSliceLimitExceededError
+          isTurnExecutionLimitExceededError(error)
         ) {
           throw error;
         }

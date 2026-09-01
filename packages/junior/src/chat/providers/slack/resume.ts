@@ -25,7 +25,6 @@ import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { AgentRunError, type ExecuteTurn } from "@/chat/runtime/turn-execution";
 import { scheduleSessionCompletedPluginTasks } from "@/chat/plugins/task-runner";
 import {
-  buildTurnFailureResponse,
   logException,
   setTags,
   withLogContext,
@@ -62,10 +61,7 @@ import {
   CooperativeTurnYieldError,
   isCooperativeTurnYieldError,
 } from "@/chat/runtime/turn";
-import {
-  TurnSliceLimitExceededError,
-  buildTurnLimitResponse,
-} from "@/chat/services/turn-limit";
+import { buildTurnErrorResponse } from "@/chat/services/turn-limit";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { hydrateConversationMessages } from "@/chat/conversations/messages";
 import { commitAcceptedReply } from "@/chat/conversations/projection";
@@ -250,10 +246,7 @@ async function postResumeFailureReply(args: {
   await postSlackApiMessage({
     channelId: args.channelId,
     threadTs: args.threadTs,
-    text:
-      args.error instanceof TurnSliceLimitExceededError
-        ? buildTurnLimitResponse(args.eventId)
-        : buildTurnFailureResponse(args.eventId),
+    text: buildTurnErrorResponse(args.error, args.eventId),
   });
 }
 
