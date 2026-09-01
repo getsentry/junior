@@ -1,5 +1,5 @@
 import { expect, test } from "./test";
-import { captureDashboardScreenshots } from "./screenshot";
+import { screenshot } from "./screenshot";
 
 test("explores location activity", async ({ page, dashboard }) => {
   await page.setViewportSize({ height: 900, width: 1600 });
@@ -34,7 +34,7 @@ test("explores location activity", async ({ page, dashboard }) => {
       .getByLabel("System navigation")
       .getByRole("link", { name: "Locations" }),
   ).toHaveAttribute("aria-current", "page");
-  await captureDashboardScreenshots(page, "locations");
+  await screenshot(page, "locations");
 });
 
 test("opens one public location", async ({ page, dashboard }) => {
@@ -53,5 +53,5 @@ test("opens one public location", async ({ page, dashboard }) => {
       .getByLabel("System navigation")
       .getByRole("link", { name: "Locations" }),
   ).toHaveAttribute("aria-current", "page");
-  await captureDashboardScreenshots(page, "location-detail");
+  await screenshot(page, "location-detail");
 });

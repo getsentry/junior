@@ -1,23 +1,20 @@
 import { expect, test } from "./test";
-import { captureDashboardScreenshots } from "./screenshot";
+import { screenshot } from "./screenshot";
 
 const ACTIVE_CONVERSATION_ID = "slack:CQA123:1770003600.000200";
 const DASHBOARD_QA_CONVERSATION_ID = "internal:dashboard-qa";
 
-test("captures loaded conversation screenshots", async ({
-  page,
-  dashboard,
-}) => {
+test("records loaded conversation views", async ({ page, dashboard }) => {
   await page.goto(dashboard.baseURL, { waitUntil: "networkidle" });
   await expect(
     page.getByRole("heading", { name: "What do you need?", exact: true }),
   ).toBeVisible();
-  await captureDashboardScreenshots(page, "conversations");
+  await screenshot(page, "conversations");
 
   const composer = page.getByLabel("Start a conversation");
   await composer.focus();
   await expect(composer).toBeFocused();
-  await captureDashboardScreenshots(page, "conversation-create-focused");
+  await screenshot(page, "conversation-create-focused");
 
   await page.goto(
     `${dashboard.baseURL}/conversations/${encodeURIComponent(ACTIVE_CONVERSATION_ID)}`,
@@ -29,7 +26,7 @@ test("captures loaded conversation screenshots", async ({
       exact: true,
     }),
   ).toBeVisible();
-  await captureDashboardScreenshots(page, "conversation-detail");
+  await screenshot(page, "conversation-detail");
 
   await page.goto(
     `${dashboard.baseURL}/conversations/${encodeURIComponent(DASHBOARD_QA_CONVERSATION_ID)}`,
@@ -50,11 +47,11 @@ test("captures loaded conversation screenshots", async ({
   await image.evaluate((element) =>
     element.scrollIntoView({ block: "center", inline: "nearest" }),
   );
-  await captureDashboardScreenshots(page, "conversation-attachment");
+  await screenshot(page, "conversation-attachment");
 
   await image.click();
   await expect(page.locator("dialog[open]")).toBeVisible();
-  await captureDashboardScreenshots(page, "conversation-attachment-modal");
+  await screenshot(page, "conversation-attachment-modal");
 });
 
 test("reuses the fresh conversation feed after window focus", async ({

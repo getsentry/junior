@@ -1,14 +1,14 @@
 import { expect, test } from "./test";
-import { captureDashboardScreenshot, MOBILE } from "./screenshot";
+import { mobile, screenshot } from "./screenshot";
 
 const FOCUSED_COMPOSER_HEIGHT_PX = 520;
 const FOCUSED_COMPOSER_OFFSET_TOP_PX = 140;
 
-test("captures focused mobile conversation composer", async ({
+test("records focused mobile conversation composer", async ({
   page,
   dashboard,
 }) => {
-  await page.setViewportSize(MOBILE);
+  await page.setViewportSize(mobile);
   await page.goto(
     `${dashboard.baseURL}/conversations/${encodeURIComponent(
       "slack:CQA123:1770003600.000200",
@@ -43,14 +43,14 @@ test("captures focused mobile conversation composer", async ({
     )
     .toBe("1");
   await expect(composer).toBeFocused();
-  await captureDashboardScreenshot(page, "conversation-detail-focused", {
+  await screenshot(page, "conversation-detail-focused", {
     clip: {
       height: FOCUSED_COMPOSER_HEIGHT_PX,
-      width: MOBILE.width,
+      width: mobile.width,
       x: 0,
       y: FOCUSED_COMPOSER_OFFSET_TOP_PX,
     },
-    viewport: MOBILE,
+    view: "mobile",
   });
 });
 

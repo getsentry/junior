@@ -1,14 +1,12 @@
 import { expect, test } from "./test";
-import { captureDashboardScreenshot, DESKTOP } from "./screenshot";
+import { screenshot } from "./screenshot";
 
 test("shows the component gallery index", async ({ page, dashboard }) => {
   await page.goto(`${dashboard.baseURL}/dev`);
   await expect(
     page.getByRole("heading", { name: "Component gallery", exact: true }),
   ).toBeVisible();
-  await captureDashboardScreenshot(page, "gallery-index", {
-    viewport: DESKTOP,
-  });
+  await screenshot(page, "gallery-index", { view: "desktop" });
 });
 
 test("shows gallery foundations", async ({ page, dashboard }) => {
@@ -16,9 +14,7 @@ test("shows gallery foundations", async ({ page, dashboard }) => {
   await expect(
     page.getByRole("heading", { name: "Foundations", exact: true }),
   ).toBeVisible();
-  await captureDashboardScreenshot(page, "gallery-foundations", {
-    viewport: DESKTOP,
-  });
+  await screenshot(page, "gallery-foundations", { view: "desktop" });
 });
 
 test("shows gallery charts", async ({ page, dashboard }) => {
@@ -26,9 +22,7 @@ test("shows gallery charts", async ({ page, dashboard }) => {
   await expect(
     page.getByRole("heading", { name: "Charts", exact: true }),
   ).toBeVisible();
-  await captureDashboardScreenshot(page, "gallery-charts", {
-    viewport: DESKTOP,
-  });
+  await screenshot(page, "gallery-charts", { view: "desktop" });
 });
 
 test("shows gallery transcripts", async ({ page, dashboard }) => {
@@ -36,7 +30,5 @@ test("shows gallery transcripts", async ({ page, dashboard }) => {
   await expect(
     page.getByRole("heading", { name: "Transcripts", exact: true }),
   ).toBeVisible();
-  await captureDashboardScreenshot(page, "gallery-transcripts", {
-    viewport: DESKTOP,
-  });
+  await screenshot(page, "gallery-transcripts", { view: "desktop" });
 });

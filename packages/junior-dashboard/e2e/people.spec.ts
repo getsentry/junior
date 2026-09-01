@@ -1,5 +1,5 @@
 import { expect, test } from "./test";
-import { captureDashboardScreenshots } from "./screenshot";
+import { screenshot } from "./screenshot";
 
 test("explores people activity", async ({ page, dashboard }) => {
   await page.setViewportSize({ height: 900, width: 1600 });
@@ -26,7 +26,7 @@ test("explores people activity", async ({ page, dashboard }) => {
   await expect(
     page.getByLabel("System navigation").getByRole("link", { name: "People" }),
   ).toHaveAttribute("aria-current", "page");
-  await captureDashboardScreenshots(page, "people");
+  await screenshot(page, "people");
   await page.getByRole("button", { name: "24h" }).click();
   await expect(page.getByRole("button", { name: "24h" })).toHaveAttribute(
     "aria-pressed",
@@ -56,5 +56,5 @@ test("opens a person profile", async ({ page, dashboard }) => {
   await expect(
     page.getByRole("heading", { name: "Code", exact: true }),
   ).toBeVisible();
-  await captureDashboardScreenshots(page, "person-profile");
+  await screenshot(page, "person-profile");
 });

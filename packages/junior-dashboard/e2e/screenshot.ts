@@ -1,26 +1,35 @@
 import path from "node:path";
 import type { Page } from "@playwright/test";
 
-/** Desktop Frameshift viewport for dashboard journeys. */
-export const DESKTOP = { height: 900, name: "desktop", width: 1440 } as const;
+/** Default desktop browser size for route shots. */
+export const desktop = { height: 900, name: "desktop", width: 1440 } as const;
 
-/** Mobile Frameshift viewport for dashboard journeys. */
-export const MOBILE = { height: 844, name: "mobile", width: 390 } as const;
+/** Default mobile browser size for route shots. */
+export const mobile = { height: 844, name: "mobile", width: 390 } as const;
 
-export type DashboardScreenshotViewport =
-  | typeof DESKTOP
-  | typeof MOBILE
-  | { height: number; name: string; width: number };
+type View = "desktop" | "mobile";
+
+type ViewSize = {
+  height: number;
+  name: string;
+  width: number;
+};
+
+const VIEWS: Record<View, ViewSize> = {
+  desktop,
+  mobile,
+};
 
 const SCREENSHOT_DIR = path.resolve(".playwright/junior-dashboard/screenshots");
 
 /**
- * Capture one loaded dashboard state for Frameshift.
- * Call after the journey has the page ready; filename is `{id}__{viewport}`.
+ * Save a loaded page image for visual review.
+ * Writes `{name}__desktop.png` and `{name}__mobile.png` by default.
+ * Pass `view` to save only one size.
  */
-export async function captureDashboardScreenshot(
+export async function screenshot(
   page: Page,
-  id: string,
+  name: string,
   options: {
     clip?: {
       height: number;
@@ -28,44 +37,25 @@ export async function captureDashboardScreenshot(
       x: number;
       y: number;
     };
-    /** When false, leave the page at the capture viewport. Default restores. */
-    restoreViewport?: boolean;
-    viewport?: DashboardScreenshotViewport;
+    view?: View;
   } = {},
 ) {
-  const viewport = options.viewport ?? DESKTOP;
   const previous = page.viewportSize();
-  await page.setViewportSize({
-    height: viewport.height,
-    width: viewport.width,
-  });
-  await page.evaluate(() => document.fonts.ready);
-  await page.screenshot({
-    animations: "disabled",
-    clip: options.clip,
-    fullPage: !options.clip,
-    path: path.join(SCREENSHOT_DIR, `${id}__${viewport.name}.png`),
-  });
-  if (options.restoreViewport === false || !previous) return;
-  await page.setViewportSize(previous);
-}
+  const views = options.view ? [VIEWS[options.view]] : [desktop, mobile];
 
-/**
- * Capture the current loaded route at each viewport for Frameshift.
- * Prefer this after a smoke/journey assertion once content is visible.
- * Restores the page viewport afterward so later journey steps keep working.
- */
-export async function captureDashboardScreenshots(
-  page: Page,
-  id: string,
-  viewports: readonly DashboardScreenshotViewport[] = [DESKTOP, MOBILE],
-) {
-  const previous = page.viewportSize();
-  for (const viewport of viewports) {
-    await captureDashboardScreenshot(page, id, {
-      restoreViewport: false,
-      viewport,
+  for (const view of views) {
+    await page.setViewportSize({
+      height: view.height,
+      width: view.width,
+    });
+    await page.evaluate(() => document.fonts.ready);
+    await page.screenshot({
+      animations: "disabled",
+      clip: options.clip,
+      fullPage: !options.clip,
+      path: path.join(SCREENSHOT_DIR, `${name}__${view.name}.png`),
     });
   }
+
   if (previous) await page.setViewportSize(previous);
 }

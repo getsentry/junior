@@ -1,5 +1,5 @@
 import { expect, test } from "./test";
-import { captureDashboardScreenshot, DESKTOP } from "./screenshot";
+import { screenshot } from "./screenshot";
 
 test("lists and creates personal API tokens from settings", async ({
   page,
@@ -44,9 +44,7 @@ test("lists and creates personal API tokens from settings", async ({
     page.getByRole("heading", { name: "Personal API Tokens" }),
   ).toBeVisible();
   await expect(page.getByText("Local agent", { exact: true })).toBeVisible();
-  await captureDashboardScreenshot(page, "settings-api-tokens", {
-    viewport: DESKTOP,
-  });
+  await screenshot(page, "settings-api-tokens", { view: "desktop" });
 
   await page.getByLabel("Token name").fill("Review token");
   await page.getByRole("button", { name: "Create token" }).click();

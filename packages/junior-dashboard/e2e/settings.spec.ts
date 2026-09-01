@@ -1,5 +1,5 @@
 import { expect, test } from "./test";
-import { captureDashboardScreenshot, DESKTOP } from "./screenshot";
+import { screenshot } from "./screenshot";
 
 test("updates the signed-in user's display name", async ({
   page,
@@ -10,7 +10,7 @@ test("updates the signed-in user's display name", async ({
   await page.getByRole("link", { name: "Settings", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
   await expect(page.getByLabel("Display name")).toHaveValue("Dashboard User");
-  await captureDashboardScreenshot(page, "settings", { viewport: DESKTOP });
+  await screenshot(page, "settings", { view: "desktop" });
 
   await page.getByLabel("Display name").fill("Cramer Jr.");
   await page.getByRole("button", { name: "Save changes" }).click();

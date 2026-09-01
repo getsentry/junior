@@ -1,5 +1,5 @@
 import { expect, test } from "./test";
-import { captureDashboardScreenshots } from "./screenshot";
+import { screenshot } from "./screenshot";
 
 test("opens a registered plugin page from primary navigation", async ({
   page,
@@ -21,7 +21,7 @@ test("opens a registered plugin page from primary navigation", async ({
       .getByRole("region", { name: "Memory summary" })
       .getByText("Total active", { exact: true }),
   ).toBeVisible();
-  await captureDashboardScreenshots(page, "memories");
+  await screenshot(page, "memories");
   await expect(
     page.getByRole("heading", { name: "Activity over time" }),
   ).toBeVisible();
@@ -72,7 +72,7 @@ test("opens a registered plugin page from primary navigation", async ({
       name: /^View memory details: I prefer concise summaries/,
     }),
   ).toBeVisible();
-  await captureDashboardScreenshots(page, "memories-library");
+  await screenshot(page, "memories-library");
   await expect(page.getByText("Private").last()).toBeVisible();
   const privateTab = page.getByRole("tab", { name: "Private 24" });
   await privateTab.click();

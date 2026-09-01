@@ -1,5 +1,5 @@
 import { expect, test } from "./test";
-import { captureDashboardScreenshots } from "./screenshot";
+import { screenshot } from "./screenshot";
 
 test("opens scheduled and event tasks in the native Tasks view", async ({
   page,
@@ -15,7 +15,7 @@ test("opens scheduled and event tasks in the native Tasks view", async ({
   await expect(
     page.getByLabel("Task executions during the last 30 days"),
   ).toBeVisible();
-  await captureDashboardScreenshots(page, "tasks");
+  await screenshot(page, "tasks");
   await expect(
     page.getByLabel("Task execution spend during the last 30 days"),
   ).toBeVisible();
@@ -43,7 +43,7 @@ test("opens scheduled and event tasks in the native Tasks view", async ({
   await expect(page).toHaveURL(/[?&]range=7(?:&|$)/);
   await expect(page.getByRole("heading", { name: "All tasks" })).toBeVisible();
   await expect(page.getByLabel("Search tasks")).toBeVisible();
-  await captureDashboardScreenshots(page, "tasks-list");
+  await screenshot(page, "tasks-list");
   const listReportingPeriod = page.getByLabel("Reporting period");
   await expect(listReportingPeriod).toHaveCount(1);
   await expect(
@@ -135,7 +135,7 @@ test("lists runs across tasks", async ({ page, dashboard }) => {
 
   await expect(page.getByRole("heading", { name: "Runs" })).toBeVisible();
   await expect(page.getByLabel("Search runs")).toBeVisible();
-  await captureDashboardScreenshots(page, "tasks-runs");
+  await screenshot(page, "tasks-runs");
   await expect(page.getByRole("group", { name: "Type" })).toBeVisible();
   await expect(page.getByRole("group", { name: "Status" })).toBeVisible();
   await expect(page.getByText("Weekly project summary").first()).toBeVisible();
@@ -162,7 +162,7 @@ test("opens one task's execution history", async ({ page, dashboard }) => {
   await expect(
     page.getByRole("heading", { name: "Executions over time" }),
   ).toBeVisible();
-  await captureDashboardScreenshots(page, "task-executions");
+  await screenshot(page, "task-executions");
   const reportingPeriod = page.getByLabel("Reporting period");
   await expect(reportingPeriod).toHaveCount(1);
   await reportingPeriod.getByRole("button", { name: "90d" }).click();
