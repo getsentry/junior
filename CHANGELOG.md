@@ -1,4 +1,27 @@
 # Changelog
+## 0.194.0
+
+### Breaking Changes 🛠
+
+- (api) Use Location for conversation links by @dcramer in [#1747](https://github.com/getsentry/junior/pull/1747)
+
+### New Features ✨
+
+#### Dashboard
+
+- Move screenshots into e2e by @sentry-junior in [#1753](https://github.com/getsentry/junior/pull/1753)
+- Show range-aware runs and last run on task list by @sentry-junior in [#1750](https://github.com/getsentry/junior/pull/1750)
+- Show conversation cost on task runs by @sentry-junior in [#1749](https://github.com/getsentry/junior/pull/1749)
+
+### Bug Fixes 🐛
+
+- (chat) Hard-stop runaway tool loops per turn by @sentry-junior in [#1752](https://github.com/getsentry/junior/pull/1752)
+- (dashboard) Show chart buckets in local time by @sentry-junior in [#1754](https://github.com/getsentry/junior/pull/1754)
+
+### Internal Changes 🔧
+
+- (chat) Avoid repeated checkpoint history reads by @sentry-junior in [#1751](https://github.com/getsentry/junior/pull/1751)
+
 ## 0.193.0
 
 ### Breaking Changes 🛠
