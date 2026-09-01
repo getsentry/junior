@@ -484,19 +484,12 @@ export async function readViewerTasks(user: User): Promise<TaskList> {
   };
 }
 
-/**
- * Load titles for soft-deleted scheduled tasks the viewer still owns.
- * Event tasks are hard-deleted, so their titles come from linked conversations.
- */
-async function readDeletedOwnedScheduledTaskTitles(
+/** Load deleted scheduled tasks the viewer still owns, newest first. */
+async function readDeletedOwnedScheduledTasks(
   user: User,
-  taskIds: string[],
-): Promise<Map<string, string>> {
+): Promise<ScheduledTask[]> {
   const identityIds = user.identities.map((identity) => identity.id);
-  const uniqueTaskIds = [...new Set(taskIds.filter((taskId) => taskId.trim()))];
-  if (identityIds.length === 0 || uniqueTaskIds.length === 0) {
-    return new Map();
-  }
+  if (identityIds.length === 0) return [];
   const rows = await getDb()
     .select({
       creatorIdentityId: juniorSchedulerTasks.creatorIdentityId,
@@ -509,25 +502,21 @@ async function readDeletedOwnedScheduledTaskTitles(
       and(
         eq(juniorSchedulerTasks.status, "deleted"),
         inArray(juniorSchedulerTasks.creatorIdentityId, identityIds),
-        inArray(juniorSchedulerTasks.id, uniqueTaskIds),
       ),
-    );
-  const titles = new Map<string, string>();
-  for (const row of rows) {
-    const task = parseScheduledTaskRow(row);
-    if (!task || task.status !== "deleted") continue;
-    const instruction = displayText(task.task.text, "Untitled scheduled task");
-    titles.set(
-      `scheduled:${task.id}`,
-      taskDisplayTitle(task.title, instruction, "Untitled scheduled task"),
-    );
-  }
-  return titles;
+    )
+    .orderBy(
+      desc(juniorSchedulerTasks.createdAtMs),
+      desc(juniorSchedulerTasks.id),
+    )
+    .limit(TASK_EXECUTION_LIST_LIMIT);
+  return rows
+    .map(parseScheduledTaskRow)
+    .filter((task): task is ScheduledTask => task?.status === "deleted");
 }
 
 /**
- * Load recent execution conversation ids the viewer may still open after the
- * source task row is gone. Ownership follows the linked conversation root.
+ * Load recent execution conversation ids the viewer can still open after the
+ * source task row is gone. Access follows the linked conversation.
  */
 async function readViewerHistoricalRunConversationIds(
   user: User,
@@ -581,46 +570,38 @@ function taskTitleForRun(
 }
 
 /**
- * Read newest runs across live viewer-visible tasks and retained historical
- * executions whose linked conversations the viewer can still open.
+ * Read newest runs across live viewer-visible tasks, deleted scheduled tasks the
+ * viewer owns, and retained executions whose linked conversations the viewer
+ * can still open.
  */
 export async function readViewerTaskRuns(user: User): Promise<TaskRunList> {
-  const [taskList, historicalConversationIds] = await Promise.all([
-    readViewerTasks(user),
-    readViewerHistoricalRunConversationIds(user),
-  ]);
-  const liveTaskKeys = new Set(
-    taskList.tasks.map((task) => `${task.kind}:${task.id}`),
-  );
+  const [taskList, deletedScheduled, historicalConversationIds] =
+    await Promise.all([
+      readViewerTasks(user),
+      readDeletedOwnedScheduledTasks(user),
+      readViewerHistoricalRunConversationIds(user),
+    ]);
+  const taskTitles = new Map<string, string>();
+  const tasks: Array<{ kind: "scheduled" | "event"; taskId: string }> = [];
+  for (const task of taskList.tasks) {
+    taskTitles.set(`${task.kind}:${task.id}`, task.title);
+    tasks.push({ kind: task.kind, taskId: task.id });
+  }
+  for (const task of deletedScheduled) {
+    const key = `scheduled:${task.id}`;
+    if (taskTitles.has(key)) continue;
+    const instruction = displayText(task.task.text, "Untitled scheduled task");
+    taskTitles.set(
+      key,
+      taskDisplayTitle(task.title, instruction, "Untitled scheduled task"),
+    );
+    tasks.push({ kind: "scheduled", taskId: task.id });
+  }
   const runs = await readTaskRuns({
     conversationIds: historicalConversationIds,
     limit: TASK_EXECUTION_LIST_LIMIT + 1,
-    tasks: taskList.tasks.map((task) => ({
-      kind: task.kind,
-      taskId: task.id,
-    })),
+    tasks,
   });
-  const missingScheduledIds = [
-    ...new Set(
-      runs
-        .filter(
-          (run) =>
-            run.kind === "scheduled" &&
-            !liveTaskKeys.has(`scheduled:${run.taskId}`),
-        )
-        .map((run) => run.taskId),
-    ),
-  ];
-  const deletedScheduledTitles = await readDeletedOwnedScheduledTaskTitles(
-    user,
-    missingScheduledIds,
-  );
-  const taskTitles = new Map<string, string>([
-    ...taskList.tasks.map(
-      (task) => [`${task.kind}:${task.id}`, task.title] as const,
-    ),
-    ...deletedScheduledTitles,
-  ]);
   return {
     runs: runs.slice(0, TASK_EXECUTION_LIST_LIMIT).map((run) => ({
       ...run,

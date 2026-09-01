@@ -7,6 +7,7 @@ import {
   juniorSchedulerTasks,
 } from "@/db/schema/scheduled-tasks";
 import {
+  scheduledRunSchema,
   scheduledTaskSchema,
   type ScheduledTask,
   type ScheduledTaskRecord,
@@ -242,7 +243,50 @@ async function writeScheduledTask(
         ),
       );
   }
+  // A deleted task must not start another occurrence. Skip pending claims now;
+  // already-running dispatches finish and then stop because due times are cleared.
+  if (task.status === "deleted" && current?.status !== "deleted") {
+    await skipPendingRunsForDeletedTask(db, task);
+  }
   await upsertScheduledTask(db, task);
+}
+
+async function skipPendingRunsForDeletedTask(
+  db: JuniorDatabase,
+  task: ScheduledTask,
+): Promise<void> {
+  const errorMessage = `Scheduled task ${task.id} was deleted before the run started.`;
+  const rows = await db
+    .select({ record: juniorSchedulerRuns.record })
+    .from(juniorSchedulerRuns)
+    .where(
+      and(
+        eq(juniorSchedulerRuns.taskId, task.id),
+        eq(juniorSchedulerRuns.status, "pending"),
+      ),
+    );
+  for (const row of rows) {
+    const parsed = scheduledRunSchema.safeParse(row.record);
+    if (!parsed.success || parsed.data.status !== "pending") continue;
+    const next = scheduledRunSchema.parse({
+      ...parsed.data,
+      completedAtMs: task.updatedAtMs,
+      errorMessage,
+      status: "skipped",
+    });
+    await db
+      .update(juniorSchedulerRuns)
+      .set({
+        record: next,
+        status: next.status,
+      })
+      .where(
+        and(
+          eq(juniorSchedulerRuns.id, next.id),
+          eq(juniorSchedulerRuns.status, "pending"),
+        ),
+      );
+  }
 }
 
 /** Create a scheduled task once under its retry-stable task lock. */
