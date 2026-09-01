@@ -165,7 +165,7 @@ describeEval("Guardian Scheduled Work Snapshots", guardianEvals, (it) => {
             readOnlyHint: false,
           },
           description:
-            "Update the instruction, registered trigger, or credential use for an event task in this Slack channel or DM.",
+            "Update the instruction, registered trigger, or credential use for an event task.",
           identity: {
             id: "core.updateEventTask",
             name: "updateEventTask",

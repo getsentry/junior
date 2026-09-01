@@ -38,7 +38,7 @@ function changesEventTaskTrigger(
   );
 }
 
-/** Create the core tool that updates an event task in this destination. */
+/** Create the core tool that updates an event task. */
 export function createUpdateEventTaskTool(
   context: ToolRuntimeContext,
   catalog: ResourceEventCatalog,
@@ -53,7 +53,7 @@ export function createUpdateEventTaskTool(
     },
     executionMode: "sequential",
     description:
-      "Update the instruction, registered trigger, or credential use for an event task in this Slack channel or DM. Event tasks created from other threads in the same destination are manageable here.",
+      "Update the instruction, registered trigger, or credential use for an event task.",
     inputSchema: z
       .object({
         taskId: z.string().min(1),
@@ -147,9 +147,7 @@ export function createUpdateEventTaskTool(
       }
       const saved = await saveEventTask(getDb(), next);
       if (!saved) {
-        throw new ToolInputError(
-          "Event task was not found in this Slack channel or DM.",
-        );
+        throw new ToolInputError("Event task was not found.");
       }
       return eventTaskSuccess(saved, catalog);
     },

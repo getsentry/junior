@@ -138,17 +138,33 @@ export function eventTaskMatchesDestination(
   );
 }
 
-/** Load one task only when it belongs to this Slack channel or DM. */
+/**
+ * Return whether the active destination may update or delete this task.
+ * Same-destination tasks stay local. Public tasks may be managed by id from
+ * another destination in the same workspace.
+ */
+export function eventTaskIsWritableFrom(
+  task: EventTask,
+  destination: { channelId: string; teamId: string },
+): boolean {
+  if (task.destination.teamId !== destination.teamId) {
+    return false;
+  }
+  return (
+    task.destination.channelId === destination.channelId ||
+    task.destinationVisibility === "public"
+  );
+}
+
+/** Load one task the active destination may update or delete. */
 export async function writableEventTask(
   context: ToolRuntimeContext,
   id: string,
 ): Promise<EventTask> {
   const { destination } = requireEventTaskSlackContext(context);
   const task = await getEventTask(getDb(), id);
-  if (!task || !eventTaskMatchesDestination(task, destination)) {
-    throw new ToolInputError(
-      "Event task was not found in this Slack channel or DM.",
-    );
+  if (!task || !eventTaskIsWritableFrom(task, destination)) {
+    throw new ToolInputError("Event task was not found.");
   }
   return task;
 }
