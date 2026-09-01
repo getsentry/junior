@@ -2,10 +2,10 @@
 
 Use this reference for any Linear operation.
 
-## Native tools
+## Tools
 
 - `linear_getIssue`: get one issue by UUID or identifier.
-- `linear_searchIssues`: find issues before creation or mutation.
+- `linear_searchIssues`: find issues before a create or update.
 - `linear_createIssue`: create an issue as the installed Junior app.
 - `linear_updateIssue`: update selected issue fields as the installed Junior app.
 - `linear_createComment`: add a comment as the installed Junior app.
@@ -13,7 +13,7 @@ Use this reference for any Linear operation.
 - `linear_listProjects`: resolve an active project UUID.
 - `linear_listWorkflowStates`: resolve one team's workflow state UUID.
 
-The tools call Linear's GraphQL API through Junior's credential broker. They do not use hosted MCP and do not use the requesting user's Linear identity.
+The tools call Linear's GraphQL API with the installed Junior app. They do not use the requesting user's Linear account.
 
 ## Linear issue model constraints
 
@@ -31,10 +31,10 @@ The tools call Linear's GraphQL API through Junior's credential broker. They do 
 - Comment: resolve the exact issue before `linear_createComment`.
 - Move state: list the team's states before updating `stateId`.
 
-## Credential policy
+## OAuth
 
 - One workspace admin installs the OAuth app with `actor=app`.
-- Junior stores that OAuth grant for the installation and refreshes it behind a provider lock.
-- Routine interactive, scheduled, and event work uses the same app credential.
-- Mutations are attributed to the Junior Linear app. Do not claim that they were made as the Slack user.
-- A rejected refresh requires an admin to reinstall the app. Do not fall back to per-user OAuth.
+- Junior stores and refreshes the app tokens.
+- Requests from conversations, scheduled tasks, and event tasks use the same app connection.
+- Linear records changes as made by the Junior app, not the Slack user.
+- If Linear rejects the refresh token, an admin must install the app again.

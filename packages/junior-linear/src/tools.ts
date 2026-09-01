@@ -80,7 +80,7 @@ function issueInput(input: Record<string, unknown>) {
   );
 }
 
-/** Build Linear's native GraphQL tool surface. */
+/** Build the tools that read and update Linear. */
 export function createLinearTools(
   ctx: ToolRegistrationHookContext,
 ): Record<string, PluginToolDefinition> {
@@ -116,7 +116,7 @@ export function createLinearTools(
         readOnlyHint: true,
       },
       description:
-        "Search Linear issue titles and descriptions for duplicate or target resolution.",
+        "Search Linear issue titles and descriptions.",
       inputSchema: z
         .object({
           query: z.string().min(1),

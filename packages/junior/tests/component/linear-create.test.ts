@@ -8,10 +8,10 @@ import {
 } from "@/chat/plugins/agent-hooks";
 import { listConversationAnnotations } from "@/chat/plugins/annotations";
 
-const conversationId = "local:test:linear-native-create";
+const conversationId = "local:test:linear-create";
 const destination = { platform: "local" as const, conversationId };
 
-describe("Linear native create", () => {
+describe("Linear create", () => {
   let previousPlugins: ReturnType<typeof setPlugins> | undefined;
 
   afterEach(() => {
@@ -21,14 +21,14 @@ describe("Linear native create", () => {
     }
   });
 
-  it("creates and annotates an issue through plugin tool wiring", async () => {
+  it("creates an issue and links it to the conversation", async () => {
     previousPlugins = setPlugins([linearPlugin()]);
     await getConversationStore().recordActivity({
       conversationId,
       destination,
       nowMs: Date.now(),
       source: "local",
-      title: "Linear native create",
+      title: "Linear create",
     });
     const requests: Array<{
       operation: string;
@@ -48,10 +48,10 @@ describe("Linear native create", () => {
                 issue: {
                   id: "issue-id",
                   identifier: "ENG-123",
-                  title: "Native Linear issue",
+                  title: "Linear issue",
                   description: null,
                   priority: 3,
-                  url: "https://linear.app/acme/issue/ENG-123/native-linear-issue",
+                  url: "https://linear.app/acme/issue/ENG-123/linear-issue",
                   state: { id: "state-id", name: "Todo" },
                   team: {
                     id: "team-id",
@@ -75,13 +75,13 @@ describe("Linear native create", () => {
 
     await expect(
       createIssue.execute(
-        { teamId: "team-id", title: "Native Linear issue" },
+        { teamId: "team-id", title: "Linear issue" },
         { toolCallId: "create-linear-issue" },
       ),
     ).resolves.toMatchObject({
       issue: {
         identifier: "ENG-123",
-        url: "https://linear.app/acme/issue/ENG-123/native-linear-issue",
+        url: "https://linear.app/acme/issue/ENG-123/linear-issue",
       },
     });
     expect(requests).toHaveLength(1);
@@ -99,7 +99,7 @@ describe("Linear native create", () => {
         label: "ENG-123",
         plugin: "linear",
         status: "open",
-        url: "https://linear.app/acme/issue/ENG-123/native-linear-issue",
+        url: "https://linear.app/acme/issue/ENG-123/linear-issue",
       },
     ]);
   });

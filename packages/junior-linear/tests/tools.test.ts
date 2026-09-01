@@ -6,10 +6,10 @@ function issue() {
   return {
     id: "issue-id",
     identifier: "ENG-123",
-    title: "Native Linear tools",
+    title: "Linear tools",
     description: null,
     priority: 3,
-    url: "https://linear.app/acme/issue/ENG-123/native-linear-tools",
+    url: "https://linear.app/acme/issue/ENG-123/linear-tools",
     state: { id: "state-id", name: "Todo" },
     team: { id: "team-id", key: "ENG", name: "Engineering" },
     project: null,
@@ -41,8 +41,8 @@ function toolContext(data: unknown) {
   return { requests, tools, upsert };
 }
 
-describe("Linear native tools", () => {
-  it("gets an issue through host-owned Linear egress", async () => {
+describe("Linear tools", () => {
+  it("gets an issue without adding an authorization header", async () => {
     const { requests, tools } = toolContext({ issue: issue() });
 
     await expect(
@@ -64,7 +64,7 @@ describe("Linear native tools", () => {
 
     await expect(
       tools.createIssue?.execute?.(
-        { teamId: "team-id", title: "Native Linear tools" },
+        { teamId: "team-id", title: "Linear tools" },
         { toolCallId: "create" },
       ),
     ).resolves.toEqual({ issue: issue() });
@@ -82,7 +82,7 @@ describe("Linear native tools", () => {
     });
   });
 
-  it("surfaces GraphQL errors as repairable tool errors", async () => {
+  it("returns Linear errors to the caller", async () => {
     const { tools } = toolContext(undefined);
     const ctx = {
       egress: {

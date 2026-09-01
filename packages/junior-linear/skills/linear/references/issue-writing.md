@@ -21,12 +21,11 @@ Default to `task` when the request does not clearly describe a defect or a net-n
 ## Linear-specific field guidance
 
 - Every new issue must belong to a single team. Resolve that before creating the issue.
-- If the request maps to a known team template and the active MCP tools expose template-based creation, prefer the template so the team's default properties are applied consistently.
 - Do not invent a custom status name. Read the team's actual workflow states first when a non-default status is needed.
 - Priority stays within Linear's standard levels: `low`, `medium`, `high`, `urgent`.
 - Estimates are team-configured. Set one only when the thread provides a clear value or the team context makes the scale unambiguous.
 - Labels may be workspace- or team-scoped. Reuse an existing matching label instead of introducing near-duplicates.
-- If the tool exposes structured link attachments, attach important URLs there and keep the prose body focused on interpretation.
+- Put important URLs in the issue body near the text they support.
 
 ## Duplicate handling
 

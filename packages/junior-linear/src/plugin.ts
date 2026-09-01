@@ -10,7 +10,7 @@ import { createLinearTools } from "./tools.js";
 import { createLinearWebhookRoute } from "./webhooks/handler.js";
 import { linearWebhookSecret } from "./webhooks/secret.js";
 
-/** Register Linear app OAuth, native GraphQL tools, and issue webhooks. */
+/** Register Linear OAuth, tools, and issue webhooks. */
 export function linearPlugin(): PluginRegistration {
   return defineJuniorPlugin({
     packageName: "@sentry/junior-linear",
@@ -44,7 +44,7 @@ export function linearPlugin(): PluginRegistration {
         type: "oauth-bearer",
       },
       description:
-        "Linear issue tracking via an installed OAuth app, native GraphQL tools, and issue webhooks",
+        "Read and update Linear through an installed OAuth app, with optional issue webhooks",
       displayName: "Linear",
       envVars: {
         LINEAR_CLIENT_ID: {},
