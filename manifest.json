@@ -1,0 +1,43 @@
+{
+  "commitSha": "e7d9586c6583c9b93988893b7ad3a55d04f30684",
+  "mode": "path",
+  "reasons": [
+    "packages/junior-dashboard/e2e/harness.ts",
+    "packages/junior-dashboard/e2e/user-pages.spec.ts",
+    "packages/junior-dashboard/package.json",
+    "packages/junior-dashboard/src/client/components/README.md",
+    "packages/junior-dashboard/src/client/components/StatusDot.tsx",
+    "packages/junior-dashboard/src/client/conversations/ConversationMeta.tsx",
+    "packages/junior-dashboard/src/client/format.ts",
+    "packages/junior-dashboard/src/client/pages/dev/ComponentsPage.tsx",
+    "packages/junior-dashboard/src/client/pages/tasks/TaskExecutionsPage.tsx",
+    "packages/junior-dashboard/src/client/pages/tasks/TaskRunsPage.tsx",
+    "packages/junior-dashboard/src/client/types.ts",
+    "packages/junior-dashboard/src/mock-reporting/fixtures.ts"
+  ],
+  "scenarioIds": [
+    "gallery-foundations",
+    "gallery-charts",
+    "gallery-transcripts",
+    "gallery-index"
+  ],
+  "shots": [
+    {
+      "file": "gallery-foundations__desktop.png",
+      "label": "Gallery · Foundations · desktop"
+    },
+    {
+      "file": "gallery-charts__desktop.png",
+      "label": "Gallery · Charts · desktop"
+    },
+    {
+      "file": "gallery-transcripts__desktop.png",
+      "label": "Gallery · Transcripts · desktop"
+    },
+    {
+      "file": "gallery-index__desktop.png",
+      "label": "Component gallery index · desktop"
+    }
+  ],
+  "skipped": false
+}
