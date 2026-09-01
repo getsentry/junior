@@ -127,7 +127,7 @@ export function PeopleDirectory(props: {
   return (
     <Card>
       <CardHeader
-        description={`${props.people.length} of ${props.totalPeople} verified actors`}
+        description={`${props.people.length} of ${props.totalPeople} people`}
         title="People directory"
       />
       <DirectoryToolbar columnsClassName="md:grid-cols-[minmax(14rem,1fr)_minmax(10rem,14rem)]">

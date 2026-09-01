@@ -98,35 +98,33 @@ export function PeoplePageContent(props: {
       : (data?.people.filter(
           (person) => Date.parse(person.lastSeenAt) >= windowStartMs,
         ).length ?? 0);
-  const fleetSpend =
+  const totalSpend =
     data?.people.reduce(
       (total, person) => total + person.windows[range].costUsd,
       0,
     ) ?? 0;
-  const topSpender = data?.people.reduce<ActorSummaryReport | undefined>(
-    (best, person) => {
-      if (!best) return person;
-      return person.windows[range].costUsd > best.windows[range].costUsd
-        ? person
-        : best;
-    },
-    undefined,
-  );
-  const largestIncrease = data?.people.reduce<ActorSummaryReport | undefined>(
-    (best, person) => {
-      const delta =
-        person.windows[range].costUsd - person.windows[range].priorCostUsd;
-      if (!best) return delta > 0 ? person : undefined;
-      const bestDelta =
-        best.windows[range].costUsd - best.windows[range].priorCostUsd;
-      return delta > bestDelta ? person : best;
-    },
-    undefined,
-  );
-  const topSpend = topSpender?.windows[range].costUsd ?? 0;
-  const largestIncreaseDelta = largestIncrease
-    ? largestIncrease.windows[range].costUsd -
-      largestIncrease.windows[range].priorCostUsd
+  const highestSpendPerson = data?.people.reduce<
+    ActorSummaryReport | undefined
+  >((best, person) => {
+    if (!best) return person;
+    return person.windows[range].costUsd > best.windows[range].costUsd
+      ? person
+      : best;
+  }, undefined);
+  const biggestIncreasePerson = data?.people.reduce<
+    ActorSummaryReport | undefined
+  >((best, person) => {
+    const delta =
+      person.windows[range].costUsd - person.windows[range].priorCostUsd;
+    if (!best) return delta > 0 ? person : undefined;
+    const bestDelta =
+      best.windows[range].costUsd - best.windows[range].priorCostUsd;
+    return delta > bestDelta ? person : best;
+  }, undefined);
+  const highestSpend = highestSpendPerson?.windows[range].costUsd ?? 0;
+  const biggestIncrease = biggestIncreasePerson
+    ? biggestIncreasePerson.windows[range].costUsd -
+      biggestIncreasePerson.windows[range].priorCostUsd
     : 0;
 
   return (
@@ -135,7 +133,7 @@ export function PeoplePageContent(props: {
         description={
           props.error
             ? "People failed to load."
-            : `See who's driving ${getDashboardAgentName()} spend, and who increased versus the prior ${range === 1 ? "24 hours" : `${range} days`}.`
+            : `Who used ${getDashboardAgentName()} in the ${timeRangeDetail(range)}, and how spend changed from the prior period.`
         }
         onRangeChange={setRange}
         range={range}
@@ -151,7 +149,7 @@ export function PeoplePageContent(props: {
         <>
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             <StatCard
-              detail={`Verified actors seen in the ${timeRangeDetail(range)}`}
+              detail={`People with activity in the ${timeRangeDetail(range)}`}
               icon={Users}
               label="Active people"
               value={formatCompactNumber(activePeople)}
@@ -159,34 +157,34 @@ export function PeoplePageContent(props: {
             <StatCard
               detail={`Estimated model cost in the ${timeRangeDetail(range)}`}
               icon={CircleDollarSign}
-              label="Fleet spend"
-              value={formatCostSummary({ total: fleetSpend }) || "$0.00"}
+              label="Model spend"
+              value={formatCostSummary({ total: totalSpend }) || "$0.00"}
             />
             <StatCard
               detail={
-                topSpender && topSpend > 0
-                  ? actorName(topSpender)
-                  : "No spend in this window"
+                highestSpendPerson && highestSpend > 0
+                  ? actorName(highestSpendPerson)
+                  : "No spend in this range"
               }
               icon={Activity}
-              label="Top contributor"
+              label="Highest spend"
               value={
-                topSpender && topSpend > 0
-                  ? formatCostSummary({ total: topSpend }) || "$0.00"
+                highestSpendPerson && highestSpend > 0
+                  ? formatCostSummary({ total: highestSpend }) || "$0.00"
                   : "—"
               }
             />
             <StatCard
               detail={
-                largestIncrease && largestIncreaseDelta > 0
-                  ? `${actorName(largestIncrease)} vs prior ${range === 1 ? "24h" : `${range}d`}`
-                  : "No spend increases in this window"
+                biggestIncreasePerson && biggestIncrease > 0
+                  ? `${actorName(biggestIncreasePerson)} vs prior period`
+                  : "No spend increases in this range"
               }
               icon={TrendingUp}
-              label="Largest increase"
+              label="Biggest increase"
               value={
-                largestIncrease && largestIncreaseDelta > 0
-                  ? formatSpendDelta(largestIncreaseDelta)
+                biggestIncreasePerson && biggestIncrease > 0
+                  ? formatSpendDelta(biggestIncrease)
                   : "—"
               }
             />

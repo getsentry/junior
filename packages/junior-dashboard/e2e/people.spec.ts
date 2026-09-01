@@ -36,10 +36,10 @@ test("explores people activity", async ({ page }) => {
   await expect(page.getByRole("combobox", { name: "Sort people" })).toHaveValue(
     "spend",
   );
-  await expect(page.getByText("Fleet spend", { exact: true })).toBeVisible();
-  await expect(page.getByText("Top contributor", { exact: true })).toBeVisible();
+  await expect(page.getByText("Model spend", { exact: true })).toBeVisible();
+  await expect(page.getByText("Highest spend", { exact: true })).toBeVisible();
   await expect(
-    page.getByText("Largest increase", { exact: true }),
+    page.getByText("Biggest increase", { exact: true }),
   ).toBeVisible();
   await expect(
     page.getByLabel("System navigation").getByRole("link", { name: "People" }),

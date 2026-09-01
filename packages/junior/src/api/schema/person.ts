@@ -48,15 +48,7 @@ export const actorTotalsReportSchema = z
   })
   .strict();
 
-/** Fixed people-directory reporting windows matching dashboard range controls. */
-export const actorDirectoryRangeSchema = z.union([
-  z.literal(1),
-  z.literal(7),
-  z.literal(30),
-  z.literal(90),
-]);
-
-/** Window-scoped people directory metrics, including prior-period spend. */
+/** Spend and activity for one people-directory range, plus the prior period's spend. */
 export const actorWindowMetricsSchema = z
   .object({
     conversations: z.number().int().nonnegative(),
@@ -66,6 +58,7 @@ export const actorWindowMetricsSchema = z
   })
   .strict();
 
+/** People-directory ranges that match the dashboard range control. */
 export const actorDirectoryWindowsSchema = z
   .object({
     1: actorWindowMetricsSchema,
@@ -141,7 +134,6 @@ export type PeopleActivityDayReport = z.infer<
   typeof peopleActivityDayReportSchema
 >;
 export type ActorTotalsReport = z.infer<typeof actorTotalsReportSchema>;
-export type ActorDirectoryRange = z.infer<typeof actorDirectoryRangeSchema>;
 export type ActorWindowMetrics = z.infer<typeof actorWindowMetricsSchema>;
 export type ActorDirectoryWindows = z.infer<typeof actorDirectoryWindowsSchema>;
 export type ActorSummaryReport = z.infer<typeof actorSummaryReportSchema>;

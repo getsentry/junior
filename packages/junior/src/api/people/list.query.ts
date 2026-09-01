@@ -10,7 +10,6 @@ import {
   conversationRangeColumns,
 } from "../conversations/aggregate";
 import type {
-  ActorDirectoryRange,
   ActorDirectoryReport,
   ActorDirectoryWindows,
   ActorIdentity,
@@ -36,9 +35,11 @@ import {
 } from "../reporting-window";
 
 const DIRECTORY_ACTIVITY_DAYS = 90;
-const DIRECTORY_RANGES = [1, 7, 30, 90] as const satisfies readonly ActorDirectoryRange[];
+/** Day ranges need the prior equal period too (90d + prior 90d). */
 const DAY_METRIC_LOOKBACK = 180;
+/** Hour range needs the prior 24h too. */
 const HOUR_METRIC_LOOKBACK = 48;
+const DIRECTORY_RANGES = [1, 7, 30, 90] as const;
 
 type MetricBucket = {
   conversations: number;
@@ -46,21 +47,8 @@ type MetricBucket = {
   durationMs: number;
 };
 
-function activityWindow(nowMs: number) {
-  return trailingUtcDayWindow(nowMs, DIRECTORY_ACTIVITY_DAYS);
-}
-
 function emptyDirectoryDay(date: string): PeopleActivityDayReport {
   return { activePeople: 0, conversations: 0, date };
-}
-
-function emptyWindowMetrics(): ActorWindowMetrics {
-  return {
-    conversations: 0,
-    costUsd: 0,
-    durationMs: 0,
-    priorCostUsd: 0,
-  };
 }
 
 function emptyBucket(): MetricBucket {
@@ -94,16 +82,6 @@ function directoryActivityHours(
   });
 }
 
-function dayMetricLookbackStart(nowMs: number): Date {
-  const { start } = trailingUtcDayWindow(nowMs, DAY_METRIC_LOOKBACK);
-  return start;
-}
-
-function hourMetricLookbackStart(nowMs: number): Date {
-  const { start } = trailingUtcHourWindow(nowMs, HOUR_METRIC_LOOKBACK);
-  return start;
-}
-
 function sumBuckets(
   buckets: Map<string, MetricBucket>,
   startMs: number,
@@ -122,64 +100,30 @@ function sumBuckets(
   return total;
 }
 
-function buildActorWindows(args: {
-  dayBuckets: Map<string, MetricBucket>;
-  hourBuckets: Map<string, MetricBucket>;
-  nowMs: number;
-}): ActorDirectoryWindows {
-  const windows = {
-    1: emptyWindowMetrics(),
-    7: emptyWindowMetrics(),
-    30: emptyWindowMetrics(),
-    90: emptyWindowMetrics(),
-  } satisfies ActorDirectoryWindows;
-
-  for (const range of DIRECTORY_RANGES) {
-    if (range === 1) {
-      const current = trailingUtcHourWindow(args.nowMs, 24);
-      const priorEndMs = current.start.getTime() - HOUR_MS;
-      const priorStartMs = priorEndMs - 23 * HOUR_MS;
-      const currentTotals = sumBuckets(
-        args.hourBuckets,
-        current.start.getTime(),
-        current.end.getTime(),
-        utcHourKey,
-        HOUR_MS,
-      );
-      const priorTotals = sumBuckets(
-        args.hourBuckets,
-        priorStartMs,
-        priorEndMs,
-        utcHourKey,
-        HOUR_MS,
-      );
-      windows[1] = {
-        conversations: currentTotals.conversations,
-        costUsd: currentTotals.costUsd,
-        durationMs: currentTotals.durationMs,
-        priorCostUsd: priorTotals.costUsd,
-      };
-      continue;
-    }
-
-    const current = trailingUtcDayWindow(args.nowMs, range);
-    const priorEndMs = current.start.getTime() - DAY_MS;
-    const priorStartMs = priorEndMs - (range - 1) * DAY_MS;
+function rangeWindow(
+  buckets: Map<string, MetricBucket>,
+  nowMs: number,
+  range: (typeof DIRECTORY_RANGES)[number],
+): ActorWindowMetrics {
+  if (range === 1) {
+    const current = trailingUtcHourWindow(nowMs, 24);
+    const priorEndMs = current.start.getTime() - HOUR_MS;
+    const priorStartMs = priorEndMs - 23 * HOUR_MS;
     const currentTotals = sumBuckets(
-      args.dayBuckets,
+      buckets,
       current.start.getTime(),
       current.end.getTime(),
-      utcDayKey,
-      DAY_MS,
+      utcHourKey,
+      HOUR_MS,
     );
     const priorTotals = sumBuckets(
-      args.dayBuckets,
+      buckets,
       priorStartMs,
       priorEndMs,
-      utcDayKey,
-      DAY_MS,
+      utcHourKey,
+      HOUR_MS,
     );
-    windows[range] = {
+    return {
       conversations: currentTotals.conversations,
       costUsd: currentTotals.costUsd,
       durationMs: currentTotals.durationMs,
@@ -187,13 +131,48 @@ function buildActorWindows(args: {
     };
   }
 
-  return windows;
+  const current = trailingUtcDayWindow(nowMs, range);
+  const priorEndMs = current.start.getTime() - DAY_MS;
+  const priorStartMs = priorEndMs - (range - 1) * DAY_MS;
+  const currentTotals = sumBuckets(
+    buckets,
+    current.start.getTime(),
+    current.end.getTime(),
+    utcDayKey,
+    DAY_MS,
+  );
+  const priorTotals = sumBuckets(
+    buckets,
+    priorStartMs,
+    priorEndMs,
+    utcDayKey,
+    DAY_MS,
+  );
+  return {
+    conversations: currentTotals.conversations,
+    costUsd: currentTotals.costUsd,
+    durationMs: currentTotals.durationMs,
+    priorCostUsd: priorTotals.costUsd,
+  };
+}
+
+function buildActorWindows(args: {
+  dayBuckets: Map<string, MetricBucket>;
+  hourBuckets: Map<string, MetricBucket>;
+  nowMs: number;
+}): ActorDirectoryWindows {
+  return {
+    1: rangeWindow(args.hourBuckets, args.nowMs, 1),
+    7: rangeWindow(args.dayBuckets, args.nowMs, 7),
+    30: rangeWindow(args.dayBuckets, args.nowMs, 30),
+    90: rangeWindow(args.dayBuckets, args.nowMs, 90),
+  };
 }
 
 /** Load the complete People directory with grouping and metrics owned by SQL. */
 export async function readPeopleListFromSql(): Promise<ActorDirectoryReport> {
   const nowMs = Date.now();
-  const { end, start } = activityWindow(nowMs);
+  const { end, start } = trailingUtcDayWindow(nowMs, DIRECTORY_ACTIVITY_DAYS);
   const activityDate = sql<string>`TO_CHAR(
     ${juniorConversations.lastActivityAt} AT TIME ZONE 'UTC',
     'YYYY-MM-DD'
@@ -203,8 +182,11 @@ export async function readPeopleListFromSql(): Promise<ActorDirectoryReport> {
     'YYYY-MM-DD"T"HH24'
   )`;
   const hourWindow = trailingUtcHourWindow(nowMs);
-  const dayMetricStart = dayMetricLookbackStart(nowMs);
-  const hourMetricStart = hourMetricLookbackStart(nowMs);
+  const dayMetricStart = trailingUtcDayWindow(nowMs, DAY_METRIC_LOOKBACK).start;
+  const hourMetricStart = trailingUtcHourWindow(
+    nowMs,
+    HOUR_METRIC_LOOKBACK,
+  ).start;
   const metricsJoin = peopleTreeMetricsJoin();
   const [
     rows,
