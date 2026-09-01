@@ -1,3 +1,7 @@
+import { botConfig } from "@/chat/config";
+import { logInfo } from "@/chat/logging";
+import { admitAutomatedTurn } from "@/chat/services/automated-turn-limit";
+import { postAutomatedTurnLimitNoticeForConversation } from "@/chat/slack/automated-turn-limit-notice";
 import { renderTaskInput } from "@/chat/task-input";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import {
@@ -131,7 +135,8 @@ export function createResourceEventInboundMessage(input: {
  * Enqueue a resource event as normal conversation mailbox input.
  *
  * The watch only names the conversation. Destination stays on the conversation
- * and is applied when the worker runs.
+ * and is applied when the worker runs. After too many automated Turns with no
+ * user Turn, later wakes stay quiet until a user message clears the pause.
  */
 export async function enqueueResourceEventNotification(args: {
   event: ResourceEventNotification;
@@ -139,6 +144,41 @@ export async function enqueueResourceEventNotification(args: {
   subscription: ResourceEventSubscription;
   state?: Parameters<typeof appendAndEnqueueInboundMessage>[0]["state"];
 }): Promise<AppendAndEnqueueInboundMessageResult> {
+  const maxTurns = botConfig.maxConsecutiveAutomatedTurns;
+  const decision = await admitAutomatedTurn({
+    maxTurns,
+    nowMs: args.event.occurredAtMs,
+    scope: {
+      kind: "conversation",
+      conversationId: args.subscription.conversationId,
+    },
+    state: args.state,
+  });
+  if (decision.status === "paused") {
+    logInfo("resource_events.automated_turn_limit.paused", {
+      conversationId: args.subscription.conversationId,
+      "app.automated_turn_limit.consecutive": decision.consecutiveAutomatedTurns,
+      "app.automated_turn_limit.max": maxTurns,
+      "app.resource_event.event_type": args.event.eventType,
+      "app.resource_event.namespace": args.event.namespace,
+    });
+    if (decision.shouldPostNotice) {
+      // Safety net when the Turn that hit the limit could not post a notice.
+      await postAutomatedTurnLimitNoticeForConversation({
+        conversationId: args.subscription.conversationId,
+        maxTurns,
+        nowMs: args.event.occurredAtMs,
+        resumeIn: "thread",
+        scope: {
+          kind: "conversation",
+          conversationId: args.subscription.conversationId,
+        },
+      });
+    }
+    // Do not enqueue a Turn. Terminal watches may still complete after this.
+    return { status: "duplicate" };
+  }
+
   const text = renderResourceEventNotificationText(
     args.subscription,
     args.event,

@@ -17,6 +17,11 @@ import { setDashboardConversationLinkOptions } from "@/chat/slack/dashboard-link
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { JUNIOR_THREAD_STATE_TTL_MS } from "@/chat/state/ttl";
 import { getConversationWorkState } from "@/chat/task-execution/store";
+import {
+  countAutomatedTurn,
+  getAutomatedTurnLimitState,
+} from "@/chat/services/automated-turn-limit";
+import { botConfig } from "@/chat/config";
 import { ingestResourceEvent } from "@/chat/resource-events/ingest";
 import {
   cancelResourceEventSubscription,
@@ -152,6 +157,57 @@ describe("resource event delivery", () => {
     expect(work?.messages[0]).not.toHaveProperty("destination");
     expect(work?.messages[0]?.input.metadata).not.toHaveProperty("platform");
     expect(work?.messages[0]?.input.metadata).not.toHaveProperty("route");
+  });
+
+  it("stops resource event wakes after the consecutive automated-turn limit", async () => {
+    const queue = createConversationWorkQueueTestAdapter();
+    const subscription = await createGithubPrSubscription({
+      events: ["pull_request.checks.failed"],
+    });
+    const maxTurns = botConfig.maxConsecutiveAutomatedTurns;
+    for (let i = 0; i < maxTurns; i += 1) {
+      await countAutomatedTurn({
+        maxTurns,
+        nowMs: 1_000 + i,
+        scope: {
+          kind: "conversation",
+          conversationId: CONVERSATION_ID,
+        },
+      });
+    }
+
+    await expect(
+      ingestResourceEvent(
+        {
+          eventKey: "delivery-paused:check-suite-1",
+          eventType: "pull_request.checks.failed",
+          occurredAtMs: 2_000,
+          namespace: "github",
+          identifier: "getsentry/junior#691",
+          trustedSummary: "CI failed on workflow test.",
+        },
+        { nowMs: 2_000, queue },
+      ),
+    ).resolves.toEqual({ enqueued: 0 });
+
+    expect(queue.sentRecords()).toEqual([]);
+    const work = await getConversationWorkState({
+      conversationId: CONVERSATION_ID,
+    });
+    expect(work?.messages ?? []).toHaveLength(0);
+    await expect(
+      getAutomatedTurnLimitState({
+        scope: {
+          kind: "conversation",
+          conversationId: CONVERSATION_ID,
+        },
+      }),
+    ).resolves.toMatchObject({
+      consecutiveAutomatedTurns: maxTurns,
+      paused: true,
+      noticePostedAtMs: 1_000 + maxTurns - 1,
+    });
+    expect(subscription.id).toBeTruthy();
   });
 
   it("enqueues matching watches for every conversation id", async () => {

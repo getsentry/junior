@@ -118,6 +118,8 @@ import {
   getAgentTurnDiagnosticsAttributes,
 } from "@/chat/services/turn-failure-response";
 import { buildAuthPauseResponse } from "@/chat/services/auth-pause-response";
+import { recordFinishedTurnForAutomatedLimit } from "@/chat/services/automated-turn-limit";
+import { maybePostAutomatedTurnLimitNotice } from "@/chat/slack/automated-turn-limit-notice";
 import { AuthorizationFlowDisabledError } from "@/chat/services/auth-pause";
 import { PluginCredentialFailureError } from "@/chat/services/plugin-auth-orchestration";
 import { maybeApplyProviderDefaultConfigRequest } from "@/chat/services/provider-default-config";
@@ -1239,6 +1241,21 @@ export function createSlackTurn(deps: SlackTurnDeps) {
                 }),
               );
               await persistThreadRuntimeStateWithRetry(thread, completedState);
+              const automatedTurnLimit = await recordFinishedTurnForAutomatedLimit(
+                {
+                  conversationId,
+                  destination,
+                  maxTurns: botConfig.maxConsecutiveAutomatedTurns,
+                  source,
+                },
+              );
+              await maybePostAutomatedTurnLimitNotice({
+                conversationId,
+                destination,
+                maxTurns: botConfig.maxConsecutiveAutomatedTurns,
+                threadTs,
+                update: automatedTurnLimit,
+              });
             } catch (saveError) {
               // The user already saw the reply. Record the save failure without
               // posting a second error reply.

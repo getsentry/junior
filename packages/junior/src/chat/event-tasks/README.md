@@ -20,8 +20,11 @@ Each matching task receives an independent idempotent agent dispatch. A failure
 for one task does not prevent dispatch attempts for other matching tasks; the
 ingress boundary still receives the aggregate failure for provider retry. Task
 dispatch identity binds the task, plugin namespace, and provider event key, so
-provider retries do not execute the same task twice. Distinct matching events
-are not silently dropped by a task-level quota. Listing stays bound to the
+provider retries do not execute the same task twice. A destination may still
+stop further event-task dispatches after too many automated turns with no user
+message. The Turn that hits the limit posts a plain notice, and later matching
+events stay quiet until a user message clears that pause.
+Listing stays bound to the
 destination where the task was created. Threads in that destination share the
 list. Update and delete also accept a public task by id from another destination
 in the same workspace. Private tasks stay local to their destination. Temporary
