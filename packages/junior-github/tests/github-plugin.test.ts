@@ -64,7 +64,11 @@ type TestActor = {
   userName?: string;
 };
 
-function beforeToolContext(actor: TestActor, actors?: TestActor[]) {
+function beforeToolContext(
+  actor: TestActor,
+  actors?: TestActor[],
+  resolveActor?: ToolRegistrationHookContext["users"]["resolveActor"],
+) {
   const env: Record<string, string> = {};
   let denial: string | undefined;
 
@@ -93,6 +97,9 @@ function beforeToolContext(actor: TestActor, actors?: TestActor[]) {
       db,
       actor,
       ...(actors ? { actors } : undefined),
+      users: {
+        resolveActor: resolveActor ?? (async () => undefined),
+      },
       tool: {
         input: { command: "git commit -m test" },
         name: "bash",
@@ -3486,7 +3493,7 @@ Conversation: \`local:test:old-conversation\`
     );
   });
 
-  it("throws GitHubPluginSetupError when bot identity environment variables are missing", () => {
+  it("throws GitHubPluginSetupError when bot identity environment variables are missing", async () => {
     delete process.env.GITHUB_APP_BOT_NAME;
     delete process.env.GITHUB_APP_BOT_EMAIL;
 
@@ -3498,12 +3505,12 @@ Conversation: \`local:test:old-conversation\`
       userName: "dcramer",
     });
 
-    expect(() => {
-      plugin.hooks?.beforeToolExecute?.(before.ctx as never);
-    }).toThrow("Missing GITHUB_APP_BOT_NAME");
+    await expect(
+      plugin.hooks?.beforeToolExecute?.(before.ctx as never),
+    ).rejects.toThrow("Missing GITHUB_APP_BOT_NAME");
   });
 
-  it("injects Junior author and committer identity", () => {
+  it("injects Junior author and committer identity", async () => {
     process.env.GITHUB_APP_BOT_NAME = "sentry-junior[bot]";
     process.env.GITHUB_APP_BOT_EMAIL = "bot@example.com";
 
@@ -3515,7 +3522,7 @@ Conversation: \`local:test:old-conversation\`
       userName: "dcramer",
     });
 
-    plugin.hooks?.beforeToolExecute?.(before.ctx as never);
+    await plugin.hooks?.beforeToolExecute?.(before.ctx as never);
 
     expect(before.denial).toBeUndefined();
     expect(before.env).toMatchObject({
@@ -3528,6 +3535,48 @@ Conversation: \`local:test:old-conversation\`
     });
     expect(before.env.JUNIOR_GIT_ACTOR_COAUTHOR_TRAILERS).toBe(
       "Co-Authored-By: David Cramer <david@example.com>",
+    );
+  });
+
+  it("prefers linked GitHub noreply emails for the current actor", async () => {
+    process.env.GITHUB_APP_BOT_NAME = "sentry-junior[bot]";
+    process.env.GITHUB_APP_BOT_EMAIL = "bot@example.com";
+
+    const plugin = githubPlugin();
+    const before = beforeToolContext(
+      {
+        email: "david@example.com",
+        fullName: "David Cramer",
+        userId: "U039RR91S",
+        userName: "dcramer",
+      },
+      undefined,
+      async () => ({
+        identity: {
+          id: "slack-id",
+          provider: "slack",
+          providerSubjectId: "U039RR91S",
+        },
+        user: {
+          id: "user-1",
+          email: "david@example.com",
+          displayName: "David Cramer",
+          identities: [
+            {
+              id: "gh-id",
+              provider: "github",
+              providerSubjectId: "1473041",
+              handle: "dcramer",
+            },
+          ],
+        },
+      }),
+    );
+
+    await plugin.hooks?.beforeToolExecute?.(before.ctx as never);
+
+    expect(before.env.JUNIOR_GIT_ACTOR_COAUTHOR_TRAILERS).toBe(
+      "Co-Authored-By: David Cramer <1473041+dcramer@users.noreply.github.com>",
     );
   });
 
@@ -3553,7 +3602,7 @@ Conversation: \`local:test:old-conversation\`
       userId: "U039RR91S",
       userName: "dcramer",
     });
-    githubPlugin().hooks?.beforeToolExecute?.(before.ctx as never);
+    await githubPlugin().hooks?.beforeToolExecute?.(before.ctx as never);
 
     const hook = await prepareCommitMsgHookFixture("unused\n");
     const repoDir = mkdtempSync(join(tmpdir(), "junior-github-commit-"));
@@ -3603,7 +3652,7 @@ Conversation: \`local:test:old-conversation\`
     }
   });
 
-  it("credits the primary and additional run actors as co-author trailers", () => {
+  it("credits the primary and additional run actors as co-author trailers", async () => {
     process.env.GITHUB_APP_BOT_NAME = "sentry-junior[bot]";
     process.env.GITHUB_APP_BOT_EMAIL = "bot@example.com";
 
@@ -3637,7 +3686,7 @@ Conversation: \`local:test:old-conversation\`
     before.env.JUNIOR_GIT_ACTOR_COAUTHOR_TRAILERS =
       "Co-Authored-By: Model Supplied <model@example.com>";
 
-    plugin.hooks?.beforeToolExecute?.(before.ctx as never);
+    await plugin.hooks?.beforeToolExecute?.(before.ctx as never);
 
     expect(before.denial).toBeUndefined();
     expect(before.env.JUNIOR_GIT_ACTOR_COAUTHOR_TRAILERS).toBe(
@@ -3645,7 +3694,7 @@ Conversation: \`local:test:old-conversation\`
     );
   });
 
-  it("omits a steering actor without a resolvable name or email, without denying the commit", () => {
+  it("omits a steering actor without a resolvable name or email, without denying the commit", async () => {
     process.env.GITHUB_APP_BOT_NAME = "sentry-junior[bot]";
     process.env.GITHUB_APP_BOT_EMAIL = "bot@example.com";
 
@@ -3675,7 +3724,7 @@ Conversation: \`local:test:old-conversation\`
       },
     ]);
 
-    plugin.hooks?.beforeToolExecute?.(before.ctx as never);
+    await plugin.hooks?.beforeToolExecute?.(before.ctx as never);
 
     expect(before.denial).toBeUndefined();
     expect(before.env.JUNIOR_GIT_ACTOR_COAUTHOR_TRAILERS).toBe(
@@ -3683,7 +3732,7 @@ Conversation: \`local:test:old-conversation\`
     );
   });
 
-  it("uses a later resolvable profile for a duplicate actor identity", () => {
+  it("uses a later resolvable profile for a duplicate actor identity", async () => {
     process.env.GITHUB_APP_BOT_NAME = "sentry-junior[bot]";
     process.env.GITHUB_APP_BOT_EMAIL = "bot@example.com";
 
@@ -3704,14 +3753,14 @@ Conversation: \`local:test:old-conversation\`
       },
     ]);
 
-    plugin.hooks?.beforeToolExecute?.(before.ctx as never);
+    await plugin.hooks?.beforeToolExecute?.(before.ctx as never);
 
     expect(before.env.JUNIOR_GIT_ACTOR_COAUTHOR_TRAILERS).toBe(
       "Co-Authored-By: David Cramer <dave@example.com>",
     );
   });
 
-  it("dedups additional actors by resolved email and drops one matching the bot email", () => {
+  it("dedups additional actors by resolved email and drops one matching the bot email", async () => {
     process.env.GITHUB_APP_BOT_NAME = "sentry-junior[bot]";
     process.env.GITHUB_APP_BOT_EMAIL = "bot@example.com";
 
@@ -3750,7 +3799,7 @@ Conversation: \`local:test:old-conversation\`
       },
     ]);
 
-    plugin.hooks?.beforeToolExecute?.(before.ctx as never);
+    await plugin.hooks?.beforeToolExecute?.(before.ctx as never);
 
     expect(before.denial).toBeUndefined();
     expect(before.env.JUNIOR_GIT_ACTOR_COAUTHOR_TRAILERS).toBe(
@@ -3758,7 +3807,7 @@ Conversation: \`local:test:old-conversation\`
     );
   });
 
-  it("credits the primary actor in a single-actor run", () => {
+  it("credits the primary actor in a single-actor run", async () => {
     process.env.GITHUB_APP_BOT_NAME = "sentry-junior[bot]";
     process.env.GITHUB_APP_BOT_EMAIL = "bot@example.com";
 
@@ -3774,7 +3823,7 @@ Conversation: \`local:test:old-conversation\`
     before.env.JUNIOR_GIT_ACTOR_COAUTHOR_TRAILERS =
       "Co-Authored-By: Model Supplied <model@example.com>";
 
-    plugin.hooks?.beforeToolExecute?.(before.ctx as never);
+    await plugin.hooks?.beforeToolExecute?.(before.ctx as never);
 
     expect(before.denial).toBeUndefined();
     expect(before.env.JUNIOR_GIT_ACTOR_COAUTHOR_TRAILERS).toBe(
@@ -3865,7 +3914,7 @@ Conversation: \`local:test:old-conversation\`
     rmSync(dir, { recursive: true, force: true });
   });
 
-  it("uses Junior author identity when the human actor is unresolved", () => {
+  it("uses Junior author identity when the human actor is unresolved", async () => {
     process.env.GITHUB_APP_BOT_NAME = "sentry-junior[bot]";
     process.env.GITHUB_APP_BOT_EMAIL = "bot@example.com";
 
@@ -3876,7 +3925,7 @@ Conversation: \`local:test:old-conversation\`
       userName: "U039RR91S",
     });
 
-    plugin.hooks?.beforeToolExecute?.(before.ctx as never);
+    await plugin.hooks?.beforeToolExecute?.(before.ctx as never);
 
     expect(before.denial).toBeUndefined();
     expect(before.env).toMatchObject({

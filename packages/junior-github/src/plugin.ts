@@ -327,7 +327,7 @@ export function githubPlugin(
         await configureGit(ctx, "credential.helper", "");
         await configureGit(ctx, "http.emptyAuth", "true");
       },
-      beforeToolExecute(ctx) {
+      async beforeToolExecute(ctx) {
         if (ctx.tool.name !== "bash") {
           return;
         }
@@ -339,9 +339,18 @@ export function githubPlugin(
         ctx.env.set("JUNIOR_GIT_AUTHOR_EMAIL", botEmail);
         ctx.env.set("GIT_COMMITTER_NAME", botName);
         ctx.env.set("GIT_COMMITTER_EMAIL", botEmail);
+        let currentUser;
+        if (ctx.actor) {
+          try {
+            currentUser = (await ctx.users.resolveActor())?.user;
+          } catch {
+            currentUser = undefined;
+          }
+        }
         const actorTrailers = additionalActorCoauthorTrailers({
           actors: [...(ctx.actor ? [ctx.actor] : []), ...(ctx.actors ?? [])],
           botEmail,
+          currentUser,
         });
         ctx.env.set(
           "JUNIOR_GIT_ACTOR_COAUTHOR_TRAILERS",

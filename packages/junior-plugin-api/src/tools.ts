@@ -170,6 +170,13 @@ export interface BeforeToolExecuteHookContext extends PluginContext {
     input: Record<string, unknown>;
     name: string;
   };
+  /**
+   * Resolve the current actor's stored identity and linked user.
+   * Same contract as tool registration; used for commit attribution.
+   */
+  users: {
+    resolveActor(): Promise<{ identity: Identity; user?: User } | undefined>;
+  };
 }
 
 /**
