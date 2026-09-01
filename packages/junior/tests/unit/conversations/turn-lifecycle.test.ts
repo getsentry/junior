@@ -17,7 +17,8 @@ class MemoryConversationEventStore implements ConversationEventStore {
   async append(
     _conversationId: string,
     events: NewConversationEvent[],
-  ): Promise<void> {
+  ): Promise<ConversationEvent[]> {
+    const appended: ConversationEvent[] = [];
     for (const event of events) {
       if (
         event.idempotencyKey &&
@@ -28,8 +29,8 @@ class MemoryConversationEventStore implements ConversationEventStore {
       if (event.idempotencyKey) {
         this.idempotencyKeys.add(event.idempotencyKey);
       }
-      this.history.push({
-        schemaVersion: 1,
+      const persisted = {
+        schemaVersion: 1 as const,
         seq: this.history.length,
         historyVersion: 0,
         ...(event.idempotencyKey
@@ -37,8 +38,11 @@ class MemoryConversationEventStore implements ConversationEventStore {
           : undefined),
         createdAtMs: event.createdAtMs,
         data: event.data,
-      });
+      };
+      this.history.push(persisted);
+      appended.push(persisted);
     }
+    return appended;
   }
 
   async replaceHistory(
@@ -54,6 +58,10 @@ class MemoryConversationEventStore implements ConversationEventStore {
 
   async loadLatestInstruction(): Promise<ConversationEvent | undefined> {
     return undefined;
+  }
+
+  async loadCurrentHistoryVersion(): Promise<number> {
+    return this.history.at(-1)?.historyVersion ?? 0;
   }
 
   async loadCurrentHistory(): Promise<ConversationEvent[]> {
