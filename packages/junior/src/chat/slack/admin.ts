@@ -7,8 +7,12 @@ export async function isSlackWorkspaceAdmin(userId: string): Promise<boolean> {
   if (!parsedUserId) {
     return false;
   }
-  const profile = await lookupSlackUserProfile(parsedUserId);
-  return Boolean(
-    profile.is_admin || profile.is_owner || profile.is_primary_owner,
-  );
+  try {
+    const profile = await lookupSlackUserProfile(parsedUserId);
+    return Boolean(
+      profile.is_admin || profile.is_owner || profile.is_primary_owner,
+    );
+  } catch {
+    return false;
+  }
 }
