@@ -111,15 +111,19 @@ export async function ingestEventTasks(
           decision.shouldPostNotice &&
           !noticedDestinations.has(destinationId)
         ) {
-          noticedDestinations.add(destinationId);
           // Safety net when the Turn that hit the limit could not post a notice.
-          await postAutomatedTurnLimitNoticeForDestination({
+          // Only mark the destination after a successful post so a failed claim
+          // clear can still retry on the next matching task in this ingest.
+          const posted = await postAutomatedTurnLimitNoticeForDestination({
             destination: task.destination,
             maxTurns,
             nowMs,
             resumeIn: "channel",
             scope: { kind: "destination", destination: task.destination },
           });
+          if (posted) {
+            noticedDestinations.add(destinationId);
+          }
         }
         continue;
       }
