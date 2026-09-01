@@ -1,0 +1,49 @@
+{
+  "commitSha": "f177f7aaef0a69b0a0398599861783d73f44ab62",
+  "mode": "path",
+  "reasons": [
+    "packages/junior-dashboard/e2e/harness.ts",
+    "packages/junior-dashboard/e2e/people.spec.ts",
+    "packages/junior-dashboard/src/client/pages/people/PeopleActivityChart.tsx",
+    "packages/junior-dashboard/src/client/pages/people/PeopleDirectory.tsx",
+    "packages/junior-dashboard/src/client/pages/people/PeoplePage.tsx",
+    "packages/junior-dashboard/src/mock-reporting/fixtures.ts"
+  ],
+  "scenarioIds": [
+    "conversations",
+    "conversation-detail",
+    "conversation-detail-focused",
+    "conversation-create-focused"
+  ],
+  "shots": [
+    {
+      "file": "conversations__desktop.png",
+      "label": "Conversations · desktop"
+    },
+    {
+      "file": "conversations__mobile.png",
+      "label": "Conversations · mobile"
+    },
+    {
+      "file": "conversation-detail__desktop.png",
+      "label": "Conversation detail · desktop"
+    },
+    {
+      "file": "conversation-detail__mobile.png",
+      "label": "Conversation detail · mobile"
+    },
+    {
+      "file": "conversation-detail-focused__mobile.png",
+      "label": "Conversation detail · focused composer · mobile"
+    },
+    {
+      "file": "conversation-create-focused__desktop.png",
+      "label": "New conversation · landing compose · desktop"
+    },
+    {
+      "file": "conversation-create-focused__mobile.png",
+      "label": "New conversation · landing compose · mobile"
+    }
+  ],
+  "skipped": false
+}
