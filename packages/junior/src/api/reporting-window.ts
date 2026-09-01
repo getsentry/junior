@@ -183,15 +183,3 @@ export const PG_UTC_DAY = "YYYY-MM-DD";
 
 /** PostgreSQL TO_CHAR pattern for UTC hour keys. */
 export const PG_UTC_HOUR = 'YYYY-MM-DD"T"HH24';
-
-/**
- * PostgreSQL expression that maps a timestamptz column to a UTC 6-hour bucket
- * key (`YYYY-MM-DDTHH` at 00/06/12/18).
- */
-export function pgUtcSixHourKey(columnSql: string): string {
-  return `TO_CHAR(
-    date_trunc('day', ${columnSql} AT TIME ZONE 'UTC')
-      + (FLOOR(EXTRACT(HOUR FROM ${columnSql} AT TIME ZONE 'UTC') / 6) * INTERVAL '6 hours'),
-    'YYYY-MM-DD"T"HH24'
-  )`;
-}

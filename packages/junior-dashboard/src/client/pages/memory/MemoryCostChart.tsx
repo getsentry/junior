@@ -1,4 +1,8 @@
 import {
+  timeRangeBucketAverageUnit,
+  type TimeRangeDays,
+} from "../../components/controls/TimeRangeSelector";
+import {
   ActivityChartAverageLine,
   ActivityChartDateLabels,
   ActivityChartGrid,
@@ -9,7 +13,7 @@ import {
   createActivityChartLayout,
 } from "../../components/charts/ActivityChart";
 import { ChartLegend } from "../../components/charts/ChartLegend";
-import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
+
 import { Card } from "../../components/layout/Card";
 import { formatCostSummary } from "../../format";
 import type { MemoryCostDay } from "./memoryDashboard";
@@ -161,7 +165,7 @@ export function MemoryCostChart(props: {
             );
           })}
           <ActivityChartAverageLine
-            unit={bucketUnit === "6hour" ? "6h" : bucketUnit}
+            unit={timeRangeBucketAverageUnit(bucketUnit)}
             average={average}
             format={(value) => formatCostSummary({ total: value })}
             layout={layout}

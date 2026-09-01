@@ -1,3 +1,7 @@
+import {
+  timeRangeBucketAverageUnit,
+  type TimeRangeDays,
+} from "../../components/controls/TimeRangeSelector";
 import type { CodeActivityDay } from "@sentry/junior/api/schema";
 import {
   ActivityChartAverageLine,
@@ -10,7 +14,7 @@ import {
   createActivityChartLayout,
 } from "../../components/charts/ActivityChart";
 import { ChartLegend } from "../../components/charts/ChartLegend";
-import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
+
 import { Card } from "../../components/layout/Card";
 import { formatActivityChartAverage } from "../../format";
 
@@ -132,7 +136,7 @@ export function CodeActivityChart(props: {
             );
           })}
           <ActivityChartAverageLine
-            unit={bucketUnit === "6hour" ? "6h" : bucketUnit}
+            unit={timeRangeBucketAverageUnit(bucketUnit)}
             average={average}
             format={formatActivityChartAverage}
             layout={layout}

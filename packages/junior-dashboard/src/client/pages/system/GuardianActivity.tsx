@@ -1,3 +1,4 @@
+import { timeRangeBucketAdjective } from "../../components/controls/TimeRangeSelector";
 import type { GuardianMetricDay } from "@sentry/junior/api/schema";
 
 import {
@@ -64,7 +65,7 @@ export function GuardianActivity(props: {
               Guardian reviews
             </h3>
             <p className="mt-1 mb-0 font-mono text-xs leading-relaxed text-dashboard-text-muted">
-              {bucketUnit === "hour" ? "Hourly" : bucketUnit === "6hour" ? "6-hour" : "Daily"} decisions before
+              {timeRangeBucketAdjective(bucketUnit)} decisions before
               reviewed actions execute.
             </p>
           </div>
@@ -99,7 +100,7 @@ export function GuardianActivity(props: {
       </div>
       <div className="px-4 pt-5 pb-3">
         <div
-          aria-label={`${bucketUnit === "hour" ? "Hourly" : bucketUnit === "6hour" ? "6-hour" : "Daily"} Guardian review results`}
+          aria-label={`${timeRangeBucketAdjective(bucketUnit)} Guardian review results`}
           className="flex h-36 items-end gap-px"
           role="img"
         >

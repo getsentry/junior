@@ -1,3 +1,6 @@
+import {
+  timeRangeBucketAverageUnit,
+} from "../../components/controls/TimeRangeSelector";
 import type { ConversationMetricDay } from "@sentry/junior/api/schema";
 
 import {
@@ -92,7 +95,7 @@ export function ConversationActivityChart(props: {
             layout={layout}
             maximum={maximum}
             stroke="#22d3ee"
-            unit={bucketUnit === "6hour" ? "6h" : bucketUnit}
+            unit={timeRangeBucketAverageUnit(bucketUnit)}
           />
           <ActivityChartDateLabels
             dates={props.days.map((day) => day.date)}

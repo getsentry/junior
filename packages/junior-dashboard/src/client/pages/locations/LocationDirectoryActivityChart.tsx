@@ -1,3 +1,7 @@
+import {
+  timeRangeBucketAdjective,
+  timeRangeBucketPerLabel,
+} from "../../components/controls/TimeRangeSelector";
 import type { LocationActivityDayReport } from "@sentry/junior/api/schema";
 
 import {
@@ -20,7 +24,7 @@ export function LocationDirectoryActivityChart(props: {
 }) {
   const bucketUnit = props.bucketUnit ?? "day";
   const perBucket =
-    bucketUnit === "hour" ? "Conversations per hour" : bucketUnit === "6hour" ? "Conversations per 6 hours" : "Conversations per day";
+    `Conversations per ${timeRangeBucketPerLabel(bucketUnit)}`;
 
   const layout = createActivityChartLayout(260);
   const maximum = Math.max(
@@ -38,11 +42,7 @@ export function LocationDirectoryActivityChart(props: {
     <Card>
       <CardHeader
         description={
-          bucketUnit === "hour"
-            ? "Hourly public volume compared with private activity in aggregate."
-            : bucketUnit === "6hour"
-              ? "6-hour public volume compared with private activity in aggregate."
-              : "Daily public volume compared with private activity in aggregate."
+          `${timeRangeBucketAdjective(bucketUnit)} public volume compared with private activity in aggregate.`
         }
         title={perBucket}
         trailing={

@@ -1,3 +1,7 @@
+import {
+  timeRangeBucketAverageUnit,
+  timeRangeBucketPerLabel,
+} from "../../components/controls/TimeRangeSelector";
 import type { PeopleActivityDayReport } from "@sentry/junior/api/schema";
 
 import {
@@ -40,7 +44,7 @@ export function PeopleActivityChart(props: {
 }) {
   const bucketUnit = props.bucketUnit ?? "day";
   const chartTitle =
-    bucketUnit === "hour" ? "Active people per hour" : bucketUnit === "6hour" ? "Active people per 6 hours" : "Active people per day";
+    `Active people per ${timeRangeBucketPerLabel(bucketUnit)}`;
 
   const layout = createActivityChartLayout(260);
   const values = props.days.map((day) => day.activePeople);
@@ -126,7 +130,7 @@ export function PeopleActivityChart(props: {
             );
           })}
           <ActivityChartAverageLine
-            unit={bucketUnit === "6hour" ? "6h" : bucketUnit}
+            unit={timeRangeBucketAverageUnit(bucketUnit)}
             average={average}
             format={formatActivityChartAverage}
             layout={layout}

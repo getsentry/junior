@@ -4,7 +4,6 @@ import {
   WINDOW_SEVEN_DAY_HOURS,
   fillUtcDays,
   fillUtcHours,
-  fillUtcSixHours,
   rollupUtcHoursToSixHours,
 } from "./reporting-window";
 
@@ -64,21 +63,21 @@ export function activityHours(
   });
 }
 
-/** Fill trailing 6-hour buckets from sparse rows (or roll dense hours). */
+/**
+ * Fill trailing 6-hour buckets from hour-keyed sparse maps or dense hour rows.
+ * Hour keys must roll up; do not look them up as 6h keys.
+ */
 export function activitySixHours(
-  hours: Map<string, DailyConversationActivity> | readonly DailyConversationActivity[],
+  hours:
+    | Map<string, DailyConversationActivity>
+    | readonly DailyConversationActivity[],
   nowMs: number,
 ): DailyConversationActivity[] {
-  if (hours instanceof Map) {
-    return fillUtcSixHours({
-      empty: emptyActivityDay,
-      nowMs,
-      rows: hours,
-    });
-  }
+  const series =
+    hours instanceof Map ? activityHours(hours, nowMs) : [...hours];
   return rollupUtcHoursToSixHours({
     empty: emptyActivityDay,
-    hours,
+    hours: series,
     nowMs,
   });
 }

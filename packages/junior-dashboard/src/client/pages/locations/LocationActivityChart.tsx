@@ -1,3 +1,6 @@
+import {
+  timeRangeBucketAverageUnit,
+} from "../../components/controls/TimeRangeSelector";
 import type { DailyConversationActivity } from "@sentry/junior/api/schema";
 
 import {
@@ -89,7 +92,7 @@ export function LocationActivityChart(props: {
             );
           })}
           <ActivityChartAverageLine
-            unit={bucketUnit === "6hour" ? "6h" : bucketUnit}
+            unit={timeRangeBucketAverageUnit(bucketUnit)}
             average={average}
             format={formatActivityChartAverage}
             layout={layout}

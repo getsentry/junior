@@ -1,3 +1,4 @@
+import { timeRangeBucketAverageUnit } from "../controls/TimeRangeSelector";
 import type { ConversationMetricDay } from "@sentry/junior/api/schema";
 
 import { formatDuration } from "../Duration";
@@ -305,7 +306,7 @@ function MetricChart(props: {
             layout={layout}
             maximum={maximum}
             stroke={chart.color}
-            unit={props.bucketUnit}
+            unit={timeRangeBucketAverageUnit(props.bucketUnit)}
           />
           <ActivityChartDateLabels
             dates={days.map((day) => day.date)}

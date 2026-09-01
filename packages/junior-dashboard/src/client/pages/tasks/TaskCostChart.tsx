@@ -1,3 +1,7 @@
+import {
+  timeRangeBucketAverageUnit,
+  type TimeRangeDays,
+} from "../../components/controls/TimeRangeSelector";
 import type { TaskExecutionDay } from "@sentry/junior/api/schema";
 import {
   ActivityChartAverageLine,
@@ -9,7 +13,7 @@ import {
   ChartSvg,
   createActivityChartLayout,
 } from "../../components/charts/ActivityChart";
-import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
+
 import { Card } from "../../components/layout/Card";
 import { formatCostSummary } from "../../format";
 
@@ -95,7 +99,7 @@ export function TaskCostChart(props: {
             );
           })}
           <ActivityChartAverageLine
-            unit={bucketUnit === "6hour" ? "6h" : bucketUnit}
+            unit={timeRangeBucketAverageUnit(bucketUnit)}
             average={average}
             format={(value) => formatCostSummary({ total: value })}
             layout={layout}

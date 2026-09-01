@@ -17,6 +17,12 @@ import type {
   GuardianMetricDay,
   GuardianStats,
 } from "../schema/conversation";
+import {
+  WINDOW_SEVEN_DAY_HOURS,
+  rollupUtcHoursToSixHours,
+  startOfUtcHour,
+  utcHourKey,
+} from "../reporting-window";
 
 const WINDOW_DAYS = 90;
 const treeConversation = alias(juniorConversations, "stats_tree_conversation");
@@ -145,9 +151,7 @@ function statsWindow(nowMs: number) {
 
 const HOUR_MS = 60 * 60 * 1_000;
 /** Keep 7d of hours so clients can roll 7d charts into 6h buckets. */
-const WINDOW_HOURS = 7 * 24;
-const SIX_HOUR_MS = 6 * HOUR_MS;
-const WINDOW_SIX_HOURS = 7 * 4;
+const WINDOW_HOURS = WINDOW_SEVEN_DAY_HOURS;
 
 type MetricRow = {
   cachedInputTokens: number | null;
@@ -168,15 +172,6 @@ type GuardianRow = {
   requests: number;
 };
 
-function startOfUtcHour(valueMs: number): Date {
-  const date = new Date(valueMs);
-  date.setUTCMinutes(0, 0, 0);
-  return date;
-}
-
-function utcHourKey(value: Date): string {
-  return value.toISOString().slice(0, 13);
-}
 
 function metricPoint(
   date: string,
@@ -229,12 +224,6 @@ function metricDays(rows: MetricRow[], endMs: number): ConversationMetricDay[] {
 }
 
 
-function startOfUtcSixHour(valueMs: number): Date {
-  const date = startOfUtcHour(valueMs);
-  date.setUTCHours(Math.floor(date.getUTCHours() / 6) * 6, 0, 0, 0);
-  return date;
-}
-
 function emptyMetricDay(date: string): ConversationMetricDay {
   return { conversations: 0, date, durationMs: 0 };
 }
@@ -247,69 +236,24 @@ function rollupMetricHoursToSix(
   hours: ConversationMetricDay[],
   endMs: number,
 ): ConversationMetricDay[] {
-  const bySix = new Map<string, ConversationMetricDay>();
-  for (const hour of hours) {
-    const key = utcHourKey(startOfUtcSixHour(Date.parse(`${hour.date}:00:00.000Z`)));
-    const current = bySix.get(key) ?? emptyMetricDay(key);
-    current.conversations += hour.conversations;
-    current.durationMs += hour.durationMs;
-    if (hour.tokens !== undefined) current.tokens = (current.tokens ?? 0) + hour.tokens;
-    if (hour.inputTokens !== undefined) {
-      current.inputTokens = (current.inputTokens ?? 0) + hour.inputTokens;
-    }
-    if (hour.cachedInputTokens !== undefined) {
-      current.cachedInputTokens =
-        (current.cachedInputTokens ?? 0) + hour.cachedInputTokens;
-    }
-    if (hour.costUsd !== undefined) {
-      current.costUsd = addUsd(current.costUsd, hour.costUsd);
-    }
-    bySix.set(key, current);
-  }
-  const end = startOfUtcSixHour(endMs);
-  const start = new Date(end.getTime() - (WINDOW_SIX_HOURS - 1) * SIX_HOUR_MS);
-  const items: ConversationMetricDay[] = [];
-  for (
-    const cursor = new Date(start);
-    cursor.getTime() <= end.getTime();
-    cursor.setTime(cursor.getTime() + SIX_HOUR_MS)
-  ) {
-    const date = utcHourKey(cursor);
-    items.push(bySix.get(date) ?? emptyMetricDay(date));
-  }
-  return items;
+  return rollupUtcHoursToSixHours({
+    empty: emptyMetricDay,
+    hours,
+    nowMs: endMs,
+  });
 }
 
 function rollupGuardianHoursToSix(
   hours: GuardianMetricDay[],
   endMs: number,
 ): GuardianMetricDay[] {
-  const bySix = new Map<string, GuardianMetricDay>();
-  for (const hour of hours) {
-    const key = utcHourKey(startOfUtcSixHour(Date.parse(`${hour.date}:00:00.000Z`)));
-    const current = bySix.get(key) ?? emptyGuardianDay(key);
-    current.allow += hour.allow;
-    current.ask += hour.ask;
-    current.deny += hour.deny;
-    current.requests += hour.requests;
-    if (hour.costUsd !== undefined) {
-      current.costUsd = addUsd(current.costUsd, hour.costUsd);
-    }
-    bySix.set(key, current);
-  }
-  const end = startOfUtcSixHour(endMs);
-  const start = new Date(end.getTime() - (WINDOW_SIX_HOURS - 1) * SIX_HOUR_MS);
-  const items: GuardianMetricDay[] = [];
-  for (
-    const cursor = new Date(start);
-    cursor.getTime() <= end.getTime();
-    cursor.setTime(cursor.getTime() + SIX_HOUR_MS)
-  ) {
-    const date = utcHourKey(cursor);
-    items.push(bySix.get(date) ?? emptyGuardianDay(date));
-  }
-  return items;
+  return rollupUtcHoursToSixHours({
+    empty: emptyGuardianDay,
+    hours,
+    nowMs: endMs,
+  });
 }
+
 
 function metricHours(rows: MetricRow[], endMs: number): ConversationMetricDay[] {
   const byHour = new Map(rows.map((row) => [row.date, row]));
