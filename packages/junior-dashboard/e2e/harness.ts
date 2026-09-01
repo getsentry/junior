@@ -359,7 +359,7 @@ export async function mockDashboardApis(page: Page) {
             lastRunAt: "2026-08-06T16:00:00.000Z",
             nextRunAt: "2026-08-10T16:00:00.000Z",
             ownedByViewer: true,
-            runsLast7Days: 3,
+            runs: { 1: 1, 7: 3, 30: 12, 90: 48 },
             schedule: "Every Monday at 9:00 AM",
             status: "active",
             title: "Weekly project summary",
@@ -381,7 +381,7 @@ export async function mockDashboardApis(page: Page) {
             kind: "event",
             ownedByViewer: true,
             resource: "Issue · ACME-42",
-            runsLast7Days: 1,
+            runs: { 1: 0, 7: 1, 30: 4, 90: 7 },
             source: "github",
             title: "Closed issue summary",
             totalRuns: 7,
@@ -403,7 +403,7 @@ export async function mockDashboardApis(page: Page) {
             kind: "event",
             ownedByViewer: false,
             resource: "Incident · INC-17",
-            runsLast7Days: 0,
+            runs: { 1: 0, 7: 0, 30: 0, 90: 0 },
             source: "pagerduty",
             title: "Incident change alerts",
             totalRuns: 0,
@@ -440,7 +440,10 @@ export async function mockDashboardApis(page: Page) {
           : "Summarize the closed issue",
       kind,
       ownedByViewer: true,
-      runsLast7Days: kind === "scheduled" ? 3 : 1,
+      runs:
+        kind === "scheduled"
+          ? { 1: 1, 7: 3, 30: 12, 90: 48 }
+          : { 1: 0, 7: 1, 30: 4, 90: 7 },
       title:
         kind === "scheduled"
           ? "Weekly project summary"

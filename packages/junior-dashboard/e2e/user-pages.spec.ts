@@ -132,12 +132,22 @@ test("opens scheduled and event tasks in the native Tasks view", async ({
   await expect(page).toHaveURL(`${server.baseURL}/tasks/list`);
   await expect(page.getByRole("heading", { name: "All tasks" })).toBeVisible();
   await expect(page.getByLabel("Search tasks")).toBeVisible();
+  const listReportingPeriod = page.getByLabel("Reporting period");
+  await expect(listReportingPeriod).toHaveCount(1);
+  await expect(listReportingPeriod.getByRole("button", { name: "30d" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
   await expect(page.getByText("2 tasks")).toBeVisible();
   await expect(page.getByText("Weekly project summary")).toBeVisible();
   await expect(page.getByText("Closed issue summary")).toBeVisible();
   await expect(page.getByLabel("Scheduled task")).toBeVisible();
   await expect(page.getByLabel("GitHub event task")).toBeVisible();
   await expect(page.getByText("#project-updates").last()).toBeVisible();
+  await expect(page.getByText("Runs · 30d")).toBeVisible();
+  await expect(page.getByText("Last run")).toBeVisible();
+  await listReportingPeriod.getByRole("button", { name: "7d" }).click();
+  await expect(page.getByText("Runs · 7d")).toBeVisible();
   await expect(page.getByText("Assigned to")).toHaveCount(0);
   await expect(page.getByRole("dialog")).toHaveCount(0);
   const taskDetailsTrigger = page.getByRole("button", {

@@ -25,13 +25,14 @@ import { SelectableRow } from "../../components/SelectableRow";
 import {
   selectTimeSeries,
   timeRangeBucketUnit,
+  timeRangeLabel,
   type TimeRangeDays,
 } from "../../components/controls/TimeRangeSelector";
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
 import { StatCard } from "../../components/metrics/StatCard";
 import { deleteDashboardResource } from "../../http";
-import { formatTime, taskPath } from "../../format";
+import { formatRelativeTime, formatTime, taskPath } from "../../format";
 import {
   pathWithSearch,
   useDebouncedSearchParam,
@@ -179,9 +180,11 @@ export function TasksPage(props: {
             ? "Scheduled and event-driven work created by users."
             : "Find and manage tasks across your linked workspaces."
         }
-        {...(props.view === "overview" && query.data?.executionDays?.length
-          ? { onRangeChange: setRange, range }
-          : {})}
+        {...(props.view === "overview"
+          ? query.data?.executionDays?.length
+            ? { onRangeChange: setRange, range }
+            : {}
+          : { onRangeChange: setRange, range })}
         title={props.view === "overview" ? "Tasks" : "All tasks"}
       />
       {loading ? (
@@ -296,7 +299,7 @@ export function TasksPage(props: {
             </Card>
           ) : (
             <Card>
-              <TaskListHeader />
+              <TaskListHeader range={range} />
               <div className="divide-y divide-white/[0.07]" role="list">
                 {pagedTasks.map((task) => {
                   const key = `${task.kind}:${task.id}`;
@@ -318,6 +321,7 @@ export function TasksPage(props: {
                             : selectedTaskPath(task.id),
                         )
                       }
+                      range={range}
                       selected={taskId === task.id}
                       task={task}
                     />
@@ -345,6 +349,7 @@ export function TasksPage(props: {
           ) : null}
           <TaskDetailsDrawer
             onClose={() => navigate(tasksPath(listPath))}
+            range={range}
             task={selectedTask}
           />
         </>
@@ -372,15 +377,17 @@ function emptyText(input: {
   return "No tasks are available.";
 }
 
-function TaskListHeader() {
+function TaskListHeader(props: { range: TimeRangeDays }) {
   return (
     <div
       aria-hidden="true"
-      className="hidden grid-cols-[repeat(3,minmax(0,1fr))_auto_auto] items-center gap-3 border-b border-white/[0.07] px-4 py-2.5 text-left font-mono text-xs uppercase tracking-[0.12em] text-dashboard-text-muted lg:grid"
+      className="hidden grid-cols-[repeat(5,minmax(0,1fr))_auto_auto] items-center gap-3 border-b border-white/[0.07] px-4 py-2.5 text-left font-mono text-xs uppercase tracking-[0.12em] text-dashboard-text-muted lg:grid"
     >
       <span>Task</span>
       <span>Destination</span>
       <span>Trigger</span>
+      <span>Runs · {timeRangeLabel(props.range)}</span>
+      <span>Last run</span>
       <span aria-hidden="true" className="size-8" />
       <span aria-hidden="true" className="size-9" />
     </div>
@@ -391,14 +398,16 @@ function TaskRow(props: {
   deleting: boolean;
   onDelete(): void;
   onSelect(): void;
+  range: TimeRangeDays;
   selected: boolean;
   task: TaskSummary;
 }) {
-  const { task } = props;
+  const { range, task } = props;
+  const runCount = task.runs[range];
   return (
     <article role="listitem">
       <SelectableRow
-        className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 px-4 py-3 md:grid-cols-[repeat(2,minmax(0,1fr))_auto_auto] lg:grid-cols-[repeat(3,minmax(0,1fr))_auto_auto]"
+        className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 px-4 py-3 md:grid-cols-[repeat(2,minmax(0,1fr))_auto_auto] lg:grid-cols-[repeat(5,minmax(0,1fr))_auto_auto]"
         onSelect={props.onSelect}
         selected={props.selected}
       >
@@ -439,6 +448,22 @@ function TaskRow(props: {
                 ? `Next ${formatRunDate(task.nextRunAt)}`
                 : "No next run"
               : task.events.join(", ")}
+          </div>
+        </div>
+        <div className="hidden min-w-0 lg:block">
+          <div className="truncate text-sm font-medium text-dashboard-text">
+            {runCount}
+          </div>
+          <div className="mt-1 font-mono text-xs uppercase tracking-[0.08em] text-dashboard-text-muted">
+            {timeRangeLabel(range)}
+          </div>
+        </div>
+        <div className="hidden min-w-0 lg:block">
+          <div className="truncate text-sm text-dashboard-text">
+            {task.lastRunAt ? formatRelativeTime(task.lastRunAt) : "Never"}
+          </div>
+          <div className="mt-1 truncate font-mono text-xs text-dashboard-text-muted">
+            {task.lastRunAt ? formatRunDate(task.lastRunAt) : "No executions"}
           </div>
         </div>
         <button

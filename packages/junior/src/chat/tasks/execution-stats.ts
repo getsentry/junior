@@ -34,12 +34,26 @@ export type TaskExecutionDay = {
   scheduled: number;
 };
 
+export type TaskRunWindows = {
+  1: number;
+  7: number;
+  30: number;
+  90: number;
+};
+
 export type TaskExecutionSummary = {
   lastConversationId?: string;
   lastExecutedAtMs?: number;
-  runsLast7Days: number;
+  runs: TaskRunWindows;
   totalRuns: number;
 };
+
+const EMPTY_RUN_WINDOWS: TaskRunWindows = { 1: 0, 7: 0, 30: 0, 90: 0 };
+
+/** Empty run windows for tasks with no execution history. */
+export function emptyTaskRunWindows(): TaskRunWindows {
+  return { ...EMPTY_RUN_WINDOWS };
+}
 
 export type TaskExecutionRecord = {
   conversationId?: string;
@@ -127,8 +141,11 @@ export async function readTaskExecutionSummaries(
   namespace: string,
   options: { nowMs?: number } = {},
 ): Promise<Map<string, TaskExecutionSummary>> {
-  const sevenDaysAgoMs =
-    (options.nowMs ?? Date.now()) - 7 * 24 * 60 * 60 * 1000;
+  const nowMs = options.nowMs ?? Date.now();
+  const oneDayAgoMs = nowMs - 1 * 24 * 60 * 60 * 1000;
+  const sevenDaysAgoMs = nowMs - 7 * 24 * 60 * 60 * 1000;
+  const thirtyDaysAgoMs = nowMs - 30 * 24 * 60 * 60 * 1000;
+  const ninetyDaysAgoMs = nowMs - 90 * 24 * 60 * 60 * 1000;
   const db = getDb();
   const latest = db
     .selectDistinctOn([juniorTaskExecutions.taskId], {
@@ -152,7 +169,10 @@ export async function readTaskExecutionSummaries(
     .select({
       lastConversationId: latest.conversationId,
       lastExecutedAtMs: max(juniorTaskExecutions.executedAtMs),
+      runsLast1Day: sql<number>`count(*) filter (where ${juniorTaskExecutions.executedAtMs} >= ${oneDayAgoMs})::int`,
       runsLast7Days: sql<number>`count(*) filter (where ${juniorTaskExecutions.executedAtMs} >= ${sevenDaysAgoMs})::int`,
+      runsLast30Days: sql<number>`count(*) filter (where ${juniorTaskExecutions.executedAtMs} >= ${thirtyDaysAgoMs})::int`,
+      runsLast90Days: sql<number>`count(*) filter (where ${juniorTaskExecutions.executedAtMs} >= ${ninetyDaysAgoMs})::int`,
       taskId: juniorTaskExecutions.taskId,
       totalRuns: sql<number>`count(*)::int`,
     })
@@ -175,7 +195,12 @@ export async function readTaskExecutionSummaries(
         ...(row.lastExecutedAtMs !== null
           ? { lastExecutedAtMs: row.lastExecutedAtMs }
           : undefined),
-        runsLast7Days: row.runsLast7Days,
+        runs: {
+          1: row.runsLast1Day,
+          7: row.runsLast7Days,
+          30: row.runsLast30Days,
+          90: row.runsLast90Days,
+        },
         totalRuns: row.totalRuns,
       },
     ]),

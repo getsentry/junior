@@ -9,6 +9,7 @@ import type {
 } from "@/api/schema/task";
 import { fallbackShortTitle } from "@/chat/services/short-title";
 import {
+  emptyTaskRunWindows,
   readTaskExecutionByConversationId,
   readTaskExecutionDays,
   readTaskExecutionHours,
@@ -202,7 +203,7 @@ function executionSummaryFields(stats: TaskExecutionSummary | undefined) {
     ...(stats?.lastExecutedAtMs
       ? { lastRunAt: new Date(stats.lastExecutedAtMs).toISOString() }
       : undefined),
-    runsLast7Days: stats?.runsLast7Days ?? 0,
+    runs: stats?.runs ?? emptyTaskRunWindows(),
     totalRuns: stats?.totalRuns ?? 0,
   };
 }
