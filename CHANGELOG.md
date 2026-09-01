@@ -1,4 +1,14 @@
 # Changelog
+## 0.193.0
+
+### Breaking Changes 🛠
+
+- (chat) Add task, Plugin dispatch, and Agent invocation Sources by @dcramer in [#1737](https://github.com/getsentry/junior/pull/1737)
+
+### Bug Fixes 🐛
+
+- (event-tasks) Allow public task manage by id across channels by @sentry-junior in [#1746](https://github.com/getsentry/junior/pull/1746)
+
 ## 0.192.0
 
 ### New Features ✨
