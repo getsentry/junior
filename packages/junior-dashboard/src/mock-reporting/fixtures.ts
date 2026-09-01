@@ -2451,10 +2451,16 @@ export function readMockTaskExecutions(
   ];
   const statuses = ["completed", "failed", "blocked", "completed"] as const;
   const costs = [0.42, 0.18, 0.07, 1.25, 0.03, undefined, 0.56, 0.09] as const;
+  const durations = [
+    42_000, 18_000, 7_500, 95_000, 3_200, undefined, 61_000, 12_000,
+  ] as const;
+  const tokens = [1_200, 480, 210, 3_400, 90, undefined, 1_800, 320] as const;
   const executions = Array.from({ length: 8 }, (_, index) => {
     const status = statuses[index % statuses.length]!;
     const hasConversation = index !== 5;
     const costUsd = costs[index % costs.length];
+    const durationMs = durations[index % durations.length];
+    const totalTokens = tokens[index % tokens.length];
     return {
       ...(hasConversation
         ? {
@@ -2464,6 +2470,8 @@ export function readMockTaskExecutions(
                 : ACTIVE_CONVERSATION_ID,
             title: titles[index % titles.length],
             ...(costUsd !== undefined ? { costUsd } : undefined),
+            ...(durationMs !== undefined ? { durationMs } : undefined),
+            ...(totalTokens !== undefined ? { totalTokens } : undefined),
           }
         : undefined),
       executedAt: new Date(

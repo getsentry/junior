@@ -92,6 +92,16 @@ export function agentTurnCostUsd(
   return hasComponent ? componentTotal : undefined;
 }
 
+/** Total token count from one usage record, preferring component counters. */
+export function agentTurnTotalTokens(
+  usage: AgentTurnUsage | undefined,
+): number | undefined {
+  if (!usage) return undefined;
+  const componentTotal = getComponentTotal(usage);
+  if (componentTotal !== undefined) return componentTotal;
+  return getFiniteCount(usage.totalTokens);
+}
+
 /** Aggregate token usage across slices without double-counting provider totals. */
 export function addAgentTurnUsage(
   ...usages: Array<AgentTurnUsage | undefined>

@@ -90,10 +90,14 @@ export const taskExecutionSchema = z
     conversationId: z.string().min(1).optional(),
     /** Estimated model cost for the linked conversation, when known. */
     costUsd: z.number().finite().nonnegative().optional(),
+    /** Cumulative conversation runtime in milliseconds, when known. */
+    durationMs: z.number().finite().nonnegative().optional(),
     executedAt: z.string().datetime(),
     executionId: z.string().min(1),
     status: taskExecutionStatusSchema,
     title: z.string().min(1).optional(),
+    /** Cumulative conversation token total, when known. */
+    totalTokens: z.number().int().nonnegative().optional(),
   })
   .strict();
 

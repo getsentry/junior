@@ -25,14 +25,21 @@ import {
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
 import { conversationPath } from "../../conversations/conversationRoutes";
-import { formatCostSummary, formatTime, taskPath } from "../../format";
+import {
+  formatCompactNumber,
+  formatCostSummary,
+  formatRuntime,
+  formatTime,
+  taskPath,
+} from "../../format";
 import { DashboardApiError } from "../../http";
 import { pathWithSearch } from "../../searchParams";
 import { cn } from "../../styles";
 import { TaskExecutionStatusChart } from "./TaskExecutionStatusChart";
 
-/** Label column flexes; metric columns share equal fixed widths. */
-const EXECUTION_GRID = "grid-cols-[minmax(0,1fr)_5.5rem_1.25rem]";
+/** Leading conversation column flexes; metric columns stay equal fixed widths. */
+const EXECUTION_GRID =
+  "grid-cols-[minmax(0,1fr)_5.5rem_5.5rem_5.5rem_auto]";
 
 /** Render one task's terminal executions as a browsable conversation-style list. */
 export function TaskExecutionsPage(props: { enabled: boolean }) {
@@ -155,7 +162,7 @@ function TaskExecutionsView(props: {
       ) : (
         <Card>
           <div className="min-w-0 overflow-x-auto">
-            <div className="min-w-[28rem]">
+            <div className="min-w-[36rem]">
               <div
                 className={cn(
                   "sticky top-0 z-[1] hidden items-center gap-4 border-b border-dashboard-border-subtle bg-dashboard-overlay-soft px-4 py-2.5 font-mono text-xs uppercase tracking-[0.1em] text-dashboard-text-muted md:grid",
@@ -164,6 +171,8 @@ function TaskExecutionsView(props: {
                 role="row"
               >
                 <div>Conversation</div>
+                <div>Duration</div>
+                <div>Tokens</div>
                 <div>Cost</div>
                 <div className="sr-only">Status</div>
               </div>
@@ -205,6 +214,11 @@ function ExecutionRow(props: {
         ? undefined
         : { total: execution.costUsd },
     ) || "—";
+  const durationLabel = formatRuntime(execution.durationMs) || "—";
+  const tokensLabel =
+    execution.totalTokens === undefined
+      ? "—"
+      : formatCompactNumber(execution.totalTokens);
   const openConversation = () => {
     if (!execution.conversationId) return;
     navigate(conversationPath(execution.conversationId));
@@ -214,7 +228,7 @@ function ExecutionRow(props: {
     <div
       aria-disabled={!execution.conversationId}
       className={cn(
-        "group grid min-w-0 items-center gap-4 overflow-hidden border-b border-dashboard-border-subtle px-4 py-3 text-left text-inherit transition-colors last:border-b-0 max-md:grid-cols-[minmax(0,1fr)_auto] max-md:gap-x-3 max-md:px-4 max-md:py-3.5 md:grid",
+        "group grid min-w-0 items-center gap-4 overflow-hidden border-b border-dashboard-border-subtle px-4 py-3 text-left text-inherit transition-colors last:border-b-0 max-md:grid-cols-1 max-md:gap-y-2 max-md:px-4 max-md:py-3.5 md:grid",
         EXECUTION_GRID,
         execution.conversationId
           ? "cursor-pointer hover:bg-dashboard-fill-soft"
@@ -231,8 +245,8 @@ function ExecutionRow(props: {
       role={execution.conversationId ? "link" : "row"}
       tabIndex={execution.conversationId ? 0 : undefined}
     >
-      <div className="min-w-0">
-        <div className="flex min-w-0 items-center gap-2">
+      <div className="min-w-0 overflow-hidden">
+        <div className="flex min-w-0 items-center gap-2 overflow-hidden">
           <StatusDot
             className="md:hidden"
             label={execution.status}
@@ -242,21 +256,35 @@ function ExecutionRow(props: {
             {title}
           </div>
         </div>
-        <div className="mt-1 break-words text-xs leading-relaxed text-dashboard-text-muted md:truncate">
+        <div className="mt-1 truncate text-xs leading-relaxed text-dashboard-text-muted">
           {formatRunDate(execution.executedAt)}
         </div>
       </div>
-      <div className="min-w-0 max-md:justify-self-end">
-        <div className="whitespace-nowrap font-mono text-xs text-dashboard-text-muted md:text-sm md:text-dashboard-text">
-          <span className="sr-only">Cost: </span>
-          {costLabel}
-        </div>
-      </div>
+      <MetricCell label="Duration" value={durationLabel} />
+      <MetricCell label="Tokens" value={tokensLabel} />
+      <MetricCell label="Cost" value={costLabel} />
       <div className="hidden justify-self-center md:block">
         <StatusDot
           label={execution.status}
           tone={runStatusTone(execution.status)}
         />
+      </div>
+    </div>
+  );
+}
+
+function MetricCell(props: { label: string; value: string }) {
+  return (
+    <div className="min-w-0 max-md:flex max-md:items-center max-md:gap-2">
+      <div
+        aria-hidden="true"
+        className="mb-1 hidden font-mono text-2xs uppercase tracking-[0.1em] text-dashboard-text-muted max-md:mb-0 max-md:block"
+      >
+        {props.label}
+      </div>
+      <div className="truncate whitespace-nowrap font-mono text-xs text-dashboard-text-muted md:text-sm md:text-dashboard-text">
+        <span className="sr-only">{props.label}: </span>
+        {props.value}
       </div>
     </div>
   );

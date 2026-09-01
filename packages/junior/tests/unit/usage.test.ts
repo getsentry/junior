@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   addAgentTurnUsage,
   agentTurnCostUsd,
+  agentTurnTotalTokens,
   hasAgentTurnUsage,
 } from "@/chat/usage";
 
@@ -72,6 +73,19 @@ describe("addAgentTurnUsage", () => {
       }),
     ).toBe(0.2);
     expect(agentTurnCostUsd({ totalTokens: 10 })).toBeUndefined();
+  });
+
+  it("reads total tokens from usage records", () => {
+    expect(agentTurnTotalTokens({ totalTokens: 400 })).toBe(400);
+    expect(
+      agentTurnTotalTokens({
+        inputTokens: 10,
+        outputTokens: 3,
+        cachedInputTokens: 2,
+        totalTokens: 999,
+      }),
+    ).toBe(15);
+    expect(agentTurnTotalTokens({ cost: { total: 0.01 } })).toBeUndefined();
   });
 
   it("uses provider totals only for slices without component counters", () => {

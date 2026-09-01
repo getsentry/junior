@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { CalendarClock, Zap } from "lucide-react";
 import { useNavigate } from "react-router";
 import type { TaskRun } from "@sentry/junior/api/schema";
 
@@ -17,7 +18,12 @@ import { StatusDot } from "../../components/StatusDot";
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
 import { conversationPath } from "../../conversations/conversationRoutes";
-import { formatCostSummary, formatTime } from "../../format";
+import {
+  formatCompactNumber,
+  formatCostSummary,
+  formatRuntime,
+  formatTime,
+} from "../../format";
 import {
   useDebouncedSearchParam,
   useSearchParamEnum,
@@ -28,9 +34,9 @@ const RUN_PAGE_SIZE = 25;
 const RUN_KINDS = ["all", "scheduled", "event"] as const;
 const RUN_STATUSES = ["all", "completed", "failed", "blocked"] as const;
 const EMPTY_RUNS: TaskRun[] = [];
-/** Label column flexes; metric columns share equal fixed widths. */
+/** Leading label columns flex; metric columns stay equal fixed widths. */
 const RUN_GRID =
-  "grid-cols-[minmax(0,1fr)_minmax(0,1fr)_5.5rem_1.25rem]";
+  "grid-cols-[minmax(0,1.4fr)_minmax(0,1.2fr)_5.5rem_5.5rem_5.5rem]";
 
 type RunKindFilter = (typeof RUN_KINDS)[number];
 type RunStatusFilter = (typeof RUN_STATUSES)[number];
@@ -145,7 +151,7 @@ export function TaskRunsPage(props: { enabled: boolean }) {
           ) : (
             <Card>
               <div className="min-w-0 overflow-x-auto">
-                <div className="min-w-[36rem]">
+                <div className="min-w-[44rem]">
                   <div
                     className={cn(
                       "sticky top-0 z-[1] hidden items-center gap-4 border-b border-dashboard-border-subtle bg-dashboard-overlay-soft px-4 py-2.5 font-mono text-xs uppercase tracking-[0.1em] text-dashboard-text-muted md:grid",
@@ -155,8 +161,9 @@ export function TaskRunsPage(props: { enabled: boolean }) {
                   >
                     <div>Run</div>
                     <div>Task</div>
+                    <div>Duration</div>
+                    <div>Tokens</div>
                     <div>Cost</div>
-                    <div className="sr-only">Status</div>
                   </div>
                   <div className="min-w-0" role="table">
                     {pagedRuns.map((run) => (
@@ -209,6 +216,11 @@ function TaskRunRow(props: { run: TaskRun }) {
     formatCostSummary(
       run.costUsd === undefined ? undefined : { total: run.costUsd },
     ) || "—";
+  const durationLabel = formatRuntime(run.durationMs) || "—";
+  const tokensLabel =
+    run.totalTokens === undefined
+      ? "—"
+      : formatCompactNumber(run.totalTokens);
   const openConversation = () => {
     if (run.conversationId) navigate(conversationPath(run.conversationId));
   };
@@ -217,7 +229,7 @@ function TaskRunRow(props: { run: TaskRun }) {
     <div
       aria-disabled={!run.conversationId}
       className={cn(
-        "group grid min-w-0 items-center gap-4 overflow-hidden border-b border-dashboard-border-subtle px-4 py-3 text-left text-inherit transition-colors last:border-b-0 max-md:grid-cols-[minmax(0,1fr)_auto] max-md:gap-x-3 max-md:gap-y-2 max-md:px-4 max-md:py-3.5 md:grid",
+        "group grid min-w-0 items-center gap-4 overflow-hidden border-b border-dashboard-border-subtle px-4 py-3 text-left text-inherit transition-colors last:border-b-0 max-md:grid-cols-1 max-md:gap-y-2 max-md:px-4 max-md:py-3.5 md:grid",
         RUN_GRID,
         run.conversationId
           ? "cursor-pointer hover:bg-dashboard-fill-soft"
@@ -234,37 +246,60 @@ function TaskRunRow(props: { run: TaskRun }) {
       role={run.conversationId ? "link" : "row"}
       tabIndex={run.conversationId ? 0 : undefined}
     >
-      <div className="min-w-0 max-md:col-span-1">
-        <div className="flex min-w-0 items-center gap-2">
-          <StatusDot
-            className="md:hidden"
-            label={run.status}
-            tone={runStatusTone(run.status)}
-          />
-          <div className="min-w-0 truncate text-sm font-medium leading-snug text-dashboard-text">
-            {title}
-          </div>
+      <div className="min-w-0 overflow-hidden">
+        <div className="truncate text-sm font-medium leading-snug text-dashboard-text">
+          {title}
         </div>
         <div className="mt-1 truncate text-xs text-dashboard-text-muted">
           {formatRunDate(run.executedAt)}
         </div>
       </div>
-      <div className="min-w-0 max-md:col-span-2 max-md:pl-3.5">
+      <div className="min-w-0 overflow-hidden">
         <div className="truncate text-sm text-dashboard-text">{run.taskTitle}</div>
-        <div className="mt-1 font-mono text-2xs uppercase tracking-[0.1em] text-dashboard-text-muted">
-          {run.kind}
+        <div className="mt-1 flex min-w-0 items-center gap-1.5 overflow-hidden text-dashboard-text-muted">
+          <TaskKindIcon kind={run.kind} />
+          <StatusDot label={run.status} tone={runStatusTone(run.status)} />
+          <span className="truncate font-mono text-2xs uppercase tracking-[0.08em]">
+            {run.status}
+          </span>
         </div>
       </div>
-      <div className="min-w-0 max-md:col-start-1 max-md:row-start-3 max-md:pl-3.5">
-        <div className="whitespace-nowrap font-mono text-xs text-dashboard-text-muted md:text-sm md:text-dashboard-text">
-          <span className="sr-only">Cost: </span>
-          {costLabel}
-        </div>
+      <MetricCell label="Duration" value={durationLabel} />
+      <MetricCell label="Tokens" value={tokensLabel} />
+      <MetricCell label="Cost" value={costLabel} />
+    </div>
+  );
+}
+
+function MetricCell(props: { label: string; value: string }) {
+  return (
+    <div className="min-w-0 max-md:flex max-md:items-center max-md:gap-2">
+      <div
+        aria-hidden="true"
+        className="mb-1 hidden font-mono text-2xs uppercase tracking-[0.1em] text-dashboard-text-muted max-md:mb-0 max-md:block"
+      >
+        {props.label}
       </div>
-      <div className="hidden justify-self-center md:block">
-        <StatusDot label={run.status} tone={runStatusTone(run.status)} />
+      <div className="truncate whitespace-nowrap font-mono text-xs text-dashboard-text-muted md:text-sm md:text-dashboard-text">
+        <span className="sr-only">{props.label}: </span>
+        {props.value}
       </div>
     </div>
+  );
+}
+
+function TaskKindIcon(props: { kind: TaskRun["kind"] }) {
+  const Icon = props.kind === "scheduled" ? CalendarClock : Zap;
+  const label = props.kind === "scheduled" ? "Scheduled task" : "Event task";
+  return (
+    <span
+      aria-label={label}
+      className="inline-flex size-3.5 shrink-0 items-center justify-center text-cyan-300/80"
+      role="img"
+      title={label}
+    >
+      <Icon aria-hidden="true" className="size-3.5" strokeWidth={1.8} />
+    </span>
   );
 }
 
