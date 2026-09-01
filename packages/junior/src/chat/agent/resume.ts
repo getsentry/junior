@@ -34,8 +34,8 @@ import {
   type AgentDurability,
 } from "@/chat/agent/types";
 import {
-  TurnExecutionLimitExceededError,
   TurnSliceLimitExceededError,
+  isTurnExecutionLimitExceededError,
 } from "@/chat/services/turn-limit";
 import type { PluginTurnContext } from "@/chat/plugins/prompt";
 
@@ -259,7 +259,7 @@ export function createResumeState(args: ResumeStateArgs) {
       } catch (error) {
         if (
           error instanceof AuthPausePersistenceError ||
-          error instanceof TurnExecutionLimitExceededError
+          isTurnExecutionLimitExceededError(error)
         ) {
           throw error;
         }

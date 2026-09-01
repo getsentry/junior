@@ -104,9 +104,9 @@ import {
   AuthorizationPauseError,
 } from "@/chat/services/auth-pause";
 import {
-  TurnExecutionLimitExceededError,
-  assertTurnToolCallBudget,
+  assertTurnToolCallLimit,
   countTurnToolCalls,
+  isTurnExecutionLimitExceededError,
 } from "@/chat/services/turn-limit";
 import {
   resolveConversationPrivacy,
@@ -1204,21 +1204,19 @@ async function executeAgentRunInPrivacyContext(
             reason: `${exclusiveTool} must be the only tool call in its assistant message; reissue it alone`,
           };
         }
-        // Fail closed before execution so a thrashing loop cannot burn another
-        // full tool batch after soft yield already advanced the boundary.
-        // Pi has already appended this assistant message, so the count includes
-        // the pending batch. beforeToolCall exceptions become tool errors, so
-        // block+terminate the batch and raise through pendingPiHookError after
-        // the agent step settles.
+        // The current assistant message is already in agent history, so this
+        // count includes the pending tool batch. beforeToolCall exceptions are
+        // turned into tool errors, so block the batch and rethrow after the
+        // agent step finishes.
         const turnMessages =
           turnStartMessageIndex !== undefined
             ? currentAgentMessages().slice(turnStartMessageIndex)
             : currentAgentMessages().slice(runResume.beforeMessageCount);
         try {
-          assertTurnToolCallBudget({
-            existingToolCalls: countTurnToolCalls(turnMessages),
-            maxToolCalls: botConfig.maxToolCallsPerTurn,
-          });
+          assertTurnToolCallLimit(
+            countTurnToolCalls(turnMessages),
+            botConfig.maxToolCallsPerTurn,
+          );
         } catch (error) {
           const limitError =
             error instanceof Error ? error : new Error(String(error));
@@ -1736,7 +1734,7 @@ async function executeAgentRunInPrivacyContext(
         : error;
     if (
       runError instanceof AuthPausePersistenceError ||
-      runError instanceof TurnExecutionLimitExceededError
+      isTurnExecutionLimitExceededError(runError)
     ) {
       throw runError;
     }

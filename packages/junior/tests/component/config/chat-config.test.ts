@@ -481,7 +481,7 @@ describe("chat config", () => {
 
   it("sets max tool calls per turn from core config", async () => {
     const { botConfig } = await loadConfig();
-    expect(botConfig.maxToolCallsPerTurn).toBe(80);
+    expect(botConfig.maxToolCallsPerTurn).toBe(150);
   });
 
   it("uses default AGENT_TURN_TIMEOUT_MS when env var is unset", async () => {

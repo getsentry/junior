@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
-  TurnExecutionLimitExceededError,
   TurnSliceLimitExceededError,
   TurnToolCallLimitExceededError,
-  assertTurnToolCallBudget,
+  assertTurnToolCallLimit,
   buildTurnLimitResponse,
   countTurnToolCalls,
+  isTurnExecutionLimitExceededError,
 } from "@/chat/services/turn-limit";
 import type { PiMessage } from "@/chat/pi/messages";
 
@@ -18,33 +18,27 @@ function assistantWithTools(...names: string[]): PiMessage {
       name,
       arguments: {},
     })),
-    timestamp: indexTimestamp(names.length),
+    timestamp: 1_700_000_000_000 + names.length,
   } as PiMessage;
-}
-
-function indexTimestamp(value: number): number {
-  return 1_700_000_000_000 + value;
 }
 
 describe("turn execution limit", () => {
   it("keeps the internal slice limit in diagnostics", () => {
-    expect(new TurnSliceLimitExceededError(100)).toMatchObject({
+    const error = new TurnSliceLimitExceededError(100);
+    expect(error).toMatchObject({
       name: "TurnSliceLimitExceededError",
       message: "Agent turn exceeded execution limit (100 slices)",
     });
-    expect(new TurnSliceLimitExceededError(100)).toBeInstanceOf(
-      TurnExecutionLimitExceededError,
-    );
+    expect(isTurnExecutionLimitExceededError(error)).toBe(true);
   });
 
   it("keeps the internal tool-call limit in diagnostics", () => {
-    expect(new TurnToolCallLimitExceededError(80)).toMatchObject({
+    const error = new TurnToolCallLimitExceededError(150);
+    expect(error).toMatchObject({
       name: "TurnToolCallLimitExceededError",
-      message: "Agent turn exceeded execution limit (80 tool calls)",
+      message: "Agent turn exceeded execution limit (150 tool calls)",
     });
-    expect(new TurnToolCallLimitExceededError(80)).toBeInstanceOf(
-      TurnExecutionLimitExceededError,
-    );
+    expect(isTurnExecutionLimitExceededError(error)).toBe(true);
   });
 
   it("gives users an actionable response without internal implementation details", () => {
@@ -66,36 +60,11 @@ describe("turn execution limit", () => {
     ).toBe(3);
   });
 
-  it("allows tool batches at the budget boundary and fails closed past it", () => {
-    expect(() =>
-      assertTurnToolCallBudget({
-        existingToolCalls: 79,
-        maxToolCalls: 80,
-        pendingToolCalls: 1,
-      }),
-    ).not.toThrow();
-
-    expect(() =>
-      assertTurnToolCallBudget({
-        existingToolCalls: 80,
-        maxToolCalls: 80,
-      }),
-    ).not.toThrow();
-
-    expect(() =>
-      assertTurnToolCallBudget({
-        existingToolCalls: 80,
-        maxToolCalls: 80,
-        pendingToolCalls: 1,
-      }),
-    ).toThrow(TurnToolCallLimitExceededError);
-
-    expect(() =>
-      assertTurnToolCallBudget({
-        existingToolCalls: 81,
-        maxToolCalls: 80,
-        pendingToolCalls: 0,
-      }),
-    ).toThrow(/80 tool calls/);
+  it("allows tool calls at the limit and stops past it", () => {
+    expect(() => assertTurnToolCallLimit(150, 150)).not.toThrow();
+    expect(() => assertTurnToolCallLimit(151, 150)).toThrow(
+      TurnToolCallLimitExceededError,
+    );
+    expect(() => assertTurnToolCallLimit(151, 150)).toThrow(/150 tool calls/);
   });
 });

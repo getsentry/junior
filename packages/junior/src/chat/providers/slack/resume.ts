@@ -63,8 +63,8 @@ import {
   isCooperativeTurnYieldError,
 } from "@/chat/runtime/turn";
 import {
-  TurnExecutionLimitExceededError,
   buildTurnLimitResponse,
+  isTurnExecutionLimitExceededError,
 } from "@/chat/services/turn-limit";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { hydrateConversationMessages } from "@/chat/conversations/messages";
@@ -251,7 +251,7 @@ async function postResumeFailureReply(args: {
     channelId: args.channelId,
     threadTs: args.threadTs,
     text:
-      args.error instanceof TurnExecutionLimitExceededError
+      isTurnExecutionLimitExceededError(args.error)
         ? buildTurnLimitResponse(args.eventId)
         : buildTurnFailureResponse(args.eventId),
   });

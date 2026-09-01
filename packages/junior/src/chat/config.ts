@@ -16,8 +16,12 @@ import {
 const MIN_AGENT_TURN_TIMEOUT_MS = 10 * 1000;
 const DEFAULT_AGENT_TURN_TIMEOUT_MS = 12 * 60 * 1000;
 const MAX_SLICES_PER_TURN = 100;
-/** Hard stop for tool thrash inside one turn, including soft-yield resumes. */
-const MAX_TOOL_CALLS_PER_TURN = 80;
+/**
+ * Max tool calls for one turn, including later execution slices of that turn.
+ * Chosen from production dispatch traces: healthy runs cluster well under 50;
+ * runaway CI-watch loops land in the hundreds.
+ */
+const MAX_TOOL_CALLS_PER_TURN = 150;
 const DEFAULT_FUNCTION_MAX_DURATION_SECONDS = 300;
 const DEFAULT_SLACK_SLASH_COMMAND = "/jr";
 const DEFAULT_PROCESSING_REACTION_EMOJI = "eyes";
