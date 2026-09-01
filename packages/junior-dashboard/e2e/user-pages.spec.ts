@@ -155,11 +155,14 @@ test("opens scheduled and event tasks in the native Tasks view", async ({
   await expect(page.getByLabel("Scheduled task")).toBeVisible();
   await expect(page.getByLabel("GitHub event task")).toBeVisible();
   await expect(page.getByText("#project-updates").last()).toBeVisible();
-  await expect(page.getByText("Runs", { exact: true })).toBeVisible();
-  await expect(page.getByText("Last run")).toBeVisible();
+  // Assert the range-aware run count on the row. Bare "Runs" also matches nav.
+  const weeklyRow = page
+    .getByRole("listitem")
+    .filter({ hasText: "Weekly project summary" });
+  await expect(weeklyRow).toContainText("3");
   await listReportingPeriod.getByRole("button", { name: "30d" }).click();
   await expect(page).toHaveURL(/\/tasks\/list(?:\?|$)/);
-  await expect(page.getByText("Runs", { exact: true })).toBeVisible();
+  await expect(weeklyRow).toContainText("12");
   await expect(page.getByText("Assigned to")).toHaveCount(0);
   await expect(page.getByRole("dialog")).toHaveCount(0);
   const taskDetailsTrigger = page.getByRole("button", {
