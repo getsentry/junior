@@ -39,12 +39,14 @@ import {
 import { completeAuthPauseTurn } from "@/chat/runtime/auth-pause-state";
 import { getTurnUserMessage } from "@/chat/runtime/turn-user-message";
 import { getAssistantReplyText } from "@/chat/services/assistant-reply";
+import { botConfig } from "@/chat/config";
 import {
   buildConversationContext,
   markConversationMessage,
   normalizeConversationText,
   upsertConversationMessage,
 } from "@/chat/services/conversation-memory";
+import { recordFinishedTurnForAutomatedLimit } from "@/chat/services/automated-turn-limit";
 import { finalizeFailedTurnReplyWithEvent } from "@/chat/services/turn-failure-response";
 import { clearPendingAuth } from "@/chat/services/pending-auth";
 import {
@@ -575,6 +577,12 @@ export function createConversationTurnWorker(
                   surface,
                 });
               }
+              await recordFinishedTurnForAutomatedLimit({
+                conversationId: context.conversationId,
+                destination,
+                maxTurns: botConfig.maxConsecutiveAutomatedTurns,
+                source,
+              });
 
               completedSuccessfully = reply.diagnostics.outcome === "success";
               return completedSuccessfully

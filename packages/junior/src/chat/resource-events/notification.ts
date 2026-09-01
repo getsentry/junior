@@ -1,3 +1,11 @@
+import { botConfig } from "@/chat/config";
+import { getConversationStore } from "@/chat/db";
+import { logException, logInfo, logWarn } from "@/chat/logging";
+import {
+  admitAutomatedTurn,
+  buildAutomatedTurnLimitResponse,
+} from "@/chat/services/automated-turn-limit";
+import { postSlackMessage } from "@/chat/slack/outbound";
 import { renderTaskInput } from "@/chat/task-input";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import {
@@ -127,11 +135,42 @@ export function createResourceEventInboundMessage(input: {
   };
 }
 
+async function postAutomatedTurnLimitNotice(args: {
+  conversationId: string;
+  maxTurns: number;
+}): Promise<void> {
+  try {
+    const conversation = await getConversationStore().get({
+      conversationId: args.conversationId,
+    });
+    const location = conversation?.location;
+    if (!location || location.provider !== "slack") {
+      logWarn("resource_events.automated_turn_limit.notice_skipped", {
+        conversationId: args.conversationId,
+        "app.automated_turn_limit.reason": location
+          ? "unsupported_location"
+          : "missing_location",
+      });
+      return;
+    }
+    await postSlackMessage({
+      channelId: location.channelId,
+      text: buildAutomatedTurnLimitResponse(args.maxTurns),
+      ...(location.threadTs ? { threadTs: location.threadTs } : undefined),
+    });
+  } catch (error) {
+    logException(error, "resource_events.automated_turn_limit.notice_failed", {
+      conversationId: args.conversationId,
+    });
+  }
+}
+
 /**
  * Enqueue a resource event as normal conversation mailbox input.
  *
  * The watch only names the conversation. Destination stays on the conversation
- * and is applied when the worker runs.
+ * and is applied when the worker runs. A consecutive automated-turn pause drops
+ * further wakes until a user message clears the conversation budget.
  */
 export async function enqueueResourceEventNotification(args: {
   event: ResourceEventNotification;
@@ -139,6 +178,35 @@ export async function enqueueResourceEventNotification(args: {
   subscription: ResourceEventSubscription;
   state?: Parameters<typeof appendAndEnqueueInboundMessage>[0]["state"];
 }): Promise<AppendAndEnqueueInboundMessageResult> {
+  const maxTurns = botConfig.maxConsecutiveAutomatedTurns;
+  const decision = await admitAutomatedTurn({
+    maxTurns,
+    nowMs: args.event.occurredAtMs,
+    scope: {
+      kind: "conversation",
+      conversationId: args.subscription.conversationId,
+    },
+    state: args.state,
+  });
+  if (decision.status === "paused") {
+    logInfo("resource_events.automated_turn_limit.paused", {
+      conversationId: args.subscription.conversationId,
+      "app.automated_turn_limit.consecutive": decision.consecutiveAutomatedTurns,
+      "app.automated_turn_limit.max": maxTurns,
+      "app.resource_event.event_type": args.event.eventType,
+      "app.resource_event.namespace": args.event.namespace,
+    });
+    if (decision.shouldPostNotice) {
+      await postAutomatedTurnLimitNotice({
+        conversationId: args.subscription.conversationId,
+        maxTurns,
+      });
+    }
+    // Treat the wake as delivered so terminal subscriptions can still complete
+    // and providers do not retry the same pause forever.
+    return { status: "duplicate" };
+  }
+
   const text = renderResourceEventNotificationText(
     args.subscription,
     args.event,

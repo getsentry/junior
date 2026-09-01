@@ -22,6 +22,11 @@ const MAX_SLICES_PER_TURN = 100;
  * runaway CI-watch loops land in the hundreds.
  */
 const MAX_TOOL_CALLS_PER_TURN = 150;
+/**
+ * Max consecutive automated turns before event wakes pause until a user message.
+ * Resource-event CI watches and event-task spam are the common runaway paths.
+ */
+const MAX_CONSECUTIVE_AUTOMATED_TURNS = 10;
 const DEFAULT_FUNCTION_MAX_DURATION_SECONDS = 300;
 const DEFAULT_SLACK_SLASH_COMMAND = "/jr";
 const DEFAULT_PROCESSING_REACTION_EMOJI = "eyes";
@@ -64,6 +69,7 @@ export interface BotConfig {
   visionModelId?: string;
   maxSlicesPerTurn: number;
   maxToolCallsPerTurn: number;
+  maxConsecutiveAutomatedTurns: number;
   turnTimeoutMs: number;
   userName: string;
   webSearchModelId: string;
@@ -377,6 +383,7 @@ function readBotConfig(
     visionModelId: validateGatewayModelId(env.AI_VISION_MODEL),
     maxSlicesPerTurn: MAX_SLICES_PER_TURN,
     maxToolCallsPerTurn: MAX_TOOL_CALLS_PER_TURN,
+    maxConsecutiveAutomatedTurns: MAX_CONSECUTIVE_AUTOMATED_TURNS,
     turnTimeoutMs: parseAgentTurnTimeoutMs(
       env.AGENT_TURN_TIMEOUT_MS,
       maxTurnTimeoutMs,

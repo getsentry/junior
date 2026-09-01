@@ -195,6 +195,11 @@ delegation without becoming the execution actor or a general task owner.
   cursor keeps a durable tool-call total so compaction or handoff cannot reset
   the limit by rewriting history. When that total is already too high, the turn
   stops with the shared execution-limit reply.
+- A conversation also has a consecutive automated-turn limit. Resource-event
+  wakes and destination-bound event-task dispatches charge that budget when a
+  turn finishes. After the limit, further automated wakes short-circuit until a
+  user message clears the pause, and the first refused wake posts a visible
+  notice.
 - Once destination accepts a tool-free assistant reply, the turn is finished for
   that reply. Hard timeout must complete the turn. It must not park a shorter
   history. Soft yield after a pure assistant tail already cannot park; soft yield
