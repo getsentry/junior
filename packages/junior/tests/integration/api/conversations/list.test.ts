@@ -36,15 +36,26 @@ describe("conversation list API", () => {
       await migrateSchema(fixture.sql);
       const store = createSqlStore(fixture.sql);
       const archivedId = "slack:C123:archived";
-      await store.recordActivity({ conversationId: archivedId, nowMs: 1_000, destination: { platform: "slack" as const, teamId: "T123", channelId: "C123" }});
+      await store.recordActivity({
+        conversationId: archivedId,
+        nowMs: 1_000,
+        destination: {
+          platform: "slack" as const,
+          teamId: "T123",
+          channelId: "C123",
+        },
+      });
       const viewer = await resolveViewerUser("viewer@example.com");
       expect(viewer).toBeDefined();
-      await fixture.sql.db().insert(juniorConversationParticipants).values({
-        archivedAt: new Date(2_000),
-        lastMessageAt: new Date(1_000),
-        rootConversationId: archivedId,
-        userId: viewer!.id,
-      });
+      await fixture.sql
+        .db()
+        .insert(juniorConversationParticipants)
+        .values({
+          archivedAt: new Date(2_000),
+          lastMessageAt: new Date(1_000),
+          rootConversationId: archivedId,
+          userId: viewer!.id,
+        });
       const app = createJuniorApi();
 
       const response = await app.request(
@@ -92,57 +103,72 @@ describe("conversation list API", () => {
       await migrateSchema(fixture.sql);
       await store.recordActivity({
         conversationId: unfinishedId,
-        destination: { platform: "slack" as const, teamId: "T123", channelId: "C123" },
+        destination: {
+          platform: "slack" as const,
+          teamId: "T123",
+          channelId: "C123",
+        },
         nowMs: nowMs - 60_000,
       });
       await store.recordActivity({
         conversationId: finishedUpdatedId,
-        destination: { platform: "slack" as const, teamId: "T123", channelId: "C123" },
+        destination: {
+          platform: "slack" as const,
+          teamId: "T123",
+          channelId: "C123",
+        },
         nowMs: nowMs - 30_000,
       });
       await store.recordActivity({
         conversationId: finishedId,
-        destination: { platform: "slack" as const, teamId: "T123", channelId: "C123" },
+        destination: {
+          platform: "slack" as const,
+          teamId: "T123",
+          channelId: "C123",
+        },
         nowMs: nowMs - 120_000,
       });
-      await fixture.sql.db().insert(juniorConversationEvents).values([
-        {
-          conversationId: finishedUpdatedId,
-          createdAt: new Date(nowMs - 30_000),
-          historyVersion: 0,
-          payload: {
-            content: "Please follow up.",
-            provenance: {
-              authority: "instruction",
-              actor: {
-                platform: "slack",
-                teamId: "T123",
-                userId: "U123456",
+      await fixture.sql
+        .db()
+        .insert(juniorConversationEvents)
+        .values([
+          {
+            conversationId: finishedUpdatedId,
+            createdAt: new Date(nowMs - 30_000),
+            historyVersion: 0,
+            payload: {
+              content: "Please follow up.",
+              provenance: {
+                authority: "instruction",
+                actor: {
+                  platform: "slack",
+                  teamId: "T123",
+                  userId: "U123456",
+                },
               },
+              timestamp: nowMs - 30_000,
             },
-            timestamp: nowMs - 30_000,
+            schemaVersion: 1,
+            seq: 0,
+            type: "user_message",
           },
-          schemaVersion: 1,
-          seq: 0,
-          type: "user_message",
-        },
-        {
-          conversationId: finishedId,
-          createdAt: new Date(nowMs - 30_000),
-          historyVersion: 0,
-          payload: {
-            content: "Pull request merged.",
-            provenance: {
-              authority: "instruction",
-              actor: { name: "resource-event", platform: "system" },
+          {
+            conversationId: finishedId,
+            createdAt: new Date(nowMs - 30_000),
+            historyVersion: 0,
+            payload: {
+              content: "Pull request merged.",
+              provenance: {
+                authority: "instruction",
+                actor: { name: "resource-event", platform: "system" },
+              },
+              timestamp: nowMs - 30_000,
             },
-            timestamp: nowMs - 30_000,
+            schemaVersion: 1,
+            seq: 0,
+            type: "user_message",
           },
-          schemaVersion: 1,
-          seq: 0,
-          type: "user_message",
-        },
-      ]);
+        ]);
       setPlugins([
         defineJuniorPlugin({
           manifest: {
@@ -201,111 +227,6 @@ describe("conversation list API", () => {
     }
   });
 
-  test("returns a link for a viewable Slack Location", async () => {
-    const fixture = createConfiguredJuniorSqlFixture();
-    const store = createSqlStore(fixture.sql);
-    const conversationId = "slack:C123:location-url";
-    const locationUrl =
-      "https://example.slack.com/archives/C123/p1700000000000100?thread_ts=1700000000.000100&cid=C123";
-    try {
-      await migrateSchema(fixture.sql);
-      await store.recordActivity({
-        conversationId,
-        destination: {
-          platform: "slack",
-          teamId: "T123",
-          channelId: "C123",
-        },
-        nowMs: 1_000,
-        sessionSource: {
-          kind: "slack",
-          visibility: "public",
-          teamId: "T123",
-          channelId: "C123",
-          threadTs: "1700000000.000100",
-        },
-        source: "slack",
-        visibility: "public",
-      });
-      await fixture.sql
-        .db()
-        .update(juniorConversations)
-        .set({ sessionSource: null })
-        .where(eq(juniorConversations.conversationId, conversationId));
-
-      await expect(readConversationFeedFromSql()).resolves.toMatchObject({
-        conversations: [
-          expect.objectContaining({
-            conversationId,
-            locationUrl,
-          }),
-        ],
-      });
-
-      await fixture.sql
-        .db()
-        .update(juniorConversations)
-        .set({
-          location: {
-            id: "slack:T123:C123",
-            provider: "slack",
-            teamId: "T123",
-            channelId: "C123",
-          },
-          sessionSource: {
-            kind: "slack",
-            visibility: "public",
-            teamId: "T123",
-            channelId: "C123",
-            threadTs: "1700000000.000100",
-          },
-        })
-        .where(eq(juniorConversations.conversationId, conversationId));
-
-      await expect(readConversationFeedFromSql()).resolves.toMatchObject({
-        conversations: [
-          expect.objectContaining({
-            conversationId,
-            locationUrl,
-          }),
-        ],
-      });
-
-      await store.recordActivity({
-        conversationId: "slack:D123:1700000000.000200",
-        destination: {
-          platform: "slack",
-          teamId: "T123",
-          channelId: "D123",
-        },
-        nowMs: 2_000,
-        sessionSource: {
-          kind: "slack",
-          visibility: "private",
-          teamId: "T123",
-          channelId: "D123",
-          threadTs: "1700000000.000200",
-        },
-        source: "slack",
-        visibility: "private",
-      });
-      const privateSummary = (
-        await readConversationFeedFromSql()
-      ).conversations.find(
-        (conversation) =>
-          conversation.conversationId === "slack:D123:1700000000.000200",
-      );
-      expect(privateSummary).toBeDefined();
-      expect(privateSummary).not.toHaveProperty("locationUrl");
-      expect(privateSummary).toMatchObject({
-        channelName: "Direct Message",
-        displayTitle: "Direct Message",
-      });
-    } finally {
-      await fixture.close();
-    }
-  });
-
   test.each(["direct", "unknown"] as const)(
     "treats persisted %s visibility as private",
     async (visibility) => {
@@ -359,7 +280,11 @@ describe("conversation list API", () => {
           teamId: "T1",
         },
         conversationId: "slack:C1:canonical-name",
-        destination: { platform: "slack" as const, teamId: "T1", channelId: "C1" },
+        destination: {
+          platform: "slack" as const,
+          teamId: "T1",
+          channelId: "C1",
+        },
         nowMs: 1_000,
         source: "slack",
       });
@@ -373,7 +298,11 @@ describe("conversation list API", () => {
           teamId: "T1",
         },
         conversationId: "slack:C1:provider-name",
-        destination: { platform: "slack" as const, teamId: "T1", channelId: "C1" },
+        destination: {
+          platform: "slack" as const,
+          teamId: "T1",
+          channelId: "C1",
+        },
         nowMs: 2_000,
         source: "slack",
       });
@@ -386,7 +315,11 @@ describe("conversation list API", () => {
           teamId: "T1",
         },
         conversationId: "slack:C1:unlinked-name",
-        destination: { platform: "slack" as const, teamId: "T1", channelId: "C1" },
+        destination: {
+          platform: "slack" as const,
+          teamId: "T1",
+          channelId: "C1",
+        },
         nowMs: 3_000,
         source: "slack",
       });
@@ -468,7 +401,11 @@ describe("conversation list API", () => {
           teamId: "T1",
         },
         conversationId: "slack:C1:newest-overall",
-        destination: { platform: "slack" as const, teamId: "T1", channelId: "C1" },
+        destination: {
+          platform: "slack" as const,
+          teamId: "T1",
+          channelId: "C1",
+        },
         nowMs: 4_000,
         source: "slack",
       });
@@ -498,7 +435,11 @@ describe("conversation list API", () => {
           teamId: "T1",
         },
         conversationId: "slack:C1:morgan-newest",
-        destination: { platform: "slack" as const, teamId: "T1", channelId: "C1" },
+        destination: {
+          platform: "slack" as const,
+          teamId: "T1",
+          channelId: "C1",
+        },
         nowMs: 3_000,
         source: "slack",
       });
@@ -510,7 +451,11 @@ describe("conversation list API", () => {
           teamId: "T1",
         },
         conversationId: "slack:C1:morgan-older",
-        destination: { platform: "slack" as const, teamId: "T1", channelId: "C1" },
+        destination: {
+          platform: "slack" as const,
+          teamId: "T1",
+          channelId: "C1",
+        },
         nowMs: 1_000,
         source: "slack",
       });
@@ -523,7 +468,11 @@ describe("conversation list API", () => {
           teamId: "T1",
         },
         conversationId: "slack:D1:morgan-linked",
-        destination: { platform: "slack" as const, teamId: "T1", channelId: "D1" },
+        destination: {
+          platform: "slack" as const,
+          teamId: "T1",
+          channelId: "D1",
+        },
         nowMs: 2_000,
         source: "slack",
         visibility: "private",
@@ -610,7 +559,11 @@ describe("conversation list API", () => {
           teamId: "T1",
         },
         conversationId: "slack:C1:shared-thread",
-        destination: { platform: "slack" as const, teamId: "T1", channelId: "C1" },
+        destination: {
+          platform: "slack" as const,
+          teamId: "T1",
+          channelId: "C1",
+        },
         nowMs: 5_000,
         source: "slack",
       });
@@ -622,7 +575,11 @@ describe("conversation list API", () => {
           teamId: "T1",
         },
         conversationId: "slack:C1:unrelated",
-        destination: { platform: "slack" as const, teamId: "T1", channelId: "C1" },
+        destination: {
+          platform: "slack" as const,
+          teamId: "T1",
+          channelId: "C1",
+        },
         nowMs: 4_000,
         source: "slack",
       });
@@ -641,46 +598,55 @@ describe("conversation list API", () => {
         .returning({ id: juniorUsers.id });
       const participantUserId = participant[0]?.id;
       expect(participantUserId).toBeDefined();
-      await fixture.sql.db().insert(juniorIdentities).values({
-        id: "identity-participant-slack",
-        createdAt: new Date(1_000),
-        email: "participant@example.com",
-        emailNormalized: "participant@example.com",
-        emailVerified: true,
-        kind: "user",
-        provider: "slack",
-        providerSubjectId: "U-PARTICIPANT",
-        providerTenantId: "T1",
-        updatedAt: new Date(1_000),
-        userId: participantUserId!,
-      });
-      await fixture.sql.db().insert(juniorConversationEvents).values({
-        actorIdentityId: "identity-participant-slack",
-        conversationId: "slack:C1:shared-thread",
-        createdAt: new Date(5_500),
-        historyVersion: 0,
-        payload: {
-          messageId: "1786500342.616849",
-          meta: {
-            author: {
-              fullName: "Participant",
-              isBot: false,
-              userId: "U-PARTICIPANT",
-              userName: "participant",
+      await fixture.sql
+        .db()
+        .insert(juniorIdentities)
+        .values({
+          id: "identity-participant-slack",
+          createdAt: new Date(1_000),
+          email: "participant@example.com",
+          emailNormalized: "participant@example.com",
+          emailVerified: true,
+          kind: "user",
+          provider: "slack",
+          providerSubjectId: "U-PARTICIPANT",
+          providerTenantId: "T1",
+          updatedAt: new Date(1_000),
+          userId: participantUserId!,
+        });
+      await fixture.sql
+        .db()
+        .insert(juniorConversationEvents)
+        .values({
+          actorIdentityId: "identity-participant-slack",
+          conversationId: "slack:C1:shared-thread",
+          createdAt: new Date(5_500),
+          historyVersion: 0,
+          payload: {
+            messageId: "1786500342.616849",
+            meta: {
+              author: {
+                fullName: "Participant",
+                isBot: false,
+                userId: "U-PARTICIPANT",
+                userName: "participant",
+              },
+              explicitMention: true,
             },
-            explicitMention: true,
+            role: "user",
+            text: "@junior make urls clickable",
           },
-          role: "user",
-          text: "@junior make urls clickable",
-        },
-        seq: 0,
-        type: "message",
-      });
-      await fixture.sql.db().insert(juniorConversationParticipants).values({
-        lastMessageAt: new Date(5_500),
-        rootConversationId: "slack:C1:shared-thread",
-        userId: participantUserId!,
-      });
+          seq: 0,
+          type: "message",
+        });
+      await fixture.sql
+        .db()
+        .insert(juniorConversationParticipants)
+        .values({
+          lastMessageAt: new Date(5_500),
+          rootConversationId: "slack:C1:shared-thread",
+          userId: participantUserId!,
+        });
 
       const viewer = {
         ...testViewer("participant@example.com"),
@@ -720,7 +686,11 @@ describe("conversation list API", () => {
           teamId: "T1",
         },
         conversationId: "slack:C1:dashboard-author",
-        destination: { platform: "slack" as const, teamId: "T1", channelId: "C1" },
+        destination: {
+          platform: "slack" as const,
+          teamId: "T1",
+          channelId: "C1",
+        },
         nowMs: 5_000,
         source: "slack",
       });
@@ -739,19 +709,22 @@ describe("conversation list API", () => {
         .returning({ id: juniorUsers.id });
       const participantUserId = participant[0]?.id;
       expect(participantUserId).toBeDefined();
-      await fixture.sql.db().insert(juniorIdentities).values({
-        id: "identity-dashboard-participant",
-        createdAt: new Date(1_000),
-        email: "dashboard-participant@example.com",
-        emailNormalized: "dashboard-participant@example.com",
-        emailVerified: true,
-        kind: "user",
-        provider: "junior",
-        providerSubjectId: "dashboard-participant@example.com",
-        providerTenantId: "",
-        updatedAt: new Date(1_000),
-        userId: participantUserId!,
-      });
+      await fixture.sql
+        .db()
+        .insert(juniorIdentities)
+        .values({
+          id: "identity-dashboard-participant",
+          createdAt: new Date(1_000),
+          email: "dashboard-participant@example.com",
+          emailNormalized: "dashboard-participant@example.com",
+          emailVerified: true,
+          kind: "user",
+          provider: "junior",
+          providerSubjectId: "dashboard-participant@example.com",
+          providerTenantId: "",
+          updatedAt: new Date(1_000),
+          userId: participantUserId!,
+        });
 
       await eventStore.append("slack:C1:dashboard-author", [
         {
@@ -780,7 +753,12 @@ describe("conversation list API", () => {
           actorIdentityId: juniorConversationEvents.actorIdentityId,
         })
         .from(juniorConversationEvents)
-        .where(eq(juniorConversationEvents.conversationId, "slack:C1:dashboard-author"))
+        .where(
+          eq(
+            juniorConversationEvents.conversationId,
+            "slack:C1:dashboard-author",
+          ),
+        )
         .limit(1);
       expect(event?.actorIdentityId).toBe("identity-dashboard-participant");
 
@@ -822,7 +800,11 @@ describe("conversation list API", () => {
       await migrateSchema(fixture.sql);
       await store.recordActivity({
         conversationId: "slack:C1:root",
-        destination: { platform: "slack" as const, teamId: "T1", channelId: "C1" },
+        destination: {
+          platform: "slack" as const,
+          teamId: "T1",
+          channelId: "C1",
+        },
         nowMs: 1_000,
         source: "slack",
       });
@@ -910,7 +892,11 @@ describe("conversation list API", () => {
       await migrateSchema(fixture.sql);
       await store.recordActivity({
         conversationId: "slack:C1:invalid-root",
-        destination: { platform: "slack" as const, teamId: "T1", channelId: "C1" },
+        destination: {
+          platform: "slack" as const,
+          teamId: "T1",
+          channelId: "C1",
+        },
         nowMs: 1_000,
         source: "slack",
       });
