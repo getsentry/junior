@@ -1,4 +1,13 @@
 # Changelog
+## 0.192.0
+
+### New Features ✨
+
+#### Dashboard
+
+- Add people directory spend windows and deltas by @sentry-junior in [#1745](https://github.com/getsentry/junior/pull/1745)
+- Add 24h hourly view across reporting pages by @sentry-junior in [#1744](https://github.com/getsentry/junior/pull/1744)
+
 ## 0.191.0
 
 ### New Features ✨
