@@ -3,6 +3,10 @@ import { Link } from "react-router";
 import { MapPin } from "lucide-react";
 import { Detail, DetailList } from "../../components/DetailList";
 import { Drawer } from "../../components/Drawer";
+import {
+  timeRangeLabel,
+  type TimeRangeDays,
+} from "../../components/controls/TimeRangeSelector";
 import { conversationPath } from "../../conversations/conversationRoutes";
 import { formatTime, peoplePath } from "../../format";
 import { TranscriptText } from "../../conversations/TranscriptText";
@@ -10,6 +14,7 @@ import { TranscriptText } from "../../conversations/TranscriptText";
 /** Show one task's instruction and metadata in a right-side slide-out. */
 export function TaskDetailsDrawer(props: {
   onClose(): void;
+  range: TimeRangeDays;
   task: TaskSummary | undefined;
 }) {
   if (!props.task) return null;
@@ -97,7 +102,7 @@ export function TaskDetailsDrawer(props: {
             {createdBy} · {formatDate(task.createdAt)}
           </Detail>
           <Detail label="Executions">
-            <TaskExecutionSummary task={task} />
+            <TaskExecutionSummary range={props.range} task={task} />
           </Detail>
         </DetailList>
         {task.totalRuns > 0 ? (
@@ -116,17 +121,20 @@ export function TaskDetailsDrawer(props: {
 }
 
 function TaskExecutionSummary(props: {
+  range: TimeRangeDays;
   task: Pick<
     TaskSummary,
     | "id"
     | "kind"
     | "lastConversationId"
     | "lastRunAt"
-    | "runsLast7Days"
+    | "runs"
     | "totalRuns"
   >;
 }) {
-  const { task } = props;
+  const { range, task } = props;
+  const runCount = task.runs[range];
+  const rangeLabel = timeRangeLabel(range);
   const executionsPath = `/tasks/${task.kind}/${encodeURIComponent(task.id)}/executions`;
   return (
     <div className="text-sm text-dashboard-text-muted">
@@ -135,11 +143,11 @@ function TaskExecutionSummary(props: {
           className="text-dashboard-text underline decoration-white/20 underline-offset-2 hover:decoration-white/60"
           to={executionsPath}
         >
-          {task.runsLast7Days} runs / 7d
+          {runCount} runs / {rangeLabel}
         </Link>
       ) : (
         <span className="text-dashboard-text">
-          {task.runsLast7Days} runs / 7d
+          {runCount} runs / {rangeLabel}
         </span>
       )}
       <span className="mx-2 opacity-45">·</span>

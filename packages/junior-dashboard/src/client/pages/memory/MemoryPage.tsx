@@ -53,10 +53,9 @@ export function MemoryPage(props: { page: PluginUserPageLink }) {
   const overview = location.pathname === basePath;
   const library = location.pathname === libraryPath || Boolean(memoryId);
   if (!overview && !library) return <Navigate replace to={basePath} />;
-  const libraryHref = pathWithSearch(libraryPath, location.search);
 
   return (
-    <MemoryPageLayout libraryHref={libraryHref}>
+    <MemoryPageLayout>
       <PageHeader
         description={props.page.description}
         {...(overview ? { onRangeChange: setRange, range } : {})}
