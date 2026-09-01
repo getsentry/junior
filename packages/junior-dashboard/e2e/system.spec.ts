@@ -1,10 +1,14 @@
 import { expect, test } from "./test";
 import { NOW_MS } from "../src/mock-reporting/fixtures";
+import { screenshot } from "./screenshot";
 
 test("shows system usage and plugin details", async ({ page, dashboard }) => {
   await page.setViewportSize({ height: 900, width: 1600 });
   await page.goto(`${dashboard.baseURL}/system`);
 
+  await expect(
+    page.getByRole("heading", { name: "System", exact: true }),
+  ).toBeVisible();
   await expect(page.getByText("Conversation activity")).toBeVisible();
   await expect(page.getByLabel("Conversations per day")).toBeVisible();
   await expect(page.getByText("Cache hit rate")).toBeVisible();
@@ -13,6 +17,7 @@ test("shows system usage and plugin details", async ({ page, dashboard }) => {
     page.getByRole("heading", { name: "Model spend", exact: true }),
   ).toBeVisible();
   await expect(page.getByRole("region", { name: "Plugins" })).toHaveCount(0);
+  await screenshot(page, "system", { view: "desktop" });
 
   const systemNavigation = page.getByLabel("System navigation");
   await expect(systemNavigation.getByRole("link")).toHaveText([
@@ -32,6 +37,7 @@ test("shows system usage and plugin details", async ({ page, dashboard }) => {
     page.getByRole("heading", { name: "Plugins", exact: true }),
   ).toBeVisible();
   await expect(page.getByLabel("Reporting period")).toHaveCount(0);
+  await screenshot(page, "system-plugins", { view: "desktop" });
 
   const pluginPanels = page.getByRole("region", { name: "Plugins" });
   const githubPanel = pluginPanels.getByRole("link", {
@@ -47,6 +53,26 @@ test("shows system usage and plugin details", async ({ page, dashboard }) => {
     page.getByText("This plugin does not expose operational activity yet."),
   ).toBeVisible();
   await expect(page.getByText("github.organization")).toBeVisible();
+  await screenshot(page, "system-plugin-github", { view: "desktop" });
+});
+
+test("lists Workspaces with the baseline snapshot", async ({
+  page,
+  dashboard,
+}) => {
+  await page.goto(`${dashboard.baseURL}/system/workspaces`);
+
+  await expect(
+    page.getByRole("heading", { name: "Workspaces", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Baseline snapshot", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Manage sentry" }),
+  ).toBeVisible();
+  await expect(page.getByRole("link", { name: "New Workspace" })).toBeVisible();
+  await screenshot(page, "workspaces");
 });
 
 test("creates a Workspace recipe", async ({ page, dashboard }) => {
@@ -78,6 +104,10 @@ test("creates a Workspace recipe", async ({ page, dashboard }) => {
   await page.goto(`${dashboard.baseURL}/system/workspaces`);
   await page.getByRole("link", { name: "New Workspace" }).click();
   await expect(page).toHaveURL(`${dashboard.baseURL}/system/workspaces/new`);
+  await expect(
+    page.getByRole("heading", { name: "New Workspace", exact: true }),
+  ).toBeVisible();
+  await screenshot(page, "workspace-create");
   await page.getByLabel("Name").fill("sentry");
   await page
     .getByLabel("Repository 1", { exact: true })
@@ -141,6 +171,7 @@ test("shows Workspace snapshot details on its direct route", async ({
       exact: true,
     }),
   ).toHaveAttribute("href", "/system/workspaces");
+  await screenshot(page, "workspace-detail");
 });
 
 test("keeps System navigation usable on mobile", async ({

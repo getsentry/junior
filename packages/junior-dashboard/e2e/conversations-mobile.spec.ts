@@ -1,4 +1,58 @@
 import { expect, test } from "./test";
+import { mobile, screenshot } from "./screenshot";
+
+const FOCUSED_COMPOSER_HEIGHT_PX = 520;
+const FOCUSED_COMPOSER_OFFSET_TOP_PX = 140;
+
+test("records focused mobile conversation composer", async ({
+  page,
+  dashboard,
+}) => {
+  await page.setViewportSize(mobile);
+  await page.goto(
+    `${dashboard.baseURL}/conversations/${encodeURIComponent(
+      "slack:CQA123:1770003600.000200",
+    )}`,
+    { waitUntil: "networkidle" },
+  );
+  await expect(
+    page.getByRole("heading", { name: "Investigate checkout latency" }),
+  ).toBeVisible();
+
+  const composer = page.getByPlaceholder("Message Junior…");
+  await composer.focus();
+  await page.evaluate(
+    ({ height, offsetTop }) => {
+      Object.defineProperties(window.visualViewport, {
+        height: { configurable: true, value: height },
+        offsetTop: { configurable: true, value: offsetTop },
+      });
+      window.visualViewport?.dispatchEvent(new Event("resize"));
+    },
+    {
+      height: FOCUSED_COMPOSER_HEIGHT_PX,
+      offsetTop: FOCUSED_COMPOSER_OFFSET_TOP_PX,
+    },
+  );
+  const shell = page.locator("main").first();
+  await expect
+    .poll(() =>
+      shell.evaluate((element) =>
+        element.style.getPropertyValue("--dashboard-keyboard-open"),
+      ),
+    )
+    .toBe("1");
+  await expect(composer).toBeFocused();
+  await screenshot(page, "conversation-detail-focused", {
+    clip: {
+      height: FOCUSED_COMPOSER_HEIGHT_PX,
+      width: mobile.width,
+      x: 0,
+      y: FOCUSED_COMPOSER_OFFSET_TOP_PX,
+    },
+    view: "mobile",
+  });
+});
 
 /**
  * Focused composers must stay in the bottom of the visual viewport.
@@ -222,6 +276,7 @@ test("opens and closes a conversation in the mobile workspace", async ({
   await expect(
     page.getByRole("heading", { name: "Investigate checkout latency" }),
   ).toBeVisible();
+
   await expect(
     page.getByRole("link", { name: "Back to conversations" }),
   ).toBeVisible();

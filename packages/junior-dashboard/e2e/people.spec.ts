@@ -1,4 +1,5 @@
 import { expect, test } from "./test";
+import { screenshot } from "./screenshot";
 
 test("explores people activity", async ({ page, dashboard }) => {
   await page.setViewportSize({ height: 900, width: 1600 });
@@ -25,6 +26,7 @@ test("explores people activity", async ({ page, dashboard }) => {
   await expect(
     page.getByLabel("System navigation").getByRole("link", { name: "People" }),
   ).toHaveAttribute("aria-current", "page");
+  await screenshot(page, "people");
   await page.getByRole("button", { name: "24h" }).click();
   await expect(page.getByRole("button", { name: "24h" })).toHaveAttribute(
     "aria-pressed",
@@ -41,4 +43,18 @@ test("explores people activity", async ({ page, dashboard }) => {
   await expect(
     page.getByRole("img", { name: "Active people per day" }),
   ).toBeVisible();
+});
+
+test("opens a person profile", async ({ page, dashboard }) => {
+  await page.goto(
+    `${dashboard.baseURL}/people/${encodeURIComponent("avery@sentry.io")}`,
+  );
+
+  await expect(
+    page.getByRole("heading", { name: "Avery Chen", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Code", exact: true }),
+  ).toBeVisible();
+  await screenshot(page, "person-profile");
 });
