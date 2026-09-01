@@ -43,7 +43,10 @@ import { createResourceEventSubscription } from "@/chat/resource-events/store";
 import { RESOURCE_SUBSCRIPTION_DEFAULT_TTL_MS } from "@/chat/resource-events/tool-support";
 
 import { getSlackToolContext } from "@/chat/slack/tool-support/context";
-import { resolveViewerUser } from "@/chat/plugins/viewer";
+import {
+  readActorIdentity,
+  resolveViewerUser,
+} from "@/chat/plugins/viewer";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 import type {
   SandboxCommandInput,
@@ -1621,6 +1624,10 @@ export function createPluginHookRunner(
           tool: {
             name: tool.name,
             input: nextInput,
+          },
+          users: {
+            resolveActor: async () =>
+              input.actor ? await readActorIdentity(input.actor) : undefined,
           },
           env: {
             get(key) {

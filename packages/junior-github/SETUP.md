@@ -156,7 +156,7 @@ Use `additionalUserScopes` only when a human-identity integration flow requires 
 - The plugin classifies GitHub traffic from the forwarded HTTP request. Reads use `installation-read`, while `GET /user` uses `user-read`. Allowlisted App-owned mutations and Git smart-HTTP pushes use `installation-write`. User-attachment uploads to `uploads.github.com/user-attachments/assets` use `user-write`. Unknown REST writes and GraphQL mutations are denied.
 - `user-read` and explicitly human `user-write` operations require the actor, or an explicitly delegated user subject, to authorize the GitHub App through the private OAuth flow. Junior-owned issue, pull request, review, inline review comment, and branch operations do not fall back to user OAuth.
 - Headless resource-event turns use the `resource-event` system actor and may receive the same installation grants. This lets Junior respond to subscribed pull request events by committing and pushing fixes without inheriting a subscriber's OAuth credential.
-- Git commits use Junior as author and committer. Resolvable human run actors are credited once with `Co-Authored-By` trailers.
+- Git commits use Junior as author and committer. Resolvable human run actors are credited once with `Co-Authored-By` trailers. When the current actor has a linked GitHub identity, Junior prefers a GitHub noreply address so external automation can resolve a login for assignment.
 - Installation credential leases are cached on the host by grant name and reused across sandboxes until near expiry. User grants stay actor-scoped. Upstream 403 after injection clears the cached lease, issues a new token, and retries the hop once before recording permission denied.
 - Sandbox does not receive raw tokens via env; host applies Authorization header transforms for GitHub API and upload calls.
 
@@ -187,7 +187,7 @@ The plugin uses installation credentials for read-only GitHub traffic, workflow 
 
 Committing and pushing code uses more than one GitHub surface:
 
-- Creating the local Git commit does not call GitHub. Junior sets the GitHub App bot as author and committer and credits resolvable human actors with `Co-Authored-By` trailers.
+- Creating the local Git commit does not call GitHub. Junior sets the GitHub App bot as author and committer and credits resolvable human actors with `Co-Authored-By` trailers, preferring a linked GitHub noreply email for the current actor when present.
 - Pushing a branch with Git smart HTTP (`git push`) uses the `installation-write` grant and requires the App installation to have `Contents: write`. Workflow-file changes also require the installation to have `Workflows: write`.
 - The smart-HTTP classifier does not distinguish Junior-managed branches or independently detect force updates or ref deletion. Use GitHub branch protection and limit the App installation to repositories where Junior may push.
 - REST Git database and ref writes are denied by the current write allowlist. Use Git smart HTTP (`git push`) for branch updates instead.
