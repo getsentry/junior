@@ -259,7 +259,7 @@ function TaskRunRow(props: { run: TaskRun }) {
         <div className="mt-1 flex min-w-0 items-center gap-1.5 overflow-hidden text-dashboard-text-muted">
           <TaskKindIcon kind={run.kind} />
           <StatusDot label={run.status} tone={runStatusTone(run.status)} />
-          <span className="truncate font-mono text-2xs uppercase tracking-[0.08em]">
+          <span className="truncate text-xs text-dashboard-text-muted">
             {run.status}
           </span>
         </div>
