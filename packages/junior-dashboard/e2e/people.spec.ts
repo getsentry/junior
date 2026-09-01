@@ -1,27 +1,8 @@
-import { expect, test } from "@playwright/test";
-import {
-  type DashboardE2eServer,
-  mockDashboardApis,
-  startDashboardE2eServer,
-} from "./harness";
+import { expect, test } from "./test";
 
-let server: DashboardE2eServer;
-
-test.beforeAll(async () => {
-  server = await startDashboardE2eServer();
-});
-
-test.afterAll(async () => {
-  await server.close();
-});
-
-test.beforeEach(async ({ page }) => {
-  await mockDashboardApis(page);
-});
-
-test("explores people activity", async ({ page }) => {
+test("explores people activity", async ({ page, dashboard }) => {
   await page.setViewportSize({ height: 900, width: 1600 });
-  await page.goto(`${server.baseURL}/system/people`);
+  await page.goto(`${dashboard.baseURL}/system/people`);
 
   await expect(
     page.getByRole("heading", { name: "People", exact: true }),

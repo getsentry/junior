@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import {
   actorDirectoryReportSchema,
   codeOverviewReportSchema,
@@ -12,8 +12,7 @@ import {
   ARCHIVED_CONVERSATION_ID,
   conversationTimeBounds,
   DASHBOARD_QA_CONVERSATION_ID,
-  MOCK_NOW_ISO,
-  MOCK_NOW_MS,
+  NOW,
   setMockConversationArchived,
 } from "../src/mock-reporting/fixtures";
 
@@ -26,7 +25,6 @@ describe("dashboard canonical-event mock routes", () => {
   afterEach(() => {
     // Keep the default archived fixture available for later visual/mock runs.
     setMockConversationArchived(ARCHIVED_CONVERSATION_ID, true);
-    vi.useRealTimers();
   });
 
   it("derives public location bounds independently of summary order", () => {
@@ -72,7 +70,6 @@ describe("dashboard canonical-event mock routes", () => {
   });
 
   it("serves canonical detail, directory, and aggregate reports", async () => {
-    vi.useFakeTimers({ now: MOCK_NOW_MS });
     const app = createDashboardApp({
       authRequired: false,
       allowedGoogleDomains: [],
@@ -136,7 +133,7 @@ describe("dashboard canonical-event mock routes", () => {
         {
           body: JSON.stringify({
             archived: false,
-            lastSeenAt: MOCK_NOW_ISO,
+            lastSeenAt: NOW,
           }),
           headers: { "content-type": "application/json" },
           method: "PATCH",
@@ -191,7 +188,7 @@ describe("dashboard canonical-event mock routes", () => {
       ),
     );
     expect(statsBody.costUsd).toBeGreaterThan(0);
-    expect(statsBody.windowEnd).toBe(MOCK_NOW_ISO);
+    expect(statsBody.windowEnd).toBe(NOW);
     expect(statsBody.windowStart).toBe("2026-05-10T00:00:00.000Z");
 
     const people = await app.fetch(new Request("http://localhost/api/people"));

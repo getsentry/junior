@@ -1,35 +1,17 @@
-import { expect, test } from "@playwright/test";
-import {
-  type DashboardE2eServer,
-  mockDashboardApis,
-  startDashboardE2eServer,
-} from "./harness";
-
-let server: DashboardE2eServer;
-
-test.beforeAll(async () => {
-  server = await startDashboardE2eServer();
-});
-
-test.afterAll(async () => {
-  await server.close();
-});
-
-test.beforeEach(async ({ page }) => {
-  await mockDashboardApis(page);
-});
+import { expect, test } from "./test";
 
 test("opens a registered plugin page from primary navigation", async ({
   page,
+  dashboard,
 }) => {
   await page.setViewportSize({ height: 900, width: 1600 });
-  await page.goto(server.baseURL);
+  await page.goto(dashboard.baseURL);
 
   const memoriesLink = page.getByRole("link", { name: "Memories" });
   await expect(memoriesLink).toHaveAttribute("href", "/memories");
   await memoriesLink.click();
 
-  await expect(page).toHaveURL(`${server.baseURL}/memories`);
+  await expect(page).toHaveURL(`${dashboard.baseURL}/memories`);
   await expect(
     page.getByRole("heading", { name: "Memories", exact: true }).first(),
   ).toBeVisible();
@@ -82,7 +64,7 @@ test("opens a registered plugin page from primary navigation", async ({
     .getByRole("navigation", { name: "Memory navigation" })
     .getByRole("link", { name: "Memories" })
     .click();
-  await expect(page).toHaveURL(`${server.baseURL}/memories/library`);
+  await expect(page).toHaveURL(`${dashboard.baseURL}/memories/library`);
   await expect(
     page.getByRole("button", {
       name: /^View memory details: I prefer concise summaries/,
@@ -99,12 +81,13 @@ test("opens a registered plugin page from primary navigation", async ({
 
 test("opens scheduled and event tasks in the native Tasks view", async ({
   page,
+  dashboard,
 }) => {
-  await page.goto(server.baseURL);
+  await page.goto(dashboard.baseURL);
 
   await page.getByRole("link", { name: "Tasks" }).click();
 
-  await expect(page).toHaveURL(`${server.baseURL}/tasks`);
+  await expect(page).toHaveURL(`${dashboard.baseURL}/tasks`);
   await expect(page.getByLabel("Tasks navigation")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Tasks" })).toBeVisible();
   await expect(
@@ -139,10 +122,9 @@ test("opens scheduled and event tasks in the native Tasks view", async ({
   await expect(page.getByLabel("Search tasks")).toBeVisible();
   const listReportingPeriod = page.getByLabel("Reporting period");
   await expect(listReportingPeriod).toHaveCount(1);
-  await expect(listReportingPeriod.getByRole("button", { name: "7d" })).toHaveAttribute(
-    "aria-pressed",
-    "true",
-  );
+  await expect(
+    listReportingPeriod.getByRole("button", { name: "7d" }),
+  ).toHaveAttribute("aria-pressed", "true");
   await expect(
     page.getByLabel("Task executions during the last 7 days"),
   ).toBeVisible();
@@ -169,7 +151,7 @@ test("opens scheduled and event tasks in the native Tasks view", async ({
     name: "View task details: Weekly project summary",
   });
   await taskDetailsTrigger.click();
-  await expect(page).toHaveURL(`${server.baseURL}/tasks/scheduled-1`);
+  await expect(page).toHaveURL(`${dashboard.baseURL}/tasks/scheduled-1`);
   const details = page.getByRole("dialog", { name: "Weekly project summary" });
   await expect(details).toBeVisible();
   await expect
@@ -193,7 +175,7 @@ test("opens scheduled and event tasks in the native Tasks view", async ({
   );
   await page.keyboard.press("Escape");
   await expect(page.getByRole("dialog")).toHaveCount(0);
-  await expect(page).toHaveURL(`${server.baseURL}/tasks/list`);
+  await expect(page).toHaveURL(`${dashboard.baseURL}/tasks/list`);
   await expect
     .poll(() => page.evaluate(() => document.body.style.overflow))
     .toBe("");
@@ -220,12 +202,12 @@ test("opens scheduled and event tasks in the native Tasks view", async ({
   await expect(page.getByLabel("PagerDuty event task")).toBeVisible();
   await expect(page.getByText("Memory system")).not.toBeVisible();
   await creatorLink.click();
-  await expect(page).toHaveURL(`${server.baseURL}/people/avery%40sentry.io`);
+  await expect(page).toHaveURL(`${dashboard.baseURL}/people/avery%40sentry.io`);
   await expect(page.getByRole("heading", { name: "Avery Chen" })).toBeVisible();
 });
 
-test("lists runs across tasks", async ({ page }) => {
-  await page.goto(`${server.baseURL}/tasks/runs`);
+test("lists runs across tasks", async ({ page, dashboard }) => {
+  await page.goto(`${dashboard.baseURL}/tasks/runs`);
 
   await expect(page.getByRole("heading", { name: "Runs" })).toBeVisible();
   await expect(page.getByLabel("Search runs")).toBeVisible();
@@ -239,11 +221,15 @@ test("lists runs across tasks", async ({ page }) => {
   await expect(
     page.locator('[title="completed"]:visible').first(),
   ).toBeVisible();
-  await expect(page.getByText("completed", { exact: true }).first()).toBeVisible();
+  await expect(
+    page.getByText("completed", { exact: true }).first(),
+  ).toBeVisible();
 });
 
-test("opens one task's execution history", async ({ page }) => {
-  await page.goto(`${server.baseURL}/tasks/scheduled/scheduled-1/executions`);
+test("opens one task's execution history", async ({ page, dashboard }) => {
+  await page.goto(
+    `${dashboard.baseURL}/tasks/scheduled/scheduled-1/executions`,
+  );
 
   await expect(
     page.getByRole("heading", { name: "Weekly project summary" }),
@@ -271,9 +257,12 @@ test("opens one task's execution history", async ({ page }) => {
   ).toBeVisible();
 });
 
-test("opens memory details in a slide-out drawer", async ({ page }) => {
+test("opens memory details in a slide-out drawer", async ({
+  page,
+  dashboard,
+}) => {
   await page.setViewportSize({ height: 900, width: 1440 });
-  await page.goto(`${server.baseURL}/memories/library`);
+  await page.goto(`${dashboard.baseURL}/memories/library`);
 
   const memory = page.getByRole("button", {
     name: /^View memory details: I prefer concise summaries/,
@@ -327,7 +316,7 @@ test("opens memory details in a slide-out drawer", async ({ page }) => {
   await expect(page.getByRole("dialog")).toHaveCount(0);
 });
 
-test("renders an empty registered plugin page", async ({ page }) => {
+test("renders an empty registered plugin page", async ({ page, dashboard }) => {
   await page.route("**/api/user-pages/memory/memories", async (route) => {
     await route.fulfill({
       json: {
@@ -338,17 +327,17 @@ test("renders an empty registered plugin page", async ({ page }) => {
     });
   });
 
-  await page.goto(`${server.baseURL}/memories/library`);
+  await page.goto(`${dashboard.baseURL}/memories/library`);
 
   await expect(page.getByText("No memories yet.")).toBeVisible();
 });
 
-test("shows the memory overview error state", async ({ page }) => {
+test("shows the memory overview error state", async ({ page, dashboard }) => {
   await page.route("**/api/plugins/memory/dashboard", async (route) => {
     await route.fulfill({ json: { error: "Unavailable" }, status: 500 });
   });
 
-  await page.goto(`${server.baseURL}/memories`);
+  await page.goto(`${dashboard.baseURL}/memories`);
 
   await expect(
     page.getByText("Memory history is temporarily unavailable."),
@@ -358,6 +347,7 @@ test("shows the memory overview error state", async ({ page }) => {
 
 test("searches, paginates, and forgets plugin page records", async ({
   page,
+  dashboard,
 }) => {
   let forgotMemory = false;
   let forgetRequests = 0;
@@ -438,7 +428,7 @@ test("searches, paginates, and forgets plugin page records", async ({
     },
   );
 
-  await page.goto(`${server.baseURL}/memories/library`);
+  await page.goto(`${dashboard.baseURL}/memories/library`);
   await expect(
     page.getByRole("button", {
       name: /^View memory details: First page memory/,

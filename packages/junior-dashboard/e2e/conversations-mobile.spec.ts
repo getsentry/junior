@@ -1,23 +1,4 @@
-import { expect, test } from "@playwright/test";
-import {
-  type DashboardE2eServer,
-  mockDashboardApis,
-  startDashboardE2eServer,
-} from "./harness";
-
-let server: DashboardE2eServer;
-
-test.beforeAll(async () => {
-  server = await startDashboardE2eServer();
-});
-
-test.afterAll(async () => {
-  await server.close();
-});
-
-test.beforeEach(async ({ page }) => {
-  await mockDashboardApis(page);
-});
+import { expect, test } from "./test";
 
 /**
  * Focused composers must stay in the bottom of the visual viewport.
@@ -59,9 +40,10 @@ async function expectFocusedComposerAtVisualViewportBottom(
 
 test("starts a new conversation from a centered compose empty state", async ({
   page,
+  dashboard,
 }) => {
   await page.setViewportSize({ height: 844, width: 390 });
-  await page.goto(server.baseURL);
+  await page.goto(dashboard.baseURL);
 
   const heading = page.getByRole("heading", { name: "What do you need?" });
   const composer = page.getByLabel("Start a conversation");
@@ -73,8 +55,10 @@ test("starts a new conversation from a centered compose empty state", async ({
 
   // Home and create are the same landing: simple app chrome + compose hero +
   // list nav. Not a thread destination and not a reply dock.
-  await expect(page).toHaveURL(`${server.baseURL}/`);
-  await expect(page.getByRole("button", { name: "Open navigation" })).toBeVisible();
+  await expect(page).toHaveURL(`${dashboard.baseURL}/`);
+  await expect(
+    page.getByRole("button", { name: "Open navigation" }),
+  ).toBeVisible();
   await expect(
     page.getByRole("link", { name: "Back to conversations" }),
   ).toHaveCount(0);
@@ -82,8 +66,8 @@ test("starts a new conversation from a centered compose empty state", async ({
     page.getByRole("heading", { name: "Your conversations" }),
   ).toBeVisible();
   // Legacy create deep link collapses onto home.
-  await page.goto(`${server.baseURL}/conversations/new`);
-  await expect(page).toHaveURL(`${server.baseURL}/`);
+  await page.goto(`${dashboard.baseURL}/conversations/new`);
+  await expect(page).toHaveURL(`${dashboard.baseURL}/`);
   await expect(heading).toBeVisible();
   await expect
     .poll(() =>
@@ -159,6 +143,7 @@ test("starts a new conversation from a centered compose empty state", async ({
 
 test("opens and closes a conversation in the mobile workspace", async ({
   page,
+  dashboard,
 }) => {
   await page.setViewportSize({ height: 844, width: 390 });
   await page.route("**/api/conversations/*/messages", async (route) => {
@@ -170,8 +155,8 @@ test("opens and closes a conversation in the mobile workspace", async ({
       },
     });
   });
-  await page.goto(`${server.baseURL}/conversations`);
-  await expect(page).toHaveURL(`${server.baseURL}/`);
+  await page.goto(`${dashboard.baseURL}/conversations`);
+  await expect(page).toHaveURL(`${dashboard.baseURL}/`);
   // Mobile home is the create landing (hero + list), same as desktop empty state.
   await expect(
     page.getByRole("heading", { name: "What do you need?" }),
@@ -216,9 +201,7 @@ test("opens and closes a conversation in the mobile workspace", async ({
   await expect(
     page.getByLabel("Account menu for Dashboard User"),
   ).toBeVisible();
-  await expect(
-    page.getByLabel("Signed in as Dashboard User"),
-  ).toBeVisible();
+  await expect(page.getByLabel("Signed in as Dashboard User")).toBeVisible();
   await expect(page.getByRole("link", { name: "My profile" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Settings" })).toBeVisible();
   await expect(page.getByRole("link", { name: "API tokens" })).toBeVisible();
@@ -233,7 +216,7 @@ test("opens and closes a conversation in the mobile workspace", async ({
     .getByRole("link", { name: /Investigate checkout latency/ })
     .click();
   await expect(page).toHaveURL(
-    `${server.baseURL}/conversations/${encodeURIComponent("slack:CQA123:1770003600.000200")}`,
+    `${dashboard.baseURL}/conversations/${encodeURIComponent("slack:CQA123:1770003600.000200")}`,
   );
   // One shell row: back + title + overflow. No duplicate title chrome.
   await expect(
@@ -362,12 +345,17 @@ test("opens and closes a conversation in the mobile workspace", async ({
         if (form.closest("[data-create-landing-scroll]")) {
           return "reply-on-landing-scroll";
         }
-        if (!form.closest("[data-composer-dock]")) return "missing-composer-dock";
-        if (!form.closest("[data-chat-scroll]") && !document.querySelector("[data-chat-scroll]")) {
+        if (!form.closest("[data-composer-dock]"))
+          return "missing-composer-dock";
+        if (
+          !form.closest("[data-chat-scroll]") &&
+          !document.querySelector("[data-chat-scroll]")
+        ) {
           return "missing-chat-scroll";
         }
         // Dock is a sibling of the scroll region under ChatLayout, not inside it.
-        if (form.closest("[data-chat-scroll]")) return "composer-inside-chat-scroll";
+        if (form.closest("[data-chat-scroll]"))
+          return "composer-inside-chat-scroll";
         return "reply-dock";
       }),
     )
@@ -549,7 +537,7 @@ test("opens and closes a conversation in the mobile workspace", async ({
   await expect(page.getByPlaceholder("Search transcript…")).toBeHidden();
 
   await page.getByRole("link", { name: "Back to conversations" }).click();
-  await expect(page).toHaveURL(`${server.baseURL}/`);
+  await expect(page).toHaveURL(`${dashboard.baseURL}/`);
   await expect(
     page.getByRole("heading", { name: "What do you need?" }),
   ).toBeVisible();

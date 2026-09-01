@@ -1,27 +1,8 @@
-import { expect, test } from "@playwright/test";
-import {
-  type DashboardE2eServer,
-  mockDashboardApis,
-  startDashboardE2eServer,
-} from "./harness";
-import { MOCK_NOW_MS } from "../src/mock-reporting/fixtures";
-
-let server: DashboardE2eServer;
-
-test.beforeAll(async () => {
-  server = await startDashboardE2eServer();
-});
-
-test.afterAll(async () => {
-  await server.close();
-});
-
-test.beforeEach(async ({ page }) => {
-  await mockDashboardApis(page);
-});
+import { expect, test } from "./test";
 
 test("reuses the fresh conversation feed after window focus", async ({
   page,
+  dashboard,
 }) => {
   let requests = 0;
   await page.route("**/api/conversations", async (route) => {
@@ -38,7 +19,7 @@ test("reuses the fresh conversation feed after window focus", async ({
     await route.fallback();
   });
 
-  await page.goto(server.baseURL);
+  await page.goto(dashboard.baseURL);
   await expect(
     page.getByRole("heading", { name: "Conversations" }),
   ).toBeVisible();
@@ -67,10 +48,11 @@ test("reuses the fresh conversation feed after window focus", async ({
 test("keeps cached conversation and draft available through reconnect", async ({
   context,
   page,
+  dashboard,
 }) => {
   const conversationId = "slack:CQA123:1770003600.000200";
   await page.goto(
-    `${server.baseURL}/conversations/${encodeURIComponent(conversationId)}`,
+    `${dashboard.baseURL}/conversations/${encodeURIComponent(conversationId)}`,
   );
   const heading = page.getByRole("heading", {
     name: "Investigate checkout latency",
@@ -100,21 +82,27 @@ test("keeps cached conversation and draft available through reconnect", async ({
 
 test("shows the repo name for one annotation scope on mobile", async ({
   page,
+  dashboard,
 }) => {
   await page.setViewportSize({ height: 844, width: 390 });
-  await page.goto(server.baseURL);
+  await page.goto(dashboard.baseURL);
 
   const conversation = page.getByRole("link", {
     name: /Checkout latency triage/,
   });
   await expect(conversation).toBeVisible();
-  await expect(conversation.getByText("payments", { exact: true })).toBeVisible();
+  await expect(
+    conversation.getByText("payments", { exact: true }),
+  ).toBeVisible();
 });
 
-test("opens a conversation in the built dashboard", async ({ page }) => {
+test("opens a conversation in the built dashboard", async ({
+  page,
+  dashboard,
+}) => {
   await page.setViewportSize({ height: 900, width: 1600 });
 
-  await page.goto(server.baseURL);
+  await page.goto(dashboard.baseURL);
 
   await expect(page.getByRole("link", { name: "Junior home" })).toBeVisible();
   await expect(
@@ -134,7 +122,7 @@ test("opens a conversation in the built dashboard", async ({ page }) => {
   ).toHaveCount(0);
   await publicConversationLink.click();
   await expect(page).toHaveURL(
-    `${server.baseURL}/conversations/${encodeURIComponent("slack:CQA123:1770000000.000100")}`,
+    `${dashboard.baseURL}/conversations/${encodeURIComponent("slack:CQA123:1770000000.000100")}`,
   );
   await expect(
     page.getByRole("heading", { name: "Checkout latency triage" }),
@@ -163,7 +151,7 @@ test("opens a conversation in the built dashboard", async ({ page }) => {
   await expect(page.getByRole("link", { name: "Plugins" })).toHaveCount(0);
 
   await page.goto(
-    `${server.baseURL}/conversations/${encodeURIComponent("slack:DQA123:1770007200.000300")}`,
+    `${dashboard.baseURL}/conversations/${encodeURIComponent("slack:DQA123:1770007200.000300")}`,
   );
   await expect(page.getByRole("note")).toContainText("Private conversation");
   await expect(page.getByRole("note")).toContainText("Private");
@@ -244,8 +232,8 @@ test("starts and continues conversations from the dashboard", async ({
     });
   });
 
-  await page.goto(server.baseURL);
-  await expect(page).toHaveURL(`${server.baseURL}/`);
+  await page.goto(dashboard.baseURL);
+  await expect(page).toHaveURL(`${dashboard.baseURL}/`);
   await expect(
     page.getByRole("heading", { name: "What do you need?" }),
   ).toBeVisible();
@@ -277,7 +265,7 @@ test("starts and continues conversations from the dashboard", async ({
 
   await page.getByRole("button", { name: "Send" }).click();
   await expect(page).toHaveURL(
-    `${server.baseURL}/conversations/${encodeURIComponent(createdConversationId)}`,
+    `${dashboard.baseURL}/conversations/${encodeURIComponent(createdConversationId)}`,
   );
   expect(createRequests).toHaveLength(2);
   expect(createRequests[1]?.idempotencyKey).toBe(failedCreateKey);
@@ -297,7 +285,7 @@ test("starts and continues conversations from the dashboard", async ({
     },
   );
   await page.goto(
-    `${server.baseURL}/conversations/${encodeURIComponent(slackConversationId)}`,
+    `${dashboard.baseURL}/conversations/${encodeURIComponent(slackConversationId)}`,
   );
   await expect(
     page.getByText(
@@ -342,11 +330,11 @@ test("starts and continues conversations from the dashboard", async ({
   await expect(page.getByLabel("Continue this conversation")).toHaveValue("");
 });
 
-test("collapses long pending message stacks", async ({ page }) => {
+test("collapses long pending message stacks", async ({ page, dashboard }) => {
   const conversationId = "slack:CQA123:1770003600.000200";
   await page.setViewportSize({ height: 900, width: 1600 });
   await page.goto(
-    `${server.baseURL}/conversations/${encodeURIComponent(conversationId)}`,
+    `${dashboard.baseURL}/conversations/${encodeURIComponent(conversationId)}`,
   );
   const pending = page.getByLabel("Pending messages");
   await expect(pending).toBeVisible();
@@ -383,12 +371,13 @@ test("collapses long pending message stacks", async ({ page }) => {
 
 test("loads earlier transcript events from the mock history cursor", async ({
   page,
+  dashboard,
 }) => {
   // Deeper history/cursor contracts live in dashboard-mock-routes + transcript
   // bottom-pinning unit coverage. Keep one browser smoke on the mock surface.
   const conversationId = "slack:CQA456:1770021600.000600";
   await page.goto(
-    `${server.baseURL}/conversations/${encodeURIComponent(conversationId)}`,
+    `${dashboard.baseURL}/conversations/${encodeURIComponent(conversationId)}`,
   );
 
   await expect(
@@ -407,6 +396,7 @@ test("loads earlier transcript events from the mock history cursor", async ({
 
 test("scrolls long conversation and transcript panes independently", async ({
   page,
+  dashboard,
 }) => {
   await page.setViewportSize({ height: 800, width: 1440 });
   const generatedAt = "2026-06-12T00:00:00.000Z";
@@ -464,7 +454,7 @@ test("scrolls long conversation and transcript panes independently", async ({
     });
   });
 
-  await page.goto(`${server.baseURL}/conversations/long-0`);
+  await page.goto(`${dashboard.baseURL}/conversations/long-0`);
   await expect(
     page.getByRole("heading", { name: "Long transcript" }),
   ).toBeVisible();
@@ -519,8 +509,9 @@ test("scrolls long conversation and transcript panes independently", async ({
 
 test("groups the signed-in profile and session actions in the header", async ({
   page,
+  dashboard,
 }) => {
-  await page.goto(server.baseURL);
+  await page.goto(dashboard.baseURL);
 
   const trigger = page.getByRole("button", {
     name: "Open profile menu for Dashboard User",
@@ -555,13 +546,17 @@ test("groups the signed-in profile and session actions in the header", async ({
   await signOutRequest;
 });
 
-test("inspects and copies an advisor transcript", async ({ context, page }) => {
+test("inspects and copies an advisor transcript", async ({
+  context,
+  page,
+  dashboard,
+}) => {
   const childConversationId = "junior:internal:dashboard-qa:advisor-plan";
   await context.grantPermissions(["clipboard-read", "clipboard-write"], {
-    origin: server.baseURL,
+    origin: dashboard.baseURL,
   });
   await page.goto(
-    `${server.baseURL}/conversations/${encodeURIComponent("internal:dashboard-qa")}`,
+    `${dashboard.baseURL}/conversations/${encodeURIComponent("internal:dashboard-qa")}`,
   );
 
   await expect(
@@ -605,9 +600,12 @@ test("inspects and copies an advisor transcript", async ({ context, page }) => {
   await expect(drawer).toBeVisible();
 });
 
-test("filters archived conversations and restores one", async ({ page }) => {
+test("filters archived conversations and restores one", async ({
+  page,
+  dashboard,
+}) => {
   await page.setViewportSize({ height: 900, width: 1600 });
-  await page.goto(server.baseURL);
+  await page.goto(dashboard.baseURL);
   await expect(
     page.getByRole("link", { name: /Archived restore target/ }),
   ).toHaveCount(0);
@@ -641,6 +639,7 @@ test("filters archived conversations and restores one", async ({ page }) => {
 
 test("archives and restores a conversation from the sidebar", async ({
   page,
+  dashboard,
 }) => {
   await page.setViewportSize({ height: 900, width: 1600 });
   let archived = false;
@@ -667,7 +666,7 @@ test("archives and restores a conversation from the sidebar", async ({
       json: { archivedAt: archived ? "2026-08-21T16:45:00.000Z" : null },
     });
   });
-  await page.goto(server.baseURL);
+  await page.goto(dashboard.baseURL);
   const selectedConversation = page.getByRole("link", {
     name: /Investigate checkout latency/,
   });
@@ -730,76 +729,82 @@ test("archives and restores a conversation from the sidebar", async ({
   expect(page.url()).toBe(currentUrl);
 });
 
-test("expires the archive undo notice", async ({ page }) => {
-  // Controllable timers for undo expiry; shared harness only freezes Date.
-  await page.clock.install({ time: MOCK_NOW_MS });
-  await page.route("**/api/conversations/*/archive", async (route) => {
-    await route.fulfill({
-      json: { archivedAt: "2026-08-21T16:45:00.000Z" },
+test.describe("expires the archive undo notice", () => {
+  test.use({ controlTimers: true });
+  test("expires the archive undo notice", async ({ page, dashboard }) => {
+    await page.route("**/api/conversations/*/archive", async (route) => {
+      await route.fulfill({
+        json: { archivedAt: "2026-08-21T16:45:00.000Z" },
+      });
     });
-  });
-  await page.goto(server.baseURL);
+    await page.goto(dashboard.baseURL);
 
-  const conversationLink = page.getByRole("link", {
-    name: /Dashboard QA edge cases/,
-  });
-  await conversationLink.hover();
-  await page
-    .getByRole("button", { name: "Archive Dashboard QA edge cases" })
-    .click();
+    const conversationLink = page.getByRole("link", {
+      name: /Dashboard QA edge cases/,
+    });
+    await conversationLink.hover();
+    await page
+      .getByRole("button", { name: "Archive Dashboard QA edge cases" })
+      .click();
 
-  const undo = page.getByRole("button", {
-    name: "Undo archive for Dashboard QA edge cases",
+    const undo = page.getByRole("button", {
+      name: "Undo archive for Dashboard QA edge cases",
+    });
+    await expect(undo).toBeVisible();
+    await page.clock.fastForward(5_000);
+    await expect(undo).toBeVisible();
+    await page.clock.fastForward(1_000);
+    await expect(undo).toHaveCount(0);
   });
-  await expect(undo).toBeVisible();
-  await page.clock.fastForward(5_000);
-  await expect(undo).toBeVisible();
-  await page.clock.fastForward(1_000);
-  await expect(undo).toHaveCount(0);
 });
 
-test("resets the archive undo timer when archiving another conversation", async ({
+test.describe("resets the archive undo timer when archiving another conversation", () => {
+  test.use({ controlTimers: true });
+  test("resets the archive undo timer when archiving another conversation", async ({
+    page,
+    dashboard,
+  }) => {
+    await page.route("**/api/conversations/*/archive", async (route) => {
+      await route.fulfill({
+        json: { archivedAt: "2026-08-21T16:45:00.000Z" },
+      });
+    });
+    await page.goto(dashboard.baseURL);
+
+    await page.getByRole("link", { name: /Dashboard QA edge cases/ }).hover();
+    await page
+      .getByRole("button", { name: "Archive Dashboard QA edge cases" })
+      .click();
+    const firstUndo = page.getByRole("button", {
+      name: "Undo archive for Dashboard QA edge cases",
+    });
+    await expect(firstUndo).toBeVisible();
+
+    // Burn most of the first notice's timer, then archive a second conversation.
+    await page.clock.fastForward(5_000);
+    await page.getByRole("link", { name: /Checkout latency triage/ }).hover();
+    await page
+      .getByRole("button", { name: "Archive Checkout latency triage" })
+      .click();
+
+    const secondUndo = page.getByRole("button", {
+      name: "Undo archive for Checkout latency triage",
+    });
+    await expect(secondUndo).toBeVisible();
+    await expect(firstUndo).toHaveCount(0);
+
+    // A reused first-notice timer would dismiss here; a reset timer must remain.
+    await page.clock.fastForward(2_000);
+    await expect(secondUndo).toBeVisible();
+    await page.clock.fastForward(4_000);
+    await expect(secondUndo).toHaveCount(0);
+  });
+});
+
+test("shows archive failures after the row returns", async ({
   page,
+  dashboard,
 }) => {
-  // Controllable timers for undo expiry; shared harness only freezes Date.
-  await page.clock.install({ time: MOCK_NOW_MS });
-  await page.route("**/api/conversations/*/archive", async (route) => {
-    await route.fulfill({
-      json: { archivedAt: "2026-08-21T16:45:00.000Z" },
-    });
-  });
-  await page.goto(server.baseURL);
-
-  await page.getByRole("link", { name: /Dashboard QA edge cases/ }).hover();
-  await page
-    .getByRole("button", { name: "Archive Dashboard QA edge cases" })
-    .click();
-  const firstUndo = page.getByRole("button", {
-    name: "Undo archive for Dashboard QA edge cases",
-  });
-  await expect(firstUndo).toBeVisible();
-
-  // Burn most of the first notice's timer, then archive a second conversation.
-  await page.clock.fastForward(5_000);
-  await page.getByRole("link", { name: /Checkout latency triage/ }).hover();
-  await page
-    .getByRole("button", { name: "Archive Checkout latency triage" })
-    .click();
-
-  const secondUndo = page.getByRole("button", {
-    name: "Undo archive for Checkout latency triage",
-  });
-  await expect(secondUndo).toBeVisible();
-  await expect(firstUndo).toHaveCount(0);
-
-  // A reused first-notice timer would dismiss here; a reset timer must remain.
-  await page.clock.fastForward(2_000);
-  await expect(secondUndo).toBeVisible();
-  await page.clock.fastForward(4_000);
-  await expect(secondUndo).toHaveCount(0);
-});
-
-test("shows archive failures after the row returns", async ({ page }) => {
   await page.setViewportSize({ height: 900, width: 1600 });
   await page.route("**/api/conversations/*/archive", async (route) => {
     await new Promise((resolve) => setTimeout(resolve, 250));
@@ -808,7 +813,7 @@ test("shows archive failures after the row returns", async ({ page }) => {
       status: 500,
     });
   });
-  await page.goto(server.baseURL);
+  await page.goto(dashboard.baseURL);
 
   const conversationLink = page.getByRole("link", {
     name: /Dashboard QA edge cases/,
@@ -826,7 +831,10 @@ test("shows archive failures after the row returns", async ({ page }) => {
   await expect(archiveError).toContainText("Dashboard QA edge cases");
 });
 
-test("keeps undo available when another archive fails", async ({ page }) => {
+test("keeps undo available when another archive fails", async ({
+  page,
+  dashboard,
+}) => {
   await page.setViewportSize({ height: 900, width: 1600 });
   let archiveRequests = 0;
   await page.route("**/api/conversations/*/archive", async (route) => {
@@ -843,7 +851,7 @@ test("keeps undo available when another archive fails", async ({ page }) => {
       status: 500,
     });
   });
-  await page.goto(server.baseURL);
+  await page.goto(dashboard.baseURL);
 
   const firstConversation = page.getByRole("link", {
     name: /Dashboard QA edge cases/,

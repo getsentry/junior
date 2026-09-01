@@ -1,26 +1,10 @@
-import { expect, test } from "@playwright/test";
-import {
-  type DashboardE2eServer,
-  mockDashboardApis,
-  startDashboardE2eServer,
-} from "./harness";
+import { expect, test } from "./test";
 
-let server: DashboardE2eServer;
-
-test.beforeAll(async () => {
-  server = await startDashboardE2eServer();
-});
-
-test.afterAll(async () => {
-  await server.close();
-});
-
-test.beforeEach(async ({ page }) => {
-  await mockDashboardApis(page);
-});
-
-test("updates the signed-in user's display name", async ({ page }) => {
-  await page.goto(server.baseURL);
+test("updates the signed-in user's display name", async ({
+  page,
+  dashboard,
+}) => {
+  await page.goto(dashboard.baseURL);
   await page.getByRole("button", { name: /Open profile menu/ }).click();
   await page.getByRole("link", { name: "Settings", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
