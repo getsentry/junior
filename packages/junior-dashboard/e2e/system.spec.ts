@@ -49,6 +49,26 @@ test("shows system usage and plugin details", async ({ page, dashboard }) => {
   await expect(page.getByText("github.organization")).toBeVisible();
 });
 
+test("lists Workspaces with the baseline snapshot", async ({
+  page,
+  dashboard,
+}) => {
+  await page.goto(`${dashboard.baseURL}/system/workspaces`);
+
+  await expect(
+    page.getByRole("heading", { name: "Workspaces", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Baseline snapshot", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Manage sentry" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "New Workspace" }),
+  ).toBeVisible();
+});
+
 test("creates a Workspace recipe", async ({ page, dashboard }) => {
   let createdBody: unknown;
   await page.route("**/api/workspaces", async (route) => {

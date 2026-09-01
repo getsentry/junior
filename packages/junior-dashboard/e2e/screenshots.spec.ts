@@ -24,6 +24,7 @@ type ScreenshotScenario = {
 
 const ACTIVE_CONVERSATION_ID = "slack:CQA123:1770003600.000200";
 const DASHBOARD_QA_CONVERSATION_ID = "internal:dashboard-qa";
+const LOCATION_ID = "mock:CQA123";
 const WORKSPACE_ID = "11111111-1111-4111-8111-111111111111";
 
 const SCREENSHOT_SCENARIOS: ScreenshotScenario[] = [
@@ -68,9 +69,15 @@ const SCREENSHOT_SCENARIOS: ScreenshotScenario[] = [
     viewports: [DESKTOP, MOBILE],
   },
   {
+    id: "people",
+    path: "/system/people",
+    ready: "People",
+    viewports: [DESKTOP, MOBILE],
+  },
+  {
     id: "person-profile",
     path: `/people/${encodeURIComponent("avery@sentry.io")}`,
-    ready: "Code",
+    ready: "Avery Chen",
     viewports: [DESKTOP, MOBILE],
   },
   {
@@ -80,15 +87,45 @@ const SCREENSHOT_SCENARIOS: ScreenshotScenario[] = [
     viewports: [DESKTOP, MOBILE],
   },
   {
+    id: "locations",
+    path: "/system/locations",
+    ready: "Locations",
+    viewports: [DESKTOP, MOBILE],
+  },
+  {
+    id: "location-detail",
+    path: `/system/locations/${encodeURIComponent(LOCATION_ID)}`,
+    ready: "#proj-checkout",
+    viewports: [DESKTOP, MOBILE],
+  },
+  {
     id: "system",
     path: "/system",
     ready: "System",
     viewports: [DESKTOP],
   },
   {
+    id: "system-plugins",
+    path: "/system/plugins",
+    ready: "Plugins",
+    viewports: [DESKTOP],
+  },
+  {
+    id: "system-plugin-github",
+    path: "/system/plugins/github",
+    ready: "GitHub",
+    viewports: [DESKTOP],
+  },
+  {
     id: "workspaces",
     path: "/system/workspaces",
-    ready: "Baseline snapshot",
+    ready: "Workspaces",
+    viewports: [DESKTOP, MOBILE],
+  },
+  {
+    id: "workspace-create",
+    path: "/system/workspaces/new",
+    ready: "New Workspace",
     viewports: [DESKTOP, MOBILE],
   },
   {
@@ -98,21 +135,51 @@ const SCREENSHOT_SCENARIOS: ScreenshotScenario[] = [
     viewports: [DESKTOP, MOBILE],
   },
   {
+    id: "tasks",
+    path: "/tasks",
+    ready: "Tasks",
+    viewports: [DESKTOP, MOBILE],
+  },
+  {
     id: "tasks-list",
     path: "/tasks/list",
     ready: "All tasks",
     viewports: [DESKTOP, MOBILE],
   },
   {
+    id: "tasks-runs",
+    path: "/tasks/runs",
+    ready: "Runs",
+    viewports: [DESKTOP, MOBILE],
+  },
+  {
+    id: "task-executions",
+    path: "/tasks/scheduled/scheduled-1/executions",
+    ready: "Weekly project summary",
+    viewports: [DESKTOP, MOBILE],
+  },
+  {
     id: "memories",
     path: "/memories",
     ready: "Memories",
-    viewports: [DESKTOP],
+    viewports: [DESKTOP, MOBILE],
+  },
+  {
+    id: "memories-library",
+    path: "/memories/library",
+    ready: "What Junior remembers",
+    viewports: [DESKTOP, MOBILE],
   },
   {
     id: "settings",
     path: "/settings",
     ready: "Settings",
+    viewports: [DESKTOP],
+  },
+  {
+    id: "settings-api-tokens",
+    path: "/settings/api-tokens",
+    ready: "Personal API Tokens",
     viewports: [DESKTOP],
   },
   {

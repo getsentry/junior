@@ -630,6 +630,26 @@ export async function mockDashboardApis(
       },
     });
   });
+  await page.route("**/api/personal-tokens**", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      json: {
+        tokens: [
+          {
+            createdAt: "2026-08-01T00:00:00.000Z",
+            expiresAt: "2026-10-30T00:00:00.000Z",
+            id: "00000000-0000-4000-8000-000000000001",
+            lastUsedAt: null,
+            name: "Local agent",
+            tokenSuffix: "abcd",
+          },
+        ],
+      },
+    });
+  });
   await page.route("**/api/plugins", async (route) => {
     await route.fulfill({
       json: [

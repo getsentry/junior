@@ -34,3 +34,21 @@ test("explores location activity", async ({ page, dashboard }) => {
       .getByRole("link", { name: "Locations" }),
   ).toHaveAttribute("aria-current", "page");
 });
+
+test("opens one public location", async ({ page, dashboard }) => {
+  await page.goto(
+    `${dashboard.baseURL}/system/locations/${encodeURIComponent("mock:CQA123")}`,
+  );
+
+  await expect(
+    page.getByRole("heading", { name: "#proj-checkout", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Persisted conversations", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page
+      .getByLabel("System navigation")
+      .getByRole("link", { name: "Locations" }),
+  ).toHaveAttribute("aria-current", "page");
+});
