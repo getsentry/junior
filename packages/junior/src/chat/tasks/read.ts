@@ -1,5 +1,6 @@
 import type { SlackDestination, User } from "@sentry/junior-plugin-api";
-import { and, eq, or } from "drizzle-orm";
+import { and, desc, eq, inArray, or } from "drizzle-orm";
+import { readConversationAccessFromSql } from "@/api/conversations/access";
 import type { ConversationSourceTask } from "@/api/schema/conversation";
 import type {
   TaskExecutionList,
@@ -19,6 +20,7 @@ import {
   readTaskExecutionSummaries,
   readTaskRuns,
   type TaskExecutionSummary,
+  type TaskRunRecord,
 } from "@/chat/tasks/execution-stats";
 import { getDb } from "@/chat/db";
 import {
@@ -38,10 +40,17 @@ import {
 } from "@/chat/scheduled-tasks/personal";
 import {
   listPublicScheduledTasksForTeams,
+  parseScheduledTaskRow,
   readScheduledTask,
 } from "@/chat/scheduled-tasks/tasks";
 import type { ScheduledTask } from "@/chat/scheduled-tasks/types";
-import { juniorDestinations, juniorIdentities, juniorUsers } from "@/db/schema";
+import {
+  juniorDestinations,
+  juniorIdentities,
+  juniorSchedulerTasks,
+  juniorTaskExecutions,
+  juniorUsers,
+} from "@/db/schema";
 
 const TASK_LIST_LIMIT = 100;
 const TASK_FETCH_LIMIT = TASK_LIST_LIMIT + 1;
@@ -475,23 +484,147 @@ export async function readViewerTasks(user: User): Promise<TaskList> {
   };
 }
 
-/** Read newest runs across the viewer-visible scheduled and event tasks. */
+/**
+ * Load titles for soft-deleted scheduled tasks the viewer still owns.
+ * Event tasks are hard-deleted, so their titles come from linked conversations.
+ */
+async function readDeletedOwnedScheduledTaskTitles(
+  user: User,
+  taskIds: string[],
+): Promise<Map<string, string>> {
+  const identityIds = user.identities.map((identity) => identity.id);
+  const uniqueTaskIds = [...new Set(taskIds.filter((taskId) => taskId.trim()))];
+  if (identityIds.length === 0 || uniqueTaskIds.length === 0) {
+    return new Map();
+  }
+  const rows = await getDb()
+    .select({
+      creatorIdentityId: juniorSchedulerTasks.creatorIdentityId,
+      id: juniorSchedulerTasks.id,
+      record: juniorSchedulerTasks.record,
+      title: juniorSchedulerTasks.title,
+    })
+    .from(juniorSchedulerTasks)
+    .where(
+      and(
+        eq(juniorSchedulerTasks.status, "deleted"),
+        inArray(juniorSchedulerTasks.creatorIdentityId, identityIds),
+        inArray(juniorSchedulerTasks.id, uniqueTaskIds),
+      ),
+    );
+  const titles = new Map<string, string>();
+  for (const row of rows) {
+    const task = parseScheduledTaskRow(row);
+    if (!task || task.status !== "deleted") continue;
+    const instruction = displayText(task.task.text, "Untitled scheduled task");
+    titles.set(
+      `scheduled:${task.id}`,
+      taskDisplayTitle(task.title, instruction, "Untitled scheduled task"),
+    );
+  }
+  return titles;
+}
+
+/**
+ * Load recent execution conversation ids the viewer may still open after the
+ * source task row is gone. Ownership follows the linked conversation root.
+ */
+async function readViewerHistoricalRunConversationIds(
+  user: User,
+): Promise<string[]> {
+  const rows = await getDb()
+    .select({
+      conversationId: juniorTaskExecutions.conversationId,
+    })
+    .from(juniorTaskExecutions)
+    .where(
+      and(
+        eq(juniorTaskExecutions.namespace, "junior"),
+        inArray(juniorTaskExecutions.kind, ["scheduled", "event"]),
+      ),
+    )
+    .orderBy(
+      desc(juniorTaskExecutions.executedAtMs),
+      desc(juniorTaskExecutions.executionId),
+    )
+    .limit(TASK_EXECUTION_LIST_LIMIT * 4);
+  const conversationIds = [
+    ...new Set(
+      rows
+        .map((row) => row.conversationId)
+        .filter((conversationId): conversationId is string =>
+          Boolean(conversationId),
+        ),
+    ),
+  ];
+  if (conversationIds.length === 0) return [];
+  const access = await readConversationAccessFromSql(
+    getDb(),
+    conversationIds,
+    user,
+  );
+  return conversationIds.filter(
+    (conversationId) =>
+      access.get(conversationId)?.canViewPrivateContent === true,
+  );
+}
+
+function taskTitleForRun(
+  run: TaskRunRecord,
+  taskTitles: Map<string, string>,
+): string {
+  return (
+    taskTitles.get(`${run.kind}:${run.taskId}`) ??
+    run.title?.trim() ??
+    "Untitled task"
+  );
+}
+
+/**
+ * Read newest runs across live viewer-visible tasks and retained historical
+ * executions whose linked conversations the viewer can still open.
+ */
 export async function readViewerTaskRuns(user: User): Promise<TaskRunList> {
-  const taskList = await readViewerTasks(user);
-  const taskTitles = new Map(
-    taskList.tasks.map((task) => [`${task.kind}:${task.id}`, task.title]),
+  const [taskList, historicalConversationIds] = await Promise.all([
+    readViewerTasks(user),
+    readViewerHistoricalRunConversationIds(user),
+  ]);
+  const liveTaskKeys = new Set(
+    taskList.tasks.map((task) => `${task.kind}:${task.id}`),
   );
   const runs = await readTaskRuns({
+    conversationIds: historicalConversationIds,
     limit: TASK_EXECUTION_LIST_LIMIT + 1,
     tasks: taskList.tasks.map((task) => ({
       kind: task.kind,
       taskId: task.id,
     })),
   });
+  const missingScheduledIds = [
+    ...new Set(
+      runs
+        .filter(
+          (run) =>
+            run.kind === "scheduled" &&
+            !liveTaskKeys.has(`scheduled:${run.taskId}`),
+        )
+        .map((run) => run.taskId),
+    ),
+  ];
+  const deletedScheduledTitles = await readDeletedOwnedScheduledTaskTitles(
+    user,
+    missingScheduledIds,
+  );
+  const taskTitles = new Map<string, string>([
+    ...taskList.tasks.map(
+      (task) => [`${task.kind}:${task.id}`, task.title] as const,
+    ),
+    ...deletedScheduledTitles,
+  ]);
   return {
     runs: runs.slice(0, TASK_EXECUTION_LIST_LIMIT).map((run) => ({
       ...run,
-      taskTitle: taskTitles.get(`${run.kind}:${run.taskId}`) ?? "Untitled task",
+      taskTitle: taskTitleForRun(run, taskTitles),
     })),
     truncated: runs.length > TASK_EXECUTION_LIST_LIMIT,
   };

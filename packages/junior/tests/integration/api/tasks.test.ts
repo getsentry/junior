@@ -259,7 +259,9 @@ describe("Tasks API", () => {
           durationMs: 42_000,
           usage: { cost: { total: 0.42 }, totalTokens: 1200 },
         })
-        .where(eq(juniorConversations.conversationId, "agent-dispatch:sched-run-2"));
+        .where(
+          eq(juniorConversations.conversationId, "agent-dispatch:sched-run-2"),
+        );
       await fixture.sql
         .db()
         .update(juniorConversations)
@@ -267,7 +269,9 @@ describe("Tasks API", () => {
           durationMs: 18_000,
           usage: { cost: { total: 0.18 }, totalTokens: 400 },
         })
-        .where(eq(juniorConversations.conversationId, "agent-dispatch:sched-run-1"));
+        .where(
+          eq(juniorConversations.conversationId, "agent-dispatch:sched-run-1"),
+        );
 
       await recordTaskExecution("scheduled", "sched_tasks_api", {
         conversationId: "agent-dispatch:sched-run-1",
@@ -542,6 +546,42 @@ describe("Tasks API", () => {
       await expect(
         getEventTask(fixture.sql.db(), "event_tasks_api"),
       ).resolves.toBeUndefined();
+
+      const afterDeleteList = await authenticatedApi(
+        "viewer@example.com",
+      ).request("http://localhost/api/tasks");
+      expect(afterDeleteList.status).toBe(200);
+      expect(taskListSchema.parse(await afterDeleteList.json()).tasks).toEqual(
+        [],
+      );
+
+      const afterDeleteRuns = await authenticatedApi(
+        "viewer@example.com",
+      ).request("http://localhost/api/tasks/runs");
+      expect(afterDeleteRuns.status).toBe(200);
+      expect(taskRunListSchema.parse(await afterDeleteRuns.json())).toEqual({
+        runs: [
+          expect.objectContaining({
+            executionId: "sched-run-2",
+            kind: "scheduled",
+            taskId: "sched_tasks_api",
+            taskTitle: "Untitled scheduled task",
+          }),
+          expect.objectContaining({
+            executionId: "sched-run-1",
+            kind: "scheduled",
+            taskId: "sched_tasks_api",
+            taskTitle: "Untitled scheduled task",
+          }),
+          expect.objectContaining({
+            executionId: "event-run-1",
+            kind: "event",
+            taskId: "event_tasks_api",
+            taskTitle: "Task execution fixture",
+          }),
+        ],
+        truncated: false,
+      });
     } finally {
       await fixture.close();
     }
