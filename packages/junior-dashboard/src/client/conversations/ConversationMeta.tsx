@@ -160,10 +160,7 @@ export function ConversationSidebarAnnotations(props: {
         ) : (
           <span className="inline-flex min-w-0 items-center gap-1">
             {badges.labeledGroups.map((group) => (
-              <SidebarAnnotationGroupChip
-                group={group}
-                key={group.label}
-              />
+              <SidebarAnnotationGroupChip group={group} key={group.label} />
             ))}
             {badges.overflowGroupCount > 0 ? (
               <span className="inline-flex h-5 min-w-7 shrink-0 items-center justify-center rounded-full border border-white/12 bg-dashboard-control px-1.5 font-mono text-2xs leading-none text-dashboard-text-muted">
@@ -525,11 +522,11 @@ export function ConversationIdentity(props: {
   );
 }
 
-function SourceLocation(props: { label: string; sourceUrl?: string }) {
-  return props.sourceUrl ? (
+function LocationLink(props: { label: string; locationUrl?: string }) {
+  return props.locationUrl ? (
     <a
       className="text-dashboard-text underline decoration-white/20 underline-offset-2 transition-colors hover:decoration-white/60"
-      href={props.sourceUrl}
+      href={props.locationUrl}
       rel="noreferrer"
       target="_blank"
     >
@@ -649,7 +646,8 @@ function conversationStatItems(props: {
   const location = slackLocationLabel(props.conversation, {
     includeId: false,
   });
-  const sourceUrl = props.detail?.sourceUrl ?? props.conversation.sourceUrl;
+  const locationUrl =
+    props.detail?.locationUrl ?? props.conversation.locationUrl;
   const durationLabel = formatConversationDuration(props.conversation);
   const live = (props.detail?.status ?? props.conversation.status) === "active";
   const activeModelId = liveModelId(props.detail);
@@ -657,7 +655,7 @@ function conversationStatItems(props: {
   const rawStats: Array<MetricListItem | undefined> = [
     variant === "full" && location
       ? {
-          content: <SourceLocation label={location} sourceUrl={sourceUrl} />,
+          content: <LocationLink label={location} locationUrl={locationUrl} />,
           key: "location",
         }
       : undefined,

@@ -247,7 +247,7 @@ export const conversationSummaryReportSchema = z
     channelNameRedacted: z.boolean().optional(),
     locationId: z.string().optional(),
     sentryTraceUrl: z.string().optional(),
-    sourceUrl: z.string().url().optional(),
+    locationUrl: z.string().url().optional(),
     traceId: z.string().optional(),
     /**
      * Plugin-owned resource links for this conversation.

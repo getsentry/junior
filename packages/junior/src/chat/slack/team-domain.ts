@@ -1,6 +1,6 @@
 import { getSlackClient, withSlackRetries } from "@/chat/slack/client";
 import { parseSlackTeamId, type SlackTeamId } from "@/chat/slack/ids";
-import { parseSlackTeamDomain } from "@/chat/slack/source-link";
+import { parseSlackTeamDomain } from "@/chat/slack/location-url";
 
 const TEAM_DOMAIN_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const TEAM_DOMAIN_NEGATIVE_CACHE_TTL_MS = 60 * 1000;

@@ -141,7 +141,7 @@ function sentryConversationUrl(conversationId: string): string {
   return `https://sentry.example.com/organizations/acme/explore/conversations/${encodeURIComponent(conversationId)}/`;
 }
 
-function slackSourceUrl(channelId: string, threadTs: string): string {
+function slackLocationUrl(channelId: string, threadTs: string): string {
   const [seconds, fraction = ""] = threadTs.split(".");
   const pathTs = `p${seconds}${(fraction ?? "").padEnd(6, "0").slice(0, 6)}`;
   return `https://sentry.slack.com/archives/${channelId}/${pathTs}?thread_ts=${threadTs}&cid=${channelId}`;
@@ -283,7 +283,7 @@ function activeConversation(nowMs: number): ConversationDetailReport {
       },
     ],
     sentryConversationUrl: sentryConversationUrl(ACTIVE_CONVERSATION_ID),
-    sourceUrl: slackSourceUrl("CQA123", "1770003600.000200"),
+    locationUrl: slackLocationUrl("CQA123", "1770003600.000200"),
     events: [
       reportEvent(0, startedAt, {
         type: "message",
@@ -1459,7 +1459,8 @@ function conversationMetricHours(
     }
     const cachedInputTokens = summary.cumulativeUsage?.cachedInputTokens;
     if (cachedInputTokens !== undefined) {
-      hour.cachedInputTokens = (hour.cachedInputTokens ?? 0) + cachedInputTokens;
+      hour.cachedInputTokens =
+        (hour.cachedInputTokens ?? 0) + cachedInputTokens;
     }
     const costUsd = summary.cumulativeUsage?.cost?.total;
     if (costUsd !== undefined) {
@@ -1900,7 +1901,6 @@ function mockActorWindows(
   return windows;
 }
 
-
 function trailingMetricHours<T extends { date: string }>(
   nowMs: number,
   empty: (date: string) => T,
@@ -2105,7 +2105,9 @@ export function readMockPeoplePluginReports(
 }
 
 /** Build mock person-scoped code activity for local profile QA. */
-export function readMockPeopleCode(email: string): CodePersonReport | undefined {
+export function readMockPeopleCode(
+  email: string,
+): CodePersonReport | undefined {
   const directory = readMockPeopleDirectory();
   const person = directory.people.find(
     (entry) => entry.actor.email.toLowerCase() === email.trim().toLowerCase(),
