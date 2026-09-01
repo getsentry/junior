@@ -33,7 +33,10 @@ import {
   RetryableDeliveryError,
   type AgentDurability,
 } from "@/chat/agent/types";
-import { TurnSliceLimitExceededError } from "@/chat/services/turn-limit";
+import {
+  TurnExecutionLimitExceededError,
+  TurnSliceLimitExceededError,
+} from "@/chat/services/turn-limit";
 import type { PluginTurnContext } from "@/chat/plugins/prompt";
 
 interface ResumeStateArgs {
@@ -256,7 +259,7 @@ export function createResumeState(args: ResumeStateArgs) {
       } catch (error) {
         if (
           error instanceof AuthPausePersistenceError ||
-          error instanceof TurnSliceLimitExceededError
+          error instanceof TurnExecutionLimitExceededError
         ) {
           throw error;
         }

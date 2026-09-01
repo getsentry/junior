@@ -16,6 +16,8 @@ import {
 const MIN_AGENT_TURN_TIMEOUT_MS = 10 * 1000;
 const DEFAULT_AGENT_TURN_TIMEOUT_MS = 12 * 60 * 1000;
 const MAX_SLICES_PER_TURN = 100;
+/** Hard stop for tool thrash inside one turn, including soft-yield resumes. */
+const MAX_TOOL_CALLS_PER_TURN = 80;
 const DEFAULT_FUNCTION_MAX_DURATION_SECONDS = 300;
 const DEFAULT_SLACK_SLASH_COMMAND = "/jr";
 const DEFAULT_PROCESSING_REACTION_EMOJI = "eyes";
@@ -57,6 +59,7 @@ export interface BotConfig {
   reasoningLevel?: TurnReasoningLevel;
   visionModelId?: string;
   maxSlicesPerTurn: number;
+  maxToolCallsPerTurn: number;
   turnTimeoutMs: number;
   userName: string;
   webSearchModelId: string;
@@ -369,6 +372,7 @@ function readBotConfig(
     loadingMessages: parseLoadingMessages(env.JUNIOR_LOADING_MESSAGES),
     visionModelId: validateGatewayModelId(env.AI_VISION_MODEL),
     maxSlicesPerTurn: MAX_SLICES_PER_TURN,
+    maxToolCallsPerTurn: MAX_TOOL_CALLS_PER_TURN,
     turnTimeoutMs: parseAgentTurnTimeoutMs(
       env.AGENT_TURN_TIMEOUT_MS,
       maxTurnTimeoutMs,

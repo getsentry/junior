@@ -103,7 +103,11 @@ import {
   AuthorizationFlowDisabledError,
   AuthorizationPauseError,
 } from "@/chat/services/auth-pause";
-import { TurnSliceLimitExceededError } from "@/chat/services/turn-limit";
+import {
+  TurnExecutionLimitExceededError,
+  assertTurnToolCallBudget,
+  countTurnToolCalls,
+} from "@/chat/services/turn-limit";
 import {
   resolveConversationPrivacy,
   runWithConversationPrivacy,
@@ -1200,6 +1204,31 @@ async function executeAgentRunInPrivacyContext(
             reason: `${exclusiveTool} must be the only tool call in its assistant message; reissue it alone`,
           };
         }
+        // Fail closed before execution so a thrashing loop cannot burn another
+        // full tool batch after soft yield already advanced the boundary.
+        // Pi has already appended this assistant message, so the count includes
+        // the pending batch. beforeToolCall exceptions become tool errors, so
+        // block+terminate the batch and raise through pendingPiHookError after
+        // the agent step settles.
+        const turnMessages =
+          turnStartMessageIndex !== undefined
+            ? currentAgentMessages().slice(turnStartMessageIndex)
+            : currentAgentMessages().slice(runResume.beforeMessageCount);
+        try {
+          assertTurnToolCallBudget({
+            existingToolCalls: countTurnToolCalls(turnMessages),
+            maxToolCalls: botConfig.maxToolCallsPerTurn,
+          });
+        } catch (error) {
+          const limitError =
+            error instanceof Error ? error : new Error(String(error));
+          pendingPiHookError ??= limitError;
+          return {
+            block: true,
+            reason: limitError.message,
+            terminate: true,
+          };
+        }
         return undefined;
       },
       afterToolCall: async ({ result, toolCall }, signal) => {
@@ -1438,6 +1467,11 @@ async function executeAgentRunInPrivacyContext(
                   runResume.getResumeSnapshot(currentAgentMessages()),
                 );
                 throw pendingAuthPause;
+              }
+              if (pendingPiHookError) {
+                const hookError = pendingPiHookError;
+                pendingPiHookError = undefined;
+                throw hookError;
               }
               throw error;
             } finally {
@@ -1702,7 +1736,7 @@ async function executeAgentRunInPrivacyContext(
         : error;
     if (
       runError instanceof AuthPausePersistenceError ||
-      runError instanceof TurnSliceLimitExceededError
+      runError instanceof TurnExecutionLimitExceededError
     ) {
       throw runError;
     }
