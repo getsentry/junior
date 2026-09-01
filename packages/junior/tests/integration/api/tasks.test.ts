@@ -252,6 +252,29 @@ describe("Tasks API", () => {
           visibility: "public",
         });
       }
+      // Public runs from another workspace must stay out of the viewer Runs list.
+      await conversationStore.recordActivity({
+        conversationId: "agent-dispatch:foreign-public-run",
+        actor: {
+          email: "foreign@example.com",
+          platform: "slack",
+          slackUserId: "U999",
+          teamId: "TFOREIGN",
+        },
+        destination: {
+          channelId: "CFOREIGN",
+          platform: "slack",
+          teamId: "TFOREIGN",
+        },
+        title: "Foreign public task run",
+        visibility: "public",
+      });
+      await recordTaskExecution("event", "event_foreign_public", {
+        conversationId: "agent-dispatch:foreign-public-run",
+        executionId: "foreign-public-run",
+        nowMs: scheduledRun2AtMs + 1_000,
+        status: "completed",
+      });
       await fixture.sql
         .db()
         .update(juniorConversations)

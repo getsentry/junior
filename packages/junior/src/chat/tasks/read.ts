@@ -1,6 +1,15 @@
 import type { SlackDestination, User } from "@sentry/junior-plugin-api";
-import { and, desc, eq, inArray, or } from "drizzle-orm";
-import { readConversationAccessFromSql } from "@/api/conversations/access";
+import {
+  and,
+  desc,
+  eq,
+  exists,
+  inArray,
+  isNotNull,
+  or,
+  sql,
+} from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import type { ConversationSourceTask } from "@/api/schema/conversation";
 import type {
   TaskExecutionList,
@@ -45,6 +54,8 @@ import {
 } from "@/chat/scheduled-tasks/tasks";
 import type { ScheduledTask } from "@/chat/scheduled-tasks/types";
 import {
+  juniorConversationParticipants,
+  juniorConversations,
   juniorDestinations,
   juniorIdentities,
   juniorSchedulerTasks,
@@ -515,21 +526,82 @@ async function readDeletedOwnedScheduledTasks(
 }
 
 /**
- * Load recent execution conversation ids the viewer can still open after the
- * source task row is gone. Access follows the linked conversation.
+ * Load recent execution conversation ids owned by the viewer after the source
+ * task row is gone. Scope is participant membership or root actor identity —
+ * never every public destination across tenants.
  */
 async function readViewerHistoricalRunConversationIds(
   user: User,
 ): Promise<string[]> {
-  const rows = await getDb()
+  const db = getDb();
+  const rootConversation = alias(
+    juniorConversations,
+    "task_run_root_conversation",
+  );
+  const rootActorIdentity = alias(juniorIdentities, "task_run_root_actor");
+  const viewerEmail = user.email.trim().toLowerCase();
+  const participantMatch = exists(
+    db
+      .select({ one: sql`1` })
+      .from(juniorConversationParticipants)
+      .where(
+        and(
+          eq(juniorConversationParticipants.userId, user.id),
+          eq(
+            juniorConversationParticipants.rootConversationId,
+            rootConversation.conversationId,
+          ),
+        ),
+      ),
+  );
+  const rootActorMatch = and(
+    eq(rootActorIdentity.userId, user.id),
+    eq(rootActorIdentity.kind, "user"),
+  );
+  const rootActorEmailMatch =
+    viewerEmail.length > 0
+      ? and(
+          eq(rootActorIdentity.emailVerified, true),
+          eq(rootActorIdentity.emailNormalized, viewerEmail),
+          eq(rootActorIdentity.kind, "user"),
+        )
+      : undefined;
+  const rows = await db
     .select({
       conversationId: juniorTaskExecutions.conversationId,
     })
     .from(juniorTaskExecutions)
+    .innerJoin(
+      juniorConversations,
+      eq(
+        juniorConversations.conversationId,
+        juniorTaskExecutions.conversationId,
+      ),
+    )
+    .innerJoin(
+      rootConversation,
+      and(
+        eq(
+          rootConversation.conversationId,
+          juniorConversations.rootConversationId,
+        ),
+        eq(
+          rootConversation.rootConversationId,
+          rootConversation.conversationId,
+        ),
+        sql`${rootConversation.parentConversationId} is null`,
+      ),
+    )
+    .leftJoin(
+      rootActorIdentity,
+      eq(rootActorIdentity.id, rootConversation.actorIdentityId),
+    )
     .where(
       and(
         eq(juniorTaskExecutions.namespace, "junior"),
         inArray(juniorTaskExecutions.kind, ["scheduled", "event"]),
+        isNotNull(juniorTaskExecutions.conversationId),
+        or(participantMatch, rootActorMatch, rootActorEmailMatch),
       ),
     )
     .orderBy(
@@ -537,7 +609,7 @@ async function readViewerHistoricalRunConversationIds(
       desc(juniorTaskExecutions.executionId),
     )
     .limit(TASK_EXECUTION_LIST_LIMIT * 4);
-  const conversationIds = [
+  return [
     ...new Set(
       rows
         .map((row) => row.conversationId)
@@ -546,16 +618,6 @@ async function readViewerHistoricalRunConversationIds(
         ),
     ),
   ];
-  if (conversationIds.length === 0) return [];
-  const access = await readConversationAccessFromSql(
-    getDb(),
-    conversationIds,
-    user,
-  );
-  return conversationIds.filter(
-    (conversationId) =>
-      access.get(conversationId)?.canViewPrivateContent === true,
-  );
 }
 
 function taskTitleForRun(
@@ -571,8 +633,8 @@ function taskTitleForRun(
 
 /**
  * Read newest runs across live viewer-visible tasks, deleted scheduled tasks the
- * viewer owns, and retained executions whose linked conversations the viewer
- * can still open.
+ * viewer owns, and retained executions on conversations the viewer owns as a
+ * participant or root actor.
  */
 export async function readViewerTaskRuns(user: User): Promise<TaskRunList> {
   const [taskList, deletedScheduled, historicalConversationIds] =
