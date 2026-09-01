@@ -108,12 +108,13 @@ describe("agent resume", () => {
     const { resume } = await resumeState(conversationId, turnId);
     expect(resume.cumulativeToolCallCount).toBe(17);
 
-    resume.setCumulativeToolCallCount(19);
+    resume.admitToolCall(150);
+    expect(resume.cumulativeToolCallCount).toBe(18);
     await expect(resume.persistSafeBoundary([first, second])).resolves.toBe(
       true,
     );
     await expect(getTurnRecord(conversationId, turnId)).resolves.toMatchObject({
-      cumulativeToolCallCount: 19,
+      cumulativeToolCallCount: 18,
       state: "running",
     });
   });

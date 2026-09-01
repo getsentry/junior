@@ -120,11 +120,7 @@ export interface TurnRecord {
   version: number;
   conversationId: string;
   cumulativeDurationMs: number;
-  /**
-   * Tool calls already charged to this turn across slices and history
-   * replacements. Kept on the Redis resume cursor so compaction cannot reset
-   * the hard tool-call limit by dropping older tool-call parts.
-   */
+  /** Tool calls charged to this turn; survives history replacement. */
   cumulativeToolCallCount?: number;
   cumulativeUsage?: AgentTurnUsage;
   dispatchId?: string;

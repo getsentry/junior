@@ -4,23 +4,8 @@ import {
   TurnToolCallLimitExceededError,
   assertTurnToolCallLimit,
   buildTurnLimitResponse,
-  countTurnToolCalls,
   isTurnExecutionLimitExceededError,
 } from "@/chat/services/turn-limit";
-import type { PiMessage } from "@/chat/pi/messages";
-
-function assistantWithTools(...names: string[]): PiMessage {
-  return {
-    role: "assistant",
-    content: names.map((name, index) => ({
-      type: "toolCall",
-      id: `call_${index}_${name}`,
-      name,
-      arguments: {},
-    })),
-    timestamp: 1_700_000_000_000 + names.length,
-  } as PiMessage;
-}
 
 describe("turn execution limit", () => {
   it("keeps the internal slice limit in diagnostics", () => {
@@ -48,16 +33,6 @@ describe("turn execution limit", () => {
     expect(response).toContain("smaller or more specific request");
     expect(response).toContain("event_id=abc123");
     expect(response).not.toContain("continuation");
-  });
-
-  it("counts tool calls already present on assistant messages", () => {
-    expect(
-      countTurnToolCalls([
-        { role: "user", content: "go", timestamp: 1 } as PiMessage,
-        assistantWithTools("bash", "bash"),
-        assistantWithTools("loadSkill"),
-      ]),
-    ).toBe(3);
   });
 
   it("allows tool calls at the limit and stops past it", () => {

@@ -103,10 +103,7 @@ import {
   AuthorizationFlowDisabledError,
   AuthorizationPauseError,
 } from "@/chat/services/auth-pause";
-import {
-  assertTurnToolCallLimit,
-  isTurnExecutionLimitExceededError,
-} from "@/chat/services/turn-limit";
+import { isTurnExecutionLimitExceededError } from "@/chat/services/turn-limit";
 import {
   resolveConversationPrivacy,
   runWithConversationPrivacy,
@@ -1203,18 +1200,11 @@ async function executeAgentRunInPrivacyContext(
             reason: `${exclusiveTool} must be the only tool call in its assistant message; reissue it alone`,
           };
         }
-        // Charge against the durable turn total, not the live message slice.
-        // Compaction and handoff rewrite history and reset turnStartMessageIndex
-        // to 0, so recounting messages undercounts after a replacement.
-        // beforeToolCall runs once per tool, so advance the total by one when
-        // this call is admitted. Exceptions become tool errors, so block +
-        // terminate and rethrow after the agent step settles.
-        const nextToolCallCount = runResume.cumulativeToolCallCount + 1;
+        // beforeToolCall runs once per tool. Charge the durable turn total
+        // here (not a live message recount) so compaction cannot reset it.
+        // Exceptions become tool errors, so block + terminate and rethrow.
         try {
-          assertTurnToolCallLimit(
-            nextToolCallCount,
-            botConfig.maxToolCallsPerTurn,
-          );
+          runResume.admitToolCall(botConfig.maxToolCallsPerTurn);
         } catch (error) {
           const limitError =
             error instanceof Error ? error : new Error(String(error));
@@ -1225,7 +1215,6 @@ async function executeAgentRunInPrivacyContext(
             terminate: true,
           };
         }
-        runResume.setCumulativeToolCallCount(nextToolCallCount);
         return undefined;
       },
       afterToolCall: async ({ result, toolCall }, signal) => {

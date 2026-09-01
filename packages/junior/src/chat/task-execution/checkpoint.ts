@@ -83,7 +83,7 @@ interface TurnCheckpointWrite {
   source?: Source;
   surface?: AgentTurnSurface;
   turnStartMessageIndex?: number;
-  /** Absolute tool-call count for this turn; survives history replacement. */
+  /** Tool calls charged to this turn; survives history replacement. */
   cumulativeToolCallCount?: number;
   trailingMessageProvenance?: ConversationMessageProvenance[];
   turnContexts?: PluginTurnContext[];

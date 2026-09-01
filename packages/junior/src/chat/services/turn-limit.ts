@@ -1,6 +1,3 @@
-import type { PiMessage } from "@/chat/pi/messages";
-import { isAssistantMessage } from "@/chat/pi/transcript";
-
 /** Terminal failure when one turn uses too many execution slices. */
 export class TurnSliceLimitExceededError extends Error {
   constructor(maxSlices: number) {
@@ -25,23 +22,7 @@ export function isTurnExecutionLimitExceededError(error: unknown): boolean {
   );
 }
 
-/** Count tool calls on assistant messages in one turn history. */
-export function countTurnToolCalls(messages: readonly PiMessage[]): number {
-  let count = 0;
-  for (const message of messages) {
-    if (!isAssistantMessage(message)) {
-      continue;
-    }
-    for (const part of message.content) {
-      if (part.type === "toolCall") {
-        count += 1;
-      }
-    }
-  }
-  return count;
-}
-
-/** Stop the turn when its tool-call count is already above the limit. */
+/** Stop the turn when its tool-call count is past the limit. */
 export function assertTurnToolCallLimit(
   toolCallCount: number,
   maxToolCalls: number,
