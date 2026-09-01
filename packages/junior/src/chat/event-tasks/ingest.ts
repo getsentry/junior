@@ -20,7 +20,7 @@ import { findMatchingEventTasks } from "@/chat/event-tasks/store";
 import type { EventTask } from "@/chat/event-tasks/types";
 import { logInfo } from "@/chat/logging";
 import { admitAutomatedTurn } from "@/chat/services/automated-turn-limit";
-import { postAutomatedTurnLimitNoticeForDestination } from "@/chat/services/automated-turn-limit-notice";
+import { postAutomatedTurnLimitNoticeForDestination } from "@/chat/slack/automated-turn-limit-notice";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { resourceEventGuidance } from "@/chat/resource-events/catalog";
 import { getResourceEventCatalog } from "@/chat/resource-events/runtime-catalog";

@@ -47,7 +47,7 @@ import {
   upsertConversationMessage,
 } from "@/chat/services/conversation-memory";
 import { recordFinishedTurnForAutomatedLimit } from "@/chat/services/automated-turn-limit";
-import { maybePostAutomatedTurnLimitNotice } from "@/chat/services/automated-turn-limit-notice";
+import { maybePostAutomatedTurnLimitNotice } from "@/chat/slack/automated-turn-limit-notice";
 import { finalizeFailedTurnReplyWithEvent } from "@/chat/services/turn-failure-response";
 import { clearPendingAuth } from "@/chat/services/pending-auth";
 import {

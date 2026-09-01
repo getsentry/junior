@@ -1,7 +1,7 @@
 import { botConfig } from "@/chat/config";
 import { logInfo } from "@/chat/logging";
 import { admitAutomatedTurn } from "@/chat/services/automated-turn-limit";
-import { postAutomatedTurnLimitNoticeForConversation } from "@/chat/services/automated-turn-limit-notice";
+import { postAutomatedTurnLimitNoticeForConversation } from "@/chat/slack/automated-turn-limit-notice";
 import { renderTaskInput } from "@/chat/task-input";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import {
