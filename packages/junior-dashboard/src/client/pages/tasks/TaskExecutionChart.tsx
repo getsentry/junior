@@ -7,7 +7,7 @@ import {
   ActivityTooltipRows,
   ChartSvg,
   createActivityChartLayout,
-  formatActivityDate,
+  formatActivityTooltipDate,
 } from "../../components/charts/ActivityChart";
 import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
 import { Card } from "../../components/layout/Card";
@@ -61,10 +61,10 @@ export function TaskExecutionChart(props: {
               <Tooltip
                 content={<ActivityTooltipRows rows={[["executions", total]]} />}
                 key={day.date}
-                label={formatActivityDate(day.date)}
+                label={formatActivityTooltipDate(day.date)}
               >
                 <g
-                  aria-label={`${formatActivityDate(day.date)}: ${total} executions`}
+                  aria-label={`${formatActivityTooltipDate(day.date)}: ${total} executions`}
                   tabIndex={0}
                 >
                   <rect

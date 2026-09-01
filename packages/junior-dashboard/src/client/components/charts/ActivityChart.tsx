@@ -9,6 +9,7 @@ import {
   useState,
 } from "react";
 
+import { getDashboardTimeZone } from "../../format";
 import { cn } from "../../styles";
 
 /** Shared SVG dimensions and derived plot bounds for activity charts. */
@@ -67,12 +68,16 @@ export function activityBucketStartMs(date: string): number {
   );
 }
 
-/** Format an activity day or hour bucket without applying the browser zone. */
+/**
+ * Format an activity day or hour bucket for chart axes.
+ * Hour buckets use the dashboard display timezone. Day buckets keep the UTC
+ * calendar key so a day series does not shift across local midnight.
+ */
 export function formatActivityDate(date: string): string {
   if (isActivityHourBucket(date)) {
     return new Date(`${date}:00:00.000Z`).toLocaleTimeString(undefined, {
       hour: "numeric",
-      timeZone: "UTC",
+      timeZone: getDashboardTimeZone(),
     });
   }
   return new Date(`${date}T00:00:00.000Z`).toLocaleDateString(undefined, {
@@ -80,6 +85,22 @@ export function formatActivityDate(date: string): string {
     month: "short",
     timeZone: "UTC",
   });
+}
+
+/**
+ * Format an activity day or hour bucket for chart tooltips and aria labels.
+ * Hour buckets always include the local calendar date so 24h views are unambiguous.
+ */
+export function formatActivityTooltipDate(date: string): string {
+  if (isActivityHourBucket(date)) {
+    return new Date(`${date}:00:00.000Z`).toLocaleString(undefined, {
+      day: "numeric",
+      hour: "numeric",
+      month: "short",
+      timeZone: getDashboardTimeZone(),
+    });
+  }
+  return formatActivityDate(date);
 }
 
 /** Choose the first, middle, and last available chart labels. */

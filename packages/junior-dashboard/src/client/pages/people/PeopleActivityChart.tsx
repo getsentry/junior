@@ -8,7 +8,7 @@ import {
   ActivityTooltipRows,
   ChartSvg,
   createActivityChartLayout,
-  formatActivityDate,
+  formatActivityTooltipDate,
   type ActivityChartLayout,
 } from "../../components/charts/ActivityChart";
 import { ChartLegend } from "../../components/charts/ChartLegend";
@@ -112,10 +112,10 @@ export function PeopleActivityChart(props: {
                   />
                 }
                 key={day.date}
-                label={formatActivityDate(day.date)}
+                label={formatActivityTooltipDate(day.date)}
               >
                 <circle
-                  aria-label={`${formatActivityDate(day.date)}: ${day.activePeople} active people, ${day.conversations} conversations`}
+                  aria-label={`${formatActivityTooltipDate(day.date)}: ${day.activePeople} active people, ${day.conversations} conversations`}
                   cx={point.x}
                   cy={point.y}
                   fill="#fbbf24"

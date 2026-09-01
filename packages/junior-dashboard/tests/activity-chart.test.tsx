@@ -13,9 +13,11 @@ import {
   ChartSvg,
   createActivityChartLayout,
   formatActivityDate,
+  formatActivityTooltipDate,
 } from "../src/client/components/charts/ActivityChart";
 import { ChartHeader } from "../src/client/components/charts/ChartHeader";
 import { SystemMetricCharts } from "../src/client/components/charts/SystemMetricCharts";
+import { setDashboardTimeZone } from "../src/client/format";
 
 describe("ChartAxisLabel", () => {
   it("defaults to the shared 11px screen-size contract", () => {
@@ -116,8 +118,18 @@ describe("formatActivityDate", () => {
     expect(formatActivityDate("2026-05-01")).toContain("May");
   });
 
-  it("formats hour buckets as UTC clock hours", () => {
-    expect(formatActivityDate("2026-05-01T15")).toMatch(/3|15/);
+  it("formats hour buckets in the dashboard display timezone", () => {
+    setDashboardTimeZone("America/Los_Angeles");
+    // 15:00 UTC is 8:00 AM PDT.
+    expect(formatActivityDate("2026-05-01T15")).toMatch(/8/);
+    expect(formatActivityDate("2026-05-01T15")).not.toMatch(/\b3\b|\b15\b/);
+  });
+
+  it("includes the local date on hour-bucket tooltips", () => {
+    setDashboardTimeZone("America/Los_Angeles");
+    expect(formatActivityTooltipDate("2026-05-01T15")).toMatch(/May/);
+    expect(formatActivityTooltipDate("2026-05-01T15")).toMatch(/8/);
+    expect(formatActivityTooltipDate("2026-05-01")).toContain("May");
   });
 
   it("parses day and hour bucket starts in UTC", () => {

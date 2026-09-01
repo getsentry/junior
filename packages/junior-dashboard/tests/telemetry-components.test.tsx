@@ -1728,7 +1728,7 @@ describe("dashboard canonical-event components", () => {
         ]}
       />,
     );
-    expect(html).toContain('aria-label="2026-07-31, Cost: $0.0042"');
+    expect(html).toContain('aria-label="Jul 31, Cost: $0.0042"');
     expect(html).toContain(">$0.0042</text>");
     expect(html).toContain('x1="104"');
   });
@@ -1764,9 +1764,9 @@ describe("dashboard canonical-event components", () => {
         ]}
       />,
     );
-    expect(html).toContain('aria-label="2026-07-31, Created: 89"');
-    expect(html).toContain('aria-label="2026-07-25, Created: 83"');
-    expect(html).not.toContain('aria-label="2026-07-24, Created: 82"');
+    expect(html).toContain('aria-label="Jul 31, Created: 89"');
+    expect(html).toContain('aria-label="Jul 25, Created: 83"');
+    expect(html).not.toContain('aria-label="Jul 24, Created: 82"');
     expect(html).not.toContain('aria-label="Reporting period"');
   });
 
@@ -1801,9 +1801,10 @@ describe("dashboard canonical-event components", () => {
         ]}
       />,
     );
-    expect(html).toContain('aria-label="2026-07-31T23, Created: 47"');
-    expect(html).toContain('aria-label="2026-07-31T00, Created: 24"');
-    expect(html).not.toContain('aria-label="2026-07-30T23, Created: 23"');
+    // Hour buckets render in the dashboard timezone (America/Los_Angeles).
+    expect(html).toContain('aria-label="Jul 31, 4 PM, Created: 47"');
+    expect(html).toContain('aria-label="Jul 30, 5 PM, Created: 24"');
+    expect(html).not.toContain('aria-label="Jul 30, 4 PM, Created: 23"');
   });
 
   it("renders an all-zero chart with a stable zero scale", () => {

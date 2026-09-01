@@ -4,7 +4,7 @@ import {
   ActivityTooltipRows,
   ChartSvg,
   createActivityChartLayout,
-  formatActivityDate,
+  formatActivityTooltipDate,
 } from "../../components/charts/ActivityChart";
 import { ChartLegend } from "../../components/charts/ChartLegend";
 import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
@@ -73,10 +73,10 @@ export function MemoryTimeline(props: {
                   />
                 }
                 key={day.date}
-                label={formatActivityDate(day.date)}
+                label={formatActivityTooltipDate(day.date)}
               >
                 <g
-                  aria-label={`${formatActivityDate(day.date)}: ${day.personal} personal, ${day.public} public, ${total} total memories`}
+                  aria-label={`${formatActivityTooltipDate(day.date)}: ${day.personal} personal, ${day.public} public, ${total} total memories`}
                   tabIndex={0}
                 >
                   {series.map((item) => {

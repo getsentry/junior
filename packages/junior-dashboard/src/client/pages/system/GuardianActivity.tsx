@@ -3,14 +3,11 @@ import type { GuardianMetricDay } from "@sentry/junior/api/schema";
 import {
   ChartAxisHtmlLabel,
   formatActivityDate,
+  formatActivityTooltipDate,
 } from "../../components/charts/ActivityChart";
 import { Tooltip } from "../../components/Tooltip";
 import { Card } from "../../components/layout/Card";
 import { formatCompactNumber, formatCostSummary } from "../../format";
-
-function shortDate(date: string): string {
-  return formatActivityDate(date);
-}
 
 function totals(days: GuardianMetricDay[]) {
   return days.reduce(
@@ -126,11 +123,11 @@ export function GuardianActivity(props: {
                   </div>
                 }
                 key={day.date}
-                label={shortDate(day.date)}
+                label={formatActivityTooltipDate(day.date)}
                 triggerClassName="h-full min-w-0 flex-1 items-end"
               >
                 <button
-                  aria-label={`${shortDate(day.date)}: ${day.allow} allowed, ${day.ask} asked, ${day.deny} denied, ${formatCostSummary({ total: day.costUsd ?? 0 })}`}
+                  aria-label={`${formatActivityTooltipDate(day.date)}: ${day.allow} allowed, ${day.ask} asked, ${day.deny} denied, ${formatCostSummary({ total: day.costUsd ?? 0 })}`}
                   className="flex w-full min-w-0 flex-col justify-end overflow-hidden rounded-t-sm bg-white/[0.035] focus-visible:outline-1 focus-visible:outline-cyan-300"
                   style={{ height: `${height}%` }}
                   type="button"
@@ -170,7 +167,7 @@ export function GuardianActivity(props: {
                   left: `${((index + 0.5) / props.days.length) * 100}%`,
                 }}
               >
-                {shortDate(day.date)}
+                {formatActivityDate(day.date)}
               </ChartAxisHtmlLabel>
             );
           })}

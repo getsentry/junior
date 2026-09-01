@@ -6,7 +6,7 @@ import {
   ActivityTooltipRows,
   ChartSvg,
   createActivityChartLayout,
-  formatActivityDate,
+  formatActivityTooltipDate,
 } from "./ActivityChart";
 import { ChartHeader } from "./ChartHeader";
 import type { TimeRangeDays } from "../controls/TimeRangeSelector";
@@ -63,10 +63,10 @@ export function WorkspaceUsageChart(props: {
                   <ActivityTooltipRows rows={[["usage", day.count]]} />
                 }
                 key={day.date}
-                label={formatActivityDate(day.date)}
+                label={formatActivityTooltipDate(day.date)}
               >
                 <g
-                  aria-label={`${formatActivityDate(day.date)}: ${day.count} switches`}
+                  aria-label={`${formatActivityTooltipDate(day.date)}: ${day.count} switches`}
                   tabIndex={0}
                 >
                   <rect

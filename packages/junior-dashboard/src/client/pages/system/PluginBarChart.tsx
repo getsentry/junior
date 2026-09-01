@@ -6,6 +6,7 @@ import {
   ChartSvg,
   createActivityChartLayout,
   formatActivityDate,
+  formatActivityTooltipDate,
   isActivityHourBucket,
 } from "../../components/charts/ActivityChart";
 import { ChartLegend } from "../../components/charts/ChartLegend";
@@ -118,10 +119,10 @@ export function PluginBarChart(props: {
                 <Tooltip
                   content={`${series.label}: ${formatted}`}
                   key={`${category.id}:${series.key}`}
-                  label={category.label}
+                  label={formatCategoryTooltipLabel(category.label)}
                 >
                   <rect
-                    aria-label={`${category.label}, ${series.label}: ${formatted}`}
+                    aria-label={`${formatCategoryTooltipLabel(category.label)}, ${series.label}: ${formatted}`}
                     fill={
                       series.tone
                         ? toneColors[series.tone]
@@ -188,6 +189,13 @@ function visibleCategoryCount(
 function formatCategoryLabel(label: string): string {
   if (isActivityHourBucket(label) || /^\d{4}-\d{2}-\d{2}$/.test(label)) {
     return formatActivityDate(label);
+  }
+  return label;
+}
+
+function formatCategoryTooltipLabel(label: string): string {
+  if (isActivityHourBucket(label) || /^\d{4}-\d{2}-\d{2}$/.test(label)) {
+    return formatActivityTooltipDate(label);
   }
   return label;
 }

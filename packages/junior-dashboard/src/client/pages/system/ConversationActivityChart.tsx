@@ -8,7 +8,7 @@ import {
   ActivityTooltipRows,
   ChartSvg,
   createActivityChartLayout,
-  formatActivityDate,
+  formatActivityTooltipDate,
 } from "../../components/charts/ActivityChart";
 import { ChartHeader } from "../../components/charts/ChartHeader";
 import { Card } from "../../components/layout/Card";
@@ -61,10 +61,10 @@ export function ConversationActivityChart(props: {
                   />
                 }
                 key={day.date}
-                label={formatActivityDate(day.date)}
+                label={formatActivityTooltipDate(day.date)}
               >
                 <g
-                  aria-label={`${formatActivityDate(day.date)}: ${day.conversations} conversations`}
+                  aria-label={`${formatActivityTooltipDate(day.date)}: ${day.conversations} conversations`}
                   tabIndex={0}
                 >
                   <rect

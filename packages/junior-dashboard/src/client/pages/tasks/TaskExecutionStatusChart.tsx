@@ -5,7 +5,7 @@ import {
   ActivityTooltipRows,
   ChartSvg,
   createActivityChartLayout,
-  formatActivityDate,
+  formatActivityTooltipDate,
 } from "../../components/charts/ActivityChart";
 import { ChartLegend } from "../../components/charts/ChartLegend";
 import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
@@ -75,10 +75,10 @@ export function TaskExecutionStatusChart(props: {
                   />
                 }
                 key={day.date}
-                label={formatActivityDate(day.date)}
+                label={formatActivityTooltipDate(day.date)}
               >
                 <g
-                  aria-label={`${formatActivityDate(day.date)}: ${day.completed} completed, ${day.failed} failed, ${day.blocked} blocked, ${total} total`}
+                  aria-label={`${formatActivityTooltipDate(day.date)}: ${day.completed} completed, ${day.failed} failed, ${day.blocked} blocked, ${total} total`}
                   tabIndex={0}
                 >
                   {series.map((item) => {

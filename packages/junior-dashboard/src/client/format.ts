@@ -24,6 +24,11 @@ export function setDashboardTimeZone(timeZone: string): void {
   dashboardTimeZone = timeZone;
 }
 
+/** Read the dashboard display timezone used for absolute timestamps and charts. */
+export function getDashboardTimeZone(): string {
+  return dashboardTimeZone;
+}
+
 function displayTimeZone(): string {
   return dashboardTimeZone;
 }

@@ -8,7 +8,7 @@ import {
   ActivityTooltipRows,
   ChartSvg,
   createActivityChartLayout,
-  formatActivityDate,
+  formatActivityTooltipDate,
 } from "../../components/charts/ActivityChart";
 import { ChartLegend } from "../../components/charts/ChartLegend";
 import { Card } from "../../components/layout/Card";
@@ -73,10 +73,10 @@ export function LocationActivityChart(props: {
                   />
                 }
                 key={day.date}
-                label={formatActivityDate(day.date)}
+                label={formatActivityTooltipDate(day.date)}
               >
                 <rect
-                  aria-label={`${formatActivityDate(day.date)}: ${day.conversations} conversations, ${day.active} active, ${day.failed} failed`}
+                  aria-label={`${formatActivityTooltipDate(day.date)}: ${day.conversations} conversations, ${day.active} active, ${day.failed} failed`}
                   fill="url(#location-bars)"
                   height={Math.max(day.conversations ? 2 : 0, barHeight)}
                   opacity={day.conversations ? 0.9 : 0.18}

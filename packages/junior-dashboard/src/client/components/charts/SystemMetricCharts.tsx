@@ -16,7 +16,7 @@ import {
   activityChartAverage,
   ChartSvg,
   createActivityChartLayout,
-  formatActivityDate,
+  formatActivityTooltipDate,
 } from "./ActivityChart";
 import { ChartHeader } from "./ChartHeader";
 import { ChartLegend } from "./ChartLegend";
@@ -237,11 +237,11 @@ function MetricChart(props: {
                   )
                 }
                 key={day.date}
-                label={formatActivityDate(day.date)}
+                label={formatActivityTooltipDate(day.date)}
               >
                 {chart.type === "bar" && chart.metric === "inputTokens" ? (
                   <g
-                    aria-label={`${formatActivityDate(day.date)}: ${chart.format(value)} input tokens`}
+                    aria-label={`${formatActivityTooltipDate(day.date)}: ${chart.format(value)} input tokens`}
                     tabIndex={0}
                   >
                     <rect
@@ -270,7 +270,7 @@ function MetricChart(props: {
                   </g>
                 ) : chart.type === "bar" ? (
                   <rect
-                    aria-label={`${formatActivityDate(day.date)}: ${chart.format(value)}`}
+                    aria-label={`${formatActivityTooltipDate(day.date)}: ${chart.format(value)}`}
                     fill={chart.color}
                     height={renderedBarHeight}
                     opacity={value ? 0.8 : 0.1}
@@ -282,7 +282,7 @@ function MetricChart(props: {
                   />
                 ) : (
                   <circle
-                    aria-label={`${formatActivityDate(day.date)}: ${chart.format(value)}`}
+                    aria-label={`${formatActivityTooltipDate(day.date)}: ${chart.format(value)}`}
                     cx={point.x}
                     cy={point.y}
                     fill={chart.color}

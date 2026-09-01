@@ -7,7 +7,7 @@ import {
   ActivityTooltipRows,
   ChartSvg,
   createActivityChartLayout,
-  formatActivityDate,
+  formatActivityTooltipDate,
 } from "../../components/charts/ActivityChart";
 import { ChartLegend } from "../../components/charts/ChartLegend";
 import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
@@ -99,10 +99,10 @@ export function CodeActivityChart(props: {
                   />
                 }
                 key={day.date}
-                label={formatActivityDate(day.date)}
+                label={formatActivityTooltipDate(day.date)}
               >
                 <g
-                  aria-label={`${formatActivityDate(day.date)}: ${day.created} created, ${day.merged} merged, ${day.closed} closed`}
+                  aria-label={`${formatActivityTooltipDate(day.date)}: ${day.created} created, ${day.merged} merged, ${day.closed} closed`}
                   tabIndex={0}
                 >
                   {series.map((entry, seriesIndex) => {
