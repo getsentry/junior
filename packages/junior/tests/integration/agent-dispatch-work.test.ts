@@ -147,6 +147,7 @@ describe("agent dispatch conversation work", () => {
           detail: "Weekly",
         },
       },
+      source: { kind: "scheduled_task" },
       surface: "api",
       disabledFeatures: ["interactive-auth"],
     });

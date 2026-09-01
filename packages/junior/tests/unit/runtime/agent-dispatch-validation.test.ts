@@ -24,12 +24,6 @@ const validOptions = {
   },
   destinationVisibility: "private" as const,
   input: "Run the scheduled task.",
-  source: createSlackSource({
-    teamId: "T123",
-    channelId: "C123",
-
-    visibility: "private",
-  }),
 };
 
 function createPluginCredentialSubject(
@@ -153,27 +147,17 @@ describe("agent dispatch validation", () => {
     ).toThrow("Dispatch destination channelId must be a Slack channel id");
   });
 
-  it("rejects malformed dispatch source payloads", () => {
+  it("rejects a plugin-provided Source", () => {
     expect(() =>
       validateDispatchOptions({
         ...validOptions,
-        source: {
-          ...validOptions.source,
-          threadTs: "1700000000.000",
-          unexpected: "field",
-        },
+        source: createSlackSource({
+          teamId: "T123",
+          channelId: "C123",
+          visibility: "private",
+        }),
       }),
-    ).toThrow("Dispatch source must not include unknown fields");
-
-    expect(() =>
-      validateDispatchOptions({
-        ...validOptions,
-        source: {
-          ...validOptions.source,
-          teamId: "not-a-team",
-        },
-      }),
-    ).toThrow("Dispatch source teamId must be a Slack team id");
+    ).toThrow("Dispatch options must not include unknown fields");
   });
 
   it("rejects multiline dispatch metadata", () => {
@@ -227,7 +211,11 @@ describe("agent dispatch validation", () => {
       idempotencyKey: "run-1",
       input: "Run the scheduled task.",
       plugin: "scheduler",
-      source: validOptions.source,
+      source: createSlackSource({
+        teamId: "T123",
+        channelId: "C123",
+        visibility: "private",
+      }),
       status: "pending",
       updatedAtMs: Date.parse("2026-05-26T12:00:00.000Z"),
     };

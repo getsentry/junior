@@ -122,8 +122,7 @@ function sameCreateInput(
     JSON.stringify(invocation.credentialContext) ===
       JSON.stringify(input.credentialContext) &&
     JSON.stringify(invocation.destination) ===
-      JSON.stringify(input.destination) &&
-    JSON.stringify(invocation.source) === JSON.stringify(input.source)
+      JSON.stringify(input.destination)
   );
 }
 
@@ -303,7 +302,7 @@ export async function createAgentInvocation(
         input: input.input,
         actor: input.actor,
         credentialContext: input.credentialContext ?? null,
-        source: input.source,
+        source: { kind: "agent_invocation" },
         destination: input.destination,
         reasoningLevel: input.reasoningLevel ?? null,
         status: "pending",

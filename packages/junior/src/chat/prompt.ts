@@ -468,6 +468,11 @@ function formatSourceLines(source: Source): string[] {
         `- source.identifier: ${escapeXml(source.identifier)}`,
         `- source.event_type: ${escapeXml(source.eventType)}`,
       ];
+    case "scheduled_task":
+    case "event_task":
+    case "plugin_dispatch":
+    case "agent_invocation":
+      return [`- source.kind: ${source.kind}`];
   }
 }
 
@@ -697,11 +702,8 @@ const STATIC_SYSTEM_PROMPTS: Record<PromptPlatform, string> = {
   slack: buildStaticSystemPrompt("slack"),
 };
 
-/** Return byte-stable platform instructions shared by every conversation and turn. */
-export function buildSystemPrompt(params: { source: Source }): string {
-  // web/dashboard turns use the local (non-Slack) instruction surface.
-  const platform: PromptPlatform =
-    params.source.kind === "slack" ? "slack" : "local";
+/** Return the fixed instructions shared by every Conversation and Turn. */
+export function buildSystemPrompt(platform: PromptPlatform): string {
   return STATIC_SYSTEM_PROMPTS[platform];
 }
 

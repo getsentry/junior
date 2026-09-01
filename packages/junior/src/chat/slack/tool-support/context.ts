@@ -1,5 +1,4 @@
 import type { ToolRuntimeContext } from "@/chat/tools/types";
-import type { SlackDestination } from "@sentry/junior-plugin-api";
 import type { SlackSource } from "@sentry/junior-plugin-api";
 import type { SlackActor } from "@/chat/actor";
 import {
@@ -14,45 +13,56 @@ import {
 } from "@/chat/slack/timestamp";
 
 export interface SlackToolContext {
-  destination: SlackDestination;
-  source: SlackSource;
   actor?: SlackActor;
   destinationChannelId: SlackChannelId;
+  locationChannelId: SlackChannelId;
+  messageChannelId?: SlackChannelId;
   messageTs?: SlackMessageTs;
-  sourceChannelId: SlackChannelId;
   teamId: SlackTeamId;
   threadTs?: SlackMessageTs;
 }
 
-/** Resolve Slack-specific tool context from the active source/destination/actor. */
+/** Resolve Slack tool context from the Conversation Location. */
 export function getSlackToolContext(
   context: ToolRuntimeContext,
 ): SlackToolContext | undefined {
-  if (context.source.kind !== "slack") {
-    return undefined;
-  }
-  if (context.destination.platform !== "slack") {
-    throw new TypeError("Slack source requires a Slack destination");
-  }
+  // TODO(dcramer): Remove the Slack Source fallback after every deployed
+  // Conversation that came from Slack has a stored Location.
+  const source: SlackSource | undefined =
+    context.source.kind === "slack" ? context.source : undefined;
+  const location =
+    context.location?.provider === "slack"
+      ? context.location
+      : source
+        ? {
+            provider: "slack" as const,
+            teamId: source.teamId,
+            channelId: source.channelId,
+            threadTs: source.threadTs,
+          }
+        : undefined;
+  if (!location) return undefined;
+
   const destinationChannelId = parseSlackChannelReferenceId(
-    context.destination.channelId,
+    context.destination.platform === "slack"
+      ? context.destination.channelId
+      : location.channelId,
   );
-  const sourceChannelId = parseSlackChannelReferenceId(
-    context.source.channelId,
-  );
-  const teamId = parseSlackTeamId(context.source.teamId);
-  if (!destinationChannelId || !sourceChannelId || !teamId) {
+  const locationChannelId = parseSlackChannelReferenceId(location.channelId);
+  const teamId = parseSlackTeamId(location.teamId);
+  if (!destinationChannelId || !locationChannelId || !teamId) {
     return undefined;
   }
 
   return {
-    destination: context.destination,
-    source: context.source,
     actor: context.actor?.platform === "slack" ? context.actor : undefined,
     destinationChannelId,
-    messageTs: parseSlackMessageTs(context.source.messageTs),
-    sourceChannelId,
+    locationChannelId,
+    messageChannelId: source
+      ? parseSlackChannelReferenceId(source.channelId)
+      : undefined,
+    messageTs: parseSlackMessageTs(source?.messageTs),
     teamId,
-    threadTs: parseSlackMessageTs(context.source.threadTs),
+    threadTs: parseSlackMessageTs(location.threadTs),
   };
 }

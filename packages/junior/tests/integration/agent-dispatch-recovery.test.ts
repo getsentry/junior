@@ -1,5 +1,4 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createSlackSource } from "@sentry/junior-plugin-api";
 import {
   getDispatchConversationId,
   getDispatchRecord,
@@ -107,11 +106,7 @@ describe("agent dispatch recovery", () => {
           signature: "v1=test",
         },
       },
-      createSlackSource({
-        teamId: "T123",
-        channelId: "C123",
-        visibility: "private",
-      }),
+      undefined,
       { label: "Scheduled task", detail: "Weekly" },
     );
     const agentRunner = createModelAgentRunner(
@@ -168,7 +163,7 @@ describe("agent dispatch recovery", () => {
         plugin: dispatch.plugin,
         replyAttribution: dispatch.replyAttribution,
       },
-      source: dispatch.source,
+      source: { kind: "scheduled_task" },
       surface: "api",
     });
     expect(resumedRun?.instruction.text).toBe(dispatch.input);

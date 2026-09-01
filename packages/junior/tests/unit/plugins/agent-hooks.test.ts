@@ -286,7 +286,7 @@ describe("agent plugin hooks", () => {
     ]);
     try {
       await expect(
-        getPluginSystemPromptContributions(LOCAL_SOURCE),
+        getPluginSystemPromptContributions("local"),
       ).resolves.toEqual([
         { id: "systemPrompt:0", pluginName: "a-demo", text: "A contribution" },
         { id: "systemPrompt:0", pluginName: "z-demo", text: "Z contribution" },
@@ -313,7 +313,7 @@ describe("agent plugin hooks", () => {
     ]);
     try {
       await expect(
-        getPluginSystemPromptContributions(LOCAL_SOURCE),
+        getPluginSystemPromptContributions("local"),
       ).resolves.toEqual([]);
     } finally {
       setPlugins(previous);
@@ -856,7 +856,7 @@ describe("agent plugin hooks", () => {
     try {
       expect(() =>
         getPluginTools({
-        conversationId: LOCAL_DESTINATION.conversationId,
+          conversationId: LOCAL_DESTINATION.conversationId,
           destination: LOCAL_DESTINATION,
           egress: TEST_EGRESS,
           source: LOCAL_SOURCE,
@@ -1966,11 +1966,18 @@ describe("getPluginTools channel resolution", () => {
     });
   });
 
-  it("computes channelCapabilities from source channelId", () => {
+  it("computes channelCapabilities from the Conversation Location", () => {
     // DM channel: canvas and reactions yes, standalone channel-post no
     const ctx = capturePluginContext({
       conversationId: "slack:DDM:1712345.0001",
       source: slackSource("DDM"),
+      location: {
+        id: "location:T123:DDM",
+        provider: "slack",
+        teamId: "T123",
+        channelId: "DDM",
+        threadTs: "1712345.0001",
+      },
       destination: {
         platform: "slack",
         teamId: "T123",
@@ -1982,6 +1989,27 @@ describe("getPluginTools channel resolution", () => {
     expect(ctx.slack?.channelCapabilities.canCreateCanvas).toBe(true);
     expect(ctx.slack?.channelCapabilities.canAddReactions).toBe(true);
     expect(ctx.slack?.channelCapabilities.canPostToChannel).toBe(false);
+  });
+
+  it("exposes Slack context and Actor for an Agent invocation", () => {
+    const ctx = capturePluginContext({
+      conversationId: "agent-invocation:invocation-1",
+      source: { kind: "agent_invocation" },
+      actor: TEST_ACTOR,
+      destination: SLACK_DESTINATION,
+      location: {
+        id: "location:T123:DDM",
+        provider: "slack",
+        teamId: "T123",
+        channelId: "DDM",
+      },
+      egress: TEST_EGRESS,
+      workspace: {} as any,
+    });
+
+    expect(ctx.source).toEqual({ kind: "agent_invocation" });
+    expect(ctx.actor).toEqual(TEST_ACTOR);
+    expect(ctx.slack?.channelCapabilities.canCreateCanvas).toBe(true);
   });
 
   it("creates a direct credential subject when channelId is a DM", () => {

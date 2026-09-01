@@ -17,6 +17,7 @@ import type {
   PluginOperationalReportContent,
   PluginOperationalTone,
   PluginRouteApp,
+  Platform,
   ResourceEvent,
   SlackConversationLink,
   PluginRegistration,
@@ -204,9 +205,13 @@ function pluginInvocationContext(
         source: context.source,
       };
     case "resource_event":
+    case "scheduled_task":
+    case "event_task":
+    case "plugin_dispatch":
+    case "agent_invocation":
       return {
         ...common,
-        actor: context.actor?.platform === "system" ? context.actor : undefined,
+        actor: context.actor,
         destination: context.destination,
         source: context.source,
       };
@@ -451,7 +456,7 @@ export function applyPluginFormatMarkdown(text: string): string {
 
 /** Collect stable plugin prompt contributions for the static system prompt. */
 export async function getPluginSystemPromptContributions(
-  source: ToolRuntimeContext["source"],
+  platform: Platform,
 ): Promise<PluginPromptContributionContext[]> {
   const contributions: PluginPromptContributionContext[] = [];
   let totalChars = 0;
@@ -464,8 +469,7 @@ export async function getPluginSystemPromptContributions(
     try {
       const pluginContributions = await hook({
         ...systemPromptPluginContext(plugin),
-        // Plugin system prompts only distinguish Slack vs non-Slack surfaces.
-        platform: source.kind === "slack" ? "slack" : "local",
+        platform,
       });
       const result =
         systemPromptMessageArraySchema.safeParse(pluginContributions);
@@ -615,7 +619,7 @@ export function getPluginTools(
     const slackToolContext = getSlackToolContext(context);
     const credentialSubject = slackToolContext
       ? createSlackDirectCredentialSubject({
-          channelId: slackToolContext.sourceChannelId,
+          channelId: slackToolContext.locationChannelId,
           teamId: slackToolContext.teamId,
           userId: slackToolContext.actor?.userId,
         })
@@ -627,7 +631,7 @@ export function getPluginTools(
       slackToolContext
         ? {
             channelCapabilities: resolveChannelCapabilities(
-              slackToolContext.sourceChannelId,
+              slackToolContext.locationChannelId,
             ),
             ...(dashboardConversationUrl
               ? { conversationLink: { url: dashboardConversationUrl } }
@@ -694,6 +698,7 @@ export function getPluginTools(
       annotations,
       conversationId: context.conversationId,
       locationId: context.locationId,
+      ...(slackContext ? { slack: slackContext } : undefined),
       userText: context.userText,
       embedder: createPluginEmbedder(pluginName),
       egress: context.egress,
@@ -722,7 +727,6 @@ export function getPluginTools(
           actor:
             context.actor?.platform === "slack" ? context.actor : undefined,
           destination: context.destination,
-          slack: slackContext!,
           source: context.source,
         };
         break;
@@ -749,10 +753,13 @@ export function getPluginTools(
         };
         break;
       case "resource_event":
+      case "scheduled_task":
+      case "event_task":
+      case "plugin_dispatch":
+      case "agent_invocation":
         pluginContext = {
           ...common,
-          actor:
-            context.actor?.platform === "system" ? context.actor : undefined,
+          actor: context.actor,
           destination: context.destination,
           source: context.source,
         };

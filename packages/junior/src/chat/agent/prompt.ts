@@ -459,7 +459,12 @@ export async function assemblePrompt(args: {
   resumedFromSessionRecord: boolean;
   run: Pick<
     AgentRun,
-    "source" | "destination" | "dispatch" | "slackConversation"
+    | "source"
+    | "destination"
+    | "dispatch"
+    | "slackConversation"
+    | "location"
+    | "delivery"
   >;
   spanContext: LogContext;
   turnId: string;
@@ -501,12 +506,16 @@ export async function assemblePrompt(args: {
     shouldPromptAgent &&
     !replayedPrompt &&
     !hasRuntimeTurnContext(promptHistoryMessages);
+  const platform =
+    args.run.delivery && args.run.location?.provider === "slack"
+      ? "slack"
+      : "local";
   const systemPromptContributions =
-    await getPluginSystemPromptContributions(source);
+    await getPluginSystemPromptContributions(platform);
   const pluginSystemPrompt = buildPluginSystemPromptContributions(
     systemPromptContributions,
   );
-  const baseInstructions = [buildSystemPrompt({ source }), pluginSystemPrompt]
+  const baseInstructions = [buildSystemPrompt(platform), pluginSystemPrompt]
     .filter((section): section is string => Boolean(section))
     .join("\n\n");
   const pluginUserPromptContributions =

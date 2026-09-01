@@ -74,7 +74,6 @@ export const createAgentInvocationSchema = z
     input: exactStringSchema,
     parentConversationId: exactStringSchema,
     reasoningLevel: z.enum(TURN_REASONING_LEVELS).optional(),
-    source: sourceSchema,
   })
   .strict();
 

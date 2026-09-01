@@ -1,9 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  createSlackSource,
   defineJuniorPlugin,
   type Destination,
-  type Source,
 } from "@sentry/junior-plugin-api";
 import { eq } from "drizzle-orm";
 import { createHeartbeatContext } from "@/chat/agent-dispatch/context";
@@ -47,19 +45,6 @@ const SLACK_DESTINATION = {
   teamId: "T123",
   channelId: "C123",
 } satisfies Destination;
-const SLACK_SOURCE = createSlackSource({
-  ...SLACK_DESTINATION,
-  visibility: "private",
-}) satisfies Source;
-
-function slackDmSource(channelId = "D123"): Source {
-  return createSlackSource({
-    teamId: "T123",
-    channelId,
-    visibility: "private",
-  });
-}
-
 let conversationWorkQueue = createConversationWorkQueueTestAdapter();
 
 function createTestHeartbeatContext(
@@ -466,7 +451,6 @@ describe("plugin heartbeat", () => {
       destinationVisibility: "private",
       input: "Run the scheduled task.",
       metadata: { runId: "run-1" },
-      source: SLACK_SOURCE,
     });
 
     await expect(schedulerCtx.agent.get(result.id)).resolves.toEqual({
@@ -484,7 +468,7 @@ describe("plugin heartbeat", () => {
       input: "Run the scheduled task.",
       destination: { channelId: "C123" },
       metadata: { runId: "run-1" },
-      source: { channelId: "C123" },
+      source: { kind: "plugin_dispatch" },
     });
   });
 
@@ -522,7 +506,6 @@ describe("plugin heartbeat", () => {
         destination: SLACK_DESTINATION,
         destinationVisibility: "private",
         input: "Run the scheduled task.",
-        source: SLACK_SOURCE,
       });
     }
 
@@ -532,7 +515,6 @@ describe("plugin heartbeat", () => {
         destination: SLACK_DESTINATION,
         destinationVisibility: "private",
         input: "Run the scheduled task.",
-        source: SLACK_SOURCE,
       }),
     ).rejects.toThrow("Plugin heartbeat exceeded the dispatch limit");
   });
@@ -559,7 +541,6 @@ describe("plugin heartbeat", () => {
           },
           destinationVisibility: "private",
           input: "Run the scheduled task.",
-          source: SLACK_SOURCE,
         }),
       ).rejects.toThrow("Dispatch destination teamId must be a Slack team id");
     }
@@ -570,7 +551,6 @@ describe("plugin heartbeat", () => {
         destination: SLACK_DESTINATION,
         destinationVisibility: "private",
         input: "Run the scheduled task.",
-        source: SLACK_SOURCE,
       }),
     ).resolves.toMatchObject({ status: "created" });
   });
@@ -600,7 +580,6 @@ describe("plugin heartbeat", () => {
         },
         destinationVisibility: "private",
         input: "Run the scheduled task.",
-        source: slackDmSource(),
       }),
     ).rejects.toThrow("Dispatch credentialSubject binding is runtime-owned");
     expect(getCapturedSlackApiCalls("conversations.info")).toHaveLength(0);
@@ -622,7 +601,6 @@ describe("plugin heartbeat", () => {
       },
       destinationVisibility: "private",
       input: "Run the scheduled task.",
-      source: slackDmSource(),
     });
 
     await expect(getDispatchRecord(result.id)).resolves.toMatchObject({
@@ -691,13 +669,7 @@ describe("plugin heartbeat", () => {
     );
     expect(dispatchRecord?.destination).toEqual(SLACK_DESTINATION);
     expect(dispatchRecord?.destinationVisibility).toBe("public");
-    expect(dispatchRecord?.source).toEqual(
-      createSlackSource({
-        teamId: "T123",
-        channelId: "C123",
-        visibility: "public",
-      }),
-    );
+    expect(dispatchRecord?.source).toEqual({ kind: "scheduled_task" });
     expect(dispatchRecord?.metadata).toMatchObject({
       runId: `sched_plugin_1:${TEST_RUN_AT_MS}`,
       schedule: "Once at noon",

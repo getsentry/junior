@@ -1,4 +1,3 @@
-import { createSlackSource } from "@sentry/junior-plugin-api";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   closeDb,
@@ -12,12 +11,7 @@ import { juniorConversationEvents } from "@/db/schema";
 
 const CURRENT_CONVERSATION_ID = "slack:C123:1700000000.100000";
 
-type SlackToolRuntimeContext = Extract<
-  ToolRuntimeContext,
-  { source: { kind: "slack" } }
->;
-
-function context(): SlackToolRuntimeContext {
+function context(): ToolRuntimeContext {
   return {
     conversationId: CURRENT_CONVERSATION_ID,
     destination: {
@@ -25,12 +19,14 @@ function context(): SlackToolRuntimeContext {
       teamId: "T123",
       channelId: "C123",
     },
-    source: createSlackSource({
+    location: {
+      id: "location:T123:C123",
+      provider: "slack",
       teamId: "T123",
       channelId: "C123",
       threadTs: "1700000000.100000",
-      visibility: "public",
-    }),
+    },
+    source: { kind: "scheduled_task" },
     egress: {
       async fetch() {
         return new Response("ok");

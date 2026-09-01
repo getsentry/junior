@@ -6,7 +6,6 @@
  */
 import { createHash } from "node:crypto";
 import {
-  createSlackSource,
   RESOURCE_EVENT_SUMMARY_MAX_LENGTH,
   RESOURCE_EVENT_TEXT_MAX_LENGTH,
   resourceEventSchema,
@@ -112,11 +111,6 @@ export async function ingestEventTasks(
           input: eventInput(task, event),
           metadata: { eventTaskId: task.id },
           replyAttribution: replyAttribution(task),
-          source: createSlackSource({
-            teamId: task.destination.teamId,
-            channelId: task.destination.channelId,
-            visibility: task.destinationVisibility,
-          }),
         },
       });
       if (dispatch.status === "created") {

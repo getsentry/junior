@@ -227,7 +227,12 @@ export async function executeAgentRun(
   const userActor = actor && "userId" in actor ? actor : undefined;
   const runLogContext: LogContext = {
     conversationId: run.conversationId,
-    platform: run.source.kind,
+    platform:
+      run.source.kind === "slack" ||
+      run.source.kind === "web" ||
+      run.source.kind === "local"
+        ? run.source.kind
+        : undefined,
     messageConversationId:
       run.source.kind === "slack"
         ? run.conversationId

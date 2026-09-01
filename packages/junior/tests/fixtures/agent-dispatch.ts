@@ -1,9 +1,6 @@
-import {
-  createSlackSource,
-  type ReplyAttribution,
-  type Source,
-} from "@sentry/junior-plugin-api";
+import type { ReplyAttribution } from "@sentry/junior-plugin-api";
 import { createOrGetDispatch } from "@/chat/agent-dispatch/store";
+import type { BoundDispatchOptions } from "@/chat/agent-dispatch/types";
 import { createConversationWork } from "@/chat/app/conversation-work";
 import { createJuniorSlackAdapter } from "@/chat/slack/adapter";
 import type { CredentialSubject } from "@/chat/credentials/context";
@@ -42,7 +39,7 @@ export async function createAgentDispatchWorkHarness(agentRunner: AgentRunner) {
 export async function createAgentDispatchTestRecord(
   idempotencyKey: string,
   credentialSubject?: CredentialSubject,
-  source?: Source,
+  source?: BoundDispatchOptions["source"],
   replyAttribution?: ReplyAttribution,
   input = "Post the scheduled digest.",
 ) {
@@ -56,12 +53,7 @@ export async function createAgentDispatchTestRecord(
         idempotencyKey,
         input,
         ...(replyAttribution ? { replyAttribution } : undefined),
-        source:
-          source ??
-          createSlackSource({
-            ...agentDispatchTestDestination,
-            visibility: "private",
-          }),
+        source: source ?? { kind: "scheduled_task" },
       },
       plugin: "scheduler",
     })

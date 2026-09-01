@@ -130,7 +130,7 @@ export function createSlackChannelListMessagesTool(context: SlackToolContext) {
       const access = await checkSlackChannelReadAccess({
         currentChannelIds: [
           context.destinationChannelId,
-          context.sourceChannelId,
+          context.locationChannelId,
         ],
         targetChannelId,
         teamId: context.teamId,

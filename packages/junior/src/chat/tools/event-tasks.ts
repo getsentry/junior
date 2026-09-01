@@ -14,6 +14,9 @@ export function createEventTaskTools(
   context: ToolRuntimeContext,
   catalog: ResourceEventCatalog,
 ): ToolRegistry {
+  // TODO(dcramer): Let users manage Event tasks from web and other
+  // Conversations. Remove these checks when Event tasks no longer require a
+  // Slack Destination or Slack creator.
   if (
     context.source.kind !== "slack" ||
     context.destination.platform !== "slack" ||

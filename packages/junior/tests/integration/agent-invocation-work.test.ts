@@ -49,7 +49,6 @@ const invocationInput = {
   input: "Summarize the durable task.",
   parentConversationId,
   reasoningLevel: "medium" as const,
-  source: createLocalSource(parentConversationId),
 };
 const slackParentConversationId = "slack:C123:1712345.0001";
 const slackDestination = {
@@ -65,9 +64,13 @@ const slackSource = createSlackSource({
 });
 const slackInvocationInput = {
   ...invocationInput,
+  actor: {
+    platform: "slack",
+    teamId: "T123",
+    userId: "U123",
+  } as const,
   destination: slackDestination,
   parentConversationId: slackParentConversationId,
-  source: slackSource,
 };
 
 async function prepareParentConversation() {
@@ -263,7 +266,6 @@ describe("agent invocation conversation work", () => {
         input: "Inspect the failing checks.",
         parentConversationId,
         reasoningLevel: "high",
-        source: createLocalSource(parentConversationId),
       });
       expect(queue.sentRecords()).toHaveLength(1);
       await expect(
@@ -422,7 +424,7 @@ describe("agent invocation conversation work", () => {
           channelId: "C123",
           threadTs: "1712345.0001",
         },
-        source: slackInvocationInput.source,
+        source: { kind: "agent_invocation" },
         surface: "internal",
         runId: created.invocationId,
       });
@@ -644,7 +646,7 @@ describe("agent invocation conversation work", () => {
         ] as PiMessage[],
         turnId: getAgentInvocationTurnId(created.invocationId),
         sliceId: 1,
-        source: invocationInput.source,
+        source: { kind: "agent_invocation" },
         state: "completed",
         surface: "internal",
       });

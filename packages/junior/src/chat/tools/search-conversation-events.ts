@@ -222,6 +222,18 @@ async function resolveAccessScope(
       )
     : currentConversationId;
 
+  if (context.location?.provider === "slack") {
+    return {
+      currentConversationId,
+      currentRootConversationId,
+      provider: "slack",
+      providerTenantId: context.location.teamId,
+    };
+  }
+
+  // TODO(dcramer): Remove the Source and Destination fallbacks after every
+  // deployed Slack Conversation has a stored Location and AgentRun no longer
+  // has Destination.
   if (context.source.kind === "slack") {
     return {
       currentConversationId,

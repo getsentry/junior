@@ -357,7 +357,12 @@ export function assertRunConsistency(
       break;
     }
     case "resource_event":
-      break;
+    case "scheduled_task":
+    case "event_task":
+    case "plugin_dispatch":
+    case "agent_invocation":
+      // These Sources do not identify the Actor's platform.
+      return;
   }
 
   const actor = run.dispatch?.actor ?? run.actor;
@@ -399,6 +404,8 @@ export function surfaceFromRun(
   if (run.surface) {
     return run.surface;
   }
+  // TODO(dcramer): Remove Source-based inference after every work owner and
+  // deployed Turn checkpoint provides surface.
   if (run.source.kind === "slack") {
     return "slack";
   }
