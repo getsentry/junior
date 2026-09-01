@@ -74,6 +74,7 @@ describe("capability factory", () => {
     });
 
     expect(createBrokerMock).toHaveBeenCalledWith("example", {
+      installationTokenStore: expect.any(Object),
       userTokenStore: expect.any(Object),
     });
     expect(broker.issue).toHaveBeenCalledWith({
@@ -133,6 +134,7 @@ describe("capability factory", () => {
 
     expect(createBrokerMock).toHaveBeenCalledTimes(1);
     expect(createBrokerMock).toHaveBeenCalledWith("sentry", {
+      installationTokenStore: expect.any(Object),
       userTokenStore: expect.any(Object),
     });
   });
