@@ -1,0 +1,425 @@
+{
+  "files": [
+    {
+      "file": "code__desktop.png",
+      "image": "images/candidate/code__desktop.png",
+      "images": {
+        "candidate": "images/candidate/code__desktop.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "code__mobile.png",
+      "image": "images/candidate/code__mobile.png",
+      "images": {
+        "candidate": "images/candidate/code__mobile.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "conversation-attachment__desktop.png",
+      "image": "images/candidate/conversation-attachment__desktop.png",
+      "images": {
+        "candidate": "images/candidate/conversation-attachment__desktop.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "conversation-attachment__mobile.png",
+      "image": "images/candidate/conversation-attachment__mobile.png",
+      "images": {
+        "candidate": "images/candidate/conversation-attachment__mobile.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "conversation-attachment-modal__desktop.png",
+      "image": "images/candidate/conversation-attachment-modal__desktop.png",
+      "images": {
+        "candidate": "images/candidate/conversation-attachment-modal__desktop.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "conversation-attachment-modal__mobile.png",
+      "image": "images/candidate/conversation-attachment-modal__mobile.png",
+      "images": {
+        "candidate": "images/candidate/conversation-attachment-modal__mobile.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "conversation-create-focused__desktop.png",
+      "image": "images/candidate/conversation-create-focused__desktop.png",
+      "images": {
+        "candidate": "images/candidate/conversation-create-focused__desktop.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "conversation-create-focused__mobile.png",
+      "image": "images/candidate/conversation-create-focused__mobile.png",
+      "images": {
+        "candidate": "images/candidate/conversation-create-focused__mobile.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "conversation-detail__desktop.png",
+      "image": "images/candidate/conversation-detail__desktop.png",
+      "images": {
+        "candidate": "images/candidate/conversation-detail__desktop.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "conversation-detail__mobile.png",
+      "image": "images/candidate/conversation-detail__mobile.png",
+      "images": {
+        "candidate": "images/candidate/conversation-detail__mobile.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "conversation-detail-focused__mobile.png",
+      "image": "images/candidate/conversation-detail-focused__mobile.png",
+      "images": {
+        "candidate": "images/candidate/conversation-detail-focused__mobile.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "conversations__desktop.png",
+      "image": "images/candidate/conversations__desktop.png",
+      "images": {
+        "candidate": "images/candidate/conversations__desktop.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "conversations__mobile.png",
+      "image": "images/candidate/conversations__mobile.png",
+      "images": {
+        "candidate": "images/candidate/conversations__mobile.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "gallery-charts__desktop.png",
+      "image": "images/candidate/gallery-charts__desktop.png",
+      "images": {
+        "candidate": "images/candidate/gallery-charts__desktop.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "gallery-foundations__desktop.png",
+      "image": "images/candidate/gallery-foundations__desktop.png",
+      "images": {
+        "candidate": "images/candidate/gallery-foundations__desktop.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "gallery-index__desktop.png",
+      "image": "images/candidate/gallery-index__desktop.png",
+      "images": {
+        "candidate": "images/candidate/gallery-index__desktop.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "gallery-transcripts__desktop.png",
+      "image": "images/candidate/gallery-transcripts__desktop.png",
+      "images": {
+        "candidate": "images/candidate/gallery-transcripts__desktop.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "location-detail__desktop.png",
+      "image": "images/candidate/location-detail__desktop.png",
+      "images": {
+        "candidate": "images/candidate/location-detail__desktop.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "location-detail__mobile.png",
+      "height": 1072,
+      "image": "images/diff/location-detail__mobile.png",
+      "images": {
+        "baseline": "images/baseline/location-detail__mobile.png",
+        "candidate": "images/candidate/location-detail__mobile.png",
+        "diff": "images/diff/location-detail__mobile.png"
+      },
+      "status": "changed",
+      "width": 390
+    },
+    {
+      "file": "locations__desktop.png",
+      "height": 1493,
+      "image": "images/diff/locations__desktop.png",
+      "images": {
+        "baseline": "images/baseline/locations__desktop.png",
+        "candidate": "images/candidate/locations__desktop.png",
+        "diff": "images/diff/locations__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "locations__mobile.png",
+      "image": "images/candidate/locations__mobile.png",
+      "images": {
+        "candidate": "images/candidate/locations__mobile.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "memories__desktop.png",
+      "image": "images/candidate/memories__desktop.png",
+      "images": {
+        "candidate": "images/candidate/memories__desktop.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "memories__mobile.png",
+      "image": "images/candidate/memories__mobile.png",
+      "images": {
+        "candidate": "images/candidate/memories__mobile.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "memories-library__desktop.png",
+      "image": "images/candidate/memories-library__desktop.png",
+      "images": {
+        "candidate": "images/candidate/memories-library__desktop.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "memories-library__mobile.png",
+      "image": "images/candidate/memories-library__mobile.png",
+      "images": {
+        "candidate": "images/candidate/memories-library__mobile.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "people__desktop.png",
+      "image": "images/candidate/people__desktop.png",
+      "images": {
+        "candidate": "images/candidate/people__desktop.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "people__mobile.png",
+      "image": "images/candidate/people__mobile.png",
+      "images": {
+        "candidate": "images/candidate/people__mobile.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "person-profile__desktop.png",
+      "image": "images/candidate/person-profile__desktop.png",
+      "images": {
+        "candidate": "images/candidate/person-profile__desktop.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "person-profile__mobile.png",
+      "image": "images/candidate/person-profile__mobile.png",
+      "images": {
+        "candidate": "images/candidate/person-profile__mobile.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "settings__desktop.png",
+      "image": "images/candidate/settings__desktop.png",
+      "images": {
+        "candidate": "images/candidate/settings__desktop.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "settings-api-tokens__desktop.png",
+      "image": "images/candidate/settings-api-tokens__desktop.png",
+      "images": {
+        "candidate": "images/candidate/settings-api-tokens__desktop.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "system__desktop.png",
+      "image": "images/candidate/system__desktop.png",
+      "images": {
+        "candidate": "images/candidate/system__desktop.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "system-plugin-github__desktop.png",
+      "image": "images/candidate/system-plugin-github__desktop.png",
+      "images": {
+        "candidate": "images/candidate/system-plugin-github__desktop.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "system-plugins__desktop.png",
+      "image": "images/candidate/system-plugins__desktop.png",
+      "images": {
+        "candidate": "images/candidate/system-plugins__desktop.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "task-executions__desktop.png",
+      "height": 1084,
+      "image": "images/diff/task-executions__desktop.png",
+      "images": {
+        "baseline": "images/baseline/task-executions__desktop.png",
+        "candidate": "images/candidate/task-executions__desktop.png",
+        "diff": "images/diff/task-executions__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "task-executions__mobile.png",
+      "image": "images/candidate/task-executions__mobile.png",
+      "images": {
+        "candidate": "images/candidate/task-executions__mobile.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "tasks__desktop.png",
+      "height": 900,
+      "image": "images/diff/tasks__desktop.png",
+      "images": {
+        "baseline": "images/baseline/tasks__desktop.png",
+        "candidate": "images/candidate/tasks__desktop.png",
+        "diff": "images/diff/tasks__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "tasks__mobile.png",
+      "image": "images/candidate/tasks__mobile.png",
+      "images": {
+        "candidate": "images/candidate/tasks__mobile.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "tasks-list__desktop.png",
+      "height": 971,
+      "image": "images/diff/tasks-list__desktop.png",
+      "images": {
+        "baseline": "images/baseline/tasks-list__desktop.png",
+        "candidate": "images/candidate/tasks-list__desktop.png",
+        "diff": "images/diff/tasks-list__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "tasks-list__mobile.png",
+      "image": "images/candidate/tasks-list__mobile.png",
+      "images": {
+        "candidate": "images/candidate/tasks-list__mobile.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "tasks-runs__desktop.png",
+      "height": 1523,
+      "image": "images/diff/tasks-runs__desktop.png",
+      "images": {
+        "baseline": "images/baseline/tasks-runs__desktop.png",
+        "candidate": "images/candidate/tasks-runs__desktop.png",
+        "diff": "images/diff/tasks-runs__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "tasks-runs__mobile.png",
+      "image": "images/candidate/tasks-runs__mobile.png",
+      "images": {
+        "candidate": "images/candidate/tasks-runs__mobile.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "workspace-create__desktop.png",
+      "image": "images/candidate/workspace-create__desktop.png",
+      "images": {
+        "candidate": "images/candidate/workspace-create__desktop.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "workspace-create__mobile.png",
+      "image": "images/candidate/workspace-create__mobile.png",
+      "images": {
+        "candidate": "images/candidate/workspace-create__mobile.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "workspace-detail__desktop.png",
+      "image": "images/candidate/workspace-detail__desktop.png",
+      "images": {
+        "candidate": "images/candidate/workspace-detail__desktop.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "workspace-detail__mobile.png",
+      "image": "images/candidate/workspace-detail__mobile.png",
+      "images": {
+        "candidate": "images/candidate/workspace-detail__mobile.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "workspaces__desktop.png",
+      "image": "images/candidate/workspaces__desktop.png",
+      "images": {
+        "candidate": "images/candidate/workspaces__desktop.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "workspaces__mobile.png",
+      "image": "images/candidate/workspaces__mobile.png",
+      "images": {
+        "candidate": "images/candidate/workspaces__mobile.png"
+      },
+      "status": "unchanged"
+    }
+  ],
+  "metadata": {
+    "pullRequest": {
+      "number": 1759,
+      "title": "fix(tasks): keep run history and stop deleted schedules"
+    }
+  },
+  "summary": {
+    "added": 0,
+    "changed": 6,
+    "removed": 0,
+    "unchanged": 42
+  },
+  "version": 2
+}
