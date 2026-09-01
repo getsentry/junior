@@ -25,7 +25,11 @@ export type StoredEventTask = EventTask & {
 
 /** JSON task payload must not carry SQL-backed columns. */
 function eventTaskJsonPayload(task: EventTask | StoredEventTask): EventTask {
-  const { status: _status, title: _title, ...payload } = task as StoredEventTask;
+  const {
+    status: _status,
+    title: _title,
+    ...payload
+  } = task as StoredEventTask;
   return payload;
 }
 
@@ -71,7 +75,7 @@ export async function getEventTask(
   return rows[0] ? parseTask(rows[0]) : undefined;
 }
 
-/** Create one retry-stable event task or return its existing record. */
+/** Create one retry-stable event task, or revive a deleted row with the new payload. */
 export async function createEventTask(
   db: JuniorDatabase,
   task: EventTask,
@@ -91,13 +95,46 @@ export async function createEventTask(
       task: parsed,
     })
     .onConflictDoNothing();
-  return (
-    (await getEventTask(db, parsed.id)) ?? {
+  const existing = await getEventTask(db, parsed.id);
+  if (!existing) {
+    return {
       ...parsed,
       status: "active",
       ...(title ? { title } : undefined),
-    }
-  );
+    };
+  }
+  // Live retries keep the original row. Deleted rows reactivate with the new payload.
+  if (existing.status !== "deleted") {
+    return existing;
+  }
+  const rows = await db
+    .update(juniorEventTasks)
+    .set({
+      teamId: parsed.destination.teamId,
+      namespace: parsed.trigger.namespace,
+      identifier: parsed.trigger.identifier,
+      status: "active",
+      title,
+      task: parsed,
+    })
+    .where(
+      and(
+        eq(juniorEventTasks.id, parsed.id),
+        eq(juniorEventTasks.status, "deleted"),
+      ),
+    )
+    .returning({
+      status: juniorEventTasks.status,
+      task: juniorEventTasks.task,
+      title: juniorEventTasks.title,
+    });
+  return rows[0]
+    ? parseTask(rows[0])
+    : ((await getEventTask(db, parsed.id)) ?? {
+        ...parsed,
+        status: "active",
+        ...(title ? { title } : undefined),
+      });
 }
 
 /** Replace an existing non-deleted event task. */

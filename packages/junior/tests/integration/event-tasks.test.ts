@@ -721,5 +721,21 @@ describe("event tasks", () => {
       tasks: unknown[];
     };
     expect(listed.tasks).toEqual([]);
+
+    const recreated = await createTask(
+      "Summarize the requested changes after delete.",
+      "event-task-replayed-create",
+    );
+    expect(recreated.task).toMatchObject({
+      id: created.task.id,
+      task: "Summarize the requested changes after delete.",
+    });
+    await expect(
+      getEventTask(fixture.sql.db(), created.task.id),
+    ).resolves.toMatchObject({
+      id: created.task.id,
+      status: "active",
+      task: { text: "Summarize the requested changes after delete." },
+    });
   });
 });
