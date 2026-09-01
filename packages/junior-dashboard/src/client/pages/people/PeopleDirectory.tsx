@@ -189,7 +189,7 @@ export function PeopleDirectory(props: {
                     </span>
                     <span
                       className={cn(
-                        "whitespace-nowrap font-mono text-[11px] leading-none",
+                        "whitespace-nowrap font-mono text-2xs leading-none",
                         Math.abs(delta) < 0.005
                           ? "text-dashboard-text-muted"
                           : delta > 0
