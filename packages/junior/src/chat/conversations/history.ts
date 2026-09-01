@@ -582,23 +582,17 @@ export interface ConversationEventPage {
   hasNewer: boolean;
 }
 
-/** Sequence assigned to one event by an append. */
-export type AppendedConversationEvent = Pick<
-  ConversationEvent,
-  "seq" | "historyVersion"
->;
-
 /** Persist and read the canonical per-conversation event log. */
 export interface ConversationEventStore {
   /**
-   * Append events atomically and return their assigned sequence metadata.
+   * Append events atomically and return each event's sequence and history version.
    * Archive clears only for human user activity, not every non-preserve write.
    */
   append(
     conversationId: string,
     events: NewConversationEvent[],
     options?: { activity?: "preserve" },
-  ): Promise<AppendedConversationEvent[]>;
+  ): Promise<Array<Pick<ConversationEvent, "seq" | "historyVersion">>>;
   /** Replace active model history with a compaction or handoff event. */
   replaceHistory(
     conversationId: string,

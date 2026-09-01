@@ -16,7 +16,6 @@ import {
   decodeStoredConversationEvent,
   historyReplacementSchema,
   newConversationEventSchema,
-  type AppendedConversationEvent,
   type ConversationEvent,
   type ConversationEventPage,
   type ConversationEventQuery,
@@ -127,9 +126,7 @@ function eventFromRow(row: ConversationEventRow): ConversationEvent {
     schemaVersion: row.schemaVersion,
     seq: row.seq,
     historyVersion: row.historyVersion,
-    ...(row.idempotencyKey
-      ? { idempotencyKey: row.idempotencyKey }
-      : undefined),
+    ...(row.idempotencyKey ? { idempotencyKey: row.idempotencyKey } : undefined),
     createdAtMs: row.createdAt.getTime(),
     type: row.type,
     payload,
@@ -156,7 +153,7 @@ class SqlConversationEventStore implements ConversationEventStore {
     conversationId: string,
     events: NewConversationEvent[],
     options: { activity?: "preserve" } = {},
-  ): Promise<AppendedConversationEvent[]> {
+  ): Promise<Array<Pick<ConversationEvent, "seq" | "historyVersion">>> {
     const parsed = events.map((event) =>
       newConversationEventSchema.parse(event),
     );
