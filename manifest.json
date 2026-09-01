@@ -1,0 +1,54 @@
+{
+  "commitSha": "7ac132d10732dbf7e2c4d3c6aaeff1504e64587b",
+  "mode": "path",
+  "reasons": [
+    "packages/junior-dashboard/src/client/components/README.md",
+    "packages/junior-dashboard/src/client/components/charts/ActivityChart.tsx",
+    "packages/junior-dashboard/src/client/components/charts/SystemMetricCharts.tsx",
+    "packages/junior-dashboard/src/client/components/charts/WorkspaceUsageChart.tsx",
+    "packages/junior-dashboard/src/client/format.ts",
+    "packages/junior-dashboard/src/client/pages/code/CodeActivityChart.tsx",
+    "packages/junior-dashboard/src/client/pages/locations/LocationActivityChart.tsx",
+    "packages/junior-dashboard/src/client/pages/locations/LocationDirectoryActivityChart.tsx",
+    "packages/junior-dashboard/src/client/pages/memory/MemoryCostChart.tsx",
+    "packages/junior-dashboard/src/client/pages/memory/MemoryTimeline.tsx",
+    "packages/junior-dashboard/src/client/pages/people/PeopleActivityChart.tsx",
+    "packages/junior-dashboard/src/client/pages/system/ConversationActivityChart.tsx",
+    "packages/junior-dashboard/src/client/pages/system/GuardianActivity.tsx",
+    "packages/junior-dashboard/src/client/pages/system/PluginBarChart.tsx",
+    "packages/junior-dashboard/src/client/pages/tasks/TaskCostChart.tsx",
+    "packages/junior-dashboard/src/client/pages/tasks/TaskExecutionChart.tsx",
+    "packages/junior-dashboard/src/client/pages/tasks/TaskExecutionStatusChart.tsx",
+    "packages/junior-dashboard/tests/activity-chart.test.tsx",
+    "packages/junior-dashboard/tests/telemetry-components.test.tsx"
+  ],
+  "scenarioIds": [
+    "gallery-foundations",
+    "gallery-charts",
+    "gallery-index",
+    "person-profile"
+  ],
+  "shots": [
+    {
+      "file": "gallery-foundations__desktop.png",
+      "label": "Gallery · Foundations · desktop"
+    },
+    {
+      "file": "gallery-charts__desktop.png",
+      "label": "Gallery · Charts · desktop"
+    },
+    {
+      "file": "gallery-index__desktop.png",
+      "label": "Component gallery index · desktop"
+    },
+    {
+      "file": "person-profile__desktop.png",
+      "label": "Person profile · desktop"
+    },
+    {
+      "file": "person-profile__mobile.png",
+      "label": "Person profile · mobile"
+    }
+  ],
+  "skipped": false
+}
