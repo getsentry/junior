@@ -158,9 +158,9 @@ export type Conversation = {
   lastProgressAt: string;
   lastSeenAt: string;
   locationId?: string;
+  locationUrl?: string;
   actorIdentity?: ConversationSummaryReport["actorIdentity"];
   sentryTraceUrl?: string;
-  sourceUrl?: string;
   startedAt: string;
   status: ConversationSummaryReport["status"];
   surface: ConversationSummaryReport["surface"];

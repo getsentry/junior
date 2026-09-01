@@ -201,13 +201,13 @@ describe("conversation list API", () => {
     }
   });
 
-  test("returns a Slack source link for a viewable conversation", async () => {
+  test("returns a link for a viewable Slack Location", async () => {
     const fixture = createConfiguredJuniorSqlFixture();
     const store = createSqlStore(fixture.sql);
     try {
       await migrateSchema(fixture.sql);
       await store.recordActivity({
-        conversationId: "slack:C123:source-link",
+        conversationId: "slack:C123:location-url",
         destination: {
           platform: "slack",
           teamId: "T123",
@@ -224,12 +224,22 @@ describe("conversation list API", () => {
         source: "slack",
         visibility: "public",
       });
+      await fixture.sql
+        .db()
+        .update(juniorConversations)
+        .set({ sessionSource: null })
+        .where(
+          eq(
+            juniorConversations.conversationId,
+            "slack:C123:location-url",
+          ),
+        );
 
       await expect(readConversationFeedFromSql()).resolves.toMatchObject({
         conversations: [
           expect.objectContaining({
-            conversationId: "slack:C123:source-link",
-            sourceUrl:
+            conversationId: "slack:C123:location-url",
+            locationUrl:
               "https://example.slack.com/archives/C123/p1700000000000100?thread_ts=1700000000.000100&cid=C123",
           }),
         ],
@@ -260,7 +270,7 @@ describe("conversation list API", () => {
           conversation.conversationId === "slack:D123:1700000000.000200",
       );
       expect(privateSummary).toBeDefined();
-      expect(privateSummary).not.toHaveProperty("sourceUrl");
+      expect(privateSummary).not.toHaveProperty("locationUrl");
       expect(privateSummary).toMatchObject({
         channelName: "Direct Message",
         displayTitle: "Direct Message",

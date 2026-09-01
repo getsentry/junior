@@ -24,7 +24,7 @@ function archivePathFromThreadTs(threadTs: SlackMessageTs): string {
  * Build a direct Slack archive URL for a thread when the workspace domain is
  * known. Omits a link rather than falling back to `app_redirect`.
  */
-export function buildSlackSourceUrl(args: {
+export function buildSlackLocationUrl(args: {
   channelId: string;
   teamDomain: string;
   threadTs: string;
