@@ -303,6 +303,8 @@ jobs:
     permissions:
       actions: read
       contents: read
+    outputs:
+      frameshift-mode: ${{ steps.frameshift.outputs.mode }}
     # Healthy runs finish in ~2-3m; keep a hard cap so install/test hangs fail fast.
     timeout-minutes: 15
     if: github.event_name == 'push' || needs.changes.outputs.ci == 'true' || needs.changes.outputs.dashboard == 'true' || needs.changes.outputs.full == 'true'
@@ -337,7 +339,24 @@ jobs:
       - uses: ./.github/actions/setup-node-pnpm
       - run: pnpm exec playwright install --with-deps chromium
       - run: pnpm test:e2e:dashboard
+      - name: Find Frameshift baseline
+        if: github.event_name == 'pull_request'
+        id: frameshift-baseline
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          artifact="frameshift-baseline-v1-${BASE_SHA}"
+          found="$(gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts?name=${artifact}" --jq '.artifacts | any(.expired == false)')"
+          echo "found=${found}" >> "$GITHUB_OUTPUT"
+          if [[ "$found" != "true" ]]; then
+            echo "No baseline exists for ${BASE_SHA}. The first default-branch run will create it."
+          fi
       - name: Record dashboard screenshots
+        if: >-
+          github.event_name != 'pull_request' ||
+          steps.frameshift-baseline.outputs.found == 'true'
+        id: frameshift
         uses: dcramer/frameshift/ci@68a8b5e8bbd439088ef9a044e693c5de9efe7ecd
         with:
           screenshots: .playwright/junior-dashboard/screenshots
@@ -346,6 +365,7 @@ jobs:
     name: visual / dashboard
     needs: dashboard-e2e
     if: >-
+      needs.dashboard-e2e.outputs.frameshift-mode == 'report' &&
       github.event_name == 'pull_request' &&
       github.event.pull_request.head.repo.full_name == github.repository
     runs-on: blacksmith-4vcpu-ubuntu-2404
