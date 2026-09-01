@@ -5,14 +5,13 @@ import {
   ActivityChartDateLabels,
   ActivityChartGrid,
   activityChartAverage,
+  ActivityChartTooltip,
   ActivityTooltipRows,
   ChartSvg,
   createActivityChartLayout,
-  formatActivityTooltipDate,
 } from "../../components/charts/ActivityChart";
 import { ChartHeader } from "../../components/charts/ChartHeader";
 import { Card } from "../../components/layout/Card";
-import { Tooltip } from "../../components/Tooltip";
 import {
   formatActivityChartAverage,
   formatCompactNumber,
@@ -54,17 +53,17 @@ export function ConversationActivityChart(props: {
               barHeight,
             );
             return (
-              <Tooltip
+              <ActivityChartTooltip
+                key={day.date}
                 content={
                   <ActivityTooltipRows
                     rows={[["conversations", day.conversations]]}
                   />
                 }
-                key={day.date}
-                label={formatActivityTooltipDate(day.date)}
+                date={day.date}
+                summary={`${day.conversations} conversations`}
               >
                 <g
-                  aria-label={`${formatActivityTooltipDate(day.date)}: ${day.conversations} conversations`}
                   tabIndex={0}
                 >
                   <rect
@@ -84,7 +83,7 @@ export function ConversationActivityChart(props: {
                     y={layout.top}
                   />
                 </g>
-              </Tooltip>
+              </ActivityChartTooltip>
             );
           })}
           <ActivityChartAverageLine

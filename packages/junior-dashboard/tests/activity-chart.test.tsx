@@ -5,6 +5,7 @@ import {
   ActivityChartAverageLine,
   ActivityChartDateLabels,
   ActivityChartGrid,
+  ActivityChartTooltip,
   activityBucketStartMs,
   activityChartAverage,
   ChartAxisHtmlLabel,
@@ -12,6 +13,8 @@ import {
   ChartCategoryLabels,
   ChartSvg,
   createActivityChartLayout,
+  formatActivityCategoryLabel,
+  formatActivityCategoryTooltipLabel,
   formatActivityDate,
   formatActivityTooltipDate,
 } from "../src/client/components/charts/ActivityChart";
@@ -130,6 +133,30 @@ describe("formatActivityDate", () => {
     expect(formatActivityTooltipDate("2026-05-01T15")).toMatch(/May/);
     expect(formatActivityTooltipDate("2026-05-01T15")).toMatch(/8/);
     expect(formatActivityTooltipDate("2026-05-01")).toContain("May");
+  });
+
+  it("formats day/hour category labels and leaves other labels alone", () => {
+    setDashboardTimeZone("America/Los_Angeles");
+    expect(formatActivityCategoryLabel("2026-05-01")).toContain("May");
+    expect(formatActivityCategoryLabel("2026-05-01T15")).toMatch(/8/);
+    expect(formatActivityCategoryLabel("30d")).toBe("30d");
+    expect(formatActivityCategoryTooltipLabel("2026-05-01T15")).toMatch(/May/);
+    expect(formatActivityCategoryTooltipLabel("30d")).toBe("30d");
+  });
+
+  it("owns tooltip date formatting for activity buckets", () => {
+    setDashboardTimeZone("America/Los_Angeles");
+    const html = renderToStaticMarkup(
+      <ActivityChartTooltip
+        content="details"
+        date="2026-05-01T15"
+        summary="3 conversations"
+      >
+        <g tabIndex={0} />
+      </ActivityChartTooltip>,
+    );
+    expect(html).toContain("May");
+    expect(html).toContain("3 conversations");
   });
 
   it("parses day and hour bucket starts in UTC", () => {

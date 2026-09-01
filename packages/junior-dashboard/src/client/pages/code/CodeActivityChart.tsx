@@ -4,15 +4,14 @@ import {
   ActivityChartDateLabels,
   ActivityChartGrid,
   activityChartAverage,
+  ActivityChartTooltip,
   ActivityTooltipRows,
   ChartSvg,
   createActivityChartLayout,
-  formatActivityTooltipDate,
 } from "../../components/charts/ActivityChart";
 import { ChartLegend } from "../../components/charts/ChartLegend";
 import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
 import { Card } from "../../components/layout/Card";
-import { Tooltip } from "../../components/Tooltip";
 import { formatActivityChartAverage } from "../../format";
 
 const CREATED_COLOR = "#67e8f9";
@@ -92,17 +91,17 @@ export function CodeActivityChart(props: {
               },
             ] as const;
             return (
-              <Tooltip
+              <ActivityChartTooltip
+                key={day.date}
                 content={
                   <ActivityTooltipRows
                     rows={series.map((entry) => [entry.label, entry.value])}
                   />
                 }
-                key={day.date}
-                label={formatActivityTooltipDate(day.date)}
+                date={day.date}
+                summary={`${day.created} created, ${day.merged} merged, ${day.closed} closed`}
               >
                 <g
-                  aria-label={`${formatActivityTooltipDate(day.date)}: ${day.created} created, ${day.merged} merged, ${day.closed} closed`}
                   tabIndex={0}
                 >
                   {series.map((entry, seriesIndex) => {
@@ -129,7 +128,7 @@ export function CodeActivityChart(props: {
                     y={layout.top}
                   />
                 </g>
-              </Tooltip>
+              </ActivityChartTooltip>
             );
           })}
           <ActivityChartAverageLine

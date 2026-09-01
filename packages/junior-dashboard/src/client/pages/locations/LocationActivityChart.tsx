@@ -5,15 +5,14 @@ import {
   ActivityChartDateLabels,
   ActivityChartGrid,
   activityChartAverage,
+  ActivityChartTooltip,
   ActivityTooltipRows,
   ChartSvg,
   createActivityChartLayout,
-  formatActivityTooltipDate,
 } from "../../components/charts/ActivityChart";
 import { ChartLegend } from "../../components/charts/ChartLegend";
 import { Card } from "../../components/layout/Card";
 import { CardHeader } from "../../components/layout/CardHeader";
-import { Tooltip } from "../../components/Tooltip";
 import { formatActivityChartAverage } from "../../format";
 
 /** Plot daily conversation volume across one public location. */
@@ -62,7 +61,8 @@ export function LocationActivityChart(props: {
             const x = layout.left + index * step + (step - barWidth) / 2;
             const y = layout.top + layout.plotHeight - barHeight;
             return (
-              <Tooltip
+              <ActivityChartTooltip
+                key={day.date}
                 content={
                   <ActivityTooltipRows
                     rows={[
@@ -72,11 +72,10 @@ export function LocationActivityChart(props: {
                     ]}
                   />
                 }
-                key={day.date}
-                label={formatActivityTooltipDate(day.date)}
+                date={day.date}
+                summary={`${day.conversations} conversations, ${day.active} active, ${day.failed} failed`}
               >
                 <rect
-                  aria-label={`${formatActivityTooltipDate(day.date)}: ${day.conversations} conversations, ${day.active} active, ${day.failed} failed`}
                   fill="url(#location-bars)"
                   height={Math.max(day.conversations ? 2 : 0, barHeight)}
                   opacity={day.conversations ? 0.9 : 0.18}
@@ -86,7 +85,7 @@ export function LocationActivityChart(props: {
                   x={x}
                   y={y}
                 />
-              </Tooltip>
+              </ActivityChartTooltip>
             );
           })}
           <ActivityChartAverageLine

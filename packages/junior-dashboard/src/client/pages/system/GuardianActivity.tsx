@@ -3,9 +3,8 @@ import type { GuardianMetricDay } from "@sentry/junior/api/schema";
 import {
   ChartAxisHtmlLabel,
   formatActivityDate,
-  formatActivityTooltipDate,
+  ActivityChartTooltip,
 } from "../../components/charts/ActivityChart";
-import { Tooltip } from "../../components/Tooltip";
 import { Card } from "../../components/layout/Card";
 import { formatCompactNumber, formatCostSummary } from "../../format";
 
@@ -107,7 +106,8 @@ export function GuardianActivity(props: {
           {props.days.map((day) => {
             const height = Math.max(2, (day.requests / maximum) * 100);
             return (
-              <Tooltip
+              <ActivityChartTooltip
+                key={day.date}
                 content={
                   <div className="grid grid-cols-[auto_auto] gap-x-4">
                     <span>Allow</span>
@@ -122,12 +122,11 @@ export function GuardianActivity(props: {
                     </span>
                   </div>
                 }
-                key={day.date}
-                label={formatActivityTooltipDate(day.date)}
+                date={day.date}
+                summary={`${day.allow} allowed, ${day.ask} asked, ${day.deny} denied, ${formatCostSummary({ total: day.costUsd ?? 0 })}`}
                 triggerClassName="h-full min-w-0 flex-1 items-end"
               >
                 <button
-                  aria-label={`${formatActivityTooltipDate(day.date)}: ${day.allow} allowed, ${day.ask} asked, ${day.deny} denied, ${formatCostSummary({ total: day.costUsd ?? 0 })}`}
                   className="flex w-full min-w-0 flex-col justify-end overflow-hidden rounded-t-sm bg-white/[0.035] focus-visible:outline-1 focus-visible:outline-cyan-300"
                   style={{ height: `${height}%` }}
                   type="button"
@@ -151,7 +150,7 @@ export function GuardianActivity(props: {
                     />
                   ) : null}
                 </button>
-              </Tooltip>
+              </ActivityChartTooltip>
             );
           })}
         </div>

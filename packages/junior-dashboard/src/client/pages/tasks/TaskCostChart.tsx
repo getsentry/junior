@@ -4,14 +4,13 @@ import {
   ActivityChartDateLabels,
   ActivityChartGrid,
   activityChartAverage,
+  ActivityChartTooltip,
   ActivityTooltipRows,
   ChartSvg,
   createActivityChartLayout,
-  formatActivityDate,
 } from "../../components/charts/ActivityChart";
 import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
 import { Card } from "../../components/layout/Card";
-import { Tooltip } from "../../components/Tooltip";
 import { formatCostSummary } from "../../format";
 
 const COST_COLOR = "#67e8f9";
@@ -62,17 +61,17 @@ export function TaskCostChart(props: {
             const value = totals[dayIndex] ?? 0;
             const height = (value / maximum) * layout.plotHeight;
             return (
-              <Tooltip
+              <ActivityChartTooltip
+                key={day.date}
                 content={
                   <ActivityTooltipRows
                     rows={[["spend", formatCostSummary({ total: value })]]}
                   />
                 }
-                key={day.date}
-                label={formatActivityDate(day.date)}
+                date={day.date}
+                summary={`${formatCostSummary({ total: value })}`}
               >
                 <g
-                  aria-label={`${formatActivityDate(day.date)}: ${formatCostSummary({ total: value })}`}
                   tabIndex={0}
                 >
                   <rect
@@ -92,7 +91,7 @@ export function TaskCostChart(props: {
                     y={layout.top}
                   />
                 </g>
-              </Tooltip>
+              </ActivityChartTooltip>
             );
           })}
           <ActivityChartAverageLine

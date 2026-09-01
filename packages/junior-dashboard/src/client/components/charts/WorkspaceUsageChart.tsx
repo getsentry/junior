@@ -3,15 +3,14 @@ import {
   ActivityChartDateLabels,
   ActivityChartGrid,
   activityChartAverage,
+  ActivityChartTooltip,
   ActivityTooltipRows,
   ChartSvg,
   createActivityChartLayout,
-  formatActivityTooltipDate,
 } from "./ActivityChart";
 import { ChartHeader } from "./ChartHeader";
 import type { TimeRangeDays } from "../controls/TimeRangeSelector";
 import { Card } from "../layout/Card";
-import { Tooltip } from "../Tooltip";
 import {
   formatActivityChartAverage,
   formatCompactNumber,
@@ -58,15 +57,15 @@ export function WorkspaceUsageChart(props: {
             const barHeight = (day.count / maximum) * layout.plotHeight;
             const renderedHeight = Math.max(day.count ? 2 : 0, barHeight);
             return (
-              <Tooltip
+              <ActivityChartTooltip
+                key={day.date}
                 content={
                   <ActivityTooltipRows rows={[["usage", day.count]]} />
                 }
-                key={day.date}
-                label={formatActivityTooltipDate(day.date)}
+                date={day.date}
+                summary={`${day.count} switches`}
               >
                 <g
-                  aria-label={`${formatActivityTooltipDate(day.date)}: ${day.count} switches`}
                   tabIndex={0}
                 >
                   <rect
@@ -86,7 +85,7 @@ export function WorkspaceUsageChart(props: {
                     y={layout.top}
                   />
                 </g>
-              </Tooltip>
+              </ActivityChartTooltip>
             );
           })}
           <ActivityChartAverageLine
