@@ -71,8 +71,8 @@ conversation.
 - Duplicate provider deliveries must not create duplicate conversation work.
 - A conversation may run only a bounded streak of consecutive automated turns.
   After that limit, later resource-event wakes stay quiet until a user message
-  clears the pause. The first refused wake posts a destination-visible notice.
-  Terminal subscriptions can still complete after a refused wake.
+  clears the pause. The Turn that hits the limit posts a plain notice in the
+  thread. Terminal watches can still complete after a refused wake.
 - A plugin cannot use a resource event to widen conversation visibility or
   credential authority.
 - Watches default to 14 days and reject requested lifetimes over 30 days rather

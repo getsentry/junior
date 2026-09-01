@@ -2,8 +2,8 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   admitAutomatedTurn,
   buildAutomatedTurnLimitResponse,
-  chargeAutomatedTurn,
-  getAutomatedTurnLimitRecord,
+  countAutomatedTurn,
+  getAutomatedTurnLimitState,
   isAutomatedTurnSource,
   recordFinishedTurnForAutomatedLimit,
   resetAutomatedTurnLimit,
@@ -20,7 +20,15 @@ describe("automated turn limit", () => {
   });
 
   it("classifies automated sources", () => {
-    expect(isAutomatedTurnSource({ kind: "resource_event", eventKey: "e", eventType: "x", identifier: "i", namespace: "n" })).toBe(true);
+    expect(
+      isAutomatedTurnSource({
+        kind: "resource_event",
+        eventKey: "e",
+        eventType: "x",
+        identifier: "i",
+        namespace: "n",
+      }),
+    ).toBe(true);
     expect(isAutomatedTurnSource({ kind: "event_task" })).toBe(true);
     expect(
       isAutomatedTurnSource({
@@ -33,12 +41,19 @@ describe("automated turn limit", () => {
     expect(isAutomatedTurnSource(undefined)).toBe(false);
   });
 
-  it("explains the pause without internal jargon", () => {
-    const response = buildAutomatedTurnLimitResponse(10);
-    expect(response).toContain("paused automated updates after 10 consecutive");
-    expect(response).toContain("Send a message or @mention");
-    expect(response).not.toContain("circuit");
+  it("explains the pause in plain language", () => {
+    const response = buildAutomatedTurnLimitResponse({
+      maxTurns: 10,
+      resumeIn: "thread",
+    });
+    expect(response).toContain(
+      "stopped automatic updates after 10 replies without a new message from you",
+    );
+    expect(response).toContain("Send a message or @mention me in this thread");
+    expect(response).not.toContain("event-driven");
+    expect(response).not.toContain("resource event");
     expect(response).not.toContain("budget");
+    expect(response).not.toContain("circuit");
   });
 
   it("admits turns until the consecutive limit, then pauses with one notice", async () => {
@@ -54,7 +69,14 @@ describe("automated turn limit", () => {
         status: "allow",
         consecutiveAutomatedTurns: i,
       });
-      await chargeAutomatedTurn({ maxTurns: 3, nowMs: 1_000 + i, scope });
+      await expect(
+        countAutomatedTurn({ maxTurns: 3, nowMs: 1_000 + i, scope }),
+      ).resolves.toMatchObject({
+        consecutiveAutomatedTurns: i + 1,
+        paused: i + 1 >= 3,
+        shouldPostNotice: i + 1 >= 3,
+        resumeIn: "thread",
+      });
     }
 
     await expect(
@@ -62,19 +84,12 @@ describe("automated turn limit", () => {
     ).resolves.toEqual({
       status: "paused",
       consecutiveAutomatedTurns: 3,
-      shouldPostNotice: true,
-    });
-    await expect(
-      admitAutomatedTurn({ maxTurns: 3, nowMs: 2_001, scope }),
-    ).resolves.toEqual({
-      status: "paused",
-      consecutiveAutomatedTurns: 3,
       shouldPostNotice: false,
     });
-    await expect(getAutomatedTurnLimitRecord({ scope })).resolves.toMatchObject({
+    await expect(getAutomatedTurnLimitState({ scope })).resolves.toMatchObject({
       consecutiveAutomatedTurns: 3,
       paused: true,
-      noticePostedAtMs: 2_000,
+      noticePostedAtMs: 1_002,
     });
   });
 
@@ -86,12 +101,12 @@ describe("automated turn limit", () => {
       channelId: "C2",
     };
 
-    await chargeAutomatedTurn({
+    await countAutomatedTurn({
       maxTurns: 2,
       nowMs: 1,
       scope: { kind: "conversation", conversationId },
     });
-    await chargeAutomatedTurn({
+    await countAutomatedTurn({
       maxTurns: 2,
       nowMs: 2,
       scope: { kind: "destination", destination },
@@ -132,7 +147,7 @@ describe("automated turn limit", () => {
     });
   });
 
-  it("charges conversation and destination scopes for automated finishes", async () => {
+  it("counts one matching scope for automated finishes", async () => {
     const conversationId = "agent-dispatch:abc";
     const destination = {
       platform: "slack" as const,
@@ -140,24 +155,31 @@ describe("automated turn limit", () => {
       channelId: "C9",
     };
 
-    await recordFinishedTurnForAutomatedLimit({
-      conversationId,
-      destination,
-      maxTurns: 10,
-      nowMs: 10,
-      source: { kind: "event_task" },
-    });
-
     await expect(
-      getAutomatedTurnLimitRecord({
-        scope: { kind: "conversation", conversationId },
+      recordFinishedTurnForAutomatedLimit({
+        conversationId,
+        destination,
+        maxTurns: 10,
+        nowMs: 10,
+        source: { kind: "event_task" },
       }),
     ).resolves.toMatchObject({
       consecutiveAutomatedTurns: 1,
       paused: false,
+      shouldPostNotice: false,
+      resumeIn: "channel",
+    });
+
+    await expect(
+      getAutomatedTurnLimitState({
+        scope: { kind: "conversation", conversationId },
+      }),
+    ).resolves.toMatchObject({
+      consecutiveAutomatedTurns: 0,
+      paused: false,
     });
     await expect(
-      getAutomatedTurnLimitRecord({
+      getAutomatedTurnLimitState({
         scope: { kind: "destination", destination },
       }),
     ).resolves.toMatchObject({
@@ -166,7 +188,38 @@ describe("automated turn limit", () => {
     });
 
     await resetAutomatedTurnLimit({
-      scope: { kind: "conversation", conversationId },
+      scope: { kind: "destination", destination },
     });
+  });
+
+  it("counts resource-event finishes on the conversation", async () => {
+    const conversationId = "slack:C3:3.0";
+    await expect(
+      recordFinishedTurnForAutomatedLimit({
+        conversationId,
+        destination: {
+          platform: "slack",
+          teamId: "T3",
+          channelId: "C3",
+        },
+        maxTurns: 10,
+        nowMs: 1,
+        source: {
+          kind: "resource_event",
+          eventKey: "e",
+          eventType: "pull_request.opened",
+          identifier: "getsentry/junior#1",
+          namespace: "github",
+        },
+      }),
+    ).resolves.toMatchObject({
+      consecutiveAutomatedTurns: 1,
+      resumeIn: "thread",
+    });
+    await expect(
+      getAutomatedTurnLimitState({
+        scope: { kind: "conversation", conversationId },
+      }),
+    ).resolves.toMatchObject({ consecutiveAutomatedTurns: 1 });
   });
 });

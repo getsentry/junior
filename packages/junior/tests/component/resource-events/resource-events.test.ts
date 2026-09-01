@@ -18,8 +18,8 @@ import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { JUNIOR_THREAD_STATE_TTL_MS } from "@/chat/state/ttl";
 import { getConversationWorkState } from "@/chat/task-execution/store";
 import {
-  chargeAutomatedTurn,
-  getAutomatedTurnLimitRecord,
+  countAutomatedTurn,
+  getAutomatedTurnLimitState,
 } from "@/chat/services/automated-turn-limit";
 import { botConfig } from "@/chat/config";
 import { ingestResourceEvent } from "@/chat/resource-events/ingest";
@@ -159,14 +159,14 @@ describe("resource event delivery", () => {
     expect(work?.messages[0]?.input.metadata).not.toHaveProperty("route");
   });
 
-  it("short-circuits resource event wakes after the consecutive automated-turn limit", async () => {
+  it("stops resource event wakes after the consecutive automated-turn limit", async () => {
     const queue = createConversationWorkQueueTestAdapter();
     const subscription = await createGithubPrSubscription({
       events: ["pull_request.checks.failed"],
     });
     const maxTurns = botConfig.maxConsecutiveAutomatedTurns;
     for (let i = 0; i < maxTurns; i += 1) {
-      await chargeAutomatedTurn({
+      await countAutomatedTurn({
         maxTurns,
         nowMs: 1_000 + i,
         scope: {
@@ -196,7 +196,7 @@ describe("resource event delivery", () => {
     });
     expect(work?.messages ?? []).toHaveLength(0);
     await expect(
-      getAutomatedTurnLimitRecord({
+      getAutomatedTurnLimitState({
         scope: {
           kind: "conversation",
           conversationId: CONVERSATION_ID,
@@ -205,7 +205,7 @@ describe("resource event delivery", () => {
     ).resolves.toMatchObject({
       consecutiveAutomatedTurns: maxTurns,
       paused: true,
-      noticePostedAtMs: 2_000,
+      noticePostedAtMs: 1_000 + maxTurns - 1,
     });
     expect(subscription.id).toBeTruthy();
   });

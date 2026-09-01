@@ -1,11 +1,7 @@
 import { botConfig } from "@/chat/config";
-import { getConversationStore } from "@/chat/db";
-import { logException, logInfo, logWarn } from "@/chat/logging";
-import {
-  admitAutomatedTurn,
-  buildAutomatedTurnLimitResponse,
-} from "@/chat/services/automated-turn-limit";
-import { postSlackMessage } from "@/chat/slack/outbound";
+import { logInfo } from "@/chat/logging";
+import { admitAutomatedTurn } from "@/chat/services/automated-turn-limit";
+import { postAutomatedTurnLimitNoticeForConversation } from "@/chat/services/automated-turn-limit-notice";
 import { renderTaskInput } from "@/chat/task-input";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import {
@@ -135,42 +131,12 @@ export function createResourceEventInboundMessage(input: {
   };
 }
 
-async function postAutomatedTurnLimitNotice(args: {
-  conversationId: string;
-  maxTurns: number;
-}): Promise<void> {
-  try {
-    const conversation = await getConversationStore().get({
-      conversationId: args.conversationId,
-    });
-    const location = conversation?.location;
-    if (!location || location.provider !== "slack") {
-      logWarn("resource_events.automated_turn_limit.notice_skipped", {
-        conversationId: args.conversationId,
-        "app.automated_turn_limit.reason": location
-          ? "unsupported_location"
-          : "missing_location",
-      });
-      return;
-    }
-    await postSlackMessage({
-      channelId: location.channelId,
-      text: buildAutomatedTurnLimitResponse(args.maxTurns),
-      ...(location.threadTs ? { threadTs: location.threadTs } : undefined),
-    });
-  } catch (error) {
-    logException(error, "resource_events.automated_turn_limit.notice_failed", {
-      conversationId: args.conversationId,
-    });
-  }
-}
-
 /**
  * Enqueue a resource event as normal conversation mailbox input.
  *
  * The watch only names the conversation. Destination stays on the conversation
- * and is applied when the worker runs. A consecutive automated-turn pause drops
- * further wakes until a user message clears the conversation budget.
+ * and is applied when the worker runs. After too many automated Turns with no
+ * user Turn, later wakes stay quiet until a user message clears the pause.
  */
 export async function enqueueResourceEventNotification(args: {
   event: ResourceEventNotification;
@@ -197,13 +163,14 @@ export async function enqueueResourceEventNotification(args: {
       "app.resource_event.namespace": args.event.namespace,
     });
     if (decision.shouldPostNotice) {
-      await postAutomatedTurnLimitNotice({
+      // Safety net when the Turn that hit the limit could not post a notice.
+      await postAutomatedTurnLimitNoticeForConversation({
         conversationId: args.subscription.conversationId,
         maxTurns,
+        resumeIn: "thread",
       });
     }
-    // Treat the wake as delivered so terminal subscriptions can still complete
-    // and providers do not retry the same pause forever.
+    // Do not enqueue a Turn. Terminal watches may still complete after this.
     return { status: "duplicate" };
   }
 

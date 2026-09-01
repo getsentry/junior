@@ -18,12 +18,9 @@ import { renderTaskInput } from "@/chat/task-input";
 import { getDb } from "@/chat/db";
 import { findMatchingEventTasks } from "@/chat/event-tasks/store";
 import type { EventTask } from "@/chat/event-tasks/types";
-import { logInfo, logWarn } from "@/chat/logging";
-import {
-  admitAutomatedTurn,
-  buildAutomatedTurnLimitResponse,
-} from "@/chat/services/automated-turn-limit";
-import { postSlackMessage } from "@/chat/slack/outbound";
+import { logInfo } from "@/chat/logging";
+import { admitAutomatedTurn } from "@/chat/services/automated-turn-limit";
+import { postAutomatedTurnLimitNoticeForDestination } from "@/chat/services/automated-turn-limit-notice";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { resourceEventGuidance } from "@/chat/resource-events/catalog";
 import { getResourceEventCatalog } from "@/chat/resource-events/runtime-catalog";
@@ -110,21 +107,17 @@ export async function ingestEventTasks(
           "app.slack.channel_id": task.destination.channelId,
           "app.slack.team_id": task.destination.teamId,
         });
-        if (decision.shouldPostNotice && !noticedDestinations.has(destinationId)) {
+        if (
+          decision.shouldPostNotice &&
+          !noticedDestinations.has(destinationId)
+        ) {
           noticedDestinations.add(destinationId);
-          try {
-            await postSlackMessage({
-              channelId: task.destination.channelId,
-              text: buildAutomatedTurnLimitResponse(maxTurns),
-            });
-          } catch (error) {
-            logWarn("event_tasks.automated_turn_limit.notice_failed", {
-              "app.event_task.id": task.id,
-              "app.slack.channel_id": task.destination.channelId,
-              "error.message":
-                error instanceof Error ? error.message : String(error),
-            });
-          }
+          // Safety net when the Turn that hit the limit could not post a notice.
+          await postAutomatedTurnLimitNoticeForDestination({
+            destination: task.destination,
+            maxTurns,
+            resumeIn: "channel",
+          });
         }
         continue;
       }

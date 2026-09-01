@@ -1,10 +1,9 @@
 /**
- * Caps consecutive automated turns so event wakes cannot loop forever.
+ * Stops event wakes after too many automated Turns with no user Turn.
  *
- * A conversation pause key covers resource-event watches on one conversation.
- * A destination pause key covers event-task and other agent dispatches that
- * deliver into the same Slack channel without sharing a conversation id.
- * A user-owned turn clears both scopes it can name.
+ * Resource-event watches count on the Conversation. Event tasks and other
+ * agent dispatches count on the Slack Destination. A finished user Turn clears
+ * every scope that Turn can name.
  */
 import type { Destination, Source } from "@sentry/junior-plugin-api";
 import type { Lock, StateAdapter } from "chat";
@@ -18,8 +17,8 @@ const AUTOMATED_TURN_LIMIT_LOCK_TTL_MS = 5_000;
 const AUTOMATED_TURN_LIMIT_LOCK_WAIT_MS = 2_000;
 const AUTOMATED_TURN_LIMIT_LOCK_RETRY_MS = 25;
 
-/** Redis record for one automated-turn pause scope. */
-const automatedTurnLimitRecordSchema = z
+/** Stored consecutive-turn limit for one Conversation or Destination. */
+const automatedTurnLimitStateSchema = z
   .object({
     consecutiveAutomatedTurns: z.number().int().nonnegative(),
     noticePostedAtMs: z.number().finite().nonnegative().optional(),
@@ -28,8 +27,8 @@ const automatedTurnLimitRecordSchema = z
   })
   .strict();
 
-export type AutomatedTurnLimitRecord = z.output<
-  typeof automatedTurnLimitRecordSchema
+export type AutomatedTurnLimitState = z.output<
+  typeof automatedTurnLimitStateSchema
 >;
 
 export type AutomatedTurnLimitScope =
@@ -43,6 +42,14 @@ export type AutomatedTurnLimitDecision =
       consecutiveAutomatedTurns: number;
       shouldPostNotice: boolean;
     };
+
+export type AutomatedTurnLimitUpdate = {
+  consecutiveAutomatedTurns: number;
+  paused: boolean;
+  shouldPostNotice: boolean;
+  /** Where the pause notice should tell the user to reply. */
+  resumeIn: "thread" | "channel";
+};
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => {
@@ -62,8 +69,8 @@ function lockKey(key: string): string {
   return `${key}:lock`;
 }
 
-function parseRecord(value: unknown): AutomatedTurnLimitRecord | undefined {
-  const parsed = automatedTurnLimitRecordSchema.safeParse(value);
+function parseState(value: unknown): AutomatedTurnLimitState | undefined {
+  const parsed = automatedTurnLimitStateSchema.safeParse(value);
   return parsed.success ? parsed.data : undefined;
 }
 
@@ -100,7 +107,7 @@ async function withScopeLock<T>(
   }
 }
 
-function emptyRecord(nowMs: number): AutomatedTurnLimitRecord {
+function emptyState(nowMs: number): AutomatedTurnLimitState {
   return {
     consecutiveAutomatedTurns: 0,
     paused: false,
@@ -108,7 +115,11 @@ function emptyRecord(nowMs: number): AutomatedTurnLimitRecord {
   };
 }
 
-/** True when this Source starts an automated turn rather than a user turn. */
+function resumeInForScope(scope: AutomatedTurnLimitScope): "thread" | "channel" {
+  return scope.kind === "conversation" ? "thread" : "channel";
+}
+
+/** True when this Source starts an automated Turn rather than a user Turn. */
 export function isAutomatedTurnSource(source: Source | undefined): boolean {
   if (!source) {
     return false;
@@ -122,30 +133,60 @@ export function isAutomatedTurnSource(source: Source | undefined): boolean {
   );
 }
 
-/** User-facing copy when automated updates pause for one conversation. */
-export function buildAutomatedTurnLimitResponse(maxTurns: number): string {
+/**
+ * Scope that counts automated Turns for this Source.
+ * Resource-event watches stay on the Conversation. Dispatches use Destination.
+ */
+export function automatedTurnLimitScopeForSource(args: {
+  conversationId: string;
+  destination?: Destination;
+  source?: Source;
+}): AutomatedTurnLimitScope | undefined {
+  if (!isAutomatedTurnSource(args.source)) {
+    return undefined;
+  }
+  if (args.source?.kind === "resource_event") {
+    return {
+      kind: "conversation",
+      conversationId: args.conversationId,
+    };
+  }
+  if (args.destination) {
+    return { kind: "destination", destination: args.destination };
+  }
+  return {
+    kind: "conversation",
+    conversationId: args.conversationId,
+  };
+}
+
+/** Plain notice when automatic updates stop until the user replies. */
+export function buildAutomatedTurnLimitResponse(args: {
+  maxTurns: number;
+  resumeIn?: "thread" | "channel";
+}): string {
+  const place = args.resumeIn === "channel" ? "channel" : "thread";
   return (
-    `I paused automated updates after ${maxTurns} consecutive event-driven turns without a user message. ` +
-    "Send a message or @mention me in this thread to resume. " +
-    "New resource events will stay quiet until then."
+    `I stopped automatic updates after ${args.maxTurns} replies without a new message from you. ` +
+    `Send a message or @mention me in this ${place} to continue.`
   );
 }
 
-/** Read the current pause record for one scope. */
-export async function getAutomatedTurnLimitRecord(args: {
+/** Read the current consecutive-turn limit for one scope. */
+export async function getAutomatedTurnLimitState(args: {
   nowMs?: number;
   scope: AutomatedTurnLimitScope;
   state?: StateAdapter;
-}): Promise<AutomatedTurnLimitRecord> {
+}): Promise<AutomatedTurnLimitState> {
   const state = args.state ?? getStateAdapter();
   await state.connect();
   const nowMs = args.nowMs ?? Date.now();
-  return parseRecord(await state.get(scopeKey(args.scope))) ?? emptyRecord(nowMs);
+  return parseState(await state.get(scopeKey(args.scope))) ?? emptyState(nowMs);
 }
 
 /**
- * Admit one automated wake, or pause further wakes once the streak is full.
- * The first refused wake asks the caller to post the pause notice once.
+ * Allow one automated wake, or refuse once the consecutive-turn limit is full.
+ * If a prior pause never posted its notice, ask the caller to post it once.
  */
 export async function admitAutomatedTurn(args: {
   maxTurns: number;
@@ -161,10 +202,10 @@ export async function admitAutomatedTurn(args: {
   const nowMs = args.nowMs ?? Date.now();
   const key = scopeKey(args.scope);
   return await withScopeLock(state, key, async () => {
-    const current = parseRecord(await state.get(key)) ?? emptyRecord(nowMs);
+    const current = parseState(await state.get(key)) ?? emptyState(nowMs);
     if (current.paused || current.consecutiveAutomatedTurns >= args.maxTurns) {
       const shouldPostNotice = current.noticePostedAtMs === undefined;
-      const next: AutomatedTurnLimitRecord = {
+      const next: AutomatedTurnLimitState = {
         consecutiveAutomatedTurns: Math.max(
           current.consecutiveAutomatedTurns,
           args.maxTurns,
@@ -191,13 +232,13 @@ export async function admitAutomatedTurn(args: {
   });
 }
 
-/** Charge one finished automated turn against the consecutive-turn budget. */
-export async function chargeAutomatedTurn(args: {
+/** Count one finished automated Turn toward the consecutive-turn limit. */
+export async function countAutomatedTurn(args: {
   maxTurns: number;
   nowMs?: number;
   scope: AutomatedTurnLimitScope;
   state?: StateAdapter;
-}): Promise<AutomatedTurnLimitRecord> {
+}): Promise<AutomatedTurnLimitUpdate> {
   if (args.maxTurns < 1) {
     throw new Error("Automated turn limit must be at least 1");
   }
@@ -205,24 +246,34 @@ export async function chargeAutomatedTurn(args: {
   await state.connect();
   const nowMs = args.nowMs ?? Date.now();
   const key = scopeKey(args.scope);
+  const resumeIn = resumeInForScope(args.scope);
   return await withScopeLock(state, key, async () => {
-    const current = parseRecord(await state.get(key)) ?? emptyRecord(nowMs);
+    const current = parseState(await state.get(key)) ?? emptyState(nowMs);
     const consecutiveAutomatedTurns = current.consecutiveAutomatedTurns + 1;
     const paused = consecutiveAutomatedTurns >= args.maxTurns;
-    const next: AutomatedTurnLimitRecord = {
+    const shouldPostNotice =
+      paused && current.noticePostedAtMs === undefined;
+    const next: AutomatedTurnLimitState = {
       consecutiveAutomatedTurns,
       paused,
       updatedAtMs: nowMs,
-      ...(current.noticePostedAtMs !== undefined
-        ? { noticePostedAtMs: current.noticePostedAtMs }
-        : undefined),
+      ...(shouldPostNotice
+        ? { noticePostedAtMs: nowMs }
+        : current.noticePostedAtMs !== undefined
+          ? { noticePostedAtMs: current.noticePostedAtMs }
+          : undefined),
     };
     await state.set(key, next, JUNIOR_THREAD_STATE_TTL_MS);
-    return next;
+    return {
+      consecutiveAutomatedTurns,
+      paused,
+      shouldPostNotice,
+      resumeIn,
+    };
   });
 }
 
-/** Clear the consecutive automated-turn streak after a user-owned turn. */
+/** Clear the consecutive automated-turn count after a user-owned Turn. */
 export async function resetAutomatedTurnLimit(args: {
   nowMs?: number;
   scope: AutomatedTurnLimitScope;
@@ -237,10 +288,10 @@ export async function resetAutomatedTurnLimit(args: {
 }
 
 /**
- * Apply one finished turn to the automated-turn budgets it owns.
+ * Update consecutive automated-turn limits after one finished Turn.
  *
- * Automated turns charge their conversation and destination scopes. User turns
- * clear both scopes so later event wakes can run again.
+ * Automated Turns count one matching scope. User Turns clear Conversation and
+ * Destination scopes so later event wakes can run again.
  */
 export async function recordFinishedTurnForAutomatedLimit(args: {
   conversationId: string;
@@ -249,45 +300,37 @@ export async function recordFinishedTurnForAutomatedLimit(args: {
   nowMs?: number;
   source?: Source;
   state?: StateAdapter;
-}): Promise<void> {
+}): Promise<AutomatedTurnLimitUpdate | undefined> {
   const nowMs = args.nowMs ?? Date.now();
-  const conversationScope: AutomatedTurnLimitScope = {
-    kind: "conversation",
+  const automatedScope = automatedTurnLimitScopeForSource({
     conversationId: args.conversationId,
-  };
-  const destinationScope: AutomatedTurnLimitScope | undefined = args.destination
-    ? { kind: "destination", destination: args.destination }
-    : undefined;
+    destination: args.destination,
+    source: args.source,
+  });
 
-  if (isAutomatedTurnSource(args.source)) {
-    await chargeAutomatedTurn({
+  if (automatedScope) {
+    return await countAutomatedTurn({
       maxTurns: args.maxTurns,
       nowMs,
-      scope: conversationScope,
+      scope: automatedScope,
       state: args.state,
     });
-    if (destinationScope) {
-      await chargeAutomatedTurn({
-        maxTurns: args.maxTurns,
-        nowMs,
-        scope: destinationScope,
-        state: args.state,
-      });
-    }
-    return;
   }
 
-  // Unknown or user Sources clear the pause so the next event wake can run.
   await resetAutomatedTurnLimit({
     nowMs,
-    scope: conversationScope,
+    scope: {
+      kind: "conversation",
+      conversationId: args.conversationId,
+    },
     state: args.state,
   });
-  if (destinationScope) {
+  if (args.destination) {
     await resetAutomatedTurnLimit({
       nowMs,
-      scope: destinationScope,
+      scope: { kind: "destination", destination: args.destination },
       state: args.state,
     });
   }
+  return undefined;
 }

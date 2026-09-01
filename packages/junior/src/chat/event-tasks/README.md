@@ -21,9 +21,9 @@ for one task does not prevent dispatch attempts for other matching tasks; the
 ingress boundary still receives the aggregate failure for provider retry. Task
 dispatch identity binds the task, plugin namespace, and provider event key, so
 provider retries do not execute the same task twice. A destination may still
-pause further event-task dispatches after a bounded streak of consecutive
-automated turns without a user message; the first refused wake posts a notice
-and later matching events stay quiet until a user message clears that pause.
+stop further event-task dispatches after too many automated turns with no user
+message. The Turn that hits the limit posts a plain notice, and later matching
+events stay quiet until a user message clears that pause.
 Listing stays bound to the
 destination where the task was created. Threads in that destination share the
 list. Update and delete also accept a public task by id from another destination

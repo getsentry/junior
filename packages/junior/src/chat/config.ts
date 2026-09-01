@@ -23,8 +23,8 @@ const MAX_SLICES_PER_TURN = 100;
  */
 const MAX_TOOL_CALLS_PER_TURN = 150;
 /**
- * Max consecutive automated turns before event wakes pause until a user message.
- * Resource-event CI watches and event-task spam are the common runaway paths.
+ * Max consecutive automated turns before event wakes stop until a user message.
+ * Resource-event CI watches and event-task loops are the common runaway paths.
  */
 const MAX_CONSECUTIVE_AUTOMATED_TURNS = 10;
 const DEFAULT_FUNCTION_MAX_DURATION_SECONDS = 300;

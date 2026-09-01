@@ -47,6 +47,7 @@ import {
   upsertConversationMessage,
 } from "@/chat/services/conversation-memory";
 import { recordFinishedTurnForAutomatedLimit } from "@/chat/services/automated-turn-limit";
+import { maybePostAutomatedTurnLimitNotice } from "@/chat/services/automated-turn-limit-notice";
 import { finalizeFailedTurnReplyWithEvent } from "@/chat/services/turn-failure-response";
 import { clearPendingAuth } from "@/chat/services/pending-auth";
 import {
@@ -577,11 +578,22 @@ export function createConversationTurnWorker(
                   surface,
                 });
               }
-              await recordFinishedTurnForAutomatedLimit({
+              const automatedTurnLimit =
+                await recordFinishedTurnForAutomatedLimit({
+                  conversationId: context.conversationId,
+                  destination,
+                  maxTurns: botConfig.maxConsecutiveAutomatedTurns,
+                  source,
+                });
+              await maybePostAutomatedTurnLimitNotice({
                 conversationId: context.conversationId,
                 destination,
                 maxTurns: botConfig.maxConsecutiveAutomatedTurns,
-                source,
+                threadTs:
+                  conversationLocation?.provider === "slack"
+                    ? conversationLocation.threadTs
+                    : undefined,
+                update: automatedTurnLimit,
               });
 
               completedSuccessfully = reply.diagnostics.outcome === "success";
