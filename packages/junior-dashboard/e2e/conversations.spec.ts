@@ -159,6 +159,7 @@ test("opens a conversation in the built dashboard", async ({
 
 test("starts and continues conversations from the dashboard", async ({
   page,
+  dashboard,
 }) => {
   const createdConversationId = "local:web:created";
   const createRequests: Array<{
