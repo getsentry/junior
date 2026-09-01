@@ -784,6 +784,7 @@ export const guardianStatsSchema = z
     deny: z.number(),
     metricDays: z.array(guardianMetricDaySchema),
     metricHours: z.array(guardianMetricDaySchema).optional(),
+    metricSixHours: z.array(guardianMetricDaySchema).optional(),
     requests: z.number(),
   })
   .strict();
@@ -799,6 +800,7 @@ export const conversationStatsReportSchema = z
     guardian: guardianStatsSchema,
     metricDays: z.array(conversationMetricDaySchema),
     metricHours: z.array(conversationMetricDaySchema).optional(),
+    metricSixHours: z.array(conversationMetricDaySchema).optional(),
     locations: z.array(conversationStatsItemSchema),
     actors: z.array(conversationStatsItemSchema),
     source: z.literal("conversation_index"),

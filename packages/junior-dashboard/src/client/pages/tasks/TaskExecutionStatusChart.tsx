@@ -19,7 +19,7 @@ const series = [
 
 /** Render one task's terminal executions stacked by status over a trailing window. */
 export function TaskExecutionStatusChart(props: {
-  bucketUnit?: "day" | "hour";
+  bucketUnit?: "day" | "hour" | "6hour" | "6hour";
 
   days: TaskExecutionStatusDay[];
   range: TimeRangeDays;
@@ -44,7 +44,9 @@ export function TaskExecutionStatusChart(props: {
         <p className="mt-1 mb-0 font-mono text-xs leading-relaxed text-dashboard-text-muted">
           {bucketUnit === "hour"
             ? "Terminal runs for this task each hour."
-            : "Terminal runs for this task each day."}
+            : bucketUnit === "6hour"
+              ? "Terminal runs for this task each 6 hours."
+              : "Terminal runs for this task each day."}
         </p>
       </div>
 

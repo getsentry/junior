@@ -17,7 +17,7 @@ const EXECUTION_COLOR = "#fbbf24";
 
 /** Render completed task executions over a trailing window. */
 export function TaskExecutionChart(props: {
-  bucketUnit?: "day" | "hour";
+  bucketUnit?: "day" | "hour" | "6hour" | "6hour";
 
   days: TaskExecutionDay[];
   range: TimeRangeDays;
@@ -87,7 +87,7 @@ export function TaskExecutionChart(props: {
             );
           })}
           <ActivityChartAverageLine
-            unit={bucketUnit}
+            unit={bucketUnit === "6hour" ? "6h" : bucketUnit}
             average={average}
             format={formatActivityChartAverage}
             layout={layout}

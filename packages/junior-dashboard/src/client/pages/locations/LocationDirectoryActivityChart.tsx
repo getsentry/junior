@@ -14,13 +14,13 @@ import { CardHeader } from "../../components/layout/CardHeader";
 
 /** Compare public and privacy-preserving private conversation volume by day. */
 export function LocationDirectoryActivityChart(props: {
-  bucketUnit?: "day" | "hour";
+  bucketUnit?: "day" | "hour" | "6hour" | "6hour";
 
   days: LocationActivityDayReport[];
 }) {
   const bucketUnit = props.bucketUnit ?? "day";
   const perBucket =
-    bucketUnit === "hour" ? "Conversations per hour" : "Conversations per day";
+    bucketUnit === "hour" ? "Conversations per hour" : bucketUnit === "6hour" ? "Conversations per 6 hours" : "Conversations per day";
 
   const layout = createActivityChartLayout(260);
   const maximum = Math.max(
@@ -40,7 +40,9 @@ export function LocationDirectoryActivityChart(props: {
         description={
           bucketUnit === "hour"
             ? "Hourly public volume compared with private activity in aggregate."
-            : "Daily public volume compared with private activity in aggregate."
+            : bucketUnit === "6hour"
+              ? "6-hour public volume compared with private activity in aggregate."
+              : "Daily public volume compared with private activity in aggregate."
         }
         title={perBucket}
         trailing={

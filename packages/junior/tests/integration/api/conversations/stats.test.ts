@@ -272,7 +272,8 @@ describe("conversation stats API", () => {
         deny: 1,
         requests: 3,
       });
-      expect(report.guardian.metricHours).toHaveLength(24);
+      expect(report.guardian.metricHours).toHaveLength(7 * 24);
+      expect(report.guardian.metricSixHours).toHaveLength(7 * 4);
       expect(
         report.guardian.metricHours?.find((hour) => hour.date === "2026-06-15T11"),
       ).toEqual({
@@ -294,7 +295,8 @@ describe("conversation stats API", () => {
           tokens: 457,
         }),
       );
-      expect(report.metricHours).toHaveLength(24);
+      expect(report.metricHours).toHaveLength(7 * 24);
+      expect(report.metricSixHours).toHaveLength(7 * 4);
       expect(report.metricHours?.at(-1)?.date).toBe("2026-06-15T12");
       expect(
         report.metricHours?.find((hour) => hour.date === "2026-06-15T11"),

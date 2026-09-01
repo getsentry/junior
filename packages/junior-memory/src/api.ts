@@ -67,11 +67,11 @@ export const memoryDashboardResponseSchema = z
   .object({
     days: z.array(memoryDashboardDaySchema).length(90),
     extractionDays: z.array(memoryCostDaySchema).length(90),
-    extractionHours: z.array(memoryCostDaySchema).length(24).optional(),
+    extractionHours: z.array(memoryCostDaySchema).min(24).optional(),
     generatedAt: z.iso.datetime(),
-    hours: z.array(memoryDashboardDaySchema).length(24).optional(),
+    hours: z.array(memoryDashboardDaySchema).min(24).optional(),
     recallDays: z.array(memoryCostDaySchema).length(90),
-    recallHours: z.array(memoryCostDaySchema).length(24).optional(),
+    recallHours: z.array(memoryCostDaySchema).min(24).optional(),
     stats: z
       .object({
         active: z.number().int().min(0),
@@ -180,13 +180,14 @@ export function createMemoryApi(options: MemoryApiOptions): PluginRouteApp {
           ] = await Promise.all([
             getMemoryStats(options.db, userId),
             getMemoryTimeline(options.db, userId, 90),
-            getMemoryTimelineHours(options.db, userId, 24),
+            getMemoryTimelineHours(options.db, userId, 7 * 24),
             options.eventStats.costsByDay({
               days: 90,
               eventName: "memories_captured",
             }),
             options.eventStats.costsByHour({
               eventName: "memories_captured",
+              hours: 7 * 24,
             }),
             options.eventStats.costsByDay({
               days: 90,
@@ -194,6 +195,7 @@ export function createMemoryApi(options: MemoryApiOptions): PluginRouteApp {
             }),
             options.eventStats.costsByHour({
               eventName: "memories_recalled",
+              hours: 7 * 24,
             }),
           ]);
           const { private: personal, ...dashboardStats } = stats;

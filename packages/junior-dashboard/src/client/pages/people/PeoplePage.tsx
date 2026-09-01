@@ -81,7 +81,9 @@ export function PeoplePageContent(props: {
     ? selectTimeSeries({
         days: data.activityDays,
         hours: data.activityHours,
+        sixHours: data.activitySixHours,
         range,
+        emptySixHour: (date) => ({ activePeople: 0, conversations: 0, date }),
       })
     : [];
   const bucketUnit = timeRangeBucketUnit(range);

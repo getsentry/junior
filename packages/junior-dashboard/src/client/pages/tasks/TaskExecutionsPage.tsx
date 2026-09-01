@@ -139,7 +139,14 @@ function TaskExecutionsView(props: {
           days={selectTimeSeries({
             days: data.executionDays,
             hours: data.executionHours,
+            sixHours: data.executionSixHours,
             range,
+            emptySixHour: (date) => ({
+              blocked: 0,
+              completed: 0,
+              date,
+              failed: 0,
+            }),
           })}
           range={range}
         />

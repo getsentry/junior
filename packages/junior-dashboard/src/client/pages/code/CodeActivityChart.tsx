@@ -20,7 +20,7 @@ const CLOSED_COLOR = "#fb7185";
 
 /** Render created, merged, and closed code changes over a trailing window. */
 export function CodeActivityChart(props: {
-  bucketUnit?: "day" | "hour";
+  bucketUnit?: "day" | "hour" | "6hour" | "6hour";
 
   days: CodeActivityDay[];
   range: TimeRangeDays;
@@ -132,7 +132,7 @@ export function CodeActivityChart(props: {
             );
           })}
           <ActivityChartAverageLine
-            unit={bucketUnit}
+            unit={bucketUnit === "6hour" ? "6h" : bucketUnit}
             average={average}
             format={formatActivityChartAverage}
             layout={layout}

@@ -34,13 +34,13 @@ function chartPoint(
 
 /** Plot distinct verified people with recorded conversation activity each day. */
 export function PeopleActivityChart(props: {
-  bucketUnit?: "day" | "hour";
+  bucketUnit?: "day" | "hour" | "6hour" | "6hour";
 
   days: PeopleActivityDayReport[];
 }) {
   const bucketUnit = props.bucketUnit ?? "day";
   const chartTitle =
-    bucketUnit === "hour" ? "Active people per hour" : "Active people per day";
+    bucketUnit === "hour" ? "Active people per hour" : bucketUnit === "6hour" ? "Active people per 6 hours" : "Active people per day";
 
   const layout = createActivityChartLayout(260);
   const values = props.days.map((day) => day.activePeople);
@@ -126,7 +126,7 @@ export function PeopleActivityChart(props: {
             );
           })}
           <ActivityChartAverageLine
-            unit={bucketUnit}
+            unit={bucketUnit === "6hour" ? "6h" : bucketUnit}
             average={average}
             format={formatActivityChartAverage}
             layout={layout}

@@ -6,6 +6,7 @@ import {
   codeOverviewReportSchema,
   codePersonReportSchema,
 } from "../schema/code";
+import { rollupUtcHoursToSixHours } from "../reporting-window";
 
 const DAY_MS = 24 * 60 * 60 * 1_000;
 const WINDOW_DAYS = 30;
@@ -146,7 +147,7 @@ async function readCodeWindows(args: {
   const activityHourEnd = new Date(args.nowMs);
   activityHourEnd.setUTCMinutes(0, 0, 0);
   const activityHourStart = new Date(
-    activityHourEnd.getTime() - 23 * (DAY_MS / 24),
+    activityHourEnd.getTime() - (7 * 24 - 1) * (DAY_MS / 24),
   );
   const [summaryResult, activityResult, activityHourResult] = await Promise.all([
     db.execute(sql`
@@ -302,11 +303,17 @@ async function readCodeWindows(args: {
       open: 0,
     },
   );
+  const activityHours = z
+    .array(activityDaySchema)
+    .parse(queryRows(activityHourResult));
   return {
     activityDays: z.array(activityDaySchema).parse(queryRows(activityResult)),
-    activityHours: z
-      .array(activityDaySchema)
-      .parse(queryRows(activityHourResult)),
+    activityHours,
+    activitySixHours: rollupUtcHoursToSixHours({
+      empty: (date) => ({ closed: 0, created: 0, date, merged: 0 }),
+      hours: activityHours,
+      nowMs: args.nowMs,
+    }),
     summary: {
       ...summary,
       mergeRate: mergeRate(summary.merged, summary.closed),
@@ -412,6 +419,7 @@ export async function readCodeOverview(nowMs = Date.now()) {
   return codeOverviewReportSchema.parse({
     activityDays: windows.activityDays,
     activityHours: windows.activityHours,
+    activitySixHours: windows.activitySixHours,
     changes: recentChanges.map((change) => ({
       ...change,
       closedAt: change.closedAt?.toISOString(),
@@ -451,6 +459,7 @@ export async function readPersonCodeOverview(args: {
   return codePersonReportSchema.parse({
     activityDays: windows.activityDays,
     activityHours: windows.activityHours,
+    activitySixHours: windows.activitySixHours,
     generatedAt: windows.windowEnd.toISOString(),
     summary: windows.summary,
     windowEnd: windows.windowEnd.toISOString(),

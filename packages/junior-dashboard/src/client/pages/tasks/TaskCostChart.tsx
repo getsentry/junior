@@ -17,7 +17,7 @@ const COST_COLOR = "#67e8f9";
 
 /** Render linked conversation spend for completed task executions. */
 export function TaskCostChart(props: {
-  bucketUnit?: "day" | "hour";
+  bucketUnit?: "day" | "hour" | "6hour" | "6hour";
   days: TaskExecutionDay[];
   range: TimeRangeDays;
 }) {
@@ -95,7 +95,7 @@ export function TaskCostChart(props: {
             );
           })}
           <ActivityChartAverageLine
-            unit={bucketUnit}
+            unit={bucketUnit === "6hour" ? "6h" : bucketUnit}
             average={average}
             format={(value) => formatCostSummary({ total: value })}
             layout={layout}

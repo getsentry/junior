@@ -44,6 +44,7 @@ export const locationDirectoryReportSchema = z
   .object({
     activityDays: z.array(locationActivityDayReportSchema),
     activityHours: z.array(locationActivityDayReportSchema).optional(),
+    activitySixHours: z.array(locationActivityDayReportSchema).optional(),
     generatedAt: z.string(),
     locations: z.array(locationSummaryReportSchema),
     privateActivity: conversationStatsItemSchema,
@@ -57,6 +58,7 @@ export const locationDetailReportSchema = locationSummaryReportSchema
   .extend({
     activityDays: z.array(dailyConversationActivitySchema),
     activityHours: z.array(dailyConversationActivitySchema).optional(),
+    activitySixHours: z.array(dailyConversationActivitySchema).optional(),
     actors: z.array(locationActorSummaryReportSchema),
     generatedAt: z.string(),
     recentConversations: z.array(conversationSummaryReportSchema),

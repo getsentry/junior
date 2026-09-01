@@ -62,6 +62,7 @@ export const codeOverviewReportSchema = z
   .object({
     activityDays: z.array(codeActivityDaySchema),
     activityHours: z.array(codeActivityDaySchema).optional(),
+    activitySixHours: z.array(codeActivityDaySchema).optional(),
     changes: z.array(codeChangeSummaryReportSchema),
     generatedAt: z.string(),
     repositories: z.array(codeRepositorySummarySchema),
@@ -76,6 +77,7 @@ export const codePersonReportSchema = z
   .object({
     activityDays: z.array(codeActivityDaySchema),
     activityHours: z.array(codeActivityDaySchema).optional(),
+    activitySixHours: z.array(codeActivityDaySchema).optional(),
     generatedAt: z.string(),
     summary: codeChangeSummarySchema,
     windowEnd: z.string(),

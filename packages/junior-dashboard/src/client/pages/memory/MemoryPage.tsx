@@ -98,6 +98,7 @@ function MemoryOverview(props: { range: TimeRangeDays }) {
             days: dashboardQuery.data.days,
             hours: dashboardQuery.data.hours,
             range: props.range,
+            emptySixHour: (date) => ({ date, personal: 0, public: 0 }),
           })}
           range={props.range}
         />
@@ -107,12 +108,14 @@ function MemoryOverview(props: { range: TimeRangeDays }) {
             days: dashboardQuery.data.extractionDays,
             hours: dashboardQuery.data.extractionHours,
             range: props.range,
+            emptySixHour: (date) => ({ costUsd: 0, date, events: 0 }),
           })}
           range={props.range}
           recallDays={selectTimeSeries({
             days: dashboardQuery.data.recallDays,
             hours: dashboardQuery.data.recallHours,
             range: props.range,
+            emptySixHour: (date) => ({ costUsd: 0, date, events: 0 }),
           })}
         />
       </section>

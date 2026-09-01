@@ -85,6 +85,7 @@ export const actorDirectoryReportSchema = z
   .object({
     activityDays: z.array(peopleActivityDayReportSchema),
     activityHours: z.array(peopleActivityDayReportSchema).optional(),
+    activitySixHours: z.array(peopleActivityDayReportSchema).optional(),
     generatedAt: z.string(),
     people: z.array(actorSummaryReportSchema),
     source: z.literal("conversation_index"),
@@ -97,6 +98,7 @@ export const actorProfileReportSchema = z
   .object({
     activityDays: z.array(actorActivityDayReportSchema),
     activityHours: z.array(actorActivityDayReportSchema).optional(),
+    activitySixHours: z.array(actorActivityDayReportSchema).optional(),
     generatedAt: z.string(),
     locations: z.array(peopleConversationStatsItemSchema),
     recentConversations: z.array(conversationSummaryReportSchema),

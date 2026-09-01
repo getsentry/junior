@@ -26,10 +26,13 @@ import {
 import {
   DAY_MS,
   HOUR_MS,
+  WINDOW_SEVEN_DAY_HOURS,
   fillUtcDays,
   fillUtcHours,
+  fillUtcSixHours,
   trailingUtcDayWindow,
   trailingUtcHourWindow,
+  trailingUtcSixHourWindow,
   utcDayKey,
   utcHourKey,
 } from "../reporting-window";
@@ -76,6 +79,18 @@ function directoryActivityHours(
   nowMs: number,
 ): PeopleActivityDayReport[] {
   return fillUtcHours({
+    count: WINDOW_SEVEN_DAY_HOURS,
+    empty: emptyDirectoryDay,
+    nowMs,
+    rows: new Map(rows.map((row) => [row.date, row])),
+  });
+}
+
+function directoryActivitySixHours(
+  rows: PeopleActivityDayReport[],
+  nowMs: number,
+): PeopleActivityDayReport[] {
+  return fillUtcSixHours({
     empty: emptyDirectoryDay,
     nowMs,
     rows: new Map(rows.map((row) => [row.date, row])),
@@ -181,17 +196,25 @@ export async function readPeopleListFromSql(): Promise<ActorDirectoryReport> {
     ${juniorConversations.lastActivityAt} AT TIME ZONE 'UTC',
     'YYYY-MM-DD"T"HH24'
   )`;
-  const hourWindow = trailingUtcHourWindow(nowMs);
+  const hourWindow = trailingUtcHourWindow(nowMs, WINDOW_SEVEN_DAY_HOURS);
+  const sixHourWindow = trailingUtcSixHourWindow(nowMs);
   const dayMetricStart = trailingUtcDayWindow(nowMs, DAY_METRIC_LOOKBACK).start;
+  // Person window metrics still only need prior+current 24h for the 1d range.
   const hourMetricStart = trailingUtcHourWindow(
     nowMs,
     HOUR_METRIC_LOOKBACK,
   ).start;
   const metricsJoin = peopleTreeMetricsJoin();
+  const activitySixHour = sql<string>`TO_CHAR(
+    date_trunc('day', ${juniorConversations.lastActivityAt} AT TIME ZONE 'UTC')
+      + (FLOOR(EXTRACT(HOUR FROM ${juniorConversations.lastActivityAt} AT TIME ZONE 'UTC') / 6) * INTERVAL '6 hours'),
+    'YYYY-MM-DD"T"HH24'
+  )`;
   const [
     rows,
     activityRows,
     activityHourRows,
+    activitySixHourRows,
     dayMetricRows,
     hourMetricRows,
   ] = await Promise.all([
@@ -254,6 +277,25 @@ export async function readPeopleListFromSql(): Promise<ActorDirectoryReport> {
         ),
       )
       .groupBy(activityHour),
+    getDb()
+      .select({
+        activePeople: sql<number>`COUNT(DISTINCT ${juniorUsers.id})::int`,
+        conversations: sql<number>`COUNT(*)::int`,
+        date: activitySixHour,
+      })
+      .from(juniorConversations)
+      .innerJoin(
+        juniorIdentities,
+        eq(juniorIdentities.id, juniorConversations.actorIdentityId),
+      )
+      .innerJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
+      .where(
+        and(
+          verifiedActorWhere(),
+          gte(juniorConversations.lastActivityAt, sixHourWindow.start),
+        ),
+      )
+      .groupBy(activitySixHour),
     getDb()
       .select({
         email: juniorUsers.primaryEmailNormalized,
@@ -358,6 +400,7 @@ export async function readPeopleListFromSql(): Promise<ActorDirectoryReport> {
   return {
     activityDays: directoryActivityDays(activityRows, nowMs),
     activityHours: directoryActivityHours(activityHourRows, nowMs),
+    activitySixHours: directoryActivitySixHours(activitySixHourRows, nowMs),
     generatedAt: new Date(nowMs).toISOString(),
     people: people.sort(
       (left, right) =>

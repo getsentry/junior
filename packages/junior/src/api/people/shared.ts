@@ -13,7 +13,13 @@ import type {
   ConversationStatsItem,
   ActorTotalsReport,
 } from "../schema/person";
-import { fillUtcDays, fillUtcHours } from "../reporting-window";
+import {
+  WINDOW_SEVEN_DAY_HOURS,
+  fillUtcDays,
+  fillUtcHours,
+  fillUtcSixHours,
+  rollupUtcHoursToSixHours,
+} from "../reporting-window";
 
 export const RECENT_LIMIT = 25;
 export const ACTIVITY_DAYS = 365;
@@ -128,15 +134,38 @@ export function activityDays(
   });
 }
 
-/** Fill the trailing 24-hour people activity window from sparse hour totals. */
+/**
+ * Fill the trailing 7-day people activity hour window from sparse hour totals.
+ * 24h charts slice the trailing 24; 7d charts roll into 6h buckets.
+ */
 export function activityHours(
   hours: Map<string, ActorActivityDayReport>,
   nowMs: number,
 ): ActorActivityDayReport[] {
   return fillUtcHours({
+    count: WINDOW_SEVEN_DAY_HOURS,
     empty: emptyActivityDay,
     nowMs,
     rows: hours,
+  });
+}
+
+/** Fill trailing 6-hour people activity buckets from sparse rows or dense hours. */
+export function activitySixHours(
+  hours: Map<string, ActorActivityDayReport> | readonly ActorActivityDayReport[],
+  nowMs: number,
+): ActorActivityDayReport[] {
+  if (hours instanceof Map) {
+    return fillUtcSixHours({
+      empty: emptyActivityDay,
+      nowMs,
+      rows: hours,
+    });
+  }
+  return rollupUtcHoursToSixHours({
+    empty: emptyActivityDay,
+    hours,
+    nowMs,
   });
 }
 

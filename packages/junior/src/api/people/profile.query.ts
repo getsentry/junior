@@ -25,6 +25,7 @@ import {
   ACTIVITY_DAYS,
   activityDays,
   activityHours,
+  activitySixHours,
   emptyTotals,
   normalizeEmail,
   peopleTreeAggregateColumns,
@@ -53,6 +54,7 @@ function emptyProfile(email: string, nowMs: number): ActorProfileReport {
   return {
     activityDays: activityDays(new Map(), nowMs),
     activityHours: activityHours(new Map(), nowMs),
+    activitySixHours: activitySixHours(new Map(), nowMs),
     generatedAt: new Date(nowMs).toISOString(),
     locations: [],
     recentConversations: [],
@@ -138,7 +140,7 @@ export async function readPeopleProfileFromSql(
     'YYYY-MM-DD"T"HH24'
   )`;
   const channel = sql<string>`SPLIT_PART(${juniorConversations.conversationId}, ':', 2)`;
-  const hourWindow = trailingUtcHourWindow(nowMs);
+  const hourWindow = trailingUtcHourWindow(nowMs, 7 * 24);
 
   const [totalsRows, dayRows, hourRows, locationRows, surfaceRows, recentRows] =
     await Promise.all([
@@ -292,6 +294,7 @@ export async function readPeopleProfileFromSql(
   return {
     activityDays: activityDays(days, nowMs),
     activityHours: activityHours(hours, nowMs),
+    activitySixHours: activitySixHours(hours, nowMs),
     generatedAt: new Date(nowMs).toISOString(),
     locations: statsItems(locations),
     recentConversations: recentRows.map((row) =>

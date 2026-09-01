@@ -121,7 +121,15 @@ export function Profile(props: {
           days={selectTimeSeries({
             days: profile.activityDays,
             hours: profile.activityHours,
+            sixHours: profile.activitySixHours,
             range,
+            emptySixHour: (date) => ({
+              active: 0,
+              conversations: 0,
+              date,
+              durationMs: 0,
+              failed: 0,
+            }),
           })}
         />
       </section>

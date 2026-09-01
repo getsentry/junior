@@ -19,7 +19,7 @@ import {
 
 /** Plot root conversations with recorded activity each day or hour. */
 export function ConversationActivityChart(props: {
-  bucketUnit?: "day" | "hour";
+  bucketUnit?: "day" | "hour" | "6hour" | "6hour";
   days: ConversationMetricDay[];
 }) {
   const bucketUnit = props.bucketUnit ?? "day";
@@ -34,13 +34,13 @@ export function ConversationActivityChart(props: {
   return (
     <Card>
       <ChartHeader
-        description={`Root conversations with recorded activity, bucketed by ${bucketUnit}.`}
+        description={`Root conversations with recorded activity, bucketed by ${bucketUnit === "6hour" ? "6 hours" : bucketUnit}.`}
         title="Conversation activity"
         total={formatCompactNumber(total)}
       />
       <div className="px-2 py-3 sm:px-4 sm:py-4">
         <ChartSvg
-          aria-label={`Conversations per ${bucketUnit}`}
+          aria-label={`Conversations per ${bucketUnit === "6hour" ? "6 hours" : bucketUnit}`}
           className="min-h-60 overflow-visible"
           layout={layout}
         >
@@ -92,7 +92,7 @@ export function ConversationActivityChart(props: {
             layout={layout}
             maximum={maximum}
             stroke="#22d3ee"
-            unit={bucketUnit}
+            unit={bucketUnit === "6hour" ? "6h" : bucketUnit}
           />
           <ActivityChartDateLabels
             dates={props.days.map((day) => day.date)}

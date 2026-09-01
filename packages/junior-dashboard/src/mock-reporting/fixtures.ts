@@ -1444,7 +1444,7 @@ function conversationMetricHours(
   >();
   const end = new Date(nowMs);
   end.setUTCMinutes(0, 0, 0);
-  for (let offset = 23; offset >= 0; offset -= 1) {
+  for (let offset = 7 * 24 - 1; offset >= 0; offset -= 1) {
     const date = new Date(end.getTime() - offset * 60 * 60 * 1_000);
     const key = date.toISOString().slice(0, 13);
     hours.set(key, { conversations: 0, date: key, durationMs: 0 });
@@ -1495,8 +1495,8 @@ function mockGuardianStats(nowMs: number): ConversationStatsReport["guardian"] {
   });
   const end = new Date(nowMs);
   end.setUTCMinutes(0, 0, 0);
-  const metricHours = Array.from({ length: 24 }, (_, index) => {
-    const date = new Date(end.getTime() - (23 - index) * 60 * 60 * 1_000);
+  const metricHours = Array.from({ length: 7 * 24 }, (_, index) => {
+    const date = new Date(end.getTime() - (7 * 24 - 1 - index) * 60 * 60 * 1_000);
     const requests = index > 12 ? (index % 4) + 1 : 0;
     const deny = requests > 2 && index % 5 === 0 ? 1 : 0;
     const ask = requests > 1 && index % 3 === 0 ? 1 : 0;
@@ -1518,6 +1518,13 @@ function mockGuardianStats(nowMs: number): ConversationStatsReport["guardian"] {
       deny: result.deny + day.deny,
       metricDays,
       metricHours,
+      metricSixHours: trailingMetricSixHours(nowMs, (date) => ({
+        allow: 0,
+        ask: 0,
+        date,
+        deny: 0,
+        requests: 0,
+      })),
       requests: result.requests + day.requests,
     }),
     {
@@ -1527,6 +1534,13 @@ function mockGuardianStats(nowMs: number): ConversationStatsReport["guardian"] {
       deny: 0,
       metricDays,
       metricHours,
+      metricSixHours: trailingMetricSixHours(nowMs, (date) => ({
+        allow: 0,
+        ask: 0,
+        date,
+        deny: 0,
+        requests: 0,
+      })),
       requests: 0,
     },
   );
@@ -1777,6 +1791,11 @@ export function readMockConversationStats(): ConversationStatsReport {
     locations: [...locationItems.values()],
     metricDays: conversationMetricDays(nowMs, summaries),
     metricHours: conversationMetricHours(nowMs, summaries),
+    metricSixHours: trailingMetricSixHours(nowMs, (date) => ({
+      conversations: 0,
+      date,
+      durationMs: 0,
+    })),
     source: "conversation_index",
     tokens: total.tokens,
     ...windowBounds(nowMs),
@@ -1908,11 +1927,32 @@ function mockActorWindows(
 function trailingMetricHours<T extends { date: string }>(
   nowMs: number,
   empty: (date: string) => T,
+  hourCount = 7 * 24,
 ): T[] {
   const end = new Date(nowMs);
   end.setUTCMinutes(0, 0, 0);
-  return Array.from({ length: 24 }, (_, index) => {
-    const date = new Date(end.getTime() - (23 - index) * 60 * 60 * 1_000)
+  return Array.from({ length: hourCount }, (_, index) => {
+    const date = new Date(
+      end.getTime() - (hourCount - 1 - index) * 60 * 60 * 1_000,
+    )
+      .toISOString()
+      .slice(0, 13);
+    return empty(date);
+  });
+}
+
+function trailingMetricSixHours<T extends { date: string }>(
+  nowMs: number,
+  empty: (date: string) => T,
+  bucketCount = 7 * 4,
+): T[] {
+  const end = new Date(nowMs);
+  end.setUTCMinutes(0, 0, 0);
+  end.setUTCHours(Math.floor(end.getUTCHours() / 6) * 6, 0, 0, 0);
+  return Array.from({ length: bucketCount }, (_, index) => {
+    const date = new Date(
+      end.getTime() - (bucketCount - 1 - index) * 6 * 60 * 60 * 1_000,
+    )
       .toISOString()
       .slice(0, 13);
     return empty(date);
@@ -1981,6 +2021,11 @@ export function readMockPeopleDirectory(): ActorDirectoryReport {
   return {
     activityDays,
     activityHours,
+    activitySixHours: trailingMetricSixHours(nowMs, (date) => ({
+      activePeople: 0,
+      conversations: 0,
+      date,
+    })),
     generatedAt: iso(nowMs),
     people: [...byEmail.values()]
       .map(({ dates: _dates, summaries: personSummaries, ...person }) => ({

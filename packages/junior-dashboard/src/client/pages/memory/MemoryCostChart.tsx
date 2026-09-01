@@ -16,7 +16,7 @@ import type { MemoryCostDay } from "./memoryDashboard";
 
 /** Render stacked memory extraction and recall cost from durable plugin events. */
 export function MemoryCostChart(props: {
-  bucketUnit?: "day" | "hour";
+  bucketUnit?: "day" | "hour" | "6hour" | "6hour";
 
   extractionDays: MemoryCostDay[];
   range: TimeRangeDays;
@@ -161,7 +161,7 @@ export function MemoryCostChart(props: {
             );
           })}
           <ActivityChartAverageLine
-            unit={bucketUnit}
+            unit={bucketUnit === "6hour" ? "6h" : bucketUnit}
             average={average}
             format={(value) => formatCostSummary({ total: value })}
             layout={layout}

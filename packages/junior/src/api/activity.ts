@@ -1,6 +1,12 @@
 import { z } from "zod";
 
-import { fillUtcDays, fillUtcHours } from "./reporting-window";
+import {
+  WINDOW_SEVEN_DAY_HOURS,
+  fillUtcDays,
+  fillUtcHours,
+  fillUtcSixHours,
+  rollupUtcHoursToSixHours,
+} from "./reporting-window";
 
 export const dailyConversationActivitySchema = z
   .object({
@@ -42,14 +48,37 @@ export function activityDays(
   });
 }
 
-/** Fill the trailing UTC hour window from sparse conversation activity. */
+/**
+ * Fill the trailing 7-day UTC hour window from sparse conversation activity.
+ * 24h charts slice the trailing 24 points; 7d charts roll these into 6h buckets.
+ */
 export function activityHours(
   hours: Map<string, DailyConversationActivity>,
   nowMs: number,
 ): DailyConversationActivity[] {
   return fillUtcHours({
+    count: WINDOW_SEVEN_DAY_HOURS,
     empty: emptyActivityDay,
     nowMs,
     rows: hours,
+  });
+}
+
+/** Fill trailing 6-hour buckets from sparse rows (or roll dense hours). */
+export function activitySixHours(
+  hours: Map<string, DailyConversationActivity> | readonly DailyConversationActivity[],
+  nowMs: number,
+): DailyConversationActivity[] {
+  if (hours instanceof Map) {
+    return fillUtcSixHours({
+      empty: emptyActivityDay,
+      nowMs,
+      rows: hours,
+    });
+  }
+  return rollupUtcHoursToSixHours({
+    empty: emptyActivityDay,
+    hours,
+    nowMs,
   });
 }

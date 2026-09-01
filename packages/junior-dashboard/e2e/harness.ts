@@ -658,7 +658,7 @@ export async function mockDashboardApis(
         date: date.toISOString().slice(0, 10),
       };
     });
-    const activityHours = Array.from({ length: 24 }, (_, index) => {
+    const activityHours = Array.from({ length: 7 * 24 }, (_, index) => {
       const date = new Date("2026-06-12T00:00:00.000Z");
       date.setUTCHours(date.getUTCHours() + index);
       return {

@@ -103,7 +103,14 @@ function CodeOverview(props: {
         days={selectTimeSeries({
           days: data.activityDays,
           hours: data.activityHours,
+          sixHours: data.activitySixHours,
           range: props.range,
+          emptySixHour: (date) => ({
+            closed: 0,
+            created: 0,
+            date,
+            merged: 0,
+          }),
         })}
         range={props.range}
       />
