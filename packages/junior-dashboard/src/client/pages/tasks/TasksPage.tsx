@@ -25,7 +25,6 @@ import { SelectableRow } from "../../components/SelectableRow";
 import {
   selectTimeSeries,
   timeRangeBucketUnit,
-  timeRangeLabel,
   type TimeRangeDays,
 } from "../../components/controls/TimeRangeSelector";
 import { Card } from "../../components/layout/Card";
@@ -337,7 +336,7 @@ export function TasksPage(props: {
             </Card>
           ) : (
             <Card>
-              <TaskListHeader range={range} />
+              <TaskListHeader />
               <div className="divide-y divide-white/[0.07]" role="list">
                 {pagedTasks.map((task) => {
                   const key = `${task.kind}:${task.id}`;
@@ -415,16 +414,16 @@ function emptyText(input: {
   return "No tasks are available.";
 }
 
-function TaskListHeader(props: { range: TimeRangeDays }) {
+function TaskListHeader() {
   return (
     <div
       aria-hidden="true"
-      className="hidden grid-cols-[repeat(5,minmax(0,1fr))_auto_auto] items-center gap-3 border-b border-white/[0.07] px-4 py-2.5 text-left font-mono text-xs uppercase tracking-[0.12em] text-dashboard-text-muted lg:grid"
+      className="hidden grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,1fr)_4.5rem_7.5rem_auto_auto] items-center gap-3 border-b border-white/[0.07] px-4 py-2.5 text-left font-mono text-xs uppercase tracking-[0.12em] text-dashboard-text-muted lg:grid"
     >
       <span>Task</span>
       <span>Destination</span>
       <span>Trigger</span>
-      <span>Runs · {timeRangeLabel(props.range)}</span>
+      <span>Runs</span>
       <span>Last run</span>
       <span aria-hidden="true" className="size-8" />
       <span aria-hidden="true" className="size-9" />
@@ -445,7 +444,7 @@ function TaskRow(props: {
   return (
     <article role="listitem">
       <SelectableRow
-        className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 px-4 py-3 md:grid-cols-[repeat(2,minmax(0,1fr))_auto_auto] lg:grid-cols-[repeat(5,minmax(0,1fr))_auto_auto]"
+        className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 px-4 py-3 md:grid-cols-[repeat(2,minmax(0,1fr))_auto_auto] lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,1fr)_4.5rem_7.5rem_auto_auto]"
         onSelect={props.onSelect}
         selected={props.selected}
       >
@@ -491,9 +490,6 @@ function TaskRow(props: {
         <div className="hidden min-w-0 lg:block">
           <div className="truncate text-sm font-medium text-dashboard-text">
             {runCount}
-          </div>
-          <div className="mt-1 font-mono text-xs uppercase tracking-[0.08em] text-dashboard-text-muted">
-            {timeRangeLabel(range)}
           </div>
         </div>
         <div className="hidden min-w-0 lg:block">

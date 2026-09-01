@@ -155,11 +155,11 @@ test("opens scheduled and event tasks in the native Tasks view", async ({
   await expect(page.getByLabel("Scheduled task")).toBeVisible();
   await expect(page.getByLabel("GitHub event task")).toBeVisible();
   await expect(page.getByText("#project-updates").last()).toBeVisible();
-  await expect(page.getByText("Runs · 7d")).toBeVisible();
+  await expect(page.getByText("Runs", { exact: true })).toBeVisible();
   await expect(page.getByText("Last run")).toBeVisible();
   await listReportingPeriod.getByRole("button", { name: "30d" }).click();
   await expect(page).toHaveURL(/\/tasks\/list(?:\?|$)/);
-  await expect(page.getByText("Runs · 30d")).toBeVisible();
+  await expect(page.getByText("Runs", { exact: true })).toBeVisible();
   await expect(page.getByText("Assigned to")).toHaveCount(0);
   await expect(page.getByRole("dialog")).toHaveCount(0);
   const taskDetailsTrigger = page.getByRole("button", {
