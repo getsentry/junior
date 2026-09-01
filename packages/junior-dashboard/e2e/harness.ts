@@ -379,6 +379,8 @@ export async function mockDashboardApis(page: Page) {
             id: "event-1",
             instruction: "Summarize the closed issue",
             kind: "event",
+            lastConversationId: "agent-dispatch:event-1",
+            lastRunAt: "2026-08-05T18:30:00.000Z",
             ownedByViewer: true,
             resource: "Issue · ACME-42",
             runs: { 1: 0, 7: 1, 30: 4, 90: 7 },

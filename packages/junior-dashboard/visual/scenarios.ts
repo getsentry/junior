@@ -134,6 +134,14 @@ export const VISUAL_SCENARIOS: VisualScenario[] = [
     viewports: [DESKTOP, MOBILE],
   },
   {
+    id: "tasks-list",
+    label: "Tasks list",
+    path: "/tasks/list",
+    // Page header proves the list + range control surface rendered.
+    ready: "All tasks",
+    viewports: [DESKTOP, MOBILE],
+  },
+  {
     id: "memories",
     label: "Memories",
     path: "/memories",
@@ -277,6 +285,11 @@ const PATH_RULES: PathRule[] = [
     match: (filePath) =>
       filePath.startsWith("packages/junior-dashboard/src/client/pages/system/"),
     scenarioIds: ["system"],
+  },
+  {
+    match: (filePath) =>
+      filePath.startsWith("packages/junior-dashboard/src/client/pages/tasks/"),
+    scenarioIds: ["tasks-list"],
   },
   {
     match: (filePath) =>
