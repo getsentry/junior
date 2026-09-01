@@ -77,7 +77,7 @@ async function conversationRows(
   return db
     .select({
       conversation: conversationReadColumns(),
-      destination: juniorDestinations,
+      location: juniorDestinations,
       identityDisplayName: juniorIdentities.displayName,
       identityEmail: juniorIdentities.email,
       identityHandle: juniorIdentities.handle,
@@ -114,12 +114,14 @@ type ConversationRow = Awaited<ReturnType<typeof conversationRows>>[number];
 /** Decode a conversation row with the linked user name and identity-scoped provider fields. */
 function conversationFromRow(row: ConversationRow): Conversation {
   const value = row.conversation;
-  const sessionSource =
+  // TODO(dcramer): Remove this source_json decode after locationFromRow drops
+  // its legacy SessionSource fallback.
+  const legacySessionSource =
     value.sessionSource === null
       ? undefined
       : parseSessionSource(value.sessionSource);
-  if (value.sessionSource !== null && !sessionSource) {
-    throw new Error("Conversation record session source is invalid");
+  if (value.sessionSource !== null && !legacySessionSource) {
+    throw new Error("Conversation legacy source_json is invalid");
   }
   const actorFullName = row.userDisplayName?.trim()
     ? row.userDisplayName
@@ -143,8 +145,8 @@ function conversationFromRow(row: ConversationRow): Conversation {
       : undefined;
   const location = locationFromRow(
     value.location,
-    row.destination,
-    sessionSource,
+    row.location,
+    legacySessionSource,
   );
   return {
     schemaVersion: 1,
@@ -163,7 +165,6 @@ function conversationFromRow(row: ConversationRow): Conversation {
     ...(location ? { location } : undefined),
     ...(value.channelName ? { channelName: value.channelName } : undefined),
     ...(value.source ? { source: value.source } : undefined),
-    ...(sessionSource ? { sessionSource } : undefined),
     ...(value.title ? { title: value.title } : undefined),
     ...(value.transcriptPurgedAt
       ? { transcriptPurgedAtMs: value.transcriptPurgedAt.getTime() }
@@ -188,7 +189,7 @@ export async function readConversationRecordFromSql(
   const rows = await db
     .select({
       conversation: conversationReadColumns(),
-      destination: juniorDestinations,
+      location: juniorDestinations,
       identityDisplayName: juniorIdentities.displayName,
       identityEmail: juniorIdentities.email,
       identityHandle: juniorIdentities.handle,
@@ -214,8 +215,8 @@ export async function readConversationRecordFromSql(
     ? {
         conversation: conversationFromRow(row),
         durationMs: row.conversation.durationMs,
-        ...(row.destination?.visibility === "public"
-          ? { locationId: row.destination.id }
+        ...(row.location?.visibility === "public"
+          ? { locationId: row.location.id }
           : undefined),
         usage: row.conversation.usage,
         rootConversationId: row.conversation.rootConversationId,
@@ -296,8 +297,8 @@ export async function readConversationFeedFromSql(
     readRootConversationMetricsFromSql(db, conversationIds),
     resolveSlackTeamDomains(
       conversations.flatMap((conversation) =>
-        conversation.sessionSource?.kind === "slack"
-          ? [conversation.sessionSource.teamId]
+        conversation.location?.provider === "slack"
+          ? [conversation.location.teamId]
           : [],
       ),
     ),
@@ -334,8 +335,8 @@ export async function readConversationFeedFromSql(
         auxiliaryCosts: auxiliaryCostsByRoot.get(conversation.conversationId),
         durationMs: metrics?.durationMs ?? row.conversation.durationMs,
         teamDomainByTeamId,
-        ...(row.destination?.visibility === "public"
-          ? { locationId: row.destination.id }
+        ...(row.location?.visibility === "public"
+          ? { locationId: row.location.id }
           : undefined),
         usage: metrics?.usage ?? row.conversation.usage ?? undefined,
       });

@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { buildSlackSourceUrl } from "@/chat/slack/source-link";
+import { buildSlackLocationUrl } from "@/chat/slack/location-url";
 
-describe("buildSlackSourceUrl", () => {
+describe("buildSlackLocationUrl", () => {
   it("builds a direct archive thread url from domain and thread coordinates", () => {
     expect(
-      buildSlackSourceUrl({
+      buildSlackLocationUrl({
         channelId: "C07P2KGJGG0",
         teamDomain: "sentry",
         threadTs: "1700000000.000100",
@@ -16,7 +16,7 @@ describe("buildSlackSourceUrl", () => {
 
   it("pads short fractional timestamps to six digits", () => {
     expect(
-      buildSlackSourceUrl({
+      buildSlackLocationUrl({
         channelId: "C123",
         teamDomain: "example",
         threadTs: "1700000000.1",
@@ -28,21 +28,21 @@ describe("buildSlackSourceUrl", () => {
 
   it("returns undefined for invalid coordinates", () => {
     expect(
-      buildSlackSourceUrl({
+      buildSlackLocationUrl({
         channelId: "not-a-channel",
         teamDomain: "sentry",
         threadTs: "1700000000.000100",
       }),
     ).toBeUndefined();
     expect(
-      buildSlackSourceUrl({
+      buildSlackLocationUrl({
         channelId: "C123",
         teamDomain: "bad domain",
         threadTs: "1700000000.000100",
       }),
     ).toBeUndefined();
     expect(
-      buildSlackSourceUrl({
+      buildSlackLocationUrl({
         channelId: "C123",
         teamDomain: "sentry",
         threadTs: "not-a-ts",

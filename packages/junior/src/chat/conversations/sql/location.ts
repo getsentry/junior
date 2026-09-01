@@ -64,8 +64,21 @@ export function locationFromRow(
   row: LocationRow | null,
   sessionSource: SessionSource | undefined,
 ): Location | undefined {
+  // TODO(dcramer): Remove these destination_id and source_json fallbacks after
+  // no deployed writer can omit location_json or its threadTs and a backfill
+  // has completed rows that those writers created during deployment.
   if (value !== undefined && value !== null) {
-    return locationSchema.parse(value);
+    const location = locationSchema.parse(value);
+    const slackSource =
+      !location.threadTs &&
+      sessionSource?.kind === "slack" &&
+      sessionSource.teamId === location.teamId &&
+      sessionSource.channelId === location.channelId
+        ? sessionSource
+        : undefined;
+    return slackSource?.threadTs
+      ? { ...location, threadTs: slackSource.threadTs }
+      : location;
   }
   if (!row || row.provider === "local") {
     return undefined;
@@ -73,9 +86,6 @@ export function locationFromRow(
   if (row.provider !== "slack") {
     throw new Error("Conversation Location provider is not supported");
   }
-  // TODO(dcramer): Remove this destination_id and source_json fallback after no
-  // deployed writer can omit location_json and a backfill has populated rows
-  // that those writers created during deployment.
   const slackSource =
     sessionSource?.kind === "slack" &&
     sessionSource.teamId === row.providerTenantId &&

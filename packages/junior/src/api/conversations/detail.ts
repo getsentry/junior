@@ -128,8 +128,8 @@ async function readConversationDetailFromSql(
       ...(options.viewer ? { viewer: options.viewer } : undefined),
     }),
     resolveSlackTeamDomains(
-      record.conversation.sessionSource?.kind === "slack"
-        ? [record.conversation.sessionSource.teamId]
+      record.conversation.location?.provider === "slack"
+        ? [record.conversation.location.teamId]
         : [],
     ),
   ]);

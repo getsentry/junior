@@ -628,7 +628,7 @@ describe("SQL conversation storage", () => {
 
     try {
       await migrateSchema(fixture.sql);
-      await store.append(CONVERSATION_ID, [
+      const appended = await store.append(CONVERSATION_ID, [
         {
           idempotencyKey: "event:repeated",
           createdAtMs: 1_000,
@@ -658,6 +658,10 @@ describe("SQL conversation storage", () => {
         },
       ]);
 
+      expect(appended).toEqual([
+        { historyVersion: 0, seq: 0 },
+        { historyVersion: 0, seq: 1 },
+      ]);
       expect(
         (await store.loadHistory(CONVERSATION_ID)).map((event) => ({
           idempotencyKey: event.idempotencyKey,
@@ -774,6 +778,9 @@ describe("SQL conversation storage", () => {
         },
       });
 
+      await expect(
+        store.loadCurrentHistoryVersion(CONVERSATION_ID),
+      ).resolves.toBe(1);
       const current = await store.loadCurrentHistory(CONVERSATION_ID);
       expect(current.map((event) => event.historyVersion)).toEqual([1]);
       expect(current.map((event) => event.data.type)).toEqual(["compaction"]);

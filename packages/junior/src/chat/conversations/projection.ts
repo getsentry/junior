@@ -458,7 +458,7 @@ async function commitMessagesLocked(
           content: context.content,
         },
       })) ?? [];
-    await eventStore.append(args.conversationId, [
+    const appendedEvents = await eventStore.append(args.conversationId, [
       ...newMessages.map((message, index) => ({
         data: historyItemFromPiMessage(
           message,
@@ -468,22 +468,21 @@ async function commitMessagesLocked(
       })),
       ...turnContextEvents,
     ]);
-  } else {
-    throw new AgentHistoryBranchError(args.conversationId);
+    const cursor = appendedEvents.at(-1) ?? currentEvents.at(-1);
+    return {
+      committedSeq: cursor?.seq ?? -1,
+      historyVersion: cursor?.historyVersion ?? 0,
+      messageSeqs: [
+        ...current.seqs,
+        ...appendedEvents
+          .slice(0, newMessages.length)
+          .map((event) => event.seq),
+      ],
+      messages: nextLocalMessages,
+      provenance: nextLocalProvenance,
+    };
   }
-  const committedEvents = await eventStore.loadCurrentHistory(
-    args.conversationId,
-  );
-  const committed = projectConversationEvents(committedEvents, {
-    defaultProfile: botConfig.defaultProfile,
-  });
-  return {
-    committedSeq: committedEvents.at(-1)?.seq ?? -1,
-    historyVersion: committedEvents.at(-1)?.historyVersion ?? 0,
-    messageSeqs: committed.seqs,
-    messages: nextLocalMessages,
-    provenance: nextLocalProvenance,
-  };
+  throw new AgentHistoryBranchError(args.conversationId);
 }
 
 /** Record a successful MCP provider connection for one credential subject without duplicating it. */
