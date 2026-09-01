@@ -1,3 +1,7 @@
+import {
+  type TimeRangeBucketUnit,
+  timeRangeBucketAverageUnit,
+} from "../../components/controls/TimeRangeSelector";
 import type { DailyConversationActivity } from "@sentry/junior/api/schema";
 
 import {
@@ -5,21 +9,24 @@ import {
   ActivityChartDateLabels,
   ActivityChartGrid,
   activityChartAverage,
+  ActivityChartTooltip,
   ActivityTooltipRows,
   ChartSvg,
   createActivityChartLayout,
-  formatActivityDate,
 } from "../../components/charts/ActivityChart";
 import { ChartLegend } from "../../components/charts/ChartLegend";
 import { Card } from "../../components/layout/Card";
 import { CardHeader } from "../../components/layout/CardHeader";
-import { Tooltip } from "../../components/Tooltip";
 import { formatActivityChartAverage } from "../../format";
 
 /** Plot daily conversation volume across one public location. */
 export function LocationActivityChart(props: {
+  bucketUnit?: TimeRangeBucketUnit;
+
   days: DailyConversationActivity[];
 }) {
+  const bucketUnit = props.bucketUnit ?? "day";
+
   const layout = createActivityChartLayout(240);
   const values = props.days.map((day) => day.conversations);
   const maximum = Math.max(1, ...values);
@@ -58,7 +65,8 @@ export function LocationActivityChart(props: {
             const x = layout.left + index * step + (step - barWidth) / 2;
             const y = layout.top + layout.plotHeight - barHeight;
             return (
-              <Tooltip
+              <ActivityChartTooltip
+                key={day.date}
                 content={
                   <ActivityTooltipRows
                     rows={[
@@ -68,11 +76,10 @@ export function LocationActivityChart(props: {
                     ]}
                   />
                 }
-                key={day.date}
-                label={formatActivityDate(day.date)}
+                date={day.date}
+                summary={`${day.conversations} conversations, ${day.active} active, ${day.failed} failed`}
               >
                 <rect
-                  aria-label={`${formatActivityDate(day.date)}: ${day.conversations} conversations, ${day.active} active, ${day.failed} failed`}
                   fill="url(#location-bars)"
                   height={Math.max(day.conversations ? 2 : 0, barHeight)}
                   opacity={day.conversations ? 0.9 : 0.18}
@@ -82,10 +89,11 @@ export function LocationActivityChart(props: {
                   x={x}
                   y={y}
                 />
-              </Tooltip>
+              </ActivityChartTooltip>
             );
           })}
           <ActivityChartAverageLine
+            unit={timeRangeBucketAverageUnit(bucketUnit)}
             average={average}
             format={formatActivityChartAverage}
             layout={layout}

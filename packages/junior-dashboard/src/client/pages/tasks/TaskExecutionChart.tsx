@@ -1,27 +1,35 @@
+import {
+  type TimeRangeBucketUnit,
+  timeRangeBucketAverageUnit,
+  type TimeRangeDays,
+} from "../../components/controls/TimeRangeSelector";
 import type { TaskExecutionDay } from "@sentry/junior/api/schema";
 import {
   ActivityChartAverageLine,
   ActivityChartDateLabels,
   ActivityChartGrid,
   activityChartAverage,
+  ActivityChartTooltip,
   ActivityTooltipRows,
   ChartSvg,
   createActivityChartLayout,
-  formatActivityDate,
 } from "../../components/charts/ActivityChart";
-import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
+
 import { Card } from "../../components/layout/Card";
-import { Tooltip } from "../../components/Tooltip";
 import { formatActivityChartAverage } from "../../format";
 
 const EXECUTION_COLOR = "#fbbf24";
 
 /** Render completed task executions over a trailing window. */
 export function TaskExecutionChart(props: {
+  bucketUnit?: TimeRangeBucketUnit;
+
   days: TaskExecutionDay[];
   range: TimeRangeDays;
 }) {
-  const days = props.days.slice(-props.range);
+  const bucketUnit = props.bucketUnit ?? "day";
+
+  const days = props.days;
   const layout = createActivityChartLayout(200);
   const step =
     days.length > 0 ? layout.plotWidth / days.length : layout.plotWidth;
@@ -35,16 +43,16 @@ export function TaskExecutionChart(props: {
     <Card className="min-h-[17rem] p-4 sm:p-5">
       <div>
         <h2 className="m-0 font-display text-xl font-medium text-dashboard-text">
-          Executions over time
+          {totals.reduce((sum, value) => sum + value, 0).toLocaleString()} runs
         </h2>
         <p className="mt-1 mb-0 font-mono text-xs leading-relaxed text-dashboard-text-muted">
-          Completed task executions each day.
+          Completed task executions over time.
         </p>
       </div>
 
       <div className="relative mt-5 overflow-hidden">
         <ChartSvg
-          aria-label={`Task executions during the last ${props.range} days`}
+          aria-label={`Task executions during the last ${props.range === 1 ? "24 hours" : `${props.range} days`}`}
           className="min-h-40"
           layout={layout}
         >
@@ -54,13 +62,13 @@ export function TaskExecutionChart(props: {
             const total = totals[dayIndex] ?? 0;
             const height = (total / maximum) * layout.plotHeight;
             return (
-              <Tooltip
-                content={<ActivityTooltipRows rows={[["executions", total]]} />}
+              <ActivityChartTooltip
                 key={day.date}
-                label={formatActivityDate(day.date)}
+                content={<ActivityTooltipRows rows={[["executions", total]]} />}
+                date={day.date}
+                summary={`${total} executions`}
               >
                 <g
-                  aria-label={`${formatActivityDate(day.date)}: ${total} executions`}
                   tabIndex={0}
                 >
                   <rect
@@ -80,10 +88,11 @@ export function TaskExecutionChart(props: {
                     y={layout.top}
                   />
                 </g>
-              </Tooltip>
+              </ActivityChartTooltip>
             );
           })}
           <ActivityChartAverageLine
+            unit={timeRangeBucketAverageUnit(bucketUnit)}
             average={average}
             format={formatActivityChartAverage}
             layout={layout}

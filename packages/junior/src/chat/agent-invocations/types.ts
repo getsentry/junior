@@ -38,7 +38,6 @@ const agentInvocationBaseSchema = z
     createdAtMs: z.number().finite(),
     credentialContext: credentialContextSchema.optional(),
     destination: destinationSchema,
-    destinationVisibility: z.enum(["public", "private"]).optional(),
     input: exactStringSchema,
     invocationId: exactStringSchema,
     mailboxStatus: agentInvocationMailboxStatusSchema,
@@ -71,12 +70,10 @@ export const createAgentInvocationSchema = z
     agentName: agentNameSchema.optional(),
     credentialContext: credentialContextSchema.optional(),
     destination: destinationSchema,
-    destinationVisibility: z.enum(["public", "private"]).optional(),
     idempotencyKey: exactStringSchema,
     input: exactStringSchema,
     parentConversationId: exactStringSchema,
     reasoningLevel: z.enum(TURN_REASONING_LEVELS).optional(),
-    source: sourceSchema,
   })
   .strict();
 

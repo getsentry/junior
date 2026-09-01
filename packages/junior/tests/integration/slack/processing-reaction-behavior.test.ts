@@ -29,13 +29,11 @@ describe("Slack behavior: processing reaction", () => {
   it("adds eyes before mention work and marks the message complete after the reply", async () => {
     const { slackRuntime } = createTestChatRuntime({
       services: {
-        replyExecutor: {
-          agentRunner: createModelAgentRunnerForRun(() => {
-            expect(slackApiOutbox.reactionAdds()).toHaveLength(1);
-            expect(slackApiOutbox.reactionRemovals()).toHaveLength(0);
-            return createModelStream([{ type: "text", text: "Done." }]);
-          }),
-        },
+        agentRunner: createModelAgentRunnerForRun(() => {
+          expect(slackApiOutbox.reactionAdds()).toHaveLength(1);
+          expect(slackApiOutbox.reactionRemovals()).toHaveLength(0);
+          return createModelStream([{ type: "text", text: "Done." }]);
+        }),
       },
     });
 
@@ -84,9 +82,7 @@ describe("Slack behavior: processing reaction", () => {
             } as never;
           },
         },
-        replyExecutor: {
-          agentRunner: neverRunAgentRunner(),
-        },
+        agentRunner: neverRunAgentRunner(),
       },
     });
 
@@ -132,13 +128,11 @@ describe("Slack behavior: processing reaction", () => {
             } as never;
           },
         },
-        replyExecutor: {
-          agentRunner: createModelAgentRunnerForRun(() => {
-            expect(slackApiOutbox.reactionAdds()).toHaveLength(1);
-            expect(slackApiOutbox.reactionRemovals()).toHaveLength(0);
-            return createModelStream([{ type: "text", text: "Done." }]);
-          }),
-        },
+        agentRunner: createModelAgentRunnerForRun(() => {
+          expect(slackApiOutbox.reactionAdds()).toHaveLength(1);
+          expect(slackApiOutbox.reactionRemovals()).toHaveLength(0);
+          return createModelStream([{ type: "text", text: "Done." }]);
+        }),
       },
     });
 
@@ -170,69 +164,19 @@ describe("Slack behavior: processing reaction", () => {
     ]);
   });
 
-  it("does not react to synthetic resource-event notifications", async () => {
-    const { slackRuntime } = createTestChatRuntime({
-      services: {
-        replyExecutor: {
-          agentRunner: createModelAgentRunnerForRun(() => {
-            expect(slackApiOutbox.reactionAdds()).toHaveLength(0);
-            expect(slackApiOutbox.reactionRemovals()).toHaveLength(0);
-            return createModelStream([{ type: "text", text: "Done." }]);
-          }),
-        },
-      },
-    });
-
-    const thread = await createTestThread({
-      id: "slack:C0PROCESSING:1700007160.000000",
-    });
-    await slackRuntime.handleSubscribedMessage(
-      thread,
-      createTestMessage({
-        id: "resource-event-resub-1-check-suite-1",
-        text: "[event notification]\n\nA subscribed resource changed.",
-        isMention: false,
-        threadId: thread.id,
-        author: {
-          userId: "UJRNEVENT",
-          userName: "junior-event",
-          fullName: "Junior event",
-          isBot: true,
-        },
-        raw: {
-          channel: "C0PROCESSING",
-          event_type: "resource_event",
-          thread_ts: "1700007160.000000",
-          // Historical malformed records used the synthetic mailbox id as raw.ts.
-          // It must still never be treated as a Slack Web API message target.
-          ts: "resource-event-resub-1-check-suite-1",
-          type: "message",
-          user: "UJRNEVENT",
-        },
-      }),
-      { destination: createTestDestination(thread) },
-    );
-
-    expect(thread.posts).toHaveLength(1);
-    expect(slackApiOutbox.reactionAdds()).toHaveLength(0);
-    expect(slackApiOutbox.reactionRemovals()).toHaveLength(0);
-  });
-
   it("keeps eyes when the assistant explicitly adds an eyes reaction", async () => {
     const { slackRuntime } = createTestChatRuntime({
       services: {
-        replyExecutor: {
-          agentRunner: createModelAgentRunner(
-            createModelStream([
-              {
-                type: "toolCall",
-                name: "addReaction",
-                arguments: { emoji: ":eyes:" },
-              },
-              { type: "text", text: "Done." },
-            ]),
-          ),
-        },
+        agentRunner: createModelAgentRunner(
+          createModelStream([
+            {
+              type: "toolCall",
+              name: "addReaction",
+              arguments: { emoji: ":eyes:" },
+            },
+            { type: "text", text: "Done." },
+          ]),
+        ),
       },
     });
 
@@ -265,18 +209,16 @@ describe("Slack behavior: processing reaction", () => {
   it("clears eyes and marks complete for reaction-only no-reply turns", async () => {
     const { slackRuntime } = createTestChatRuntime({
       services: {
-        replyExecutor: {
-          agentRunner: createModelAgentRunner(
-            createModelStream([
-              {
-                type: "toolCall",
-                name: "addReaction",
-                arguments: { emoji: ":heart:" },
-              },
-              { type: "text", text: NO_REPLY_MARKER },
-            ]),
-          ),
-        },
+        agentRunner: createModelAgentRunner(
+          createModelStream([
+            {
+              type: "toolCall",
+              name: "addReaction",
+              arguments: { emoji: ":heart:" },
+            },
+            { type: "text", text: NO_REPLY_MARKER },
+          ]),
+        ),
       },
     });
 

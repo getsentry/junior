@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { StateAdapter } from "chat";
 import {
   SLACK_BOT_USER_ID,
-  SLACK_DESTINATION,
   SLACK_SIGNING_SECRET,
   createConversationWorkQueueTestAdapter,
   deferred,
@@ -129,10 +128,7 @@ function createTurnHarness(args: {
     getSlackAdapter: () => adapter,
     services: {
       ...(args.services ?? {}),
-      replyExecutor: {
-        ...(args.services?.replyExecutor ?? {}),
-        agentRunner: args.agentRunner,
-      },
+      agentRunner: args.agentRunner,
       subscribedReplyPolicy: {
         completeObject:
           args.completeObject ??
@@ -693,7 +689,6 @@ describe("Slack behavior: durable turn steering", () => {
     await createResourceEventSubscription(
       {
         conversationId,
-        destination: SLACK_DESTINATION,
         events: ["pull_request.checks.failed"],
         expiresAtMs: Date.now() + 60_000,
         intent: "Watch CI while this turn is active.",

@@ -21,6 +21,7 @@ const githubPullRequestOutcomeInputSchema = z
     repositoryFullName: z.string().min(1),
     repositoryId: z.string().min(1),
     state: githubPullRequestStateSchema,
+    title: z.string().min(1).optional(),
     updatedAt: z.date(),
   })
   .strict();

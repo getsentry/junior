@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { createSlackSource } from "@sentry/junior-plugin-api";
 import { createSlackChannelJoinTool } from "@/chat/slack/tools/channel-join";
 import { createSlackChannelListMessagesTool } from "@/chat/slack/tools/channel-list-messages";
 import { createSlackMessageAddReactionTool } from "@/chat/slack/tools/message-add-reaction";
@@ -37,14 +36,16 @@ function createToolState(): ToolState {
 type ContextOverrides = Omit<
   Partial<SlackToolContext>,
   | "destinationChannelId"
+  | "messageChannelId"
   | "messageTs"
-  | "sourceChannelId"
+  | "locationChannelId"
   | "teamId"
   | "threadTs"
 > & {
   destinationChannelId?: string;
+  messageChannelId?: string;
   messageTs?: string;
-  sourceChannelId?: string;
+  locationChannelId?: string;
   teamId?: string;
   threadTs?: string;
 };
@@ -77,17 +78,18 @@ function createContext(
   _userText: string,
   overrides: ContextOverrides = {},
 ): SlackToolContext {
-  const sourceChannelId = requireSlackChannelId(
-    overrides.sourceChannelId ?? "C123",
+  const locationChannelId = requireSlackChannelId(
+    overrides.locationChannelId ?? "C123",
   );
   const destinationChannelId =
     overrides.destinationChannelId !== undefined
       ? requireSlackChannelId(overrides.destinationChannelId)
-      : sourceChannelId;
+      : locationChannelId;
   const teamId = requireSlackTeamId(overrides.teamId ?? "T123");
   const {
-    sourceChannelId: _sourceChannelId,
+    locationChannelId: _locationChannelId,
     destinationChannelId: _destinationChannelId,
+    messageChannelId: overrideMessageChannelId,
     messageTs: overrideMessageTs,
     teamId: _teamId,
     threadTs: overrideThreadTs,
@@ -100,21 +102,12 @@ function createContext(
     ? requireSlackMessageTs(overrideThreadTs)
     : undefined;
   return {
-    destination: {
-      platform: "slack",
-      teamId,
-      channelId: destinationChannelId,
-    },
-    source: createSlackSource({
-      teamId,
-      channelId: sourceChannelId,
-      messageTs,
-
-      visibility: "private",
-    }),
     destinationChannelId,
+    locationChannelId,
+    messageChannelId: requireSlackChannelId(
+      overrideMessageChannelId ?? locationChannelId,
+    ),
     messageTs,
-    sourceChannelId,
     teamId,
     ...(threadTs ? { threadTs } : undefined),
     ...rest,
@@ -151,9 +144,9 @@ async function executeTool<TInput>(
 }
 
 describe("slack channel tools", () => {
-  it("uses source coordinates for sendFiles and destination context for channel reads", async () => {
+  it("uses Location for sendFiles and Destination for channel reads", async () => {
     const context = createContext("share this in the current channel", {
-      sourceChannelId: "D123",
+      locationChannelId: "D123",
       destinationChannelId: "C0SHARED",
     });
     queueSlackApiResponse("conversations.history", {
@@ -391,7 +384,7 @@ describe("slack channel tools", () => {
     });
     const tool = createSlackChannelListMessagesTool(
       createContext("list other channel", {
-        sourceChannelId: "C123",
+        locationChannelId: "C123",
       }),
     );
 
@@ -420,7 +413,8 @@ describe("slack channel tools", () => {
       }),
     });
     const tool = createSlackChannelListMessagesTool(
-      createContext("list private channel"));
+      createContext("list private channel"),
+    );
 
     await expect(
       executeTool(tool, { channel_id: "C0PRIVATE" }),
@@ -674,8 +668,12 @@ describe("slack channel tools", () => {
       }),
     });
     const tool = createSlackChannelListMessagesTool(
-      createContext("history after join"));
-    const result = await executeTool(tool, { channel_id: "C0JOINME", limit: 5 });
+      createContext("history after join"),
+    );
+    const result = await executeTool(tool, {
+      channel_id: "C0JOINME",
+      limit: 5,
+    });
     expect(result).toMatchObject({
       channel_id: "C0JOINME",
       joined_channel: true,
@@ -684,5 +682,4 @@ describe("slack channel tools", () => {
     expect(getCapturedSlackApiCalls("conversations.join")).toHaveLength(1);
     expect(getCapturedSlackApiCalls("conversations.history")).toHaveLength(2);
   });
-
 });

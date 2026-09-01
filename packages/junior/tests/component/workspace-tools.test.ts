@@ -105,6 +105,7 @@ describe("Workspace tools", () => {
         conversationId: conversationId!,
       } as const;
       const workspaceTools = createWorkspaceTools({
+        conversationId: conversationId!,
         destination,
         egress: { fetch: async () => new Response("ok") },
         source: createLocalSource(destination.conversationId),
@@ -335,6 +336,7 @@ describe("Workspace tools", () => {
       });
       const switchWorkspace = vi.fn().mockResolvedValue(undefined);
       const context = {
+        conversationId: "local:test:workspace-stats",
         destination: {
           platform: "local",
           conversationId: "local:test:workspace-stats",
@@ -408,6 +410,7 @@ describe("Workspace tools", () => {
       });
       const conversationId = "local:test:workspace-missing-snapshot";
       const context = {
+        conversationId,
         destination: { platform: "local", conversationId },
         source: createLocalSource(conversationId),
         egress: {
@@ -472,6 +475,7 @@ describe("Workspace tools", () => {
     );
     const conversationId = "local:test:workspace-retry-snapshot";
     const context = {
+      conversationId,
       destination: { platform: "local", conversationId },
       source: createLocalSource(conversationId),
       egress: {
@@ -580,6 +584,7 @@ describe("Workspace tools", () => {
       resourceType: "workspace_snapshot",
       identifier: workspace.id,
       events: ["workspace_snapshot.ready", "workspace_snapshot.failed"],
+      intent: `Switch to Workspace ${workspace.name} when its snapshot is ready.`,
     });
   });
 });

@@ -28,7 +28,7 @@ import type { JuniorSqlDatabase } from "@/db/db";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
 import {
   bindProviderConversation,
-  type ProviderConversationBinding,
+  type ProviderConversationReference,
 } from "@/chat/conversations/sql/bindings";
 import { withConversationEventLock } from "@/chat/conversations/sql/event-lock";
 import {
@@ -368,9 +368,7 @@ export async function commitAcceptedReply(args: {
   conversation: ThreadConversationState;
   conversationMessageId: string;
   conversationId: string;
-  providerConversationBindings?: Array<
-    Omit<ProviderConversationBinding, "conversationId">
-  >;
+  providerConversationBindings?: ProviderConversationReference[];
   repliedAtMs?: number;
 }): Promise<void> {
   const executor = getSqlExecutor();
@@ -460,7 +458,7 @@ async function commitMessagesLocked(
           content: context.content,
         },
       })) ?? [];
-    await eventStore.append(args.conversationId, [
+    const appendedEvents = await eventStore.append(args.conversationId, [
       ...newMessages.map((message, index) => ({
         data: historyItemFromPiMessage(
           message,
@@ -470,22 +468,21 @@ async function commitMessagesLocked(
       })),
       ...turnContextEvents,
     ]);
-  } else {
-    throw new AgentHistoryBranchError(args.conversationId);
+    const cursor = appendedEvents.at(-1) ?? currentEvents.at(-1);
+    return {
+      committedSeq: cursor?.seq ?? -1,
+      historyVersion: cursor?.historyVersion ?? 0,
+      messageSeqs: [
+        ...current.seqs,
+        ...appendedEvents
+          .slice(0, newMessages.length)
+          .map((event) => event.seq),
+      ],
+      messages: nextLocalMessages,
+      provenance: nextLocalProvenance,
+    };
   }
-  const committedEvents = await eventStore.loadCurrentHistory(
-    args.conversationId,
-  );
-  const committed = projectConversationEvents(committedEvents, {
-    defaultProfile: botConfig.defaultProfile,
-  });
-  return {
-    committedSeq: committedEvents.at(-1)?.seq ?? -1,
-    historyVersion: committedEvents.at(-1)?.historyVersion ?? 0,
-    messageSeqs: committed.seqs,
-    messages: nextLocalMessages,
-    provenance: nextLocalProvenance,
-  };
+  throw new AgentHistoryBranchError(args.conversationId);
 }
 
 /** Record a successful MCP provider connection for one credential subject without duplicating it. */
@@ -620,7 +617,9 @@ async function recordAuthenticationAccountChange(
     actorId: args.actorId,
     provider: args.provider,
     ...(args.accountLabel ? { accountLabel: args.accountLabel } : undefined),
-    ...(args.authorizationId ? { authorizationId: args.authorizationId } : undefined),
+    ...(args.authorizationId
+      ? { authorizationId: args.authorizationId }
+      : undefined),
     ...(args.providerLabel ? { providerLabel: args.providerLabel } : undefined),
   });
   await getConversationEventStore().append(args.conversationId, [

@@ -61,21 +61,19 @@ describe("Slack behavior: attachment handling", () => {
         visionContext: {
           completeText: completeTextMock,
         },
-        replyExecutor: {
-          agentRunner: createModelAgentRunnerForRun((request) => {
-            const attachments = request.instruction.attachments ?? [];
-            capturedAttachmentCounts.push(attachments.length);
-            if (attachments[0]) {
-              capturedAttachmentMediaTypes.push(attachments[0].mediaType);
-            }
-            return createModelStream([
-              {
-                type: "text",
-                text: "Image received. The chart trend is upward.",
-              },
-            ]);
-          }),
-        },
+        agentRunner: createModelAgentRunnerForRun((request) => {
+          const attachments = request.instruction.attachments ?? [];
+          capturedAttachmentCounts.push(attachments.length);
+          if (attachments[0]) {
+            capturedAttachmentMediaTypes.push(attachments[0].mediaType);
+          }
+          return createModelStream([
+            {
+              type: "text",
+              text: "Image received. The chart trend is upward.",
+            },
+          ]);
+        }),
       },
     });
 
@@ -140,9 +138,7 @@ describe("Slack behavior: attachment handling", () => {
         visionContext: {
           completeText: completeTextMock,
         },
-        replyExecutor: {
-          agentRunner: createModelAgentRunnerForRun(streamForRun),
-        },
+        agentRunner: createModelAgentRunnerForRun(streamForRun),
       },
     });
 

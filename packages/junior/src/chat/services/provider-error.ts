@@ -116,6 +116,24 @@ function providerMessage(error: unknown): string {
   return (error instanceof Error ? error.message : String(error)).trim();
 }
 
+const PROVIDER_ERROR_SUMMARY_MAX_CHARS = 240;
+
+/** Short provider-boundary text for telemetry. Drop trailing JSON bodies. */
+function summarizeProviderErrorMessage(message: string): string | undefined {
+  const normalized = message.trim().replace(/\s+/g, " ");
+  if (!normalized) return undefined;
+
+  // Gateway errors often look like `503 {"error":...}`. Keep the lead text.
+  const jsonStart = normalized.indexOf("{");
+  const summary = (
+    jsonStart >= 0 ? normalized.slice(0, jsonStart) : normalized
+  ).trim();
+  if (!summary) return undefined;
+  return summary.length > PROVIDER_ERROR_SUMMARY_MAX_CHARS
+    ? `${summary.slice(0, PROVIDER_ERROR_SUMMARY_MAX_CHARS)}...`
+    : summary;
+}
+
 function extractTransportKind(
   error: unknown,
   depth = 0,
@@ -284,6 +302,16 @@ export function getProviderErrorUserMessage(error: ProviderError): string {
 export function getProviderErrorAttributes(
   error: ProviderError,
 ): Record<string, unknown> {
+  const cause = error.cause;
+  const causeMessage =
+    cause instanceof Error
+      ? cause.message
+      : typeof cause === "string"
+        ? cause
+        : undefined;
+  const summary = causeMessage
+    ? summarizeProviderErrorMessage(causeMessage)
+    : undefined;
   return {
     "app.ai.provider_error.kind": error.kind,
     "app.ai.provider_error.retryable": error.retryable,
@@ -293,6 +321,7 @@ export function getProviderErrorAttributes(
     ...(error.retryAfterMs !== undefined
       ? { "app.ai.provider_error.retry_after_ms": error.retryAfterMs }
       : undefined),
+    ...(summary ? { "app.ai.provider_error.summary": summary } : undefined),
     ...(error.modelId ? { "gen_ai.request.model": error.modelId } : undefined),
   };
 }

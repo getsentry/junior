@@ -96,7 +96,6 @@ test("rejects scripted agent runners", () => {
   );
 });
 
-
 test("rejects direct agent dispatch worker composition", () => {
   assert.deepEqual(
     checkIntegrationTestArchitecture([
@@ -146,6 +145,18 @@ test("rejects visual assertions in dashboard E2E tests", () => {
     [
       `${DASHBOARD_E2E_PATH}: dashboard E2E tests must leave visual layout and style checks to visual QA (2 found, 0 allowed)`,
     ],
+  );
+});
+
+test("allows screenshots in dashboard E2E tests", () => {
+  assert.deepEqual(
+    checkIntegrationTestArchitecture([
+      integrationTest(
+        'await page.screenshot({ path: "screenshots/settings.png" });',
+        DASHBOARD_E2E_PATH,
+      ),
+    ]),
+    [],
   );
 });
 

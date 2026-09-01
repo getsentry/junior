@@ -8,6 +8,7 @@ import { juniorMemoryEmbeddings, juniorMemoryMemories } from "./db/schema";
 import type { MemoryDb } from "./store";
 
 const DAY_MS = 24 * 60 * 60 * 1_000;
+// TODO: add hour categories + `1` when these system widgets can plot 24h hourly.
 const WINDOWS = [7, 30, 90] as const;
 
 const memoryDaySchema = z
@@ -212,7 +213,7 @@ export async function buildMemoryOperationalReport(args: {
             public: day.public,
           },
         })),
-        description: "Memories stored per day by scope",
+        description: "Memories stored by scope",
         id: "memories-created",
         series: [
           { key: "private", label: "Private" },

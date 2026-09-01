@@ -1,5 +1,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import type {
+  CodeChangeInput,
+  CodeChangePublisher,
   PluginConversationAnnotations,
   PluginLogger,
   PluginRoute,
@@ -12,6 +14,7 @@ import {
   recordGitHubIssueOutcome,
 } from "../issue-outcomes/store.js";
 import {
+  type GitHubPullRequestOutcomeInput,
   recordGitHubPullRequestConversations,
   recordGitHubPullRequestLinkedIssues,
   recordGitHubPullRequestOutcome,
@@ -26,9 +29,11 @@ import {
   normalizeGitHubPullRequestOutcome,
 } from "./pull-request-outcome.js";
 import {
-  normalizeGitHubResourceEvents,
-  type GitHubFailingCheck,
-} from "./resource-events.js";
+  loadCheckSuiteFacts,
+  needsCheckSuitePullRequestFacts,
+  parseCheckSuitePublishTargets,
+} from "./check-suite.js";
+import { normalizeGitHubResourceEvents } from "./resource-events.js";
 
 /** Verify GitHub's SHA-256 signature against the untouched request body. */
 function verifyGitHubSignature(
@@ -80,18 +85,44 @@ function webhookInstallationId(body: unknown): number | undefined {
   return parseInstallationId((installation as { id?: unknown }).id);
 }
 
+function githubCodeChange(
+  outcome: GitHubPullRequestOutcomeInput,
+  conversationIds: string[],
+): CodeChangeInput {
+  return {
+    closedAt: outcome.closedAt,
+    conversationIds,
+    mergedAt: outcome.mergedAt,
+    number: outcome.number,
+    openedAt: outcome.openedAt,
+    providerId: outcome.pullRequestId,
+    repository: {
+      name: outcome.repositoryFullName,
+      providerId: outcome.repositoryId,
+      url: `https://github.com/${outcome.repositoryFullName}`,
+    },
+    state: outcome.state === "closed_unmerged" ? "closed" : outcome.state,
+    title: outcome.title,
+    updatedAt: outcome.updatedAt,
+    url: `https://github.com/${outcome.repositoryFullName}/pull/${outcome.number}`,
+  };
+}
+
 /** Create the public, signed GitHub webhook route owned by the plugin. */
 export function createGitHubWebhookRoute(args: {
   annotations: PluginConversationAnnotations;
+  appIdEnv: string;
   botEmail(): string | undefined;
   classifyPullRequestCommits?(input: {
     number: number;
     repositoryFullName: string;
   }): Promise<GitHubPullRequestCommitComposition | undefined>;
+  codeChanges: CodeChangePublisher;
   db: GitHubDb;
   installationId(): string | undefined;
-  loadFailingChecks?(body: unknown): Promise<GitHubFailingCheck[] | undefined>;
+  installationIdEnv: string;
   log?: Pick<PluginLogger, "error">;
+  privateKeyEnv: string;
   resourceEvents: ResourceEventPublisher;
   webhookSecret(): string | undefined;
 }): PluginRoute {
@@ -146,6 +177,14 @@ export function createGitHubWebhookRoute(args: {
           args.db,
           pullRequestOutcome,
         );
+        if (recordedOutcome.applied) {
+          await args.codeChanges.record(
+            githubCodeChange(
+              pullRequestOutcome,
+              recordedOutcome.conversationIds,
+            ),
+          );
+        }
         if (recordedOutcome.applied && pullRequestOutcome.state !== "open") {
           const status =
             pullRequestOutcome.state === "merged" ? "merged" : "closed";
@@ -217,6 +256,12 @@ export function createGitHubWebhookRoute(args: {
             pullRequestConversations,
           )
         : false;
+      if (recordedPullRequestConversations && pullRequestConversations) {
+        await args.codeChanges.associateConversations({
+          conversationIds: pullRequestConversations.conversationIds,
+          providerId: pullRequestConversations.pullRequestId,
+        });
+      }
       const recordedPullRequestLinkedIssues = pullRequestLinkedIssues
         ? await recordGitHubPullRequestLinkedIssues(
             args.db,
@@ -224,15 +269,33 @@ export function createGitHubWebhookRoute(args: {
           )
         : false;
 
-      const failingChecks =
-        eventName === "check_suite" && args.loadFailingChecks
-          ? await args.loadFailingChecks(body)
+      const checkSuitePublishTargets =
+        eventName === "check_suite"
+          ? parseCheckSuitePublishTargets(body)
+          : undefined;
+      const checkSuiteMatchKeys =
+        checkSuitePublishTargets && args.resourceEvents.neededMatchKeys
+          ? await args.resourceEvents.neededMatchKeys(checkSuitePublishTargets)
+          : [];
+      const checkSuiteFacts =
+        eventName === "check_suite"
+          ? await loadCheckSuiteFacts({
+              appIdEnv: args.appIdEnv,
+              body,
+              installationIdEnv: args.installationIdEnv,
+              loadPullRequestFacts:
+                needsCheckSuitePullRequestFacts(checkSuiteMatchKeys),
+              log: args.log,
+              privateKeyEnv: args.privateKeyEnv,
+            })
           : undefined;
       const resourceEvents = normalizeGitHubResourceEvents({
         body,
+        ...(checkSuiteFacts
+          ? { checkSuiteFacts }
+          : undefined),
         deliveryId,
         eventName,
-        failingChecks,
       });
       for (const event of resourceEvents) {
         await args.resourceEvents.publish(event);

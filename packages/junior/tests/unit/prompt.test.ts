@@ -69,7 +69,7 @@ describe("prompt builders", () => {
     );
     expect(prompt).toContain("- dispatch.actor.platform: system");
     expect(prompt).toContain("- dispatch.actor.name: scheduler");
-    expect(prompt).toContain("- source.platform: slack");
+    expect(prompt).toContain("- source.kind: slack");
     expect(prompt).toContain("- destination.channel_id: C123");
     expect(prompt).toContain(
       "- dispatch.metadata.scheduledFor: 2026-05-26T12:00:00.000Z",

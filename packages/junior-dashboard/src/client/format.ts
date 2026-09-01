@@ -24,6 +24,11 @@ export function setDashboardTimeZone(timeZone: string): void {
   dashboardTimeZone = timeZone;
 }
 
+/** Read the dashboard display timezone used for absolute timestamps and charts. */
+export function getDashboardTimeZone(): string {
+  return dashboardTimeZone;
+}
+
 function displayTimeZone(): string {
   return dashboardTimeZone;
 }
@@ -906,9 +911,9 @@ export function buildConversations(
       lastProgressAt: summary.lastProgressAt,
       lastSeenAt: summary.lastSeenAt,
       locationId: summary.locationId,
+      locationUrl: summary.locationUrl,
       actorIdentity: summary.actorIdentity,
       sentryTraceUrl: summary.sentryTraceUrl,
-      sourceUrl: summary.sourceUrl,
       startedAt: summary.startedAt,
       status: summary.status,
       surface: summary.surface,

@@ -67,7 +67,7 @@ interface DurableDispatchTurnResult extends DispatchTurnResult {
 
 type DispatchRoutingContext = Pick<
   DispatchTurnContext,
-  "credentialContext" | "destinationVisibility" | "dispatch" | "surface"
+  "credentialContext" | "dispatch" | "surface"
 > & { actor: DispatchRecord["actor"] };
 
 /** Restore the exact actor, credential, and dispatch routing for every slice. */
@@ -80,7 +80,6 @@ export function buildDispatchRoutingContext(
       dispatch.actor,
       dispatch.credentialSubject,
     ),
-    destinationVisibility: dispatch.destinationVisibility,
     dispatch: {
       actor: dispatch.actor,
       id: dispatch.id,
@@ -135,7 +134,6 @@ export function buildAgentDispatchInboundMessage(
       },
     },
     receivedAtMs: nowMs,
-    publishExternally: true,
     source: "plugin",
   };
 }
@@ -254,30 +252,6 @@ export async function resolveAgentDispatchId(
   return dispatch && !isTerminalDispatchStatus(dispatch.status)
     ? durableDispatchId
     : undefined;
-}
-
-/**
- * Route leased work through dispatch execution when durable metadata owns it.
- *
- * The fallback retains ownership of every other conversation source.
- */
-export function createAgentDispatchWorkRouter(options: {
-  dispatchWorker: (
-    context: ConversationWorkerContext,
-    dispatchId: string,
-  ) => Promise<ConversationWorkerResult>;
-  fallbackWorker: (
-    context: ConversationWorkerContext,
-  ) => Promise<ConversationWorkerResult>;
-}) {
-  return async (
-    context: ConversationWorkerContext,
-  ): Promise<ConversationWorkerResult> => {
-    const dispatchId = await resolveAgentDispatchId(context);
-    return dispatchId
-      ? await options.dispatchWorker(context, dispatchId)
-      : await options.fallbackWorker(context);
-  };
 }
 
 async function readDispatchTurnResult(

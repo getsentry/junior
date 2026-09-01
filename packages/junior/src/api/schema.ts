@@ -1,6 +1,21 @@
 export { dailyConversationActivitySchema } from "./activity";
 export type { DailyConversationActivity } from "./activity";
 export {
+  codeActivityDaySchema,
+  codeChangeSummaryReportSchema,
+  codeChangeSummarySchema,
+  codeOverviewReportSchema,
+  codePersonReportSchema,
+  codeRepositorySummarySchema,
+} from "./schema/code";
+export type {
+  CodeActivityDay,
+  CodeChangeSummaryReport,
+  CodeOverviewReport,
+  CodePersonReport,
+  CodeRepositorySummary,
+} from "./schema/code";
+export {
   acceptedConversationMessageSchema,
   archiveConversationBodySchema,
   archiveConversationResponseSchema,
@@ -21,6 +36,8 @@ export {
   conversationPendingMessagesReportSchema,
   conversationReportEventDataSchema,
   conversationReportEventSchema,
+  conversationTurnFailureCodeSchema,
+  conversationTurnFailureReasonSchema,
   conversationStatsReportSchema,
   conversationSummaryReportSchema,
   createConversationBodySchema,
@@ -45,6 +62,8 @@ export type {
   ConversationReportEvent,
   ConversationReportEventData,
   ConversationReportStatus,
+  ConversationTurnFailureCode,
+  ConversationTurnFailureReason,
   ConversationMetricDay,
   ConversationModelUsage,
   ConversationParams,
@@ -82,9 +101,11 @@ export type {
 export type {
   ActorActivityDayReport,
   ActorDirectoryReport,
+  ActorDirectoryWindows,
   ActorProfileReport,
   ActorSummaryReport,
   ActorTotalsReport,
+  ActorWindowMetrics,
   PeopleActivityDayReport,
   PersonalSpendReport,
   PersonParams,
@@ -124,6 +145,7 @@ export {
   taskParamsSchema,
   taskRunListSchema,
   taskRunSchema,
+  taskRunWindowsSchema,
   taskSummarySchema,
 } from "./schema/task";
 export type {
@@ -134,6 +156,7 @@ export type {
   TaskList,
   TaskRun,
   TaskRunList,
+  TaskRunWindows,
   TaskSummary,
 } from "./schema/task";
 export { statSchema, statsReportSchema } from "./schema/stats";

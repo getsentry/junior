@@ -14,19 +14,12 @@ import {
   type ConversationPendingMessagesReport,
 } from "../schema/conversation";
 import { readConversationAccessFromSql } from "./access";
-import { webActorFromEmail } from "@/chat/api-turns/work";
-import { getWebAuthorization } from "@/chat/api-turns/authorization";
-
-const apiTurnMailboxMetadataSchema = z
-  .object({
-    authorEmail: z.string().email(),
-    authorFullName: z.string().min(1).optional(),
-    authorUserId: z.string().min(1),
-    authorUserName: z.string().min(1).optional(),
-    kind: z.literal("api_turn"),
-    messageId: z.string().min(1),
-  })
-  .strict();
+import { webActorFromEmail } from "@/chat/conversations/web-input";
+import { getWebAuthorization } from "@/chat/conversations/web-authorization";
+import {
+  legacyWebMailboxMetadataSchema,
+  type LegacyWebMailboxMetadata,
+} from "@/chat/conversations/web-mailbox";
 
 const slackMailboxAuthorSchema = z
   .object({
@@ -55,12 +48,14 @@ function isoFromMs(value: number): string {
   return new Date(value).toISOString();
 }
 
-function actorIdentityFromApiMetadata(
-  metadata: z.output<typeof apiTurnMailboxMetadataSchema>,
+function actorIdentityFromWebMetadata(
+  metadata: LegacyWebMailboxMetadata,
 ): ActorIdentity {
   return {
     email: metadata.authorEmail.trim().toLowerCase(),
-    ...(metadata.authorFullName ? { fullName: metadata.authorFullName } : undefined),
+    ...(metadata.authorFullName
+      ? { fullName: metadata.authorFullName }
+      : undefined),
   };
 }
 
@@ -90,7 +85,7 @@ async function projectPendingMessage(
   canExposePayload: boolean,
 ): Promise<ConversationPendingMessage | undefined> {
   if (message.source === "web") {
-    const metadata = apiTurnMailboxMetadataSchema.safeParse(
+    const metadata = legacyWebMailboxMetadataSchema.safeParse(
       message.input.metadata,
     );
     if (!metadata.success) return undefined;
@@ -106,7 +101,7 @@ async function projectPendingMessage(
       source: "web",
       ...(canExposePayload
         ? {
-            actorIdentity: actorIdentityFromApiMetadata(metadata.data),
+            actorIdentity: actorIdentityFromWebMetadata(metadata.data),
             text,
           }
         : { redacted: true as const }),

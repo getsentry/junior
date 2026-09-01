@@ -11,19 +11,19 @@ Use **pnpm**: `pnpm install`, `pnpm dev`, `pnpm test`, `pnpm typecheck`, `pnpm s
 
 ## Commands
 
-| Task                       | Command                                                                        |
-| -------------------------- | ------------------------------------------------------------------------------ |
-| Unit/integration test file | `pnpm --filter @sentry/junior exec vitest run path/to/file.test.ts`            |
-| Eval harness test file     | `pnpm --filter @sentry/junior-evals test path/to/file.test.ts`                 |
-| Behavioral eval file      | `pnpm --filter @sentry/junior-evals evals:behavioral path/to/eval.eval.ts`    |
-| Behavioral eval case      | `pnpm --filter @sentry/junior-evals evals:behavioral path/to/eval.eval.ts -t "case name"` |
-| Integration eval file        | `pnpm --filter @sentry/junior-evals evals:integration path/to/file.eval.ts`      |
-| Integration eval case        | `pnpm --filter @sentry/junior-evals evals:integration path/to/file.eval.ts -t "case name"` |
-| Guardian eval file         | `pnpm --filter @sentry/junior-evals evals:guardian path/to/file.eval.ts`       |
-| Guardian eval case         | `pnpm --filter @sentry/junior-evals evals:guardian path/to/file.eval.ts -t "case name"` |
-| Generate package schema    | `pnpm --filter <package> db:generate`                                          |
-| Dashboard visual capture   | `pnpm visual:dashboard -- --scenarios gallery-foundations`                     |
-| Release package alignment  | `pnpm release:check`                                                           |
+| Task                       | Command                                                                                    |
+| -------------------------- | ------------------------------------------------------------------------------------------ |
+| Unit/integration test file | `pnpm --filter @sentry/junior exec vitest run path/to/file.test.ts`                        |
+| Eval harness test file     | `pnpm --filter @sentry/junior-evals test path/to/file.test.ts`                             |
+| Behavioral eval file       | `pnpm --filter @sentry/junior-evals evals:behavioral path/to/eval.eval.ts`                 |
+| Behavioral eval case       | `pnpm --filter @sentry/junior-evals evals:behavioral path/to/eval.eval.ts -t "case name"`  |
+| Integration eval file      | `pnpm --filter @sentry/junior-evals evals:integration path/to/file.eval.ts`                |
+| Integration eval case      | `pnpm --filter @sentry/junior-evals evals:integration path/to/file.eval.ts -t "case name"` |
+| Guardian eval file         | `pnpm --filter @sentry/junior-evals evals:guardian path/to/file.eval.ts`                   |
+| Guardian eval case         | `pnpm --filter @sentry/junior-evals evals:guardian path/to/file.eval.ts -t "case name"`    |
+| Generate package schema    | `pnpm --filter <package> db:generate`                                                      |
+| Dashboard screenshots      | `pnpm test:e2e:dashboard -- screenshots.spec.ts`                                           |
+| Release package alignment  | `pnpm release:check`                                                                       |
 
 ## Workflow
 
@@ -56,7 +56,11 @@ Use **pnpm**: `pnpm install`, `pnpm dev`, `pnpm test`, `pnpm typecheck`, `pnpm s
 - Treat provider names, hosts, routes, and control flow in core as an architecture warning even when a static dependency rule cannot detect the problem. Follow `policies/provider-boundaries.md`.
 - Read `packages/junior/src/chat/README.md` before changing shared chat runtime behavior; it owns flow, module boundaries, vocabulary, and invariants.
 - Group files by feature and import feature files directly; do not add feature-directory barrels.
-- Code files may not exceed 1,000 lines unless `scripts/file-length-exceptions.mjs` names the file and explains why it should stay large.
+- Keep formatter output. Do not compress or undo formatting to keep a code file
+  below 1,000 lines. Split a formatted file that exceeds 1,000 lines at a clear
+  feature or ownership boundary. Existing exceptions must stay named and
+  explained in `scripts/file-length-exceptions.mjs`; follow
+  `policies/correctness-complexity.md`.
 - Do not add mutable runtime globals or test-only singleton mutation APIs.
 
 ## Where Rules Live

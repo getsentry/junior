@@ -6,7 +6,7 @@ export const RESOURCE_EVENT_DATA_MAX_KEYS = 32;
 export const RESOURCE_EVENT_DATA_MAX_JSON_BYTES = 4_000;
 export const RESOURCE_EVENT_GUIDANCE_MAX_LENGTH = 1_000;
 
-/** Small trusted facts from the plugin. The agent should not look these up again. */
+/** Small trusted data from the plugin. The agent should not look these up again. */
 export const resourceEventDataSchema = z
   .record(z.string(), z.unknown())
   .superRefine((value, context) => {
@@ -43,11 +43,122 @@ export const resourceTypeSchema = z
     "Canonical plugin-defined resource type, such as issue or pull_request.",
   );
 
+const RESOURCE_EVENT_MATCH_FIELD_NAME =
+  /^[a-z][a-zA-Z0-9]*$/;
+
+/** One exact value a watch or event task may require on trusted event data. */
+export const resourceEventMatchFieldSchema = z
+  .object({
+    kind: z.enum(["boolean", "string", "number"]),
+    description: z.string().trim().min(1).max(200),
+    enum: z.array(z.string().min(1)).min(1).optional(),
+  })
+  .strict()
+  .superRefine((field, context) => {
+    if (field.enum && field.kind !== "string") {
+      context.addIssue({
+        code: "custom",
+        message: 'Resource event match field enum requires kind "string".',
+        path: ["enum"],
+      });
+    }
+  });
+
+export const resourceEventMatchFieldsSchema = z
+  .record(z.string().regex(RESOURCE_EVENT_MATCH_FIELD_NAME), resourceEventMatchFieldSchema)
+  .superRefine((fields, context) => {
+    if (Object.keys(fields).length > RESOURCE_EVENT_DATA_MAX_KEYS) {
+      context.addIssue({
+        code: "custom",
+        message: `Resource event match keys may include at most ${RESOURCE_EVENT_DATA_MAX_KEYS} keys.`,
+      });
+    }
+  });
+
+/** Exact trusted values required before a watch or event task runs. */
+export const resourceEventMatchSchema = z
+  .record(
+    z.string().regex(RESOURCE_EVENT_MATCH_FIELD_NAME),
+    z.union([
+      z.boolean(),
+      z.number().finite(),
+      z.string().min(1),
+      z.array(z.union([z.number().finite(), z.string().min(1)])).min(1),
+    ]),
+  )
+  .superRefine((match, context) => {
+    if (Object.keys(match).length > RESOURCE_EVENT_DATA_MAX_KEYS) {
+      context.addIssue({
+        code: "custom",
+        message: `Resource event match may include at most ${RESOURCE_EVENT_DATA_MAX_KEYS} keys.`,
+      });
+    }
+    for (const [key, value] of Object.entries(match)) {
+      if (!Array.isArray(value)) continue;
+      if (value.some((entry) => typeof entry === "boolean")) {
+        context.addIssue({
+          code: "custom",
+          message: `Resource event match field "${key}" cannot use a boolean list.`,
+          path: [key],
+        });
+      }
+    }
+  });
+
+export type ResourceEventMatch = z.output<typeof resourceEventMatchSchema>;
+export type ResourceEventMatchFields = z.output<
+  typeof resourceEventMatchFieldsSchema
+>;
+
+function stableMatchValue(value: ResourceEventMatch[string]): unknown {
+  if (!Array.isArray(value)) return value;
+  return [...value].sort((left, right) => {
+    if (typeof left === "number" && typeof right === "number") {
+      return left - right;
+    }
+    return String(left).localeCompare(String(right));
+  });
+}
+
+/** Stable JSON for one match object. List order does not matter. */
+export function stableResourceEventMatchKey(
+  match: ResourceEventMatch | undefined,
+): string {
+  if (!match || Object.keys(match).length === 0) return "";
+  return JSON.stringify(
+    Object.fromEntries(
+      Object.entries(match)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, value]) => [key, stableMatchValue(value)]),
+    ),
+  );
+}
+
+/** Return whether trusted event data matches one exact match object. */
+export function resourceEventMatches(
+  match: ResourceEventMatch | undefined,
+  data: ResourceEventData | undefined,
+): boolean {
+  if (!match || Object.keys(match).length === 0) return true;
+  if (!data) return false;
+  for (const [key, expected] of Object.entries(match)) {
+    const actual = data[key];
+    if (actual === undefined) return false;
+    if (Array.isArray(expected)) {
+      if (!expected.some((value) => Object.is(value, actual))) return false;
+      continue;
+    }
+    if (!Object.is(expected, actual)) return false;
+  }
+  return true;
+}
+
 export const pluginResourceEventTypeSchema = z
   .object({
     type: resourceTypeSchema,
     supportedEvents: z.array(resourceEventTypeSchema).min(1),
     suggestedEvents: z.array(resourceEventTypeSchema).optional(),
+    matchFields: resourceEventMatchFieldsSchema.optional(),
     guidance: z
       .record(
         resourceEventTypeSchema,
@@ -197,4 +308,13 @@ export type ResourceEvent = z.output<typeof resourceEventSchema>;
 export interface ResourceEventPublisher {
   /** Publish one normalized event under the owning plugin's namespace. */
   publish(event: ResourceEventInput): Promise<void>;
+  /**
+   * Return match keys used by active watches or event tasks for these
+   * identifiers and event types. Plugins use this to load optional trusted
+   * data only when a filter needs it.
+   */
+  neededMatchKeys?(input: {
+    eventTypes: string[];
+    identifiers: string[];
+  }): Promise<string[]>;
 }

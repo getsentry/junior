@@ -7,7 +7,6 @@ import { uploadFilesToConversation } from "@/chat/slack/outbound";
 import type { SlackToolContext } from "@/chat/slack/tool-support/context";
 import { z } from "zod";
 import { zodTool } from "@/chat/tool-support/zod-tool";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import { createOperationKey } from "@/chat/tools/idempotency";
 import {
   sandboxFileReferenceSchema,
@@ -107,22 +106,14 @@ export function createSendFilesTool(
     outputSchema: sendFilesResultSchema,
     execute: async ({ files }, options) => {
       const filesToSend = normalizeFiles(files);
-      const activeChannelId = context.sourceChannelId;
-      if (!activeChannelId) {
-        throw new ToolInputError("No active Slack conversation is available.");
-      }
+      const activeChannelId = context.locationChannelId;
       const threadTs = context.threadTs ?? context.messageTs;
-      if (!threadTs) {
-        throw new ToolInputError(
-          "No active Slack conversation timestamp is available.",
-        );
-      }
       const materializedFiles = await Promise.all(
         filesToSend.map((file) => materializeFile(file)),
       );
       const operationKey = createOperationKey("sendFiles", {
         channel_id: activeChannelId,
-        thread_ts: threadTs,
+        thread_ts: threadTs ?? null,
         files: fileOperationInput(materializedFiles),
       });
       const cached = state.getOperationResult<CachedSendFiles>(operationKey);
@@ -134,7 +125,9 @@ export function createSendFilesTool(
           await recordAttachmentsDelivered({
             attachments: cached.delivered,
             conversationId: attachments.conversationId,
-            ...(cached.toolCallId ? { toolCallId: cached.toolCallId } : undefined),
+            ...(cached.toolCallId
+              ? { toolCallId: cached.toolCallId }
+              : undefined),
           });
         }
         return sendFilesResultSchema.parse({
@@ -158,7 +151,7 @@ export function createSendFilesTool(
       await uploadFilesToConversation({
         channelId: activeChannelId,
         files: uploads,
-        threadTs,
+        ...(threadTs ? { threadTs } : undefined),
       });
       const delivered: DeliveredAttachment[] = stored.map(
         (attachment, index) => {
@@ -183,13 +176,17 @@ export function createSendFilesTool(
       state.setOperationResult(operationKey, {
         delivered,
         result: response,
-        ...(options.toolCallId ? { toolCallId: options.toolCallId } : undefined),
+        ...(options.toolCallId
+          ? { toolCallId: options.toolCallId }
+          : undefined),
       } satisfies CachedSendFiles);
       if (attachments && delivered.length > 0) {
         await recordAttachmentsDelivered({
           attachments: delivered,
           conversationId: attachments.conversationId,
-          ...(options.toolCallId ? { toolCallId: options.toolCallId } : undefined),
+          ...(options.toolCallId
+            ? { toolCallId: options.toolCallId }
+            : undefined),
         });
       }
       return response;

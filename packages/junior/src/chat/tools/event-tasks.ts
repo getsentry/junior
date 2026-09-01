@@ -1,4 +1,7 @@
-import type { ResourceEventCatalog } from "@/chat/resource-events/catalog";
+import {
+  hasPluginResourceEventCatalogEntries,
+  type ResourceEventCatalog,
+} from "@/chat/resource-events/catalog";
 import { createEventTaskTool } from "@/chat/tools/create-event-task";
 import { createDeleteEventTaskTool } from "@/chat/tools/delete-event-task";
 import type { ToolRegistry } from "@/chat/tools/definition";
@@ -11,14 +14,19 @@ export function createEventTaskTools(
   context: ToolRuntimeContext,
   catalog: ResourceEventCatalog,
 ): ToolRegistry {
+  // TODO(dcramer): Let users manage Event tasks from web and other
+  // Conversations. Remove these checks when Event tasks no longer require a
+  // Slack Destination or Slack creator.
   if (
-    context.source.platform !== "slack" ||
+    context.source.kind !== "slack" ||
     context.destination.platform !== "slack" ||
     context.actor?.platform !== "slack"
   ) {
     return {};
   }
-  const canCreate = Object.keys(catalog).length > 0;
+  // Durable event tasks need a plugin publisher. Core snapshot events alone
+  // only support temporary watches from switchWorkspace / watchResourceEvents.
+  const canCreate = hasPluginResourceEventCatalogEntries(catalog);
   return {
     ...(canCreate
       ? { createEventTask: createEventTaskTool(context, catalog) }

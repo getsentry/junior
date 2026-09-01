@@ -1,29 +1,10 @@
-import { expect, test } from "@playwright/test";
-import {
-  type DashboardE2eServer,
-  mockDashboardApis,
-  startDashboardE2eServer,
-} from "./harness";
+import { expect, test } from "./test";
 
-let server: DashboardE2eServer;
-
-test.beforeAll(async () => {
-  server = await startDashboardE2eServer();
-});
-
-test.afterAll(async () => {
-  await server.close();
-});
-
-test.beforeEach(async ({ page }) => {
-  await mockDashboardApis(page);
-});
-
-test("explores location activity", async ({ page }) => {
+test("explores location activity", async ({ page, dashboard }) => {
   await page.setViewportSize({ height: 900, width: 1600 });
-  await page.goto(`${server.baseURL}/locations?q=proj`);
+  await page.goto(`${dashboard.baseURL}/locations?q=proj`);
 
-  await expect(page).toHaveURL(`${server.baseURL}/system/locations?q=proj`);
+  await expect(page).toHaveURL(`${dashboard.baseURL}/system/locations?q=proj`);
   await expect(
     page.getByRole("searchbox", { name: "Search locations" }),
   ).toHaveValue("proj");

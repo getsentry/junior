@@ -8,6 +8,7 @@ import {
 import { enqueueAgentDispatch } from "@/chat/agent-dispatch/work";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
+import { turnCursorKey } from "@/chat/task-execution/turn-cursor-keys";
 import { persistConversationMessages } from "@/chat/conversations/messages";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { getUserMessageInstructionText } from "@/chat/pi/transcript";
@@ -67,6 +68,17 @@ describe("agent dispatch conversation work", () => {
         params: expect.objectContaining({ text: "Done" }),
       }),
     ]);
+    await expect(
+      state.get(
+        turnCursorKey(
+          getDispatchConversationId(dispatch),
+          getDispatchTurnId(dispatch.id),
+        ),
+      ),
+    ).resolves.toMatchObject({
+      dispatchId: dispatch.id,
+      publishExternally: true,
+    });
     expect(modelStream).toHaveBeenCalledOnce();
     const instruction = modelStream.mock.calls[0]?.[1].messages.at(-1);
     if (!instruction) {
@@ -127,7 +139,6 @@ describe("agent dispatch conversation work", () => {
         actor: { platform: "system", name: "scheduler" },
       },
       destination,
-      destinationVisibility: "private",
       dispatch: {
         id: dispatch.id,
         plugin: "scheduler",
@@ -136,6 +147,7 @@ describe("agent dispatch conversation work", () => {
           detail: "Weekly",
         },
       },
+      source: { kind: "scheduled_task" },
       surface: "api",
       disabledFeatures: ["interactive-auth"],
     });

@@ -153,92 +153,100 @@ class SqlConversationEventStore implements ConversationEventStore {
     conversationId: string,
     events: NewConversationEvent[],
     options: { activity?: "preserve" } = {},
-  ): Promise<void> {
+  ): Promise<Array<Pick<ConversationEvent, "seq" | "historyVersion">>> {
     const parsed = events.map((event) =>
       newConversationEventSchema.parse(event),
     );
     if (parsed.length === 0) {
-      return;
+      return [];
     }
-    await withConversationEventLock(this.executor, conversationId, async () => {
-      const existingKeys = parsed
-        .map((event) => event.idempotencyKey)
-        .filter((key): key is string => key !== undefined);
-      const persistedKeys =
-        existingKeys.length === 0
-          ? new Set<string>()
-          : new Set(
-              (
-                await this.executor
-                  .db()
-                  .select({ key: juniorConversationEvents.idempotencyKey })
-                  .from(juniorConversationEvents)
-                  .where(
-                    and(
-                      eq(
-                        juniorConversationEvents.conversationId,
-                        conversationId,
+    return withConversationEventLock(
+      this.executor,
+      conversationId,
+      async () => {
+        const existingKeys = parsed
+          .map((event) => event.idempotencyKey)
+          .filter((key): key is string => key !== undefined);
+        const persistedKeys =
+          existingKeys.length === 0
+            ? new Set<string>()
+            : new Set(
+                (
+                  await this.executor
+                    .db()
+                    .select({ key: juniorConversationEvents.idempotencyKey })
+                    .from(juniorConversationEvents)
+                    .where(
+                      and(
+                        eq(
+                          juniorConversationEvents.conversationId,
+                          conversationId,
+                        ),
+                        inArray(
+                          juniorConversationEvents.idempotencyKey,
+                          existingKeys,
+                        ),
                       ),
-                      inArray(
-                        juniorConversationEvents.idempotencyKey,
-                        existingKeys,
-                      ),
-                    ),
-                  )
-              ).flatMap((row) => (row.key ? [row.key] : [])),
-            );
-      const acceptedKeys = new Set(persistedKeys);
-      const pending = parsed.filter((event) => {
-        if (event.idempotencyKey === undefined) return true;
-        if (acceptedKeys.has(event.idempotencyKey)) return false;
-        acceptedKeys.add(event.idempotencyKey);
-        return true;
-      });
-      if (pending.length === 0) {
-        return;
-      }
-      const newestCreatedAtMs = Math.max(
-        ...pending.map((event) => event.createdAtMs),
-      );
-      await ensureConversationRow(
-        this.executor,
-        conversationId,
-        newestCreatedAtMs,
-        options,
-      );
-      const cursor = await this.readCursor(conversationId);
-      const historyVersion = cursor.maxHistoryVersion ?? 0;
-      let seq = cursor.nextSeq;
-      const rows: ConversationEventInsert[] = [];
-      for (const event of pending) {
-        const actorIdentityId = await resolveEventActorIdentityId(
-          this.executor,
-          {
-            conversationId,
-            data: event.data,
-            nowMs: event.createdAtMs,
-          },
-        );
-        rows.push(
-          insertFromEvent(
-            conversationId,
-            seq++,
-            historyVersion,
-            event,
-            actorIdentityId,
-          ),
-        );
-        if (actorIdentityId) {
-          await recordConversationParticipant(this.executor, {
-            actorIdentityId,
-            conversationId,
-            atMs: event.createdAtMs,
-            restoreArchive: eventUnarchivesConversation(event.data),
-          });
+                    )
+                ).flatMap((row) => (row.key ? [row.key] : [])),
+              );
+        const acceptedKeys = new Set(persistedKeys);
+        const pending = parsed.filter((event) => {
+          if (event.idempotencyKey === undefined) return true;
+          if (acceptedKeys.has(event.idempotencyKey)) return false;
+          acceptedKeys.add(event.idempotencyKey);
+          return true;
+        });
+        if (pending.length === 0) {
+          return [];
         }
-      }
-      await this.executor.db().insert(juniorConversationEvents).values(rows);
-    });
+        const newestCreatedAtMs = Math.max(
+          ...pending.map((event) => event.createdAtMs),
+        );
+        await ensureConversationRow(
+          this.executor,
+          conversationId,
+          newestCreatedAtMs,
+          options,
+        );
+        const cursor = await this.readCursor(conversationId);
+        const historyVersion = cursor.maxHistoryVersion ?? 0;
+        let seq = cursor.nextSeq;
+        const rows: ConversationEventInsert[] = [];
+        for (const event of pending) {
+          const actorIdentityId = await resolveEventActorIdentityId(
+            this.executor,
+            {
+              conversationId,
+              data: event.data,
+              nowMs: event.createdAtMs,
+            },
+          );
+          rows.push(
+            insertFromEvent(
+              conversationId,
+              seq++,
+              historyVersion,
+              event,
+              actorIdentityId,
+            ),
+          );
+          if (actorIdentityId) {
+            await recordConversationParticipant(this.executor, {
+              actorIdentityId,
+              conversationId,
+              atMs: event.createdAtMs,
+              restoreArchive: eventUnarchivesConversation(event.data),
+            });
+          }
+        }
+        await this.executor.db().insert(juniorConversationEvents).values(rows);
+        return rows.map((row) => ({
+          seq: row.seq,
+          historyVersion: row.historyVersion,
+        }));
+      },
+    );
   }
 
   async replaceHistory(
@@ -262,6 +270,10 @@ class SqlConversationEventStore implements ConversationEventStore {
           ),
         );
     });
+  }
+
+  async loadCurrentHistoryVersion(conversationId: string): Promise<number> {
+    return (await this.readCursor(conversationId)).maxHistoryVersion ?? 0;
   }
 
   async loadCurrentHistory(

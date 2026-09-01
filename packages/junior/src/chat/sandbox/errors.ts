@@ -1,5 +1,6 @@
 import { setSpanAttributes, setSpanStatus } from "@/chat/logging";
 import { extractHttpErrorDetails } from "@/chat/sandbox/http-error-details";
+import { getWorkspaceSnapshotNotReadyError } from "@/chat/sandbox/snapshot/not-ready-error";
 
 const SANDBOX_ERROR_FIELDS = [
   {
@@ -148,11 +149,7 @@ export function isAbortError(error: unknown): boolean {
     if (!(candidate instanceof Error)) return false;
     if (candidate.name === "AbortError") return true;
     const message = candidate.message.toLowerCase();
-    return (
-      message === "api turn cancelled" ||
-      message === "api turn canceled" ||
-      message.startsWith("executeagentrun timed out after")
-    );
+    return message.startsWith("executeagentrun timed out after");
   });
 }
 
@@ -205,8 +202,13 @@ export function isSandboxCommandStreamInterruptedError(
   });
 }
 
-/** Wrap raw sandbox setup failures into one stable user-facing error contract. */
+/** Wrap setup failures. Keep WorkspaceSnapshotNotReadyError as-is. */
 export function wrapSandboxSetupError(error: unknown): Error {
+  const notReady = getWorkspaceSnapshotNotReadyError(error);
+  if (notReady) {
+    return notReady;
+  }
+
   try {
     const details = getSandboxErrorDetails(error);
     if (details.summary) {

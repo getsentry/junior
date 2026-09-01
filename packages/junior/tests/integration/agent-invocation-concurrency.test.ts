@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { StreamFn } from "@earendil-works/pi-agent-core";
-import { createLocalSource } from "@sentry/junior-plugin-api";
 import type { AgentRun } from "@/chat/agent/types";
 import { AgentInvocationLimitError } from "@/chat/agent-invocations/errors";
 import {
@@ -33,10 +32,8 @@ const destination = {
 const baseInput = {
   actor: { name: "parent-agent", platform: "system" } as const,
   destination,
-  destinationVisibility: "private" as const,
   input: "Do the delegated work.",
   parentConversationId,
-  source: createLocalSource(parentConversationId),
 };
 
 function taskModel(request: AgentRun): StreamFn {
@@ -62,9 +59,7 @@ async function createHarness(streamForRun: (request: AgentRun) => StreamFn) {
   const run = vi.spyOn(agentRunner, "run");
   const route = routeAgentInvocationWork({
     fallbackWorker: vi.fn(async () => ({ status: "completed" as const })),
-    invocationWorker: createAgentInvocationWorker({
-      agentRunner,
-    }),
+    invocationWorker: createAgentInvocationWorker(agentRunner),
   });
 
   return {

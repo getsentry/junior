@@ -3,12 +3,12 @@
 # Only keep true system/config/integrity failures here.
 # Format: relativePath<TAB>normalized throw statement
 packages/junior-github/src/tools/create-issue.ts	throw new Error( "GitHub issue creation for this tool call has an uncertain pending result; refusing to create a duplicate issue.", );
-packages/junior-github/src/tools/create-issue.ts	throw new Error( "GitHub issue was created, but Junior could not persist the completed issue state.", { cause: error }, );
+packages/junior-github/src/tools/create-issue.ts	throw new Error( "GitHub issue was created, but the runtime could not persist the completed issue state.", { cause: error }, );
 packages/junior-github/src/tools/create-issue.ts	throw new Error("GitHub issue creation returned an invalid response.");
 packages/junior-github/src/tools/create-issue.ts	throw new Error("Invalid GitHub createIssue idempotency state.", { cause: error, });
 packages/junior-github/src/tools/create-pull-request.ts	throw new Error( "GitHub pull request creation for this tool call has an uncertain pending result; refusing to create a duplicate pull request.", );
 packages/junior-github/src/tools/create-pull-request.ts	throw new Error( "GitHub pull request creation returned an invalid response.", );
-packages/junior-github/src/tools/create-pull-request.ts	throw new Error( "GitHub pull request was created, but Junior could not persist the completed pull request state.", { cause: error }, );
+packages/junior-github/src/tools/create-pull-request.ts	throw new Error( "GitHub pull request was created, but the runtime could not persist the completed pull request state.", { cause: error }, );
 packages/junior-github/src/tools/create-pull-request.ts	throw new Error("Invalid GitHub createPullRequest idempotency state.", { cause: error, });
 packages/junior-github/src/tools/get-deployment.ts	throw new Error(message);
 packages/junior-github/src/tools/get-pull-request.ts	throw new Error(message);
@@ -19,6 +19,8 @@ packages/junior-github/src/tools/resolve-pull-request-review-thread.ts	throw new
 packages/junior-github/src/tools/resolve-pull-request-review-thread.ts	throw new Error("GitHub did not resolve the requested review thread.");
 packages/junior-github/src/tools/update-issue.ts	throw new Error( `GitHub issue update failed with HTTP ${response.status}: ${githubApiErrorMessage(parsed)}`, );
 packages/junior-github/src/tools/update-pull-request.ts	throw new Error( `GitHub pull request update failed with HTTP ${response.status}: ${githubApiErrorMessage(parsed)}`, );
+packages/junior-gocd/src/tools/pipeline-history.ts	throw new Error( `GoCD pipeline history failed with HTTP ${response.status}`, );
+packages/junior-gocd/src/tools/stage.ts	throw new Error(`GoCD stage failed with HTTP ${response.status}`);
 packages/junior-vercel/src/tools/deployment.ts	throw new Error(message);
 packages/junior/src/chat/slack/tools/canvas/create.ts	throw new Error( "Cannot create a canvas without an active assistant channel context (C/G/D).", );
 packages/junior/src/chat/slack/tools/conversation-message-search.ts	throw new Error( "Stored Slack conversation search returned an invalid destination", );

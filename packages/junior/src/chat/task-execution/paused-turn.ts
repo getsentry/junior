@@ -12,7 +12,7 @@ import {
   logWarn,
   withLogContext,
 } from "@/chat/logging";
-import { resumeSlackTurn } from "@/chat/runtime/slack-resume";
+import { resumeSlackTurn } from "@/chat/providers/slack/resume";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { hydrateConversationMessages } from "@/chat/conversations/messages";
 import { loadProjection } from "@/chat/conversations/projection";
@@ -52,7 +52,7 @@ import {
 } from "@/chat/task-execution/turn-wake";
 import {
   resolveTurnSessionRouting,
-  type TurnSessionRouting,
+  type RequiredTurnSessionRouting,
 } from "@/chat/services/turn-session-routing";
 import { parseSlackThreadId } from "@/chat/slack/context";
 import { postSlackMessage } from "@/chat/slack/outbound";
@@ -72,6 +72,7 @@ import {
 } from "@/chat/resource-events/actor";
 import type { AgentRunResult } from "@/chat/services/turn-result";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
+import { executeTurn } from "@/chat/runtime/turn-execution";
 import type { AgentRun } from "@/chat/agent/types";
 import { persistAuthPauseTurnState } from "@/chat/runtime/auth-pause-state";
 import { clearPendingAuth } from "@/chat/services/pending-auth";
@@ -89,13 +90,8 @@ export interface PausedTurnOptions {
   inputMessageIds?: readonly string[];
   routingContext?: Pick<
     AgentRun,
-    | "actor"
-    | "credentialContext"
-    | "destinationVisibility"
-    | "dispatch"
-    | "surface"
+    "actor" | "credentialContext" | "dispatch" | "surface"
   >;
-  resumeTurn?: typeof resumeSlackTurn;
   wakePausedTurn?: (request: PausedTurnRequest) => Promise<void>;
   scheduleSessionCompletedPluginTasks?: (params: {
     conversationId: string;
@@ -255,17 +251,18 @@ async function resolveSlackResumeUserActor(args: {
 }
 
 /**
- * Resolve the run actor for a resumed turn, then derive credentialContext.
+ * Resolve the Actor and credentials for a resumed Turn.
  *
  * Sources, in order:
- * 1. Caller routingContext (dispatch / OAuth already set actor + credentials)
- * 2. Resource-event markers → system actor
- * 3. Slack author + destination team
+ * 1. Actor saved on the Turn.
+ * 2. Actor and credentials supplied by dispatch or OAuth.
+ * 3. Legacy Resource event or Slack Message data.
  *
- * Never reads Redis turn-session actor. Prefer setting actor first; credentials
- * come from the caller when already bound, else credentialContextForActor.
+ * TODO(dcramer): Remove the routing and Message Actor fallbacks after no
+ * deployed Turn cursor can omit Actor.
  */
 async function resolveResumeExecutionIdentity(args: {
+  actor?: Actor;
   conversationId: string;
   routingContext?: PausedTurnOptions["routingContext"];
   teamId: string;
@@ -278,9 +275,11 @@ async function resolveResumeExecutionIdentity(args: {
 > {
   const routing = args.routingContext;
 
-  // Dispatch / OAuth ports already own the full binding (including subject).
+  // Dispatch and OAuth supply the Actor and credentials. They also supply any
+  // credential subject.
   if (routing?.credentialContext) {
     const actor =
+      args.actor ??
       routing.dispatch?.actor ??
       routing.actor ??
       (!("type" in routing.credentialContext.actor)
@@ -291,7 +290,7 @@ async function resolveResumeExecutionIdentity(args: {
       : undefined;
   }
 
-  let actor: Actor | undefined = routing?.actor;
+  let actor: Actor | undefined = args.actor ?? routing?.actor;
   if (!actor && isResourceEventConversationMessage(args.userMessage)) {
     actor = RESOURCE_EVENT_SYSTEM_ACTOR;
   }
@@ -386,8 +385,7 @@ async function runPausedTurnInContext(
   );
   const wakePausedTurn = options.wakePausedTurn ?? defaultWakePausedTurn;
 
-  const resumeTurn = options.resumeTurn ?? resumeSlackTurn;
-  return await resumeTurn({
+  return await resumeSlackTurn({
     messageText: "",
     conversationId: payload.conversationId,
     turnId: payload.turnId,
@@ -396,7 +394,8 @@ async function runPausedTurnInContext(
     lockKey: payload.conversationId,
     // Queue continue runs under the conversation work lease already.
     ownsConversationLease: true,
-    agentRunner: options.agentRunner,
+    executeTurn: async (run, saveResult, timeoutMs) =>
+      await executeTurn(options.agentRunner, run, saveResult, timeoutMs),
     scheduleSessionCompletedPluginTasks:
       options.scheduleSessionCompletedPluginTasks,
     beforeStart: async () => {
@@ -418,6 +417,7 @@ async function runPausedTurnInContext(
           return false;
         }
         const activeTurn = turn;
+        const { dispatch, surface } = options.routingContext ?? {};
 
         const currentState = await getPersistedThreadState(
           payload.conversationId,
@@ -427,8 +427,7 @@ async function runPausedTurnInContext(
           conversation,
           conversationId: payload.conversationId,
         });
-        const dispatchId =
-          activeTurn.dispatchId ?? options.routingContext?.dispatch?.id;
+        const dispatchId = activeTurn.dispatchId ?? dispatch?.id;
         const dispatchUserMessage = dispatchId
           ? conversation.messages.find(
               (message) =>
@@ -453,6 +452,7 @@ async function runPausedTurnInContext(
         }
 
         const identity = await resolveResumeExecutionIdentity({
+          actor: activeTurn.actor,
           conversationId: payload.conversationId,
           routingContext: options.routingContext,
           teamId: destination.teamId,
@@ -490,22 +490,19 @@ async function runPausedTurnInContext(
         const recordDispatchOutcome = async (
           dispatchOutcome: "blocked" | "failed",
         ): Promise<void> => {
-          const dispatchId = options.routingContext?.dispatch?.id;
-          if (!dispatchId) {
+          if (!dispatch) {
             return;
           }
           await recordTurnSummary({
             conversationId: payload.conversationId,
             destination: routingDestination,
-            destinationVisibility:
-              options.routingContext?.destinationVisibility,
-            dispatchId,
+            dispatchId: dispatch.id,
             dispatchOutcome,
             turnId: payload.turnId,
             sliceId: activeTurn.sliceId,
             source,
             state: "failed",
-            surface: options.routingContext?.surface ?? "slack",
+            surface: surface ?? "slack",
           });
         };
 
@@ -515,30 +512,30 @@ async function runPausedTurnInContext(
           messageTs: getTurnUserSlackMessageTs(userMessage),
           inputMessageIds: [userMessage.id],
           initialStatus: latestReportedProgress(turnMessages),
-          replyContext: {
+          run: {
             instruction: {
-              ...(conversationContext ? { context: conversationContext } : undefined),
+              ...(conversationContext
+                ? { context: conversationContext }
+                : undefined),
               // Attachment fields come from the turn user message context helper.
               ...getTurnUserReplyAttachmentContext(userMessage),
               text: userMessage.text,
             },
-            // Pi history is SQL-authoritative: the resumed run reads its
-            // exact dispatch session so unrelated conversation input cannot
-            // gain system authority. Interactive turns retain their merged
-            // projection so queued steering remains visible.
+            // A dispatch reads only history saved for this Turn. Other input
+            // must not become part of a system Turn. Other Turns read
+            // Conversation history. This keeps queued steering visible.
             history: dispatchId
               ? activeTurn.piMessages
               : await loadProjection({
                   conversationId: payload.conversationId,
                 }),
-            ...options.routingContext,
-            credentialContext,
             actor,
+            credentialContext,
             destination: routingDestination,
-            // Slack resume publishes unless the checkpoint opted out.
-            // Missing means legacy/in-flight Slack turns still post.
-            publishExternally: activeTurn.publishExternally !== false,
+            ...(dispatch ? { dispatch } : undefined),
+            ...(routing.location ? { location: routing.location } : undefined),
             source,
+            ...(surface ? { surface } : undefined),
             toolChannelId: destination.channelId,
             environment: {
               locationConfiguration,
@@ -647,7 +644,7 @@ async function failStrandedTurnWithFallback(args: {
     "app.ai.conversation_id": args.conversationId,
     "app.ai.session_id": failed.turnId,
   });
-  let routing: TurnSessionRouting;
+  let routing: RequiredTurnSessionRouting;
   try {
     routing = await resolveTurnSessionRouting({
       conversationId: args.conversationId,

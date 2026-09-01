@@ -6,6 +6,7 @@ import {
 import type { AddressInfo } from "node:net";
 import { Readable } from "node:stream";
 import type { Page } from "@playwright/test";
+import { NOW, NOW_MS } from "../src/mock-reporting/fixtures";
 
 export type DashboardE2eServer = {
   baseURL: string;
@@ -102,8 +103,17 @@ export async function startDashboardE2eServer(
   };
 }
 
-/** Stubs APIs shared by dashboard page specs. */
-export async function mockDashboardApis(page: Page) {
+/** Stub shared APIs and pin browser current time for dashboard page specs. */
+export async function mockDashboardApis(
+  page: Page,
+  options: { controlTimers?: boolean } = {},
+) {
+  // Pin Date for relative labels. Keep real timers unless a test needs fast-forward.
+  if (options.controlTimers) {
+    await page.clock.install({ time: NOW_MS });
+  } else {
+    await page.clock.setFixedTime(NOW_MS);
+  }
   await page.route("**/api/user-pages", async (route) => {
     await route.fulfill({
       json: [
@@ -250,96 +260,96 @@ export async function mockDashboardApis(page: Page) {
     await route.fulfill({
       json: {
         executionDays: [
-          { date: "2026-05-07", event: 1, scheduled: 0 },
-          { date: "2026-05-08", event: 0, scheduled: 0 },
-          { date: "2026-05-09", event: 0, scheduled: 2 },
-          { date: "2026-05-10", event: 0, scheduled: 0 },
-          { date: "2026-05-11", event: 1, scheduled: 4 },
-          { date: "2026-05-12", event: 0, scheduled: 0 },
-          { date: "2026-05-13", event: 0, scheduled: 1 },
-          { date: "2026-05-14", event: 0, scheduled: 0 },
-          { date: "2026-05-15", event: 1, scheduled: 3 },
-          { date: "2026-05-16", event: 0, scheduled: 0 },
-          { date: "2026-05-17", event: 0, scheduled: 0 },
-          { date: "2026-05-18", event: 0, scheduled: 0 },
-          { date: "2026-05-19", event: 1, scheduled: 2 },
-          { date: "2026-05-20", event: 0, scheduled: 0 },
-          { date: "2026-05-21", event: 0, scheduled: 4 },
-          { date: "2026-05-22", event: 0, scheduled: 0 },
-          { date: "2026-05-23", event: 1, scheduled: 1 },
-          { date: "2026-05-24", event: 0, scheduled: 0 },
-          { date: "2026-05-25", event: 0, scheduled: 3 },
-          { date: "2026-05-26", event: 0, scheduled: 0 },
-          { date: "2026-05-27", event: 1, scheduled: 0 },
-          { date: "2026-05-28", event: 0, scheduled: 0 },
-          { date: "2026-05-29", event: 0, scheduled: 2 },
-          { date: "2026-05-30", event: 0, scheduled: 0 },
-          { date: "2026-05-31", event: 1, scheduled: 4 },
-          { date: "2026-06-01", event: 0, scheduled: 0 },
-          { date: "2026-06-02", event: 0, scheduled: 1 },
-          { date: "2026-06-03", event: 0, scheduled: 0 },
-          { date: "2026-06-04", event: 1, scheduled: 3 },
-          { date: "2026-06-05", event: 0, scheduled: 0 },
-          { date: "2026-06-06", event: 0, scheduled: 0 },
-          { date: "2026-06-07", event: 0, scheduled: 0 },
-          { date: "2026-06-08", event: 1, scheduled: 2 },
-          { date: "2026-06-09", event: 0, scheduled: 0 },
-          { date: "2026-06-10", event: 0, scheduled: 4 },
-          { date: "2026-06-11", event: 0, scheduled: 0 },
-          { date: "2026-06-12", event: 1, scheduled: 1 },
-          { date: "2026-06-13", event: 0, scheduled: 0 },
-          { date: "2026-06-14", event: 0, scheduled: 3 },
-          { date: "2026-06-15", event: 0, scheduled: 0 },
-          { date: "2026-06-16", event: 1, scheduled: 0 },
-          { date: "2026-06-17", event: 0, scheduled: 0 },
-          { date: "2026-06-18", event: 0, scheduled: 2 },
-          { date: "2026-06-19", event: 0, scheduled: 0 },
-          { date: "2026-06-20", event: 1, scheduled: 4 },
-          { date: "2026-06-21", event: 0, scheduled: 0 },
-          { date: "2026-06-22", event: 0, scheduled: 1 },
-          { date: "2026-06-23", event: 0, scheduled: 0 },
-          { date: "2026-06-24", event: 1, scheduled: 3 },
-          { date: "2026-06-25", event: 0, scheduled: 0 },
-          { date: "2026-06-26", event: 0, scheduled: 0 },
-          { date: "2026-06-27", event: 0, scheduled: 0 },
-          { date: "2026-06-28", event: 1, scheduled: 2 },
-          { date: "2026-06-29", event: 0, scheduled: 0 },
-          { date: "2026-06-30", event: 0, scheduled: 4 },
-          { date: "2026-07-01", event: 0, scheduled: 0 },
-          { date: "2026-07-02", event: 1, scheduled: 1 },
-          { date: "2026-07-03", event: 0, scheduled: 0 },
-          { date: "2026-07-04", event: 0, scheduled: 3 },
-          { date: "2026-07-05", event: 0, scheduled: 0 },
-          { date: "2026-07-06", event: 1, scheduled: 0 },
-          { date: "2026-07-07", event: 0, scheduled: 0 },
-          { date: "2026-07-08", event: 0, scheduled: 2 },
-          { date: "2026-07-09", event: 0, scheduled: 0 },
-          { date: "2026-07-10", event: 1, scheduled: 4 },
-          { date: "2026-07-11", event: 0, scheduled: 0 },
-          { date: "2026-07-12", event: 0, scheduled: 1 },
-          { date: "2026-07-13", event: 0, scheduled: 0 },
-          { date: "2026-07-14", event: 1, scheduled: 3 },
-          { date: "2026-07-15", event: 0, scheduled: 0 },
-          { date: "2026-07-16", event: 0, scheduled: 0 },
-          { date: "2026-07-17", event: 0, scheduled: 0 },
-          { date: "2026-07-18", event: 1, scheduled: 2 },
-          { date: "2026-07-19", event: 0, scheduled: 0 },
-          { date: "2026-07-20", event: 0, scheduled: 4 },
-          { date: "2026-07-21", event: 0, scheduled: 0 },
-          { date: "2026-07-22", event: 1, scheduled: 1 },
-          { date: "2026-07-23", event: 0, scheduled: 0 },
-          { date: "2026-07-24", event: 0, scheduled: 3 },
-          { date: "2026-07-25", event: 0, scheduled: 0 },
-          { date: "2026-07-26", event: 1, scheduled: 0 },
-          { date: "2026-07-27", event: 0, scheduled: 0 },
-          { date: "2026-07-28", event: 0, scheduled: 2 },
-          { date: "2026-07-29", event: 0, scheduled: 0 },
-          { date: "2026-07-30", event: 1, scheduled: 4 },
-          { date: "2026-07-31", event: 0, scheduled: 0 },
-          { date: "2026-08-01", event: 0, scheduled: 1 },
-          { date: "2026-08-02", event: 0, scheduled: 0 },
-          { date: "2026-08-03", event: 1, scheduled: 3 },
-          { date: "2026-08-04", event: 0, scheduled: 0 },
+          { costUsd: 0.12, date: "2026-05-07", event: 1, scheduled: 0 },
+          { costUsd: 0.0, date: "2026-05-08", event: 0, scheduled: 0 },
+          { costUsd: 0.16, date: "2026-05-09", event: 0, scheduled: 2 },
+          { costUsd: 0.0, date: "2026-05-10", event: 0, scheduled: 0 },
+          { costUsd: 0.44, date: "2026-05-11", event: 1, scheduled: 4 },
+          { costUsd: 0.0, date: "2026-05-12", event: 0, scheduled: 0 },
+          { costUsd: 0.08, date: "2026-05-13", event: 0, scheduled: 1 },
+          { costUsd: 0.0, date: "2026-05-14", event: 0, scheduled: 0 },
+          { costUsd: 0.36, date: "2026-05-15", event: 1, scheduled: 3 },
+          { costUsd: 0.0, date: "2026-05-16", event: 0, scheduled: 0 },
+          { costUsd: 0.0, date: "2026-05-17", event: 0, scheduled: 0 },
+          { costUsd: 0.0, date: "2026-05-18", event: 0, scheduled: 0 },
+          { costUsd: 0.28, date: "2026-05-19", event: 1, scheduled: 2 },
+          { costUsd: 0.0, date: "2026-05-20", event: 0, scheduled: 0 },
+          { costUsd: 0.32, date: "2026-05-21", event: 0, scheduled: 4 },
+          { costUsd: 0.0, date: "2026-05-22", event: 0, scheduled: 0 },
+          { costUsd: 0.2, date: "2026-05-23", event: 1, scheduled: 1 },
+          { costUsd: 0.0, date: "2026-05-24", event: 0, scheduled: 0 },
+          { costUsd: 0.24, date: "2026-05-25", event: 0, scheduled: 3 },
+          { costUsd: 0.0, date: "2026-05-26", event: 0, scheduled: 0 },
+          { costUsd: 0.12, date: "2026-05-27", event: 1, scheduled: 0 },
+          { costUsd: 0.0, date: "2026-05-28", event: 0, scheduled: 0 },
+          { costUsd: 0.16, date: "2026-05-29", event: 0, scheduled: 2 },
+          { costUsd: 0.0, date: "2026-05-30", event: 0, scheduled: 0 },
+          { costUsd: 0.44, date: "2026-05-31", event: 1, scheduled: 4 },
+          { costUsd: 0.0, date: "2026-06-01", event: 0, scheduled: 0 },
+          { costUsd: 0.08, date: "2026-06-02", event: 0, scheduled: 1 },
+          { costUsd: 0.0, date: "2026-06-03", event: 0, scheduled: 0 },
+          { costUsd: 0.36, date: "2026-06-04", event: 1, scheduled: 3 },
+          { costUsd: 0.0, date: "2026-06-05", event: 0, scheduled: 0 },
+          { costUsd: 0.0, date: "2026-06-06", event: 0, scheduled: 0 },
+          { costUsd: 0.0, date: "2026-06-07", event: 0, scheduled: 0 },
+          { costUsd: 0.28, date: "2026-06-08", event: 1, scheduled: 2 },
+          { costUsd: 0.0, date: "2026-06-09", event: 0, scheduled: 0 },
+          { costUsd: 0.32, date: "2026-06-10", event: 0, scheduled: 4 },
+          { costUsd: 0.0, date: "2026-06-11", event: 0, scheduled: 0 },
+          { costUsd: 0.2, date: "2026-06-12", event: 1, scheduled: 1 },
+          { costUsd: 0.0, date: "2026-06-13", event: 0, scheduled: 0 },
+          { costUsd: 0.24, date: "2026-06-14", event: 0, scheduled: 3 },
+          { costUsd: 0.0, date: "2026-06-15", event: 0, scheduled: 0 },
+          { costUsd: 0.12, date: "2026-06-16", event: 1, scheduled: 0 },
+          { costUsd: 0.0, date: "2026-06-17", event: 0, scheduled: 0 },
+          { costUsd: 0.16, date: "2026-06-18", event: 0, scheduled: 2 },
+          { costUsd: 0.0, date: "2026-06-19", event: 0, scheduled: 0 },
+          { costUsd: 0.44, date: "2026-06-20", event: 1, scheduled: 4 },
+          { costUsd: 0.0, date: "2026-06-21", event: 0, scheduled: 0 },
+          { costUsd: 0.08, date: "2026-06-22", event: 0, scheduled: 1 },
+          { costUsd: 0.0, date: "2026-06-23", event: 0, scheduled: 0 },
+          { costUsd: 0.36, date: "2026-06-24", event: 1, scheduled: 3 },
+          { costUsd: 0.0, date: "2026-06-25", event: 0, scheduled: 0 },
+          { costUsd: 0.0, date: "2026-06-26", event: 0, scheduled: 0 },
+          { costUsd: 0.0, date: "2026-06-27", event: 0, scheduled: 0 },
+          { costUsd: 0.28, date: "2026-06-28", event: 1, scheduled: 2 },
+          { costUsd: 0.0, date: "2026-06-29", event: 0, scheduled: 0 },
+          { costUsd: 0.32, date: "2026-06-30", event: 0, scheduled: 4 },
+          { costUsd: 0.0, date: "2026-07-01", event: 0, scheduled: 0 },
+          { costUsd: 0.2, date: "2026-07-02", event: 1, scheduled: 1 },
+          { costUsd: 0.0, date: "2026-07-03", event: 0, scheduled: 0 },
+          { costUsd: 0.24, date: "2026-07-04", event: 0, scheduled: 3 },
+          { costUsd: 0.0, date: "2026-07-05", event: 0, scheduled: 0 },
+          { costUsd: 0.12, date: "2026-07-06", event: 1, scheduled: 0 },
+          { costUsd: 0.0, date: "2026-07-07", event: 0, scheduled: 0 },
+          { costUsd: 0.16, date: "2026-07-08", event: 0, scheduled: 2 },
+          { costUsd: 0.0, date: "2026-07-09", event: 0, scheduled: 0 },
+          { costUsd: 0.44, date: "2026-07-10", event: 1, scheduled: 4 },
+          { costUsd: 0.0, date: "2026-07-11", event: 0, scheduled: 0 },
+          { costUsd: 0.08, date: "2026-07-12", event: 0, scheduled: 1 },
+          { costUsd: 0.0, date: "2026-07-13", event: 0, scheduled: 0 },
+          { costUsd: 0.36, date: "2026-07-14", event: 1, scheduled: 3 },
+          { costUsd: 0.0, date: "2026-07-15", event: 0, scheduled: 0 },
+          { costUsd: 0.0, date: "2026-07-16", event: 0, scheduled: 0 },
+          { costUsd: 0.0, date: "2026-07-17", event: 0, scheduled: 0 },
+          { costUsd: 0.28, date: "2026-07-18", event: 1, scheduled: 2 },
+          { costUsd: 0.0, date: "2026-07-19", event: 0, scheduled: 0 },
+          { costUsd: 0.32, date: "2026-07-20", event: 0, scheduled: 4 },
+          { costUsd: 0.0, date: "2026-07-21", event: 0, scheduled: 0 },
+          { costUsd: 0.2, date: "2026-07-22", event: 1, scheduled: 1 },
+          { costUsd: 0.0, date: "2026-07-23", event: 0, scheduled: 0 },
+          { costUsd: 0.24, date: "2026-07-24", event: 0, scheduled: 3 },
+          { costUsd: 0.0, date: "2026-07-25", event: 0, scheduled: 0 },
+          { costUsd: 0.12, date: "2026-07-26", event: 1, scheduled: 0 },
+          { costUsd: 0.0, date: "2026-07-27", event: 0, scheduled: 0 },
+          { costUsd: 0.16, date: "2026-07-28", event: 0, scheduled: 2 },
+          { costUsd: 0.0, date: "2026-07-29", event: 0, scheduled: 0 },
+          { costUsd: 0.44, date: "2026-07-30", event: 1, scheduled: 4 },
+          { costUsd: 0.0, date: "2026-07-31", event: 0, scheduled: 0 },
+          { costUsd: 0.08, date: "2026-08-01", event: 0, scheduled: 1 },
+          { costUsd: 0.0, date: "2026-08-02", event: 0, scheduled: 0 },
+          { costUsd: 0.36, date: "2026-08-03", event: 1, scheduled: 3 },
+          { costUsd: 0.0, date: "2026-08-04", event: 0, scheduled: 0 },
         ],
         tasks: [
           {
@@ -359,7 +369,7 @@ export async function mockDashboardApis(page: Page) {
             lastRunAt: "2026-08-06T16:00:00.000Z",
             nextRunAt: "2026-08-10T16:00:00.000Z",
             ownedByViewer: true,
-            runsLast7Days: 3,
+            runs: { 1: 1, 7: 3, 30: 12, 90: 48 },
             schedule: "Every Monday at 9:00 AM",
             status: "active",
             title: "Weekly project summary",
@@ -379,9 +389,11 @@ export async function mockDashboardApis(page: Page) {
             id: "event-1",
             instruction: "Summarize the closed issue",
             kind: "event",
+            lastConversationId: "agent-dispatch:event-1",
+            lastRunAt: "2026-08-05T18:30:00.000Z",
             ownedByViewer: true,
             resource: "Issue · ACME-42",
-            runsLast7Days: 1,
+            runs: { 1: 0, 7: 1, 30: 4, 90: 7 },
             source: "github",
             title: "Closed issue summary",
             totalRuns: 7,
@@ -403,7 +415,7 @@ export async function mockDashboardApis(page: Page) {
             kind: "event",
             ownedByViewer: false,
             resource: "Incident · INC-17",
-            runsLast7Days: 0,
+            runs: { 1: 0, 7: 0, 30: 0, 90: 0 },
             source: "pagerduty",
             title: "Incident change alerts",
             totalRuns: 0,
@@ -440,7 +452,10 @@ export async function mockDashboardApis(page: Page) {
           : "Summarize the closed issue",
       kind,
       ownedByViewer: true,
-      runsLast7Days: kind === "scheduled" ? 3 : 1,
+      runs:
+        kind === "scheduled"
+          ? { 1: 1, 7: 3, 30: 12, 90: 48 }
+          : { 1: 0, 7: 1, 30: 4, 90: 7 },
       title:
         kind === "scheduled"
           ? "Weekly project summary"
@@ -459,9 +474,8 @@ export async function mockDashboardApis(page: Page) {
             triggerAvailable: true,
           }),
     };
-    const nowMs = Date.parse("2026-08-07T12:00:00.000Z");
     const executionDays = Array.from({ length: 90 }, (_, index) => {
-      const date = new Date(nowMs - (89 - index) * 86_400_000)
+      const date = new Date(NOW_MS - (89 - index) * 86_400_000)
         .toISOString()
         .slice(0, 10);
       return {
@@ -477,17 +491,23 @@ export async function mockDashboardApis(page: Page) {
         executions: [
           {
             conversationId: "scheduler:daily-ops-digest",
+            costUsd: 0.42,
+            durationMs: 42_000,
             executedAt: "2026-08-06T16:00:00.000Z",
             executionId: `${id}-run-1`,
             status: "completed",
             title: "Weekly project summary",
+            totalTokens: 1_200,
           },
           {
             conversationId: "slack:CQA123:1770003600.000200",
+            costUsd: 0.18,
+            durationMs: 18_000,
             executedAt: "2026-08-05T16:00:00.000Z",
             executionId: `${id}-run-2`,
             status: "failed",
             title: "Ship notes for the release train",
+            totalTokens: 480,
           },
           {
             executedAt: "2026-08-04T16:00:00.000Z",
@@ -541,7 +561,7 @@ export async function mockDashboardApis(page: Page) {
     });
   });
   await page.route("**/api/stats", async (route) => {
-    const end = new Date();
+    const end = new Date(NOW_MS);
     end.setUTCHours(0, 0, 0, 0);
     const start = new Date(end);
     start.setUTCDate(end.getUTCDate() - 89);
@@ -562,7 +582,7 @@ export async function mockDashboardApis(page: Page) {
     }).filter((stat) => stat.count > 0);
     await route.fulfill({
       json: {
-        generatedAt: end.toISOString(),
+        generatedAt: NOW,
         stats,
         windowEnd: end.toISOString().slice(0, 10),
         windowStart: start.toISOString().slice(0, 10),
@@ -638,9 +658,19 @@ export async function mockDashboardApis(page: Page) {
         date: date.toISOString().slice(0, 10),
       };
     });
+    const activityHours = Array.from({ length: 7 * 24 }, (_, index) => {
+      const date = new Date("2026-06-12T00:00:00.000Z");
+      date.setUTCHours(date.getUTCHours() + index);
+      return {
+        activePeople: (index % 3) + 1,
+        conversations: (index % 5) + 1,
+        date: date.toISOString().slice(0, 13),
+      };
+    });
     await route.fulfill({
       json: {
         activityDays,
+        activityHours,
         generatedAt: "2026-06-12T00:00:00.000Z",
         people: [
           {
@@ -654,6 +684,32 @@ export async function mockDashboardApis(page: Page) {
             actor: {
               email: "avery@example.com",
               fullName: "Avery Example",
+            },
+            windows: {
+              1: {
+                conversations: 4,
+                costUsd: 1.25,
+                durationMs: 8_000,
+                priorCostUsd: 0.4,
+              },
+              7: {
+                conversations: 28,
+                costUsd: 8.5,
+                durationMs: 24_000,
+                priorCostUsd: 3.1,
+              },
+              30: {
+                conversations: 90,
+                costUsd: 22.4,
+                durationMs: 40_000,
+                priorCostUsd: 18.2,
+              },
+              90: {
+                conversations: 180,
+                costUsd: 48.75,
+                durationMs: 60_000,
+                priorCostUsd: 12.1,
+              },
             },
           },
         ],

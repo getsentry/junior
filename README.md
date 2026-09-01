@@ -22,7 +22,7 @@ Start here:
 
 | Package                        | Purpose                                                                      |
 | ------------------------------ | ---------------------------------------------------------------------------- |
-| `@sentry/junior`               | Core Slack bot runtime                                                       |
+| `@sentry/junior`               | Core agent, Slack, and ACP runtime                                           |
 | `@sentry/junior-plugin-api`    | Lightweight plugin API types and helpers                                     |
 | `@sentry/junior-agent-browser` | Agent Browser plugin package for browser automation                          |
 | `@sentry/junior-amplitude`     | Read-only Amplitude product analytics through Amplitude's hosted MCP server  |
@@ -30,6 +30,7 @@ Start here:
 | `@sentry/junior-dashboard`     | Authenticated dashboard package for Junior runtime diagnostics               |
 | `@sentry/junior-datadog`       | Datadog plugin package for observability workflows through Datadog's Pup CLI |
 | `@sentry/junior-github`        | GitHub plugin package for issue workflows                                    |
+| `@sentry/junior-gocd`          | GoCD plugin package for read-only pipeline history through host egress auth  |
 | `@sentry/junior-hex`           | Hex plugin package for data warehouse query workflows                        |
 | `@sentry/junior-linear`        | Linear plugin package for issue workflows                                    |
 | `@sentry/junior-memory`        | Memory plugin package for long-term Junior memory storage                    |

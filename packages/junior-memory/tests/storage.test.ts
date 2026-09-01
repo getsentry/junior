@@ -8,6 +8,7 @@ import {
   type LocalPgliteFixture,
 } from "@sentry/junior-testing/pglite";
 import {
+  createResourceEventSource,
   createWebSource,
   createLocalSource,
   createSlackSource,
@@ -1003,6 +1004,32 @@ describe("memory plugin storage", () => {
     } finally {
       await fixture.close();
     }
+  });
+
+  it("does not extract Memory from Resource event Turns", async () => {
+    const actor = { platform: "system", name: "resource-event" } as const;
+    await expect(
+      processMemorySession(
+        processSessionContext({
+          model: throwingExtractionModel,
+          run: {
+            async load() {
+              return completedRun({
+                actor,
+                actorUserId: undefined,
+                actors: [actor],
+                source: createResourceEventSource({
+                  eventKey: "event-1",
+                  eventType: "issue.updated",
+                  identifier: "PROJ-123",
+                  namespace: "sentry",
+                }),
+              });
+            },
+          },
+        }),
+      ),
+    ).resolves.toBeUndefined();
   });
 
   it("supersedes old preferences from passive completed-session extraction", async () => {
@@ -2500,6 +2527,28 @@ describe("memory plugin storage", () => {
                   : 0,
             }));
           },
+          async costsByHour({ eventName, hours = 24 }) {
+            const end = new Date();
+            end.setUTCMinutes(0, 0, 0);
+            const startMs = end.getTime() - (hours - 1) * 60 * 60 * 1_000;
+            return Array.from({ length: hours }, (_, index) => ({
+              costUsd:
+                index === hours - 1
+                  ? eventName === "memories_recalled"
+                    ? 0.0003
+                    : 0.0012
+                  : 0,
+              date: new Date(startMs + index * 60 * 60 * 1_000)
+                .toISOString()
+                .slice(0, 13),
+              events:
+                index === hours - 1
+                  ? eventName === "memories_recalled"
+                    ? 1
+                    : 1
+                  : 0,
+            }));
+          },
         },
         users: {
           async resolve(email) {
@@ -2637,15 +2686,26 @@ describe("memory plugin storage", () => {
         public: 3,
       });
       expect(dashboard.days).toHaveLength(90);
+      expect(dashboard.hours).toHaveLength(7 * 24);
       expect(dashboard.extractionDays.at(-1)).toEqual({
         costUsd: 0.0042,
         date: "2026-07-28",
+        events: 1,
+      });
+      expect(dashboard.extractionHours).toHaveLength(7 * 24);
+      expect(dashboard.extractionHours?.at(-1)).toMatchObject({
+        costUsd: 0.0012,
         events: 1,
       });
       expect(dashboard.recallDays.at(-1)).toEqual({
         costUsd: 0.0011,
         date: "2026-07-28",
         events: 3,
+      });
+      expect(dashboard.recallHours).toHaveLength(7 * 24);
+      expect(dashboard.recallHours?.at(-1)).toMatchObject({
+        costUsd: 0.0003,
+        events: 1,
       });
       expect(dashboard.days.find((day) => day.date === "2026-06-19")).toEqual({
         date: "2026-06-19",
@@ -3574,7 +3634,7 @@ WHERE id = '${superseded.memory.id}'
             userId: "U123",
           },
           source: {
-            platform: "slack",
+            kind: "slack",
             visibility: "private",
             teamId: "T123",
             channelId: "D123",

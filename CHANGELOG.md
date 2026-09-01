@@ -1,4 +1,245 @@
 # Changelog
+## 0.194.0
+
+### Breaking Changes 🛠
+
+- (api) Use Location for conversation links by @dcramer in [#1747](https://github.com/getsentry/junior/pull/1747)
+
+### New Features ✨
+
+#### Dashboard
+
+- Move screenshots into e2e by @sentry-junior in [#1753](https://github.com/getsentry/junior/pull/1753)
+- Show range-aware runs and last run on task list by @sentry-junior in [#1750](https://github.com/getsentry/junior/pull/1750)
+- Show conversation cost on task runs by @sentry-junior in [#1749](https://github.com/getsentry/junior/pull/1749)
+
+### Bug Fixes 🐛
+
+- (chat) Hard-stop runaway tool loops per turn by @sentry-junior in [#1752](https://github.com/getsentry/junior/pull/1752)
+- (dashboard) Show chart buckets in local time by @sentry-junior in [#1754](https://github.com/getsentry/junior/pull/1754)
+
+### Internal Changes 🔧
+
+- (chat) Avoid repeated checkpoint history reads by @sentry-junior in [#1751](https://github.com/getsentry/junior/pull/1751)
+
+## 0.193.0
+
+### Breaking Changes 🛠
+
+- (chat) Add task, Plugin dispatch, and Agent invocation Sources by @dcramer in [#1737](https://github.com/getsentry/junior/pull/1737)
+
+### Bug Fixes 🐛
+
+- (event-tasks) Allow public task manage by id across channels by @sentry-junior in [#1746](https://github.com/getsentry/junior/pull/1746)
+
+## 0.192.0
+
+### New Features ✨
+
+#### Dashboard
+
+- Add people directory spend windows and deltas by @sentry-junior in [#1745](https://github.com/getsentry/junior/pull/1745)
+- Add 24h hourly view across reporting pages by @sentry-junior in [#1744](https://github.com/getsentry/junior/pull/1744)
+
+## 0.191.0
+
+### New Features ✨
+
+- (github) Match check suites by headBranch without PR API loads by @sentry-junior in [#1743](https://github.com/getsentry/junior/pull/1743)
+- (linear) Add teamKey match filter by @sentry-junior in [#1742](https://github.com/getsentry/junior/pull/1742)
+
+### Bug Fixes 🐛
+
+- (mcp) Reset dead sign-in state after auth errors by @sentry-junior in [#1740](https://github.com/getsentry/junior/pull/1740)
+
+### Internal Changes 🔧
+
+- (chat) Remove per-Turn delivery choice by @dcramer in [#1736](https://github.com/getsentry/junior/pull/1736)
+- (deps) Bump zod to 4.5.4 by @sentry-junior in [#1738](https://github.com/getsentry/junior/pull/1738)
+
+## 0.190.0
+
+### Breaking Changes 🛠
+
+- (chat) Add Resource event Source by @dcramer in [#1730](https://github.com/getsentry/junior/pull/1730)
+
+### New Features ✨
+
+- (gocd) Expand read-only pipeline tools by @sentry-junior in [#1734](https://github.com/getsentry/junior/pull/1734)
+
+### Internal Changes 🔧
+
+- (chat) Store Actor on the Turn by @dcramer in [#1735](https://github.com/getsentry/junior/pull/1735)
+
+## 0.189.0
+
+### New Features ✨
+
+- (gocd) Add read-only pipeline and stage tools by @sentry-junior in [#1570](https://github.com/getsentry/junior/pull/1570)
+
+### Bug Fixes 🐛
+
+#### Dashboard
+
+- Keep Memories nav active and drop legacy task redirect by @sentry-junior in [#1726](https://github.com/getsentry/junior/pull/1726)
+- Mount task details at /tasks/:taskId by @sentry-junior in [#1725](https://github.com/getsentry/junior/pull/1725)
+
+#### Other
+
+- (chat) Keep bare @mentions reviewable by @sentry-junior in [#1733](https://github.com/getsentry/junior/pull/1733)
+- (evals) Route behavior harness through production conversation work by @sentry-junior in [#1731](https://github.com/getsentry/junior/pull/1731)
+- (guardian) Allow ordinary reversible creates without product carve-outs by @sentry-junior in [#1729](https://github.com/getsentry/junior/pull/1729)
+
+### Internal Changes 🔧
+
+#### Chat
+
+- Use one Conversation Turn worker by @dcramer in [#1727](https://github.com/getsentry/junior/pull/1727)
+- Keep Location on AgentRun by @dcramer in [#1723](https://github.com/getsentry/junior/pull/1723)
+- Remove destination visibility from AgentRun by @dcramer in [#1722](https://github.com/getsentry/junior/pull/1722)
+- Store complete Conversation Location by @dcramer in [#1720](https://github.com/getsentry/junior/pull/1720)
+
+#### Other
+
+- (slack) Run system turns without webhook messages by @dcramer in [#1724](https://github.com/getsentry/junior/pull/1724)
+
+## 0.188.0
+
+### Bug Fixes 🐛
+
+- (chat) Ack-drop resource wakes missing Slack thread by @sentry-junior in [#1721](https://github.com/getsentry/junior/pull/1721)
+
+### Internal Changes 🔧
+
+#### Chat
+
+- Move Location into Source and Delivery by @dcramer in [#1719](https://github.com/getsentry/junior/pull/1719)
+- Store parent on Conversation directly by @dcramer in [#1718](https://github.com/getsentry/junior/pull/1718)
+
+## 0.187.0
+
+### Bug Fixes 🐛
+
+#### Chat
+
+- Unify task agent input by @sentry-junior in [#1716](https://github.com/getsentry/junior/pull/1716)
+- Deliver answers that mention [[NO_REPLY]] by @sentry-junior in [#1714](https://github.com/getsentry/junior/pull/1714)
+
+#### Other
+
+- (api) Resume turns as the user who started them by @dcramer in [#1703](https://github.com/getsentry/junior/pull/1703)
+
+### Internal Changes 🔧
+
+#### Chat
+
+- Pass Conversation Location into agent runs by @dcramer in [#1715](https://github.com/getsentry/junior/pull/1715)
+- Normalize resource events with local destinations by @dcramer in [#1713](https://github.com/getsentry/junior/pull/1713)
+
+## 0.186.0
+
+### Bug Fixes 🐛
+
+#### Dashboard
+
+- Show turn failure event ids by @sentry-junior in [#1710](https://github.com/getsentry/junior/pull/1710)
+- Lead model handoff rows with target model by @sentry-junior in [#1708](https://github.com/getsentry/junior/pull/1708)
+
+#### Other
+
+- (egress) Only remember shared installation headers by @sentry-junior in [#1711](https://github.com/getsentry/junior/pull/1711)
+- (resource-events) Let conversations own watch routing by @sentry-junior in [#1706](https://github.com/getsentry/junior/pull/1706)
+- (sandbox) Keep current sandbox, return building when not ready by @sentry-junior in [#1709](https://github.com/getsentry/junior/pull/1709)
+- (workspaces) Register core workspace snapshot resource events by @sentry-junior in [#1712](https://github.com/getsentry/junior/pull/1712)
+
+### Internal Changes 🔧
+
+#### Slack
+
+- Remove turn lifecycle parameters by @dcramer in [#1702](https://github.com/getsentry/junior/pull/1702)
+- Move turn lifecycle setup by @dcramer in [#1701](https://github.com/getsentry/junior/pull/1701)
+
+## 0.185.0
+
+### New Features ✨
+
+- (chat) Show specific turn failure reasons in the transcript by @sentry-junior in [#1697](https://github.com/getsentry/junior/pull/1697)
+- (code) Move code stats onto Code and person profiles by @sentry-junior in [#1690](https://github.com/getsentry/junior/pull/1690)
+
+### Bug Fixes 🐛
+
+#### Chat
+
+- Allow PR watch hints on web continues by @sentry-junior in [#1692](https://github.com/getsentry/junior/pull/1692)
+- Commit web replies before the visible message by @sentry-junior in [#1693](https://github.com/getsentry/junior/pull/1693)
+
+#### Other
+
+- (acp) Accept resource links in prompts by @gricha in [#1691](https://github.com/getsentry/junior/pull/1691)
+- (dashboard) Keep memories and tasks chrome stable while loading by @sentry-junior in [#1687](https://github.com/getsentry/junior/pull/1687)
+- (provider) Keep bounded provider error summaries in telemetry by @sentry-junior in [#1699](https://github.com/getsentry/junior/pull/1699)
+
+### Internal Changes 🔧
+
+#### Slack
+
+- Remove reply executor services by @dcramer in [#1698](https://github.com/getsentry/junior/pull/1698)
+- Use native Turn execution by @dcramer in [#1696](https://github.com/getsentry/junior/pull/1696)
+- Move resume into the Slack provider by @dcramer in [#1695](https://github.com/getsentry/junior/pull/1695)
+- Run Turns through the core runtime by @dcramer in [#1689](https://github.com/getsentry/junior/pull/1689)
+
+#### Other
+
+- (chat) Use native Turn execution for Conversation API by @dcramer in [#1682](https://github.com/getsentry/junior/pull/1682)
+- (egress) Simplify host installation credential cache by @sentry-junior in [#1700](https://github.com/getsentry/junior/pull/1700)
+- (warden) Disable code-review skill on PRs by @sentry-junior in [#1688](https://github.com/getsentry/junior/pull/1688)
+
+## 0.184.0
+
+### Breaking Changes 🛠
+
+- (acp) Mount ACP in every Junior app by @gricha in [#1678](https://github.com/getsentry/junior/pull/1678)
+
+### Bug Fixes 🐛
+
+- (slack) Put long reply chunks in one thread by @sentry-junior in [#1684](https://github.com/getsentry/junior/pull/1684)
+
+## 0.183.0
+
+### New Features ✨
+
+- (code) Add repository and code change analytics by @dcramer in [#1673](https://github.com/getsentry/junior/pull/1673)
+
+### Bug Fixes 🐛
+
+#### Dashboard
+
+- Shorten input token cache chart description by @sentry-junior in [#1675](https://github.com/getsentry/junior/pull/1675)
+- Keep task source tooltips short and wider by @sentry-junior in [#1680](https://github.com/getsentry/junior/pull/1680)
+
+#### Other
+
+- (github) Load check-suite PR match fields on demand by @sentry-junior in [#1683](https://github.com/getsentry/junior/pull/1683)
+
+### Internal Changes 🔧
+
+- (chat) Add native Turn execution by @dcramer in [#1679](https://github.com/getsentry/junior/pull/1679)
+- (dashboard) Split large app and route tests by @sentry-junior in [#1681](https://github.com/getsentry/junior/pull/1681)
+- (slack) Move Turn orchestration to provider layer by @dcramer in [#1567](https://github.com/getsentry/junior/pull/1567)
+
+## 0.182.0
+
+### New Features ✨
+
+- (acp) Support serverless remote sessions by @gricha in [#1589](https://github.com/getsentry/junior/pull/1589)
+- (dashboard) Render GFM tables in transcript markdown by @sentry-junior in [#1670](https://github.com/getsentry/junior/pull/1670)
+- (resource-events) Add exact match for watches and event tasks by @sentry-junior in [#1671](https://github.com/getsentry/junior/pull/1671)
+- (slack) Gate passive routing behind experimental flag by @sentry-junior in [#1674](https://github.com/getsentry/junior/pull/1674)
+
+### Bug Fixes 🐛
+
+- (skills) Keep Checks/Verification out of PR bodies by @sentry-junior in [#1672](https://github.com/getsentry/junior/pull/1672)
+
 ## 0.181.1
 
 ### Bug Fixes 🐛

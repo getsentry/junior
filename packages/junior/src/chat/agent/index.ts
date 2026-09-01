@@ -103,7 +103,7 @@ import {
   AuthorizationFlowDisabledError,
   AuthorizationPauseError,
 } from "@/chat/services/auth-pause";
-import { TurnSliceLimitExceededError } from "@/chat/services/turn-limit";
+import { isTurnExecutionLimitExceededError } from "@/chat/services/turn-limit";
 import {
   resolveConversationPrivacy,
   runWithConversationPrivacy,
@@ -111,7 +111,7 @@ import {
   toGenAiMessagesTraceAttributes,
   type ConversationPrivacy,
 } from "@/chat/conversation-privacy";
-import { resolveDestinationVisibility } from "@/chat/conversations/destination-visibility";
+import { getConversationStore } from "@/chat/db";
 import {
   RetryableDeliveryError,
   assertRunConsistency,
@@ -147,6 +147,21 @@ import {
 } from "@/chat/tools/handoff/tool";
 
 const AGENT_ABORT_SETTLE_GRACE_MS = 5_000;
+
+async function readRunConversationVisibility(
+  conversationId: string,
+): Promise<ConversationPrivacy | undefined> {
+  const conversationStore = getConversationStore();
+  const conversation = await conversationStore.get({ conversationId });
+  if (conversation?.visibility || !conversation?.parentConversationId) {
+    return conversation?.visibility;
+  }
+  return (
+    await conversationStore.get({
+      conversationId: conversation.parentConversationId,
+    })
+  )?.visibility;
+}
 
 /** Preserve delivery-error ownership across the agent generation boundary. */
 class AssistantMessageDeliveryError extends Error {
@@ -203,33 +218,34 @@ export async function executeAgentRun(
   if (!run.destination) {
     throw new TypeError("Assistant reply generation requires a destination");
   }
-  const destinationVisibility = await resolveDestinationVisibility({
-    destination: run.destination,
-    visibility: run.destinationVisibility,
-  });
+  const visibility = await readRunConversationVisibility(run.conversationId);
   const conversationPrivacy = resolveConversationPrivacy({
-    visibility: destinationVisibility,
+    visibility,
   });
-  const resolvedRun = destinationVisibility
-    ? {
-        ...run,
-        destinationVisibility,
-      }
-    : run;
   const credentialActor = run.credentialContext?.actor;
   const actor = actorFromRun(run);
   const userActor = actor && "userId" in actor ? actor : undefined;
   const runLogContext: LogContext = {
     conversationId: run.conversationId,
-    platform: run.source.platform,
+    platform:
+      run.source.kind === "slack" ||
+      run.source.kind === "web" ||
+      run.source.kind === "local"
+        ? run.source.kind
+        : undefined,
     messageConversationId:
-      run.source.platform === "slack"
+      run.source.kind === "slack"
         ? run.conversationId
-        : run.source.conversationId,
+        : run.source.kind === "web" || run.source.kind === "local"
+          ? run.source.conversationId
+          : run.conversationId,
     destinationName:
-      run.destination.platform === "slack"
-        ? run.destination.channelId
-        : run.destination.conversationId,
+      run.location?.channelId ??
+      (run.source.kind === "slack"
+        ? run.source.channelId
+        : run.source.kind === "web" || run.source.kind === "local"
+          ? run.source.conversationId
+          : run.conversationId),
     userId: userActor?.userId,
     userName: userActor?.userName,
     userEmail: userActor?.email,
@@ -249,7 +265,7 @@ export async function executeAgentRun(
   return withLogContext(runLogContext, () =>
     runWithConversationPrivacy(conversationPrivacy, () =>
       executeAgentRunInPrivacyContext(
-        resolvedRun,
+        run,
         conversationPrivacy,
         runLogContext,
         streamFn,
@@ -288,8 +304,6 @@ async function executeAgentRunInPrivacyContext(
     slackConversation: run.slackConversation,
     slackActionToken: run.slackActionToken,
     destination: run.destination,
-    publishExternally: run.publishExternally,
-    destinationVisibility: run.destinationVisibility,
     surface: run.surface,
     dispatch: run.dispatch,
     toolChannelId: run.toolChannelId,
@@ -385,9 +399,8 @@ async function executeAgentRunInPrivacyContext(
   const actor = actorFromRun(run);
   const surface = surfaceFromRun(run);
   const runSource = routing.source;
-  const slackSource = runSource.platform === "slack" ? runSource : undefined;
-  const slackDestination =
-    routing.destination.platform === "slack" ? routing.destination : undefined;
+  const slackSource = runSource.kind === "slack" ? runSource : undefined;
+  const slackChannelId = run.location?.channelId ?? slackSource?.channelId;
   const slackActor = actor?.platform === "slack" ? actor : undefined;
   const userInput = input.messageText;
   const credentialUserId = run.credentialContext
@@ -489,22 +502,20 @@ async function executeAgentRunInPrivacyContext(
         return text ? [text] : [];
       }) ?? [];
     if (!resumedFromSessionRecord || guardianIntentParts.length === 0) {
-      guardianIntentParts.push(userInput);
+      // Bare @mentions are normal Slack "continue this thread" nudges. After
+      // bot-mention strip the instruction is empty; keep a non-blank marker so
+      // action review can still run against thread evidence.
+      guardianIntentParts.push(userInput.trim() || "[empty]");
     }
     const currentUserIntent = (): string => guardianIntentParts.join("\n\n");
     resume = createResumeState({
       channelName: routing.slackConversation?.name,
       destination: routing.destination,
-      ...(routing.destinationVisibility
-        ? { destinationVisibility: routing.destinationVisibility }
+      ...(routing.dispatch?.id
+        ? { dispatchId: routing.dispatch.id }
         : undefined),
-      ...(routing.dispatch?.id ? { dispatchId: routing.dispatch.id } : undefined),
       durability,
       recordActiveMcpProviders,
-      publishExternally:
-        checkpoint.record?.publishExternally ??
-        routing.publishExternally ??
-        false,
       actor,
       runSource,
       conversationId,
@@ -620,7 +631,7 @@ async function executeAgentRunInPrivacyContext(
         conversationContext: input.conversationContext,
         context: {
           threadId: conversationId,
-          channelId: slackDestination?.channelId,
+          channelId: slackChannelId,
           actorId: slackActor?.userId,
           runId,
         },
@@ -771,7 +782,7 @@ async function executeAgentRunInPrivacyContext(
           target,
           metadata: {
             threadId: conversationId,
-            channelId: slackDestination?.channelId,
+            channelId: slackChannelId,
             actorId: slackActor?.userId,
             runId,
           },
@@ -1021,7 +1032,7 @@ async function executeAgentRunInPrivacyContext(
           conversationId,
           metadata: {
             threadId: conversationId,
-            channelId: slackDestination?.channelId,
+            channelId: slackChannelId,
             actorId: slackActor?.userId,
             runId,
           },
@@ -1187,6 +1198,20 @@ async function executeAgentRunInPrivacyContext(
           return {
             block: true,
             reason: `${exclusiveTool} must be the only tool call in its assistant message; reissue it alone`,
+          };
+        }
+        // Charge the durable turn total here. Exceptions become tool errors,
+        // so block + terminate and rethrow after the step settles.
+        try {
+          runResume.admitToolCall();
+        } catch (error) {
+          const limitError =
+            error instanceof Error ? error : new Error(String(error));
+          pendingPiHookError ??= limitError;
+          return {
+            block: true,
+            reason: limitError.message,
+            terminate: true,
           };
         }
         return undefined;
@@ -1428,6 +1453,11 @@ async function executeAgentRunInPrivacyContext(
                 );
                 throw pendingAuthPause;
               }
+              if (pendingPiHookError) {
+                const hookError = pendingPiHookError;
+                pendingPiHookError = undefined;
+                throw hookError;
+              }
               throw error;
             } finally {
               if (timeoutId) {
@@ -1604,7 +1634,10 @@ async function executeAgentRunInPrivacyContext(
 
               providerRetryAttempt += 1;
               await prepareRetry(providerRetry.messages);
-              logWarn("agent.turn.provider.retrying");
+              logWarn("agent.turn.provider.retrying", {
+                ...getProviderErrorAttributes(providerRetry.providerError),
+                "app.ai.provider_error.retry_attempt": providerRetryAttempt,
+              });
               await sleep(providerRetry.delayMs, signal);
               run = agent!.continue();
             }
@@ -1634,7 +1667,9 @@ async function executeAgentRunInPrivacyContext(
             : undefined),
           "app.ai.session.conversation_id": conversationId,
           "app.ai.turn.session_id": turnId,
-          ...(currentSliceId ? { "app.ai.turn.slice_id": currentSliceId } : undefined),
+          ...(currentSliceId
+            ? { "app.ai.turn.slice_id": currentSliceId }
+            : undefined),
           ...toGenAiMessagesTraceAttributes("gen_ai.input", inputMessages),
           ...(inputMessagesAttribute
             ? { "gen_ai.input.messages": inputMessagesAttribute }
@@ -1686,7 +1721,7 @@ async function executeAgentRunInPrivacyContext(
         : error;
     if (
       runError instanceof AuthPausePersistenceError ||
-      runError instanceof TurnSliceLimitExceededError
+      isTurnExecutionLimitExceededError(runError)
     ) {
       throw runError;
     }

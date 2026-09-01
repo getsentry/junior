@@ -20,10 +20,15 @@ Each matching task receives an independent idempotent agent dispatch. A failure
 for one task does not prevent dispatch attempts for other matching tasks; the
 ingress boundary still receives the aggregate failure for provider retry. Task
 dispatch identity binds the task, plugin namespace, and provider event key, so
-provider retries do not execute the same task twice. Distinct matching events
-are not silently dropped by a task-level quota. Task management is bound to the
-Slack channel or DM where the task was created. Threads in the same channel
-share event-task management; temporary resource watches remain thread-bound.
+provider retries do not execute the same task twice. A destination may still
+stop further event-task dispatches after too many automated turns with no user
+message. The Turn that hits the limit posts a plain notice, and later matching
+events stay quiet until a user message clears that pause.
+Listing stays bound to the
+destination where the task was created. Threads in that destination share the
+list. Update and delete also accept a public task by id from another destination
+in the same workspace. Private tasks stay local to their destination. Temporary
+resource watches remain thread-bound.
 Creation and delivery require single-workspace Slack mode so core can verify the
 team that owns provider events. Multi-workspace mode fails closed until plugins
 can provide a real provider-to-workspace binding. A task matched before a
@@ -32,12 +37,11 @@ events use the current stored task. Event tasks exist only while configured:
 deletion removes the stored task, and there is no pause state or separate
 event-task run history.
 
-The dispatched input uses plain automated-task framing. It names what changed,
-the stored instructions, the verified summary and details, and external text.
-The stored task text remains the instruction. The update and external text do
-not add instructions. Event-task dispatches set `replyAttribution` so
-destination replies show the same kind of footer note scheduled tasks do
-(`Event task · <trigger label>`). The footer does not expose raw event keys.
+The dispatched agent input uses shared framing from `task-input.ts`. See
+`chat/README.md` (Task agent input) for the section outline. The stored task
+text remains the instruction. Event text does not add instructions. Destination
+replies get `replyAttribution` (`Event task · <trigger label>`), matching
+scheduled-task footers. The footer does not expose raw event keys.
 
 Event tasks make the creator's connected credentials available by default when
 the work needs user-bound authorization. The creator may require system

@@ -16,6 +16,7 @@ import {
   getMemory,
   getMemoryStats,
   getMemoryTimeline,
+  getMemoryTimelineHours,
   InvalidMemoryCursorError,
   listMemories,
   MemoryNotFoundError,
@@ -44,9 +45,11 @@ export const memoryListResponseSchema = z
   })
   .strict();
 
+const memoryBucketSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}(T\d{2})?$/);
+
 const memoryDashboardDaySchema = z
   .object({
-    date: z.iso.date(),
+    date: memoryBucketSchema,
     personal: z.number().int().min(0),
     public: z.number().int().min(0),
   })
@@ -55,7 +58,7 @@ const memoryDashboardDaySchema = z
 const memoryCostDaySchema = z
   .object({
     costUsd: z.number().finite().nonnegative(),
-    date: z.iso.date(),
+    date: memoryBucketSchema,
     events: z.number().int().min(0),
   })
   .strict();
@@ -64,8 +67,11 @@ export const memoryDashboardResponseSchema = z
   .object({
     days: z.array(memoryDashboardDaySchema).length(90),
     extractionDays: z.array(memoryCostDaySchema).length(90),
+    extractionHours: z.array(memoryCostDaySchema).min(24).optional(),
     generatedAt: z.iso.datetime(),
+    hours: z.array(memoryDashboardDaySchema).min(24).optional(),
     recallDays: z.array(memoryCostDaySchema).length(90),
+    recallHours: z.array(memoryCostDaySchema).min(24).optional(),
     stats: z
       .object({
         active: z.number().int().min(0),
@@ -163,16 +169,33 @@ export function createMemoryApi(options: MemoryApiOptions): PluginRouteApp {
 
       try {
         if (isDashboard && isRead) {
-          const [stats, days, extractionDays, recallDays] = await Promise.all([
+          const [
+            stats,
+            days,
+            hours,
+            extractionDays,
+            extractionHours,
+            recallDays,
+            recallHours,
+          ] = await Promise.all([
             getMemoryStats(options.db, userId),
             getMemoryTimeline(options.db, userId, 90),
+            getMemoryTimelineHours(options.db, userId, 7 * 24),
             options.eventStats.costsByDay({
               days: 90,
               eventName: "memories_captured",
             }),
+            options.eventStats.costsByHour({
+              eventName: "memories_captured",
+              hours: 7 * 24,
+            }),
             options.eventStats.costsByDay({
               days: 90,
               eventName: "memories_recalled",
+            }),
+            options.eventStats.costsByHour({
+              eventName: "memories_recalled",
+              hours: 7 * 24,
             }),
           ]);
           const { private: personal, ...dashboardStats } = stats;
@@ -182,8 +205,14 @@ export function createMemoryApi(options: MemoryApiOptions): PluginRouteApp {
               personal,
             })),
             extractionDays,
+            extractionHours,
             generatedAt: new Date().toISOString(),
+            hours: hours.map(({ private: personal, ...day }) => ({
+              ...day,
+              personal,
+            })),
             recallDays,
+            recallHours,
             stats: { ...dashboardStats, personal },
           });
           return request.method === "HEAD"

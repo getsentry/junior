@@ -119,12 +119,13 @@ describe("conversation stats API", () => {
         visibility: "private",
       });
       await store.recordActivity({
-        conversationId: "scheduler:daily",
+        conversationId: "local:test:scheduler-daily",
+        destination: { platform: "local" as const, conversationId: "local:test:scheduler-daily" },
         source: "scheduler",
         nowMs: Date.parse("2026-06-15T10:00:00.000Z"),
       });
       await store.recordExecution({
-        conversationId: "scheduler:daily",
+        conversationId: "local:test:scheduler-daily",
         createdAtMs: Date.parse("2026-06-15T10:00:00.000Z"),
         execution: {
           runId: "turn-scheduler",
@@ -271,6 +272,18 @@ describe("conversation stats API", () => {
         deny: 1,
         requests: 3,
       });
+      expect(report.guardian.metricHours).toHaveLength(7 * 24);
+      expect(report.guardian.metricSixHours).toHaveLength(7 * 4);
+      expect(
+        report.guardian.metricHours?.find((hour) => hour.date === "2026-06-15T11"),
+      ).toEqual({
+        allow: 1,
+        ask: 1,
+        costUsd: 0.006,
+        date: "2026-06-15T11",
+        deny: 1,
+        requests: 3,
+      });
       expect(report.metricDays.at(-1)).toEqual(
         expect.objectContaining({
           cachedInputTokens: 300,
@@ -282,6 +295,23 @@ describe("conversation stats API", () => {
           tokens: 457,
         }),
       );
+      expect(report.metricHours).toHaveLength(7 * 24);
+      expect(report.metricSixHours).toHaveLength(7 * 4);
+      expect(report.metricHours?.at(-1)?.date).toBe("2026-06-15T12");
+      expect(
+        report.metricHours?.find((hour) => hour.date === "2026-06-15T11"),
+      ).toEqual(
+        expect.objectContaining({
+          conversations: expect.any(Number),
+          date: "2026-06-15T11",
+          durationMs: expect.any(Number),
+        }),
+      );
+      expect(
+        report.metricHours
+          ?.filter((hour) => hour.conversations > 0)
+          .reduce((sum, hour) => sum + hour.conversations, 0),
+      ).toBe(3);
     } finally {
       vi.useRealTimers();
       await fixture.close();

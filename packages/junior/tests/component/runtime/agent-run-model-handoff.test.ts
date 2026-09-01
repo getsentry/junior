@@ -646,8 +646,7 @@ describe("model handoff composition", () => {
 
   it("delivers only the tool-free assistant message after tool use", async () => {
     observations.progressTool = true;
-    const delivered: Array<{ text: string }> = [];
-    let deliveredMessage: AssistantMessage | undefined;
+    const delivered: AssistantMessage[] = [];
     const conversationId = "local:test:assistant-message-delivery";
 
     const outcome = await executeAgentRun({
@@ -656,16 +655,13 @@ describe("model handoff composition", () => {
       instruction: { text: "Check the details." },
       destination: { platform: "local", conversationId },
       source: createLocalSource(conversationId),
-      delivery: (message) => {
-        const text = getAssistantReplyText(message);
-        if (text) delivered.push({ text });
-        deliveredMessage = message;
-      },
+      delivery: (message) => void delivered.push(message),
     });
 
     expect(outcome.status).toBe("completed");
-    expect(delivered).toEqual([{ text: "Handoff model completed it." }]);
-    expect(deliveredMessage).toMatchObject({
+    const [reply] = delivered;
+    expect(getAssistantReplyText(reply!)).toBe("Handoff model completed it.");
+    expect(reply).toMatchObject({
       role: "assistant",
       stopReason: "stop",
     });

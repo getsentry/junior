@@ -33,18 +33,19 @@ import {
   RetryableDeliveryError,
   type AgentDurability,
 } from "@/chat/agent/types";
-import { TurnSliceLimitExceededError } from "@/chat/services/turn-limit";
+import {
+  TurnSliceLimitExceededError,
+  assertTurnToolCallLimit,
+  isTurnExecutionLimitExceededError,
+} from "@/chat/services/turn-limit";
 import type { PluginTurnContext } from "@/chat/plugins/prompt";
-import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 
 interface ResumeStateArgs {
   channelName?: string;
   destination: Destination;
-  destinationVisibility?: ConversationPrivacy;
   dispatchId?: string;
   durability: AgentDurability;
   recordActiveMcpProviders: () => Promise<void>;
-  publishExternally: boolean;
   actor?: Actor;
   runSource: Source;
   conversationId: string;
@@ -99,6 +100,9 @@ export function createResumeState(args: ResumeStateArgs) {
   let resumeMessages: PiMessage[] = [];
   let turnContexts: PluginTurnContext[] = [];
   let turnStartMessageIndex: number | undefined;
+  // Durable across slices and history replacement; not derived from live messages.
+  let cumulativeToolCallCount =
+    args.checkpoint.record?.cumulativeToolCallCount ?? 0;
   let advancedPastResume = !args.checkpoint.resumed;
   let resumedBoundaryKey = "";
 
@@ -118,10 +122,9 @@ export function createResumeState(args: ResumeStateArgs) {
     conversationId: args.conversationId,
     turnId: args.turnId,
     channelName: args.channelName,
+    cumulativeToolCallCount,
     destination: args.destination,
-    destinationVisibility: args.destinationVisibility,
     dispatchId: args.dispatchId,
-    publishExternally: args.publishExternally,
     source: args.runSource,
     actor: args.actor,
     surface: args.surface,
@@ -142,6 +145,12 @@ export function createResumeState(args: ResumeStateArgs) {
     },
     setBeforeMessageCount(count: number): void {
       beforeMessageCount = count;
+    },
+    /** Admit one tool call against the durable turn total, or throw the limit. */
+    admitToolCall(): void {
+      const next = cumulativeToolCallCount + 1;
+      assertTurnToolCallLimit(next, botConfig.maxToolCallsPerTurn);
+      cumulativeToolCallCount = next;
     },
     setTurnContexts(contexts: PluginTurnContext[]): void {
       turnContexts = contexts;
@@ -253,13 +262,15 @@ export function createResumeState(args: ResumeStateArgs) {
         return {
           status: "awaiting_auth",
           providerDisplayName: pause.providerDisplayName,
-          ...(pause.requestText ? { requestText: pause.requestText } : undefined),
+          ...(pause.requestText
+            ? { requestText: pause.requestText }
+            : undefined),
           ...(usage ? { usage } : undefined),
         };
       } catch (error) {
         if (
           error instanceof AuthPausePersistenceError ||
-          error instanceof TurnSliceLimitExceededError
+          isTurnExecutionLimitExceededError(error)
         ) {
           throw error;
         }

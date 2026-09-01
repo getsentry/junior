@@ -20,9 +20,6 @@ import {
 import type { ConversationWorkerContext } from "@/chat/task-execution/worker";
 import { neverRunAgentRunner } from "../fixtures/agent-runner";
 import { createConfiguredJuniorSqlFixture } from "../fixtures/sql";
-import {
-  createLocalSource,
-} from "@sentry/junior-plugin-api";
 const PARENT_CONVERSATION_ID = "local:test:component-parent-agent";
 const DESTINATION = {
   conversationId: PARENT_CONVERSATION_ID,
@@ -31,11 +28,9 @@ const DESTINATION = {
 const INVOCATION_INPUT = {
   actor: { name: "parent-agent", platform: "system" } as const,
   destination: DESTINATION,
-  destinationVisibility: "private" as const,
   input: "Summarize the durable task.",
   parentConversationId: PARENT_CONVERSATION_ID,
   reasoningLevel: "medium" as const,
-  source: createLocalSource(PARENT_CONVERSATION_ID),
 };
 
 async function prepareParentConversation() {
@@ -76,7 +71,7 @@ describe("agent invocation worker", () => {
         actor: INVOCATION_INPUT.actor,
         conversationId: created.childConversationId,
         destination: DESTINATION,
-        piMessages: ([
+        piMessages: [
           {
             role: "assistant",
             content: [{ type: "text", text: "partial output" }],
@@ -100,16 +95,14 @@ describe("agent invocation worker", () => {
             stopReason: "stop",
             timestamp: 2,
           },
-        ] as PiMessage[]),
+        ] as PiMessage[],
         turnId,
         sliceId: 1,
-        source: INVOCATION_INPUT.source,
+        source: { kind: "agent_invocation" },
         state: "running",
         surface: "internal",
       });
-      const worker = createAgentInvocationWorker({
-        agentRunner: neverRunAgentRunner(),
-      });
+      const worker = createAgentInvocationWorker(neverRunAgentRunner());
       const context = {
         attempt: {
           ack: vi.fn(),
@@ -120,7 +113,6 @@ describe("agent invocation worker", () => {
         },
         checkIn: vi.fn(),
         conversationId: created.childConversationId,
-        publishExternally: false,
         shouldYield: () => false,
       } satisfies ConversationWorkerContext;
 
@@ -166,7 +158,7 @@ describe("agent invocation worker", () => {
       const run = vi.fn(async () => {
         throw new Error("agent runner unavailable");
       });
-      const worker = createAgentInvocationWorker({ agentRunner: { run } });
+      const worker = createAgentInvocationWorker({ run });
       const message = buildAgentInvocationInboundMessage(created);
       const context = (isFinalAttempt: boolean, ack: () => Promise<void>) =>
         ({
@@ -179,7 +171,6 @@ describe("agent invocation worker", () => {
           },
           checkIn: vi.fn(),
           conversationId: created.childConversationId,
-          publishExternally: false,
           shouldYield: () => false,
         }) satisfies ConversationWorkerContext;
       const firstAck = vi.fn(async () => {});
@@ -219,9 +210,7 @@ describe("agent invocation worker", () => {
         idempotencyKey: "invalid-child-1",
       });
       const ack = vi.fn();
-      const worker = createAgentInvocationWorker({
-        agentRunner: neverRunAgentRunner(),
-      });
+      const worker = createAgentInvocationWorker(neverRunAgentRunner());
       const context = {
         attempt: {
           ack,
@@ -234,7 +223,6 @@ describe("agent invocation worker", () => {
         checkIn: vi.fn(),
         conversationId: created.childConversationId,
         destination: DESTINATION,
-        publishExternally: false,
         shouldYield: () => false,
       } satisfies ConversationWorkerContext;
 

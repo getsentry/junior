@@ -2,9 +2,9 @@ import type { User } from "@sentry/junior-plugin-api";
 import type { WebActor } from "@/chat/actor";
 import {
   webActorFromEmail,
-  appendAndEnqueueApiConversationMessage,
-  createAndEnqueueApiConversation,
-} from "@/chat/api-turns/work";
+  appendAndEnqueueWebMessage,
+  createAndEnqueueConversation,
+} from "@/chat/conversations/web-input";
 import { getConversationStore, getDb } from "@/chat/db";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
 import { throwApiError } from "../http";
@@ -29,7 +29,7 @@ export async function createConversationForViewer(
   body: CreateConversationBody,
 ): Promise<AcceptedConversationMessage> {
   try {
-    return await createAndEnqueueApiConversation(
+    return await createAndEnqueueConversation(
       {
         actor: actorFromViewer(viewer),
         idempotencyKey: body.idempotencyKey,
@@ -59,12 +59,12 @@ export async function appendConversationMessageForViewer(
     throwApiError(404, "Conversation not found.");
   }
   const destinationPlatform = conversation.destination?.platform;
-  const acceptsApiMessages =
+  const acceptsWebMessages =
     (destinationPlatform === "local" &&
       conversationId.startsWith("local:web:")) ||
     destinationPlatform === "slack";
-  if (!acceptsApiMessages) {
-    throwApiError(409, "Conversation does not accept API messages.");
+  if (!acceptsWebMessages) {
+    throwApiError(409, "Conversation does not accept web messages.");
   }
 
   const access = await readConversationAccessFromSql(
@@ -77,7 +77,7 @@ export async function appendConversationMessageForViewer(
   }
 
   try {
-    return await appendAndEnqueueApiConversationMessage(
+    return await appendAndEnqueueWebMessage(
       {
         actor: actorFromViewer(viewer),
         conversationId,

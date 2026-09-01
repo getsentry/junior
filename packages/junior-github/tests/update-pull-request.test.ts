@@ -49,7 +49,7 @@ describe("updatePullRequest", () => {
     }
   });
 
-  it("updates mutable pull request fields and preserves Junior-owned body metadata", async () => {
+  it("updates mutable pull request fields and preserves runtime-owned body metadata", async () => {
     process.env.GITHUB_WEBHOOK_SECRET = "test-secret";
     const { fetch, tool } = toolContext();
 

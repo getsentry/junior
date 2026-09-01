@@ -88,6 +88,7 @@ function LocationDetail(props: { detail: LocationDetailReport }) {
         />
       </div>
 
+      {/* TODO: add a range selector and plot activityHours on 24h. */}
       <LocationActivityChart days={detail.activityDays} />
 
       <Card>

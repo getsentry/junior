@@ -1,5 +1,4 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createSlackSource } from "@sentry/junior-plugin-api";
 import {
   createOrGetDispatch,
   getDispatchConversationId,
@@ -38,10 +37,7 @@ async function createDispatch(idempotencyKey: string) {
         destinationVisibility: "private",
         idempotencyKey,
         input: "Post the scheduled digest.",
-        source: createSlackSource({
-          ...destination,
-          visibility: "private",
-        }),
+        source: { kind: "scheduled_task" },
       },
       plugin: "scheduler",
     })
@@ -66,7 +62,6 @@ function createContext(
     checkIn: vi.fn(async () => true),
     conversationId: message.conversationId,
     destination,
-    publishExternally: true,
     shouldYield: () => false,
     ...overrides,
   };

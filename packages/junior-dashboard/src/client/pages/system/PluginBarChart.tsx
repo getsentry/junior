@@ -5,6 +5,8 @@ import {
   ChartCategoryLabels,
   ChartSvg,
   createActivityChartLayout,
+  formatActivityCategoryTooltipLabel,
+  isActivityHourBucket,
 } from "../../components/charts/ActivityChart";
 import { ChartLegend } from "../../components/charts/ChartLegend";
 import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
@@ -28,7 +30,7 @@ export function PluginBarChart(props: {
 }) {
   const { widget } = props;
   const categories = widget.timeRangeDays
-    ? widget.categories.slice(-supportedRange(widget, props.range))
+    ? widget.categories.slice(-visibleCategoryCount(widget, props.range))
     : widget.categories;
   const seriesFormat = commonSeriesFormat(widget);
   const layout = createActivityChartLayout(250, {
@@ -116,10 +118,10 @@ export function PluginBarChart(props: {
                 <Tooltip
                   content={`${series.label}: ${formatted}`}
                   key={`${category.id}:${series.key}`}
-                  label={category.label}
+                  label={formatActivityCategoryTooltipLabel(category.label)}
                 >
                   <rect
-                    aria-label={`${category.label}, ${series.label}: ${formatted}`}
+                    aria-label={`${formatActivityCategoryTooltipLabel(category.label)}, ${series.label}: ${formatted}`}
                     fill={
                       series.tone
                         ? toneColors[series.tone]
@@ -144,7 +146,6 @@ export function PluginBarChart(props: {
           )}
           <ChartCategoryLabels
             categories={categories}
-            formatLabel={formatCategoryLabel}
             layout={layout}
             xPosition={(index) => layout.left + index * step + step / 2}
           />
@@ -154,20 +155,36 @@ export function PluginBarChart(props: {
   );
 }
 
-function supportedRange(widget: Widget, range: TimeRangeDays | undefined) {
-  const availableRanges = widget.timeRangeDays ?? [];
+/** Trailing hour categories for a 24h plugin chart window. */
+const HOURLY_CATEGORY_COUNT = 24;
+
+/**
+ * How many trailing categories to show for the page range.
+ * `1` means last 24 hours: take 24 hour buckets when present, else the
+ * shortest multi-day window (daily widgets cannot plot true hourly bars).
+ */
+function visibleCategoryCount(
+  widget: Widget,
+  range: TimeRangeDays | undefined,
+): number {
+  const availableRanges = (widget.timeRangeDays ?? []) as TimeRangeDays[];
+  const firstCategory = widget.categories[0];
+  const firstKey = firstCategory?.id || firstCategory?.label || "";
+  const hasHourBuckets = isActivityHourBucket(firstKey);
+  if (range === 1) {
+    if (hasHourBuckets && availableRanges.includes(1)) {
+      return HOURLY_CATEGORY_COUNT;
+    }
+    // TODO: ship hour categories from daily-only plugin widgets so 24h can
+    // plot true hourly bars instead of falling back to 7d/30d day series.
+    if (availableRanges.includes(7)) return 7;
+    return availableRanges.includes(30) ? 30 : (availableRanges[0] ?? 30);
+  }
   if (range && availableRanges.includes(range)) return range;
   return availableRanges.includes(30) ? 30 : (availableRanges[0] ?? 30);
 }
 
-function formatCategoryLabel(label: string): string {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(label)) return label;
-  return new Date(`${label}T00:00:00.000Z`).toLocaleDateString(undefined, {
-    day: "numeric",
-    month: "short",
-    timeZone: "UTC",
-  });
-}
+
 
 function formatChartNumber(value: number): string {
   return String(Number(value.toPrecision(12)));

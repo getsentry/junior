@@ -80,20 +80,23 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
       .map((message) => extractAssistantText(message))
       .join("\n\n"),
   ).trim();
-  const exactNoReplyMarker = isNoReplyMarker(rawPrimaryText);
-  const mixedNoReplyMarker =
-    !exactNoReplyMarker && containsNoReplyMarker(rawPrimaryText);
-  const noReplyRequested = exactNoReplyMarker || mixedNoReplyMarker;
-  const primaryText = noReplyRequested
-    ? ""
-    : terminalAssistantMessages
-        .map((message) => decideReply(message))
-        .filter(
-          (output): output is { kind: "deliver"; text: string } =>
-            output.kind === "deliver",
-        )
-        .map((output) => output.text)
-        .join("\n\n");
+  const primaryText = terminalAssistantMessages
+    .map((message) => decideReply(message))
+    .filter(
+      (output): output is { kind: "deliver"; text: string } =>
+        output.kind === "deliver",
+    )
+    .map((output) => output.text)
+    .join("\n\n");
+  // Silence only for exact whole-message markers. Tool-call suppress is not a
+  // no-reply. Mixed marker + prose still delivers.
+  const terminalTexts = terminalAssistantMessages.map((message) =>
+    sanitizeAssistantText(extractAssistantText(message)),
+  );
+  const noReplyRequested =
+    !primaryText &&
+    terminalTexts.some((text) => isNoReplyMarker(text)) &&
+    terminalTexts.every((text) => !text || isNoReplyMarker(text));
 
   const toolErrorCount = toolResults.filter((result) => result.isError).length;
   const reactionPerformed = toolResults.some(
@@ -115,7 +118,7 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
       : undefined;
   const isProviderError = stopReason === "error";
 
-  if (exactNoReplyMarker) {
+  if (noReplyRequested) {
     const markerCategory = reactionPerformed ? "reaction" : "none";
     const markerAttributes = {
       "app.ai.no_reply_marker": true,
@@ -126,7 +129,7 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
     if (!isProviderError) {
       logInfo("ai.no_reply_marker.accepted", markerAttributes);
     }
-  } else if (mixedNoReplyMarker) {
+  } else if (containsNoReplyMarker(rawPrimaryText)) {
     logWarn("ai.no_reply_marker.mixed_text", {
       "app.ai.no_reply_marker": true,
       "app.ai.no_reply_marker_mode": "mixed",

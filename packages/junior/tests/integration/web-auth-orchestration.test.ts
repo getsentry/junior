@@ -1,16 +1,17 @@
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { stopApiConversationTurn } from "@/chat/api-turns/stop";
-import { apiTurnIdForMessage } from "@/chat/api-turns/work";
+import { stopConversationTurn } from "@/chat/conversations/stop";
+import { conversationTurnIdForMessage } from "@/chat/conversations/web-input";
 import { getLatestMcpAuthSessionForUserProvider } from "@/chat/mcp/auth-store";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { listTurnSummaries } from "@/chat/task-execution/checkpoint";
 import {
-  closeApiTurnWorkFixture,
-  createConversationWorkWebHarness,
-} from "../fixtures/api-turn";
+  closeConversationFixture,
+  createConversationWebHarness,
+} from "../fixtures/conversation";
 import {
   completeLatestMcpAuth,
+  expectMcpAuthParked,
   expectMcpAuthCleared,
   expectMcpAuthCredentialsStored,
   expectWebMcpAuthParked,
@@ -59,16 +60,16 @@ describe("web auth orchestration", () => {
   });
 
   afterEach(async () => {
-    await closeApiTurnWorkFixture();
+    await closeConversationFixture();
     await pluginApp?.cleanup();
     pluginApp = undefined;
     process.env = { ...ORIGINAL_ENV };
   });
 
-  it("parks a web turn for MCP auth, exposes the prompt, and resumes after OAuth", async () => {
-    const q = await createConversationWorkWebHarness({
-      modelStream: streamMcpSearchAndCall("Eval Auth tool completed."),
-    });
+  it("parks a web Turn for MCP auth, shows the prompt, and resumes after OAuth", async () => {
+    const q = await createConversationWebHarness(
+      streamMcpSearchAndCall("Eval Auth tool completed."),
+    );
     const started = await q.start({
       idempotencyKey: "web-auth-park-resume-1",
       message: "use eval-auth and confirm the connection",
@@ -102,10 +103,52 @@ describe("web auth orchestration", () => {
     );
   });
 
-  it("supersedes an auth-parked web turn and clears the dashboard prompt", async () => {
-    const q = await createConversationWorkWebHarness({
-      modelStream: streamMcpSearch("Eval Auth is connected."),
+  it("resumes a web Turn as the user who started it", async () => {
+    const q = await createConversationWebHarness(
+      streamMcpSearchAndCall("Eval Auth tool completed."),
+    );
+    const conversationId = "slack:CAPI123:1787718000.000001";
+    await q.conversationStore.recordActivity({
+      actor: {
+        email: "root@example.com",
+        platform: "slack",
+        slackUserId: "UAPIROOT",
+        teamId: "TAPIROOT",
+      },
+      conversationId,
+      destination: {
+        channelId: "CAPI123",
+        platform: "slack",
+        teamId: "TAPIROOT",
+      },
+      source: "slack",
+      visibility: "private",
     });
+    await q.continue({
+      conversationId,
+      idempotencyKey: "web-auth-park-resume-1",
+      message: "use eval-auth and confirm the connection",
+    });
+    await q.drain();
+    await expectMcpAuthParked({
+      actorId: q.actor.userId,
+      conversationId,
+    });
+
+    await completeLatestMcpAuth({
+      userId: q.actor.userId,
+      agentRunner: q.agentRunner,
+      conversationWorkQueue: q.queue,
+    });
+    await q.drain();
+
+    expect(q.agentRuns.map((run) => run.actor)).toEqual([q.actor, q.actor]);
+  });
+
+  it("supersedes an auth-paused web Turn and clears the prompt", async () => {
+    const q = await createConversationWebHarness(
+      streamMcpSearch("Eval Auth is connected."),
+    );
     const started = await q.start({
       idempotencyKey: "web-auth-supersede-1",
       message: "connect eval-auth first",
@@ -115,7 +158,7 @@ describe("web auth orchestration", () => {
       harness: q,
       conversationId: started.conversationId,
     });
-    const parkedTurnId = apiTurnIdForMessage(started.messageId);
+    const parkedTurnId = conversationTurnIdForMessage(started.messageId);
 
     q.setModelStream(streamScript("Answered without waiting for auth."));
     const followUp = await q.continue({
@@ -132,7 +175,7 @@ describe("web auth orchestration", () => {
           state: "abandoned",
         }),
         expect.objectContaining({
-          turnId: apiTurnIdForMessage(followUp.messageId),
+          turnId: conversationTurnIdForMessage(followUp.messageId),
           state: "completed",
           surface: "api",
         }),
@@ -160,9 +203,9 @@ describe("web auth orchestration", () => {
   });
 
   it("stops queued and auth-paused web Turns without process state", async () => {
-    const q = await createConversationWorkWebHarness({
-      modelStream: streamMcpSearch("This response must not run."),
-    });
+    const q = await createConversationWebHarness(
+      streamMcpSearch("This response must not run."),
+    );
     const started = await q.start({
       idempotencyKey: "web-auth-stop-1",
       message: "connect eval-auth first",
@@ -172,7 +215,7 @@ describe("web auth orchestration", () => {
       harness: q,
       conversationId: started.conversationId,
     });
-    const parkedTurnId = apiTurnIdForMessage(started.messageId);
+    const parkedTurnId = conversationTurnIdForMessage(started.messageId);
 
     await q.continue({
       conversationId: started.conversationId,
@@ -180,7 +223,7 @@ describe("web auth orchestration", () => {
       message: "cancel this queued follow-up",
     });
     await expect(
-      stopApiConversationTurn({
+      stopConversationTurn({
         conversationId: started.conversationId,
         conversationStore: q.conversationStore,
         queue: q.queue,
@@ -203,7 +246,7 @@ describe("web auth orchestration", () => {
     ).resolves.toHaveProperty("authorization");
 
     await expect(
-      stopApiConversationTurn({
+      stopConversationTurn({
         conversationId: started.conversationId,
         conversationStore: q.conversationStore,
         queue: q.queue,
@@ -228,9 +271,9 @@ describe("web auth orchestration", () => {
   });
 
   it("does not resume a superseded web auth turn after a late OAuth callback", async () => {
-    const q = await createConversationWorkWebHarness({
-      modelStream: streamMcpSearch("Eval Auth is connected."),
-    });
+    const q = await createConversationWebHarness(
+      streamMcpSearch("Eval Auth is connected."),
+    );
     const started = await q.start({
       idempotencyKey: "web-auth-late-oauth-1",
       message: "connect eval-auth first",
@@ -281,7 +324,7 @@ describe("web auth orchestration", () => {
     await expect(listTurnSummaries(started.conversationId)).resolves.toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          turnId: apiTurnIdForMessage(started.messageId),
+          turnId: conversationTurnIdForMessage(started.messageId),
           state: "abandoned",
         }),
       ]),

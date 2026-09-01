@@ -295,7 +295,7 @@ const TOOL_POLICY_RULES = [
   "- When a tool result includes a subscription, those events are already watched; do not call watchResourceEvents for them. When a tool result includes a subscribable resource with suggestedEvents, use watchResourceEvents only for those remaining events that serve the current intent. If suggestedEvents is empty or omitted, do not invent a watch. Do not create scheduled polling tasks for events a watch can deliver. Write a concise intent summary, and tell the user when the temporary watch expires. Stop only the requested watch by id unless the user explicitly asks to stop every watch in the thread.",
   "- Use createEventTask only when the user explicitly asks for an event task or durable whenever-this-happens-do-X automation. Ordinary watch, notify, and tell-me-when requests use watchResourceEvents. When an event task's resource and events are known, create it without redundant confirmation.",
   "- Event tasks make the task creator's connected credentials available by default when the requested work needs user-bound authorization. Do not ask for separate confirmation merely to use credentials needed for the requested work. On creation, omit credentialMode for the creator default and set system only when the creator explicitly requires it. For later changes, creator always means the task's original createdBy actor, never the current requester. If the requester is not that creator, do not attempt to enable creator credential use or suggest that confirmation could authorize it.",
-  "- Event tasks are managed for the current Slack channel or DM, not one thread. When listing them, use createdBy to explain creator-only credential changes and warn when triggerAvailable is false; an unavailable task remains stored but cannot receive events until its plugin event is enabled again.",
+  "- Event tasks list for the current destination, not one thread. Public tasks can also be updated or deleted by task id from another destination in the same workspace. When listing them, use createdBy to explain creator-only credential changes and warn when triggerAvailable is false; an unavailable task remains stored but cannot receive events until its plugin event is enabled again.",
   "- Scheduled tasks make the task creator's connected credentials available by default when the requested work needs user-bound authorization. Do not ask for separate confirmation merely to use credentials needed for the requested work. On creation, omit credential_mode for the creator default and set system only when the creator explicitly requires it. For later changes, creator always means the task's original created_by actor, never the current requester. If the requester is not that creator, do not attempt to enable creator credential use or suggest that confirmation could authorize it.",
   "- For code changes, debugging or root-cause analysis, broad refactors, and software architecture decisions, use `handoff` before substantive analysis only when it offers a profile that better matches the task. Do not switch merely because the task involves code.",
   "- Run `jr-rpc config get|set|unset|list` for provider defaults and `jr-rpc plugins list` for installed plugin introspection as standalone bash commands; do not chain them with `cd`, `&&`, pipes, or provider commands.",
@@ -381,7 +381,7 @@ function buildOutputSection(platform: PromptPlatform): string {
     return [
       `<output format="markdown">`,
       "- Start with the answer or result, not internal process narration.",
-      "- Use concise Markdown suitable for terminal output: short paragraphs, bullets, links, and fenced code blocks when helpful.",
+      "- Use concise Markdown suitable for terminal and web output: short paragraphs, bullets, links, fenced code blocks, and GFM tables when a grid is clearer than bullets.",
       "- End every turn with a final user-facing response.",
       "</output>",
     ].join("\n");
@@ -442,16 +442,16 @@ function buildRuntimeSection(params: {
 }
 
 function formatSourceLines(source: Source): string[] {
-  switch (source.platform) {
+  switch (source.kind) {
     case "web":
     case "local":
       return [
-        `- source.platform: ${source.platform}`,
+        `- source.kind: ${source.kind}`,
         `- source.conversation_id: ${escapeXml(source.conversationId)}`,
       ];
     case "slack":
       return [
-        "- source.platform: slack",
+        "- source.kind: slack",
         `- source.team_id: ${escapeXml(source.teamId)}`,
         `- source.channel_id: ${escapeXml(source.channelId)}`,
         ...(source.messageTs
@@ -461,6 +461,18 @@ function formatSourceLines(source: Source): string[] {
           ? [`- source.thread_ts: ${escapeXml(source.threadTs)}`]
           : []),
       ];
+    case "resource_event":
+      return [
+        "- source.kind: resource_event",
+        `- source.namespace: ${escapeXml(source.namespace)}`,
+        `- source.identifier: ${escapeXml(source.identifier)}`,
+        `- source.event_type: ${escapeXml(source.eventType)}`,
+      ];
+    case "scheduled_task":
+    case "event_task":
+    case "plugin_dispatch":
+    case "agent_invocation":
+      return [`- source.kind: ${source.kind}`];
   }
 }
 
@@ -690,11 +702,8 @@ const STATIC_SYSTEM_PROMPTS: Record<PromptPlatform, string> = {
   slack: buildStaticSystemPrompt("slack"),
 };
 
-/** Return byte-stable platform instructions shared by every conversation and turn. */
-export function buildSystemPrompt(params: { source: Source }): string {
-  // web/dashboard turns use the local (non-Slack) instruction surface.
-  const platform: PromptPlatform =
-    params.source.platform === "slack" ? "slack" : "local";
+/** Return the fixed instructions shared by every Conversation and Turn. */
+export function buildSystemPrompt(platform: PromptPlatform): string {
   return STATIC_SYSTEM_PROMPTS[platform];
 }
 

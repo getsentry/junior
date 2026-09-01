@@ -28,6 +28,10 @@ import {
   workspaceDraftBody,
 } from "./workspaceDraft";
 
+// TODO: support 24h once junior_stats can store hour keys (date column is day-only).
+/** Workspace switch stats are daily counters only. */
+const WORKSPACE_RANGE_OPTIONS: TimeRangeDays[] = [7, 30, 90];
+
 /** Create or edit one Workspace at a stable dashboard route. */
 export function WorkspaceFormPage() {
   const { workspaceId } = useParams();
@@ -117,7 +121,11 @@ export function WorkspaceFormPage() {
               : "Name the recipe, choose repositories, and optionally add a one-time setup script."
           }
           {...(editing
-            ? { onRangeChange: setRange, range }
+            ? {
+                onRangeChange: setRange,
+                range,
+                rangeOptions: WORKSPACE_RANGE_OPTIONS,
+              }
             : {})}
           title={
             editing

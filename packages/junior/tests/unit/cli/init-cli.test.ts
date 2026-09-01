@@ -32,10 +32,6 @@ function removeExampleOnlyServerConfig(source: string): string {
   return normalizeText(
     source
       .replace(
-        '  experimental: { acp: process.env.NODE_ENV === "development" },\n',
-        "",
-      )
-      .replace(
         /  \{\n    exampleDashboardAuthRequired,\n    exampleDashboardComponentGallery,\n    exampleDashboardMockConversations,\n  \},\n/,
         "",
       )

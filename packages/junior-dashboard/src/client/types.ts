@@ -8,6 +8,8 @@ import type {
   ActorIdentity,
   ConversationStatsReport,
   ConversationSummaryReport,
+  ConversationTurnFailureCode,
+  ConversationTurnFailureReason,
 } from "@sentry/junior/api/schema";
 import type { ConversationDetailReport } from "@sentry/junior/api/schema";
 import type { ConversationEventPresentation } from "@sentry/junior-plugin-api";
@@ -128,7 +130,10 @@ export type TranscriptViewMessage = {
     reasoningLevel: string;
     source: "configured" | "inherited" | "router";
   };
-  outcome?: "error" | "delivery_failed";
+  eventId?: string;
+  failureCode?: ConversationTurnFailureCode;
+  failureReason?: ConversationTurnFailureReason;
+  sentryEventUrl?: string;
   parts: TranscriptViewPart[];
   role: "assistant" | "system" | "tool" | "user";
   source?: "slack" | "web";
@@ -153,9 +158,9 @@ export type Conversation = {
   lastProgressAt: string;
   lastSeenAt: string;
   locationId?: string;
+  locationUrl?: string;
   actorIdentity?: ConversationSummaryReport["actorIdentity"];
   sentryTraceUrl?: string;
-  sourceUrl?: string;
   startedAt: string;
   status: ConversationSummaryReport["status"];
   surface: ConversationSummaryReport["surface"];

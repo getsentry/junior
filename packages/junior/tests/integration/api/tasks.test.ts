@@ -1,3 +1,4 @@
+import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { describe, expect, test } from "vitest";
 import {
@@ -17,6 +18,7 @@ import {
 import { saveScheduledTask } from "@/chat/scheduled-tasks/tasks";
 import type { ScheduledTask } from "@/chat/scheduled-tasks/types";
 import { recordTaskExecution } from "@/chat/tasks/execution-stats";
+import { juniorConversations } from "@/db/schema/conversations";
 import { createConfiguredJuniorSqlFixture } from "../../fixtures/sql";
 
 function authenticatedApi(email: string) {
@@ -112,6 +114,17 @@ describe("Tasks API", () => {
       const eventRunAtMs = yesterdayUtcMs - 12 * 60 * 60 * 1000;
       const scheduledRun1AtMs = yesterdayUtcMs + 12 * 60 * 60 * 1000;
       const scheduledRun2AtMs = yesterdayUtcMs + 13 * 60 * 60 * 1000;
+      const runWindows = (...runAtMs: number[]) => {
+        const dayMs = 24 * 60 * 60 * 1000;
+        const countSince = (agoMs: number) =>
+          runAtMs.filter((value) => value >= nowMs - agoMs).length;
+        return {
+          1: countSince(1 * dayMs),
+          7: countSince(7 * dayMs),
+          30: countSince(30 * dayMs),
+          90: countSince(90 * dayMs),
+        };
+      };
       const startDate = todayUtc.toISOString().slice(0, 10);
       const scheduledTask: ScheduledTask = {
         id: "sched_tasks_api",
@@ -239,6 +252,22 @@ describe("Tasks API", () => {
           visibility: "public",
         });
       }
+      await fixture.sql
+        .db()
+        .update(juniorConversations)
+        .set({
+          durationMs: 42_000,
+          usage: { cost: { total: 0.42 }, totalTokens: 1200 },
+        })
+        .where(eq(juniorConversations.conversationId, "agent-dispatch:sched-run-2"));
+      await fixture.sql
+        .db()
+        .update(juniorConversations)
+        .set({
+          durationMs: 18_000,
+          usage: { cost: { total: 0.18 }, totalTokens: 400 },
+        })
+        .where(eq(juniorConversations.conversationId, "agent-dispatch:sched-run-1"));
 
       await recordTaskExecution("scheduled", "sched_tasks_api", {
         conversationId: "agent-dispatch:sched-run-1",
@@ -271,6 +300,8 @@ describe("Tasks API", () => {
       expect(response.status).toBe(200);
       expect(taskListSchema.parse(await response.json())).toEqual({
         executionDays: expect.any(Array),
+        executionHours: expect.any(Array),
+        executionSixHours: expect.any(Array),
         tasks: [
           expect.objectContaining({
             createdBy: "Aisha Patel",
@@ -303,7 +334,7 @@ describe("Tasks API", () => {
             lastConversationId: "agent-dispatch:event-run-1",
             lastRunAt: new Date(eventRunAtMs).toISOString(),
             ownedByViewer: true,
-            runsLast7Days: 1,
+            runs: runWindows(eventRunAtMs),
             source: "linear",
             totalRuns: 1,
             triggerAvailable: false,
@@ -319,7 +350,7 @@ describe("Tasks API", () => {
             lastConversationId: "agent-dispatch:sched-run-2",
             lastRunAt: new Date(scheduledRun2AtMs).toISOString(),
             ownedByViewer: true,
-            runsLast7Days: 2,
+            runs: runWindows(scheduledRun1AtMs, scheduledRun2AtMs),
             schedule: "Schedule unavailable",
             status: "active",
             title: "Untitled scheduled task",
@@ -336,17 +367,23 @@ describe("Tasks API", () => {
       expect(taskRunListSchema.parse(await runsResponse.json())).toEqual({
         runs: [
           expect.objectContaining({
+            costUsd: 0.42,
+            durationMs: 42_000,
             executionId: "sched-run-2",
             kind: "scheduled",
             status: "failed",
             taskId: "sched_tasks_api",
             taskTitle: "Untitled scheduled task",
+            totalTokens: 1_200,
           }),
           expect.objectContaining({
+            costUsd: 0.18,
+            durationMs: 18_000,
             executionId: "sched-run-1",
             kind: "scheduled",
             status: "completed",
             taskId: "sched_tasks_api",
+            totalTokens: 400,
           }),
           expect.objectContaining({
             executionId: "event-run-1",
@@ -371,20 +408,28 @@ describe("Tasks API", () => {
         .slice(0, 10);
       expect(executionList).toEqual({
         executionDays: expect.any(Array),
+        executionHours: expect.any(Array),
+        executionSixHours: expect.any(Array),
         executions: [
           {
             conversationId: "agent-dispatch:sched-run-2",
+            costUsd: 0.42,
+            durationMs: 42_000,
             executedAt: new Date(scheduledRun2AtMs).toISOString(),
             executionId: "sched-run-2",
             status: "failed",
             title: "Task execution fixture",
+            totalTokens: 1_200,
           },
           {
             conversationId: "agent-dispatch:sched-run-1",
+            costUsd: 0.18,
+            durationMs: 18_000,
             executedAt: new Date(scheduledRun1AtMs).toISOString(),
             executionId: "sched-run-1",
             status: "completed",
             title: "Task execution fixture",
+            totalTokens: 400,
           },
         ],
         task: expect.objectContaining({

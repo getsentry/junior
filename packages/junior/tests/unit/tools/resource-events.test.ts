@@ -129,7 +129,38 @@ describe("resource event tools", () => {
       },
     });
     expect(createSubscription).toHaveBeenCalledWith(
-      expect.objectContaining({ identifier: "getsentry/junior#1" }),
+      expect.objectContaining({
+        conversationId: "slack:C123:1712345.0001",
+        identifier: "getsentry/junior#1",
+      }),
+    );
+  });
+
+  it("stores the current conversation id for agent child turns", async () => {
+    const tool = createResourceEventTools(
+      {
+        ...context,
+        conversationId: "agent:deadbeefcafebabe",
+      },
+      GITHUB_EVENTS,
+    ).watchResourceEvents!;
+
+    await tool.execute!(
+      {
+        identifier: "getsentry/junior#1",
+        namespace: "github",
+        resourceType: "pull_request",
+        label: "GitHub PR #1",
+        events: ["pull_request.checks.failed"],
+        intent: "Report failed checks.",
+      },
+      {},
+    );
+
+    expect(createSubscription).toHaveBeenCalledWith(
+      expect.objectContaining({
+        conversationId: "agent:deadbeefcafebabe",
+      }),
     );
   });
 

@@ -218,7 +218,7 @@ function searchProviderCatalog(
 }
 
 /** Create the progressive MCP catalog search tool used before callMcpTool. */
-// TODO(future): Fold MCP discovery into searchTools once the shared catalog can
+// TODO(dcramer): Fold MCP discovery into searchTools once the shared catalog can
 // connect a selected provider and return its full tool schemas.
 export function createSearchMcpToolsTool(mcpToolManager: SearchMcpToolManager) {
   return zodTool({

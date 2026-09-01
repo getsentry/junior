@@ -6,7 +6,7 @@ import {
   type SlashCommandEvent,
   type StateAdapter,
 } from "chat";
-import type { SlackTurnRuntime } from "@/chat/runtime/slack-runtime";
+import type { SlackTurnRuntime } from "@/chat/providers/slack/runtime";
 import type { ConversationStore } from "@/chat/conversations/store";
 import { getConversationStore } from "@/chat/db";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";

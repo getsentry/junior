@@ -12,8 +12,11 @@ import type { ToolRuntimeContext } from "@/chat/tools/types";
 function scheduledTaskToolContext(
   context: ToolRuntimeContext,
 ): SchedulerToolContext | undefined {
+  // TODO(dcramer): Let users manage Scheduled tasks from web and other
+  // Conversations. Remove these checks when Scheduled tasks no longer require
+  // a Slack Destination or Slack creator.
   if (
-    context.source.platform !== "slack" ||
+    context.source.kind !== "slack" ||
     context.destination.platform !== "slack" ||
     context.actor?.platform !== "slack" ||
     !context.resolveActorIdentity

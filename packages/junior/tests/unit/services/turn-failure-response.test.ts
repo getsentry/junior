@@ -1,7 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 import { getInterruptionMarker } from "@/chat/interruption-marker";
 import { createProviderError } from "@/chat/services/provider-error";
-import { finalizeFailedTurnReply } from "@/chat/services/turn-failure-response";
+import {
+  finalizeFailedTurnReply,
+  finalizeFailedTurnReplyWithEvent,
+  getTurnFailureReason,
+} from "@/chat/services/turn-failure-response";
 import type { AgentRunResult } from "@/chat/services/turn-result";
 
 function providerErrorReply(args: {
@@ -52,7 +56,7 @@ describe("finalizeFailedTurnReply", () => {
       { modelId: "xai/grok-4.5" },
     );
 
-    finalizeFailedTurnReply({
+    const finalized = finalizeFailedTurnReplyWithEvent({
       reply: providerErrorReply({
         assistantMessageCount: 0,
         errorMessage: providerError.message,
@@ -62,14 +66,37 @@ describe("finalizeFailedTurnReply", () => {
       logException,
     });
 
+    expect(finalized.failureReason).toBe("server");
     const attributes = logException.mock.calls[0]?.[2];
     expect(attributes).toMatchObject({
       "app.ai.provider_error.kind": "server",
       "app.ai.provider_error.retryable": true,
       "app.ai.provider_error.status": 503,
+      "app.ai.provider_error.summary": "503",
+      "app.ai.failure_reason": "server",
       "gen_ai.request.model": "xai/grok-4.5",
     });
     expect(attributes).not.toHaveProperty("exception.message");
+    expect(String(attributes?.["app.ai.provider_error.summary"] ?? "")).not.toContain(
+      "providerMetadata",
+    );
+  });
+
+  it("classifies empty execution failures without raw exception text", () => {
+    const reply: AgentRunResult = {
+      text: "",
+      diagnostics: {
+        outcome: "execution_failure",
+        modelId: "test-model",
+        assistantMessageCount: 0,
+        toolCalls: [],
+        toolResultCount: 0,
+        toolErrorCount: 0,
+        usedPrimaryText: false,
+      },
+    };
+
+    expect(getTurnFailureReason(reply)).toBe("empty_output");
   });
 
   it("records a provider failure preserved inside a domain error", () => {

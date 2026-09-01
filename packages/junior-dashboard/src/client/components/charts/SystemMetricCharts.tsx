@@ -1,8 +1,11 @@
+import {
+  timeRangeBucketAverageUnit,
+  type TimeRangeBucketUnit,
+} from "../controls/TimeRangeSelector";
 import type { ConversationMetricDay } from "@sentry/junior/api/schema";
 
 import { formatDuration } from "../Duration";
 import { Card } from "../layout/Card";
-import { Tooltip } from "../Tooltip";
 import {
   formatActivityChartAverage,
   formatCompactNumber,
@@ -12,11 +15,11 @@ import {
   ActivityChartAverageLine,
   ActivityChartDateLabels,
   ActivityChartGrid,
+  ActivityChartTooltip,
   ActivityTooltipRows,
   activityChartAverage,
   ChartSvg,
   createActivityChartLayout,
-  formatActivityDate,
 } from "./ActivityChart";
 import { ChartHeader } from "./ChartHeader";
 import { ChartLegend } from "./ChartLegend";
@@ -45,46 +48,58 @@ function compactDuration(value: number): string {
   return formatDuration(value);
 }
 
-const tokenChart: ChartConfig = {
-  axisFormat: formatCompactNumber,
-  color: "#22d3ee",
-  description: "Daily model tokens",
-  format: formatCompactNumber,
-  metric: "tokens",
-  title: "Token usage",
-  type: "bar",
-};
+function tokenChart(bucketUnit: TimeRangeBucketUnit): ChartConfig {
+  return {
+    axisFormat: formatCompactNumber,
+    color: "#22d3ee",
+    description: bucketUnit === "hour" ? "Hourly model tokens" : bucketUnit === "6hour" ? "6-hour model tokens" : "Daily model tokens",
+    format: formatCompactNumber,
+    metric: "tokens",
+    title: "Token usage",
+    type: "bar",
+  };
+}
 
-const inputCacheChart: ChartConfig = {
-  axisFormat: formatCompactNumber,
-  color: "#22d3ee",
-  description: "Daily cached and uncached input tokens",
-  format: formatCompactNumber,
-  metric: "inputTokens",
-  title: "Input token cache",
-  type: "bar",
-};
+function inputCacheChart(bucketUnit: TimeRangeBucketUnit): ChartConfig {
+  return {
+    axisFormat: formatCompactNumber,
+    color: "#22d3ee",
+    description: bucketUnit === "hour" ? "Hourly cache mix" : bucketUnit === "6hour" ? "6-hour cache mix" : "Daily cache mix",
+    format: formatCompactNumber,
+    metric: "inputTokens",
+    title: "Input token cache",
+    type: "bar",
+  };
+}
 
-const supportingCharts: ChartConfig[] = [
-  {
-    axisFormat: compactCurrency,
-    color: "#fbbf24",
-    description: "Daily estimated cost",
-    format: (value) => formatCostSummary({ total: value }),
-    metric: "costUsd",
-    title: "Model spend",
-    type: "area",
-  },
-  {
-    axisFormat: compactDuration,
-    color: "#a78bfa",
-    description: "Daily cumulative runtime",
-    format: formatDuration,
-    metric: "durationMs",
-    title: "Runtime",
-    type: "scatter",
-  },
-];
+function supportingCharts(bucketUnit: TimeRangeBucketUnit): ChartConfig[] {
+  return [
+    {
+      axisFormat: compactCurrency,
+      color: "#fbbf24",
+      description:
+        bucketUnit === "hour" ? "Hourly estimated cost" : bucketUnit === "6hour" ? "6-hour estimated cost" : "Daily estimated cost",
+      format: (value) => formatCostSummary({ total: value }),
+      metric: "costUsd",
+      title: "Model spend",
+      type: "area",
+    },
+    {
+      axisFormat: compactDuration,
+      color: "#a78bfa",
+      description:
+        bucketUnit === "hour"
+          ? "Hourly cumulative runtime"
+          : bucketUnit === "6hour"
+            ? "6-hour cumulative runtime"
+            : "Daily cumulative runtime",
+      format: formatDuration,
+      metric: "durationMs",
+      title: "Runtime",
+      type: "scatter",
+    },
+  ];
+}
 
 function metricValue(day: ConversationMetricDay, metric: Metric): number {
   if (metric === "inputTokens") {
@@ -93,25 +108,33 @@ function metricValue(day: ConversationMetricDay, metric: Metric): number {
   return day[metric] ?? 0;
 }
 
-/** Plot daily model usage, spend, and runtime in complementary chart forms. */
+/** Plot model usage, spend, and runtime in complementary chart forms. */
 export function SystemMetricCharts(props: {
+  bucketUnit?: TimeRangeBucketUnit;
   cacheBreakdown?: boolean;
   days: ConversationMetricDay[];
 }) {
+  const bucketUnit = props.bucketUnit ?? "day";
   const charts = [
-    props.cacheBreakdown ? inputCacheChart : tokenChart,
-    ...supportingCharts,
+    props.cacheBreakdown ? inputCacheChart(bucketUnit) : tokenChart(bucketUnit),
+    ...supportingCharts(bucketUnit),
   ];
   return (
     <div className="grid gap-4 lg:grid-cols-3">
       {charts.map((chart) => (
-        <MetricChart chart={chart} days={props.days} key={chart.metric} />
+        <MetricChart
+          bucketUnit={bucketUnit}
+          chart={chart}
+          days={props.days}
+          key={chart.metric}
+        />
       ))}
     </div>
   );
 }
 
 function MetricChart(props: {
+  bucketUnit: TimeRangeBucketUnit;
   chart: ChartConfig;
   days: ConversationMetricDay[];
 }) {
@@ -160,7 +183,7 @@ function MetricChart(props: {
       ) : null}
       <div className="px-2 py-3">
         <ChartSvg
-          aria-label={`${chart.title} per day`}
+          aria-label={`${chart.title} per ${props.bucketUnit === "6hour" ? "6 hours" : props.bucketUnit}`}
           className="min-h-52 overflow-hidden"
           layout={layout}
         >
@@ -202,7 +225,8 @@ function MetricChart(props: {
             const barHeight = (value / maximum) * layout.plotHeight;
             const renderedBarHeight = Math.max(value ? 2 : 0, barHeight);
             return (
-              <Tooltip
+              <ActivityChartTooltip
+                key={day.date}
                 content={
                   chart.metric === "inputTokens" ? (
                     <ActivityTooltipRows
@@ -218,14 +242,15 @@ function MetricChart(props: {
                     chart.format(value)
                   )
                 }
-                key={day.date}
-                label={formatActivityDate(day.date)}
+                date={day.date}
+                summary={
+                  chart.metric === "inputTokens"
+                    ? `${chart.format(value)} input tokens`
+                    : chart.format(value)
+                }
               >
                 {chart.type === "bar" && chart.metric === "inputTokens" ? (
-                  <g
-                    aria-label={`${formatActivityDate(day.date)}: ${chart.format(value)} input tokens`}
-                    tabIndex={0}
-                  >
+                  <g tabIndex={0}>
                     <rect
                       fill="#a78bfa"
                       height={renderedBarHeight}
@@ -252,7 +277,6 @@ function MetricChart(props: {
                   </g>
                 ) : chart.type === "bar" ? (
                   <rect
-                    aria-label={`${formatActivityDate(day.date)}: ${chart.format(value)}`}
                     fill={chart.color}
                     height={renderedBarHeight}
                     opacity={value ? 0.8 : 0.1}
@@ -264,7 +288,6 @@ function MetricChart(props: {
                   />
                 ) : (
                   <circle
-                    aria-label={`${formatActivityDate(day.date)}: ${chart.format(value)}`}
                     cx={point.x}
                     cy={point.y}
                     fill={chart.color}
@@ -273,7 +296,7 @@ function MetricChart(props: {
                     tabIndex={0}
                   />
                 )}
-              </Tooltip>
+              </ActivityChartTooltip>
             );
           })}
           <ActivityChartAverageLine
@@ -286,6 +309,7 @@ function MetricChart(props: {
             layout={layout}
             maximum={maximum}
             stroke={chart.color}
+            unit={timeRangeBucketAverageUnit(props.bucketUnit)}
           />
           <ActivityChartDateLabels
             dates={days.map((day) => day.date)}

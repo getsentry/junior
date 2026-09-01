@@ -12,8 +12,9 @@ accept the result.
 checkpoint and is private to this module.
 
 `turn-wake.ts` wakes paused turns. `paused-turn.ts` runs them under the
-conversation lease. SQL conversation events store history. The Redis turn
-cursor stores only the data that is needed to resume a turn.
+conversation lease. SQL conversation events store history. The Redis Turn
+cursor stores only the data that is needed to resume a Turn, including the
+Source and Actor that started it.
 
 The reliability rules are small:
 
@@ -21,8 +22,9 @@ The reliability rules are small:
 - A turn may run, pause at a committed boundary, complete, or fail.
 - Soft yield and retry may continue only after the boundary advances; parking
   the same boundary twice fails the turn. Hard timeout may re-park without new
-  work so a slow model call can try again on a later wake. The slice limit still
-  stops endless attempts.
+  work so a slow model call can try again on a later wake. The slice limit and
+  the durable tool-call total still stop endless attempts, including after
+  compaction rewrites history.
 - After a hard timeout park, the worker hands the lease back. The next slice
   starts from a fresh queue wake and full request deadline, not leftover scraps.
 - A paused turn can continue under the current lease while the host request has
@@ -38,26 +40,31 @@ Runtime and Redis status is `paused`. SQL free-text / enum rows may still say
 
 ## State Model
 
-- A conversation mailbox contains pending work. Each item has an `interrupt`
-  or `defer` mailbox delivery and a `publishExternally` flag. The worker keeps
-  different publish choices in separate turns.
+- A Conversation mailbox contains pending work. Each item has a Source and an
+  `interrupt` or `defer` mailbox delivery.
+- A Turn cursor saves the Source and Actor selected from the input that started
+  the Turn. Steering input keeps its own Actor in message provenance.
 - A queue message identifies the conversation to wake. The stored work controls
   delivery. A provider conversation stores its destination. Child work without
   a destination gets its authority from its stored agent invocation.
-- `publishExternally` means the turn also publishes assistant output to the
-  conversation destination. The conversation log always stores the turn.
-  Dashboard and destinationless work leave the flag false. Slack ingress and
-  Slack resume default to publish when the flag is unset. Destination presence
-  must not invent publish.
+- The Conversation always stores each completed assistant Message. Slack input
+  delivers to Slack. Web and local input stay in Junior. Resource events use the
+  Conversation Location. Scheduled, Event task, and plugin dispatch work uses
+  its explicit Destination. Agent invocation has no Delivery. A child
+  Conversation does not use its parent's Location for Delivery.
+- The shared web and Resource event worker still uses Run Delivery to store the
+  completed assistant Message. It checks Resource event Source before it also
+  calls Slack. This is temporary. The owning code has a removal TODO for the
+  Source check and for storing the Message through Run Delivery.
 - A lease grants one worker temporary execution ownership.
 - Dispatch projection updates take a short dispatch lock only while the
   conversation lease is already held. They never wait for conversation work,
   which keeps lock ordering one-way.
 - Check-ins extend active ownership and allow heartbeat recovery to distinguish
   slow work from abandoned work.
-- Delivery state prevents a completed turn from being posted twice. The turn
-  checkpoint keeps `publishExternally` across pause and yield; worker execution
-  state does not duplicate it.
+- Delivery state prevents a completed Turn from being posted twice. Redis
+  mailbox and Turn cursor records still write `publishExternally` for deployed
+  readers. Current workers ignore that compatibility field.
 
 Redis execution state uses the new v2 keys. This release does not read or move
 old Redis state. Old mailbox, lease, and turn-cursor state can be lost.

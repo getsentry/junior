@@ -564,7 +564,7 @@ describe("retention purge job", () => {
         result: "private delegated result",
         source: {
           conversationId: "root",
-          platform: "local",
+          kind: "local",
           visibility: "private",
         },
         status: "completed",

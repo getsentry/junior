@@ -17,8 +17,9 @@ describe("conversation detail API", () => {
   });
 
   it("returns newly appended events when refreshed", async () => {
-    const conversationId = "internal:refreshed-detail";
+    const conversationId = "local:test:refreshed-detail";
     await getConversationStore().recordActivity({
+      destination: { platform: "local" as const, conversationId },
       conversationId,
       nowMs: 1,
       source: "internal",

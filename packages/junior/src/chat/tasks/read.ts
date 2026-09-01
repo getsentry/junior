@@ -2,17 +2,23 @@ import type { SlackDestination, User } from "@sentry/junior-plugin-api";
 import { and, eq, or } from "drizzle-orm";
 import type { ConversationSourceTask } from "@/api/schema/conversation";
 import type {
+  TaskExecutionDay,
   TaskExecutionList,
+  TaskExecutionStatusDay,
   TaskList,
   TaskRunList,
   TaskSummary,
 } from "@/api/schema/task";
+import { sumUtcHoursIntoSixHours } from "@/api/reporting-window";
 import { fallbackShortTitle } from "@/chat/services/short-title";
 import {
+  emptyTaskRunWindows,
   readTaskExecutionByConversationId,
   readTaskExecutionDays,
+  readTaskExecutionHours,
   readTaskExecutions,
   readTaskExecutionStatusDays,
+  readTaskExecutionStatusHours,
   readTaskExecutionSummaries,
   readTaskRuns,
   type TaskExecutionSummary,
@@ -200,7 +206,7 @@ function executionSummaryFields(stats: TaskExecutionSummary | undefined) {
     ...(stats?.lastExecutedAtMs
       ? { lastRunAt: new Date(stats.lastExecutedAtMs).toISOString() }
       : undefined),
-    runsLast7Days: stats?.runsLast7Days ?? 0,
+    runs: stats?.runs ?? emptyTaskRunWindows(),
     totalRuns: stats?.totalRuns ?? 0,
   };
 }
@@ -367,6 +373,36 @@ async function taskSummaryForCandidate(
 }
 
 /** Read viewer-owned and public-workspace tasks as one bounded newest-first projection. */
+function emptyTaskExecutionDay(date: string): TaskExecutionDay {
+  return { costUsd: 0, date, event: 0, scheduled: 0 };
+}
+
+function emptyTaskExecutionStatusDay(date: string): TaskExecutionStatusDay {
+  return { blocked: 0, completed: 0, date, failed: 0 };
+}
+
+function taskExecutionSixHours(
+  hours: readonly TaskExecutionDay[],
+  nowMs = Date.now(),
+): TaskExecutionDay[] {
+  return sumUtcHoursIntoSixHours({
+    empty: emptyTaskExecutionDay,
+    hours,
+    nowMs,
+  });
+}
+
+function taskExecutionStatusSixHours(
+  hours: readonly TaskExecutionStatusDay[],
+  nowMs = Date.now(),
+): TaskExecutionStatusDay[] {
+  return sumUtcHoursIntoSixHours({
+    empty: emptyTaskExecutionStatusDay,
+    hours,
+    nowMs,
+  });
+}
+
 export async function readViewerTasks(user: User): Promise<TaskList> {
   const db = getDb();
   const identityIds = new Set(user.identities.map((identity) => identity.id));
@@ -425,11 +461,13 @@ export async function readViewerTasks(user: User): Promise<TaskList> {
       destinations.get(destinationKey(candidate.task.destination))
         ?.visibility === "public",
   );
-  const [executionDays, scheduledStats, eventStats] = await Promise.all([
-    readTaskExecutionDays(),
-    readTaskExecutionSummaries("scheduled", "junior"),
-    readTaskExecutionSummaries("event", "junior"),
-  ]);
+  const [executionDays, executionHours, scheduledStats, eventStats] =
+    await Promise.all([
+      readTaskExecutionDays(),
+      readTaskExecutionHours(),
+      readTaskExecutionSummaries("scheduled", "junior"),
+      readTaskExecutionSummaries("event", "junior"),
+    ]);
   const tasks = visible.map((candidate): TaskSummary => {
     const destination = destinations.get(
       destinationKey(candidate.task.destination),
@@ -462,6 +500,8 @@ export async function readViewerTasks(user: User): Promise<TaskList> {
   });
   return {
     executionDays,
+    executionHours,
+    executionSixHours: taskExecutionSixHours(executionHours),
     tasks,
     truncated:
       ownedCandidates.length > TASK_LIST_LIMIT ||
@@ -506,7 +546,7 @@ export async function readViewerTaskExecutions(
 ): Promise<TaskExecutionList> {
   const candidate = await resolveViewerTaskCandidate(user, kind, id);
   if (!candidate) throw new ViewerTaskNotFoundError();
-  const [task, executions, executionDays] = await Promise.all([
+  const [task, executions, executionDays, executionHours] = await Promise.all([
     taskSummaryForCandidate(candidate),
     readTaskExecutions({
       kind,
@@ -517,9 +557,15 @@ export async function readViewerTaskExecutions(
       kind,
       taskId: id,
     }),
+    readTaskExecutionStatusHours({
+      kind,
+      taskId: id,
+    }),
   ]);
   return {
     executionDays,
+    executionHours,
+    executionSixHours: taskExecutionStatusSixHours(executionHours),
     executions: executions.slice(0, TASK_EXECUTION_LIST_LIMIT),
     task,
     truncated: executions.length > TASK_EXECUTION_LIST_LIMIT,

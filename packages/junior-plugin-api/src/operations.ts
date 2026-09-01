@@ -6,6 +6,7 @@ import type { PluginReadState, PluginState } from "./state";
 import type { ResourceEventPublisher } from "./resource-events";
 import type { PluginConversationAnnotations } from "./annotations";
 import type { PluginConversationEventStats } from "./conversation-events";
+import type { CodeChangePublisher } from "./code";
 
 export interface HeartbeatHookContext extends PluginContext {
   agent: {
@@ -90,7 +91,7 @@ export interface PluginOperationalBarChartWidget {
   emptyText?: string;
   id: string;
   series: PluginOperationalChartSeries[];
-  timeRangeDays?: Array<7 | 30 | 90>;
+  timeRangeDays?: Array<1 | 7 | 30 | 90>;
   title: string;
   type: "bar_chart";
 }
@@ -153,6 +154,8 @@ export type PluginRouteApp = {
 
 export interface RouteRegistrationHookContext extends PluginContext {
   annotations: PluginConversationAnnotations;
+  /** Provider-neutral write boundary for Junior's native code index. */
+  codeChanges: CodeChangePublisher;
   /** Core-owned delivery boundary for provider webhook events. */
   resourceEvents: ResourceEventPublisher;
 }

@@ -9,7 +9,20 @@ import {
   juniorIdentities,
   juniorUsers,
 } from "@/db/schema";
-import { activityDays, type DailyConversationActivity } from "../activity";
+import {
+  activityDays,
+  activityHours,
+  activitySixHours,
+  type DailyConversationActivity,
+} from "../activity";
+import {
+  WINDOW_SEVEN_DAY_HOURS,
+  fillUtcDays,
+  fillUtcHours,
+  sumUtcHoursIntoSixHours,
+  trailingUtcDayWindow,
+  trailingUtcHourWindow,
+} from "../reporting-window";
 import {
   conversationAggregateColumns,
   conversationRangeColumns,
@@ -201,41 +214,71 @@ async function directoryRows(db: JuniorDatabase) {
     .groupBy(...locationGroupBy());
 }
 
-async function directoryActivityRows(db: JuniorDatabase, start: Date) {
-  const date = sql<string>`TO_CHAR(
+async function directoryActivityRows(
+  db: JuniorDatabase,
+  start: Date,
+  hourStart: Date,
+) {
+  const day = sql<string>`TO_CHAR(
     ${juniorConversations.lastActivityAt} AT TIME ZONE 'UTC',
     'YYYY-MM-DD'
   )`;
-  return db
-    .select({
-      conversations: sql<number>`COUNT(*)::integer`,
-      date,
-      visibility: juniorDestinations.visibility,
-    })
-    .from(juniorConversations)
-    .leftJoin(
-      juniorDestinations,
-      eq(juniorDestinations.id, juniorConversations.destinationId),
-    )
-    .where(and(topLevelWhere(), gte(juniorConversations.lastActivityAt, start)))
-    .groupBy(date, juniorDestinations.visibility);
+  const hour = sql<string>`TO_CHAR(
+    ${juniorConversations.lastActivityAt} AT TIME ZONE 'UTC',
+    'YYYY-MM-DD"T"HH24'
+  )`;
+  const select = {
+    conversations: sql<number>`COUNT(*)::integer`,
+    visibility: juniorDestinations.visibility,
+  };
+  const [dayRows, hourRows] = await Promise.all([
+    db
+      .select({ ...select, date: day })
+      .from(juniorConversations)
+      .leftJoin(
+        juniorDestinations,
+        eq(juniorDestinations.id, juniorConversations.destinationId),
+      )
+      .where(
+        and(topLevelWhere(), gte(juniorConversations.lastActivityAt, start)),
+      )
+      .groupBy(day, juniorDestinations.visibility),
+    db
+      .select({ ...select, date: hour })
+      .from(juniorConversations)
+      .leftJoin(
+        juniorDestinations,
+        eq(juniorDestinations.id, juniorConversations.destinationId),
+      )
+      .where(
+        and(
+          topLevelWhere(),
+          gte(juniorConversations.lastActivityAt, hourStart),
+        ),
+      )
+      .groupBy(hour, juniorDestinations.visibility),
+  ]);
+  return { dayRows, hourRows };
 }
 
-function directoryActivityDays(
+function emptyLocationActivityDay(date: string): LocationActivityDayReport {
+  return {
+    date,
+    privateConversations: 0,
+    publicConversations: 0,
+  };
+}
+
+function accumulateLocationActivity(
   rows: Array<{
     conversations: number;
     date: string;
-    visibility: (typeof juniorDestinations.$inferSelect)["visibility"] | null;
+    visibility: string | null;
   }>,
-  nowMs: number,
-): LocationActivityDayReport[] {
+): Map<string, LocationActivityDayReport> {
   const days = new Map<string, LocationActivityDayReport>();
   for (const row of rows) {
-    const day = days.get(row.date) ?? {
-      date: row.date,
-      privateConversations: 0,
-      publicConversations: 0,
-    };
+    const day = days.get(row.date) ?? emptyLocationActivityDay(row.date);
     if (row.visibility === "public") {
       day.publicConversations += row.conversations;
     } else {
@@ -243,39 +286,71 @@ function directoryActivityDays(
     }
     days.set(row.date, day);
   }
+  return days;
+}
 
-  const end = new Date(nowMs);
-  end.setUTCHours(0, 0, 0, 0);
-  const start = new Date(end);
-  start.setUTCDate(start.getUTCDate() - (ACTIVITY_DAYS - 1));
-  const activity: LocationActivityDayReport[] = [];
-  for (
-    const cursor = new Date(start);
-    cursor.getTime() <= end.getTime();
-    cursor.setUTCDate(cursor.getUTCDate() + 1)
-  ) {
-    const date = cursor.toISOString().slice(0, 10);
-    activity.push(
-      days.get(date) ?? {
-        date,
-        privateConversations: 0,
-        publicConversations: 0,
-      },
-    );
-  }
-  return activity;
+function directoryActivityDays(
+  rows: Array<{
+    conversations: number;
+    date: string;
+    visibility: string | null;
+  }>,
+  nowMs: number,
+): LocationActivityDayReport[] {
+  return fillUtcDays({
+    count: ACTIVITY_DAYS,
+    empty: emptyLocationActivityDay,
+    nowMs,
+    rows: accumulateLocationActivity(rows),
+  });
+}
+
+function directoryActivityHours(
+  rows: Array<{
+    conversations: number;
+    date: string;
+    visibility: string | null;
+  }>,
+  nowMs: number,
+): LocationActivityDayReport[] {
+  return fillUtcHours({
+    count: WINDOW_SEVEN_DAY_HOURS,
+    empty: emptyLocationActivityDay,
+    nowMs,
+    rows: accumulateLocationActivity(rows),
+  });
+}
+
+function directoryActivitySixHours(
+  rows: Array<{
+    conversations: number;
+    date: string;
+    visibility: string | null;
+  }>,
+  nowMs: number,
+): LocationActivityDayReport[] {
+  // hourRows use hour keys; sum into 6-hour buckets for 7d charts.
+  const hours = fillUtcHours({
+    count: WINDOW_SEVEN_DAY_HOURS,
+    empty: emptyLocationActivityDay,
+    nowMs,
+    rows: accumulateLocationActivity(rows),
+  });
+  return sumUtcHoursIntoSixHours({
+    empty: emptyLocationActivityDay,
+    hours,
+    nowMs,
+  });
 }
 
 /** Load public locations plus one complete privacy-safe aggregate for non-public activity. */
 export async function readLocationDirectoryFromSql(): Promise<LocationDirectoryReport> {
   const nowMs = Date.now();
-  const end = new Date(nowMs);
-  end.setUTCHours(0, 0, 0, 0);
-  const start = new Date(end);
-  start.setUTCDate(start.getUTCDate() - (ACTIVITY_DAYS - 1));
-  const [rows, activityRows] = await Promise.all([
+  const { end, start } = trailingUtcDayWindow(nowMs, ACTIVITY_DAYS);
+  const hourWindow = trailingUtcHourWindow(nowMs, WINDOW_SEVEN_DAY_HOURS);
+  const [rows, activity] = await Promise.all([
     directoryRows(getDb()),
-    directoryActivityRows(getDb(), start),
+    directoryActivityRows(getDb(), start, hourWindow.start),
   ]);
   const locations: LocationSummaryReport[] = [];
   const privateActivity = {
@@ -290,7 +365,9 @@ export async function readLocationDirectoryFromSql(): Promise<LocationDirectoryR
   }
 
   return {
-    activityDays: directoryActivityDays(activityRows, nowMs),
+    activityDays: directoryActivityDays(activity.dayRows, nowMs),
+    activityHours: directoryActivityHours(activity.hourRows, nowMs),
+    activitySixHours: directoryActivitySixHours(activity.hourRows, nowMs),
     generatedAt: new Date(nowMs).toISOString(),
     locations: locations.sort(
       (left, right) =>
@@ -356,17 +433,20 @@ export async function readLocationDetailFromSql(
   options: { viewer?: User } = {},
 ): Promise<LocationDetailReport | undefined> {
   const nowMs = Date.now();
-  const end = new Date(nowMs);
-  end.setUTCHours(0, 0, 0, 0);
-  const start = new Date(end);
-  start.setUTCDate(start.getUTCDate() - (ACTIVITY_DAYS - 1));
+  const { end, start } = trailingUtcDayWindow(nowMs, ACTIVITY_DAYS);
+  const hourWindow = trailingUtcHourWindow(nowMs, WINDOW_SEVEN_DAY_HOURS);
   const where = publicLocationWhere(locationId);
   const activityDate = sql<string>`TO_CHAR(
     ${juniorConversations.lastActivityAt} AT TIME ZONE 'UTC',
     'YYYY-MM-DD'
   )`;
+  const activityHour = sql<string>`TO_CHAR(
+    ${juniorConversations.lastActivityAt} AT TIME ZONE 'UTC',
+    'YYYY-MM-DD"T"HH24'
+  )`;
 
-  const [locationRows, dayRows, actorRows, recentRows] = await Promise.all([
+  const [locationRows, dayRows, hourRows, actorRows, recentRows] =
+    await Promise.all([
     getDb()
       .select({
         ...locationColumns(),
@@ -406,6 +486,27 @@ export async function readLocationDetailFromSql(
       )
       .where(and(where, gte(juniorConversations.lastActivityAt, start)))
       .groupBy(activityDate),
+    getDb()
+      .select({
+        date: activityHour,
+        ...treeAggregateColumns,
+      })
+      .from(juniorConversations)
+      .innerJoin(
+        treeConversation,
+        eq(
+          treeConversation.rootConversationId,
+          juniorConversations.conversationId,
+        ),
+      )
+      .innerJoin(
+        juniorDestinations,
+        eq(juniorDestinations.id, juniorConversations.destinationId),
+      )
+      .where(
+        and(where, gte(juniorConversations.lastActivityAt, hourWindow.start)),
+      )
+      .groupBy(activityHour),
     getDb()
       .select({
         actorIdentityId: juniorConversations.actorIdentityId,
@@ -462,6 +563,17 @@ export async function readLocationDetailFromSql(
       ...(row.tokens !== null ? { tokens: row.tokens } : undefined),
     });
   }
+  const hours = new Map<string, DailyConversationActivity>();
+  for (const row of hourRows) {
+    hours.set(row.date, {
+      active: row.active,
+      conversations: row.conversations,
+      date: row.date,
+      durationMs: row.durationMs,
+      failed: row.failed,
+      ...(row.tokens !== null ? { tokens: row.tokens } : undefined),
+    });
+  }
   const actors: LocationActorSummaryReport[] = [];
   for (const row of actorRows) {
     if (!row.actorIdentityId) continue;
@@ -482,6 +594,7 @@ export async function readLocationDetailFromSql(
   }
 
   const activity = activityDays(days, nowMs, ACTIVITY_DAYS);
+  const hourlyActivity = activityHours(hours, nowMs);
   const recentConversationIds = recentRows.map((row) => row.conversationId);
   const [accessByConversation, metricsByRoot] = await Promise.all([
     readConversationAccessFromSql(
@@ -494,6 +607,8 @@ export async function readLocationDetailFromSql(
   return {
     ...location,
     activityDays: activity,
+    activityHours: hourlyActivity,
+    activitySixHours: activitySixHours(hourlyActivity, nowMs),
     actors: actors.sort(
       (left, right) =>
         right.conversations - left.conversations ||

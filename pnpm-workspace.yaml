@@ -13,7 +13,7 @@ catalog:
   "@sentry/starlight-theme": ^0.9.1
   drizzle-kit: ^0.31.8
   drizzle-orm: ^0.45.2
-  zod: ^4.4.3
+  zod: ^4.5.4
 overrides:
   "@astrojs/compiler-binding-wasm32-wasi>@napi-rs/wasm-runtime": 1.2.0
   "@bruits/satteri-wasm32-wasi>@napi-rs/wasm-runtime": 1.2.0
@@ -45,6 +45,7 @@ minimumReleaseAgeExclude:
   - "@earendil-works/pi-agent-core"
   - "@earendil-works/pi-ai"
   - sentry
+  - zod@4.5.4
 allowBuilds:
   "@ast-grep/cli": true
   "@google/genai": true

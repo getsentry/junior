@@ -10,7 +10,7 @@ import { botUserIdFromEmail } from "../webhooks/ownership.js";
 
 /**
  * GraphQL-only GitHub mutation. There is no REST endpoint and no first-class
- * `gh pr` subcommand yet, so this tool is the Junior substitute for:
+ * `gh pr` subcommand yet, so this tool is the runtime substitute for:
  *
  * ```
  * gh api graphql \
@@ -18,15 +18,15 @@ import { botUserIdFromEmail } from "../webhooks/ownership.js";
  *   -F id=THREAD_ID
  * ```
  *
- * `repo` is required so Junior can issue a repository-scoped installation
- * credential; GraphQL has no repo path to derive that from.
+ * `repo` is required so the runtime can bind the GraphQL operation to a repository;
+ * GraphQL has no repo path to derive that from.
  */
 const inputSchema = z
   .object({
     repo: z
       .string()
       .describe(
-        'Repository in "owner/name" format. Required for repository-scoped credentials (GraphQL has no repo path).',
+        'Repository in "owner/name" format. Required because GraphQL has no repo path.',
       ),
     threadId: z
       .string()
@@ -79,7 +79,7 @@ function githubError(payload: unknown): string {
   return "GitHub request failed";
 }
 
-/** Resolve one review thread after GitHub proves it belongs to a Junior-authored PR. */
+/** Resolve one review thread after GitHub proves it belongs to a bot-authored PR. */
 export function createGitHubResolvePullRequestReviewThreadTool(
   ctx: { egress: PluginEgress },
   botEmail: string | undefined,
@@ -92,7 +92,7 @@ export function createGitHubResolvePullRequestReviewThreadTool(
       readOnlyHint: false,
     },
     description:
-      "Resolve a GitHub pull request review thread. Use this instead of shelling out to `gh api graphql` for resolveReviewThread (GraphQL-only; no REST or `gh pr` equivalent). Only works on pull requests Junior authored.",
+      "Resolve a GitHub pull request review thread. Use this instead of shelling out to `gh api graphql` for resolveReviewThread (GraphQL-only; no REST or `gh pr` equivalent). Only works on pull requests the bot authored.",
     inputSchema,
     outputSchema,
     async execute(input): Promise<Result> {
@@ -171,7 +171,7 @@ export function createGitHubResolvePullRequestReviewThreadTool(
         pullRequest.author?.databaseId === botUserId;
       if (!ownsPullRequest) {
         throw new PluginToolInputError(
-          "Junior can only resolve review threads on pull requests it authored.",
+          "This bot can only resolve review threads on pull requests it authored.",
         );
       }
       if (thread.isResolved) {

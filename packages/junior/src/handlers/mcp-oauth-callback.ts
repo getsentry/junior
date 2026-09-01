@@ -14,6 +14,8 @@ import { hydrateConversationMessages } from "@/chat/conversations/messages";
 import {
   deleteMcpAuthSession,
   getMcpAuthSession,
+  getMcpStoredOAuthCredentials,
+  putMcpStoredOAuthCredentials,
   type McpAuthSessionState,
 } from "@/chat/mcp/auth-store";
 import { finalizeMcpAuthorization } from "@/chat/mcp/oauth";
@@ -21,6 +23,7 @@ import { getMcpProviderErrorAttributes } from "@/chat/mcp/errors";
 import { logException, logWarn } from "@/chat/logging";
 import type { AgentRunResult } from "@/chat/services/turn-result";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
+import { executeTurn } from "@/chat/runtime/turn-execution";
 import {
   getLocationConfigurationService,
   getPersistedSandboxState,
@@ -38,7 +41,7 @@ import {
   buildConversationContext,
   markConversationMessage,
 } from "@/chat/services/conversation-memory";
-import { resumeSlackTurn } from "@/chat/runtime/slack-resume";
+import { resumeSlackTurn } from "@/chat/providers/slack/resume";
 import { persistAuthPauseTurnState } from "@/chat/runtime/auth-pause-state";
 import {
   clearPendingAuth,
@@ -62,14 +65,14 @@ import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { wakePausedTurn } from "@/chat/task-execution/turn-wake";
 import {
   resolveTurnSessionRouting,
-  type TurnSessionRouting,
+  type RequiredTurnSessionRouting,
 } from "@/chat/services/turn-session-routing";
 import { htmlCallbackResponse } from "@/handlers/oauth-html";
 import type { WaitUntilFn } from "@/handlers/types";
 import { createSlackResumeActor, type Actor } from "@/chat/actor";
 import { requireSlackDestination } from "@/chat/destination";
 import { relayLocalOAuthCallback } from "@/chat/local/oauth-relay";
-import { deleteWebAuthorization } from "@/chat/api-turns/authorization";
+import { deleteWebAuthorization } from "@/chat/conversations/web-authorization";
 
 function callbackPages(botName: string) {
   return {
@@ -284,7 +287,8 @@ async function resumeAuthorizedMcpTurn(args: {
     messageTs: getTurnUserSlackMessageTs(userMessage),
     lockKey: threadId,
     initialText: "",
-    agentRunner,
+    executeTurn: async (run, saveResult, timeoutMs) =>
+      await executeTurn(agentRunner, run, saveResult, timeoutMs),
     beforeStart: async () => {
       const lockedState = await getPersistedThreadState(threadId);
       const lockedConversation = coerceThreadConversationState(lockedState);
@@ -349,6 +353,7 @@ async function resumeAuthorizedMcpTurn(args: {
       let actor: Actor;
       try {
         actor = createSlackResumeActor({
+          actor: lockedSessionRecord.actor,
           teamId: destination.teamId,
           userId: authSession.userId,
         });
@@ -361,7 +366,7 @@ async function resumeAuthorizedMcpTurn(args: {
         });
         return false;
       }
-      let routing: TurnSessionRouting;
+      let routing: RequiredTurnSessionRouting;
       try {
         routing = await resolveTurnSessionRouting({
           conversationId: authSession.conversationId,
@@ -393,7 +398,7 @@ async function resumeAuthorizedMcpTurn(args: {
         sliceId: lockedSessionRecord.sliceId,
         messageTs: lockedMessageTs,
         inputMessageIds: [lockedUserMessage.id],
-        replyContext: {
+        run: {
           instruction: {
             text: lockedUserMessage.text,
             context: lockedConversationContext,
@@ -407,6 +412,7 @@ async function resumeAuthorizedMcpTurn(args: {
           },
           actor,
           destination,
+          ...(routing.location ? { location: routing.location } : undefined),
           source: routing.source,
           toolChannelId: authSession.toolChannelId ?? authSession.channelId,
           environment: {
@@ -510,7 +516,7 @@ function mcpConversationId(
 ): string | undefined {
   if (
     authSession.destination?.platform === "local" ||
-    authSession.source?.platform === "web"
+    authSession.source?.kind === "web"
   ) {
     return authSession.conversationId;
   }
@@ -568,6 +574,52 @@ export async function GET(
     return htmlResponse("missing_state");
   }
   if (error) {
+    // Provider denied or failed auth. Clear client/discovery only while this
+    // attempt still owns the conversation lock, matching success-path writes.
+    try {
+      const pendingSession = await getMcpAuthSession(state);
+      if (pendingSession && pendingSession.provider === provider) {
+        try {
+          await runCurrentMcpCredentialMutation(
+            pendingSession,
+            provider,
+            async () => {
+              const credentials = await getMcpStoredOAuthCredentials(
+                pendingSession.userId,
+                provider,
+              );
+              if (
+                !credentials?.clientInformation &&
+                !credentials?.discoveryState
+              ) {
+                return;
+              }
+              const nextCredentials = credentials.tokens
+                ? { tokens: credentials.tokens }
+                : {};
+              await putMcpStoredOAuthCredentials(
+                pendingSession.userId,
+                provider,
+                nextCredentials,
+              );
+            },
+          );
+        } catch (cleanupError) {
+          if (!(cleanupError instanceof McpOAuthAttemptExpiredError)) {
+            logException(
+              cleanupError,
+              "mcp.oauth_callback.provider_error_cleanup.failed",
+              { "app.credential.provider": provider },
+            );
+          }
+        }
+        await deleteMcpAuthSession(pendingSession.authSessionId);
+      }
+    } catch (cleanupError) {
+      logException(cleanupError, "mcp.oauth_callback.provider_error_cleanup.failed", {
+        "app.credential.provider": provider,
+      });
+    }
     return htmlResponse("provider_error");
   }
   if (!code) {
@@ -629,7 +681,7 @@ export async function GET(
       });
     }
 
-    if (authSession.source?.platform === "web" && authSession.destination) {
+    if (authSession.source?.kind === "web" && authSession.destination) {
       waitUntil(async () => {
         const turn = await getTurnRecord(
           authSession.conversationId,
@@ -681,7 +733,7 @@ export async function GET(
       // Only the CLI path should get the local-client success copy.
       local:
         authSession.destination?.platform === "local" &&
-        authSession.source?.platform !== "web",
+        authSession.source?.kind !== "web",
     });
   } catch (callbackError) {
     if (callbackError instanceof McpOAuthAttemptExpiredError) {

@@ -108,7 +108,7 @@ function failure(): RenderedTranscriptEntry {
   return {
     key: "failure:1",
     kind: "failure",
-    outcome: "error",
+    failureCode: "model_execution_failed",
     timestamp: 1,
   };
 }
@@ -176,8 +176,12 @@ describe("transcript activity group", () => {
     );
     expect(
       activityGroupSummary([tool("1"), tool("2"), compaction(), handoff()]),
-    ).toBe("2 tool calls · context compacted · model handoff");
+    ).toBe(
+      "2 tool calls · context compacted · model handoff to openai/gpt-5-mini (fast)",
+    );
     expect(activityGroupSummary([compaction()])).toBe("context compacted");
-    expect(activityGroupSummary([handoff()])).toBe("model handoff");
+    expect(activityGroupSummary([handoff()])).toBe(
+      "model handoff to openai/gpt-5-mini (fast)",
+    );
   });
 });

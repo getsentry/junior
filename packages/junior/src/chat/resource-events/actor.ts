@@ -1,15 +1,30 @@
 /**
- * Execution identity for resource-event turns.
+ * System Actor for resource-event Turns.
  *
- * Resource-event mailbox messages are synthetic (not human-authored). They
- * always run as this system principal for credentials and attribution.
- * Live dispatch stamps the author id / raw marker; resume rebuilds the same
- * system actor from those durable markers.
+ * Resource-event mailbox Messages are not from a person. They use this Actor
+ * for credentials and attribution. The Turn saves this Actor for resume.
+ * Mailbox input keeps the author ID for deployed cursors without Actor.
  */
 import type { Actor } from "@/chat/actor";
 
-/** Synthetic Slack author id stamped on resource-event mailbox messages. */
-export const RESOURCE_EVENT_SLACK_AUTHOR_ID = "UJRNEVENT";
+/**
+ * System author ID stamped on resource-event mailbox messages.
+ *
+ * Keep this stable so conversation history can recognize the same system input
+ * for resource-event Turns.
+ *
+ * TODO(dcramer): Delete this ID after resumes read resource-event Source.kind
+ * from the Turn checkpoint instead of Message author data.
+ */
+export const RESOURCE_EVENT_AUTHOR_ID = "UJRNEVENT";
+
+/** System Message author for resource-event input. */
+export const RESOURCE_EVENT_MESSAGE_AUTHOR = {
+  fullName: "Junior event",
+  isBot: true,
+  userId: RESOURCE_EVENT_AUTHOR_ID,
+  userName: "junior-event",
+} as const;
 
 /** System execution actor for every resource-event turn. */
 export const RESOURCE_EVENT_SYSTEM_ACTOR = {
@@ -17,27 +32,18 @@ export const RESOURCE_EVENT_SYSTEM_ACTOR = {
   name: "resource-event",
 } as const satisfies Actor;
 
-/** Whether a durable conversation message is a resource-event turn input. */
+/**
+ * Whether a saved Message started a resource-event Turn.
+ *
+ * TODO(dcramer): Delete this marker check after deployed Turn cursors all store
+ * Source and Actor. `eventType` only supports saved synthetic Slack input.
+ */
 export function isResourceEventConversationMessage(message: {
   author?: { userId?: string };
   meta?: { eventType?: string };
 }): boolean {
   return (
     Boolean(message.meta?.eventType) ||
-    message.author?.userId === RESOURCE_EVENT_SLACK_AUTHOR_ID
+    message.author?.userId === RESOURCE_EVENT_AUTHOR_ID
   );
-}
-
-/**
- * Whether a Slack Message payload is a synthetic resource-event notification.
- * Checks the raw `event_type` marker stamped at mailbox serialization.
- */
-export function isResourceEventSlackMessage(message: {
-  raw?: unknown;
-}): boolean {
-  const raw =
-    message.raw && typeof message.raw === "object"
-      ? (message.raw as Record<string, unknown>)
-      : undefined;
-  return raw?.event_type === "resource_event";
 }

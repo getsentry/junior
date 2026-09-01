@@ -4,7 +4,10 @@ import {
   type PluginRegistration,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
-import { LINEAR_ISSUE_EVENTS } from "./resource-events/issue.js";
+import {
+  LINEAR_ISSUE_EVENTS,
+  LINEAR_ISSUE_MATCH_FIELDS,
+} from "./resource-events/issue.js";
 import { createLinearWebhookRoute } from "./webhooks/handler.js";
 import { linearWebhookSecret } from "./webhooks/secret.js";
 
@@ -56,11 +59,13 @@ export function linearPlugin(): PluginRegistration {
           type: "issue",
           supportedEvents: [...LINEAR_ISSUE_EVENTS],
           suggestedEvents: [...LINEAR_ISSUE_EVENTS],
+          matchFields: LINEAR_ISSUE_MATCH_FIELDS,
         },
         {
           type: "team",
           supportedEvents: [...LINEAR_ISSUE_EVENTS],
           suggestedEvents: [...LINEAR_ISSUE_EVENTS],
+          matchFields: LINEAR_ISSUE_MATCH_FIELDS,
         },
       ],
       isEnabled: () => Boolean(linearWebhookSecret()),

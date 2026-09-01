@@ -13,23 +13,20 @@ import {
 } from "@/chat/agent-dispatch/store";
 import { buildDispatchRoutingContext } from "@/chat/agent-dispatch/work";
 
-interface DispatchReplyToThread {
-  (
-    thread: ThreadImpl,
-    message: Message,
-    options: {
-      ack?: () => Promise<void>;
-      conversationId?: string;
-      destination: DispatchRecord["destination"];
-      execution: DispatchTurnContext;
-      publishExternally?: boolean;
-      onTurnDeliveryAccepted?: (messageId?: string) => void;
-      onTurnOutcome?: (result: DispatchTurnResult) => void;
-      shouldYield?: () => boolean;
-      skipBackfill?: boolean;
-    },
-  ): Promise<void>;
-}
+type ExecuteSlackTurn = (
+  thread: ThreadImpl,
+  message: Message,
+  options: {
+    ack?: () => Promise<void>;
+    conversationId?: string;
+    destination: DispatchRecord["destination"];
+    execution: DispatchTurnContext;
+    onTurnDeliveryAccepted?: (messageId?: string) => void;
+    onTurnOutcome?: (result: DispatchTurnResult) => void;
+    shouldYield?: () => boolean;
+    skipBackfill?: boolean;
+  },
+) => Promise<void>;
 
 /** Build the Slack provider adapter for agent-dispatched conversation turns. */
 export function createSlackDispatchTurnRunner(options: {
@@ -37,7 +34,7 @@ export function createSlackDispatchTurnRunner(options: {
     destination: DispatchRecord["destination"],
   ) => DispatchTurnContext["locationConfiguration"];
   getSlackAdapter: () => SlackAdapter;
-  replyToThread: DispatchReplyToThread;
+  executeSlackTurn: ExecuteSlackTurn;
 }) {
   return async function runSlackDispatchTurn(
     dispatch: DispatchRecord,
@@ -50,6 +47,8 @@ export function createSlackDispatchTurnRunner(options: {
     await state.connect();
     const conversationId = getDispatchConversationId(dispatch);
     const adapter = options.getSlackAdapter();
+    // TODO(dcramer): Remove this synthetic Slack Message and Thread after
+    // dispatch work supplies Slack Delivery to the shared Turn path.
     const message = new Message({
       id: getDispatchInputMessageId(dispatch.id),
       threadId: conversationId,
@@ -90,11 +89,10 @@ export function createSlackDispatchTurnRunner(options: {
     let errorMessage: string | undefined;
     let resultMessageTs: string | undefined;
     const routing = buildDispatchRoutingContext(dispatch);
-    await options.replyToThread(thread, message, {
+    await options.executeSlackTurn(thread, message, {
       ack: hooks.ack,
       conversationId,
       destination: dispatch.destination,
-      publishExternally: true,
       execution: {
         disabledFeatures: ["interactive-auth"],
         locationConfiguration: options.getLocationConfiguration(

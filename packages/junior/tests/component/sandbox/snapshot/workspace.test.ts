@@ -200,6 +200,54 @@ describe("Workspace snapshot completion", () => {
     });
   });
 
+  it("keeps a build open when the Turn stops it", async () => {
+    const workspace = await createWorkspace({
+      name: `snapshot-cancelled-${randomUUID()}`,
+      setupScript: "printf ready",
+      repos: [],
+    });
+    const value = profile.create(SANDBOX_RUNTIME, workspace);
+    if (!value) throw new Error("Workspace snapshot profile is missing");
+
+    await setWorkspaceSnapshotBuild(
+      workspace.id,
+      {
+        id: randomUUID(),
+        status: "building",
+        phase: "created",
+        profileHash: value.hash,
+        startedAt: new Date(),
+        sandboxName: "cancelled-builder",
+        commandId: null,
+        error: null,
+      },
+      { insertIfMissing: true },
+    );
+    const stop = new AbortController();
+    sandboxGetMock.mockImplementation(async () => {
+      stop.abort(new DOMException("Turn cancelled", "AbortError"));
+      throw stop.signal.reason;
+    });
+
+    await expect(
+      resolveWorkspaceSnapshot({
+        workspace,
+        runtime: SANDBOX_RUNTIME,
+        signal: stop.signal,
+        shouldStop: () => false,
+        applyNetworkPolicy: async () => {},
+        removeCredentialRoute: false,
+      }),
+    ).rejects.toMatchObject({ name: "AbortError", message: "Turn cancelled" });
+
+    await expect(
+      loadSnapshotsForProfile(getDb(), workspace.id, value.hash),
+    ).resolves.toMatchObject({
+      build: { status: "building", error: null },
+      ready: null,
+    });
+  });
+
   it("marks a build failed when a preparation phase times out", async () => {
     const workspace = await createWorkspace({
       name: `snapshot-phase-timeout-${randomUUID()}`,

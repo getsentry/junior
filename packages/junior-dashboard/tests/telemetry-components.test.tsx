@@ -676,6 +676,9 @@ describe("dashboard canonical-event components", () => {
   });
 
   it("renders failure and context lifecycle rows", () => {
+    const eventId = "0123456789abcdef0123456789abcdef";
+    const sentryEventUrl =
+      "https://my-org.sentry.io/events/0123456789abcdef0123456789abcdef/?project=4501";
     const html = renderTranscript(
       conversation([
         event(0, { type: "compaction" }),
@@ -688,13 +691,20 @@ describe("dashboard canonical-event components", () => {
           type: "turn_lifecycle",
           turnId: "turn-1",
           state: "failed",
-          failureKind: "agent",
+          failureCode: "model_execution_failed",
+          failureReason: "network",
+          eventId,
+          sentryEventUrl,
         }),
       ]),
     );
     expect(html).toContain("Context compacted");
     expect(html).toContain("Model handoff");
-    expect(html).toContain("Agent response failed");
+    expect(html).toContain("Model connection failed");
+    expect(html).toContain('data-transcript-failure-reason="network"');
+    expect(html).toContain(`data-transcript-failure-event-id="${eventId}"`);
+    expect(html).toContain(`event_id=${eventId}`);
+    expect(html).toContain(`href="${sentryEventUrl}"`);
   });
 
   it("anchors structured events to the transcript rail", () => {
@@ -809,15 +819,14 @@ describe("dashboard canonical-event components", () => {
           type: "turn_lifecycle",
           turnId: "turn-1",
           state: "failed",
-          failureKind: "delivery",
+          failureCode: "delivery_failed",
         }),
       ]),
     );
     expect(html).toContain("Message delivery failed");
-    expect(html).toContain(
-      "Junior could not deliver this message to its destination.",
-    );
-    expect(html).not.toContain("Agent response failed");
+    expect(html).toContain("Junior could not deliver this message.");
+    expect(html).not.toContain("Model connection failed");
+    expect(html).not.toContain("Internal error");
   });
 
   it("does not invent an object for an empty raw message", () => {
@@ -1719,7 +1728,7 @@ describe("dashboard canonical-event components", () => {
         ]}
       />,
     );
-    expect(html).toContain('aria-label="2026-07-31, Cost: $0.0042"');
+    expect(html).toContain('aria-label="Jul 31, Cost: $0.0042"');
     expect(html).toContain(">$0.0042</text>");
     expect(html).toContain('x1="104"');
   });
@@ -1755,10 +1764,47 @@ describe("dashboard canonical-event components", () => {
         ]}
       />,
     );
-    expect(html).toContain('aria-label="2026-07-31, Created: 89"');
-    expect(html).toContain('aria-label="2026-07-25, Created: 83"');
-    expect(html).not.toContain('aria-label="2026-07-24, Created: 82"');
+    expect(html).toContain('aria-label="Jul 31, Created: 89"');
+    expect(html).toContain('aria-label="Jul 25, Created: 83"');
+    expect(html).not.toContain('aria-label="Jul 24, Created: 82"');
     expect(html).not.toContain('aria-label="Reporting period"');
+  });
+
+  it("renders 24 trailing hour categories for the 24h range", () => {
+    const categories = Array.from({ length: 48 }, (_, index) => {
+      const date = new Date("2026-07-30T00:00:00.000Z");
+      date.setUTCHours(date.getUTCHours() + index);
+      const label = date.toISOString().slice(0, 13);
+      return {
+        id: label,
+        label,
+        values: { created: index },
+      };
+    });
+    const html = renderToStaticMarkup(
+      <PluginReports
+        range={1}
+        reports={[
+          {
+            pluginName: "github",
+            widgets: [
+              {
+                categories,
+                id: "hourly-outcomes",
+                series: [{ key: "created", label: "Created" }],
+                timeRangeDays: [1, 7, 30, 90],
+                title: "Pull request outcomes",
+                type: "bar_chart",
+              },
+            ],
+          },
+        ]}
+      />,
+    );
+    // Hour buckets render in the dashboard timezone (America/Los_Angeles).
+    expect(html).toContain('aria-label="Jul 31, 4 PM, Created: 47"');
+    expect(html).toContain('aria-label="Jul 30, 5 PM, Created: 24"');
+    expect(html).not.toContain('aria-label="Jul 30, 4 PM, Created: 23"');
   });
 
   it("renders an all-zero chart with a stable zero scale", () => {
@@ -1879,6 +1925,9 @@ describe("dashboard canonical-event components", () => {
     expect(html).toMatch(
       /href="\/tasks\/sched_source_task"[^>]*>Triggered by Scheduled Task<\/a>/,
     );
+    // Full task prompts stay off hover chrome; open the task page for those.
+    expect(html).not.toContain("Update getsentry/yc-scraper");
+    expect(html).not.toContain("Instruction");
     expect(html).not.toContain(
       "Triggered by Scheduled Task · Update getsentry/yc-scraper",
     );

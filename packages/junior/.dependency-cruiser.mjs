@@ -25,6 +25,18 @@ export default {
       },
     },
     {
+      name: "no-native-runtime-to-providers",
+      comment:
+        "The native agent runtime and shared services must not depend on provider layers.",
+      severity: "error",
+      from: {
+        path: "^src/chat/(agent|runtime|services)/",
+      },
+      to: {
+        path: "^src/chat/providers/",
+      },
+    },
+    {
       name: "no-chat-services-to-slack",
       comment:
         "Service modules must depend on small injected ports, not Slack infrastructure; Slack timestamp value objects are the only exception.",

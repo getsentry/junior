@@ -49,8 +49,7 @@ const RULES = [
     message:
       "dashboard E2E tests must leave visual layout and style checks to visual QA",
     pathPrefix: DASHBOARD_E2E_ROOT,
-    pattern:
-      /\b(?:boundingBox|getBoundingClientRect|toHaveCSS|toHaveScreenshot)\s*\(/g,
+    pattern: /\b(?:boundingBox|getBoundingClientRect|toHaveCSS)\s*\(/g,
   },
   {
     message:

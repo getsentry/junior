@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { fauxAssistantMessage } from "@earendil-works/pi-ai/providers/faux";
+import { NO_REPLY_MARKER } from "@/chat/no-reply";
 import {
   getSlackContinuationMarker,
   getSlackInterruptionMarker,
@@ -50,11 +51,9 @@ describe("Slack behavior: finalized thread replies", () => {
   it("posts a completed assistant message", async () => {
     const { slackRuntime } = createTestChatRuntime({
       services: {
-        replyExecutor: {
-          agentRunner: createModelAgentRunner(
-            createModelStream([{ type: "text", text: "Hello world" }]),
-          ),
-        },
+        agentRunner: createModelAgentRunner(
+          createModelStream([{ type: "text", text: "Hello world" }]),
+        ),
       },
     });
 
@@ -97,11 +96,9 @@ describe("Slack behavior: finalized thread replies", () => {
     ).join("\n");
     const { slackRuntime } = createTestChatRuntime({
       services: {
-        replyExecutor: {
-          agentRunner: createModelAgentRunner(
-            createModelStream([{ type: "text", text: longReply }]),
-          ),
-        },
+        agentRunner: createModelAgentRunner(
+          createModelStream([{ type: "text", text: longReply }]),
+        ),
       },
     });
 
@@ -134,11 +131,9 @@ describe("Slack behavior: finalized thread replies", () => {
     const longReply = `Here is the script:\n\`\`\`ts\n${repeated}\`\`\``;
     const { slackRuntime } = createTestChatRuntime({
       services: {
-        replyExecutor: {
-          agentRunner: createModelAgentRunner(
-            createModelStream([{ type: "text", text: longReply }]),
-          ),
-        },
+        agentRunner: createModelAgentRunner(
+          createModelStream([{ type: "text", text: longReply }]),
+        ),
       },
     });
 
@@ -166,25 +161,65 @@ describe("Slack behavior: finalized thread replies", () => {
     expect(secondPost.startsWith("```ts\n")).toBe(true);
   });
 
+  it("posts answers that mention the no-reply marker", async () => {
+    const answer = `Earlier turn used ${NO_REPLY_MARKER} and then stopped.`;
+    const { slackRuntime } = createTestChatRuntime({
+      services: {
+        agentRunner: createModelAgentRunner(
+          createModelStream([{ type: "text", text: answer }]),
+        ),
+      },
+    });
+
+    const thread = await createTestThread({
+      id: "slack:C0FINAL:1700006008.000",
+    });
+    await slackRuntime.handleNewMention(
+      thread,
+      createTestMessage({
+        id: "m-final-9",
+        text: "<@U0APP> why was there no reply?",
+        isMention: true,
+        threadId: thread.id,
+      }),
+      { destination: createTestDestination(thread) },
+    );
+
+    expect(thread.postKinds).toEqual(["value"]);
+    expect(thread.posts.map(toPostedText)).toEqual([answer]);
+    const lifecycle = await loadTurnLifecycleEvents(thread.id);
+    expect(lifecycle.map((event) => event.data)).toEqual([
+      expect.objectContaining({
+        type: "turn_started",
+        turnId: "turn_m-final-9",
+        inputMessageIds: ["m-final-9"],
+        surface: "slack",
+      }),
+      expect.objectContaining({
+        type: "turn_completed",
+        turnId: "turn_m-final-9",
+        outcome: "success",
+      }),
+    ]);
+  });
+
   it("marks provider-error replies with partial text as interrupted", async () => {
     const partialStart = "The budget review is complete.";
     const partialEnd = "This should continue into a second post.";
     const longReply = `${partialStart} ${"A".repeat(slackOutputPolicy.maxInlineChars)}\n\n${partialEnd}`;
     const { slackRuntime } = createTestChatRuntime({
       services: {
-        replyExecutor: {
-          agentRunner: createModelAgentRunner(
-            createModelStream([
-              {
-                type: "message",
-                message: fauxAssistantMessage(longReply, {
-                  stopReason: "error",
-                  errorMessage: "The model stream stopped.",
-                }),
-              },
-            ]),
-          ),
-        },
+        agentRunner: createModelAgentRunner(
+          createModelStream([
+            {
+              type: "message",
+              message: fauxAssistantMessage(longReply, {
+                stopReason: "error",
+                errorMessage: "The model stream stopped.",
+              }),
+            },
+          ]),
+        ),
       },
     });
 

@@ -1,15 +1,17 @@
 import {
   ActivityChartDateLabels,
   ActivityChartGrid,
+  ActivityChartTooltip,
   ActivityTooltipRows,
   ChartSvg,
   createActivityChartLayout,
-  formatActivityDate,
 } from "../../components/charts/ActivityChart";
 import { ChartLegend } from "../../components/charts/ChartLegend";
-import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
+import {
+  type TimeRangeBucketUnit,
+  type TimeRangeDays,
+} from "../../components/controls/TimeRangeSelector";
 import { Card } from "../../components/layout/Card";
-import { Tooltip } from "../../components/Tooltip";
 import type { MemoryDay } from "./memoryDashboard";
 
 const series = [
@@ -19,10 +21,14 @@ const series = [
 
 /** Render viewer memory creation as a stacked personal/public timeline. */
 export function MemoryTimeline(props: {
+  bucketUnit?: TimeRangeBucketUnit;
+
   days: MemoryDay[];
   range: TimeRangeDays;
 }) {
-  const days = props.days.slice(-props.range);
+  const bucketUnit = props.bucketUnit ?? "day";
+
+  const days = props.days;
   const layout = createActivityChartLayout(200);
   const step =
     days.length > 0 ? layout.plotWidth / days.length : layout.plotWidth;
@@ -38,7 +44,11 @@ export function MemoryTimeline(props: {
           Activity over time
         </h2>
         <p className="mt-1 mb-0 font-mono text-xs leading-relaxed text-dashboard-text-muted">
-          Stacked personal + public memories created each day.
+          {bucketUnit === "hour"
+            ? "Stacked personal + public memories created each hour."
+            : bucketUnit === "6hour"
+              ? "Stacked personal + public memories created each 6 hours."
+              : "Stacked personal + public memories created each day."}
         </p>
       </div>
 
@@ -46,7 +56,7 @@ export function MemoryTimeline(props: {
 
       <div className="relative mt-3 overflow-hidden">
         <ChartSvg
-          aria-label={`Memories learned during the last ${props.range} days`}
+          aria-label={`Memories learned during the last ${props.range === 1 ? "24 hours" : `${props.range} days`}`}
           className="min-h-40"
           layout={layout}
         >
@@ -56,7 +66,8 @@ export function MemoryTimeline(props: {
             const x = layout.left + dayIndex * step + (step - barWidth) / 2;
             const total = totals[dayIndex] ?? 0;
             return (
-              <Tooltip
+              <ActivityChartTooltip
+                key={day.date}
                 content={
                   <ActivityTooltipRows
                     rows={[
@@ -66,11 +77,10 @@ export function MemoryTimeline(props: {
                     ]}
                   />
                 }
-                key={day.date}
-                label={formatActivityDate(day.date)}
+                date={day.date}
+                summary={`${day.personal} personal, ${day.public} public, ${total} total memories`}
               >
                 <g
-                  aria-label={`${formatActivityDate(day.date)}: ${day.personal} personal, ${day.public} public, ${total} total memories`}
                   tabIndex={0}
                 >
                   {series.map((item) => {
@@ -98,7 +108,7 @@ export function MemoryTimeline(props: {
                     y={layout.top}
                   />
                 </g>
-              </Tooltip>
+              </ActivityChartTooltip>
             );
           })}
           <ActivityChartDateLabels

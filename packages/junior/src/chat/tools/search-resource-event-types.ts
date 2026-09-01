@@ -15,6 +15,18 @@ const searchedResourceTypeSchema = z
     type: z.string(),
     supportedEvents: z.array(z.string()),
     suggestedEvents: z.array(z.string()).optional(),
+    matchFields: z
+      .record(
+        z.string(),
+        z
+          .object({
+            kind: z.enum(["boolean", "string", "number"]),
+            description: z.string(),
+            enum: z.array(z.string()).optional(),
+          })
+          .strict(),
+      )
+      .optional(),
   })
   .strict();
 
@@ -44,6 +56,9 @@ function searchableResourceTypes(catalog: ResourceEventCatalog) {
         ...(resourceType.suggestedEvents
           ? { suggestedEvents: [...resourceType.suggestedEvents].sort() }
           : undefined),
+        ...(resourceType.matchFields
+          ? { matchFields: resourceType.matchFields }
+          : undefined),
       })),
     )
     .sort(
@@ -65,7 +80,7 @@ export function createSearchResourceEventTypesTool(
       readOnlyHint: true,
     },
     description:
-      "Search the resource event types currently enabled by plugins without creating anything. Use watchResourceEvents to receive temporary updates in the current Slack thread; use createEventTask to execute a durable instruction for matching events. When explaining results, preserve that distinction. This tool does not watch a resource, create a task, or enumerate concrete resources.",
+      "Search the resource event types currently enabled without creating anything. Includes plugin resources and core Workspace snapshot events. Use watchResourceEvents for temporary updates in the current conversation; use createEventTask for durable automation. This tool does not watch a resource, create a task, or list concrete resources.",
     inputSchema: z
       .object({
         query: z
@@ -102,6 +117,7 @@ export function createSearchResourceEventTypesTool(
               resourceType.type,
               ...resourceType.supportedEvents,
               ...(resourceType.suggestedEvents ?? []),
+              ...Object.keys(resourceType.matchFields ?? {}),
             ].join(" "),
           );
           return terms.every((term) => text.includes(term));

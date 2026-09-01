@@ -11,7 +11,7 @@ import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 
-/** Create the core tool that deletes an event task in this destination. */
+/** Create the core tool that deletes an event task. */
 export function createDeleteEventTaskTool(
   context: ToolRuntimeContext,
   catalog: ResourceEventCatalog,
@@ -25,17 +25,14 @@ export function createDeleteEventTaskTool(
       readOnlyHint: false,
     },
     executionMode: "sequential",
-    description:
-      "Delete an event task from this Slack channel or DM, including a task created from another thread in the same destination.",
+    description: "Delete an event task.",
     inputSchema: z.object({ taskId: z.string().min(1) }).strict(),
     outputSchema: eventTaskToolResultSchema,
     async execute({ taskId }) {
       const current = await writableEventTask(context, taskId);
       const deleted = await deleteEventTask(getDb(), current.id);
       if (!deleted) {
-        throw new ToolInputError(
-          "Event task was not found in this Slack channel or DM.",
-        );
+        throw new ToolInputError("Event task was not found.");
       }
       return eventTaskSuccess(deleted, catalog);
     },

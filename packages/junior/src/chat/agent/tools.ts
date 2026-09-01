@@ -9,6 +9,14 @@
  * here so the run parks before prompting.
  */
 import type { AgentTool } from "@earendil-works/pi-agent-core";
+import type {
+  AgentInvocationSource,
+  Destination,
+  EventTaskSource,
+  PluginDispatchSource,
+  ResourceEventSource,
+  ScheduledTaskSource,
+} from "@sentry/junior-plugin-api";
 import type { FileUpload } from "chat";
 import { createUserTokenStore } from "@/chat/capabilities/factory";
 import {
@@ -39,7 +47,7 @@ import { createPiAgentTools } from "@/chat/tool-support/pi-tool-adapter";
 import { planToolExposure } from "@/chat/tool-exposure";
 import type { SandboxRef } from "@/chat/sandbox/ref";
 import { getWorkspace } from "@/chat/workspaces/store";
-import { getConversationStore, getDb } from "@/chat/db";
+import { getDb } from "@/chat/db";
 import type { RepositoryInstructions } from "@/chat/repository-instructions";
 import { createMcpAuthOrchestration } from "@/chat/services/mcp-auth-orchestration";
 import { createPluginAuthOrchestration } from "@/chat/services/plugin-auth-orchestration";
@@ -131,17 +139,27 @@ async function tryRecordSkillLoadStat(skill: Skill) {
 
 type ToolRuntimeRoute =
   | Pick<
-      Extract<ToolRuntimeContext, { source: { platform: "slack" } }>,
+      Extract<ToolRuntimeContext, { source: { kind: "slack" } }>,
       "actor" | "destination" | "source" | "slackActionToken"
     >
   | Pick<
-      Extract<ToolRuntimeContext, { source: { platform: "local" } }>,
+      Extract<ToolRuntimeContext, { source: { kind: "local" } }>,
       "actor" | "destination" | "source"
     >
   | Pick<
-      Extract<ToolRuntimeContext, { source: { platform: "web" } }>,
+      Extract<ToolRuntimeContext, { source: { kind: "web" } }>,
       "actor" | "destination" | "source"
-    >;
+    >
+  | {
+      actor?: Actor;
+      destination: Destination;
+      source:
+        | AgentInvocationSource
+        | EventTaskSource
+        | PluginDispatchSource
+        | ResourceEventSource
+        | ScheduledTaskSource;
+    };
 
 /** Resolve provider-specific tool routing without changing turn delivery. */
 function resolveToolRuntimeRoute(args: {
@@ -152,7 +170,7 @@ function resolveToolRuntimeRoute(args: {
   >;
 }): ToolRuntimeRoute {
   const destination = toolInvocationDestination(args.run);
-  switch (args.run.source.platform) {
+  switch (args.run.source.kind) {
     case "slack": {
       if (destination.platform !== "slack") {
         throw new TypeError("Slack tool runtime requires a Slack destination");
@@ -178,6 +196,16 @@ function resolveToolRuntimeRoute(args: {
       return {
         destination,
         actor: args.actor?.platform === "web" ? args.actor : undefined,
+        source: args.run.source,
+      };
+    case "resource_event":
+    case "scheduled_task":
+    case "event_task":
+    case "plugin_dispatch":
+    case "agent_invocation":
+      return {
+        destination,
+        actor: args.actor,
         source: args.run.source,
       };
   }
@@ -219,9 +247,6 @@ export async function wireAgentTools(
     ? credentialUserSubjectId(args.run.credentialContext)
     : undefined;
   const userTokenStore = createUserTokenStore();
-  const conversation = await getConversationStore().get({
-    conversationId: args.run.conversationId,
-  });
   const pluginHooks = createPluginHookRunner({
     actor: args.currentActor,
     actors: args.currentActors,
@@ -263,9 +288,7 @@ export async function wireAgentTools(
     destination: args.run.destination,
     source: runSource,
     threadTs:
-      args.run.source.platform === "slack"
-        ? args.run.source.threadTs
-        : undefined,
+      args.run.source.kind === "slack" ? args.run.source.threadTs : undefined,
     toolChannelId: args.run.toolChannelId,
     userMessage: args.userInput,
     pendingAuth: args.state.pendingAuth,
@@ -287,9 +310,7 @@ export async function wireAgentTools(
     destination: args.run.destination,
     source: runSource,
     threadTs:
-      args.run.source.platform === "slack"
-        ? args.run.source.threadTs
-        : undefined,
+      args.run.source.kind === "slack" ? args.run.source.threadTs : undefined,
     userMessage: args.userInput,
     pendingAuth: args.state.pendingAuth,
     recordPendingAuth: args.durability.recordPendingAuth,
@@ -328,9 +349,13 @@ export async function wireAgentTools(
   );
   const commonToolRuntimeContext = {
     conversationId: args.run.conversationId,
-    ...(conversation?.location
-      ? { locationId: conversation.location.id }
+    ...(args.run.location
+      ? {
+          location: args.run.location,
+          locationId: args.run.location.id,
+        }
       : undefined),
+    conversationPrivacy: args.conversationPrivacy,
     userText: args.userInput,
     configuration: args.configurationValues,
     egress: createPluginEgress({
@@ -379,7 +404,7 @@ export async function wireAgentTools(
       activeWorkspaceId: () => agentSandbox.sandboxRef()?.workspaceId,
       switch: agentSandbox.switchWorkspace,
     },
-  } as ToolRuntimeContext;
+  } satisfies ToolRuntimeContext;
   const actionReview = createToolActionReview({
     context: {
       actor: args.currentActor,

@@ -65,6 +65,7 @@ export function WorkspaceDetailsContent(props: {
           <WorkspaceUsageChart
             days={workspaceUsageDays({
               workspaceId: props.workspace.id,
+              // Workspace switch counters are daily-only (`junior_stats.date`).
               range: props.range,
               stats: props.stats.stats,
             })}

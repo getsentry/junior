@@ -24,6 +24,8 @@ import type {
 import {
   ACTIVITY_DAYS,
   activityDays,
+  activityHours,
+  activitySixHours,
   emptyTotals,
   normalizeEmail,
   peopleTreeAggregateColumns,
@@ -33,6 +35,7 @@ import {
   statsItems,
   verifiedActorWhere,
 } from "./shared";
+import { trailingUtcHourWindow } from "../reporting-window";
 
 type AggregateRow = {
   active: number;
@@ -50,6 +53,8 @@ function emptyProfile(email: string, nowMs: number): ActorProfileReport {
   start.setUTCDate(start.getUTCDate() - (ACTIVITY_DAYS - 1));
   return {
     activityDays: activityDays(new Map(), nowMs),
+    activityHours: activityHours(new Map(), nowMs),
+    activitySixHours: activitySixHours(new Map(), nowMs),
     generatedAt: new Date(nowMs).toISOString(),
     locations: [],
     recentConversations: [],
@@ -130,9 +135,14 @@ export async function readPeopleProfileFromSql(
     ${juniorConversations.lastActivityAt} AT TIME ZONE 'UTC',
     'YYYY-MM-DD'
   )`;
+  const activityHour = sql<string>`TO_CHAR(
+    ${juniorConversations.lastActivityAt} AT TIME ZONE 'UTC',
+    'YYYY-MM-DD"T"HH24'
+  )`;
   const channel = sql<string>`SPLIT_PART(${juniorConversations.conversationId}, ':', 2)`;
+  const hourWindow = trailingUtcHourWindow(nowMs, 7 * 24);
 
-  const [totalsRows, dayRows, locationRows, surfaceRows, recentRows] =
+  const [totalsRows, dayRows, hourRows, locationRows, surfaceRows, recentRows] =
     await Promise.all([
       getDb()
         .select({
@@ -168,6 +178,22 @@ export async function readPeopleProfileFromSql(
         .leftJoin(peopleTreeConversation, metricsJoin)
         .where(and(where, gte(juniorConversations.lastActivityAt, start)))
         .groupBy(activityDate),
+      getDb()
+        .select({
+          date: activityHour,
+          ...peopleTreeAggregateColumns,
+        })
+        .from(juniorConversations)
+        .innerJoin(
+          juniorIdentities,
+          eq(juniorIdentities.id, juniorConversations.actorIdentityId),
+        )
+        .innerJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
+        .leftJoin(peopleTreeConversation, metricsJoin)
+        .where(
+          and(where, gte(juniorConversations.lastActivityAt, hourWindow.start)),
+        )
+        .groupBy(activityHour),
       getDb()
         .select({
           channel,
@@ -231,6 +257,18 @@ export async function readPeopleProfileFromSql(
       ...(row.tokens !== null ? { tokens: row.tokens } : undefined),
     });
   }
+  const hours = new Map<string, ActorActivityDayReport>();
+  for (const row of hourRows) {
+    hours.set(row.date, {
+      active: row.active,
+      conversations: row.conversations,
+      ...(row.costUsd !== null ? { costUsd: row.costUsd } : undefined),
+      date: row.date,
+      durationMs: row.durationMs,
+      failed: row.failed,
+      ...(row.tokens !== null ? { tokens: row.tokens } : undefined),
+    });
+  }
   const locations = new Map<string, ConversationStatsItem>();
   for (const row of locationRows) {
     addAggregate(locations, locationLabel(row), row);
@@ -255,6 +293,8 @@ export async function readPeopleProfileFromSql(
 
   return {
     activityDays: activityDays(days, nowMs),
+    activityHours: activityHours(hours, nowMs),
+    activitySixHours: activitySixHours(hours, nowMs),
     generatedAt: new Date(nowMs).toISOString(),
     locations: statsItems(locations),
     recentConversations: recentRows.map((row) =>

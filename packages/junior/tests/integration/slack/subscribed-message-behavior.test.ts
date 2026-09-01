@@ -10,7 +10,6 @@ import {
   createTestDestination,
 } from "../../fixtures/slack-harness";
 import { hydrateConversationMessages } from "@/chat/conversations/messages";
-import { getConversationEventStore, getConversationStore } from "@/chat/db";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import {
   createResourceEventSubscription,
@@ -81,9 +80,7 @@ describe("Slack behavior: subscribed messages", () => {
             } as never;
           },
         },
-        replyExecutor: {
-          agentRunner: neverRunAgentRunner(),
-        },
+        agentRunner: neverRunAgentRunner(),
       },
     });
 
@@ -118,9 +115,7 @@ describe("Slack behavior: subscribed messages", () => {
             throw providerError;
           },
         },
-        replyExecutor: {
-          agentRunner: neverRunAgentRunner(),
-        },
+        agentRunner: neverRunAgentRunner(),
       },
     });
 
@@ -143,200 +138,6 @@ describe("Slack behavior: subscribed messages", () => {
     expect(thread.posts).toHaveLength(0);
   });
 
-  it("runs resource-event notifications as system actor turns", async () => {
-    let classifierCalled = false;
-    const agentRuns: AgentRun[] = [];
-
-    const { slackRuntime } = createTestChatRuntime({
-      services: {
-        subscribedReplyPolicy: {
-          completeObject: async () => {
-            classifierCalled = true;
-            throw new Error("resource events bypass subscribed classifier");
-          },
-        },
-        replyExecutor: {
-          agentRunner: replyForRun((run) => {
-            agentRuns.push(run);
-            return "I checked the subscribed PR event.\nThe PR is merged.";
-          }),
-        },
-      },
-    });
-
-    const thread = await createTestThread({
-      id: "slack:C0BEHAVIOR:1700002000.002",
-    });
-    const message = createTestMessage({
-      id: "resource-event-resub-1-check-suite-1",
-      text: "[event notification]\n\nA subscribed resource changed.\n\nHandling:\n- Stay concise.",
-      isMention: false,
-      threadId: thread.id,
-      author: {
-        userId: "UJRNEVENT",
-        userName: "junior-event",
-        fullName: "Junior event",
-        isBot: true,
-      },
-      raw: {
-        channel: "C0BEHAVIOR",
-        event_type: "resource_event",
-        thread_ts: "1700002000.002",
-        ts: "resource-event-resub-1-check-suite-1",
-        type: "message",
-        user: "UJRNEVENT",
-      },
-    });
-
-    await slackRuntime.handleSubscribedMessage(thread, message, {
-      destination: createTestDestination(thread),
-    });
-
-    expect(classifierCalled).toBe(false);
-    expect(agentRuns).toEqual([
-      expect.objectContaining({
-        conversationId: "slack:C0BEHAVIOR:1700002000.002",
-        turnId: "turn_resource-event-resub-1-check-suite-1",
-        credentialContext: {
-          actor: { platform: "system", name: "resource-event" },
-        },
-        actor: { platform: "system", name: "resource-event" },
-      }),
-    ]);
-    expect(thread.posts).toHaveLength(1);
-    const conversation = coerceThreadConversationState(
-      (await thread.state) ?? {},
-    );
-    await hydrateConversationMessages({
-      conversation,
-      conversationId: thread.id,
-    });
-    expect(conversation.messages).toContainEqual(
-      expect.objectContaining({
-        id: "resource-event-resub-1-check-suite-1",
-        text: "[event notification]\n\nA subscribed resource changed.\n\nHandling:\n- Stay concise.",
-      }),
-    );
-    expect(conversation.messages).toContainEqual(
-      expect.objectContaining({
-        role: "assistant",
-        text: "I checked the subscribed PR event.\nThe PR is merged.",
-      }),
-    );
-  });
-
-  it("processes resource events when compacted history retains a handled marker without its message", async () => {
-    const agentRuns: AgentRun[] = [];
-    const agentRunner = replyForRun((run) => {
-      agentRuns.push(run);
-      return "I processed the recovered check event.";
-    });
-    const { slackRuntime } = createRuntime({
-      services: {
-        replyExecutor: { agentRunner },
-      },
-    });
-    const thread = await createTestThread({
-      id: "slack:C0BEHAVIOR:1700002000.0025",
-    });
-    const destination = createTestDestination(thread);
-    await getConversationStore().recordActivity({
-      conversationId: thread.id,
-      destination,
-      nowMs: 1_000,
-      source: "resource_event",
-      visibility: "private",
-    });
-    // Late delivery state remains valid after its covered message falls before
-    // the readable compaction boundary.
-    await getConversationEventStore().append(thread.id, [
-      {
-        data: {
-          type: "message",
-          messageId: "compacted-user-message",
-          role: "user",
-          text: "Old request that has already been summarized.",
-        },
-        createdAtMs: 1_000,
-      },
-      {
-        data: {
-          type: "messages_summarized",
-          historyFromSeq: 2,
-          compactions: [
-            {
-              id: "compaction-1",
-              summary: "The old request was completed.",
-              coveredMessageCount: 1,
-              createdAtMs: 2_000,
-            },
-          ],
-        },
-        createdAtMs: 2_000,
-      },
-      {
-        data: {
-          type: "message_handled",
-          messageId: "compacted-user-message",
-        },
-        createdAtMs: 3_000,
-      },
-    ]);
-
-    const message = createTestMessage({
-      id: "resource-event-resub-checks-recovered",
-      text: "[event notification]\n\nThe subscribed check recovered.",
-      isMention: false,
-      threadId: thread.id,
-      author: {
-        userId: "UJRNEVENT",
-        userName: "junior-event",
-        fullName: "Junior event",
-        isBot: true,
-      },
-      raw: {
-        channel: "C0BEHAVIOR",
-        event_type: "resource_event",
-        thread_ts: "1700002000.0025",
-        ts: "resource-event-resub-checks-recovered",
-        type: "message",
-        user: "UJRNEVENT",
-      },
-    });
-
-    await slackRuntime.handleSubscribedMessage(thread, message, {
-      destination,
-    });
-
-    expect(agentRuns).toHaveLength(1);
-    expect(thread.posts).toHaveLength(1);
-    expect(toPostedText(thread.posts[0])).toContain(
-      "I processed the recovered check event.",
-    );
-    const conversation = coerceThreadConversationState(
-      (await thread.state) ?? {},
-    );
-    await hydrateConversationMessages({
-      conversation,
-      conversationId: thread.id,
-    });
-    expect(conversation.messages).not.toContainEqual(
-      expect.objectContaining({ id: "compacted-user-message" }),
-    );
-    expect(conversation.messages).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          id: "resource-event-resub-checks-recovered",
-          role: "user",
-        }),
-        expect.objectContaining({
-          role: "assistant",
-          text: "I processed the recovered check event.",
-        }),
-      ]),
-    );
-  });
-
   it("replies when classifier approves a subscribed-thread message", async () => {
     const classifierCalls: string[] = [];
     const replyCalls: string[] = [];
@@ -357,12 +158,10 @@ describe("Slack behavior: subscribed messages", () => {
             } as never;
           },
         },
-        replyExecutor: {
-          agentRunner: replyForRun((run) => {
-            replyCalls.push(run.instruction.text);
-            return "Action item captured: monitor dashboards for 30 minutes.";
-          }),
-        },
+        agentRunner: replyForRun((run) => {
+          replyCalls.push(run.instruction.text);
+          return "Action item captured: monitor dashboards for 30 minutes.";
+        }),
       },
     });
 
@@ -406,12 +205,10 @@ describe("Slack behavior: subscribed messages", () => {
             } as never;
           },
         },
-        replyExecutor: {
-          agentRunner: replyForRun((run) => {
-            replyCalls.push(run.instruction.text);
-            return "Yes. Shipping status is green.";
-          }),
-        },
+        agentRunner: replyForRun((run) => {
+          replyCalls.push(run.instruction.text);
+          return "Yes. Shipping status is green.";
+        }),
       },
     });
 
@@ -450,15 +247,13 @@ describe("Slack behavior: subscribed messages", () => {
             );
           },
         },
-        replyExecutor: {
-          agentRunner: replyForRun((run) => {
-            replyCalls.push({
-              prompt: run.instruction.text,
-              piMessages: run.history ? [...run.history] : undefined,
-            });
-            return "Handled queued subscribed turn.";
-          }),
-        },
+        agentRunner: replyForRun((run) => {
+          replyCalls.push({
+            prompt: run.instruction.text,
+            piMessages: run.history ? [...run.history] : undefined,
+          });
+          return "Handled queued subscribed turn.";
+        }),
       },
     });
     const thread = await createTestThread({
@@ -521,14 +316,12 @@ describe("Slack behavior: subscribed messages", () => {
             } as never;
           },
         },
-        replyExecutor: {
-          agentRunner: replyForRun((run) => {
-            replyCalls.push(run.instruction.text);
-            return replyCalls.length === 1
-              ? "I can help with this thread."
-              : "I'm back because you mentioned me again.";
-          }),
-        },
+        agentRunner: replyForRun((run) => {
+          replyCalls.push(run.instruction.text);
+          return replyCalls.length === 1
+            ? "I can help with this thread."
+            : "I'm back because you mentioned me again.";
+        }),
       },
     });
 
@@ -551,10 +344,12 @@ describe("Slack behavior: subscribed messages", () => {
     expect(thread.subscribed).toBe(true);
 
     const subscriptionDestination = createTestDestination(thread);
+    if (subscriptionDestination.platform !== "slack") {
+      throw new Error("expected slack destination");
+    }
     const expiresAtMs = Date.now() + 60_000;
     await createResourceEventSubscription({
       conversationId: thread.id,
-      destination: subscriptionDestination,
       events: ["pull_request.checks.failed"],
       expiresAtMs,
       intent: "Watch CI for this thread.",
@@ -565,7 +360,6 @@ describe("Slack behavior: subscribed messages", () => {
     });
     await createResourceEventSubscription({
       conversationId: thread.id,
-      destination: subscriptionDestination,
       events: ["issue.closed"],
       expiresAtMs,
       intent: "Watch the issue for this thread.",
@@ -629,9 +423,7 @@ describe("Slack behavior: subscribed messages", () => {
             );
           },
         },
-        replyExecutor: {
-          agentRunner: neverRunAgentRunner(),
-        },
+        agentRunner: neverRunAgentRunner(),
       },
     });
 
@@ -672,9 +464,7 @@ describe("Slack behavior: subscribed messages", () => {
             } as never;
           },
         },
-        replyExecutor: {
-          agentRunner: neverRunAgentRunner(),
-        },
+        agentRunner: neverRunAgentRunner(),
       },
     });
 
@@ -721,9 +511,7 @@ describe("Slack behavior: subscribed messages", () => {
             } as never;
           },
         },
-        replyExecutor: {
-          agentRunner: neverRunAgentRunner(),
-        },
+        agentRunner: neverRunAgentRunner(),
       },
     });
 
@@ -772,9 +560,7 @@ describe("Slack behavior: subscribed messages", () => {
             } as never;
           },
         },
-        replyExecutor: {
-          agentRunner: neverRunAgentRunner(),
-        },
+        agentRunner: neverRunAgentRunner(),
       },
     });
 
@@ -827,12 +613,10 @@ describe("Slack behavior: subscribed messages", () => {
             } as never;
           },
         },
-        replyExecutor: {
-          agentRunner: replyForRun((run) => {
-            agentRuns.push(run);
-            return "Deploy summarized.";
-          }),
-        },
+        agentRunner: replyForRun((run) => {
+          agentRuns.push(run);
+          return "Deploy summarized.";
+        }),
       },
     });
 
@@ -887,12 +671,10 @@ describe("Slack behavior: subscribed messages", () => {
             } as never;
           },
         },
-        replyExecutor: {
-          agentRunner: replyForRun((run) => {
-            agentRuns.push(run);
-            return "Deploy summarized.";
-          }),
-        },
+        agentRunner: replyForRun((run) => {
+          agentRuns.push(run);
+          return "Deploy summarized.";
+        }),
       },
     });
 
@@ -947,9 +729,7 @@ describe("Slack behavior: subscribed messages", () => {
             );
           },
         },
-        replyExecutor: {
-          agentRunner: neverRunAgentRunner(),
-        },
+        agentRunner: neverRunAgentRunner(),
       },
     });
 
@@ -1013,12 +793,10 @@ describe("Slack behavior: subscribed messages", () => {
             } as never;
           },
         },
-        replyExecutor: {
-          agentRunner: replyForRun((run) => {
-            replyCalls.push(run.instruction.text);
-            return "You asked for the budget by Friday.";
-          }),
-        },
+        agentRunner: replyForRun((run) => {
+          replyCalls.push(run.instruction.text);
+          return "You asked for the budget by Friday.";
+        }),
       },
     });
 
@@ -1074,14 +852,12 @@ describe("Slack behavior: subscribed messages", () => {
             } as never;
           },
         },
-        replyExecutor: {
-          agentRunner: replyForRun((run) => {
-            replyCalls.push(run.instruction.text);
-            return replyCalls.length === 1
-              ? "The deploy changed billing, auth, and the API gateway."
-              : "The three services were billing, auth, and the API gateway.";
-          }),
-        },
+        agentRunner: replyForRun((run) => {
+          replyCalls.push(run.instruction.text);
+          return replyCalls.length === 1
+            ? "The deploy changed billing, auth, and the API gateway."
+            : "The three services were billing, auth, and the API gateway.";
+        }),
       },
     });
 

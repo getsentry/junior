@@ -5,9 +5,10 @@ import { fileURLToPath } from "node:url";
 import { vi } from "vitest";
 import type { SlackAdapter } from "@chat-adapter/slack";
 import { Message as ChatMessage, ThreadImpl, type Message } from "chat";
-import type {
-  Destination,
-  PluginRegistration,
+import {
+  createSlackSource,
+  type Destination,
+  type PluginRegistration,
 } from "@sentry/junior-plugin-api";
 import { executeWithReplay } from "vitest-evals/replay";
 import type { JsonValue } from "vitest-evals/harness";
@@ -15,10 +16,14 @@ import {
   createFauxCore,
   fauxAssistantMessage,
 } from "@earendil-works/pi-ai/providers/faux";
-import { createSlackRuntime } from "@/chat/app/factory";
+import { createConversationWork } from "@/chat/app/conversation-work";
 import { botConfig } from "@/chat/config";
-import { getConversationEventStore, getDb } from "@/chat/db";
-import type { AssistantLifecycleEvent } from "@/chat/runtime/slack-runtime";
+import {
+  getConversationEventStore,
+  getConversationStore,
+  getDb,
+} from "@/chat/db";
+import type { AssistantLifecycleEvent } from "@/chat/providers/slack/runtime";
 import type { JuniorRuntimeServiceOverrides } from "@/chat/app/services";
 import { createUserTokenStore } from "@/chat/capabilities/factory";
 import { parseOAuthStatePayload } from "@/chat/oauth-flow";
@@ -40,10 +45,7 @@ import {
   defineJuniorPlugins,
   pluginCatalogConfigFromPluginSet,
 } from "@/plugins";
-import {
-  processPluginTask,
-  scheduleSessionCompletedPluginTasks,
-} from "@/chat/plugins/task-runner";
+import { processPluginTask } from "@/chat/plugins/task-runner";
 import type { PluginTaskQueueMessage } from "@/chat/plugins/task-queue";
 import { buildSlackInboundMessage } from "@/chat/task-execution/slack-work";
 import { appendAndEnqueueInboundMessage } from "@/chat/task-execution/store";
@@ -55,8 +57,6 @@ import type { PiMessage } from "@/chat/pi/messages";
 import { completedAgentRun } from "@/chat/runtime/agent-run-outcome";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import { addAgentTurnUsage, type AgentTurnUsage } from "@/chat/usage";
-import { runNextPausedTurn } from "@/chat/task-execution/paused-turn";
-import { wakePausedTurn } from "@/chat/task-execution/turn-wake";
 import { ACTIVE_TURN_COMPACTION_SUMMARY_PREFIX } from "@/chat/services/context-compaction-marker";
 import { TURN_CONTEXT_TAG } from "@/chat/turn-context-tag";
 import { listIncompleteScheduledRuns } from "@/chat/scheduled-tasks/runs";
@@ -70,19 +70,7 @@ import { memoryPlugin } from "@sentry/junior-memory";
 import { sentryPlugin } from "@sentry/junior-sentry";
 import { runPluginHeartbeats } from "@/chat/agent-dispatch/heartbeat";
 import { runScheduledTaskHeartbeat } from "@/chat/scheduled-tasks/heartbeat";
-import {
-  buildDispatchRoutingContext,
-  createAgentDispatchConversationWorker,
-  createAgentDispatchWorkRouter,
-} from "@/chat/agent-dispatch/work";
-import {
-  ConversationTurnLifecycleService,
-  type ConversationTurnLifecycle,
-} from "@/chat/conversations/turn-lifecycle";
-import {
-  getDispatchInputMessageId,
-  getDispatchRecord,
-} from "@/chat/agent-dispatch/store";
+import { getDispatchRecord } from "@/chat/agent-dispatch/store";
 import { ingestResourceEvent } from "@/chat/resource-events/ingest";
 import { createResourceEventSubscription } from "@/chat/resource-events/store";
 import { ingestEventTasks } from "@/chat/event-tasks/ingest";
@@ -131,7 +119,6 @@ import {
   TEST_USER_ID,
 } from "@junior-tests/fixtures/slack/factories/ids";
 import { createSlackDestination } from "@/chat/destination";
-import { createSlackConversationWorker } from "@/chat/task-execution/slack-work";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
 import { normalizeGitHubResourceEvents } from "@sentry/junior-github/testing";
 import { createMemoryAttachmentStorage } from "./fixtures/attachment-storage";
@@ -284,6 +271,20 @@ interface EventTaskMatchedEvent extends EvalBaseEvent {
   untrusted_text?: string;
 }
 
+interface ResourceEventFixture extends EvalBaseEvent {
+  type: "resource_event";
+  data?: Record<string, unknown>;
+  event_key: string;
+  event_type: string;
+  intent: string;
+  label: string;
+  namespace: string;
+  identifier: string;
+  resource_type: string;
+  trusted_summary: string;
+  untrusted_text?: string;
+}
+
 interface GitHubWebhookEvent extends EvalBaseEvent {
   body: unknown;
   delivery_id: string;
@@ -305,6 +306,7 @@ export type EvalEvent =
   | AssistantContextChangedEvent
   | ScheduledTaskDueEvent
   | EventTaskMatchedEvent
+  | ResourceEventFixture
   | GitHubWebhookEvent;
 
 type SlackMessageEvent = MentionEvent | SubscribedMessageEvent;
@@ -1680,7 +1682,6 @@ function buildRuntimeServices(
   observations: RuntimeObservations,
   conversationWorkQueue: ConversationWorkQueueTestAdapter,
   steeringDelivery: SteeringDelivery,
-  turnLifecycle: ConversationTurnLifecycle,
   signal?: AbortSignal,
 ): JuniorRuntimeServiceOverrides {
   const replyTexts = scenario.overrides?.reply_texts ?? [];
@@ -1734,304 +1735,285 @@ function buildRuntimeServices(
           },
         }
       : {}),
-    replyExecutor: {
-      turnLifecycle,
-      agentRunner: {
-        run: async (request) => {
-          const pendingSteeringDelivery = steeringDelivery.deliver;
-          const runRequest = pendingSteeringDelivery
+    agentRunner: {
+      run: async (request) => {
+        const pendingSteeringDelivery = steeringDelivery.deliver;
+        const runRequest = pendingSteeringDelivery
+          ? {
+              ...request,
+              durability: {
+                ...request.durability,
+                onInputCommitted: async () => {
+                  await request.durability?.onInputCommitted?.();
+                  if (steeringDelivery.deliver !== pendingSteeringDelivery) {
+                    return;
+                  }
+                  steeringDelivery.deliver = undefined;
+                  await pendingSteeringDelivery();
+                },
+              },
+            }
+          : request;
+        const timeoutResume = scenario.overrides?.timeout_resume;
+        const activeTurnCompaction = scenario.overrides?.active_turn_compaction;
+        if (activeTurnCompaction && !activeTurnCompactionInjected) {
+          activeTurnCompactionInjected = true;
+          await runRequest.durability?.onInputCommitted?.();
+          const nowMs = Date.now();
+          const actor = actorFromRun(runRequest);
+          const piMessages = [
+            {
+              role: "user",
+              content: [
+                {
+                  type: "text",
+                  text: `<${TURN_CONTEXT_TAG}>\nEval continuation fixture.\n</${TURN_CONTEXT_TAG}>`,
+                },
+              ],
+              timestamp: nowMs,
+            },
+            {
+              role: "user",
+              content: [
+                {
+                  type: "text",
+                  text: renderCurrentInstruction(runRequest.instruction.text),
+                },
+              ],
+              timestamp: nowMs + 1,
+            },
+            {
+              role: "user",
+              content: [
+                {
+                  type: "text",
+                  text: `${ACTIVE_TURN_COMPACTION_SUMMARY_PREFIX}\n${activeTurnCompaction.summary}`,
+                },
+              ],
+              timestamp: nowMs + 2,
+            },
+          ] as PiMessage[];
+          const sessionRecord = await upsertTurnRecord({
+            conversationId: runRequest.conversationId,
+            turnId: runRequest.turnId,
+            sliceId: 1,
+            state: "paused",
+            piMessages,
+            resumeReason: "yield",
+            destination: runRequest.destination,
+            source: runRequest.source,
+            surface: runRequest.surface,
+            actor,
+            trailingMessageProvenance: [
+              { authority: "instruction", actor },
+              { authority: "context" },
+            ],
+            turnStartMessageIndex: 0,
+          });
+          return {
+            status: "suspended",
+            reason: "yield" as const,
+            resumeVersion: sessionRecord.version,
+          };
+        }
+        if (timeoutResume && !timeoutResumeInjected) {
+          timeoutResumeInjected = true;
+          await runRequest.durability?.onInputCommitted?.();
+          const nowMs = Date.now();
+          const toolCallId = "eval-timeout-resume-tool-call";
+          const abortedAttempt = {
+            target: timeoutResume.tool_name,
+            aborted: true,
+          };
+          const timedOutResult = projectTimedOutToolResult({
+            content: [{ type: "text", text: JSON.stringify(abortedAttempt) }],
+            details: abortedAttempt,
+          });
+          if (
+            !timedOutResult?.content ||
+            timedOutResult.details === undefined
+          ) {
+            throw new Error("Failed to build timeout continuation fixture");
+          }
+          const piMessages = [
+            {
+              role: "user",
+              content: [{ type: "text", text: runRequest.instruction.text }],
+              timestamp: nowMs,
+            },
+            {
+              role: "assistant",
+              content: [
+                {
+                  type: "toolCall",
+                  id: toolCallId,
+                  name: timeoutResume.tool_name,
+                  arguments: timeoutResume.arguments,
+                },
+              ],
+              stopReason: "toolUse",
+              api: "eval-timeout-resume",
+              provider: "eval-timeout-resume",
+              model: "xai/grok-4.5",
+              timestamp: nowMs,
+              usage: { input: 0, output: 0, totalTokens: 0 },
+            },
+            {
+              role: "toolResult",
+              toolCallId,
+              toolName: timeoutResume.tool_name,
+              content: timedOutResult.content,
+              details: timedOutResult.details,
+              isError: timedOutResult.isError,
+              timestamp: nowMs,
+            },
+          ] as PiMessage[];
+          const sessionRecord = await upsertTurnRecord({
+            conversationId: runRequest.conversationId,
+            turnId: runRequest.turnId,
+            sliceId: 2,
+            state: "paused",
+            piMessages,
+            resumeReason: "timeout",
+            resumedFromSliceId: 1,
+            destination: runRequest.destination,
+            source: runRequest.source,
+            surface: runRequest.surface,
+            actor: actorFromRun(runRequest),
+            errorMessage: "Agent turn timed out at the eval fixture boundary",
+            turnStartMessageIndex: 0,
+          });
+          return {
+            status: "suspended",
+            reason: "timeout" as const,
+            resumeVersion: sessionRecord.version,
+          };
+        }
+        const mockImageGeneration = scenario.overrides?.mock_image_generation;
+        const replyText = replyTexts[replyState.successfulCount];
+        let scriptedStream: ReturnType<typeof createFauxCore> | undefined;
+        if (typeof replyText === "string") {
+          scriptedStream = createFauxCore({
+            api: "eval",
+            provider: "eval",
+          });
+          scriptedStream.setResponses([fauxAssistantMessage(replyText)]);
+        }
+
+        const gatewaySnapshot = snapshotEnv([
+          "AI_GATEWAY_API_KEY",
+          "VERCEL_OIDC_TOKEN",
+        ]);
+        const baseToolOverrides: ToolHooks["toolOverrides"] = {
+          ...(request.environment?.toolOverrides ?? {}),
+        };
+        const viewImageFixtures = new Map(
+          scenario.overrides?.view_image_files?.map((fixture) => [
+            fixture.path,
+            resolveEvalRelativePath(fixture.source),
+          ]) ?? [],
+        );
+        const toolOverrides = {
+          ...baseToolOverrides,
+          webFetch: createReplayWebFetchDeps(baseToolOverrides),
+          webSearch: createReplayWebSearchDeps(baseToolOverrides),
+          ...(mockImageGeneration
+            ? { imageGenerate: createMockImageGenerateDeps() }
+            : {}),
+          ...(viewImageFixtures.size > 0
             ? {
-                ...request,
-                durability: {
-                  ...request.durability,
-                  onInputCommitted: async () => {
-                    await request.durability?.onInputCommitted?.();
-                    if (steeringDelivery.deliver !== pendingSteeringDelivery) {
-                      return;
-                    }
-                    steeringDelivery.deliver = undefined;
-                    await pendingSteeringDelivery();
+                viewImage: {
+                  readFile: async (imagePath: string) => {
+                    const sourcePath = viewImageFixtures.get(imagePath);
+                    return sourcePath ? await readFile(sourcePath) : null;
                   },
                 },
               }
-            : request;
-          const timeoutResume = scenario.overrides?.timeout_resume;
-          const activeTurnCompaction =
-            scenario.overrides?.active_turn_compaction;
-          if (activeTurnCompaction && !activeTurnCompactionInjected) {
-            activeTurnCompactionInjected = true;
-            await runRequest.durability?.onInputCommitted?.();
-            const nowMs = Date.now();
-            const actor = actorFromRun(runRequest);
-            const piMessages = [
-              {
-                role: "user",
-                content: [
-                  {
-                    type: "text",
-                    text: `<${TURN_CONTEXT_TAG}>\nEval continuation fixture.\n</${TURN_CONTEXT_TAG}>`,
-                  },
-                ],
-                timestamp: nowMs,
-              },
-              {
-                role: "user",
-                content: [
-                  {
-                    type: "text",
-                    text: renderCurrentInstruction(runRequest.instruction.text),
-                  },
-                ],
-                timestamp: nowMs + 1,
-              },
-              {
-                role: "user",
-                content: [
-                  {
-                    type: "text",
-                    text: `${ACTIVE_TURN_COMPACTION_SUMMARY_PREFIX}\n${activeTurnCompaction.summary}`,
-                  },
-                ],
-                timestamp: nowMs + 2,
-              },
-            ] as PiMessage[];
-            const sessionRecord = await upsertTurnRecord({
-              conversationId: runRequest.conversationId,
-              turnId: runRequest.turnId,
-              sliceId: 1,
-              state: "paused",
-              piMessages,
-              resumeReason: "yield",
-              destination: runRequest.destination,
-              destinationVisibility: runRequest.destinationVisibility,
-              source: runRequest.source,
-              surface: runRequest.surface,
-              actor,
-              trailingMessageProvenance: [
-                { authority: "instruction", actor },
-                { authority: "context" },
-              ],
-              turnStartMessageIndex: 0,
-            });
-            return {
-              status: "suspended",
-              reason: "yield" as const,
-              resumeVersion: sessionRecord.version,
-            };
-          }
-          if (timeoutResume && !timeoutResumeInjected) {
-            timeoutResumeInjected = true;
-            await runRequest.durability?.onInputCommitted?.();
-            const nowMs = Date.now();
-            const toolCallId = "eval-timeout-resume-tool-call";
-            const abortedAttempt = {
-              target: timeoutResume.tool_name,
-              aborted: true,
-            };
-            const timedOutResult = projectTimedOutToolResult({
-              content: [{ type: "text", text: JSON.stringify(abortedAttempt) }],
-              details: abortedAttempt,
-            });
-            if (
-              !timedOutResult?.content ||
-              timedOutResult.details === undefined
-            ) {
-              throw new Error("Failed to build timeout continuation fixture");
-            }
-            const piMessages = [
-              {
-                role: "user",
-                content: [{ type: "text", text: runRequest.instruction.text }],
-                timestamp: nowMs,
-              },
-              {
-                role: "assistant",
-                content: [
-                  {
-                    type: "toolCall",
-                    id: toolCallId,
-                    name: timeoutResume.tool_name,
-                    arguments: timeoutResume.arguments,
-                  },
-                ],
-                stopReason: "toolUse",
-                api: "eval-timeout-resume",
-                provider: "eval-timeout-resume",
-                model: "xai/grok-4.5",
-                timestamp: nowMs,
-                usage: { input: 0, output: 0, totalTokens: 0 },
-              },
-              {
-                role: "toolResult",
-                toolCallId,
-                toolName: timeoutResume.tool_name,
-                content: timedOutResult.content,
-                details: timedOutResult.details,
-                isError: timedOutResult.isError,
-                timestamp: nowMs,
-              },
-            ] as PiMessage[];
-            const sessionRecord = await upsertTurnRecord({
-              conversationId: runRequest.conversationId,
-              turnId: runRequest.turnId,
-              sliceId: 2,
-              state: "paused",
-              piMessages,
-              resumeReason: "timeout",
-              resumedFromSliceId: 1,
-              destination: runRequest.destination,
-              destinationVisibility: runRequest.destinationVisibility,
-              source: runRequest.source,
-              surface: runRequest.surface,
-              actor: actorFromRun(runRequest),
-              errorMessage: "Agent turn timed out at the eval fixture boundary",
-              turnStartMessageIndex: 0,
-            });
-            return {
-              status: "suspended",
-              reason: "timeout" as const,
-              resumeVersion: sessionRecord.version,
-            };
-          }
-          const mockImageGeneration = scenario.overrides?.mock_image_generation;
-          const replyText = replyTexts[replyState.successfulCount];
-          let scriptedStream: ReturnType<typeof createFauxCore> | undefined;
-          if (typeof replyText === "string") {
-            scriptedStream = createFauxCore({
-              api: "eval",
-              provider: "eval",
-            });
-            scriptedStream.setResponses([fauxAssistantMessage(replyText)]);
-          }
-
-          const gatewaySnapshot = snapshotEnv([
-            "AI_GATEWAY_API_KEY",
-            "VERCEL_OIDC_TOKEN",
+            : {}),
+        };
+        if (scenario.overrides?.unset_gateway_api_key) {
+          delete process.env.AI_GATEWAY_API_KEY;
+          delete process.env.VERCEL_OIDC_TOKEN;
+        }
+        try {
+          const pendingToolInvocations: EvalToolInvocation[] = [];
+          const replySignal = AbortSignal.any([
+            ...(signal ? [signal] : []),
+            AbortSignal.timeout(replyTimeoutMs),
           ]);
-          const baseToolOverrides: ToolHooks["toolOverrides"] = {
-            ...(request.environment?.toolOverrides ?? {}),
-          };
-          const viewImageFixtures = new Map(
-            scenario.overrides?.view_image_files?.map((fixture) => [
-              fixture.path,
-              resolveEvalRelativePath(fixture.source),
-            ]) ?? [],
-          );
-          const toolOverrides = {
-            ...baseToolOverrides,
-            webFetch: createReplayWebFetchDeps(baseToolOverrides),
-            webSearch: createReplayWebSearchDeps(baseToolOverrides),
-            ...(mockImageGeneration
-              ? { imageGenerate: createMockImageGenerateDeps() }
-              : {}),
-            ...(viewImageFixtures.size > 0
-              ? {
-                  viewImage: {
-                    readFile: async (imagePath: string) => {
-                      const sourcePath = viewImageFixtures.get(imagePath);
-                      return sourcePath ? await readFile(sourcePath) : null;
-                    },
-                  },
-                }
-              : {}),
-          };
-          if (scenario.overrides?.unset_gateway_api_key) {
-            delete process.env.AI_GATEWAY_API_KEY;
-            delete process.env.VERCEL_OIDC_TOKEN;
-          }
-          try {
-            const pendingToolInvocations: EvalToolInvocation[] = [];
-            const replySignal = AbortSignal.any([
-              ...(signal ? [signal] : []),
-              AbortSignal.timeout(replyTimeoutMs),
-            ]);
-            const outcome = await raceWithAbort(replySignal, () =>
-              executeAgentRun(
-                {
-                  ...runRequest,
-                  signal: replySignal,
-                  deadlineAtMs: Math.min(
-                    runRequest.deadlineAtMs ?? Number.POSITIVE_INFINITY,
-                    Date.now() + replyTimeoutMs,
-                  ),
-                  environment: {
-                    ...runRequest.environment,
-                    attachmentStorage:
-                      runRequest.environment?.attachmentStorage ??
-                      attachmentStorage,
-                    ...(env.configuredSkillDirs.length > 0
-                      ? { skillDirs: env.configuredSkillDirs }
-                      : {}),
-                    toolOverrides,
-                  },
-                  onEvent: async (event) => {
-                    await runRequest.onEvent?.(event);
-                    if (event.type === "tool_started") {
-                      const evalInvocation = toEvalToolInvocation({
-                        params: event.params,
-                        toolCallId: event.toolCallId,
-                        toolName: event.toolName,
-                      });
-                      observations.toolInvocations.push(evalInvocation);
-                      pendingToolInvocations.push(evalInvocation);
-                      return;
-                    }
-                    if (event.type !== "tool_finished") {
-                      return;
-                    }
-                    const result = event.report;
-                    const pendingIndex = pendingToolInvocations.findIndex(
-                      (candidate) => candidate.toolCallId === result.toolCallId,
-                    );
-                    if (pendingIndex === -1) {
-                      return;
-                    }
-                    const [invocation] = pendingToolInvocations.splice(
-                      pendingIndex,
-                      1,
-                    );
-                    invocation.completed = true;
-                    invocation.ok = result.ok;
-                    if (result.error) {
-                      invocation.error = result.error;
-                    }
-                    if (result.result !== undefined) {
-                      invocation.result = result.result;
-                    }
-                  },
+          const outcome = await raceWithAbort(replySignal, () =>
+            executeAgentRun(
+              {
+                ...runRequest,
+                signal: replySignal,
+                deadlineAtMs: Math.min(
+                  runRequest.deadlineAtMs ?? Number.POSITIVE_INFINITY,
+                  Date.now() + replyTimeoutMs,
+                ),
+                environment: {
+                  ...runRequest.environment,
+                  attachmentStorage:
+                    runRequest.environment?.attachmentStorage ??
+                    attachmentStorage,
+                  ...(env.configuredSkillDirs.length > 0
+                    ? { skillDirs: env.configuredSkillDirs }
+                    : {}),
+                  toolOverrides,
                 },
-                scriptedStream?.stream,
-              ),
-            );
-            const usage =
-              outcome.status === "completed"
-                ? outcome.result.diagnostics.usage
-                : outcome.usage;
-            observations.usage = addAgentTurnUsage(observations.usage, usage);
-            if (outcome.status === "completed") {
-              observations.modelIds.add(outcome.result.diagnostics.modelId);
-            }
-            replyState.successfulCount += 1;
-            return outcome;
-          } finally {
-            if (scenario.overrides?.unset_gateway_api_key) {
-              gatewaySnapshot.restore();
-            }
+                onEvent: async (event) => {
+                  await runRequest.onEvent?.(event);
+                  if (event.type === "tool_started") {
+                    const evalInvocation = toEvalToolInvocation({
+                      params: event.params,
+                      toolCallId: event.toolCallId,
+                      toolName: event.toolName,
+                    });
+                    observations.toolInvocations.push(evalInvocation);
+                    pendingToolInvocations.push(evalInvocation);
+                    return;
+                  }
+                  if (event.type !== "tool_finished") {
+                    return;
+                  }
+                  const result = event.report;
+                  const pendingIndex = pendingToolInvocations.findIndex(
+                    (candidate) => candidate.toolCallId === result.toolCallId,
+                  );
+                  if (pendingIndex === -1) {
+                    return;
+                  }
+                  const [invocation] = pendingToolInvocations.splice(
+                    pendingIndex,
+                    1,
+                  );
+                  invocation.completed = true;
+                  invocation.ok = result.ok;
+                  if (result.error) {
+                    invocation.error = result.error;
+                  }
+                  if (result.result !== undefined) {
+                    invocation.result = result.result;
+                  }
+                },
+              },
+              scriptedStream?.stream,
+            ),
+          );
+          const usage =
+            outcome.status === "completed"
+              ? outcome.result.diagnostics.usage
+              : outcome.usage;
+          observations.usage = addAgentTurnUsage(observations.usage, usage);
+          if (outcome.status === "completed") {
+            observations.modelIds.add(outcome.result.diagnostics.modelId);
           }
-        },
-      },
-      wakePausedTurn: async (request) => {
-        await wakePausedTurn(request, {
-          queue: conversationWorkQueue,
-          state: env.stateAdapter,
-        });
-      },
-      scheduleSessionCompletedPluginTasks: async (params) => {
-        await scheduleSessionCompletedPluginTasks(params, {
-          send: async (message) => {
-            await processEvalPluginTask(message);
-          },
-        });
+          replyState.successfulCount += 1;
+          return outcome;
+        } finally {
+          if (scenario.overrides?.unset_gateway_api_key) {
+            gatewaySnapshot.restore();
+          }
+        }
       },
     },
     visionContext: {
@@ -2067,11 +2049,10 @@ async function processEvents(args: {
   agentRunner: AgentRunner;
   getSlackAdapter: () => FakeSlackAdapter;
   conversationWorkQueue: ConversationWorkQueueTestAdapter;
-  slackRuntime: ReturnType<typeof createSlackRuntime>;
+  conversationWork: ReturnType<typeof createConversationWork>;
   getThreadRecord: (
     fixture: EvalEventThreadFixture,
   ) => Promise<EvalThreadRecord>;
-  findEvalThread: (threadId: string) => TestThread | undefined;
   observations: RuntimeObservations;
   readyQueueDeliveries: QueueDelivery[];
   steeringDelivery: SteeringDelivery;
@@ -2082,12 +2063,12 @@ async function processEvents(args: {
     agentRunner,
     getSlackAdapter,
     conversationWorkQueue,
-    slackRuntime,
+    conversationWork,
     getThreadRecord,
-    findEvalThread,
     readyQueueDeliveries,
     steeringDelivery,
   } = args;
+  const slackRuntime = conversationWork.runtime;
 
   const consumedOauthStates = new Set<string>();
   const consumedMcpOauthStates = new Set<string>();
@@ -2133,77 +2114,7 @@ async function processEvents(args: {
     return true;
   };
 
-  // Deliver worker-claimed turns through the harness TestThread so replies
-  // are captured like direct deliveries; the worker's restored thread has no
-  // posting surface on the eval adapter.
-  const workerRuntime: typeof slackRuntime = {
-    ...slackRuntime,
-    async handleNewMention(thread, message, hooks) {
-      await slackRuntime.handleNewMention(
-        findEvalThread(thread.id) ?? thread,
-        message,
-        hooks,
-      );
-    },
-    async handleSubscribedMessage(thread, message, hooks) {
-      await slackRuntime.handleSubscribedMessage(
-        findEvalThread(thread.id) ?? thread,
-        message,
-        hooks,
-      );
-    },
-  };
-
   const drainQueuedConversationWork = async (): Promise<void> => {
-    const slackWorker = createSlackConversationWorker({
-      getSlackAdapter: () => getSlackAdapter() as unknown as SlackAdapter,
-      runNextPausedTurn: async (conversationId) =>
-        await runNextPausedTurn(conversationId, {
-          agentRunner,
-          wakePausedTurn: async (request) => {
-            await wakePausedTurn(request, {
-              queue: conversationWorkQueue,
-              state: env.stateAdapter,
-            });
-          },
-          scheduleSessionCompletedPluginTasks: async (params) => {
-            await scheduleSessionCompletedPluginTasks(params, {
-              send: async (message) => {
-                await processEvalPluginTask(message);
-              },
-            });
-          },
-        }),
-      runtime: workerRuntime,
-      state: env.stateAdapter,
-    });
-    const dispatchWorker = createAgentDispatchConversationWorker({
-      resumeTurn: async (dispatch, hooks) => {
-        await runNextPausedTurn(
-          `agent-dispatch:${dispatch.id}`,
-          {
-            agentRunner,
-            inputMessageIds: [getDispatchInputMessageId(dispatch.id)],
-            routingContext: buildDispatchRoutingContext(dispatch),
-            wakePausedTurn: async (request) => {
-              await wakePausedTurn(request, {
-                queue: conversationWorkQueue,
-                state: env.stateAdapter,
-              });
-            },
-            scheduleSessionCompletedPluginTasks: async (params) => {
-              await scheduleSessionCompletedPluginTasks(params, {
-                send: async (message) => {
-                  await processEvalPluginTask(message);
-                },
-              });
-            },
-          },
-          { shouldYield: hooks.shouldYield },
-        );
-      },
-      runTurn: workerRuntime.runDispatchTurn,
-    });
     let processed = 0;
     while (conversationWorkQueue.hasQueuedMessages()) {
       processed += 1;
@@ -2214,10 +2125,7 @@ async function processEvents(args: {
         conversationWorkQueue.takeMessage(),
         {
           queue: conversationWorkQueue,
-          run: createAgentDispatchWorkRouter({
-            dispatchWorker,
-            fallbackWorker: slackWorker,
-          }),
+          run: conversationWork.run,
           state: env.stateAdapter,
         },
       );
@@ -2389,7 +2297,6 @@ async function processEvents(args: {
     await createResourceEventSubscription(
       {
         conversationId: thread.id,
-        destination: createEvalDestination(thread),
         events: event.subscription.events,
         expiresAtMs: nowMs + 14 * 24 * 60 * 60 * 1000,
         intent: event.subscription.intent,
@@ -2412,8 +2319,64 @@ async function processEvents(args: {
           nowMs,
           queue: conversationWorkQueue,
           state: env.stateAdapter,
-          teamId: EVAL_SLACK_TEAM_ID,
         },
+      );
+    }
+    await drainQueuedConversationWork();
+  };
+
+  const runResourceEvent = async (
+    event: ResourceEventFixture,
+  ): Promise<void> => {
+    const { thread } = await getThreadRecord(event.thread);
+    const nowMs = Date.now();
+    const destination = createEvalDestination(thread);
+    await getConversationStore().recordActivity({
+      conversationId: thread.id,
+      destination,
+      nowMs,
+      sessionSource: createSlackSource({
+        channelId: destination.channelId,
+        teamId: destination.teamId,
+        ...(thread.threadTs ? { threadTs: thread.threadTs } : undefined),
+        visibility: "public",
+      }),
+      source: "slack",
+      visibility: "public",
+    });
+    await createResourceEventSubscription(
+      {
+        conversationId: thread.id,
+        events: [event.event_type],
+        expiresAtMs: nowMs + 14 * 24 * 60 * 60 * 1000,
+        intent: event.intent,
+        label: event.label,
+        namespace: event.namespace,
+        identifier: event.identifier,
+        resourceType: event.resource_type,
+      },
+      { nowMs, state: env.stateAdapter },
+    );
+    const result = await ingestResourceEvent(
+      {
+        data: event.data,
+        eventKey: event.event_key,
+        eventType: event.event_type,
+        identifier: event.identifier,
+        namespace: event.namespace,
+        occurredAtMs: nowMs,
+        trustedSummary: event.trusted_summary,
+        untrustedText: event.untrusted_text,
+      },
+      {
+        nowMs,
+        queue: conversationWorkQueue,
+        state: env.stateAdapter,
+      },
+    );
+    if (result.enqueued !== 1) {
+      throw new Error(
+        `Resource event eval expected one queued input, got ${result.enqueued}`,
       );
     }
     await drainQueuedConversationWork();
@@ -2475,6 +2438,8 @@ async function processEvents(args: {
       await runScheduledTaskDue(event);
     } else if (event.type === "event_task_matched") {
       await runEventTaskMatched(event);
+    } else if (event.type === "resource_event") {
+      await runResourceEvent(event);
     } else if (event.type === "github_webhook") {
       await runGitHubWebhook(event);
     } else {
@@ -2487,24 +2452,31 @@ async function processEvents(args: {
     }
   };
 
+  const stageSteering = (
+    preceding: readonly EvalBaseEvent[],
+    steering: SteerEvent,
+  ): void => {
+    const conversationIds = new Set(
+      [...preceding, ...steering.events].map((event) =>
+        buildRuntimeThreadId(event.thread),
+      ),
+    );
+    if (conversationIds.size !== 1) {
+      throw new Error(
+        "steer() messages must target the preceding Conversation",
+      );
+    }
+    steeringDelivery.deliver = async () => {
+      await appendMailboxMessages(steering.events);
+    };
+  };
+
   const processMessageGroup = async (
     messages: Array<MentionEvent | SubscribedMessageEvent>,
     steering?: SteerEvent,
   ): Promise<void> => {
     if (steering) {
-      const conversationIds = new Set(
-        [...messages, ...steering.events].map((event) =>
-          buildRuntimeThreadId(event.thread),
-        ),
-      );
-      if (conversationIds.size !== 1) {
-        throw new Error(
-          "steer() messages must target the preceding Slack conversation",
-        );
-      }
-      steeringDelivery.deliver = async () => {
-        await appendMailboxMessages(steering.events);
-      };
+      stageSteering(messages, steering);
     }
     await appendMailboxMessages(messages);
     await maybeAutoCompleteAuth();
@@ -2517,12 +2489,31 @@ async function processEvents(args: {
     }
   };
 
+  const processResourceEvent = async (
+    event: ResourceEventFixture,
+    steering?: SteerEvent,
+  ): Promise<void> => {
+    if (steering) {
+      stageSteering([event], steering);
+    }
+    await processSettledEvent(event);
+    if (steeringDelivery.deliver) {
+      steeringDelivery.deliver = undefined;
+      throw new Error(
+        "steer() requires the preceding Resource event to start an agent run",
+      );
+    }
+  };
+
   const remainingEvents = scenario.events ?? [];
   let nextIndex = 0;
   const initialSteering =
     remainingEvents[0]?.type === "steer" ? remainingEvents[0] : undefined;
   if (initialSteering) {
     nextIndex = 1;
+  }
+  if (initialSteering && scenario.initialEvents.length === 0) {
+    throw new Error("steer() requires a preceding event");
   }
 
   const initialMessages = Array.from(scenario.initialEvents).filter(
@@ -2535,14 +2526,23 @@ async function processEvents(args: {
   ) {
     await processMessageGroup(initialMessages, initialSteering);
   } else {
-    if (scenario.initialEvents.length > 1 || initialSteering !== undefined) {
+    if (scenario.initialEvents.length > 1) {
       throw new Error(
         "Multiple initialEvents and steer() require Slack message events",
       );
     }
     const initialEvent = scenario.initialEvents[0];
     if (initialEvent) {
-      await processSettledEvent(initialEvent);
+      if (initialSteering) {
+        if (initialEvent.type !== "resource_event") {
+          throw new Error(
+            "steer() must follow a Slack message or Resource event",
+          );
+        }
+        await processResourceEvent(initialEvent, initialSteering);
+      } else {
+        await processSettledEvent(initialEvent);
+      }
     }
   }
 
@@ -2552,15 +2552,23 @@ async function processEvents(args: {
       break;
     }
     if (event.type === "steer") {
-      throw new Error("steer() must follow a Slack message event");
+      throw new Error("steer() requires a preceding event");
     }
     const nextEvent = remainingEvents[nextIndex + 1];
     const steering = nextEvent?.type === "steer" ? nextEvent : undefined;
     if (steering) {
-      if (event.type !== "new_mention" && event.type !== "subscribed_message") {
-        throw new Error("steer() must follow a Slack message event");
+      if (event.type === "resource_event") {
+        await processResourceEvent(event, steering);
+      } else if (
+        event.type === "new_mention" ||
+        event.type === "subscribed_message"
+      ) {
+        await processMessageGroup([event], steering);
+      } else {
+        throw new Error(
+          "steer() must follow a Slack message or Resource event",
+        );
       }
-      await processMessageGroup([event], steering);
       nextIndex += 2;
       continue;
     }
@@ -2704,9 +2712,6 @@ export async function runEvalScenario(
 
     const conversationWorkQueue = createConversationWorkQueueTestAdapter();
     const steeringDelivery: SteeringDelivery = {};
-    const turnLifecycle = new ConversationTurnLifecycleService(
-      getConversationEventStore(),
-    );
     const services = buildRuntimeServices(
       scenario,
       env,
@@ -2714,17 +2719,40 @@ export async function runEvalScenario(
       observations,
       conversationWorkQueue,
       steeringDelivery,
-      turnLifecycle,
       options.signal,
     );
-    const evalAgentRunner = services.replyExecutor?.agentRunner;
+    const evalAgentRunner = services.agentRunner;
     if (!evalAgentRunner) {
       throw new Error("Eval agent runner was not configured.");
     }
 
-    const slackRuntime = createSlackRuntime({
-      getSlackAdapter: () => slackAdapter as any,
+    // Compose the same Conversation work path as production. Wrap Delivery so
+    // worker-claimed turns post through harness TestThreads.
+    const conversationWork = createConversationWork({
+      agentRunner: evalAgentRunner,
+      conversationStore: getConversationStore(),
+      getSlackAdapter: () => slackAdapter as unknown as SlackAdapter,
+      queue: conversationWorkQueue,
+      sendPluginTask: processEvalPluginTask,
       services,
+      state: env.stateAdapter,
+      wrapRuntime: (runtime) => ({
+        ...runtime,
+        async handleNewMention(thread, message, hooks) {
+          await runtime.handleNewMention(
+            threadRecordsById.get(thread.id)?.thread ?? thread,
+            message,
+            hooks,
+          );
+        },
+        async handleSubscribedMessage(thread, message, hooks) {
+          await runtime.handleSubscribedMessage(
+            threadRecordsById.get(thread.id)?.thread ?? thread,
+            message,
+            hooks,
+          );
+        },
+      }),
     });
 
     await processEvents({
@@ -2733,9 +2761,8 @@ export async function runEvalScenario(
       agentRunner: evalAgentRunner,
       getSlackAdapter: () => slackAdapter,
       conversationWorkQueue,
-      slackRuntime,
+      conversationWork,
       getThreadRecord,
-      findEvalThread: (threadId) => threadRecordsById.get(threadId)?.thread,
       observations,
       readyQueueDeliveries,
       steeringDelivery,

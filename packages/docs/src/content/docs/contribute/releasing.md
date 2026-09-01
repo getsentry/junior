@@ -19,6 +19,7 @@ Junior uses lockstep package releases for:
 - `@sentry/junior-dashboard`
 - `@sentry/junior-datadog`
 - `@sentry/junior-github`
+- `@sentry/junior-gocd`
 - `@sentry/junior-hex`
 - `@sentry/junior-linear`
 - `@sentry/junior-maintenance`

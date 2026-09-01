@@ -35,17 +35,18 @@ function resourceEventPlugin(enabled = true) {
   });
 }
 
-function ctx(): Extract<ToolRuntimeContext, { source: { platform: "local" } }>;
+function ctx(): Extract<ToolRuntimeContext, { source: { kind: "local" } }>;
 function ctx(
   channelId: string,
   sourceVisibility?: "private" | "public",
-): Extract<ToolRuntimeContext, { source: { platform: "slack" } }>;
+): Extract<ToolRuntimeContext, { source: { kind: "slack" } }>;
 function ctx(
   channelId?: string,
   sourceVisibility?: "private" | "public",
 ): ToolRuntimeContext {
   if (!channelId) {
     return {
+      conversationId: "local:test:tool-registration",
       destination: {
         platform: "local" as const,
         conversationId: "local:test:tool-registration",
@@ -58,6 +59,8 @@ function ctx(
 
   return {
     conversationId: `slack:${channelId}:1700000000.100000`,
+    conversationPrivacy:
+      sourceVisibility ?? (channelId.startsWith("C") ? "public" : "private"),
     slackActionToken: actionToken,
     destination: {
       platform: "slack" as const,
@@ -70,6 +73,13 @@ function ctx(
       visibility:
         sourceVisibility ?? (channelId.startsWith("C") ? "public" : "private"),
     }),
+    location: {
+      id: `location:T123:${channelId}`,
+      provider: "slack",
+      teamId: "T123",
+      channelId,
+      threadTs: "1700000000.100000",
+    },
     egress: noopEgress,
     workspace: noopSandbox,
   };
@@ -168,7 +178,7 @@ describe("Slack tool registration", () => {
     expect(tools).toHaveProperty("slackChannelJoin");
   });
 
-  it("does not register conversation search for a source-confirmed private C channel", () => {
+  it("does not register conversation search for a private Conversation", () => {
     const tools = createTools([], {}, ctx("C12345", "private"));
 
     expect(tools).not.toHaveProperty("searchConversationMessages");
@@ -196,6 +206,25 @@ describe("Slack tool registration", () => {
     expect(tools).toHaveProperty("sendFiles");
     expect(tools).toHaveProperty("slackChannelListMessages");
     expect(tools).toHaveProperty("slackThreadRead");
+  });
+
+  it("registers Slack tools for system work in a Slack Conversation", () => {
+    const tools = createTools(
+      [],
+      {},
+      {
+        ...ctx("C12345"),
+        actor: { platform: "system", name: "scheduler" },
+        source: { kind: "scheduled_task" },
+        slackActionToken: undefined,
+      },
+    );
+
+    expect(tools).toHaveProperty("slackThreadRead");
+    expect(tools).toHaveProperty("slackChannelListMessages");
+    expect(tools).toHaveProperty("sendFiles");
+    expect(tools).not.toHaveProperty("slackPublicSearch");
+    expect(tools).not.toHaveProperty("addReaction");
   });
 
   it("registers delivery tools from assistant context channel in DM turns", () => {
@@ -279,9 +308,11 @@ describe("Slack tool registration", () => {
       },
     );
 
+    // Core Workspace snapshot events stay searchable/watchable. Durable event
+    // task creation still needs a plugin publisher.
     expect(tools).not.toHaveProperty("createEventTask");
-    expect(tools).not.toHaveProperty("searchResourceEventTypes");
-    expect(tools).not.toHaveProperty("watchResourceEvents");
+    expect(tools).toHaveProperty("searchResourceEventTypes");
+    expect(tools).toHaveProperty("watchResourceEvents");
     expect(tools).toHaveProperty("listEventTasks");
     expect(tools).toHaveProperty("updateEventTask");
     expect(tools).toHaveProperty("deleteEventTask");
@@ -319,6 +350,7 @@ describe("Slack tool registration", () => {
       [],
       {},
       {
+        conversationId: "local:test:run-test",
         destination: {
           platform: "local",
           conversationId: "local:test:run-test",
@@ -333,8 +365,8 @@ describe("Slack tool registration", () => {
       Object.keys(tools).filter((name) => name.startsWith("slack")),
     ).toEqual([]);
     expect(tools).not.toHaveProperty("attachFile");
-    expect(tools).not.toHaveProperty("stopWatchingResources");
-    expect(tools).not.toHaveProperty("searchConversationEvents");
+    expect(tools).toHaveProperty("stopWatchingResources");
+    expect(tools).toHaveProperty("searchConversationEvents");
   });
 
   it("registers image generation only when artifact persistence is available", () => {

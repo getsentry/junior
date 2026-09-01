@@ -4,7 +4,7 @@ import {
   type SlackConversationVisibility,
 } from "@/chat/slack/conversation-context";
 import { parseSlackThreadId } from "@/chat/slack/context";
-import { buildSlackSourceUrl } from "@/chat/slack/source-link";
+import { buildSlackLocationUrl } from "@/chat/slack/location-url";
 import type { StoredSlackActor } from "@/chat/actor";
 import type {
   Conversation as StoredConversation,
@@ -30,8 +30,8 @@ type ConversationProjectionSource = Pick<
   | "createdAtMs"
   | "execution"
   | "lastActivityAtMs"
+  | "location"
   | "source"
-  | "sessionSource"
   | "title"
   | "updatedAtMs"
 >;
@@ -75,7 +75,7 @@ function surfaceFromSource(
   return surfaceFromConversationId(conversationId);
 }
 
-function sourceUrlFromConversation(args: {
+function locationUrlFromConversation(args: {
   canViewPrivateContent: boolean;
   conversation: ConversationProjectionSource;
   teamDomainByTeamId?: ReadonlyMap<string, string>;
@@ -83,17 +83,15 @@ function sourceUrlFromConversation(args: {
   const { conversation } = args;
   if (
     !args.canViewPrivateContent ||
-    conversation.sessionSource?.platform !== "slack"
+    conversation.location?.provider !== "slack"
   ) {
     return undefined;
   }
-  const teamDomain = args.teamDomainByTeamId?.get(
-    conversation.sessionSource.teamId,
-  );
-  const threadTs = conversation.sessionSource.threadTs;
+  const teamDomain = args.teamDomainByTeamId?.get(conversation.location.teamId);
+  const threadTs = conversation.location.threadTs;
   if (!teamDomain || !threadTs) return undefined;
-  return buildSlackSourceUrl({
-    channelId: conversation.sessionSource.channelId,
+  return buildSlackLocationUrl({
+    channelId: conversation.location.channelId,
     teamDomain,
     threadTs,
   });
@@ -105,7 +103,9 @@ function actorIdentityReport(
   if (!actor) return undefined;
   const identity: ActorIdentity = {
     ...(actor.email !== undefined ? { email: actor.email } : undefined),
-    ...(actor.fullName !== undefined ? { fullName: actor.fullName } : undefined),
+    ...(actor.fullName !== undefined
+      ? { fullName: actor.fullName }
+      : undefined),
     ...(actor.slackUserId !== undefined
       ? { slackUserId: actor.slackUserId }
       : undefined),
@@ -227,7 +227,7 @@ export function conversationSummaryFromStoredConversation(args: {
     conversation.conversationId,
   );
   const actorIdentity = actorIdentityReport(conversation.actor);
-  const sourceUrl = sourceUrlFromConversation({
+  const locationUrl = locationUrlFromConversation({
     canViewPrivateContent,
     conversation,
     ...(args.teamDomainByTeamId
@@ -262,10 +262,12 @@ export function conversationSummaryFromStoredConversation(args: {
     startedAt: new Date(conversation.createdAtMs).toISOString(),
     status: statusFromConversation(conversation),
     surface,
-    ...(args.auxiliaryCosts ? { auxiliaryCosts: args.auxiliaryCosts } : undefined),
+    ...(args.auxiliaryCosts
+      ? { auxiliaryCosts: args.auxiliaryCosts }
+      : undefined),
     ...(usage ? { cumulativeUsage: usage } : undefined),
     ...(actorIdentity ? { actorIdentity } : undefined),
-    ...(sourceUrl ? { sourceUrl } : undefined),
+    ...(locationUrl ? { locationUrl } : undefined),
     archivedAt:
       args.archivedAtMs === undefined
         ? null

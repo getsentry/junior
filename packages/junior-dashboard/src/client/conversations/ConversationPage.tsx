@@ -379,6 +379,12 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
     if (!window.matchMedia("(max-width: 767px)").matches) return;
     onPinRequestRef.current();
   }, []);
+  // Mobile keyboard open shrinks the transcript. Focus must re-pin the latest
+  // message so the reader does not stay stuck above the docked composer.
+  const onComposerFocus = useCallback(() => {
+    if (!window.matchMedia("(max-width: 767px)").matches) return;
+    onPinRequestRef.current();
+  }, []);
 
   return (
     <ComposerDock
@@ -404,6 +410,7 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
         draftId={props.conversationId}
         label="Continue this conversation"
         submitLabel="Send"
+        onFocus={onComposerFocus}
         onSubmitStart={onSubmitStart}
         onSubmit={onSubmit}
       />

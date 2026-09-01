@@ -139,11 +139,13 @@ Create the subscription or event task before the issue arrives. Junior does not 
 
 Identifiers are normalized to uppercase. Prefer team-scoped event tasks for monitor workflows that create many new issues.
 
+Optional `match` values come from the resource type. For Linear issue and team events, `teamKey` is the uppercase team key such as `SRE`. Junior drops events that do not match before it wakes the agent. Prefer a team identifier for “all new issues in SRE”. Use `match.teamKey` when an issue-scoped watch or task needs an extra team guard.
+
 ## Verify
 
 **OAuth:** Ask Junior to create or update a real Linear issue, complete the private authorization flow, and confirm the issue key or URL returns in the same thread.
 
-**Webhooks:** Create an event task for a team key, then create a test issue in that team.
+**Webhooks:** Create an event task for a team key, then create a test issue in that team. You can also create an issue-scoped task with `match.teamKey` set to the same team key and confirm non-matching teams do not fire.
 
 ## Security
 

@@ -13,6 +13,12 @@ import type {
   ConversationStatsItem,
   ActorTotalsReport,
 } from "../schema/person";
+import {
+  WINDOW_SEVEN_DAY_HOURS,
+  fillUtcDays,
+  fillUtcHours,
+  sumUtcHoursIntoSixHours,
+} from "../reporting-window";
 
 export const RECENT_LIMIT = 25;
 export const ACTIVITY_DAYS = 365;
@@ -119,21 +125,45 @@ export function activityDays(
   days: Map<string, ActorActivityDayReport>,
   nowMs: number,
 ): ActorActivityDayReport[] {
-  const items: ActorActivityDayReport[] = [];
-  const end = new Date(nowMs);
-  end.setUTCHours(0, 0, 0, 0);
-  const start = new Date(end);
-  start.setUTCDate(start.getUTCDate() - (ACTIVITY_DAYS - 1));
+  return fillUtcDays({
+    count: ACTIVITY_DAYS,
+    empty: emptyActivityDay,
+    nowMs,
+    rows: days,
+  });
+}
 
-  for (
-    const cursor = new Date(start);
-    cursor.getTime() <= end.getTime();
-    cursor.setUTCDate(cursor.getUTCDate() + 1)
-  ) {
-    const date = cursor.toISOString().slice(0, 10);
-    items.push(days.get(date) ?? emptyActivityDay(date));
-  }
-  return items;
+/**
+ * Fill the trailing 7-day people activity hour window from known hour totals.
+ * 24h charts use the last 24 points. 7d charts sum hours into 6-hour buckets.
+ */
+export function activityHours(
+  hours: Map<string, ActorActivityDayReport>,
+  nowMs: number,
+): ActorActivityDayReport[] {
+  return fillUtcHours({
+    count: WINDOW_SEVEN_DAY_HOURS,
+    empty: emptyActivityDay,
+    nowMs,
+    rows: hours,
+  });
+}
+
+/**
+ * Fill trailing 6-hour people activity buckets from hour keys or hour rows.
+ * Hour keys must be summed into 6-hour keys first.
+ */
+export function activitySixHours(
+  hours: Map<string, ActorActivityDayReport> | readonly ActorActivityDayReport[],
+  nowMs: number,
+): ActorActivityDayReport[] {
+  const series =
+    hours instanceof Map ? activityHours(hours, nowMs) : [...hours];
+  return sumUtcHoursIntoSixHours({
+    empty: emptyActivityDay,
+    hours: series,
+    nowMs,
+  });
 }
 
 /** Return deterministic stats rows for people API responses. */

@@ -1,6 +1,5 @@
 import { eq } from "drizzle-orm";
 import { afterEach, describe, expect, it } from "vitest";
-import { createSlackSource } from "@sentry/junior-plugin-api";
 import type { AttachmentStorage } from "@/chat/attachments/storage";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import {
@@ -36,13 +35,13 @@ type ContextOverrides = Omit<
   Partial<SlackToolContext>,
   | "destinationChannelId"
   | "messageTs"
-  | "sourceChannelId"
+  | "locationChannelId"
   | "teamId"
   | "threadTs"
 > & {
   destinationChannelId?: string;
   messageTs?: string;
-  sourceChannelId?: string;
+  locationChannelId?: string;
   teamId?: string;
   threadTs?: string;
 };
@@ -69,16 +68,16 @@ function createContext(
   _userText: string,
   overrides: ContextOverrides = {},
 ): SlackToolContext {
-  const sourceChannelId = requireSlackChannelId(
-    overrides.sourceChannelId ?? "C123",
+  const locationChannelId = requireSlackChannelId(
+    overrides.locationChannelId ?? "C123",
   );
   const destinationChannelId =
     overrides.destinationChannelId !== undefined
       ? requireSlackChannelId(overrides.destinationChannelId)
-      : sourceChannelId;
+      : locationChannelId;
   const teamId = requireSlackTeamId(overrides.teamId ?? "T123");
   const {
-    sourceChannelId: _sourceChannelId,
+    locationChannelId: _locationChannelId,
     destinationChannelId: _destinationChannelId,
     messageTs: overrideMessageTs,
     teamId: _teamId,
@@ -92,20 +91,9 @@ function createContext(
     ? requireSlackMessageTs(overrideThreadTs)
     : undefined;
   return {
-    destination: {
-      platform: "slack",
-      teamId,
-      channelId: destinationChannelId,
-    },
-    source: createSlackSource({
-      teamId,
-      channelId: sourceChannelId,
-      messageTs,
-      visibility: "private",
-    }),
     destinationChannelId,
     messageTs,
-    sourceChannelId,
+    locationChannelId,
     teamId,
     ...(threadTs ? { threadTs } : undefined),
     ...rest,
@@ -130,9 +118,11 @@ function createMaterializeFile(files: Record<string, Buffer> = {}) {
     readSandboxFileUpload(sandbox, input);
 }
 
-async function executeTool<
-  TInput,
->(tool: any, input: TInput, options: { toolCallId?: string } = {}) {
+async function executeTool<TInput>(
+  tool: any,
+  input: TInput,
+  options: { toolCallId?: string } = {},
+) {
   if (typeof tool?.execute !== "function") {
     throw new Error("tool execute function missing");
   }
@@ -199,9 +189,9 @@ describe("Slack sendFiles", () => {
     });
   });
 
-  it("uses source thread coordinates for thread delivery in assistant-context turns", async () => {
+  it("uses the Conversation Location thread when Destination differs", async () => {
     const context = createContext("attach this here", {
-      sourceChannelId: "D123",
+      locationChannelId: "D123",
       destinationChannelId: "CSHARED",
       threadTs: "1700000000.321",
     });
@@ -226,6 +216,27 @@ describe("Slack sendFiles", () => {
       channel_id: "D123",
       thread_ts: "1700000000.321",
     });
+  });
+
+  it("uploads files to a channel-level Conversation Location", async () => {
+    const context = createContext("attach the report");
+    delete context.messageTs;
+    const tool = createSendFilesTool(
+      context,
+      createToolState(),
+      createMaterializeFile({
+        "/tmp/report.txt": Buffer.from("report body"),
+      }),
+    );
+
+    await executeTool(tool, {
+      files: [{ path: "/tmp/report.txt" }],
+    });
+
+    const params = getCapturedSlackApiCalls("files.completeUploadExternal")[0]
+      ?.params;
+    expect(params).toMatchObject({ channel_id: "C123" });
+    expect(params).not.toHaveProperty("thread_ts");
   });
 
   it("uploads files into the current Slack thread", async () => {

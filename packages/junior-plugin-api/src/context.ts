@@ -3,6 +3,7 @@ import type { ZodTypeAny } from "zod";
 import {
   destinationSchema,
   identitySchema,
+  locationSchema,
   webActorSchema,
   localActorSchema,
   platformSchema,
@@ -10,6 +11,8 @@ import {
   slackActorSchema,
   systemActorSchema,
   sourceSchema,
+  sourceVisibilitySchema,
+  slackLocationSchema,
   userSchema,
 } from "./schemas";
 
@@ -23,10 +26,22 @@ export type SystemActor = z.output<typeof systemActorSchema>;
 export type Identity = z.output<typeof identitySchema>;
 export type User = z.output<typeof userSchema>;
 export type Source = z.output<typeof sourceSchema>;
-export type SlackSource = Extract<Source, { platform: "slack" }>;
-export type LocalSource = Extract<Source, { platform: "local" }>;
-export type WebSource = Extract<Source, { platform: "web" }>;
-export type SourceVisibility = Source["visibility"];
+/** Validated Location associated with a Conversation. */
+export type Location = z.output<typeof locationSchema>;
+/** Complete Slack Location associated with a Conversation. */
+export type SlackLocation = z.output<typeof slackLocationSchema>;
+export type SlackSource = Extract<Source, { kind: "slack" }>;
+export type LocalSource = Extract<Source, { kind: "local" }>;
+export type WebSource = Extract<Source, { kind: "web" }>;
+export type ResourceEventSource = Extract<Source, { kind: "resource_event" }>;
+export type ScheduledTaskSource = Extract<Source, { kind: "scheduled_task" }>;
+export type EventTaskSource = Extract<Source, { kind: "event_task" }>;
+export type PluginDispatchSource = Extract<Source, { kind: "plugin_dispatch" }>;
+export type AgentInvocationSource = Extract<
+  Source,
+  { kind: "agent_invocation" }
+>;
+export type SourceVisibility = z.output<typeof sourceVisibilitySchema>;
 
 export type Destination = z.output<typeof destinationSchema>;
 
@@ -111,10 +126,28 @@ export interface WebInvocationContext extends BaseInvocationContext {
   source: WebSource;
 }
 
+export interface ResourceEventInvocationContext extends BaseInvocationContext {
+  /** Existing conversation destination used for tool context. */
+  destination: Destination;
+  actor?: Actor;
+  /** Runtime-owned Resource event Source for this invocation. */
+  source: ResourceEventSource;
+}
+
 export type InvocationContext =
   | LocalInvocationContext
   | SlackInvocationContext
-  | WebInvocationContext;
+  | WebInvocationContext
+  | (BaseInvocationContext & {
+      destination: Destination;
+      actor?: Actor;
+      source:
+        | AgentInvocationSource
+        | EventTaskSource
+        | PluginDispatchSource
+        | ResourceEventSource
+        | ScheduledTaskSource;
+    });
 
 /** Build a normalized Slack source from runtime-owned Slack coordinates. */
 export function createSlackSource(input: {
@@ -126,7 +159,7 @@ export function createSlackSource(input: {
   visibility: SourceVisibility;
 }): SlackSource {
   return {
-    platform: "slack",
+    kind: "slack",
     visibility: input.visibility,
     teamId: input.teamId,
     channelId: input.channelId,
@@ -138,7 +171,7 @@ export function createSlackSource(input: {
 /** Build a normalized local source from a local conversation id. */
 export function createLocalSource(conversationId: string): LocalSource {
   return {
-    platform: "local",
+    kind: "local",
     visibility: "private",
     conversationId,
   };
@@ -150,20 +183,36 @@ export function createWebSource(
   visibility: SourceVisibility = "public",
 ): WebSource {
   return {
-    platform: "web",
+    kind: "web",
     visibility,
     conversationId,
   };
 }
 
+/** Build a normalized Resource event Source from one matched event. */
+export function createResourceEventSource(input: {
+  eventKey: string;
+  eventType: string;
+  identifier: string;
+  namespace: string;
+}): ResourceEventSource {
+  return {
+    kind: "resource_event",
+    eventKey: input.eventKey,
+    eventType: input.eventType,
+    identifier: input.identifier,
+    namespace: input.namespace,
+  };
+}
+
 /** Return whether a source is private to a person or restricted group. */
 export function isPrivateSource(source: Source): boolean {
-  return source.visibility === "private";
+  return "visibility" in source && source.visibility === "private";
 }
 
 /** Return the stable source identity used for idempotency and attribution. */
 export function getSourceKey(source: Source): string | undefined {
-  switch (source.platform) {
+  switch (source.kind) {
     case "web":
     case "local":
       return source.conversationId;
@@ -174,6 +223,13 @@ export function getSourceKey(source: Source): string | undefined {
       }
       return `slack:${source.teamId}:${source.channelId}:${messageKey}`;
     }
+    case "resource_event":
+      return `resource-event:${source.namespace}:${source.eventKey}`;
+    case "scheduled_task":
+    case "event_task":
+    case "plugin_dispatch":
+    case "agent_invocation":
+      return undefined;
   }
 }
 

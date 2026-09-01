@@ -15,7 +15,8 @@ The legacy creator trigger remains during rolling deployment so an old worker ca
 
 Scheduled runs use the core conversation work queue. They preserve `scheduler` as historical dispatch provenance and as the signed task-credential binding label; changing that value would invalidate existing task-scoped credential authority.
 
-The agent input uses plain scheduled-task framing. It states that the task did not start from a new message, gives the instructions, and asks the reply to summarize what Junior acted on and what it did or needs next.
+The agent input uses shared framing from `task-input.ts`. See `chat/README.md`
+(Task agent input) for the section outline.
 
 The heartbeat bounds claims per invocation, reconciles incomplete dispatches before claiming new work, and advances recurring tasks only after their current run reaches a terminal outcome.
 

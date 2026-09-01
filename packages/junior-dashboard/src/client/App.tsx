@@ -26,6 +26,7 @@ import { isNewConversationPath } from "./conversations/conversationRoutes";
 import { ConversationWorkspace } from "./conversations/ConversationWorkspace";
 import { useConversationData } from "./conversations/queries";
 import { ComponentsPage } from "./pages/dev/ComponentsPage";
+import { CodePage } from "./pages/code/CodePage";
 import { LocationDetailPage } from "./pages/locations/LocationDetailPage";
 import { LocationsPage } from "./pages/locations/LocationsPage";
 import { PeoplePage } from "./pages/people/PeoplePage";
@@ -36,15 +37,19 @@ import { SystemPage } from "./pages/system/SystemPage";
 import { SystemPageLayout } from "./pages/system/SystemPageLayout";
 import { WorkspaceFormPage } from "./pages/system/WorkspaceFormPage";
 import { WorkspacesPage } from "./pages/system/WorkspacesPage";
+import { MemoryRouteLoading } from "./pages/memory/MemoryPageLayout";
 import { TaskExecutionsPage } from "./pages/tasks/TaskExecutionsPage";
 import { TaskRunsPage } from "./pages/tasks/TaskRunsPage";
 import { TasksPage } from "./pages/tasks/TasksPage";
-import { TasksPageLayout } from "./pages/tasks/TasksPageLayout";
+import {
+  TasksPageLayout,
+  TasksRouteLoading,
+} from "./pages/tasks/TasksPageLayout";
 import {
   MemoryPermalinkRoute,
   PluginUserPageRoute,
-  pluginUserPagePath,
 } from "./pages/user/PluginUserPage";
+import { buildPrimaryNavItems } from "./primaryNav";
 import { dashboardShellBgClass } from "./styles";
 import type { DashboardCoreData } from "./types";
 
@@ -90,17 +95,13 @@ export function DashboardShell() {
     ? conversationDetail.data?.displayTitle?.trim() ||
       conversationDisplayTitle(mobileConversation)
     : undefined;
-  const primaryNavItems = [
-    ...(loggedIn
-      ? [{ key: "tasks", label: "Tasks", to: "/tasks" }]
-      : []),
-    ...primaryUserPages.map((page) => ({
-      key: `${page.pluginName}:${page.id}`,
-      label: page.label,
-      to: pluginUserPagePath(page.pluginName, page.id),
-    })),
-    { key: "system", label: "System", to: "/system" },
-  ];
+  const primaryNavItems = buildPrimaryNavItems({
+    loading,
+    loggedIn,
+    pathname: location.pathname,
+    primaryUserPages,
+    userPagesPending: userPagesQuery.isPending,
+  });
 
   useEffect(() => {
     setMobileNavigationOpen(false);
@@ -191,7 +192,12 @@ export function DashboardShell() {
           element={
             loading ? (
               <TasksPageLayout>
-                <LoadingView label="Loading task executions" />
+                <TasksRouteLoading
+                  description="Terminal runs for one scheduled or event task."
+                  label="Loading task executions"
+                  title="Task executions"
+                  variant="list"
+                />
               </TasksPageLayout>
             ) : loggedIn ? (
               <TasksPageLayout>
@@ -207,7 +213,12 @@ export function DashboardShell() {
           element={
             loading ? (
               <TasksPageLayout>
-                <LoadingView label="Loading task runs" />
+                <TasksRouteLoading
+                  description="Newest runs across your tasks and tasks in public destinations."
+                  label="Loading task runs"
+                  title="Runs"
+                  variant="list"
+                />
               </TasksPageLayout>
             ) : loggedIn ? (
               <TasksPageLayout>
@@ -223,7 +234,12 @@ export function DashboardShell() {
           element={
             loading ? (
               <TasksPageLayout>
-                <LoadingView label="Loading tasks" />
+                <TasksRouteLoading
+                  description="Find and manage tasks across your linked workspaces."
+                  label="Loading tasks"
+                  title="All tasks"
+                  variant="list"
+                />
               </TasksPageLayout>
             ) : loggedIn ? (
               <TasksPageLayout>
@@ -233,13 +249,39 @@ export function DashboardShell() {
               <Navigate replace to="/" />
             )
           }
-          path="/tasks/list/:taskId?"
+          path="/tasks/list"
         />
         <Route
           element={
             loading ? (
               <TasksPageLayout>
-                <LoadingView label="Loading tasks" />
+                <TasksRouteLoading
+                  description="Find and manage tasks across your linked workspaces."
+                  label="Loading tasks"
+                  title="All tasks"
+                  variant="list"
+                />
+              </TasksPageLayout>
+            ) : loggedIn ? (
+              <TasksPageLayout>
+                <TasksPage enabled={loggedIn} view="list" />
+              </TasksPageLayout>
+            ) : (
+              <Navigate replace to="/" />
+            )
+          }
+          path="/tasks/:taskId"
+        />
+        <Route
+          element={
+            loading ? (
+              <TasksPageLayout>
+                <TasksRouteLoading
+                  description="Scheduled and event-driven work created by users."
+                  label="Loading tasks"
+                  title="Tasks"
+                  variant="stats"
+                />
               </TasksPageLayout>
             ) : loggedIn ? (
               <TasksPageLayout>
@@ -297,6 +339,7 @@ export function DashboardShell() {
           }
           path="/"
         />
+        <Route element={<CodePage />} path="/code" />
         <Route
           element={<Navigate replace to="/" />}
           path="/conversations/new"
@@ -439,19 +482,7 @@ export function DashboardShell() {
         <Route
           element={
             loading || userPagesQuery.isPending ? (
-              <LoadingView label="Loading memory" />
-            ) : loggedIn && userPagesQuery.data ? (
-              <MemoryPermalinkRoute pages={userPagesQuery.data} />
-            ) : (
-              <Navigate replace to="/" />
-            )
-          }
-          path="/memories/:memoryId?"
-        />
-        <Route
-          element={
-            loading || userPagesQuery.isPending ? (
-              <LoadingView label="Loading memories" />
+              <MemoryRouteLoading label="Loading memories" />
             ) : loggedIn && userPagesQuery.data ? (
               <MemoryPermalinkRoute pages={userPagesQuery.data} />
             ) : (
@@ -459,6 +490,18 @@ export function DashboardShell() {
             )
           }
           path="/memories/library"
+        />
+        <Route
+          element={
+            loading || userPagesQuery.isPending ? (
+              <MemoryRouteLoading label="Loading memory" />
+            ) : loggedIn && userPagesQuery.data ? (
+              <MemoryPermalinkRoute pages={userPagesQuery.data} />
+            ) : (
+              <Navigate replace to="/" />
+            )
+          }
+          path="/memories/:memoryId?"
         />
         <Route
           element={

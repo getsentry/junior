@@ -50,7 +50,7 @@ const createPullRequestInputSchema = Type.Object(
     body: Type.Optional(
       Type.String({
         description:
-          "Pull request body. Junior appends the conversation footer.",
+          "Pull request body. The runtime appends the conversation footer.",
       }),
     ),
     draft: Type.Optional(
@@ -71,7 +71,7 @@ const createPullRequestToolInputSchema = z
     base: z.string().describe("Base branch."),
     body: z
       .string()
-      .describe("Pull request body. Junior appends the conversation footer.")
+      .describe("Pull request body. The runtime appends the conversation footer.")
       .optional(),
     draft: z
       .boolean()
@@ -250,7 +250,7 @@ function isDefinitiveGitHubPullRequestCreateRejection(
   return [400, 401, 404, 410, 422].includes(error.status);
 }
 
-/** Build the GitHub REST create-PR request after Junior owns body/footer shaping. */
+/** Build the GitHub REST create-PR request after the runtime owns body/footer shaping. */
 async function createGitHubPullRequestRequest(
   conversationId: string,
   input: CreateGitHubPullRequestInput,
@@ -417,7 +417,7 @@ export function createGitHubPullRequestTool(
       readOnlyHint: false,
     },
     description:
-      "Create a GitHub pull request with a runtime-owned Junior conversation footer. Use this instead of shelling out to gh pr create when creating pull requests.",
+      "Create a GitHub pull request with a runtime-owned conversation footer. Use this instead of shelling out to gh pr create when creating pull requests.",
     inputSchema: createPullRequestToolInputSchema,
     outputSchema: gitHubPullRequestOutputSchema,
     async execute(
@@ -482,7 +482,7 @@ export function createGitHubPullRequestTool(
               );
             } catch (error) {
               throw new Error(
-                "GitHub pull request was created, but Junior could not persist the completed pull request state.",
+                "GitHub pull request was created, but the runtime could not persist the completed pull request state.",
                 { cause: error },
               );
             }

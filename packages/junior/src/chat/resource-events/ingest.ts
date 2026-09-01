@@ -14,18 +14,17 @@ export async function ingestResourceEvent(
     nowMs?: number;
     queue: ConversationWorkQueue;
     state?: StateAdapter;
-    teamId: string;
   },
 ): Promise<{ enqueued: number }> {
   const event = resourceEventSchema.parse(input);
   const nowMs = options.nowMs ?? Date.now();
   const subscriptions = await findMatchingResourceEventSubscriptions({
+    data: event.data,
     eventType: event.eventType,
     nowMs,
     namespace: event.namespace,
     identifier: event.identifier,
     state: options.state,
-    teamId: options.teamId,
   });
   let enqueued = 0;
   const errors: unknown[] = [];
@@ -33,10 +32,10 @@ export async function ingestResourceEvent(
   for (const subscription of subscriptions) {
     try {
       const delivered = await deliverResourceEventSubscription({
+        data: event.data,
         eventType: event.eventType,
         namespace: event.namespace,
         identifier: event.identifier,
-        teamId: options.teamId,
         terminal: event.terminal,
         nowMs,
         state: options.state,

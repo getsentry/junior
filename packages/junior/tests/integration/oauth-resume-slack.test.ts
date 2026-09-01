@@ -9,9 +9,12 @@ import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { getCapturedSlackApiCalls } from "../msw/handlers/slack-api";
 import {
   createModelAgentRunner,
+  createTestTurnExecution,
   neverRunAgentRunner,
 } from "../fixtures/agent-runner";
 import { createModelStream } from "../fixtures/model-stream";
+
+const ORIGINAL_REPLY_TIMEOUT_MS = process.env.EVAL_AGENT_REPLY_TIMEOUT_MS;
 
 function modelReply(text: string) {
   return createModelAgentRunner(createModelStream([{ type: "text", text }]));
@@ -51,10 +54,15 @@ describe("oauth resume slack integration", () => {
   afterEach(async () => {
     await disconnectStateAdapter();
     delete process.env.JUNIOR_STATE_ADAPTER;
+    if (ORIGINAL_REPLY_TIMEOUT_MS === undefined) {
+      delete process.env.EVAL_AGENT_REPLY_TIMEOUT_MS;
+    } else {
+      process.env.EVAL_AGENT_REPLY_TIMEOUT_MS = ORIGINAL_REPLY_TIMEOUT_MS;
+    }
   });
 
   it("posts resumed status updates through the Slack MSW harness", async () => {
-    const { resumeSlackTurn } = await import("@/chat/runtime/slack-resume");
+    const { resumeSlackTurn } = await import("@/chat/providers/slack/resume");
     await resumeSlackTurn({
       messageText: "What budget deadline did I mention earlier?",
       conversationId: "slack:C123:1700000000.001",
@@ -63,7 +71,7 @@ describe("oauth resume slack integration", () => {
       threadTs: "1700000000.001",
       initialText:
         "Your eval-auth MCP access is now connected. Continuing the original request...",
-      replyContext: {
+      run: {
         credentialContext: {
           actor: { type: "user", userId: "U123" },
         },
@@ -71,8 +79,8 @@ describe("oauth resume slack integration", () => {
         source: testSlackSource("1700000000.001"),
         actor: { platform: "slack", teamId: "T123", userId: "U123" },
       },
-      agentRunner: modelReply(
-        "The budget deadline you mentioned earlier was Friday.",
+      executeTurn: createTestTurnExecution(
+        modelReply("The budget deadline you mentioned earlier was Friday."),
       ),
       commitResult: async () => {
         expect(
@@ -119,7 +127,7 @@ describe("oauth resume slack integration", () => {
   }, 10_000);
 
   it("validates credentials before starting Slack resume UX", async () => {
-    const { resumeSlackTurn } = await import("@/chat/runtime/slack-resume");
+    const { resumeSlackTurn } = await import("@/chat/providers/slack/resume");
     const agentRunner = neverRunAgentRunner();
 
     await resumeSlackTurn({
@@ -130,7 +138,7 @@ describe("oauth resume slack integration", () => {
       threadTs: "1700000000.011",
       initialText: "Connected. Continuing...",
       initialStatus: { text: "Continuing request" },
-      replyContext: {
+      run: {
         credentialContext: {
           actor: { type: "user", userId: "U456" },
         },
@@ -138,7 +146,7 @@ describe("oauth resume slack integration", () => {
         source: testSlackSource("1700000000.011"),
         actor: { platform: "slack", teamId: "T123", userId: "U123" },
       },
-      agentRunner,
+      executeTurn: createTestTurnExecution(agentRunner),
     });
 
     expect(getCapturedSlackApiCalls("assistant.threads.setStatus")).toEqual([]);
@@ -154,7 +162,8 @@ describe("oauth resume slack integration", () => {
   });
 
   it("posts a failure reply when resumed generation times out", async () => {
-    const { resumeSlackTurn } = await import("@/chat/runtime/slack-resume");
+    process.env.EVAL_AGENT_REPLY_TIMEOUT_MS = "10";
+    const { resumeSlackTurn } = await import("@/chat/providers/slack/resume");
     const runEvents: string[] = [];
     let observedSignal: AbortSignal | undefined;
     const realAgentRunner = createModelAgentRunner(
@@ -177,7 +186,7 @@ describe("oauth resume slack integration", () => {
       channelId: "C123",
       threadTs: "1700000000.010",
       initialText: "Connected. Continuing...",
-      replyContext: {
+      run: {
         credentialContext: {
           actor: { type: "user", userId: "U123" },
         },
@@ -185,7 +194,7 @@ describe("oauth resume slack integration", () => {
         source: testSlackSource("1700000000.010"),
         actor: { platform: "slack", teamId: "T123", userId: "U123" },
       },
-      agentRunner: {
+      executeTurn: createTestTurnExecution({
         run: async (run) => {
           observedSignal = run.signal;
           run.signal?.addEventListener(
@@ -199,8 +208,7 @@ describe("oauth resume slack integration", () => {
             runEvents.push("agent settled");
           }
         },
-      },
-      replyTimeoutMs: 10,
+      }),
       onFailure,
     });
 
@@ -227,7 +235,7 @@ describe("oauth resume slack integration", () => {
   });
 
   it("persists a resumed assistant message without canonical user history", async () => {
-    const { resumeSlackTurn } = await import("@/chat/runtime/slack-resume");
+    const { resumeSlackTurn } = await import("@/chat/providers/slack/resume");
     const { getPersistedThreadState } =
       await import("@/chat/runtime/thread-state");
     const { coerceThreadConversationState } =
@@ -244,7 +252,7 @@ describe("oauth resume slack integration", () => {
       threadTs,
       conversationId,
       turnId,
-      replyContext: {
+      run: {
         credentialContext: {
           actor: { type: "user", userId: "U123" },
         },
@@ -253,7 +261,7 @@ describe("oauth resume slack integration", () => {
         source: testSlackSource(threadTs),
         actor: { platform: "slack", teamId: "T123", userId: "U123" },
       },
-      agentRunner: modelReply("Done."),
+      executeTurn: createTestTurnExecution(modelReply("Done.")),
     });
 
     const postCalls = getCapturedSlackApiCalls("chat.postMessage");
@@ -280,7 +288,7 @@ describe("oauth resume slack integration", () => {
   });
 
   it("chunks long resumed replies into explicit continuation messages", async () => {
-    const { resumeSlackTurn } = await import("@/chat/runtime/slack-resume");
+    const { resumeSlackTurn } = await import("@/chat/providers/slack/resume");
     const longReply = Array.from(
       { length: 80 },
       (_, i) => `line ${i + 1}`,
@@ -293,7 +301,7 @@ describe("oauth resume slack integration", () => {
       channelId: "C123",
       threadTs: "1700000000.002",
       initialText: "Connected. Continuing...",
-      replyContext: {
+      run: {
         credentialContext: {
           actor: { type: "user", userId: "U123" },
         },
@@ -301,7 +309,7 @@ describe("oauth resume slack integration", () => {
         source: testSlackSource("1700000000.002"),
         actor: { platform: "slack", teamId: "T123", userId: "U123" },
       },
-      agentRunner: modelReply(longReply),
+      executeTurn: createTestTurnExecution(modelReply(longReply)),
     });
 
     const postCalls = getCapturedSlackApiCalls("chat.postMessage");
@@ -331,7 +339,7 @@ describe("oauth resume slack integration", () => {
   });
 
   it("marks resumed provider-error partial replies as interrupted", async () => {
-    const { resumeSlackTurn } = await import("@/chat/runtime/slack-resume");
+    const { resumeSlackTurn } = await import("@/chat/providers/slack/resume");
 
     await resumeSlackTurn({
       messageText: "Continue the original request",
@@ -340,7 +348,7 @@ describe("oauth resume slack integration", () => {
       channelId: "C123",
       threadTs: "1700000000.003",
       initialText: "Connected. Continuing...",
-      replyContext: {
+      run: {
         credentialContext: {
           actor: { type: "user", userId: "U123" },
         },
@@ -348,16 +356,18 @@ describe("oauth resume slack integration", () => {
         source: testSlackSource("1700000000.003"),
         actor: { platform: "slack", teamId: "T123", userId: "U123" },
       },
-      agentRunner: createModelAgentRunner(
-        createModelStream([
-          {
-            type: "message",
-            message: fauxAssistantMessage("Partial output", {
-              stopReason: "error",
-              errorMessage: "The model stream stopped.",
-            }),
-          },
-        ]),
+      executeTurn: createTestTurnExecution(
+        createModelAgentRunner(
+          createModelStream([
+            {
+              type: "message",
+              message: fauxAssistantMessage("Partial output", {
+                stopReason: "error",
+                errorMessage: "The model stream stopped.",
+              }),
+            },
+          ]),
+        ),
       ),
     });
 
@@ -371,33 +381,5 @@ describe("oauth resume slack integration", () => {
     expect(postCalls[1]?.params.text).toContain(
       getSlackInterruptionMarker().trim(),
     );
-  });
-
-  it("schedules plugin tasks after a successful resumed turn", async () => {
-    const { resumeSlackTurn } = await import("@/chat/runtime/slack-resume");
-    const scheduleSessionCompletedPluginTasks = vi.fn(async () => undefined);
-
-    await resumeSlackTurn({
-      messageText: "continue this turn",
-      conversationId: "slack:C123:1700000000.012",
-      turnId: "turn-resume-plugin-tasks",
-      channelId: "C123",
-      threadTs: "1700000000.012",
-      replyContext: {
-        credentialContext: {
-          actor: { type: "user", userId: "U123" },
-        },
-        destination: TEST_SLACK_DESTINATION,
-        source: testSlackSource("1700000000.012"),
-        actor: { platform: "slack", teamId: "T123", userId: "U123" },
-      },
-      agentRunner: modelReply("Final resumed answer"),
-      scheduleSessionCompletedPluginTasks,
-    });
-
-    expect(scheduleSessionCompletedPluginTasks).toHaveBeenCalledWith({
-      conversationId: "slack:C123:1700000000.012",
-      sessionId: "turn-resume-plugin-tasks",
-    });
   });
 });

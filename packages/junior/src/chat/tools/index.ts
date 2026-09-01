@@ -83,11 +83,11 @@ export function createTools(
 ) {
   const state = createToolState();
   const slackContext = getSlackToolContext(context);
-  const slackSourceCapabilities = slackContext
-    ? resolveChannelCapabilities(slackContext.sourceChannelId)
+  const slackLocationCapabilities = slackContext
+    ? resolveChannelCapabilities(slackContext.locationChannelId)
     : undefined;
   const canSendFilesToActiveConversation = Boolean(
-    slackContext && slackSourceCapabilities?.canSendFiles,
+    slackContext && slackLocationCapabilities?.canSendFiles,
   );
   const resourceEventCatalog = getResourceEventCatalog();
   const tools: ToolRegistry = {
@@ -119,10 +119,7 @@ export function createTools(
     ...createScheduledTaskTools(context),
     ...createWorkspaceTools(context),
   };
-  if (context.conversationId) {
-    tools.searchConversationEvents =
-      createSearchConversationEventsTool(context);
-  }
+  tools.searchConversationEvents = createSearchConversationEventsTool(context);
   if (context.supportsImageInput) {
     tools.viewImage = createViewImageTool(
       context.workspace,
@@ -142,7 +139,7 @@ export function createTools(
       hooks.toolOverrides?.imageGenerate,
     );
   }
-  if (context.attachmentStorage && context.conversationId) {
+  if (context.attachmentStorage) {
     tools.publishImage = createPublishImageTool({
       conversationId: context.conversationId,
       db: getSqlExecutor(),
@@ -174,7 +171,7 @@ export function createTools(
     tools.slackCanvasWrite = createSlackCanvasWriteTool(state);
     tools.slackThreadRead = createSlackThreadReadTool(slackContext);
     tools.slackChannelJoin = createSlackChannelJoinTool(slackContext);
-    if (context.conversationId && slackContext.source.visibility === "public") {
+    if (context.conversationPrivacy === "public") {
       tools.searchConversationMessages =
         createSlackConversationMessageSearchTool(
           {
@@ -187,7 +184,7 @@ export function createTools(
     }
     // Always register public search in Slack turns. Without an action token the
     // tool stays visible and returns an honest interactive-turn limit.
-    if (context.source.platform === "slack") {
+    if (context.source.kind === "slack") {
       tools.slackPublicSearch = createSlackPublicSearchTool(
         context.slackActionToken,
       );
@@ -209,8 +206,8 @@ export function createTools(
     const outputCapabilities = outputChannelId
       ? resolveChannelCapabilities(outputChannelId)
       : undefined;
-    const rawChannelCapabilities = resolveChannelCapabilities(
-      slackContext.sourceChannelId,
+    const locationCapabilities = resolveChannelCapabilities(
+      slackContext.locationChannelId,
     );
     if (outputCapabilities?.canCreateCanvas) {
       tools.slackCanvasCreate = createSlackCanvasCreateTool(
@@ -219,12 +216,12 @@ export function createTools(
       );
     }
 
-    if (rawChannelCapabilities.canSendFiles) {
+    if (locationCapabilities.canSendFiles) {
       tools.sendFiles = createSendFilesTool(
         slackContext,
         state,
         (input) => readSandboxFileUpload(context.workspace, input),
-        context.conversationId && context.attachmentStorage
+        context.attachmentStorage
           ? {
               conversationId: context.conversationId,
               db: getSqlExecutor(),
@@ -239,7 +236,10 @@ export function createTools(
     tools.slackChannelListMessages =
       createSlackChannelListMessagesTool(slackContext);
 
-    if (rawChannelCapabilities.canAddReactions) {
+    if (
+      context.source.kind === "slack" &&
+      locationCapabilities.canAddReactions
+    ) {
       tools.addReaction = createSlackMessageAddReactionTool(
         slackContext,
         state,

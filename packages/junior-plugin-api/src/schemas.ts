@@ -21,6 +21,30 @@ const exactNonBlankStringSchema = nonBlankStringSchema.refine(
   (value) => value === value.trim(),
 );
 
+/** Fields shared by every Location. */
+const baseLocationSchema = z
+  .object({
+    /** Stable SQL identity used by Location configuration and reporting. */
+    id: nonBlankStringSchema,
+    provider: exactNonBlankStringSchema,
+  })
+  .strict();
+
+/** Complete Slack Location associated with a Conversation. */
+export const slackLocationSchema = baseLocationSchema
+  .extend({
+    provider: z.literal("slack"),
+    teamId: slackTeamIdSchema,
+    channelId: slackConversationIdSchema,
+    threadTs: exactNonBlankStringSchema.optional(),
+  })
+  .strict();
+
+/** Complete Location types supported by Junior. */
+export const locationSchema = z.discriminatedUnion("provider", [
+  slackLocationSchema,
+]);
+
 /** Runtime platform names supported by plugin public contracts. */
 export const platformSchema = z.enum(["slack", "local"]);
 
@@ -55,40 +79,105 @@ export const destinationSchema = z.discriminatedUnion("platform", [
   localDestinationSchema,
 ]);
 
-/** Runtime-owned Slack coordinates for the inbound invocation. */
-export const slackSourceSchema = slackAddressSchema
-  .extend({
+/** Runtime-owned Slack input Source. */
+export const slackSourceSchema = z
+  .object({
+    kind: z.literal("slack"),
+    teamId: slackTeamIdSchema,
+    channelId: slackConversationIdSchema,
     visibility: sourceVisibilitySchema,
     messageTs: nonBlankStringSchema.optional(),
     threadTs: nonBlankStringSchema.optional(),
   })
   .strict();
 
-/** Runtime-owned local CLI coordinates for the inbound invocation. */
+/** Runtime-owned local CLI input Source. */
 export const localSourceSchema = z
   .object({
-    platform: z.literal("local"),
+    kind: z.literal("local"),
     visibility: z.literal("private"),
     conversationId: localConversationIdSchema,
   })
   .strict();
 
-/** Runtime-owned dashboard/web coordinates for the inbound invocation. */
+/** Runtime-owned dashboard input Source. */
 export const webSourceSchema = z
   .object({
-    platform: z.literal("web"),
+    kind: z.literal("web"),
     visibility: sourceVisibilitySchema,
     // Web can continue any existing conversation id, including Slack roots.
     conversationId: exactNonBlankStringSchema,
   })
   .strict();
 
-/** Runtime-owned provider-neutral coordinates for the inbound invocation. */
-export const sourceSchema = z.discriminatedUnion("platform", [
+/** Runtime-owned Resource event input Source. */
+export const resourceEventSourceSchema = z
+  .object({
+    kind: z.literal("resource_event"),
+    eventKey: exactNonBlankStringSchema,
+    eventType: exactNonBlankStringSchema,
+    identifier: exactNonBlankStringSchema,
+    namespace: exactNonBlankStringSchema,
+  })
+  .strict();
+
+/** Runtime-owned Scheduled task input Source. */
+export const scheduledTaskSourceSchema = z
+  .object({ kind: z.literal("scheduled_task") })
+  .strict();
+
+/** Runtime-owned Event task input Source. */
+export const eventTaskSourceSchema = z
+  .object({ kind: z.literal("event_task") })
+  .strict();
+
+/** Runtime-owned Plugin dispatch input Source. */
+export const pluginDispatchSourceSchema = z
+  .object({ kind: z.literal("plugin_dispatch") })
+  .strict();
+
+/** Runtime-owned Agent invocation input Source. */
+export const agentInvocationSourceSchema = z
+  .object({ kind: z.literal("agent_invocation") })
+  .strict();
+
+const currentSourceSchema = z.discriminatedUnion("kind", [
   slackSourceSchema,
   localSourceSchema,
   webSourceSchema,
+  resourceEventSourceSchema,
+  scheduledTaskSourceSchema,
+  eventTaskSourceSchema,
+  pluginDispatchSourceSchema,
+  agentInvocationSourceSchema,
 ]);
+
+function normalizeStoredSource(value: unknown): unknown {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return value;
+  }
+  const source = value as Record<string, unknown>;
+  if ("kind" in source || !("platform" in source)) {
+    return value;
+  }
+  if (
+    source.platform !== "slack" &&
+    source.platform !== "local" &&
+    source.platform !== "web"
+  ) {
+    return value;
+  }
+  const { location: _location, platform: kind, ...fields } = source;
+  return { ...fields, kind };
+}
+
+/** Runtime-owned input Source. Stored `platform` and Location fields normalize on read. */
+// TODO(dcramer): Remove stored Source normalization after deployed SQL, Redis,
+// queue, and OAuth values can only contain `kind` and no Location copy.
+export const sourceSchema = z.preprocess(
+  normalizeStoredSource,
+  currentSourceSchema,
+);
 
 /** Stable user credential subject shape accepted from plugins. */
 export const pluginCredentialSubjectSchema = z.discriminatedUnion(
@@ -255,6 +344,5 @@ export const dispatchOptionsSchema = z
     input: nonBlankStringSchema.pipe(z.string().max(32_000)),
     metadata: dispatchMetadataSchema.optional(),
     replyAttribution: replyAttributionSchema.optional(),
-    source: sourceSchema,
   })
   .strict();

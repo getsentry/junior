@@ -18,11 +18,6 @@ import {
   queueSlackApiError,
   queueSlackApiResponse,
 } from "../msw/handlers/slack-api";
-import {
-  createSlackSource,
-} from "@sentry/junior-plugin-api";
-
-
 function createToolState(): ToolState {
   const operationResultCache = new Map<string, unknown>();
 
@@ -57,19 +52,8 @@ function slackContext(channelId: string): SlackToolContext {
   const parsedChannelId = requireSlackChannelId(channelId);
   const teamId = requireSlackTeamId("T123");
   return {
-    destination: {
-      platform: "slack" as const,
-      teamId,
-      channelId: parsedChannelId,
-    },
-    source: createSlackSource({
-      teamId,
-      channelId: parsedChannelId,
-
-      visibility: "private",
-    }),
     destinationChannelId: parsedChannelId,
-    sourceChannelId: parsedChannelId,
+    locationChannelId: parsedChannelId,
     teamId,
   };
 }
@@ -196,15 +180,9 @@ describe("tool idempotency", () => {
     });
 
     const sharedChannelId = requireSlackChannelId("C0SHARED");
-    const teamId = requireSlackTeamId("T123");
     const tool = createSlackCanvasCreateTool(
       {
         ...slackContext("D123"),
-        destination: {
-          platform: "slack" as const,
-          teamId,
-          channelId: sharedChannelId,
-        },
         destinationChannelId: sharedChannelId,
       },
       createToolState(),
@@ -231,7 +209,7 @@ describe("tool idempotency", () => {
     const state = createToolState();
     const tool = createSlackCanvasCreateTool(
       // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
-      (LOCAL_CONTEXT) as SlackToolContext,
+      LOCAL_CONTEXT as SlackToolContext,
       state,
     );
 

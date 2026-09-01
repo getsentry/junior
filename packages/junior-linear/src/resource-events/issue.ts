@@ -1,6 +1,17 @@
-import type { SubscribableResource } from "@sentry/junior-plugin-api";
+import {
+  resourceEventMatchFieldsSchema,
+  type SubscribableResource,
+} from "@sentry/junior-plugin-api";
 
 export const LINEAR_ISSUE_EVENTS = ["issue.created"] as const;
+
+/** Exact values Linear may set on issue event data. Missing keys do not match. */
+export const LINEAR_ISSUE_MATCH_FIELDS = resourceEventMatchFieldsSchema.parse({
+  teamKey: {
+    kind: "string",
+    description: "Linear team key for the issue, such as SRE",
+  },
+});
 
 /** Build the stable Linear issue identity shared by tools and webhooks. */
 export function linearIssueResource(input: {

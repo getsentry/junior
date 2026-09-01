@@ -1,3 +1,4 @@
+import { stableResourceEventMatchKey } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import { getDb } from "@/chat/db";
 import { saveEventTask } from "@/chat/event-tasks/store";
@@ -31,11 +32,13 @@ function changesEventTaskTrigger(
     current.namespace !== next.namespace ||
     current.identifier !== next.identifier ||
     currentEvents.length !== nextEvents.length ||
-    currentEvents.some((event, index) => event !== nextEvents[index])
+    currentEvents.some((event, index) => event !== nextEvents[index]) ||
+    stableResourceEventMatchKey(current.match) !==
+      stableResourceEventMatchKey(next.match)
   );
 }
 
-/** Create the core tool that updates an event task in this destination. */
+/** Create the core tool that updates an event task. */
 export function createUpdateEventTaskTool(
   context: ToolRuntimeContext,
   catalog: ResourceEventCatalog,
@@ -50,7 +53,7 @@ export function createUpdateEventTaskTool(
     },
     executionMode: "sequential",
     description:
-      "Update the instruction, registered trigger, or credential use for an event task in this Slack channel or DM. Event tasks created from other threads in the same destination are manageable here.",
+      "Update the instruction, registered trigger, or credential use for an event task.",
     inputSchema: z
       .object({
         taskId: z.string().min(1),
@@ -87,9 +90,9 @@ export function createUpdateEventTaskTool(
     outputSchema: eventTaskToolResultSchema,
     async execute(input) {
       const current = await writableEventTask(context, input.taskId);
-      if (input.trigger) {
-        requireSupportedEventTaskTrigger(catalog, input.trigger);
-      }
+      const match = input.trigger
+        ? requireSupportedEventTaskTrigger(catalog, input.trigger)
+        : undefined;
       const { actor } = requireEventTaskSlackContext(context);
       const isCreator = actor.userId === current.createdBy.slackUserId;
       if (input.credentialMode === "creator" && !isCreator) {
@@ -115,6 +118,7 @@ export function createUpdateEventTaskTool(
             resourceType: input.trigger.resourceType,
             label: input.trigger.label,
             events: [...new Set(input.trigger.events)],
+            ...(match ? { match } : undefined),
           }
         : current.trigger;
       const nextInstruction =
@@ -143,9 +147,7 @@ export function createUpdateEventTaskTool(
       }
       const saved = await saveEventTask(getDb(), next);
       if (!saved) {
-        throw new ToolInputError(
-          "Event task was not found in this Slack channel or DM.",
-        );
+        throw new ToolInputError("Event task was not found.");
       }
       return eventTaskSuccess(saved, catalog);
     },

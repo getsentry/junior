@@ -44,7 +44,6 @@ export interface ConversationWorkerContext {
   checkIn(): Promise<boolean>;
   conversationId: string;
   destination?: Destination;
-  publishExternally: boolean;
   /** True when the current execution slice must stop at its next safe boundary. */
   shouldYield(): boolean;
   /** Return an AbortSignal backed by the durable Conversation stop request. */
@@ -102,7 +101,7 @@ function selectContiguousTurnBatch(
   const nextTurnIndex = messages.findIndex(
     (message) =>
       message.input.authorId !== first.input.authorId ||
-      message.publishExternally !== first.publishExternally,
+      message.source !== first.source,
   );
   return messages.slice(
     0,
@@ -110,7 +109,7 @@ function selectContiguousTurnBatch(
   );
 }
 
-/** Prioritize interrupts while keeping each attempt scoped to one actor. */
+/** Prioritize interrupts while keeping each attempt to one Actor and Source. */
 function selectAttemptMessages(work: ConversationWorkState): InboundMessage[] {
   const messages = work.messages;
   const interrupts = messages.filter(
@@ -402,7 +401,16 @@ async function processConversationWorkInContext(
     }
     return { status: "no_work" };
   }
-  const destination = initial.destination;
+  // Mailbox wakes may omit Destination. Read it from this root Conversation
+  // only. Conversations with a parent keep no Destination, so invocation and
+  // dispatch workers stay free of provider Destinations.
+  let destination = initial.destination;
+  if (!destination && options.conversationStore) {
+    const stored = await options.conversationStore.get({ conversationId });
+    if (stored && !stored.parentConversationId) {
+      destination = stored.destination;
+    }
+  }
 
   const lease = await startConversationWork({
     conversationId,
@@ -606,9 +614,6 @@ async function processConversationWorkInContext(
       attemptMessageIds = attemptMessages.map(
         (message) => message.inboundMessageId,
       );
-      // Empty batches are resume-only. Adapters read the checkpoint flag; do
-      // not invent publish from destination presence.
-      const publishExternally = attemptMessages[0]?.publishExternally ?? false;
       attemptSelectedMessageIds = new Set(attemptMessageIds);
       const ack = async (): Promise<void> => {
         const acknowledged = await ackMessages({
@@ -645,7 +650,6 @@ async function processConversationWorkInContext(
         },
         conversationId,
         destination,
-        publishExternally,
         shouldYield,
         stopSignal: stop.signal,
         checkIn,

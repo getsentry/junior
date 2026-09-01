@@ -16,8 +16,8 @@ const SCHEDULER_KEY_PREFIX = "junior:scheduler";
 const retainedScheduledTaskSchema = scheduledTaskSchema
   .omit({ creatorIdentityId: true, title: true })
   .extend({
-    // TODO(v0.131.0): Remove paused decoding and SQL list filtering after
-    // v0.129.x workers can no longer overlap upgrades.
+    // TODO(dcramer): Remove paused decoding and SQL list filtering after
+    // v0.129.x workers are unsupported and cannot overlap an upgrade.
     status: z.enum(["active", "blocked", "completed", "deleted", "paused"]),
     version: z.number().optional(),
   })
@@ -115,7 +115,10 @@ function requireStoredTask(task: ScheduledTask): ScheduledTask {
   }
   const { title, ...current } = parsed.data;
   const normalizedTitle = title?.trim() || undefined;
-  return { ...current, ...(normalizedTitle ? { title: normalizedTitle } : undefined) };
+  return {
+    ...current,
+    ...(normalizedTitle ? { title: normalizedTitle } : undefined),
+  };
 }
 
 function scheduledTaskJsonRecord(task: ScheduledTask): ScheduledTaskRecord {
@@ -133,7 +136,8 @@ async function upsertScheduledTask(
     .values({
       createdAtMs: task.createdAtMs,
       creatorIdentityId: task.creatorIdentityId,
-      // TODO(v0.128.0): Remove after v0.127.x runtimes no longer read this column.
+      // TODO(dcramer): Stop writing this column after v0.127.x runtimes are
+      // unsupported and no supported runtime reads it.
       creatorSlackUserId: task.createdBy.slackUserId,
       id: task.id,
       nextRunAtMs: task.nextRunAtMs,

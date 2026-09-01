@@ -17,12 +17,7 @@ import {
   cancelResourceEventSubscription,
   createResourceEventSubscription,
 } from "@/chat/resource-events/store";
-import { canRouteResourceEvents } from "@/chat/resource-events/workspace";
-import {
-  canUseResourceEventSubscriptionTools,
-  RESOURCE_SUBSCRIPTION_DEFAULT_TTL_MS,
-  requireResourceWatchConversation,
-} from "@/chat/resource-events/tool-support";
+import { RESOURCE_SUBSCRIPTION_DEFAULT_TTL_MS } from "@/chat/resource-events/tool-support";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
@@ -350,7 +345,7 @@ export function createWorkspaceTools(
         readOnlyHint: false,
       },
       description:
-        "Replace the current sandbox with a named repository Workspace. Files in the old sandbox do not carry over. Returns ready after the switch, or building when the snapshot is still being prepared.",
+        "Replace the current sandbox with a named repository Workspace. Files in the old sandbox do not carry over. Returns ready after the switch, or building with a temporary subscription when the snapshot is still being prepared. When building, wait for the ready event and call switchWorkspace again with the same name.",
       inputSchema: z
         .object({
           name: z.string().trim().min(1).describe("Exact workspace name."),
@@ -370,19 +365,16 @@ export function createWorkspaceTools(
         if (!workspace)
           throw new ToolInputError(`Workspace not found: ${name}`);
 
+        // Watch before the build job can finish. A ready event is terminal and
+        // will not replay for a late subscription.
         const watch = workspaceSnapshotWatch({
           workspaceId: workspace.id,
           workspaceName: workspace.name,
         });
-        const conversationId =
-          canRouteResourceEvents() &&
-          canUseResourceEventSubscriptionTools(context)
-            ? requireResourceWatchConversation(context)
-            : undefined;
+        const conversationId = context.conversationId.trim();
         const subscription = conversationId
           ? await createResourceEventSubscription({
               conversationId,
-              destination: context.destination,
               events: [
                 WORKSPACE_SNAPSHOT_READY_EVENT,
                 WORKSPACE_SNAPSHOT_FAILED_EVENT,

@@ -220,6 +220,29 @@ describe("buildHomeView", () => {
     expect(accessory.value).toBe("notion");
   });
 
+  it("shows MCP provider Unlink when only DCR client/discovery state exists", async () => {
+    vi.mocked(getMcpStoredOAuthCredentials).mockResolvedValue({
+      clientInformation: { client_id: "stale-client" },
+      discoveryState: { authorizationServerUrl: "https://old.example.com" },
+    });
+
+    const store = createMockTokenStore({});
+    const view = await buildHomeView("U123", store);
+
+    const section = findSection(
+      view.blocks,
+      (candidate) => candidate.text?.text.includes("notion") ?? false,
+    );
+    expect(section).toBeDefined();
+    if (!section) {
+      throw new Error("Expected connected account section for notion");
+    }
+
+    const accessory = section.accessory as { action_id: string; value: string };
+    expect(accessory.action_id).toBe("app_home_disconnect");
+    expect(accessory.value).toBe("notion");
+  });
+
   it("shows 'No connected accounts' when user has no tokens", async () => {
     const store = createMockTokenStore({});
     const view = await buildHomeView("U123", store);

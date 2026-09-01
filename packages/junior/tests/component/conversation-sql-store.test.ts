@@ -1,10 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
-import {
-  upsertIdentity,
-  upsertLinkedIdentity,
-} from "@/chat/identities/sql";
+import { upsertIdentity, upsertLinkedIdentity } from "@/chat/identities/sql";
 import {
   appendInboundMessage,
   drainConversationMailbox,
@@ -163,8 +160,28 @@ describe("conversation SQL store", () => {
       ).resolves.toMatchObject({
         conversationId: "child:missing-parent",
         lastActivityAtMs: 1,
-        lineage: { parentConversationId: "parent-without-root" },
+        parentConversationId: "parent-without-root",
       });
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("requires a destination on first root upsert", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+
+    try {
+      const store = createSqlStore(fixture.sql);
+      await migrateSchema(fixture.sql);
+
+      await expect(
+        store.recordActivity({
+          conversationId: "root-without-destination",
+          nowMs: 1_000,
+        }),
+      ).rejects.toThrow(
+        "Conversation root-without-destination requires a destination at create",
+      );
     } finally {
       await fixture.close();
     }
@@ -176,11 +193,22 @@ describe("conversation SQL store", () => {
     try {
       const store = createSqlStore(fixture.sql);
       await migrateSchema(fixture.sql);
+      const destination = inboundMessage("activity").destination;
+
+      await store.recordExecution({
+        conversationId: CONVERSATION_ID,
+        createdAtMs: 2_000,
+        destination,
+        execution: { status: "idle", updatedAtMs: 2_000 },
+        lastActivityAtMs: 2_000,
+        metrics: null,
+        updatedAtMs: 2_000,
+      });
 
       await store.recordActivity({
         conversationId: CONVERSATION_ID,
         channelName: "eng-runtime",
-        destination: inboundMessage("activity").destination,
+        destination,
         actor: {
           email: "user@example.com",
           fullName: "Runtime User",
@@ -191,7 +219,7 @@ describe("conversation SQL store", () => {
         },
         source: "slack",
         sessionSource: {
-          platform: "slack",
+          kind: "slack",
           visibility: "public",
           teamId: "T123",
           channelId: "C123",
@@ -217,8 +245,9 @@ describe("conversation SQL store", () => {
           location: {
             id: expect.any(String),
             provider: "slack",
-            tenantId: "T123",
-            providerId: "C123",
+            teamId: "T123",
+            channelId: "C123",
+            threadTs: "1700000000.000100",
           },
           actor: {
             platform: "slack",
@@ -239,6 +268,7 @@ describe("conversation SQL store", () => {
         .select({
           actorIdentityId: juniorConversations.actorIdentityId,
           actorJson: juniorConversations.actor,
+          location: juniorConversations.location,
           destinationId: juniorConversations.destinationId,
           destinationJson: juniorConversations.destination,
           destinationKind: juniorDestinations.kind,
@@ -266,6 +296,13 @@ describe("conversation SQL store", () => {
         {
           actorIdentityId: linkedRows[0]?.actorIdentityId,
           actorJson: null,
+          location: {
+            id: linkedRows[0]?.destinationId,
+            provider: "slack",
+            teamId: "T123",
+            channelId: "C123",
+            threadTs: "1700000000.000100",
+          },
           destinationId: linkedRows[0]?.destinationId,
           destinationJson: null,
           destinationKind: "channel",
@@ -309,8 +346,9 @@ describe("conversation SQL store", () => {
         location: {
           id: expect.any(String),
           provider: "slack",
-          tenantId: "T123",
-          providerId: "C123",
+          teamId: "T123",
+          channelId: "C123",
+          threadTs: "1700000000.000100",
         },
         actor: {
           platform: "slack",
@@ -328,7 +366,7 @@ describe("conversation SQL store", () => {
         },
         nowMs: 4_000,
         sessionSource: {
-          platform: "local",
+          kind: "local",
           visibility: "private",
           conversationId: localConversationId,
         },
@@ -507,6 +545,7 @@ describe("conversation SQL store", () => {
 
       await store.recordActivity({
         conversationId: CONVERSATION_ID,
+        destination: inboundMessage("unlinked").destination,
         actor: {
           fullName: "Unlinked User",
           platform: "slack",
@@ -667,7 +706,7 @@ describe("conversation SQL store", () => {
         destination,
         source: "slack",
         sessionSource: {
-          platform: "slack",
+          kind: "slack",
           visibility: "public",
           teamId: "T123",
           channelId: "C123",
@@ -680,7 +719,7 @@ describe("conversation SQL store", () => {
         store.get({ conversationId: CONVERSATION_ID }),
       ).resolves.toMatchObject({
         sessionSource: {
-          platform: "slack",
+          kind: "slack",
           visibility: "public",
           teamId: "T123",
           channelId: "C123",
@@ -693,7 +732,7 @@ describe("conversation SQL store", () => {
         conversationId: CONVERSATION_ID,
         destination,
         sessionSource: {
-          platform: "slack",
+          kind: "slack",
           visibility: "private",
           teamId: "T123",
           channelId: "C123",
@@ -705,7 +744,7 @@ describe("conversation SQL store", () => {
         store.get({ conversationId: CONVERSATION_ID }),
       ).resolves.toMatchObject({
         sessionSource: {
-          platform: "slack",
+          kind: "slack",
           visibility: "public",
           teamId: "T123",
           channelId: "C123",
@@ -784,7 +823,7 @@ describe("conversation SQL store", () => {
     }
   });
 
-  it("fails closed for unsigned Slack destinations without confirming visibility", async () => {
+  it("leaves Slack visibility missing without a live signal", async () => {
     const fixture = await createLocalJuniorSqlFixture();
 
     try {
@@ -792,7 +831,7 @@ describe("conversation SQL store", () => {
       await migrateSchema(fixture.sql);
 
       // A write without a live source signal remains unknown even though the
-      // channel id is C-prefixed. Conversation reads still fail closed.
+      // channel id is C-prefixed. The Run treats the missing value as private.
       await store.recordActivity({
         conversationId: CONVERSATION_ID,
         destination: inboundMessage("unsigned").destination,
@@ -801,7 +840,7 @@ describe("conversation SQL store", () => {
       const conversation = await store.get({
         conversationId: CONVERSATION_ID,
       });
-      expect(conversation?.visibility).toBe("private");
+      expect(conversation).not.toHaveProperty("visibility");
       await expect(
         store.getDestinationVisibility({
           provider: "slack",
@@ -970,6 +1009,7 @@ INSERT INTO junior_conversations (
       await store.recordExecution({
         conversationId: CONVERSATION_ID,
         createdAtMs: 1_000,
+        destination: inboundMessage("exec-fresh").destination,
         execution: {
           lastCheckpointAtMs: 5_000,
           lastEnqueuedAtMs: 4_000,
@@ -1022,6 +1062,7 @@ INSERT INTO junior_conversations (
       await store.recordExecution({
         conversationId: CONVERSATION_ID,
         createdAtMs: 1_000,
+        destination: inboundMessage("exec-metrics").destination,
         execution: {
           runId: "run-1",
           status: "running",
@@ -1100,6 +1141,7 @@ WHERE conversation_id = $1
       await store.recordExecution({
         conversationId: CONVERSATION_ID,
         createdAtMs: 1_000,
+        destination: inboundMessage("exec-timestamps").destination,
         execution: {
           lastCheckpointAtMs: 5_000,
           lastEnqueuedAtMs: 4_000,
@@ -1149,6 +1191,7 @@ WHERE conversation_id = $1
 
       await store.recordActivity({
         conversationId: CONVERSATION_ID,
+        destination: inboundMessage("created-at").destination,
         nowMs: 5_000,
       });
       await store.recordExecution({

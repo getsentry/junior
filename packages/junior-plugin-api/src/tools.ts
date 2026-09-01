@@ -1,13 +1,11 @@
 import type {
   Actor,
   Identity,
-  LocalInvocationContext,
+  InvocationContext,
   PluginContext,
   PluginEmbedder,
   PluginModel,
-  SlackInvocationContext,
   User,
-  WebInvocationContext,
 } from "./context";
 import type { PluginCredentialSubject } from "./credentials";
 import type { PluginAnnotations } from "./annotations";
@@ -507,8 +505,8 @@ export function definePluginTool<
 
 export interface SlackToolRegistrationHookContext {
   /**
-   * Capabilities of the source Slack conversation exposed to this plugin.
-   * Recomputed from `source.channelId`, not from `destination`.
+   * What Slack tools can do in the Conversation Location.
+   * Computed from Location, not from Source or Destination.
    */
   channelCapabilities: {
     canAddReactions: boolean;
@@ -567,22 +565,8 @@ interface BaseToolRegistrationHookContext extends PluginContext {
   workspaces: PluginWorkspaceToolContext;
 }
 
-interface SlackToolRegistrationContext
-  extends BaseToolRegistrationHookContext, SlackInvocationContext {
-  slack: SlackToolRegistrationHookContext;
-}
-
-interface LocalToolRegistrationContext
-  extends BaseToolRegistrationHookContext, LocalInvocationContext {
-  slack?: never;
-}
-
-interface WebToolRegistrationContext
-  extends BaseToolRegistrationHookContext, WebInvocationContext {
-  slack?: never;
-}
-
-export type ToolRegistrationHookContext =
-  | LocalToolRegistrationContext
-  | SlackToolRegistrationContext
-  | WebToolRegistrationContext;
+export type ToolRegistrationHookContext = BaseToolRegistrationHookContext &
+  InvocationContext & {
+    /** Slack tool details when the Conversation has a Slack Location. */
+    slack?: SlackToolRegistrationHookContext;
+  };

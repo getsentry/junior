@@ -743,6 +743,7 @@ describe("sandbox egress proxy integration", () => {
       [],
       {},
       {
+        conversationId,
         destination: {
           platform: "local",
           conversationId,
@@ -1001,7 +1002,7 @@ describe("sandbox egress proxy integration", () => {
     expect(upstreamFetch).toHaveBeenCalledTimes(1);
   });
 
-  it("uses repository-scoped GitHub App credentials for workflow dispatch", async () => {
+  it("uses GitHub App installation credentials for workflow dispatch", async () => {
     configureGitHubAppEnv();
     const tokenRequests = mockGitHubInstallationToken();
     await registerGitHubPlugin({
@@ -1048,11 +1049,7 @@ describe("sandbox egress proxy integration", () => {
 
     expect(response.status).toBe(204);
     expect(upstreamFetch).toHaveBeenCalledTimes(1);
-    expect(tokenRequests).toEqual([
-      {
-        repositories: ["junior"],
-      },
-    ]);
+    expect(tokenRequests).toEqual([{}]);
   });
 
   it("records GitHub GraphQL repository access errors without rewriting the response", async () => {

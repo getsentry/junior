@@ -49,7 +49,10 @@ import {
 import { credentialContextForActor } from "@/chat/credentials/context";
 import { getConversationEventStore, getConversationStore } from "@/chat/db";
 import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
-import type { ConversationTurnFailureCode } from "@/chat/conversations/history";
+import type {
+  ConversationTurnFailureCode,
+  ConversationTurnFailureReason,
+} from "@/chat/conversations/history";
 import { persistConversationMessages } from "@/chat/conversations/messages";
 import { persistWithRetry } from "@/chat/services/persist-retry";
 import { completeAuthPauseTurn } from "@/chat/runtime/auth-pause-state";
@@ -192,6 +195,7 @@ async function runLocalAgentTurnInContext(
     destination,
     nowMs: Date.now(),
     source: "local",
+    visibility: "private",
   });
   const persisted = await getPersistedThreadState(input.conversationId);
   const conversation = coerceThreadConversationState(persisted);
@@ -242,6 +246,7 @@ async function runLocalAgentTurnInContext(
   let completedState: ReturnType<typeof buildDeliveredTurnStatePatch>;
   let failureCode: ConversationTurnFailureCode = "persistence_failed";
   let modelFailureEventId: string | undefined;
+  let modelFailureReason: ConversationTurnFailureReason | undefined;
   let modelFailureCaptureAttempted = false;
   let currentRunId: string | undefined;
   let completionSliceId = 1;
@@ -419,6 +424,7 @@ async function runLocalAgentTurnInContext(
     });
     reply = finalized.reply;
     modelFailureEventId = finalized.eventId;
+    modelFailureReason = finalized.failureReason;
 
     if (reply.diagnostics.outcome !== "success") {
       await deliverAssistantMessage(reply.text);
@@ -539,6 +545,9 @@ async function runLocalAgentTurnInContext(
       createdAtMs: Date.now(),
       ...(modelFailureEventId ? { eventId: modelFailureEventId } : undefined),
       failureCode: "model_execution_failed",
+      ...(modelFailureReason
+        ? { failureReason: modelFailureReason }
+        : undefined),
       turnId,
     });
   }

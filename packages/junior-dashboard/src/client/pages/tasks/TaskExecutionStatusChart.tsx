@@ -2,15 +2,17 @@ import type { TaskExecutionStatusDay } from "@sentry/junior/api/schema";
 import {
   ActivityChartDateLabels,
   ActivityChartGrid,
+  ActivityChartTooltip,
   ActivityTooltipRows,
   ChartSvg,
   createActivityChartLayout,
-  formatActivityDate,
 } from "../../components/charts/ActivityChart";
 import { ChartLegend } from "../../components/charts/ChartLegend";
-import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
+import {
+  type TimeRangeBucketUnit,
+  type TimeRangeDays,
+} from "../../components/controls/TimeRangeSelector";
 import { Card } from "../../components/layout/Card";
-import { Tooltip } from "../../components/Tooltip";
 
 const series = [
   { color: "#6ee7b7", key: "completed", label: "Completed" },
@@ -20,10 +22,14 @@ const series = [
 
 /** Render one task's terminal executions stacked by status over a trailing window. */
 export function TaskExecutionStatusChart(props: {
+  bucketUnit?: TimeRangeBucketUnit;
+
   days: TaskExecutionStatusDay[];
   range: TimeRangeDays;
 }) {
-  const days = props.days.slice(-props.range);
+  const bucketUnit = props.bucketUnit ?? "day";
+
+  const days = props.days;
   const layout = createActivityChartLayout(220);
   const totals = days.map((day) => day.completed + day.failed + day.blocked);
   const maximum = Math.max(1, ...totals);
@@ -39,7 +45,11 @@ export function TaskExecutionStatusChart(props: {
           Executions over time
         </h2>
         <p className="mt-1 mb-0 font-mono text-xs leading-relaxed text-dashboard-text-muted">
-          Terminal runs for this task each day.
+          {bucketUnit === "hour"
+            ? "Terminal runs for this task each hour."
+            : bucketUnit === "6hour"
+              ? "Terminal runs for this task each 6 hours."
+              : "Terminal runs for this task each day."}
         </p>
       </div>
 
@@ -47,7 +57,7 @@ export function TaskExecutionStatusChart(props: {
 
       <div className="relative mt-3 overflow-hidden">
         <ChartSvg
-          aria-label={`Task executions during the last ${props.range} days`}
+          aria-label={`Task executions during the last ${props.range === 1 ? "24 hours" : `${props.range} days`}`}
           className="min-h-40"
           layout={layout}
         >
@@ -57,7 +67,8 @@ export function TaskExecutionStatusChart(props: {
             const x = layout.left + dayIndex * step + (step - barWidth) / 2;
             const total = totals[dayIndex] ?? 0;
             return (
-              <Tooltip
+              <ActivityChartTooltip
+                key={day.date}
                 content={
                   <ActivityTooltipRows
                     rows={[
@@ -68,11 +79,10 @@ export function TaskExecutionStatusChart(props: {
                     ]}
                   />
                 }
-                key={day.date}
-                label={formatActivityDate(day.date)}
+                date={day.date}
+                summary={`${day.completed} completed, ${day.failed} failed, ${day.blocked} blocked, ${total} total`}
               >
                 <g
-                  aria-label={`${formatActivityDate(day.date)}: ${day.completed} completed, ${day.failed} failed, ${day.blocked} blocked, ${total} total`}
                   tabIndex={0}
                 >
                   {series.map((item) => {
@@ -100,7 +110,7 @@ export function TaskExecutionStatusChart(props: {
                     y={layout.top}
                   />
                 </g>
-              </Tooltip>
+              </ActivityChartTooltip>
             );
           })}
           <ActivityChartDateLabels

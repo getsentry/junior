@@ -8,9 +8,12 @@ import {
 } from "@/chat/event-tasks/types";
 import {
   eventNamespaceSchema,
+  pluginResourceEventCatalog,
   pluginSupportsEvent,
   registeredEventTypeSchema,
+  registeredResourceEventMatchSchema,
   registeredResourceTypeSchema,
+  requireSupportedResourceEventMatch,
   type ResourceEventCatalog,
 } from "@/chat/resource-events/catalog";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
@@ -26,6 +29,7 @@ const compactEventTaskResultSchema = z
     resourceType: z.string().min(1),
     label: z.string().min(1),
     events: z.array(z.string().min(1)).min(1),
+    match: z.record(z.string(), z.unknown()).optional(),
     credentialMode: z.enum(["system", "creator"]),
     createdBy: eventTaskPrincipalSchema,
     triggerAvailable: z.boolean(),
@@ -51,17 +55,19 @@ export const eventTaskListToolResultSchema = juniorToolOutputSchema
 export function registeredEventTaskTriggerSchema(
   catalog: ResourceEventCatalog,
 ) {
+  const plugins = pluginResourceEventCatalog(catalog);
   return z
     .object({
-      namespace: eventNamespaceSchema(catalog),
+      namespace: eventNamespaceSchema(plugins),
       identifier: z
         .string()
         .trim()
         .min(1)
         .max(EVENT_TASK_IDENTIFIER_MAX_LENGTH),
-      resourceType: registeredResourceTypeSchema(catalog),
+      resourceType: registeredResourceTypeSchema(plugins),
       label: z.string().trim().min(1).max(500),
-      events: z.array(registeredEventTypeSchema(catalog)).min(1),
+      events: z.array(registeredEventTypeSchema(plugins)).min(1),
+      match: registeredResourceEventMatchSchema(),
     })
     .strict();
 }
@@ -69,12 +75,18 @@ export function registeredEventTaskTriggerSchema(
 /** Reject an event-task trigger that is no longer supported by the catalog. */
 export function requireSupportedEventTaskTrigger(
   catalog: ResourceEventCatalog,
-  trigger: { events: string[]; namespace: string; resourceType: string },
-): void {
+  trigger: {
+    events: string[];
+    match?: EventTask["trigger"]["match"];
+    namespace: string;
+    resourceType: string;
+  },
+): EventTask["trigger"]["match"] | undefined {
+  const plugins = pluginResourceEventCatalog(catalog);
   for (const eventType of trigger.events) {
     if (
       !pluginSupportsEvent(
-        catalog,
+        plugins,
         trigger.namespace,
         trigger.resourceType,
         eventType,
@@ -85,12 +97,17 @@ export function requireSupportedEventTaskTrigger(
       );
     }
   }
+  return requireSupportedResourceEventMatch(plugins, {
+    match: trigger.match,
+    namespace: trigger.namespace,
+    resourceType: trigger.resourceType,
+  });
 }
 
 /** Require the active Slack authority used for event-task management. */
 export function requireEventTaskSlackContext(context: ToolRuntimeContext) {
   if (
-    context.source.platform !== "slack" ||
+    context.source.kind !== "slack" ||
     context.destination.platform !== "slack" ||
     context.actor?.platform !== "slack" ||
     context.actor.teamId !== context.source.teamId
@@ -121,17 +138,33 @@ export function eventTaskMatchesDestination(
   );
 }
 
-/** Load one task only when it belongs to this Slack channel or DM. */
+/**
+ * Return whether the active destination may update or delete this task.
+ * Same-destination tasks stay local. Public tasks may be managed by id from
+ * another destination in the same workspace.
+ */
+export function eventTaskIsWritableFrom(
+  task: EventTask,
+  destination: { channelId: string; teamId: string },
+): boolean {
+  if (task.destination.teamId !== destination.teamId) {
+    return false;
+  }
+  return (
+    task.destination.channelId === destination.channelId ||
+    task.destinationVisibility === "public"
+  );
+}
+
+/** Load one task the active destination may update or delete. */
 export async function writableEventTask(
   context: ToolRuntimeContext,
   id: string,
 ): Promise<EventTask> {
   const { destination } = requireEventTaskSlackContext(context);
   const task = await getEventTask(getDb(), id);
-  if (!task || !eventTaskMatchesDestination(task, destination)) {
-    throw new ToolInputError(
-      "Event task was not found in this Slack channel or DM.",
-    );
+  if (!task || !eventTaskIsWritableFrom(task, destination)) {
+    throw new ToolInputError("Event task was not found.");
   }
   return task;
 }
@@ -141,8 +174,9 @@ export function eventTaskTriggerAvailable(
   catalog: ResourceEventCatalog,
 ): boolean {
   // resourceType is presentation metadata; runtime matching uses namespace,
-  // identifier, and event type.
-  const registration = catalog[task.trigger.namespace];
+  // identifier, and event type. Core snapshot events never dispatch tasks.
+  const registration =
+    pluginResourceEventCatalog(catalog)[task.trigger.namespace];
   return Boolean(
     registration &&
     task.trigger.events.every((eventType) =>
@@ -166,6 +200,7 @@ export function compactEventTask(
     resourceType: task.trigger.resourceType,
     label: task.trigger.label,
     events: task.trigger.events,
+    ...(task.trigger.match ? { match: task.trigger.match } : undefined),
     credentialMode: task.credentialMode,
     createdBy: task.createdBy,
     triggerAvailable: eventTaskTriggerAvailable(task, catalog),

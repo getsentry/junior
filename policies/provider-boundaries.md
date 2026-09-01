@@ -20,6 +20,10 @@ runtime and the provider-neutral contracts that plugins use.
   reviewers must apply this rule to values and control flow as well as imports.
 - Shared code must use Junior-owned types. Examples include `Destination`,
   `Source`, actor identity, a local interface, or a feature-owned view.
+- A Junior-owned runtime contract may carry provider fields in Source, Actor,
+  or Location when the agent or its tools need them. Their presence must not
+  select another runtime or grant provider delivery. Keep provider decisions
+  with the provider owner.
 - Tests for one provider may use its SDK types. Tests outside that provider
   must use its public adapter or a Junior runtime contract.
 

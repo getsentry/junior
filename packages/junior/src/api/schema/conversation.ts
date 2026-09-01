@@ -1,10 +1,19 @@
 import { z } from "zod";
+import {
+  conversationTurnFailureCodeSchema,
+  conversationTurnFailureReasonSchema,
+} from "@/chat/conversations/history";
 import { usageCostSchema, usageSchema } from "@/usage-schema";
 import {
   conversationAnnotationInputSchema,
   conversationSidebarAnnotationSchema,
   conversationEventPresentationSchema,
 } from "@sentry/junior-plugin-api";
+
+export {
+  conversationTurnFailureCodeSchema,
+  conversationTurnFailureReasonSchema,
+};
 
 export const conversationReportStatusSchema = z.enum([
   "active",
@@ -238,7 +247,7 @@ export const conversationSummaryReportSchema = z
     channelNameRedacted: z.boolean().optional(),
     locationId: z.string().optional(),
     sentryTraceUrl: z.string().optional(),
-    sourceUrl: z.string().url().optional(),
+    locationUrl: z.string().url().optional(),
     traceId: z.string().optional(),
     /**
      * Plugin-owned resource links for this conversation.
@@ -423,7 +432,13 @@ const conversationReportTurnLifecycleEventDataSchema = z.discriminatedUnion(
         type: z.literal("turn_lifecycle"),
         turnId: z.string().min(1),
         state: z.literal("failed"),
-        failureKind: z.enum(["agent", "delivery"]),
+        failureCode: conversationTurnFailureCodeSchema,
+        failureReason: conversationTurnFailureReasonSchema.optional(),
+        eventId: z
+          .string()
+          .regex(/^[a-f0-9]{32}$/i)
+          .optional(),
+        sentryEventUrl: z.string().url().optional(),
       })
       .strict(),
   ],
@@ -733,12 +748,17 @@ export const conversationStatsItemSchema = z
   })
   .strict();
 
+/** UTC day (`YYYY-MM-DD`) or hour (`YYYY-MM-DDTHH`) activity bucket key. */
+export const conversationMetricBucketSchema = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}(T\d{2})?$/);
+
 export const conversationMetricDaySchema = z
   .object({
     cachedInputTokens: z.number().optional(),
     conversations: z.number(),
     costUsd: z.number().optional(),
-    date: z.string(),
+    date: conversationMetricBucketSchema,
     durationMs: z.number(),
     inputTokens: z.number().optional(),
     tokens: z.number().optional(),
@@ -750,7 +770,7 @@ export const guardianMetricDaySchema = z
     allow: z.number(),
     ask: z.number(),
     costUsd: z.number().optional(),
-    date: z.string(),
+    date: conversationMetricBucketSchema,
     deny: z.number(),
     requests: z.number(),
   })
@@ -763,6 +783,8 @@ export const guardianStatsSchema = z
     costUsd: z.number().optional(),
     deny: z.number(),
     metricDays: z.array(guardianMetricDaySchema),
+    metricHours: z.array(guardianMetricDaySchema).optional(),
+    metricSixHours: z.array(guardianMetricDaySchema).optional(),
     requests: z.number(),
   })
   .strict();
@@ -777,6 +799,8 @@ export const conversationStatsReportSchema = z
     generatedAt: z.string(),
     guardian: guardianStatsSchema,
     metricDays: z.array(conversationMetricDaySchema),
+    metricHours: z.array(conversationMetricDaySchema).optional(),
+    metricSixHours: z.array(conversationMetricDaySchema).optional(),
     locations: z.array(conversationStatsItemSchema),
     actors: z.array(conversationStatsItemSchema),
     source: z.literal("conversation_index"),
@@ -790,6 +814,12 @@ export const conversationStatsReportSchema = z
 
 export type ConversationReportStatus = z.infer<
   typeof conversationReportStatusSchema
+>;
+export type ConversationTurnFailureCode = z.infer<
+  typeof conversationTurnFailureCodeSchema
+>;
+export type ConversationTurnFailureReason = z.infer<
+  typeof conversationTurnFailureReasonSchema
 >;
 export type ConversationSurface = z.infer<typeof conversationSurfaceSchema>;
 export type ConversationCost = z.infer<typeof conversationCostSchema>;

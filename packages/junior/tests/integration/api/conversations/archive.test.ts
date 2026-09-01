@@ -47,9 +47,10 @@ describe("conversation archive API", () => {
   });
 
   it("archives a conversation only for the viewer and exposes archivedAt on detail", async () => {
-    const conversationId = "internal:archive-route";
+    const conversationId = "local:test:archive-route";
     const lastSeenAt = "1970-01-01T00:00:01.000Z";
     await getConversationStore().recordActivity({
+      destination: { platform: "local" as const, conversationId },
       conversationId,
       nowMs: Date.parse(lastSeenAt),
       source: "internal",
@@ -99,6 +100,7 @@ describe("conversation archive API", () => {
     ).toBeNull();
 
     await getConversationStore().recordActivity({
+      destination: { platform: "local" as const, conversationId },
       conversationId,
       nowMs: Date.parse(lastSeenAt) + 1_000,
       source: "internal",
@@ -126,10 +128,11 @@ describe("conversation archive API", () => {
   });
 
   it("archives for a root actor without an existing participant row", async () => {
-    const conversationId = "internal:archive-root-actor";
+    const conversationId = "local:test:archive-root-actor";
     const lastSeenAt = "1970-01-01T00:00:02.000Z";
     const email = "root-actor@example.com";
     await getConversationStore().recordActivity({
+      destination: { platform: "local" as const, conversationId },
       actor: {
         email,
         platform: "slack",
@@ -177,8 +180,9 @@ describe("conversation archive API", () => {
   });
 
   it("requires a viewer and rejects stale activity", async () => {
-    const conversationId = "internal:archive-conflict";
+    const conversationId = "local:test:archive-conflict";
     await getConversationStore().recordActivity({
+      destination: { platform: "local" as const, conversationId },
       conversationId,
       nowMs: 1_000,
       source: "internal",

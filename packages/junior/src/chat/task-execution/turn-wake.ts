@@ -8,7 +8,7 @@ import type { Destination } from "@sentry/junior-plugin-api";
 import type { ConversationStore } from "@/chat/conversations/store";
 import {
   resolveTurnSessionRouting,
-  type TurnSessionRouting,
+  type RequiredTurnSessionRouting,
 } from "@/chat/services/turn-session-routing";
 import {
   failTurnRecord,
@@ -34,6 +34,15 @@ interface TurnWakeOptions {
   state?: StateAdapter;
 }
 
+/** Look up and wake paused Turns without exposing queue or storage details. */
+export interface PausedTurns {
+  get(args: {
+    conversationId: string;
+    turnId: string;
+  }): Promise<PausedTurnRequest | undefined>;
+  wake(request: PausedTurnRequest): Promise<void>;
+}
+
 /** Build the worker input for a paused turn. */
 export async function getPausedTurnRequest(args: {
   conversationId: string;
@@ -55,7 +64,7 @@ export async function getPausedTurnRequest(args: {
   ) {
     return undefined;
   }
-  let routing: TurnSessionRouting;
+  let routing: RequiredTurnSessionRouting;
   try {
     routing = await resolveTurnSessionRouting({
       conversationId: args.conversationId,
@@ -105,4 +114,18 @@ export async function wakePausedTurn(
     queue,
     state: options.state,
   });
+}
+
+/** Create paused Turn operations for one app. */
+export function createPausedTurns(
+  options: TurnWakeOptions & { conversationStore?: ConversationStore } = {},
+): PausedTurns {
+  return {
+    get: (args) =>
+      getPausedTurnRequest({
+        ...args,
+        conversationStore: options.conversationStore,
+      }),
+    wake: (request) => wakePausedTurn(request, options),
+  };
 }

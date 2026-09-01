@@ -29,6 +29,12 @@ watch this pull request and tell me when its checks fail
 whenever an issue is reopened in this repository, summarize why in this channel
 ```
 
+```text
+whenever a non-draft pull request opens in this repository, review it
+```
+
+Optional `match` values come from the resource type. Junior drops events that do not match before it wakes the agent. Use a match key only when that resource type lists it. For GitHub, `isDraft`, `authorUsername`, `authorEmail`, and `headBranch` work on `pull_request` and on `repository` watches that receive pull request events. `headBranch` is the branch GitHub sent on the webhook. Check suites with no pull request still publish to the repository, so you can watch builds on `main`. For Linear, `teamKey` works on `issue` and `team` watches that receive issue events. If a listed value is missing on the event, Junior does not match.
+
 ## Limits
 
 - Watches default to 14 days and cannot exceed 30 days.

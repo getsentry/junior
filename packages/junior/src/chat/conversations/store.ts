@@ -1,7 +1,7 @@
 import type { Destination, Source } from "@sentry/junior-plugin-api";
+import type { Location } from "@/chat/conversations/location";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import type { StoredSlackActor } from "@/chat/actor";
-import type { Location } from "@/chat/conversations/location";
 import type { SessionSource } from "@/chat/source";
 import type { AgentTurnUsage } from "@/chat/usage";
 
@@ -30,15 +30,26 @@ export interface ConversationExecution {
   updatedAtMs?: number;
 }
 
-/** Immutable parent correlation for a child conversation. */
-export interface ConversationLineage {
-  parentConversationId: string;
-}
-
+/**
+ * Durable Conversation owned by Junior.
+ *
+ * The final interface stores zero or one complete Location here. No Location
+ * means the Conversation stays in Junior's API and UI. A Location names the
+ * outside place where a provider can deliver the Conversation. A Run carries
+ * this Location when the agent or tools need it. Source stays about the input.
+ * Delivery is created for the Location and allows output to be sent there.
+ *
+ * `destination` and `sessionSource` temporarily duplicate parts of that model.
+ * Their field TODOs state when each legacy copy can be removed.
+ */
 export interface Conversation {
+  // TODO(dcramer): Move this provider label into Location after stored
+  // Conversation reads no longer need the legacy destination projection.
   channelName?: string;
   conversationId: string;
   createdAtMs: number;
+  // TODO(dcramer): Remove this legacy Conversation routing field after core
+  // reads use Location and provider output uses Delivery.
   destination?: Destination;
   execution: ConversationExecution;
   executionMetrics?: {
@@ -47,16 +58,26 @@ export interface Conversation {
     usage?: AgentTurnUsage;
   };
   lastActivityAtMs: number;
-  lineage?: ConversationLineage;
+  /** Immutable parent Conversation. */
+  parentConversationId?: string;
+  /** Optional provider coordinates associated with this Conversation. */
   location?: Location;
+  // TODO(dcramer): Replace this creation-time Actor projection with the
+  // stored creator Identity after creator identity writes are complete.
   actor?: StoredSlackActor;
+  // TODO(dcramer): Keep schemaVersion inside the SQL decoder after callers
+  // stop constructing stored Conversation values directly.
   schemaVersion: 1;
+  // TODO(dcramer): Rename this creation Source after SQL origin fields become
+  // the only stored authority. It is not the Source for the current Turn.
   source?: ConversationSource;
   /**
    * Structured inbound Source locator for this conversation session.
    * Session-stable (threaded Slack keeps threadTs; channel-level turns omit
    * it; never stores per-message ts). Set-once.
    */
+  // TODO(dcramer): Remove sessionSource after resume reads the saved Turn Source
+  // and all Conversation place readers use Location.
   sessionSource?: SessionSource;
   title?: string;
   updatedAtMs: number;
@@ -66,13 +87,13 @@ export interface Conversation {
    * rather than privacy-redacted (`../../../../../policies/data-redaction.md`).
    */
   transcriptPurgedAtMs?: number;
-  /** Persisted destination visibility. Undefined means no destination row exists. */
+  /** Confirmed Conversation visibility. Undefined means no confirmation exists. */
   visibility?: ConversationPrivacy;
 }
 
 /** Persist and read durable conversation metadata for reporting surfaces. */
 export interface ConversationStore {
-  /** Create one destinationless child with immutable parent lineage. */
+  /** Create one Conversation with an immutable parent. */
   createChild(args: {
     childConversationId: string;
     parentConversationId: string;

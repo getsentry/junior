@@ -391,3 +391,51 @@ export async function getMemoryTimeline(
     };
   });
 }
+
+/** Read hourly memory creation totals visible to the authenticated User in UTC. */
+export async function getMemoryTimelineHours(
+  db: MemoryDb,
+  userId: string,
+  hours = 24,
+) {
+  const end = new Date();
+  end.setUTCMinutes(0, 0, 0);
+  const startMs = end.getTime() - (hours - 1) * 60 * 60 * 1_000;
+  const rows = await db
+    .select({
+      date: sql<string>`to_char(to_timestamp(${juniorMemoryMemories.createdAtMs} / 1000.0) AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24')`.as(
+        "date",
+      ),
+      private:
+        sql<number>`count(*) filter (where ${juniorMemoryMemories.scope} = 'private')`.mapWith(
+          Number,
+        ),
+      public:
+        sql<number>`count(*) filter (where ${juniorMemoryMemories.scope} = 'public')`.mapWith(
+          Number,
+        ),
+    })
+    .from(juniorMemoryMemories)
+    .where(
+      and(
+        visibleScopePredicate(userId),
+        gt(juniorMemoryMemories.createdAtMs, startMs - 1),
+      ),
+    )
+    .groupBy(
+      sql`to_char(to_timestamp(${juniorMemoryMemories.createdAtMs} / 1000.0) AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24')`,
+    );
+  const byHour = new Map(rows.map((row) => [row.date, row]));
+  return Array.from({ length: hours }, (_, index) => {
+    const date = new Date(startMs + index * 60 * 60 * 1_000)
+      .toISOString()
+      .slice(0, 13);
+    const row = byHour.get(date);
+    return {
+      date,
+      private: row?.private ?? 0,
+      public: row?.public ?? 0,
+    };
+  });
+}
+

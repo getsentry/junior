@@ -65,7 +65,7 @@ export function createEventTaskTool(
     },
     executionMode: "sequential",
     description:
-      "Create a durable event task that executes the supplied instruction for every matching resource event. Use for whenever-this-happens-do-X automation; ordinary watch, notify, or tell-me-when requests use watchResourceEvents instead. The task remains configured for this Slack channel or DM until deleted and may use the creator's connected credentials. Prefer a subscribable tool result when available.",
+      "Create a durable event task that executes the supplied instruction for every matching resource event. Use for whenever-this-happens-do-X automation; ordinary watch, notify, or tell-me-when requests use watchResourceEvents instead. The task may use the creator's connected credentials. Prefer a subscribable tool result when available.",
     inputSchema: z
       .object({
         task: z.string().trim().min(1).max(4000),
@@ -112,7 +112,7 @@ export function createEventTaskTool(
     async execute(input, options) {
       const { actor, destination, source } =
         requireEventTaskSlackContext(context);
-      requireSupportedEventTaskTrigger(catalog, input.trigger);
+      const match = requireSupportedEventTaskTrigger(catalog, input.trigger);
       const id = buildEventTaskId({
         channelId: destination.channelId,
         teamId: destination.teamId,
@@ -158,6 +158,7 @@ export function createEventTaskTool(
           resourceType: input.trigger.resourceType,
           label: input.trigger.label,
           events: [...new Set(input.trigger.events)],
+          ...(match ? { match } : undefined),
         },
       };
       return eventTaskSuccess(await createEventTask(db, task), catalog);

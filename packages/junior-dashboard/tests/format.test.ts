@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { NOW_MS } from "../src/mock-reporting/fixtures";
 import type {
   ConversationReportEvent,
   ConversationReportEventData,
@@ -137,11 +138,10 @@ describe("dashboard conversation formatting", () => {
   });
 
   it("formats old transcript timestamps relative to now", () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-08-10T16:00:00.000Z"));
-    expect(
-      formatRelativeMessageTimestamp(Date.parse("2026-08-09T16:00:00.000Z")),
-    ).toBe("yesterday");
+    vi.useFakeTimers({ now: NOW_MS });
+    expect(formatRelativeMessageTimestamp(NOW_MS - 86_400_000)).toBe(
+      "yesterday",
+    );
   });
 
   it("formats canonical transcript timestamp details in local time and UTC", () => {

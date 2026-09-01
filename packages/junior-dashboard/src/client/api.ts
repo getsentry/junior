@@ -4,6 +4,8 @@ import type { LocationDetailReport } from "@sentry/junior/api/schema";
 import {
   conversationFeedSchema,
   conversationStatsReportSchema,
+  codeOverviewReportSchema,
+  codePersonReportSchema,
   statsReportSchema,
 } from "@sentry/junior/api/schema";
 import {
@@ -101,6 +103,16 @@ export function useConversationsData(status: "active" | "archived" = "active") {
   });
 }
 
+/** Fetch repository and code change analytics. */
+export function useCodeOverviewData() {
+  return useQuery({
+    queryKey: ["dashboard", "code"],
+    queryFn: ({ signal }) =>
+      fetchDashboardJson(codeOverviewReportSchema, "/api/code", signal),
+    retry: false,
+  });
+}
+
 /** Fetch the signed-in viewer's scheduled and event tasks. */
 export function useTasksData(enabled: boolean) {
   return useQuery({
@@ -176,6 +188,21 @@ export function useActorPluginReportsData(email: string | undefined) {
       fetchDashboardJson(
         pluginOperationalReportFeedSchema,
         `/api/people/${encodeURIComponent(email!)}/plugin-reports`,
+        signal,
+      ),
+    retry: false,
+  });
+}
+
+/** Fetch person-scoped native code activity for one People profile. */
+export function useActorCodeData(email: string | undefined) {
+  return useQuery({
+    enabled: Boolean(email),
+    queryKey: ["dashboard", "people", email, "code"],
+    queryFn: ({ signal }) =>
+      fetchDashboardJson(
+        codePersonReportSchema,
+        `/api/people/${encodeURIComponent(email!)}/code`,
         signal,
       ),
     retry: false,

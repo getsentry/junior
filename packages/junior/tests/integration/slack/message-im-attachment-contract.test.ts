@@ -45,9 +45,7 @@ async function createDirectMessageBot(args: {
       visionContext: {
         completeText: args.completeText,
       },
-      replyExecutor: {
-        agentRunner: args.agentRunner,
-      },
+      agentRunner: args.agentRunner,
     },
   });
 

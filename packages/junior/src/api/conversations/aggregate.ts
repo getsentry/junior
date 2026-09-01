@@ -41,20 +41,25 @@ function tokenValue(source: ConversationAggregateSource) {
 }
 
 function costValue(source: ConversationAggregateSource) {
+  return conversationUsageCostExpr(source.usage);
+}
+
+/** Read one conversation row's usage cost as a SQL expression. */
+export function conversationUsageCostExpr(usage: AnyPgColumn) {
   return sql<number | null>`
     CASE
-      WHEN ${source.usage}->'cost'->>'total' IS NOT NULL
-        THEN (${source.usage}->'cost'->>'total')::double precision
+      WHEN ${usage}->'cost'->>'total' IS NOT NULL
+        THEN (${usage}->'cost'->>'total')::double precision
       WHEN COALESCE(
-        ${source.usage}->'cost'->>'input',
-        ${source.usage}->'cost'->>'output',
-        ${source.usage}->'cost'->>'cacheRead',
-        ${source.usage}->'cost'->>'cacheWrite'
+        ${usage}->'cost'->>'input',
+        ${usage}->'cost'->>'output',
+        ${usage}->'cost'->>'cacheRead',
+        ${usage}->'cost'->>'cacheWrite'
       ) IS NOT NULL
-        THEN COALESCE((${source.usage}->'cost'->>'input')::double precision, 0)
-          + COALESCE((${source.usage}->'cost'->>'output')::double precision, 0)
-          + COALESCE((${source.usage}->'cost'->>'cacheRead')::double precision, 0)
-          + COALESCE((${source.usage}->'cost'->>'cacheWrite')::double precision, 0)
+        THEN COALESCE((${usage}->'cost'->>'input')::double precision, 0)
+          + COALESCE((${usage}->'cost'->>'output')::double precision, 0)
+          + COALESCE((${usage}->'cost'->>'cacheRead')::double precision, 0)
+          + COALESCE((${usage}->'cost'->>'cacheWrite')::double precision, 0)
       ELSE NULL
     END
   `;

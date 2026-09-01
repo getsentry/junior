@@ -16,6 +16,17 @@ import {
 const MIN_AGENT_TURN_TIMEOUT_MS = 10 * 1000;
 const DEFAULT_AGENT_TURN_TIMEOUT_MS = 12 * 60 * 1000;
 const MAX_SLICES_PER_TURN = 100;
+/**
+ * Max tool calls for one turn, including later execution slices of that turn.
+ * Chosen from production dispatch traces: healthy runs cluster well under 50;
+ * runaway CI-watch loops land in the hundreds.
+ */
+const MAX_TOOL_CALLS_PER_TURN = 150;
+/**
+ * Max consecutive automated turns before event wakes stop until a user message.
+ * Resource-event CI watches and event-task loops are the common runaway paths.
+ */
+const MAX_CONSECUTIVE_AUTOMATED_TURNS = 10;
 const DEFAULT_FUNCTION_MAX_DURATION_SECONDS = 300;
 const DEFAULT_SLACK_SLASH_COMMAND = "/jr";
 const DEFAULT_PROCESSING_REACTION_EMOJI = "eyes";
@@ -57,6 +68,8 @@ export interface BotConfig {
   reasoningLevel?: TurnReasoningLevel;
   visionModelId?: string;
   maxSlicesPerTurn: number;
+  maxToolCallsPerTurn: number;
+  maxConsecutiveAutomatedTurns: number;
   turnTimeoutMs: number;
   userName: string;
   webSearchModelId: string;
@@ -265,7 +278,8 @@ function parseProfileMap(
   return profiles;
 }
 
-// TODO(v0.180.0): Remove env profile settings after the deprecation window.
+// TODO(dcramer): Remove env profile settings after supported deployments no
+// longer use AI_MODEL, AI_HANDOFF_MODEL, or AI_MODEL_PROFILES.
 function parseProfiles(
   rawValue: string | undefined,
   standardModelId: string,
@@ -368,6 +382,8 @@ function readBotConfig(
     loadingMessages: parseLoadingMessages(env.JUNIOR_LOADING_MESSAGES),
     visionModelId: validateGatewayModelId(env.AI_VISION_MODEL),
     maxSlicesPerTurn: MAX_SLICES_PER_TURN,
+    maxToolCallsPerTurn: MAX_TOOL_CALLS_PER_TURN,
+    maxConsecutiveAutomatedTurns: MAX_CONSECUTIVE_AUTOMATED_TURNS,
     turnTimeoutMs: parseAgentTurnTimeoutMs(
       env.AGENT_TURN_TIMEOUT_MS,
       maxTurnTimeoutMs,

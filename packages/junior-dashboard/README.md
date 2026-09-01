@@ -43,17 +43,24 @@ copy-only changes. Do not add pixel geometry, element size, computed style,
 fixed-delay checks, or broad console and page error assertions to browser E2E.
 Assert the user-visible outcome or external contract named by the journey.
 
-Shared server and API setup belongs in `e2e/harness.ts`; page behavior does not
-belong in a cross-page aggregate spec. Tests under `tests/` cover modules and
-component integration without standing in for browser E2E.
+Shared browser setup lives in `e2e/test.ts` and `e2e/harness.ts`. Specs import
+`test` from `./test` so every page gets the fixed current time and common API
+stubs. Page behavior does not belong in a cross-page aggregate spec.
+`e2e/screenshots.spec.ts` is the one exception. It records a complete screenshot
+set for Frameshift and does not assert page behavior. Tests under `tests/` cover
+modules and component integration without standing in for browser E2E.
+
+Mock reports and browser tests use one fixed current time: `NOW`
+(`2026-08-07T12:00:00.000Z`). History in the mocks is relative to that time, so
+labels like "5 minutes ago" stay stable.
 
 Run `JUNIOR_DASHBOARD_COMPONENT_GALLERY=true pnpm dev` from the repository root
 and open `/dev` to inspect the typed component fixtures.
 
-PR visual evidence lives in `visual/`. Capture runs in the standalone
-`Dashboard Visual` workflow; commenting runs from the default branch via
-`Dashboard Visual Comment`. Add the `trigger-visual` label to force every
-registered scenario. See `visual/README.md`.
+Dashboard E2E writes screenshots to
+`.playwright/junior-dashboard/screenshots/`. Frameshift saves this complete set
+on the default branch. On a pull request, it compares the new set with the
+saved set and links the report from the pull request.
 
 ## Type scale
 

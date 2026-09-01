@@ -6,14 +6,22 @@ instead of copying Tailwind blocks.
 ## Layers
 
 1. **Primitives** — `Button` / `ToggleButton`, `Field`, `TextInput`,
-   `StatusChip`, `Notice`, `Drawer`, `Tooltip`, and other small reusable
-   controls. Prefer `ToggleButton` variants (`pill`, `segment`, `text`) over
-   one-off pressed styles. Prefer `Field` sizes (`default`, `compact`) over
-   handwritten labels. Structural colors live as slim `dashboard-*` tokens in
-   `src/tailwind.css` (canvas, surface, text, border, fill, overlay, focus).
-   Prefer those roles over `white/*`, `black/*`, or hex literals. Status accents
-   stay as Tailwind palette utilities.
+   `StatusChip`, `StatusDot`, `Notice`, `Drawer`, `Tooltip`,
+   `PageContentSkeleton`, and other small reusable controls. Prefer
+   `ToggleButton` variants (`pill`, `segment`, `text`) over one-off pressed
+   styles. Prefer `Field` sizes (`default`, `compact`) over handwritten labels.
+   Prefer `StatusDot` for dense table or list status markers and `StatusChip`
+   when the label itself must stay visible. Prefer `PageContentSkeleton`
+   variants over ad-hoc pulse blocks in route modules. Structural colors live
+   as slim `dashboard-*` tokens in `src/tailwind.css` (canvas, surface, text,
+   border, fill, overlay, focus). Prefer those roles over `white/*`, `black/*`,
+   or hex literals. Status accents stay as Tailwind palette utilities.
 2. **Patterns** — layout, filters, directory tables, charts, metrics.
+   Activity time-series charts own bucket labels in
+   `charts/ActivityChart` (`formatActivityDate` for axes,
+   `ActivityChartTooltip` / `formatActivityTooltipDate` for hover labels).
+   New day/hour charts should compose those helpers instead of formatting
+   UTC bucket keys inline.
    Conversation mobile geometry is a hard ownership edge (see
    `policies/frontend-components.md`):
    - `layout/VisualViewportShell` — fixed shell, visualViewport CSS vars, body lock
