@@ -29,6 +29,7 @@ import { PageHeader } from "../../components/layout/PageHeader";
 import { MetricList, MetricValue } from "../../components/Metric";
 import { StatCard } from "../../components/metrics/StatCard";
 import { StatusChip } from "../../components/StatusChip";
+import { StatusDot } from "../../components/StatusDot";
 import { TextArea, TextInput } from "../../components/TextInput";
 import { TranscriptMarkdown } from "../../conversations/TranscriptMarkdown";
 import { TranscriptText } from "../../conversations/TranscriptText";
@@ -508,6 +509,16 @@ function FoundationsGalleryPage() {
           <StatusChip size="compact" tone="success">
             public
           </StatusChip>
+        </div>
+      </Fixture>
+      <Fixture title="Status dots">
+        <div className="flex flex-wrap items-center gap-3">
+          <StatusDot label="completed" tone="success" />
+          <StatusDot label="failed" tone="danger" />
+          <StatusDot label="blocked" tone="warning" />
+          <StatusDot label="idle" tone="neutral" />
+          <StatusDot label="info" tone="info" />
+          <StatusDot label="accent" tone="accent" />
         </div>
       </Fixture>
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">

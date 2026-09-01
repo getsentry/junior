@@ -102,6 +102,12 @@ const SCREENSHOT_SCENARIOS: ScreenshotScenario[] = [
     viewports: [DESKTOP, MOBILE],
   },
   {
+    id: "tasks-list",
+    path: "/tasks/list",
+    ready: "All tasks",
+    viewports: [DESKTOP, MOBILE],
+  },
+  {
     id: "memories",
     path: "/memories",
     ready: "Memories",

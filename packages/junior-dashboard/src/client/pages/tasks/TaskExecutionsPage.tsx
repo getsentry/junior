@@ -15,7 +15,8 @@ import type {
 import { useTaskExecutionsData } from "../../api";
 import { InlineError } from "../../components/InlineError";
 import { PageContentSkeleton } from "../../components/PageContentSkeleton";
-import { StatusChip } from "../../components/StatusChip";
+import type { StatusChipTone } from "../../components/StatusChip";
+import { StatusDot } from "../../components/StatusDot";
 import {
   selectTimeSeries,
   timeRangeBucketUnit,
@@ -24,11 +25,21 @@ import {
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
 import { conversationPath } from "../../conversations/conversationRoutes";
-import { formatTime, taskPath } from "../../format";
+import {
+  formatCompactNumber,
+  formatCostSummary,
+  formatRuntime,
+  formatTime,
+  taskPath,
+} from "../../format";
 import { DashboardApiError } from "../../http";
 import { pathWithSearch } from "../../searchParams";
 import { cn } from "../../styles";
 import { TaskExecutionStatusChart } from "./TaskExecutionStatusChart";
+
+/** Leading conversation column flexes; metric columns stay equal fixed widths. */
+const EXECUTION_GRID =
+  "grid-cols-[minmax(0,1fr)_5.5rem_5.5rem_5.5rem_auto]";
 
 /** Render one task's terminal executions as a browsable conversation-style list. */
 export function TaskExecutionsPage(props: { enabled: boolean }) {
@@ -134,13 +145,11 @@ function TaskExecutionsView(props: {
         />
       ) : null}
 
-      <div className="flex flex-wrap items-baseline justify-between gap-x-5 gap-y-1 border-b border-white/[0.07] pb-3">
-        <p className="m-0 font-display text-lg text-dashboard-text">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-5 gap-y-1 border-b border-dashboard-border-subtle pb-3">
+        <p className="m-0 text-sm text-dashboard-text-muted">
           {data.executions.length}{" "}
           {data.executions.length === 1 ? "run" : "runs"}
-        </p>
-        <p className="m-0 text-xs text-dashboard-text-muted">
-          Newest first. Click a run to open its conversation.
+          <span className="text-dashboard-text-muted/70"> · newest first</span>
         </p>
       </div>
 
@@ -152,21 +161,31 @@ function TaskExecutionsView(props: {
         </Card>
       ) : (
         <Card>
-          <div
-            className="sticky top-0 z-[1] hidden grid-cols-[minmax(13rem,1.7fr)_minmax(10rem,1fr)] items-center gap-3 border-b border-white/[0.06] bg-black/25 px-3 py-2.5 font-mono text-xs uppercase tracking-[0.1em] text-dashboard-text-muted md:grid"
-            role="row"
-          >
-            <div>Conversation</div>
-            <div className="justify-self-end">Status</div>
-          </div>
-          <div className="min-w-0" role="table">
-            {data.executions.map((execution) => (
-              <ExecutionRow
-                execution={execution}
-                fallbackTitle={data.task.title}
-                key={execution.executionId}
-              />
-            ))}
+          <div className="min-w-0 overflow-x-auto">
+            <div className="min-w-[36rem]">
+              <div
+                className={cn(
+                  "sticky top-0 z-[1] hidden items-center gap-4 border-b border-dashboard-border-subtle bg-dashboard-overlay-soft px-4 py-2.5 font-mono text-xs uppercase tracking-[0.1em] text-dashboard-text-muted md:grid",
+                  EXECUTION_GRID,
+                )}
+                role="row"
+              >
+                <div>Conversation</div>
+                <div>Duration</div>
+                <div>Tokens</div>
+                <div>Cost</div>
+                <div className="sr-only">Status</div>
+              </div>
+              <div className="min-w-0" role="table">
+                {data.executions.map((execution) => (
+                  <ExecutionRow
+                    execution={execution}
+                    fallbackTitle={data.task.title}
+                    key={execution.executionId}
+                  />
+                ))}
+              </div>
+            </div>
           </div>
         </Card>
       )}
@@ -189,10 +208,17 @@ function ExecutionRow(props: {
   const title =
     execution.title?.trim() ||
     (execution.conversationId ? fallbackTitle : "No conversation");
-  const subtitle = [
-    formatRunDate(execution.executedAt),
-    execution.conversationId ?? "not linked",
-  ].join(" · ");
+  const costLabel =
+    formatCostSummary(
+      execution.costUsd === undefined
+        ? undefined
+        : { total: execution.costUsd },
+    ) || "—";
+  const durationLabel = formatRuntime(execution.durationMs) || "—";
+  const tokensLabel =
+    execution.totalTokens === undefined
+      ? "—"
+      : formatCompactNumber(execution.totalTokens);
   const openConversation = () => {
     if (!execution.conversationId) return;
     navigate(conversationPath(execution.conversationId));
@@ -202,9 +228,10 @@ function ExecutionRow(props: {
     <div
       aria-disabled={!execution.conversationId}
       className={cn(
-        "group grid min-w-0 grid-cols-[minmax(13rem,1.7fr)_minmax(10rem,1fr)] items-center gap-3 overflow-hidden border-b border-b-white/[0.055] px-3 py-3 text-left text-inherit transition-colors max-md:grid-cols-1 max-md:px-4 max-md:py-4",
+        "group grid min-w-0 items-center gap-4 overflow-hidden border-b border-dashboard-border-subtle px-4 py-3 text-left text-inherit transition-colors last:border-b-0 max-md:grid-cols-1 max-md:gap-y-2 max-md:px-4 max-md:py-3.5 md:grid",
+        EXECUTION_GRID,
         execution.conversationId
-          ? "cursor-pointer hover:bg-white/[0.035]"
+          ? "cursor-pointer hover:bg-dashboard-fill-soft"
           : "cursor-default opacity-80",
       )}
       onClick={openConversation}
@@ -218,26 +245,52 @@ function ExecutionRow(props: {
       role={execution.conversationId ? "link" : "row"}
       tabIndex={execution.conversationId ? 0 : undefined}
     >
-      <div className="min-w-0">
-        <div className="min-w-0 truncate text-base font-bold leading-tight text-dashboard-text">
-          {title}
+      <div className="min-w-0 overflow-hidden">
+        <div className="flex min-w-0 items-center gap-2 overflow-hidden">
+          <StatusDot
+            className="md:hidden"
+            label={execution.status}
+            tone={runStatusTone(execution.status)}
+          />
+          <div className="min-w-0 truncate text-sm font-medium leading-snug text-dashboard-text">
+            {title}
+          </div>
         </div>
-        <div className="mt-1 break-words text-sm leading-relaxed text-dashboard-text-muted md:truncate">
-          {subtitle}
+        <div className="mt-1 truncate text-xs leading-relaxed text-dashboard-text-muted">
+          {formatRunDate(execution.executedAt)}
         </div>
       </div>
-      <div className="grid min-w-0 justify-items-end gap-1 text-right max-md:justify-items-start max-md:text-left">
-        <StatusChip tone={runStatusTone(execution.status)}>
-          {execution.status}
-        </StatusChip>
+      <MetricCell label="Duration" value={durationLabel} />
+      <MetricCell label="Tokens" value={tokensLabel} />
+      <MetricCell label="Cost" value={costLabel} />
+      <div className="hidden justify-self-center md:block">
+        <StatusDot
+          label={execution.status}
+          tone={runStatusTone(execution.status)}
+        />
       </div>
     </div>
   );
 }
 
-function runStatusTone(
-  status: TaskExecution["status"],
-): "danger" | "success" | "warning" {
+function MetricCell(props: { label: string; value: string }) {
+  return (
+    <div className="min-w-0 max-md:flex max-md:items-center max-md:gap-2">
+      <div
+        aria-hidden="true"
+        className="mb-1 hidden font-mono text-2xs uppercase tracking-[0.1em] text-dashboard-text-muted max-md:mb-0 max-md:block"
+      >
+        {props.label}
+      </div>
+      <div className="truncate whitespace-nowrap font-mono text-xs text-dashboard-text-muted md:text-sm md:text-dashboard-text">
+        <span className="sr-only">{props.label}: </span>
+        {props.value}
+      </div>
+    </div>
+  );
+}
+
+function runStatusTone(status: TaskExecution["status"]): StatusChipTone {
   if (status === "failed") return "danger";
   if (status === "blocked") return "warning";
   return "success";
