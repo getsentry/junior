@@ -4,6 +4,7 @@ import {
   mockDashboardApis,
   startDashboardE2eServer,
 } from "./harness";
+import { MOCK_NOW_MS } from "../src/mock-reporting/fixtures";
 
 let server: DashboardE2eServer;
 
@@ -730,7 +731,8 @@ test("archives and restores a conversation from the sidebar", async ({
 });
 
 test("expires the archive undo notice", async ({ page }) => {
-  await page.clock.install();
+  // Controllable timers for undo expiry; shared harness only freezes Date.
+  await page.clock.install({ time: MOCK_NOW_MS });
   await page.route("**/api/conversations/*/archive", async (route) => {
     await route.fulfill({
       json: { archivedAt: "2026-08-21T16:45:00.000Z" },
@@ -759,7 +761,8 @@ test("expires the archive undo notice", async ({ page }) => {
 test("resets the archive undo timer when archiving another conversation", async ({
   page,
 }) => {
-  await page.clock.install();
+  // Controllable timers for undo expiry; shared harness only freezes Date.
+  await page.clock.install({ time: MOCK_NOW_MS });
   await page.route("**/api/conversations/*/archive", async (route) => {
     await route.fulfill({
       json: { archivedAt: "2026-08-21T16:45:00.000Z" },

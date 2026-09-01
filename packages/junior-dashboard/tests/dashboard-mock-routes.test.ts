@@ -12,6 +12,8 @@ import {
   ARCHIVED_CONVERSATION_ID,
   conversationTimeBounds,
   DASHBOARD_QA_CONVERSATION_ID,
+  MOCK_NOW_ISO,
+  MOCK_NOW_MS,
   setMockConversationArchived,
 } from "../src/mock-reporting/fixtures";
 
@@ -70,7 +72,7 @@ describe("dashboard canonical-event mock routes", () => {
   });
 
   it("serves canonical detail, directory, and aggregate reports", async () => {
-    vi.useFakeTimers({ now: new Date("2026-05-30T00:00:00.000Z") });
+    vi.useFakeTimers({ now: MOCK_NOW_MS });
     const app = createDashboardApp({
       authRequired: false,
       allowedGoogleDomains: [],
@@ -134,7 +136,7 @@ describe("dashboard canonical-event mock routes", () => {
         {
           body: JSON.stringify({
             archived: false,
-            lastSeenAt: "2026-05-30T00:00:00.000Z",
+            lastSeenAt: MOCK_NOW_ISO,
           }),
           headers: { "content-type": "application/json" },
           method: "PATCH",
@@ -189,9 +191,8 @@ describe("dashboard canonical-event mock routes", () => {
       ),
     );
     expect(statsBody.costUsd).toBeGreaterThan(0);
-    expect(
-      Date.parse(statsBody.windowEnd) - Date.parse(statsBody.windowStart),
-    ).toBe(89 * 24 * 60 * 60 * 1000);
+    expect(statsBody.windowEnd).toBe(MOCK_NOW_ISO);
+    expect(statsBody.windowStart).toBe("2026-05-10T00:00:00.000Z");
 
     const people = await app.fetch(new Request("http://localhost/api/people"));
     const peopleBody = actorDirectoryReportSchema.parse(await people.json());

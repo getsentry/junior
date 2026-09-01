@@ -127,7 +127,7 @@ test("shows Workspace snapshot details on its direct route", async ({ page }) =>
         setupScript: "pnpm install",
         snapshot: {
           id: "snap_workspace_123",
-          generatedAt: new Date(Date.now() - 60_000).toISOString(),
+          generatedAt: "2026-08-07T11:59:00.000Z",
           buildDurationMs: 45_000,
           sizeBytes: 4_194_304,
         },

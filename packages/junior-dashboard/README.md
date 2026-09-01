@@ -49,6 +49,11 @@ exception. It records a complete screenshot set for Frameshift and does not
 assert page behavior. Tests under `tests/` cover modules and component
 integration without standing in for browser E2E.
 
+Mock reporting fixtures and dashboard e2e freeze wall clock at
+`MOCK_NOW_ISO` (`2026-08-07T12:00:00.000Z`). Fixture historicals are offsets from
+that clock, and the Playwright harness installs the same time in the browser so
+relative labels stay stable.
+
 Run `JUNIOR_DASHBOARD_COMPONENT_GALLERY=true pnpm dev` from the repository root
 and open `/dev` to inspect the typed component fixtures.
 
