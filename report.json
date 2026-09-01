@@ -1,0 +1,309 @@
+{
+  "files": [
+    {
+      "file": "code__desktop.png",
+      "height": 1254,
+      "image": "images/diff/code__desktop.png",
+      "images": {
+        "baseline": "images/baseline/code__desktop.png",
+        "candidate": "images/candidate/code__desktop.png",
+        "diff": "images/diff/code__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "code__mobile.png",
+      "height": 1384,
+      "image": "images/diff/code__mobile.png",
+      "images": {
+        "baseline": "images/baseline/code__mobile.png",
+        "candidate": "images/candidate/code__mobile.png",
+        "diff": "images/diff/code__mobile.png"
+      },
+      "status": "changed",
+      "width": 390
+    },
+    {
+      "file": "conversation-attachment__desktop.png",
+      "height": 900,
+      "image": "images/diff/conversation-attachment__desktop.png",
+      "images": {
+        "baseline": "images/baseline/conversation-attachment__desktop.png",
+        "candidate": "images/candidate/conversation-attachment__desktop.png",
+        "diff": "images/diff/conversation-attachment__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "conversation-attachment__mobile.png",
+      "height": 844,
+      "image": "images/diff/conversation-attachment__mobile.png",
+      "images": {
+        "baseline": "images/baseline/conversation-attachment__mobile.png",
+        "candidate": "images/candidate/conversation-attachment__mobile.png",
+        "diff": "images/diff/conversation-attachment__mobile.png"
+      },
+      "status": "changed",
+      "width": 390
+    },
+    {
+      "file": "conversation-attachment-modal__desktop.png",
+      "image": "images/candidate/conversation-attachment-modal__desktop.png",
+      "images": {
+        "candidate": "images/candidate/conversation-attachment-modal__desktop.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "conversation-attachment-modal__mobile.png",
+      "image": "images/candidate/conversation-attachment-modal__mobile.png",
+      "images": {
+        "candidate": "images/candidate/conversation-attachment-modal__mobile.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "conversation-create-focused__desktop.png",
+      "image": "images/candidate/conversation-create-focused__desktop.png",
+      "images": {
+        "candidate": "images/candidate/conversation-create-focused__desktop.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "conversation-create-focused__mobile.png",
+      "height": 844,
+      "image": "images/diff/conversation-create-focused__mobile.png",
+      "images": {
+        "baseline": "images/baseline/conversation-create-focused__mobile.png",
+        "candidate": "images/candidate/conversation-create-focused__mobile.png",
+        "diff": "images/diff/conversation-create-focused__mobile.png"
+      },
+      "status": "changed",
+      "width": 390
+    },
+    {
+      "file": "conversation-detail__desktop.png",
+      "height": 900,
+      "image": "images/diff/conversation-detail__desktop.png",
+      "images": {
+        "baseline": "images/baseline/conversation-detail__desktop.png",
+        "candidate": "images/candidate/conversation-detail__desktop.png",
+        "diff": "images/diff/conversation-detail__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "conversation-detail__mobile.png",
+      "height": 844,
+      "image": "images/diff/conversation-detail__mobile.png",
+      "images": {
+        "baseline": "images/baseline/conversation-detail__mobile.png",
+        "candidate": "images/candidate/conversation-detail__mobile.png",
+        "diff": "images/diff/conversation-detail__mobile.png"
+      },
+      "status": "changed",
+      "width": 390
+    },
+    {
+      "file": "conversation-detail-focused__mobile.png",
+      "height": 520,
+      "image": "images/diff/conversation-detail-focused__mobile.png",
+      "images": {
+        "baseline": "images/baseline/conversation-detail-focused__mobile.png",
+        "candidate": "images/candidate/conversation-detail-focused__mobile.png",
+        "diff": "images/diff/conversation-detail-focused__mobile.png"
+      },
+      "status": "changed",
+      "width": 390
+    },
+    {
+      "file": "conversations__desktop.png",
+      "image": "images/candidate/conversations__desktop.png",
+      "images": {
+        "candidate": "images/candidate/conversations__desktop.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "conversations__mobile.png",
+      "height": 844,
+      "image": "images/diff/conversations__mobile.png",
+      "images": {
+        "baseline": "images/baseline/conversations__mobile.png",
+        "candidate": "images/candidate/conversations__mobile.png",
+        "diff": "images/diff/conversations__mobile.png"
+      },
+      "status": "changed",
+      "width": 390
+    },
+    {
+      "file": "gallery-charts__desktop.png",
+      "image": "images/candidate/gallery-charts__desktop.png",
+      "images": {
+        "candidate": "images/candidate/gallery-charts__desktop.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "gallery-foundations__desktop.png",
+      "image": "images/candidate/gallery-foundations__desktop.png",
+      "images": {
+        "candidate": "images/candidate/gallery-foundations__desktop.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "gallery-index__desktop.png",
+      "image": "images/candidate/gallery-index__desktop.png",
+      "images": {
+        "candidate": "images/candidate/gallery-index__desktop.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "gallery-transcripts__desktop.png",
+      "image": "images/candidate/gallery-transcripts__desktop.png",
+      "images": {
+        "candidate": "images/candidate/gallery-transcripts__desktop.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "memories__desktop.png",
+      "image": "images/candidate/memories__desktop.png",
+      "images": {
+        "candidate": "images/candidate/memories__desktop.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "person-profile__desktop.png",
+      "height": 1788,
+      "image": "images/diff/person-profile__desktop.png",
+      "images": {
+        "baseline": "images/baseline/person-profile__desktop.png",
+        "candidate": "images/candidate/person-profile__desktop.png",
+        "diff": "images/diff/person-profile__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "person-profile__mobile.png",
+      "height": 2772,
+      "image": "images/diff/person-profile__mobile.png",
+      "images": {
+        "baseline": "images/baseline/person-profile__mobile.png",
+        "candidate": "images/candidate/person-profile__mobile.png",
+        "diff": "images/diff/person-profile__mobile.png"
+      },
+      "status": "changed",
+      "width": 390
+    },
+    {
+      "file": "settings__desktop.png",
+      "image": "images/candidate/settings__desktop.png",
+      "images": {
+        "candidate": "images/candidate/settings__desktop.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "system__desktop.png",
+      "height": 1697,
+      "image": "images/diff/system__desktop.png",
+      "images": {
+        "baseline": "images/baseline/system__desktop.png",
+        "candidate": "images/candidate/system__desktop.png",
+        "diff": "images/diff/system__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "tasks-list__desktop.png",
+      "height": 971,
+      "image": "images/diff/tasks-list__desktop.png",
+      "images": {
+        "baseline": "images/baseline/tasks-list__desktop.png",
+        "candidate": "images/candidate/tasks-list__desktop.png",
+        "diff": "images/diff/tasks-list__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "tasks-list__mobile.png",
+      "image": "images/candidate/tasks-list__mobile.png",
+      "images": {
+        "candidate": "images/candidate/tasks-list__mobile.png"
+      },
+      "status": "unchanged"
+    },
+    {
+      "file": "workspace-detail__desktop.png",
+      "height": 1765,
+      "image": "images/diff/workspace-detail__desktop.png",
+      "images": {
+        "baseline": "images/baseline/workspace-detail__desktop.png",
+        "candidate": "images/candidate/workspace-detail__desktop.png",
+        "diff": "images/diff/workspace-detail__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "workspace-detail__mobile.png",
+      "height": 2318,
+      "image": "images/diff/workspace-detail__mobile.png",
+      "images": {
+        "baseline": "images/baseline/workspace-detail__mobile.png",
+        "candidate": "images/candidate/workspace-detail__mobile.png",
+        "diff": "images/diff/workspace-detail__mobile.png"
+      },
+      "status": "changed",
+      "width": 390
+    },
+    {
+      "file": "workspaces__desktop.png",
+      "height": 900,
+      "image": "images/diff/workspaces__desktop.png",
+      "images": {
+        "baseline": "images/baseline/workspaces__desktop.png",
+        "candidate": "images/candidate/workspaces__desktop.png",
+        "diff": "images/diff/workspaces__desktop.png"
+      },
+      "status": "changed",
+      "width": 1440
+    },
+    {
+      "file": "workspaces__mobile.png",
+      "height": 844,
+      "image": "images/diff/workspaces__mobile.png",
+      "images": {
+        "baseline": "images/baseline/workspaces__mobile.png",
+        "candidate": "images/candidate/workspaces__mobile.png",
+        "diff": "images/diff/workspaces__mobile.png"
+      },
+      "status": "changed",
+      "width": 390
+    }
+  ],
+  "metadata": {
+    "pullRequest": {
+      "number": 1757,
+      "title": "test(dashboard): share fixed time through e2e fixtures"
+    }
+  },
+  "summary": {
+    "added": 0,
+    "changed": 17,
+    "removed": 0,
+    "unchanged": 11
+  },
+  "version": 2
+}
