@@ -21,7 +21,6 @@ import {
   isTurnInputCommitLostError,
 } from "@/chat/runtime/turn";
 import {
-  buildTurnFailureResponse,
   logException,
   logWarn,
   withSpan,
@@ -475,11 +474,7 @@ export function createSlackTurnRuntime<
   }): Promise<void> => {
     try {
       await args.thread.post(
-        buildTurnErrorResponse(
-          args.error,
-          args.eventId,
-          buildTurnFailureResponse,
-        ),
+        buildTurnErrorResponse(args.error, args.eventId),
       );
     } catch (postError) {
       logException(postError, args.postFailureEventName, {

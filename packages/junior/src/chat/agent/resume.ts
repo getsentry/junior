@@ -146,13 +146,10 @@ export function createResumeState(args: ResumeStateArgs) {
     setBeforeMessageCount(count: number): void {
       beforeMessageCount = count;
     },
-    get cumulativeToolCallCount(): number {
-      return cumulativeToolCallCount;
-    },
     /** Admit one tool call against the durable turn total, or throw the limit. */
-    admitToolCall(maxToolCalls: number): void {
+    admitToolCall(): void {
       const next = cumulativeToolCallCount + 1;
-      assertTurnToolCallLimit(next, maxToolCalls);
+      assertTurnToolCallLimit(next, botConfig.maxToolCallsPerTurn);
       cumulativeToolCallCount = next;
     },
     setTurnContexts(contexts: PluginTurnContext[]): void {

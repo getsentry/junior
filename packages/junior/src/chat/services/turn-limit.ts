@@ -1,3 +1,5 @@
+import { buildTurnFailureResponse } from "@/chat/logging";
+
 /** Terminal failure when one turn uses too many execution slices. */
 export class TurnSliceLimitExceededError extends Error {
   constructor(maxSlices: number) {
@@ -14,12 +16,19 @@ export class TurnToolCallLimitExceededError extends Error {
   }
 }
 
-/** True when a turn hit a hard execution limit and should not resume. */
-export function isTurnExecutionLimitExceededError(error: unknown): boolean {
+function isDirectTurnExecutionLimitError(error: unknown): boolean {
   return (
     error instanceof TurnSliceLimitExceededError ||
     error instanceof TurnToolCallLimitExceededError
   );
+}
+
+/** True when a turn hit a hard execution limit, including one Error.cause wrap. */
+export function isTurnExecutionLimitExceededError(error: unknown): boolean {
+  if (isDirectTurnExecutionLimitError(error)) {
+    return true;
+  }
+  return error instanceof Error && isDirectTurnExecutionLimitError(error.cause);
 }
 
 /** Stop the turn when its tool-call count is past the limit. */
@@ -42,33 +51,12 @@ export function buildTurnLimitResponse(eventId: string): string {
   );
 }
 
-/** Walk Error.cause so boundary wrappers still surface the limit stop. */
-function isTurnExecutionLimitCause(error: unknown): boolean {
-  let current: unknown = error;
-  const seen = new Set<unknown>();
-  while (current != null && !seen.has(current)) {
-    if (isTurnExecutionLimitExceededError(current)) {
-      return true;
-    }
-    seen.add(current);
-    current =
-      current instanceof Error && "cause" in current
-        ? current.cause
-        : undefined;
-  }
-  return false;
-}
-
-/**
- * Pick the user-facing failure reply for a thrown turn error.
- * Execution-limit stops use the limit copy; everything else stays generic.
- */
+/** User-facing reply for a thrown turn error. */
 export function buildTurnErrorResponse(
   error: unknown,
   eventId: string,
-  buildGenericFailureResponse: (eventId: string) => string,
 ): string {
-  return isTurnExecutionLimitCause(error)
+  return isTurnExecutionLimitExceededError(error)
     ? buildTurnLimitResponse(eventId)
-    : buildGenericFailureResponse(eventId);
+    : buildTurnFailureResponse(eventId);
 }

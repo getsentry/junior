@@ -1200,11 +1200,10 @@ async function executeAgentRunInPrivacyContext(
             reason: `${exclusiveTool} must be the only tool call in its assistant message; reissue it alone`,
           };
         }
-        // beforeToolCall runs once per tool. Charge the durable turn total
-        // here (not a live message recount) so compaction cannot reset it.
-        // Exceptions become tool errors, so block + terminate and rethrow.
+        // Charge the durable turn total here. Exceptions become tool errors,
+        // so block + terminate and rethrow after the step settles.
         try {
-          runResume.admitToolCall(botConfig.maxToolCallsPerTurn);
+          runResume.admitToolCall();
         } catch (error) {
           const limitError =
             error instanceof Error ? error : new Error(String(error));

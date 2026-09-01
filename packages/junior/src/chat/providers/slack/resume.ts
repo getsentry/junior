@@ -25,7 +25,6 @@ import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { AgentRunError, type ExecuteTurn } from "@/chat/runtime/turn-execution";
 import { scheduleSessionCompletedPluginTasks } from "@/chat/plugins/task-runner";
 import {
-  buildTurnFailureResponse,
   logException,
   setTags,
   withLogContext,
@@ -247,11 +246,7 @@ async function postResumeFailureReply(args: {
   await postSlackApiMessage({
     channelId: args.channelId,
     threadTs: args.threadTs,
-    text: buildTurnErrorResponse(
-      args.error,
-      args.eventId,
-      buildTurnFailureResponse,
-    ),
+    text: buildTurnErrorResponse(args.error, args.eventId),
   });
 }
 

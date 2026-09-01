@@ -106,10 +106,7 @@ describe("agent resume", () => {
       surface: "internal",
     });
     const { resume } = await resumeState(conversationId, turnId);
-    expect(resume.cumulativeToolCallCount).toBe(17);
-
-    resume.admitToolCall(150);
-    expect(resume.cumulativeToolCallCount).toBe(18);
+    resume.admitToolCall();
     await expect(resume.persistSafeBoundary([first, second])).resolves.toBe(
       true,
     );

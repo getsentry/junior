@@ -45,13 +45,8 @@ describe("turn execution limit", () => {
   });
 
   it("uses the limit reply for thrown execution-limit errors", () => {
-    const generic = (eventId: string) => `generic ${eventId}`;
     expect(
-      buildTurnErrorResponse(
-        new TurnToolCallLimitExceededError(150),
-        "abc123",
-        generic,
-      ),
+      buildTurnErrorResponse(new TurnToolCallLimitExceededError(150), "abc123"),
     ).toBe(buildTurnLimitResponse("abc123"));
     expect(
       buildTurnErrorResponse(
@@ -59,11 +54,13 @@ describe("turn execution limit", () => {
           cause: new TurnToolCallLimitExceededError(150),
         }),
         "abc123",
-        generic,
       ),
     ).toBe(buildTurnLimitResponse("abc123"));
-    expect(buildTurnErrorResponse(new Error("boom"), "abc123", generic)).toBe(
-      "generic abc123",
+    expect(buildTurnErrorResponse(new Error("boom"), "abc123")).toContain(
+      "event_id=abc123",
+    );
+    expect(buildTurnErrorResponse(new Error("boom"), "abc123")).toContain(
+      "internal error",
     );
   });
 });
