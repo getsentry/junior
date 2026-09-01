@@ -585,14 +585,14 @@ export interface ConversationEventPage {
 /** Persist and read the canonical per-conversation event log. */
 export interface ConversationEventStore {
   /**
-   * Append events atomically, optionally preserving conversation activity.
+   * Append events atomically and return each event's sequence and history version.
    * Archive clears only for human user activity, not every non-preserve write.
    */
   append(
     conversationId: string,
     events: NewConversationEvent[],
     options?: { activity?: "preserve" },
-  ): Promise<void>;
+  ): Promise<Array<Pick<ConversationEvent, "seq" | "historyVersion">>>;
   /** Replace active model history with a compaction or handoff event. */
   replaceHistory(
     conversationId: string,
@@ -613,6 +613,8 @@ export interface ConversationEventStore {
   loadLatestInstruction(
     conversationId: string,
   ): Promise<ConversationEvent | undefined>;
+  /** Current model-history version, or zero when no event exists. */
+  loadCurrentHistoryVersion(conversationId: string): Promise<number>;
   /** Events of the current history version in `seq` order. */
   loadCurrentHistory(conversationId: string): Promise<ConversationEvent[]>;
   /** Events in the history version containing `seq`, when it exists. */

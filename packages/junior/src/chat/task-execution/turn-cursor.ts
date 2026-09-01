@@ -550,19 +550,19 @@ async function materializeStoredTurnRecord(
   if (!pinnedProjection) {
     return undefined;
   }
-  const currentHistory =
-    await getConversationEventStore().loadCurrentHistory(conversationId);
+  const eventStore = getConversationEventStore();
   const currentHistoryVersion =
-    currentHistory.at(-1)?.historyVersion ?? parsed.historyVersion ?? 0;
+    await eventStore.loadCurrentHistoryVersion(conversationId);
   const followsReplacement =
     followCurrentReplacement &&
     (parsed.state === "running" || parsed.state === "paused") &&
     parsed.historyVersion !== undefined &&
     parsed.historyVersion !== currentHistoryVersion;
   const piProjection = followsReplacement
-    ? projectConversationEvents(currentHistory, {
-        defaultProfile: botConfig.defaultProfile,
-      })
+    ? projectConversationEvents(
+        await eventStore.loadCurrentHistory(conversationId),
+        { defaultProfile: botConfig.defaultProfile },
+      )
     : pinnedProjection;
   const turnStartMessageIndex = followsReplacement
     ? 0
