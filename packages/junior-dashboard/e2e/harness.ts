@@ -477,6 +477,7 @@ export async function mockDashboardApis(page: Page) {
         executions: [
           {
             conversationId: "scheduler:daily-ops-digest",
+            costUsd: 0.42,
             executedAt: "2026-08-06T16:00:00.000Z",
             executionId: `${id}-run-1`,
             status: "completed",
@@ -484,6 +485,7 @@ export async function mockDashboardApis(page: Page) {
           },
           {
             conversationId: "slack:CQA123:1770003600.000200",
+            costUsd: 0.18,
             executedAt: "2026-08-05T16:00:00.000Z",
             executionId: `${id}-run-2`,
             status: "failed",
