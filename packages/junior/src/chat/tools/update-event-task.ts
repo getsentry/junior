@@ -53,7 +53,7 @@ export function createUpdateEventTaskTool(
     },
     executionMode: "sequential",
     description:
-      "Update the instruction, registered trigger, or credential use for an event task in this Slack channel or DM. Event tasks created from other threads in the same destination are manageable here.",
+      "Update the instruction, registered trigger, or credential use for an event task. Tasks in this Slack channel or DM are manageable here, including from other threads. Public tasks from another channel in the same Slack workspace are manageable by task id.",
     inputSchema: z
       .object({
         taskId: z.string().min(1),
@@ -148,7 +148,7 @@ export function createUpdateEventTaskTool(
       const saved = await saveEventTask(getDb(), next);
       if (!saved) {
         throw new ToolInputError(
-          "Event task was not found in this Slack channel or DM.",
+          "Event task was not found for this Slack workspace.",
         );
       }
       return eventTaskSuccess(saved, catalog);

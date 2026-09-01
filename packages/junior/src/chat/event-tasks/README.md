@@ -21,9 +21,11 @@ for one task does not prevent dispatch attempts for other matching tasks; the
 ingress boundary still receives the aggregate failure for provider retry. Task
 dispatch identity binds the task, plugin namespace, and provider event key, so
 provider retries do not execute the same task twice. Distinct matching events
-are not silently dropped by a task-level quota. Task management is bound to the
-Slack channel or DM where the task was created. Threads in the same channel
-share event-task management; temporary resource watches remain thread-bound.
+are not silently dropped by a task-level quota. Listing stays bound to the Slack
+channel or DM where the task was created. Threads in that channel share the list.
+Update and delete also accept a public task by id from another channel or DM in
+the same Slack workspace. Private tasks stay local to their destination.
+Temporary resource watches remain thread-bound.
 Creation and delivery require single-workspace Slack mode so core can verify the
 team that owns provider events. Multi-workspace mode fails closed until plugins
 can provide a real provider-to-workspace binding. A task matched before a
