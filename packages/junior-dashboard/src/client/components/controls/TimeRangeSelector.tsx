@@ -62,8 +62,8 @@ export function timeRangeBucketAdjective(unit: TimeRangeBucketUnit): string {
 
 /**
  * Choose the day, hour, or 6-hour series for a reporting window.
- * Prefers a dedicated sixHours series for 7d; otherwise rolls hours when present.
- * Uses hours for 24h when present; otherwise the latest day only.
+ * For 7d, prefer a sixHours series. If missing, sum hours into 6-hour buckets.
+ * For 24h, use hours when present; otherwise use the latest day only.
  */
 export function selectTimeSeries<T extends { date: string }>(args: {
   days: readonly T[];
@@ -73,7 +73,7 @@ export function selectTimeSeries<T extends { date: string }>(args: {
   emptySixHour?(date: string): T;
 }): T[] {
   if (isHourlyTimeRange(args.range) && args.hours?.length) {
-    // 24h views keep the trailing 24 hour points even if hours is longer.
+    // 24h views keep the last 24 hour points even if more hours are present.
     return args.hours.slice(-24);
   }
   if (isHourlyTimeRange(args.range)) {
@@ -84,19 +84,19 @@ export function selectTimeSeries<T extends { date: string }>(args: {
       return [...args.sixHours];
     }
     if (args.hours?.length && args.emptySixHour) {
-      return rollupHoursToSixHoursClient({
+      return sumHoursIntoSixHours({
         empty: args.emptySixHour,
         hours: args.hours,
       });
     }
-    // No sub-day series: fall back to daily so the chart still renders.
+    // No hour or 6-hour series: use daily points so the chart still renders.
     return args.days.slice(-args.range);
   }
   return args.days.slice(-args.range);
 }
 
-/** Client-side hour → 6h rollup used when APIs only ship hour rows. */
-function rollupHoursToSixHoursClient<T extends { date: string }>(args: {
+/** Sum hour rows into 6-hour buckets when the API only returns hours. */
+function sumHoursIntoSixHours<T extends { date: string }>(args: {
   empty(date: string): T;
   hours: readonly T[];
 }): T[] {
@@ -121,7 +121,7 @@ function rollupHoursToSixHoursClient<T extends { date: string }>(args: {
     bySix.set(key, next);
   }
 
-  // Keep insertion order of first-seen buckets; fill trailing 28 if dense hours.
+  // Fill the trailing 28 six-hour buckets when enough hour rows exist.
   if (args.hours.length >= 24) {
     const lastHour = args.hours[args.hours.length - 1]?.date;
     const endMs = lastHour

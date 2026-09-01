@@ -4,7 +4,7 @@ import {
   WINDOW_SEVEN_DAY_HOURS,
   fillUtcDays,
   fillUtcHours,
-  rollupUtcHoursToSixHours,
+  sumUtcHoursIntoSixHours,
 } from "./reporting-window";
 
 export const dailyConversationActivitySchema = z
@@ -48,8 +48,8 @@ export function activityDays(
 }
 
 /**
- * Fill the trailing 7-day UTC hour window from sparse conversation activity.
- * 24h charts slice the trailing 24 points; 7d charts roll these into 6h buckets.
+ * Fill the trailing 7-day UTC hour window from known hour rows.
+ * 24h charts use the last 24 points. 7d charts sum hours into 6-hour buckets.
  */
 export function activityHours(
   hours: Map<string, DailyConversationActivity>,
@@ -64,8 +64,8 @@ export function activityHours(
 }
 
 /**
- * Fill trailing 6-hour buckets from hour-keyed sparse maps or dense hour rows.
- * Hour keys must roll up; do not look them up as 6h keys.
+ * Fill trailing 6-hour buckets from hour keys or hour rows.
+ * Hour keys must be summed into 6-hour keys first.
  */
 export function activitySixHours(
   hours:
@@ -75,7 +75,7 @@ export function activitySixHours(
 ): DailyConversationActivity[] {
   const series =
     hours instanceof Map ? activityHours(hours, nowMs) : [...hours];
-  return rollupUtcHoursToSixHours({
+  return sumUtcHoursIntoSixHours({
     empty: emptyActivityDay,
     hours: series,
     nowMs,

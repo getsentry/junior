@@ -6,7 +6,7 @@ import {
   codeOverviewReportSchema,
   codePersonReportSchema,
 } from "../schema/code";
-import { rollupUtcHoursToSixHours } from "../reporting-window";
+import { sumUtcHoursIntoSixHours } from "../reporting-window";
 
 const DAY_MS = 24 * 60 * 60 * 1_000;
 const WINDOW_DAYS = 30;
@@ -309,7 +309,7 @@ async function readCodeWindows(args: {
   return {
     activityDays: z.array(activityDaySchema).parse(queryRows(activityResult)),
     activityHours,
-    activitySixHours: rollupUtcHoursToSixHours({
+    activitySixHours: sumUtcHoursIntoSixHours({
       empty: (date) => ({ closed: 0, created: 0, date, merged: 0 }),
       hours: activityHours,
       nowMs: args.nowMs,

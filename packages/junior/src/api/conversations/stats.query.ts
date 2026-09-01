@@ -19,7 +19,7 @@ import type {
 } from "../schema/conversation";
 import {
   WINDOW_SEVEN_DAY_HOURS,
-  rollupUtcHoursToSixHours,
+  sumUtcHoursIntoSixHours,
   startOfUtcHour,
   utcHourKey,
 } from "../reporting-window";
@@ -232,22 +232,22 @@ function emptyGuardianDay(date: string): GuardianMetricDay {
   return { allow: 0, ask: 0, date, deny: 0, requests: 0 };
 }
 
-function rollupMetricHoursToSix(
+function sumMetricHoursIntoSixHours(
   hours: ConversationMetricDay[],
   endMs: number,
 ): ConversationMetricDay[] {
-  return rollupUtcHoursToSixHours({
+  return sumUtcHoursIntoSixHours({
     empty: emptyMetricDay,
     hours,
     nowMs: endMs,
   });
 }
 
-function rollupGuardianHoursToSix(
+function sumGuardianHoursIntoSixHours(
   hours: GuardianMetricDay[],
   endMs: number,
 ): GuardianMetricDay[] {
-  return rollupUtcHoursToSixHours({
+  return sumUtcHoursIntoSixHours({
     empty: emptyGuardianDay,
     hours,
     nowMs: endMs,
@@ -340,7 +340,7 @@ function guardianStats(
     deny,
     metricDays,
     metricHours,
-    metricSixHours: rollupGuardianHoursToSix(metricHours, endMs),
+    metricSixHours: sumGuardianHoursIntoSixHours(metricHours, endMs),
     requests,
     ...(costUsd !== undefined ? { costUsd } : undefined),
   };
@@ -571,7 +571,7 @@ export async function readConversationStatsFromSql(): Promise<ConversationStatsR
       const hours = metricHours(metricHourRows, nowMs);
       return {
         metricHours: hours,
-        metricSixHours: rollupMetricHoursToSix(hours, nowMs),
+        metricSixHours: sumMetricHoursIntoSixHours(hours, nowMs),
       };
     })(),
     locations: statsItems(locations),

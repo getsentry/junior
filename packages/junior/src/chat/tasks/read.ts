@@ -9,7 +9,7 @@ import type {
   TaskRunList,
   TaskSummary,
 } from "@/api/schema/task";
-import { rollupUtcHoursToSixHours } from "@/api/reporting-window";
+import { sumUtcHoursIntoSixHours } from "@/api/reporting-window";
 import { fallbackShortTitle } from "@/chat/services/short-title";
 import {
   emptyTaskRunWindows,
@@ -385,7 +385,7 @@ function taskExecutionSixHours(
   hours: readonly TaskExecutionDay[],
   nowMs = Date.now(),
 ): TaskExecutionDay[] {
-  return rollupUtcHoursToSixHours({
+  return sumUtcHoursIntoSixHours({
     empty: emptyTaskExecutionDay,
     hours,
     nowMs,
@@ -396,7 +396,7 @@ function taskExecutionStatusSixHours(
   hours: readonly TaskExecutionStatusDay[],
   nowMs = Date.now(),
 ): TaskExecutionStatusDay[] {
-  return rollupUtcHoursToSixHours({
+  return sumUtcHoursIntoSixHours({
     empty: emptyTaskExecutionStatusDay,
     hours,
     nowMs,

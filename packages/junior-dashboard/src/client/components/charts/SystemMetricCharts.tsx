@@ -1,4 +1,7 @@
-import { timeRangeBucketAverageUnit } from "../controls/TimeRangeSelector";
+import {
+  timeRangeBucketAverageUnit,
+  type TimeRangeBucketUnit,
+} from "../controls/TimeRangeSelector";
 import type { ConversationMetricDay } from "@sentry/junior/api/schema";
 
 import { formatDuration } from "../Duration";
@@ -45,7 +48,7 @@ function compactDuration(value: number): string {
   return formatDuration(value);
 }
 
-function tokenChart(bucketUnit: "day" | "hour" | "6hour"): ChartConfig {
+function tokenChart(bucketUnit: TimeRangeBucketUnit): ChartConfig {
   return {
     axisFormat: formatCompactNumber,
     color: "#22d3ee",
@@ -57,7 +60,7 @@ function tokenChart(bucketUnit: "day" | "hour" | "6hour"): ChartConfig {
   };
 }
 
-function inputCacheChart(bucketUnit: "day" | "hour" | "6hour"): ChartConfig {
+function inputCacheChart(bucketUnit: TimeRangeBucketUnit): ChartConfig {
   return {
     axisFormat: formatCompactNumber,
     color: "#22d3ee",
@@ -69,7 +72,7 @@ function inputCacheChart(bucketUnit: "day" | "hour" | "6hour"): ChartConfig {
   };
 }
 
-function supportingCharts(bucketUnit: "day" | "hour" | "6hour"): ChartConfig[] {
+function supportingCharts(bucketUnit: TimeRangeBucketUnit): ChartConfig[] {
   return [
     {
       axisFormat: compactCurrency,
@@ -107,7 +110,7 @@ function metricValue(day: ConversationMetricDay, metric: Metric): number {
 
 /** Plot model usage, spend, and runtime in complementary chart forms. */
 export function SystemMetricCharts(props: {
-  bucketUnit?: "day" | "hour" | "6hour" | "6hour";
+  bucketUnit?: TimeRangeBucketUnit;
   cacheBreakdown?: boolean;
   days: ConversationMetricDay[];
 }) {
@@ -131,7 +134,7 @@ export function SystemMetricCharts(props: {
 }
 
 function MetricChart(props: {
-  bucketUnit: "day" | "hour" | "6hour";
+  bucketUnit: TimeRangeBucketUnit;
   chart: ChartConfig;
   days: ConversationMetricDay[];
 }) {

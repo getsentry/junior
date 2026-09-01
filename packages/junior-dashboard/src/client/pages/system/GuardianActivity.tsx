@@ -1,4 +1,7 @@
-import { timeRangeBucketAdjective } from "../../components/controls/TimeRangeSelector";
+import {
+  timeRangeBucketAdjective,
+  type TimeRangeBucketUnit,
+} from "../../components/controls/TimeRangeSelector";
 import type { GuardianMetricDay } from "@sentry/junior/api/schema";
 
 import {
@@ -41,7 +44,7 @@ function Stat(props: {
 
 /** Show Guardian request volume, result mix, and estimated cost by bucket. */
 export function GuardianActivity(props: {
-  bucketUnit?: "day" | "hour" | "6hour" | "6hour";
+  bucketUnit?: TimeRangeBucketUnit;
   days: GuardianMetricDay[];
 }) {
   const bucketUnit = props.bucketUnit ?? "day";

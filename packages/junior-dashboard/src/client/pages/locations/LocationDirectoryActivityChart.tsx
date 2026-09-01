@@ -1,4 +1,5 @@
 import {
+  type TimeRangeBucketUnit,
   timeRangeBucketAdjective,
   timeRangeBucketPerLabel,
 } from "../../components/controls/TimeRangeSelector";
@@ -18,7 +19,7 @@ import { CardHeader } from "../../components/layout/CardHeader";
 
 /** Compare public and privacy-preserving private conversation volume by day. */
 export function LocationDirectoryActivityChart(props: {
-  bucketUnit?: "day" | "hour" | "6hour" | "6hour";
+  bucketUnit?: TimeRangeBucketUnit;
 
   days: LocationActivityDayReport[];
 }) {

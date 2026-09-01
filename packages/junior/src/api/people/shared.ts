@@ -17,7 +17,7 @@ import {
   WINDOW_SEVEN_DAY_HOURS,
   fillUtcDays,
   fillUtcHours,
-  rollupUtcHoursToSixHours,
+  sumUtcHoursIntoSixHours,
 } from "../reporting-window";
 
 export const RECENT_LIMIT = 25;
@@ -134,8 +134,8 @@ export function activityDays(
 }
 
 /**
- * Fill the trailing 7-day people activity hour window from sparse hour totals.
- * 24h charts slice the trailing 24; 7d charts roll into 6h buckets.
+ * Fill the trailing 7-day people activity hour window from known hour totals.
+ * 24h charts use the last 24 points. 7d charts sum hours into 6-hour buckets.
  */
 export function activityHours(
   hours: Map<string, ActorActivityDayReport>,
@@ -150,8 +150,8 @@ export function activityHours(
 }
 
 /**
- * Fill trailing 6-hour people activity buckets from hour-keyed maps or dense hours.
- * Hour keys must roll up; do not look them up as 6h keys.
+ * Fill trailing 6-hour people activity buckets from hour keys or hour rows.
+ * Hour keys must be summed into 6-hour keys first.
  */
 export function activitySixHours(
   hours: Map<string, ActorActivityDayReport> | readonly ActorActivityDayReport[],
@@ -159,7 +159,7 @@ export function activitySixHours(
 ): ActorActivityDayReport[] {
   const series =
     hours instanceof Map ? activityHours(hours, nowMs) : [...hours];
-  return rollupUtcHoursToSixHours({
+  return sumUtcHoursIntoSixHours({
     empty: emptyActivityDay,
     hours: series,
     nowMs,

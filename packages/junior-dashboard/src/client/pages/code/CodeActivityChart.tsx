@@ -1,4 +1,5 @@
 import {
+  type TimeRangeBucketUnit,
   timeRangeBucketAverageUnit,
   type TimeRangeDays,
 } from "../../components/controls/TimeRangeSelector";
@@ -24,7 +25,7 @@ const CLOSED_COLOR = "#fb7185";
 
 /** Render created, merged, and closed code changes over a trailing window. */
 export function CodeActivityChart(props: {
-  bucketUnit?: "day" | "hour" | "6hour" | "6hour";
+  bucketUnit?: TimeRangeBucketUnit;
 
   days: CodeActivityDay[];
   range: TimeRangeDays;

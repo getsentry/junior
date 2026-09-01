@@ -7,7 +7,10 @@ import {
   createActivityChartLayout,
 } from "../../components/charts/ActivityChart";
 import { ChartLegend } from "../../components/charts/ChartLegend";
-import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
+import {
+  type TimeRangeBucketUnit,
+  type TimeRangeDays,
+} from "../../components/controls/TimeRangeSelector";
 import { Card } from "../../components/layout/Card";
 import type { MemoryDay } from "./memoryDashboard";
 
@@ -18,7 +21,7 @@ const series = [
 
 /** Render viewer memory creation as a stacked personal/public timeline. */
 export function MemoryTimeline(props: {
-  bucketUnit?: "day" | "hour" | "6hour" | "6hour";
+  bucketUnit?: TimeRangeBucketUnit;
 
   days: MemoryDay[];
   range: TimeRangeDays;

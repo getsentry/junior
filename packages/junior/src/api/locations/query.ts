@@ -20,7 +20,7 @@ import {
   fillUtcDays,
   fillUtcHours,
   fillUtcSixHours,
-  rollupUtcHoursToSixHours,
+  sumUtcHoursIntoSixHours,
   trailingUtcDayWindow,
   trailingUtcHourWindow,
 } from "../reporting-window";
@@ -330,14 +330,14 @@ function directoryActivitySixHours(
   }>,
   nowMs: number,
 ): LocationActivityDayReport[] {
-  // hourRows are hour-keyed; roll into 6h buckets for 7d charts.
+  // hourRows use hour keys; sum into 6-hour buckets for 7d charts.
   const hours = fillUtcHours({
     count: WINDOW_SEVEN_DAY_HOURS,
     empty: emptyLocationActivityDay,
     nowMs,
     rows: accumulateLocationActivity(rows),
   });
-  return rollupUtcHoursToSixHours({
+  return sumUtcHoursIntoSixHours({
     empty: emptyLocationActivityDay,
     hours,
     nowMs,

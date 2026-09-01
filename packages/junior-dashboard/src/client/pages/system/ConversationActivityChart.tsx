@@ -1,4 +1,5 @@
 import {
+  type TimeRangeBucketUnit,
   timeRangeBucketAverageUnit,
 } from "../../components/controls/TimeRangeSelector";
 import type { ConversationMetricDay } from "@sentry/junior/api/schema";
@@ -22,7 +23,7 @@ import {
 
 /** Plot root conversations with recorded activity each day or hour. */
 export function ConversationActivityChart(props: {
-  bucketUnit?: "day" | "hour" | "6hour" | "6hour";
+  bucketUnit?: TimeRangeBucketUnit;
   days: ConversationMetricDay[];
 }) {
   const bucketUnit = props.bucketUnit ?? "day";

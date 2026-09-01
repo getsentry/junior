@@ -1,4 +1,5 @@
 import {
+  type TimeRangeBucketUnit,
   timeRangeBucketAverageUnit,
   type TimeRangeDays,
 } from "../../components/controls/TimeRangeSelector";
@@ -21,7 +22,7 @@ const EXECUTION_COLOR = "#fbbf24";
 
 /** Render completed task executions over a trailing window. */
 export function TaskExecutionChart(props: {
-  bucketUnit?: "day" | "hour" | "6hour" | "6hour";
+  bucketUnit?: TimeRangeBucketUnit;
 
   days: TaskExecutionDay[];
   range: TimeRangeDays;

@@ -1,4 +1,5 @@
 import {
+  type TimeRangeBucketUnit,
   timeRangeBucketAverageUnit,
   type TimeRangeDays,
 } from "../../components/controls/TimeRangeSelector";
@@ -20,7 +21,7 @@ import type { MemoryCostDay } from "./memoryDashboard";
 
 /** Render stacked memory extraction and recall cost from durable plugin events. */
 export function MemoryCostChart(props: {
-  bucketUnit?: "day" | "hour" | "6hour" | "6hour";
+  bucketUnit?: TimeRangeBucketUnit;
 
   extractionDays: MemoryCostDay[];
   range: TimeRangeDays;

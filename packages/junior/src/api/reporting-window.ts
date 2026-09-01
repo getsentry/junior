@@ -122,7 +122,7 @@ export function fillUtcHours<T>(args: {
   return items;
 }
 
-/** Fill a fixed UTC 6-hour window from a sparse map. */
+/** Fill a fixed UTC 6-hour window from a map of known rows. */
 export function fillUtcSixHours<T>(args: {
   count?: number;
   empty(date: string): T;
@@ -144,11 +144,11 @@ export function fillUtcSixHours<T>(args: {
 }
 
 /**
- * Roll dense UTC hour rows into trailing 6-hour buckets.
- * Sums every own enumerable number field; keeps non-numbers from the first row
- * in each bucket except `date`, which becomes the bucket key.
+ * Sum hour rows into trailing 6-hour buckets.
+ * Adds number fields. Keeps other fields from the first row in the bucket.
+ * Sets `date` to the 6-hour bucket key.
  */
-export function rollupUtcHoursToSixHours<T extends { date: string }>(args: {
+export function sumUtcHoursIntoSixHours<T extends { date: string }>(args: {
   empty(date: string): T;
   hours: readonly T[];
   nowMs: number;

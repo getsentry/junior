@@ -8,7 +8,10 @@ import {
   createActivityChartLayout,
 } from "../../components/charts/ActivityChart";
 import { ChartLegend } from "../../components/charts/ChartLegend";
-import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
+import {
+  type TimeRangeBucketUnit,
+  type TimeRangeDays,
+} from "../../components/controls/TimeRangeSelector";
 import { Card } from "../../components/layout/Card";
 
 const series = [
@@ -19,7 +22,7 @@ const series = [
 
 /** Render one task's terminal executions stacked by status over a trailing window. */
 export function TaskExecutionStatusChart(props: {
-  bucketUnit?: "day" | "hour" | "6hour" | "6hour";
+  bucketUnit?: TimeRangeBucketUnit;
 
   days: TaskExecutionStatusDay[];
   range: TimeRangeDays;

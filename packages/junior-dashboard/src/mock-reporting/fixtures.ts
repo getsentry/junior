@@ -1510,7 +1510,7 @@ function mockGuardianStats(nowMs: number): ConversationStatsReport["guardian"] {
       requests,
     };
   });
-  const metricSixHours = rollupMockHoursToSixHours(
+  const metricSixHours = sumMockHoursIntoSixHours(
     nowMs,
     metricHours,
     (date) => ({ allow: 0, ask: 0, date, deny: 0, requests: 0 }),
@@ -1787,7 +1787,7 @@ export function readMockConversationStats(): ConversationStatsReport {
       const metricHours = conversationMetricHours(nowMs, summaries);
       return {
         metricHours,
-        metricSixHours: rollupMockHoursToSixHours(
+        metricSixHours: sumMockHoursIntoSixHours(
           nowMs,
           metricHours,
           (date) => ({ conversations: 0, date, durationMs: 0 }),
@@ -1987,7 +1987,7 @@ function trailingMetricSixHours<T extends { date: string }>(
   });
 }
 
-function rollupMockHoursToSixHours<T extends { date: string }>(
+function sumMockHoursIntoSixHours<T extends { date: string }>(
   nowMs: number,
   hours: readonly T[],
   empty: (date: string) => T,
@@ -2515,7 +2515,7 @@ export function readMockTaskList(nowMs = NOW_MS): TaskList {
       event: 0,
       scheduled: 0,
     })),
-    executionSixHours: rollupMockHoursToSixHours(
+    executionSixHours: sumMockHoursIntoSixHours(
       nowMs,
       trailingMetricHours(nowMs, (date) => ({
       costUsd: 0,
@@ -2561,7 +2561,7 @@ export function readMockTaskExecutions(
         date,
         failed: 0,
       })),
-      executionSixHours: rollupMockHoursToSixHours(
+      executionSixHours: sumMockHoursIntoSixHours(
         nowMs,
         trailingMetricHours(nowMs, (date) => ({
         blocked: 0,
@@ -2628,7 +2628,7 @@ export function readMockTaskExecutions(
       date,
       failed: 0,
     })),
-    executionSixHours: rollupMockHoursToSixHours(
+    executionSixHours: sumMockHoursIntoSixHours(
       nowMs,
       trailingMetricHours(nowMs, (date) => ({
       blocked: 0,

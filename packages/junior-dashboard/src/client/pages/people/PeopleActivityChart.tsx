@@ -1,4 +1,5 @@
 import {
+  type TimeRangeBucketUnit,
   timeRangeBucketAverageUnit,
   timeRangeBucketPerLabel,
 } from "../../components/controls/TimeRangeSelector";
@@ -38,7 +39,7 @@ function chartPoint(
 
 /** Plot distinct verified people with recorded conversation activity each day. */
 export function PeopleActivityChart(props: {
-  bucketUnit?: "day" | "hour" | "6hour" | "6hour";
+  bucketUnit?: TimeRangeBucketUnit;
 
   days: PeopleActivityDayReport[];
 }) {

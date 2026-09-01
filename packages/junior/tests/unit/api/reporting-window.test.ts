@@ -5,7 +5,7 @@ import {
   WINDOW_SIX_HOURS,
   fillUtcHours,
   fillUtcSixHours,
-  rollupUtcHoursToSixHours,
+  sumUtcHoursIntoSixHours,
   startOfUtcSixHour,
   utcSixHourKey,
 } from "@/api/reporting-window";
@@ -46,14 +46,14 @@ describe("reporting-window six-hour buckets", () => {
     expect(six.at(-1)).toEqual({ date: "2026-06-15T12", value: 3 });
   });
 
-  it("rolls hour rows into six-hour sums", () => {
+  it("sums hour rows into six-hour buckets", () => {
     const hours = [
       { date: "2026-06-15T12", value: 1 },
       { date: "2026-06-15T13", value: 2 },
       { date: "2026-06-15T17", value: 4 },
       { date: "2026-06-15T18", value: 8 },
     ];
-    const six = rollupUtcHoursToSixHours({
+    const six = sumUtcHoursIntoSixHours({
       empty: (date) => ({ date, value: 0 }),
       hours,
       nowMs,
@@ -69,7 +69,7 @@ describe("reporting-window six-hour buckets", () => {
     });
   });
 
-  it("rolls sparse hour-keyed values through a dense hour series first", () => {
+  it("sums hour-keyed values after filling the hour window", () => {
     const hours = fillUtcHours({
       count: WINDOW_SEVEN_DAY_HOURS,
       empty: (date) => ({ date, value: 0 }),
@@ -79,7 +79,7 @@ describe("reporting-window six-hour buckets", () => {
         ["2026-06-15T14", { date: "2026-06-15T14", value: 3 }],
       ]),
     });
-    const six = rollupUtcHoursToSixHours({
+    const six = sumUtcHoursIntoSixHours({
       empty: (date) => ({ date, value: 0 }),
       hours,
       nowMs,

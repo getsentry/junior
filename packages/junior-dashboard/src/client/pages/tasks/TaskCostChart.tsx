@@ -1,4 +1,5 @@
 import {
+  type TimeRangeBucketUnit,
   timeRangeBucketAverageUnit,
   type TimeRangeDays,
 } from "../../components/controls/TimeRangeSelector";
@@ -21,7 +22,7 @@ const COST_COLOR = "#67e8f9";
 
 /** Render linked conversation spend for completed task executions. */
 export function TaskCostChart(props: {
-  bucketUnit?: "day" | "hour" | "6hour" | "6hour";
+  bucketUnit?: TimeRangeBucketUnit;
   days: TaskExecutionDay[];
   range: TimeRangeDays;
 }) {
