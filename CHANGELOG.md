@@ -1,4 +1,27 @@
 # Changelog
+## 0.195.0
+
+### New Features ✨
+
+- (dashboard) Use 6-hour buckets for 7-day charts by @sentry-junior in [#1758](https://github.com/getsentry/junior/pull/1758)
+
+### Bug Fixes 🐛
+
+- (chat) Pause consecutive automated turns without user input by @sentry-junior in [#1756](https://github.com/getsentry/junior/pull/1756)
+- (github) Emit resolvable co-author noreply emails by @sentry-junior in [#1704](https://github.com/getsentry/junior/pull/1704)
+- (tasks) Keep run history and stop deleted schedules by @sentry-junior in [#1759](https://github.com/getsentry/junior/pull/1759)
+
+### Internal Changes 🔧
+
+#### Dashboard
+
+- Expand e2e smoke and Frameshift screenshots by @sentry-junior in [#1760](https://github.com/getsentry/junior/pull/1760)
+- Share fixed time through e2e fixtures by @sentry-junior in [#1757](https://github.com/getsentry/junior/pull/1757)
+
+#### Other
+
+- (ci) Bump frameshift action to v0 by @sentry-junior in [#1755](https://github.com/getsentry/junior/pull/1755)
+
 ## 0.194.0
 
 ### Breaking Changes 🛠
