@@ -1,6 +1,8 @@
 import {
+  cloneElement,
   createContext,
   type CSSProperties,
+  type ReactElement,
   type ReactNode,
   type SVGProps,
   useContext,
@@ -9,6 +11,8 @@ import {
   useState,
 } from "react";
 
+import { Tooltip } from "../Tooltip";
+import { getDashboardTimeZone } from "../../format";
 import { cn } from "../../styles";
 
 /** Shared SVG dimensions and derived plot bounds for activity charts. */
@@ -67,12 +71,16 @@ export function activityBucketStartMs(date: string): number {
   );
 }
 
-/** Format an activity day or hour bucket without applying the browser zone. */
+/**
+ * Format an activity day or hour bucket for chart axes.
+ * Hour buckets use the dashboard display timezone. Day buckets keep the UTC
+ * calendar key so a day series does not shift across local midnight.
+ */
 export function formatActivityDate(date: string): string {
   if (isActivityHourBucket(date)) {
     return new Date(`${date}:00:00.000Z`).toLocaleTimeString(undefined, {
       hour: "numeric",
-      timeZone: "UTC",
+      timeZone: getDashboardTimeZone(),
     });
   }
   return new Date(`${date}T00:00:00.000Z`).toLocaleDateString(undefined, {
@@ -80,6 +88,38 @@ export function formatActivityDate(date: string): string {
     month: "short",
     timeZone: "UTC",
   });
+}
+
+/**
+ * Format an activity day or hour bucket for chart tooltips and aria labels.
+ * Hour buckets always include the local calendar date so 24h views are unambiguous.
+ */
+export function formatActivityTooltipDate(date: string): string {
+  if (isActivityHourBucket(date)) {
+    return new Date(`${date}:00:00.000Z`).toLocaleString(undefined, {
+      day: "numeric",
+      hour: "numeric",
+      month: "short",
+      timeZone: getDashboardTimeZone(),
+    });
+  }
+  return formatActivityDate(date);
+}
+
+/** Axis label for a day/hour bucket key, or the raw label for other categories. */
+export function formatActivityCategoryLabel(label: string): string {
+  if (isActivityHourBucket(label) || /^\d{4}-\d{2}-\d{2}$/.test(label)) {
+    return formatActivityDate(label);
+  }
+  return label;
+}
+
+/** Tooltip/aria label for a day/hour bucket key, or the raw label otherwise. */
+export function formatActivityCategoryTooltipLabel(label: string): string {
+  if (isActivityHourBucket(label) || /^\d{4}-\d{2}-\d{2}$/.test(label)) {
+    return formatActivityTooltipDate(label);
+  }
+  return label;
 }
 
 /** Choose the first, middle, and last available chart labels. */
@@ -247,7 +287,8 @@ export function ChartCategoryLabels(props: {
   layout: ActivityChartLayout;
   xPosition(index: number): number;
 }) {
-  const formatLabel = props.formatLabel ?? ((label: string) => label);
+  // Default formats day/hour bucket keys; leave other category labels alone.
+  const formatLabel = props.formatLabel ?? formatActivityCategoryLabel;
   return activityLabelIndexes(props.categories.length).map((index) => {
     const category = props.categories[index];
     if (!category) return null;
@@ -367,5 +408,36 @@ export function ActivityTooltipRows(props: {
         </span>,
       ])}
     </div>
+  );
+}
+
+/**
+ * Activity-chart tooltip that owns bucket date formatting.
+ * Pass the UTC day/hour key as `date` so axes stay compact and tooltips always
+ * include the local date for hour buckets. Optional `summary` prefixes the
+ * trigger aria-label as `"{date}: {summary}"`.
+ */
+export function ActivityChartTooltip(props: {
+  children: ReactElement;
+  content: ReactNode;
+  date: string;
+  summary?: string;
+  triggerClassName?: string;
+}) {
+  const dateLabel = formatActivityTooltipDate(props.date);
+  const child = props.summary
+    ? cloneElement(props.children, {
+        "aria-label": `${dateLabel}: ${props.summary}`,
+      } as never)
+    : props.children;
+
+  return (
+    <Tooltip
+      content={props.content}
+      label={dateLabel}
+      triggerClassName={props.triggerClassName}
+    >
+      {child}
+    </Tooltip>
   );
 }

@@ -4,14 +4,13 @@ import {
   ActivityChartDateLabels,
   ActivityChartGrid,
   activityChartAverage,
+  ActivityChartTooltip,
   ActivityTooltipRows,
   ChartSvg,
   createActivityChartLayout,
-  formatActivityDate,
 } from "../../components/charts/ActivityChart";
 import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
 import { Card } from "../../components/layout/Card";
-import { Tooltip } from "../../components/Tooltip";
 import { formatActivityChartAverage } from "../../format";
 
 const EXECUTION_COLOR = "#fbbf24";
@@ -58,13 +57,13 @@ export function TaskExecutionChart(props: {
             const total = totals[dayIndex] ?? 0;
             const height = (total / maximum) * layout.plotHeight;
             return (
-              <Tooltip
-                content={<ActivityTooltipRows rows={[["executions", total]]} />}
+              <ActivityChartTooltip
                 key={day.date}
-                label={formatActivityDate(day.date)}
+                content={<ActivityTooltipRows rows={[["executions", total]]} />}
+                date={day.date}
+                summary={`${total} executions`}
               >
                 <g
-                  aria-label={`${formatActivityDate(day.date)}: ${total} executions`}
                   tabIndex={0}
                 >
                   <rect
@@ -84,7 +83,7 @@ export function TaskExecutionChart(props: {
                     y={layout.top}
                   />
                 </g>
-              </Tooltip>
+              </ActivityChartTooltip>
             );
           })}
           <ActivityChartAverageLine

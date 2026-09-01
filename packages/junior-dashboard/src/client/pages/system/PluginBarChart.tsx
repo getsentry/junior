@@ -5,7 +5,7 @@ import {
   ChartCategoryLabels,
   ChartSvg,
   createActivityChartLayout,
-  formatActivityDate,
+  formatActivityCategoryTooltipLabel,
   isActivityHourBucket,
 } from "../../components/charts/ActivityChart";
 import { ChartLegend } from "../../components/charts/ChartLegend";
@@ -118,10 +118,10 @@ export function PluginBarChart(props: {
                 <Tooltip
                   content={`${series.label}: ${formatted}`}
                   key={`${category.id}:${series.key}`}
-                  label={category.label}
+                  label={formatActivityCategoryTooltipLabel(category.label)}
                 >
                   <rect
-                    aria-label={`${category.label}, ${series.label}: ${formatted}`}
+                    aria-label={`${formatActivityCategoryTooltipLabel(category.label)}, ${series.label}: ${formatted}`}
                     fill={
                       series.tone
                         ? toneColors[series.tone]
@@ -146,7 +146,6 @@ export function PluginBarChart(props: {
           )}
           <ChartCategoryLabels
             categories={categories}
-            formatLabel={formatCategoryLabel}
             layout={layout}
             xPosition={(index) => layout.left + index * step + step / 2}
           />
@@ -185,12 +184,7 @@ function visibleCategoryCount(
   return availableRanges.includes(30) ? 30 : (availableRanges[0] ?? 30);
 }
 
-function formatCategoryLabel(label: string): string {
-  if (isActivityHourBucket(label) || /^\d{4}-\d{2}-\d{2}$/.test(label)) {
-    return formatActivityDate(label);
-  }
-  return label;
-}
+
 
 function formatChartNumber(value: number): string {
   return String(Number(value.toPrecision(12)));

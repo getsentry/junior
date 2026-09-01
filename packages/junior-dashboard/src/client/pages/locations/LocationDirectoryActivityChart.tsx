@@ -3,15 +3,14 @@ import type { LocationActivityDayReport } from "@sentry/junior/api/schema";
 import {
   ActivityChartDateLabels,
   ActivityChartGrid,
+  ActivityChartTooltip,
   ActivityTooltipRows,
   ChartSvg,
   createActivityChartLayout,
-  formatActivityDate,
 } from "../../components/charts/ActivityChart";
 import { ChartLegend } from "../../components/charts/ChartLegend";
 import { Card } from "../../components/layout/Card";
 import { CardHeader } from "../../components/layout/CardHeader";
-import { Tooltip } from "../../components/Tooltip";
 
 /** Compare public and privacy-preserving private conversation volume by day. */
 export function LocationDirectoryActivityChart(props: {
@@ -82,7 +81,8 @@ export function LocationDirectoryActivityChart(props: {
             ).map((bar) => {
               const barHeight = (bar.count / maximum) * layout.plotHeight;
               return (
-                <Tooltip
+                <ActivityChartTooltip
+                  key={`${day.date}-${bar.key}`}
                   content={
                     <ActivityTooltipRows
                       rows={[
@@ -91,11 +91,10 @@ export function LocationDirectoryActivityChart(props: {
                       ]}
                     />
                   }
-                  key={`${day.date}-${bar.key}`}
-                  label={formatActivityDate(day.date)}
+                  date={day.date}
+                  summary={`${day.publicConversations} public conversations, ${day.privateConversations} private conversations`}
                 >
                   <rect
-                    aria-label={`${formatActivityDate(day.date)}: ${day.publicConversations} public conversations, ${day.privateConversations} private conversations`}
                     fill={bar.fill}
                     height={Math.max(bar.count ? 2 : 0, barHeight)}
                     opacity={bar.count ? 0.85 : 0.12}
@@ -105,7 +104,7 @@ export function LocationDirectoryActivityChart(props: {
                     x={bar.x}
                     y={layout.top + layout.plotHeight - barHeight}
                   />
-                </Tooltip>
+                </ActivityChartTooltip>
               );
             });
           })}

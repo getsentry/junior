@@ -2,7 +2,6 @@ import type { ConversationMetricDay } from "@sentry/junior/api/schema";
 
 import { formatDuration } from "../Duration";
 import { Card } from "../layout/Card";
-import { Tooltip } from "../Tooltip";
 import {
   formatActivityChartAverage,
   formatCompactNumber,
@@ -12,11 +11,11 @@ import {
   ActivityChartAverageLine,
   ActivityChartDateLabels,
   ActivityChartGrid,
+  ActivityChartTooltip,
   ActivityTooltipRows,
   activityChartAverage,
   ChartSvg,
   createActivityChartLayout,
-  formatActivityDate,
 } from "./ActivityChart";
 import { ChartHeader } from "./ChartHeader";
 import { ChartLegend } from "./ChartLegend";
@@ -220,7 +219,8 @@ function MetricChart(props: {
             const barHeight = (value / maximum) * layout.plotHeight;
             const renderedBarHeight = Math.max(value ? 2 : 0, barHeight);
             return (
-              <Tooltip
+              <ActivityChartTooltip
+                key={day.date}
                 content={
                   chart.metric === "inputTokens" ? (
                     <ActivityTooltipRows
@@ -236,14 +236,15 @@ function MetricChart(props: {
                     chart.format(value)
                   )
                 }
-                key={day.date}
-                label={formatActivityDate(day.date)}
+                date={day.date}
+                summary={
+                  chart.metric === "inputTokens"
+                    ? `${chart.format(value)} input tokens`
+                    : chart.format(value)
+                }
               >
                 {chart.type === "bar" && chart.metric === "inputTokens" ? (
-                  <g
-                    aria-label={`${formatActivityDate(day.date)}: ${chart.format(value)} input tokens`}
-                    tabIndex={0}
-                  >
+                  <g tabIndex={0}>
                     <rect
                       fill="#a78bfa"
                       height={renderedBarHeight}
@@ -270,7 +271,6 @@ function MetricChart(props: {
                   </g>
                 ) : chart.type === "bar" ? (
                   <rect
-                    aria-label={`${formatActivityDate(day.date)}: ${chart.format(value)}`}
                     fill={chart.color}
                     height={renderedBarHeight}
                     opacity={value ? 0.8 : 0.1}
@@ -282,7 +282,6 @@ function MetricChart(props: {
                   />
                 ) : (
                   <circle
-                    aria-label={`${formatActivityDate(day.date)}: ${chart.format(value)}`}
                     cx={point.x}
                     cy={point.y}
                     fill={chart.color}
@@ -291,7 +290,7 @@ function MetricChart(props: {
                     tabIndex={0}
                   />
                 )}
-              </Tooltip>
+              </ActivityChartTooltip>
             );
           })}
           <ActivityChartAverageLine

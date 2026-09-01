@@ -5,16 +5,15 @@ import {
   ActivityChartDateLabels,
   ActivityChartGrid,
   activityChartAverage,
+  ActivityChartTooltip,
   ActivityTooltipRows,
   ChartSvg,
   createActivityChartLayout,
-  formatActivityDate,
   type ActivityChartLayout,
 } from "../../components/charts/ActivityChart";
 import { ChartLegend } from "../../components/charts/ChartLegend";
 import { Card } from "../../components/layout/Card";
 import { CardHeader } from "../../components/layout/CardHeader";
-import { Tooltip } from "../../components/Tooltip";
 import { formatActivityChartAverage } from "../../format";
 
 function chartPoint(
@@ -102,7 +101,8 @@ export function PeopleActivityChart(props: {
           {props.days.map((day, index) => {
             const point = points[index]!;
             return (
-              <Tooltip
+              <ActivityChartTooltip
+                key={day.date}
                 content={
                   <ActivityTooltipRows
                     rows={[
@@ -111,11 +111,10 @@ export function PeopleActivityChart(props: {
                     ]}
                   />
                 }
-                key={day.date}
-                label={formatActivityDate(day.date)}
+                date={day.date}
+                summary={`${day.activePeople} active people, ${day.conversations} conversations`}
               >
                 <circle
-                  aria-label={`${formatActivityDate(day.date)}: ${day.activePeople} active people, ${day.conversations} conversations`}
                   cx={point.x}
                   cy={point.y}
                   fill="#fbbf24"
@@ -123,7 +122,7 @@ export function PeopleActivityChart(props: {
                   r={props.days.length > 30 ? 3 : 4}
                   tabIndex={0}
                 />
-              </Tooltip>
+              </ActivityChartTooltip>
             );
           })}
           <ActivityChartAverageLine

@@ -5,6 +5,7 @@ import {
   ActivityChartAverageLine,
   ActivityChartDateLabels,
   ActivityChartGrid,
+  ActivityChartTooltip,
   activityBucketStartMs,
   activityChartAverage,
   ChartAxisHtmlLabel,
@@ -12,10 +13,14 @@ import {
   ChartCategoryLabels,
   ChartSvg,
   createActivityChartLayout,
+  formatActivityCategoryLabel,
+  formatActivityCategoryTooltipLabel,
   formatActivityDate,
+  formatActivityTooltipDate,
 } from "../src/client/components/charts/ActivityChart";
 import { ChartHeader } from "../src/client/components/charts/ChartHeader";
 import { SystemMetricCharts } from "../src/client/components/charts/SystemMetricCharts";
+import { setDashboardTimeZone } from "../src/client/format";
 
 describe("ChartAxisLabel", () => {
   it("defaults to the shared 11px screen-size contract", () => {
@@ -116,8 +121,42 @@ describe("formatActivityDate", () => {
     expect(formatActivityDate("2026-05-01")).toContain("May");
   });
 
-  it("formats hour buckets as UTC clock hours", () => {
-    expect(formatActivityDate("2026-05-01T15")).toMatch(/3|15/);
+  it("formats hour buckets in the dashboard display timezone", () => {
+    setDashboardTimeZone("America/Los_Angeles");
+    // 15:00 UTC is 8:00 AM PDT.
+    expect(formatActivityDate("2026-05-01T15")).toMatch(/8/);
+    expect(formatActivityDate("2026-05-01T15")).not.toMatch(/\b3\b|\b15\b/);
+  });
+
+  it("includes the local date on hour-bucket tooltips", () => {
+    setDashboardTimeZone("America/Los_Angeles");
+    expect(formatActivityTooltipDate("2026-05-01T15")).toMatch(/May/);
+    expect(formatActivityTooltipDate("2026-05-01T15")).toMatch(/8/);
+    expect(formatActivityTooltipDate("2026-05-01")).toContain("May");
+  });
+
+  it("formats day/hour category labels and leaves other labels alone", () => {
+    setDashboardTimeZone("America/Los_Angeles");
+    expect(formatActivityCategoryLabel("2026-05-01")).toContain("May");
+    expect(formatActivityCategoryLabel("2026-05-01T15")).toMatch(/8/);
+    expect(formatActivityCategoryLabel("30d")).toBe("30d");
+    expect(formatActivityCategoryTooltipLabel("2026-05-01T15")).toMatch(/May/);
+    expect(formatActivityCategoryTooltipLabel("30d")).toBe("30d");
+  });
+
+  it("owns tooltip date formatting for activity buckets", () => {
+    setDashboardTimeZone("America/Los_Angeles");
+    const html = renderToStaticMarkup(
+      <ActivityChartTooltip
+        content="details"
+        date="2026-05-01T15"
+        summary="3 conversations"
+      >
+        <g tabIndex={0} />
+      </ActivityChartTooltip>,
+    );
+    expect(html).toContain("May");
+    expect(html).toContain("3 conversations");
   });
 
   it("parses day and hour bucket starts in UTC", () => {

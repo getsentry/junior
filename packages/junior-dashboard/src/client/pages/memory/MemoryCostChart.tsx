@@ -3,15 +3,14 @@ import {
   ActivityChartDateLabels,
   ActivityChartGrid,
   activityChartAverage,
+  ActivityChartTooltip,
   ActivityTooltipRows,
   ChartSvg,
   createActivityChartLayout,
-  formatActivityDate,
 } from "../../components/charts/ActivityChart";
 import { ChartLegend } from "../../components/charts/ChartLegend";
 import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
 import { Card } from "../../components/layout/Card";
-import { Tooltip } from "../../components/Tooltip";
 import { formatCostSummary } from "../../format";
 import type { MemoryCostDay } from "./memoryDashboard";
 
@@ -104,7 +103,8 @@ export function MemoryCostChart(props: {
             const x = layout.left + index * step + (step - barWidth) / 2;
             const dayTotal = day.extraction.costUsd + day.recall.costUsd;
             return (
-              <Tooltip
+              <ActivityChartTooltip
+                key={day.date}
                 content={
                   <ActivityTooltipRows
                     rows={[
@@ -120,11 +120,10 @@ export function MemoryCostChart(props: {
                     ]}
                   />
                 }
-                key={day.date}
-                label={formatActivityDate(day.date)}
+                date={day.date}
+                summary={`extraction ${formatCostSummary({ total: day.extraction.costUsd })}, ${formatRunCount(day.extraction.events)}; recall ${formatCostSummary({ total: day.recall.costUsd })}, ${formatRunCount(day.recall.events)}`}
               >
                 <g
-                  aria-label={`${formatActivityDate(day.date)}: extraction ${formatCostSummary({ total: day.extraction.costUsd })}, ${formatRunCount(day.extraction.events)}; recall ${formatCostSummary({ total: day.recall.costUsd })}, ${formatRunCount(day.recall.events)}`}
                   tabIndex={0}
                 >
                   <rect
@@ -158,7 +157,7 @@ export function MemoryCostChart(props: {
                     y={layout.top}
                   />
                 </g>
-              </Tooltip>
+              </ActivityChartTooltip>
             );
           })}
           <ActivityChartAverageLine

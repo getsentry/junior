@@ -2,15 +2,14 @@ import type { TaskExecutionStatusDay } from "@sentry/junior/api/schema";
 import {
   ActivityChartDateLabels,
   ActivityChartGrid,
+  ActivityChartTooltip,
   ActivityTooltipRows,
   ChartSvg,
   createActivityChartLayout,
-  formatActivityDate,
 } from "../../components/charts/ActivityChart";
 import { ChartLegend } from "../../components/charts/ChartLegend";
 import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
 import { Card } from "../../components/layout/Card";
-import { Tooltip } from "../../components/Tooltip";
 
 const series = [
   { color: "#6ee7b7", key: "completed", label: "Completed" },
@@ -63,7 +62,8 @@ export function TaskExecutionStatusChart(props: {
             const x = layout.left + dayIndex * step + (step - barWidth) / 2;
             const total = totals[dayIndex] ?? 0;
             return (
-              <Tooltip
+              <ActivityChartTooltip
+                key={day.date}
                 content={
                   <ActivityTooltipRows
                     rows={[
@@ -74,11 +74,10 @@ export function TaskExecutionStatusChart(props: {
                     ]}
                   />
                 }
-                key={day.date}
-                label={formatActivityDate(day.date)}
+                date={day.date}
+                summary={`${day.completed} completed, ${day.failed} failed, ${day.blocked} blocked, ${total} total`}
               >
                 <g
-                  aria-label={`${formatActivityDate(day.date)}: ${day.completed} completed, ${day.failed} failed, ${day.blocked} blocked, ${total} total`}
                   tabIndex={0}
                 >
                   {series.map((item) => {
@@ -106,7 +105,7 @@ export function TaskExecutionStatusChart(props: {
                     y={layout.top}
                   />
                 </g>
-              </Tooltip>
+              </ActivityChartTooltip>
             );
           })}
           <ActivityChartDateLabels
