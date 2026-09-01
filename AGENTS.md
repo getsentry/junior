@@ -22,7 +22,7 @@ Use **pnpm**: `pnpm install`, `pnpm dev`, `pnpm test`, `pnpm typecheck`, `pnpm s
 | Guardian eval file         | `pnpm --filter @sentry/junior-evals evals:guardian path/to/file.eval.ts`                   |
 | Guardian eval case         | `pnpm --filter @sentry/junior-evals evals:guardian path/to/file.eval.ts -t "case name"`    |
 | Generate package schema    | `pnpm --filter <package> db:generate`                                                      |
-| Dashboard visual capture   | `pnpm visual:dashboard -- --scenarios gallery-foundations`                                 |
+| Dashboard screenshots      | `pnpm test:e2e:dashboard -- screenshots.spec.ts`                                           |
 | Release package alignment  | `pnpm release:check`                                                                       |
 
 ## Workflow
