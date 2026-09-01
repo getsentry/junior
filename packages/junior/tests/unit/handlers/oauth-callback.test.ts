@@ -2,12 +2,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createSlackSource } from "@sentry/junior-plugin-api";
 import { http, HttpResponse } from "msw";
 import { mswServer } from "../../msw/server";
-import { queueSlackApiError } from "../../msw/handlers/slack-api";
+import {
+  queueSlackApiError,
+  queueSlackApiResponse,
+} from "../../msw/handlers/slack-api";
+import { usersInfoOk } from "../../fixtures/slack/factories/api";
 
 const {
   BASE_URL,
   EXAMPLE_OAUTH_CONFIG,
   GITHUB_OAUTH_CONFIG,
+  LINEAR_OAUTH_CONFIG,
   SENTRY_OAUTH_CONFIG,
   lookupSlackActorMock,
   resolvePluginOAuthAccountMock,
@@ -31,6 +36,15 @@ const {
     tokenAuthMethod: "basic",
     tokenExtraHeaders: { "Content-Type": "application/json" },
     callbackPath: "/api/oauth/callback/example",
+  },
+  LINEAR_OAUTH_CONFIG: {
+    clientIdEnv: "LINEAR_CLIENT_ID",
+    clientSecretEnv: "LINEAR_CLIENT_SECRET",
+    authorizeEndpoint: "https://linear.app/oauth/authorize",
+    tokenEndpoint: "https://api.linear.app/oauth/token",
+    scope: "read,write",
+    tokenSubject: "installation" as const,
+    callbackPath: "/api/oauth/callback/linear",
   },
   GITHUB_OAUTH_CONFIG: {
     clientIdEnv: "GITHUB_APP_CLIENT_ID",
@@ -57,6 +71,9 @@ vi.mock("@/chat/plugins/catalog-runtime", () => ({
       if (provider === "github") {
         return "GitHub";
       }
+      if (provider === "linear") {
+        return "Linear";
+      }
       return undefined;
     },
     getOAuthConfig: (provider: string) => {
@@ -69,10 +86,16 @@ vi.mock("@/chat/plugins/catalog-runtime", () => ({
       if (provider === "github") {
         return GITHUB_OAUTH_CONFIG;
       }
+      if (provider === "linear") {
+        return LINEAR_OAUTH_CONFIG;
+      }
       return undefined;
     },
     isProvider: (provider: string) =>
-      provider === "sentry" || provider === "example" || provider === "github",
+      provider === "sentry" ||
+      provider === "example" ||
+      provider === "github" ||
+      provider === "linear",
     isCapability: () => false,
     isConfigKey: () => false,
     getProviders: () => [],
@@ -112,7 +135,10 @@ vi.mock("@/chat/conversations/projection", async (importOriginal) => ({
   recordAuthenticationLinked: vi.fn(async () => undefined),
 }));
 
-import { createUserTokenStore } from "@/chat/capabilities/factory";
+import {
+  createInstallationTokenStore,
+  createUserTokenStore,
+} from "@/chat/capabilities/factory";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { GET } from "@/handlers/oauth-callback";
 import type { WaitUntilFn } from "@/handlers/types";
@@ -173,6 +199,12 @@ function configureSentryOAuthEnv() {
 function configureExampleOAuthEnv() {
   process.env.EXAMPLE_CLIENT_ID = "example-client-id";
   process.env.EXAMPLE_CLIENT_SECRET = "example-client-secret";
+  process.env.JUNIOR_BASE_URL = BASE_URL;
+}
+
+function configureLinearOAuthEnv() {
+  process.env.LINEAR_CLIENT_ID = "linear-client-id";
+  process.env.LINEAR_CLIENT_SECRET = "linear-client-secret";
   process.env.JUNIOR_BASE_URL = BASE_URL;
 }
 
@@ -500,6 +532,99 @@ describe("oauth callback handler", () => {
       refreshToken: "example-refresh-token",
     });
     expect(stored.expiresAt).toBeUndefined();
+  });
+
+  it("stores installation tokens after a Slack admin completes OAuth", async () => {
+    configureLinearOAuthEnv();
+    await putStoredState("oauth-state:linear-install", {
+      userId: "U777",
+      provider: "linear",
+      actor: { platform: "slack", teamId: "T777", userId: "U777" },
+    });
+    queueSlackApiResponse("users.info", {
+      body: usersInfoOk({ userId: "U777", isAdmin: true }),
+    });
+    mswServer.use(
+      http.post("https://api.linear.app/oauth/token", () =>
+        HttpResponse.json({
+          access_token: "linear-access-token",
+          refresh_token: "linear-refresh-token",
+          scope: "read,write",
+        }),
+      ),
+    );
+
+    const response = await GET(
+      makeRequest(
+        "https://example.com/api/oauth/callback/linear?code=valid-code&state=linear-install",
+      ),
+      "linear",
+      testWaitUntil,
+      { agentRunner: testAgentRunner },
+    );
+
+    expect(response.status).toBe(200);
+    expect(await createInstallationTokenStore().get("linear")).toMatchObject({
+      accessToken: "linear-access-token",
+      refreshToken: "linear-refresh-token",
+    });
+    expect(await getStoredTokens("U777", "linear")).toBeUndefined();
+  });
+
+  it("blocks installation OAuth callbacks from Slack non-admins", async () => {
+    configureLinearOAuthEnv();
+    await putStoredState("oauth-state:linear-non-admin", {
+      userId: "U777",
+      provider: "linear",
+      actor: { platform: "slack", teamId: "T777", userId: "U777" },
+    });
+    queueSlackApiResponse("users.info", {
+      body: usersInfoOk({ userId: "U777", isAdmin: false }),
+    });
+
+    const response = await GET(
+      makeRequest(
+        "https://example.com/api/oauth/callback/linear?code=valid-code&state=linear-non-admin",
+      ),
+      "linear",
+      testWaitUntil,
+      { agentRunner: testAgentRunner },
+    );
+
+    expect(response.status).toBe(403);
+    expect(await response.text()).toContain("Only a Slack workspace admin");
+    expect(await createInstallationTokenStore().get("linear")).toBeUndefined();
+  });
+
+  it("does not replace an existing installation token", async () => {
+    configureLinearOAuthEnv();
+    await createInstallationTokenStore().set("linear", {
+      accessToken: "existing-access-token",
+      refreshToken: "existing-refresh-token",
+      scope: "read,write",
+    });
+    await putStoredState("oauth-state:linear-existing", {
+      userId: "U777",
+      provider: "linear",
+      actor: { platform: "slack", teamId: "T777", userId: "U777" },
+    });
+    queueSlackApiResponse("users.info", {
+      body: usersInfoOk({ userId: "U777", isAdmin: true }),
+    });
+
+    const response = await GET(
+      makeRequest(
+        "https://example.com/api/oauth/callback/linear?code=valid-code&state=linear-existing",
+      ),
+      "linear",
+      testWaitUntil,
+      { agentRunner: testAgentRunner },
+    );
+
+    expect(response.status).toBe(409);
+    expect(await createInstallationTokenStore().get("linear")).toMatchObject({
+      accessToken: "existing-access-token",
+    });
   });
 
   it("stores GitHub App user tokens when GitHub returns an empty OAuth scope", async () => {

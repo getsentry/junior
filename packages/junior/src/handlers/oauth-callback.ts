@@ -3,6 +3,7 @@ import {
   createUserTokenStore,
 } from "@/chat/capabilities/factory";
 import { hasRequiredOAuthScope } from "@/chat/credentials/oauth-scope";
+import { isSlackWorkspaceAdmin } from "@/chat/slack/admin";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { hydrateConversationMessages } from "@/chat/conversations/messages";
 import {
@@ -585,6 +586,27 @@ export async function GET(
 
   await stateAdapter.delete(stateKey);
 
+  const installationTokenStore = createInstallationTokenStore();
+  if (providerConfig.tokenSubject === "installation") {
+    if (
+      stored.actor?.platform !== "slack" ||
+      !(await isSlackWorkspaceAdmin(stored.userId))
+    ) {
+      return htmlErrorResponse(
+        "Install blocked",
+        `Only a Slack workspace admin can install ${providerLabel}.`,
+        403,
+      );
+    }
+    if (await installationTokenStore.get(provider)) {
+      return htmlErrorResponse(
+        "Install blocked",
+        `${providerLabel} is already installed. Disconnect it before installing it again.`,
+        409,
+      );
+    }
+  }
+
   const clientId = process.env[providerConfig.clientIdEnv]?.trim();
   const clientSecret = process.env[providerConfig.clientSecretEnv]?.trim();
   if (!clientId || !clientSecret) {
@@ -684,7 +706,6 @@ export async function GET(
   }
 
   const userTokenStore = createUserTokenStore();
-  const installationTokenStore = createInstallationTokenStore();
   let account: Awaited<ReturnType<typeof resolvePluginOAuthAccount>>;
   try {
     account = await resolvePluginOAuthAccount({
@@ -703,7 +724,21 @@ export async function GET(
     ...(account ? { account } : undefined),
   };
   if (providerConfig.tokenSubject === "installation") {
-    await installationTokenStore.set(provider, storedTokens);
+    let installed = false;
+    await installationTokenStore.withRefresh(provider, async () => {
+      if (await installationTokenStore.get(provider)) {
+        return;
+      }
+      await installationTokenStore.set(provider, storedTokens);
+      installed = true;
+    });
+    if (!installed) {
+      return htmlErrorResponse(
+        "Install blocked",
+        `${providerLabel} is already installed. Disconnect it before installing it again.`,
+        409,
+      );
+    }
   } else {
     await userTokenStore.set(stored.userId, provider, storedTokens);
   }
