@@ -357,7 +357,7 @@ jobs:
           github.event_name != 'pull_request' ||
           steps.frameshift-baseline.outputs.found == 'true'
         id: frameshift
-        uses: dcramer/frameshift/ci@68a8b5e8bbd439088ef9a044e693c5de9efe7ecd
+        uses: dcramer/frameshift/ci@b730732abf4000c24914ed820b42688f430829f3 # v0
         with:
           screenshots: .playwright/junior-dashboard/screenshots
 
@@ -376,7 +376,7 @@ jobs:
       statuses: write
     steps:
       # This job does not check out or run pull request code.
-      - uses: dcramer/frameshift/publish/workflow@68a8b5e8bbd439088ef9a044e693c5de9efe7ecd
+      - uses: dcramer/frameshift/publish/workflow@b730732abf4000c24914ed820b42688f430829f3 # v0
 
   build-packages:
     name: build / packages
