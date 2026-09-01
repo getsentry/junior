@@ -72,11 +72,10 @@ describe("people list API", () => {
         "alice@example.com",
         "later@example.com",
       ]);
-      expect(
-        report.people.find(
-          (person) => person.actor.email === "alice@example.com",
-        ),
-      ).toMatchObject({
+      const alice = report.people.find(
+        (person) => person.actor.email === "alice@example.com",
+      );
+      expect(alice).toMatchObject({
         active: 1,
         activeDays: 2,
         conversations: 3,
@@ -88,12 +87,30 @@ describe("people list API", () => {
           fullName: "Alice Example",
         },
       });
+      expect(alice?.windows[90]).toMatchObject({
+        conversations: 3,
+        costUsd: 0.42,
+        durationMs: 1_500,
+        priorCostUsd: 0,
+      });
+      expect(alice?.windows[7]).toMatchObject({
+        conversations: 3,
+        costUsd: 0.42,
+        durationMs: 1_500,
+      });
+      expect(alice?.windows[1]).toMatchObject({
+        conversations: 0,
+        costUsd: 0,
+        durationMs: 0,
+        priorCostUsd: 0,
+      });
       expect(
         report.people.some(
           (person) => person.actor.email === "untrusted@example.com",
         ),
       ).toBe(false);
       expect(report.activityDays).toHaveLength(90);
+      expect(report.activityHours).toHaveLength(24);
       expect(
         report.activityDays.find((day) => day.date === "2026-06-12"),
       ).toEqual({

@@ -101,9 +101,11 @@ export type {
 export type {
   ActorActivityDayReport,
   ActorDirectoryReport,
+  ActorDirectoryWindows,
   ActorProfileReport,
   ActorSummaryReport,
   ActorTotalsReport,
+  ActorWindowMetrics,
   PeopleActivityDayReport,
   PersonalSpendReport,
   PersonParams,

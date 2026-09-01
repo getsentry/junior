@@ -1,10 +1,14 @@
 import { formatDuration } from "../../components/Duration";
 import { UserRound } from "lucide-react";
-import type { ActorSummaryReport } from "@sentry/junior/api/schema";
+import type {
+  ActorSummaryReport,
+  ActorWindowMetrics,
+} from "@sentry/junior/api/schema";
 
 import { SearchInput } from "../../components/SearchInput";
 import { EmptyTelemetry } from "../../components/EmptyTelemetry";
 import { DirectorySortSelect } from "../../components/controls/DirectorySortSelect";
+import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
 import {
   DirectoryIdentity,
   DirectoryRow,
@@ -14,9 +18,15 @@ import {
 import { DirectoryMetric } from "../../components/directory/DirectoryMetric";
 import { Card } from "../../components/layout/Card";
 import { CardHeader } from "../../components/layout/CardHeader";
-import { formatCompactNumber, peoplePath } from "../../format";
+import { cn } from "../../styles";
+import { formatCompactNumber, formatCostSummary, peoplePath } from "../../format";
 
-export type PeopleSort = "activeDays" | "conversations" | "recent" | "runtime";
+export type PeopleSort =
+  | "conversations"
+  | "recent"
+  | "runtime"
+  | "spend"
+  | "spendDelta";
 
 function actorName(person: Pick<ActorSummaryReport, "actor">): string {
   return (
@@ -35,11 +45,30 @@ function runtimeLabel(durationMs: number, conversations: number): string {
   return formatDuration(durationMs);
 }
 
+function personWindow(
+  person: ActorSummaryReport,
+  range: TimeRangeDays,
+): ActorWindowMetrics {
+  return person.windows[range];
+}
+
+function spendDelta(window: ActorWindowMetrics): number {
+  return window.costUsd - window.priorCostUsd;
+}
+
+/** Format signed spend change for directory rows. */
+export function formatSpendDelta(deltaUsd: number): string {
+  if (Math.abs(deltaUsd) < 0.005) return "$0.00";
+  const absolute = formatCostSummary({ total: Math.abs(deltaUsd) });
+  return `${deltaUsd > 0 ? "+" : "−"}${absolute}`;
+}
+
 /** Filter and order people without mutating the reporting response. */
 export function filterPeople(
   people: ActorSummaryReport[],
   query: string,
   sort: PeopleSort,
+  range: TimeRangeDays,
 ): ActorSummaryReport[] {
   const normalized = query.trim().toLowerCase();
   const filtered = normalized
@@ -52,14 +81,33 @@ export function filterPeople(
       )
     : people;
   return [...filtered].sort((left, right) => {
-    if (sort === "conversations") {
-      return right.conversations - left.conversations;
+    const leftWindow = personWindow(left, range);
+    const rightWindow = personWindow(right, range);
+    if (sort === "spend") {
+      return (
+        rightWindow.costUsd - leftWindow.costUsd ||
+        spendDelta(rightWindow) - spendDelta(leftWindow) ||
+        left.actor.email.localeCompare(right.actor.email)
+      );
     }
-    if (sort === "activeDays") {
-      return right.activeDays - left.activeDays;
+    if (sort === "spendDelta") {
+      return (
+        spendDelta(rightWindow) - spendDelta(leftWindow) ||
+        rightWindow.costUsd - leftWindow.costUsd ||
+        left.actor.email.localeCompare(right.actor.email)
+      );
+    }
+    if (sort === "conversations") {
+      return (
+        rightWindow.conversations - leftWindow.conversations ||
+        rightWindow.costUsd - leftWindow.costUsd
+      );
     }
     if (sort === "runtime") {
-      return right.durationMs - left.durationMs;
+      return (
+        rightWindow.durationMs - leftWindow.durationMs ||
+        rightWindow.costUsd - leftWindow.costUsd
+      );
     }
     return Date.parse(right.lastSeenAt) - Date.parse(left.lastSeenAt);
   });
@@ -72,13 +120,14 @@ export function PeopleDirectory(props: {
   loading?: boolean;
   people: ActorSummaryReport[];
   query: string;
+  range: TimeRangeDays;
   sort: PeopleSort;
   totalPeople: number;
 }) {
   return (
     <Card>
       <CardHeader
-        description={`${props.people.length} of ${props.totalPeople} verified actors`}
+        description={`${props.people.length} of ${props.totalPeople} people`}
         title="People directory"
       />
       <DirectoryToolbar columnsClassName="md:grid-cols-[minmax(14rem,1fr)_minmax(10rem,14rem)]">
@@ -92,9 +141,10 @@ export function PeopleDirectory(props: {
           ariaLabel="Sort people"
           onChange={(value) => props.onSortChange(value as PeopleSort)}
           options={[
+            { label: "Most spend", value: "spend" },
+            { label: "Biggest spend increase", value: "spendDelta" },
             { label: "Most conversations", value: "conversations" },
             { label: "Recently active", value: "recent" },
-            { label: "Most active days", value: "activeDays" },
             { label: "Most runtime", value: "runtime" },
           ]}
           value={props.sort}
@@ -107,45 +157,62 @@ export function PeopleDirectory(props: {
             <EmptyTelemetry>No people match this search.</EmptyTelemetry>
           ) : undefined
         }
-        headers={["Person", "Conversations", "Active days", "Runtime"]}
+        headers={["Person", "Conversations", "Spend", "Runtime"]}
         loading={props.loading}
       >
-        {props.people.map((person) => (
-          <DirectoryRow
-            key={person.actor.email}
-            to={peoplePath(person.actor.email)}
-          >
-            <DirectoryIdentity
-              description={personMeta(person)}
-              icon={
-                <UserRound aria-hidden="true" size={16} strokeWidth={1.8} />
-              }
-              iconClassName="bg-amber-500/[0.07] text-amber-300 group-hover:border-amber-500/25"
-              title={actorName(person)}
-            />
-            <DirectoryMetric
-              label="Conversations"
-              value={formatCompactNumber(person.conversations)}
-            />
-            <DirectoryMetric
-              label="Active days"
-              value={formatCompactNumber(person.activeDays)}
-            />
-            <DirectoryMetric
-              label="Runtime"
-              value={
-                <>
-                  <span className="whitespace-nowrap md:hidden">
-                    {runtimeLabel(person.durationMs, person.conversations)}
+        {props.people.map((person) => {
+          const window = personWindow(person, props.range);
+          const delta = spendDelta(window);
+          return (
+            <DirectoryRow
+              key={person.actor.email}
+              to={peoplePath(person.actor.email)}
+            >
+              <DirectoryIdentity
+                description={personMeta(person)}
+                icon={
+                  <UserRound aria-hidden="true" size={16} strokeWidth={1.8} />
+                }
+                iconClassName="bg-amber-500/[0.07] text-amber-300 group-hover:border-amber-500/25"
+                title={actorName(person)}
+              />
+              <DirectoryMetric
+                label="Conversations"
+                value={formatCompactNumber(window.conversations)}
+              />
+              <DirectoryMetric
+                label="Spend"
+                value={
+                  <span className="inline-flex flex-col items-end gap-1">
+                    <span className="whitespace-nowrap">
+                      {formatCostSummary({ total: window.costUsd }) || "$0.00"}
+                    </span>
+                    <span
+                      className={cn(
+                        "whitespace-nowrap font-mono text-2xs leading-none",
+                        Math.abs(delta) < 0.005
+                          ? "text-dashboard-text-muted"
+                          : delta > 0
+                            ? "text-amber-300/80"
+                            : "text-cyan-300/75",
+                      )}
+                    >
+                      {formatSpendDelta(delta)}
+                    </span>
                   </span>
-                  <span className="hidden whitespace-nowrap md:inline">
-                    {runtimeLabel(person.durationMs, person.conversations)}
+                }
+              />
+              <DirectoryMetric
+                label="Runtime"
+                value={
+                  <span className="whitespace-nowrap">
+                    {runtimeLabel(window.durationMs, window.conversations)}
                   </span>
-                </>
-              }
-            />
-          </DirectoryRow>
-        ))}
+                }
+              />
+            </DirectoryRow>
+          );
+        })}
       </DirectoryTable>
     </Card>
   );

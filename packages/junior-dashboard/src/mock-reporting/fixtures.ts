@@ -1,10 +1,12 @@
 /** Deterministic reporting fixtures for local dashboard development and QA. */
 import type {
   ActorDirectoryReport,
+  ActorDirectoryWindows,
   ActorActivityDayReport,
   ActorIdentity,
   ActorProfileReport,
   ActorSummaryReport,
+  ActorWindowMetrics,
   ConversationDetailReport,
   ConversationEventPage,
   ConversationFeed,
@@ -1803,6 +1805,101 @@ function mockPeopleActivityDays(
   }));
 }
 
+function mockPeopleActivityHours(
+  nowMs: number,
+  summaries: ConversationSummaryReport[],
+): PeopleActivityDayReport[] {
+  const byHour = new Map<
+    string,
+    { actors: Set<string>; conversations: number }
+  >();
+  for (const summary of summaries) {
+    const email = summary.actorIdentity?.email?.toLowerCase();
+    if (!email) continue;
+    const hour = summary.lastSeenAt.slice(0, 13);
+    const bucket = byHour.get(hour) ?? {
+      actors: new Set<string>(),
+      conversations: 0,
+    };
+    bucket.actors.add(email);
+    bucket.conversations += 1;
+    byHour.set(hour, bucket);
+  }
+  return trailingMetricHours(nowMs, (date) => ({
+    activePeople: byHour.get(date)?.actors.size ?? 0,
+    conversations: byHour.get(date)?.conversations ?? 0,
+    date,
+  }));
+}
+
+function emptyMockWindowMetrics(): ActorWindowMetrics {
+  return {
+    conversations: 0,
+    costUsd: 0,
+    durationMs: 0,
+    priorCostUsd: 0,
+  };
+}
+
+/** Inclusive start and exclusive end for one mock directory window. */
+function mockWindowBounds(
+  nowMs: number,
+  range: 1 | 7 | 30 | 90,
+  prior = false,
+): { endExclusiveMs: number; startMs: number } {
+  if (range === 1) {
+    const end = new Date(nowMs);
+    end.setUTCMinutes(0, 0, 0);
+    const currentEndExclusiveMs = end.getTime() + 60 * 60_000;
+    const endExclusiveMs =
+      currentEndExclusiveMs - (prior ? 24 * 60 * 60_000 : 0);
+    return {
+      endExclusiveMs,
+      startMs: endExclusiveMs - 24 * 60 * 60_000,
+    };
+  }
+  const end = new Date(nowMs);
+  end.setUTCHours(0, 0, 0, 0);
+  const currentEndExclusiveMs = end.getTime() + 86_400_000;
+  const endExclusiveMs =
+    currentEndExclusiveMs - (prior ? range * 86_400_000 : 0);
+  return {
+    endExclusiveMs,
+    startMs: endExclusiveMs - range * 86_400_000,
+  };
+}
+
+function mockActorWindows(
+  nowMs: number,
+  summaries: ConversationSummaryReport[],
+): ActorDirectoryWindows {
+  const windows = {
+    1: emptyMockWindowMetrics(),
+    7: emptyMockWindowMetrics(),
+    30: emptyMockWindowMetrics(),
+    90: emptyMockWindowMetrics(),
+  } satisfies ActorDirectoryWindows;
+
+  for (const range of [1, 7, 30, 90] as const) {
+    const current = mockWindowBounds(nowMs, range);
+    const prior = mockWindowBounds(nowMs, range, true);
+    for (const summary of summaries) {
+      const seenAt = Date.parse(summary.lastSeenAt);
+      const cost = summary.cumulativeUsage?.cost?.total ?? 0;
+      if (seenAt >= current.startMs && seenAt < current.endExclusiveMs) {
+        windows[range].conversations += 1;
+        windows[range].costUsd += cost;
+        windows[range].durationMs += summary.cumulativeDurationMs;
+      }
+      if (seenAt >= prior.startMs && seenAt < prior.endExclusiveMs) {
+        windows[range].priorCostUsd += cost;
+      }
+    }
+  }
+
+  return windows;
+}
+
 
 function trailingMetricHours<T extends { date: string }>(
   nowMs: number,
@@ -1834,7 +1931,10 @@ export function readMockPeopleDirectory(): ActorDirectoryReport {
   const summaries = activeMockSummaries(nowMs);
   const byEmail = new Map<
     string,
-    ActorSummaryReport & { dates: Set<string> }
+    ActorSummaryReport & {
+      dates: Set<string>;
+      summaries: ConversationSummaryReport[];
+    }
   >();
   for (const summary of summaries) {
     const identity = summary.actorIdentity;
@@ -1850,6 +1950,8 @@ export function readMockPeopleDirectory(): ActorDirectoryReport {
       failed: 0,
       firstSeenAt: summary.startedAt,
       lastSeenAt: summary.lastSeenAt,
+      summaries: [],
+      windows: mockActorWindows(nowMs, []),
     };
     existing.active += summary.status === "active" ? 1 : 0;
     existing.conversations += 1;
@@ -1857,6 +1959,7 @@ export function readMockPeopleDirectory(): ActorDirectoryReport {
     existing.activeDays = existing.dates.size;
     existing.durationMs += summary.cumulativeDurationMs;
     existing.failed += summary.status === "failed" ? 1 : 0;
+    existing.summaries.push(summary);
     existing.firstSeenAt =
       Date.parse(summary.startedAt) < Date.parse(existing.firstSeenAt)
         ? summary.startedAt
@@ -1870,11 +1973,16 @@ export function readMockPeopleDirectory(): ActorDirectoryReport {
     byEmail.set(email, existing);
   }
   const activityDays = mockPeopleActivityDays(nowMs, summaries);
+  const activityHours = mockPeopleActivityHours(nowMs, summaries);
   return {
     activityDays,
+    activityHours,
     generatedAt: iso(nowMs),
     people: [...byEmail.values()]
-      .map(({ dates: _dates, ...person }) => person)
+      .map(({ dates: _dates, summaries: personSummaries, ...person }) => ({
+        ...person,
+        windows: mockActorWindows(nowMs, personSummaries),
+      }))
       .sort(
         (left, right) =>
           Date.parse(right.lastSeenAt) - Date.parse(left.lastSeenAt),

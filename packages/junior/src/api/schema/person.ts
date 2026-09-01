@@ -48,6 +48,26 @@ export const actorTotalsReportSchema = z
   })
   .strict();
 
+/** Spend and activity for one people-directory range, plus the prior period's spend. */
+export const actorWindowMetricsSchema = z
+  .object({
+    conversations: z.number().int().nonnegative(),
+    costUsd: z.number().finite().nonnegative(),
+    durationMs: z.number().finite().nonnegative(),
+    priorCostUsd: z.number().finite().nonnegative(),
+  })
+  .strict();
+
+/** People-directory ranges that match the dashboard range control. */
+export const actorDirectoryWindowsSchema = z
+  .object({
+    1: actorWindowMetricsSchema,
+    7: actorWindowMetricsSchema,
+    30: actorWindowMetricsSchema,
+    90: actorWindowMetricsSchema,
+  })
+  .strict();
+
 export const identifiedActorSchema = actorIdentitySchema
   .extend({ email: z.string().min(1) })
   .strict();
@@ -57,6 +77,7 @@ export const actorSummaryReportSchema = actorTotalsReportSchema
     firstSeenAt: z.string(),
     lastSeenAt: z.string(),
     actor: identifiedActorSchema,
+    windows: actorDirectoryWindowsSchema,
   })
   .strict();
 
@@ -113,6 +134,8 @@ export type PeopleActivityDayReport = z.infer<
   typeof peopleActivityDayReportSchema
 >;
 export type ActorTotalsReport = z.infer<typeof actorTotalsReportSchema>;
+export type ActorWindowMetrics = z.infer<typeof actorWindowMetricsSchema>;
+export type ActorDirectoryWindows = z.infer<typeof actorDirectoryWindowsSchema>;
 export type ActorSummaryReport = z.infer<typeof actorSummaryReportSchema>;
 export type ActorDirectoryReport = z.infer<typeof actorDirectoryReportSchema>;
 export type ActorProfileReport = z.infer<typeof actorProfileReportSchema>;

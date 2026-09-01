@@ -40,6 +40,8 @@ export function PeopleActivityChart(props: {
   days: PeopleActivityDayReport[];
 }) {
   const bucketUnit = props.bucketUnit ?? "day";
+  const chartTitle =
+    bucketUnit === "hour" ? "Active people per hour" : "Active people per day";
 
   const layout = createActivityChartLayout(260);
   const values = props.days.map((day) => day.activePeople);
@@ -59,7 +61,7 @@ export function PeopleActivityChart(props: {
     <Card>
       <CardHeader
         description="Distinct verified actors grouped by recorded conversation activity."
-        title="Active people per day"
+        title={chartTitle}
         trailing={
           <ChartLegend
             ariaLabel="People activity legend"
@@ -70,7 +72,7 @@ export function PeopleActivityChart(props: {
       />
       <div className="px-2 py-3 sm:px-4 sm:py-4">
         <ChartSvg
-          aria-label="Active people per day"
+          aria-label={chartTitle}
           className="min-h-56 w-full overflow-visible"
           layout={layout}
         >

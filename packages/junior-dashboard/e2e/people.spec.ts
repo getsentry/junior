@@ -29,24 +29,35 @@ test("explores people activity", async ({ page }) => {
   await expect(
     page.getByRole("img", { name: "Active people per day" }),
   ).toBeVisible();
-  await expect(page.getByRole("button", { name: "90d" })).toHaveAttribute(
-    "aria-pressed",
-    "true",
-  );
-  await expect(page.getByRole("combobox", { name: "Sort people" })).toHaveValue(
-    "conversations",
-  );
-  await expect(
-    page.getByLabel("System navigation").getByRole("link", { name: "People" }),
-  ).toHaveAttribute("aria-current", "page");
-  await page.getByRole("button", { name: "7d" }).click();
   await expect(page.getByRole("button", { name: "7d" })).toHaveAttribute(
     "aria-pressed",
     "true",
   );
+  await expect(page.getByRole("combobox", { name: "Sort people" })).toHaveValue(
+    "spend",
+  );
+  await expect(page.getByText("Model spend", { exact: true })).toBeVisible();
+  await expect(page.getByText("Highest spend", { exact: true })).toBeVisible();
+  await expect(
+    page.getByText("Biggest increase", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByLabel("System navigation").getByRole("link", { name: "People" }),
+  ).toHaveAttribute("aria-current", "page");
+  await page.getByRole("button", { name: "24h" }).click();
+  await expect(page.getByRole("button", { name: "24h" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await expect(
+    page.getByRole("img", { name: "Active people per hour" }),
+  ).toBeVisible();
   await page.getByRole("button", { name: "90d" }).click();
   await expect(page.getByRole("button", { name: "90d" })).toHaveAttribute(
     "aria-pressed",
     "true",
   );
+  await expect(
+    page.getByRole("img", { name: "Active people per day" }),
+  ).toBeVisible();
 });

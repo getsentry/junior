@@ -638,9 +638,19 @@ export async function mockDashboardApis(page: Page) {
         date: date.toISOString().slice(0, 10),
       };
     });
+    const activityHours = Array.from({ length: 24 }, (_, index) => {
+      const date = new Date("2026-06-12T00:00:00.000Z");
+      date.setUTCHours(date.getUTCHours() + index);
+      return {
+        activePeople: (index % 3) + 1,
+        conversations: (index % 5) + 1,
+        date: date.toISOString().slice(0, 13),
+      };
+    });
     await route.fulfill({
       json: {
         activityDays,
+        activityHours,
         generatedAt: "2026-06-12T00:00:00.000Z",
         people: [
           {
@@ -654,6 +664,32 @@ export async function mockDashboardApis(page: Page) {
             actor: {
               email: "avery@example.com",
               fullName: "Avery Example",
+            },
+            windows: {
+              1: {
+                conversations: 4,
+                costUsd: 1.25,
+                durationMs: 8_000,
+                priorCostUsd: 0.4,
+              },
+              7: {
+                conversations: 28,
+                costUsd: 8.5,
+                durationMs: 24_000,
+                priorCostUsd: 3.1,
+              },
+              30: {
+                conversations: 90,
+                costUsd: 22.4,
+                durationMs: 40_000,
+                priorCostUsd: 18.2,
+              },
+              90: {
+                conversations: 180,
+                costUsd: 48.75,
+                durationMs: 60_000,
+                priorCostUsd: 12.1,
+              },
             },
           },
         ],
