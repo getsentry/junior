@@ -12,11 +12,14 @@ import {
 import {
   activityDays,
   activityHours,
+  activitySixHours,
   type DailyConversationActivity,
 } from "../activity";
 import {
+  WINDOW_SEVEN_DAY_HOURS,
   fillUtcDays,
   fillUtcHours,
+  sumUtcHoursIntoSixHours,
   trailingUtcDayWindow,
   trailingUtcHourWindow,
 } from "../reporting-window";
@@ -311,9 +314,32 @@ function directoryActivityHours(
   nowMs: number,
 ): LocationActivityDayReport[] {
   return fillUtcHours({
+    count: WINDOW_SEVEN_DAY_HOURS,
     empty: emptyLocationActivityDay,
     nowMs,
     rows: accumulateLocationActivity(rows),
+  });
+}
+
+function directoryActivitySixHours(
+  rows: Array<{
+    conversations: number;
+    date: string;
+    visibility: string | null;
+  }>,
+  nowMs: number,
+): LocationActivityDayReport[] {
+  // hourRows use hour keys; sum into 6-hour buckets for 7d charts.
+  const hours = fillUtcHours({
+    count: WINDOW_SEVEN_DAY_HOURS,
+    empty: emptyLocationActivityDay,
+    nowMs,
+    rows: accumulateLocationActivity(rows),
+  });
+  return sumUtcHoursIntoSixHours({
+    empty: emptyLocationActivityDay,
+    hours,
+    nowMs,
   });
 }
 
@@ -321,7 +347,7 @@ function directoryActivityHours(
 export async function readLocationDirectoryFromSql(): Promise<LocationDirectoryReport> {
   const nowMs = Date.now();
   const { end, start } = trailingUtcDayWindow(nowMs, ACTIVITY_DAYS);
-  const hourWindow = trailingUtcHourWindow(nowMs);
+  const hourWindow = trailingUtcHourWindow(nowMs, WINDOW_SEVEN_DAY_HOURS);
   const [rows, activity] = await Promise.all([
     directoryRows(getDb()),
     directoryActivityRows(getDb(), start, hourWindow.start),
@@ -341,6 +367,7 @@ export async function readLocationDirectoryFromSql(): Promise<LocationDirectoryR
   return {
     activityDays: directoryActivityDays(activity.dayRows, nowMs),
     activityHours: directoryActivityHours(activity.hourRows, nowMs),
+    activitySixHours: directoryActivitySixHours(activity.hourRows, nowMs),
     generatedAt: new Date(nowMs).toISOString(),
     locations: locations.sort(
       (left, right) =>
@@ -407,7 +434,7 @@ export async function readLocationDetailFromSql(
 ): Promise<LocationDetailReport | undefined> {
   const nowMs = Date.now();
   const { end, start } = trailingUtcDayWindow(nowMs, ACTIVITY_DAYS);
-  const hourWindow = trailingUtcHourWindow(nowMs);
+  const hourWindow = trailingUtcHourWindow(nowMs, WINDOW_SEVEN_DAY_HOURS);
   const where = publicLocationWhere(locationId);
   const activityDate = sql<string>`TO_CHAR(
     ${juniorConversations.lastActivityAt} AT TIME ZONE 'UTC',
@@ -581,6 +608,7 @@ export async function readLocationDetailFromSql(
     ...location,
     activityDays: activity,
     activityHours: hourlyActivity,
+    activitySixHours: activitySixHours(hourlyActivity, nowMs),
     actors: actors.sort(
       (left, right) =>
         right.conversations - left.conversations ||

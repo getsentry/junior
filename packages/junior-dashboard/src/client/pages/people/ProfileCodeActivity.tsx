@@ -75,7 +75,14 @@ export function ProfileCodeActivity(props: {
         days={selectTimeSeries({
           days: props.report.activityDays,
           hours: props.report.activityHours,
+          sixHours: props.report.activitySixHours,
           range: props.range,
+          emptySixHour: (date) => ({
+            closed: 0,
+            created: 0,
+            date,
+            merged: 0,
+          }),
         })}
         range={props.range}
       />

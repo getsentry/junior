@@ -2686,13 +2686,13 @@ describe("memory plugin storage", () => {
         public: 3,
       });
       expect(dashboard.days).toHaveLength(90);
-      expect(dashboard.hours).toHaveLength(24);
+      expect(dashboard.hours).toHaveLength(7 * 24);
       expect(dashboard.extractionDays.at(-1)).toEqual({
         costUsd: 0.0042,
         date: "2026-07-28",
         events: 1,
       });
-      expect(dashboard.extractionHours).toHaveLength(24);
+      expect(dashboard.extractionHours).toHaveLength(7 * 24);
       expect(dashboard.extractionHours?.at(-1)).toMatchObject({
         costUsd: 0.0012,
         events: 1,
@@ -2702,7 +2702,7 @@ describe("memory plugin storage", () => {
         date: "2026-07-28",
         events: 3,
       });
-      expect(dashboard.recallHours).toHaveLength(24);
+      expect(dashboard.recallHours).toHaveLength(7 * 24);
       expect(dashboard.recallHours?.at(-1)).toMatchObject({
         costUsd: 0.0003,
         events: 1,

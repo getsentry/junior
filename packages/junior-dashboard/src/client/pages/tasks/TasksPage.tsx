@@ -190,7 +190,14 @@ export function TasksPage(props: {
     ? selectTimeSeries({
         days: query.data.executionDays,
         hours: query.data.executionHours,
+        sixHours: query.data.executionSixHours,
         range,
+        emptySixHour: (date) => ({
+          costUsd: 0,
+          date,
+          event: 0,
+          scheduled: 0,
+        }),
       })
     : [];
   const showExecutionCharts = executionSeries.length > 0;

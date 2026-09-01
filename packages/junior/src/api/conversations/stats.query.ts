@@ -17,6 +17,12 @@ import type {
   GuardianMetricDay,
   GuardianStats,
 } from "../schema/conversation";
+import {
+  WINDOW_SEVEN_DAY_HOURS,
+  sumUtcHoursIntoSixHours,
+  startOfUtcHour,
+  utcHourKey,
+} from "../reporting-window";
 
 const WINDOW_DAYS = 90;
 const treeConversation = alias(juniorConversations, "stats_tree_conversation");
@@ -144,7 +150,8 @@ function statsWindow(nowMs: number) {
 }
 
 const HOUR_MS = 60 * 60 * 1_000;
-const WINDOW_HOURS = 24;
+/** Keep 7d of hours so clients can roll 7d charts into 6h buckets. */
+const WINDOW_HOURS = WINDOW_SEVEN_DAY_HOURS;
 
 type MetricRow = {
   cachedInputTokens: number | null;
@@ -165,15 +172,6 @@ type GuardianRow = {
   requests: number;
 };
 
-function startOfUtcHour(valueMs: number): Date {
-  const date = new Date(valueMs);
-  date.setUTCMinutes(0, 0, 0);
-  return date;
-}
-
-function utcHourKey(value: Date): string {
-  return value.toISOString().slice(0, 13);
-}
 
 function metricPoint(
   date: string,
@@ -224,6 +222,38 @@ function metricDays(rows: MetricRow[], endMs: number): ConversationMetricDay[] {
   }
   return days;
 }
+
+
+function emptyMetricDay(date: string): ConversationMetricDay {
+  return { conversations: 0, date, durationMs: 0 };
+}
+
+function emptyGuardianDay(date: string): GuardianMetricDay {
+  return { allow: 0, ask: 0, date, deny: 0, requests: 0 };
+}
+
+function sumMetricHoursIntoSixHours(
+  hours: ConversationMetricDay[],
+  endMs: number,
+): ConversationMetricDay[] {
+  return sumUtcHoursIntoSixHours({
+    empty: emptyMetricDay,
+    hours,
+    nowMs: endMs,
+  });
+}
+
+function sumGuardianHoursIntoSixHours(
+  hours: GuardianMetricDay[],
+  endMs: number,
+): GuardianMetricDay[] {
+  return sumUtcHoursIntoSixHours({
+    empty: emptyGuardianDay,
+    hours,
+    nowMs: endMs,
+  });
+}
+
 
 function metricHours(rows: MetricRow[], endMs: number): ConversationMetricDay[] {
   const byHour = new Map(rows.map((row) => [row.date, row]));
@@ -310,6 +340,7 @@ function guardianStats(
     deny,
     metricDays,
     metricHours,
+    metricSixHours: sumGuardianHoursIntoSixHours(metricHours, endMs),
     requests,
     ...(costUsd !== undefined ? { costUsd } : undefined),
   };
@@ -536,7 +567,13 @@ export async function readConversationStatsFromSql(): Promise<ConversationStatsR
     generatedAt: new Date(nowMs).toISOString(),
     guardian: guardianStats(guardian.dayRows, guardian.hourRows, nowMs),
     metricDays: metricDays(metricRows, nowMs),
-    metricHours: metricHours(metricHourRows, nowMs),
+    ...(() => {
+      const hours = metricHours(metricHourRows, nowMs);
+      return {
+        metricHours: hours,
+        metricSixHours: sumMetricHoursIntoSixHours(hours, nowMs),
+      };
+    })(),
     locations: statsItems(locations),
     actors: statsItems(actors),
     source: "conversation_index",

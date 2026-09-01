@@ -79,6 +79,7 @@ export const taskListSchema = z
   .object({
     executionDays: z.array(taskExecutionDaySchema),
     executionHours: z.array(taskExecutionDaySchema).optional(),
+    executionSixHours: z.array(taskExecutionDaySchema).optional(),
     tasks: z.array(taskSummarySchema),
     truncated: z.boolean(),
   })
@@ -127,6 +128,7 @@ export const taskExecutionListSchema = z
   .object({
     executionDays: z.array(taskExecutionStatusDaySchema),
     executionHours: z.array(taskExecutionStatusDaySchema).optional(),
+    executionSixHours: z.array(taskExecutionStatusDaySchema).optional(),
     executions: z.array(taskExecutionSchema),
     task: taskSummarySchema,
     truncated: z.boolean(),

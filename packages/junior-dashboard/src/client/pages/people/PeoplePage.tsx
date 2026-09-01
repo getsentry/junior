@@ -13,7 +13,6 @@ import type {
 import { useActorDirectoryData } from "../../api";
 import { EmptyTelemetry } from "../../components/EmptyTelemetry";
 import { LoadingView } from "../../components/LoadingView";
-import { activityBucketStartMs } from "../../components/charts/ActivityChart";
 import {
   selectTimeSeries,
   timeRangeBucketUnit,
@@ -81,23 +80,20 @@ export function PeoplePageContent(props: {
     ? selectTimeSeries({
         days: data.activityDays,
         hours: data.activityHours,
+        sixHours: data.activitySixHours,
         range,
+        emptySixHour: (date) => ({ activePeople: 0, conversations: 0, date }),
       })
     : [];
   const bucketUnit = timeRangeBucketUnit(range);
   const people = data
     ? filterPeople(data.people, peopleQuery, deferredSort, range)
     : [];
-  const firstBucket = visibleActivity[0]?.date;
-  const windowStartMs = firstBucket
-    ? activityBucketStartMs(firstBucket)
-    : undefined;
+  // Count activity from the same per-range windows as spend/directory stats.
+  // Chart buckets (especially 6h on 7d) can start mid-day and would drift.
   const activePeople =
-    windowStartMs === undefined
-      ? 0
-      : (data?.people.filter(
-          (person) => Date.parse(person.lastSeenAt) >= windowStartMs,
-        ).length ?? 0);
+    data?.people.filter((person) => person.windows[range].conversations > 0)
+      .length ?? 0;
   const totalSpend =
     data?.people.reduce(
       (total, person) => total + person.windows[range].costUsd,

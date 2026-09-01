@@ -25,11 +25,11 @@ export const memoryDashboardSchema = z
   .object({
     days: z.array(memoryDaySchema).length(90),
     extractionDays: z.array(memoryCostDaySchema).length(90),
-    extractionHours: z.array(memoryCostDaySchema).length(24).optional(),
+    extractionHours: z.array(memoryCostDaySchema).min(24).optional(),
     generatedAt: z.iso.datetime(),
-    hours: z.array(memoryDaySchema).length(24).optional(),
+    hours: z.array(memoryDaySchema).min(24).optional(),
     recallDays: z.array(memoryCostDaySchema).length(90),
-    recallHours: z.array(memoryCostDaySchema).length(24).optional(),
+    recallHours: z.array(memoryCostDaySchema).min(24).optional(),
     stats: z
       .object({
         active: z.number().int().min(0),

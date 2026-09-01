@@ -71,7 +71,13 @@ export function LocationsPageContent(props: {
     ? selectTimeSeries({
         days: props.data.activityDays,
         hours: props.data.activityHours,
+        sixHours: props.data.activitySixHours,
         range,
+        emptySixHour: (date) => ({
+          date,
+          privateConversations: 0,
+          publicConversations: 0,
+        }),
       })
     : [];
   const bucketUnit = timeRangeBucketUnit(range);

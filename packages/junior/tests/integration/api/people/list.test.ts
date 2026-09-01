@@ -110,7 +110,8 @@ describe("people list API", () => {
         ),
       ).toBe(false);
       expect(report.activityDays).toHaveLength(90);
-      expect(report.activityHours).toHaveLength(24);
+      expect(report.activityHours).toHaveLength(7 * 24);
+      expect(report.activitySixHours).toHaveLength(7 * 4);
       expect(
         report.activityDays.find((day) => day.date === "2026-06-12"),
       ).toEqual({

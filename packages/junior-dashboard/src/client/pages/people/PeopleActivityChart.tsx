@@ -1,3 +1,8 @@
+import {
+  type TimeRangeBucketUnit,
+  timeRangeBucketAverageUnit,
+  timeRangeBucketPerLabel,
+} from "../../components/controls/TimeRangeSelector";
 import type { PeopleActivityDayReport } from "@sentry/junior/api/schema";
 
 import {
@@ -34,13 +39,13 @@ function chartPoint(
 
 /** Plot distinct verified people with recorded conversation activity each day. */
 export function PeopleActivityChart(props: {
-  bucketUnit?: "day" | "hour";
+  bucketUnit?: TimeRangeBucketUnit;
 
   days: PeopleActivityDayReport[];
 }) {
   const bucketUnit = props.bucketUnit ?? "day";
   const chartTitle =
-    bucketUnit === "hour" ? "Active people per hour" : "Active people per day";
+    `Active people per ${timeRangeBucketPerLabel(bucketUnit)}`;
 
   const layout = createActivityChartLayout(260);
   const values = props.days.map((day) => day.activePeople);
@@ -126,7 +131,7 @@ export function PeopleActivityChart(props: {
             );
           })}
           <ActivityChartAverageLine
-            unit={bucketUnit}
+            unit={timeRangeBucketAverageUnit(bucketUnit)}
             average={average}
             format={formatActivityChartAverage}
             layout={layout}

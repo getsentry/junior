@@ -1,3 +1,7 @@
+import {
+  timeRangeBucketAverageUnit,
+  type TimeRangeBucketUnit,
+} from "../controls/TimeRangeSelector";
 import type { ConversationMetricDay } from "@sentry/junior/api/schema";
 
 import { formatDuration } from "../Duration";
@@ -44,11 +48,11 @@ function compactDuration(value: number): string {
   return formatDuration(value);
 }
 
-function tokenChart(bucketUnit: "day" | "hour"): ChartConfig {
+function tokenChart(bucketUnit: TimeRangeBucketUnit): ChartConfig {
   return {
     axisFormat: formatCompactNumber,
     color: "#22d3ee",
-    description: bucketUnit === "hour" ? "Hourly model tokens" : "Daily model tokens",
+    description: bucketUnit === "hour" ? "Hourly model tokens" : bucketUnit === "6hour" ? "6-hour model tokens" : "Daily model tokens",
     format: formatCompactNumber,
     metric: "tokens",
     title: "Token usage",
@@ -56,11 +60,11 @@ function tokenChart(bucketUnit: "day" | "hour"): ChartConfig {
   };
 }
 
-function inputCacheChart(bucketUnit: "day" | "hour"): ChartConfig {
+function inputCacheChart(bucketUnit: TimeRangeBucketUnit): ChartConfig {
   return {
     axisFormat: formatCompactNumber,
     color: "#22d3ee",
-    description: bucketUnit === "hour" ? "Hourly cache mix" : "Daily cache mix",
+    description: bucketUnit === "hour" ? "Hourly cache mix" : bucketUnit === "6hour" ? "6-hour cache mix" : "Daily cache mix",
     format: formatCompactNumber,
     metric: "inputTokens",
     title: "Input token cache",
@@ -68,13 +72,13 @@ function inputCacheChart(bucketUnit: "day" | "hour"): ChartConfig {
   };
 }
 
-function supportingCharts(bucketUnit: "day" | "hour"): ChartConfig[] {
+function supportingCharts(bucketUnit: TimeRangeBucketUnit): ChartConfig[] {
   return [
     {
       axisFormat: compactCurrency,
       color: "#fbbf24",
       description:
-        bucketUnit === "hour" ? "Hourly estimated cost" : "Daily estimated cost",
+        bucketUnit === "hour" ? "Hourly estimated cost" : bucketUnit === "6hour" ? "6-hour estimated cost" : "Daily estimated cost",
       format: (value) => formatCostSummary({ total: value }),
       metric: "costUsd",
       title: "Model spend",
@@ -86,7 +90,9 @@ function supportingCharts(bucketUnit: "day" | "hour"): ChartConfig[] {
       description:
         bucketUnit === "hour"
           ? "Hourly cumulative runtime"
-          : "Daily cumulative runtime",
+          : bucketUnit === "6hour"
+            ? "6-hour cumulative runtime"
+            : "Daily cumulative runtime",
       format: formatDuration,
       metric: "durationMs",
       title: "Runtime",
@@ -104,7 +110,7 @@ function metricValue(day: ConversationMetricDay, metric: Metric): number {
 
 /** Plot model usage, spend, and runtime in complementary chart forms. */
 export function SystemMetricCharts(props: {
-  bucketUnit?: "day" | "hour";
+  bucketUnit?: TimeRangeBucketUnit;
   cacheBreakdown?: boolean;
   days: ConversationMetricDay[];
 }) {
@@ -128,7 +134,7 @@ export function SystemMetricCharts(props: {
 }
 
 function MetricChart(props: {
-  bucketUnit: "day" | "hour";
+  bucketUnit: TimeRangeBucketUnit;
   chart: ChartConfig;
   days: ConversationMetricDay[];
 }) {
@@ -177,7 +183,7 @@ function MetricChart(props: {
       ) : null}
       <div className="px-2 py-3">
         <ChartSvg
-          aria-label={`${chart.title} per ${props.bucketUnit}`}
+          aria-label={`${chart.title} per ${props.bucketUnit === "6hour" ? "6 hours" : props.bucketUnit}`}
           className="min-h-52 overflow-hidden"
           layout={layout}
         >
@@ -303,7 +309,7 @@ function MetricChart(props: {
             layout={layout}
             maximum={maximum}
             stroke={chart.color}
-            unit={props.bucketUnit}
+            unit={timeRangeBucketAverageUnit(props.bucketUnit)}
           />
           <ActivityChartDateLabels
             dates={days.map((day) => day.date)}

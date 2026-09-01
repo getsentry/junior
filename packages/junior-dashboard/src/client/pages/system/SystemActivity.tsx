@@ -67,12 +67,22 @@ export function SystemActivity(props: {
   const days = selectTimeSeries({
     days: props.stats.metricDays,
     hours: props.stats.metricHours,
+    sixHours: props.stats.metricSixHours,
     range: props.range,
+    emptySixHour: (date) => ({ conversations: 0, date, durationMs: 0 }),
   });
   const guardianDays = selectTimeSeries({
     days: props.stats.guardian.metricDays,
     hours: props.stats.guardian.metricHours,
+    sixHours: props.stats.guardian.metricSixHours,
     range: props.range,
+    emptySixHour: (date) => ({
+      allow: 0,
+      ask: 0,
+      date,
+      deny: 0,
+      requests: 0,
+    }),
   });
   const totals = periodTotals(days);
   const bucketUnit = timeRangeBucketUnit(props.range);

@@ -1,3 +1,8 @@
+import {
+  type TimeRangeBucketUnit,
+  timeRangeBucketAdjective,
+  timeRangeBucketPerLabel,
+} from "../../components/controls/TimeRangeSelector";
 import type { LocationActivityDayReport } from "@sentry/junior/api/schema";
 
 import {
@@ -14,13 +19,13 @@ import { CardHeader } from "../../components/layout/CardHeader";
 
 /** Compare public and privacy-preserving private conversation volume by day. */
 export function LocationDirectoryActivityChart(props: {
-  bucketUnit?: "day" | "hour";
+  bucketUnit?: TimeRangeBucketUnit;
 
   days: LocationActivityDayReport[];
 }) {
   const bucketUnit = props.bucketUnit ?? "day";
   const perBucket =
-    bucketUnit === "hour" ? "Conversations per hour" : "Conversations per day";
+    `Conversations per ${timeRangeBucketPerLabel(bucketUnit)}`;
 
   const layout = createActivityChartLayout(260);
   const maximum = Math.max(
@@ -38,9 +43,7 @@ export function LocationDirectoryActivityChart(props: {
     <Card>
       <CardHeader
         description={
-          bucketUnit === "hour"
-            ? "Hourly public volume compared with private activity in aggregate."
-            : "Daily public volume compared with private activity in aggregate."
+          `${timeRangeBucketAdjective(bucketUnit)} public volume compared with private activity in aggregate.`
         }
         title={perBucket}
         trailing={

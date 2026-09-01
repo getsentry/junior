@@ -1,3 +1,8 @@
+import {
+  type TimeRangeBucketUnit,
+  timeRangeBucketAverageUnit,
+  type TimeRangeDays,
+} from "../../components/controls/TimeRangeSelector";
 import type { TaskExecutionDay } from "@sentry/junior/api/schema";
 import {
   ActivityChartAverageLine,
@@ -9,7 +14,7 @@ import {
   ChartSvg,
   createActivityChartLayout,
 } from "../../components/charts/ActivityChart";
-import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
+
 import { Card } from "../../components/layout/Card";
 import { formatCostSummary } from "../../format";
 
@@ -17,7 +22,7 @@ const COST_COLOR = "#67e8f9";
 
 /** Render linked conversation spend for completed task executions. */
 export function TaskCostChart(props: {
-  bucketUnit?: "day" | "hour";
+  bucketUnit?: TimeRangeBucketUnit;
   days: TaskExecutionDay[];
   range: TimeRangeDays;
 }) {
@@ -95,7 +100,7 @@ export function TaskCostChart(props: {
             );
           })}
           <ActivityChartAverageLine
-            unit={bucketUnit}
+            unit={timeRangeBucketAverageUnit(bucketUnit)}
             average={average}
             format={(value) => formatCostSummary({ total: value })}
             layout={layout}

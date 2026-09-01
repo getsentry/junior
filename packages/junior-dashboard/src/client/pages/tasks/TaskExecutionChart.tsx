@@ -1,3 +1,8 @@
+import {
+  type TimeRangeBucketUnit,
+  timeRangeBucketAverageUnit,
+  type TimeRangeDays,
+} from "../../components/controls/TimeRangeSelector";
 import type { TaskExecutionDay } from "@sentry/junior/api/schema";
 import {
   ActivityChartAverageLine,
@@ -9,7 +14,7 @@ import {
   ChartSvg,
   createActivityChartLayout,
 } from "../../components/charts/ActivityChart";
-import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
+
 import { Card } from "../../components/layout/Card";
 import { formatActivityChartAverage } from "../../format";
 
@@ -17,7 +22,7 @@ const EXECUTION_COLOR = "#fbbf24";
 
 /** Render completed task executions over a trailing window. */
 export function TaskExecutionChart(props: {
-  bucketUnit?: "day" | "hour";
+  bucketUnit?: TimeRangeBucketUnit;
 
   days: TaskExecutionDay[];
   range: TimeRangeDays;
@@ -87,7 +92,7 @@ export function TaskExecutionChart(props: {
             );
           })}
           <ActivityChartAverageLine
-            unit={bucketUnit}
+            unit={timeRangeBucketAverageUnit(bucketUnit)}
             average={average}
             format={formatActivityChartAverage}
             layout={layout}

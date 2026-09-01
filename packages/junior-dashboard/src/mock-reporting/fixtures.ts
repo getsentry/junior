@@ -1444,7 +1444,7 @@ function conversationMetricHours(
   >();
   const end = new Date(nowMs);
   end.setUTCMinutes(0, 0, 0);
-  for (let offset = 23; offset >= 0; offset -= 1) {
+  for (let offset = 7 * 24 - 1; offset >= 0; offset -= 1) {
     const date = new Date(end.getTime() - offset * 60 * 60 * 1_000);
     const key = date.toISOString().slice(0, 13);
     hours.set(key, { conversations: 0, date: key, durationMs: 0 });
@@ -1495,8 +1495,8 @@ function mockGuardianStats(nowMs: number): ConversationStatsReport["guardian"] {
   });
   const end = new Date(nowMs);
   end.setUTCMinutes(0, 0, 0);
-  const metricHours = Array.from({ length: 24 }, (_, index) => {
-    const date = new Date(end.getTime() - (23 - index) * 60 * 60 * 1_000);
+  const metricHours = Array.from({ length: 7 * 24 }, (_, index) => {
+    const date = new Date(end.getTime() - (7 * 24 - 1 - index) * 60 * 60 * 1_000);
     const requests = index > 12 ? (index % 4) + 1 : 0;
     const deny = requests > 2 && index % 5 === 0 ? 1 : 0;
     const ask = requests > 1 && index % 3 === 0 ? 1 : 0;
@@ -1510,6 +1510,11 @@ function mockGuardianStats(nowMs: number): ConversationStatsReport["guardian"] {
       requests,
     };
   });
+  const metricSixHours = sumMockHoursIntoSixHours(
+    nowMs,
+    metricHours,
+    (date) => ({ allow: 0, ask: 0, date, deny: 0, requests: 0 }),
+  );
   return metricDays.reduce<ConversationStatsReport["guardian"]>(
     (result, day) => ({
       allow: result.allow + day.allow,
@@ -1518,6 +1523,7 @@ function mockGuardianStats(nowMs: number): ConversationStatsReport["guardian"] {
       deny: result.deny + day.deny,
       metricDays,
       metricHours,
+      metricSixHours,
       requests: result.requests + day.requests,
     }),
     {
@@ -1527,6 +1533,7 @@ function mockGuardianStats(nowMs: number): ConversationStatsReport["guardian"] {
       deny: 0,
       metricDays,
       metricHours,
+      metricSixHours,
       requests: 0,
     },
   );
@@ -1776,7 +1783,17 @@ export function readMockConversationStats(): ConversationStatsReport {
     ...(inputTokens ? { inputTokens } : undefined),
     locations: [...locationItems.values()],
     metricDays: conversationMetricDays(nowMs, summaries),
-    metricHours: conversationMetricHours(nowMs, summaries),
+    ...(() => {
+      const metricHours = conversationMetricHours(nowMs, summaries);
+      return {
+        metricHours,
+        metricSixHours: sumMockHoursIntoSixHours(
+          nowMs,
+          metricHours,
+          (date) => ({ conversations: 0, date, durationMs: 0 }),
+        ),
+      };
+    })(),
     source: "conversation_index",
     tokens: total.tokens,
     ...windowBounds(nowMs),
@@ -1836,6 +1853,36 @@ function mockPeopleActivityHours(
     date,
   }));
 }
+
+function mockPeopleActivitySixHours(
+  nowMs: number,
+  summaries: ConversationSummaryReport[],
+): PeopleActivityDayReport[] {
+  const bySix = new Map<string, { actors: Set<string>; conversations: number }>();
+  for (const summary of summaries) {
+    const startMs = Date.parse(summary.lastSeenAt);
+    if (Number.isNaN(startMs)) continue;
+    const bucket = new Date(startMs);
+    bucket.setUTCMinutes(0, 0, 0);
+    bucket.setUTCHours(Math.floor(bucket.getUTCHours() / 6) * 6, 0, 0, 0);
+    const key = bucket.toISOString().slice(0, 13);
+    const current = bySix.get(key) ?? { actors: new Set<string>(), conversations: 0 };
+    const email = summary.actorIdentity?.email?.toLowerCase();
+    if (!email) continue;
+    current.actors.add(email);
+    current.conversations += 1;
+    bySix.set(key, current);
+  }
+  return trailingMetricSixHours(nowMs, (date) => {
+    const row = bySix.get(date);
+    return {
+      activePeople: row?.actors.size ?? 0,
+      conversations: row?.conversations ?? 0,
+      date,
+    };
+  });
+}
+
 
 function emptyMockWindowMetrics(): ActorWindowMetrics {
   return {
@@ -1908,15 +1955,64 @@ function mockActorWindows(
 function trailingMetricHours<T extends { date: string }>(
   nowMs: number,
   empty: (date: string) => T,
+  hourCount = 7 * 24,
 ): T[] {
   const end = new Date(nowMs);
   end.setUTCMinutes(0, 0, 0);
-  return Array.from({ length: 24 }, (_, index) => {
-    const date = new Date(end.getTime() - (23 - index) * 60 * 60 * 1_000)
+  return Array.from({ length: hourCount }, (_, index) => {
+    const date = new Date(
+      end.getTime() - (hourCount - 1 - index) * 60 * 60 * 1_000,
+    )
       .toISOString()
       .slice(0, 13);
     return empty(date);
   });
+}
+
+function trailingMetricSixHours<T extends { date: string }>(
+  nowMs: number,
+  empty: (date: string) => T,
+  bucketCount = 7 * 4,
+): T[] {
+  const end = new Date(nowMs);
+  end.setUTCMinutes(0, 0, 0);
+  end.setUTCHours(Math.floor(end.getUTCHours() / 6) * 6, 0, 0, 0);
+  return Array.from({ length: bucketCount }, (_, index) => {
+    const date = new Date(
+      end.getTime() - (bucketCount - 1 - index) * 6 * 60 * 60 * 1_000,
+    )
+      .toISOString()
+      .slice(0, 13);
+    return empty(date);
+  });
+}
+
+function sumMockHoursIntoSixHours<T extends { date: string }>(
+  nowMs: number,
+  hours: readonly T[],
+  empty: (date: string) => T,
+): T[] {
+  const bySix = new Map<string, T>();
+  for (const hour of hours) {
+    const startMs = Date.parse(`${hour.date}:00:00.000Z`);
+    if (Number.isNaN(startMs)) continue;
+    const bucket = new Date(startMs);
+    bucket.setUTCMinutes(0, 0, 0);
+    bucket.setUTCHours(Math.floor(bucket.getUTCHours() / 6) * 6, 0, 0, 0);
+    const key = bucket.toISOString().slice(0, 13);
+    const current = bySix.get(key) ?? empty(key);
+    const next = { ...current, date: key } as T;
+    for (const [field, value] of Object.entries(hour)) {
+      if (field === "date") continue;
+      if (typeof value === "number") {
+        const prior = (next as Record<string, unknown>)[field];
+        (next as Record<string, unknown>)[field] =
+          (typeof prior === "number" ? prior : 0) + value;
+      }
+    }
+    bySix.set(key, next);
+  }
+  return trailingMetricSixHours(nowMs, (date) => bySix.get(date) ?? empty(date));
 }
 
 function activityDates(nowMs: number, days = PEOPLE_ACTIVITY_DAYS): string[] {
@@ -1981,6 +2077,7 @@ export function readMockPeopleDirectory(): ActorDirectoryReport {
   return {
     activityDays,
     activityHours,
+    activitySixHours: mockPeopleActivitySixHours(nowMs, summaries),
     generatedAt: iso(nowMs),
     people: [...byEmail.values()]
       .map(({ dates: _dates, summaries: personSummaries, ...person }) => ({
@@ -2418,6 +2515,16 @@ export function readMockTaskList(nowMs = NOW_MS): TaskList {
       event: 0,
       scheduled: 0,
     })),
+    executionSixHours: sumMockHoursIntoSixHours(
+      nowMs,
+      trailingMetricHours(nowMs, (date) => ({
+      costUsd: 0,
+      date,
+      event: 0,
+      scheduled: 0,
+    })),
+      (date) => ({ costUsd: 0, date, event: 0, scheduled: 0 }),
+    ),
     tasks: mockTasks(),
     truncated: false,
   };
@@ -2454,6 +2561,16 @@ export function readMockTaskExecutions(
         date,
         failed: 0,
       })),
+      executionSixHours: sumMockHoursIntoSixHours(
+        nowMs,
+        trailingMetricHours(nowMs, (date) => ({
+        blocked: 0,
+        completed: 0,
+        date,
+        failed: 0,
+      })),
+        (date) => ({ blocked: 0, completed: 0, date, failed: 0 }),
+      ),
       executions: [],
       task,
       truncated: false,
@@ -2511,6 +2628,16 @@ export function readMockTaskExecutions(
       date,
       failed: 0,
     })),
+    executionSixHours: sumMockHoursIntoSixHours(
+      nowMs,
+      trailingMetricHours(nowMs, (date) => ({
+      blocked: 0,
+      completed: 0,
+      date,
+      failed: 0,
+    })),
+      (date) => ({ blocked: 0, completed: 0, date, failed: 0 }),
+    ),
     executions,
     task,
     truncated: task.totalRuns > executions.length,

@@ -274,7 +274,7 @@ export async function readTaskExecutionDays(
 
 /** Load a fixed trailing window of completed executions stacked by hour. */
 export async function readTaskExecutionHours(
-  hourCount = 24,
+  hourCount = 7 * 24,
   options: { nowMs?: number } = {},
 ): Promise<TaskExecutionDay[]> {
   const nowMs = options.nowMs ?? Date.now();
@@ -540,7 +540,7 @@ export async function readTaskExecutionStatusHours(args: {
   nowMs?: number;
   taskId: string;
 }): Promise<TaskExecutionStatusDay[]> {
-  const hourCount = args.hourCount ?? 24;
+  const hourCount = args.hourCount ?? 7 * 24;
   const namespace = args.namespace ?? "junior";
   const nowMs = args.nowMs ?? Date.now();
   const end = new Date(nowMs);

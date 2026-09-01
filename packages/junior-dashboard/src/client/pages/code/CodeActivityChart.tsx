@@ -1,3 +1,8 @@
+import {
+  type TimeRangeBucketUnit,
+  timeRangeBucketAverageUnit,
+  type TimeRangeDays,
+} from "../../components/controls/TimeRangeSelector";
 import type { CodeActivityDay } from "@sentry/junior/api/schema";
 import {
   ActivityChartAverageLine,
@@ -10,7 +15,7 @@ import {
   createActivityChartLayout,
 } from "../../components/charts/ActivityChart";
 import { ChartLegend } from "../../components/charts/ChartLegend";
-import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
+
 import { Card } from "../../components/layout/Card";
 import { formatActivityChartAverage } from "../../format";
 
@@ -20,7 +25,7 @@ const CLOSED_COLOR = "#fb7185";
 
 /** Render created, merged, and closed code changes over a trailing window. */
 export function CodeActivityChart(props: {
-  bucketUnit?: "day" | "hour";
+  bucketUnit?: TimeRangeBucketUnit;
 
   days: CodeActivityDay[];
   range: TimeRangeDays;
@@ -132,7 +137,7 @@ export function CodeActivityChart(props: {
             );
           })}
           <ActivityChartAverageLine
-            unit={bucketUnit}
+            unit={timeRangeBucketAverageUnit(bucketUnit)}
             average={average}
             format={formatActivityChartAverage}
             layout={layout}

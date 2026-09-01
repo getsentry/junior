@@ -1,4 +1,9 @@
 import {
+  type TimeRangeBucketUnit,
+  timeRangeBucketAverageUnit,
+  type TimeRangeDays,
+} from "../../components/controls/TimeRangeSelector";
+import {
   ActivityChartAverageLine,
   ActivityChartDateLabels,
   ActivityChartGrid,
@@ -9,14 +14,14 @@ import {
   createActivityChartLayout,
 } from "../../components/charts/ActivityChart";
 import { ChartLegend } from "../../components/charts/ChartLegend";
-import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
+
 import { Card } from "../../components/layout/Card";
 import { formatCostSummary } from "../../format";
 import type { MemoryCostDay } from "./memoryDashboard";
 
 /** Render stacked memory extraction and recall cost from durable plugin events. */
 export function MemoryCostChart(props: {
-  bucketUnit?: "day" | "hour";
+  bucketUnit?: TimeRangeBucketUnit;
 
   extractionDays: MemoryCostDay[];
   range: TimeRangeDays;
@@ -161,7 +166,7 @@ export function MemoryCostChart(props: {
             );
           })}
           <ActivityChartAverageLine
-            unit={bucketUnit}
+            unit={timeRangeBucketAverageUnit(bucketUnit)}
             average={average}
             format={(value) => formatCostSummary({ total: value })}
             layout={layout}

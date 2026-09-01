@@ -1,3 +1,7 @@
+import {
+  type TimeRangeBucketUnit,
+  timeRangeBucketAverageUnit,
+} from "../../components/controls/TimeRangeSelector";
 import type { DailyConversationActivity } from "@sentry/junior/api/schema";
 
 import {
@@ -17,7 +21,7 @@ import { formatActivityChartAverage } from "../../format";
 
 /** Plot daily conversation volume across one public location. */
 export function LocationActivityChart(props: {
-  bucketUnit?: "day" | "hour";
+  bucketUnit?: TimeRangeBucketUnit;
 
   days: DailyConversationActivity[];
 }) {
@@ -89,7 +93,7 @@ export function LocationActivityChart(props: {
             );
           })}
           <ActivityChartAverageLine
-            unit={bucketUnit}
+            unit={timeRangeBucketAverageUnit(bucketUnit)}
             average={average}
             format={formatActivityChartAverage}
             layout={layout}
