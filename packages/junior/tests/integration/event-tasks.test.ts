@@ -69,7 +69,9 @@ function context(
     channelId,
   };
   return {
-    ...(threadTs ? { conversationId: `slack:${channelId}:${threadTs}` } : undefined),
+    ...(threadTs
+      ? { conversationId: `slack:${channelId}:${threadTs}` }
+      : undefined),
     actor: {
       platform: "slack",
       teamId: workspaceTeamId,
@@ -702,7 +704,10 @@ describe("event tasks", () => {
     });
     await expect(
       getEventTask(fixture.sql.db(), created.task.id),
-    ).resolves.toBeUndefined();
+    ).resolves.toMatchObject({
+      id: created.task.id,
+      status: "deleted",
+    });
     await expect(
       execute(createUpdateEventTaskTool(context("U999"), EVENT_CATALOG), {
         taskId: created.task.id,

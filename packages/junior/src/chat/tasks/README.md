@@ -17,10 +17,9 @@ Empty legacy scheduled-task text is projected with stable display placeholders
 so one malformed record cannot fail the entire list.
 
 Runs stay on the durable execution table after a task is deleted. The Runs view
-keeps historical executions for deleted scheduled tasks the viewer owns, and for
-executions on conversations where the viewer is a participant or root actor.
-Scheduled delete keeps the task row for titles and stops future runs. Event
-delete removes the task row, so those runs use the conversation title.
+keeps historical executions for deleted scheduled and event tasks the viewer
+owns. Both deletes keep the task row for titles and stop future matching or
+scheduled claims.
 
 Tasks store an optional short `title` generated from the instruction the same
 way conversation titles are generated. The title is a dedicated SQL column on

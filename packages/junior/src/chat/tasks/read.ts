@@ -1,15 +1,5 @@
 import type { SlackDestination, User } from "@sentry/junior-plugin-api";
-import {
-  and,
-  desc,
-  eq,
-  exists,
-  inArray,
-  isNotNull,
-  or,
-  sql,
-} from "drizzle-orm";
-import { alias } from "drizzle-orm/pg-core";
+import { and, desc, eq, inArray, or } from "drizzle-orm";
 import type { ConversationSourceTask } from "@/api/schema/conversation";
 import type {
   TaskExecutionList,
@@ -36,8 +26,10 @@ import {
   deleteEventTask,
   eventTaskBelongsToUser,
   getEventTask,
+  listDeletedEventTasksCreatedBy,
   listEventTasksCreatedBy,
   listPublicEventTasksForTeams,
+  type StoredEventTask,
 } from "@/chat/event-tasks/store";
 import { eventTaskTriggerAvailable } from "@/chat/event-tasks/tool-support";
 import type { EventTask } from "@/chat/event-tasks/types";
@@ -54,12 +46,9 @@ import {
 } from "@/chat/scheduled-tasks/tasks";
 import type { ScheduledTask } from "@/chat/scheduled-tasks/types";
 import {
-  juniorConversationParticipants,
-  juniorConversations,
   juniorDestinations,
   juniorIdentities,
   juniorSchedulerTasks,
-  juniorTaskExecutions,
   juniorUsers,
 } from "@/db/schema";
 
@@ -335,7 +324,7 @@ async function resolveViewerTaskCandidate(
     };
   }
   const task = await getEventTask(db, id);
-  if (!task) return undefined;
+  if (!task || task.status === "deleted") return undefined;
   const ownedByViewer = eventTaskBelongsToUser(task, user);
   const destinations = await destinationDetails([task.destination]);
   const destination = destinations.get(destinationKey(task.destination));
@@ -525,99 +514,15 @@ async function readDeletedOwnedScheduledTasks(
     .filter((task): task is ScheduledTask => task?.status === "deleted");
 }
 
-/**
- * Load recent execution conversation ids owned by the viewer after the source
- * task row is gone. Scope is participant membership or root actor identity —
- * never every public destination across tenants.
- */
-async function readViewerHistoricalRunConversationIds(
+/** Load deleted event tasks the viewer still owns, newest first. */
+async function readDeletedOwnedEventTasks(
   user: User,
-): Promise<string[]> {
-  const db = getDb();
-  const rootConversation = alias(
-    juniorConversations,
-    "task_run_root_conversation",
+): Promise<StoredEventTask[]> {
+  return await listDeletedEventTasksCreatedBy(
+    getDb(),
+    user,
+    TASK_EXECUTION_LIST_LIMIT,
   );
-  const rootActorIdentity = alias(juniorIdentities, "task_run_root_actor");
-  const viewerEmail = user.email.trim().toLowerCase();
-  const participantMatch = exists(
-    db
-      .select({ one: sql`1` })
-      .from(juniorConversationParticipants)
-      .where(
-        and(
-          eq(juniorConversationParticipants.userId, user.id),
-          eq(
-            juniorConversationParticipants.rootConversationId,
-            rootConversation.conversationId,
-          ),
-        ),
-      ),
-  );
-  const rootActorMatch = and(
-    eq(rootActorIdentity.userId, user.id),
-    eq(rootActorIdentity.kind, "user"),
-  );
-  const rootActorEmailMatch =
-    viewerEmail.length > 0
-      ? and(
-          eq(rootActorIdentity.emailVerified, true),
-          eq(rootActorIdentity.emailNormalized, viewerEmail),
-          eq(rootActorIdentity.kind, "user"),
-        )
-      : undefined;
-  const rows = await db
-    .select({
-      conversationId: juniorTaskExecutions.conversationId,
-    })
-    .from(juniorTaskExecutions)
-    .innerJoin(
-      juniorConversations,
-      eq(
-        juniorConversations.conversationId,
-        juniorTaskExecutions.conversationId,
-      ),
-    )
-    .innerJoin(
-      rootConversation,
-      and(
-        eq(
-          rootConversation.conversationId,
-          juniorConversations.rootConversationId,
-        ),
-        eq(
-          rootConversation.rootConversationId,
-          rootConversation.conversationId,
-        ),
-        sql`${rootConversation.parentConversationId} is null`,
-      ),
-    )
-    .leftJoin(
-      rootActorIdentity,
-      eq(rootActorIdentity.id, rootConversation.actorIdentityId),
-    )
-    .where(
-      and(
-        eq(juniorTaskExecutions.namespace, "junior"),
-        inArray(juniorTaskExecutions.kind, ["scheduled", "event"]),
-        isNotNull(juniorTaskExecutions.conversationId),
-        or(participantMatch, rootActorMatch, rootActorEmailMatch),
-      ),
-    )
-    .orderBy(
-      desc(juniorTaskExecutions.executedAtMs),
-      desc(juniorTaskExecutions.executionId),
-    )
-    .limit(TASK_EXECUTION_LIST_LIMIT * 4);
-  return [
-    ...new Set(
-      rows
-        .map((row) => row.conversationId)
-        .filter((conversationId): conversationId is string =>
-          Boolean(conversationId),
-        ),
-    ),
-  ];
 }
 
 function taskTitleForRun(
@@ -631,18 +536,32 @@ function taskTitleForRun(
   );
 }
 
+function addDeletedTaskRun(
+  args: {
+    kind: "scheduled" | "event";
+    taskId: string;
+    title: string;
+  },
+  taskTitles: Map<string, string>,
+  tasks: Array<{ kind: "scheduled" | "event"; taskId: string }>,
+): void {
+  const key = `${args.kind}:${args.taskId}`;
+  if (taskTitles.has(key)) return;
+  taskTitles.set(key, args.title);
+  tasks.push({ kind: args.kind, taskId: args.taskId });
+}
+
 /**
- * Read newest runs across live viewer-visible tasks, deleted scheduled tasks the
- * viewer owns, and retained executions on conversations the viewer owns as a
- * participant or root actor.
+ * Read newest runs across live viewer-visible tasks and deleted tasks the
+ * viewer owns. Deleted task rows stay available so history does not depend on
+ * conversation actor membership.
  */
 export async function readViewerTaskRuns(user: User): Promise<TaskRunList> {
-  const [taskList, deletedScheduled, historicalConversationIds] =
-    await Promise.all([
-      readViewerTasks(user),
-      readDeletedOwnedScheduledTasks(user),
-      readViewerHistoricalRunConversationIds(user),
-    ]);
+  const [taskList, deletedScheduled, deletedEvent] = await Promise.all([
+    readViewerTasks(user),
+    readDeletedOwnedScheduledTasks(user),
+    readDeletedOwnedEventTasks(user),
+  ]);
   const taskTitles = new Map<string, string>();
   const tasks: Array<{ kind: "scheduled" | "event"; taskId: string }> = [];
   for (const task of taskList.tasks) {
@@ -650,17 +569,34 @@ export async function readViewerTaskRuns(user: User): Promise<TaskRunList> {
     tasks.push({ kind: task.kind, taskId: task.id });
   }
   for (const task of deletedScheduled) {
-    const key = `scheduled:${task.id}`;
-    if (taskTitles.has(key)) continue;
     const instruction = displayText(task.task.text, "Untitled scheduled task");
-    taskTitles.set(
-      key,
-      taskDisplayTitle(task.title, instruction, "Untitled scheduled task"),
+    addDeletedTaskRun(
+      {
+        kind: "scheduled",
+        taskId: task.id,
+        title: taskDisplayTitle(
+          task.title,
+          instruction,
+          "Untitled scheduled task",
+        ),
+      },
+      taskTitles,
+      tasks,
     );
-    tasks.push({ kind: "scheduled", taskId: task.id });
+  }
+  for (const task of deletedEvent) {
+    const instruction = displayText(task.task.text, "Untitled event task");
+    addDeletedTaskRun(
+      {
+        kind: "event",
+        taskId: task.id,
+        title: taskDisplayTitle(task.title, instruction, "Untitled event task"),
+      },
+      taskTitles,
+      tasks,
+    );
   }
   const runs = await readTaskRuns({
-    conversationIds: historicalConversationIds,
     limit: TASK_EXECUTION_LIST_LIMIT + 1,
     tasks,
   });
@@ -779,7 +715,11 @@ export async function deleteViewerTask(
     }
   }
   const task = await getEventTask(getDb(), id);
-  if (!task || !eventTaskBelongsToUser(task, user)) {
+  if (
+    !task ||
+    task.status === "deleted" ||
+    !eventTaskBelongsToUser(task, user)
+  ) {
     throw new ViewerTaskNotFoundError();
   }
   await deleteEventTask(getDb(), id);

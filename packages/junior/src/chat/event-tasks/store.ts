@@ -3,27 +3,39 @@ import {
   type ResourceEvent,
   type User,
 } from "@sentry/junior-plugin-api";
-import { and, asc, desc, eq, inArray, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, ne, or, sql } from "drizzle-orm";
 import type { JuniorDatabase } from "@/db/db";
 import { juniorDestinations } from "@/db/schema/destinations";
-import { juniorEventTasks } from "@/db/schema/event-tasks";
+import {
+  juniorEventTasks,
+  type EventTaskStatus,
+} from "@/db/schema/event-tasks";
 import { eventTaskSchema, type EventTask } from "./types";
 
 type EventTaskRow = {
+  status?: EventTaskStatus | null;
   task: unknown;
   title: string | null;
 };
 
-/** JSON task payload must not carry the SQL-backed title column. */
-function eventTaskJsonPayload(task: EventTask): EventTask {
-  const { title: _title, ...payload } = task;
-  return payload as EventTask;
+/** Live event task plus retained SQL status for history after delete. */
+export type StoredEventTask = EventTask & {
+  status: EventTaskStatus;
+};
+
+/** JSON task payload must not carry SQL-backed columns. */
+function eventTaskJsonPayload(task: EventTask | StoredEventTask): EventTask {
+  const { status: _status, title: _title, ...payload } = task as StoredEventTask;
+  return payload;
 }
 
-function parseTask(row: EventTaskRow): EventTask {
+function parseTask(row: EventTaskRow): StoredEventTask {
   const raw =
     row.task && typeof row.task === "object"
-      ? ({ ...(row.task as Record<string, unknown>) } as Record<string, unknown>)
+      ? ({ ...(row.task as Record<string, unknown>) } as Record<
+          string,
+          unknown
+        >)
       : row.task;
   // Title is SQL-column-backed; ignore any legacy JSON title key.
   if (raw && typeof raw === "object" && "title" in raw) {
@@ -31,16 +43,28 @@ function parseTask(row: EventTaskRow): EventTask {
   }
   const payload = eventTaskSchema.parse(raw);
   const title = row.title?.trim();
-  return title ? { ...payload, title } : payload;
+  return {
+    ...payload,
+    status: row.status === "deleted" ? "deleted" : "active",
+    ...(title ? { title } : undefined),
+  };
 }
 
-/** Read one event task by id. */
+function activeEventTaskWhere() {
+  return ne(juniorEventTasks.status, "deleted");
+}
+
+/** Read one event task by id, including deleted rows when present. */
 export async function getEventTask(
   db: JuniorDatabase,
   id: string,
-): Promise<EventTask | undefined> {
+): Promise<StoredEventTask | undefined> {
   const rows = await db
-    .select({ task: juniorEventTasks.task, title: juniorEventTasks.title })
+    .select({
+      status: juniorEventTasks.status,
+      task: juniorEventTasks.task,
+      title: juniorEventTasks.title,
+    })
     .from(juniorEventTasks)
     .where(eq(juniorEventTasks.id, id))
     .limit(1);
@@ -51,7 +75,7 @@ export async function getEventTask(
 export async function createEventTask(
   db: JuniorDatabase,
   task: EventTask,
-): Promise<EventTask> {
+): Promise<StoredEventTask> {
   const parsed = eventTaskSchema.parse(eventTaskJsonPayload(task));
   const title = task.title?.trim() || null;
   await db
@@ -62,18 +86,25 @@ export async function createEventTask(
       namespace: parsed.trigger.namespace,
       identifier: parsed.trigger.identifier,
       createdAtMs: parsed.createdAtMs,
+      status: "active",
       title,
       task: parsed,
     })
     .onConflictDoNothing();
-  return (await getEventTask(db, parsed.id)) ?? { ...parsed, ...(title ? { title } : undefined) };
+  return (
+    (await getEventTask(db, parsed.id)) ?? {
+      ...parsed,
+      status: "active",
+      ...(title ? { title } : undefined),
+    }
+  );
 }
 
-/** Replace an existing event task. */
+/** Replace an existing non-deleted event task. */
 export async function saveEventTask(
   db: JuniorDatabase,
   task: EventTask,
-): Promise<EventTask | undefined> {
+): Promise<StoredEventTask | undefined> {
   const parsed = eventTaskSchema.parse(eventTaskJsonPayload(task));
   const title = task.title?.trim() || null;
   const rows = await db
@@ -84,32 +115,45 @@ export async function saveEventTask(
       title,
       task: parsed,
     })
-    .where(eq(juniorEventTasks.id, parsed.id))
-    .returning({ task: juniorEventTasks.task, title: juniorEventTasks.title });
+    .where(and(eq(juniorEventTasks.id, parsed.id), activeEventTaskWhere()))
+    .returning({
+      status: juniorEventTasks.status,
+      task: juniorEventTasks.task,
+      title: juniorEventTasks.title,
+    });
   return rows[0] ? parseTask(rows[0]) : undefined;
 }
 
-/** Delete one existing event task. */
+/** Mark one existing event task deleted while retaining the row for history. */
 export async function deleteEventTask(
   db: JuniorDatabase,
   id: string,
-): Promise<EventTask | undefined> {
+): Promise<StoredEventTask | undefined> {
   const rows = await db
-    .delete(juniorEventTasks)
-    .where(eq(juniorEventTasks.id, id))
-    .returning({ task: juniorEventTasks.task, title: juniorEventTasks.title });
+    .update(juniorEventTasks)
+    .set({ status: "deleted" })
+    .where(and(eq(juniorEventTasks.id, id), activeEventTaskWhere()))
+    .returning({
+      status: juniorEventTasks.status,
+      task: juniorEventTasks.task,
+      title: juniorEventTasks.title,
+    });
   return rows[0] ? parseTask(rows[0]) : undefined;
 }
 
-/** List event tasks in one Slack workspace. */
+/** List live event tasks in one Slack workspace. */
 export async function listEventTasksForTeam(
   db: JuniorDatabase,
   teamId: string,
-): Promise<EventTask[]> {
+): Promise<StoredEventTask[]> {
   const rows = await db
-    .select({ task: juniorEventTasks.task, title: juniorEventTasks.title })
+    .select({
+      status: juniorEventTasks.status,
+      task: juniorEventTasks.task,
+      title: juniorEventTasks.title,
+    })
     .from(juniorEventTasks)
-    .where(eq(juniorEventTasks.teamId, teamId))
+    .where(and(eq(juniorEventTasks.teamId, teamId), activeEventTaskWhere()))
     .orderBy(asc(juniorEventTasks.createdAtMs), asc(juniorEventTasks.id));
   return rows.map(parseTask);
 }
@@ -132,12 +176,12 @@ export function eventTaskBelongsToUser(task: EventTask, user: User): boolean {
   );
 }
 
-/** List a bounded newest-first page of event tasks created by one user. */
+/** List a bounded newest-first page of live event tasks created by one user. */
 export async function listEventTasksCreatedBy(
   db: JuniorDatabase,
   user: User,
   limit: number,
-): Promise<EventTask[]> {
+): Promise<StoredEventTask[]> {
   const identities = viewerSlackIdentities(user);
   const ownership = or(
     ...identities.map((identity) =>
@@ -149,23 +193,63 @@ export async function listEventTasksCreatedBy(
   );
   if (!ownership) return [];
   const rows = await db
-    .select({ task: juniorEventTasks.task, title: juniorEventTasks.title })
+    .select({
+      status: juniorEventTasks.status,
+      task: juniorEventTasks.task,
+      title: juniorEventTasks.title,
+    })
     .from(juniorEventTasks)
-    .where(ownership)
+    .where(and(ownership, activeEventTaskWhere()))
     .orderBy(desc(juniorEventTasks.createdAtMs), desc(juniorEventTasks.id))
     .limit(limit);
   return rows.map(parseTask);
 }
 
-/** List event tasks whose current Slack destination is public. */
+/**
+ * List deleted event tasks created by one user, newest first.
+ * Used only to keep historical runs after the live task list drops the row.
+ */
+export async function listDeletedEventTasksCreatedBy(
+  db: JuniorDatabase,
+  user: User,
+  limit: number,
+): Promise<StoredEventTask[]> {
+  const identities = viewerSlackIdentities(user);
+  const ownership = or(
+    ...identities.map((identity) =>
+      and(
+        eq(juniorEventTasks.teamId, identity.providerTenantId!),
+        sql`${juniorEventTasks.task}->'createdBy'->>'slackUserId' = ${identity.providerSubjectId}`,
+      ),
+    ),
+  );
+  if (!ownership) return [];
+  const rows = await db
+    .select({
+      status: juniorEventTasks.status,
+      task: juniorEventTasks.task,
+      title: juniorEventTasks.title,
+    })
+    .from(juniorEventTasks)
+    .where(and(ownership, eq(juniorEventTasks.status, "deleted")))
+    .orderBy(desc(juniorEventTasks.createdAtMs), desc(juniorEventTasks.id))
+    .limit(limit);
+  return rows.map(parseTask);
+}
+
+/** List live event tasks whose current Slack destination is public. */
 export async function listPublicEventTasksForTeams(
   db: JuniorDatabase,
   teamIds: string[],
   limit: number,
-): Promise<EventTask[]> {
+): Promise<StoredEventTask[]> {
   if (teamIds.length === 0) return [];
   const rows = await db
-    .select({ task: juniorEventTasks.task, title: juniorEventTasks.title })
+    .select({
+      status: juniorEventTasks.status,
+      task: juniorEventTasks.task,
+      title: juniorEventTasks.title,
+    })
     .from(juniorEventTasks)
     .innerJoin(
       juniorDestinations,
@@ -178,6 +262,7 @@ export async function listPublicEventTasksForTeams(
     .where(
       and(
         inArray(juniorEventTasks.teamId, teamIds),
+        activeEventTaskWhere(),
         eq(juniorDestinations.visibility, "public"),
       ),
     )
@@ -187,7 +272,7 @@ export async function listPublicEventTasksForTeams(
 }
 
 /**
- * Collect match keys from event tasks for these identifiers and event types.
+ * Collect match keys from live event tasks for these identifiers and event types.
  * Does not evaluate match values — only reports keys that filters use.
  */
 export async function collectEventTaskMatchKeys(
@@ -207,13 +292,18 @@ export async function collectEventTaskMatchKeys(
   ];
   if (eventTypes.size === 0 || identifiers.length === 0) return [];
   const rows = await db
-    .select({ task: juniorEventTasks.task, title: juniorEventTasks.title })
+    .select({
+      status: juniorEventTasks.status,
+      task: juniorEventTasks.task,
+      title: juniorEventTasks.title,
+    })
     .from(juniorEventTasks)
     .where(
       and(
         eq(juniorEventTasks.teamId, input.teamId),
         eq(juniorEventTasks.namespace, input.namespace),
         inArray(juniorEventTasks.identifier, identifiers),
+        activeEventTaskWhere(),
       ),
     )
     .orderBy(asc(juniorEventTasks.createdAtMs), asc(juniorEventTasks.id));
@@ -230,20 +320,25 @@ export async function collectEventTaskMatchKeys(
   return [...keys].sort();
 }
 
-/** Find every task matching one normalized resource event. */
+/** Find every live task matching one normalized resource event. */
 export async function findMatchingEventTasks(
   db: JuniorDatabase,
   event: ResourceEvent,
   teamId: string,
-): Promise<EventTask[]> {
+): Promise<StoredEventTask[]> {
   const rows = await db
-    .select({ task: juniorEventTasks.task, title: juniorEventTasks.title })
+    .select({
+      status: juniorEventTasks.status,
+      task: juniorEventTasks.task,
+      title: juniorEventTasks.title,
+    })
     .from(juniorEventTasks)
     .where(
       and(
         eq(juniorEventTasks.teamId, teamId),
         eq(juniorEventTasks.namespace, event.namespace),
         eq(juniorEventTasks.identifier, event.identifier),
+        activeEventTaskWhere(),
       ),
     )
     .orderBy(asc(juniorEventTasks.createdAtMs), asc(juniorEventTasks.id));

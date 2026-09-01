@@ -163,7 +163,11 @@ export async function writableEventTask(
 ): Promise<EventTask> {
   const { destination } = requireEventTaskSlackContext(context);
   const task = await getEventTask(getDb(), id);
-  if (!task || !eventTaskIsWritableFrom(task, destination)) {
+  if (
+    !task ||
+    task.status === "deleted" ||
+    !eventTaskIsWritableFrom(task, destination)
+  ) {
     throw new ToolInputError("Event task was not found.");
   }
   return task;

@@ -568,7 +568,10 @@ describe("Tasks API", () => {
       expect(deletedEvent.status).toBe(204);
       await expect(
         getEventTask(fixture.sql.db(), "event_tasks_api"),
-      ).resolves.toBeUndefined();
+      ).resolves.toMatchObject({
+        id: "event_tasks_api",
+        status: "deleted",
+      });
 
       const afterDeleteList = await authenticatedApi(
         "viewer@example.com",
@@ -600,7 +603,7 @@ describe("Tasks API", () => {
             executionId: "event-run-1",
             kind: "event",
             taskId: "event_tasks_api",
-            taskTitle: "Task execution fixture",
+            taskTitle: "Summarize the closed issue.",
           }),
         ],
         truncated: false,
