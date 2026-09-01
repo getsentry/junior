@@ -26,7 +26,7 @@ export function createListEventTasksTool(
       readOnlyHint: true,
     },
     description:
-      "List event tasks for this Slack channel or DM, including tasks created from other threads in the same destination. A false triggerAvailable value means the task remains stored but its plugin event is not currently enabled.",
+      "List event tasks for the current destination. A false triggerAvailable value means the task remains stored but its plugin event is not currently enabled.",
     inputSchema: z.object({}).strict(),
     outputSchema: eventTaskListToolResultSchema,
     async execute() {

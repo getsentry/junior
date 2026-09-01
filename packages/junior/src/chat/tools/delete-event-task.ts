@@ -25,17 +25,14 @@ export function createDeleteEventTaskTool(
       readOnlyHint: false,
     },
     executionMode: "sequential",
-    description:
-      "Delete an event task. Tasks in this Slack channel or DM are deletable here, including from other threads. Public tasks from another channel in the same Slack workspace are deletable by task id.",
+    description: "Delete an event task.",
     inputSchema: z.object({ taskId: z.string().min(1) }).strict(),
     outputSchema: eventTaskToolResultSchema,
     async execute({ taskId }) {
       const current = await writableEventTask(context, taskId);
       const deleted = await deleteEventTask(getDb(), current.id);
       if (!deleted) {
-        throw new ToolInputError(
-          "Event task was not found for this Slack workspace.",
-        );
+        throw new ToolInputError("Event task was not found.");
       }
       return eventTaskSuccess(deleted, catalog);
     },

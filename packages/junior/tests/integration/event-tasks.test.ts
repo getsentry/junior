@@ -591,7 +591,7 @@ describe("event tasks", () => {
           task: "Change a private task from another channel.",
         },
       ),
-    ).rejects.toThrow("Event task was not found for this Slack workspace.");
+    ).rejects.toThrow("Event task was not found.");
     expect(await getEventTask(fixture.sql.db(), created.task.id)).toMatchObject(
       {
         task: { text: "Address the requested changes." },
@@ -708,7 +708,7 @@ describe("event tasks", () => {
         taskId: created.task.id,
         task: "Try to update the deleted task.",
       }),
-    ).rejects.toThrow("Event task was not found for this Slack workspace.");
+    ).rejects.toThrow("Event task was not found.");
     const listed = (await execute(
       createListEventTasksTool(context(), EVENT_CATALOG),
       {},

@@ -139,9 +139,9 @@ export function eventTaskMatchesDestination(
 }
 
 /**
- * Return whether the active Slack conversation may update or delete this task.
- * Same-channel tasks stay local. Public tasks may be managed by id from another
- * channel or DM in the same Slack workspace.
+ * Return whether the active destination may update or delete this task.
+ * Same-destination tasks stay local. Public tasks may be managed by id from
+ * another destination in the same workspace.
  */
 export function eventTaskIsWritableFrom(
   task: EventTask,
@@ -156,7 +156,7 @@ export function eventTaskIsWritableFrom(
   );
 }
 
-/** Load one task the active Slack conversation may update or delete. */
+/** Load one task the active destination may update or delete. */
 export async function writableEventTask(
   context: ToolRuntimeContext,
   id: string,
@@ -164,9 +164,7 @@ export async function writableEventTask(
   const { destination } = requireEventTaskSlackContext(context);
   const task = await getEventTask(getDb(), id);
   if (!task || !eventTaskIsWritableFrom(task, destination)) {
-    throw new ToolInputError(
-      "Event task was not found for this Slack workspace.",
-    );
+    throw new ToolInputError("Event task was not found.");
   }
   return task;
 }
