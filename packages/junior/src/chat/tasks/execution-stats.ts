@@ -13,6 +13,7 @@ import {
 } from "drizzle-orm";
 import { getDb } from "@/chat/db";
 import { logWarn } from "@/chat/logging";
+import { agentTurnCostUsd, agentTurnTotalTokens } from "@/chat/usage";
 import { juniorConversations } from "@/db/schema/conversations";
 import {
   juniorTaskExecutions,
@@ -43,10 +44,13 @@ export type TaskExecutionSummary = {
 
 export type TaskExecutionRecord = {
   conversationId?: string;
+  costUsd?: number;
+  durationMs?: number;
   executedAt: string;
   executionId: string;
   status: TaskExecutionStatus;
   title?: string;
+  totalTokens?: number;
 };
 
 export type TaskRunRecord = TaskExecutionRecord & {
@@ -310,10 +314,12 @@ export async function readTaskExecutions(args: {
   const rows = await getDb()
     .select({
       conversationId: juniorTaskExecutions.conversationId,
+      durationMs: juniorConversations.durationMs,
       executedAtMs: juniorTaskExecutions.executedAtMs,
       executionId: juniorTaskExecutions.executionId,
       status: juniorTaskExecutions.status,
       title: juniorConversations.title,
+      usage: juniorConversations.usage,
     })
     .from(juniorTaskExecutions)
     .leftJoin(
@@ -335,16 +341,7 @@ export async function readTaskExecutions(args: {
       desc(juniorTaskExecutions.executionId),
     )
     .limit(args.limit);
-  return rows.map((row) => {
-    const title = row.title?.trim();
-    return {
-      ...(row.conversationId ? { conversationId: row.conversationId } : undefined),
-      executedAt: new Date(row.executedAtMs).toISOString(),
-      executionId: row.executionId,
-      status: row.status,
-      ...(title ? { title } : undefined),
-    };
-  });
+  return rows.map((row) => mapTaskExecutionRecord(row));
 }
 
 /** Load newest-first executions for the supplied viewer-visible tasks. */
@@ -364,12 +361,14 @@ export async function readTaskRuns(args: {
   const rows = await getDb()
     .select({
       conversationId: juniorTaskExecutions.conversationId,
+      durationMs: juniorConversations.durationMs,
       executedAtMs: juniorTaskExecutions.executedAtMs,
       executionId: juniorTaskExecutions.executionId,
       kind: juniorTaskExecutions.kind,
       status: juniorTaskExecutions.status,
       taskId: juniorTaskExecutions.taskId,
       title: juniorConversations.title,
+      usage: juniorConversations.usage,
     })
     .from(juniorTaskExecutions)
     .leftJoin(
@@ -387,19 +386,44 @@ export async function readTaskRuns(args: {
     .limit(args.limit);
   return rows.flatMap((row) => {
     if (row.kind !== "scheduled" && row.kind !== "event") return [];
-    const title = row.title?.trim();
     return [
       {
-        ...(row.conversationId ? { conversationId: row.conversationId } : undefined),
-        executedAt: new Date(row.executedAtMs).toISOString(),
-        executionId: row.executionId,
+        ...mapTaskExecutionRecord(row),
         kind: row.kind,
-        status: row.status,
         taskId: row.taskId,
-        ...(title ? { title } : undefined),
       },
     ];
   });
+}
+
+function mapTaskExecutionRecord(row: {
+  conversationId: string | null;
+  durationMs: number | null;
+  executedAtMs: number;
+  executionId: string;
+  status: TaskExecutionStatus;
+  title: string | null;
+  usage: Parameters<typeof agentTurnCostUsd>[0] | null;
+}): TaskExecutionRecord {
+  const title = row.title?.trim();
+  const costUsd = agentTurnCostUsd(row.usage ?? undefined);
+  const totalTokens = agentTurnTotalTokens(row.usage ?? undefined);
+  const durationMs =
+    typeof row.durationMs === "number" &&
+    Number.isFinite(row.durationMs) &&
+    row.durationMs > 0
+      ? row.durationMs
+      : undefined;
+  return {
+    ...(row.conversationId ? { conversationId: row.conversationId } : undefined),
+    ...(costUsd !== undefined ? { costUsd } : undefined),
+    ...(durationMs !== undefined ? { durationMs } : undefined),
+    executedAt: new Date(row.executedAtMs).toISOString(),
+    executionId: row.executionId,
+    status: row.status,
+    ...(title ? { title } : undefined),
+    ...(totalTokens !== undefined ? { totalTokens } : undefined),
+  };
 }
 
 /** Load a fixed trailing window of terminal executions for one task by status. */
