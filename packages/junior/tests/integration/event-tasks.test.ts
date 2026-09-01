@@ -69,7 +69,9 @@ function context(
     channelId,
   };
   return {
-    ...(threadTs ? { conversationId: `slack:${channelId}:${threadTs}` } : undefined),
+    ...(threadTs
+      ? { conversationId: `slack:${channelId}:${threadTs}` }
+      : undefined),
     actor: {
       platform: "slack",
       teamId: workspaceTeamId,
@@ -702,7 +704,10 @@ describe("event tasks", () => {
     });
     await expect(
       getEventTask(fixture.sql.db(), created.task.id),
-    ).resolves.toBeUndefined();
+    ).resolves.toMatchObject({
+      id: created.task.id,
+      status: "deleted",
+    });
     await expect(
       execute(createUpdateEventTaskTool(context("U999"), EVENT_CATALOG), {
         taskId: created.task.id,
@@ -716,5 +721,21 @@ describe("event tasks", () => {
       tasks: unknown[];
     };
     expect(listed.tasks).toEqual([]);
+
+    const recreated = await createTask(
+      "Summarize the requested changes after delete.",
+      "event-task-replayed-create",
+    );
+    expect(recreated.task).toMatchObject({
+      id: created.task.id,
+      task: "Summarize the requested changes after delete.",
+    });
+    await expect(
+      getEventTask(fixture.sql.db(), created.task.id),
+    ).resolves.toMatchObject({
+      id: created.task.id,
+      status: "active",
+      task: { text: "Summarize the requested changes after delete." },
+    });
   });
 });

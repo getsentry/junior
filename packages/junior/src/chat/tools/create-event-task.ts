@@ -128,7 +128,10 @@ export function createEventTaskTool(
         ) {
           throw new ToolInputError("Event task operation identity is invalid.");
         }
-        return eventTaskSuccess(existing, catalog);
+        // Live create retries stay idempotent. Deleted rows fall through and reactivate.
+        if (existing.status !== "deleted") {
+          return eventTaskSuccess(existing, catalog);
+        }
       }
       const title = await resolveTaskTitle({
         completeText,

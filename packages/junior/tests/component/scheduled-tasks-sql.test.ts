@@ -323,6 +323,48 @@ describe("scheduled-task SQL storage", () => {
     }
   }, 30_000);
 
+  it("skips pending runs and stops claiming after a task is deleted", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+
+    try {
+      await migrateSchema(fixture.sql);
+      const db = fixture.sql.db();
+      const task = createTask({ id: "sched_delete_stops_runs" });
+      await saveScheduledTask(db, task);
+      const claimed = await claimDueScheduledRun(db, { nowMs: TEST_NOW_MS });
+      expect(claimed).toMatchObject({
+        id: `${task.id}:${TEST_RUN_AT_MS}`,
+        status: "pending",
+      });
+
+      await saveScheduledTask(db, {
+        ...task,
+        nextRunAtMs: undefined,
+        runNowAtMs: undefined,
+        status: "deleted",
+        updatedAtMs: TEST_NOW_MS + 1,
+      });
+
+      const [row] = await fixture.sql.query<{
+        errorMessage: string | null;
+        status: string;
+      }>(
+        `SELECT status, record->>'errorMessage' AS "errorMessage"
+         FROM junior_scheduler_runs WHERE id = $1`,
+        [`${task.id}:${TEST_RUN_AT_MS}`],
+      );
+      expect(row).toMatchObject({
+        errorMessage: `Scheduled task ${task.id} was deleted before the run started.`,
+        status: "skipped",
+      });
+      await expect(
+        claimDueScheduledRun(db, { nowMs: TEST_NOW_MS + 60_000 }),
+      ).resolves.toBeUndefined();
+    } finally {
+      await fixture.close();
+    }
+  }, 30_000);
+
   it("does not overwrite a concurrent task save while skipping missed work", async () => {
     const fixture = await createLocalJuniorSqlFixture();
 

@@ -271,7 +271,6 @@ export async function readTaskExecutionDays(
   return [...byDate.values()];
 }
 
-
 /** Load a fixed trailing window of completed executions stacked by hour. */
 export async function readTaskExecutionHours(
   hourCount = 7 * 24,
@@ -401,18 +400,32 @@ export async function readTaskExecutions(args: {
 
 /** Load newest-first executions for the supplied viewer-visible tasks. */
 export async function readTaskRuns(args: {
+  conversationIds?: string[];
   limit: number;
   namespace?: string;
-  tasks: Array<{ kind: TaskExecutionType; taskId: string }>;
+  tasks?: Array<{ kind: TaskExecutionType; taskId: string }>;
 }): Promise<TaskRunRecord[]> {
-  if (args.tasks.length === 0) return [];
-  const namespace = args.namespace ?? "junior";
-  const selectors = args.tasks.map((task) =>
-    and(
-      eq(juniorTaskExecutions.kind, task.kind),
-      eq(juniorTaskExecutions.taskId, task.taskId),
+  const tasks = args.tasks ?? [];
+  const conversationIds = [
+    ...new Set(
+      (args.conversationIds ?? []).filter(
+        (conversationId) => conversationId.trim().length > 0,
+      ),
     ),
-  );
+  ];
+  if (tasks.length === 0 && conversationIds.length === 0) return [];
+  const namespace = args.namespace ?? "junior";
+  const selectors = [
+    ...tasks.map((task) =>
+      and(
+        eq(juniorTaskExecutions.kind, task.kind),
+        eq(juniorTaskExecutions.taskId, task.taskId),
+      ),
+    ),
+    ...(conversationIds.length > 0
+      ? [inArray(juniorTaskExecutions.conversationId, conversationIds)]
+      : []),
+  ];
   const rows = await getDb()
     .select({
       conversationId: juniorTaskExecutions.conversationId,
@@ -470,7 +483,9 @@ function mapTaskExecutionRecord(row: {
       ? row.durationMs
       : undefined;
   return {
-    ...(row.conversationId ? { conversationId: row.conversationId } : undefined),
+    ...(row.conversationId
+      ? { conversationId: row.conversationId }
+      : undefined),
     ...(costUsd !== undefined ? { costUsd } : undefined),
     ...(durationMs !== undefined ? { durationMs } : undefined),
     executedAt: new Date(row.executedAtMs).toISOString(),
@@ -584,4 +599,3 @@ export async function readTaskExecutionStatusHours(args: {
   }
   return [...byHour.values()];
 }
-

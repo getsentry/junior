@@ -267,6 +267,13 @@
       "when": 1787873831749,
       "tag": "0037_conversation_location",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1788302586170,
+      "tag": "0038_event_task_status",
+      "breakpoints": true
     }
   ]
 }
