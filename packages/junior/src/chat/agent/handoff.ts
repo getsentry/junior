@@ -38,8 +38,6 @@ import {
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 import { hasAgentTurnUsage, type AgentTurnUsage } from "@/chat/usage";
 
-type HandoffControl = NonNullable<ToolRuntimeContext["handoff"]>;
-
 /** Staged handoff waiting for the next Pi turn boundary. */
 export type PendingHandoff = {
   messages: PiMessage[];
@@ -70,8 +68,8 @@ export function exclusiveToolName(
 export function handoffControl(args: {
   activeProfile: ModelProfile;
   enabled: boolean;
-  execute: NonNullable<HandoffControl>["execute"];
-}): HandoffControl | undefined {
+  execute: NonNullable<ToolRuntimeContext["handoff"]>["execute"];
+}): ToolRuntimeContext["handoff"] {
   if (!args.enabled) {
     return undefined;
   }
@@ -106,7 +104,7 @@ export function toolsForHandoffProfile(args: {
   activeProfile: ModelProfile;
   agentTools: AgentTool[];
   enabled: boolean;
-  execute: NonNullable<HandoffControl>["execute"];
+  execute: NonNullable<ToolRuntimeContext["handoff"]>["execute"];
 }): AgentTool[] {
   const control = handoffControl({
     activeProfile: args.activeProfile,
