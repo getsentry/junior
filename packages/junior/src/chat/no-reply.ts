@@ -15,8 +15,3 @@ export const NO_REPLY_MARKER = "[[NO_REPLY]]";
 export function isNoReplyMarker(text: string): boolean {
   return text.trimEnd().endsWith(NO_REPLY_MARKER);
 }
-
-/** True when the marker appears anywhere in the text (telemetry only). */
-export function containsNoReplyMarker(text: string): boolean {
-  return text.includes(NO_REPLY_MARKER);
-}

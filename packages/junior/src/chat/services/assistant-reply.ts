@@ -6,9 +6,10 @@ const THINKING_XML_BLOCK_PATTERN =
   /[ \t]*<thinking\b[^>]*>[\s\S]*?<\/thinking>[ \t]*(?:\r?\n)?/gi;
 const FENCED_CODE_BLOCK_PATTERN = /```[\s\S]*?```/g;
 
-type ReplyDecision =
+export type ReplyDecision =
   | { kind: "deliver"; text: string }
   | { kind: "empty" }
+  | { kind: "no_reply" }
   | { kind: "suppress" };
 
 /** Remove provider reasoning wrappers while preserving fenced code examples. */
@@ -35,9 +36,9 @@ export function decideReply(message: AssistantMessage): ReplyDecision {
 
   const text = sanitizeAssistantText(extractAssistantText(message));
   if (!text) return { kind: "empty" };
-  // See isNoReplyMarker: silence this message only; later messages decide alone.
+  // Per-message silence only (see isNoReplyMarker). Later messages decide alone.
   if (isNoReplyMarker(text)) {
-    return { kind: "suppress" };
+    return { kind: "no_reply" };
   }
   return { kind: "deliver", text };
 }

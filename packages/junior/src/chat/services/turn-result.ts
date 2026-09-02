@@ -1,6 +1,5 @@
 import { isRetryableAssistantError } from "@earendil-works/pi-ai";
 import { logInfo, logWarn, summarizeMessageText } from "@/chat/logging";
-import { containsNoReplyMarker, isNoReplyMarker } from "@/chat/no-reply";
 import type { PiMessage } from "@/chat/pi/messages";
 import { createProviderError } from "@/chat/services/provider-error";
 import type { TurnRoute } from "@/chat/services/turn-router";
@@ -80,24 +79,24 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
       .map((message) => extractAssistantText(message))
       .join("\n\n"),
   ).trim();
-  // Per-message only: each terminal assistant message is delivered or suppressed
-  // on its own (see decideReply / isNoReplyMarker). Tool-call suppress is not a
-  // no-reply. A marker on one message never rewrites earlier deliverable text.
-  const primaryText = terminalAssistantMessages
-    .map((message) => decideReply(message))
+  // Per-message only via decideReply. Tool-call suppress is not no-reply.
+  const replyDecisions = terminalAssistantMessages.map((message) =>
+    decideReply(message),
+  );
+  const primaryText = replyDecisions
     .filter(
       (output): output is { kind: "deliver"; text: string } =>
         output.kind === "deliver",
     )
     .map((output) => output.text)
     .join("\n\n");
-  const terminalTexts = terminalAssistantMessages.map((message) =>
-    sanitizeAssistantText(extractAssistantText(message)),
-  );
   const noReplyRequested =
     !primaryText &&
-    terminalTexts.some((text) => isNoReplyMarker(text)) &&
-    terminalTexts.every((text) => !text || isNoReplyMarker(text));
+    replyDecisions.some((decision) => decision.kind === "no_reply") &&
+    replyDecisions.every(
+      (decision) =>
+        decision.kind === "empty" || decision.kind === "no_reply",
+    );
 
   const toolErrorCount = toolResults.filter((result) => result.isError).length;
   const reactionPerformed = toolResults.some(
@@ -130,11 +129,6 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
     if (!isProviderError) {
       logInfo("ai.no_reply_marker.accepted", markerAttributes);
     }
-  } else if (containsNoReplyMarker(rawPrimaryText)) {
-    logWarn("ai.no_reply_marker.mixed_text", {
-      "app.ai.no_reply_marker": true,
-      "app.ai.no_reply_marker_mode": "mixed",
-    });
   }
 
   if (!primaryText && !completedWithoutTerminalText && !isProviderError) {
