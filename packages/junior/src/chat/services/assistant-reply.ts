@@ -9,7 +9,6 @@ const FENCED_CODE_BLOCK_PATTERN = /```[\s\S]*?```/g;
 type ReplyDecision =
   | { kind: "deliver"; text: string }
   | { kind: "empty" }
-  | { kind: "no_reply" }
   | { kind: "suppress" };
 
 /** Remove provider reasoning wrappers while preserving fenced code examples. */
@@ -36,9 +35,9 @@ export function decideReply(message: AssistantMessage): ReplyDecision {
 
   const text = sanitizeAssistantText(extractAssistantText(message));
   if (!text) return { kind: "empty" };
-  // Marker silence is per message; tool-call suppress stays a separate kind.
+  // Marker silence and tool-call tails both mean do not deliver this message.
   if (isNoReplyMarker(text)) {
-    return { kind: "no_reply" };
+    return { kind: "suppress" };
   }
   return { kind: "deliver", text };
 }

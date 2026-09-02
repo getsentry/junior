@@ -1,5 +1,6 @@
 import { isRetryableAssistantError } from "@earendil-works/pi-ai";
 import { logInfo, logWarn, summarizeMessageText } from "@/chat/logging";
+import { isNoReplyMarker } from "@/chat/no-reply";
 import type { PiMessage } from "@/chat/pi/messages";
 import { createProviderError } from "@/chat/services/provider-error";
 import type { TurnRoute } from "@/chat/services/turn-router";
@@ -79,21 +80,22 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
       .map((message) => extractAssistantText(message))
       .join("\n\n"),
   ).trim();
-  const replyDecisions = terminalAssistantMessages.map(decideReply);
-  const primaryText = replyDecisions
+  const primaryText = terminalAssistantMessages
+    .map((message) => decideReply(message))
     .filter(
       (output): output is { kind: "deliver"; text: string } =>
         output.kind === "deliver",
     )
     .map((output) => output.text)
     .join("\n\n");
-  // Intentional silence only when every terminal decision is empty or no_reply.
+  // Intentional silence only for marker text. Tool-call suppress is not no-reply.
+  const terminalTexts = terminalAssistantMessages.map((message) =>
+    sanitizeAssistantText(extractAssistantText(message)),
+  );
   const noReplyRequested =
     !primaryText &&
-    replyDecisions.some((decision) => decision.kind === "no_reply") &&
-    replyDecisions.every(
-      (decision) => decision.kind === "empty" || decision.kind === "no_reply",
-    );
+    terminalTexts.some((text) => isNoReplyMarker(text)) &&
+    terminalTexts.every((text) => !text || isNoReplyMarker(text));
 
   const toolErrorCount = toolResults.filter((result) => result.isError).length;
   const reactionPerformed = toolResults.some(
