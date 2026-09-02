@@ -250,8 +250,9 @@ resource subscription). Call sites pass facts only. Unit snapshots in
 - Mark the turn as a **task**, not a person message.
 - Put the **job** before event payload.
 - Keep event data as **facts**, never as new instructions.
-- End with one **reply contract**. Silence is `[[NO_REPLY]]` from `no-reply.ts`,
-  not vague “do not reply” prose.
+- End with one **reply contract**. Silence is `[[NO_REPLY]]` from `no-reply.ts`
+  (message text that ends with the marker; per message only), not vague “do not
+  reply” prose.
 - Stay short. Prefer one clear rule over stacked warnings.
 
 **Section order** (omit empty optionals)
@@ -272,7 +273,7 @@ resource subscription). Call sites pass facts only. Unit snapshots in
 
 ```text
 When you reply, follow any reply format in the instructions.
-If no visible reply is needed, make the final message exactly [[NO_REPLY]].
+If no visible reply is needed, your final assistant message must be exactly [[NO_REPLY]] and nothing else.
 Otherwise briefly summarize what you acted on and what you did or need next.
 ```
 
@@ -290,7 +291,7 @@ This is a task, not a message from a person.
 Instructions: Post a digest. Summarize the latest state.
 
 When you reply, follow any reply format in the instructions.
-If no visible reply is needed, make the final message exactly [[NO_REPLY]].
+If no visible reply is needed, your final assistant message must be exactly [[NO_REPLY]] and nothing else.
 Otherwise briefly summarize what you acted on and what you did or need next.
 ```
 
@@ -315,7 +316,7 @@ Failed checks:
 - test
 
 When you reply, follow any reply format in the instructions.
-If no visible reply is needed, make the final message exactly [[NO_REPLY]].
+If no visible reply is needed, your final assistant message must be exactly [[NO_REPLY]] and nothing else.
 Otherwise briefly summarize what you acted on and what you did or need next.
 ```
 

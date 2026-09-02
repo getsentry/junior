@@ -261,7 +261,7 @@ describe("event tasks", () => {
       Please add regression coverage.
 
       When you reply, follow any reply format in the instructions.
-      If no visible reply is needed, make the final message exactly [[NO_REPLY]].
+      If no visible reply is needed, your final assistant message must be exactly [[NO_REPLY]] and nothing else.
       Otherwise briefly summarize what you acted on and what you did or need next."
     `);
   });

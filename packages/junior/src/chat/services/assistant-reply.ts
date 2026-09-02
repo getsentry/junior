@@ -35,7 +35,7 @@ export function decideReply(message: AssistantMessage): ReplyDecision {
 
   const text = sanitizeAssistantText(extractAssistantText(message));
   if (!text) return { kind: "empty" };
-  // Only an exact whole-message marker is intentional silence.
+  // Marker silence and tool-call tails both mean do not deliver this message.
   if (isNoReplyMarker(text)) {
     return { kind: "suppress" };
   }

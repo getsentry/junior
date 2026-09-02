@@ -1,6 +1,6 @@
 import { isRetryableAssistantError } from "@earendil-works/pi-ai";
 import { logInfo, logWarn, summarizeMessageText } from "@/chat/logging";
-import { containsNoReplyMarker, isNoReplyMarker } from "@/chat/no-reply";
+import { isNoReplyMarker } from "@/chat/no-reply";
 import type { PiMessage } from "@/chat/pi/messages";
 import { createProviderError } from "@/chat/services/provider-error";
 import type { TurnRoute } from "@/chat/services/turn-router";
@@ -88,8 +88,7 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
     )
     .map((output) => output.text)
     .join("\n\n");
-  // Silence only for exact whole-message markers. Tool-call suppress is not a
-  // no-reply. Mixed marker + prose still delivers.
+  // Intentional silence only for marker text. Tool-call suppress is not no-reply.
   const terminalTexts = terminalAssistantMessages.map((message) =>
     sanitizeAssistantText(extractAssistantText(message)),
   );
@@ -129,11 +128,6 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
     if (!isProviderError) {
       logInfo("ai.no_reply_marker.accepted", markerAttributes);
     }
-  } else if (containsNoReplyMarker(rawPrimaryText)) {
-    logWarn("ai.no_reply_marker.mixed_text", {
-      "app.ai.no_reply_marker": true,
-      "app.ai.no_reply_marker_mode": "mixed",
-    });
   }
 
   if (!primaryText && !completedWithoutTerminalText && !isProviderError) {

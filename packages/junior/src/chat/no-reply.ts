@@ -1,11 +1,9 @@
 export const NO_REPLY_MARKER = "[[NO_REPLY]]";
 
-/** Detect the reserved marker for intentionally completing without thread text. */
+/**
+ * True when one assistant message ends with the silence marker.
+ * Mid-sentence mentions do not match. Detection is per message only.
+ */
 export function isNoReplyMarker(text: string): boolean {
-  return text.trim() === NO_REPLY_MARKER;
-}
-
-/** Detect marker leaks before publication strips or rejects them. */
-export function containsNoReplyMarker(text: string): boolean {
-  return text.includes(NO_REPLY_MARKER);
+  return text.trimEnd().endsWith(NO_REPLY_MARKER);
 }

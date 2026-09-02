@@ -16,7 +16,7 @@ describe("renderTaskInput", () => {
       Instructions: Post a digest. Summarize the latest state.
 
       When you reply, follow any reply format in the instructions.
-      If no visible reply is needed, make the final message exactly ${NO_REPLY_MARKER}.
+      If no visible reply is needed, your final assistant message must be exactly ${NO_REPLY_MARKER} and nothing else.
       Otherwise briefly summarize what you acted on and what you did or need next."
     `);
   });
@@ -52,7 +52,7 @@ describe("renderTaskInput", () => {
       - test
 
       When you reply, follow any reply format in the instructions.
-      If no visible reply is needed, make the final message exactly ${NO_REPLY_MARKER}.
+      If no visible reply is needed, your final assistant message must be exactly ${NO_REPLY_MARKER} and nothing else.
       Otherwise briefly summarize what you acted on and what you did or need next."
     `);
   });
@@ -84,7 +84,7 @@ describe("renderTaskInput", () => {
         "abc",
         "",
         "When you reply, follow any reply format in the instructions.",
-        `If no visible reply is needed, make the final message exactly ${NO_REPLY_MARKER}.`,
+        `If no visible reply is needed, your final assistant message must be exactly ${NO_REPLY_MARKER} and nothing else.`,
         "Otherwise briefly summarize what you acted on and what you did or need next.",
       ].join("\n"),
     );

@@ -9,7 +9,7 @@ import { NO_REPLY_MARKER } from "@/chat/no-reply";
 function replyContractLines(): string[] {
   return [
     "When you reply, follow any reply format in the instructions.",
-    `If no visible reply is needed, make the final message exactly ${NO_REPLY_MARKER}.`,
+    `If no visible reply is needed, your final assistant message must be exactly ${NO_REPLY_MARKER} and nothing else.`,
     "Otherwise briefly summarize what you acted on and what you did or need next.",
   ];
 }

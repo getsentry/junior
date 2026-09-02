@@ -161,7 +161,7 @@ describe("Slack behavior: finalized thread replies", () => {
     expect(secondPost.startsWith("```ts\n")).toBe(true);
   });
 
-  it("posts answers that mention the no-reply marker", async () => {
+  it("posts answers that mention the no-reply marker mid-sentence", async () => {
     const answer = `Earlier turn used ${NO_REPLY_MARKER} and then stopped.`;
     const { slackRuntime } = createTestChatRuntime({
       services: {
@@ -199,6 +199,48 @@ describe("Slack behavior: finalized thread replies", () => {
         type: "turn_completed",
         turnId: "turn_m-final-9",
         outcome: "success",
+      }),
+    ]);
+  });
+
+  it("stays silent when assistant text ends with the no-reply marker", async () => {
+    const answer = `staying silent.\n${NO_REPLY_MARKER}`;
+    const { slackRuntime } = createTestChatRuntime({
+      services: {
+        agentRunner: createModelAgentRunner(
+          createModelStream([{ type: "text", text: answer }]),
+        ),
+      },
+    });
+
+    const thread = await createTestThread({
+      id: "slack:C0FINAL:1700006010.000",
+    });
+    await slackRuntime.handleNewMention(
+      thread,
+      createTestMessage({
+        id: "m-final-10",
+        text: "<@U0APP> maintain this PR quietly",
+        isMention: true,
+        threadId: thread.id,
+      }),
+      { destination: createTestDestination(thread) },
+    );
+
+    expect(thread.postKinds).toEqual([]);
+    expect(thread.posts).toEqual([]);
+    const lifecycle = await loadTurnLifecycleEvents(thread.id);
+    expect(lifecycle.map((event) => event.data)).toEqual([
+      expect.objectContaining({
+        type: "turn_started",
+        turnId: "turn_m-final-10",
+        inputMessageIds: ["m-final-10"],
+        surface: "slack",
+      }),
+      expect.objectContaining({
+        type: "turn_completed",
+        turnId: "turn_m-final-10",
+        outcome: "no_reply",
       }),
     ]);
   });
