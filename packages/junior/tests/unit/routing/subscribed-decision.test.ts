@@ -118,6 +118,135 @@ describe("subscribed reply decision", () => {
 
   it.each([
     {
+      name: "bare stop after mention strip",
+      rawText: "<@U0APP> stop",
+      text: "stop",
+    },
+    {
+      name: "bare stop with trailing punctuation",
+      rawText: "@jr stop.",
+      text: "stop.",
+    },
+    {
+      name: "please stop",
+      rawText: "@jr please stop",
+      text: "please stop",
+    },
+    {
+      name: "stop with redirect after em dash",
+      rawText: "@jr stop — I meant staging, not prod",
+      text: "stop — I meant staging, not prod",
+    },
+    {
+      name: "stop spamming",
+      rawText: "@jr stop spamming",
+      text: "stop spamming",
+    },
+    {
+      name: "can you stop",
+      rawText: "@jr can you stop",
+      text: "can you stop",
+    },
+    {
+      name: "stop it",
+      rawText: "stop it",
+      text: "stop it",
+    },
+  ])(
+    "unsubscribes explicit mentions for $name without calling the classifier",
+    async (fixture) => {
+      const completeObject = vi.fn();
+
+      await expect(
+        decideSubscribedThreadReply({
+          botUserName: "junior",
+          modelId: "router-model",
+          input: makeInput({
+            rawText: fixture.rawText,
+            text: fixture.text,
+            isExplicitMention: true,
+          }),
+          completeObject,
+          logClassifierFailure: vi.fn(),
+        }),
+      ).resolves.toEqual({
+        shouldReply: false,
+        shouldUnsubscribe: true,
+        reason: SubscribedReplyReason.ThreadOptOut,
+        reasonDetail: "explicit stop instruction",
+      });
+      expect(completeObject).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    {
+      name: "stop as a task verb",
+      text: "stop the worker and restart it",
+    },
+    {
+      name: "how to stop something",
+      text: "how do I stop the sandbox keepalive?",
+    },
+    {
+      name: "can you stop a concrete task",
+      text: "can you stop the worker and restart it",
+    },
+    {
+      name: "non-stop continuation",
+      text: "please continue with the PR checks",
+    },
+  ])(
+    "does not treat $name as an explicit-mention opt-out",
+    async (fixture) => {
+      const completeObject = vi.fn();
+
+      await expect(
+        decideSubscribedThreadReply({
+          botUserName: "junior",
+          modelId: "router-model",
+          input: makeInput({
+            rawText: fixture.text,
+            text: fixture.text,
+            isExplicitMention: true,
+          }),
+          completeObject,
+          logClassifierFailure: vi.fn(),
+        }),
+      ).resolves.toEqual({
+        shouldReply: true,
+        reason: SubscribedReplyReason.ExplicitMention,
+      });
+      expect(completeObject).not.toHaveBeenCalled();
+    },
+  );
+
+  it("unsubscribes bare stop in a subscribed thread without a mention", async () => {
+    const completeObject = vi.fn();
+
+    await expect(
+      decideSubscribedThreadReply({
+        botUserName: "junior",
+        modelId: "router-model",
+        input: makeInput({
+          rawText: "stop",
+          text: "stop",
+          isExplicitMention: false,
+        }),
+        completeObject,
+        logClassifierFailure: vi.fn(),
+      }),
+    ).resolves.toEqual({
+      shouldReply: false,
+      shouldUnsubscribe: true,
+      reason: SubscribedReplyReason.ThreadOptOut,
+      reasonDetail: "stop instruction",
+    });
+    expect(completeObject).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    {
       name: "a leading named mention",
       rawText: "@Cursor can you take this one?",
       text: "@Cursor can you take this one?",

@@ -41,7 +41,7 @@ Assess conversation floor ownership and whether the latest message continues wor
 - should_reply=false when the latest message is plainly human-to-human, even if it discusses the same project.
 
 # Unsubscribe Policy
-- should_unsubscribe=true only when the latest message clearly tells ${assistantName} to stop watching, replying, participating, or to leave the thread.
+- should_unsubscribe=true when the latest message clearly tells ${assistantName} to stop, stop watching/replying/participating, stop spamming, unsubscribe, or leave the thread. Bare "stop" counts.
 - If should_unsubscribe=true, should_reply must be false.
 - Ordinary disagreement, correction, or "not yet" is not an unsubscribe.
 

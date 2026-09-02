@@ -88,8 +88,18 @@ const LEADING_NAMED_MENTION_RE = /^\s*@([a-z0-9._-]+)\b[\s,:-]*/i;
 const TRANSCRIPT_MESSAGE_LINE_RE =
   /^\[(assistant|user)\]\s+([^:]+):\s+([\s\S]+)$/i;
 const FORCED_THREAD_OPTOUT_RE = /^!stop(?:\s|$)/i;
+/** Drop a leading bot/user address so `@jr stop` matches the same as bare `stop`. */
+const LEADING_ADDRESS_RE =
+  /^(?:(?:<@[^>]+>|@[\w.-]+)\s*[,:\-–—]?\s*)+/i;
 const THREAD_OPTOUT_PATTERNS = [
-  /\bstop (?:watching|replying|participating)\b/i,
+  // Bare stop, optional please, optional trailing punctuation.
+  /^(?:please\s+)?stop(?:\s*[.!…]+)?$/i,
+  // Docs-style stop with a short redirect after a dash/colon.
+  /^(?:please\s+)?stop\s*[—–\-:]\s*.+/i,
+  // Natural stop commands people actually type.
+  /\bstop\s+(?:watching|replying|participating|spamming|notifying|pinging|messaging|bothering|posting)(?:\b|$)/i,
+  /\b(?:can|could)\s+you\s+(?:please\s+)?stop(?:\s*[.!…]+)?$/i,
+  /\bstop\s+(?:it|that|this)(?:\s*[.!…]+)?$/i,
   /\bstay out\b/i,
   /\bdon['’]t (?:reply|participate|watch)\b/i,
   /\bunsubscribe\b/i,
@@ -161,9 +171,14 @@ function isForcedThreadOptOutCommand(rawText: string, text: string): boolean {
   );
 }
 
+function normalizeThreadOptOutCandidate(value: string): string {
+  return value.trim().replace(LEADING_ADDRESS_RE, "").trim();
+}
+
 function isThreadOptOutInstruction(rawText: string, text: string): boolean {
-  return THREAD_OPTOUT_PATTERNS.some(
-    (pattern) => pattern.test(rawText) || pattern.test(text),
+  const candidates = [rawText, text].map(normalizeThreadOptOutCandidate);
+  return THREAD_OPTOUT_PATTERNS.some((pattern) =>
+    candidates.some((candidate) => candidate.length > 0 && pattern.test(candidate)),
   );
 }
 
@@ -446,15 +461,18 @@ export async function decideSubscribedThreadReply(args: {
     return { shouldReply: false, reason: SubscribedReplyReason.EmptyMessage };
   }
 
+  if (isThreadOptOutInstruction(rawText, text)) {
+    return {
+      shouldReply: false,
+      shouldUnsubscribe: true,
+      reason: SubscribedReplyReason.ThreadOptOut,
+      reasonDetail: args.input.isExplicitMention
+        ? "explicit stop instruction"
+        : "stop instruction",
+    };
+  }
+
   if (args.input.isExplicitMention) {
-    if (isThreadOptOutInstruction(rawText, text)) {
-      return {
-        shouldReply: false,
-        shouldUnsubscribe: true,
-        reason: SubscribedReplyReason.ThreadOptOut,
-        reasonDetail: "explicit stop instruction",
-      };
-    }
     return {
       shouldReply: true,
       reason: SubscribedReplyReason.ExplicitMention,
