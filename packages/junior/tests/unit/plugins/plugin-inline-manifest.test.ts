@@ -79,7 +79,12 @@ describe("inline plugin manifests", () => {
     });
   });
 
-  it("preserves wrapped MCP tool declarations", () => {
+  it("preserves wrapped MCP tool and bot auth declarations", () => {
+    const auth = {
+      issuer: "https://junior.example.test",
+      keyId: "junior-1",
+      privateKeyEnv: "LINEAR_MCP_PRIVATE_KEY",
+    };
     const manifest = parse({
       name: "linear",
       displayName: "Linear",
@@ -87,10 +92,12 @@ describe("inline plugin manifests", () => {
       mcp: {
         transport: "http",
         url: "https://mcp.linear.app/mcp",
+        auth,
         wrappedTools: ["create_issue"],
       },
     });
 
     expect(manifest.mcp?.wrappedTools).toEqual(["create_issue"]);
+    expect(manifest.mcp?.auth).toEqual(auth);
   });
 });

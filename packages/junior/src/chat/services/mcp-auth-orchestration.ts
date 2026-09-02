@@ -8,6 +8,7 @@
  */
 import type { OAuthClientProvider } from "@modelcontextprotocol/sdk/client/auth.js";
 import type { Destination, Source } from "@sentry/junior-plugin-api";
+import { createJwtBearerMcpClientProvider } from "@/chat/mcp/jwt-bearer-provider";
 import { createMcpOAuthClientProvider } from "@/chat/mcp/oauth";
 import {
   deleteMcpAuthSession,
@@ -84,6 +85,14 @@ export function createMcpAuthOrchestration(
   const authProviderFactory = async (
     plugin: PluginDefinition,
   ): Promise<OAuthClientProvider | undefined> => {
+    const mcp = plugin.manifest.mcp;
+    if (mcp?.auth) {
+      return createJwtBearerMcpClientProvider(
+        plugin.manifest.name,
+        mcp.url,
+        mcp.auth,
+      );
+    }
     if (!input.conversationId || !input.sessionId || !input.actorId) {
       return undefined;
     }

@@ -52,9 +52,20 @@ export interface PluginRuntimePostinstallCommand {
   sudo?: boolean;
 }
 
+export interface PluginMcpAuthConfig {
+  /** Issuer string the MCP server trusts for this bot. */
+  issuer: string;
+  /** JWKS key id of the published public key that pairs with the private key. */
+  keyId: string;
+  /** Env var holding the PEM (PKCS#8) private signing key. */
+  privateKeyEnv: string;
+}
+
 export interface PluginMcpConfig {
   /** Provider tools exposed directly to the model. */
   allowedTools?: string[];
+  /** Bot auth: sign short-lived JWT assertions instead of per-actor OAuth. */
+  auth?: PluginMcpAuthConfig;
   headers?: Record<string, string>;
   transport: "http";
   url: string;

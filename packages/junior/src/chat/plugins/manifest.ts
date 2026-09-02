@@ -15,7 +15,10 @@ import type {
   PluginSystemRuntimeDependency,
   PluginSystemRuntimeDependencyFromUrl,
 } from "./types";
-import { inlineManifestSource } from "./inline-manifest-source";
+import {
+  inlineManifestSource,
+  mcpAuthSource,
+} from "./inline-manifest-source";
 
 const PLUGIN_NAME_RE = /^[a-z][a-z0-9-]*$/;
 const SHORT_CONFIG_KEY_RE = /^[a-z0-9]+(\.[a-z0-9-]+)*$/;
@@ -227,6 +230,14 @@ const oauthSourceSchema = z
   })
   .passthrough();
 
+const mcpAuthSourceSchema = z
+  .object({
+    issuer: nonEmptyTrimmedString,
+    "key-id": nonEmptyTrimmedString,
+    "private-key-env": envVarString,
+  })
+  .passthrough();
+
 const mcpSourceSchema = z
   .object({
     transport: nonEmptyTrimmedString
@@ -235,6 +246,7 @@ const mcpSourceSchema = z
       })
       .optional(),
     url: httpsUrlString,
+    auth: mcpAuthSourceSchema.optional(),
     headers: stringMapSchema.optional(),
     "allowed-tools": nonEmptyStringArraySchema("allowed-tools").optional(),
     "wrapped-tools": nonEmptyStringArraySchema("wrapped-tools").optional(),
@@ -360,6 +372,7 @@ function manifestConfigPatch(
       setDefined(mcp, "transport", config.mcp.transport);
       setDefined(mcp, "url", config.mcp.url);
       setDefined(mcp, "headers", config.mcp.headers);
+      setDefined(mcp, "auth", config.mcp.auth && mcpAuthSource(config.mcp.auth));
       setDefined(mcp, "allowed-tools", config.mcp.allowedTools);
       setDefined(mcp, "wrapped-tools", config.mcp.wrappedTools);
       result.mcp = mcp;
@@ -588,6 +601,7 @@ function assertCommandEnvDoesNotExposeHostSecretRefs(
   apiHeaders: Record<string, string> | undefined,
   credentials: PluginCredentials | undefined,
   oauth: PluginOAuthConfig | undefined,
+  mcp: PluginMcpConfig | undefined,
   pluginName: string,
 ): void {
   if (!commandEnv) {
@@ -595,6 +609,9 @@ function assertCommandEnvDoesNotExposeHostSecretRefs(
   }
 
   const hostOnlyRefs = new Set<string>();
+  if (mcp?.auth) {
+    hostOnlyRefs.add(mcp.auth.privateKeyEnv);
+  }
   for (const value of Object.values(apiHeaders ?? {})) {
     for (const name of envReferences(value)) {
       hostOnlyRefs.add(name);
@@ -945,9 +962,18 @@ function normalizeMcp(
       })
     : undefined;
 
+  const auth = result.data.auth
+    ? {
+        issuer: result.data.auth.issuer,
+        keyId: result.data.auth["key-id"],
+        privateKeyEnv: result.data.auth["private-key-env"],
+      }
+    : undefined;
+
   return {
     transport: "http",
     url: result.data.url,
+    ...(auth ? { auth } : undefined),
     ...(headers ? { headers } : undefined),
     ...(result.data["allowed-tools"]
       ? { allowedTools: result.data["allowed-tools"] }
@@ -1150,6 +1176,7 @@ function parseManifestSource(
     apiHeaders,
     credentials,
     manifest.oauth,
+    mcp,
     data.name,
   );
   assertCommandEnvHostRefsAreExplicitlyExposed(
