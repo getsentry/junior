@@ -183,19 +183,19 @@ const app = await createApp({
     standard: {
       modelId: "xai/grok-4.5",
       description:
-        "Default general assistant work: lookups, explanations, ordinary tool use, and light investigation.",
+        "Use for default assistant work: lookups, explanations, ordinary tool use, short answers, and light single-source investigation. Avoid when the task is implementation, debugging, multi-file changes, architecture decisions, or research-heavy synthesis across systems.",
     },
     coding: {
       modelId: "openai/gpt-5.6-sol",
       description:
-        "Coding and complex execution work: implementation, debugging, root-cause analysis, broad refactors, multi-file changes, architecture decisions, and research-heavy synthesis.",
+        "Use for coding and complex execution: implementation, debugging, root-cause analysis, broad refactors, multi-file changes, architecture decisions, and research-heavy synthesis across systems. Avoid for simple lookups, short Q&A, single-file reads, or ordinary tool use the default profile can finish.",
       reasoningLevel: "high",
     },
   },
 });
 ```
 
-Each profile value may be a model id string or an object with `modelId` and optional `description` / `reasoningLevel`. Write descriptions as concrete task kinds, not model marketing names, so the agent can upgrade on its own when a profile fits.
+Each profile value may be a model id string or an object with `modelId` and optional `description` / `reasoningLevel`. Write descriptions as concrete task kinds with explicit use/avoid cues, not model marketing names. The turn router and `handoff` tool match on those descriptions so the agent can upgrade on its own when a profile fits.
 
 Set `profiles` and `defaultProfile` together. App config replaces profiles from env settings. If app config omits both options, the deprecated env settings create `standard` and `handoff` profiles with default steering text. `AI_MODEL_PROFILES` can add or replace those profiles and may use the same string or object shape.
 

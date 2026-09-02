@@ -55,7 +55,7 @@ describe("chat config", () => {
     const { botConfig } = await loadConfig();
     expect(botConfig.profiles.standard).toEqual({
       modelId: "anthropic/claude-opus-4.6",
-      description: expect.stringContaining("Default general assistant work"),
+      description: expect.stringContaining("Use for default assistant work"),
     });
     expect(botConfig.fastModelId).toBe("anthropic/claude-opus-4.6");
   });
@@ -99,7 +99,7 @@ describe("chat config", () => {
     const { botConfig } = await loadConfig();
     expect(botConfig.profiles.standard).toEqual({
       modelId: "xai/grok-4.5",
-      description: expect.stringContaining("Default general assistant work"),
+      description: expect.stringContaining("Use for default assistant work"),
     });
   });
 
@@ -138,11 +138,11 @@ describe("chat config", () => {
     expect(botConfig.profiles).toEqual({
       standard: {
         modelId: "xai/grok-4.5",
-        description: expect.stringContaining("Default general assistant work"),
+        description: expect.stringContaining("Use for default assistant work"),
       },
       handoff: {
         modelId: "openai/gpt-5.6-sol",
-        description: expect.stringContaining("Coding and complex execution work"),
+        description: expect.stringContaining("Use for coding and complex execution"),
         reasoningLevel: "high",
       },
     });
@@ -154,7 +154,7 @@ describe("chat config", () => {
     const { botConfig } = await loadConfig();
     expect(botConfig.profiles.handoff).toEqual({
       modelId: "openai/gpt-5.4",
-      description: expect.stringContaining("Coding and complex execution work"),
+      description: expect.stringContaining("Use for coding and complex execution"),
       reasoningLevel: "high",
     });
   });
@@ -169,11 +169,11 @@ describe("chat config", () => {
     expect(botConfig.profiles).toEqual({
       standard: {
         modelId: "xai/grok-4.5",
-        description: expect.stringContaining("Default general assistant work"),
+        description: expect.stringContaining("Use for default assistant work"),
       },
       handoff: {
         modelId: "openai/gpt-5.6-sol",
-        description: expect.stringContaining("Coding and complex execution work"),
+        description: expect.stringContaining("Use for coding and complex execution"),
         reasoningLevel: "high",
       },
       coding: { modelId: "openai/gpt-5.4" },
@@ -416,7 +416,7 @@ describe("chat config", () => {
     const { botConfig } = await loadConfig();
     expect(botConfig.profiles.standard).toEqual({
       modelId: "anthropic/claude-opus-4.6",
-      description: expect.stringContaining("Default general assistant work"),
+      description: expect.stringContaining("Use for default assistant work"),
     });
     expect(botConfig.visionModelId).toBe("openai/gpt-5.4");
   });

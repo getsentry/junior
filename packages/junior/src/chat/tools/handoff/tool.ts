@@ -42,20 +42,19 @@ export function createHandoffTool(
       readOnlyHint: false,
     },
     description: [
-      [
-        "Switch to another model profile and continue the same task.",
-        "Use this before substantive work when a listed profile clearly fits better than the current one.",
-        "Choose by the profile description, not by the name alone.",
-        "Do not switch merely because the task mentions code.",
-        "Call this as the only tool.",
-      ].join(" "),
-      `Profiles:\n${profileCatalog}`,
-    ].join("\n"),
+      "Permanently switch this conversation to another configured model profile and continue the same task under that profile.",
+      "Call this as the only tool in the assistant turn, before substantive analysis or implementation, when a listed profile's description is a clearly better fit than the current profile.",
+      "Match on the profile description (use/avoid cues), not the bare profile name or an assumption that non-default means stronger.",
+      "Do not call this for ordinary lookups, short answers, light investigation, or merely because the task mentions code.",
+      "Do not call this after you have already done the hard work on the current profile, and do not combine it with other tools in the same assistant message.",
+      "After a successful handoff, later turns stay on the selected profile; there is no downgrade path from this tool.",
+      `Available profiles:\n${profileCatalog}`,
+    ].join(" "),
     executionMode: "sequential",
     inputSchema: z
       .object({
         profile: profileSchema.describe(
-          "Target model profile. Prefer the profile whose description best matches the task.",
+          "Exact configured profile name to switch to. Choose the profile whose description best matches the outstanding task; if none is clearly better, do not call handoff.",
         ),
       })
       .strict(),

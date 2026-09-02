@@ -249,9 +249,9 @@ function validateEmbeddingModelId(raw: string | undefined): string | undefined {
 }
 
 const DEFAULT_STANDARD_PROFILE_DESCRIPTION =
-  "Default general assistant work: lookups, explanations, ordinary tool use, and light investigation.";
+  "Use for default assistant work: lookups, explanations, ordinary tool use, short answers, and light single-source investigation. Avoid when the task is implementation, debugging, multi-file changes, architecture decisions, or research-heavy synthesis across systems.";
 const DEFAULT_HANDOFF_PROFILE_DESCRIPTION =
-  "Coding and complex execution work: implementation, debugging, root-cause analysis, broad refactors, multi-file changes, architecture decisions, and research-heavy synthesis. Prefer this over the default when the task needs deep code or multi-system reasoning.";
+  "Use for coding and complex execution: implementation, debugging, root-cause analysis, broad refactors, multi-file changes, architecture decisions, and research-heavy synthesis across systems. Avoid for simple lookups, short Q&A, single-file reads, or ordinary tool use the default profile can finish.";
 
 function parseOptionalProfileDescription(
   rawDescription: unknown,

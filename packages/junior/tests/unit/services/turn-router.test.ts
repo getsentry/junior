@@ -74,7 +74,7 @@ describe("selectTurnRoute", () => {
         thinkingLevel: "low",
         promptName: "junior.thinking_route",
         system: expect.stringContaining(
-          "handoff: Coding and complex execution work.",
+          '"handoff": Coding and complex execution work.',
         ),
       }),
     );
@@ -100,7 +100,7 @@ describe("selectTurnRoute", () => {
     expect(completeObject).toHaveBeenCalledWith(
       expect.objectContaining({
         system: expect.stringContaining(
-          "Use each profile's description to decide fit",
+          "match on description use/avoid cues",
         ),
       }),
     );
