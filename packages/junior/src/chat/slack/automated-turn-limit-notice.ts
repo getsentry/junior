@@ -1,5 +1,5 @@
 /**
- * Conversation-visible pause notice for the consecutive automated-turn limit.
+ * Pause notice for the consecutive automated-turn limit.
  *
  * Best-effort: a failed post must not fail the Turn or re-enable event wakes.
  * The consecutive-turn limit claims the notice slot before this post. Clear that
@@ -10,14 +10,13 @@ import { logException, logWarn } from "@/chat/logging";
 import {
   buildAutomatedTurnLimitResponse,
   clearAutomatedTurnLimitNoticeClaim,
-  type AutomatedTurnLimitScope,
   type AutomatedTurnLimitUpdate,
 } from "@/chat/services/automated-turn-limit";
 import { postSlackMessage } from "@/chat/slack/outbound";
 
 async function releaseFailedNoticeClaim(args: {
+  conversationId: string;
   nowMs?: number;
-  scope: AutomatedTurnLimitScope;
 }): Promise<void> {
   try {
     await clearAutomatedTurnLimitNoticeClaim(args);
@@ -31,15 +30,8 @@ export async function postAutomatedTurnLimitNoticeForConversation(args: {
   conversationId: string;
   maxTurns: number;
   nowMs?: number;
-  scope?: AutomatedTurnLimitScope;
   threadTs?: string;
 }): Promise<boolean> {
-  const scope =
-    args.scope ??
-    ({
-      kind: "conversation",
-      conversationId: args.conversationId,
-    } satisfies AutomatedTurnLimitScope);
   try {
     const conversation = await getConversationStore().get({
       conversationId: args.conversationId,
@@ -53,8 +45,8 @@ export async function postAutomatedTurnLimitNoticeForConversation(args: {
           : "missing_location",
       });
       await releaseFailedNoticeClaim({
+        conversationId: args.conversationId,
         nowMs: args.nowMs,
-        scope,
       });
       return false;
     }
@@ -75,17 +67,14 @@ export async function postAutomatedTurnLimitNoticeForConversation(args: {
       conversationId: args.conversationId,
     });
     await releaseFailedNoticeClaim({
+      conversationId: args.conversationId,
       nowMs: args.nowMs,
-      scope,
     });
     return false;
   }
 }
 
-/**
- * Post the pause notice after a finished Turn hits the limit.
- * Prefer the Conversation Location so thread watches stay in-thread.
- */
+/** Post the pause notice after a finished Turn hits the limit. */
 export async function maybePostAutomatedTurnLimitNotice(args: {
   conversationId: string;
   maxTurns: number;
@@ -100,10 +89,6 @@ export async function maybePostAutomatedTurnLimitNotice(args: {
     conversationId: args.conversationId,
     maxTurns: args.maxTurns,
     nowMs: args.nowMs,
-    scope: {
-      kind: "conversation",
-      conversationId: args.conversationId,
-    },
     threadTs: args.threadTs,
   });
 }

@@ -1,10 +1,8 @@
 /**
  * Stops event wakes after too many automated Turns with no user Turn.
  *
- * The consecutive-turn limit is always Conversation-scoped. Resource-event
- * watches, event tasks, and other automated Sources share one counter per
- * Conversation. A finished user Turn clears that Conversation so later event
- * wakes can run again.
+ * Counts on the Conversation only. A finished user Turn clears the count so
+ * later automated wakes can run again.
  */
 import type { Source } from "@sentry/junior-plugin-api";
 import type { Lock, StateAdapter } from "chat";
@@ -17,7 +15,7 @@ const AUTOMATED_TURN_LIMIT_LOCK_TTL_MS = 5_000;
 const AUTOMATED_TURN_LIMIT_LOCK_WAIT_MS = 2_000;
 const AUTOMATED_TURN_LIMIT_LOCK_RETRY_MS = 25;
 
-/** Stored consecutive-turn limit for one Conversation. */
+/** Stored consecutive automated-turn count for one Conversation. */
 const automatedTurnLimitStateSchema = z
   .object({
     consecutiveAutomatedTurns: z.number().int().nonnegative(),
@@ -30,11 +28,6 @@ const automatedTurnLimitStateSchema = z
 export type AutomatedTurnLimitState = z.output<
   typeof automatedTurnLimitStateSchema
 >;
-
-export type AutomatedTurnLimitScope = {
-  kind: "conversation";
-  conversationId: string;
-};
 
 export type AutomatedTurnLimitDecision =
   | { status: "allow"; consecutiveAutomatedTurns: number }
@@ -57,8 +50,8 @@ function sleep(ms: number): Promise<void> {
   });
 }
 
-function scopeKey(scope: AutomatedTurnLimitScope): string {
-  return `${AUTOMATED_TURN_LIMIT_PREFIX}:conversation:${scope.conversationId}`;
+function conversationKey(conversationId: string): string {
+  return `${AUTOMATED_TURN_LIMIT_PREFIX}:conversation:${conversationId}`;
 }
 
 function lockKey(key: string): string {
@@ -70,7 +63,7 @@ function parseState(value: unknown): AutomatedTurnLimitState | undefined {
   return parsed.success ? parsed.data : undefined;
 }
 
-async function acquireScopeLock(
+async function acquireConversationLock(
   state: StateAdapter,
   key: string,
   waitDeadlineMs = Date.now() + AUTOMATED_TURN_LIMIT_LOCK_WAIT_MS,
@@ -90,12 +83,12 @@ async function acquireScopeLock(
   }
 }
 
-async function withScopeLock<T>(
+async function withConversationLock<T>(
   state: StateAdapter,
   key: string,
   callback: () => Promise<T>,
 ): Promise<T> {
-  const lock = await acquireScopeLock(state, key);
+  const lock = await acquireConversationLock(state, key);
   try {
     return await callback();
   } finally {
@@ -125,23 +118,6 @@ export function isAutomatedTurnSource(source: Source | undefined): boolean {
   );
 }
 
-/**
- * Scope that counts automated Turns for this Source.
- * Every automated Source counts on the Conversation.
- */
-export function automatedTurnLimitScopeForSource(args: {
-  conversationId: string;
-  source?: Source;
-}): AutomatedTurnLimitScope | undefined {
-  if (!isAutomatedTurnSource(args.source)) {
-    return undefined;
-  }
-  return {
-    kind: "conversation",
-    conversationId: args.conversationId,
-  };
-}
-
 /** Plain notice when automatic updates stop until the user replies. */
 export function buildAutomatedTurnLimitResponse(args: {
   maxTurns: number;
@@ -152,16 +128,19 @@ export function buildAutomatedTurnLimitResponse(args: {
   );
 }
 
-/** Read the current consecutive-turn limit for one Conversation. */
+/** Read the consecutive automated-turn count for one Conversation. */
 export async function getAutomatedTurnLimitState(args: {
+  conversationId: string;
   nowMs?: number;
-  scope: AutomatedTurnLimitScope;
   state?: StateAdapter;
 }): Promise<AutomatedTurnLimitState> {
   const state = args.state ?? getStateAdapter();
   await state.connect();
   const nowMs = args.nowMs ?? Date.now();
-  return parseState(await state.get(scopeKey(args.scope))) ?? emptyState(nowMs);
+  return (
+    parseState(await state.get(conversationKey(args.conversationId))) ??
+    emptyState(nowMs)
+  );
 }
 
 /**
@@ -170,9 +149,9 @@ export async function getAutomatedTurnLimitState(args: {
  * posts it. Clear the claim if that post fails or is skipped.
  */
 export async function admitAutomatedTurn(args: {
+  conversationId: string;
   maxTurns: number;
   nowMs?: number;
-  scope: AutomatedTurnLimitScope;
   state?: StateAdapter;
 }): Promise<AutomatedTurnLimitDecision> {
   if (args.maxTurns < 1) {
@@ -181,8 +160,8 @@ export async function admitAutomatedTurn(args: {
   const state = args.state ?? getStateAdapter();
   await state.connect();
   const nowMs = args.nowMs ?? Date.now();
-  const key = scopeKey(args.scope);
-  return await withScopeLock(state, key, async () => {
+  const key = conversationKey(args.conversationId);
+  return await withConversationLock(state, key, async () => {
     const current = parseState(await state.get(key)) ?? emptyState(nowMs);
     if (current.paused || current.consecutiveAutomatedTurns >= args.maxTurns) {
       const shouldPostNotice = current.noticePostedAtMs === undefined;
@@ -217,9 +196,9 @@ export async function admitAutomatedTurn(args: {
 
 /** Count one finished automated Turn toward the consecutive-turn limit. */
 export async function countAutomatedTurn(args: {
+  conversationId: string;
   maxTurns: number;
   nowMs?: number;
-  scope: AutomatedTurnLimitScope;
   state?: StateAdapter;
 }): Promise<AutomatedTurnLimitUpdate> {
   if (args.maxTurns < 1) {
@@ -228,8 +207,8 @@ export async function countAutomatedTurn(args: {
   const state = args.state ?? getStateAdapter();
   await state.connect();
   const nowMs = args.nowMs ?? Date.now();
-  const key = scopeKey(args.scope);
-  return await withScopeLock(state, key, async () => {
+  const key = conversationKey(args.conversationId);
+  return await withConversationLock(state, key, async () => {
     const current = parseState(await state.get(key)) ?? emptyState(nowMs);
     const consecutiveAutomatedTurns = current.consecutiveAutomatedTurns + 1;
     const paused = consecutiveAutomatedTurns >= args.maxTurns;
@@ -239,8 +218,8 @@ export async function countAutomatedTurn(args: {
       consecutiveAutomatedTurns,
       paused,
       updatedAtMs: nowMs,
-      // Claim the notice slot before the pause notice post. Mark success after
-      // the post lands; clear the claim if the post fails or is skipped.
+      // Claim the notice slot before posting. Mark success after the post
+      // lands; clear the claim if the post fails or is skipped.
       ...(shouldPostNotice
         ? { noticePostedAtMs: nowMs }
         : current.noticePostedAtMs !== undefined
@@ -261,15 +240,15 @@ export async function countAutomatedTurn(args: {
  * Keeps the pause and consecutive count.
  */
 export async function clearAutomatedTurnLimitNoticeClaim(args: {
+  conversationId: string;
   nowMs?: number;
-  scope: AutomatedTurnLimitScope;
   state?: StateAdapter;
 }): Promise<void> {
   const state = args.state ?? getStateAdapter();
   await state.connect();
   const nowMs = args.nowMs ?? Date.now();
-  const key = scopeKey(args.scope);
-  await withScopeLock(state, key, async () => {
+  const key = conversationKey(args.conversationId);
+  await withConversationLock(state, key, async () => {
     const current = parseState(await state.get(key));
     if (!current || current.noticePostedAtMs === undefined) {
       return;
@@ -288,23 +267,23 @@ export async function clearAutomatedTurnLimitNoticeClaim(args: {
 
 /** Clear the consecutive automated-turn count after a user-owned Turn. */
 export async function resetAutomatedTurnLimit(args: {
+  conversationId: string;
   nowMs?: number;
-  scope: AutomatedTurnLimitScope;
   state?: StateAdapter;
 }): Promise<void> {
   const state = args.state ?? getStateAdapter();
   await state.connect();
-  const key = scopeKey(args.scope);
-  await withScopeLock(state, key, async () => {
+  const key = conversationKey(args.conversationId);
+  await withConversationLock(state, key, async () => {
     await state.delete(key);
   });
 }
 
 /**
- * Update consecutive automated-turn limits after one finished Turn.
+ * Update consecutive automated-turn counts after one finished Turn.
  *
- * Automated Turns count on the Conversation. User Turns clear that
- * Conversation so later event wakes can run again.
+ * Automated Turns count on the Conversation. User Turns clear that count so
+ * later event wakes can run again.
  */
 export async function recordFinishedTurnForAutomatedLimit(args: {
   conversationId: string;
@@ -314,26 +293,18 @@ export async function recordFinishedTurnForAutomatedLimit(args: {
   state?: StateAdapter;
 }): Promise<AutomatedTurnLimitUpdate | undefined> {
   const nowMs = args.nowMs ?? Date.now();
-  const automatedScope = automatedTurnLimitScopeForSource({
-    conversationId: args.conversationId,
-    source: args.source,
-  });
-
-  if (automatedScope) {
+  if (isAutomatedTurnSource(args.source)) {
     return await countAutomatedTurn({
+      conversationId: args.conversationId,
       maxTurns: args.maxTurns,
       nowMs,
-      scope: automatedScope,
       state: args.state,
     });
   }
 
   await resetAutomatedTurnLimit({
+    conversationId: args.conversationId,
     nowMs,
-    scope: {
-      kind: "conversation",
-      conversationId: args.conversationId,
-    },
     state: args.state,
   });
   return undefined;

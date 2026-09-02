@@ -13,18 +13,10 @@ import {
   type ResourceEvent,
 } from "@sentry/junior-plugin-api";
 import { dispatchEventTask } from "@/chat/agent-dispatch/context";
-import {
-  buildDispatchId,
-  getDispatchConversationId,
-} from "@/chat/agent-dispatch/store";
-import { botConfig } from "@/chat/config";
 import { renderTaskInput } from "@/chat/task-input";
 import { getDb } from "@/chat/db";
 import { findMatchingEventTasks } from "@/chat/event-tasks/store";
 import type { EventTask } from "@/chat/event-tasks/types";
-import { logInfo } from "@/chat/logging";
-import { admitAutomatedTurn } from "@/chat/services/automated-turn-limit";
-import { postAutomatedTurnLimitNoticeForConversation } from "@/chat/slack/automated-turn-limit-notice";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { resourceEventGuidance } from "@/chat/resource-events/catalog";
 import { getResourceEventCatalog } from "@/chat/resource-events/runtime-catalog";
@@ -90,8 +82,6 @@ export async function ingestEventTasks(
   const tasks = await findMatchingEventTasks(db, event, options.teamId);
   let dispatched = 0;
   const errors: unknown[] = [];
-  const maxTurns = botConfig.maxConsecutiveAutomatedTurns;
-  const noticedConversations = new Set<string>();
   for (const task of tasks) {
     try {
       const idempotencyKey = eventTaskDispatchKey(
@@ -99,47 +89,6 @@ export async function ingestEventTasks(
         event.namespace,
         event.eventKey,
       );
-      // Event-task fires own a stable dispatch Conversation. Gate and count the
-      // consecutive automated-turn limit there, not on the Slack Destination.
-      const conversationId = getDispatchConversationId(
-        buildDispatchId("junior", idempotencyKey),
-      );
-      const decision = await admitAutomatedTurn({
-        maxTurns,
-        nowMs,
-        scope: { kind: "conversation", conversationId },
-      });
-      if (decision.status === "paused") {
-        logInfo("event_tasks.automated_turn_limit.paused", {
-          conversationId,
-          "app.automated_turn_limit.consecutive":
-            decision.consecutiveAutomatedTurns,
-          "app.automated_turn_limit.max": maxTurns,
-          "app.event_task.id": task.id,
-          "app.resource_event.event_type": event.eventType,
-          "app.resource_event.namespace": event.namespace,
-          "app.slack.channel_id": task.destination.channelId,
-          "app.slack.team_id": task.destination.teamId,
-        });
-        if (
-          decision.shouldPostNotice &&
-          !noticedConversations.has(conversationId)
-        ) {
-          // Safety net when the Turn that hit the limit could not post a notice.
-          // Only mark the conversation after a successful post so a failed claim
-          // clear can still retry on the next matching task in this ingest.
-          const posted = await postAutomatedTurnLimitNoticeForConversation({
-            conversationId,
-            maxTurns,
-            nowMs,
-            scope: { kind: "conversation", conversationId },
-          });
-          if (posted) {
-            noticedConversations.add(conversationId);
-          }
-        }
-        continue;
-      }
       const credentialSubject =
         task.credentialMode === "creator"
           ? {

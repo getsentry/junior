@@ -148,8 +148,7 @@ function normalizeMetadata(
   return entries.length > 0 ? Object.fromEntries(entries) : undefined;
 }
 
-/** Stable dispatch id for one plugin + idempotency key pair. */
-export function buildDispatchId(plugin: string, idempotencyKey: string): string {
+function buildDispatchId(plugin: string, idempotencyKey: string): string {
   const digest = createHash("sha256")
     .update(plugin)
     .update("\0")
@@ -169,10 +168,9 @@ export function parseDispatchRecord(
 
 /** Return the isolated durable conversation id for one dispatch. */
 export function getDispatchConversationId(
-  dispatch: Pick<DispatchRecord, "id"> | string,
+  dispatch: Pick<DispatchRecord, "id">,
 ): string {
-  const id = typeof dispatch === "string" ? dispatch : dispatch.id;
-  return `agent-dispatch:${id}`;
+  return `agent-dispatch:${dispatch.id}`;
 }
 
 /** Return the stable synthetic input message id for one dispatch turn. */
