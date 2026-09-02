@@ -45,7 +45,6 @@ describe("automated turn limit", () => {
   it("explains the pause in plain language", () => {
     const response = buildAutomatedTurnLimitResponse({
       maxTurns: 10,
-      resumeIn: "thread",
     });
     expect(response).toContain(
       "stopped automatic updates after 10 replies without a new message from you",
@@ -55,6 +54,7 @@ describe("automated turn limit", () => {
     expect(response).not.toContain("resource event");
     expect(response).not.toContain("budget");
     expect(response).not.toContain("circuit");
+    expect(response).not.toContain("channel");
   });
 
   it("admits turns until the consecutive limit, then pauses with one notice", async () => {
@@ -76,7 +76,6 @@ describe("automated turn limit", () => {
         consecutiveAutomatedTurns: i + 1,
         paused: i + 1 >= 3,
         shouldPostNotice: i + 1 >= 3,
-        resumeIn: "thread",
       });
     }
 
@@ -134,26 +133,15 @@ describe("automated turn limit", () => {
 
   it("resets after a user turn so later automated wakes can run", async () => {
     const conversationId = "slack:C2:2.0";
-    const destination = {
-      platform: "slack" as const,
-      teamId: "T1",
-      channelId: "C2",
-    };
 
     await countAutomatedTurn({
       maxTurns: 2,
       nowMs: 1,
       scope: { kind: "conversation", conversationId },
     });
-    await countAutomatedTurn({
-      maxTurns: 2,
-      nowMs: 2,
-      scope: { kind: "destination", destination },
-    });
 
     await recordFinishedTurnForAutomatedLimit({
       conversationId,
-      destination,
       maxTurns: 2,
       nowMs: 3,
       source: {
@@ -174,30 +162,14 @@ describe("automated turn limit", () => {
       status: "allow",
       consecutiveAutomatedTurns: 0,
     });
-    await expect(
-      admitAutomatedTurn({
-        maxTurns: 2,
-        nowMs: 5,
-        scope: { kind: "destination", destination },
-      }),
-    ).resolves.toEqual({
-      status: "allow",
-      consecutiveAutomatedTurns: 0,
-    });
   });
 
-  it("counts one matching scope for automated finishes", async () => {
+  it("counts automated finishes on the conversation for every source", async () => {
     const conversationId = "agent-dispatch:abc";
-    const destination = {
-      platform: "slack" as const,
-      teamId: "T9",
-      channelId: "C9",
-    };
 
     await expect(
       recordFinishedTurnForAutomatedLimit({
         conversationId,
-        destination,
         maxTurns: 10,
         nowMs: 10,
         source: { kind: "event_task" },
@@ -206,7 +178,6 @@ describe("automated turn limit", () => {
       consecutiveAutomatedTurns: 1,
       paused: false,
       shouldPostNotice: false,
-      resumeIn: "channel",
     });
 
     await expect(
@@ -214,20 +185,12 @@ describe("automated turn limit", () => {
         scope: { kind: "conversation", conversationId },
       }),
     ).resolves.toMatchObject({
-      consecutiveAutomatedTurns: 0,
-      paused: false,
-    });
-    await expect(
-      getAutomatedTurnLimitState({
-        scope: { kind: "destination", destination },
-      }),
-    ).resolves.toMatchObject({
       consecutiveAutomatedTurns: 1,
       paused: false,
     });
 
     await resetAutomatedTurnLimit({
-      scope: { kind: "destination", destination },
+      scope: { kind: "conversation", conversationId },
     });
   });
 
@@ -236,11 +199,6 @@ describe("automated turn limit", () => {
     await expect(
       recordFinishedTurnForAutomatedLimit({
         conversationId,
-        destination: {
-          platform: "slack",
-          teamId: "T3",
-          channelId: "C3",
-        },
         maxTurns: 10,
         nowMs: 1,
         source: {
@@ -253,12 +211,36 @@ describe("automated turn limit", () => {
       }),
     ).resolves.toMatchObject({
       consecutiveAutomatedTurns: 1,
-      resumeIn: "thread",
     });
     await expect(
       getAutomatedTurnLimitState({
         scope: { kind: "conversation", conversationId },
       }),
     ).resolves.toMatchObject({ consecutiveAutomatedTurns: 1 });
+  });
+
+  it("keeps separate conversations independent", async () => {
+    const first = {
+      kind: "conversation" as const,
+      conversationId: "agent-dispatch:one",
+    };
+    const second = {
+      kind: "conversation" as const,
+      conversationId: "agent-dispatch:two",
+    };
+
+    for (let i = 0; i < 3; i += 1) {
+      await countAutomatedTurn({ maxTurns: 3, nowMs: 1_000 + i, scope: first });
+    }
+
+    await expect(
+      admitAutomatedTurn({ maxTurns: 3, nowMs: 2_000, scope: first }),
+    ).resolves.toMatchObject({ status: "paused" });
+    await expect(
+      admitAutomatedTurn({ maxTurns: 3, nowMs: 2_001, scope: second }),
+    ).resolves.toEqual({
+      status: "allow",
+      consecutiveAutomatedTurns: 0,
+    });
   });
 });

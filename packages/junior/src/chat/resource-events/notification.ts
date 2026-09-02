@@ -168,7 +168,6 @@ export async function enqueueResourceEventNotification(args: {
         conversationId: args.subscription.conversationId,
         maxTurns,
         nowMs: args.event.occurredAtMs,
-        resumeIn: "thread",
         scope: {
           kind: "conversation",
           conversationId: args.subscription.conversationId,

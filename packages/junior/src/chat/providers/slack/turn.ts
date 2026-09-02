@@ -1244,14 +1244,12 @@ export function createSlackTurn(deps: SlackTurnDeps) {
               const automatedTurnLimit = await recordFinishedTurnForAutomatedLimit(
                 {
                   conversationId,
-                  destination,
                   maxTurns: botConfig.maxConsecutiveAutomatedTurns,
                   source,
                 },
               );
               await maybePostAutomatedTurnLimitNotice({
                 conversationId,
-                destination,
                 maxTurns: botConfig.maxConsecutiveAutomatedTurns,
                 threadTs,
                 update: automatedTurnLimit,
