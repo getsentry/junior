@@ -161,9 +161,8 @@ describe("Slack behavior: finalized thread replies", () => {
     expect(secondPost.startsWith("```ts\n")).toBe(true);
   });
 
-  it("posts answers that mention the no-reply marker without leaking it", async () => {
+  it("posts answers that mention the no-reply marker", async () => {
     const answer = `Earlier turn used ${NO_REPLY_MARKER} and then stopped.`;
-    const posted = "Earlier turn used and then stopped.";
     const { slackRuntime } = createTestChatRuntime({
       services: {
         agentRunner: createModelAgentRunner(
@@ -187,7 +186,7 @@ describe("Slack behavior: finalized thread replies", () => {
     );
 
     expect(thread.postKinds).toEqual(["value"]);
-    expect(thread.posts.map(toPostedText)).toEqual([posted]);
+    expect(thread.posts.map(toPostedText)).toEqual([answer]);
     const lifecycle = await loadTurnLifecycleEvents(thread.id);
     expect(lifecycle.map((event) => event.data)).toEqual([
       expect.objectContaining({
@@ -204,7 +203,7 @@ describe("Slack behavior: finalized thread replies", () => {
     ]);
   });
 
-  it("stays silent when the model ends with the no-reply marker", async () => {
+  it("stays silent when the last line is the no-reply marker", async () => {
     const answer = `The linear-code comment is just a Linear linkback, not review feedback, and checks aren't failing yet — staying silent.\n${NO_REPLY_MARKER}`;
     const { slackRuntime } = createTestChatRuntime({
       services: {

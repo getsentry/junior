@@ -55,19 +55,16 @@ describe("assistant reply", () => {
         ),
       ),
     ).toEqual({ kind: "suppress" });
-    expect(decideReply(assistant(`Done. ${NO_REPLY_MARKER}`))).toEqual({
-      kind: "suppress",
-    });
     expect(decideReply(assistant("Let me do that now.", true))).toEqual({
       kind: "suppress",
     });
   });
 
-  it("delivers mid-sentence mentions after stripping the no-reply marker", () => {
+  it("delivers text that mentions the no-reply marker mid-sentence", () => {
     const text = `Earlier turn used ${NO_REPLY_MARKER} and then stopped.`;
     expect(decideReply(assistant(text))).toEqual({
       kind: "deliver",
-      text: "Earlier turn used and then stopped.",
+      text,
     });
   });
 

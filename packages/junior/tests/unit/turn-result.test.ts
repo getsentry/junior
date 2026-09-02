@@ -296,7 +296,7 @@ describe("buildTurnResult", () => {
     expect(reply.diagnostics.outcome).toBe("success");
   });
 
-  it("treats prose that ends with the no-reply marker as silent completion", () => {
+  it("treats a last-line no-reply marker after reasoning as silent completion", () => {
     const reply = buildTurnResult({
       newMessages: [
         {
@@ -323,7 +323,38 @@ describe("buildTurnResult", () => {
     expect(reply.diagnostics.usedPrimaryText).toBe(true);
   });
 
-  it("strips mid-sentence no-reply markers from delivered answers", () => {
+  it("discards earlier terminal reasoning when the last assistant message is the marker", () => {
+    const reply = buildTurnResult({
+      newMessages: [
+        {
+          role: "assistant",
+          content: [
+            {
+              type: "text",
+              text: "The linear-code comment is just a Linear linkback — staying silent.",
+            },
+          ],
+          stopReason: "stop",
+        },
+        {
+          role: "assistant",
+          content: [{ type: "text", text: NO_REPLY_MARKER }],
+          stopReason: "stop",
+        },
+      ],
+      userInput: "PR comment event",
+      toolCalls: [],
+      generatedFileCount: 0,
+      shouldTrace: false,
+      modelId: "test-model",
+      executionProfile,
+    });
+
+    expect(reply.text).toBe("");
+    expect(reply.diagnostics.outcome).toBe("success");
+  });
+
+  it("delivers mid-sentence no-reply marker mentions", () => {
     const reply = buildTurnResult({
       newMessages: [
         {
@@ -345,7 +376,9 @@ describe("buildTurnResult", () => {
       executionProfile,
     });
 
-    expect(reply.text).toBe("Earlier turn used and then stopped.");
+    expect(reply.text).toBe(
+      `Earlier turn used ${NO_REPLY_MARKER} and then stopped.`,
+    );
     expect(reply.diagnostics.outcome).toBe("success");
   });
 

@@ -2,8 +2,7 @@ import { isRetryableAssistantError } from "@earendil-works/pi-ai";
 import { logInfo, logWarn, summarizeMessageText } from "@/chat/logging";
 import {
   containsNoReplyMarker,
-  endsWithNoReplyMarker,
-  isNoReplyMarker,
+  isTrailingNoReplyUnit,
 } from "@/chat/no-reply";
 import type { PiMessage } from "@/chat/pi/messages";
 import { createProviderError } from "@/chat/services/provider-error";
@@ -84,26 +83,27 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
       .map((message) => extractAssistantText(message))
       .join("\n\n"),
   ).trim();
-  const primaryText = terminalAssistantMessages
-    .map((message) => decideReply(message))
-    .filter(
-      (output): output is { kind: "deliver"; text: string } =>
-        output.kind === "deliver",
-    )
-    .map((output) => output.text)
-    .join("\n\n");
-  // Silence for exact markers or terminal prose that ends with the marker.
-  // Tool-call suppress is not a no-reply. Mid-sentence marker mentions deliver
-  // after stripping.
+  // Silence when the last terminal assistant unit is only the marker.
+  // Earlier reasoning in that block is discarded. Tool-call tails are not
+  // no-reply. Mid-sentence marker mentions still deliver.
   const terminalTexts = terminalAssistantMessages.map((message) =>
     sanitizeAssistantText(extractAssistantText(message)),
   );
+  const lastTerminalText = [...terminalTexts]
+    .reverse()
+    .find((text) => text.length > 0);
   const noReplyRequested =
-    !primaryText &&
-    terminalTexts.some((text) => endsWithNoReplyMarker(text)) &&
-    terminalTexts.every(
-      (text) => !text || isNoReplyMarker(text) || endsWithNoReplyMarker(text),
-    );
+    lastTerminalText !== undefined && isTrailingNoReplyUnit(lastTerminalText);
+  const primaryText = noReplyRequested
+    ? ""
+    : terminalAssistantMessages
+        .map((message) => decideReply(message))
+        .filter(
+          (output): output is { kind: "deliver"; text: string } =>
+            output.kind === "deliver",
+        )
+        .map((output) => output.text)
+        .join("\n\n");
 
   const toolErrorCount = toolResults.filter((result) => result.isError).length;
   const reactionPerformed = toolResults.some(

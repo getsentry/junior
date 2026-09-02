@@ -1,8 +1,5 @@
 import type { AssistantMessage } from "@earendil-works/pi-ai";
-import {
-  endsWithNoReplyMarker,
-  stripNoReplyMarkers,
-} from "@/chat/no-reply";
+import { isTrailingNoReplyUnit } from "@/chat/no-reply";
 import { extractAssistantText } from "@/chat/pi/transcript";
 
 const THINKING_XML_BLOCK_PATTERN =
@@ -38,12 +35,12 @@ export function decideReply(message: AssistantMessage): ReplyDecision {
 
   const text = sanitizeAssistantText(extractAssistantText(message));
   if (!text) return { kind: "empty" };
-  // Exact marker, or prose that ends with the marker, means intentional silence.
-  // Mid-sentence mentions still deliver after stripping leaked markers.
-  if (endsWithNoReplyMarker(text)) {
+  // Final assistant unit is only the marker (whole message or last line).
+  // Mid-sentence mentions still deliver so answers can talk about the protocol.
+  if (isTrailingNoReplyUnit(text)) {
     return { kind: "suppress" };
   }
-  return { kind: "deliver", text: stripNoReplyMarkers(text) };
+  return { kind: "deliver", text };
 }
 
 /** Return destination-visible reply text when the message is deliverable. */
