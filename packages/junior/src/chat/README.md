@@ -272,7 +272,7 @@ resource subscription). Call sites pass facts only. Unit snapshots in
 
 ```text
 When you reply, follow any reply format in the instructions.
-If no visible reply is needed, make the final message exactly [[NO_REPLY]].
+If no visible reply is needed, your final assistant message must be exactly [[NO_REPLY]] and nothing else.
 Otherwise briefly summarize what you acted on and what you did or need next.
 ```
 
@@ -290,7 +290,7 @@ This is a task, not a message from a person.
 Instructions: Post a digest. Summarize the latest state.
 
 When you reply, follow any reply format in the instructions.
-If no visible reply is needed, make the final message exactly [[NO_REPLY]].
+If no visible reply is needed, your final assistant message must be exactly [[NO_REPLY]] and nothing else.
 Otherwise briefly summarize what you acted on and what you did or need next.
 ```
 
@@ -315,7 +315,7 @@ Failed checks:
 - test
 
 When you reply, follow any reply format in the instructions.
-If no visible reply is needed, make the final message exactly [[NO_REPLY]].
+If no visible reply is needed, your final assistant message must be exactly [[NO_REPLY]] and nothing else.
 Otherwise briefly summarize what you acted on and what you did or need next.
 ```
 

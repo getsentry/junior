@@ -83,9 +83,17 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
       .map((message) => extractAssistantText(message))
       .join("\n\n"),
   ).trim();
-  // Silence when the last terminal assistant unit is only the marker.
-  // Earlier reasoning in that block is discarded. Tool-call tails are not
+  // Suppress only the marker message (or last-line marker unit). Earlier
+  // assistant messages in the block still deliver. Tool-call tails are not
   // no-reply. Mid-sentence marker mentions still deliver.
+  const primaryText = terminalAssistantMessages
+    .map((message) => decideReply(message))
+    .filter(
+      (output): output is { kind: "deliver"; text: string } =>
+        output.kind === "deliver",
+    )
+    .map((output) => output.text)
+    .join("\n\n");
   const terminalTexts = terminalAssistantMessages.map((message) =>
     sanitizeAssistantText(extractAssistantText(message)),
   );
@@ -93,17 +101,9 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
     .reverse()
     .find((text) => text.length > 0);
   const noReplyRequested =
-    lastTerminalText !== undefined && isTrailingNoReplyUnit(lastTerminalText);
-  const primaryText = noReplyRequested
-    ? ""
-    : terminalAssistantMessages
-        .map((message) => decideReply(message))
-        .filter(
-          (output): output is { kind: "deliver"; text: string } =>
-            output.kind === "deliver",
-        )
-        .map((output) => output.text)
-        .join("\n\n");
+    !primaryText &&
+    lastTerminalText !== undefined &&
+    isTrailingNoReplyUnit(lastTerminalText);
 
   const toolErrorCount = toolResults.filter((result) => result.isError).length;
   const reactionPerformed = toolResults.some(

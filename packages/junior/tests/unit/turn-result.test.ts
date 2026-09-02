@@ -323,7 +323,7 @@ describe("buildTurnResult", () => {
     expect(reply.diagnostics.usedPrimaryText).toBe(true);
   });
 
-  it("discards earlier terminal reasoning when the last assistant message is the marker", () => {
+  it("keeps earlier terminal text when only the last assistant message is the marker", () => {
     const reply = buildTurnResult({
       newMessages: [
         {
@@ -350,7 +350,9 @@ describe("buildTurnResult", () => {
       executionProfile,
     });
 
-    expect(reply.text).toBe("");
+    expect(reply.text).toBe(
+      "The linear-code comment is just a Linear linkback — staying silent.",
+    );
     expect(reply.diagnostics.outcome).toBe("success");
   });
 

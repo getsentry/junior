@@ -77,11 +77,7 @@ import { shouldEmitDevAgentTrace } from "@/chat/runtime/dev-agent-trace";
 import { isTurnInputCommitLostError } from "@/chat/runtime/turn";
 import type { AgentRunOutcome } from "@/chat/runtime/agent-run-outcome";
 import { buildTurnResult } from "@/chat/services/turn-result";
-import { isTrailingNoReplyUnit } from "@/chat/no-reply";
-import {
-  decideReply,
-  sanitizeAssistantText,
-} from "@/chat/services/assistant-reply";
+import { decideReply } from "@/chat/services/assistant-reply";
 import {
   findProviderError,
   getProviderErrorAttributes,
@@ -1089,15 +1085,12 @@ async function executeAgentRunInPrivacyContext(
     let assistantMessageDeliveryError:
       | AssistantMessageDeliveryError
       | undefined;
-    // Hold the latest tool-free reply one step so a following exact/last-line
-    // [[NO_REPLY]] can discard earlier reasoning in the same terminal block.
-    let heldToolFreeAssistant:
-      | Parameters<typeof extractAssistantText>[0]
-      | undefined;
-    const publishAssistantMessage = async (
+    /** Deliver one completed tool-free visible message before the agent advances. */
+    const deliverAssistantMessage = async (
       message: Parameters<typeof extractAssistantText>[0],
     ): Promise<void> => {
-      if (!delivery) {
+      const decision = decideReply(message);
+      if (decision.kind !== "deliver" || !delivery) {
         return;
       }
       try {
@@ -1109,39 +1102,6 @@ async function executeAgentRunInPrivacyContext(
         );
         throw assistantMessageDeliveryError;
       }
-    };
-    const flushHeldToolFreeAssistant = async (): Promise<void> => {
-      if (!heldToolFreeAssistant) {
-        return;
-      }
-      const message = heldToolFreeAssistant;
-      heldToolFreeAssistant = undefined;
-      await publishAssistantMessage(message);
-    };
-    /** Deliver one completed tool-free visible message before the agent advances. */
-    const deliverAssistantMessage = async (
-      message: Parameters<typeof extractAssistantText>[0],
-    ): Promise<void> => {
-      const decision = decideReply(message);
-      if (decision.kind === "suppress") {
-        const suppressedText = sanitizeAssistantText(
-          extractAssistantText(message),
-        );
-        if (isTrailingNoReplyUnit(suppressedText)) {
-          // Last unit is silence: drop any earlier held reasoning too.
-          heldToolFreeAssistant = undefined;
-          return;
-        }
-        // Tool-bearing tails are not silence; release held pre-tool text.
-        await flushHeldToolFreeAssistant();
-        return;
-      }
-      if (decision.kind !== "deliver") {
-        return;
-      }
-      // Keep one deliverable message held so a trailing marker can cancel it.
-      await flushHeldToolFreeAssistant();
-      heldToolFreeAssistant = message;
     };
     const drainSteeringMessages = async (): Promise<
       Array<{
@@ -1744,11 +1704,6 @@ async function executeAgentRunInPrivacyContext(
       assistantUserName: botConfig.userName,
       modelId: activeModelId,
     });
-    if (result.diagnostics.outcome === "success" && result.text) {
-      await flushHeldToolFreeAssistant();
-    } else {
-      heldToolFreeAssistant = undefined;
-    }
     return {
       status: "completed",
       result,
