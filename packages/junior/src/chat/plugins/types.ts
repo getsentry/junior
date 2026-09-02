@@ -1,4 +1,5 @@
 import type {
+  PluginMcpAuthConfig,
   PluginMcpConfig,
   PluginRuntimeDependency,
   PluginRuntimePostinstallCommand,
@@ -7,6 +8,7 @@ import type { UserTokenStore } from "@/chat/credentials/user-token-store";
 
 export type {
   PluginNpmRuntimeDependency,
+  PluginMcpAuthConfig,
   PluginMcpConfig,
   PluginRuntimeDependency,
   PluginRuntimePostinstallCommand,
@@ -124,6 +126,7 @@ export interface PluginManifestConfig {
     transport?: "http";
     url?: string;
     headers?: Record<string, string | null> | null;
+    auth?: PluginMcpAuthConfig;
     allowedTools?: string[] | null;
     wrappedTools?: string[] | null;
   } | null;

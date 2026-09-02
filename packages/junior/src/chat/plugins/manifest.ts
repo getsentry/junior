@@ -227,6 +227,16 @@ const oauthSourceSchema = z
   })
   .passthrough();
 
+const mcpAuthSourceSchema = z
+  .object({
+    algorithm: nonEmptyTrimmedString.optional(),
+    issuer: nonEmptyTrimmedString,
+    "key-id": nonEmptyTrimmedString,
+    "private-key-env": envVarString,
+    subject: nonEmptyTrimmedString,
+  })
+  .passthrough();
+
 const mcpSourceSchema = z
   .object({
     transport: nonEmptyTrimmedString
@@ -235,6 +245,7 @@ const mcpSourceSchema = z
       })
       .optional(),
     url: httpsUrlString,
+    auth: mcpAuthSourceSchema.optional(),
     headers: stringMapSchema.optional(),
     "allowed-tools": nonEmptyStringArraySchema("allowed-tools").optional(),
     "wrapped-tools": nonEmptyStringArraySchema("wrapped-tools").optional(),
@@ -360,6 +371,17 @@ function manifestConfigPatch(
       setDefined(mcp, "transport", config.mcp.transport);
       setDefined(mcp, "url", config.mcp.url);
       setDefined(mcp, "headers", config.mcp.headers);
+      if (config.mcp.auth) {
+        mcp.auth = {
+          issuer: config.mcp.auth.issuer,
+          "key-id": config.mcp.auth.keyId,
+          "private-key-env": config.mcp.auth.privateKeyEnv,
+          subject: config.mcp.auth.subject,
+          ...(config.mcp.auth.algorithm
+            ? { algorithm: config.mcp.auth.algorithm }
+            : undefined),
+        };
+      }
       setDefined(mcp, "allowed-tools", config.mcp.allowedTools);
       setDefined(mcp, "wrapped-tools", config.mcp.wrappedTools);
       result.mcp = mcp;
@@ -945,9 +967,22 @@ function normalizeMcp(
       })
     : undefined;
 
+  const auth = result.data.auth
+    ? {
+        issuer: result.data.auth.issuer,
+        keyId: result.data.auth["key-id"],
+        privateKeyEnv: result.data.auth["private-key-env"],
+        subject: result.data.auth.subject,
+        ...(result.data.auth.algorithm
+          ? { algorithm: result.data.auth.algorithm }
+          : undefined),
+      }
+    : undefined;
+
   return {
     transport: "http",
     url: result.data.url,
+    ...(auth ? { auth } : undefined),
     ...(headers ? { headers } : undefined),
     ...(result.data["allowed-tools"]
       ? { allowedTools: result.data["allowed-tools"] }

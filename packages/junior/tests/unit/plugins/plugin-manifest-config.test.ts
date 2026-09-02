@@ -45,6 +45,41 @@ describe("plugin manifest config", () => {
     expect(manifest.oauth?.scope).toBe("repo read:org workflow");
   });
 
+  it("applies mcp auth config for bot-signed JWT assertions", () => {
+    const manifest = parsePluginManifest(
+      [
+        "name: gocd-mcp",
+        "display-name: GoCD MCP",
+        "description: GoCD MCP",
+        "mcp:",
+        "  url: https://gocd-mcp.example.test/mcp",
+      ].join("\n"),
+      "/plugins/gocd-mcp",
+      {
+        manifests: {
+          "gocd-mcp": {
+            mcp: {
+              auth: {
+                issuer: "https://junior.example.test",
+                keyId: "junior-1",
+                privateKeyEnv: "GOCD_MCP_PRIVATE_KEY",
+                subject: "junior",
+              },
+            },
+          },
+        },
+      },
+    );
+
+    expect(manifest.mcp?.url).toBe("https://gocd-mcp.example.test/mcp");
+    expect(manifest.mcp?.auth).toEqual({
+      issuer: "https://junior.example.test",
+      keyId: "junior-1",
+      privateKeyEnv: "GOCD_MCP_PRIVATE_KEY",
+      subject: "junior",
+    });
+  });
+
   it("overrides empty OAuth scope reporting through manifest config", () => {
     const manifest = parsePluginManifest(
       [

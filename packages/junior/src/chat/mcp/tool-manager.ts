@@ -34,6 +34,7 @@ import {
   getMcpProviderErrorAttributes,
   McpToolError,
 } from "./errors";
+import { JwtBearerMcpClientProvider } from "./jwt-bearer-provider";
 
 const MAX_TOOL_RESULT_TOKENS = 10_000;
 const MAX_TOOL_RESULT_BYTES = 32 * 1024;
@@ -496,9 +497,13 @@ export class McpToolManager {
   private async createClient(
     plugin: PluginDefinition,
   ): Promise<PluginMcpClient> {
-    const authProvider = this.options.authProviderFactory
-      ? await this.options.authProviderFactory(plugin)
-      : undefined;
+    const mcp = plugin.manifest.mcp;
+    const authProvider =
+      mcp?.auth
+        ? new JwtBearerMcpClientProvider(mcp.url, mcp.auth)
+        : this.options.authProviderFactory
+          ? await this.options.authProviderFactory(plugin)
+          : undefined;
     const client = new PluginMcpClient(plugin, {
       ...(authProvider ? { authProvider } : undefined),
       ...(this.options.fetch ? { fetch: this.options.fetch } : undefined),
