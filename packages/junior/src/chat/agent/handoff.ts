@@ -258,8 +258,39 @@ export function createModelHandoff(options: ModelHandoffOptions) {
     };
   };
 
+  /**
+   * When the turn router selected a non-default profile while still on the
+   * default, commit that handoff before the first provider sample.
+   */
+  const applyRoutedProfile = async (args: {
+    runStep: (run: Promise<unknown>, abortRun?: () => void) => Promise<unknown>;
+    runtimeContextSourceMessages?: PiMessage[];
+    sourceMessages: PiMessage[];
+  }): Promise<boolean> => {
+    const activeProfile = options.getActiveModelProfile();
+    if (activeProfile !== botConfig.defaultProfile) {
+      return false;
+    }
+    const requestedProfile = options.getTurnRoute().profile;
+    if (requestedProfile === botConfig.defaultProfile) {
+      return false;
+    }
+    const abortController = new AbortController();
+    await args.runStep(
+      schedule({
+        profile: requestedProfile,
+        runtimeContextSourceMessages: args.runtimeContextSourceMessages,
+        signal: abortController.signal,
+        sourceMessages: args.sourceMessages,
+      }),
+      () => abortController.abort(),
+    );
+    return Boolean(applyPending());
+  };
+
   return {
     applyPending,
+    applyRoutedProfile,
     bindAgentTools(tools: AgentTool[]) {
       agentTools = tools;
       toolsWithoutHandoff = tools.filter(
@@ -273,8 +304,31 @@ export function createModelHandoff(options: ModelHandoffOptions) {
     initialControl: options.enabled
       ? controlFor(options.getActiveModelProfile())
       : undefined,
-    schedule,
   };
 }
 
 export type ModelHandoff = ReturnType<typeof createModelHandoff>;
+
+/** Tools that must be the only tool call in their assistant message. */
+const EXCLUSIVE_TOOL_NAMES = [HANDOFF_TOOL_NAME, "switchWorkspace"] as const;
+
+/** Return the exclusive tool name when one is present among the calls. */
+export function exclusiveToolName(
+  toolCalls: ReadonlyArray<{ name: string }>,
+): string | undefined {
+  for (const name of EXCLUSIVE_TOOL_NAMES) {
+    if (toolCalls.some((call) => call.name === name)) {
+      return name;
+    }
+  }
+  return undefined;
+}
+
+/** True when the assistant message includes a handoff tool call. */
+export function messageContainsHandoff(message: {
+  content: ReadonlyArray<{ type: string; name?: string }>;
+}): boolean {
+  return message.content.some(
+    (part) => part.type === "toolCall" && part.name === HANDOFF_TOOL_NAME,
+  );
+}

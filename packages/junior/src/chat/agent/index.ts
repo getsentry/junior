@@ -137,8 +137,11 @@ import {
   type ModelProfile,
 } from "@/chat/model-profile";
 import { compactActiveContextIfNeeded } from "@/chat/services/context-compaction";
-import { createModelHandoff } from "@/chat/agent/handoff";
-import { HANDOFF_TOOL_NAME } from "@/chat/tools/handoff/tool";
+import {
+  createModelHandoff,
+  exclusiveToolName,
+  messageContainsHandoff,
+} from "@/chat/agent/handoff";
 
 const AGENT_ABORT_SETTLE_GRACE_MS = 5_000;
 
@@ -1046,17 +1049,7 @@ async function executeAgentRunInPrivacyContext(
         const toolCalls = assistantMessage.content.filter(
           (part) => part.type === "toolCall",
         );
-        const containsHandoff = toolCalls.some(
-          (call) => call.name === HANDOFF_TOOL_NAME,
-        );
-        const containsWorkspaceSwitch = toolCalls.some(
-          (call) => call.name === "switchWorkspace",
-        );
-        const exclusiveTool = containsHandoff
-          ? HANDOFF_TOOL_NAME
-          : containsWorkspaceSwitch
-            ? "switchWorkspace"
-            : undefined;
+        const exclusiveTool = exclusiveToolName(toolCalls);
         if (exclusiveTool && toolCalls.length !== 1) {
           return {
             block: true,
@@ -1157,10 +1150,7 @@ async function executeAgentRunInPrivacyContext(
         ) {
           return;
         }
-        const containsHandoff = event.message.content.some(
-          (part) => part.type === "toolCall" && part.name === HANDOFF_TOOL_NAME,
-        );
-        if (containsHandoff) {
+        if (messageContainsHandoff(event.message)) {
           return;
         }
         return deliverAssistantMessage(event.message);
@@ -1336,33 +1326,17 @@ async function executeAgentRunInPrivacyContext(
             return result;
           };
 
-          const requestedProfile =
-            activeModelProfile === botConfig.defaultProfile
-              ? turnRoute!.profile
-              : undefined;
           let run: Promise<unknown>;
-          let handoffApplied = false;
-          if (
-            requestedProfile &&
-            requestedProfile !== botConfig.defaultProfile
-          ) {
-            const handoffAbortController = new AbortController();
-            await runAgentStep(
-              modelHandoff.schedule({
-                profile: requestedProfile,
-                runtimeContextSourceMessages: shouldPromptAgent
-                  ? [
-                      ...(contextMessage ? [contextMessage] : []),
-                      freshPromptMessage,
-                    ]
-                  : undefined,
-                signal: handoffAbortController.signal,
-                sourceMessages: [...agent!.state.messages],
-              }),
-              () => handoffAbortController.abort(),
-            );
-            handoffApplied = Boolean(modelHandoff.applyPending());
-          }
+          const handoffApplied = await modelHandoff.applyRoutedProfile({
+            runStep: runAgentStep,
+            runtimeContextSourceMessages: shouldPromptAgent
+              ? [
+                  ...(contextMessage ? [contextMessage] : []),
+                  freshPromptMessage,
+                ]
+              : undefined,
+            sourceMessages: [...agent!.state.messages],
+          });
           const compactionAbortController = new AbortController();
           const capacityUpdate = await runAgentStep(
             applyActiveContextCompaction(
