@@ -513,12 +513,15 @@ describe("model handoff composition", () => {
     expect(observations.afterHandoffToolNames).toEqual(
       observations.initialToolNames,
     );
+    expect(observations.initialHandoffDescription).toContain("Profiles:");
     expect(observations.initialHandoffDescription).toContain(
-      "Profiles: `coding`, `handoff`.",
+      "Coding and complex execution work",
     );
-    expect(observations.afterHandoffDescription).toContain(
-      "Profiles: `standard`, `coding`.",
-    );
+    expect(observations.initialHandoffDescription).toContain("- handoff:");
+    expect(observations.initialHandoffDescription).toContain("- coding");
+    expect(observations.afterHandoffDescription).toContain("Profiles:");
+    expect(observations.afterHandoffDescription).toContain("- standard:");
+    expect(observations.afterHandoffDescription).toContain("- coding");
     expect(observations.initialHandoffProfiles).toEqual(["coding", "handoff"]);
     expect(observations.afterHandoffProfiles).toEqual(["standard", "coding"]);
     expect(observations.summaryCalls).toBe(1);

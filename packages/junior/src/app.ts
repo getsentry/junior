@@ -15,6 +15,7 @@ import {
   setProfiles,
   setSlackReactionConfig,
 } from "@/chat/config";
+import type { ModelProfileInput } from "@/chat/model-profile";
 import { getConversationEventStore, getDb } from "@/chat/db";
 import { logException, logWarn } from "@/chat/logging";
 import { executeAgentRun } from "@/chat/agent";
@@ -111,6 +112,7 @@ export type {
   JuniorPluginSet,
   JuniorPluginSetOptions,
 } from "./plugins";
+export type { ModelProfileInput } from "@/chat/model-profile";
 export interface JuniorAppOptions {
   /** Authenticated dashboard mounted by core when configured. */
   dashboard?: JuniorDashboardOptions;
@@ -122,8 +124,12 @@ export interface JuniorAppOptions {
   experimental?: ExperimentalFeaturesConfig;
   /** Profile used for new conversations. Configure with `profiles`. */
   defaultProfile?: string;
-  /** Named profiles available to the router and handoff tool. Configure with `defaultProfile`. */
-  profiles?: Readonly<Record<string, string>>;
+  /**
+   * Named profiles available to the router and handoff tool. Configure with
+   * `defaultProfile`. Each value may be a model id string or an object with
+   * `modelId` plus optional `description` / `reasoningLevel` steering.
+   */
+  profiles?: Readonly<Record<string, ModelProfileInput>>;
   /** Slack-specific overrides applied after env parsing. */
   slack?: {
     /** Slack emoji shown while Junior is processing. Defaults to `eyes`. */

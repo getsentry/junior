@@ -811,21 +811,31 @@ async function executeAgentRunInPrivacyContext(
       const profiles = handoffProfiles.filter(
         (profile) => profile !== activeProfile,
       );
-      return profiles.length > 0
-        ? {
-            profiles: profiles as [ModelProfile, ...ModelProfile[]],
-            execute: async (
-              profile: ModelProfile,
-              options: { signal?: AbortSignal; toolCallId: string },
-            ) =>
-              await scheduleHandoff({
-                profile,
-                signal: options.signal,
-                sourceMessages: [...agent!.state.messages],
-                triggeringToolCallId: options.toolCallId,
-              }),
-          }
-        : undefined;
+      if (profiles.length === 0) {
+        return undefined;
+      }
+      const profileDescriptions = Object.fromEntries(
+        profiles.flatMap((profile) => {
+          const description = profileConfig(botConfig, profile).description;
+          return description ? [[profile, description] as const] : [];
+        }),
+      );
+      return {
+        profiles: profiles as [ModelProfile, ...ModelProfile[]],
+        ...(Object.keys(profileDescriptions).length > 0
+          ? { profileDescriptions }
+          : undefined),
+        execute: async (
+          profile: ModelProfile,
+          options: { signal?: AbortSignal; toolCallId: string },
+        ) =>
+          await scheduleHandoff({
+            profile,
+            signal: options.signal,
+            sourceMessages: [...agent!.state.messages],
+            triggeringToolCallId: options.toolCallId,
+          }),
+      };
     };
     const requestHandoff = handoffEnabled
       ? handoffControlFor(activeModelProfile)

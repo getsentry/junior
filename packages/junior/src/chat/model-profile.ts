@@ -10,8 +10,40 @@ export type ModelProfile = z.output<typeof modelProfileSchema>;
 
 /** Runtime configuration for one named model profile. */
 export interface ModelProfileConfig {
+  /**
+   * Short steering text that tells models when this profile fits the task.
+   * Prefer concrete task kinds over model marketing names.
+   */
+  description?: string;
   modelId: string;
   reasoningLevel?: TurnReasoningLevel;
+}
+
+/** App-level profile input: a model id string or a full profile config. */
+export type ModelProfileInput = string | ModelProfileConfig;
+
+/** Format one profile for handoff/router steering text. */
+export function formatModelProfileSteering(
+  profile: ModelProfile,
+  config: ModelProfileConfig,
+): string {
+  const description = config.description?.trim();
+  return description ? `${profile}: ${description}` : profile;
+}
+
+/** Format configured profiles for handoff/router steering text. */
+export function formatModelProfilesSteering(
+  profiles: Readonly<Record<string, ModelProfileConfig>>,
+  profileNames: readonly ModelProfile[],
+): string {
+  return profileNames
+    .map((profile) => {
+      const config = profiles[profile];
+      return config
+        ? formatModelProfileSteering(profile, config)
+        : profile;
+    })
+    .join("; ");
 }
 
 /** Identify durable profile bindings that the current host cannot resolve. */

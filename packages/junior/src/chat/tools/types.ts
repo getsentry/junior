@@ -34,6 +34,8 @@ import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 interface HandoffControl {
   /** Non-empty catalog of configured targets. */
   profiles: readonly [ModelProfile, ...ModelProfile[]];
+  /** Optional host-owned descriptions keyed by profile name. */
+  profileDescriptions?: Readonly<Partial<Record<ModelProfile, string>>>;
   execute: (
     profile: ModelProfile,
     options: { signal?: AbortSignal; toolCallId: string },

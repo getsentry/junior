@@ -6,6 +6,7 @@ import {
   type TurnReasoningLevel,
 } from "@/chat/reasoning-level";
 import {
+  formatModelProfilesSteering,
   type ModelProfile,
   type ModelProfileConfig,
   modelProfileSchema,
@@ -114,13 +115,15 @@ function trimContextForRouter(text: string | undefined): TrimmedContext | null {
 }
 
 function buildClassifierSystemPrompt(
+  profiles: Readonly<Record<string, ModelProfileConfig>>,
   profileNames: string[],
   defaultProfile: ModelProfile,
 ): string {
+  const profileCatalog = formatModelProfilesSteering(profiles, profileNames);
   return [
     "You choose the model profile most likely to produce a complete, source-grounded answer.",
     "Choose exactly one bucket: none, low, medium, high, or xhigh.",
-    `Choose profile from the configured profiles: ${profileNames.join(", ")}.`,
+    `Choose profile from the configured profiles: ${profileCatalog}.`,
     "Choose profile independently from the reasoning bucket.",
     "",
     "Use none only for greetings, acknowledgments, and turns that need no substantive assistant work.",
@@ -130,8 +133,8 @@ function buildClassifierSystemPrompt(
     "Use xhigh for the most complex tasks: code changes, debugging/root-cause analysis, broad refactors, architecture decisions, multi-file implementation, or any task where deep reasoning across multiple systems or files is required.",
     "When unsure between two non-none buckets, choose the higher bucket. Do not use low as the default.",
     `The default profile is ${defaultProfile}.`,
-    "Profile names are configured labels. Do not assume that a non-default profile is more capable than the default profile.",
-    "Choose a non-default profile only when its label clearly matches the task. Otherwise keep the default profile.",
+    "Profile names are configured labels. Use each profile's description to decide fit. Do not assume that a non-default profile is more capable than the default profile just because it is non-default.",
+    "Choose a non-default profile only when its description clearly matches the task. Otherwise keep the default profile.",
     "",
     "Classify based on the substance of the task, not the length of the current message. When the current instruction is a short affirmation (for example: 'go', 'do it', 'yes please', 'proceed') and prior thread context contains a pending task, classify the pending task — not the affirmation.",
     "",
@@ -343,6 +346,7 @@ async function classifyTurn(args: {
       prompt: args.prompt,
       thinkingLevel: "low",
       system: buildClassifierSystemPrompt(
+        args.profiles,
         Object.keys(args.profiles),
         args.defaultProfile,
       ),

@@ -55,6 +55,7 @@ describe("chat config", () => {
     const { botConfig } = await loadConfig();
     expect(botConfig.profiles.standard).toEqual({
       modelId: "anthropic/claude-opus-4.6",
+      description: expect.stringContaining("Default general assistant work"),
     });
     expect(botConfig.fastModelId).toBe("anthropic/claude-opus-4.6");
   });
@@ -98,6 +99,7 @@ describe("chat config", () => {
     const { botConfig } = await loadConfig();
     expect(botConfig.profiles.standard).toEqual({
       modelId: "xai/grok-4.5",
+      description: expect.stringContaining("Default general assistant work"),
     });
   });
 
@@ -134,9 +136,13 @@ describe("chat config", () => {
 
     const { botConfig } = await loadConfig();
     expect(botConfig.profiles).toEqual({
-      standard: { modelId: "xai/grok-4.5" },
+      standard: {
+        modelId: "xai/grok-4.5",
+        description: expect.stringContaining("Default general assistant work"),
+      },
       handoff: {
         modelId: "openai/gpt-5.6-sol",
+        description: expect.stringContaining("Coding and complex execution work"),
         reasoningLevel: "high",
       },
     });
@@ -148,6 +154,7 @@ describe("chat config", () => {
     const { botConfig } = await loadConfig();
     expect(botConfig.profiles.handoff).toEqual({
       modelId: "openai/gpt-5.4",
+      description: expect.stringContaining("Coding and complex execution work"),
       reasoningLevel: "high",
     });
   });
@@ -160,13 +167,34 @@ describe("chat config", () => {
 
     const { botConfig } = await loadConfig();
     expect(botConfig.profiles).toEqual({
-      standard: { modelId: "xai/grok-4.5" },
+      standard: {
+        modelId: "xai/grok-4.5",
+        description: expect.stringContaining("Default general assistant work"),
+      },
       handoff: {
         modelId: "openai/gpt-5.6-sol",
+        description: expect.stringContaining("Coding and complex execution work"),
         reasoningLevel: "high",
       },
       coding: { modelId: "openai/gpt-5.4" },
       research: { modelId: "anthropic/claude-opus-4.6" },
+    });
+  });
+
+  it("accepts AI_MODEL_PROFILES objects with description steering", async () => {
+    process.env.AI_MODEL_PROFILES = JSON.stringify({
+      coding: {
+        modelId: "openai/gpt-5.4",
+        description: "Implementation and debugging work.",
+        reasoningLevel: "high",
+      },
+    });
+
+    const { botConfig } = await loadConfig();
+    expect(botConfig.profiles.coding).toEqual({
+      modelId: "openai/gpt-5.4",
+      description: "Implementation and debugging work.",
+      reasoningLevel: "high",
     });
   });
 
@@ -388,6 +416,7 @@ describe("chat config", () => {
     const { botConfig } = await loadConfig();
     expect(botConfig.profiles.standard).toEqual({
       modelId: "anthropic/claude-opus-4.6",
+      description: expect.stringContaining("Default general assistant work"),
     });
     expect(botConfig.visionModelId).toBe("openai/gpt-5.4");
   });
