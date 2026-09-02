@@ -245,7 +245,6 @@ describe("Slack behavior: finalized thread replies", () => {
     ]);
   });
 
-
   it("marks provider-error replies with partial text as interrupted", async () => {
     const partialStart = "The budget review is complete.";
     const partialEnd = "This should continue into a second post.";

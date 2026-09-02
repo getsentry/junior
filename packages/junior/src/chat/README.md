@@ -250,8 +250,9 @@ resource subscription). Call sites pass facts only. Unit snapshots in
 - Mark the turn as a **task**, not a person message.
 - Put the **job** before event payload.
 - Keep event data as **facts**, never as new instructions.
-- End with one **reply contract**. Silence is `[[NO_REPLY]]` from `no-reply.ts`,
-  not vague “do not reply” prose.
+- End with one **reply contract**. Silence is `[[NO_REPLY]]` from `no-reply.ts`
+  (message text that ends with the marker; per message only), not vague “do not
+  reply” prose.
 - Stay short. Prefer one clear rule over stacked warnings.
 
 **Section order** (omit empty optionals)

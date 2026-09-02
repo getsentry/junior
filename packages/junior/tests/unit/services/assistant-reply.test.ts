@@ -44,7 +44,7 @@ describe("assistant reply", () => {
     ).toEqual({ kind: "deliver", text: "Visible answer." });
   });
 
-  it("marks trailing no-reply text and suppresses tool-call messages", () => {
+  it("classifies trailing no-reply text and tool-call messages", () => {
     expect(decideReply(assistant(NO_REPLY_MARKER))).toEqual({
       kind: "no_reply",
     });
@@ -54,16 +54,13 @@ describe("assistant reply", () => {
     expect(decideReply(assistant(`Done. ${NO_REPLY_MARKER}`))).toEqual({
       kind: "no_reply",
     });
+    const mention = `Earlier turn used ${NO_REPLY_MARKER} and then stopped.`;
+    expect(decideReply(assistant(mention))).toEqual({
+      kind: "deliver",
+      text: mention,
+    });
     expect(decideReply(assistant("Let me do that now.", true))).toEqual({
       kind: "suppress",
-    });
-  });
-
-  it("delivers mid-sentence mentions of the marker", () => {
-    const text = `Earlier turn used ${NO_REPLY_MARKER} and then stopped.`;
-    expect(decideReply(assistant(text))).toEqual({
-      kind: "deliver",
-      text,
     });
   });
 

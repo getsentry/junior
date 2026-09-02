@@ -79,10 +79,7 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
       .map((message) => extractAssistantText(message))
       .join("\n\n"),
   ).trim();
-  // Per-message only via decideReply. Tool-call suppress is not no-reply.
-  const replyDecisions = terminalAssistantMessages.map((message) =>
-    decideReply(message),
-  );
+  const replyDecisions = terminalAssistantMessages.map(decideReply);
   const primaryText = replyDecisions
     .filter(
       (output): output is { kind: "deliver"; text: string } =>
@@ -90,12 +87,12 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
     )
     .map((output) => output.text)
     .join("\n\n");
+  // Intentional silence only when every terminal decision is empty or no_reply.
   const noReplyRequested =
     !primaryText &&
     replyDecisions.some((decision) => decision.kind === "no_reply") &&
     replyDecisions.every(
-      (decision) =>
-        decision.kind === "empty" || decision.kind === "no_reply",
+      (decision) => decision.kind === "empty" || decision.kind === "no_reply",
     );
 
   const toolErrorCount = toolResults.filter((result) => result.isError).length;

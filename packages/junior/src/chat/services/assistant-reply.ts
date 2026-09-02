@@ -6,7 +6,7 @@ const THINKING_XML_BLOCK_PATTERN =
   /[ \t]*<thinking\b[^>]*>[\s\S]*?<\/thinking>[ \t]*(?:\r?\n)?/gi;
 const FENCED_CODE_BLOCK_PATTERN = /```[\s\S]*?```/g;
 
-export type ReplyDecision =
+type ReplyDecision =
   | { kind: "deliver"; text: string }
   | { kind: "empty" }
   | { kind: "no_reply" }
@@ -36,7 +36,7 @@ export function decideReply(message: AssistantMessage): ReplyDecision {
 
   const text = sanitizeAssistantText(extractAssistantText(message));
   if (!text) return { kind: "empty" };
-  // Per-message silence only (see isNoReplyMarker). Later messages decide alone.
+  // Marker silence is per message; tool-call suppress stays a separate kind.
   if (isNoReplyMarker(text)) {
     return { kind: "no_reply" };
   }
