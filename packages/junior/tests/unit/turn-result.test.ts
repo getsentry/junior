@@ -323,7 +323,7 @@ describe("buildTurnResult", () => {
     expect(reply.diagnostics.usedPrimaryText).toBe(true);
   });
 
-  it("keeps earlier terminal text when only the last assistant message is the marker", () => {
+  it("suppresses the whole terminal block when the last assistant message is the marker", () => {
     const reply = buildTurnResult({
       newMessages: [
         {
@@ -350,9 +350,39 @@ describe("buildTurnResult", () => {
       executionProfile,
     });
 
-    expect(reply.text).toBe(
-      "The linear-code comment is just a Linear linkback — staying silent.",
-    );
+    expect(reply.text).toBe("");
+    expect(reply.diagnostics.outcome).toBe("success");
+  });
+
+  it("does not treat an earlier marker as silence for a later deliverable message", () => {
+    const reply = buildTurnResult({
+      newMessages: [
+        {
+          role: "assistant",
+          content: [{ type: "text", text: NO_REPLY_MARKER }],
+          stopReason: "stop",
+        },
+        {
+          role: "toolResult",
+          toolName: "bash",
+          isError: false,
+          content: [{ type: "text", text: "ok" }],
+        },
+        {
+          role: "assistant",
+          content: [{ type: "text", text: "Here is the real answer." }],
+          stopReason: "stop",
+        },
+      ],
+      userInput: "do the thing",
+      toolCalls: ["bash"],
+      generatedFileCount: 0,
+      shouldTrace: false,
+      modelId: "test-model",
+      executionProfile,
+    });
+
+    expect(reply.text).toBe("Here is the real answer.");
     expect(reply.diagnostics.outcome).toBe("success");
   });
 

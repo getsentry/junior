@@ -83,17 +83,10 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
       .map((message) => extractAssistantText(message))
       .join("\n\n"),
   ).trim();
-  // Suppress only the marker message (or last-line marker unit). Earlier
-  // assistant messages in the block still deliver. Tool-call tails are not
-  // no-reply. Mid-sentence marker mentions still deliver.
-  const primaryText = terminalAssistantMessages
-    .map((message) => decideReply(message))
-    .filter(
-      (output): output is { kind: "deliver"; text: string } =>
-        output.kind === "deliver",
-    )
-    .map((output) => output.text)
-    .join("\n\n");
+  // If the last terminal unit is only the marker (or ends with a marker-only
+  // line), suppress the whole terminal assistant block. Earlier progressive
+  // deliveries are unchanged; this does not hold or rewrite later messages.
+  // Tool-call tails are not no-reply. Mid-sentence marker mentions deliver.
   const terminalTexts = terminalAssistantMessages.map((message) =>
     sanitizeAssistantText(extractAssistantText(message)),
   );
@@ -101,9 +94,17 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
     .reverse()
     .find((text) => text.length > 0);
   const noReplyRequested =
-    !primaryText &&
-    lastTerminalText !== undefined &&
-    isTrailingNoReplyUnit(lastTerminalText);
+    lastTerminalText !== undefined && isTrailingNoReplyUnit(lastTerminalText);
+  const primaryText = noReplyRequested
+    ? ""
+    : terminalAssistantMessages
+        .map((message) => decideReply(message))
+        .filter(
+          (output): output is { kind: "deliver"; text: string } =>
+            output.kind === "deliver",
+        )
+        .map((output) => output.text)
+        .join("\n\n");
 
   const toolErrorCount = toolResults.filter((result) => result.isError).length;
   const reactionPerformed = toolResults.some(

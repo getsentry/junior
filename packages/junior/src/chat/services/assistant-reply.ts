@@ -35,8 +35,9 @@ export function decideReply(message: AssistantMessage): ReplyDecision {
 
   const text = sanitizeAssistantText(extractAssistantText(message));
   if (!text) return { kind: "empty" };
-  // Final assistant unit is only the marker (whole message or last line).
-  // Mid-sentence mentions still deliver so answers can talk about the protocol.
+  // This message alone is silence when it is only the marker, or ends with a
+  // marker-only line (reasoning came earlier in the same message). A later
+  // normal reply is decided on its own message — prior markers do not stick.
   if (isTrailingNoReplyUnit(text)) {
     return { kind: "suppress" };
   }
