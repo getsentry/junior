@@ -93,7 +93,14 @@ describe("subscribed reply decision", () => {
     expect(completeObject).not.toHaveBeenCalled();
   });
 
-  it.each(["!stop", "!STOP", "!stop don't continue with this task"])(
+  it.each([
+    "!stop",
+    "!STOP",
+    "!stop don't continue with this task",
+    "please leave this alone !stop",
+    "ok enough for now !stop thanks",
+    "<@U0APP> keep going unless I say !stop later",
+  ])(
     "forces unsubscribe for %s without calling the classifier",
     async (text) => {
       const completeObject = vi.fn();

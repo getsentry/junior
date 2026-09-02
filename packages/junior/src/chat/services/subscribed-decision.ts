@@ -87,16 +87,14 @@ const LEADING_SLACK_MENTION_RE = /^\s*<@([A-Z0-9]+)(?:\|([^>]+))?>[\s,:-]*/i;
 const LEADING_NAMED_MENTION_RE = /^\s*@([a-z0-9._-]+)\b[\s,:-]*/i;
 const TRANSCRIPT_MESSAGE_LINE_RE =
   /^\[(assistant|user)\]\s+([^:]+):\s+([\s\S]+)$/i;
-const FORCED_THREAD_OPTOUT_RE = /^!stop(?:\s|$)/i;
-/** Drop a leading bot/user address so `@jr stop` matches the same as bare `stop`. */
+/** Hard stop command. May appear anywhere in the message. */
+const FORCED_THREAD_OPTOUT_RE = /(?:^|\s)!stop(?=\s|$|[.!?,;:])/i;
+/** Strip a leading address so `@jr stop` and bare `stop` share one match path. */
 const LEADING_ADDRESS_RE =
   /^(?:(?:<@[^>]+>|@[\w.-]+)\s*[,:\-–—]?\s*)+/i;
 const THREAD_OPTOUT_PATTERNS = [
-  // Bare stop, optional please, optional trailing punctuation.
   /^(?:please\s+)?stop(?:\s*[.!…]+)?$/i,
-  // Docs-style stop with a short redirect after a dash/colon.
   /^(?:please\s+)?stop\s*[—–\-:]\s*.+/i,
-  // Natural stop commands people actually type.
   /\bstop\s+(?:watching|replying|participating|spamming|notifying|pinging|messaging|bothering|posting)(?:\b|$)/i,
   /\b(?:can|could)\s+you\s+(?:please\s+)?stop(?:\s*[.!…]+)?$/i,
   /\bstop\s+(?:it|that|this)(?:\s*[.!…]+)?$/i,
@@ -171,14 +169,18 @@ function isForcedThreadOptOutCommand(rawText: string, text: string): boolean {
   );
 }
 
+/** Normalize message text before stop-phrase matching. */
 function normalizeThreadOptOutCandidate(value: string): string {
   return value.trim().replace(LEADING_ADDRESS_RE, "").trim();
 }
 
+/** True when the message asks Junior to leave the thread. */
 function isThreadOptOutInstruction(rawText: string, text: string): boolean {
   const candidates = [rawText, text].map(normalizeThreadOptOutCandidate);
   return THREAD_OPTOUT_PATTERNS.some((pattern) =>
-    candidates.some((candidate) => candidate.length > 0 && pattern.test(candidate)),
+    candidates.some(
+      (candidate) => candidate.length > 0 && pattern.test(candidate),
+    ),
   );
 }
 
