@@ -80,25 +80,24 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
       .map((message) => extractAssistantText(message))
       .join("\n\n"),
   ).trim();
-  // Last non-empty terminal assistant text decides silence for the whole
-  // trailing assistant block (see isNoReplyMarker). Tool-call-only tails are
-  // not silence. A marker before tools does not silence a later answer.
-  const lastTerminalText = [...terminalAssistantMessages]
-    .reverse()
-    .map((message) => sanitizeAssistantText(extractAssistantText(message)))
-    .find((text) => text.length > 0);
+  // Per-message only: each terminal assistant message is delivered or suppressed
+  // on its own (see decideReply / isNoReplyMarker). Tool-call suppress is not a
+  // no-reply. A marker on one message never rewrites earlier deliverable text.
+  const primaryText = terminalAssistantMessages
+    .map((message) => decideReply(message))
+    .filter(
+      (output): output is { kind: "deliver"; text: string } =>
+        output.kind === "deliver",
+    )
+    .map((output) => output.text)
+    .join("\n\n");
+  const terminalTexts = terminalAssistantMessages.map((message) =>
+    sanitizeAssistantText(extractAssistantText(message)),
+  );
   const noReplyRequested =
-    lastTerminalText !== undefined && isNoReplyMarker(lastTerminalText);
-  const primaryText = noReplyRequested
-    ? ""
-    : terminalAssistantMessages
-        .map((message) => decideReply(message))
-        .filter(
-          (output): output is { kind: "deliver"; text: string } =>
-            output.kind === "deliver",
-        )
-        .map((output) => output.text)
-        .join("\n\n");
+    !primaryText &&
+    terminalTexts.some((text) => isNoReplyMarker(text)) &&
+    terminalTexts.every((text) => !text || isNoReplyMarker(text));
 
   const toolErrorCount = toolResults.filter((result) => result.isError).length;
   const reactionPerformed = toolResults.some(

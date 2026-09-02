@@ -323,7 +323,7 @@ describe("buildTurnResult", () => {
     expect(reply.diagnostics.usedPrimaryText).toBe(true);
   });
 
-  it("suppresses the whole trailing assistant block when the last message ends with the marker", () => {
+  it("keeps earlier deliverable text when only a later terminal message is the marker", () => {
     const reply = buildTurnResult({
       newMessages: [
         {
@@ -345,7 +345,7 @@ describe("buildTurnResult", () => {
       executionProfile,
     });
 
-    expect(reply.text).toBe("");
+    expect(reply.text).toBe("staying silent.");
     expect(reply.diagnostics.outcome).toBe("success");
   });
 
