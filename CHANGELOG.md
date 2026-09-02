@@ -1,4 +1,15 @@
 # Changelog
+## 0.196.0
+
+### New Features ✨
+
+- (chat) Steer model profiles with descriptions by @sentry-junior in [#1763](https://github.com/getsentry/junior/pull/1763)
+
+### Bug Fixes 🐛
+
+- (chat) Silence trailing [[NO_REPLY]] per message by @sentry-junior in [#1761](https://github.com/getsentry/junior/pull/1761)
+- (routing) Treat bare stop as thread opt-out by @sentry-junior in [#1762](https://github.com/getsentry/junior/pull/1762)
+
 ## 0.195.0
 
 ### New Features ✨
