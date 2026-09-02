@@ -1,4 +1,10 @@
 # Changelog
+## 0.197.0
+
+### Bug Fixes 🐛
+
+- (chat) Count automated turns per conversation only by @sentry-junior in [#1765](https://github.com/getsentry/junior/pull/1765)
+
 ## 0.196.0
 
 ### New Features ✨
