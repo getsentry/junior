@@ -63,7 +63,7 @@ In DMs, send the request directly. In shared channels, prefer a thread over a to
 Junior reads every message in the thread, so you can course-correct at any point without starting over. Reply with plain language to redirect, narrow scope, stop the current task, or adjust how much detail you want:
 
 - **Redirect:** `@jr focus on the worker path only, not the whole queue`
-- **Stop:** `@jr stop — I meant staging, not prod`
+- **Stop:** `@jr stop`
 - **Narrow scope:** `@jr skip the frontend, just fix the query`
 - **Verbosity:** `@jr tl;dr` or `@jr more detail on the error handling`
 

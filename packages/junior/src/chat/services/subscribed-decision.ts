@@ -92,17 +92,8 @@ const FORCED_THREAD_OPTOUT_RE = /(?:^|\s)!stop(?=\s|$|[.!?,;:])/i;
 /** Strip a leading address so `@jr stop` and bare `stop` share one match path. */
 const LEADING_ADDRESS_RE =
   /^(?:(?:<@[^>]+>|@[\w.-]+)\s*[,:\-–—]?\s*)+/i;
-const THREAD_OPTOUT_PATTERNS = [
-  /^(?:please\s+)?stop(?:\s*[.!…]+)?$/i,
-  /^(?:please\s+)?stop\s*[—–\-:]\s*.+/i,
-  /\bstop\s+(?:watching|replying|participating|spamming|notifying|pinging|messaging|bothering|posting)(?:\b|$)/i,
-  /\b(?:can|could)\s+you\s+(?:please\s+)?stop(?:\s*[.!…]+)?$/i,
-  /\bstop\s+(?:it|that|this)(?:\s*[.!…]+)?$/i,
-  /\bstay out\b/i,
-  /\bdon['’]t (?:reply|participate|watch)\b/i,
-  /\bunsubscribe\b/i,
-  /\bleave (?:this )?thread\b/i,
-];
+/** Whole-message stop after mention strip. Nothing else counts. */
+const BARE_STOP_RE = /^stop(?:\s*[.!…]+)?$/i;
 const ACKNOWLEDGMENT_ONLY_RE =
   /^(?:thanks(?: you)?|thank you|thx|ty|got it|sounds good|sgtm|lgtm|ok(?:ay)?|cool|nice|perfect|awesome|great|makes sense|understood|roger|yep|yup|kk|on it|will do)(?:[.!]+)?$/i;
 const DIRECTED_FOLLOW_UP_CUE_RE =
@@ -169,19 +160,16 @@ function isForcedThreadOptOutCommand(rawText: string, text: string): boolean {
   );
 }
 
-/** Normalize message text before stop-phrase matching. */
+/** Normalize message text before bare-stop matching. */
 function normalizeThreadOptOutCandidate(value: string): string {
   return value.trim().replace(LEADING_ADDRESS_RE, "").trim();
 }
 
-/** True when the message asks Junior to leave the thread. */
+/** True when the message is only `stop` after any leading address. */
 function isThreadOptOutInstruction(rawText: string, text: string): boolean {
-  const candidates = [rawText, text].map(normalizeThreadOptOutCandidate);
-  return THREAD_OPTOUT_PATTERNS.some((pattern) =>
-    candidates.some(
-      (candidate) => candidate.length > 0 && pattern.test(candidate),
-    ),
-  );
+  return [rawText, text]
+    .map(normalizeThreadOptOutCandidate)
+    .some((candidate) => candidate.length > 0 && BARE_STOP_RE.test(candidate));
 }
 
 function isAcknowledgmentOnly(text: string): boolean {
