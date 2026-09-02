@@ -1,5 +1,8 @@
 import type { AssistantMessage } from "@earendil-works/pi-ai";
-import { isNoReplyMarker } from "@/chat/no-reply";
+import {
+  endsWithNoReplyMarker,
+  stripNoReplyMarkers,
+} from "@/chat/no-reply";
 import { extractAssistantText } from "@/chat/pi/transcript";
 
 const THINKING_XML_BLOCK_PATTERN =
@@ -35,11 +38,12 @@ export function decideReply(message: AssistantMessage): ReplyDecision {
 
   const text = sanitizeAssistantText(extractAssistantText(message));
   if (!text) return { kind: "empty" };
-  // Only an exact whole-message marker is intentional silence.
-  if (isNoReplyMarker(text)) {
+  // Exact marker, or prose that ends with the marker, means intentional silence.
+  // Mid-sentence mentions still deliver after stripping leaked markers.
+  if (endsWithNoReplyMarker(text)) {
     return { kind: "suppress" };
   }
-  return { kind: "deliver", text };
+  return { kind: "deliver", text: stripNoReplyMarkers(text) };
 }
 
 /** Return destination-visible reply text when the message is deliverable. */

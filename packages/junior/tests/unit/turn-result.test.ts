@@ -296,6 +296,59 @@ describe("buildTurnResult", () => {
     expect(reply.diagnostics.outcome).toBe("success");
   });
 
+  it("treats prose that ends with the no-reply marker as silent completion", () => {
+    const reply = buildTurnResult({
+      newMessages: [
+        {
+          role: "assistant",
+          content: [
+            {
+              type: "text",
+              text: `The linear-code comment is just a Linear linkback, not review feedback, and checks aren't failing yet — staying silent.\n${NO_REPLY_MARKER}`,
+            },
+          ],
+          stopReason: "stop",
+        },
+      ],
+      userInput: "PR comment event",
+      toolCalls: [],
+      generatedFileCount: 0,
+      shouldTrace: false,
+      modelId: "test-model",
+      executionProfile,
+    });
+
+    expect(reply.text).toBe("");
+    expect(reply.diagnostics.outcome).toBe("success");
+    expect(reply.diagnostics.usedPrimaryText).toBe(true);
+  });
+
+  it("strips mid-sentence no-reply markers from delivered answers", () => {
+    const reply = buildTurnResult({
+      newMessages: [
+        {
+          role: "assistant",
+          content: [
+            {
+              type: "text",
+              text: `Earlier turn used ${NO_REPLY_MARKER} and then stopped.`,
+            },
+          ],
+          stopReason: "stop",
+        },
+      ],
+      userInput: "why was there no reply?",
+      toolCalls: [],
+      generatedFileCount: 0,
+      shouldTrace: false,
+      modelId: "test-model",
+      executionProfile,
+    });
+
+    expect(reply.text).toBe("Earlier turn used and then stopped.");
+    expect(reply.diagnostics.outcome).toBe("success");
+  });
+
   it("does not treat a tool-call terminal tail as intentional no-reply", () => {
     const reply = buildTurnResult({
       newMessages: [

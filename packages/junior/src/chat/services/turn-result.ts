@@ -1,6 +1,10 @@
 import { isRetryableAssistantError } from "@earendil-works/pi-ai";
 import { logInfo, logWarn, summarizeMessageText } from "@/chat/logging";
-import { containsNoReplyMarker, isNoReplyMarker } from "@/chat/no-reply";
+import {
+  containsNoReplyMarker,
+  endsWithNoReplyMarker,
+  isNoReplyMarker,
+} from "@/chat/no-reply";
 import type { PiMessage } from "@/chat/pi/messages";
 import { createProviderError } from "@/chat/services/provider-error";
 import type { TurnRoute } from "@/chat/services/turn-router";
@@ -88,15 +92,18 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
     )
     .map((output) => output.text)
     .join("\n\n");
-  // Silence only for exact whole-message markers. Tool-call suppress is not a
-  // no-reply. Mixed marker + prose still delivers.
+  // Silence for exact markers or terminal prose that ends with the marker.
+  // Tool-call suppress is not a no-reply. Mid-sentence marker mentions deliver
+  // after stripping.
   const terminalTexts = terminalAssistantMessages.map((message) =>
     sanitizeAssistantText(extractAssistantText(message)),
   );
   const noReplyRequested =
     !primaryText &&
-    terminalTexts.some((text) => isNoReplyMarker(text)) &&
-    terminalTexts.every((text) => !text || isNoReplyMarker(text));
+    terminalTexts.some((text) => endsWithNoReplyMarker(text)) &&
+    terminalTexts.every(
+      (text) => !text || isNoReplyMarker(text) || endsWithNoReplyMarker(text),
+    );
 
   const toolErrorCount = toolResults.filter((result) => result.isError).length;
   const reactionPerformed = toolResults.some(

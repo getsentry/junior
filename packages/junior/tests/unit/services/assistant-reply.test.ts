@@ -48,16 +48,26 @@ describe("assistant reply", () => {
     expect(decideReply(assistant(NO_REPLY_MARKER))).toEqual({
       kind: "suppress",
     });
+    expect(
+      decideReply(
+        assistant(
+          "The linear-code comment is just a Linear linkback, not review feedback, and checks aren't failing yet — staying silent.\n[[NO_REPLY]]",
+        ),
+      ),
+    ).toEqual({ kind: "suppress" });
+    expect(decideReply(assistant(`Done. ${NO_REPLY_MARKER}`))).toEqual({
+      kind: "suppress",
+    });
     expect(decideReply(assistant("Let me do that now.", true))).toEqual({
       kind: "suppress",
     });
   });
 
-  it("delivers text that mentions the no-reply marker", () => {
+  it("delivers mid-sentence mentions after stripping the no-reply marker", () => {
     const text = `Earlier turn used ${NO_REPLY_MARKER} and then stopped.`;
     expect(decideReply(assistant(text))).toEqual({
       kind: "deliver",
-      text,
+      text: "Earlier turn used and then stopped.",
     });
   });
 
