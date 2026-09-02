@@ -21,7 +21,7 @@ const profiles = {
   },
   handoff: {
     modelId: "openai/gpt-5.6-sol",
-    description: "Coding and complex execution work.",
+    description: "Use for coding and difficult multi-step work.",
   },
 };
 const routeTurn = (
@@ -74,14 +74,14 @@ describe("selectTurnRoute", () => {
         thinkingLevel: "low",
         promptName: "junior.thinking_route",
         system: expect.stringContaining(
-          '"handoff": Coding and complex execution work.',
+          '"handoff": Use for coding and difficult multi-step work.',
         ),
       }),
     );
     expect(toPiReasoningLevel(profile.reasoningLevel)).toBe("off");
   });
 
-  it("includes profile descriptions in classifier steering", async () => {
+  it("includes profile descriptions in profile selection", async () => {
     const completeObject = vi.fn(async () => ({
       object: {
         reasoning_level: "none",
@@ -100,7 +100,7 @@ describe("selectTurnRoute", () => {
     expect(completeObject).toHaveBeenCalledWith(
       expect.objectContaining({
         system: expect.stringContaining(
-          "match on description use/avoid cues",
+          "use each description's use and avoid cases",
         ),
       }),
     );

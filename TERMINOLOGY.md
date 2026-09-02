@@ -74,8 +74,8 @@ Canonical words used across Junior's code and documentation.
   before model execution begins.
 - **Model profile**: a stable host-owned model name, such as `standard` or
   `handoff`, recorded on a turn route or history replacement. A profile may
-  carry a short description that steers the turn router and handoff tool on
-  when that profile fits a task.
+  include a short task-fit description. The turn router and `handoff` tool use
+  this description when they choose a profile.
 - **Message**: exact normalized source or destination chat content stored for
   transcript display, privacy, delivery handling, and search.
 - **Message update**: later delivery or hydration state for an existing

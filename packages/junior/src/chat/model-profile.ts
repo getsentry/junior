@@ -11,9 +11,9 @@ export type ModelProfile = z.output<typeof modelProfileSchema>;
 /** Runtime configuration for one named model profile. */
 export interface ModelProfileConfig {
   /**
-   * Steering text that tells models when this profile fits the task.
-   * Prefer concrete task kinds, with explicit use/avoid cues when helpful.
-   * Do not use model marketing names as the selection signal.
+   * Tells models which tasks fit this profile.
+   * Name concrete tasks. Add use and avoid cases when helpful.
+   * Do not use model product names as the selection rule.
    */
   description?: string;
   modelId: string;
@@ -23,28 +23,25 @@ export interface ModelProfileConfig {
 /** App-level profile input: a model id string or a full profile config. */
 export type ModelProfileInput = string | ModelProfileConfig;
 
-/** Format one profile for handoff/router steering text. */
-export function formatModelProfileSteering(
+/** Format one profile and its task-fit description. */
+export function formatModelProfile(
   profile: ModelProfile,
-  config: ModelProfileConfig,
+  description?: string,
 ): string {
-  const description = config.description?.trim();
-  return description ? `"${profile}": ${description}` : `"${profile}"`;
+  const text = description?.trim();
+  return text ? `"${profile}": ${text}` : `"${profile}"`;
 }
 
-/** Format configured profiles as one catalog entry per line. */
-export function formatModelProfilesSteering(
+/** Format configured profiles as one list item per line. */
+export function formatModelProfiles(
   profiles: Readonly<Record<string, ModelProfileConfig>>,
   profileNames: readonly ModelProfile[],
 ): string {
   return profileNames
-    .map((profile) => {
-      const config = profiles[profile];
-      const entry = config
-        ? formatModelProfileSteering(profile, config)
-        : `"${profile}"`;
-      return `- ${entry}`;
-    })
+    .map(
+      (profile) =>
+        `- ${formatModelProfile(profile, profiles[profile]?.description)}`,
+    )
     .join("\n");
 }
 

@@ -142,7 +142,9 @@ describe("chat config", () => {
       },
       handoff: {
         modelId: "openai/gpt-5.6-sol",
-        description: expect.stringContaining("Use for coding and complex execution"),
+        description: expect.stringContaining(
+          "Use for coding and difficult multi-step work",
+        ),
         reasoningLevel: "high",
       },
     });
@@ -154,7 +156,9 @@ describe("chat config", () => {
     const { botConfig } = await loadConfig();
     expect(botConfig.profiles.handoff).toEqual({
       modelId: "openai/gpt-5.4",
-      description: expect.stringContaining("Use for coding and complex execution"),
+      description: expect.stringContaining(
+        "Use for coding and difficult multi-step work",
+      ),
       reasoningLevel: "high",
     });
   });
@@ -173,7 +177,9 @@ describe("chat config", () => {
       },
       handoff: {
         modelId: "openai/gpt-5.6-sol",
-        description: expect.stringContaining("Use for coding and complex execution"),
+        description: expect.stringContaining(
+          "Use for coding and difficult multi-step work",
+        ),
         reasoningLevel: "high",
       },
       coding: { modelId: "openai/gpt-5.4" },
@@ -181,7 +187,7 @@ describe("chat config", () => {
     });
   });
 
-  it("accepts AI_MODEL_PROFILES objects with description steering", async () => {
+  it("accepts AI_MODEL_PROFILES objects with task-fit descriptions", async () => {
     process.env.AI_MODEL_PROFILES = JSON.stringify({
       coding: {
         modelId: "openai/gpt-5.4",

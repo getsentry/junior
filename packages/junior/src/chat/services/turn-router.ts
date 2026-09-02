@@ -6,7 +6,7 @@ import {
   type TurnReasoningLevel,
 } from "@/chat/reasoning-level";
 import {
-  formatModelProfilesSteering,
+  formatModelProfiles,
   type ModelProfile,
   type ModelProfileConfig,
   modelProfileSchema,
@@ -119,7 +119,7 @@ function buildClassifierSystemPrompt(
   profileNames: string[],
   defaultProfile: ModelProfile,
 ): string {
-  const profileCatalog = formatModelProfilesSteering(profiles, profileNames);
+  const profileList = formatModelProfiles(profiles, profileNames);
   return [
     "You choose the model profile most likely to produce a complete, source-grounded answer.",
     "Choose exactly one bucket: none, low, medium, high, or xhigh.",
@@ -133,9 +133,9 @@ function buildClassifierSystemPrompt(
     "When unsure between two non-none buckets, choose the higher bucket. Do not use low as the default.",
     "",
     `Default profile: "${defaultProfile}". Keep it unless another profile's description is a clearly better fit.`,
-    "Configured profiles (match on description use/avoid cues; names are labels only; non-default does not mean stronger):",
-    profileCatalog,
-    "Choose a non-default profile only when its description clearly matches the task. If no description is a clear match, keep the default profile.",
+    "Configured profiles (use each description's use and avoid cases; names are labels only; non-default does not mean stronger):",
+    profileList,
+    "Choose a non-default profile only when its description clearly fits the task. If no description clearly fits, keep the default profile.",
     "",
     "Classify based on the substance of the task, not the length of the current message. When the current instruction is a short affirmation (for example: 'go', 'do it', 'yes please', 'proceed') and prior thread context contains a pending task, classify the pending task — not the affirmation.",
     "",

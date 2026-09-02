@@ -249,9 +249,9 @@ function validateEmbeddingModelId(raw: string | undefined): string | undefined {
 }
 
 const DEFAULT_STANDARD_PROFILE_DESCRIPTION =
-  "Use for default assistant work: lookups, explanations, ordinary tool use, short answers, and light single-source investigation. Avoid when the task is implementation, debugging, multi-file changes, architecture decisions, or research-heavy synthesis across systems.";
+  "Use for default assistant work: lookups, explanations, ordinary tool use, short answers, and light investigation of one source. Avoid for implementation, debugging, multi-file changes, architecture decisions, or research across several systems.";
 const DEFAULT_HANDOFF_PROFILE_DESCRIPTION =
-  "Use for coding and complex execution: implementation, debugging, root-cause analysis, broad refactors, multi-file changes, architecture decisions, and research-heavy synthesis across systems. Avoid for simple lookups, short Q&A, single-file reads, or ordinary tool use the default profile can finish.";
+  "Use for coding and difficult multi-step work: implementation, debugging, root-cause analysis, broad refactors, multi-file changes, architecture decisions, and research across several systems. Avoid for simple lookups, short answers, single-file reads, or ordinary tool use that the default profile can finish.";
 
 function parseOptionalProfileDescription(
   rawDescription: unknown,
@@ -305,7 +305,11 @@ function parseProfileConfig(
     return { modelId };
   }
 
-  if (!rawProfile || typeof rawProfile !== "object" || Array.isArray(rawProfile)) {
+  if (
+    !rawProfile ||
+    typeof rawProfile !== "object" ||
+    Array.isArray(rawProfile)
+  ) {
     throw new Error(
       `${configName}.${profile} must be a model id string or an object with modelId`,
     );
@@ -313,7 +317,9 @@ function parseProfileConfig(
 
   const rawModelId = (rawProfile as { modelId?: unknown }).modelId;
   if (typeof rawModelId !== "string") {
-    throw new Error(`${configName}.${profile}.modelId must be a model id string`);
+    throw new Error(
+      `${configName}.${profile}.modelId must be a model id string`,
+    );
   }
   const modelId = validateGatewayModelId(rawModelId);
   if (!modelId) {

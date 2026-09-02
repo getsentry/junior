@@ -174,7 +174,7 @@ already joined. Leave it unset in production unless you are testing that path.
 
 ## Profiles
 
-Pass named profiles to `createApp()`. The turn router and `handoff` tool use each profile's description to decide when it fits. `handoff` can switch to any configured profile except the active one:
+Pass named profiles to `createApp()`. The turn router and `handoff` tool use each profile's task-fit description when they choose a profile. `handoff` can switch to any configured profile except the active one:
 
 ```ts
 const app = await createApp({
@@ -183,21 +183,21 @@ const app = await createApp({
     standard: {
       modelId: "xai/grok-4.5",
       description:
-        "Use for default assistant work: lookups, explanations, ordinary tool use, short answers, and light single-source investigation. Avoid when the task is implementation, debugging, multi-file changes, architecture decisions, or research-heavy synthesis across systems.",
+        "Use for default assistant work: lookups, explanations, ordinary tool use, short answers, and light investigation of one source. Avoid for implementation, debugging, multi-file changes, architecture decisions, or research across several systems.",
     },
     coding: {
       modelId: "openai/gpt-5.6-sol",
       description:
-        "Use for coding and complex execution: implementation, debugging, root-cause analysis, broad refactors, multi-file changes, architecture decisions, and research-heavy synthesis across systems. Avoid for simple lookups, short Q&A, single-file reads, or ordinary tool use the default profile can finish.",
+        "Use for coding and difficult multi-step work: implementation, debugging, root-cause analysis, broad refactors, multi-file changes, architecture decisions, and research across several systems. Avoid for simple lookups, short answers, single-file reads, or ordinary tool use that the default profile can finish.",
       reasoningLevel: "high",
     },
   },
 });
 ```
 
-Each profile value may be a model id string or an object with `modelId` and optional `description` / `reasoningLevel`. Write descriptions as concrete task kinds with explicit use/avoid cues, not model marketing names. The turn router and `handoff` tool match on those descriptions so the agent can upgrade on its own when a profile fits.
+Each profile value may be a model id string or an object with `modelId` and optional `description` and `reasoningLevel` fields. Name concrete tasks in each description. Include use and avoid cases when useful. Do not use model product names as the selection rule. The turn router and `handoff` tool use these descriptions so the agent can choose another profile when it fits the task better.
 
-Set `profiles` and `defaultProfile` together. App config replaces profiles from env settings. If app config omits both options, the deprecated env settings create `standard` and `handoff` profiles with default steering text. `AI_MODEL_PROFILES` can add or replace those profiles and may use the same string or object shape.
+Set `profiles` and `defaultProfile` together. App config replaces profiles from env settings. If app config omits both options, the deprecated env settings create `standard` and `handoff` profiles with default task-fit descriptions. `AI_MODEL_PROFILES` can add or replace those profiles and may use the same string or object shape.
 
 ## Install-wide config defaults
 

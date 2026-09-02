@@ -125,9 +125,9 @@ export interface JuniorAppOptions {
   /** Profile used for new conversations. Configure with `profiles`. */
   defaultProfile?: string;
   /**
-   * Named profiles available to the router and handoff tool. Configure with
+   * Named profiles available to the router and `handoff` tool. Configure with
    * `defaultProfile`. Each value may be a model id string or an object with
-   * `modelId` plus optional `description` / `reasoningLevel` steering.
+   * `modelId` and optional `description` and `reasoningLevel` settings.
    */
   profiles?: Readonly<Record<string, ModelProfileInput>>;
   /** Slack-specific overrides applied after env parsing. */

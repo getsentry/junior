@@ -70,7 +70,6 @@ import {
   extractAssistantText,
   getUserMessageInstructionText,
   isAssistantMessage,
-  retainRuntimeTurnContext,
 } from "@/chat/pi/transcript";
 import { createTracedStreamFn } from "@/chat/pi/traced-stream";
 import { shouldEmitDevAgentTrace } from "@/chat/runtime/dev-agent-trace";
@@ -137,14 +136,9 @@ import {
   profileConfig,
   type ModelProfile,
 } from "@/chat/model-profile";
-import {
-  compactActiveContextIfNeeded,
-  compactContextForHandoff,
-} from "@/chat/services/context-compaction";
-import {
-  createHandoffTool,
-  HANDOFF_TOOL_NAME,
-} from "@/chat/tools/handoff/tool";
+import { compactActiveContextIfNeeded } from "@/chat/services/context-compaction";
+import { createModelHandoff } from "@/chat/agent/handoff";
+import { HANDOFF_TOOL_NAME } from "@/chat/tools/handoff/tool";
 
 const AGENT_ABORT_SETTLE_GRACE_MS = 5_000;
 
@@ -711,23 +705,8 @@ async function executeAgentRunInPrivacyContext(
 
     // ── Mutable turn state ───────────────────────────────────────────
     let pendingPiHookError: Error | undefined;
-    // Handoff becomes live only after its replacement epoch commits. This
-    // pending value then drives the one-way model/context swap at Pi's boundary.
-    let pendingHandoff:
-      | {
-          messages: PiMessage[];
-          model: ReturnType<typeof resolveGatewayModel>;
-          thinkingLevel: NonNullable<AgentLoopTurnUpdate["thinkingLevel"]>;
-        }
-      | undefined;
     const currentAgentMessages = (): PiMessage[] =>
       agent ? [...agent.state.messages] : [];
-    const handoffProfiles: [ModelProfile, ...ModelProfile[]] = [
-      botConfig.defaultProfile,
-      ...Object.keys(botConfig.profiles)
-        .filter((profile) => profile !== botConfig.defaultProfile)
-        .sort(),
-    ];
     const usageSinceCurrentBoundary = (
       messages: PiMessage[],
     ): AgentTurnUsage | undefined => {
@@ -738,108 +717,39 @@ async function executeAgentRunInPrivacyContext(
       );
       return hasAgentTurnUsage(usage) ? usage : undefined;
     };
-    /** Commit the durable handoff epoch before staging its in-memory model swap. */
-    const scheduleHandoff = async (args: {
-      profile: ModelProfile;
-      runtimeContextSourceMessages?: PiMessage[];
-      signal?: AbortSignal;
-      sourceMessages: PiMessage[];
-      triggeringToolCallId?: string;
-    }) => {
-      if (args.profile === activeModelProfile) {
-        return;
-      }
-      const runtimeContext = retainRuntimeTurnContext(
-        args.runtimeContextSourceMessages ?? args.sourceMessages,
-      );
-      const phaseUsage = usageSinceCurrentBoundary(args.sourceMessages);
-      const selectedProfile = profileConfig(botConfig, args.profile);
-      const handoffReasoningLevel =
-        selectedProfile.reasoningLevel ?? turnRoute!.reasoningLevel;
-      const target = {
-        modelId: selectedProfile.modelId,
-        modelProfile: args.profile,
-        reasoningLevel: handoffReasoningLevel,
-      };
-      const handoffModel = resolveGatewayModel(target.modelId);
-      const handoffThinkingLevel = toPiReasoningLevel(handoffReasoningLevel);
-      void (async () => {
-        await observers.onStatus?.({ text: "Switching models" });
-      })().catch((error) => {
-        logWarn("assistant.status.observer.failed", {
-          "exception.message":
-            error instanceof Error ? error.message : String(error),
-        });
-      });
-      const handoffMessages = await compactContextForHandoff(
-        {
-          conversationContext: input.conversationContext,
-          conversationId,
-          piMessages: args.sourceMessages,
-          runtimeContext,
-          signal: args.signal,
-          triggeringToolCallId: args.triggeringToolCallId,
-          target,
-          metadata: {
-            threadId: conversationId,
-            channelId: slackChannelId,
-            actorId: slackActor?.userId,
-            runId,
-          },
-        },
-        {
-          completeText: (args) => completeText(args),
-        },
-      );
-      if (handoffReasoningLevel !== turnRoute!.reasoningLevel) {
-        turnRoute = {
-          ...turnRoute!,
-          reasoningLevel: handoffReasoningLevel,
-          reason: `profile_reasoning_override:${args.profile}:${turnRoute!.reason}`,
-        };
-      }
-      priorPhaseUsage = addAgentTurnUsage(priorPhaseUsage, phaseUsage);
-      pendingHandoff = {
-        messages: handoffMessages,
-        model: handoffModel,
-        thinkingLevel: handoffThinkingLevel,
-      };
-      activeModelProfile = args.profile;
-      activeModelId = target.modelId;
-    };
-    const handoffControlFor = (activeProfile: ModelProfile) => {
-      const profiles = handoffProfiles.filter(
-        (profile) => profile !== activeProfile,
-      );
-      if (profiles.length === 0) {
-        return undefined;
-      }
-      const profileDescriptions = Object.fromEntries(
-        profiles.flatMap((profile) => {
-          const description = profileConfig(botConfig, profile).description;
-          return description ? [[profile, description] as const] : [];
-        }),
-      );
-      return {
-        profiles: profiles as [ModelProfile, ...ModelProfile[]],
-        ...(Object.keys(profileDescriptions).length > 0
-          ? { profileDescriptions }
-          : undefined),
-        execute: async (
-          profile: ModelProfile,
-          options: { signal?: AbortSignal; toolCallId: string },
-        ) =>
-          await scheduleHandoff({
-            profile,
-            signal: options.signal,
-            sourceMessages: [...agent!.state.messages],
-            triggeringToolCallId: options.toolCallId,
-          }),
-      };
-    };
-    const requestHandoff = handoffEnabled
-      ? handoffControlFor(activeModelProfile)
-      : undefined;
+    // baseInstructions is filled after prompt assembly; applyPending closes over it.
+    let baseInstructions = "";
+    const modelHandoff = createModelHandoff({
+      conversationContext: input.conversationContext,
+      conversationId,
+      enabled: handoffEnabled,
+      getActiveModelId: () => activeModelId,
+      getActiveModelProfile: () => activeModelProfile,
+      getAgent: () => agent,
+      getBaseInstructions: () => baseInstructions,
+      getPriorPhaseUsage: () => priorPhaseUsage,
+      getTurnRoute: () => turnRoute!,
+      metadata: {
+        threadId: conversationId,
+        channelId: slackChannelId,
+        actorId: slackActor?.userId,
+        runId,
+      },
+      onStatus: observers.onStatus,
+      resume: runResume,
+      setActiveModel: ({ modelId, modelProfile }) => {
+        activeModelId = modelId;
+        activeModelProfile = modelProfile;
+      },
+      setPriorPhaseUsage: (usage) => {
+        priorPhaseUsage = usage;
+      },
+      setTurnRoute: (route) => {
+        turnRoute = route;
+      },
+      usageBoundaryMessageCount: () => runResume.beforeMessageCount,
+    });
+    const requestHandoff = modelHandoff.initialControl;
 
     setTags({
       ...runLogContext,
@@ -910,38 +820,11 @@ async function executeAgentRunInPrivacyContext(
       await recordAgentsTransition(initialRepositoryInstructions);
     }
     const getPendingAuthPause = wiring.getPendingAuthPause;
-    const toolsWithoutHandoff = wiring.agentTools.filter(
-      (tool) => tool.name !== HANDOFF_TOOL_NAME,
-    );
-    const handoffAgentTool = wiring.agentTools.find(
-      (tool) => tool.name === HANDOFF_TOOL_NAME,
-    );
-    const toolsForActiveProfile = () => {
-      const handoff = handoffEnabled
-        ? handoffControlFor(activeModelProfile)
-        : undefined;
-      if (!handoff) {
-        return toolsWithoutHandoff;
-      }
-      if (!handoffAgentTool) {
-        throw new Error("Handoff control is missing its Pi tool");
-      }
-      const definition = createHandoffTool(handoff);
-      return wiring.agentTools.map((tool) =>
-        tool.name === HANDOFF_TOOL_NAME
-          ? {
-              ...handoffAgentTool,
-              description: definition.description,
-              parameters: definition.inputSchema,
-              prepareArguments: definition.prepareArguments,
-            }
-          : tool,
-      );
-    };
+    modelHandoff.bindAgentTools(wiring.agentTools);
 
     // ── Prompt context ───────────────────────────────────────────────
     const {
-      baseInstructions,
+      baseInstructions: assembledBaseInstructions,
       contextContentParts: promptContextContentParts,
       inputMessages,
       inputMessagesAttribute,
@@ -980,6 +863,7 @@ async function executeAgentRunInPrivacyContext(
       toolRuntimeContext: wiring.toolRuntimeContext,
       userContentParts,
     });
+    baseInstructions = assembledBaseInstructions;
     const repositoryInstructionsContext = createRepositoryInstructionsContext({
       capture: wiring.captureRepositoryInstructions,
       hasSandbox: () => Boolean(wiring.getSandboxRef()),
@@ -994,37 +878,6 @@ async function executeAgentRunInPrivacyContext(
       shouldPromptAgent,
     });
     runResume.setTurnContexts(turnContexts);
-    /** Apply a committed handoff to Pi and reset its durable resume baseline. */
-    const applyPendingHandoff = (): AgentLoopTurnUpdate | undefined => {
-      if (!pendingHandoff) {
-        return undefined;
-      }
-      const { messages, model, thinkingLevel } = pendingHandoff;
-      const replacement = [...messages];
-      pendingHandoff = undefined;
-      agent!.state.messages = replacement;
-      agent!.state.model = model;
-      agent!.state.thinkingLevel = thinkingLevel;
-      const tools = toolsForActiveProfile();
-      agent!.state.tools = tools;
-      runResume.setBeforeMessageCount(replacement.length);
-      runResume.setTurnStartMessageIndex(0);
-      runResume.adoptCommittedBoundary(replacement);
-      setSpanAttributes({
-        "gen_ai.agent.model": activeModelId,
-        "gen_ai.agent.model_profile": activeModelProfile,
-        "gen_ai.agent.reasoning.level": turnRoute!.reasoningLevel,
-      });
-      return {
-        context: {
-          systemPrompt: baseInstructions,
-          messages: replacement,
-          tools,
-        },
-        model,
-        thinkingLevel,
-      };
-    };
     /** Commit and adopt an active capacity replacement before another model call. */
     const applyActiveContextCompaction = async (
       messages: PiMessage[],
@@ -1246,7 +1099,7 @@ async function executeAgentRunInPrivacyContext(
       },
       prepareNextTurnWithContext: async (nextTurn, hookSignal) => {
         try {
-          const handoffUpdate = applyPendingHandoff();
+          const handoffUpdate = modelHandoff.applyPending();
           const pendingMessages = await drainSteeringMessages();
           const capacityUpdate = await applyActiveContextCompaction(
             handoffUpdate
@@ -1290,7 +1143,7 @@ async function executeAgentRunInPrivacyContext(
         return recordParentToolExecutionStart(event);
       }
       if (event.type === "turn_end" && event.toolResults.length > 0) {
-        if (pendingHandoff) {
+        if (modelHandoff.hasPending) {
           return;
         }
         return runResume
@@ -1495,7 +1348,7 @@ async function executeAgentRunInPrivacyContext(
           ) {
             const handoffAbortController = new AbortController();
             await runAgentStep(
-              scheduleHandoff({
+              modelHandoff.schedule({
                 profile: requestedProfile,
                 runtimeContextSourceMessages: shouldPromptAgent
                   ? [
@@ -1508,7 +1361,7 @@ async function executeAgentRunInPrivacyContext(
               }),
               () => handoffAbortController.abort(),
             );
-            handoffApplied = Boolean(applyPendingHandoff());
+            handoffApplied = Boolean(modelHandoff.applyPending());
           }
           const compactionAbortController = new AbortController();
           const capacityUpdate = await runAgentStep(

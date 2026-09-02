@@ -28,7 +28,7 @@ describe("createApp profiles", () => {
     });
   });
 
-  it("accepts profile objects with description and reasoning steering", async () => {
+  it("accepts profile objects with description and reasoning settings", async () => {
     await createApp({
       defaultProfile: "standard",
       profiles: {
@@ -38,8 +38,7 @@ describe("createApp profiles", () => {
         },
         coding: {
           modelId: "openai/gpt-5.6-sol",
-          description:
-            "Coding and complex execution work: implementation and debugging.",
+          description: "Use for implementation and debugging.",
           reasoningLevel: "high",
         },
       },
@@ -54,8 +53,7 @@ describe("createApp profiles", () => {
       },
       coding: {
         modelId: "openai/gpt-5.6-sol",
-        description:
-          "Coding and complex execution work: implementation and debugging.",
+        description: "Use for implementation and debugging.",
         reasoningLevel: "high",
       },
     });
