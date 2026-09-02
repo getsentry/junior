@@ -1,5 +1,8 @@
 import type { SlashCommandEvent } from "chat";
-import { createUserTokenStore } from "@/chat/capabilities/factory";
+import {
+  createInstallationTokenStore,
+  createUserTokenStore,
+} from "@/chat/capabilities/factory";
 import { unlinkProvider } from "@/chat/credentials/unlink-provider";
 import { formatProviderLabel, startOAuthFlow } from "@/chat/oauth-flow";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
@@ -96,15 +99,25 @@ async function handleUnlink(
 
   const tokenStore = createUserTokenStore();
   const teamId = (event.raw as { team_id?: string }).team_id;
-  await unlinkProvider(actorId, provider, tokenStore, teamId);
+  await unlinkProvider(
+    actorId,
+    provider,
+    tokenStore,
+    createInstallationTokenStore(),
+    teamId,
+  );
 
   logInfo("slash_command.credential.unlinked", {
     "app.credential.provider": provider,
   });
 
+  const installation =
+    pluginCatalogRuntime.getOAuthConfig(provider)?.tokenSubject === "installation";
   await postEphemeral(
     event,
-    `Your ${formatProviderLabel(provider)} account has been unlinked.`,
+    installation
+      ? `${formatProviderLabel(provider)} has been disconnected.`
+      : `Your ${formatProviderLabel(provider)} account has been unlinked.`,
   );
 }
 

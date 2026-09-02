@@ -12,8 +12,11 @@ export interface SlackUserProfile {
   email?: string;
   status_text?: string;
   status_emoji?: string;
+  is_admin?: boolean;
   is_bot: boolean;
   is_deleted: boolean;
+  is_owner?: boolean;
+  is_primary_owner?: boolean;
   timezone?: string;
   profile_fields?: Array<{
     id: string;
@@ -35,7 +38,10 @@ interface SlackUserRaw {
   name?: string;
   real_name?: string;
   deleted?: boolean;
+  is_admin?: boolean;
   is_bot?: boolean;
+  is_owner?: boolean;
+  is_primary_owner?: boolean;
   tz?: string;
   profile?: {
     display_name?: string;
@@ -74,8 +80,11 @@ function normalizeUser(raw: SlackUserRaw): SlackUserProfile {
     email: raw.profile?.email || undefined,
     status_text: raw.profile?.status_text ?? undefined,
     status_emoji: raw.profile?.status_emoji ?? undefined,
+    is_admin: raw.is_admin ?? false,
     is_bot: raw.is_bot ?? false,
     is_deleted: raw.deleted ?? false,
+    is_owner: raw.is_owner ?? false,
+    is_primary_owner: raw.is_primary_owner ?? false,
     timezone: raw.tz || undefined,
     ...(profileFields.length > 0 ? { profile_fields: profileFields } : undefined),
   };

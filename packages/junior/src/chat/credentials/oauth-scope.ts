@@ -3,7 +3,7 @@ function parseScope(scope?: string): string[] {
     return [];
   }
 
-  return [...new Set(scope.split(/\s+/).filter(Boolean))].sort();
+  return [...new Set(scope.split(/[\s,]+/).filter(Boolean))].sort();
 }
 
 /** Normalize OAuth scope strings so persisted grants can be compared reliably. */

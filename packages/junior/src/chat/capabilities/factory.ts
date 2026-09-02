@@ -5,14 +5,20 @@ import type {
   CredentialLease,
 } from "@/chat/credentials/broker";
 import type { CredentialContext } from "@/chat/credentials/context";
-import { StateAdapterTokenStore } from "@/chat/credentials/state-adapter-token-store";
+import { credentialWorkspaceId } from "@/chat/credentials/context";
+import {
+  StateAdapterInstallationTokenStore,
+  StateAdapterTokenStore,
+} from "@/chat/credentials/state-adapter-token-store";
+import type { InstallationTokenStore } from "@/chat/credentials/installation-token-store";
 import type { UserTokenStore } from "@/chat/credentials/user-token-store";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import { getStateAdapter } from "@/chat/state/adapter";
+import { getWorkspaceTeamId } from "@/chat/slack/workspace-context";
 
 const sandboxEgressRouters = new WeakMap<
   StateAdapter,
-  ProviderCredentialRouter
+  Map<string, ProviderCredentialRouter>
 >();
 
 /** Create the user token store used by OAuth-backed credential brokers. */
@@ -20,8 +26,19 @@ export function createUserTokenStore(): UserTokenStore {
   return new StateAdapterTokenStore(getStateAdapter());
 }
 
+/** Create the token store used by installation OAuth grants. */
+export function createInstallationTokenStore(
+  workspaceId?: string,
+): InstallationTokenStore {
+  return new StateAdapterInstallationTokenStore(
+    getStateAdapter(),
+    workspaceId ?? getWorkspaceTeamId(),
+  );
+}
+
 function createProviderCredentialRouter(
-  userTokenStore: UserTokenStore,
+  stateAdapter: StateAdapter,
+  workspaceId?: string,
 ): ProviderCredentialRouter {
   const brokersByProvider: Record<string, CredentialBroker> = {};
 
@@ -31,21 +48,37 @@ function createProviderCredentialRouter(
       continue;
     }
     brokersByProvider[name] = pluginCatalogRuntime.createBroker(name, {
-      userTokenStore,
+      installationTokenStore: new StateAdapterInstallationTokenStore(
+        stateAdapter,
+        workspaceId,
+      ),
+      userTokenStore: new StateAdapterTokenStore(stateAdapter),
     });
   }
 
   return new ProviderCredentialRouter({ brokersByProvider });
 }
 
-function getSandboxEgressRouter(): ProviderCredentialRouter {
+function installationWorkspaceScope(workspaceId?: string): string {
+  const scoped = workspaceId?.trim();
+  return scoped && scoped.length > 0 ? scoped : "local";
+}
+
+function getSandboxEgressRouter(workspaceId?: string): ProviderCredentialRouter {
   const stateAdapter = getStateAdapter();
-  let router = sandboxEgressRouters.get(stateAdapter);
+  // Egress leases are issued from a signed credential context, not webhook ALS.
+  // Keep the router slot aligned with lease-key scope so a missing stamp cannot
+  // pair ALS-backed tokens with a shared "local" cache entry.
+  const scopedWorkspaceId = installationWorkspaceScope(workspaceId);
+  let routers = sandboxEgressRouters.get(stateAdapter);
+  if (!routers) {
+    routers = new Map();
+    sandboxEgressRouters.set(stateAdapter, routers);
+  }
+  let router = routers.get(scopedWorkspaceId);
   if (!router) {
-    router = createProviderCredentialRouter(
-      new StateAdapterTokenStore(stateAdapter),
-    );
-    sandboxEgressRouters.set(stateAdapter, router);
+    router = createProviderCredentialRouter(stateAdapter, scopedWorkspaceId);
+    routers.set(scopedWorkspaceId, router);
   }
   return router;
 }
@@ -56,5 +89,7 @@ export async function issueProviderCredentialLease(input: {
   provider: string;
   reason: string;
 }): Promise<CredentialLease> {
-  return await getSandboxEgressRouter().issue(input);
+  return await getSandboxEgressRouter(credentialWorkspaceId(input.context)).issue(
+    input,
+  );
 }

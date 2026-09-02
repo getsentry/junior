@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  credentialContextForActor,
   credentialUserSubjectId,
+  credentialWorkspaceId,
   parseCredentialContext,
 } from "@/chat/credentials/context";
 
@@ -39,6 +41,36 @@ describe("credential context", () => {
         actor: { platform: "system", name: "scheduler" },
       }),
     ).toBeUndefined();
+  });
+
+  it("stamps Slack workspace scope onto credential context", () => {
+    expect(
+      credentialWorkspaceId(
+        credentialContextForActor({
+          platform: "slack",
+          teamId: "T123",
+          userId: "U123",
+        }),
+      ),
+    ).toBe("T123");
+    expect(
+      credentialWorkspaceId(
+        credentialContextForActor(
+          { platform: "system", name: "scheduler" },
+          undefined,
+          "T777",
+        ),
+      ),
+    ).toBe("T777");
+    expect(
+      parseCredentialContext({
+        actor: { type: "user", userId: "U123" },
+        workspaceId: "T123",
+      }),
+    ).toEqual({
+      actor: { type: "user", userId: "U123" },
+      workspaceId: "T123",
+    });
   });
 
   it("parses untrusted egress contexts with the same actor rules", () => {

@@ -38,7 +38,10 @@ import { parseSlackThreadId } from "@/chat/slack/context";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { handleSlashCommand } from "@/chat/ingress/slash-command";
 import { createActor, parseActorUserId } from "@/chat/actor";
-import { createUserTokenStore } from "@/chat/capabilities/factory";
+import {
+  createInstallationTokenStore,
+  createUserTokenStore,
+} from "@/chat/capabilities/factory";
 import { unlinkProvider } from "@/chat/credentials/unlink-provider";
 import type { UserTokenStore } from "@/chat/credentials/user-token-store";
 import { publishAppHomeView } from "@/chat/slack/app-home";
@@ -605,6 +608,7 @@ async function handleInteractivePayload(args: {
           userId,
           provider,
           args.userTokenStore,
+          createInstallationTokenStore(),
           getWorkspaceTeamId(),
         );
       } catch (error) {

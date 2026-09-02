@@ -4,7 +4,11 @@ import {
   type PluginStoredTokens,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
-import { createUserTokenStore } from "@/chat/capabilities/factory";
+import {
+  createInstallationTokenStore,
+  createUserTokenStore,
+} from "@/chat/capabilities/factory";
+import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 
 const LOCAL_CREDENTIAL_SYNC_CONTEXT = "junior.local-credential-sync.v1";
 const LOCAL_CREDENTIAL_SYNC_MAX_AGE_MS = 60_000;
@@ -106,10 +110,18 @@ export async function receiveLocalOAuthCredential(
   ) {
     return Response.json({ error: "Invalid request" }, { status: 400 });
   }
-  await createUserTokenStore().set(
-    "local-cli",
-    payload.data.provider,
-    payload.data.tokens,
-  );
+  const provider = payload.data.provider;
+  if (
+    pluginCatalogRuntime.getOAuthConfig(provider)?.tokenSubject ===
+    "installation"
+  ) {
+    await createInstallationTokenStore().set(provider, payload.data.tokens);
+  } else {
+    await createUserTokenStore().set(
+      "local-cli",
+      provider,
+      payload.data.tokens,
+    );
+  }
   return new Response(null, { status: 204 });
 }

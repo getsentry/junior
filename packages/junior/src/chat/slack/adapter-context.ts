@@ -2,6 +2,7 @@ import type { SlackAdapter } from "@chat-adapter/slack";
 import type { ChatInstance, StateAdapter } from "chat";
 import { runWithSlackInstallationToken } from "@/chat/slack/client";
 import { getStateAdapter } from "@/chat/state/adapter";
+import { runWithWorkspaceTeamId } from "@/chat/slack/workspace-context";
 
 interface SlackAdapterInternals {
   defaultBotTokenProvider?: () => string | Promise<string>;
@@ -101,7 +102,7 @@ export async function runWithSlackInstallation<T>(args: {
   // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
   const internals = args.adapter as SlackAdapterInternals;
   if (internals.defaultBotTokenProvider) {
-    return await args.task();
+    return await runWithWorkspaceTeamId(args.installation.teamId, args.task);
   }
 
   const installationId = args.installation.isEnterpriseInstall
@@ -131,6 +132,9 @@ export async function runWithSlackInstallation<T>(args: {
       enterpriseId: args.installation.enterpriseId,
       isEnterpriseInstall: args.installation.isEnterpriseInstall,
     },
-    () => runWithSlackInstallationToken(tokenContext.token, args.task),
+    () =>
+      runWithWorkspaceTeamId(args.installation.teamId, () =>
+        runWithSlackInstallationToken(tokenContext.token, args.task),
+      ),
   );
 }

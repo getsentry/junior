@@ -77,6 +77,30 @@ describe("plugin manifest config", () => {
     expect(manifest.oauth?.treatEmptyScopeAsUnreported).toBe(true);
   });
 
+  it("parses installation OAuth token subjects", () => {
+    const manifest = parsePluginManifest(
+      [
+        "name: linear",
+        "display-name: Linear",
+        "description: Linear",
+        "credentials:",
+        "  type: oauth-bearer",
+        "  domains:",
+        "    - api.linear.app",
+        "  auth-token-env: LINEAR_ACCESS_TOKEN",
+        "oauth:",
+        "  client-id-env: LINEAR_CLIENT_ID",
+        "  client-secret-env: LINEAR_CLIENT_SECRET",
+        "  authorize-endpoint: https://linear.app/oauth/authorize",
+        "  token-endpoint: https://api.linear.app/oauth/token",
+        "  token-subject: installation",
+      ].join("\n"),
+      "/plugins/linear",
+    );
+
+    expect(manifest.oauth?.tokenSubject).toBe("installation");
+  });
+
   it("parses treat-empty-scope-as-unreported from YAML oauth block", () => {
     const manifest = parsePluginManifest(
       [
