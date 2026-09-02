@@ -1,23 +1,25 @@
 export const NO_REPLY_MARKER = "[[NO_REPLY]]";
 
-/** Detect the reserved marker for intentionally completing without thread text. */
-export function isNoReplyMarker(text: string): boolean {
-  return text.trim() === NO_REPLY_MARKER;
-}
-
 /**
- * Detect intentional silence when the final assistant unit is only the marker.
- * Reasoning almost always comes before it as earlier text or an earlier line.
+ * True when this assistant text means intentional silence.
+ *
+ * Models often put reasoning first, then the marker:
+ * - exact: `[[NO_REPLY]]`
+ * - same message: `staying silent.\n[[NO_REPLY]]`
+ * - same message, same line: `Done. [[NO_REPLY]]`
+ *
+ * Mid-sentence mentions do not match (`used [[NO_REPLY]] earlier`), so
+ * normal answers can still talk about the marker.
+ *
+ * Call this on one assistant message, or on the last message in the terminal
+ * assistant block. An earlier silent message must not silence a later normal
+ * reply after tools.
  */
-export function isTrailingNoReplyUnit(text: string): boolean {
-  const trimmed = text.trim();
-  if (!trimmed) return false;
-  if (isNoReplyMarker(trimmed)) return true;
-  const lastLine = trimmed.split(/\r?\n/).at(-1)?.trim() ?? "";
-  return isNoReplyMarker(lastLine);
+export function isNoReplyMarker(text: string): boolean {
+  return text.trimEnd().endsWith(NO_REPLY_MARKER);
 }
 
-/** Detect marker leaks before publication strips or rejects them. */
+/** True when the marker appears anywhere in the text (telemetry only). */
 export function containsNoReplyMarker(text: string): boolean {
   return text.includes(NO_REPLY_MARKER);
 }

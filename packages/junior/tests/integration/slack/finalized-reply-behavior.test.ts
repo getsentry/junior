@@ -161,7 +161,7 @@ describe("Slack behavior: finalized thread replies", () => {
     expect(secondPost.startsWith("```ts\n")).toBe(true);
   });
 
-  it("posts answers that mention the no-reply marker", async () => {
+  it("posts answers that mention the no-reply marker mid-sentence", async () => {
     const answer = `Earlier turn used ${NO_REPLY_MARKER} and then stopped.`;
     const { slackRuntime } = createTestChatRuntime({
       services: {
@@ -203,8 +203,8 @@ describe("Slack behavior: finalized thread replies", () => {
     ]);
   });
 
-  it("stays silent when the last line is the no-reply marker", async () => {
-    const answer = `The linear-code comment is just a Linear linkback, not review feedback, and checks aren't failing yet — staying silent.\n${NO_REPLY_MARKER}`;
+  it("stays silent when assistant text ends with the no-reply marker", async () => {
+    const answer = `staying silent.\n${NO_REPLY_MARKER}`;
     const { slackRuntime } = createTestChatRuntime({
       services: {
         agentRunner: createModelAgentRunner(
@@ -244,6 +244,7 @@ describe("Slack behavior: finalized thread replies", () => {
       }),
     ]);
   });
+
 
   it("marks provider-error replies with partial text as interrupted", async () => {
     const partialStart = "The budget review is complete.";

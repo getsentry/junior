@@ -1,9 +1,6 @@
 import { isRetryableAssistantError } from "@earendil-works/pi-ai";
 import { logInfo, logWarn, summarizeMessageText } from "@/chat/logging";
-import {
-  containsNoReplyMarker,
-  isTrailingNoReplyUnit,
-} from "@/chat/no-reply";
+import { containsNoReplyMarker, isNoReplyMarker } from "@/chat/no-reply";
 import type { PiMessage } from "@/chat/pi/messages";
 import { createProviderError } from "@/chat/services/provider-error";
 import type { TurnRoute } from "@/chat/services/turn-router";
@@ -83,18 +80,15 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
       .map((message) => extractAssistantText(message))
       .join("\n\n"),
   ).trim();
-  // If the last terminal unit is only the marker (or ends with a marker-only
-  // line), suppress the whole terminal assistant block. Earlier progressive
-  // deliveries are unchanged; this does not hold or rewrite later messages.
-  // Tool-call tails are not no-reply. Mid-sentence marker mentions deliver.
-  const terminalTexts = terminalAssistantMessages.map((message) =>
-    sanitizeAssistantText(extractAssistantText(message)),
-  );
-  const lastTerminalText = [...terminalTexts]
+  // Last non-empty terminal assistant text decides silence for the whole
+  // trailing assistant block (see isNoReplyMarker). Tool-call-only tails are
+  // not silence. A marker before tools does not silence a later answer.
+  const lastTerminalText = [...terminalAssistantMessages]
     .reverse()
+    .map((message) => sanitizeAssistantText(extractAssistantText(message)))
     .find((text) => text.length > 0);
   const noReplyRequested =
-    lastTerminalText !== undefined && isTrailingNoReplyUnit(lastTerminalText);
+    lastTerminalText !== undefined && isNoReplyMarker(lastTerminalText);
   const primaryText = noReplyRequested
     ? ""
     : terminalAssistantMessages

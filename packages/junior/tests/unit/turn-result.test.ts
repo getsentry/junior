@@ -296,7 +296,7 @@ describe("buildTurnResult", () => {
     expect(reply.diagnostics.outcome).toBe("success");
   });
 
-  it("treats a last-line no-reply marker after reasoning as silent completion", () => {
+  it("treats text that ends with the no-reply marker as silent completion", () => {
     const reply = buildTurnResult({
       newMessages: [
         {
@@ -304,7 +304,7 @@ describe("buildTurnResult", () => {
           content: [
             {
               type: "text",
-              text: `The linear-code comment is just a Linear linkback, not review feedback, and checks aren't failing yet — staying silent.\n${NO_REPLY_MARKER}`,
+              text: `staying silent.\n${NO_REPLY_MARKER}`,
             },
           ],
           stopReason: "stop",
@@ -323,17 +323,12 @@ describe("buildTurnResult", () => {
     expect(reply.diagnostics.usedPrimaryText).toBe(true);
   });
 
-  it("suppresses the whole terminal block when the last assistant message is the marker", () => {
+  it("suppresses the whole trailing assistant block when the last message ends with the marker", () => {
     const reply = buildTurnResult({
       newMessages: [
         {
           role: "assistant",
-          content: [
-            {
-              type: "text",
-              text: "The linear-code comment is just a Linear linkback — staying silent.",
-            },
-          ],
+          content: [{ type: "text", text: "staying silent." }],
           stopReason: "stop",
         },
         {
@@ -354,7 +349,7 @@ describe("buildTurnResult", () => {
     expect(reply.diagnostics.outcome).toBe("success");
   });
 
-  it("does not treat an earlier marker as silence for a later deliverable message", () => {
+  it("does not let an earlier marker silence a later answer after tools", () => {
     const reply = buildTurnResult({
       newMessages: [
         {

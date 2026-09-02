@@ -1,5 +1,5 @@
 import type { AssistantMessage } from "@earendil-works/pi-ai";
-import { isTrailingNoReplyUnit } from "@/chat/no-reply";
+import { isNoReplyMarker } from "@/chat/no-reply";
 import { extractAssistantText } from "@/chat/pi/transcript";
 
 const THINKING_XML_BLOCK_PATTERN =
@@ -35,10 +35,8 @@ export function decideReply(message: AssistantMessage): ReplyDecision {
 
   const text = sanitizeAssistantText(extractAssistantText(message));
   if (!text) return { kind: "empty" };
-  // This message alone is silence when it is only the marker, or ends with a
-  // marker-only line (reasoning came earlier in the same message). A later
-  // normal reply is decided on its own message — prior markers do not stick.
-  if (isTrailingNoReplyUnit(text)) {
+  // See isNoReplyMarker: silence this message only; later messages decide alone.
+  if (isNoReplyMarker(text)) {
     return { kind: "suppress" };
   }
   return { kind: "deliver", text };
