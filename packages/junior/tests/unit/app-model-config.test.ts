@@ -28,6 +28,37 @@ describe("createApp profiles", () => {
     });
   });
 
+  it("accepts profile objects with description and reasoning settings", async () => {
+    await createApp({
+      defaultProfile: "standard",
+      profiles: {
+        standard: {
+          modelId: "xai/grok-4.5",
+          description: "Default general assistant work.",
+        },
+        coding: {
+          modelId: "openai/gpt-5.6-sol",
+          description: "Use for implementation and debugging.",
+          reasoningLevel: "high",
+        },
+      },
+      plugins: defineJuniorPlugins([]),
+    });
+
+    expect(botConfig.defaultProfile).toBe("standard");
+    expect(botConfig.profiles).toEqual({
+      standard: {
+        modelId: "xai/grok-4.5",
+        description: "Default general assistant work.",
+      },
+      coding: {
+        modelId: "openai/gpt-5.6-sol",
+        description: "Use for implementation and debugging.",
+        reasoningLevel: "high",
+      },
+    });
+  });
+
   it("rejects a default profile that is not configured", async () => {
     await expect(
       createApp({

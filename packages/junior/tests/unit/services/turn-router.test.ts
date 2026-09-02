@@ -15,8 +15,14 @@ vi.mock("@/chat/logging", async (importOriginal) => ({
 }));
 
 const profiles = {
-  standard: { modelId: "xai/grok-4.5" },
-  handoff: { modelId: "openai/gpt-5.6-sol" },
+  standard: {
+    modelId: "xai/grok-4.5",
+    description: "Default general assistant work.",
+  },
+  handoff: {
+    modelId: "openai/gpt-5.6-sol",
+    description: "Use for coding and difficult multi-step work.",
+  },
 };
 const routeTurn = (
   args: Omit<
@@ -68,11 +74,36 @@ describe("selectTurnRoute", () => {
         thinkingLevel: "low",
         promptName: "junior.thinking_route",
         system: expect.stringContaining(
-          "Do not assume that a non-default profile is more capable",
+          '"handoff": Use for coding and difficult multi-step work.',
         ),
       }),
     );
     expect(toPiReasoningLevel(profile.reasoningLevel)).toBe("off");
+  });
+
+  it("includes profile descriptions in profile selection", async () => {
+    const completeObject = vi.fn(async () => ({
+      object: {
+        reasoning_level: "none",
+        profile: "standard",
+        confidence: 0.99,
+        reason: "acknowledgment only",
+      },
+    }));
+
+    await routeTurn({
+      completeObject,
+      fastModelId: "openai/gpt-5.4-mini",
+      messageText: "thanks",
+    });
+
+    expect(completeObject).toHaveBeenCalledWith(
+      expect.objectContaining({
+        system: expect.stringContaining(
+          "use each description's use and avoid cases",
+        ),
+      }),
+    );
   });
 
   it("classifies code-change asks as xhigh with the fast model", async () => {

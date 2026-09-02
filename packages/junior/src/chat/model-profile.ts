@@ -10,8 +10,39 @@ export type ModelProfile = z.output<typeof modelProfileSchema>;
 
 /** Runtime configuration for one named model profile. */
 export interface ModelProfileConfig {
+  /**
+   * Tells models which tasks fit this profile.
+   * Name concrete tasks. Add use and avoid cases when helpful.
+   * Do not use model product names as the selection rule.
+   */
+  description?: string;
   modelId: string;
   reasoningLevel?: TurnReasoningLevel;
+}
+
+/** App-level profile input: a model id string or a full profile config. */
+export type ModelProfileInput = string | ModelProfileConfig;
+
+/** Format one profile and its task-fit description. */
+export function formatModelProfile(
+  profile: ModelProfile,
+  description?: string,
+): string {
+  const text = description?.trim();
+  return text ? `"${profile}": ${text}` : `"${profile}"`;
+}
+
+/** Format configured profiles as one list item per line. */
+export function formatModelProfiles(
+  profiles: Readonly<Record<string, ModelProfileConfig>>,
+  profileNames: readonly ModelProfile[],
+): string {
+  return profileNames
+    .map(
+      (profile) =>
+        `- ${formatModelProfile(profile, profiles[profile]?.description)}`,
+    )
+    .join("\n");
 }
 
 /** Identify durable profile bindings that the current host cannot resolve. */

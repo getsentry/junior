@@ -31,9 +31,14 @@ import type { AttachmentStorage } from "@/chat/attachments/storage";
 import type { Workspace } from "@/chat/workspaces/types";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 
+interface HandoffProfile {
+  description?: string;
+  name: ModelProfile;
+}
+
 interface HandoffControl {
-  /** Non-empty catalog of configured targets. */
-  profiles: readonly [ModelProfile, ...ModelProfile[]];
+  /** Non-empty list of configured profiles. */
+  profiles: readonly [HandoffProfile, ...HandoffProfile[]];
   execute: (
     profile: ModelProfile,
     options: { signal?: AbortSignal; toolCallId: string },

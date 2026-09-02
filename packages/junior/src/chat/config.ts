@@ -5,11 +5,13 @@ import { normalizeSlackEmojiName } from "@/chat/slack/emoji";
 import { logWarn } from "@/chat/logging";
 import {
   parseTurnReasoningLevel,
+  TURN_REASONING_LEVELS,
   type TurnReasoningLevel,
 } from "@/chat/reasoning-level";
 import {
   type ModelProfileConfig,
   type ModelProfile,
+  type ModelProfileInput,
   modelProfileSchema,
 } from "@/chat/model-profile";
 
@@ -246,6 +248,102 @@ function validateEmbeddingModelId(raw: string | undefined): string | undefined {
   return toOptionalTrimmed(raw);
 }
 
+const DEFAULT_STANDARD_PROFILE_DESCRIPTION =
+  "Use for default assistant work: lookups, explanations, ordinary tool use, short answers, and light investigation of one source. Avoid for implementation, debugging, multi-file changes, architecture decisions, or research across several systems.";
+const DEFAULT_HANDOFF_PROFILE_DESCRIPTION =
+  "Use for coding and difficult multi-step work: implementation, debugging, root-cause analysis, broad refactors, multi-file changes, architecture decisions, and research across several systems. Avoid for simple lookups, short answers, single-file reads, or ordinary tool use that the default profile can finish.";
+
+function parseOptionalProfileDescription(
+  rawDescription: unknown,
+  configName: string,
+  profile: string,
+): string | undefined {
+  if (rawDescription === undefined) {
+    return undefined;
+  }
+  if (typeof rawDescription !== "string") {
+    throw new Error(
+      `${configName}.${profile}.description must be a string when set`,
+    );
+  }
+  const description = toOptionalTrimmed(rawDescription);
+  if (!description) {
+    throw new Error(
+      `${configName}.${profile}.description must not be empty when set`,
+    );
+  }
+  return description;
+}
+
+function parseOptionalProfileReasoningLevel(
+  rawReasoningLevel: unknown,
+  configName: string,
+  profile: string,
+): TurnReasoningLevel | undefined {
+  if (rawReasoningLevel === undefined) {
+    return undefined;
+  }
+  try {
+    return parseTurnReasoningLevel(rawReasoningLevel);
+  } catch {
+    throw new Error(
+      `${configName}.${profile}.reasoningLevel must be one of ${TURN_REASONING_LEVELS.join(", ")}`,
+    );
+  }
+}
+
+function parseProfileConfig(
+  rawProfile: unknown,
+  configName: string,
+  profile: string,
+): ModelProfileConfig {
+  if (typeof rawProfile === "string") {
+    const modelId = validateGatewayModelId(rawProfile);
+    if (!modelId) {
+      throw new Error(`${configName}.${profile} must not be empty`);
+    }
+    return { modelId };
+  }
+
+  if (
+    !rawProfile ||
+    typeof rawProfile !== "object" ||
+    Array.isArray(rawProfile)
+  ) {
+    throw new Error(
+      `${configName}.${profile} must be a model id string or an object with modelId`,
+    );
+  }
+
+  const rawModelId = (rawProfile as { modelId?: unknown }).modelId;
+  if (typeof rawModelId !== "string") {
+    throw new Error(
+      `${configName}.${profile}.modelId must be a model id string`,
+    );
+  }
+  const modelId = validateGatewayModelId(rawModelId);
+  if (!modelId) {
+    throw new Error(`${configName}.${profile}.modelId must not be empty`);
+  }
+
+  const description = parseOptionalProfileDescription(
+    (rawProfile as { description?: unknown }).description,
+    configName,
+    profile,
+  );
+  const reasoningLevel = parseOptionalProfileReasoningLevel(
+    (rawProfile as { reasoningLevel?: unknown }).reasoningLevel,
+    configName,
+    profile,
+  );
+
+  return {
+    modelId,
+    ...(description ? { description } : undefined),
+    ...(reasoningLevel ? { reasoningLevel } : undefined),
+  };
+}
+
 function parseProfileMap(
   rawProfiles: unknown,
   configName: string,
@@ -260,20 +358,13 @@ function parseProfileMap(
     throw new Error(`${configName} must be ${objectType}`);
   }
   const profiles: Record<string, ModelProfileConfig> = {};
-  for (const [profile, rawModelId] of Object.entries(rawProfiles)) {
+  for (const [profile, rawProfile] of Object.entries(rawProfiles)) {
     if (!modelProfileSchema.safeParse(profile).success) {
       throw new Error(
         `${configName} profile "${profile}" must match ^[a-z][a-z0-9_-]*$`,
       );
     }
-    if (typeof rawModelId !== "string") {
-      throw new Error(`${configName}.${profile} must be a model id string`);
-    }
-    const modelId = validateGatewayModelId(rawModelId);
-    if (!modelId) {
-      throw new Error(`${configName}.${profile} must not be empty`);
-    }
-    profiles[profile] = { modelId };
+    profiles[profile] = parseProfileConfig(rawProfile, configName, profile);
   }
   return profiles;
 }
@@ -286,8 +377,15 @@ function parseProfiles(
   handoffModelId: string,
 ): Readonly<Record<string, ModelProfileConfig>> {
   const profiles: Record<string, ModelProfileConfig> = {
-    standard: { modelId: standardModelId },
-    handoff: { modelId: handoffModelId, reasoningLevel: "high" },
+    standard: {
+      modelId: standardModelId,
+      description: DEFAULT_STANDARD_PROFILE_DESCRIPTION,
+    },
+    handoff: {
+      modelId: handoffModelId,
+      description: DEFAULT_HANDOFF_PROFILE_DESCRIPTION,
+      reasoningLevel: "high",
+    },
   };
   const trimmed = toOptionalTrimmed(rawValue);
   if (trimmed === undefined) {
@@ -557,7 +655,7 @@ export interface SlackReactionConfig {
 
 /** Apply profiles from createApp(). */
 export function setProfiles(
-  profiles: Readonly<Record<string, string>> | undefined,
+  profiles: Readonly<Record<string, ModelProfileInput>> | undefined,
   defaultProfile: string | undefined,
 ): void {
   if (!profiles || !defaultProfile) {
