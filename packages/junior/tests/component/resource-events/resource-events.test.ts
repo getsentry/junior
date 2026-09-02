@@ -167,12 +167,9 @@ describe("resource event delivery", () => {
     const maxTurns = botConfig.maxConsecutiveAutomatedTurns;
     for (let i = 0; i < maxTurns; i += 1) {
       await countAutomatedTurn({
+        conversationId: CONVERSATION_ID,
         maxTurns,
         nowMs: 1_000 + i,
-        scope: {
-          kind: "conversation",
-          conversationId: CONVERSATION_ID,
-        },
       });
     }
 
@@ -197,10 +194,7 @@ describe("resource event delivery", () => {
     expect(work?.messages ?? []).toHaveLength(0);
     await expect(
       getAutomatedTurnLimitState({
-        scope: {
-          kind: "conversation",
-          conversationId: CONVERSATION_ID,
-        },
+        conversationId: CONVERSATION_ID,
       }),
     ).resolves.toMatchObject({
       consecutiveAutomatedTurns: maxTurns,

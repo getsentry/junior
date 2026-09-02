@@ -146,12 +146,9 @@ export async function enqueueResourceEventNotification(args: {
 }): Promise<AppendAndEnqueueInboundMessageResult> {
   const maxTurns = botConfig.maxConsecutiveAutomatedTurns;
   const decision = await admitAutomatedTurn({
+    conversationId: args.subscription.conversationId,
     maxTurns,
     nowMs: args.event.occurredAtMs,
-    scope: {
-      kind: "conversation",
-      conversationId: args.subscription.conversationId,
-    },
     state: args.state,
   });
   if (decision.status === "paused") {
@@ -168,11 +165,6 @@ export async function enqueueResourceEventNotification(args: {
         conversationId: args.subscription.conversationId,
         maxTurns,
         nowMs: args.event.occurredAtMs,
-        resumeIn: "thread",
-        scope: {
-          kind: "conversation",
-          conversationId: args.subscription.conversationId,
-        },
       });
     }
     // Do not enqueue a Turn. Terminal watches may still complete after this.
