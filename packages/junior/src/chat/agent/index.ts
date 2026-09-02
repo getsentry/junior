@@ -138,10 +138,14 @@ import {
 } from "@/chat/model-profile";
 import { compactActiveContextIfNeeded } from "@/chat/services/context-compaction";
 import {
-  createModelHandoff,
+  applyHandoff,
+  commitHandoff,
   exclusiveToolName,
-  messageContainsHandoff,
+  handoffControl,
+  toolsForHandoffProfile,
+  type PendingHandoff,
 } from "@/chat/agent/handoff";
+import { HANDOFF_TOOL_NAME } from "@/chat/tools/handoff/tool";
 
 const AGENT_ABORT_SETTLE_GRACE_MS = 5_000;
 
@@ -720,39 +724,60 @@ async function executeAgentRunInPrivacyContext(
       );
       return hasAgentTurnUsage(usage) ? usage : undefined;
     };
-    // baseInstructions is filled after prompt assembly; applyPending closes over it.
+    // baseInstructions is filled after prompt assembly; applyHandoff closes over it.
     let baseInstructions = "";
-    const modelHandoff = createModelHandoff({
-      conversationContext: input.conversationContext,
-      conversationId,
+    let pendingHandoff: PendingHandoff | undefined;
+    const handoffMetadata = {
+      threadId: conversationId,
+      channelId: slackChannelId,
+      actorId: slackActor?.userId,
+      runId,
+    };
+    const scheduleHandoff = async (args: {
+      profile: ModelProfile;
+      runtimeContextSourceMessages?: PiMessage[];
+      signal?: AbortSignal;
+      sourceMessages: PiMessage[];
+      triggeringToolCallId?: string;
+    }) => {
+      const pending = await commitHandoff({
+        activeModelProfile,
+        beforeMessageCount: runResume.beforeMessageCount,
+        conversationContext: input.conversationContext,
+        conversationId,
+        metadata: handoffMetadata,
+        onStatus: observers.onStatus,
+        profile: args.profile,
+        runtimeContextSourceMessages: args.runtimeContextSourceMessages,
+        signal: args.signal,
+        sourceMessages: args.sourceMessages,
+        triggeringToolCallId: args.triggeringToolCallId,
+        turnRoute: turnRoute!,
+      });
+      if (!pending) {
+        return;
+      }
+      priorPhaseUsage = addAgentTurnUsage(priorPhaseUsage, pending.phaseUsage);
+      pendingHandoff = pending;
+      activeModelProfile = pending.modelProfile;
+      activeModelId = pending.modelId;
+      turnRoute = pending.turnRoute;
+    };
+    const handoffExecute = async (
+      profile: ModelProfile,
+      options: { signal?: AbortSignal; toolCallId: string },
+    ) =>
+      await scheduleHandoff({
+        profile,
+        signal: options.signal,
+        sourceMessages: [...agent!.state.messages],
+        triggeringToolCallId: options.toolCallId,
+      });
+    const requestHandoff = handoffControl({
+      activeProfile: activeModelProfile,
       enabled: handoffEnabled,
-      getActiveModelId: () => activeModelId,
-      getActiveModelProfile: () => activeModelProfile,
-      getAgent: () => agent,
-      getBaseInstructions: () => baseInstructions,
-      getPriorPhaseUsage: () => priorPhaseUsage,
-      getTurnRoute: () => turnRoute!,
-      metadata: {
-        threadId: conversationId,
-        channelId: slackChannelId,
-        actorId: slackActor?.userId,
-        runId,
-      },
-      onStatus: observers.onStatus,
-      resume: runResume,
-      setActiveModel: ({ modelId, modelProfile }) => {
-        activeModelId = modelId;
-        activeModelProfile = modelProfile;
-      },
-      setPriorPhaseUsage: (usage) => {
-        priorPhaseUsage = usage;
-      },
-      setTurnRoute: (route) => {
-        turnRoute = route;
-      },
-      usageBoundaryMessageCount: () => runResume.beforeMessageCount,
+      execute: handoffExecute,
     });
-    const requestHandoff = modelHandoff.initialControl;
 
     setTags({
       ...runLogContext,
@@ -823,8 +848,25 @@ async function executeAgentRunInPrivacyContext(
       await recordAgentsTransition(initialRepositoryInstructions);
     }
     const getPendingAuthPause = wiring.getPendingAuthPause;
-    modelHandoff.bindAgentTools(wiring.agentTools);
-
+    const applyPendingHandoff = (): AgentLoopTurnUpdate | undefined => {
+      if (!pendingHandoff) {
+        return undefined;
+      }
+      const pending = pendingHandoff;
+      pendingHandoff = undefined;
+      return applyHandoff({
+        agent: agent!,
+        baseInstructions,
+        pending,
+        resume: runResume,
+        tools: toolsForHandoffProfile({
+          activeProfile: pending.modelProfile,
+          agentTools: wiring.agentTools,
+          enabled: handoffEnabled,
+          execute: handoffExecute,
+        }),
+      });
+    };
     // ── Prompt context ───────────────────────────────────────────────
     const {
       baseInstructions: assembledBaseInstructions,
@@ -1092,7 +1134,7 @@ async function executeAgentRunInPrivacyContext(
       },
       prepareNextTurnWithContext: async (nextTurn, hookSignal) => {
         try {
-          const handoffUpdate = modelHandoff.applyPending();
+          const handoffUpdate = applyPendingHandoff();
           const pendingMessages = await drainSteeringMessages();
           const capacityUpdate = await applyActiveContextCompaction(
             handoffUpdate
@@ -1136,7 +1178,7 @@ async function executeAgentRunInPrivacyContext(
         return recordParentToolExecutionStart(event);
       }
       if (event.type === "turn_end" && event.toolResults.length > 0) {
-        if (modelHandoff.hasPending) {
+        if (pendingHandoff) {
           return;
         }
         return runResume
@@ -1150,7 +1192,12 @@ async function executeAgentRunInPrivacyContext(
         ) {
           return;
         }
-        if (messageContainsHandoff(event.message)) {
+        if (
+          event.message.content.some(
+            (part) =>
+              part.type === "toolCall" && part.name === HANDOFF_TOOL_NAME,
+          )
+        ) {
           return;
         }
         return deliverAssistantMessage(event.message);
@@ -1327,16 +1374,32 @@ async function executeAgentRunInPrivacyContext(
           };
 
           let run: Promise<unknown>;
-          const handoffApplied = await modelHandoff.applyRoutedProfile({
-            runStep: runAgentStep,
-            runtimeContextSourceMessages: shouldPromptAgent
-              ? [
-                  ...(contextMessage ? [contextMessage] : []),
-                  freshPromptMessage,
-                ]
-              : undefined,
-            sourceMessages: [...agent!.state.messages],
-          });
+          let handoffApplied = false;
+          const requestedProfile =
+            activeModelProfile === botConfig.defaultProfile
+              ? turnRoute!.profile
+              : undefined;
+          if (
+            requestedProfile &&
+            requestedProfile !== botConfig.defaultProfile
+          ) {
+            const handoffAbortController = new AbortController();
+            await runAgentStep(
+              scheduleHandoff({
+                profile: requestedProfile,
+                runtimeContextSourceMessages: shouldPromptAgent
+                  ? [
+                      ...(contextMessage ? [contextMessage] : []),
+                      freshPromptMessage,
+                    ]
+                  : undefined,
+                signal: handoffAbortController.signal,
+                sourceMessages: [...agent!.state.messages],
+              }),
+              () => handoffAbortController.abort(),
+            );
+            handoffApplied = Boolean(applyPendingHandoff());
+          }
           const compactionAbortController = new AbortController();
           const capacityUpdate = await runAgentStep(
             applyActiveContextCompaction(
