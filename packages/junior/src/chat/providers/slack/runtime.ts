@@ -9,7 +9,10 @@
 import type { Message, MessageContext, Thread } from "chat";
 import type { Destination } from "@sentry/junior-plugin-api";
 import { isExperimentalFeatureEnabled } from "@/chat/experimental";
-import { getSubscribedReplyPreflightDecision } from "@/chat/services/subscribed-decision";
+import {
+  getSubscribedReplyPreflightDecision,
+  getThreadStopDecision,
+} from "@/chat/services/subscribed-decision";
 import { isProviderRetryError } from "@/chat/services/provider-error";
 import { AuthorizationFlowDisabledError } from "@/chat/services/auth-pause";
 import { SlackActionError } from "@/chat/slack/client";
@@ -367,7 +370,7 @@ export function createSlackTurnRuntime<
     runId?: string;
   }): RuntimeLogContext => buildLogContext(deps, args);
 
-  /** Apply a subscribed-thread opt-out decision before any agent work runs. */
+  /** Unsubscribe the thread and cancel resource watches for a stop decision. */
   const maybeHandleThreadOptOutDecision = async (args: {
     beforeFirstResponsePost?: () => Promise<void>;
     decision?: { shouldUnsubscribe?: boolean };
@@ -930,6 +933,38 @@ export function createSlackTurnRuntime<
           const turnIsExplicitMention =
             Boolean(message.isMention) ||
             queuedMessages.some((queued) => queued.explicitMention);
+          // Joined deferred text can hide a bare `stop`. Check each body alone.
+          const stopDecision = [...queuedMessages, currentText]
+            .map((entry) =>
+              getThreadStopDecision({
+                rawText: entry.rawText,
+                text: entry.userText,
+              }),
+            )
+            .find((decision) => decision?.shouldUnsubscribe);
+          if (stopDecision) {
+            const decision: SubscribedReplyDecision = {
+              shouldReply: false,
+              shouldUnsubscribe: true,
+              reason: stopDecision.reasonDetail
+                ? `${stopDecision.reason}:${stopDecision.reasonDetail}`
+                : stopDecision.reason,
+            };
+            await maybeHandleThreadOptOutDecision({
+              thread,
+              decision,
+              beforeFirstResponsePost: hooks.beforeFirstResponsePost,
+            });
+            await skipSubscribedMessage({
+              thread,
+              message,
+              decision,
+              context: threadContext,
+              ack: hooks.ack,
+              text: combinedText,
+            });
+            return;
+          }
           const preflightDecision = getSubscribedReplyPreflightDecision({
             botUserName: deps.assistantUserName,
             rawText: combinedText.rawText,

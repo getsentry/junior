@@ -100,123 +100,94 @@ describe("subscribed reply decision", () => {
     "please leave this alone !stop",
     "ok enough for now !stop thanks",
     "<@U0APP> keep going unless I say !stop later",
-  ])(
-    "forces unsubscribe for %s without calling the classifier",
-    async (text) => {
-      const completeObject = vi.fn();
+  ])("unsubscribes for %s without the classifier", async (text) => {
+    const completeObject = vi.fn();
 
-      await expect(
-        decideSubscribedThreadReply({
-          botUserName: "junior",
-          modelId: "router-model",
-          input: makeInput({ rawText: text, text }),
-          completeObject,
-          logClassifierFailure: vi.fn(),
-        }),
-      ).resolves.toEqual({
-        shouldReply: false,
-        shouldUnsubscribe: true,
-        reason: SubscribedReplyReason.ThreadOptOut,
-        reasonDetail: "forced !stop command",
-      });
-      expect(completeObject).not.toHaveBeenCalled();
-    },
-  );
+    await expect(
+      decideSubscribedThreadReply({
+        botUserName: "junior",
+        modelId: "router-model",
+        input: makeInput({ rawText: text, text }),
+        completeObject,
+        logClassifierFailure: vi.fn(),
+      }),
+    ).resolves.toEqual({
+      shouldReply: false,
+      shouldUnsubscribe: true,
+      reason: SubscribedReplyReason.ThreadOptOut,
+      reasonDetail: "!stop",
+    });
+    expect(completeObject).not.toHaveBeenCalled();
+  });
 
   it.each([
     {
-      name: "bare stop after mention strip",
+      name: "stop after mention strip",
       rawText: "<@U0APP> stop",
       text: "stop",
-      isExplicitMention: true,
-      reasonDetail: "explicit stop instruction",
     },
     {
-      name: "bare stop with trailing punctuation",
+      name: "stop with trailing punctuation",
       rawText: "@jr stop.",
       text: "stop.",
-      isExplicitMention: true,
-      reasonDetail: "explicit stop instruction",
     },
     {
-      name: "bare stop without a mention",
+      name: "stop without a mention",
       rawText: "stop",
       text: "stop",
       isExplicitMention: false,
-      reasonDetail: "stop instruction",
     },
-  ])(
-    "unsubscribes when the whole message is bare stop for $name",
-    async (fixture) => {
-      const completeObject = vi.fn();
+  ])("unsubscribes when the whole message is $name", async (fixture) => {
+    const completeObject = vi.fn();
 
-      await expect(
-        decideSubscribedThreadReply({
-          botUserName: "junior",
-          modelId: "router-model",
-          input: makeInput({
-            rawText: fixture.rawText,
-            text: fixture.text,
-            isExplicitMention: fixture.isExplicitMention,
-          }),
-          completeObject,
-          logClassifierFailure: vi.fn(),
+    await expect(
+      decideSubscribedThreadReply({
+        botUserName: "junior",
+        modelId: "router-model",
+        input: makeInput({
+          rawText: fixture.rawText,
+          text: fixture.text,
+          isExplicitMention: fixture.isExplicitMention ?? true,
         }),
-      ).resolves.toEqual({
-        shouldReply: false,
-        shouldUnsubscribe: true,
-        reason: SubscribedReplyReason.ThreadOptOut,
-        reasonDetail: fixture.reasonDetail,
-      });
-      expect(completeObject).not.toHaveBeenCalled();
-    },
-  );
+        completeObject,
+        logClassifierFailure: vi.fn(),
+      }),
+    ).resolves.toEqual({
+      shouldReply: false,
+      shouldUnsubscribe: true,
+      reason: SubscribedReplyReason.ThreadOptOut,
+      reasonDetail: "stop",
+    });
+    expect(completeObject).not.toHaveBeenCalled();
+  });
 
   it.each([
-    {
-      name: "stop as a task verb",
-      text: "stop the worker and restart it",
-    },
-    {
-      name: "please stop",
-      text: "please stop",
-    },
-    {
-      name: "stop with redirect",
-      text: "stop — I meant staging, not prod",
-    },
-    {
-      name: "stop spamming",
-      text: "stop spamming",
-    },
-    {
-      name: "non-stop continuation",
-      text: "please continue with the PR checks",
-    },
-  ])(
-    "does not treat $name as bare stop",
-    async (fixture) => {
-      const completeObject = vi.fn();
+    "stop the worker and restart it",
+    "please stop",
+    "stop — I meant staging, not prod",
+    "stop spamming",
+    "please continue with the PR checks",
+  ])("does not treat %s as stop", async (text) => {
+    const completeObject = vi.fn();
 
-      await expect(
-        decideSubscribedThreadReply({
-          botUserName: "junior",
-          modelId: "router-model",
-          input: makeInput({
-            rawText: fixture.text,
-            text: fixture.text,
-            isExplicitMention: true,
-          }),
-          completeObject,
-          logClassifierFailure: vi.fn(),
+    await expect(
+      decideSubscribedThreadReply({
+        botUserName: "junior",
+        modelId: "router-model",
+        input: makeInput({
+          rawText: text,
+          text,
+          isExplicitMention: true,
         }),
-      ).resolves.toEqual({
-        shouldReply: true,
-        reason: SubscribedReplyReason.ExplicitMention,
-      });
-      expect(completeObject).not.toHaveBeenCalled();
-    },
-  );
+        completeObject,
+        logClassifierFailure: vi.fn(),
+      }),
+    ).resolves.toEqual({
+      shouldReply: true,
+      reason: SubscribedReplyReason.ExplicitMention,
+    });
+    expect(completeObject).not.toHaveBeenCalled();
+  });
 
   it.each([
     {
