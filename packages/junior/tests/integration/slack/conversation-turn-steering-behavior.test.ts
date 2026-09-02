@@ -668,21 +668,12 @@ describe("Slack behavior: durable turn steering", () => {
     });
     const { conversationId, queue, runNextQueuedWork, services } =
       createTurnHarness({
-        completeObject: completeObjectWithDecision((prompt) =>
-          prompt.includes("stop watching")
-            ? {
-                should_reply: false,
-                should_unsubscribe: true,
-                confidence: 1,
-                reason: "explicit stop instruction",
-              }
-            : {
-                should_reply: true,
-                should_unsubscribe: false,
-                confidence: 1,
-                reason: "active steering follow-up",
-              },
-        ),
+        completeObject: completeObjectWithDecision(() => ({
+          should_reply: true,
+          should_unsubscribe: false,
+          confidence: 1,
+          reason: "active steering follow-up",
+        })),
         agentRunner,
         state,
       });
@@ -721,7 +712,7 @@ describe("Slack behavior: durable turn steering", () => {
         request: slackWebhookRequest(
           makeMessageEvent({
             eventType: "message",
-            text: "stop watching this thread",
+            text: "stop",
             ts: "1712345.000500",
           }),
         ),
@@ -773,10 +764,10 @@ describe("Slack behavior: durable turn steering", () => {
     expect(conversation.messages).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          text: "also add the rollout timeline",
+          text: expect.stringContaining("also add the rollout timeline"),
           meta: expect.objectContaining({
             replied: false,
-            skippedReason: "thread_opt_out:explicit stop instruction",
+            skippedReason: "thread_opt_out:stop",
           }),
         }),
       ]),

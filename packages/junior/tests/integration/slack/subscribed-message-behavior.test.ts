@@ -1022,7 +1022,7 @@ describe("Slack behavior: subscribed messages", () => {
       thread,
       createTestMessage({
         id: "m-optout-skip",
-        text: "<@U0APP> please stop watching this thread",
+        text: "<@U0APP> stop",
         isMention: true,
         threadId: thread.id,
         author: { userId: "U0TESTER" },

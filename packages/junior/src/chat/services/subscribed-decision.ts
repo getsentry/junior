@@ -87,14 +87,13 @@ const LEADING_SLACK_MENTION_RE = /^\s*<@([A-Z0-9]+)(?:\|([^>]+))?>[\s,:-]*/i;
 const LEADING_NAMED_MENTION_RE = /^\s*@([a-z0-9._-]+)\b[\s,:-]*/i;
 const TRANSCRIPT_MESSAGE_LINE_RE =
   /^\[(assistant|user)\]\s+([^:]+):\s+([\s\S]+)$/i;
-const FORCED_THREAD_OPTOUT_RE = /^!stop(?:\s|$)/i;
-const THREAD_OPTOUT_PATTERNS = [
-  /\bstop (?:watching|replying|participating)\b/i,
-  /\bstay out\b/i,
-  /\bdon['’]t (?:reply|participate|watch)\b/i,
-  /\bunsubscribe\b/i,
-  /\bleave (?:this )?thread\b/i,
-];
+/** `!stop` may appear anywhere in the message. */
+const BANG_STOP_RE = /(?:^|\s)!stop(?=\s|$|[.!?,;:])/i;
+/** Drop a leading `@jr` / mention before matching bare `stop`. */
+const LEADING_ADDRESS_RE =
+  /^(?:(?:<@[^>]+>|@[\w.-]+)\s*[,:\-–—]?\s*)+/i;
+/** Whole message is only `stop` after any leading address. */
+const BARE_STOP_RE = /^stop(?:\s*[.!…]+)?$/i;
 const ACKNOWLEDGMENT_ONLY_RE =
   /^(?:thanks(?: you)?|thank you|thx|ty|got it|sounds good|sgtm|lgtm|ok(?:ay)?|cool|nice|perfect|awesome|great|makes sense|understood|roger|yep|yup|kk|on it|will do)(?:[.!]+)?$/i;
 const DIRECTED_FOLLOW_UP_CUE_RE =
@@ -154,17 +153,44 @@ function detectLeadingOtherPartyAddress(
   return `named_mention:${directedName}`;
 }
 
-function isForcedThreadOptOutCommand(rawText: string, text: string): boolean {
-  return (
-    FORCED_THREAD_OPTOUT_RE.test(rawText.trim()) ||
-    FORCED_THREAD_OPTOUT_RE.test(text.trim())
-  );
+function hasBangStop(rawText: string, text: string): boolean {
+  return BANG_STOP_RE.test(rawText.trim()) || BANG_STOP_RE.test(text.trim());
 }
 
-function isThreadOptOutInstruction(rawText: string, text: string): boolean {
-  return THREAD_OPTOUT_PATTERNS.some(
-    (pattern) => pattern.test(rawText) || pattern.test(text),
-  );
+function isBareStop(rawText: string, text: string): boolean {
+  return [rawText, text].some((value) => {
+    const candidate = value.trim().replace(LEADING_ADDRESS_RE, "").trim();
+    return candidate.length > 0 && BARE_STOP_RE.test(candidate);
+  });
+}
+
+/**
+ * Return a stop decision for one message body.
+ * Deferred batches must call this on each body, not on joined text.
+ */
+export function getThreadStopDecision(args: {
+  rawText: string;
+  text: string;
+}): SubscribedDecisionResult | undefined {
+  const text = args.text.trim();
+  const rawText = args.rawText.trim();
+  if (hasBangStop(rawText, text)) {
+    return {
+      shouldReply: false,
+      shouldUnsubscribe: true,
+      reason: SubscribedReplyReason.ThreadOptOut,
+      reasonDetail: "!stop",
+    };
+  }
+  if (isBareStop(rawText, text)) {
+    return {
+      shouldReply: false,
+      shouldUnsubscribe: true,
+      reason: SubscribedReplyReason.ThreadOptOut,
+      reasonDetail: "stop",
+    };
+  }
+  return undefined;
 }
 
 function isAcknowledgmentOnly(text: string): boolean {
@@ -425,13 +451,9 @@ export async function decideSubscribedThreadReply(args: {
 }): Promise<SubscribedDecisionResult> {
   const text = args.input.text.trim();
   const rawText = args.input.rawText.trim();
-  if (isForcedThreadOptOutCommand(rawText, text)) {
-    return {
-      shouldReply: false,
-      shouldUnsubscribe: true,
-      reason: SubscribedReplyReason.ThreadOptOut,
-      reasonDetail: "forced !stop command",
-    };
+  const stopDecision = getThreadStopDecision({ rawText, text });
+  if (stopDecision) {
+    return stopDecision;
   }
   const preflightDecision = getSubscribedReplyPreflightDecision({
     botUserName: args.botUserName,
@@ -447,22 +469,13 @@ export async function decideSubscribedThreadReply(args: {
   }
 
   if (args.input.isExplicitMention) {
-    if (isThreadOptOutInstruction(rawText, text)) {
-      return {
-        shouldReply: false,
-        shouldUnsubscribe: true,
-        reason: SubscribedReplyReason.ThreadOptOut,
-        reasonDetail: "explicit stop instruction",
-      };
-    }
     return {
       shouldReply: true,
       reason: SubscribedReplyReason.ExplicitMention,
     };
   }
 
-  // Non-mention replies in subscribed threads stay experimental and off by
-  // default. Forced opt-out and explicit mentions are handled above.
+  // Non-mention replies stay off unless passive-routing is enabled.
   if (!isExperimentalFeatureEnabled("passive-routing")) {
     return {
       shouldReply: false,
