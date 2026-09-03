@@ -1196,7 +1196,7 @@ function failedConversation(nowMs: number): ConversationDetailReport {
         failureReason: "network",
         eventId: "0123456789abcdef0123456789abcdef",
         sentryEventUrl:
-          "https://sentry.example/organizations/acme/events/0123456789abcdef0123456789abcdef/?project=1",
+          "https://sentry.example/organizations/acme/issues/?project=1&query=0123456789abcdef0123456789abcdef",
       }),
     ],
   });

@@ -678,7 +678,7 @@ describe("dashboard canonical-event components", () => {
   it("renders failure and context lifecycle rows", () => {
     const eventId = "0123456789abcdef0123456789abcdef";
     const sentryEventUrl =
-      "https://my-org.sentry.io/events/0123456789abcdef0123456789abcdef/?project=4501";
+      "https://my-org.sentry.io/issues/?project=4501&query=0123456789abcdef0123456789abcdef";
     const html = renderTranscript(
       conversation([
         event(0, { type: "compaction" }),
@@ -704,7 +704,10 @@ describe("dashboard canonical-event components", () => {
     expect(html).toContain('data-transcript-failure-reason="network"');
     expect(html).toContain(`data-transcript-failure-event-id="${eventId}"`);
     expect(html).toContain(`event_id=${eventId}`);
-    expect(html).toContain(`href="${sentryEventUrl}"`);
+    // React serializes & as &amp; in HTML attributes.
+    expect(html).toContain(
+      `href="${sentryEventUrl.replaceAll("&", "&amp;")}"`,
+    );
   });
 
   it("anchors structured events to the transcript rail", () => {

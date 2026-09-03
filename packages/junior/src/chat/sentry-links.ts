@@ -26,6 +26,7 @@ function buildSentryWebBaseUrl(dsn: {
 
 function buildSentryOrgPath(args: {
   path: string;
+  query?: Record<string, string>;
 }): string | undefined {
   const client = Sentry.getClient();
   const dsn = client?.getDsn();
@@ -40,6 +41,11 @@ function buildSentryOrgPath(args: {
 
   const params = new URLSearchParams();
   params.set("project", dsn.projectId);
+  if (args.query) {
+    for (const [key, value] of Object.entries(args.query)) {
+      params.set(key, value);
+    }
+  }
   const path = `${args.path}?${params.toString()}`;
 
   if (isSentrySaasDsnHost(dsn.host)) {
@@ -60,8 +66,10 @@ export function buildSentryConversationUrl(
 
 /** Build a Sentry event URL only when the runtime has enough Sentry config. */
 export function buildSentryEventUrl(eventId: string): string | undefined {
+  // Direct /events/{id}/ is not a stable product route; issues search by id is.
   return buildSentryOrgPath({
-    path: `events/${encodeURIComponent(eventId)}/`,
+    path: "issues/",
+    query: { query: eventId },
   });
 }
 
