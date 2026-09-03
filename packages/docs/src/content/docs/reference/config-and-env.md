@@ -192,12 +192,20 @@ const app = await createApp({
       reasoningLevel: "high",
     },
   },
+  fastModelId: "anthropic/claude-haiku-4.5",
+  guardianModelId: "openai/gpt-5.6-luna",
+  embeddingModelId: "openai/text-embedding-3-small",
+  webSearchModelId: "openai/gpt-5.4",
+  imageGenerationModelId: "google/gemini-3-pro-image",
+  visionModelId: "openai/gpt-5.6-sol",
 });
 ```
 
 Each profile value may be a model id string or an object with `modelId` and optional `description` and `reasoningLevel` fields. Name concrete tasks in each description. Include use and avoid cases when useful. Do not use model product names as the selection rule. The turn router and `handoff` tool use these descriptions so the agent can choose another profile when it fits the task better.
 
-Set `profiles` and `defaultProfile` together. App config replaces profiles from env settings. If app config omits both options, the deprecated env settings create `standard` and `handoff` profiles with default task-fit descriptions. `AI_MODEL_PROFILES` can add or replace those profiles and may use the same string or object shape.
+Set `profiles` and `defaultProfile` together. Pass auxiliary model ids on the same `createApp()` options object. App config replaces profiles from env settings and overrides auxiliary model env settings. If app config omits both profile options, the deprecated env settings create `standard` and `handoff` profiles with default task-fit descriptions. `AI_MODEL_PROFILES` can add or replace those profiles and may use the same string or object shape.
+
+The memory model belongs to the memory plugin. Set it with `memoryPlugin({ modelId })` in the plugin set.
 
 ## Install-wide config defaults
 

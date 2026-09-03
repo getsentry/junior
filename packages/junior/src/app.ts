@@ -12,7 +12,9 @@ import {
   botConfig,
   configureFunctionMaxDurationSeconds,
   getSlackReactionConfig,
+  setBotModelConfig,
   setProfiles,
+  type BotModelConfig,
   setSlackReactionConfig,
 } from "@/chat/config";
 import type { ModelProfileInput } from "@/chat/model-profile";
@@ -113,7 +115,7 @@ export type {
   JuniorPluginSetOptions,
 } from "./plugins";
 export type { ModelProfileInput } from "@/chat/model-profile";
-export interface JuniorAppOptions {
+export interface JuniorAppOptions extends BotModelConfig {
   /** Authenticated dashboard mounted by core when configured. */
   dashboard?: JuniorDashboardOptions;
   /**
@@ -689,8 +691,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     hasConfiguredPluginCatalog(pluginConfig) ||
     Boolean(configuredPlugins?.registrations.length) ||
     Boolean(Object.keys(options?.configDefaults ?? {}).length);
-  const previousDefaultProfile = botConfig.defaultProfile;
-  const previousModelProfiles = botConfig.profiles;
+  const previousBotConfig = { ...botConfig };
   const previousPluginCatalogConfig =
     pluginCatalogRuntime.setConfig(pluginConfig);
   const previousPlugins = setPlugins(plugins);
@@ -704,8 +705,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     pluginCatalogRuntime.setConfig(previousPluginCatalogConfig);
     setPlugins(previousPlugins);
     setConfigDefaults(previousConfigDefaults);
-    botConfig.defaultProfile = previousDefaultProfile;
-    botConfig.profiles = previousModelProfiles;
+    Object.assign(botConfig, previousBotConfig);
     setSlackReactionConfig(previousSlackReactionConfig);
     setSandboxResourceConfig(previousSandboxResources);
     setExperimentalFeatures(previousExperimentalFeatures);
@@ -728,6 +728,9 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     warnUnregisteredConfigDefaults(options?.configDefaults);
     if (options?.profiles || options?.defaultProfile) {
       setProfiles(options.profiles, options.defaultProfile);
+    }
+    if (options) {
+      setBotModelConfig(options);
     }
     if (options?.slack) {
       setSlackReactionConfig(options.slack);
