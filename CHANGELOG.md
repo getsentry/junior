@@ -1,4 +1,25 @@
 # Changelog
+## 0.199.0
+
+### New Features ✨
+
+- (dashboard) Clarify resource event triggers by @sentry-junior in [#1773](https://github.com/getsentry/junior/pull/1773)
+
+### Bug Fixes 🐛
+
+#### Slack
+
+- Stop active work before leaving a thread by @sentry-junior in [#1772](https://github.com/getsentry/junior/pull/1772)
+- Keep passive-routing off without worker work by @sentry-junior in [#1768](https://github.com/getsentry/junior/pull/1768)
+
+#### Other
+
+- (package) Preserve published TypeScript types by @sentry-junior in [#1677](https://github.com/getsentry/junior/pull/1677)
+
+### Other
+
+- Raise MAX_CONSECUTIVE_AUTOMATED_TURNS default from 10 to 25 by @sentry-junior in [#1774](https://github.com/getsentry/junior/pull/1774)
+
 ## 0.198.0
 
 ### New Features ✨
