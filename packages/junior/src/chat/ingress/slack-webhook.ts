@@ -286,7 +286,7 @@ async function persistSlackMessage(args: {
     throw new SlackEventPersistenceError(error);
   });
 
-  if (inbound.control === "stop") {
+  if (inbound.stop === true) {
     await stopConversationWork({
       conversationId,
       preserveInboundMessageIds: [inbound.inboundMessageId],

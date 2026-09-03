@@ -108,7 +108,6 @@ export const inboundMessageSchema = z
   .object({
     attemptCount: z.number().finite().optional(),
     conversationId: z.string().refine((value) => value.trim().length > 0),
-    control: z.enum(["stop"]).optional(),
     createdAtMs: z.number().finite(),
     delivery: inboundMessageDeliverySchema,
     destination: destinationSchema.optional(),
@@ -117,6 +116,8 @@ export const inboundMessageSchema = z
     input: agentInputSchema,
     receivedAtMs: z.number().finite(),
     source: inboundMessageSourceSchema,
+    /** Stop the current Run before this Inbound message starts its own Turn. */
+    stop: z.boolean().optional(),
   })
   .strict();
 

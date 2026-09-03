@@ -109,12 +109,12 @@ function selectContiguousTurnBatch(
   );
 }
 
-/** Prioritize interrupts while keeping each attempt to one Actor and Source. */
+/** Run stop input alone, then prioritize interrupts by Actor and Source. */
 function selectAttemptMessages(work: ConversationWorkState): InboundMessage[] {
   const messages = work.messages;
-  const control = messages.find((message) => message.control === "stop");
-  if (control) {
-    return [control];
+  const stop = messages.find((message) => message.stop === true);
+  if (stop) {
+    return [stop];
   }
   const interrupts = messages.filter(
     (message) => message.delivery === "interrupt",

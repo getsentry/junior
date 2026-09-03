@@ -1686,6 +1686,9 @@ async function executeAgentRunInPrivacyContext(
     if (durability.onInputCommitted && !resume?.inputCommitted) {
       throw error;
     }
+    if (signal?.aborted) {
+      throw signal.reason;
+    }
 
     const providerError = findProviderError(error);
     logException(

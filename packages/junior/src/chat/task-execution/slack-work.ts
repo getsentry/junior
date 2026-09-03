@@ -670,7 +670,7 @@ export function createSlackConversationWorker(
           state,
           threadJson: latestMetadata.thread,
         });
-        if (latestRecord.control === "stop") {
+        if (latestRecord.stop === true) {
           await context.attempt.drain(async (pendingRecords) =>
             pendingRecords
               .filter(
@@ -803,7 +803,7 @@ export function buildSlackInboundMessage(args: {
     hasSteeringOverride(args.message.text) || Boolean(stopDecision);
   return {
     conversationId: args.conversationId,
-    ...(stopDecision ? { control: "stop" as const } : undefined),
+    ...(stopDecision ? { stop: true } : undefined),
     destination,
     inboundMessageId: [
       "slack",
