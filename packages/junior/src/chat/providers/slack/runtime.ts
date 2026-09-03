@@ -94,6 +94,8 @@ export interface ReplyHooks {
   onTurnStatePersisted?: () => Promise<void>;
   isFinalAttempt?: boolean;
   shouldYield?: () => boolean;
+  stopSignal?: AbortSignal;
+  subscribeThread?: () => Promise<boolean>;
 }
 
 interface SteeringDrainContext {
@@ -105,7 +107,8 @@ export interface SlackTurnOptions extends ReplyHooks {
   destination: Destination;
 }
 
-const THREAD_OPTOUT_ACK =
+/** Sent when a stop decision unsubscribes a thread. */
+export const THREAD_OPTOUT_ACK =
   "Understood. I'll stay out of this thread unless someone @mentions me again.";
 
 /** Preserve retry/yield control flow for the durable worker boundary. */
@@ -196,6 +199,7 @@ export interface SlackTurnRuntimeDependencies<TPreparedState> {
         context?: SteeringDrainContext,
       ) => Promise<QueuedTurnMessage[]>;
       shouldYield?: () => boolean;
+      stopSignal?: AbortSignal;
     },
   ) => Promise<void>;
   decideSubscribedReply: SubscribedReplyPolicy;
@@ -476,9 +480,7 @@ export function createSlackTurnRuntime<
     postFailureEventName: string;
   }): Promise<void> => {
     try {
-      await args.thread.post(
-        buildTurnErrorResponse(args.error, args.eventId),
-      );
+      await args.thread.post(buildTurnErrorResponse(args.error, args.eventId));
     } catch (postError) {
       logException(postError, args.postFailureEventName, {
         "app.slack.reply_stage": "error_fallback_post",
@@ -718,6 +720,13 @@ export function createSlackTurnRuntime<
           actorUserName: actorUserName(message),
           runId,
         });
+        const subscribed = hooks.subscribeThread
+          ? await hooks.subscribeThread()
+          : (await thread.subscribe(), true);
+        if (!subscribed) {
+          await hooks.ack?.();
+          return;
+        }
         processingReaction = await processingReactions.start(context, message);
         const toolInvocationHook = createToolInvocationHook(
           processingReaction,
@@ -725,7 +734,6 @@ export function createSlackTurnRuntime<
         );
 
         await withSpan("chat.turn", "chat.turn", context, async () => {
-          await thread.subscribe();
           const queuedMessages = getQueuedMessages(hooks.messageContext, {
             botUserId: deps.getBotUserId(),
             explicitMention: true,
@@ -783,6 +791,7 @@ export function createSlackTurnRuntime<
             drainSteeringMessages,
             onTurnStatePersisted: hooks.onTurnStatePersisted,
             shouldYield: hooks.shouldYield,
+            stopSignal: hooks.stopSignal,
           });
         });
       } catch (error) {
@@ -1148,6 +1157,7 @@ export function createSlackTurnRuntime<
             drainSteeringMessages,
             onTurnStatePersisted: hooks.onTurnStatePersisted,
             shouldYield: hooks.shouldYield,
+            stopSignal: hooks.stopSignal,
           });
         });
       } catch (error) {

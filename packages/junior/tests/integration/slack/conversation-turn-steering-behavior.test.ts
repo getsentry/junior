@@ -650,13 +650,17 @@ describe("Slack behavior: durable turn steering", () => {
     expect(replyCalls).toEqual(["start the incident summary"]);
   });
 
-  it("applies follow-up opt-out decisions after the active turn", async () => {
+  it("interrupts the active turn before applying a follow-up opt-out", async () => {
     const agentEntered = deferred();
+    const agentAborted = deferred();
     const releaseAgent = deferred();
     const agentRuns: AgentRun[] = [];
     const state = getStateAdapter();
     const agentRunner = createModelAgentRunnerForRun((run) => {
       agentRuns.push(run);
+      run.signal?.addEventListener("abort", () => agentAborted.resolve(), {
+        once: true,
+      });
       return createModelStream([
         {
           type: "text",
@@ -723,18 +727,20 @@ describe("Slack behavior: durable turn steering", () => {
       handleSlackWebhookAndFlush({
         request: slackWebhookRequest(
           makeMessageEvent({
-            eventType: "message",
-            text: "also add the rollout timeline",
-            ts: "1712345.000600",
+            eventType: "app_mention",
+            text: `<@${SLACK_BOT_USER_ID}> also add the rollout timeline`,
+            // Simulate an older mention that reaches ingress after the stop.
+            ts: "1712345.000400",
           }),
         ),
         services,
       }),
     ).resolves.toMatchObject({ status: 200 });
 
+    expect(await state.isSubscribed(conversationId)).toBe(false);
+    await agentAborted.promise;
     releaseAgent.resolve();
     await expect(activeTurn).resolves.toEqual({ status: "completed" });
-    expect(await state.isSubscribed(conversationId)).toBe(false);
     while (queue.hasQueuedMessages()) {
       await runNextQueuedWork();
     }
@@ -751,20 +757,21 @@ describe("Slack behavior: durable turn steering", () => {
         timestamp: THREAD_TS,
       },
     ]);
-    expect(reactionTargetsByName("white_check_mark")).toEqual([
-      {
-        channel: CHANNEL_ID,
-        name: "white_check_mark",
-        timestamp: THREAD_TS,
-      },
-    ]);
+    expect(reactionTargetsByName("white_check_mark")).toEqual([]);
     const persistedState = await getPersistedThreadState(conversationId);
     const conversation = coerceThreadConversationState(persistedState);
     await hydrateConversationMessages({ conversation, conversationId });
     expect(conversation.messages).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          text: expect.stringContaining("also add the rollout timeline"),
+          text: "start the incident summary",
+          meta: expect.objectContaining({
+            replied: false,
+            skippedReason: "turn interrupted",
+          }),
+        }),
+        expect.objectContaining({
+          text: "stop",
           meta: expect.objectContaining({
             replied: false,
             skippedReason: "thread_opt_out:stop",
@@ -772,5 +779,65 @@ describe("Slack behavior: durable turn steering", () => {
         }),
       ]),
     );
+    expect(conversation.messages).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          text: "also add the rollout timeline",
+        }),
+      ]),
+    );
+  });
+
+  it("ignores a late stop that arrives after a newer mention already re-subscribed", async () => {
+    const state = getStateAdapter();
+    const canonicalThreadId = `slack:${CHANNEL_ID}:${THREAD_TS}`;
+    const { queue, runNextQueuedWork, services } = createTurnHarness({
+      agentRunner: createModelAgentRunnerForRun(() =>
+        createModelStream([{ type: "text", text: "On it." }]),
+      ),
+      state,
+    });
+
+    await expect(
+      handleSlackWebhookAndFlush({
+        request: slackWebhookRequest(
+          makeMessageEvent({
+            eventType: "app_mention",
+            text: `<@${SLACK_BOT_USER_ID}> still there?`,
+            ts: THREAD_TS,
+          }),
+        ),
+        services,
+      }),
+    ).resolves.toMatchObject({ status: 200 });
+    await expect(runNextQueuedWork()).resolves.toEqual({
+      status: "completed",
+    });
+    await expect(state.isSubscribed(canonicalThreadId)).resolves.toBe(true);
+
+    // A "stop" webhook delivered out of order, timestamped before the mention
+    // above, must not undo that newer mention's subscription or reply.
+    await expect(
+      handleSlackWebhookAndFlush({
+        request: slackWebhookRequest(
+          makeMessageEvent({
+            eventType: "message",
+            text: "stop",
+            ts: "1712344.000100",
+          }),
+        ),
+        services,
+      }),
+    ).resolves.toMatchObject({ status: 200 });
+
+    await expect(state.isSubscribed(canonicalThreadId)).resolves.toBe(true);
+    expect(queue.hasQueuedMessages()).toBe(false);
+    expect(
+      slackApiOutbox
+        .messages()
+        .some((call) =>
+          String(call.params.text ?? "").includes("stay out of this thread"),
+        ),
+    ).toBe(false);
   });
 });

@@ -24,6 +24,7 @@ import {
 } from "@/chat/ingress/message-router";
 import { rehydrateAttachmentFetchers } from "@/chat/slack/attachment-fetchers";
 import { getStateAdapter } from "@/chat/state/adapter";
+import { subscribeSlackThreadForMessage } from "@/chat/slack/thread-stop";
 import type { AgentInput, InboundMessage } from "@/chat/task-execution/store";
 import type {
   ConversationWorkerContext,
@@ -724,6 +725,13 @@ export function createSlackConversationWorker(
               ack,
               isFinalAttempt: context.attempt.isFinalAttempt,
               shouldYield: context.shouldYield,
+              stopSignal: context.stopSignal?.(),
+              subscribeThread: async () =>
+                await subscribeSlackThreadForMessage({
+                  messageCreatedAtMs: latestRecord.createdAtMs,
+                  state,
+                  thread,
+                }),
             });
           } else {
             await options.runtime.handleSubscribedMessage(
@@ -737,6 +745,7 @@ export function createSlackConversationWorker(
                 ack,
                 isFinalAttempt: context.attempt.isFinalAttempt,
                 shouldYield: context.shouldYield,
+                stopSignal: context.stopSignal?.(),
               },
             );
           }
