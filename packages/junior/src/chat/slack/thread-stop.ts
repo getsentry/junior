@@ -4,18 +4,17 @@ import { logException } from "@/chat/logging";
 import { JUNIOR_THREAD_STATE_TTL_MS } from "@/chat/state/ttl";
 import { MUTATION_LOCK_TTL_MS, withLock } from "@/chat/state/locks";
 
-const eventKindSchema = z.enum(["mention", "stop"]);
-const lastEventSchema = z
+const watermarksSchema = z
   .object({
-    atMs: z.number().finite(),
-    kind: eventKindSchema,
+    mentionAtMs: z.number().finite().optional(),
+    stopAtMs: z.number().finite().optional(),
   })
   .strict();
-type LastEvent = z.output<typeof lastEventSchema>;
+type Watermarks = z.output<typeof watermarksSchema>;
 
 const LOCK_WAIT_MS = 10_000;
 
-function lastEventKey(threadId: string): string {
+function watermarksKey(threadId: string): string {
   return `slack:thread-stop:${threadId}`;
 }
 
@@ -23,23 +22,24 @@ function lockKey(threadId: string): string {
   return `slack:thread-stop-lock:${threadId}`;
 }
 
-async function getLastEvent(
+async function getWatermarks(
   state: StateAdapter,
   threadId: string,
-): Promise<LastEvent | undefined> {
-  const parsed = lastEventSchema.safeParse(
-    await state.get(lastEventKey(threadId)),
+): Promise<Watermarks> {
+  const parsed = watermarksSchema.safeParse(
+    await state.get(watermarksKey(threadId)),
   );
-  return parsed.success ? parsed.data : undefined;
+  return parsed.success ? parsed.data : {};
 }
 
 /**
  * Record a Slack stop and unsubscribe, unless a later mention already
- * re-subscribed. Returns `applied: false` for a stale/late-arriving stop so
- * the caller skips cancelling a Turn that a newer mention owns.
+ * re-subscribed. Returns `applied: false` for a stale/late-arriving stop
+ * (a newer mention already re-subscribed) or a lock timeout, so the caller
+ * skips cancelling a Turn and skips every other stop side effect.
  *
- * A lock timeout cannot tell which event is newest, so it favors safety:
- * treat the stop as applied and let the caller still cancel the active Turn.
+ * `stopAtMs` only ever moves forward: out-of-order redelivery of an older
+ * stop cannot un-apply a newer one.
  */
 export async function stopSlackThread(args: {
   state: StateAdapter;
@@ -50,13 +50,19 @@ export async function stopSlackThread(args: {
     args.state,
     lockKey(args.thread.id),
     async () => {
-      const current = await getLastEvent(args.state, args.thread.id);
-      if (current && current.atMs > args.stoppedAtMs) {
+      const current = await getWatermarks(args.state, args.thread.id);
+      if (
+        current.mentionAtMs !== undefined &&
+        current.mentionAtMs > args.stoppedAtMs
+      ) {
         return false;
       }
       await args.state.set(
-        lastEventKey(args.thread.id),
-        { atMs: args.stoppedAtMs, kind: "stop" } satisfies LastEvent,
+        watermarksKey(args.thread.id),
+        {
+          ...current,
+          stopAtMs: Math.max(current.stopAtMs ?? -Infinity, args.stoppedAtMs),
+        } satisfies Watermarks,
         JUNIOR_THREAD_STATE_TTL_MS,
       );
       await args.thread.unsubscribe();
@@ -69,12 +75,18 @@ export async function stopSlackThread(args: {
       new Error(`Could not lock Slack stop state for ${args.thread.id}`),
       "slack.thread_stop.lock_failed",
     );
-    return { applied: true };
+    return { applied: false };
   }
   return { applied: result.value };
 }
 
-/** Subscribe for a mention unless a later Slack stop already opted out. */
+/**
+ * Subscribe for a mention unless a later Slack stop already opted out.
+ *
+ * `mentionAtMs` only ever moves forward: out-of-order redelivery of an
+ * older mention cannot rewind the watermark a concurrent stop checks
+ * against.
+ */
 export async function subscribeSlackThreadForMessage(args: {
   messageCreatedAtMs: number;
   state: StateAdapter;
@@ -84,17 +96,22 @@ export async function subscribeSlackThreadForMessage(args: {
     args.state,
     lockKey(args.thread.id),
     async () => {
-      const current = await getLastEvent(args.state, args.thread.id);
+      const current = await getWatermarks(args.state, args.thread.id);
       if (
-        current &&
-        current.kind === "stop" &&
-        current.atMs >= args.messageCreatedAtMs
+        current.stopAtMs !== undefined &&
+        current.stopAtMs >= args.messageCreatedAtMs
       ) {
         return false;
       }
       await args.state.set(
-        lastEventKey(args.thread.id),
-        { atMs: args.messageCreatedAtMs, kind: "mention" } satisfies LastEvent,
+        watermarksKey(args.thread.id),
+        {
+          ...current,
+          mentionAtMs: Math.max(
+            current.mentionAtMs ?? -Infinity,
+            args.messageCreatedAtMs,
+          ),
+        } satisfies Watermarks,
         JUNIOR_THREAD_STATE_TTL_MS,
       );
       await args.thread.subscribe();
