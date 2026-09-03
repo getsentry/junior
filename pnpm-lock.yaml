@@ -51,6 +51,9 @@ importers:
 
   .:
     devDependencies:
+      '@arethetypeswrong/cli':
+        specifier: 0.18.5
+        version: 0.18.5
       '@ast-grep/cli':
         specifier: ^0.43.0
         version: 0.43.0
@@ -275,9 +278,6 @@ importers:
         specifier: 'catalog:'
         version: 4.5.4
     devDependencies:
-      '@arethetypeswrong/cli':
-        specifier: 0.18.5
-        version: 0.18.5
       '@emnapi/core':
         specifier: ^1.10.0
         version: 1.10.0

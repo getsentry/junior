@@ -80,7 +80,14 @@ export default defineConfig({
   },
   format: "esm",
   tsconfig: "tsconfig.build.json",
-  dts: false,
+  dts: {
+    entry: {
+      index: "src/index.ts",
+    },
+    compilerOptions: {
+      ignoreDeprecations: "6.0",
+    },
+  },
   outDir: "dist",
   clean: false,
   splitting: false,
