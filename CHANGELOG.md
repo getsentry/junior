@@ -1,4 +1,14 @@
 # Changelog
+## 0.198.0
+
+### New Features ✨
+
+- (config) Expose model ids on createApp options by @sentry-junior in [#1770](https://github.com/getsentry/junior/pull/1770)
+
+### Bug Fixes 🐛
+
+- Point Sentry event links at issues search by @sentry-junior in [#1769](https://github.com/getsentry/junior/pull/1769)
+
 ## 0.197.0
 
 ### Bug Fixes 🐛

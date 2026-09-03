@@ -1,7 +1,13 @@
 import type { Message } from "chat";
 import { getMessageTimestamp } from "@/chat/slack/message/identity";
-import type { ConversationMessage } from "@/chat/state/conversation";
-import { normalizeConversationText } from "@/chat/services/conversation-memory";
+import type {
+  ConversationMessage,
+  ThreadConversationState,
+} from "@/chat/state/conversation";
+import {
+  normalizeConversationText,
+  upsertConversationMessage,
+} from "@/chat/services/conversation-memory";
 import { getMessageActorIdentity } from "@/chat/services/message-actor-identity";
 import {
   countPotentialImageAttachments,
@@ -58,4 +64,26 @@ export function toConversationMessage(
       ...(slackTs ? { slackTs } : undefined),
     },
   };
+}
+
+/** Store a Slack message that Junior did not answer, for later turns. */
+export function recordSkippedConversationMessage(args: {
+  conversation: ThreadConversationState;
+  message: Message;
+  skippedReason: string;
+  text: string;
+}): void {
+  const conversationMessage = toConversationMessage({
+    entry: args.message,
+    explicitMention: Boolean(args.message.isMention),
+    text: args.text,
+  });
+  upsertConversationMessage(args.conversation, {
+    ...conversationMessage,
+    meta: {
+      ...conversationMessage.meta,
+      replied: false,
+      skippedReason: args.skippedReason,
+    },
+  });
 }

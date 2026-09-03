@@ -1,5 +1,4 @@
 import type { SlackAdapter } from "@chat-adapter/slack";
-import type { Message } from "chat";
 import {
   createSlackTurnRuntime,
   type AssistantLifecycleEvent,
@@ -20,14 +19,9 @@ import {
   createPrepareTurnState,
   type PreparedTurnState,
 } from "@/chat/runtime/turn-preparation";
-import type { TurnMessageText } from "@/chat/runtime/turn-input";
 import { buildDeterministicTurnId } from "@/chat/runtime/turn";
-import { toConversationMessage } from "@/chat/runtime/conversation-message";
-import {
-  markConversationMessage,
-  upsertConversationMessage,
-} from "@/chat/services/conversation-memory";
-import type { SubscribedReplyDecision } from "@/chat/services/subscribed-reply-policy";
+import { recordSkippedConversationMessage } from "@/chat/runtime/conversation-message";
+import { markConversationMessage } from "@/chat/services/conversation-memory";
 import { botConfig } from "@/chat/config";
 import { defaultModelId } from "@/chat/model-profile";
 import { cancelSubscriptions as cancelEventSubscriptions } from "@/chat/resource-events/store";
@@ -61,29 +55,6 @@ function clearSkippedTurnIfActive(
   ) {
     conversation.processing.activeTurnId = undefined;
   }
-}
-
-function upsertSkippedConversationMessage(
-  conversation: PreparedTurnState["conversation"],
-  args: {
-    decision: SubscribedReplyDecision;
-    message: Message;
-    text: TurnMessageText;
-  },
-): void {
-  const conversationMessage = toConversationMessage({
-    entry: args.message,
-    explicitMention: Boolean(args.message.isMention),
-    text: args.text.userText,
-  });
-  upsertConversationMessage(conversation, {
-    ...conversationMessage,
-    meta: {
-      ...conversationMessage.meta,
-      replied: false,
-      skippedReason: args.decision.reason,
-    },
-  });
 }
 
 export function createSlackRuntime(options: CreateSlackRuntimeOptions) {
@@ -172,10 +143,11 @@ export function createSlackRuntime(options: CreateSlackRuntimeOptions) {
       text,
     }) => {
       const conversation = coerceThreadConversationState(await thread.state);
-      upsertSkippedConversationMessage(conversation, {
-        decision,
+      recordSkippedConversationMessage({
+        conversation,
         message,
-        text,
+        skippedReason: decision.reason,
+        text: text.userText,
       });
       await persistThreadState(thread, {
         conversation,
@@ -189,10 +161,11 @@ export function createSlackRuntime(options: CreateSlackRuntimeOptions) {
       text,
     }) => {
       const conversation = coerceThreadConversationState(await thread.state);
-      upsertSkippedConversationMessage(conversation, {
-        decision,
+      recordSkippedConversationMessage({
+        conversation,
         message,
-        text,
+        skippedReason: decision.reason,
+        text: text.userText,
       });
       clearSkippedTurnIfActive(conversation, message.id);
       conversation.processing.lastCompletedAtMs = completedAtMs;

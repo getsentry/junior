@@ -1,7 +1,12 @@
 import type { StateAdapter } from "chat";
 import { afterEach, describe, expect, it } from "vitest";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
-import { closeDb, getConversationStore } from "@/chat/db";
+import {
+  closeDb,
+  getConversationEventStore,
+  getConversationStore,
+} from "@/chat/db";
+import { setExperimentalFeatures } from "@/chat/experimental";
 import { createJuniorSlackAdapter } from "@/chat/slack/adapter";
 import { authTestOk } from "../../fixtures/slack/factories/api";
 import {
@@ -160,6 +165,164 @@ describe("Slack webhook persistence contract", () => {
       expect(queue.queuedMessages()).toEqual([]);
     },
   );
+
+  it("stores subscribed non-mention messages as history without worker work when passive routing is off", async () => {
+    setExperimentalFeatures(undefined);
+    try {
+      const queue = createConversationWorkQueueTestAdapter();
+      const state = getStateAdapter();
+      await state.connect();
+      const slackAdapter = createSlackAdapterFixture();
+      const threadTs = "1712345.000800";
+      const threadId = `slack:C123:${threadTs}`;
+      await state.subscribe(threadId);
+
+      const response = await handleSlackWebhookAndFlush({
+        request: slackWebhookRequest(
+          slackEnvelope({
+            eventType: "message",
+            text: "follow-up without another mention",
+            threadTs,
+            ts: "1712345.000801",
+          }),
+        ),
+        services: {
+          getSlackAdapter: () => slackAdapter,
+          queue,
+          runtime: createNoopSlackWebhookRuntime(),
+          state,
+        },
+      });
+
+      expect(response.status).toBe(200);
+      expect(queue.queuedMessages()).toEqual([]);
+      const history = await getConversationEventStore().loadMessageHistory(
+        threadId,
+      );
+      expect(history.events).toEqual([
+        expect.objectContaining({
+          data: expect.objectContaining({
+            type: "message",
+            text: "follow-up without another mention",
+            meta: expect.objectContaining({
+              replied: false,
+              skippedReason: "passive_disabled:passive-routing",
+            }),
+          }),
+        }),
+      ]);
+    } finally {
+      setExperimentalFeatures({ "passive-routing": true, subagents: true });
+    }
+  });
+
+  it("keeps passive-routing history on the Slack thread id when a bound Conversation exists", async () => {
+    setExperimentalFeatures(undefined);
+    try {
+      const queue = createConversationWorkQueueTestAdapter();
+      const state = getStateAdapter();
+      await state.connect();
+      const slackAdapter = createSlackAdapterFixture();
+      const conversationStore = getConversationStore();
+      const conversationId = "agent-dispatch:bound-passive-history";
+      const threadTs = "1712345.000820";
+      const threadId = `slack:C123:${threadTs}`;
+      await conversationStore.recordActivity({
+        conversationId,
+        destination: {
+          platform: "slack",
+          teamId: "T123",
+          channelId: "C123",
+        },
+        nowMs: 1_000,
+      });
+      await conversationStore.bindProviderConversation({
+        conversationId,
+        provider: "slack",
+        providerDestinationId: "C123",
+        providerTenantId: "T123",
+        providerConversationId: threadTs,
+      });
+      await state.subscribe(threadId);
+
+      const response = await handleSlackWebhookAndFlush({
+        request: slackWebhookRequest(
+          slackEnvelope({
+            eventType: "message",
+            text: "bound thread follow-up",
+            threadTs,
+            ts: "1712345.000821",
+          }),
+        ),
+        services: {
+          getSlackAdapter: () => slackAdapter,
+          queue,
+          runtime: createNoopSlackWebhookRuntime(),
+          state,
+        },
+      });
+
+      expect(response.status).toBe(200);
+      expect(queue.queuedMessages()).toEqual([]);
+      await expect(
+        getConversationEventStore().loadMessageHistory(threadId),
+      ).resolves.toEqual({
+        events: [
+          expect.objectContaining({
+            data: expect.objectContaining({
+              type: "message",
+              text: "bound thread follow-up",
+            }),
+          }),
+        ],
+        compaction: undefined,
+        historyFromSeq: expect.any(Number),
+      });
+      await expect(
+        getConversationEventStore().loadMessageHistory(conversationId),
+      ).resolves.toEqual({
+        events: [],
+        compaction: undefined,
+        historyFromSeq: expect.any(Number),
+      });
+    } finally {
+      setExperimentalFeatures({ "passive-routing": true, subagents: true });
+    }
+  });
+
+  it("still enqueues subscribed thread opt-out when passive routing is off", async () => {
+    setExperimentalFeatures(undefined);
+    try {
+      const queue = createConversationWorkQueueTestAdapter();
+      const state = getStateAdapter();
+      await state.connect();
+      const slackAdapter = createSlackAdapterFixture();
+      const threadTs = "1712345.000810";
+      await state.subscribe(`slack:C123:${threadTs}`);
+
+      const response = await handleSlackWebhookAndFlush({
+        request: slackWebhookRequest(
+          slackEnvelope({
+            eventType: "message",
+            text: "!stop",
+            threadTs,
+            ts: "1712345.000811",
+          }),
+        ),
+        services: {
+          getSlackAdapter: () => slackAdapter,
+          queue,
+          runtime: createNoopSlackWebhookRuntime(),
+          state,
+        },
+      });
+
+      expect(response.status).toBe(200);
+      expect(queue.queuedMessages()).toHaveLength(1);
+    } finally {
+      setExperimentalFeatures({ "passive-routing": true, subagents: true });
+    }
+  });
 
   it("routes a provider conversation into its bound durable conversation", async () => {
     const queue = createConversationWorkQueueTestAdapter();
