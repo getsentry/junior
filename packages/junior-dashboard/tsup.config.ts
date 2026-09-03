@@ -85,6 +85,7 @@ export default defineConfig({
       index: "src/index.ts",
     },
     compilerOptions: {
+      // TODO(upstream): Remove after tsup stops adding deprecated baseUrl.
       ignoreDeprecations: "6.0",
     },
   },

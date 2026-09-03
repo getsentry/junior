@@ -8,6 +8,7 @@ export default defineConfig({
   tsconfig: "tsconfig.build.json",
   dts: {
     compilerOptions: {
+      // TODO(upstream): Remove after tsup stops adding deprecated baseUrl.
       ignoreDeprecations: "6.0",
     },
   },

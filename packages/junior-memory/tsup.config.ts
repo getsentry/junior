@@ -4,6 +4,7 @@ export default defineConfig({
   clean: true,
   dts: {
     compilerOptions: {
+      // TODO(upstream): Remove after tsup stops adding deprecated baseUrl.
       ignoreDeprecations: "6.0",
     },
   },
