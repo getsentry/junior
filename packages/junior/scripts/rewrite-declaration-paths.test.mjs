@@ -11,11 +11,10 @@ test("rewrites declaration module specifiers as ESM paths", async (t) => {
   t.after(() => fs.rm(distRoot, { recursive: true, force: true }));
 
   await fs.mkdir(path.join(distRoot, "chat"), { recursive: true });
-  await fs.mkdir(path.join(distRoot, "plugins"), { recursive: true });
   await Promise.all([
     fs.writeFile(path.join(distRoot, "chat/config.d.ts"), ""),
     fs.writeFile(path.join(distRoot, "chat/model.d.ts"), ""),
-    fs.writeFile(path.join(distRoot, "plugins/index.d.ts"), ""),
+    fs.writeFile(path.join(distRoot, "plugins.d.ts"), ""),
   ]);
 
   const fromFile = path.join(distRoot, "nested/public.d.ts");
@@ -31,7 +30,7 @@ type Literal = "@/chat/config";
   assert.equal(
     rewritten.output,
     `import type { Config } from "../chat/config.js";
-export { plugin } from "../plugins/index.js";
+export { plugin } from "../plugins.js";
 type Model = import("../chat/model.js").Model;
 export type { Ready } from "../ready.js";
 type Literal = "@/chat/config";
@@ -50,6 +49,6 @@ test("rejects an alias without an emitted declaration", async (t) => {
         path.join(distRoot, "public.d.ts"),
         distRoot,
       ),
-    /has no emitted target/,
+    /does not match an emitted file/,
   );
 });

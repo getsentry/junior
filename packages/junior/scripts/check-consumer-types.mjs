@@ -1,6 +1,5 @@
-// This check installs the packed package so workspace aliases and source files
-// cannot hide broken public declarations. Each public entry must resolve in a
-// bundler and in native Node ESM.
+// Install the packed packages so local source files cannot hide type errors.
+// Check each public import with Bundler and NodeNext.
 import { spawnSync } from "node:child_process";
 import fs from "node:fs/promises";
 import os from "node:os";
@@ -55,7 +54,7 @@ function packPackage(packageDirectory, packDirectory) {
     : path.join(packDirectory, path.basename(tarballLine));
 }
 
-function auditPackage(tarball) {
+function checkPackage(tarball) {
   run(
     "pnpm",
     [
@@ -76,7 +75,7 @@ async function writeConsumerSource(directory) {
   await fs.writeFile(
     path.join(directory, "index.ts"),
     `import { createApp, defineJuniorPlugins } from "@sentry/junior";
-import type { BotModelConfig, JuniorAppOptions, ModelProfileInput } from "@sentry/junior";
+import type { JuniorAppOptions, ModelProfileInput } from "@sentry/junior";
 import * as instrumentation from "@sentry/junior/instrumentation";
 import * as nitro from "@sentry/junior/nitro";
 import * as api from "@sentry/junior/api";
@@ -84,10 +83,9 @@ import * as apiSchema from "@sentry/junior/api/schema";
 import * as vercel from "@sentry/junior/vercel";
 import * as version from "@sentry/junior/version";
 
-const model: BotModelConfig = { fastModelId: "openai/gpt-5" };
 const profile: ModelProfileInput = { modelId: "openai/gpt-5" };
 const options: JuniorAppOptions = {
-  ...model,
+  fastModelId: "openai/gpt-5",
   experimental: { subagents: true },
   profiles: { default: profile },
 };
@@ -102,7 +100,7 @@ void vercel;
 void version;
 
 // @ts-expect-error Model ids must be strings.
-const invalidModel: BotModelConfig = { fastModelId: 123 };
+const invalidModel: JuniorAppOptions = { fastModelId: 123 };
 // @ts-expect-error Experimental feature names form a closed set.
 const invalidOptions: JuniorAppOptions = { experimental: { acp: true } };
 void invalidModel;
@@ -141,8 +139,8 @@ async function main() {
   try {
     const pluginApiTarball = packPackage(pluginApiRoot, packDirectory);
     const juniorTarball = packPackage(packageRoot, packDirectory);
-    auditPackage(pluginApiTarball);
-    auditPackage(juniorTarball);
+    checkPackage(pluginApiTarball);
+    checkPackage(juniorTarball);
 
     await fs.writeFile(
       path.join(appDirectory, "package.json"),

@@ -17,31 +17,25 @@ function moduleSpecifier(node) {
       ? argument.literal
       : undefined;
   }
-  if (ts.isExternalModuleReference(node)) {
-    return node.expression;
-  }
-  if (ts.isModuleDeclaration(node)) {
-    return ts.isStringLiteral(node.name) ? node.name : undefined;
-  }
-  if (
-    ts.isCallExpression(node) &&
-    node.expression.kind === ts.SyntaxKind.ImportKeyword
-  ) {
-    return node.arguments[0];
-  }
   return undefined;
 }
 
-function findInternalSpecifiers(sourceFile) {
+function needsRewrite(specifier) {
+  if (specifier.startsWith(ALIAS_PREFIX)) {
+    return true;
+  }
+  const isRelative = specifier.startsWith("./") || specifier.startsWith("../");
+  return isRelative && !path.posix.extname(specifier);
+}
+
+function findSpecifiersToRewrite(sourceFile) {
   const specifiers = [];
   function visit(node) {
     const specifier = moduleSpecifier(node);
     if (
       specifier &&
       ts.isStringLiteralLike(specifier) &&
-      (specifier.text.startsWith(ALIAS_PREFIX) ||
-        specifier.text.startsWith("./") ||
-        specifier.text.startsWith("../"))
+      needsRewrite(specifier.text)
     ) {
       specifiers.push(specifier);
     }
@@ -54,26 +48,22 @@ function findInternalSpecifiers(sourceFile) {
 function resolveDeclarationTarget(distRoot, targetBase, sourceSpecifier) {
   const relativeTarget = path.relative(distRoot, targetBase);
   if (relativeTarget.startsWith("..") || path.isAbsolute(relativeTarget)) {
-    throw new Error(`declaration import escapes dist: ${sourceSpecifier}`);
+    throw new Error(
+      `declaration import points outside dist: ${sourceSpecifier}`,
+    );
   }
 
-  const candidates = [
-    `${targetBase}.d.ts`,
-    path.join(targetBase, "index.d.ts"),
-  ];
-  const target = candidates.find((candidate) => existsSync(candidate));
-  if (!target) {
+  const target = `${targetBase}.d.ts`;
+  if (!existsSync(target)) {
     throw new Error(
-      `declaration import has no emitted target: ${sourceSpecifier}`,
+      `declaration import does not match an emitted file: ${sourceSpecifier}`,
     );
   }
   return target;
 }
 
-function toRuntimeSpecifier(fromFile, targetDeclaration) {
-  const target = targetDeclaration.endsWith(".d.ts")
-    ? `${targetDeclaration.slice(0, -".d.ts".length)}.js`
-    : targetDeclaration;
+function toJsImport(fromFile, targetDeclaration) {
+  const target = `${targetDeclaration.slice(0, -".d.ts".length)}.js`;
   let relative = path.relative(path.dirname(fromFile), target);
   if (!relative.startsWith(".")) {
     relative = `./${relative}`;
@@ -90,13 +80,7 @@ export function rewriteDeclarationText(source, fromFile, distRoot) {
     true,
     ts.ScriptKind.TS,
   );
-  const edits = findInternalSpecifiers(sourceFile).flatMap((specifier) => {
-    if (
-      !specifier.text.startsWith(ALIAS_PREFIX) &&
-      path.posix.extname(specifier.text)
-    ) {
-      return [];
-    }
+  const edits = findSpecifiersToRewrite(sourceFile).map((specifier) => {
     const targetBase = specifier.text.startsWith(ALIAS_PREFIX)
       ? path.resolve(distRoot, specifier.text.slice(ALIAS_PREFIX.length))
       : path.resolve(path.dirname(fromFile), specifier.text);
@@ -105,13 +89,11 @@ export function rewriteDeclarationText(source, fromFile, distRoot) {
       targetBase,
       specifier.text,
     );
-    return [
-      {
-        start: specifier.getStart(sourceFile) + 1,
-        end: specifier.getEnd() - 1,
-        text: toRuntimeSpecifier(fromFile, target),
-      },
-    ];
+    return {
+      start: specifier.getStart(sourceFile) + 1,
+      end: specifier.getEnd() - 1,
+      text: toJsImport(fromFile, target),
+    };
   });
 
   let output = source;

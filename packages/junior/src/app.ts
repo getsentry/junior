@@ -14,9 +14,9 @@ import {
   getSlackReactionConfig,
   setBotModelConfig,
   setProfiles,
+  type BotModelConfig,
   setSlackReactionConfig,
 } from "@/chat/config";
-import type { BotModelConfig } from "@/chat/config";
 import type { ModelProfileInput } from "@/chat/model-profile";
 import { getConversationEventStore, getDb } from "@/chat/db";
 import { logException, logWarn } from "@/chat/logging";
@@ -115,7 +115,6 @@ export type {
   JuniorPluginSetOptions,
 } from "./plugins";
 export type { ModelProfileInput } from "@/chat/model-profile";
-export type { BotModelConfig } from "@/chat/config";
 export interface JuniorAppOptions extends BotModelConfig {
   /** Authenticated dashboard mounted by core when configured. */
   dashboard?: JuniorDashboardOptions;
