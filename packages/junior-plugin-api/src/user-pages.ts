@@ -5,8 +5,8 @@
  * routing, response validation, and browser rendering.
  */
 import { z } from "zod";
-import type { PluginContext, User } from "./context";
-import { nonBlankStringSchema } from "./schemas";
+import type { PluginContext, User } from "./context.js";
+import { nonBlankStringSchema } from "./schemas.js";
 
 const userPageIdSchema = nonBlankStringSchema
   .max(64)

@@ -6,15 +6,15 @@ import type {
   PluginEmbedder,
   PluginModel,
   User,
-} from "./context";
-import type { PluginCredentialSubject } from "./credentials";
-import type { PluginAnnotations } from "./annotations";
-import type { SlackConversationLink } from "./operations";
+} from "./context.js";
+import type { PluginCredentialSubject } from "./credentials.js";
+import type { PluginAnnotations } from "./annotations.js";
+import type { SlackConversationLink } from "./operations.js";
 import type {
   ResourceEventSubscriptionResult,
   SubscribableResource,
-} from "./resource-events";
-import type { PluginState } from "./state";
+} from "./resource-events.js";
+import type { PluginState } from "./state.js";
 import { z, type ZodTypeAny } from "zod";
 
 export interface PluginEnv {

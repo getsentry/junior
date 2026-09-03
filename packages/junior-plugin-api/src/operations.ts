@@ -1,12 +1,12 @@
 import { z } from "zod";
-import type { PluginContext, User } from "./context";
-import type { Dispatch, DispatchOptions, DispatchResult } from "./dispatch";
-import { nonBlankStringSchema } from "./schemas";
-import type { PluginReadState, PluginState } from "./state";
-import type { ResourceEventPublisher } from "./resource-events";
-import type { PluginConversationAnnotations } from "./annotations";
-import type { PluginConversationEventStats } from "./conversation-events";
-import type { CodeChangePublisher } from "./code";
+import type { PluginContext, User } from "./context.js";
+import type { Dispatch, DispatchOptions, DispatchResult } from "./dispatch.js";
+import { nonBlankStringSchema } from "./schemas.js";
+import type { PluginReadState, PluginState } from "./state.js";
+import type { ResourceEventPublisher } from "./resource-events.js";
+import type { PluginConversationAnnotations } from "./annotations.js";
+import type { PluginConversationEventStats } from "./conversation-events.js";
+import type { CodeChangePublisher } from "./code.js";
 
 export interface HeartbeatHookContext extends PluginContext {
   agent: {

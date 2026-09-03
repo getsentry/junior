@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { PluginContext } from "./context";
+import type { PluginContext } from "./context.js";
 
 function usesHttpProtocol(value: string): boolean {
   try {

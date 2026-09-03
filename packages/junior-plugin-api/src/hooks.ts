@@ -1,7 +1,7 @@
 import type {
   ConversationSidebarHookContext,
   ConversationSidebarResult,
-} from "./annotations";
+} from "./annotations.js";
 import type {
   EgressHookContext,
   EgressResponseHookContext,
@@ -10,7 +10,7 @@ import type {
   PluginGrant,
   PluginProviderAccount,
   ResolveOAuthAccountHookContext,
-} from "./credentials";
+} from "./credentials.js";
 import type {
   HeartbeatHookContext,
   HeartbeatResult,
@@ -25,7 +25,7 @@ import type {
   SlackConversationLinkHookContext,
   UnfinishedWorkHookContext,
   UnfinishedWorkResult,
-} from "./operations";
+} from "./operations.js";
 import type {
   AfterMcpToolHookContext,
   BeforeToolExecuteHookContext,
@@ -33,13 +33,13 @@ import type {
   SandboxPrepareHookContext,
   ToolRegistrationHookContext,
   WorkspacePrepareHookContext,
-} from "./tools";
+} from "./tools.js";
 import type {
   PromptMessage,
   SystemPromptContext,
   UserPromptContext,
   UserPromptContribution,
-} from "./prompt";
+} from "./prompt.js";
 
 /** Input for a pure Markdown rewrite before destination delivery formatting. */
 export interface FormatMarkdownHookContext {

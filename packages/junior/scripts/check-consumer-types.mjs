@@ -1,3 +1,6 @@
+// This check installs the packed package so workspace aliases and source files
+// cannot hide broken public declarations. Each public entry must resolve in a
+// bundler and in native Node ESM.
 import { spawnSync } from "node:child_process";
 import fs from "node:fs/promises";
 import os from "node:os";
@@ -9,6 +12,7 @@ const packageRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "..",
 );
+const pluginApiRoot = path.resolve(packageRoot, "../junior-plugin-api");
 const tsc = createRequire(path.join(packageRoot, "package.json")).resolve(
   "typescript/bin/tsc",
 );
@@ -28,37 +32,100 @@ function run(command, args, cwd) {
   return result.stdout ?? "";
 }
 
-function tscProject(cwd, config) {
-  const result = spawnSync(tsc, ["--noEmit", "-p", config, "--pretty", "false"], {
-    cwd,
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  return {
-    ok: result.status === 0,
-    output: `${result.stdout ?? ""}\n${result.stderr ?? ""}`.trim(),
-  };
+function typecheck(cwd, config) {
+  run(tsc, ["--noEmit", "-p", config, "--pretty", "false"], cwd);
 }
 
-async function writeApp(dir, name, experimentalBody) {
-  await fs.writeFile(
-    path.join(dir, `${name}.ts`),
-    `import { createApp } from "@sentry/junior";\n\nawait createApp({\n  experimental: ${experimentalBody},\n});\n`,
+function packPackage(packageDirectory, packDirectory) {
+  const packOutput = run(
+    "pnpm",
+    ["pack", "--pack-destination", packDirectory],
+    packageDirectory,
   );
+  const tarballLine = packOutput
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .at(-1);
+  if (!tarballLine) {
+    throw new Error(`pnpm pack did not print a path for ${packageDirectory}`);
+  }
+  return path.isAbsolute(tarballLine)
+    ? tarballLine
+    : path.join(packDirectory, path.basename(tarballLine));
+}
+
+function auditPackage(tarball) {
+  run(
+    "pnpm",
+    [
+      "exec",
+      "attw",
+      tarball,
+      "--profile",
+      "esm-only",
+      "--no-summary",
+      "--no-emoji",
+      "--no-color",
+    ],
+    packageRoot,
+  );
+}
+
+async function writeConsumerSource(directory) {
   await fs.writeFile(
-    path.join(dir, `tsconfig.${name}.json`),
+    path.join(directory, "index.ts"),
+    `import { createApp, defineJuniorPlugins } from "@sentry/junior";
+import type { BotModelConfig, JuniorAppOptions, ModelProfileInput } from "@sentry/junior";
+import * as instrumentation from "@sentry/junior/instrumentation";
+import * as nitro from "@sentry/junior/nitro";
+import * as api from "@sentry/junior/api";
+import * as apiSchema from "@sentry/junior/api/schema";
+import * as vercel from "@sentry/junior/vercel";
+import * as version from "@sentry/junior/version";
+
+const model: BotModelConfig = { fastModelId: "openai/gpt-5" };
+const profile: ModelProfileInput = { modelId: "openai/gpt-5" };
+const options: JuniorAppOptions = {
+  ...model,
+  experimental: { subagents: true },
+  profiles: { default: profile },
+};
+
+void createApp(options);
+void defineJuniorPlugins([]);
+void instrumentation;
+void nitro;
+void api;
+void apiSchema;
+void vercel;
+void version;
+
+// @ts-expect-error Model ids must be strings.
+const invalidModel: BotModelConfig = { fastModelId: 123 };
+// @ts-expect-error Experimental feature names form a closed set.
+const invalidOptions: JuniorAppOptions = { experimental: { acp: true } };
+void invalidModel;
+void invalidOptions;
+`,
+  );
+}
+
+async function writeTsconfig(directory, name, module, moduleResolution) {
+  await fs.writeFile(
+    path.join(directory, `tsconfig.${name}.json`),
     `${JSON.stringify(
       {
         compilerOptions: {
-          module: "ESNext",
-          moduleResolution: "bundler",
+          module,
+          moduleResolution,
           target: "ES2022",
           strict: true,
           noEmit: true,
           skipLibCheck: true,
           types: [],
         },
-        include: [`${name}.ts`],
+        include: ["index.ts"],
       },
       null,
       2,
@@ -67,47 +134,53 @@ async function writeApp(dir, name, experimentalBody) {
 }
 
 async function main() {
-  const packDir = await fs.mkdtemp(path.join(os.tmpdir(), "junior-pack-"));
-  const appDir = await fs.mkdtemp(path.join(os.tmpdir(), "junior-app-"));
+  const packDirectory = await fs.mkdtemp(
+    path.join(os.tmpdir(), "junior-pack-"),
+  );
+  const appDirectory = await fs.mkdtemp(path.join(os.tmpdir(), "junior-app-"));
   try {
-    const packOut = run("pnpm", ["pack", "--pack-destination", packDir], packageRoot);
-    const tarballLine = packOut
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter(Boolean)
-      .at(-1);
-    if (!tarballLine) {
-      throw new Error("pnpm pack did not print a tarball path");
-    }
-    const tarball = path.isAbsolute(tarballLine)
-      ? tarballLine
-      : path.join(packDir, path.basename(tarballLine));
+    const pluginApiTarball = packPackage(pluginApiRoot, packDirectory);
+    const juniorTarball = packPackage(packageRoot, packDirectory);
+    auditPackage(pluginApiTarball);
+    auditPackage(juniorTarball);
 
     await fs.writeFile(
-      path.join(appDir, "package.json"),
-      `${JSON.stringify({ name: "junior-app-types", private: true, type: "module" }, null, 2)}\n`,
+      path.join(appDirectory, "package.json"),
+      `${JSON.stringify(
+        {
+          name: "junior-consumer-types",
+          private: true,
+          type: "module",
+        },
+        null,
+        2,
+      )}\n`,
     );
-    await writeApp(appDir, "ok", "{ subagents: true }");
-    await writeApp(appDir, "bad", "{ acp: true }");
-    run("npm", ["install", "--no-save", "--no-package-lock", tarball], appDir);
+    await writeConsumerSource(appDirectory);
+    await writeTsconfig(appDirectory, "bundler", "ESNext", "Bundler");
+    await writeTsconfig(appDirectory, "node-next", "NodeNext", "NodeNext");
 
-    const ok = tscProject(appDir, "tsconfig.ok.json");
-    if (!ok.ok) {
-      throw new Error(`known feature should typecheck:\n${ok.output}`);
-    }
+    run(
+      "npm",
+      [
+        "install",
+        "--ignore-scripts",
+        "--no-save",
+        "--no-package-lock",
+        pluginApiTarball,
+        juniorTarball,
+      ],
+      appDirectory,
+    );
+    typecheck(appDirectory, "tsconfig.bundler.json");
+    typecheck(appDirectory, "tsconfig.node-next.json");
 
-    const bad = tscProject(appDir, "tsconfig.bad.json");
-    if (bad.ok) {
-      throw new Error("unknown feature should fail typecheck");
-    }
-    if (!/\bacp\b|experimental|known properties/i.test(bad.output)) {
-      throw new Error(`unknown feature failed for the wrong reason:\n${bad.output}`);
-    }
-
-    console.log(`ok: ${path.basename(tarball)}`);
+    console.log(
+      `ok: ${path.basename(pluginApiTarball)}, ${path.basename(juniorTarball)}`,
+    );
   } finally {
-    await fs.rm(packDir, { recursive: true, force: true });
-    await fs.rm(appDir, { recursive: true, force: true });
+    await fs.rm(packDirectory, { recursive: true, force: true });
+    await fs.rm(appDirectory, { recursive: true, force: true });
   }
 }
 

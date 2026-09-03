@@ -1,4 +1,4 @@
-import { EgressPolicyDenied } from "./credentials";
+import { EgressPolicyDenied } from "./credentials.js";
 
 /**
  * Deny provider egress when a plugin policy does not allow the request.

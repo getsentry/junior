@@ -1,6 +1,9 @@
 import { z } from "zod";
-import type { PluginContext } from "./context";
-import { nonBlankStringSchema, pluginCredentialSubjectSchema } from "./schemas";
+import type { PluginContext } from "./context.js";
+import {
+  nonBlankStringSchema,
+  pluginCredentialSubjectSchema,
+} from "./schemas.js";
 
 const pluginProviderNameSchema = z.string().regex(/^[a-z][a-z0-9-]*$/);
 const pluginGrantNameSchema = z.string().regex(/^[a-z][a-z0-9.-]*$/);

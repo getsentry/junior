@@ -14,7 +14,7 @@ import {
   sourceVisibilitySchema,
   slackLocationSchema,
   userSchema,
-} from "./schemas";
+} from "./schemas.js";
 
 /** Runtime platform name without source or destination coordinates. */
 export type Platform = z.output<typeof platformSchema>;

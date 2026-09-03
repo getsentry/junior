@@ -5,10 +5,10 @@
  * retries, and the bounded run projection.
  */
 import { z } from "zod";
-import type { PluginConversationEvents } from "./conversation-events";
-import type { PluginContext, PluginEmbedder, PluginModel } from "./context";
-import { destinationSchema, actorSchema, sourceSchema } from "./schemas";
-import type { PluginState } from "./state";
+import type { PluginConversationEvents } from "./conversation-events.js";
+import type { PluginContext, PluginEmbedder, PluginModel } from "./context.js";
+import { destinationSchema, actorSchema, sourceSchema } from "./schemas.js";
+import type { PluginState } from "./state.js";
 
 /**
  * Runtime-owned provenance for a transcript message: whether it is a durable
