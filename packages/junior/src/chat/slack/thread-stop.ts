@@ -39,7 +39,9 @@ async function getWatermarks(
  * skips cancelling a Turn and skips every other stop side effect.
  *
  * `stopAtMs` only ever moves forward: out-of-order redelivery of an older
- * stop cannot un-apply a newer one.
+ * or duplicate stop cannot un-apply a newer one, and a stop that is not
+ * newer than the current `stopAtMs` is a no-op so it cannot re-trigger
+ * cancel/ack side effects for a Turn a later mention already owns.
  */
 export async function stopSlackThread(args: {
   state: StateAdapter;
@@ -52,8 +54,9 @@ export async function stopSlackThread(args: {
     async () => {
       const current = await getWatermarks(args.state, args.thread.id);
       if (
-        current.mentionAtMs !== undefined &&
-        current.mentionAtMs > args.stoppedAtMs
+        (current.mentionAtMs !== undefined &&
+          current.mentionAtMs > args.stoppedAtMs) ||
+        (current.stopAtMs !== undefined && current.stopAtMs >= args.stoppedAtMs)
       ) {
         return false;
       }
@@ -61,7 +64,7 @@ export async function stopSlackThread(args: {
         watermarksKey(args.thread.id),
         {
           ...current,
-          stopAtMs: Math.max(current.stopAtMs ?? -Infinity, args.stoppedAtMs),
+          stopAtMs: args.stoppedAtMs,
         } satisfies Watermarks,
         JUNIOR_THREAD_STATE_TTL_MS,
       );
