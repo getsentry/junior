@@ -268,6 +268,7 @@ describe("canonical event transcript reduction", () => {
     expect(entry && entryMatchesSearch(entry, "pull_request.merged")).toBe(
       true,
     );
+    expect(entry && entryMatchesSearch(entry, "david merged")).toBe(true);
   });
 
   it("renders a tool start as one running invocation", () => {
