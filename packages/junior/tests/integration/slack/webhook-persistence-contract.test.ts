@@ -1,7 +1,12 @@
 import type { StateAdapter } from "chat";
 import { afterEach, describe, expect, it } from "vitest";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
-import { closeDb, getConversationStore } from "@/chat/db";
+import {
+  closeDb,
+  getConversationEventStore,
+  getConversationStore,
+} from "@/chat/db";
+import { setExperimentalFeatures } from "@/chat/experimental";
 import { createJuniorSlackAdapter } from "@/chat/slack/adapter";
 import { authTestOk } from "../../fixtures/slack/factories/api";
 import {
@@ -160,6 +165,89 @@ describe("Slack webhook persistence contract", () => {
       expect(queue.queuedMessages()).toEqual([]);
     },
   );
+
+  it("records subscribed chatter as context without queueing when passive routing is off", async () => {
+    setExperimentalFeatures(undefined);
+    try {
+      const queue = createConversationWorkQueueTestAdapter();
+      const state = getStateAdapter();
+      await state.connect();
+      const slackAdapter = createSlackAdapterFixture();
+      const threadTs = "1712345.000800";
+      await state.subscribe(`slack:C123:${threadTs}`);
+
+      const response = await handleSlackWebhookAndFlush({
+        request: slackWebhookRequest(
+          slackEnvelope({
+            eventType: "message",
+            text: "passive thread chatter",
+            threadTs,
+            ts: "1712345.000801",
+          }),
+        ),
+        services: {
+          getSlackAdapter: () => slackAdapter,
+          queue,
+          runtime: createNoopSlackWebhookRuntime(),
+          state,
+        },
+      });
+
+      expect(response.status).toBe(200);
+      expect(queue.queuedMessages()).toEqual([]);
+      const history = await getConversationEventStore().loadMessageHistory(
+        `slack:C123:${threadTs}`,
+      );
+      expect(history.events).toEqual([
+        expect.objectContaining({
+          data: expect.objectContaining({
+            type: "message",
+            text: "passive thread chatter",
+            meta: expect.objectContaining({
+              replied: false,
+              skippedReason: "passive_disabled:passive-routing",
+            }),
+          }),
+        }),
+      ]);
+    } finally {
+      setExperimentalFeatures({ "passive-routing": true, subagents: true });
+    }
+  });
+
+  it("still persists subscribed thread opt-out when passive routing is off", async () => {
+    setExperimentalFeatures(undefined);
+    try {
+      const queue = createConversationWorkQueueTestAdapter();
+      const state = getStateAdapter();
+      await state.connect();
+      const slackAdapter = createSlackAdapterFixture();
+      const threadTs = "1712345.000810";
+      await state.subscribe(`slack:C123:${threadTs}`);
+
+      const response = await handleSlackWebhookAndFlush({
+        request: slackWebhookRequest(
+          slackEnvelope({
+            eventType: "message",
+            text: "!stop",
+            threadTs,
+            ts: "1712345.000811",
+          }),
+        ),
+        services: {
+          getSlackAdapter: () => slackAdapter,
+          queue,
+          runtime: createNoopSlackWebhookRuntime(),
+          state,
+        },
+      });
+
+      expect(response.status).toBe(200);
+      expect(queue.queuedMessages()).toHaveLength(1);
+    } finally {
+      setExperimentalFeatures({ "passive-routing": true, subagents: true });
+    }
+  });
 
   it("routes a provider conversation into its bound durable conversation", async () => {
     const queue = createConversationWorkQueueTestAdapter();

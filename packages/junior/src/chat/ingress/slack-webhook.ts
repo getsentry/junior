@@ -8,7 +8,8 @@ import {
 } from "chat";
 import type { SlackTurnRuntime } from "@/chat/providers/slack/runtime";
 import type { ConversationStore } from "@/chat/conversations/store";
-import { getConversationStore } from "@/chat/db";
+import { getConversationEventStore, getConversationStore } from "@/chat/db";
+import { appendConversationMessages } from "@/chat/conversations/messages";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { appendAndEnqueueInboundMessage } from "@/chat/task-execution/store";
 import {
@@ -21,6 +22,11 @@ import {
   type SlackInstallationContext,
 } from "@/chat/slack/adapter-context";
 import { textMentionsBot } from "@/chat/ingress/bot-mention";
+import { isExperimentalFeatureEnabled } from "@/chat/experimental";
+import { toConversationMessage } from "@/chat/runtime/conversation-message";
+import { upsertConversationMessage } from "@/chat/services/conversation-memory";
+import { getThreadStopDecision } from "@/chat/services/subscribed-decision";
+import { coerceThreadConversationState } from "@/chat/state/conversation";
 import {
   extractMessageChangedMention,
   isMessageChangedEnvelope,
@@ -301,11 +307,6 @@ async function routeParsedMessage(args: {
   const normalized = normalizeMessageThreadId(args.message);
   const message = normalized.message;
   const canonicalThreadId = normalized.threadId;
-  const conversationId = await resolveSlackConversationId({
-    canonicalThreadId,
-    conversationStore: args.conversationStore,
-    installation: args.installation,
-  });
   // Slack still emits app_mention for tokens inside code spans/blocks. Only
   // count mentions that sit outside code as activations.
   const botUserId = args.adapter.botUserId;
@@ -316,16 +317,60 @@ async function routeParsedMessage(args: {
     message.isMention = true;
   }
 
+  const isDirectMessage = isDmEvent(args.event);
+  const isSubscribed =
+    !isDirectMessage &&
+    !isMention &&
+    (await args.state.isSubscribed(canonicalThreadId));
+  if (
+    isSubscribed &&
+    !isExperimentalFeatureEnabled("passive-routing") &&
+    !getThreadStopDecision({
+      rawText: args.event.text ?? "",
+      text: args.event.text ?? "",
+    })
+  ) {
+    const conversationId = await resolveSlackConversationId({
+      canonicalThreadId,
+      conversationStore: args.conversationStore,
+      installation: args.installation,
+    });
+    const conversation = coerceThreadConversationState(undefined);
+    const conversationMessage = toConversationMessage({
+      entry: message,
+      explicitMention: false,
+      text: args.event.text ?? "",
+    });
+    upsertConversationMessage(conversation, {
+      ...conversationMessage,
+      meta: {
+        ...conversationMessage.meta,
+        replied: false,
+        skippedReason: "passive_disabled:passive-routing",
+      },
+    });
+    await appendConversationMessages(getConversationEventStore(), {
+      conversation,
+      conversationId,
+    });
+    return;
+  }
+
   const route: SlackConversationRoute | undefined =
-    isDmEvent(args.event) || isMention
+    isDirectMessage || isMention
       ? "mention"
-      : (await args.state.isSubscribed(canonicalThreadId))
+      : isSubscribed
         ? "subscribed"
         : undefined;
   if (!route) {
     return;
   }
 
+  const conversationId = await resolveSlackConversationId({
+    canonicalThreadId,
+    conversationStore: args.conversationStore,
+    installation: args.installation,
+  });
   await persistSlackMessage({
     adapter: args.adapter,
     installation: args.installation,
