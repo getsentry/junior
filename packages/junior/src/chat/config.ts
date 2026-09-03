@@ -27,8 +27,14 @@ const MAX_TOOL_CALLS_PER_TURN = 150;
 /**
  * Max consecutive automated turns before event wakes stop until a user message.
  * Resource-event CI watches and event-task loops are the common runaway paths.
+ * Sentry telemetry has no direct instrumentation for how long real automated
+ * chains run (only failure paths on the notice are logged, and those show zero
+ * hits in the last 30d), so this is sized qualitatively: it stays well under
+ * the runaway CI-watch-loop range noted for maxToolCallsPerTurn (hundreds of
+ * tool calls) while giving multi-phase event-task/scheduled-task work enough
+ * headroom to avoid pausing on legitimate longer-running automation.
  */
-const MAX_CONSECUTIVE_AUTOMATED_TURNS = 10;
+const MAX_CONSECUTIVE_AUTOMATED_TURNS = 25;
 const DEFAULT_FUNCTION_MAX_DURATION_SECONDS = 300;
 const DEFAULT_SLACK_SLASH_COMMAND = "/jr";
 const DEFAULT_PROCESSING_REACTION_EMOJI = "eyes";
