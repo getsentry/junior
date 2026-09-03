@@ -115,16 +115,7 @@ export type {
   JuniorPluginSetOptions,
 } from "./plugins";
 export type { ModelProfileInput } from "@/chat/model-profile";
-export interface JuniorBotConfig extends BotModelConfig {
-  /** Profile used for new conversations. Configure with `profiles`. */
-  defaultProfile?: string;
-  /** Named profiles available to the router and `handoff` tool. */
-  profiles?: Readonly<Record<string, ModelProfileInput>>;
-}
-
-export interface JuniorAppOptions {
-  /** Bot model configuration applied after environment defaults. */
-  botConfig?: JuniorBotConfig;
+export interface JuniorAppOptions extends BotModelConfig {
   /** Authenticated dashboard mounted by core when configured. */
   dashboard?: JuniorDashboardOptions;
   /**
@@ -735,23 +726,11 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     setExperimentalFeatures(options?.experimental);
     setConfigDefaults(options?.configDefaults);
     warnUnregisteredConfigDefaults(options?.configDefaults);
-    const nestedProfiles = options?.botConfig?.profiles;
-    const nestedDefaultProfile = options?.botConfig?.defaultProfile;
-    if (
-      (nestedProfiles || nestedDefaultProfile) &&
-      (options?.profiles || options?.defaultProfile)
-    ) {
-      throw new Error(
-        "profiles and defaultProfile must use either botConfig or top-level options",
-      );
-    }
-    if (nestedProfiles || nestedDefaultProfile) {
-      setProfiles(nestedProfiles, nestedDefaultProfile);
-    } else if (options?.profiles || options?.defaultProfile) {
+    if (options?.profiles || options?.defaultProfile) {
       setProfiles(options.profiles, options.defaultProfile);
     }
-    if (options?.botConfig) {
-      setBotModelConfig(options.botConfig);
+    if (options) {
+      setBotModelConfig(options);
     }
     if (options?.slack) {
       setSlackReactionConfig(options.slack);

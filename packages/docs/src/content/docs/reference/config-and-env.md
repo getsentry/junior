@@ -178,34 +178,32 @@ Pass named profiles to `createApp()`. The turn router and `handoff` tool use eac
 
 ```ts
 const app = await createApp({
-  botConfig: {
-    defaultProfile: "standard",
-    profiles: {
-      standard: {
-        modelId: "xai/grok-4.5",
-        description:
-          "Use for default assistant work: lookups, explanations, ordinary tool use, short answers, and light investigation of one source. Avoid for implementation, debugging, multi-file changes, architecture decisions, or research across several systems.",
-      },
-      coding: {
-        modelId: "openai/gpt-5.6-sol",
-        description:
-          "Use for coding and difficult multi-step work: implementation, debugging, root-cause analysis, broad refactors, multi-file changes, architecture decisions, and research across several systems. Avoid for simple lookups, short answers, single-file reads, or ordinary tool use that the default profile can finish.",
-        reasoningLevel: "high",
-      },
+  defaultProfile: "standard",
+  profiles: {
+    standard: {
+      modelId: "xai/grok-4.5",
+      description:
+        "Use for default assistant work: lookups, explanations, ordinary tool use, short answers, and light investigation of one source. Avoid for implementation, debugging, multi-file changes, architecture decisions, or research across several systems.",
     },
-    fastModelId: "anthropic/claude-haiku-4.5",
-    guardianModelId: "openai/gpt-5.6-luna",
-    embeddingModelId: "openai/text-embedding-3-small",
-    webSearchModelId: "openai/gpt-5.4",
-    imageGenerationModelId: "google/gemini-3-pro-image",
-    visionModelId: "openai/gpt-5.4",
+    coding: {
+      modelId: "openai/gpt-5.6-sol",
+      description:
+        "Use for coding and difficult multi-step work: implementation, debugging, root-cause analysis, broad refactors, multi-file changes, architecture decisions, and research across several systems. Avoid for simple lookups, short answers, single-file reads, or ordinary tool use that the default profile can finish.",
+      reasoningLevel: "high",
+    },
   },
+  fastModelId: "anthropic/claude-haiku-4.5",
+  guardianModelId: "openai/gpt-5.6-luna",
+  embeddingModelId: "openai/text-embedding-3-small",
+  webSearchModelId: "openai/gpt-5.4",
+  imageGenerationModelId: "google/gemini-3-pro-image",
+  visionModelId: "openai/gpt-5.4",
 });
 ```
 
 Each profile value may be a model id string or an object with `modelId` and optional `description` and `reasoningLevel` fields. Name concrete tasks in each description. Include use and avoid cases when useful. Do not use model product names as the selection rule. The turn router and `handoff` tool use these descriptions so the agent can choose another profile when it fits the task better.
 
-Set `profiles` and `defaultProfile` together. Put all core model settings in `botConfig`. The older top-level `profiles` and `defaultProfile` options remain supported. App config replaces profiles from env settings and overrides auxiliary model env settings. If app config omits both profile options, the deprecated env settings create `standard` and `handoff` profiles with default task-fit descriptions. `AI_MODEL_PROFILES` can add or replace those profiles and may use the same string or object shape.
+Set `profiles` and `defaultProfile` together. Pass auxiliary model ids on the same `createApp()` options object. App config replaces profiles from env settings and overrides auxiliary model env settings. If app config omits both profile options, the deprecated env settings create `standard` and `handoff` profiles with default task-fit descriptions. `AI_MODEL_PROFILES` can add or replace those profiles and may use the same string or object shape.
 
 The memory model belongs to the memory plugin. Set it with `memoryPlugin({ modelId })` in the plugin set.
 

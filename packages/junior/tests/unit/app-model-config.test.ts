@@ -9,21 +9,19 @@ afterEach(() => {
 });
 
 describe("createApp profiles", () => {
-  it("configures all host model ids through botConfig", async () => {
+  it("configures all host model ids from createApp options", async () => {
     await createApp({
-      botConfig: {
-        defaultProfile: "standard",
-        embeddingModelId: "openai/text-embedding-3-large",
-        fastModelId: "anthropic/claude-haiku-4.5",
-        guardianModelId: "openai/gpt-5.6-luna",
-        imageGenerationModelId: "google/gemini-3-pro-image",
-        profiles: {
-          standard: "anthropic/claude-sonnet-5",
-          handoff: "openai/gpt-5.6-sol",
-        },
-        visionModelId: "openai/gpt-5.4",
-        webSearchModelId: "openai/gpt-5.4",
+      defaultProfile: "standard",
+      embeddingModelId: "openai/text-embedding-3-large",
+      fastModelId: "anthropic/claude-haiku-4.5",
+      guardianModelId: "openai/gpt-5.6-luna",
+      imageGenerationModelId: "google/gemini-3-pro-image",
+      profiles: {
+        standard: "anthropic/claude-sonnet-5",
+        handoff: "openai/gpt-5.6-sol",
       },
+      visionModelId: "openai/gpt-5.4",
+      webSearchModelId: "openai/gpt-5.4",
       plugins: defineJuniorPlugins([]),
     });
 
@@ -45,10 +43,8 @@ describe("createApp profiles", () => {
   it("restores model config when an override is invalid", async () => {
     await expect(
       createApp({
-        botConfig: {
-          embeddingModelId: "openai/text-embedding-3-large",
-          fastModelId: " ",
-        },
+        embeddingModelId: "openai/text-embedding-3-large",
+        fastModelId: " ",
         plugins: defineJuniorPlugins([]),
       }),
     ).rejects.toThrow("fastModelId must not be empty");
