@@ -197,7 +197,7 @@ const app = await createApp({
   embeddingModelId: "openai/text-embedding-3-small",
   webSearchModelId: "openai/gpt-5.4",
   imageGenerationModelId: "google/gemini-3-pro-image",
-  visionModelId: "openai/gpt-5.4",
+  visionModelId: "openai/gpt-5.6-sol",
 });
 ```
 
