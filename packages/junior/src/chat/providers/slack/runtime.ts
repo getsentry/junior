@@ -95,6 +95,7 @@ export interface ReplyHooks {
   isFinalAttempt?: boolean;
   shouldYield?: () => boolean;
   stopSignal?: AbortSignal;
+  subscribeThread?: () => Promise<boolean>;
 }
 
 interface SteeringDrainContext {
@@ -479,9 +480,7 @@ export function createSlackTurnRuntime<
     postFailureEventName: string;
   }): Promise<void> => {
     try {
-      await args.thread.post(
-        buildTurnErrorResponse(args.error, args.eventId),
-      );
+      await args.thread.post(buildTurnErrorResponse(args.error, args.eventId));
     } catch (postError) {
       logException(postError, args.postFailureEventName, {
         "app.slack.reply_stage": "error_fallback_post",
@@ -721,6 +720,13 @@ export function createSlackTurnRuntime<
           actorUserName: actorUserName(message),
           runId,
         });
+        const subscribed = hooks.subscribeThread
+          ? await hooks.subscribeThread()
+          : (await thread.subscribe(), true);
+        if (!subscribed) {
+          await hooks.ack?.();
+          return;
+        }
         processingReaction = await processingReactions.start(context, message);
         const toolInvocationHook = createToolInvocationHook(
           processingReaction,
@@ -728,7 +734,6 @@ export function createSlackTurnRuntime<
         );
 
         await withSpan("chat.turn", "chat.turn", context, async () => {
-          await thread.subscribe();
           const queuedMessages = getQueuedMessages(hooks.messageContext, {
             botUserId: deps.getBotUserId(),
             explicitMention: true,

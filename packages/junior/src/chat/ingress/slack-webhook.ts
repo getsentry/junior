@@ -33,6 +33,7 @@ import {
 } from "@/chat/services/subscribed-decision";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { parseContent } from "@/chat/slack/message/content";
+import { stopSlackThread } from "@/chat/slack/thread-stop";
 import {
   extractMessageChangedMention,
   isMessageChangedEnvelope,
@@ -319,6 +320,11 @@ async function handleSlackThreadStop(args: {
   });
   const thread = await buildThread(args);
 
+  await stopSlackThread({
+    state: args.state,
+    stoppedAtMs: args.message.metadata.dateSent.getTime(),
+    thread,
+  });
   await stopConversationTurn({
     conversationId,
     conversationStore: args.conversationStore,
@@ -326,7 +332,6 @@ async function handleSlackThreadStop(args: {
     state: args.state,
   });
   await cancelSubscriptions({ conversationId, state: args.state });
-  await thread.unsubscribe();
 
   const content = parseContent(args.message);
   const conversation = coerceThreadConversationState(undefined);

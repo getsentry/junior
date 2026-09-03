@@ -727,9 +727,10 @@ describe("Slack behavior: durable turn steering", () => {
       handleSlackWebhookAndFlush({
         request: slackWebhookRequest(
           makeMessageEvent({
-            eventType: "message",
-            text: "also add the rollout timeline",
-            ts: "1712345.000600",
+            eventType: "app_mention",
+            text: `<@${SLACK_BOT_USER_ID}> also add the rollout timeline`,
+            // Simulate an older mention that reaches ingress after the stop.
+            ts: "1712345.000400",
           }),
         ),
         services,
