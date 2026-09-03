@@ -21,7 +21,21 @@ export default defineConfig({
   },
   format: "esm",
   tsconfig: "tsconfig.build.json",
-  dts: false,
+  dts: {
+    entry: {
+      app: "src/app.ts",
+      api: "src/api.ts",
+      "api/schema": "src/api/schema.ts",
+      instrumentation: "src/instrumentation.ts",
+      nitro: "src/nitro.ts",
+      vercel: "src/vercel.ts",
+      version: "src/version.ts",
+    },
+    compilerOptions: {
+      // TODO(upstream): Remove after tsup stops adding deprecated baseUrl.
+      ignoreDeprecations: "6.0",
+    },
+  },
   outDir: "dist",
   clean: true,
   splitting: true,
