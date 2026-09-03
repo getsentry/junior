@@ -32,6 +32,7 @@ import {
   type DashboardSession,
 } from "./auth";
 import { isAuthPath, type AuthenticatedRoute } from "./authenticated-routes";
+import { resetMockConversationArchiveState } from "./mock-reporting/fixtures";
 import { createMockReportingApi } from "./mock-reporting/routes";
 import {
   DASHBOARD_AVATAR_HEADER_PATH,
@@ -55,6 +56,18 @@ const LOGIN_NEXT_PARAM = "next";
 const LOCAL_VIEWER_EMAIL = "dev@example.com";
 /** Process-local display names for mock reporting only. */
 const mockDisplayNamesByEmail = new Map<string, string>();
+
+/**
+ * Clear process-local mock reporting state so tests sharing a worker do not
+ * leak state. Call this from the built dashboard (`dist/app.js`), not
+ * `src/app.ts` directly: tsup inlines `./mock-reporting/fixtures` into this
+ * bundle, so an unbundled import elsewhere would reset a different copy of
+ * the module state than the one the running server reads.
+ */
+export function resetMockDashboardState(): void {
+  mockDisplayNamesByEmail.clear();
+  resetMockConversationArchiveState();
+}
 
 export interface JuniorDashboardOptions {
   agentName?: string;
