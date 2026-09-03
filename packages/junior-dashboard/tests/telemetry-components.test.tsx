@@ -704,7 +704,10 @@ describe("dashboard canonical-event components", () => {
     expect(html).toContain('data-transcript-failure-reason="network"');
     expect(html).toContain(`data-transcript-failure-event-id="${eventId}"`);
     expect(html).toContain(`event_id=${eventId}`);
-    expect(html).toContain(`href="${sentryEventUrl}"`);
+    // React serializes & as &amp; in HTML attributes.
+    expect(html).toContain(
+      `href="${sentryEventUrl.replaceAll("&", "&amp;")}"`,
+    );
   });
 
   it("anchors structured events to the transcript rail", () => {
