@@ -650,13 +650,17 @@ describe("Slack behavior: durable turn steering", () => {
     expect(replyCalls).toEqual(["start the incident summary"]);
   });
 
-  it("applies follow-up opt-out decisions after the active turn", async () => {
+  it("interrupts the active turn before applying a follow-up opt-out", async () => {
     const agentEntered = deferred();
+    const agentAborted = deferred();
     const releaseAgent = deferred();
     const agentRuns: AgentRun[] = [];
     const state = getStateAdapter();
     const agentRunner = createModelAgentRunnerForRun((run) => {
       agentRuns.push(run);
+      run.signal?.addEventListener("abort", () => agentAborted.resolve(), {
+        once: true,
+      });
       return createModelStream([
         {
           type: "text",
@@ -732,9 +736,10 @@ describe("Slack behavior: durable turn steering", () => {
       }),
     ).resolves.toMatchObject({ status: 200 });
 
+    expect(await state.isSubscribed(conversationId)).toBe(false);
+    await agentAborted.promise;
     releaseAgent.resolve();
     await expect(activeTurn).resolves.toEqual({ status: "completed" });
-    expect(await state.isSubscribed(conversationId)).toBe(false);
     while (queue.hasQueuedMessages()) {
       await runNextQueuedWork();
     }
@@ -751,24 +756,32 @@ describe("Slack behavior: durable turn steering", () => {
         timestamp: THREAD_TS,
       },
     ]);
-    expect(reactionTargetsByName("white_check_mark")).toEqual([
-      {
-        channel: CHANNEL_ID,
-        name: "white_check_mark",
-        timestamp: THREAD_TS,
-      },
-    ]);
+    expect(reactionTargetsByName("white_check_mark")).toEqual([]);
     const persistedState = await getPersistedThreadState(conversationId);
     const conversation = coerceThreadConversationState(persistedState);
     await hydrateConversationMessages({ conversation, conversationId });
     expect(conversation.messages).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          text: expect.stringContaining("also add the rollout timeline"),
+          text: "start the incident summary",
+          meta: expect.objectContaining({
+            replied: false,
+            skippedReason: "turn interrupted",
+          }),
+        }),
+        expect.objectContaining({
+          text: "stop",
           meta: expect.objectContaining({
             replied: false,
             skippedReason: "thread_opt_out:stop",
           }),
+        }),
+      ]),
+    );
+    expect(conversation.messages).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          text: "also add the rollout timeline",
         }),
       ]),
     );

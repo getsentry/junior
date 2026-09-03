@@ -352,6 +352,7 @@ export async function stopConversationWork(args: {
   conversationId: string;
   conversationStore?: ConversationStore;
   nowMs?: number;
+  preserveInboundMessageIds?: readonly string[];
   state?: StateAdapter;
 }) {
   const result = await workState.stopConversationWork(args);

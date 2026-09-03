@@ -108,6 +108,7 @@ export const inboundMessageSchema = z
   .object({
     attemptCount: z.number().finite().optional(),
     conversationId: z.string().refine((value) => value.trim().length > 0),
+    control: z.enum(["stop"]).optional(),
     createdAtMs: z.number().finite(),
     delivery: inboundMessageDeliverySchema,
     destination: destinationSchema.optional(),
@@ -1744,6 +1745,7 @@ function isHumanFacingMessage(message: InboundMessage): boolean {
 export async function stopConversationWork(args: {
   conversationId: string;
   nowMs?: number;
+  preserveInboundMessageIds?: readonly string[];
   state?: StateAdapter;
 }): Promise<StopConversationWorkResult> {
   const nowMs = args.nowMs ?? now();
@@ -1754,9 +1756,38 @@ export async function stopConversationWork(args: {
     }
 
     const runId = current.execution.runId ?? randomUUID();
+    const preservedIds = new Set(args.preserveInboundMessageIds ?? []);
     const inboundMessageIds = current.execution.pendingMessages
-      .filter(isHumanFacingMessage)
+      .filter((message) =>
+        preservedIds.size > 0
+          ? !preservedIds.has(message.inboundMessageId)
+          : isHumanFacingMessage(message),
+      )
       .map((message) => message.inboundMessageId);
+
+    if (
+      preservedIds.size > 0 &&
+      !current.execution.lease &&
+      current.execution.status === "pending"
+    ) {
+      await writeConversation(
+        state,
+        lock,
+        withExecutionUpdate(
+          current,
+          {
+            ...current.execution,
+            pendingMessages: current.execution.pendingMessages.filter(
+              (message) => preservedIds.has(message.inboundMessageId),
+            ),
+            runId: undefined,
+            stop: undefined,
+          },
+          nowMs,
+        ),
+      );
+      return { status: "no_work" };
+    }
     await writeConversation(
       state,
       lock,

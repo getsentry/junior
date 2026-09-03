@@ -272,6 +272,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
       queuedMessages?: QueuedTurnMessage[];
       execution?: DispatchTurnContext;
       skipBackfill?: boolean;
+      stopSignal?: AbortSignal;
       drainSteeringMessages?: (
         accept: (messages: QueuedTurnMessage[]) => Promise<void>,
         context?: { conversationContext?: string },
@@ -1103,6 +1104,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
                 ? (["interactive-auth"] as const)
                 : undefined),
             deadlineAtMs: getTurnRequestDeadline()?.deadlineAtMs,
+            signal: options.stopSignal,
             state: {
               pendingAuth: preparedState.conversation.processing.pendingAuth,
               sandboxRef: preparedState.sandboxRef,
@@ -1139,6 +1141,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
           };
           let completedResult: AgentRunResult | undefined;
           const saveResult = async (result: AgentRunResult) => {
+            options.stopSignal?.throwIfAborted();
             let finalResult = result;
             setTags({ modelId: finalResult.diagnostics.modelId });
             const diagnosticsAttributes =
@@ -1455,6 +1458,37 @@ export function createSlackTurn(deps: SlackTurnDeps) {
           shouldPersistFailureState = true;
           const runFailure =
             error instanceof AgentRunError ? error.cause : error;
+          if (options.stopSignal?.aborted) {
+            shouldPersistFailureState = false;
+            await abandonTurnRecord({
+              conversationId,
+              turnId,
+              errorMessage: "Turn interrupted",
+            });
+            markConversationMessage(
+              preparedState.conversation,
+              preparedState.userMessageId,
+              {
+                replied: false,
+                skippedReason: "turn interrupted",
+              },
+            );
+            markTurnClosed({
+              conversation: preparedState.conversation,
+              nowMs: Date.now(),
+              sessionId: turnId,
+            });
+            await persistThreadState(thread, {
+              conversation: preparedState.conversation,
+            });
+            await turnLifecycle.complete({
+              conversationId,
+              createdAtMs: Date.now(),
+              outcome: "cancelled",
+              turnId,
+            });
+            return;
+          }
           const classifiedFailure =
             getConversationTurnBoundaryError(runFailure);
           const failureCause = classifiedFailure?.cause ?? runFailure;

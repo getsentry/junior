@@ -10,7 +10,10 @@ import type { SlackTurnRuntime } from "@/chat/providers/slack/runtime";
 import type { ConversationStore } from "@/chat/conversations/store";
 import { getConversationStore } from "@/chat/db";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
-import { appendAndEnqueueInboundMessage } from "@/chat/task-execution/store";
+import {
+  appendAndEnqueueInboundMessage,
+  stopConversationWork,
+} from "@/chat/task-execution/store";
 import {
   buildSlackInboundMessage,
   type SlackConversationRoute,
@@ -282,6 +285,15 @@ async function persistSlackMessage(args: {
   }).catch((error: unknown) => {
     throw new SlackEventPersistenceError(error);
   });
+
+  if (inbound.control === "stop") {
+    await stopConversationWork({
+      conversationId,
+      preserveInboundMessageIds: [inbound.inboundMessageId],
+      state: args.state,
+    });
+    await thread.unsubscribe();
+  }
 }
 
 async function routeParsedMessage(args: {
