@@ -678,7 +678,7 @@ describe("dashboard canonical-event components", () => {
   it("renders failure and context lifecycle rows", () => {
     const eventId = "0123456789abcdef0123456789abcdef";
     const sentryEventUrl =
-      "https://my-org.sentry.io/events/0123456789abcdef0123456789abcdef/?project=4501";
+      "https://my-org.sentry.io/issues/?project=4501&query=0123456789abcdef0123456789abcdef";
     const html = renderTranscript(
       conversation([
         event(0, { type: "compaction" }),

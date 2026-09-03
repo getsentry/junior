@@ -38,7 +38,7 @@ describe("sentry links", () => {
     const { buildSentryEventUrl } = await loadSentryLinks();
 
     expect(buildSentryEventUrl("0123456789abcdef0123456789abcdef")).toBe(
-      "https://my-org.sentry.io/events/0123456789abcdef0123456789abcdef/?project=4501",
+      "https://my-org.sentry.io/issues/?project=4501&query=0123456789abcdef0123456789abcdef",
     );
   });
 
@@ -53,7 +53,7 @@ describe("sentry links", () => {
     const { buildSentryEventUrl } = await loadSentryLinks();
 
     expect(buildSentryEventUrl("0123456789abcdef0123456789abcdef")).toBe(
-      "https://sentry.example.com/organizations/my-org/events/0123456789abcdef0123456789abcdef/?project=4501",
+      "https://sentry.example.com/organizations/my-org/issues/?project=4501&query=0123456789abcdef0123456789abcdef",
     );
   });
 
