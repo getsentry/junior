@@ -787,4 +787,57 @@ describe("Slack behavior: durable turn steering", () => {
       ]),
     );
   });
+
+  it("ignores a late stop that arrives after a newer mention already re-subscribed", async () => {
+    const state = getStateAdapter();
+    const canonicalThreadId = `slack:${CHANNEL_ID}:${THREAD_TS}`;
+    const { queue, runNextQueuedWork, services } = createTurnHarness({
+      agentRunner: createModelAgentRunnerForRun(() =>
+        createModelStream([{ type: "text", text: "On it." }]),
+      ),
+      state,
+    });
+
+    await expect(
+      handleSlackWebhookAndFlush({
+        request: slackWebhookRequest(
+          makeMessageEvent({
+            eventType: "app_mention",
+            text: `<@${SLACK_BOT_USER_ID}> still there?`,
+            ts: THREAD_TS,
+          }),
+        ),
+        services,
+      }),
+    ).resolves.toMatchObject({ status: 200 });
+    await expect(runNextQueuedWork()).resolves.toEqual({
+      status: "completed",
+    });
+    await expect(state.isSubscribed(canonicalThreadId)).resolves.toBe(true);
+
+    // A "stop" webhook delivered out of order, timestamped before the mention
+    // above, must not undo that newer mention's subscription or reply.
+    await expect(
+      handleSlackWebhookAndFlush({
+        request: slackWebhookRequest(
+          makeMessageEvent({
+            eventType: "message",
+            text: "stop",
+            ts: "1712344.000100",
+          }),
+        ),
+        services,
+      }),
+    ).resolves.toMatchObject({ status: 200 });
+
+    await expect(state.isSubscribed(canonicalThreadId)).resolves.toBe(true);
+    expect(queue.hasQueuedMessages()).toBe(false);
+    expect(
+      slackApiOutbox
+        .messages()
+        .some((call) =>
+          String(call.params.text ?? "").includes("stay out of this thread"),
+        ),
+    ).toBe(false);
+  });
 });

@@ -301,6 +301,9 @@ async function persistSlackMessage(args: {
  * Interrupt the active Run, cancel resource watches, unsubscribe, and record
  * the stop message in history. Stop input never enters the mailbox, so a
  * mention-route stop cannot resubscribe the thread by starting a new Turn.
+ *
+ * A late or stale stop that a newer mention already superseded is a no-op:
+ * cancelling the Turn or posting the ack here would clobber that mention.
  */
 async function handleSlackThreadStop(args: {
   adapter: SlackAdapter;
@@ -313,17 +316,20 @@ async function handleSlackThreadStop(args: {
   state: StateAdapter;
   stopReason: string;
 }): Promise<void> {
+  const thread = await buildThread(args);
+  const { applied } = await stopSlackThread({
+    state: args.state,
+    stoppedAtMs: args.message.metadata.dateSent.getTime(),
+    thread,
+  });
+  if (!applied) {
+    return;
+  }
+
   const conversationId = await resolveSlackConversationId({
     canonicalThreadId: args.canonicalThreadId,
     conversationStore: args.conversationStore,
     installation: args.installation,
-  });
-  const thread = await buildThread(args);
-
-  await stopSlackThread({
-    state: args.state,
-    stoppedAtMs: args.message.metadata.dateSent.getTime(),
-    thread,
   });
   await stopConversationTurn({
     conversationId,
