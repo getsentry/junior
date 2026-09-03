@@ -290,7 +290,7 @@ describe("Slack webhook persistence contract", () => {
     }
   });
 
-  it("still enqueues subscribed thread opt-out when passive routing is off", async () => {
+  it("unsubscribes a stopped thread without enqueuing mailbox work when passive routing is off", async () => {
     setExperimentalFeatures(undefined);
     try {
       const queue = createConversationWorkQueueTestAdapter();
@@ -298,7 +298,8 @@ describe("Slack webhook persistence contract", () => {
       await state.connect();
       const slackAdapter = createSlackAdapterFixture();
       const threadTs = "1712345.000810";
-      await state.subscribe(`slack:C123:${threadTs}`);
+      const canonicalThreadId = `slack:C123:${threadTs}`;
+      await state.subscribe(canonicalThreadId);
 
       const response = await handleSlackWebhookAndFlush({
         request: slackWebhookRequest(
@@ -318,7 +319,11 @@ describe("Slack webhook persistence contract", () => {
       });
 
       expect(response.status).toBe(200);
-      expect(queue.queuedMessages()).toHaveLength(1);
+      // Stop is control flow, not a mailbox message: it never enters the
+      // durable Run queue, so a mention-route stop cannot resubscribe the
+      // thread by starting a new Turn.
+      expect(queue.queuedMessages()).toEqual([]);
+      await expect(state.isSubscribed(canonicalThreadId)).resolves.toBe(false);
     } finally {
       setExperimentalFeatures({ "passive-routing": true, subagents: true });
     }

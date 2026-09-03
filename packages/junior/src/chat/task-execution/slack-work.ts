@@ -42,7 +42,6 @@ import {
 } from "@/chat/destination";
 import { stripLeadingSteeringOverride } from "@/chat/slack/message-control";
 import { botConfig, type CrossActorMidRunMode } from "@/chat/config";
-import { getThreadStopDecision } from "@/chat/services/subscribed-decision";
 
 const slackConversationRouteSchema = z.enum(["mention", "subscribed"]);
 export type SlackConversationRoute = z.output<
@@ -670,15 +669,6 @@ export function createSlackConversationWorker(
           state,
           threadJson: latestMetadata.thread,
         });
-        if (latestRecord.stop === true) {
-          await context.attempt.drain(async (pendingRecords) =>
-            pendingRecords
-              .filter(
-                (record) => !restoreMessage({ adapter, record }).isMention,
-              )
-              .map((record) => record.inboundMessageId),
-          );
-        }
         const skipped = messages.slice(0, -1);
         const messageContext: MessageContext = {
           skipped,
@@ -795,15 +785,9 @@ export function buildSlackInboundMessage(args: {
   if (!destination) {
     throw new Error("Slack inbound message requires destination context");
   }
-  const stopDecision = getThreadStopDecision({
-    rawText: args.message.text,
-    text: args.message.text,
-  });
-  const hasInterruptOverride =
-    hasSteeringOverride(args.message.text) || Boolean(stopDecision);
+  const hasInterruptOverride = hasSteeringOverride(args.message.text);
   return {
     conversationId: args.conversationId,
-    ...(stopDecision ? { stop: true } : undefined),
     destination,
     inboundMessageId: [
       "slack",

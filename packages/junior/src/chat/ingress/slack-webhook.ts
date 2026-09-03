@@ -7,14 +7,14 @@ import {
   type StateAdapter,
 } from "chat";
 import type { SlackTurnRuntime } from "@/chat/providers/slack/runtime";
+import { THREAD_OPTOUT_ACK } from "@/chat/providers/slack/runtime";
 import type { ConversationStore } from "@/chat/conversations/store";
 import { getConversationEventStore, getConversationStore } from "@/chat/db";
 import { appendConversationMessages } from "@/chat/conversations/messages";
+import { stopConversationTurn } from "@/chat/conversations/stop";
+import { cancelSubscriptions } from "@/chat/resource-events/store";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
-import {
-  appendAndEnqueueInboundMessage,
-  stopConversationWork,
-} from "@/chat/task-execution/store";
+import { appendAndEnqueueInboundMessage } from "@/chat/task-execution/store";
 import {
   buildSlackInboundMessage,
   type SlackConversationRoute,
@@ -294,15 +294,54 @@ async function persistSlackMessage(args: {
   }).catch((error: unknown) => {
     throw new SlackEventPersistenceError(error);
   });
+}
 
-  if (inbound.stop === true) {
-    await stopConversationWork({
-      conversationId,
-      preserveInboundMessageIds: [inbound.inboundMessageId],
-      state: args.state,
-    });
-    await thread.unsubscribe();
-  }
+/**
+ * Interrupt the active Run, cancel resource watches, unsubscribe, and record
+ * the stop message in history. Stop input never enters the mailbox, so a
+ * mention-route stop cannot resubscribe the thread by starting a new Turn.
+ */
+async function handleSlackThreadStop(args: {
+  adapter: SlackAdapter;
+  canonicalThreadId: string;
+  conversationStore?: ConversationStore;
+  installation: SlackInstallationContext;
+  message: Message;
+  queue: ConversationWorkQueue;
+  route: SlackConversationRoute;
+  state: StateAdapter;
+  stopReason: string;
+}): Promise<void> {
+  const conversationId = await resolveSlackConversationId({
+    canonicalThreadId: args.canonicalThreadId,
+    conversationStore: args.conversationStore,
+    installation: args.installation,
+  });
+  const thread = await buildThread(args);
+
+  await stopConversationTurn({
+    conversationId,
+    conversationStore: args.conversationStore,
+    queue: args.queue,
+    state: args.state,
+  });
+  await cancelSubscriptions({ conversationId, state: args.state });
+  await thread.unsubscribe();
+
+  const content = parseContent(args.message);
+  const conversation = coerceThreadConversationState(undefined);
+  recordSkippedConversationMessage({
+    conversation,
+    message: args.message,
+    skippedReason: `${SubscribedReplyReason.ThreadOptOut}:${args.stopReason}`,
+    text: content.text,
+  });
+  await appendConversationMessages(getConversationEventStore(), {
+    conversation,
+    conversationId: args.canonicalThreadId,
+  });
+
+  await thread.post(THREAD_OPTOUT_ACK);
 }
 
 async function routeParsedMessage(args: {
@@ -337,18 +376,40 @@ async function routeParsedMessage(args: {
     !isDirectMessage &&
     !isMention &&
     (await args.state.isSubscribed(canonicalThreadId));
+  const route: SlackConversationRoute | undefined =
+    isDirectMessage || isMention
+      ? "mention"
+      : isSubscribed
+        ? "subscribed"
+        : undefined;
+  if (!route) {
+    return;
+  }
+
+  const stopDecision = getThreadStopDecision({
+    rawText: args.event.text ?? "",
+    text: args.event.text ?? "",
+  });
+  if (stopDecision) {
+    await handleSlackThreadStop({
+      adapter: args.adapter,
+      canonicalThreadId,
+      conversationStore: args.conversationStore,
+      installation: args.installation,
+      message,
+      queue: args.queue,
+      route,
+      state: args.state,
+      stopReason: stopDecision.reasonDetail ?? stopDecision.reason,
+    });
+    return;
+  }
+
   // Keep non-mention thread messages as Conversation history without waking a
   // worker when passive routing is off. Later explicit mentions still need them.
   // Write against the Slack thread id, not a bound mailbox Conversation id, so
   // mention turns that hydrate from thread.id see the same history.
-  if (
-    isSubscribed &&
-    !isExperimentalFeatureEnabled("passive-routing") &&
-    !getThreadStopDecision({
-      rawText: args.event.text ?? "",
-      text: args.event.text ?? "",
-    })
-  ) {
+  if (isSubscribed && !isExperimentalFeatureEnabled("passive-routing")) {
     const content = parseContent(message);
     const conversation = coerceThreadConversationState(undefined);
     recordSkippedConversationMessage({
@@ -361,16 +422,6 @@ async function routeParsedMessage(args: {
       conversation,
       conversationId: canonicalThreadId,
     });
-    return;
-  }
-
-  const route: SlackConversationRoute | undefined =
-    isDirectMessage || isMention
-      ? "mention"
-      : isSubscribed
-        ? "subscribed"
-        : undefined;
-  if (!route) {
     return;
   }
 
