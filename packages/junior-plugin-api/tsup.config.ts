@@ -6,7 +6,11 @@ export default defineConfig({
   },
   format: "esm",
   tsconfig: "tsconfig.build.json",
-  dts: true,
+  dts: {
+    compilerOptions: {
+      ignoreDeprecations: "6.0",
+    },
+  },
   outDir: "dist",
   clean: true,
 });
