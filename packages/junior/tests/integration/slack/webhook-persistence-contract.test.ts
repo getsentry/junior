@@ -174,7 +174,8 @@ describe("Slack webhook persistence contract", () => {
       await state.connect();
       const slackAdapter = createSlackAdapterFixture();
       const threadTs = "1712345.000800";
-      await state.subscribe(`slack:C123:${threadTs}`);
+      const threadId = `slack:C123:${threadTs}`;
+      await state.subscribe(threadId);
 
       const response = await handleSlackWebhookAndFlush({
         request: slackWebhookRequest(
@@ -196,7 +197,7 @@ describe("Slack webhook persistence contract", () => {
       expect(response.status).toBe(200);
       expect(queue.queuedMessages()).toEqual([]);
       const history = await getConversationEventStore().loadMessageHistory(
-        `slack:C123:${threadTs}`,
+        threadId,
       );
       expect(history.events).toEqual([
         expect.objectContaining({
@@ -210,6 +211,80 @@ describe("Slack webhook persistence contract", () => {
           }),
         }),
       ]);
+    } finally {
+      setExperimentalFeatures({ "passive-routing": true, subagents: true });
+    }
+  });
+
+  it("keeps passive-routing history on the Slack thread id when a bound Conversation exists", async () => {
+    setExperimentalFeatures(undefined);
+    try {
+      const queue = createConversationWorkQueueTestAdapter();
+      const state = getStateAdapter();
+      await state.connect();
+      const slackAdapter = createSlackAdapterFixture();
+      const conversationStore = getConversationStore();
+      const conversationId = "agent-dispatch:bound-passive-history";
+      const threadTs = "1712345.000820";
+      const threadId = `slack:C123:${threadTs}`;
+      await conversationStore.recordActivity({
+        conversationId,
+        destination: {
+          platform: "slack",
+          teamId: "T123",
+          channelId: "C123",
+        },
+        nowMs: 1_000,
+      });
+      await conversationStore.bindProviderConversation({
+        conversationId,
+        provider: "slack",
+        providerDestinationId: "C123",
+        providerTenantId: "T123",
+        providerConversationId: threadTs,
+      });
+      await state.subscribe(threadId);
+
+      const response = await handleSlackWebhookAndFlush({
+        request: slackWebhookRequest(
+          slackEnvelope({
+            eventType: "message",
+            text: "bound thread follow-up",
+            threadTs,
+            ts: "1712345.000821",
+          }),
+        ),
+        services: {
+          getSlackAdapter: () => slackAdapter,
+          queue,
+          runtime: createNoopSlackWebhookRuntime(),
+          state,
+        },
+      });
+
+      expect(response.status).toBe(200);
+      expect(queue.queuedMessages()).toEqual([]);
+      await expect(
+        getConversationEventStore().loadMessageHistory(threadId),
+      ).resolves.toEqual({
+        events: [
+          expect.objectContaining({
+            data: expect.objectContaining({
+              type: "message",
+              text: "bound thread follow-up",
+            }),
+          }),
+        ],
+        compaction: undefined,
+        historyFromSeq: expect.any(Number),
+      });
+      await expect(
+        getConversationEventStore().loadMessageHistory(conversationId),
+      ).resolves.toEqual({
+        events: [],
+        compaction: undefined,
+        historyFromSeq: expect.any(Number),
+      });
     } finally {
       setExperimentalFeatures({ "passive-routing": true, subagents: true });
     }

@@ -29,6 +29,7 @@ import {
   SubscribedReplyReason,
 } from "@/chat/services/subscribed-decision";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
+import { parseContent } from "@/chat/slack/message/content";
 import {
   extractMessageChangedMention,
   isMessageChangedEnvelope,
@@ -326,6 +327,8 @@ async function routeParsedMessage(args: {
     (await args.state.isSubscribed(canonicalThreadId));
   // Keep non-mention thread messages as Conversation history without waking a
   // worker when passive routing is off. Later explicit mentions still need them.
+  // Write against the Slack thread id, not a bound mailbox Conversation id, so
+  // mention turns that hydrate from thread.id see the same history.
   if (
     isSubscribed &&
     !isExperimentalFeatureEnabled("passive-routing") &&
@@ -334,21 +337,17 @@ async function routeParsedMessage(args: {
       text: args.event.text ?? "",
     })
   ) {
-    const conversationId = await resolveSlackConversationId({
-      canonicalThreadId,
-      conversationStore: args.conversationStore,
-      installation: args.installation,
-    });
+    const content = parseContent(message);
     const conversation = coerceThreadConversationState(undefined);
     recordSkippedConversationMessage({
       conversation,
       message,
       skippedReason: `${SubscribedReplyReason.PassiveDisabled}:passive-routing`,
-      text: args.event.text ?? "",
+      text: content.text,
     });
     await appendConversationMessages(getConversationEventStore(), {
       conversation,
-      conversationId,
+      conversationId: canonicalThreadId,
     });
     return;
   }
