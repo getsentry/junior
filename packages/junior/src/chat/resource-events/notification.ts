@@ -67,6 +67,7 @@ export type ResourceEventMailboxMetadata = {
     namespace: string;
     identifier: string;
     subscriptionId: string;
+    /** Omitted on mailbox input created before summaries were stored separately. */
     trustedSummary?: string;
   };
 } & Record<string, unknown>;

@@ -303,7 +303,7 @@ function TranscriptEntryList(props: {
         rows.push(
           <div className="mobile-transcript-row" key={activityKey}>
             <TranscriptActivityGroup
-              divided={followsResourceEvent}
+              separateFromPrevious={followsResourceEvent}
               entries={visibleEntries}
               renderEntry={renderEntry}
             />

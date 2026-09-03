@@ -152,7 +152,7 @@ export function activityGroupOpen(userOpen: boolean | null): boolean {
 
 /** Collapse completed non-message activity so chat messages stay primary. */
 export function TranscriptActivityGroup(props: {
-  divided?: boolean;
+  separateFromPrevious?: boolean;
   entries: RenderedTranscriptEntry[];
   renderEntry: (entry: RenderedTranscriptEntry) => ReactNode;
 }) {
@@ -175,7 +175,8 @@ export function TranscriptActivityGroup(props: {
     <details
       className={cn(
         "group/activity-run min-w-0",
-        props.divided && "border-t border-dashboard-border/70 pt-2",
+        props.separateFromPrevious &&
+          "border-t border-dashboard-border/70 pt-2",
       )}
       open={open}
     >

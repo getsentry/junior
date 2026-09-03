@@ -5,7 +5,7 @@ import { HighlightText } from "./transcriptSearch";
 import { RedactedMarker } from "./TranscriptRedacted";
 import type { TranscriptViewMessage } from "../types";
 
-/** Render the trigger for a resource-event Turn without exposing its raw input. */
+/** Render a Resource event Message with its full text closed by default. */
 export function TranscriptResourceEventView(props: {
   message: TranscriptViewMessage;
 }) {
@@ -13,14 +13,13 @@ export function TranscriptResourceEventView(props: {
   const redacted = props.message.parts.some(
     (part) => part.type === "text" && part.redacted,
   );
-  const headline =
-    props.message.trustedSummary ?? props.message.eventType ?? "";
+  const summary = props.message.trustedSummary ?? props.message.eventType ?? "";
 
   return (
     <div className="min-w-0 px-0.5 py-1">
       <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
         <span className="min-w-0 font-display text-sm font-semibold leading-snug text-dashboard-text">
-          <HighlightText text={headline} />
+          <HighlightText text={summary} />
         </span>
         {props.message.eventType ? (
           <span className="rounded-md border border-dashboard-border px-1.5 py-0.5 font-mono text-2xs leading-none text-dashboard-text-muted">
