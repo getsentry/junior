@@ -329,6 +329,10 @@ function reportEventData(args: {
         ...(typeof data.meta?.explicitMention === "boolean"
           ? { explicitMention: data.meta.explicitMention }
           : undefined),
+        ...(args.canExposePayload &&
+        typeof data.meta?.trustedSummary === "string"
+          ? { trustedSummary: data.meta.trustedSummary }
+          : undefined),
         ...(args.canExposePayload
           ? { text: data.text }
           : { redacted: true as const }),

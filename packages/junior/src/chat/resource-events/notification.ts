@@ -67,6 +67,7 @@ export type ResourceEventMailboxMetadata = {
     namespace: string;
     identifier: string;
     subscriptionId: string;
+    trustedSummary?: string;
   };
 } & Record<string, unknown>;
 
@@ -95,7 +96,9 @@ export function isResourceEventMailboxMetadata(
     typeof fields.eventType === "string" &&
     typeof fields.namespace === "string" &&
     typeof fields.identifier === "string" &&
-    typeof fields.subscriptionId === "string"
+    typeof fields.subscriptionId === "string" &&
+    (fields.trustedSummary === undefined ||
+      typeof fields.trustedSummary === "string")
   );
 }
 
@@ -114,6 +117,7 @@ export function createResourceEventInboundMessage(input: {
       namespace: input.event.namespace,
       identifier: input.event.identifier,
       subscriptionId: input.subscription.id,
+      trustedSummary: input.event.trustedSummary,
     },
   };
   return {

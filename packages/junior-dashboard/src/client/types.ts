@@ -115,6 +115,8 @@ export type TranscriptViewMessage = {
   /** Mailbox delivery mode while the message is still pending history commit. */
   delivery?: "defer" | "interrupt";
   eventType?: string;
+  /** Human-readable summary of a resource event. */
+  trustedSummary?: string;
   /** Whether the source message addressed Junior directly. */
   explicitMention?: boolean;
   /** Whether a non-mention message was used as input to a turn. */

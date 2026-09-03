@@ -199,6 +199,9 @@ export function transcriptMessagesFromEvents(
         messageId: data.messageId,
         ...(data.actorIdentity ? { actorIdentity: data.actorIdentity } : undefined),
         ...(data.eventType ? { eventType: data.eventType } : undefined),
+        ...(data.trustedSummary
+          ? { trustedSummary: data.trustedSummary }
+          : undefined),
         ...(data.explicitMention !== undefined
           ? { explicitMention: data.explicitMention }
           : undefined),

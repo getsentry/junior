@@ -6,7 +6,6 @@ import {
   Calendar,
   Check,
   Database,
-  Diff,
   Info,
   KeyRound,
   Link,
@@ -16,6 +15,7 @@ import {
   Send,
   Sparkles,
   TriangleAlert,
+  Webhook,
   type LucideIcon,
 } from "lucide-react";
 
@@ -72,7 +72,7 @@ function transcriptRailMarker(kind: TranscriptRailEventKind): {
   if (kind === "resource_event") {
     return {
       className: "text-violet-200",
-      icon: Diff,
+      icon: Webhook,
     };
   }
   if (kind === "attachments_delivered") {

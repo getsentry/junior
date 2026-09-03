@@ -253,6 +253,7 @@ describe("canonical event transcript reduction", () => {
           messageId: "event-1",
           role: "user",
           eventType: "pull_request.merged",
+          trustedSummary: "David merged PR #42.",
           text: "line one\nline two",
         }),
       ]),
@@ -260,6 +261,7 @@ describe("canonical event transcript reduction", () => {
 
     expect(message).toMatchObject({
       eventType: "pull_request.merged",
+      trustedSummary: "David merged PR #42.",
       parts: [{ type: "text", text: "line one\nline two" }],
     });
     const [entry] = groupTranscriptMessages(message ? [message] : []);

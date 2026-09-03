@@ -404,6 +404,7 @@ const slackConversationMessageMetadataSchema = z.union([
           namespace: z.string(),
           identifier: z.string(),
           subscriptionId: z.string(),
+          trustedSummary: z.string().optional(),
         })
         .strict(),
     })

@@ -692,6 +692,7 @@ describe("conversation report event projection", () => {
           text: "event details",
           meta: {
             eventType: "pull_request.merged",
+            trustedSummary: "David merged PR #42.",
             provider: "private-provider",
             source: "web",
           },
@@ -705,6 +706,7 @@ describe("conversation report event projection", () => {
       role: "user",
       source: "web",
       eventType: "pull_request.merged",
+      trustedSummary: "David merged PR #42.",
       text: "event details",
     });
   });
@@ -813,6 +815,7 @@ describe("conversation report event projection", () => {
           meta: {
             arbitraryMeta: "private arbitrary metadata",
             authorizationId: "private-authorization-id",
+            trustedSummary: "private resource summary",
           },
         }),
         event(2, {
@@ -909,6 +912,7 @@ describe("conversation report event projection", () => {
       "private visible text",
       "private-actor-id",
       "private arbitrary metadata",
+      "private resource summary",
       "private-authorization-id",
       "private tool result",
       "private provider error",

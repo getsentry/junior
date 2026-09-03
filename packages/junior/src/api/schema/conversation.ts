@@ -282,6 +282,7 @@ const conversationReportMessageEventDataSchema = z
     actorIdentity: actorIdentitySchema.optional(),
     eventType: z.string().min(1).optional(),
     explicitMention: z.boolean().optional(),
+    trustedSummary: z.string().min(1).optional(),
     text: z.string().optional(),
     redacted: z.literal(true).optional(),
   })
