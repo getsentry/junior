@@ -1,13 +1,13 @@
-import type { PluginCliDefinition } from "./cli.js";
-import type { PluginConversationEventDefinition } from "./conversation-events.js";
-import type { PluginHooks } from "./hooks.js";
-import type { PluginManifest } from "./manifest.js";
-import type { PluginTasks } from "./tasks.js";
-import type { PluginUserPageDefinition } from "./user-pages.js";
+import type { PluginCliDefinition } from "./cli";
+import type { PluginConversationEventDefinition } from "./conversation-events";
+import type { PluginHooks } from "./hooks";
+import type { PluginManifest } from "./manifest";
+import type { PluginTasks } from "./tasks";
+import type { PluginUserPageDefinition } from "./user-pages";
 import {
   pluginResourceEventsSchema,
   type PluginResourceEvents,
-} from "./resource-events.js";
+} from "./resource-events";
 
 export interface PluginModelConfig {
   /** Host model family used when no explicit structured model id is configured. */

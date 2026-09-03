@@ -6,7 +6,7 @@ export default defineConfig({
   },
   format: "esm",
   tsconfig: "tsconfig.build.json",
-  dts: false,
+  dts: true,
   outDir: "dist",
   clean: true,
 });

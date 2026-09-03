@@ -9,9 +9,9 @@ import type {
   Identity,
   Source,
   User,
-} from "./context.js";
-import type { PluginState } from "./state.js";
-import type { PluginConversationEvents } from "./conversation-events.js";
+} from "./context";
+import type { PluginState } from "./state";
+import type { PluginConversationEvents } from "./conversation-events";
 
 const promptContextKindSchema = z
   .string()

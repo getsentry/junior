@@ -3,7 +3,7 @@ import {
   destinationVisibilitySchema,
   dispatchOptionsSchema,
   replyAttributionSchema,
-} from "./schemas.js";
+} from "./schemas";
 
 export type DestinationVisibility = z.output<
   typeof destinationVisibilitySchema

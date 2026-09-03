@@ -25,7 +25,7 @@
     "zod": "catalog:"
   },
   "scripts": {
-    "build": "tsup && tsc -p tsconfig.build.json --emitDeclarationOnly",
+    "build": "tsup",
     "prepare": "pnpm run build",
     "prepack": "pnpm run build",
     "lint": "oxlint --config ../junior/.oxlintrc.json --deny-warnings src tsup.config.ts",

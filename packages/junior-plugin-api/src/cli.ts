@@ -4,7 +4,7 @@
  * normalization; plugins only configure subcommands under their namespace.
  */
 import type { Command } from "commander";
-import type { PluginContext } from "./context.js";
+import type { PluginContext } from "./context";
 
 export interface PluginCliIo {
   writeError(text: string): Promise<void> | void;
