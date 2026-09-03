@@ -633,6 +633,8 @@ describe("Conversation mailbox Turn work", () => {
             {
               role: event.data.role,
               source: event.data.meta?.source,
+              eventType: event.data.meta?.eventType,
+              trustedSummary: event.data.meta?.trustedSummary,
               text: event.data.text,
             },
           ]
@@ -642,11 +644,15 @@ describe("Conversation mailbox Turn work", () => {
       {
         role: "user",
         source: undefined,
+        eventType: "check_suite.completed",
+        trustedSummary: "Code change checks failed",
         text: "Code change checks failed",
       },
       {
         role: "assistant",
         source: undefined,
+        eventType: undefined,
+        trustedSummary: undefined,
         text: "Handled the resource event.",
       },
     ]);

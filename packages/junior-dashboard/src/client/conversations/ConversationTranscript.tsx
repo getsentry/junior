@@ -276,6 +276,10 @@ function TranscriptEntryList(props: {
     const entry = props.entries[index]!;
 
     if (isCollapsibleActivityEntry(entry)) {
+      const previousEntry = index > 0 ? props.entries[index - 1] : undefined;
+      const followsResourceEvent =
+        previousEntry?.kind === "message" &&
+        Boolean(previousEntry.message.eventType);
       const activityEntries: RenderedTranscriptEntry[] = [];
       while (
         index < props.entries.length &&
@@ -299,6 +303,7 @@ function TranscriptEntryList(props: {
         rows.push(
           <div className="mobile-transcript-row" key={activityKey}>
             <TranscriptActivityGroup
+              separateFromPrevious={followsResourceEvent}
               entries={visibleEntries}
               renderEntry={renderEntry}
             />

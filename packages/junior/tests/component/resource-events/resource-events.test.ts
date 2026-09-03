@@ -150,6 +150,7 @@ describe("resource event delivery", () => {
             namespace: "github",
             identifier: "getsentry/junior#691",
             subscriptionId: subscription.id,
+            trustedSummary: "CI failed on workflow test.",
           },
         },
       },

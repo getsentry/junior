@@ -125,6 +125,7 @@ export function entryMatchesSearch(
 
   if (entry.kind === "message") {
     return (
+      textContains(entry.message.trustedSummary, normalizedQuery) ||
       textContains(entry.message.eventType, normalizedQuery) ||
       textContains(messageRawText(entry.message), normalizedQuery)
     );

@@ -92,12 +92,13 @@ function handoff(): RenderedTranscriptEntry {
   };
 }
 
-function message(): RenderedTranscriptEntry {
+function message(eventType?: string): RenderedTranscriptEntry {
   return {
     key: "message:1",
     kind: "message",
     message: {
       parts: [{ text: "hello", type: "text" }],
+      ...(eventType ? { eventType } : undefined),
       role: "user",
       sourceSeq: 1,
     },
@@ -130,6 +131,9 @@ describe("transcript activity group", () => {
     expect(isCollapsibleActivityEntry(compaction())).toBe(true);
     expect(isCollapsibleActivityEntry(handoff())).toBe(true);
     expect(isCollapsibleActivityEntry(message())).toBe(false);
+    expect(isCollapsibleActivityEntry(message("pull_request.opened"))).toBe(
+      false,
+    );
     expect(isCollapsibleActivityEntry(failure())).toBe(false);
   });
 

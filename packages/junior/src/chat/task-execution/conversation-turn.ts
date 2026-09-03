@@ -78,6 +78,10 @@ import {
 } from "@/chat/task-execution/mailbox-turn";
 import { joinMailboxText } from "@/chat/task-execution/mailbox-input";
 import { resolveConversationDestination } from "@/chat/conversations/destination";
+import {
+  isResourceEventMailboxMetadata,
+  type ResourceEventMailboxMetadata,
+} from "@/chat/resource-events/notification";
 import { isResourceEventConversationMessage } from "@/chat/resource-events/actor";
 
 function stableHex(...parts: string[]): string {
@@ -181,6 +185,9 @@ export function createConversationTurnWorker(
     let userMessageId = "";
     let startedAtMs = Date.now();
     let inputMessageIds: string[] = [];
+    let resourceEvent:
+      | ResourceEventMailboxMetadata["resourceEvent"]
+      | undefined;
 
     const storedConversation = await getConversationStore().get({
       conversationId: context.conversationId,
@@ -206,6 +213,9 @@ export function createConversationTurnWorker(
         (entry) => entry.message.inboundMessageId,
       );
       turnInputFacts = first;
+      if (isResourceEventMailboxMetadata(first.message.input.metadata)) {
+        resourceEvent = first.message.input.metadata.resourceEvent;
+      }
     } else {
       turnId = resolved.turnId;
     }
@@ -338,6 +348,14 @@ export function createConversationTurnWorker(
               replied: false,
               ...(source.kind === "web"
                 ? { source: "web" as const }
+                : undefined),
+              ...(resourceEvent
+                ? {
+                    eventType: resourceEvent.eventType,
+                    ...(resourceEvent.trustedSummary
+                      ? { trustedSummary: resourceEvent.trustedSummary }
+                      : undefined),
+                  }
                 : undefined),
             },
           });
