@@ -57,6 +57,21 @@ const DEFAULT_ASSISTANT_LOADING_MESSAGES = [
   "Rattling the command line",
 ] as const;
 
+export interface BotModelConfig {
+  /** Model used for embeddings. */
+  embeddingModelId?: string;
+  /** Model used for low-cost structured and utility calls. */
+  fastModelId?: string;
+  /** Model used to review sensitive tool calls. */
+  guardianModelId?: string;
+  /** Model used to generate images. */
+  imageGenerationModelId?: string;
+  /** Model used to analyze images. */
+  visionModelId?: string;
+  /** Model used for web search. */
+  webSearchModelId?: string;
+}
+
 export interface BotConfig {
   contextWindowTokens: number;
   crossActorMidRunMode: CrossActorMidRunMode;
@@ -246,6 +261,18 @@ function validateGatewayModelId(raw: string | undefined): string | undefined {
 
 function validateEmbeddingModelId(raw: string | undefined): string | undefined {
   return toOptionalTrimmed(raw);
+}
+
+function requireModelId(
+  configName: keyof BotModelConfig,
+  raw: string,
+  validate: (value: string | undefined) => string | undefined,
+): string {
+  const modelId = validate(raw);
+  if (!modelId) {
+    throw new Error(`${configName} must not be empty`);
+  }
+  return modelId;
 }
 
 const DEFAULT_STANDARD_PROFILE_DESCRIPTION =
@@ -651,6 +678,52 @@ export function getRuntimeMetadata(): RuntimeMetadata {
 export interface SlackReactionConfig {
   completedReactionEmoji: string;
   processingReactionEmoji: string;
+}
+
+/** Apply model overrides from createApp(). */
+export function setBotModelConfig(config: BotModelConfig): void {
+  if (config.embeddingModelId !== undefined) {
+    botConfig.embeddingModelId = requireModelId(
+      "embeddingModelId",
+      config.embeddingModelId,
+      validateEmbeddingModelId,
+    );
+  }
+  if (config.fastModelId !== undefined) {
+    botConfig.fastModelId = requireModelId(
+      "fastModelId",
+      config.fastModelId,
+      validateGatewayModelId,
+    );
+  }
+  if (config.guardianModelId !== undefined) {
+    botConfig.guardianModelId = requireModelId(
+      "guardianModelId",
+      config.guardianModelId,
+      validateGatewayModelId,
+    );
+  }
+  if (config.imageGenerationModelId !== undefined) {
+    botConfig.imageGenerationModelId = requireModelId(
+      "imageGenerationModelId",
+      config.imageGenerationModelId,
+      validateEmbeddingModelId,
+    );
+  }
+  if (config.visionModelId !== undefined) {
+    botConfig.visionModelId = requireModelId(
+      "visionModelId",
+      config.visionModelId,
+      validateGatewayModelId,
+    );
+  }
+  if (config.webSearchModelId !== undefined) {
+    botConfig.webSearchModelId = requireModelId(
+      "webSearchModelId",
+      config.webSearchModelId,
+      validateGatewayModelId,
+    );
+  }
 }
 
 /** Apply profiles from createApp(). */

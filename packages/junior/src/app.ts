@@ -12,7 +12,9 @@ import {
   botConfig,
   configureFunctionMaxDurationSeconds,
   getSlackReactionConfig,
+  setBotModelConfig,
   setProfiles,
+  type BotModelConfig,
   setSlackReactionConfig,
 } from "@/chat/config";
 import type { ModelProfileInput } from "@/chat/model-profile";
@@ -113,7 +115,16 @@ export type {
   JuniorPluginSetOptions,
 } from "./plugins";
 export type { ModelProfileInput } from "@/chat/model-profile";
+export interface JuniorBotConfig extends BotModelConfig {
+  /** Profile used for new conversations. Configure with `profiles`. */
+  defaultProfile?: string;
+  /** Named profiles available to the router and `handoff` tool. */
+  profiles?: Readonly<Record<string, ModelProfileInput>>;
+}
+
 export interface JuniorAppOptions {
+  /** Bot model configuration applied after environment defaults. */
+  botConfig?: JuniorBotConfig;
   /** Authenticated dashboard mounted by core when configured. */
   dashboard?: JuniorDashboardOptions;
   /**
@@ -689,8 +700,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     hasConfiguredPluginCatalog(pluginConfig) ||
     Boolean(configuredPlugins?.registrations.length) ||
     Boolean(Object.keys(options?.configDefaults ?? {}).length);
-  const previousDefaultProfile = botConfig.defaultProfile;
-  const previousModelProfiles = botConfig.profiles;
+  const previousBotConfig = { ...botConfig };
   const previousPluginCatalogConfig =
     pluginCatalogRuntime.setConfig(pluginConfig);
   const previousPlugins = setPlugins(plugins);
@@ -704,8 +714,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     pluginCatalogRuntime.setConfig(previousPluginCatalogConfig);
     setPlugins(previousPlugins);
     setConfigDefaults(previousConfigDefaults);
-    botConfig.defaultProfile = previousDefaultProfile;
-    botConfig.profiles = previousModelProfiles;
+    Object.assign(botConfig, previousBotConfig);
     setSlackReactionConfig(previousSlackReactionConfig);
     setSandboxResourceConfig(previousSandboxResources);
     setExperimentalFeatures(previousExperimentalFeatures);
@@ -726,8 +735,23 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     setExperimentalFeatures(options?.experimental);
     setConfigDefaults(options?.configDefaults);
     warnUnregisteredConfigDefaults(options?.configDefaults);
-    if (options?.profiles || options?.defaultProfile) {
+    const nestedProfiles = options?.botConfig?.profiles;
+    const nestedDefaultProfile = options?.botConfig?.defaultProfile;
+    if (
+      (nestedProfiles || nestedDefaultProfile) &&
+      (options?.profiles || options?.defaultProfile)
+    ) {
+      throw new Error(
+        "profiles and defaultProfile must use either botConfig or top-level options",
+      );
+    }
+    if (nestedProfiles || nestedDefaultProfile) {
+      setProfiles(nestedProfiles, nestedDefaultProfile);
+    } else if (options?.profiles || options?.defaultProfile) {
       setProfiles(options.profiles, options.defaultProfile);
+    }
+    if (options?.botConfig) {
+      setBotModelConfig(options.botConfig);
     }
     if (options?.slack) {
       setSlackReactionConfig(options.slack);
