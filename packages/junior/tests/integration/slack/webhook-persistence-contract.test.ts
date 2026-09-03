@@ -166,7 +166,7 @@ describe("Slack webhook persistence contract", () => {
     },
   );
 
-  it("records subscribed chatter as context without queueing when passive routing is off", async () => {
+  it("stores subscribed non-mention messages as history without worker work when passive routing is off", async () => {
     setExperimentalFeatures(undefined);
     try {
       const queue = createConversationWorkQueueTestAdapter();
@@ -180,7 +180,7 @@ describe("Slack webhook persistence contract", () => {
         request: slackWebhookRequest(
           slackEnvelope({
             eventType: "message",
-            text: "passive thread chatter",
+            text: "follow-up without another mention",
             threadTs,
             ts: "1712345.000801",
           }),
@@ -202,7 +202,7 @@ describe("Slack webhook persistence contract", () => {
         expect.objectContaining({
           data: expect.objectContaining({
             type: "message",
-            text: "passive thread chatter",
+            text: "follow-up without another mention",
             meta: expect.objectContaining({
               replied: false,
               skippedReason: "passive_disabled:passive-routing",
@@ -215,7 +215,7 @@ describe("Slack webhook persistence contract", () => {
     }
   });
 
-  it("still persists subscribed thread opt-out when passive routing is off", async () => {
+  it("still enqueues subscribed thread opt-out when passive routing is off", async () => {
     setExperimentalFeatures(undefined);
     try {
       const queue = createConversationWorkQueueTestAdapter();

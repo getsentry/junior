@@ -23,9 +23,11 @@ import {
 } from "@/chat/slack/adapter-context";
 import { textMentionsBot } from "@/chat/ingress/bot-mention";
 import { isExperimentalFeatureEnabled } from "@/chat/experimental";
-import { toConversationMessage } from "@/chat/runtime/conversation-message";
-import { upsertConversationMessage } from "@/chat/services/conversation-memory";
-import { getThreadStopDecision } from "@/chat/services/subscribed-decision";
+import { recordSkippedConversationMessage } from "@/chat/runtime/conversation-message";
+import {
+  getThreadStopDecision,
+  SubscribedReplyReason,
+} from "@/chat/services/subscribed-decision";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import {
   extractMessageChangedMention,
@@ -322,6 +324,8 @@ async function routeParsedMessage(args: {
     !isDirectMessage &&
     !isMention &&
     (await args.state.isSubscribed(canonicalThreadId));
+  // Keep non-mention thread messages as Conversation history without waking a
+  // worker when passive routing is off. Later explicit mentions still need them.
   if (
     isSubscribed &&
     !isExperimentalFeatureEnabled("passive-routing") &&
@@ -336,18 +340,11 @@ async function routeParsedMessage(args: {
       installation: args.installation,
     });
     const conversation = coerceThreadConversationState(undefined);
-    const conversationMessage = toConversationMessage({
-      entry: message,
-      explicitMention: false,
+    recordSkippedConversationMessage({
+      conversation,
+      message,
+      skippedReason: `${SubscribedReplyReason.PassiveDisabled}:passive-routing`,
       text: args.event.text ?? "",
-    });
-    upsertConversationMessage(conversation, {
-      ...conversationMessage,
-      meta: {
-        ...conversationMessage.meta,
-        replied: false,
-        skippedReason: "passive_disabled:passive-routing",
-      },
     });
     await appendConversationMessages(getConversationEventStore(), {
       conversation,
