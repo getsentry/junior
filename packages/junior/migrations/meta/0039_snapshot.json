@@ -1,5 +1,5 @@
 {
-  "id": "a6b728ac-a12f-4e55-ac47-9b1b9ebb79db",
+  "id": "591c4ce6-a11f-4420-9389-04358d8bfce3",
   "prevId": "16d23deb-2218-4f8d-8ca6-8f27e9aad3a5",
   "version": "7",
   "dialect": "postgresql",
@@ -516,8 +516,8 @@
           "primaryKey": false,
           "notNull": true
         },
-        "provider": {
-          "name": "provider",
+        "storage_provider": {
+          "name": "storage_provider",
           "type": "text",
           "primaryKey": false,
           "notNull": true
@@ -527,6 +527,18 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
+        },
+        "provider": {
+          "name": "provider",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "provider_id": {
+          "name": "provider_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         },
         "filename": {
           "name": "filename",
@@ -551,12 +563,6 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
-        },
-        "slack_file_id": {
-          "name": "slack_file_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
         },
         "vision_summary": {
           "name": "vision_summary",
@@ -593,8 +599,8 @@
           "method": "btree",
           "with": {}
         },
-        "junior_attachments_slack_file_idx": {
-          "name": "junior_attachments_slack_file_idx",
+        "junior_attachments_provider_idx": {
+          "name": "junior_attachments_provider_idx",
           "columns": [
             {
               "expression": "conversation_id",
@@ -603,7 +609,13 @@
               "nulls": "last"
             },
             {
-              "expression": "slack_file_id",
+              "expression": "provider",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "provider_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -618,7 +630,7 @@
           "name": "junior_attachments_gc_idx",
           "columns": [
             {
-              "expression": "provider",
+              "expression": "storage_provider",
               "isExpression": false,
               "asc": true,
               "nulls": "last"

@@ -47,7 +47,7 @@ export function createLoadAttachmentTool(args: {
         conversationId: args.conversationId,
         db: args.db,
       });
-      if (!attachment || attachment.provider !== args.storage.provider) {
+      if (!attachment || attachment.storageProvider !== args.storage.provider) {
         throw new ToolInputError("Attachment not found in this conversation.");
       }
       const body = await args.storage.get(attachment.storageKey);

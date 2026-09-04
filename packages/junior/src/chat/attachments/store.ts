@@ -18,10 +18,8 @@ export interface AttachmentRecord {
   conversationId: string;
   filename: string;
   id: string;
-  provider: string;
-  slackFileId: string | null;
   storageKey: string;
-  visionSummary: string | null;
+  storageProvider: string;
 }
 
 export interface AttachmentGarbageCollectionResult {
@@ -37,14 +35,14 @@ function attachmentId(args: {
   conversationId: string;
   contentType: string;
   filename: string;
-  provider: string;
+  storageProvider: string;
   sha256: string;
 }): string {
   return createHash("sha256")
     .update(
       [
         args.conversationId,
-        args.provider,
+        args.storageProvider,
         args.sha256,
         args.filename,
         args.contentType,
@@ -171,7 +169,7 @@ export async function storeAttachment(args: {
     conversationId: args.conversationId,
     contentType: args.file.mimeType,
     filename: args.file.filename,
-    provider: args.storage.provider,
+    storageProvider: args.storage.provider,
     sha256,
   });
   const [existing] = await args.db
@@ -182,7 +180,7 @@ export async function storeAttachment(args: {
       deleteRequestedAt: juniorAttachments.deleteRequestedAt,
       filename: juniorAttachments.filename,
       id: juniorAttachments.id,
-      provider: juniorAttachments.provider,
+      storageProvider: juniorAttachments.storageProvider,
       sha256: juniorAttachments.sha256,
       storageKey: juniorAttachments.storageKey,
     })
@@ -193,7 +191,7 @@ export async function storeAttachment(args: {
       existing.contentType !== args.file.mimeType ||
       existing.conversationId !== args.conversationId ||
       existing.filename !== args.file.filename ||
-      existing.provider !== args.storage.provider ||
+      existing.storageProvider !== args.storage.provider ||
       existing.sha256 !== sha256
     ) {
       throw new Error(`Attachment write conflicts with ${existing.id}`);
@@ -282,7 +280,7 @@ export async function storeAttachment(args: {
       .values({
         id,
         conversationId: args.conversationId,
-        provider: args.storage.provider,
+        storageProvider: args.storage.provider,
         storageKey,
         filename: args.file.filename,
         contentType: args.file.mimeType,
@@ -409,10 +407,8 @@ export async function readLiveAttachment(args: {
       deleteRequestedAt: juniorAttachments.deleteRequestedAt,
       filename: juniorAttachments.filename,
       id: juniorAttachments.id,
-      provider: juniorAttachments.provider,
-      slackFileId: juniorAttachments.slackFileId,
+      storageProvider: juniorAttachments.storageProvider,
       storageKey: juniorAttachments.storageKey,
-      visionSummary: juniorAttachments.visionSummary,
     })
     .from(juniorAttachments)
     .where(
@@ -432,60 +428,9 @@ export async function readLiveAttachment(args: {
     conversationId: row.conversationId,
     filename: row.filename,
     id: row.id,
-    provider: row.provider,
-    slackFileId: row.slackFileId,
     storageKey: row.storageKey,
-    visionSummary: row.visionSummary,
+    storageProvider: row.storageProvider,
   };
-}
-
-/** Add Slack source metadata to a stored attachment. */
-export async function recordSlackAttachmentMetadata(args: {
-  attachmentId: string;
-  db: JuniorSqlDatabase;
-  slackFileId?: string;
-  visionSummary?: string;
-}): Promise<void> {
-  if (!args.slackFileId && !args.visionSummary) return;
-  await args.db
-    .db()
-    .update(juniorAttachments)
-    .set({
-      ...(args.slackFileId ? { slackFileId: args.slackFileId } : undefined),
-      ...(args.visionSummary ? { visionSummary: args.visionSummary } : undefined),
-    })
-    .where(eq(juniorAttachments.id, args.attachmentId));
-}
-
-/** Load live conversation attachments by their Slack file ids. */
-export async function readLiveSlackAttachments(args: {
-  conversationId: string;
-  db: JuniorSqlDatabase;
-  slackFileIds: string[];
-}): Promise<AttachmentRecord[]> {
-  if (args.slackFileIds.length === 0) return [];
-  const rows = await args.db
-    .db()
-    .select({
-      bytes: juniorAttachments.bytes,
-      contentType: juniorAttachments.contentType,
-      conversationId: juniorAttachments.conversationId,
-      filename: juniorAttachments.filename,
-      id: juniorAttachments.id,
-      provider: juniorAttachments.provider,
-      slackFileId: juniorAttachments.slackFileId,
-      storageKey: juniorAttachments.storageKey,
-      visionSummary: juniorAttachments.visionSummary,
-    })
-    .from(juniorAttachments)
-    .where(
-      and(
-        eq(juniorAttachments.conversationId, args.conversationId),
-        inArray(juniorAttachments.slackFileId, args.slackFileIds),
-        isNull(juniorAttachments.deleteRequestedAt),
-      ),
-    );
-  return rows;
 }
 
 /** Persist many conversation-owned files. */
@@ -561,7 +506,7 @@ export async function collectAttachmentGarbage(args: {
     )
     .where(
       and(
-        eq(juniorAttachments.provider, args.storage.provider),
+        eq(juniorAttachments.storageProvider, args.storage.provider),
         or(
           isNotNull(juniorAttachments.deleteRequestedAt),
           isNotNull(juniorConversations.transcriptPurgedAt),

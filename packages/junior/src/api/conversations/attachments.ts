@@ -71,7 +71,7 @@ export async function openConversationAttachment(args: {
   });
   if (!attachment) return null;
 
-  if (attachment.provider !== args.storage.provider) return null;
+  if (attachment.storageProvider !== args.storage.provider) return null;
 
   const body = await args.storage.get(attachment.storageKey);
   return body ? { attachment, body } : null;

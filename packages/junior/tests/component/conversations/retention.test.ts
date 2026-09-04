@@ -190,7 +190,7 @@ describe("retention purge job", () => {
     await fixture.sql.db().insert(juniorAttachments).values({
       id: "attachment-1",
       conversationId: "with-attachment",
-      provider: "test",
+      storageProvider: "test",
       storageKey: "key-1",
       filename: "report.txt",
       contentType: "text/plain",
@@ -228,7 +228,7 @@ describe("retention purge job", () => {
     await fixture.sql.db().insert(juniorAttachments).values({
       id: "attachment-1",
       conversationId: "with-attachment",
-      provider: "test",
+      storageProvider: "test",
       storageKey: "key-1",
       filename: "report.txt",
       contentType: "text/plain",
@@ -278,7 +278,7 @@ describe("retention purge job", () => {
     await fixture.sql.db().insert(juniorAttachments).values({
       id: "orphan-attachment",
       conversationId: "purged-owner",
-      provider: "test",
+      storageProvider: "test",
       storageKey: "orphan-key",
       filename: "late.txt",
       contentType: "text/plain",

@@ -23,7 +23,7 @@ import type { SlackThreadReply } from "@/chat/slack/channel";
 import { renderAttachmentText } from "@/chat/slack/message/attachments";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { JuniorSqlDatabase } from "@/db/db";
-import { readLiveSlackAttachments } from "@/chat/attachments/store";
+import { matchSlackAttachments } from "@/chat/slack/attachments";
 
 const MAX_THREAD_READ_CHARS = 40_000;
 
@@ -245,16 +245,16 @@ export function createSlackThreadReadTool(
           .filter((fileId): fileId is string => Boolean(fileId)),
       );
       const storedAttachments = attachmentDeps
-        ? await readLiveSlackAttachments({
+        ? await matchSlackAttachments({
             conversationId: attachmentDeps.conversationId,
             db: attachmentDeps.db,
-            slackFileIds,
+            providerIds: slackFileIds,
           })
         : [];
       const attachmentIdsBySlackFileId = new Map(
         storedAttachments.flatMap((attachment) =>
-          attachment.slackFileId
-            ? [[attachment.slackFileId, attachment.id] as const]
+          attachment.providerId
+            ? [[attachment.providerId, attachment.id] as const]
             : [],
         ),
       );
