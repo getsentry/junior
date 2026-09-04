@@ -294,6 +294,7 @@ function webhookRoute(
   markPullRequestFeedbackReviewing: Parameters<
     typeof createGitHubWebhookRoute
   >[0]["markPullRequestFeedbackReviewing"] = async () => {},
+  hasConsumer: () => Promise<boolean> = async () => true,
 ) {
   return createGitHubWebhookRoute({
     annotations: {
@@ -323,6 +324,7 @@ function webhookRoute(
     markPullRequestFeedbackReviewing,
     privateKeyEnv: "GITHUB_APP_PRIVATE_KEY",
     resourceEvents: {
+      hasConsumer,
       async publish(event) {
         published.push(event);
       },
@@ -1737,6 +1739,40 @@ describe("GitHub-owned pull request outcomes", () => {
     }
   });
 
+  it("does not mark pull request comments without an event consumer", async () => {
+    const fixture = await createGitHubFixture();
+    const published: ResourceEventInput[] = [];
+    const markPullRequestFeedbackReviewing = vi.fn(async () => {});
+    try {
+      const route = webhookRoute(
+        fixture,
+        published,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        markPullRequestFeedbackReviewing,
+        async () => false,
+      );
+      const body = {
+        action: "created",
+        repository: { full_name: "getsentry/junior" },
+        issue: {
+          number: 946,
+          pull_request: { url: "https://api.github.com/pulls/946" },
+        },
+        comment: { body: "status", id: 101 },
+      };
+      expect(
+        (await route.handler(signedRequest(body, "issue_comment"))).status,
+      ).toBe(202);
+      expect(markPullRequestFeedbackReviewing).not.toHaveBeenCalled();
+      expect(published).toHaveLength(2);
+    } finally {
+      await fixture.close();
+    }
+  });
+
   it("marks pull request comments before publishing their resource events", async () => {
     const fixture = await createGitHubFixture();
     const published: ResourceEventInput[] = [];
@@ -1779,6 +1815,45 @@ describe("GitHub-owned pull request outcomes", () => {
         repo: "getsentry/junior",
       });
       expect(published).toHaveLength(2);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("publishes comment events when the reviewing reaction fails", async () => {
+    const fixture = await createGitHubFixture();
+    const published: ResourceEventInput[] = [];
+    const errors: string[] = [];
+    try {
+      const route = webhookRoute(
+        fixture,
+        published,
+        undefined,
+        undefined,
+        (message) => errors.push(message),
+        undefined,
+        async () => {
+          throw new Error("reaction unavailable");
+        },
+      );
+      const response = await route.handler(
+        signedRequest(
+          {
+            action: "created",
+            repository: { full_name: "getsentry/junior" },
+            issue: {
+              number: 946,
+              pull_request: { url: "https://api.github.com/pulls/946" },
+            },
+            comment: { body: "please revise", id: 101 },
+          },
+          "issue_comment",
+        ),
+      );
+
+      expect(response.status).toBe(202);
+      expect(published).toHaveLength(2);
+      expect(errors).toEqual(["GitHub pull request feedback reaction failed"]);
     } finally {
       await fixture.close();
     }

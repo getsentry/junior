@@ -122,6 +122,31 @@ describe("updatePullRequestFeedback", () => {
     );
   });
 
+  it("continues when a stale status reaction disappears before deletion", async () => {
+    const { fetch, tool } = toolContext([
+      response([
+        { id: 1, content: "eyes", user: { id: BOT_USER_ID } },
+        { id: 2, content: "rocket", user: { id: BOT_USER_ID } },
+      ]),
+      response({ message: "Not Found" }, 404),
+      response({ id: 3, content: "+1", user: { id: BOT_USER_ID } }, 201),
+    ]);
+
+    await expect(
+      tool.execute?.(
+        {
+          repo: "getsentry/junior",
+          commentKind: "conversation",
+          commentId: 55,
+          status: "addressed",
+        },
+        { toolCallId: "missing-eyes" },
+      ),
+    ).resolves.toMatchObject({ status: "addressed", reactionId: 3 });
+
+    expect(fetch).toHaveBeenCalledTimes(3);
+  });
+
   it("is idempotent when the status reaction already exists", async () => {
     const { fetch, tool } = toolContext([
       response([{ id: 9, content: "eyes", user: { id: BOT_USER_ID } }]),

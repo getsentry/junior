@@ -331,8 +331,26 @@ export function createGitHubWebhookRoute(args: {
         eventName,
       });
       const feedbackTarget = pullRequestFeedbackTarget(resourceEvents);
-      if (feedbackTarget) {
-        await args.markPullRequestFeedbackReviewing(feedbackTarget);
+      const hasConsumer = args.resourceEvents.hasConsumer;
+      const feedbackHasConsumer =
+        feedbackTarget && hasConsumer
+          ? (
+              await Promise.all(
+                resourceEvents.map((event) => hasConsumer(event)),
+              )
+            ).some(Boolean)
+          : false;
+      if (feedbackTarget && feedbackHasConsumer) {
+        try {
+          await args.markPullRequestFeedbackReviewing(feedbackTarget);
+        } catch (error) {
+          args.log?.error("GitHub pull request feedback reaction failed", {
+            commentId: feedbackTarget.commentId,
+            deliveryId,
+            errorType: error instanceof Error ? error.name : "UnknownError",
+            repository: feedbackTarget.repo,
+          });
+        }
       }
       for (const event of resourceEvents) {
         await args.resourceEvents.publish(event);

@@ -19,6 +19,9 @@ const STATUS_TO_REACTION_CONTENT = {
   addressed: "+1",
   declined: "-1",
 } as const;
+const FEEDBACK_REACTION_CONTENTS = new Set<string>(
+  Object.values(STATUS_TO_REACTION_CONTENT),
+);
 type FeedbackStatus = keyof typeof STATUS_TO_REACTION_CONTENT;
 type PullRequestCommentKind = "conversation" | "review";
 
@@ -169,7 +172,11 @@ export function createGitHubUpdatePullRequestFeedbackTool(
       const botReactions = z
         .array(reactionSchema)
         .parse(listPayload)
-        .filter((reaction) => reaction.user?.id === botUserId);
+        .filter(
+          (reaction) =>
+            reaction.user?.id === botUserId &&
+            FEEDBACK_REACTION_CONTENTS.has(reaction.content),
+        );
       const existing = botReactions.find(
         (reaction) => reaction.content === targetContent,
       );
