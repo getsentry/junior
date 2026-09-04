@@ -440,6 +440,24 @@ function applyGitHubEgressPolicy(input: {
   operation?: string;
   upstreamUrl: URL;
 }): void {
+  const reactionWrite =
+    isGitHubApiUrl(input.upstreamUrl) &&
+    (input.method === "POST" || input.method === "DELETE") &&
+    /^\/repos\/[^/]+\/[^/]+\/(issues|pulls)\/comments\/[^/]+\/reactions(?:\/[^/]+)?$/.test(
+      input.upstreamUrl.pathname.toLowerCase(),
+    );
+  if (reactionWrite) {
+    const expectedOperation =
+      input.method === "POST"
+        ? "github.pull.comment-reaction.create"
+        : "github.pull.comment-reaction.delete";
+    enforceEgressPolicy({
+      allowed: input.operation === expectedOperation,
+      denialMessage:
+        "GitHub pull request feedback reactions must use the github_updatePullRequestFeedback tool.",
+    });
+  }
+
   assertGitHubPullRequestApprovalDenied({
     ...(input.bodyText !== undefined
       ? { bodyText: input.bodyText }

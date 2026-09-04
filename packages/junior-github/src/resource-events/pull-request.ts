@@ -23,9 +23,9 @@ const GITHUB_PULL_REQUEST_EVENT_GUIDANCE: Partial<
   Record<GitHubPullRequestEvent, string>
 > = {
   "pull_request.comment.created":
-    "After acting on actionable feedback, set it to addressed or declined with github_updatePullRequestFeedback.",
+    'After acting on actionable feedback, call github_updatePullRequestFeedback with the exact repo, commentId, and commentKind from Verified details, and status "addressed" or "declined".',
   "pull_request.review_comment.created":
-    "After acting on actionable feedback, set it to addressed or declined with github_updatePullRequestFeedback, then resolve the thread with github_resolvePullRequestReviewThread.",
+    'After acting on actionable feedback, call github_updatePullRequestFeedback with the exact repo, commentId, and commentKind from Verified details, and status "addressed" or "declined". Then resolve the thread with github_resolvePullRequestReviewThread.',
 };
 
 /** Combine provider defaults with app guidance for pull request events. */
