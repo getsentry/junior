@@ -38,6 +38,8 @@ If the user omits `owner/repo`, run `jr-rpc config get github.repo`. Then pass `
 | Ready for review        | `gh api repos/owner/repo/pulls/NUMBER/ready_for_review --method POST`                           |
 | Request reviewers       | `gh api repos/owner/repo/pulls/NUMBER/requested_reviewers --method POST --input reviewers.json` |
 | Submit review           | `github_submitPullRequestReview`                                                                |
+| Set feedback status     | `github_updatePullRequestFeedback`                                                              |
+| Resolve review thread   | `github_resolvePullRequestReviewThread`                                                         |
 | Inline review comment   | `gh api repos/owner/repo/pulls/NUMBER/comments --method POST --input comment.json`              |
 | View PR / checks        | `gh pr view NUMBER --repo owner/repo` / `gh pr checks NUMBER --repo owner/repo`                 |
 | Diff PR                 | `gh pr diff NUMBER --repo owner/repo`                                                           |
@@ -52,5 +54,6 @@ If the user omits `owner/repo`, run `jr-rpc config get github.repo`. Then pass `
 - Push `head` and read the default `base` before `github_createPullRequest`.
 - Junior does not support merges, forks, repository administration, REST content or Git database writes, direct PR update or review writes, or GraphQL mutations.
 - Reviews and inline comments use the App bot.
+- Mark feedback with `github_updatePullRequestFeedback`: `reviewing` while working on an item, then `addressed` or `declined` when done. It replaces only Junior's own prior status reaction on that comment. For inline review feedback, also call `github_resolvePullRequestReviewThread` to resolve the thread.
 - PR comments/labels/assignees use issue endpoints; load `github-issues` for those.
 - Embed local images with `publishImage` first (public URL). Do not use private Slack file links.

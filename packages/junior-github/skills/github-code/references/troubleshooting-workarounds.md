@@ -17,6 +17,7 @@
 | 403 names `github_updatePullRequest`                       | Use `github_updatePullRequest`.                                                           |
 | PR review reports blocked GraphQL mutations                | Use `github_submitPullRequestReview`.                                                     |
 | Review-thread resolution reports blocked GraphQL mutations | Use `github_resolvePullRequestReviewThread`. It works only on bot-authored PRs.           |
+| Need to react to PR feedback (eyes/+1/-1)                   | Use `github_updatePullRequestFeedback`. Raw reaction REST calls are not supported.        |
 | Blame or old history is missing                            | Deepen the needed refs. Unshallow only when required.                                     |
 | Rebase has missing ancestry                                | Fetch `BASE:refs/remotes/origin/BASE`, deepen it, and use `origin/BASE`.                  |
 | Dependencies are missing                                   | Run the frozen install. Do not change the lockfile.                                       |

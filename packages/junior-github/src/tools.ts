@@ -12,6 +12,7 @@ import { createGitHubGetReleaseTool } from "./tools/get-release.js";
 import { createGitHubGetRepositoryTool } from "./tools/get-repository.js";
 import { createGitHubUpdateIssueTool } from "./tools/update-issue.js";
 import { createGitHubUpdatePullRequestTool } from "./tools/update-pull-request.js";
+import { createGitHubUpdatePullRequestFeedbackTool } from "./tools/update-pull-request-feedback.js";
 import { createGitHubResolvePullRequestReviewThreadTool } from "./tools/resolve-pull-request-review-thread.js";
 import { createGitHubSubmitPullRequestReviewTool } from "./tools/submit-pull-request-review.js";
 
@@ -39,5 +40,9 @@ export function createGitHubTools(
     ),
     updateIssue: createGitHubUpdateIssueTool(ctx),
     updatePullRequest: createGitHubUpdatePullRequestTool(ctx),
+    updatePullRequestFeedback: createGitHubUpdatePullRequestFeedbackTool(
+      ctx,
+      botEmail,
+    ),
   };
 }

@@ -373,6 +373,15 @@ function githubApiWriteGrantName(
     // interactive review feedback both post as Junior, not the requesting user.
     return "installation-write";
   }
+  if (
+    (method === "POST" || method === "DELETE") &&
+    /^\/repos\/[^/]+\/[^/]+\/(issues|pulls)\/comments\/[^/]+\/reactions(?:\/[^/]+)?$/.test(
+      pathname,
+    )
+  ) {
+    // Feedback-status reactions on conversation and inline review comments.
+    return "installation-write";
+  }
   return undefined;
 }
 

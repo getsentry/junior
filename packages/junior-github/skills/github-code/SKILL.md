@@ -13,6 +13,7 @@ Use `git` and `gh` for repository work.
 | Update PR title/body/base/state | `github_updatePullRequest`                                               |
 | Submit PR review                | `github_submitPullRequestReview`                                         |
 | Resolve review thread           | `github_resolvePullRequestReviewThread`                                  |
+| Set feedback-status reaction    | `github_updatePullRequestFeedback`                                       |
 | Clone missing repo              | `github_cloneRepository`; on Workspace match error use `switchWorkspace` |
 
 ## Open when needed
