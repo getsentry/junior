@@ -190,7 +190,7 @@ describe("retention purge job", () => {
     await fixture.sql.db().insert(juniorAttachments).values({
       id: "attachment-1",
       conversationId: "with-attachment",
-      provider: "test",
+      storageProvider: "test",
       storageKey: "key-1",
       filename: "report.txt",
       contentType: "text/plain",
@@ -218,6 +218,60 @@ describe("retention purge job", () => {
     expect(await fixture.sql.db().select().from(juniorAttachments)).toEqual([]);
   });
 
+  it("deletes attachments 30 days after they are stored", async () => {
+    const destinationId = await seedDestination(fixture.sql, "public");
+    await seedConversation(fixture.sql, {
+      conversationId: "active-with-attachments",
+      destinationId,
+      lastActivityAtMs: BASE_MS + 31 * DAY_MS,
+    });
+    await fixture.sql.db().insert(juniorAttachments).values([
+      {
+        id: "expired-attachment",
+        conversationId: "active-with-attachments",
+        storageProvider: "test",
+        storageKey: "expired-key",
+        filename: "old.txt",
+        contentType: "text/plain",
+        bytes: 3,
+        sha256: "old",
+        createdAt: new Date(BASE_MS),
+      },
+      {
+        id: "current-attachment",
+        conversationId: "active-with-attachments",
+        storageProvider: "test",
+        storageKey: "current-key",
+        filename: "new.txt",
+        contentType: "text/plain",
+        bytes: 3,
+        sha256: "new",
+        createdAt: new Date(BASE_MS + 2 * DAY_MS),
+      },
+    ]);
+    const deleted: string[][] = [];
+    const storage: AttachmentStorage = {
+      provider: "test",
+      get: async () => null,
+      put: async () => undefined,
+      delete: async (keys) => {
+        deleted.push(keys);
+      },
+    };
+
+    const result = await runRetentionPurge(fixture.sql, {
+      attachmentStorage: storage,
+      nowMs: BASE_MS + 30 * DAY_MS,
+    });
+
+    expect(result.purged).toBe(0);
+    expect(result.attachments).toBe(1);
+    expect(deleted).toEqual([["expired-key"]]);
+    expect(
+      await fixture.sql.db().select().from(juniorAttachments),
+    ).toMatchObject([{ id: "current-attachment" }]);
+  });
+
   it("keeps marked attachment rows when blob delete fails", async () => {
     const destinationId = await seedDestination(fixture.sql, "private");
     await seedConversation(fixture.sql, {
@@ -228,7 +282,7 @@ describe("retention purge job", () => {
     await fixture.sql.db().insert(juniorAttachments).values({
       id: "attachment-1",
       conversationId: "with-attachment",
-      provider: "test",
+      storageProvider: "test",
       storageKey: "key-1",
       filename: "report.txt",
       contentType: "text/plain",
@@ -278,7 +332,7 @@ describe("retention purge job", () => {
     await fixture.sql.db().insert(juniorAttachments).values({
       id: "orphan-attachment",
       conversationId: "purged-owner",
-      provider: "test",
+      storageProvider: "test",
       storageKey: "orphan-key",
       filename: "late.txt",
       contentType: "text/plain",

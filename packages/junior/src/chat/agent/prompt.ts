@@ -37,6 +37,7 @@ import type { AnyToolDefinition } from "@/chat/tools/definition";
 import { isUserActor, type Actor } from "@/chat/actor";
 import type { PluginTurnContext } from "@/chat/plugins/prompt";
 import { escapeXml } from "@/chat/xml";
+import { isVisionImageMediaType } from "@/chat/attachments/media";
 import type {
   AgentAttachment,
   AgentInstruction,
@@ -254,7 +255,7 @@ function buildUserTurnInput(args: {
       continue;
     }
 
-    if (attachment.mediaType.startsWith("image/")) {
+    if (isVisionImageMediaType(attachment.mediaType)) {
       if (!attachment.data) {
         throw new Error("Image attachment is missing image data");
       }

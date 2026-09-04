@@ -27,6 +27,7 @@ packages/junior/src/chat/slack/tools/canvas/create.ts	throw new Error( "Cannot c
 packages/junior/src/chat/slack/tools/conversation-message-search.ts	throw new Error( "Stored Slack conversation search returned an invalid destination", );
 packages/junior/src/chat/tools/create-event-task.ts	throw new Error("Event task creation requires a tool-call identity.");
 packages/junior/src/chat/tools/index.ts	throw new Error(`Plugin tool "${name}" conflicts with a core tool`);
+packages/junior/src/chat/tools/load-attachment.ts	throw new Error( `Failed to create attachment directory: ${mkdir.stderr}`, );
 packages/junior/src/chat/tools/publish-image.ts	throw new Error( "publishImage requires JUNIOR_BASE_URL or a Vercel deployment URL.", );
 packages/junior/src/chat/tools/sandbox/bash.ts	throw new Error("bash can only run when sandbox execution is enabled.");
 packages/junior/src/chat/tools/sandbox/edit-file.ts	throw new Error( "editFile can only run when sandbox execution is enabled.", );

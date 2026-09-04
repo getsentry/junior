@@ -62,6 +62,7 @@ export function createJuniorRuntimeServices(
       overrides.contextCompactor?.autoCompactionTriggerTokens,
   });
   const visionContext = createVisionContextService({
+    attachmentStorage: overrides.visionContext?.attachmentStorage,
     completeText: overrides.visionContext?.completeText ?? completeText,
     listThreadReplies:
       overrides.visionContext?.listThreadReplies ?? listThreadReplies,

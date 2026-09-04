@@ -5,7 +5,7 @@
  * from `last_activity_at` and deleted wholesale by a dedicated cron. Visibility
  * is resolved at purge time through the parent chain to the root's destination,
  * so no expiry is ever stored and a public↔private flip takes effect on the next
- * pass. Storage write paths own no TTLs.
+ * pass. Attachment files use their own 30-day window.
  */
 import { collectAttachmentGarbage } from "@/chat/attachments/store";
 import type { AttachmentStorage } from "@/chat/attachments/storage";

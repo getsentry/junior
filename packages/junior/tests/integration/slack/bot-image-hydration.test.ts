@@ -713,7 +713,7 @@ describe("bot image hydration", () => {
 
     expect(downloadFileMock).toHaveBeenCalledTimes(1);
     expect(completeTextMock).toHaveBeenCalledTimes(1);
-    expect(attachmentFetch).not.toHaveBeenCalled();
+    expect(attachmentFetch).toHaveBeenCalledTimes(1);
     expect(streamForRun).toHaveBeenCalledTimes(1);
   });
 
@@ -855,7 +855,7 @@ describe("bot image hydration", () => {
     expect(downloadFileMock).toHaveBeenCalledTimes(2);
     expect(completeTextMock).toHaveBeenCalledTimes(3);
     expect(firstAttachmentFetch).toHaveBeenCalledTimes(1);
-    expect(secondAttachmentFetch).not.toHaveBeenCalled();
+    expect(secondAttachmentFetch).toHaveBeenCalledTimes(1);
     expect(streamForRun).toHaveBeenCalledTimes(1);
   });
 

@@ -231,6 +231,7 @@ interface SlackTurnDeps {
   resolveUserAttachments: (
     attachments: Message["attachments"] | undefined,
     context: {
+      conversationId?: string;
       threadId?: string;
       actorId?: string;
       channelId?: string;
@@ -480,6 +481,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
                     ? countPotentialImageAttachments(attachments)
                     : 0,
                 attachments: await deps.resolveUserAttachments(attachments, {
+                  conversationId,
                   threadId,
                   actorId: queued.message.author.userId,
                   channelId,
@@ -734,6 +736,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
         const userAttachments = await deps.resolveUserAttachments(
           turnAttachments,
           {
+            conversationId,
             threadId,
             actorId: slackActorId,
             channelId,

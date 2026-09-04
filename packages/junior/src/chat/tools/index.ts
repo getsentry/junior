@@ -40,6 +40,7 @@ import { createUserLookupTool } from "@/chat/tools/user-lookup";
 import { createSystemTimeTool } from "@/chat/tools/system-time";
 import { createPublishImageTool } from "@/chat/tools/publish-image";
 import { createUnpublishImageTool } from "@/chat/tools/unpublish-image";
+import { createLoadAttachmentTool } from "@/chat/tools/load-attachment";
 import { createSearchConversationEventsTool } from "@/chat/tools/search-conversation-events";
 import { createHandoffTool } from "@/chat/tools/handoff/tool";
 import type { ToolRegistry } from "@/chat/tools/definition";
@@ -140,6 +141,12 @@ export function createTools(
     );
   }
   if (context.attachmentStorage) {
+    tools.loadAttachment = createLoadAttachmentTool({
+      conversationId: context.conversationId,
+      db: getSqlExecutor(),
+      storage: context.attachmentStorage,
+      workspace: context.workspace,
+    });
     tools.publishImage = createPublishImageTool({
       conversationId: context.conversationId,
       db: getSqlExecutor(),
@@ -169,7 +176,10 @@ export function createTools(
     tools.slackCanvasRead = createSlackCanvasReadTool();
     tools.slackCanvasEdit = createSlackCanvasEditTool(state);
     tools.slackCanvasWrite = createSlackCanvasWriteTool(state);
-    tools.slackThreadRead = createSlackThreadReadTool(slackContext);
+    tools.slackThreadRead = createSlackThreadReadTool(slackContext, {
+      conversationId: context.conversationId,
+      db: getSqlExecutor(),
+    });
     tools.slackChannelJoin = createSlackChannelJoinTool(slackContext);
     if (context.conversationPrivacy === "public") {
       tools.searchConversationMessages =

@@ -125,6 +125,12 @@ describe("Slack behavior: mixed attachment media", () => {
           url: "https://files.slack.com/private/broken.json",
           fetchData: failingFetch,
         },
+        {
+          type: "image",
+          mimeType: "image/svg+xml",
+          name: "icon.svg",
+          data: Buffer.from('<svg viewBox="0 0 16 16" />'),
+        },
       ] as Message["attachments"],
     });
 
@@ -138,12 +144,14 @@ describe("Slack behavior: mixed attachment media", () => {
     expect(failingFetch).toHaveBeenCalledTimes(1);
 
     expect(capturedAttachmentMediaTypes).toEqual([
-      ["image/png", "application/pdf"],
+      ["image/png", "application/pdf", "image/svg+xml"],
     ]);
-    expect(capturedAttachmentNames).toEqual([["chart.png", "incident.pdf"]]);
+    expect(capturedAttachmentNames).toEqual([
+      ["chart.png", "incident.pdf", "icon.svg"],
+    ]);
   }, 20_000);
 
-  it("drops image attachments when AI_VISION_MODEL is unset", async () => {
+  it("keeps raw image attachments when AI_VISION_MODEL is unset", async () => {
     const imageFetch = vi.fn(async () => Buffer.from("image-bytes"));
 
     const capturedAttachmentMediaTypes: string[][] = [];
@@ -200,9 +208,11 @@ describe("Slack behavior: mixed attachment media", () => {
       destination: createTestDestination(thread),
     });
 
-    expect(imageFetch).not.toHaveBeenCalled();
-    expect(capturedAttachmentMediaTypes).toEqual([["application/pdf"]]);
-    expect(capturedAttachmentNames).toEqual([["incident.pdf"]]);
+    expect(imageFetch).toHaveBeenCalledTimes(1);
+    expect(capturedAttachmentMediaTypes).toEqual([
+      ["image/png", "application/pdf"],
+    ]);
+    expect(capturedAttachmentNames).toEqual([["chart.png", "incident.pdf"]]);
     expect(capturedOmittedImageCounts).toEqual([1]);
   });
 
@@ -251,7 +261,7 @@ describe("Slack behavior: mixed attachment media", () => {
       destination: createTestDestination(thread),
     });
 
-    expect(imageFetch).not.toHaveBeenCalled();
+    expect(imageFetch).toHaveBeenCalledTimes(1);
     expect(streamForRun).toHaveBeenCalledTimes(1);
     expect(capturedOmittedImageCounts).toEqual([1]);
     expect(thread.posts).toHaveLength(1);

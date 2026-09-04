@@ -764,6 +764,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   const runtimeServiceOverrides = {
     agentRunner,
     sandbox: { tracePropagation },
+    visionContext: { attachmentStorage },
   };
   let conversationWorkOptions: ConversationWorkCallbackOptions | undefined;
   const getConversationWorkOptions = () => {
