@@ -1,4 +1,11 @@
 # Changelog
+## 0.201.0
+
+### New Features ✨
+
+- (github) Set PR feedback reactions with github_updatePullRequestFeedback by @sentry-junior in [#1781](https://github.com/getsentry/junior/pull/1781)
+- (slack) Persist inbound attachments by @sentry-junior in [#1779](https://github.com/getsentry/junior/pull/1779)
+
 ## 0.200.0
 
 ### New Features ✨
