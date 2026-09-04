@@ -250,6 +250,9 @@ type GitHubBodyWrite = {
   restPath: RegExp;
 };
 
+const PULL_REQUEST_COMMENT_REACTIONS_PATH =
+  /^\/repos\/[^/]+\/[^/]+\/(issues|pulls)\/comments\/[^/]+\/reactions(?:\/[^/]+)?$/;
+
 const GITHUB_BODY_WRITES = [
   {
     denialMessage: `GitHub issue creation must use the github_createIssue tool so Junior can own idempotency and the conversation footer. ${CREATE_TOOL_ROUTING_GUIDANCE}`,
@@ -375,9 +378,7 @@ function githubApiWriteGrantName(
   }
   if (
     (method === "POST" || method === "DELETE") &&
-    /^\/repos\/[^/]+\/[^/]+\/(issues|pulls)\/comments\/[^/]+\/reactions(?:\/[^/]+)?$/.test(
-      pathname,
-    )
+    PULL_REQUEST_COMMENT_REACTIONS_PATH.test(pathname)
   ) {
     // Feedback-status reactions on conversation and inline review comments.
     return "installation-write";
@@ -443,7 +444,7 @@ function applyGitHubEgressPolicy(input: {
   const reactionWrite =
     isGitHubApiUrl(input.upstreamUrl) &&
     (input.method === "POST" || input.method === "DELETE") &&
-    /^\/repos\/[^/]+\/[^/]+\/(issues|pulls)\/comments\/[^/]+\/reactions(?:\/[^/]+)?$/.test(
+    PULL_REQUEST_COMMENT_REACTIONS_PATH.test(
       input.upstreamUrl.pathname.toLowerCase(),
     );
   if (reactionWrite) {

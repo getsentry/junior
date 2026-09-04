@@ -860,7 +860,7 @@ function requirePublishedResourceEvent(
 /** Collect route handlers exposed by plugins for app-level mounting. */
 export function getPluginRoutes(options: {
   resourceEvents: {
-    hasConsumer?(event: ResourceEvent): Promise<boolean>;
+    hasMatch?(event: ResourceEvent): Promise<boolean>;
     neededMatchKeys?(input: {
       eventTypes: string[];
       identifiers: string[];
@@ -891,11 +891,11 @@ export function getPluginRoutes(options: {
       },
       codeChanges: createCodeChangePublisher(pluginName),
       resourceEvents: {
-        async hasConsumer(event) {
-          if (!options.resourceEvents.hasConsumer) return false;
+        async hasMatch(event) {
+          if (!options.resourceEvents.hasMatch) return false;
           const parsed = resourceEventInputSchema.parse(event);
           requirePublishedResourceEvent(plugin, parsed.eventType);
-          return await options.resourceEvents.hasConsumer({
+          return await options.resourceEvents.hasMatch({
             ...parsed,
             identifier: normalizeResourceEventIdentifier(
               plugin.resourceEvents,

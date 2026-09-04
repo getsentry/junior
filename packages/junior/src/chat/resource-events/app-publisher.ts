@@ -16,7 +16,7 @@ import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
 
 export type ResourceEventAppPublisher = {
-  hasConsumer(event: ResourceEvent): Promise<boolean>;
+  hasMatch(event: ResourceEvent): Promise<boolean>;
   neededMatchKeys(input: {
     eventTypes: string[];
     identifiers: string[];
@@ -36,7 +36,7 @@ export function createResourceEventAppPublisher(args: {
   const resolveEventTaskTeamId = createResourceEventTeamIdResolver();
 
   return {
-    async hasConsumer(event) {
+    async hasMatch(event) {
       const work = args.conversationWork();
       const eventTaskTeamId = await resolveEventTaskTeamId();
       const [subscriptions, tasks] = await Promise.all([

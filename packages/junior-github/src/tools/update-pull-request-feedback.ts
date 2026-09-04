@@ -9,10 +9,9 @@ import { z } from "zod";
 import { botUserIdFromEmail } from "../webhooks/ownership.js";
 
 /**
- * GitHub has no dedicated feedback-status concept, only reactions. This tool
- * maps a feedback status to the matching reaction content and keeps at most
- * one status reaction that Junior owns on the comment. It never touches
- * reactions left by other users.
+ * GitHub has reactions but no feedback state. This tool maps each state to a
+ * reaction and keeps at most one state reaction that Junior owns. It does not
+ * change reactions from other users.
  */
 const STATUS_TO_REACTION_CONTENT = {
   reviewing: "eyes",
@@ -84,7 +83,7 @@ export function pullRequestCommentReactionsPath(input: {
   return `/repos/${encodeURIComponent(input.owner)}/${encodeURIComponent(input.name)}/${segment}/comments/${input.commentId}/reactions`;
 }
 
-/** Return the GitHub reaction content for one feedback status. */
+/** Return the GitHub reaction for one feedback state. */
 export function pullRequestFeedbackReactionContent(
   status: FeedbackStatus,
 ): (typeof STATUS_TO_REACTION_CONTENT)[FeedbackStatus] {
@@ -116,8 +115,8 @@ const reactionSchema = z.object({
 });
 
 /**
- * Set Junior's feedback-status reaction on a pull request comment. Replaces
- * only reactions Junior previously added to the same comment.
+ * Set Junior's feedback reaction on a pull request comment. Replace only
+ * state reactions Junior previously added to the same comment.
  */
 export function createGitHubUpdatePullRequestFeedbackTool(
   ctx: { egress: PluginEgress },

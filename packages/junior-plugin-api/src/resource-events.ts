@@ -309,7 +309,7 @@ export type ResourceEvent = z.output<typeof resourceEventSchema>;
 
 export interface ResourceEventPublisher {
   /** Return whether an active watch or event task matches this event. */
-  hasConsumer?(event: ResourceEventInput): Promise<boolean>;
+  hasMatch?(event: ResourceEventInput): Promise<boolean>;
   /** Publish one normalized event under the owning plugin's namespace. */
   publish(event: ResourceEventInput): Promise<void>;
   /**

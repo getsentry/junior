@@ -291,10 +291,10 @@ function webhookRoute(
     annotation: ConversationAnnotationInput;
     conversationId: string;
   }> = [],
-  markPullRequestFeedbackReviewing: Parameters<
+  markFeedbackReviewing: Parameters<
     typeof createGitHubWebhookRoute
-  >[0]["markPullRequestFeedbackReviewing"] = async () => {},
-  hasConsumer: () => Promise<boolean> = async () => true,
+  >[0]["markFeedbackReviewing"] = async () => {},
+  hasMatch: () => Promise<boolean> = async () => true,
 ) {
   return createGitHubWebhookRoute({
     annotations: {
@@ -321,10 +321,10 @@ function webhookRoute(
     installationId: () => "456",
     installationIdEnv: "GITHUB_INSTALLATION_ID",
     log: { error },
-    markPullRequestFeedbackReviewing,
+    markFeedbackReviewing,
     privateKeyEnv: "GITHUB_APP_PRIVATE_KEY",
     resourceEvents: {
-      hasConsumer,
+      hasMatch,
       async publish(event) {
         published.push(event);
       },
@@ -637,7 +637,6 @@ describe("GitHub webhook resource events", () => {
           comment: {
             body: "change this line",
             id: 202,
-            node_id: "PRRC_review_comment",
             user: { login: "reviewer" },
           },
         },
@@ -655,7 +654,6 @@ describe("GitHub webhook resource events", () => {
               pullRequest: 946,
               commentId: 202,
               commentKind: "review",
-              commentNodeId: "PRRC_review_comment",
             },
             untrustedText: "change this line",
           },
@@ -1742,7 +1740,7 @@ describe("GitHub-owned pull request outcomes", () => {
   it("does not mark pull request comments without an event consumer", async () => {
     const fixture = await createGitHubFixture();
     const published: ResourceEventInput[] = [];
-    const markPullRequestFeedbackReviewing = vi.fn(async () => {});
+    const markFeedbackReviewing = vi.fn(async () => {});
     try {
       const route = webhookRoute(
         fixture,
@@ -1751,7 +1749,7 @@ describe("GitHub-owned pull request outcomes", () => {
         undefined,
         undefined,
         undefined,
-        markPullRequestFeedbackReviewing,
+        markFeedbackReviewing,
         async () => false,
       );
       const body = {
@@ -1766,7 +1764,7 @@ describe("GitHub-owned pull request outcomes", () => {
       expect(
         (await route.handler(signedRequest(body, "issue_comment"))).status,
       ).toBe(202);
-      expect(markPullRequestFeedbackReviewing).not.toHaveBeenCalled();
+      expect(markFeedbackReviewing).not.toHaveBeenCalled();
       expect(published).toHaveLength(2);
     } finally {
       await fixture.close();
@@ -1776,7 +1774,7 @@ describe("GitHub-owned pull request outcomes", () => {
   it("marks pull request comments before publishing their resource events", async () => {
     const fixture = await createGitHubFixture();
     const published: ResourceEventInput[] = [];
-    const markPullRequestFeedbackReviewing = vi.fn(async () => {
+    const markFeedbackReviewing = vi.fn(async () => {
       expect(published).toEqual([]);
     });
     try {
@@ -1787,7 +1785,7 @@ describe("GitHub-owned pull request outcomes", () => {
         undefined,
         undefined,
         undefined,
-        markPullRequestFeedbackReviewing,
+        markFeedbackReviewing,
       );
       const response = await route.handler(
         signedRequest(
@@ -1809,7 +1807,7 @@ describe("GitHub-owned pull request outcomes", () => {
       );
 
       expect(response.status).toBe(202);
-      expect(markPullRequestFeedbackReviewing).toHaveBeenCalledWith({
+      expect(markFeedbackReviewing).toHaveBeenCalledWith({
         commentId: 101,
         commentKind: "conversation",
         repo: "getsentry/junior",

@@ -312,11 +312,7 @@ export function githubPlugin(
             installationId: () => readEnv(installationIdEnv),
             installationIdEnv,
             log: ctx.log,
-            markPullRequestFeedbackReviewing: async ({
-              commentId,
-              commentKind,
-              repo,
-            }) => {
+            markFeedbackReviewing: async ({ commentId, commentKind, repo }) => {
               const [owner, name, ...extra] = repo.split("/");
               if (!owner || !name || extra.length > 0) {
                 throw new Error(

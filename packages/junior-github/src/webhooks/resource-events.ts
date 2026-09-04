@@ -45,10 +45,15 @@ function pullRequestHeadBranchData(
 }
 
 /** Trusted author values from a GitHub user object when present. */
-function pullRequestAuthorData(user: {
-  email?: string | null;
-  login?: string | null;
-} | null | undefined): {
+function pullRequestAuthorData(
+  user:
+    | {
+        email?: string | null;
+        login?: string | null;
+      }
+    | null
+    | undefined,
+): {
   authorEmail?: string;
   authorUsername?: string;
 } {
@@ -61,9 +66,9 @@ function pullRequestAuthorData(user: {
 }
 
 /** Merge optional PR match values into one trusted data object. */
-function pullRequestMatchData(parts: Array<Record<string, unknown> | undefined>):
-  | Record<string, unknown>
-  | undefined {
+function pullRequestMatchData(
+  parts: Array<Record<string, unknown> | undefined>,
+): Record<string, unknown> | undefined {
   const data: Record<string, unknown> = {};
   for (const part of parts) {
     if (!part) continue;
@@ -430,7 +435,6 @@ const pullRequestReviewCommentWebhookSchema = z.object({
   comment: z.object({
     body: z.string(),
     id: z.number(),
-    node_id: z.string().optional(),
     user: z.object({ login: z.string().optional() }).optional(),
   }),
   pull_request: z.object({
@@ -476,9 +480,6 @@ function normalizePullRequestReviewCommentEvent(
       pullRequest: parsed.data.pull_request.number,
       commentId: parsed.data.comment.id,
       commentKind: "review",
-      ...(parsed.data.comment.node_id
-        ? { commentNodeId: parsed.data.comment.node_id }
-        : undefined),
     },
   ]);
   return pullRequestTargets(
@@ -648,7 +649,9 @@ function pullRequestLifecycleEvents(input: {
       ...(input.terminal ? { terminal: true } : undefined),
       trustedSummary: input.trustedSummary,
       ...(data ? { data } : undefined),
-      ...(input.untrustedText ? { untrustedText: input.untrustedText } : undefined),
+      ...(input.untrustedText
+        ? { untrustedText: input.untrustedText }
+        : undefined),
     },
     input.repo,
   );

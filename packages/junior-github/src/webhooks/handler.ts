@@ -86,7 +86,7 @@ function webhookInstallationId(body: unknown): number | undefined {
   return parseInstallationId((installation as { id?: unknown }).id);
 }
 
-interface GitHubPullRequestFeedbackTarget {
+interface FeedbackTarget {
   commentId: number;
   commentKind: "conversation" | "review";
   repo: string;
@@ -95,7 +95,7 @@ interface GitHubPullRequestFeedbackTarget {
 /** Return comment-level pull request feedback that the webhook can mark. */
 function pullRequestFeedbackTarget(
   events: ResourceEventInput[],
-): GitHubPullRequestFeedbackTarget | undefined {
+): FeedbackTarget | undefined {
   const event = events.find(
     (candidate) =>
       candidate.eventType === "pull_request.comment.created" ||
@@ -154,9 +154,7 @@ export function createGitHubWebhookRoute(args: {
   installationId(): string | undefined;
   installationIdEnv: string;
   log?: Pick<PluginLogger, "error">;
-  markPullRequestFeedbackReviewing(
-    input: GitHubPullRequestFeedbackTarget,
-  ): Promise<void>;
+  markFeedbackReviewing(input: FeedbackTarget): Promise<void>;
   privateKeyEnv: string;
   resourceEvents: ResourceEventPublisher;
   webhookSecret(): string | undefined;
@@ -331,18 +329,16 @@ export function createGitHubWebhookRoute(args: {
         eventName,
       });
       const feedbackTarget = pullRequestFeedbackTarget(resourceEvents);
-      const hasConsumer = args.resourceEvents.hasConsumer;
-      const feedbackHasConsumer =
-        feedbackTarget && hasConsumer
+      const hasMatch = args.resourceEvents.hasMatch;
+      const feedbackHasMatch =
+        feedbackTarget && hasMatch
           ? (
-              await Promise.all(
-                resourceEvents.map((event) => hasConsumer(event)),
-              )
+              await Promise.all(resourceEvents.map((event) => hasMatch(event)))
             ).some(Boolean)
           : false;
-      if (feedbackTarget && feedbackHasConsumer) {
+      if (feedbackTarget && feedbackHasMatch) {
         try {
-          await args.markPullRequestFeedbackReviewing(feedbackTarget);
+          await args.markFeedbackReviewing(feedbackTarget);
         } catch (error) {
           args.log?.error("GitHub pull request feedback reaction failed", {
             commentId: feedbackTarget.commentId,
