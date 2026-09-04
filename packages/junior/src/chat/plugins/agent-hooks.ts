@@ -43,10 +43,7 @@ import { createResourceEventSubscription } from "@/chat/resource-events/store";
 import { RESOURCE_SUBSCRIPTION_DEFAULT_TTL_MS } from "@/chat/resource-events/tool-support";
 
 import { getSlackToolContext } from "@/chat/slack/tool-support/context";
-import {
-  readActorIdentity,
-  resolveViewerUser,
-} from "@/chat/plugins/viewer";
+import { readActorIdentity, resolveViewerUser } from "@/chat/plugins/viewer";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 import type {
   SandboxCommandInput,
@@ -803,7 +800,7 @@ export function getPluginTools(
         id: pluginName,
         description: plugin.manifest.description,
       };
-      definition.exposure = "deferred";
+      definition.exposure ??= "deferred";
       tools[name] = definition;
     }
   }

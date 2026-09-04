@@ -1,0 +1,169 @@
+import {
+  type PluginEgress,
+  type PluginToolOutput,
+  definePluginTool,
+  PluginToolInputError,
+  pluginToolOutputSchema,
+} from "@sentry/junior-plugin-api";
+import { z } from "zod";
+const reviewCommentSchema = z
+  .object({
+    path: z.string().trim().min(1).describe("File path in the pull request."),
+    body: z.string().trim().min(1).describe("Inline review comment."),
+    line: z
+      .number()
+      .int()
+      .positive()
+      .describe("Line in the pull request diff."),
+    side: z.enum(["LEFT", "RIGHT"]).describe("Side of the pull request diff."),
+    startLine: z
+      .number()
+      .int()
+      .positive()
+      .optional()
+      .describe("First line of a multi-line comment."),
+    startSide: z
+      .enum(["LEFT", "RIGHT"])
+      .optional()
+      .describe("First side of a multi-line comment."),
+  })
+  .strict()
+  .refine(
+    ({ startLine, startSide }) =>
+      (startLine === undefined) === (startSide === undefined),
+    { message: "startLine and startSide must be provided together." },
+  );
+
+const inputSchema = z
+  .object({
+    repo: z.string().describe('Repository in "owner/name" format.'),
+    number: z.number().int().positive().describe("Pull request number."),
+    event: z
+      .enum(["COMMENT", "REQUEST_CHANGES"])
+      .describe("Review result. Junior cannot approve pull requests."),
+    body: z.string().trim().min(1).describe("Review summary."),
+    comments: z
+      .array(reviewCommentSchema)
+      .optional()
+      .describe("Optional inline review comments."),
+  })
+  .strict();
+
+const outputSchema = pluginToolOutputSchema.extend({
+  target: z.literal("submitPullRequestReview"),
+  repo: z.string(),
+  number: z.number(),
+  reviewId: z.number(),
+  state: z.string(),
+  url: z.string(),
+});
+interface Result extends PluginToolOutput {
+  target: "submitPullRequestReview";
+  repo: string;
+  number: number;
+  reviewId: number;
+  state: string;
+  url: string;
+}
+
+function parseRepo(value: string) {
+  const parts = value.split("/").map((part) => part.trim());
+  if (parts.length !== 2 || !parts[0] || !parts[1]) {
+    throw new PluginToolInputError('repo must use "owner/name" format');
+  }
+  return { owner: parts[0], name: parts[1], ref: `${parts[0]}/${parts[1]}` };
+}
+
+async function readJson(response: Response): Promise<unknown> {
+  const text = await response.text();
+  if (!text) return undefined;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text;
+  }
+}
+
+function githubError(body: unknown): string {
+  if (body && typeof body === "object" && !Array.isArray(body)) {
+    const message = (body as { message?: unknown }).message;
+    if (typeof message === "string" && message.trim()) return message.trim();
+  }
+  if (typeof body === "string" && body.trim()) return body.trim();
+  return "GitHub request failed";
+}
+
+function throwReviewError(status: number, body: unknown): never {
+  const message = `GitHub pull request review failed with HTTP ${status}: ${githubError(body)}`;
+  if (status === 404 || status === 422) {
+    throw new PluginToolInputError(message);
+  }
+  throw new Error(message);
+}
+
+/** Submit a comment or change-request review through GitHub's REST API. */
+export function createGitHubSubmitPullRequestReviewTool(egress: PluginEgress) {
+  return definePluginTool({
+    annotations: {
+      destructiveHint: true,
+      idempotentHint: false,
+      openWorldHint: true,
+      readOnlyHint: false,
+    },
+    description:
+      "Submit a GitHub pull request review as a comment or change request. Use this instead of `gh pr review`, GraphQL, or direct REST calls. Junior cannot approve pull requests.",
+    exposure: "direct",
+    inputSchema,
+    outputSchema,
+    async execute(review): Promise<Result> {
+      const repo = parseRepo(review.repo);
+      const comments = review.comments?.map((comment) => ({
+        path: comment.path,
+        body: comment.body,
+        line: comment.line,
+        side: comment.side,
+        ...(comment.startLine !== undefined
+          ? { start_line: comment.startLine }
+          : undefined),
+        ...(comment.startSide !== undefined
+          ? { start_side: comment.startSide }
+          : undefined),
+      }));
+      const response = await egress.fetch({
+        provider: "github",
+        operation: "github.pull.review.create",
+        request: new Request(
+          `https://api.github.com/repos/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.name)}/pulls/${review.number}/reviews`,
+          {
+            method: "POST",
+            headers: {
+              Accept: "application/vnd.github+json",
+              "Content-Type": "application/json",
+              "X-GitHub-Api-Version": "2022-11-28",
+            },
+            body: JSON.stringify({
+              body: review.body,
+              event: review.event,
+              ...(comments ? { comments } : undefined),
+            }),
+          },
+        ),
+      });
+      const parsed = await readJson(response);
+      if (!response.ok) {
+        throwReviewError(response.status, parsed);
+      }
+      const providerResult = z
+        .object({ id: z.number(), html_url: z.string(), state: z.string() })
+        .parse(parsed);
+      return {
+        target: "submitPullRequestReview",
+        repo: repo.ref,
+        number: review.number,
+        reviewId: providerResult.id,
+        state: providerResult.state,
+        url: providerResult.html_url,
+      };
+    },
+  });
+}

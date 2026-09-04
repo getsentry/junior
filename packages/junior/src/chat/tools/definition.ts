@@ -3,6 +3,7 @@ import type { ToolExecutionMode } from "@earendil-works/pi-agent-core";
 import type {
   ToolAnnotations,
   ToolApprovalMetadata,
+  ToolExposure,
 } from "@sentry/junior-plugin-api";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 
@@ -14,7 +15,7 @@ export interface JsonSchemaObject {
 }
 export type ToolInputSchema = TSchema | JsonSchemaObject;
 
-export type ToolExposure = "direct" | "deferred" | "modelOnly" | "hidden";
+export type { ToolExposure };
 
 /** Invocation-specific approval metadata resolved by a trusted host bridge. */
 export interface ToolApprovalResolution {
