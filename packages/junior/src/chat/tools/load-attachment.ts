@@ -54,6 +54,15 @@ export function createLoadAttachmentTool(args: {
       if (!body) {
         throw new ToolInputError("Stored attachment contents are unavailable.");
       }
+      const data = await readStream(body);
+      if (data.byteLength !== attachment.bytes) {
+        // A storage read that returns fewer (or more) bytes than the durable
+        // row expects is corrupt, not a valid empty/short file. Fail loudly
+        // instead of silently writing truncated content to the sandbox.
+        throw new Error(
+          `Attachment ${attachment.id} read ${data.byteLength} bytes, expected ${attachment.bytes}.`,
+        );
+      }
       const attachmentDir = path.posix.join(ATTACHMENT_DIR, attachment.id);
       const sandboxPath = path.posix.join(
         attachmentDir,
@@ -68,9 +77,7 @@ export function createLoadAttachmentTool(args: {
           `Failed to create attachment directory: ${mkdir.stderr}`,
         );
       }
-      await args.workspace.writeFiles([
-        { content: await readStream(body), path: sandboxPath },
-      ]);
+      await args.workspace.writeFiles([{ content: data, path: sandboxPath }]);
       return {
         path: sandboxPath,
         filename: attachment.filename,
