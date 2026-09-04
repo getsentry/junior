@@ -266,7 +266,7 @@ const GITHUB_BODY_WRITES = [
     restPath: /^\/repos\/[^/]+\/[^/]+\/pulls$/,
   },
   {
-    denialMessage: `GitHub pull request reviews must use the github_submitPullRequestReview tool. It uses POST /repos/{owner}/{repo}/pulls/{number}/reviews instead of a GraphQL mutation. ${CREATE_TOOL_ROUTING_GUIDANCE}`,
+    denialMessage: `GitHub pull request reviews must use the github_submitPullRequestReview tool. The tool posts to /repos/{owner}/{repo}/pulls/{number}/reviews. ${CREATE_TOOL_ROUTING_GUIDANCE}`,
     graphqlField: "addPullRequestReview",
     method: "POST",
     operation: "github.pull.review.create",
@@ -480,7 +480,7 @@ function requireRepositoryTarget(upstreamUrl: URL): void {
     return;
   }
   throw new EgressPolicyDenied(
-    "GitHub write request does not identify a target repository. Use a repository REST path such as /repos/{owner}/{repo}/... or the typed GitHub tool for the operation.",
+    "GitHub write request has no repository in its URL. Use a /repos/{owner}/{repo}/... URL or a GitHub tool for the operation.",
   );
 }
 
@@ -561,7 +561,7 @@ export async function githubGrantForEgress(
   if (graphqlAccess) {
     if (graphqlAccess === "write") {
       throw new EgressPolicyDenied(
-        "GitHub GraphQL mutations are not enabled for runtime credentials. Use the matching typed GitHub tool or an allowlisted REST endpoint instead. For pull request reviews, use github_submitPullRequestReview or POST /repos/{owner}/{repo}/pulls/{number}/reviews.",
+        "GitHub GraphQL mutations are not enabled for runtime credentials. Use the matching GitHub tool or a supported REST endpoint. For pull request reviews, use github_submitPullRequestReview. It posts to /repos/{owner}/{repo}/pulls/{number}/reviews.",
       );
     }
     return grantForAccess(
@@ -574,7 +574,7 @@ export async function githubGrantForEgress(
   const access = HTTP_READ_METHODS.has(method) ? "read" : "write";
   if (access === "write") {
     throw new EgressPolicyDenied(
-      "GitHub write request is not an explicitly allowed Junior operation. Use the matching typed GitHub tool or an allowlisted REST endpoint instead.",
+      "Junior does not support this GitHub write request. Use the matching GitHub tool or a supported REST endpoint.",
     );
   }
   return grantForAccess(access, "github.api-read", "installation-read");

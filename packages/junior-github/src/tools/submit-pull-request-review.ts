@@ -84,17 +84,17 @@ async function readJson(response: Response): Promise<unknown> {
   }
 }
 
-function githubError(payload: unknown): string {
-  if (payload && typeof payload === "object" && !Array.isArray(payload)) {
-    const message = (payload as { message?: unknown }).message;
+function githubError(body: unknown): string {
+  if (body && typeof body === "object" && !Array.isArray(body)) {
+    const message = (body as { message?: unknown }).message;
     if (typeof message === "string" && message.trim()) return message.trim();
   }
-  if (typeof payload === "string" && payload.trim()) return payload.trim();
+  if (typeof body === "string" && body.trim()) return body.trim();
   return "GitHub request failed";
 }
 
-function throwReviewError(status: number, payload: unknown): never {
-  const message = `GitHub pull request review failed with HTTP ${status}: ${githubError(payload)}`;
+function throwReviewError(status: number, body: unknown): never {
+  const message = `GitHub pull request review failed with HTTP ${status}: ${githubError(body)}`;
   if (status === 404 || status === 422) {
     throw new PluginToolInputError(message);
   }
@@ -102,30 +102,20 @@ function throwReviewError(status: number, payload: unknown): never {
 }
 
 /** Submit a comment or change-request review through GitHub's REST API. */
-export function createGitHubSubmitPullRequestReviewTool(ctx: {
-  egress: PluginEgress;
-}) {
+export function createGitHubSubmitPullRequestReviewTool(egress: PluginEgress) {
   return definePluginTool({
     annotations: {
-      destructiveHint: false,
+      destructiveHint: true,
       idempotentHint: false,
       openWorldHint: true,
       readOnlyHint: false,
     },
     description:
-      "Submit a GitHub pull request review as COMMENT or REQUEST_CHANGES. Use this instead of `gh pr review`, GraphQL, or raw REST. Junior cannot approve pull requests.",
+      "Submit a GitHub pull request review as a comment or change request. Use this instead of `gh pr review`, GraphQL, or direct REST calls. Junior cannot approve pull requests.",
     exposure: "direct",
     inputSchema,
     outputSchema,
-    async execute(input): Promise<Result> {
-      const parsedInput = inputSchema.safeParse(input);
-      if (!parsedInput.success) {
-        throw new PluginToolInputError(
-          "Invalid GitHub submitPullRequestReview input.",
-          { cause: parsedInput.error },
-        );
-      }
-      const review = parsedInput.data;
+    async execute(review): Promise<Result> {
       const repo = parseRepo(review.repo);
       const comments = review.comments?.map((comment) => ({
         path: comment.path,
@@ -139,7 +129,7 @@ export function createGitHubSubmitPullRequestReviewTool(ctx: {
           ? { start_side: comment.startSide }
           : undefined),
       }));
-      const response = await ctx.egress.fetch({
+      const response = await egress.fetch({
         provider: "github",
         operation: "github.pull.review.create",
         request: new Request(

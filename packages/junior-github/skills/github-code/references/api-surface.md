@@ -1,10 +1,10 @@
-# GitHub API surface — code and pull requests
+# GitHub commands and permissions
 
-PR create, update, review submit, and review-thread resolve use the tools in `SKILL.md`. Other supported writes use allowlisted REST through `gh api`. Do not use GraphQL mutations.
+Use the tools in `SKILL.md` to create or update a PR, submit a review, or resolve a review thread. Use supported REST endpoints for other writes. Do not use GraphQL mutations.
 
 ## Repo targeting
 
-When the user omits `owner/repo`, resolve with standalone `jr-rpc config get github.repo`, then pass `--repo owner/repo` on the next `gh`/`git` command. Explicit repo flags target the command; they are not a credential scope.
+If the user omits `owner/repo`, run `jr-rpc config get github.repo`. Then pass `--repo owner/repo` to `gh`.
 
 ## Permissions
 
@@ -16,7 +16,7 @@ When the user omits `owner/repo`, resolve with standalone `jr-rpc config get git
 | `github.contents.write`      | Git smart-HTTP `git push` only                                                       |
 | `github.workflows.write`     | Workflow-file changes on push                                                        |
 | `github.pull-requests.read`  | `gh pr view`, `gh pr list`, `gh pr diff`, `gh pr checks`                             |
-| `github.pull-requests.write` | Typed PR create and allowlisted REST PR lifecycle                                    |
+| `github.pull-requests.write` | GitHub tools and supported REST writes                                               |
 
 ## Commands
 
@@ -47,10 +47,10 @@ When the user omits `owner/repo`, resolve with standalone `jr-rpc config get git
 ## Notes
 
 - Prefer `--json` where available. Pass clone flags after `--`.
-- Local commit does not call GitHub. Push uses installation credentials (`contents.write`; workflow files also need `workflows.write`).
-- Before history-dependent git work, deepen shallow clones; never force-push around missing ancestry.
-- Push head and resolve default `base` before `github_createPullRequest`.
-- Denied: merge, forks, REST contents/Git database writes, repo admin, raw PR update/review writes, and raw GraphQL mutations.
-- Reviews and inline comments post as the App bot via `installation-write`.
+- A local commit does not call GitHub. A push uses installation credentials. Workflow changes also need `workflows.write`.
+- Deepen a shallow clone before work that needs old history. Do not force-push to work around missing history.
+- Push `head` and read the default `base` before `github_createPullRequest`.
+- Junior does not support merges, forks, repository administration, REST content or Git database writes, direct PR update or review writes, or GraphQL mutations.
+- Reviews and inline comments use the App bot.
 - PR comments/labels/assignees use issue endpoints; load `github-issues` for those.
 - Embed local images with `publishImage` first (public URL). Do not use private Slack file links.

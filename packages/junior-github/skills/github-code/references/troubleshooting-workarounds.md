@@ -1,34 +1,32 @@
-# GitHub CLI troubleshooting — code and pull requests
+# GitHub troubleshooting
 
-| Symptom                                             | Likely cause                          | Fix                                                                 |
-| --------------------------------------------------- | ------------------------------------- | ------------------------------------------------------------------- |
-| `unknown command` from `gh`                         | Runtime `gh` missing or too old       | Report GitHub plugin runtime dependency unavailable                 |
-| `unknown flag: --depth` on clone                    | Clone flags before `--`               | `gh repo clone owner/repo -- --depth=1`                             |
-| Missing `--repo`                                    | No explicit target                    | Resolve `github.repo`, pass `--repo owner/repo`                     |
-| Wrong repo authenticated                            | Stale default                         | Pass `--repo owner/repo` or update `github.repo`                    |
-| GraphQL: could not resolve repository               | Bad slug or no access                 | Validate `owner/repo` and App install                               |
-| 401 Unauthorized                                    | Credential rejected                   | Confirm target; distinguish user OAuth vs installation setup        |
-| `junior-auth-required` `user-write`                 | Missing/stale user OAuth              | Follow private OAuth prompt; never ask for pasted tokens            |
-| `git push` 401/403                                  | Install scope, remote, or permissions | Verify remote/repo, retry once, then report install scope           |
-| `permission_denied` `source: "upstream"`            | GitHub 403 after inject               | Not a local runtime block; use grant/account/SSO fields             |
-| 403 without upstream `permission_denied`            | Local policy denial                   | Read body; follow required-tool guidance                            |
-| `Token scopes: none` on `gh auth status`            | Normal for App user tokens            | Use App permissions / accepted-permissions headers                  |
-| `github_createPullRequest` 401/403                  | Install/repo lacks write              | Report install scope; do not fall back to user OAuth                |
-| Create PR 422 on `head`                             | Branch not pushed                     | Push branch; retry with explicit head/base                          |
-| Create/update PR 422 on `base`                      | Base missing                          | Resolve default branch; retry                                       |
-| 403 names `github_updatePullRequest`                | Raw PR PATCH blocked                  | Use `github_updatePullRequest`                                      |
-| GraphQL mutations not enabled during PR review      | `gh pr review` uses GraphQL           | Use `github_submitPullRequestReview`                                |
-| GraphQL mutations not enabled during thread resolve | Raw resolve blocked                   | Use `github_resolvePullRequestReviewThread` (bot-authored PRs only) |
-| Missing blame/old history                           | Shallow clone                         | Deepen needed refs; `--unshallow` only if required                  |
-| Odd ancestry / rebase fails                         | Base ref missing locally              | Fetch `BASE:refs/remotes/origin/BASE`, deepen, use `origin/BASE`    |
-| Missing deps in tests                               | Not installed                         | Frozen/immutable install for the lockfile; do not rewrite lockfile  |
-| Frozen install fails                                | Drift or registry                     | Report exact failure                                                |
-| `dnf install gh failed`                             | Plugin bootstrap                      | Report runtime bootstrap failure; do not repair from skill          |
+| Problem                                                    | Action                                                                                    |
+| ---------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `gh` reports an unknown command                            | Report that the GitHub plugin is unavailable. Do not install it.                          |
+| Clone rejects `--depth`                                    | Put clone flags after `--`: `gh repo clone owner/repo -- --depth=1`.                      |
+| Repository is missing or wrong                             | Read `github.repo`, then pass `--repo owner/repo`.                                        |
+| GraphQL cannot find the repository                         | Check `owner/repo` and the GitHub App installation.                                       |
+| `junior-auth-required` with `user-write`                   | Follow the private OAuth prompt. Never ask for a pasted token.                            |
+| `git push` returns 401 or 403                              | Check the remote and repository. Retry once, then report the installation access failure. |
+| `permission_denied` has `source: "upstream"`               | GitHub rejected the request. Report the grant, account, or SSO details.                   |
+| Other 403 response                                         | Read the error and use the tool it names.                                                 |
+| `gh auth status` shows no token scopes                     | This is normal for GitHub App user tokens. Check App permissions instead.                 |
+| `github_createPullRequest` returns 401 or 403              | Report the installation access failure. Do not use user OAuth.                            |
+| PR creation returns 422 for `head`                         | Push the branch, then retry with explicit `head` and `base`.                              |
+| PR create or update returns 422 for `base`                 | Read the default branch, then retry.                                                      |
+| 403 names `github_updatePullRequest`                       | Use `github_updatePullRequest`.                                                           |
+| PR review reports blocked GraphQL mutations                | Use `github_submitPullRequestReview`.                                                     |
+| Review-thread resolution reports blocked GraphQL mutations | Use `github_resolvePullRequestReviewThread`. It works only on bot-authored PRs.           |
+| Blame or old history is missing                            | Deepen the needed refs. Unshallow only when required.                                     |
+| Rebase has missing ancestry                                | Fetch `BASE:refs/remotes/origin/BASE`, deepen it, and use `origin/BASE`.                  |
+| Dependencies are missing                                   | Run the frozen install. Do not change the lockfile.                                       |
+| Frozen install fails                                       | Report the exact failure.                                                                 |
+| Plugin setup fails                                         | Report the setup failure. Do not repair it from the skill.                                |
 
 ## Retry rules
 
-- Retry once for transient transport after verifying repo context.
-- Do not loop on repeated 401/403/404 validation errors.
-- `user-read`/`user-write` gaps → private App OAuth. `installation-*` failures → App permission/install/host setup only.
-- Prefer `permission_denied` structured fields over guessing.
-- Persistent permission problems: report remediation and stop.
+- Retry a transport failure once after you check the repository.
+- Do not repeat 401, 403, 404, or validation failures.
+- A `user-read` or `user-write` failure needs private App OAuth.
+- An `installation-*` failure needs an App permission or installation fix.
+- Use structured `permission_denied` details when present.

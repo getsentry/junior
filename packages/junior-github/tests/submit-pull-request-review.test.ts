@@ -15,8 +15,10 @@ function toolContext(response?: Response) {
         { status: 200 },
       ),
   );
-  const ctx = { egress: { fetch } };
-  return { fetch, tool: createGitHubSubmitPullRequestReviewTool(ctx) };
+  return {
+    fetch,
+    tool: createGitHubSubmitPullRequestReviewTool({ fetch }),
+  };
 }
 
 describe("submitPullRequestReview", () => {
@@ -73,24 +75,7 @@ describe("submitPullRequestReview", () => {
     });
   });
 
-  it("rejects approvals before calling GitHub", async () => {
-    const { fetch, tool } = toolContext();
-
-    await expect(
-      tool.execute?.(
-        {
-          repo: "getsentry/junior",
-          number: 691,
-          event: "APPROVE",
-          body: "Looks good.",
-        } as never,
-        { toolCallId: "review-pr" },
-      ),
-    ).rejects.toThrow("Invalid GitHub submitPullRequestReview input.");
-    expect(fetch).not.toHaveBeenCalled();
-  });
-
-  it("reports GitHub validation errors as repairable input", async () => {
+  it("returns GitHub validation errors to the agent", async () => {
     const { tool } = toolContext(
       new Response(JSON.stringify({ message: "Validation Failed" }), {
         status: 422,

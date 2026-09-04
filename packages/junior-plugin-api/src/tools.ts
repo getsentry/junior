@@ -305,6 +305,7 @@ export interface ToolApprovalMetadata<TInput = unknown> {
   describeProposal?(input: TInput): string;
 }
 
+/** Control whether a tool is visible to the model and available in the tool catalog. */
 export type ToolExposure = "direct" | "deferred" | "modelOnly" | "hidden";
 
 export interface PluginToolDefinition<
@@ -314,7 +315,7 @@ export interface PluginToolDefinition<
 > extends ToolApprovalMetadata<TInput> {
   description: string;
   executionMode?: unknown;
-  /** Select whether the host exposes this tool directly or through its catalog. */
+  /** Override the host's default tool exposure. */
   exposure?: ToolExposure;
   inputSchema: unknown;
   outputSchema?: unknown;

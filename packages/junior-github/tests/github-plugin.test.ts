@@ -698,9 +698,7 @@ describe("github plugin", () => {
         method: "POST",
         url: "https://api.github.com/repos/getsentry/junior/forks",
       }),
-    ).rejects.toThrow(
-      "GitHub write request is not an explicitly allowed Junior operation.",
-    );
+    ).rejects.toThrow("Junior does not support this GitHub write request.");
   });
 
   it("uses requesting-user credentials for GitHub user-attachment uploads", async () => {
@@ -722,9 +720,7 @@ describe("github plugin", () => {
         method: "POST",
         url: "https://uploads.github.com/unrelated",
       }),
-    ).rejects.toThrow(
-      "GitHub write request is not an explicitly allowed Junior operation.",
-    );
+    ).rejects.toThrow("Junior does not support this GitHub write request.");
   });
 
   it("allows workflow dispatch, rerun, and cancellation", async () => {
@@ -2130,9 +2126,7 @@ Conversation: \`local:test:old-conversation\`
         method: "POST",
         url: "https://api.github.com/repos/getsentry/junior/git/blobs",
       }),
-    ).rejects.toThrow(
-      "GitHub write request is not an explicitly allowed Junior operation.",
-    );
+    ).rejects.toThrow("Junior does not support this GitHub write request.");
   });
 
   it("treats pull request review writes as bot-owned installation identity", async () => {
@@ -2225,9 +2219,7 @@ Conversation: \`local:test:old-conversation\`
         method: "PUT",
         url: "https://api.github.com/repos/getsentry/junior/pulls/780/merge",
       }),
-    ).rejects.toThrow(
-      "GitHub write request is not an explicitly allowed Junior operation.",
-    );
+    ).rejects.toThrow("Junior does not support this GitHub write request.");
   });
 
   it("denies GitHub pull request approvals while allowing non-approve reviews", async () => {

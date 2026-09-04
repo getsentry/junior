@@ -34,7 +34,9 @@ export function createGitHubTools(
     getRepository: createGitHubGetRepositoryTool(ctx),
     resolvePullRequestReviewThread:
       createGitHubResolvePullRequestReviewThreadTool(ctx, botEmail),
-    submitPullRequestReview: createGitHubSubmitPullRequestReviewTool(ctx),
+    submitPullRequestReview: createGitHubSubmitPullRequestReviewTool(
+      ctx.egress,
+    ),
     updateIssue: createGitHubUpdateIssueTool(ctx),
     updatePullRequest: createGitHubUpdatePullRequestTool(ctx),
   };
