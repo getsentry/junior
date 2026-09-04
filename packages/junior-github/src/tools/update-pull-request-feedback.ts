@@ -20,6 +20,7 @@ const STATUS_TO_REACTION_CONTENT = {
   declined: "-1",
 } as const;
 type FeedbackStatus = keyof typeof STATUS_TO_REACTION_CONTENT;
+type PullRequestCommentKind = "conversation" | "review";
 
 const inputSchema = z
   .object({
@@ -67,15 +68,24 @@ function parseRepo(value: string) {
   return { owner: parts[0], name: parts[1], ref: `${parts[0]}/${parts[1]}` };
 }
 
-function reactionsUrl(
-  repo: { owner: string; name: string },
-  commentKind: "conversation" | "review",
-  commentId: number,
-): string {
+/** Build the GitHub API path for one pull request comment's reactions. */
+export function pullRequestCommentReactionsPath(input: {
+  owner: string;
+  name: string;
+  commentKind: PullRequestCommentKind;
+  commentId: number;
+}): string {
   // Conversation comments live under the issues endpoint; inline review
   // comments live under the pulls endpoint. GitHub has no shared path.
-  const segment = commentKind === "conversation" ? "issues" : "pulls";
-  return `https://api.github.com/repos/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.name)}/${segment}/comments/${commentId}/reactions`;
+  const segment = input.commentKind === "conversation" ? "issues" : "pulls";
+  return `/repos/${encodeURIComponent(input.owner)}/${encodeURIComponent(input.name)}/${segment}/comments/${input.commentId}/reactions`;
+}
+
+/** Return the GitHub reaction content for one feedback status. */
+export function pullRequestFeedbackReactionContent(
+  status: FeedbackStatus,
+): (typeof STATUS_TO_REACTION_CONTENT)[FeedbackStatus] {
+  return STATUS_TO_REACTION_CONTENT[status];
 }
 
 async function readJson(response: Response): Promise<unknown> {
@@ -135,8 +145,13 @@ export function createGitHubUpdatePullRequestFeedbackTool(
       if (botUserId === undefined) {
         throw new Error("GitHub App bot identity is not configured.");
       }
-      const targetContent = STATUS_TO_REACTION_CONTENT[status];
-      const baseUrl = reactionsUrl(repo, commentKind, commentId);
+      const targetContent = pullRequestFeedbackReactionContent(status);
+      const baseUrl = `https://api.github.com${pullRequestCommentReactionsPath({
+        owner: repo.owner,
+        name: repo.name,
+        commentKind,
+        commentId,
+      })}`;
 
       const listResponse = await ctx.egress.fetch({
         provider: "github",

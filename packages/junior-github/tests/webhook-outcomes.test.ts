@@ -291,6 +291,9 @@ function webhookRoute(
     annotation: ConversationAnnotationInput;
     conversationId: string;
   }> = [],
+  markPullRequestFeedbackReviewing: Parameters<
+    typeof createGitHubWebhookRoute
+  >[0]["markPullRequestFeedbackReviewing"] = async () => {},
 ) {
   return createGitHubWebhookRoute({
     annotations: {
@@ -317,6 +320,7 @@ function webhookRoute(
     installationId: () => "456",
     installationIdEnv: "GITHUB_INSTALLATION_ID",
     log: { error },
+    markPullRequestFeedbackReviewing,
     privateKeyEnv: "GITHUB_APP_PRIVATE_KEY",
     resourceEvents: {
       async publish(event) {
@@ -668,7 +672,10 @@ describe("GitHub webhook resource events", () => {
               "https://github.com/getsentry/junior/commit/abcdef1234567890/checks?check_suite_id=99",
             id: 99,
             latest_check_runs_count: 3,
-            pull_requests: [checkSuitePullRequest(946), checkSuitePullRequest(947)],
+            pull_requests: [
+              checkSuitePullRequest(946),
+              checkSuitePullRequest(947),
+            ],
           },
         },
         expected: [
@@ -791,7 +798,14 @@ describe("GitHub webhook resource events", () => {
             head_branch: "feature/checks",
             head_sha: "abcdef1234567890",
             id: 66,
-            pull_requests: [checkSuitePullRequest(946, "getsentry/junior", 1, "feature/checks")],
+            pull_requests: [
+              checkSuitePullRequest(
+                946,
+                "getsentry/junior",
+                1,
+                "feature/checks",
+              ),
+            ],
           },
         },
         deliveryId: "delivery-head-branch",
@@ -852,7 +866,10 @@ describe("GitHub webhook resource events", () => {
             conclusion: "success",
             head_sha: "abcdef1234567890",
             id: 7,
-            pull_requests: [checkSuitePullRequest(10), checkSuitePullRequest(11)],
+            pull_requests: [
+              checkSuitePullRequest(10),
+              checkSuitePullRequest(11),
+            ],
           },
         },
         deliveryId: "delivery-recovered",
@@ -972,7 +989,8 @@ describe("GitHub webhook resource events", () => {
       }),
     ).toEqual([
       {
-        eventKey: "github:delivery-check-suite-facts:pull_request.checks.failed:691",
+        eventKey:
+          "github:delivery-check-suite-facts:pull_request.checks.failed:691",
         eventType: "pull_request.checks.failed",
         occurredAtMs: 1_000,
         identifier: "getsentry/junior#691",
@@ -1007,7 +1025,8 @@ describe("GitHub webhook resource events", () => {
         ].join("\n"),
       },
       {
-        eventKey: "github:delivery-check-suite-facts:pull_request.checks.failed:691",
+        eventKey:
+          "github:delivery-check-suite-facts:pull_request.checks.failed:691",
         eventType: "pull_request.checks.failed",
         occurredAtMs: 1_000,
         identifier: "getsentry/junior",
@@ -1149,7 +1168,9 @@ describe("GitHub webhook resource events", () => {
           conclusion: "success",
           head_sha: "8105236768dd1da43379152ee11900be8983ae03",
           id: 89021857045,
-          pull_requests: [checkSuitePullRequest(999001, "getsentry/sentry", 873328)],
+          pull_requests: [
+            checkSuitePullRequest(999001, "getsentry/sentry", 873328),
+          ],
         },
       }),
     ).toBeUndefined();
@@ -1210,7 +1231,10 @@ describe("GitHub webhook resource events", () => {
             conclusion: "success",
             head_sha: "abcdef1234567890",
             id: 7,
-            pull_requests: [checkSuitePullRequest(10), checkSuitePullRequest(11)],
+            pull_requests: [
+              checkSuitePullRequest(10),
+              checkSuitePullRequest(11),
+            ],
           },
         },
         { loadPullRequestFacts: true },
@@ -1268,7 +1292,8 @@ describe("GitHub webhook resource events", () => {
       }),
     ).toEqual([
       {
-        eventKey: "github:delivery-match-facts:pull_request.checks.recovered:10",
+        eventKey:
+          "github:delivery-match-facts:pull_request.checks.recovered:10",
         eventType: "pull_request.checks.recovered",
         occurredAtMs: 1_000,
         identifier: "getsentry/junior#10",
@@ -1289,7 +1314,8 @@ describe("GitHub webhook resource events", () => {
         },
       },
       {
-        eventKey: "github:delivery-match-facts:pull_request.checks.recovered:10",
+        eventKey:
+          "github:delivery-match-facts:pull_request.checks.recovered:10",
         eventType: "pull_request.checks.recovered",
         occurredAtMs: 1_000,
         identifier: "getsentry/junior",
@@ -1706,6 +1732,53 @@ describe("GitHub-owned pull request outcomes", () => {
           pullRequestId: "legacy-pr",
         }),
       ]);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("marks pull request comments before publishing their resource events", async () => {
+    const fixture = await createGitHubFixture();
+    const published: ResourceEventInput[] = [];
+    const markPullRequestFeedbackReviewing = vi.fn(async () => {
+      expect(published).toEqual([]);
+    });
+    try {
+      const route = webhookRoute(
+        fixture,
+        published,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        markPullRequestFeedbackReviewing,
+      );
+      const response = await route.handler(
+        signedRequest(
+          {
+            action: "created",
+            repository: { full_name: "getsentry/junior" },
+            issue: {
+              number: 946,
+              pull_request: { url: "https://api.github.com/pulls/946" },
+            },
+            comment: {
+              body: "please revise",
+              id: 101,
+              user: { login: "reviewer" },
+            },
+          },
+          "issue_comment",
+        ),
+      );
+
+      expect(response.status).toBe(202);
+      expect(markPullRequestFeedbackReviewing).toHaveBeenCalledWith({
+        commentId: 101,
+        commentKind: "conversation",
+        repo: "getsentry/junior",
+      });
+      expect(published).toHaveLength(2);
     } finally {
       await fixture.close();
     }

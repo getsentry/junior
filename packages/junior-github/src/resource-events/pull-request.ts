@@ -23,13 +23,13 @@ const GITHUB_PULL_REQUEST_EVENT_GUIDANCE: Partial<
   Record<GitHubPullRequestEvent, string>
 > = {
   "pull_request.comment.created":
-    "Treat this as feedback only when it identifies a problem or requests a code change. For feedback, first set reviewing with github_updatePullRequestFeedback and the verified commentId and commentKind. After you act, set addressed or declined. Do not react to non-feedback comments.",
+    "The webhook has already marked this comment as reviewing. Treat it as feedback only when it identifies a problem or requests a code change. After you act on feedback, set addressed or declined with github_updatePullRequestFeedback and the verified commentId and commentKind.",
   "pull_request.review.changes_requested":
-    "Inspect the requested changes and inline comments. For each actionable comment-level feedback event, set reviewing before analysis, then addressed or declined after you act. Resolve an inline review thread with github_resolvePullRequestReviewThread after you address or decline its feedback.",
+    "Inspect the requested changes and inline comments. The webhook marks each comment-level event as reviewing. After you act on actionable feedback, set addressed or declined. Resolve its inline review thread with github_resolvePullRequestReviewThread.",
   "pull_request.review.commented":
-    "Treat this as feedback only when it identifies a problem or requests a code change. For each actionable comment-level feedback event, set reviewing before analysis, then addressed or declined after you act. Resolve an inline review thread after you address or decline its feedback.",
+    "Treat this as feedback only when it identifies a problem or requests a code change. The webhook marks each comment-level event as reviewing. After you act on actionable feedback, set addressed or declined and resolve its inline review thread.",
   "pull_request.review_comment.created":
-    "Treat this as feedback only when it identifies a problem or requests a code change. For feedback, first set reviewing with github_updatePullRequestFeedback and the verified commentId and commentKind. After you act, set addressed or declined, then resolve the thread with github_resolvePullRequestReviewThread.",
+    "The webhook has already marked this inline comment as reviewing. Treat it as feedback only when it identifies a problem or requests a code change. After you act on feedback, set addressed or declined with github_updatePullRequestFeedback and the verified commentId and commentKind, then resolve the thread with github_resolvePullRequestReviewThread.",
 };
 
 /** Combine provider defaults with app guidance for pull request events. */
@@ -72,24 +72,25 @@ export const GITHUB_PULL_REQUEST_SUGGESTED_EVENTS = [
 ] as const;
 
 /** Exact values GitHub may set on pull request event data. Missing keys do not match. */
-export const GITHUB_PULL_REQUEST_MATCH_FIELDS = resourceEventMatchFieldsSchema.parse({
-  authorEmail: {
-    kind: "string",
-    description: "pull request author email when GitHub sends it",
-  },
-  authorUsername: {
-    kind: "string",
-    description: "pull request author login",
-  },
-  headBranch: {
-    kind: "string",
-    description: "head branch name from the webhook",
-  },
-  isDraft: {
-    kind: "boolean",
-    description: "true when the pull request is a draft",
-  },
-});
+export const GITHUB_PULL_REQUEST_MATCH_FIELDS =
+  resourceEventMatchFieldsSchema.parse({
+    authorEmail: {
+      kind: "string",
+      description: "pull request author email when GitHub sends it",
+    },
+    authorUsername: {
+      kind: "string",
+      description: "pull request author login",
+    },
+    headBranch: {
+      kind: "string",
+      description: "head branch name from the webhook",
+    },
+    isDraft: {
+      kind: "boolean",
+      description: "true when the pull request is a draft",
+    },
+  });
 
 /** Build the stable pull request identity shared by tools and webhooks. */
 export function gitHubPullRequestResource(input: {
@@ -117,7 +118,9 @@ export function gitHubPullRequestSubscribable(input: {
   );
   return {
     ...gitHubPullRequestResource(input),
-    ...(suggestedEvents.length > 0 ? { suggestedEvents: [...suggestedEvents] } : undefined),
+    ...(suggestedEvents.length > 0
+      ? { suggestedEvents: [...suggestedEvents] }
+      : undefined),
     supportedEvents: [...GITHUB_PULL_REQUEST_EVENTS],
     type: "pull_request",
   };
