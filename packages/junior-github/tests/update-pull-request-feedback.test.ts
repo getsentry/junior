@@ -29,6 +29,10 @@ function toolContext(responses: Response[]) {
 }
 
 describe("updatePullRequestFeedback", () => {
+  it("is directly available to resource-event turns", () => {
+    expect(toolContext([]).tool.exposure).toBe("direct");
+  });
+
   it("adds the eyes reaction for a fresh conversation comment", async () => {
     const { fetch, tool } = toolContext([
       response([]),

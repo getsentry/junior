@@ -23,13 +23,9 @@ const GITHUB_PULL_REQUEST_EVENT_GUIDANCE: Partial<
   Record<GitHubPullRequestEvent, string>
 > = {
   "pull_request.comment.created":
-    "The webhook has already marked this comment as reviewing. Treat it as feedback only when it identifies a problem or requests a code change. After you act on feedback, set addressed or declined with github_updatePullRequestFeedback and the verified commentId and commentKind.",
-  "pull_request.review.changes_requested":
-    "Inspect the requested changes and inline comments. The webhook marks each comment-level event as reviewing. After you act on actionable feedback, set addressed or declined. Resolve its inline review thread with github_resolvePullRequestReviewThread.",
-  "pull_request.review.commented":
-    "Treat this as feedback only when it identifies a problem or requests a code change. The webhook marks each comment-level event as reviewing. After you act on actionable feedback, set addressed or declined and resolve its inline review thread.",
+    "After acting on actionable feedback, set it to addressed or declined with github_updatePullRequestFeedback.",
   "pull_request.review_comment.created":
-    "The webhook has already marked this inline comment as reviewing. Treat it as feedback only when it identifies a problem or requests a code change. After you act on feedback, set addressed or declined with github_updatePullRequestFeedback and the verified commentId and commentKind, then resolve the thread with github_resolvePullRequestReviewThread.",
+    "After acting on actionable feedback, set it to addressed or declined with github_updatePullRequestFeedback, then resolve the thread with github_resolvePullRequestReviewThread.",
 };
 
 /** Combine provider defaults with app guidance for pull request events. */
