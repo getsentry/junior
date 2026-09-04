@@ -598,7 +598,11 @@ describe("GitHub webhook resource events", () => {
           action: "created",
           repository: { full_name: "getsentry/junior" },
           issue: { number: 946, pull_request: { url: "https://api.test/pr" } },
-          comment: { body: "please revise", user: { login: "reviewer" } },
+          comment: {
+            body: "please revise",
+            id: 101,
+            user: { login: "reviewer" },
+          },
         },
         expected: [
           {
@@ -608,6 +612,12 @@ describe("GitHub webhook resource events", () => {
             identifier: "getsentry/junior#946",
             trustedSummary:
               "GitHub PR getsentry/junior#946 received a comment from reviewer.",
+            data: {
+              repo: "getsentry/junior",
+              pullRequest: 946,
+              commentId: 101,
+              commentKind: "conversation",
+            },
             untrustedText: "please revise",
           },
         ],
@@ -618,7 +628,12 @@ describe("GitHub webhook resource events", () => {
           action: "created",
           repository: { full_name: "getsentry/junior" },
           pull_request: { number: 946 },
-          comment: { body: "change this line", user: { login: "reviewer" } },
+          comment: {
+            body: "change this line",
+            id: 202,
+            node_id: "PRRC_review_comment",
+            user: { login: "reviewer" },
+          },
         },
         expected: [
           {
@@ -629,6 +644,13 @@ describe("GitHub webhook resource events", () => {
             identifier: "getsentry/junior#946",
             trustedSummary:
               "GitHub PR getsentry/junior#946 received an inline review comment from reviewer.",
+            data: {
+              repo: "getsentry/junior",
+              pullRequest: 946,
+              commentId: 202,
+              commentKind: "review",
+              commentNodeId: "PRRC_review_comment",
+            },
             untrustedText: "change this line",
           },
         ],
@@ -1343,7 +1365,11 @@ describe("GitHub webhook resource events", () => {
           action: "created",
           repository: { full_name: "getsentry/junior" },
           issue: { number: 946 },
-          comment: { body: "ordinary issue", user: { login: "reviewer" } },
+          comment: {
+            body: "ordinary issue",
+            id: 303,
+            user: { login: "reviewer" },
+          },
         },
         deliveryId: "delivery-issue-comment",
         eventName: "issue_comment",

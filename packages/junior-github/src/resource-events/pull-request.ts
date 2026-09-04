@@ -19,6 +19,33 @@ export const GITHUB_PULL_REQUEST_EVENTS = [
 export type GitHubPullRequestEvent =
   (typeof GITHUB_PULL_REQUEST_EVENTS)[number];
 
+const GITHUB_PULL_REQUEST_EVENT_GUIDANCE: Partial<
+  Record<GitHubPullRequestEvent, string>
+> = {
+  "pull_request.comment.created":
+    "Treat this as feedback only when it identifies a problem or requests a code change. For feedback, first set reviewing with github_updatePullRequestFeedback and the verified commentId and commentKind. After you act, set addressed or declined. Do not react to non-feedback comments.",
+  "pull_request.review.changes_requested":
+    "Inspect the requested changes and inline comments. For each actionable comment-level feedback event, set reviewing before analysis, then addressed or declined after you act. Resolve an inline review thread with github_resolvePullRequestReviewThread after you address or decline its feedback.",
+  "pull_request.review.commented":
+    "Treat this as feedback only when it identifies a problem or requests a code change. For each actionable comment-level feedback event, set reviewing before analysis, then addressed or declined after you act. Resolve an inline review thread after you address or decline its feedback.",
+  "pull_request.review_comment.created":
+    "Treat this as feedback only when it identifies a problem or requests a code change. For feedback, first set reviewing with github_updatePullRequestFeedback and the verified commentId and commentKind. After you act, set addressed or declined, then resolve the thread with github_resolvePullRequestReviewThread.",
+};
+
+/** Combine provider defaults with app guidance for pull request events. */
+export function gitHubPullRequestEventGuidance(
+  guidance?: Partial<Record<GitHubPullRequestEvent, string>>,
+): Partial<Record<GitHubPullRequestEvent, string>> {
+  const merged = { ...GITHUB_PULL_REQUEST_EVENT_GUIDANCE };
+  for (const eventType of GITHUB_PULL_REQUEST_EVENTS) {
+    const extra = guidance?.[eventType]?.trim();
+    if (!extra) continue;
+    const base = merged[eventType];
+    merged[eventType] = base ? `${base} ${extra}` : extra;
+  }
+  return merged;
+}
+
 /** App-configured pull request resource event behavior. */
 export interface GitHubPullRequestEventOptions {
   /** App guidance applied within the matching subscription or event task instruction. */

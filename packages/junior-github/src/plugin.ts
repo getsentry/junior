@@ -26,6 +26,7 @@ import {
   GITHUB_PULL_REQUEST_EVENTS,
   GITHUB_PULL_REQUEST_MATCH_FIELDS,
   GITHUB_PULL_REQUEST_SUGGESTED_EVENTS,
+  gitHubPullRequestEventGuidance,
   type GitHubPullRequestEventOptions,
 } from "./resource-events/pull-request.js";
 import {
@@ -157,9 +158,9 @@ export function githubPlugin(
           supportedEvents: [...GITHUB_PULL_REQUEST_EVENTS],
           suggestedEvents: [...GITHUB_PULL_REQUEST_SUGGESTED_EVENTS],
           matchFields: GITHUB_PULL_REQUEST_MATCH_FIELDS,
-          ...(options.pullRequestEvents?.guidance
-            ? { guidance: options.pullRequestEvents.guidance }
-            : undefined),
+          guidance: gitHubPullRequestEventGuidance(
+            options.pullRequestEvents?.guidance,
+          ),
         },
         {
           type: "release_source",
@@ -176,6 +177,9 @@ export function githubPlugin(
             ...GITHUB_PULL_REQUEST_SUGGESTED_EVENTS,
           ],
           matchFields: GITHUB_PULL_REQUEST_MATCH_FIELDS,
+          guidance: gitHubPullRequestEventGuidance(
+            options.pullRequestEvents?.guidance,
+          ),
         },
       ],
       isEnabled: () => Boolean(readEnv("GITHUB_WEBHOOK_SECRET")),

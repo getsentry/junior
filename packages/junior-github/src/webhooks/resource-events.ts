@@ -270,6 +270,7 @@ const issueCommentWebhookSchema = z.object({
   action: z.string(),
   comment: z.object({
     body: z.string(),
+    id: z.number(),
     user: z.object({ login: z.string().optional() }).optional(),
   }),
   issue: z.object({
@@ -305,6 +306,12 @@ function normalizeIssueCommentEvents(
     const data = pullRequestMatchData([
       pullRequestDraftData(parsed.data.issue.draft),
       pullRequestAuthorData(parsed.data.issue.user),
+      {
+        repo: input.repo,
+        pullRequest: input.number,
+        commentId: parsed.data.comment.id,
+        commentKind: "conversation",
+      },
     ]);
     return pullRequestTargets(
       {
@@ -422,6 +429,8 @@ const pullRequestReviewCommentWebhookSchema = z.object({
   action: z.string(),
   comment: z.object({
     body: z.string(),
+    id: z.number(),
+    node_id: z.string().optional(),
     user: z.object({ login: z.string().optional() }).optional(),
   }),
   pull_request: z.object({
@@ -462,6 +471,15 @@ function normalizePullRequestReviewCommentEvent(
     pullRequestDraftData(parsed.data.pull_request.draft),
     pullRequestAuthorData(parsed.data.pull_request.user),
     pullRequestHeadBranchData(parsed.data.pull_request.head?.ref),
+    {
+      repo,
+      pullRequest: parsed.data.pull_request.number,
+      commentId: parsed.data.comment.id,
+      commentKind: "review",
+      ...(parsed.data.comment.node_id
+        ? { commentNodeId: parsed.data.comment.node_id }
+        : undefined),
+    },
   ]);
   return pullRequestTargets(
     {

@@ -570,8 +570,14 @@ describe("github plugin", () => {
       (resourceType) => resourceType.type === "pull_request",
     );
 
-    expect(pullRequest?.guidance).toEqual({
+    expect(pullRequest?.guidance).toMatchObject({
       "pull_request.checks.failed": "Inspect the failed checks.",
+      "pull_request.comment.created": expect.stringContaining(
+        "github_updatePullRequestFeedback",
+      ),
+      "pull_request.review_comment.created": expect.stringContaining(
+        "github_resolvePullRequestReviewThread",
+      ),
     });
     expect(pullRequest?.matchFields).toEqual({
       authorEmail: {
