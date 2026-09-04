@@ -90,7 +90,7 @@ describe("submitPullRequestReview", () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
-  it("includes GitHub's error message when submission fails", async () => {
+  it("reports GitHub validation errors as repairable input", async () => {
     const { tool } = toolContext(
       new Response(JSON.stringify({ message: "Validation Failed" }), {
         status: 422,

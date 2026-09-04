@@ -93,6 +93,14 @@ function githubError(payload: unknown): string {
   return "GitHub request failed";
 }
 
+function throwReviewError(status: number, payload: unknown): never {
+  const message = `GitHub pull request review failed with HTTP ${status}: ${githubError(payload)}`;
+  if (status === 404 || status === 422) {
+    throw new PluginToolInputError(message);
+  }
+  throw new Error(message);
+}
+
 /** Submit a comment or change-request review through GitHub's REST API. */
 export function createGitHubSubmitPullRequestReviewTool(ctx: {
   egress: PluginEgress;
@@ -153,9 +161,7 @@ export function createGitHubSubmitPullRequestReviewTool(ctx: {
       });
       const parsed = await readJson(response);
       if (!response.ok) {
-        throw new Error(
-          `GitHub pull request review failed with HTTP ${response.status}: ${githubError(parsed)}`,
-        );
+        throwReviewError(response.status, parsed);
       }
       const providerResult = z
         .object({ id: z.number(), html_url: z.string(), state: z.string() })

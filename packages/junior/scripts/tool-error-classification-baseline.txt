@@ -17,6 +17,7 @@ packages/junior-github/src/tools/resolve-pull-request-review-thread.ts	throw new
 packages/junior-github/src/tools/resolve-pull-request-review-thread.ts	throw new Error( `GitHub review thread resolution failed with HTTP ${resolveResponse.status}: ${githubError(resolvePayload)}`, );
 packages/junior-github/src/tools/resolve-pull-request-review-thread.ts	throw new Error("GitHub App bot identity is not configured.");
 packages/junior-github/src/tools/resolve-pull-request-review-thread.ts	throw new Error("GitHub did not resolve the requested review thread.");
+packages/junior-github/src/tools/submit-pull-request-review.ts	throw new Error(message);
 packages/junior-github/src/tools/update-issue.ts	throw new Error( `GitHub issue update failed with HTTP ${response.status}: ${githubApiErrorMessage(parsed)}`, );
 packages/junior-github/src/tools/update-pull-request.ts	throw new Error( `GitHub pull request update failed with HTTP ${response.status}: ${githubApiErrorMessage(parsed)}`, );
 packages/junior-gocd/src/tools/pipeline-history.ts	throw new Error( `GoCD pipeline history failed with HTTP ${response.status}`, );
