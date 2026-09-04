@@ -1,4 +1,14 @@
 # Changelog
+## 0.200.0
+
+### New Features ✨
+
+- (github) Add a direct pull request review tool by @sentry-junior in [#1776](https://github.com/getsentry/junior/pull/1776)
+
+### Bug Fixes 🐛
+
+- (dashboard) Isolate mock reporting state between e2e specs by @sentry-junior in [#1775](https://github.com/getsentry/junior/pull/1775)
+
 ## 0.199.0
 
 ### New Features ✨
