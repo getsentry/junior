@@ -13,6 +13,10 @@ import {
   readGrantPermissions,
 } from "./permissions.js";
 import { createGitHubTools } from "./tools.js";
+import {
+  pullRequestCommentReactionsPath,
+  pullRequestFeedbackReactionContent,
+} from "./tools/update-pull-request-feedback.js";
 import { createGitHubWebhookRoute } from "./webhooks/handler.js";
 import {
   GITHUB_DEPLOYMENT_EVENTS,
@@ -26,6 +30,7 @@ import {
   GITHUB_PULL_REQUEST_EVENTS,
   GITHUB_PULL_REQUEST_MATCH_FIELDS,
   GITHUB_PULL_REQUEST_SUGGESTED_EVENTS,
+  gitHubPullRequestEventGuidance,
   type GitHubPullRequestEventOptions,
 } from "./resource-events/pull-request.js";
 import {
@@ -157,9 +162,9 @@ export function githubPlugin(
           supportedEvents: [...GITHUB_PULL_REQUEST_EVENTS],
           suggestedEvents: [...GITHUB_PULL_REQUEST_SUGGESTED_EVENTS],
           matchFields: GITHUB_PULL_REQUEST_MATCH_FIELDS,
-          ...(options.pullRequestEvents?.guidance
-            ? { guidance: options.pullRequestEvents.guidance }
-            : undefined),
+          guidance: gitHubPullRequestEventGuidance(
+            options.pullRequestEvents?.guidance,
+          ),
         },
         {
           type: "release_source",
@@ -168,7 +173,10 @@ export function githubPlugin(
         },
         {
           type: "repository",
-          supportedEvents: [...GITHUB_ISSUE_EVENTS, ...GITHUB_PULL_REQUEST_EVENTS],
+          supportedEvents: [
+            ...GITHUB_ISSUE_EVENTS,
+            ...GITHUB_PULL_REQUEST_EVENTS,
+          ],
           suggestedEvents: [
             "issue.opened",
             "pull_request.opened",
@@ -176,6 +184,9 @@ export function githubPlugin(
             ...GITHUB_PULL_REQUEST_SUGGESTED_EVENTS,
           ],
           matchFields: GITHUB_PULL_REQUEST_MATCH_FIELDS,
+          guidance: gitHubPullRequestEventGuidance(
+            options.pullRequestEvents?.guidance,
+          ),
         },
       ],
       isEnabled: () => Boolean(readEnv("GITHUB_WEBHOOK_SECRET")),
@@ -301,6 +312,36 @@ export function githubPlugin(
             installationId: () => readEnv(installationIdEnv),
             installationIdEnv,
             log: ctx.log,
+            markFeedbackReviewing: async ({ commentId, commentKind, repo }) => {
+              const [owner, name, ...extra] = repo.split("/");
+              if (!owner || !name || extra.length > 0) {
+                throw new Error(
+                  "GitHub pull request feedback received an invalid repository name",
+                );
+              }
+              const token = await issueInstallationToken({
+                appIdEnv,
+                privateKeyEnv,
+                installationIdEnv,
+                repositories: [name],
+              });
+              await githubRequest(
+                "https://api.github.com",
+                pullRequestCommentReactionsPath({
+                  owner,
+                  name,
+                  commentKind,
+                  commentId,
+                }),
+                {
+                  body: {
+                    content: pullRequestFeedbackReactionContent("reviewing"),
+                  },
+                  method: "POST",
+                  token: token.token,
+                },
+              );
+            },
             privateKeyEnv,
             resourceEvents: ctx.resourceEvents,
             webhookSecret: () => readEnv("GITHUB_WEBHOOK_SECRET"),

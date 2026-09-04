@@ -570,8 +570,14 @@ describe("github plugin", () => {
       (resourceType) => resourceType.type === "pull_request",
     );
 
-    expect(pullRequest?.guidance).toEqual({
+    expect(pullRequest?.guidance).toMatchObject({
       "pull_request.checks.failed": "Inspect the failed checks.",
+      "pull_request.comment.created": expect.stringContaining(
+        "exact repo, commentId, and commentKind from Verified details",
+      ),
+      "pull_request.review_comment.created": expect.stringContaining(
+        "github_resolvePullRequestReviewThread",
+      ),
     });
     expect(pullRequest?.matchFields).toEqual({
       authorEmail: {
@@ -1994,7 +2000,7 @@ Conversation: \`local:test:old-conversation\`
     ).rejects.toThrow("GraphQL mutations are not enabled");
   });
 
-  it("routes pull request review mutations and REST writes to the typed tool", async () => {
+  it("routes pull request review and feedback writes to typed tools", async () => {
     await expect(
       grantForEgress({
         method: "POST",
@@ -2013,6 +2019,24 @@ Conversation: \`local:test:old-conversation\`
         }),
       }),
     ).rejects.toThrow("must use the github_submitPullRequestReview tool");
+    await expect(
+      grantForEgress({
+        method: "POST",
+        url: "https://api.github.com/repos/getsentry/junior/issues/comments/404/reactions",
+        bodyText: JSON.stringify({ content: "+1" }),
+      }),
+    ).rejects.toThrow("must use the github_updatePullRequestFeedback tool");
+    await expect(
+      grantForEgress({
+        method: "POST",
+        operation: "github.pull.comment-reaction.create",
+        url: "https://api.github.com/repos/getsentry/junior/issues/comments/404/reactions",
+        bodyText: JSON.stringify({ content: "+1" }),
+      }),
+    ).resolves.toMatchObject({
+      name: "installation-write",
+      access: "write",
+    });
   });
 
   it("denies GitHub GraphQL mutations and unparseable bodies", async () => {

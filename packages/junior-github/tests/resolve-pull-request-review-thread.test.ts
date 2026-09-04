@@ -47,6 +47,10 @@ function threadLookup(overrides?: {
 }
 
 describe("resolvePullRequestReviewThread", () => {
+  it("is directly available to resource-event turns", () => {
+    expect(toolContext([]).tool.exposure).toBe("direct");
+  });
+
   it("verifies Junior ownership by bot user id before resolving the thread", async () => {
     const { fetch, tool } = toolContext([
       threadLookup(),

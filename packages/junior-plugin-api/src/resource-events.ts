@@ -43,8 +43,7 @@ export const resourceTypeSchema = z
     "Canonical plugin-defined resource type, such as issue or pull_request.",
   );
 
-const RESOURCE_EVENT_MATCH_FIELD_NAME =
-  /^[a-z][a-zA-Z0-9]*$/;
+const RESOURCE_EVENT_MATCH_FIELD_NAME = /^[a-z][a-zA-Z0-9]*$/;
 
 /** One exact value a watch or event task may require on trusted event data. */
 export const resourceEventMatchFieldSchema = z
@@ -65,7 +64,10 @@ export const resourceEventMatchFieldSchema = z
   });
 
 export const resourceEventMatchFieldsSchema = z
-  .record(z.string().regex(RESOURCE_EVENT_MATCH_FIELD_NAME), resourceEventMatchFieldSchema)
+  .record(
+    z.string().regex(RESOURCE_EVENT_MATCH_FIELD_NAME),
+    resourceEventMatchFieldSchema,
+  )
   .superRefine((fields, context) => {
     if (Object.keys(fields).length > RESOURCE_EVENT_DATA_MAX_KEYS) {
       context.addIssue({
@@ -306,6 +308,8 @@ export const resourceEventSchema = resourceEventInputSchema.extend({
 export type ResourceEvent = z.output<typeof resourceEventSchema>;
 
 export interface ResourceEventPublisher {
+  /** Return whether an active watch or event task matches this event. */
+  hasMatch?(event: ResourceEventInput): Promise<boolean>;
   /** Publish one normalized event under the owning plugin's namespace. */
   publish(event: ResourceEventInput): Promise<void>;
   /**

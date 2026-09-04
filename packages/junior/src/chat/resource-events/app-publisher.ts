@@ -2,14 +2,21 @@ import type { ResourceEvent } from "@sentry/junior-plugin-api";
 import type { StateAdapter } from "chat";
 import { getDb } from "@/chat/db";
 import { ingestEventTasks } from "@/chat/event-tasks/ingest";
-import { collectEventTaskMatchKeys } from "@/chat/event-tasks/store";
+import {
+  collectEventTaskMatchKeys,
+  findMatchingEventTasks,
+} from "@/chat/event-tasks/store";
 import { ingestResourceEvent } from "@/chat/resource-events/ingest";
-import { collectResourceEventMatchKeys } from "@/chat/resource-events/store";
+import {
+  collectResourceEventMatchKeys,
+  findMatchingResourceEventSubscriptions,
+} from "@/chat/resource-events/store";
 import { createResourceEventTeamIdResolver } from "@/chat/resource-events/workspace";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
 
 export type ResourceEventAppPublisher = {
+  hasMatch(event: ResourceEvent): Promise<boolean>;
   neededMatchKeys(input: {
     eventTypes: string[];
     identifiers: string[];
@@ -29,6 +36,23 @@ export function createResourceEventAppPublisher(args: {
   const resolveEventTaskTeamId = createResourceEventTeamIdResolver();
 
   return {
+    async hasMatch(event) {
+      const work = args.conversationWork();
+      const eventTaskTeamId = await resolveEventTaskTeamId();
+      const [subscriptions, tasks] = await Promise.all([
+        findMatchingResourceEventSubscriptions({
+          data: event.data,
+          eventType: event.eventType,
+          namespace: event.namespace,
+          identifier: event.identifier,
+          state: work.state,
+        }),
+        eventTaskTeamId
+          ? findMatchingEventTasks(getDb(), event, eventTaskTeamId)
+          : Promise.resolve([]),
+      ]);
+      return subscriptions.length > 0 || tasks.length > 0;
+    },
     async neededMatchKeys(input) {
       const work = args.conversationWork();
       const eventTaskTeamId = await resolveEventTaskTeamId();

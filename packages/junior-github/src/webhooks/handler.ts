@@ -5,6 +5,7 @@ import type {
   PluginConversationAnnotations,
   PluginLogger,
   PluginRoute,
+  ResourceEventInput,
   ResourceEventPublisher,
 } from "@sentry/junior-plugin-api";
 import type { GitHubDb } from "../db/database.js";
@@ -85,6 +86,37 @@ function webhookInstallationId(body: unknown): number | undefined {
   return parseInstallationId((installation as { id?: unknown }).id);
 }
 
+interface FeedbackTarget {
+  commentId: number;
+  commentKind: "conversation" | "review";
+  repo: string;
+}
+
+/** Return comment-level pull request feedback that the webhook can mark. */
+function pullRequestFeedbackTarget(
+  events: ResourceEventInput[],
+): FeedbackTarget | undefined {
+  const event = events.find(
+    (candidate) =>
+      candidate.eventType === "pull_request.comment.created" ||
+      candidate.eventType === "pull_request.review_comment.created",
+  );
+  const data = event?.data;
+  if (
+    !data ||
+    typeof data.repo !== "string" ||
+    typeof data.commentId !== "number" ||
+    (data.commentKind !== "conversation" && data.commentKind !== "review")
+  ) {
+    return undefined;
+  }
+  return {
+    commentId: data.commentId,
+    commentKind: data.commentKind,
+    repo: data.repo,
+  };
+}
+
 function githubCodeChange(
   outcome: GitHubPullRequestOutcomeInput,
   conversationIds: string[],
@@ -122,6 +154,7 @@ export function createGitHubWebhookRoute(args: {
   installationId(): string | undefined;
   installationIdEnv: string;
   log?: Pick<PluginLogger, "error">;
+  markFeedbackReviewing(input: FeedbackTarget): Promise<void>;
   privateKeyEnv: string;
   resourceEvents: ResourceEventPublisher;
   webhookSecret(): string | undefined;
@@ -291,12 +324,30 @@ export function createGitHubWebhookRoute(args: {
           : undefined;
       const resourceEvents = normalizeGitHubResourceEvents({
         body,
-        ...(checkSuiteFacts
-          ? { checkSuiteFacts }
-          : undefined),
+        ...(checkSuiteFacts ? { checkSuiteFacts } : undefined),
         deliveryId,
         eventName,
       });
+      const feedbackTarget = pullRequestFeedbackTarget(resourceEvents);
+      const hasMatch = args.resourceEvents.hasMatch;
+      const feedbackHasMatch =
+        feedbackTarget && hasMatch
+          ? (
+              await Promise.all(resourceEvents.map((event) => hasMatch(event)))
+            ).some(Boolean)
+          : false;
+      if (feedbackTarget && feedbackHasMatch) {
+        try {
+          await args.markFeedbackReviewing(feedbackTarget);
+        } catch (error) {
+          args.log?.error("GitHub pull request feedback reaction failed", {
+            commentId: feedbackTarget.commentId,
+            deliveryId,
+            errorType: error instanceof Error ? error.name : "UnknownError",
+            repository: feedbackTarget.repo,
+          });
+        }
+      }
       for (const event of resourceEvents) {
         await args.resourceEvents.publish(event);
       }

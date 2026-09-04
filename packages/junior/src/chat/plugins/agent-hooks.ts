@@ -860,6 +860,7 @@ function requirePublishedResourceEvent(
 /** Collect route handlers exposed by plugins for app-level mounting. */
 export function getPluginRoutes(options: {
   resourceEvents: {
+    hasMatch?(event: ResourceEvent): Promise<boolean>;
     neededMatchKeys?(input: {
       eventTypes: string[];
       identifiers: string[];
@@ -890,6 +891,19 @@ export function getPluginRoutes(options: {
       },
       codeChanges: createCodeChangePublisher(pluginName),
       resourceEvents: {
+        async hasMatch(event) {
+          if (!options.resourceEvents.hasMatch) return false;
+          const parsed = resourceEventInputSchema.parse(event);
+          requirePublishedResourceEvent(plugin, parsed.eventType);
+          return await options.resourceEvents.hasMatch({
+            ...parsed,
+            identifier: normalizeResourceEventIdentifier(
+              plugin.resourceEvents,
+              parsed.identifier,
+            ),
+            namespace: pluginName,
+          });
+        },
         async neededMatchKeys(input) {
           if (!options.resourceEvents.neededMatchKeys) return [];
           const identifiers = [

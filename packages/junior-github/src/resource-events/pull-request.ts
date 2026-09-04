@@ -19,6 +19,29 @@ export const GITHUB_PULL_REQUEST_EVENTS = [
 export type GitHubPullRequestEvent =
   (typeof GITHUB_PULL_REQUEST_EVENTS)[number];
 
+const GITHUB_PULL_REQUEST_EVENT_GUIDANCE: Partial<
+  Record<GitHubPullRequestEvent, string>
+> = {
+  "pull_request.comment.created":
+    'After acting on actionable feedback, call github_updatePullRequestFeedback with the exact repo, commentId, and commentKind from Verified details, and status "addressed" or "declined".',
+  "pull_request.review_comment.created":
+    'After acting on actionable feedback, call github_updatePullRequestFeedback with the exact repo, commentId, and commentKind from Verified details, and status "addressed" or "declined". Then resolve the thread with github_resolvePullRequestReviewThread.',
+};
+
+/** Combine provider defaults with app guidance for pull request events. */
+export function gitHubPullRequestEventGuidance(
+  guidance?: Partial<Record<GitHubPullRequestEvent, string>>,
+): Partial<Record<GitHubPullRequestEvent, string>> {
+  const merged = { ...GITHUB_PULL_REQUEST_EVENT_GUIDANCE };
+  for (const eventType of GITHUB_PULL_REQUEST_EVENTS) {
+    const extra = guidance?.[eventType]?.trim();
+    if (!extra) continue;
+    const base = merged[eventType];
+    merged[eventType] = base ? `${base} ${extra}` : extra;
+  }
+  return merged;
+}
+
 /** App-configured pull request resource event behavior. */
 export interface GitHubPullRequestEventOptions {
   /** App guidance applied within the matching subscription or event task instruction. */
@@ -45,24 +68,25 @@ export const GITHUB_PULL_REQUEST_SUGGESTED_EVENTS = [
 ] as const;
 
 /** Exact values GitHub may set on pull request event data. Missing keys do not match. */
-export const GITHUB_PULL_REQUEST_MATCH_FIELDS = resourceEventMatchFieldsSchema.parse({
-  authorEmail: {
-    kind: "string",
-    description: "pull request author email when GitHub sends it",
-  },
-  authorUsername: {
-    kind: "string",
-    description: "pull request author login",
-  },
-  headBranch: {
-    kind: "string",
-    description: "head branch name from the webhook",
-  },
-  isDraft: {
-    kind: "boolean",
-    description: "true when the pull request is a draft",
-  },
-});
+export const GITHUB_PULL_REQUEST_MATCH_FIELDS =
+  resourceEventMatchFieldsSchema.parse({
+    authorEmail: {
+      kind: "string",
+      description: "pull request author email when GitHub sends it",
+    },
+    authorUsername: {
+      kind: "string",
+      description: "pull request author login",
+    },
+    headBranch: {
+      kind: "string",
+      description: "head branch name from the webhook",
+    },
+    isDraft: {
+      kind: "boolean",
+      description: "true when the pull request is a draft",
+    },
+  });
 
 /** Build the stable pull request identity shared by tools and webhooks. */
 export function gitHubPullRequestResource(input: {
@@ -90,7 +114,9 @@ export function gitHubPullRequestSubscribable(input: {
   );
   return {
     ...gitHubPullRequestResource(input),
-    ...(suggestedEvents.length > 0 ? { suggestedEvents: [...suggestedEvents] } : undefined),
+    ...(suggestedEvents.length > 0
+      ? { suggestedEvents: [...suggestedEvents] }
+      : undefined),
     supportedEvents: [...GITHUB_PULL_REQUEST_EVENTS],
     type: "pull_request",
   };

@@ -92,7 +92,8 @@ export function createGitHubResolvePullRequestReviewThreadTool(
       readOnlyHint: false,
     },
     description:
-      "Resolve a GitHub pull request review thread. Use this instead of shelling out to `gh api graphql` for resolveReviewThread (GraphQL-only; no REST or `gh pr` equivalent). Only works on pull requests the bot authored.",
+      "Resolve a GitHub pull request review thread after acting on its feedback. Only works on pull requests the bot authored.",
+    exposure: "direct",
     inputSchema,
     outputSchema,
     async execute(input): Promise<Result> {

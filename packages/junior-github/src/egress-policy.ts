@@ -250,6 +250,9 @@ type GitHubBodyWrite = {
   restPath: RegExp;
 };
 
+const PULL_REQUEST_COMMENT_REACTIONS_PATH =
+  /^\/repos\/[^/]+\/[^/]+\/(issues|pulls)\/comments\/[^/]+\/reactions(?:\/[^/]+)?$/;
+
 const GITHUB_BODY_WRITES = [
   {
     denialMessage: `GitHub issue creation must use the github_createIssue tool so Junior can own idempotency and the conversation footer. ${CREATE_TOOL_ROUTING_GUIDANCE}`,
@@ -373,6 +376,13 @@ function githubApiWriteGrantName(
     // interactive review feedback both post as Junior, not the requesting user.
     return "installation-write";
   }
+  if (
+    (method === "POST" || method === "DELETE") &&
+    PULL_REQUEST_COMMENT_REACTIONS_PATH.test(pathname)
+  ) {
+    // Feedback-status reactions on conversation and inline review comments.
+    return "installation-write";
+  }
   return undefined;
 }
 
@@ -431,6 +441,24 @@ function applyGitHubEgressPolicy(input: {
   operation?: string;
   upstreamUrl: URL;
 }): void {
+  const reactionWrite =
+    isGitHubApiUrl(input.upstreamUrl) &&
+    (input.method === "POST" || input.method === "DELETE") &&
+    PULL_REQUEST_COMMENT_REACTIONS_PATH.test(
+      input.upstreamUrl.pathname.toLowerCase(),
+    );
+  if (reactionWrite) {
+    const expectedOperation =
+      input.method === "POST"
+        ? "github.pull.comment-reaction.create"
+        : "github.pull.comment-reaction.delete";
+    enforceEgressPolicy({
+      allowed: input.operation === expectedOperation,
+      denialMessage:
+        "GitHub pull request feedback reactions must use the github_updatePullRequestFeedback tool.",
+    });
+  }
+
   assertGitHubPullRequestApprovalDenied({
     ...(input.bodyText !== undefined
       ? { bodyText: input.bodyText }

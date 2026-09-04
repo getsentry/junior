@@ -38,6 +38,8 @@ If the user omits `owner/repo`, run `jr-rpc config get github.repo`. Then pass `
 | Ready for review        | `gh api repos/owner/repo/pulls/NUMBER/ready_for_review --method POST`                           |
 | Request reviewers       | `gh api repos/owner/repo/pulls/NUMBER/requested_reviewers --method POST --input reviewers.json` |
 | Submit review           | `github_submitPullRequestReview`                                                                |
+| Set feedback status     | `github_updatePullRequestFeedback`                                                              |
+| Resolve review thread   | `github_resolvePullRequestReviewThread`                                                         |
 | Inline review comment   | `gh api repos/owner/repo/pulls/NUMBER/comments --method POST --input comment.json`              |
 | View PR / checks        | `gh pr view NUMBER --repo owner/repo` / `gh pr checks NUMBER --repo owner/repo`                 |
 | Diff PR                 | `gh pr diff NUMBER --repo owner/repo`                                                           |

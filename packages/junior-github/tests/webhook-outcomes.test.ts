@@ -291,6 +291,10 @@ function webhookRoute(
     annotation: ConversationAnnotationInput;
     conversationId: string;
   }> = [],
+  markFeedbackReviewing: Parameters<
+    typeof createGitHubWebhookRoute
+  >[0]["markFeedbackReviewing"] = async () => {},
+  hasMatch: () => Promise<boolean> = async () => true,
 ) {
   return createGitHubWebhookRoute({
     annotations: {
@@ -317,8 +321,10 @@ function webhookRoute(
     installationId: () => "456",
     installationIdEnv: "GITHUB_INSTALLATION_ID",
     log: { error },
+    markFeedbackReviewing,
     privateKeyEnv: "GITHUB_APP_PRIVATE_KEY",
     resourceEvents: {
+      hasMatch,
       async publish(event) {
         published.push(event);
       },
@@ -598,7 +604,11 @@ describe("GitHub webhook resource events", () => {
           action: "created",
           repository: { full_name: "getsentry/junior" },
           issue: { number: 946, pull_request: { url: "https://api.test/pr" } },
-          comment: { body: "please revise", user: { login: "reviewer" } },
+          comment: {
+            body: "please revise",
+            id: 101,
+            user: { login: "reviewer" },
+          },
         },
         expected: [
           {
@@ -608,6 +618,12 @@ describe("GitHub webhook resource events", () => {
             identifier: "getsentry/junior#946",
             trustedSummary:
               "GitHub PR getsentry/junior#946 received a comment from reviewer.",
+            data: {
+              repo: "getsentry/junior",
+              pullRequest: 946,
+              commentId: 101,
+              commentKind: "conversation",
+            },
             untrustedText: "please revise",
           },
         ],
@@ -618,7 +634,11 @@ describe("GitHub webhook resource events", () => {
           action: "created",
           repository: { full_name: "getsentry/junior" },
           pull_request: { number: 946 },
-          comment: { body: "change this line", user: { login: "reviewer" } },
+          comment: {
+            body: "change this line",
+            id: 202,
+            user: { login: "reviewer" },
+          },
         },
         expected: [
           {
@@ -629,6 +649,12 @@ describe("GitHub webhook resource events", () => {
             identifier: "getsentry/junior#946",
             trustedSummary:
               "GitHub PR getsentry/junior#946 received an inline review comment from reviewer.",
+            data: {
+              repo: "getsentry/junior",
+              pullRequest: 946,
+              commentId: 202,
+              commentKind: "review",
+            },
             untrustedText: "change this line",
           },
         ],
@@ -646,7 +672,10 @@ describe("GitHub webhook resource events", () => {
               "https://github.com/getsentry/junior/commit/abcdef1234567890/checks?check_suite_id=99",
             id: 99,
             latest_check_runs_count: 3,
-            pull_requests: [checkSuitePullRequest(946), checkSuitePullRequest(947)],
+            pull_requests: [
+              checkSuitePullRequest(946),
+              checkSuitePullRequest(947),
+            ],
           },
         },
         expected: [
@@ -769,7 +798,14 @@ describe("GitHub webhook resource events", () => {
             head_branch: "feature/checks",
             head_sha: "abcdef1234567890",
             id: 66,
-            pull_requests: [checkSuitePullRequest(946, "getsentry/junior", 1, "feature/checks")],
+            pull_requests: [
+              checkSuitePullRequest(
+                946,
+                "getsentry/junior",
+                1,
+                "feature/checks",
+              ),
+            ],
           },
         },
         deliveryId: "delivery-head-branch",
@@ -830,7 +866,10 @@ describe("GitHub webhook resource events", () => {
             conclusion: "success",
             head_sha: "abcdef1234567890",
             id: 7,
-            pull_requests: [checkSuitePullRequest(10), checkSuitePullRequest(11)],
+            pull_requests: [
+              checkSuitePullRequest(10),
+              checkSuitePullRequest(11),
+            ],
           },
         },
         deliveryId: "delivery-recovered",
@@ -950,7 +989,8 @@ describe("GitHub webhook resource events", () => {
       }),
     ).toEqual([
       {
-        eventKey: "github:delivery-check-suite-facts:pull_request.checks.failed:691",
+        eventKey:
+          "github:delivery-check-suite-facts:pull_request.checks.failed:691",
         eventType: "pull_request.checks.failed",
         occurredAtMs: 1_000,
         identifier: "getsentry/junior#691",
@@ -985,7 +1025,8 @@ describe("GitHub webhook resource events", () => {
         ].join("\n"),
       },
       {
-        eventKey: "github:delivery-check-suite-facts:pull_request.checks.failed:691",
+        eventKey:
+          "github:delivery-check-suite-facts:pull_request.checks.failed:691",
         eventType: "pull_request.checks.failed",
         occurredAtMs: 1_000,
         identifier: "getsentry/junior",
@@ -1127,7 +1168,9 @@ describe("GitHub webhook resource events", () => {
           conclusion: "success",
           head_sha: "8105236768dd1da43379152ee11900be8983ae03",
           id: 89021857045,
-          pull_requests: [checkSuitePullRequest(999001, "getsentry/sentry", 873328)],
+          pull_requests: [
+            checkSuitePullRequest(999001, "getsentry/sentry", 873328),
+          ],
         },
       }),
     ).toBeUndefined();
@@ -1188,7 +1231,10 @@ describe("GitHub webhook resource events", () => {
             conclusion: "success",
             head_sha: "abcdef1234567890",
             id: 7,
-            pull_requests: [checkSuitePullRequest(10), checkSuitePullRequest(11)],
+            pull_requests: [
+              checkSuitePullRequest(10),
+              checkSuitePullRequest(11),
+            ],
           },
         },
         { loadPullRequestFacts: true },
@@ -1246,7 +1292,8 @@ describe("GitHub webhook resource events", () => {
       }),
     ).toEqual([
       {
-        eventKey: "github:delivery-match-facts:pull_request.checks.recovered:10",
+        eventKey:
+          "github:delivery-match-facts:pull_request.checks.recovered:10",
         eventType: "pull_request.checks.recovered",
         occurredAtMs: 1_000,
         identifier: "getsentry/junior#10",
@@ -1267,7 +1314,8 @@ describe("GitHub webhook resource events", () => {
         },
       },
       {
-        eventKey: "github:delivery-match-facts:pull_request.checks.recovered:10",
+        eventKey:
+          "github:delivery-match-facts:pull_request.checks.recovered:10",
         eventType: "pull_request.checks.recovered",
         occurredAtMs: 1_000,
         identifier: "getsentry/junior",
@@ -1343,7 +1391,11 @@ describe("GitHub webhook resource events", () => {
           action: "created",
           repository: { full_name: "getsentry/junior" },
           issue: { number: 946 },
-          comment: { body: "ordinary issue", user: { login: "reviewer" } },
+          comment: {
+            body: "ordinary issue",
+            id: 303,
+            user: { login: "reviewer" },
+          },
         },
         deliveryId: "delivery-issue-comment",
         eventName: "issue_comment",
@@ -1680,6 +1732,126 @@ describe("GitHub-owned pull request outcomes", () => {
           pullRequestId: "legacy-pr",
         }),
       ]);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("does not mark pull request comments without an event consumer", async () => {
+    const fixture = await createGitHubFixture();
+    const published: ResourceEventInput[] = [];
+    const markFeedbackReviewing = vi.fn(async () => {});
+    try {
+      const route = webhookRoute(
+        fixture,
+        published,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        markFeedbackReviewing,
+        async () => false,
+      );
+      const body = {
+        action: "created",
+        repository: { full_name: "getsentry/junior" },
+        issue: {
+          number: 946,
+          pull_request: { url: "https://api.github.com/pulls/946" },
+        },
+        comment: { body: "status", id: 101 },
+      };
+      expect(
+        (await route.handler(signedRequest(body, "issue_comment"))).status,
+      ).toBe(202);
+      expect(markFeedbackReviewing).not.toHaveBeenCalled();
+      expect(published).toHaveLength(2);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("marks pull request comments before publishing their resource events", async () => {
+    const fixture = await createGitHubFixture();
+    const published: ResourceEventInput[] = [];
+    const markFeedbackReviewing = vi.fn(async () => {
+      expect(published).toEqual([]);
+    });
+    try {
+      const route = webhookRoute(
+        fixture,
+        published,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        markFeedbackReviewing,
+      );
+      const response = await route.handler(
+        signedRequest(
+          {
+            action: "created",
+            repository: { full_name: "getsentry/junior" },
+            issue: {
+              number: 946,
+              pull_request: { url: "https://api.github.com/pulls/946" },
+            },
+            comment: {
+              body: "please revise",
+              id: 101,
+              user: { login: "reviewer" },
+            },
+          },
+          "issue_comment",
+        ),
+      );
+
+      expect(response.status).toBe(202);
+      expect(markFeedbackReviewing).toHaveBeenCalledWith({
+        commentId: 101,
+        commentKind: "conversation",
+        repo: "getsentry/junior",
+      });
+      expect(published).toHaveLength(2);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("publishes comment events when the reviewing reaction fails", async () => {
+    const fixture = await createGitHubFixture();
+    const published: ResourceEventInput[] = [];
+    const errors: string[] = [];
+    try {
+      const route = webhookRoute(
+        fixture,
+        published,
+        undefined,
+        undefined,
+        (message) => errors.push(message),
+        undefined,
+        async () => {
+          throw new Error("reaction unavailable");
+        },
+      );
+      const response = await route.handler(
+        signedRequest(
+          {
+            action: "created",
+            repository: { full_name: "getsentry/junior" },
+            issue: {
+              number: 946,
+              pull_request: { url: "https://api.github.com/pulls/946" },
+            },
+            comment: { body: "please revise", id: 101 },
+          },
+          "issue_comment",
+        ),
+      );
+
+      expect(response.status).toBe(202);
+      expect(published).toHaveLength(2);
+      expect(errors).toEqual(["GitHub pull request feedback reaction failed"]);
     } finally {
       await fixture.close();
     }
