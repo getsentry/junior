@@ -1,11 +1,15 @@
 import { createHash, randomUUID } from "node:crypto";
-import { and, asc, eq, inArray, isNotNull, isNull, or } from "drizzle-orm";
+import { and, asc, eq, inArray, isNotNull, isNull, lte, or } from "drizzle-orm";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { juniorAttachments, juniorConversations } from "@/db/schema";
 import type { SandboxFileUpload } from "@/chat/tools/sandbox/file-uploads";
 import type { AttachmentStorage } from "./storage";
 
+const DAY_MS = 24 * 60 * 60 * 1000;
 const ATTACHMENT_GC_BATCH_LIMIT = 200;
+
+/** Time that Junior keeps attachment bytes after the file is stored. */
+export const ATTACHMENT_RETENTION_MS = 30 * DAY_MS;
 
 export interface StoredAttachment {
   id: string;
@@ -478,10 +482,10 @@ export async function requestAttachmentDeletion(
 /**
  * Delete purged attachments in one bounded batch.
  *
- * Eligible rows are explicitly purge-marked, or owned by a conversation whose
- * transcript is already purged. That second path covers a concurrent store that
- * inserted after purge marked existing rows. Delete object keys first, then
- * remove rows that are still eligible so a failed blob delete remains retryable.
+ * Eligible rows are 30 days old, explicitly purge-marked, or owned by a
+ * conversation whose transcript is already purged. Delete object keys first,
+ * then remove rows that are still eligible so a failed blob delete remains
+ * retryable.
  */
 export async function collectAttachmentGarbage(args: {
   db: JuniorSqlDatabase;
@@ -489,7 +493,7 @@ export async function collectAttachmentGarbage(args: {
   storage: AttachmentStorage;
   limit?: number;
 }): Promise<AttachmentGarbageCollectionResult> {
-  void args.nowMs;
+  const expiresBefore = new Date(args.nowMs - ATTACHMENT_RETENTION_MS);
   const rows = await args.db
     .db()
     .select({
@@ -508,6 +512,7 @@ export async function collectAttachmentGarbage(args: {
       and(
         eq(juniorAttachments.storageProvider, args.storage.provider),
         or(
+          lte(juniorAttachments.createdAt, expiresBefore),
           isNotNull(juniorAttachments.deleteRequestedAt),
           isNotNull(juniorConversations.transcriptPurgedAt),
         ),
@@ -536,6 +541,7 @@ export async function collectAttachmentGarbage(args: {
           rows.map((row) => row.id),
         ),
         or(
+          lte(juniorAttachments.createdAt, expiresBefore),
           isNotNull(juniorAttachments.deleteRequestedAt),
           isNotNull(juniorConversations.transcriptPurgedAt),
         ),
