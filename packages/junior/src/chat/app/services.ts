@@ -30,6 +30,7 @@ import {
 import { executeTurn, type ExecuteTurn } from "@/chat/runtime/turn-execution";
 import { bindSpawnAgent } from "@/chat/agent-invocations/spawn";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
+import type { AttachmentStorage } from "@/chat/attachments/storage";
 
 export interface JuniorRuntimeServices {
   conversationMemory: ConversationMemoryService;
@@ -41,6 +42,7 @@ export interface JuniorRuntimeServices {
 
 export interface JuniorRuntimeServiceOverrides {
   agentRunner?: AgentRunner;
+  attachmentStorage?: AttachmentStorage;
   conversationMemory?: Partial<ConversationMemoryDeps>;
   contextCompactor?: Partial<ContextCompactorDeps>;
   subscribedReplyPolicy?: Partial<SubscribedReplyPolicyDeps>;
@@ -62,6 +64,8 @@ export function createJuniorRuntimeServices(
       overrides.contextCompactor?.autoCompactionTriggerTokens,
   });
   const visionContext = createVisionContextService({
+    attachmentStorage:
+      overrides.visionContext?.attachmentStorage ?? overrides.attachmentStorage,
     completeText: overrides.visionContext?.completeText ?? completeText,
     listThreadReplies:
       overrides.visionContext?.listThreadReplies ?? listThreadReplies,

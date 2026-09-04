@@ -19,7 +19,9 @@ export interface AttachmentRecord {
   filename: string;
   id: string;
   provider: string;
+  slackFileId: string | null;
   storageKey: string;
+  visionSummary: string | null;
 }
 
 export interface AttachmentGarbageCollectionResult {
@@ -408,7 +410,9 @@ export async function readLiveAttachment(args: {
       filename: juniorAttachments.filename,
       id: juniorAttachments.id,
       provider: juniorAttachments.provider,
+      slackFileId: juniorAttachments.slackFileId,
       storageKey: juniorAttachments.storageKey,
+      visionSummary: juniorAttachments.visionSummary,
     })
     .from(juniorAttachments)
     .where(
@@ -429,8 +433,59 @@ export async function readLiveAttachment(args: {
     filename: row.filename,
     id: row.id,
     provider: row.provider,
+    slackFileId: row.slackFileId,
     storageKey: row.storageKey,
+    visionSummary: row.visionSummary,
   };
+}
+
+/** Add Slack source metadata to a stored attachment. */
+export async function recordSlackAttachmentMetadata(args: {
+  attachmentId: string;
+  db: JuniorSqlDatabase;
+  slackFileId?: string;
+  visionSummary?: string;
+}): Promise<void> {
+  if (!args.slackFileId && !args.visionSummary) return;
+  await args.db
+    .db()
+    .update(juniorAttachments)
+    .set({
+      ...(args.slackFileId ? { slackFileId: args.slackFileId } : undefined),
+      ...(args.visionSummary ? { visionSummary: args.visionSummary } : undefined),
+    })
+    .where(eq(juniorAttachments.id, args.attachmentId));
+}
+
+/** Load live conversation attachments by their Slack file ids. */
+export async function readLiveSlackAttachments(args: {
+  conversationId: string;
+  db: JuniorSqlDatabase;
+  slackFileIds: string[];
+}): Promise<AttachmentRecord[]> {
+  if (args.slackFileIds.length === 0) return [];
+  const rows = await args.db
+    .db()
+    .select({
+      bytes: juniorAttachments.bytes,
+      contentType: juniorAttachments.contentType,
+      conversationId: juniorAttachments.conversationId,
+      filename: juniorAttachments.filename,
+      id: juniorAttachments.id,
+      provider: juniorAttachments.provider,
+      slackFileId: juniorAttachments.slackFileId,
+      storageKey: juniorAttachments.storageKey,
+      visionSummary: juniorAttachments.visionSummary,
+    })
+    .from(juniorAttachments)
+    .where(
+      and(
+        eq(juniorAttachments.conversationId, args.conversationId),
+        inArray(juniorAttachments.slackFileId, args.slackFileIds),
+        isNull(juniorAttachments.deleteRequestedAt),
+      ),
+    );
+  return rows;
 }
 
 /** Persist many conversation-owned files. */
