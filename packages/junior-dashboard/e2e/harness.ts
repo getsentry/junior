@@ -13,6 +13,21 @@ export type DashboardE2eServer = {
   close(): Promise<void>;
 };
 
+/**
+ * Reset mock reporting state mutated by prior tests.
+ * The `dashboard` fixture shares one server process per worker, so mutations
+ * from archive/restore or profile-update tests would otherwise leak into
+ * unrelated specs and produce order-dependent screenshots. Import the built
+ * dashboard (`dist/app.js`), not `../src/app`: that is the module instance
+ * the running server actually reads, and importing it also defers to after
+ * `startDashboardE2eServer` sets `DATABASE_URL`.
+ */
+export async function resetDashboardMockState(): Promise<void> {
+  process.env.DATABASE_URL ??= "postgres://localhost/junior-dashboard-e2e";
+  const { resetMockDashboardState } = await import("../dist/app.js");
+  resetMockDashboardState();
+}
+
 function requestFromNode(req: IncomingMessage, baseURL: string): Request {
   const url = new URL(req.url ?? "/", baseURL);
   const headers = new Headers();

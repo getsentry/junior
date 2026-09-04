@@ -48,7 +48,18 @@ export async function screenshot(
       height: view.height,
       width: view.width,
     });
-    await page.evaluate(() => document.fonts.ready);
+    await page.waitForLoadState("networkidle");
+    await page.evaluate(async () => {
+      await document.fonts.ready;
+      await Promise.all(
+        [...document.images]
+          .filter((image) => !image.complete)
+          .map((image) => image.decode()),
+      );
+      await new Promise<void>((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+      );
+    });
     await page.screenshot({
       animations: "disabled",
       clip: options.clip,

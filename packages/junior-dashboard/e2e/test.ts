@@ -1,6 +1,7 @@
 import { test as base } from "@playwright/test";
 import {
   mockDashboardApis,
+  resetDashboardMockState,
   startDashboardE2eServer,
   type DashboardE2eServer,
 } from "./harness";
@@ -30,6 +31,10 @@ export const test = base.extend<DashboardFixtures, DashboardWorkerFixtures>({
     { scope: "worker" },
   ],
   page: async ({ page, controlTimers }, use) => {
+    // The dashboard server is shared per worker; reset its mutable mock
+    // state before every test so archive/restore and profile-update tests
+    // cannot leak into unrelated specs.
+    await resetDashboardMockState();
     await mockDashboardApis(page, { controlTimers });
     await use(page);
   },

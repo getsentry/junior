@@ -129,6 +129,12 @@ const DASHBOARD_QA_PLAN_ID = "junior:internal:dashboard-qa:advisor-plan";
 const DASHBOARD_QA_REVIEW_ID = "junior:internal:dashboard-qa:advisor-review";
 /** Process-local archive state so mock restore can be exercised in visual QA. */
 const mockArchivedConversationIds = new Set<string>([ARCHIVED_CONVERSATION_ID]);
+
+/** Restore process-local archive state so tests sharing a worker do not leak state. */
+export function resetMockConversationArchiveState(): void {
+  mockArchivedConversationIds.clear();
+  mockArchivedConversationIds.add(ARCHIVED_CONVERSATION_ID);
+}
 const PEOPLE_ACTIVITY_DAYS = 90;
 const PEOPLE_PROFILE_ACTIVITY_DAYS = 365;
 const PUBLIC_MOCK_CHANNEL_IDS = new Set([
