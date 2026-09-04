@@ -305,6 +305,8 @@ export interface ToolApprovalMetadata<TInput = unknown> {
   describeProposal?(input: TInput): string;
 }
 
+export type ToolExposure = "direct" | "deferred" | "modelOnly" | "hidden";
+
 export interface PluginToolDefinition<
   TInput = unknown,
   TOutput = unknown,
@@ -312,6 +314,8 @@ export interface PluginToolDefinition<
 > extends ToolApprovalMetadata<TInput> {
   description: string;
   executionMode?: unknown;
+  /** Select whether the host exposes this tool directly or through its catalog. */
+  exposure?: ToolExposure;
   inputSchema: unknown;
   outputSchema?: unknown;
   /**

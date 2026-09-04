@@ -1998,6 +1998,27 @@ Conversation: \`local:test:old-conversation\`
     ).rejects.toThrow("GraphQL mutations are not enabled");
   });
 
+  it("routes pull request review mutations and REST writes to the typed tool", async () => {
+    await expect(
+      grantForEgress({
+        method: "POST",
+        url: "https://api.github.com/repos/getsentry/junior/pulls/780/reviews",
+        bodyText: JSON.stringify({ event: "COMMENT", body: "review" }),
+      }),
+    ).rejects.toThrow("must use the github_submitPullRequestReview tool");
+    await expect(
+      grantForEgress({
+        method: "POST",
+        url: "https://api.github.com/graphql",
+        bodyText: JSON.stringify({
+          operationName: "AddPullRequestReview",
+          query:
+            "mutation AddPullRequestReview($input: AddPullRequestReviewInput!) { addPullRequestReview(input: $input) { pullRequestReview { id } } }",
+        }),
+      }),
+    ).rejects.toThrow("must use the github_submitPullRequestReview tool");
+  });
+
   it("denies GitHub GraphQL mutations and unparseable bodies", async () => {
     await expect(
       grantForEgress({
@@ -2118,6 +2139,7 @@ Conversation: \`local:test:old-conversation\`
     await expect(
       grantForEgress({
         method: "POST",
+        operation: "github.pull.review.create",
         url: "https://api.github.com/repos/getsentry/junior/pulls/780/reviews",
       }),
     ).resolves.toMatchObject({
@@ -2129,6 +2151,7 @@ Conversation: \`local:test:old-conversation\`
       grantForEgress({
         bodyText: JSON.stringify({ event: "REQUEST_CHANGES", body: "nits" }),
         method: "POST",
+        operation: "github.pull.review.create",
         url: "https://api.github.com/repos/getsentry/junior/pulls/780/reviews",
       }),
     ).resolves.toMatchObject({

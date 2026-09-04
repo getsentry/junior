@@ -71,7 +71,9 @@ const createPullRequestToolInputSchema = z
     base: z.string().describe("Base branch."),
     body: z
       .string()
-      .describe("Pull request body. The runtime appends the conversation footer.")
+      .describe(
+        "Pull request body. The runtime appends the conversation footer.",
+      )
       .optional(),
     draft: z
       .boolean()
@@ -418,6 +420,7 @@ export function createGitHubPullRequestTool(
     },
     description:
       "Create a GitHub pull request with a runtime-owned conversation footer. Use this instead of shelling out to gh pr create when creating pull requests.",
+    exposure: "direct",
     inputSchema: createPullRequestToolInputSchema,
     outputSchema: gitHubPullRequestOutputSchema,
     async execute(

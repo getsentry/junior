@@ -9,6 +9,7 @@ import {
   RESOURCE_EVENT_SUMMARY_MAX_LENGTH,
   RESOURCE_EVENT_TEXT_MAX_LENGTH,
   type ResourceEvent,
+  type ToolExposure,
   type ToolRegistrationHookContext,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
@@ -56,6 +57,7 @@ const demoToolResultSchema = pluginToolOutputSchema.extend({
 function demoPluginTool(
   description = "Demo tool",
   approvalMode?: "auto" | "review" | "approve",
+  exposure?: ToolExposure,
 ) {
   return definePluginTool({
     approvalMode,
@@ -67,6 +69,7 @@ function demoPluginTool(
     },
     describeProposal: () => `${description} proposal`,
     description,
+    exposure,
     inputSchema: z.object({}),
     outputSchema: demoToolResultSchema,
     execute: () => ({ message: "done" }),
@@ -831,6 +834,40 @@ describe("agent plugin hooks", () => {
 
       expect(tools.agentDemo_demoTool).toBeDefined();
       expect(tools["agent-Demo-_demoTool"]).toBeUndefined();
+    } finally {
+      setPlugins(previous);
+    }
+  });
+
+  it("preserves explicit plugin tool exposure", () => {
+    const previous = setPlugins([
+      defineJuniorPlugin({
+        manifest: {
+          name: "agent-demo",
+          displayName: "Agent Demo",
+          description: "Agent demo",
+        },
+        hooks: {
+          tools() {
+            return {
+              directTool: demoPluginTool("Direct tool", undefined, "direct"),
+              defaultTool: demoPluginTool(),
+            };
+          },
+        },
+      }),
+    ]);
+    try {
+      const tools = getPluginTools({
+        conversationId: LOCAL_DESTINATION.conversationId,
+        destination: LOCAL_DESTINATION,
+        egress: TEST_EGRESS,
+        source: LOCAL_SOURCE,
+        workspace: {} as any,
+      });
+
+      expect(tools.agentDemo_directTool?.exposure).toBe("direct");
+      expect(tools.agentDemo_defaultTool?.exposure).toBe("deferred");
     } finally {
       setPlugins(previous);
     }
