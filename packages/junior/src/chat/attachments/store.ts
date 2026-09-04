@@ -43,19 +43,17 @@ function attachmentId(args: {
   storageProvider: string;
   sha256: string;
 }): string {
-  return createHash("sha256")
-    .update(
-      [
-        args.conversationId,
-        args.storageProvider,
-        args.sha256,
-        args.filename,
-        args.contentType,
-        args.source?.provider ?? "",
-        args.source?.id ?? "",
-      ].join("\0"),
-    )
-    .digest("hex");
+  const identity = [
+    args.conversationId,
+    args.storageProvider,
+    args.sha256,
+    args.filename,
+    args.contentType,
+  ];
+  if (args.source) {
+    identity.push(args.source.provider, args.source.id);
+  }
+  return createHash("sha256").update(identity.join("\0")).digest("hex");
 }
 
 /**
