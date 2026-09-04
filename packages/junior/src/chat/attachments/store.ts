@@ -39,6 +39,7 @@ function attachmentId(args: {
   conversationId: string;
   contentType: string;
   filename: string;
+  source?: { id: string; provider: string };
   storageProvider: string;
   sha256: string;
 }): string {
@@ -50,6 +51,8 @@ function attachmentId(args: {
         args.sha256,
         args.filename,
         args.contentType,
+        args.source?.provider ?? "",
+        args.source?.id ?? "",
       ].join("\0"),
     )
     .digest("hex");
@@ -165,6 +168,7 @@ export async function storeAttachment(args: {
   db: JuniorSqlDatabase;
   file: SandboxFileUpload;
   nowMs?: number;
+  source?: { id: string; provider: string };
   storage: AttachmentStorage;
 }): Promise<StoredAttachment> {
   const now = new Date(args.nowMs ?? Date.now());
@@ -173,6 +177,7 @@ export async function storeAttachment(args: {
     conversationId: args.conversationId,
     contentType: args.file.mimeType,
     filename: args.file.filename,
+    source: args.source,
     storageProvider: args.storage.provider,
     sha256,
   });
@@ -184,6 +189,8 @@ export async function storeAttachment(args: {
       deleteRequestedAt: juniorAttachments.deleteRequestedAt,
       filename: juniorAttachments.filename,
       id: juniorAttachments.id,
+      provider: juniorAttachments.provider,
+      providerId: juniorAttachments.providerId,
       storageProvider: juniorAttachments.storageProvider,
       sha256: juniorAttachments.sha256,
       storageKey: juniorAttachments.storageKey,
@@ -195,6 +202,8 @@ export async function storeAttachment(args: {
       existing.contentType !== args.file.mimeType ||
       existing.conversationId !== args.conversationId ||
       existing.filename !== args.file.filename ||
+      existing.provider !== (args.source?.provider ?? null) ||
+      existing.providerId !== (args.source?.id ?? null) ||
       existing.storageProvider !== args.storage.provider ||
       existing.sha256 !== sha256
     ) {
@@ -286,6 +295,8 @@ export async function storeAttachment(args: {
         conversationId: args.conversationId,
         storageProvider: args.storage.provider,
         storageKey,
+        provider: args.source?.provider,
+        providerId: args.source?.id,
         filename: args.file.filename,
         contentType: args.file.mimeType,
         bytes: args.file.bytes,
@@ -503,10 +514,7 @@ export async function collectAttachmentGarbage(args: {
     .from(juniorAttachments)
     .innerJoin(
       juniorConversations,
-      eq(
-        juniorAttachments.conversationId,
-        juniorConversations.conversationId,
-      ),
+      eq(juniorAttachments.conversationId, juniorConversations.conversationId),
     )
     .where(
       and(
@@ -529,10 +537,7 @@ export async function collectAttachmentGarbage(args: {
     .from(juniorAttachments)
     .innerJoin(
       juniorConversations,
-      eq(
-        juniorAttachments.conversationId,
-        juniorConversations.conversationId,
-      ),
+      eq(juniorAttachments.conversationId, juniorConversations.conversationId),
     )
     .where(
       and(

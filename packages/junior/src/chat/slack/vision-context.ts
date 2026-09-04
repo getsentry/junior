@@ -308,25 +308,31 @@ async function resolveUserAttachmentsWithDeps(
     let attachmentId: string | undefined;
     const slackFileId = getSlackFileId(attachment);
     if (context.conversationId && deps.attachmentStorage) {
-      const stored = await storeAttachment({
-        conversationId: context.conversationId,
-        db: getSqlExecutor(),
-        file: {
-          bytes: data.byteLength,
-          data,
-          filename: attachment.name ?? "attachment",
-          mimeType: mediaType,
-          path: attachment.name ?? "attachment",
-        },
-        storage: deps.attachmentStorage,
-      });
-      attachmentId = stored.id;
-      await recordSlackAttachment({
-        attachmentId,
-        conversationId: context.conversationId,
-        db: getSqlExecutor(),
-        ...(slackFileId ? { providerId: slackFileId } : undefined),
-      });
+      try {
+        const stored = await storeAttachment({
+          conversationId: context.conversationId,
+          db: getSqlExecutor(),
+          file: {
+            bytes: data.byteLength,
+            data,
+            filename: attachment.name ?? "attachment",
+            mimeType: mediaType,
+            path: attachment.name ?? "attachment",
+          },
+          ...(slackFileId
+            ? { source: { id: slackFileId, provider: "slack" } }
+            : undefined),
+          storage: deps.attachmentStorage,
+        });
+        attachmentId = stored.id;
+      } catch (error) {
+        logWarn("attachment.storage.failed", {
+          "exception.message":
+            error instanceof Error ? error.message : String(error),
+          "app.file.mime_type": mediaType,
+          ...(attachment.name ? { "file.name": attachment.name } : undefined),
+        });
+      }
     }
 
     if (
@@ -366,7 +372,8 @@ async function resolveUserAttachmentsWithDeps(
           })
         : undefined;
       const cachedSummary =
-        storedVisionSummary ?? cachedImageSummaries[nextCachedImageSummaryIndex];
+        storedVisionSummary ??
+        cachedImageSummaries[nextCachedImageSummaryIndex];
       nextCachedImageSummaryIndex += 1;
       if (cachedSummary) {
         resolvedAttachment.promptText = buildImageAttachmentPromptText({
@@ -597,8 +604,8 @@ async function hydrateConversationVisionContextWithDeps(
         const mimeType = toOptionalString(file.mimetype);
         return Boolean(
           toOptionalString(file.id) &&
-            mimeType &&
-            isVisionImageMediaType(mimeType),
+          mimeType &&
+          isVisionImageMediaType(mimeType),
         );
       })
       .slice(0, MAX_MESSAGE_IMAGE_ATTACHMENTS);

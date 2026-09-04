@@ -374,7 +374,7 @@ describe("Slack sendFiles", () => {
     expect(rows[0]).toMatchObject({
       conversationId,
       filename: "report.txt",
-      provider: "test",
+      storageProvider: "test",
     });
     expect(puts).toEqual([rows[0]?.storageKey]);
     expect(

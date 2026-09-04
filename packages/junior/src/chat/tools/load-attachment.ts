@@ -54,11 +54,20 @@ export function createLoadAttachmentTool(args: {
       if (!body) {
         throw new ToolInputError("Stored attachment contents are unavailable.");
       }
+      const attachmentDir = path.posix.join(ATTACHMENT_DIR, attachment.id);
       const sandboxPath = path.posix.join(
-        ATTACHMENT_DIR,
-        attachment.id,
+        attachmentDir,
         path.posix.basename(attachment.filename),
       );
+      const mkdir = await args.workspace.runCommand({
+        cmd: "mkdir",
+        args: ["-p", attachmentDir],
+      });
+      if (mkdir.exitCode !== 0) {
+        throw new Error(
+          `Failed to create attachment directory: ${mkdir.stderr}`,
+        );
+      }
       await args.workspace.writeFiles([
         { content: await readStream(body), path: sandboxPath },
       ]);

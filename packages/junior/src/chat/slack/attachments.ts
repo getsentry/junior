@@ -2,23 +2,17 @@ import { and, eq, inArray, isNull } from "drizzle-orm";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { juniorAttachments } from "@/db/schema";
 
-/** Add Slack data to a stored attachment. */
+/** Save the vision summary for a stored Slack attachment. */
 export async function recordSlackAttachment(args: {
   attachmentId: string;
   conversationId: string;
   db: JuniorSqlDatabase;
-  providerId?: string;
-  visionSummary?: string;
+  visionSummary: string;
 }): Promise<void> {
-  if (!args.providerId && !args.visionSummary) return;
   await args.db
     .db()
     .update(juniorAttachments)
-    .set({
-      provider: "slack",
-      ...(args.providerId ? { providerId: args.providerId } : undefined),
-      ...(args.visionSummary ? { visionSummary: args.visionSummary } : undefined),
-    })
+    .set({ visionSummary: args.visionSummary })
     .where(
       and(
         eq(juniorAttachments.id, args.attachmentId),
