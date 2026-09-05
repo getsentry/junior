@@ -167,6 +167,23 @@ function buildImageAttachmentFailurePromptText(args: {
   ].join("\n");
 }
 
+function buildAttachmentResolutionFailurePromptText(args: {
+  filename?: string;
+  mediaType: string;
+}): string {
+  return [
+    "<attachment>",
+    `filename: ${args.filename ?? "unnamed"}`,
+    `media_type: ${args.mediaType}`,
+    "<resolution-error>",
+    "The user attached this file, but Junior could not download its content " +
+      "from Slack. Tell the user the attachment could not be read; do not " +
+      "say no attachment was sent.",
+    "</resolution-error>",
+    "</attachment>",
+  ].join("\n");
+}
+
 async function summarizeImageWithVision(args: {
   completeText: typeof completeText;
   imageData: Buffer;
@@ -302,6 +319,19 @@ async function resolveUserAttachmentsWithDeps(
           error instanceof Error ? error.message : String(error),
         "app.file.mime_type": mediaType,
       });
+      // The user really did attach a file; only its bytes are unreachable.
+      // Tell the model that instead of dropping the attachment silently, so
+      // Junior does not falsely claim no attachment was sent.
+      if (results.length < MAX_USER_ATTACHMENTS) {
+        results.push({
+          mediaType,
+          filename: attachment.name,
+          promptText: buildAttachmentResolutionFailurePromptText({
+            filename: attachment.name,
+            mediaType,
+          }),
+        });
+      }
       continue;
     }
 

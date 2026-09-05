@@ -49,7 +49,7 @@ describe("Slack behavior: mixed attachment media", () => {
     vi.resetModules();
   });
 
-  it("keeps valid attachments while skipping oversized and failed fetch attachments", async () => {
+  it("keeps valid attachments, skips oversized attachments, and flags failed fetch attachments instead of dropping them", async () => {
     const imageFetch = vi.fn(async () => Buffer.from("image-bytes"));
     const oversizedFetch = vi.fn(async () => Buffer.alloc(5 * 1024 * 1024 + 1));
     const failingFetch = vi.fn(async () => {
@@ -62,6 +62,7 @@ describe("Slack behavior: mixed attachment media", () => {
 
     const capturedAttachmentMediaTypes: string[][] = [];
     const capturedAttachmentNames: string[][] = [];
+    const capturedAttachmentPromptTexts: Array<string | undefined>[] = [];
 
     const { slackRuntime } = await createRuntime(
       {
@@ -76,6 +77,9 @@ describe("Slack behavior: mixed attachment media", () => {
             );
             capturedAttachmentNames.push(
               attachments.map((attachment) => attachment.filename ?? ""),
+            );
+            capturedAttachmentPromptTexts.push(
+              attachments.map((attachment) => attachment.promptText),
             );
             return createModelStream([
               { type: "text", text: "Processed attachments." },
@@ -143,12 +147,20 @@ describe("Slack behavior: mixed attachment media", () => {
     expect(oversizedFetch).toHaveBeenCalledTimes(1);
     expect(failingFetch).toHaveBeenCalledTimes(1);
 
+    // The per-turn attachment cap (3) is reached by chart.png, incident.pdf,
+    // and the now-surfaced broken.json failure, so icon.svg is dropped by the
+    // cap rather than by the fetch failure.
     expect(capturedAttachmentMediaTypes).toEqual([
-      ["image/png", "application/pdf", "image/svg+xml"],
+      ["image/png", "application/pdf", "application/json"],
     ]);
     expect(capturedAttachmentNames).toEqual([
-      ["chart.png", "incident.pdf", "icon.svg"],
+      ["chart.png", "incident.pdf", "broken.json"],
     ]);
+    // The failed download is surfaced to the model instead of vanishing, so
+    // Junior can tell the user it saw an attachment it could not read.
+    expect(capturedAttachmentPromptTexts[0]?.[2]).toContain(
+      "could not download its content",
+    );
   }, 20_000);
 
   it("keeps raw image attachments when AI_VISION_MODEL is unset", async () => {
