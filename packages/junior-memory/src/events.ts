@@ -3,6 +3,14 @@ import { z } from "zod";
 import { MEMORY_KINDS, MEMORY_SCOPES } from "./types";
 import type { MemoryRecord } from "./store";
 
+function currentScope(
+  scope: "personal" | "conversation" | "private" | "public",
+): "private" | "public" {
+  if (scope === "personal") return "private";
+  if (scope === "conversation") return "public";
+  return scope;
+}
+
 const capturedMemoryFields = {
   content: z.string().min(1),
   id: z.string().min(1),
@@ -20,7 +28,17 @@ const legacyCapturedMemorySchema = z
 const capturedMemorySchema = z
   .object({
     ...capturedMemoryFields,
-    scope: z.enum(MEMORY_SCOPES),
+    scope: z.preprocess((val) => {
+      if (
+        val === "personal" ||
+        val === "conversation" ||
+        val === "private" ||
+        val === "public"
+      ) {
+        return currentScope(val);
+      }
+      return val;
+    }, z.enum(MEMORY_SCOPES)),
   })
   .strict();
 
@@ -38,14 +56,6 @@ const recalledMemoriesSchema = z
     costUsd: z.number().finite().nonnegative().optional(),
   })
   .strict();
-
-function currentScope(
-  scope: "personal" | "conversation" | "private" | "public",
-) {
-  if (scope === "personal") return "private";
-  if (scope === "conversation") return "public";
-  return scope;
-}
 
 function renderCapturedMemories(event: {
   memories: Array<
