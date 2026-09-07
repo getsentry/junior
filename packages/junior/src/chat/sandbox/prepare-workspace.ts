@@ -8,6 +8,9 @@ import type { Workspace } from "@/chat/workspaces/types";
 const WORKSPACE_SETUP_FAILURE_OUTPUT_MAX_CHARS = 7_000;
 const WORKSPACE_SETUP_FAILURE_TRUNCATION_MARKER =
   "[earlier setup output truncated]\n";
+// Sandboxes often report less memory to Node than they have. That default
+// heap limit is too small for real build tools, so give setup scripts more
+// room up front instead of failing with an out-of-memory error.
 const WORKSPACE_SETUP_NODE_OPTIONS = "--max-old-space-size=4096";
 
 interface PrepareWorkspaceParams {
@@ -59,17 +62,22 @@ export function workspaceSetupFailureDetail(input: {
   return `${WORKSPACE_SETUP_FAILURE_TRUNCATION_MARKER}${output.slice(-keptChars)}`;
 }
 
+/** Build the env vars shared by every Workspace setup command. */
+function workspaceSetupEnv(): Record<string, string> {
+  return {
+    JUNIOR_REPOS_ROOT: SANDBOX_REPOS_ROOT,
+    JUNIOR_WORKSPACE_ROOT: SANDBOX_WORKSPACE_ROOT,
+    NODE_OPTIONS: WORKSPACE_SETUP_NODE_OPTIONS,
+  };
+}
+
 /** Build the command for one Workspace setup script. */
 export function workspaceSetupCommand(workspace: Workspace) {
   return {
     cmd: "bash",
     args: ["-euo", "pipefail", "-c", workspace.setupScript],
     cwd: SANDBOX_WORKSPACE_ROOT,
-    env: {
-      JUNIOR_REPOS_ROOT: SANDBOX_REPOS_ROOT,
-      JUNIOR_WORKSPACE_ROOT: SANDBOX_WORKSPACE_ROOT,
-      NODE_OPTIONS: WORKSPACE_SETUP_NODE_OPTIONS,
-    },
+    env: workspaceSetupEnv(),
   };
 }
 
@@ -101,11 +109,7 @@ export function workspaceSnapshotSetupCommand(
       workspace.setupScript,
     ],
     cwd: SANDBOX_WORKSPACE_ROOT,
-    env: {
-      JUNIOR_REPOS_ROOT: SANDBOX_REPOS_ROOT,
-      JUNIOR_WORKSPACE_ROOT: SANDBOX_WORKSPACE_ROOT,
-      NODE_OPTIONS: WORKSPACE_SETUP_NODE_OPTIONS,
-    },
+    env: workspaceSetupEnv(),
   };
 }
 
