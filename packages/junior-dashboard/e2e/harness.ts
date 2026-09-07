@@ -387,6 +387,7 @@ export async function mockDashboardApis(
             runs: { 1: 1, 7: 3, 30: 12, 90: 48 },
             schedule: "Every Monday at 9:00 AM",
             status: "active",
+            successOutput: "reply",
             title: "Weekly project summary",
             totalRuns: 48,
           },
@@ -410,6 +411,7 @@ export async function mockDashboardApis(
             resource: "Issue · ACME-42",
             runs: { 1: 0, 7: 1, 30: 4, 90: 7 },
             source: "github",
+            successOutput: "silent",
             title: "Closed issue summary",
             totalRuns: 7,
             triggerAvailable: true,
@@ -432,6 +434,7 @@ export async function mockDashboardApis(
             resource: "Incident · INC-17",
             runs: { 1: 0, 7: 0, 30: 0, 90: 0 },
             source: "pagerduty",
+            successOutput: "reply",
             title: "Incident change alerts",
             totalRuns: 0,
             triggerAvailable: false,
@@ -471,6 +474,7 @@ export async function mockDashboardApis(
         kind === "scheduled"
           ? { 1: 1, 7: 3, 30: 12, 90: 48 }
           : { 1: 0, 7: 1, 30: 4, 90: 7 },
+      successOutput: kind === "scheduled" ? "reply" : "silent",
       title:
         kind === "scheduled"
           ? "Weekly project summary"
