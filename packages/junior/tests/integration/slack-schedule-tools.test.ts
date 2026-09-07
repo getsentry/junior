@@ -274,6 +274,23 @@ describe("Slack schedule tools", () => {
         },
       ],
     });
+
+    await expect(
+      createTask(createContext(), {
+        outcomes: [
+          {
+            action: "send_message",
+            destination: {
+              platform: "slack",
+              teamId: TEST_TEAM_ID,
+              channelId: "C456",
+            },
+          },
+        ],
+      }),
+    ).rejects.toThrow(
+      "Messages can only be sent to the current Slack conversation or the task creator.",
+    );
   });
 
   it("creates and lists tasks only for the active Slack conversation", async () => {
@@ -913,6 +930,15 @@ describe("Slack schedule tools", () => {
         fullName: "Alice Reviewer",
       },
     });
+
+    await expect(
+      executeTool(createSlackScheduleUpdateTaskTool(otherActor), {
+        task_id: created.task.id,
+        outcomes: [],
+      }),
+    ).rejects.toThrow(
+      "Only the scheduled task creator can change message destinations.",
+    );
 
     const updated = await executeTool(
       createSlackScheduleUpdateTaskTool(otherActor),

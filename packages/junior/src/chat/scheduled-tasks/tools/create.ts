@@ -176,7 +176,11 @@ export function createSlackScheduleCreateTaskTool(
         originalRequest: context.userText,
         schedule: compiled.schedule,
         status: "active",
-        outcomes: await resolveTaskOutcomes(input.outcomes, destination),
+        outcomes: await resolveTaskOutcomes(
+          input.outcomes,
+          destination,
+          actor.slackUserId,
+        ),
         task: {
           text: input.task,
         },

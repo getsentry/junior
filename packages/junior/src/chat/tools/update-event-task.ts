@@ -115,6 +115,11 @@ export function createUpdateEventTaskTool(
           "Only the event task creator can enable creator credential use.",
         );
       }
+      if (input.outcomes != null && !isCreator) {
+        throw new ToolInputError(
+          "Only the event task creator can change message destinations.",
+        );
+      }
       if (
         input.task === undefined &&
         input.trigger === undefined &&
@@ -152,7 +157,11 @@ export function createUpdateEventTaskTool(
         outcomes:
           input.outcomes == null
             ? current.outcomes
-            : await resolveTaskOutcomes(input.outcomes, current.destination),
+            : await resolveTaskOutcomes(
+                input.outcomes,
+                current.destination,
+                current.createdBy.slackUserId,
+              ),
         task: { text: nextInstruction },
         trigger: nextTrigger,
       };

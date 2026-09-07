@@ -129,6 +129,11 @@ export function createSlackScheduleUpdateTaskTool(
           "Only the scheduled task creator can enable creator credential use.",
         );
       }
+      if (input.outcomes !== undefined && !isCreator) {
+        throwToolInputError(
+          "Only the scheduled task creator can change message destinations.",
+        );
+      }
 
       const changingDestination = moveHere && !alreadyHere;
       if (changingDestination) {
@@ -210,7 +215,11 @@ export function createSlackScheduleUpdateTaskTool(
         outcomes:
           input.outcomes === undefined
             ? lookup.outcomes
-            : await resolveTaskOutcomes(input.outcomes, activeDestination),
+            : await resolveTaskOutcomes(
+                input.outcomes,
+                activeDestination,
+                lookup.createdBy.slackUserId,
+              ),
         task: { text: nextInstruction },
       };
       if (instructionChanged) {

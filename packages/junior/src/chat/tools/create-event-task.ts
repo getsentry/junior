@@ -162,7 +162,11 @@ export function createEventTaskTool(
         },
         credentialMode: input.credentialMode ?? "creator",
         destination,
-        outcomes: await resolveTaskOutcomes(input.outcomes, destination),
+        outcomes: await resolveTaskOutcomes(
+          input.outcomes,
+          destination,
+          actor.userId,
+        ),
         task: { text: input.task },
         ...(title ? { title } : undefined),
         trigger: {

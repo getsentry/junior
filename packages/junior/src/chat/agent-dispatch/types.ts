@@ -28,6 +28,7 @@ export type DispatchStatus =
 
 export type SlackDispatchOptions = Omit<DispatchOptions, "destination"> & {
   destination: SlackDestination;
+  outcomes?: TaskOutcome[];
 };
 
 export interface BoundDispatchOptions extends Omit<

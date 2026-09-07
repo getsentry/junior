@@ -32,6 +32,7 @@ export type TaskOutcomeInput = z.output<typeof taskOutcomeInputSchema>;
 export async function resolveTaskOutcomes(
   outcomes: TaskOutcomeInput[] | undefined,
   currentDestination: SlackDestination,
+  creatorSlackUserId: string,
 ): Promise<TaskOutcome[]> {
   if (outcomes === undefined) {
     return [{ action: "send_message", destination: currentDestination }];
@@ -44,6 +45,11 @@ export async function resolveTaskOutcomes(
       );
     }
     if ("channelId" in outcome.destination) {
+      if (outcome.destination.channelId !== currentDestination.channelId) {
+        throw new Error(
+          "Messages can only be sent to the current Slack conversation or the task creator.",
+        );
+      }
       resolved.push({
         action: "send_message",
         destination: outcome.destination,
@@ -51,6 +57,9 @@ export async function resolveTaskOutcomes(
       continue;
     }
     const userId = outcome.destination.userId;
+    if (userId !== creatorSlackUserId) {
+      throw new Error("Direct messages can only be sent to the task creator.");
+    }
     const response = await withSlackRetries(
       () =>
         getSlackClient().conversations.open({
