@@ -14,12 +14,6 @@ interface SlackPlainTextObject {
   type: "plain_text";
 }
 
-/** Slack-flavored Markdown block — accepts a standard Markdown subset and Slack renders it natively. */
-interface SlackMarkdownBlock {
-  text: string;
-  type: "markdown";
-}
-
 interface SlackSectionBlock {
   text: SlackMrkdwnTextObject;
   type: "section";
@@ -30,10 +24,7 @@ interface SlackContextBlock {
   type: "context";
 }
 
-export type SlackMessageBlock =
-  | SlackMarkdownBlock
-  | SlackSectionBlock
-  | SlackContextBlock;
+export type SlackMessageBlock = SlackSectionBlock | SlackContextBlock;
 
 interface SlackReplyFooterItem {
   label: string;
@@ -90,7 +81,7 @@ export function buildSlackReplyFooter(args: {
     : undefined;
 }
 
-/** Build Slack blocks for a reply chunk using the Slack-flavored markdown block for the body. */
+/** Build Slack blocks for a reply chunk using a mrkdwn section block for the body. */
 export function buildSlackReplyBlocks(
   text: string,
   footer: SlackReplyFooter | undefined,
@@ -101,8 +92,8 @@ export function buildSlackReplyBlocks(
 
   const blocks: SlackMessageBlock[] = [
     {
-      type: "markdown",
-      text,
+      type: "section",
+      text: { type: "mrkdwn", text },
     },
   ];
 
