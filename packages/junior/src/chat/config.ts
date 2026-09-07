@@ -21,9 +21,10 @@ const MAX_SLICES_PER_TURN = 100;
 /**
  * Max tool calls for one turn, including later execution slices of that turn.
  * Chosen from production dispatch traces: healthy runs cluster well under 50;
- * runaway CI-watch loops land in the hundreds.
+ * runaway CI-watch loops land in the hundreds. Raised from 150 after that cap
+ * fired on legitimate long-form human turns, not just runaway automation.
  */
-const MAX_TOOL_CALLS_PER_TURN = 150;
+const MAX_TOOL_CALLS_PER_TURN = 250;
 /**
  * Max consecutive automated turns before event wakes stop until a user message.
  * Resource-event CI watches and event-task loops are the common runaway paths.
