@@ -228,7 +228,18 @@ export function createMockReportingApi(): Hono<{
     }
     return errorResponse("Attachment not found.", 404);
   });
-  app.get("/tasks", () => jsonResponse(taskListSchema, readMockTaskList()));
+  app.get("/tasks", (c) => {
+    const report = readMockTaskList();
+    const query = c.req.query("q")?.trim().toLowerCase();
+    return jsonResponse(taskListSchema, {
+      ...report,
+      tasks: query
+        ? report.tasks.filter((task) =>
+            task.title.toLowerCase().includes(query),
+          )
+        : report.tasks,
+    });
+  });
   app.get("/tasks/runs", () => {
     const tasks = readMockTaskList().tasks;
     const runs = tasks.flatMap((task) => {

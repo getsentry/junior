@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, notInArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, notInArray, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import type { JuniorDatabase } from "@/db/db";
 import { juniorDestinations } from "@/db/schema/destinations";
@@ -329,7 +329,7 @@ export async function saveScheduledTaskInLock(
 export async function listPublicScheduledTasksForTeams(
   db: JuniorDatabase,
   teamIds: string[],
-  limit: number,
+  input: { completedAfterMs?: number; limit: number; query?: string },
 ): Promise<ScheduledTask[]> {
   if (teamIds.length === 0) return [];
   const rows = await db
@@ -350,11 +350,15 @@ export async function listPublicScheduledTasksForTeams(
     .where(
       and(
         inArray(juniorSchedulerTasks.teamId, teamIds),
-        notInArray(juniorSchedulerTasks.status, [
-          "completed",
-          "deleted",
-          "paused",
-        ]),
+        notInArray(juniorSchedulerTasks.status, ["deleted", "paused"]),
+        input.query
+          ? sql<boolean>`strpos(lower(coalesce(${juniorSchedulerTasks.title}, ${juniorSchedulerTasks.record}->'task'->>'text')), ${input.query}) > 0`
+          : input.completedAfterMs === undefined
+            ? sql`${juniorSchedulerTasks.status} <> 'completed'`
+            : or(
+                sql`${juniorSchedulerTasks.status} <> 'completed'`,
+                sql`(${juniorSchedulerTasks.record}->>'updatedAtMs')::bigint >= ${input.completedAfterMs}`,
+              ),
         eq(juniorDestinations.visibility, "public"),
       ),
     )
@@ -362,6 +366,6 @@ export async function listPublicScheduledTasksForTeams(
       desc(juniorSchedulerTasks.createdAtMs),
       desc(juniorSchedulerTasks.id),
     )
-    .limit(limit);
+    .limit(input.limit);
   return rows.map(parseScheduledTaskRow).filter(isListedScheduledTask);
 }

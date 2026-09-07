@@ -75,6 +75,12 @@ export const taskExecutionDaySchema = z
   })
   .strict();
 
+export const taskListQuerySchema = z
+  .object({
+    q: z.string().trim().max(200).optional(),
+  })
+  .strict();
+
 export const taskListSchema = z
   .object({
     executionDays: z.array(taskExecutionDaySchema),

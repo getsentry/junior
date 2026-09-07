@@ -58,6 +58,11 @@ test("opens scheduled and event tasks in the native Tasks view", async ({
   await expect(page.getByText("2 tasks")).toBeVisible();
   await expect(page.getByText("Weekly project summary")).toBeVisible();
   await expect(page.getByText("Closed issue summary")).toBeVisible();
+  await page.getByLabel("Search tasks").fill("closed issue");
+  await expect(page.getByText("Weekly project summary")).not.toBeVisible();
+  await expect(page.getByText("Closed issue summary")).toBeVisible();
+  await page.getByLabel("Search tasks").fill("");
+  await expect(page.getByText("Weekly project summary")).toBeVisible();
   await expect(page.getByLabel("Scheduled task")).toBeVisible();
   await expect(page.getByLabel("GitHub event task")).toBeVisible();
   await expect(page.getByText("#project-updates").last()).toBeVisible();

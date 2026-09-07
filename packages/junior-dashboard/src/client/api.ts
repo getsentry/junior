@@ -114,12 +114,16 @@ export function useCodeOverviewData() {
 }
 
 /** Fetch the signed-in viewer's scheduled and event tasks. */
-export function useTasksData(enabled: boolean) {
+export function useTasksData(enabled: boolean, search: string) {
   return useQuery({
     enabled,
-    queryKey: ["dashboard", "tasks"],
+    queryKey: ["dashboard", "tasks", search],
     queryFn: ({ signal }) =>
-      fetchDashboardJson(taskListSchema, "/api/tasks", signal),
+      fetchDashboardJson(
+        taskListSchema,
+        `/api/tasks${search ? `?q=${encodeURIComponent(search)}` : ""}`,
+        signal,
+      ),
     retry: false,
   });
 }

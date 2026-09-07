@@ -58,6 +58,7 @@ import {
 const TASK_LIST_LIMIT = 100;
 const TASK_FETCH_LIMIT = TASK_LIST_LIMIT + 1;
 const TASK_EXECUTION_LIST_LIMIT = 100;
+const ARCHIVED_TASK_VISIBLE_MS = 48 * 60 * 60 * 1000;
 
 type TaskCandidate =
   | {
@@ -412,16 +413,34 @@ function taskExecutionStatusSixHours(
   });
 }
 
-export async function readViewerTasks(user: User): Promise<TaskList> {
+export async function readViewerTasks(
+  user: User,
+  input: { includeArchived?: boolean; q?: string } = {},
+): Promise<TaskList> {
   const db = getDb();
+  // TODO: Expand task search to conversation transcripts.
+  // TODO: Add semantic task search.
+  const query = input.q?.trim().toLowerCase() || undefined;
+  const completedAfterMs =
+    input.includeArchived || query
+      ? undefined
+      : Date.now() - ARCHIVED_TASK_VISIBLE_MS;
   const identityIds = new Set(user.identities.map((identity) => identity.id));
   const teamIds = viewerTeamIds(user);
   const [scheduledPage, publicScheduled, eventTasks, publicEventTasks] =
     await Promise.all([
-      listViewerScheduledTasks(db, user, { limit: TASK_FETCH_LIMIT }),
-      listPublicScheduledTasksForTeams(db, teamIds, TASK_FETCH_LIMIT),
-      listEventTasksCreatedBy(db, user, TASK_FETCH_LIMIT),
-      listPublicEventTasksForTeams(db, teamIds, TASK_FETCH_LIMIT),
+      listViewerScheduledTasks(db, user, {
+        completedAfterMs,
+        limit: TASK_FETCH_LIMIT,
+        query,
+      }),
+      listPublicScheduledTasksForTeams(db, teamIds, {
+        completedAfterMs,
+        limit: TASK_FETCH_LIMIT,
+        query,
+      }),
+      listEventTasksCreatedBy(db, user, TASK_FETCH_LIMIT, query),
+      listPublicEventTasksForTeams(db, teamIds, TASK_FETCH_LIMIT, query),
     ]);
   const candidatesById = new Map<string, TaskCandidate>();
   const publicScheduledIds = new Set(publicScheduled.map((task) => task.id));
@@ -592,7 +611,7 @@ function addDeletedTaskRun(
  */
 export async function readViewerTaskRuns(user: User): Promise<TaskRunList> {
   const [taskList, deletedScheduled, deletedEvent] = await Promise.all([
-    readViewerTasks(user),
+    readViewerTasks(user, { includeArchived: true }),
     readDeletedOwnedScheduledTasks(user),
     readDeletedOwnedEventTasks(user),
   ]);

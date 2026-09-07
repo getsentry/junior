@@ -169,6 +169,26 @@ describe("Tasks API", () => {
         task: { text: "Post the public incident digest." },
         updatedAtMs: nowMs + 2,
       });
+      await saveScheduledTask(fixture.sql.db(), {
+        ...scheduledTask,
+        id: "sched_recent_completed_tasks_api",
+        createdAtMs: nowMs - 24 * 60 * 60 * 1000,
+        nextRunAtMs: undefined,
+        status: "completed",
+        task: { text: "Recent archived instruction." },
+        title: "Recent archived task",
+        updatedAtMs: nowMs - 24 * 60 * 60 * 1000,
+      });
+      await saveScheduledTask(fixture.sql.db(), {
+        ...scheduledTask,
+        id: "sched_old_completed_tasks_api",
+        createdAtMs: nowMs - 72 * 60 * 60 * 1000,
+        nextRunAtMs: undefined,
+        status: "completed",
+        task: { text: "Old archived instruction." },
+        title: "Old archived task",
+        updatedAtMs: nowMs - 72 * 60 * 60 * 1000,
+      });
       await createEventTask(fixture.sql.db(), {
         id: "event_tasks_api",
         createdAtMs: nowMs + 1,
@@ -383,9 +403,32 @@ describe("Tasks API", () => {
             title: "Untitled scheduled task",
             totalRuns: 2,
           }),
+          expect.objectContaining({
+            id: "sched_recent_completed_tasks_api",
+            status: "completed",
+            title: "Recent archived task",
+          }),
         ],
         truncated: false,
       });
+
+      const archivedSearchResponse = await authenticatedApi(
+        "viewer@example.com",
+      ).request("http://localhost/api/tasks?q=old%20archived");
+      expect(archivedSearchResponse.status).toBe(200);
+      expect(
+        taskListSchema
+          .parse(await archivedSearchResponse.json())
+          .tasks.map((task) => task.id),
+      ).toEqual(["sched_old_completed_tasks_api"]);
+
+      const instructionSearchResponse = await authenticatedApi(
+        "viewer@example.com",
+      ).request("http://localhost/api/tasks?q=instruction");
+      expect(instructionSearchResponse.status).toBe(200);
+      expect(
+        taskListSchema.parse(await instructionSearchResponse.json()).tasks,
+      ).toEqual([]);
 
       const runsResponse = await authenticatedApi("viewer@example.com").request(
         "http://localhost/api/tasks/runs",
@@ -505,12 +548,16 @@ describe("Tasks API", () => {
       expect(crowdedResponse.status).toBe(200);
       const crowdedList = taskListSchema.parse(await crowdedResponse.json());
       expect(crowdedList.executionDays).toHaveLength(90);
-      expect(crowdedList.tasks).toHaveLength(102);
+      expect(crowdedList.tasks).toHaveLength(103);
       expect(
         crowdedList.tasks
           .filter((task) => task.ownedByViewer)
           .map((task) => task.id),
-      ).toEqual(["event_tasks_api", "sched_tasks_api"]);
+      ).toEqual([
+        "event_tasks_api",
+        "sched_tasks_api",
+        "sched_recent_completed_tasks_api",
+      ]);
       expect(crowdedList.truncated).toBe(true);
 
       await conversationStore.recordActivity({
@@ -540,6 +587,7 @@ describe("Tasks API", () => {
       expect(privateList.tasks.map((task) => task.id)).toEqual([
         "event_tasks_api",
         "sched_tasks_api",
+        "sched_recent_completed_tasks_api",
       ]);
       expect(privateList.tasks.every((task) => task.ownedByViewer)).toBe(true);
 
@@ -562,6 +610,14 @@ describe("Tasks API", () => {
         "sched_tasks_api",
       ]);
       expect(deletedScheduledTask).toMatchObject({ status: "deleted" });
+
+      const deletedRecentCompleted = await authenticatedApi(
+        "viewer@example.com",
+      ).request(
+        "http://localhost/api/tasks/scheduled/sched_recent_completed_tasks_api",
+        { method: "DELETE" },
+      );
+      expect(deletedRecentCompleted.status).toBe(204);
 
       const deletedEvent = await authenticatedApi("viewer@example.com").request(
         "http://localhost/api/tasks/event/event_tasks_api",

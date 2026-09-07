@@ -27,6 +27,7 @@ export interface ViewerScheduledTaskPage {
 }
 
 export interface ViewerScheduledTaskPageInput {
+  completedAfterMs?: number;
   cursor?: string;
   limit: number;
   query?: string;
@@ -129,14 +130,13 @@ export async function listViewerScheduledTasks(
         )
       : undefined;
     const search = query
-      ? or(
-          sql<boolean>`strpos(lower(${juniorSchedulerTasks.title}), ${query}) > 0`,
-          sql<boolean>`strpos(lower(${juniorSchedulerTasks.record}->'task'->>'text'), ${query}) > 0`,
-          sql<boolean>`strpos(lower(${juniorSchedulerTasks.record}->'schedule'->>'description'), ${query}) > 0`,
-          sql<boolean>`strpos(lower(${juniorSchedulerTasks.record}->'schedule'->>'timezone'), ${query}) > 0`,
-          sql<boolean>`strpos(lower(${juniorSchedulerTasks.status}), ${query}) > 0`,
-        )
-      : undefined;
+      ? sql<boolean>`strpos(lower(coalesce(${juniorSchedulerTasks.title}, ${juniorSchedulerTasks.record}->'task'->>'text')), ${query}) > 0`
+      : input.completedAfterMs === undefined
+        ? undefined
+        : or(
+            sql`${juniorSchedulerTasks.status} <> 'completed'`,
+            sql`(${juniorSchedulerTasks.record}->>'updatedAtMs')::bigint >= ${input.completedAfterMs}`,
+          );
     const rows = await db
       .select({
         createdAtMs: juniorSchedulerTasks.createdAtMs,
