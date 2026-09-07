@@ -19,10 +19,10 @@ describe("turn execution limit", () => {
   });
 
   it("keeps the internal tool-call limit in diagnostics", () => {
-    const error = new TurnToolCallLimitExceededError(150);
+    const error = new TurnToolCallLimitExceededError(250);
     expect(error).toMatchObject({
       name: "TurnToolCallLimitExceededError",
-      message: "Agent turn exceeded execution limit (150 tool calls)",
+      message: "Agent turn exceeded execution limit (250 tool calls)",
     });
     expect(isTurnExecutionLimitExceededError(error)).toBe(true);
   });
@@ -37,21 +37,21 @@ describe("turn execution limit", () => {
   });
 
   it("allows tool calls at the limit and stops past it", () => {
-    expect(() => assertTurnToolCallLimit(150, 150)).not.toThrow();
-    expect(() => assertTurnToolCallLimit(151, 150)).toThrow(
+    expect(() => assertTurnToolCallLimit(250, 250)).not.toThrow();
+    expect(() => assertTurnToolCallLimit(251, 250)).toThrow(
       TurnToolCallLimitExceededError,
     );
-    expect(() => assertTurnToolCallLimit(151, 150)).toThrow(/150 tool calls/);
+    expect(() => assertTurnToolCallLimit(251, 250)).toThrow(/250 tool calls/);
   });
 
   it("uses the limit reply for thrown execution-limit errors", () => {
     expect(
-      buildTurnErrorResponse(new TurnToolCallLimitExceededError(150), "abc123"),
+      buildTurnErrorResponse(new TurnToolCallLimitExceededError(250), "abc123"),
     ).toBe(buildTurnLimitResponse("abc123"));
     expect(
       buildTurnErrorResponse(
         new Error("boundary", {
-          cause: new TurnToolCallLimitExceededError(150),
+          cause: new TurnToolCallLimitExceededError(250),
         }),
         "abc123",
       ),
