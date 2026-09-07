@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 
 import { Card } from "./layout/Card";
+import { Skeleton } from "./Skeleton";
 import { cn } from "../styles";
 
 export type PageContentSkeletonVariant =
@@ -119,14 +120,17 @@ function LibrarySkeleton() {
 
 function SkeletonCard(props: { className?: string }) {
   return (
-    <Card className={cn("animate-pulse", props.className)}>
+    <Card
+      className={cn(
+        "animate-pulse motion-reduce:animate-none",
+        props.className,
+      )}
+    >
       <span aria-hidden="true" />
     </Card>
   );
 }
 
 function SkeletonBone(props: { className?: string }) {
-  return (
-    <div aria-hidden="true" className={cn("animate-pulse", props.className)} />
-  );
+  return <Skeleton className={props.className} />;
 }

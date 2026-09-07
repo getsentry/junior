@@ -11,6 +11,20 @@ named components so pages stay thin and taste stays consistent.
 
 - Prefer component-owned Tailwind utility classes over dashboard or feature
   stylesheets.
+- Keep stable page chrome visible while data loads. Preserve the page title,
+  navigation, filters, actions, and split-pane geometry when they do not depend
+  on the pending data.
+- A visible loading region must use a named loading component owned beside the
+  finished component or layout. Match the usual structure, spacing, row count,
+  media size, and text height. Reuse the finished layout when practical.
+- Replace only the pending region. Keep useful existing results during refresh,
+  filter, and sort requests. Show pending feedback instead of replacing those
+  results with a skeleton.
+- Use `Skeleton` for placeholder leaves and `PageContentSkeleton` for standard
+  page bodies. Hide placeholder leaves from assistive technology. Give the
+  loading region one concise status label.
+- Skeleton motion must stop when the user prefers reduced motion. Do not use a
+  centered progress card when the expected page structure is known.
 - Prefer small named components for repeated UI surfaces, such as `Field`,
   `TextInput`, `StatusChip`, `Section`, `Toolbar`, or `EmptyState`, instead of
   repeated `<div className="field">` style hooks.

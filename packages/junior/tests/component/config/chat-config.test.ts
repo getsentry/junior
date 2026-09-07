@@ -516,7 +516,7 @@ describe("chat config", () => {
 
   it("sets max tool calls per turn from core config", async () => {
     const { botConfig } = await loadConfig();
-    expect(botConfig.maxToolCallsPerTurn).toBe(150);
+    expect(botConfig.maxToolCallsPerTurn).toBe(250);
   });
 
   it("sets max consecutive automated turns from core config", async () => {

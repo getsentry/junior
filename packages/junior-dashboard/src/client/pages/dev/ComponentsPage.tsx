@@ -27,6 +27,7 @@ import { Card } from "../../components/layout/Card";
 import { CardHeader } from "../../components/layout/CardHeader";
 import { PageHeader } from "../../components/layout/PageHeader";
 import { MetricList, MetricValue } from "../../components/Metric";
+import { PageContentSkeleton } from "../../components/PageContentSkeleton";
 import { StatCard } from "../../components/metrics/StatCard";
 import { StatusChip } from "../../components/StatusChip";
 import { StatusDot } from "../../components/StatusDot";
@@ -359,7 +360,8 @@ function FoundationsGalleryPage() {
             label="Border"
             swatches={[
               {
-                className: "bg-transparent border-2 border-dashboard-border-subtle",
+                className:
+                  "bg-transparent border-2 border-dashboard-border-subtle",
                 label: "subtle",
               },
               {
@@ -367,7 +369,8 @@ function FoundationsGalleryPage() {
                 label: "border",
               },
               {
-                className: "bg-transparent border-2 border-dashboard-border-strong",
+                className:
+                  "bg-transparent border-2 border-dashboard-border-strong",
                 label: "strong",
               },
               {
@@ -458,11 +461,7 @@ function FoundationsGalleryPage() {
             </Field>
           </Card>
           <div className="grid gap-3 sm:grid-cols-[minmax(0,8.5rem)_minmax(0,1fr)]">
-            <Field
-              htmlFor="gallery-provider"
-              label="Provider"
-              size="compact"
-            >
+            <Field htmlFor="gallery-provider" label="Provider" size="compact">
               <TextInput
                 defaultValue="github"
                 id="gallery-provider"
@@ -547,6 +546,9 @@ function FoundationsGalleryPage() {
           value="7"
         />
       </div>
+      <Fixture title="Page loading">
+        <PageContentSkeleton label="Loading example" variant="stats" />
+      </Fixture>
       <Fixture title="Metadata and empty state">
         <div className="grid gap-4">
           <MetricList

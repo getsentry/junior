@@ -4,7 +4,7 @@ import { Coins, GitPullRequest, LibraryBig, Timer } from "lucide-react";
 import { useCodeOverviewData } from "../../api";
 import { formatDuration } from "../../components/Duration";
 import { EmptyTelemetry } from "../../components/EmptyTelemetry";
-import { LoadingView } from "../../components/LoadingView";
+import { PageRouteLoading } from "../../components/PageRouteLoading";
 import { StatusChip } from "../../components/StatusChip";
 import {
   selectTimeSeries,
@@ -27,7 +27,9 @@ function medianMergeTime(value: number | undefined): string {
 }
 
 function costUsd(value: number | undefined): string {
-  return formatCostSummary(value === undefined ? undefined : { total: value }) || "—";
+  return (
+    formatCostSummary(value === undefined ? undefined : { total: value }) || "—"
+  );
 }
 
 function stateTone(state: "closed" | "merged" | "open") {
@@ -42,9 +44,12 @@ export function CodePage() {
   const query = useCodeOverviewData();
   if (!query.data && !query.error) {
     return (
-      <PageLayout>
-        <LoadingView label="Loading code activity" />
-      </PageLayout>
+      <PageRouteLoading
+        description="Repositories and code changes created by Junior."
+        label="Loading code activity"
+        title="Code"
+        variant="stats"
+      />
     );
   }
   return (

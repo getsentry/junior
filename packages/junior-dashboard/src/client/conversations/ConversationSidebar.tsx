@@ -26,6 +26,7 @@ import {
 } from "./conversationSections";
 import { EmptyTelemetry } from "../components/EmptyTelemetry";
 import { SearchInput } from "../components/SearchInput";
+import { Skeleton } from "../components/Skeleton";
 import { ConversationSidebarAnnotations } from "./ConversationMeta";
 
 type ConversationSidebarEntry =
@@ -142,6 +143,8 @@ export function ConversationSidebar(props: {
           <div className="p-2">
             <EmptyTelemetry>{props.error}</EmptyTelemetry>
           </div>
+        ) : props.loading && entries.length === 0 ? (
+          <ConversationRowsLoading />
         ) : (
           <AnimatedList
             ariaLabel="Your conversations"
@@ -208,6 +211,29 @@ export function ConversationSidebar(props: {
         </div>
       ) : null}
     </aside>
+  );
+}
+
+/** Match the usual conversation row density while the first feed loads. */
+function ConversationRowsLoading() {
+  return (
+    <div
+      aria-busy="true"
+      aria-live="polite"
+      className="grid gap-0.5"
+      role="status"
+    >
+      <span className="sr-only">Loading your conversations</span>
+      <Skeleton className="mb-1 ml-2.5 mt-1.5 h-2.5 w-12" />
+      {Array.from({ length: 7 }, (_, index) => (
+        <div className="grid gap-2 rounded-md px-2.5 py-2" key={index}>
+          <Skeleton
+            className={cn("h-3", index % 3 === 0 ? "w-4/5" : "w-3/5")}
+          />
+          <Skeleton className="h-2.5 w-2/5 opacity-70" />
+        </div>
+      ))}
+    </div>
   );
 }
 
