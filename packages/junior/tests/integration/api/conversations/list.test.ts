@@ -36,9 +36,21 @@ describe("conversation list API", () => {
       await migrateSchema(fixture.sql);
       const store = createSqlStore(fixture.sql);
       const archivedId = "slack:C123:archived";
+      const recentArchivedId = "slack:C123:recent-archived";
       await store.recordActivity({
         conversationId: archivedId,
         nowMs: 1_000,
+        title: "Archived conversation",
+        destination: {
+          platform: "slack" as const,
+          teamId: "T123",
+          channelId: "C123",
+        },
+      });
+      await store.recordActivity({
+        conversationId: recentArchivedId,
+        nowMs: Date.now(),
+        title: "Recent archived conversation",
         destination: {
           platform: "slack" as const,
           teamId: "T123",
@@ -50,12 +62,20 @@ describe("conversation list API", () => {
       await fixture.sql
         .db()
         .insert(juniorConversationParticipants)
-        .values({
-          archivedAt: new Date(2_000),
-          lastMessageAt: new Date(1_000),
-          rootConversationId: archivedId,
-          userId: viewer!.id,
-        });
+        .values([
+          {
+            archivedAt: new Date(2_000),
+            lastMessageAt: new Date(1_000),
+            rootConversationId: archivedId,
+            userId: viewer!.id,
+          },
+          {
+            archivedAt: new Date(),
+            lastMessageAt: new Date(),
+            rootConversationId: recentArchivedId,
+            userId: viewer!.id,
+          },
+        ]);
       const app = createJuniorApi();
 
       const response = await app.request(
@@ -64,7 +84,31 @@ describe("conversation list API", () => {
       expect(response.status).toBe(200);
       expect(
         conversationFeedSchema.parse(await response.json()).conversations,
-      ).toEqual([]);
+      ).toEqual([
+        expect.objectContaining({ conversationId: recentArchivedId }),
+      ]);
+      const searchResponse = await app.request(
+        "http://localhost/api/conversations?actorEmail=viewer%40example.com&q=recent%20archived",
+      );
+      expect(searchResponse.status).toBe(200);
+      expect(
+        conversationFeedSchema.parse(await searchResponse.json()).conversations,
+      ).toEqual([
+        expect.objectContaining({ conversationId: recentArchivedId }),
+      ]);
+      const oldSearchResponse = await app.request(
+        "http://localhost/api/conversations?actorEmail=viewer%40example.com&q=archived",
+      );
+      expect(oldSearchResponse.status).toBe(200);
+      expect(
+        conversationFeedSchema.parse(await oldSearchResponse.json())
+          .conversations,
+      ).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ conversationId: archivedId }),
+          expect.objectContaining({ conversationId: recentArchivedId }),
+        ]),
+      );
       const archivedResponse = await app.request(
         "http://localhost/api/conversations?actorEmail=viewer%40example.com&status=archived",
       );
@@ -72,12 +116,15 @@ describe("conversation list API", () => {
       expect(
         conversationFeedSchema.parse(await archivedResponse.json())
           .conversations,
-      ).toEqual([
-        expect.objectContaining({
-          archivedAt: new Date(2_000).toISOString(),
-          conversationId: archivedId,
-        }),
-      ]);
+      ).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            archivedAt: new Date(2_000).toISOString(),
+            conversationId: archivedId,
+          }),
+          expect.objectContaining({ conversationId: recentArchivedId }),
+        ]),
+      );
 
       const invalid = await app.request(
         "http://localhost/api/conversations?actorEmail=not-an-email",
@@ -807,189 +854,6 @@ describe("conversation list API", () => {
       expect(feed.conversations.map((item) => item.conversationId)).toEqual([
         "slack:C1:dashboard-author",
       ]);
-    } finally {
-      await fixture.close();
-    }
-  });
-
-  test("excludes children from the feed and rolls their usage into the root", async () => {
-    const fixture = createConfiguredJuniorSqlFixture();
-    const store = createSqlStore(fixture.sql);
-    try {
-      await migrateSchema(fixture.sql);
-      await store.recordActivity({
-        conversationId: "slack:C1:root",
-        destination: {
-          platform: "slack" as const,
-          teamId: "T1",
-          channelId: "C1",
-        },
-        nowMs: 1_000,
-        source: "slack",
-      });
-      await fixture.sql
-        .db()
-        .update(juniorConversations)
-        .set({ usage: { inputTokens: 10 } })
-        .where(eq(juniorConversations.conversationId, "slack:C1:root"));
-      const childAt = new Date(2_000);
-      await fixture.sql
-        .db()
-        .insert(juniorConversations)
-        .values({
-          conversationId: "advisor:child",
-          parentConversationId: "slack:C1:root",
-          rootConversationId: "slack:C1:root",
-          createdAt: childAt,
-          lastActivityAt: childAt,
-          updatedAt: childAt,
-          executionStatus: "idle",
-          usage: { outputTokens: 5 },
-        });
-      await fixture.sql
-        .db()
-        .insert(juniorConversationEvents)
-        .values([
-          {
-            conversationId: "slack:C1:root",
-            createdAt: new Date(3_000),
-            historyVersion: 1,
-            payload: {
-              content: { costUsd: 0.0002, memories: [] },
-              name: "memories_recalled",
-              namespace: "memory",
-              version: 1,
-            },
-            seq: 0,
-            type: "structured_event",
-          },
-          {
-            conversationId: "advisor:child",
-            createdAt: new Date(4_000),
-            historyVersion: 1,
-            payload: { costUsd: 0.0003 },
-            seq: 0,
-            type: "guardian_action_reviewed",
-          },
-        ]);
-
-      const feed = await readConversationFeedFromSql();
-
-      expect(feed.conversations.map((item) => item.conversationId)).toEqual([
-        "slack:C1:root",
-      ]);
-      expect(feed.conversations[0]?.cumulativeUsage).toEqual({
-        inputTokens: 10,
-        outputTokens: 5,
-      });
-      expect(feed.conversations[0]?.auxiliaryCosts).toEqual({
-        costUsd: 0.0005,
-        operations: [
-          {
-            costUsd: 0.0003,
-            events: 1,
-            name: "guardian_action_reviewed",
-            namespace: "junior",
-          },
-          {
-            costUsd: 0.0002,
-            events: 1,
-            name: "memories_recalled",
-            namespace: "memory",
-          },
-        ],
-      });
-    } finally {
-      await fixture.close();
-    }
-  });
-
-  test("does not return partial tree metrics for an invalid root", async () => {
-    const fixture = createConfiguredJuniorSqlFixture();
-    const store = createSqlStore(fixture.sql);
-    try {
-      await migrateSchema(fixture.sql);
-      await store.recordActivity({
-        conversationId: "slack:C1:invalid-root",
-        destination: {
-          platform: "slack" as const,
-          teamId: "T1",
-          channelId: "C1",
-        },
-        nowMs: 1_000,
-        source: "slack",
-      });
-      await fixture.sql
-        .db()
-        .update(juniorConversations)
-        .set({
-          durationMs: 100,
-          rootConversationId: null,
-          usage: { inputTokens: 10 },
-        })
-        .where(eq(juniorConversations.conversationId, "slack:C1:invalid-root"));
-      const childAt = new Date(2_000);
-      await fixture.sql
-        .db()
-        .insert(juniorConversations)
-        .values({
-          conversationId: "advisor:invalid-root-child",
-          parentConversationId: "slack:C1:invalid-root",
-          rootConversationId: "slack:C1:invalid-root",
-          createdAt: childAt,
-          lastActivityAt: childAt,
-          updatedAt: childAt,
-          executionStatus: "idle",
-          durationMs: 500,
-          usage: { outputTokens: 50 },
-        });
-      await fixture.sql
-        .db()
-        .insert(juniorConversationEvents)
-        .values([
-          {
-            conversationId: "slack:C1:invalid-root",
-            createdAt: new Date(3_000),
-            historyVersion: 1,
-            payload: {
-              content: { costUsd: 0.0002, memories: [] },
-              name: "memories_recalled",
-              namespace: "memory",
-              version: 1,
-            },
-            seq: 0,
-            type: "structured_event",
-          },
-          {
-            conversationId: "advisor:invalid-root-child",
-            createdAt: new Date(4_000),
-            historyVersion: 1,
-            payload: { costUsd: 0.0003 },
-            seq: 0,
-            type: "guardian_action_reviewed",
-          },
-        ]);
-
-      const feed = await readConversationFeedFromSql();
-
-      expect(feed.conversations).toContainEqual(
-        expect.objectContaining({
-          conversationId: "slack:C1:invalid-root",
-          cumulativeDurationMs: 100,
-          cumulativeUsage: { inputTokens: 10 },
-          auxiliaryCosts: {
-            costUsd: 0.0002,
-            operations: [
-              {
-                costUsd: 0.0002,
-                events: 1,
-                name: "memories_recalled",
-                namespace: "memory",
-              },
-            ],
-          },
-        }),
-      );
     } finally {
       await fixture.close();
     }

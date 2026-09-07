@@ -1296,7 +1296,7 @@ function mockConversations(nowMs: number): MockConversation[] {
       conversationId: ARCHIVED_CONVERSATION_ID,
       displayTitle: "Archived restore target",
       surface: "internal",
-      archivedAt: iso(nowMs, -2 * 24 * 60 * 60_000),
+      archivedAt: iso(nowMs, -3 * 24 * 60 * 60_000),
     }),
   ];
 }
@@ -1572,17 +1572,21 @@ function mockGuardianStats(nowMs: number): ConversationStatsReport["guardian"] {
   );
 }
 
+const RECENT_ARCHIVE_WINDOW_MS = 48 * 60 * 60 * 1000;
+
 /** Return the explicit canonical-event visual-QA feed, optionally scoped by actor. */
 export function readMockConversationFeed(
   actorEmail?: string,
   status: "active" | "archived" = "active",
 ): ConversationFeed {
   const feed = mockConversationFeed(NOW_MS);
+  const recentArchiveCutoffMs = NOW_MS - RECENT_ARCHIVE_WINDOW_MS;
   const conversations = feed.conversations
     .filter((conversation) =>
       status === "archived"
         ? Boolean(conversation.archivedAt)
-        : !conversation.archivedAt,
+        : !conversation.archivedAt ||
+          Date.parse(conversation.archivedAt) >= recentArchiveCutoffMs,
     )
     .filter(
       (conversation) =>
@@ -2494,6 +2498,12 @@ function mockTasks(): TaskSummary[] {
       runs: { 1: 1, 7: 3, 30: 12, 90: 48 },
       schedule: "Every Monday at 9:00 AM",
       status: "active",
+      outcomes: [
+        {
+          action: "send_message",
+          destination: { platform: "slack", teamId: "T123", channelId: "C123" },
+        },
+      ],
       title: "Weekly project summary",
       totalRuns: 48,
     },
@@ -2517,6 +2527,7 @@ function mockTasks(): TaskSummary[] {
       resource: "Issue · ACME-42",
       runs: { 1: 0, 7: 1, 30: 4, 90: 7 },
       source: "github",
+      outcomes: [],
       title: "Closed issue summary",
       totalRuns: 7,
       triggerAvailable: true,
@@ -2539,6 +2550,12 @@ function mockTasks(): TaskSummary[] {
       resource: "Incident · INC-17",
       runs: { 1: 0, 7: 0, 30: 0, 90: 0 },
       source: "pagerduty",
+      outcomes: [
+        {
+          action: "send_message",
+          destination: { platform: "slack", teamId: "T123", channelId: "C123" },
+        },
+      ],
       title: "Incident change alerts",
       totalRuns: 0,
       triggerAvailable: false,

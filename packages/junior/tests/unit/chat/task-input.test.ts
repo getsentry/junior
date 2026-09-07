@@ -21,6 +21,18 @@ describe("renderTaskInput", () => {
     `);
   });
 
+  it("renders an empty outcome list without a no-reply instruction", () => {
+    const text = renderTaskInput({
+      instructions: "Apply the requested maintenance.",
+      outcomes: [],
+    });
+
+    expect(text).toContain(
+      "Successful output is not delivered to the destination.",
+    );
+    expect(text).not.toContain(NO_REPLY_MARKER);
+  });
+
   it("renders optional facts between the job and reply contract", () => {
     const text = renderTaskInput({
       about: "GitHub PR getsentry/junior#691",

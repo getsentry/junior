@@ -57,9 +57,9 @@ const TASK_SCOPES = ["mine", "public"] as const satisfies readonly TaskScope[];
 
 function parseTaskRange(value: string): TimeRangeDays {
   const days = Number(value);
-  return (days === 1 || days === 7 || days === 30 || days === 90
-    ? days
-    : 30) as TimeRangeDays;
+  return (
+    days === 1 || days === 7 || days === 30 || days === 90 ? days : 30
+  ) as TimeRangeDays;
 }
 
 function formatDate(value: string): string {
@@ -82,30 +82,11 @@ function formatRunDate(value: string): string {
 
 const EMPTY_TASKS: TaskSummary[] = [];
 
-function taskMatches(task: TaskSummary, search: string): boolean {
-  const haystack = [
-    task.createdBy,
-    task.destination.channelId,
-    task.destination.label,
-    task.destination.teamId,
-    task.instruction,
-    task.kind,
-    task.title,
-    task.kind === "scheduled" ? task.schedule : task.resource,
-    ...(task.kind === "event" ? [task.source] : []),
-    ...(task.kind === "event" ? task.events : []),
-  ]
-    .join(" ")
-    .toLowerCase();
-  return haystack.includes(search);
-}
-
 /** Render viewer-owned and public-workspace tasks in one native view. */
 export function TasksPage(props: {
   enabled: boolean;
   view: "list" | "overview";
 }) {
-  const query = useTasksData(props.enabled);
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const location = useLocation();
@@ -121,6 +102,7 @@ export function TasksPage(props: {
   const [filter, setFilter] = useSearchParamEnum("type", "all", TASK_FILTERS);
   const [scope, setScope] = useSearchParamEnum("scope", "mine", TASK_SCOPES);
   const [searchText, setSearchText, searchQuery] = useDebouncedSearchParam();
+  const query = useTasksData(props.enabled, searchQuery);
   const [page, setPage] = useState(1);
   const search = searchQuery.toLowerCase();
   const listPath = "/tasks/list";
@@ -146,12 +128,8 @@ export function TasksPage(props: {
   );
   const visibleTasks = useMemo(
     () =>
-      scopedTasks.filter(
-        (task) =>
-          (filter === "all" || task.kind === filter) &&
-          (!search || taskMatches(task, search)),
-      ),
-    [filter, scopedTasks, search],
+      scopedTasks.filter((task) => filter === "all" || task.kind === filter),
+    [filter, scopedTasks],
   );
   const visibleTaskCount = visibleTasks.length;
   const totalPages = pageCount(visibleTaskCount, TASK_PAGE_SIZE);
@@ -284,7 +262,7 @@ export function TasksPage(props: {
             search={{
               label: "Search tasks",
               onChange: setSearchText,
-              placeholder: "Title, instruction, location, or creator",
+              placeholder: "Title",
               value: searchText,
             }}
           >

@@ -143,6 +143,7 @@ export {
   taskExecutionSchema,
   taskExecutionStatusDaySchema,
   taskExecutionStatusSchema,
+  taskListQuerySchema,
   taskListSchema,
   taskParamsSchema,
   taskRunListSchema,

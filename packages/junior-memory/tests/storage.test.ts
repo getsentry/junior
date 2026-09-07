@@ -2430,8 +2430,11 @@ describe("memory plugin storage", () => {
         otherUserStore.archiveMemory({ id: privateMemory.memory.id }),
       ).rejects.toThrow("Memory was not found in the current context.");
       await expect(
-        publicStore.archiveMemory({ id: publicMemory.memory.id }),
-      ).rejects.toThrow("Memory was not found in the current context.");
+        otherUserStore.archiveMemory({ id: publicMemory.memory.id }),
+      ).resolves.toMatchObject({ id: publicMemory.memory.id });
+      await expect(publicStore.listMemories({})).resolves.toEqual([
+        expect.objectContaining({ id: privateMemory.memory.id }),
+      ]);
 
       nowMs += 1;
       const archived = await publicStore.archiveMemory({

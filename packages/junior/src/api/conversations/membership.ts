@@ -2,6 +2,7 @@ import {
   and,
   eq,
   exists,
+  gte,
   inArray,
   isNotNull,
   notExists,
@@ -61,8 +62,11 @@ export function conversationHasParticipantEmail(email: string): SQL {
   return exists(participant);
 }
 
-/** True when one user's personal feed has archived this root. */
-export function conversationArchivedForUser(userId: string): SQL {
+/** True when one user's personal feed has archived this root after the cutoff. */
+export function conversationArchivedForUser(
+  userId: string,
+  archivedAfter?: Date,
+): SQL {
   const archive = getDb()
     .select({
       rootConversationId: juniorConversationParticipants.rootConversationId,
@@ -76,6 +80,9 @@ export function conversationArchivedForUser(userId: string): SQL {
         ),
         eq(juniorConversationParticipants.userId, userId),
         isNotNull(juniorConversationParticipants.archivedAt),
+        archivedAfter
+          ? gte(juniorConversationParticipants.archivedAt, archivedAfter)
+          : undefined,
       ),
     );
   return exists(archive);
@@ -101,8 +108,11 @@ export function conversationNotArchivedForUser(userId: string): SQL {
   return notExists(archive);
 }
 
-/** True when one primary-email user's personal feed has archived this root. */
-export function conversationArchivedForEmail(email: string): SQL {
+/** True when one primary-email user's feed archived this root after the cutoff. */
+export function conversationArchivedForEmail(
+  email: string,
+  archivedAfter?: Date,
+): SQL {
   const archive = getDb()
     .select({
       rootConversationId: juniorConversationParticipants.rootConversationId,
@@ -120,6 +130,9 @@ export function conversationArchivedForEmail(email: string): SQL {
         ),
         eq(juniorUsers.primaryEmailNormalized, email),
         isNotNull(juniorConversationParticipants.archivedAt),
+        archivedAfter
+          ? gte(juniorConversationParticipants.archivedAt, archivedAfter)
+          : undefined,
       ),
     );
   return exists(archive);

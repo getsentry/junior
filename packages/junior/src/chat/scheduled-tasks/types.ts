@@ -2,6 +2,7 @@
 import {
   actorUserIdSchema,
   slackDestinationSchema,
+  taskOutcomeSchema,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 
@@ -93,6 +94,8 @@ export const scheduledTaskSchema = z
     schedule: scheduledTaskScheduleSchema,
     status: scheduledTaskStatusSchema,
     statusReason: z.string().optional(),
+    /** Visible effects after successful work. Missing legacy values send a message. */
+    outcomes: z.array(taskOutcomeSchema).max(5).optional(),
     task: z.object({ text: z.string() }).strict(),
     /** SQL-backed short display title generated from the task instruction. */
     title: z.string().optional(),

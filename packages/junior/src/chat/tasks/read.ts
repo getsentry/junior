@@ -54,6 +54,7 @@ import {
   juniorSchedulerTasks,
   juniorUsers,
 } from "@/db/schema";
+import { effectiveTaskOutcomes } from "@/chat/task-outcomes";
 
 const TASK_LIST_LIMIT = 100;
 const TASK_FETCH_LIMIT = TASK_LIST_LIMIT + 1;
@@ -252,6 +253,7 @@ function scheduledTaskSummary(
     ownedByViewer,
     schedule: displayText(task.schedule.description, "Schedule unavailable"),
     status: task.status,
+    outcomes: effectiveTaskOutcomes(task.outcomes, task.destination),
     title: taskDisplayTitle(task.title, instruction, "Untitled scheduled task"),
   };
 }
@@ -282,6 +284,7 @@ function eventTaskSummary(
     ownedByViewer,
     resource: `${task.trigger.label} · ${task.trigger.identifier}`,
     source: task.trigger.namespace,
+    outcomes: effectiveTaskOutcomes(task.outcomes, task.destination),
     title: taskDisplayTitle(task.title, instruction, "Untitled event task"),
     triggerAvailable: eventTaskTriggerAvailable(
       task,
@@ -412,16 +415,29 @@ function taskExecutionStatusSixHours(
   });
 }
 
-export async function readViewerTasks(user: User): Promise<TaskList> {
+/** List one viewer's scheduled and event tasks, optionally filtered by title or instruction search. */
+export async function readViewerTasks(
+  user: User,
+  input: { q?: string } = {},
+): Promise<TaskList> {
   const db = getDb();
+  // TODO(dcramer): Search only matches task title and instruction text today.
+  // Expand to run history and semantic search once title search ships.
+  const query = input.q?.trim().toLowerCase() || undefined;
   const identityIds = new Set(user.identities.map((identity) => identity.id));
   const teamIds = viewerTeamIds(user);
   const [scheduledPage, publicScheduled, eventTasks, publicEventTasks] =
     await Promise.all([
-      listViewerScheduledTasks(db, user, { limit: TASK_FETCH_LIMIT }),
-      listPublicScheduledTasksForTeams(db, teamIds, TASK_FETCH_LIMIT),
-      listEventTasksCreatedBy(db, user, TASK_FETCH_LIMIT),
-      listPublicEventTasksForTeams(db, teamIds, TASK_FETCH_LIMIT),
+      listViewerScheduledTasks(db, user, {
+        limit: TASK_FETCH_LIMIT,
+        query,
+      }),
+      listPublicScheduledTasksForTeams(db, teamIds, {
+        limit: TASK_FETCH_LIMIT,
+        query,
+      }),
+      listEventTasksCreatedBy(db, user, TASK_FETCH_LIMIT, query),
+      listPublicEventTasksForTeams(db, teamIds, TASK_FETCH_LIMIT, query),
     ]);
   const candidatesById = new Map<string, TaskCandidate>();
   const publicScheduledIds = new Set(publicScheduled.map((task) => task.id));

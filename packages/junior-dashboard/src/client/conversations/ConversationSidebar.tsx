@@ -1,9 +1,8 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import {
   Archive,
   ArchiveRestore,
-  Check,
-  ListFilter,
+  CircleAlert,
   LockKeyhole,
   SquarePen,
 } from "lucide-react";
@@ -19,7 +18,7 @@ import {
 import { cn } from "../styles";
 import type { Conversation, VisualStatus } from "../types";
 import { ActiveIndicator } from "../components/ActiveIndicator";
-import { ConversationArchiveNotices } from "./ConversationArchiveNotices";
+import { Notice, NoticeAction } from "../components/Notice";
 import { AnimatedList } from "./AnimatedList";
 import {
   buildConversationSections,
@@ -27,15 +26,20 @@ import {
 } from "./conversationSections";
 import { EmptyTelemetry } from "../components/EmptyTelemetry";
 import { SearchInput } from "../components/SearchInput";
+import { Skeleton } from "../components/Skeleton";
 import { ConversationSidebarAnnotations } from "./ConversationMeta";
 
 type ConversationSidebarEntry =
   | { first: boolean; key: string; kind: "section"; label: string }
   | { conversation: Conversation; key: string; kind: "conversation" };
 
+// Tracks the attempted direction alongside the conversation so a failed
+// archive can never read the row's already-optimistic archived state.
+type ArchiveErrorState = { conversation: Conversation; wasArchiving: boolean };
+
 const conversationEntryKey = (entry: ConversationSidebarEntry) => entry.key;
 
-/** Render the conversation picker beside an open conversation. */
+/** Render the compact personal conversation picker used by the home workspace. */
 export function ConversationSidebar(props: {
   conversations: Conversation[];
   error?: string;
@@ -43,46 +47,35 @@ export function ConversationSidebar(props: {
   query: string;
   selectedId?: string;
   timeZone: string;
-  status: "active" | "archived";
+  /**
+   * `panel` = split-pane dock with internal scroll.
+   * `landing` = flow nav under create compose (parent owns scroll).
+   */
+  variant?: "panel" | "landing";
   onNewConversation(): void;
   onQueryChange(value: string): void;
-  onStatusChange(value: "active" | "archived"): void;
 }) {
-  const [filterOpen, setFilterOpen] = useState(false);
-  const filterRef = useRef<HTMLDivElement>(null);
+  const variant = props.variant ?? "panel";
+  const isLanding = variant === "landing";
   const [archivedConversation, setArchivedConversation] =
     useState<Conversation>();
-  const [archiveError, setArchiveError] = useState<Conversation>();
+  const [archiveError, setArchiveError] = useState<ArchiveErrorState>();
   const dismissArchivedConversation = useCallback(
     () => setArchivedConversation(undefined),
     [],
   );
-  const handleArchiveError = useCallback((conversation: Conversation) => {
-    setArchiveError(conversation);
-  }, []);
+  const handleArchiveError = useCallback(
+    (conversation: Conversation, wasArchiving: boolean) => {
+      setArchiveError({ conversation, wasArchiving });
+    },
+    [],
+  );
   const handleArchived = useCallback((conversation: Conversation) => {
     setArchiveError((current) =>
-      current?.id === conversation.id ? undefined : current,
+      current?.conversation.id === conversation.id ? undefined : current,
     );
     setArchivedConversation(conversation);
   }, []);
-  useEffect(() => {
-    if (!filterOpen) return;
-    function closeFilter(event: PointerEvent) {
-      if (!filterRef.current?.contains(event.target as Node)) {
-        setFilterOpen(false);
-      }
-    }
-    function closeFilterOnEscape(event: KeyboardEvent) {
-      if (event.key === "Escape") setFilterOpen(false);
-    }
-    document.addEventListener("pointerdown", closeFilter);
-    document.addEventListener("keydown", closeFilterOnEscape);
-    return () => {
-      document.removeEventListener("pointerdown", closeFilter);
-      document.removeEventListener("keydown", closeFilterOnEscape);
-    };
-  }, [filterOpen]);
   // Rebuild section rows only when the feed or timezone changes. Avoid fresh
   // Date.now() arrays on unrelated parent renders while the reader is scrolling.
   const entries = useMemo(
@@ -96,66 +89,38 @@ export function ConversationSidebar(props: {
     [props.conversations, props.timeZone],
   );
   return (
-    <aside className="relative grid h-full min-h-0 min-w-0 grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden border-r border-dashboard-border-subtle bg-dashboard-surface-panel">
-      <div className="px-3 pb-2 pt-3" ref={filterRef}>
+    <aside
+      className={cn(
+        "relative min-w-0",
+        isLanding
+          ? "border-t border-white/[0.07] bg-transparent"
+          : "grid h-full min-h-0 grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden border-r border-white/[0.07] bg-white/[0.02]",
+      )}
+    >
+      <div className={cn("px-3 pb-2", isLanding ? "pt-5" : "pt-3")}>
         <div className="flex items-center justify-between gap-2">
-          <h2 className="m-0 font-display text-lg font-medium leading-tight text-dashboard-text">
-            Conversations
+          <h2
+            className={cn(
+              "m-0 font-display font-medium leading-tight text-dashboard-text",
+              isLanding ? "text-base" : "text-lg",
+            )}
+          >
+            {isLanding ? "Your conversations" : "Conversations"}
           </h2>
           <div className="flex items-center gap-0.5">
-            <button
-              aria-controls="conversation-status-filter"
-              aria-expanded={filterOpen}
-              aria-haspopup="menu"
-              aria-label="Filter conversations"
-              className={cn(
-                "grid size-7 cursor-pointer place-items-center rounded-md text-dashboard-text-muted transition hover:bg-white/[0.05] hover:text-dashboard-text focus:outline-none focus:ring-2 focus:ring-cyan-300/35",
-                (filterOpen || props.status === "archived") &&
-                  "bg-white/[0.06] text-dashboard-text",
-              )}
-              onClick={() => setFilterOpen((open) => !open)}
-              title="Filter conversations"
-              type="button"
-            >
-              <ListFilter aria-hidden="true" size={15} />
-            </button>
-            <button
-              aria-label="New conversation"
-              className="grid size-7 cursor-pointer place-items-center rounded-md text-dashboard-text-muted transition hover:bg-dashboard-fill-hover hover:text-dashboard-text focus:outline-none focus:ring-2 focus:ring-dashboard-focus"
-              onClick={props.onNewConversation}
-              title="New conversation"
-              type="button"
-            >
-              <SquarePen aria-hidden="true" size={15} />
-            </button>
-          </div>
-        </div>
-        {filterOpen ? (
-          <div
-            className="mt-2 rounded-lg bg-dashboard-surface-raised/95 p-1 shadow-2xl shadow-black/75 backdrop-blur-xl"
-            id="conversation-status-filter"
-            role="menu"
-          >
-            {(["active", "archived"] as const).map((status) => (
+            {isLanding ? null : (
               <button
-                aria-checked={props.status === status}
-                className="flex w-full cursor-pointer items-center justify-between rounded-md px-2.5 py-2 text-left text-sm capitalize text-dashboard-text transition hover:bg-white/10 focus:bg-white/10 focus:outline-none"
-                key={status}
-                onClick={() => {
-                  props.onStatusChange(status);
-                  setFilterOpen(false);
-                }}
-                role="menuitemradio"
+                aria-label="New conversation"
+                className="grid size-7 cursor-pointer place-items-center rounded-md text-dashboard-text-muted transition hover:bg-white/[0.05] hover:text-dashboard-text focus:outline-none focus:ring-2 focus:ring-cyan-300/35"
+                onClick={props.onNewConversation}
+                title="New conversation"
                 type="button"
               >
-                {status}
-                {props.status === status ? (
-                  <Check aria-hidden="true" size={14} />
-                ) : null}
+                <SquarePen aria-hidden="true" size={15} />
               </button>
-            ))}
+            )}
           </div>
-        ) : null}
+        </div>
       </div>
       <div className="px-2 pb-2">
         <SearchInput
@@ -166,11 +131,20 @@ export function ConversationSidebar(props: {
           value={props.query}
         />
       </div>
-      <div className="min-h-0 overflow-y-auto overscroll-contain px-1.5 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+      <div
+        className={cn(
+          "px-1.5",
+          isLanding
+            ? "pb-[max(1rem,env(safe-area-inset-bottom))]"
+            : "min-h-0 overflow-y-auto overscroll-contain pb-[max(0.5rem,env(safe-area-inset-bottom))]",
+        )}
+      >
         {props.error ? (
           <div className="p-2">
             <EmptyTelemetry>{props.error}</EmptyTelemetry>
           </div>
+        ) : props.loading && entries.length === 0 ? (
+          <ConversationRowsLoading />
         ) : (
           <AnimatedList
             ariaLabel="Your conversations"
@@ -209,14 +183,57 @@ export function ConversationSidebar(props: {
           />
         )}
       </div>
-      <ConversationArchiveNotices
-        archivedConversation={archivedConversation}
-        archiveError={archiveError}
-        className="absolute bottom-[max(0.75rem,env(safe-area-inset-bottom))] left-3 right-3 z-20"
-        onDismissError={() => setArchiveError(undefined)}
-        onRestored={dismissArchivedConversation}
-      />
+      {archivedConversation || archiveError ? (
+        <div
+          className={cn(
+            // Landing is content-tall (parent scrolls). Keep notices on the
+            // visible viewport instead of the end of the long list.
+            isLanding
+              ? "fixed bottom-[max(0.75rem,env(safe-area-inset-bottom))] left-3 right-3 z-30 grid gap-2"
+              : "absolute bottom-[max(0.75rem,env(safe-area-inset-bottom))] left-3 right-3 z-20 grid gap-2",
+          )}
+        >
+          {archiveError ? (
+            <ArchiveConversationErrorNotice
+              conversation={archiveError.conversation}
+              onDismiss={() => setArchiveError(undefined)}
+              wasArchiving={archiveError.wasArchiving}
+            />
+          ) : null}
+          {archivedConversation ? (
+            <ArchivedConversationNotice
+              // Remount on each archive so the expiry timer and restore mutation reset.
+              key={archivedConversation.id}
+              conversation={archivedConversation}
+              onRestored={dismissArchivedConversation}
+            />
+          ) : null}
+        </div>
+      ) : null}
     </aside>
+  );
+}
+
+/** Match the usual conversation row density while the first feed loads. */
+function ConversationRowsLoading() {
+  return (
+    <div
+      aria-busy="true"
+      aria-live="polite"
+      className="grid gap-0.5"
+      role="status"
+    >
+      <span className="sr-only">Loading your conversations</span>
+      <Skeleton className="mb-1 ml-2.5 mt-1.5 h-2.5 w-12" />
+      {Array.from({ length: 7 }, (_, index) => (
+        <div className="grid gap-2 rounded-md px-2.5 py-2" key={index}>
+          <Skeleton
+            className={cn("h-3", index % 3 === 0 ? "w-4/5" : "w-3/5")}
+          />
+          <Skeleton className="h-2.5 w-2/5 opacity-70" />
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -276,12 +293,19 @@ function ConversationListStatusIcon(props: {
 
 const ConversationSidebarRow = memo(function ConversationSidebarRow(props: {
   conversation: Conversation;
-  onArchiveError(conversation: Conversation): void;
+  onArchiveError(conversation: Conversation, wasArchiving: boolean): void;
   onArchived(conversation: Conversation): void;
   selected: boolean;
 }) {
   const archive = useArchiveConversation(props.conversation.id, {
-    onError: () => props.onArchiveError(props.conversation),
+    // Read the attempted direction from the mutation call, not the (possibly
+    // already optimistically updated) conversation prop, so a failed archive
+    // never gets mislabeled as a failed restore.
+    onError: () =>
+      props.onArchiveError(
+        props.conversation,
+        archive.variables?.archived ?? true,
+      ),
     onSuccess: (archived) => {
       if (archived) props.onArchived(props.conversation);
     },
@@ -352,3 +376,82 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(props: {
     </div>
   );
 });
+
+function ArchiveConversationErrorNotice(props: {
+  conversation: Conversation;
+  onDismiss(): void;
+  wasArchiving: boolean;
+}) {
+  const title = conversationDisplayTitle(props.conversation);
+  const actionTitle = props.wasArchiving
+    ? "Could not archive"
+    : "Could not restore";
+  return (
+    <Notice
+      action={
+        <NoticeAction onClick={props.onDismiss} title="Dismiss" tone="error">
+          Dismiss
+        </NoticeAction>
+      }
+      detail={title}
+      icon={CircleAlert}
+      title={actionTitle}
+      tone="error"
+    />
+  );
+}
+
+function ArchivedConversationNotice(props: {
+  conversation: Conversation;
+  onRestored(): void;
+}) {
+  const restore = useArchiveConversation(props.conversation.id, {
+    onSuccess: (archived) => {
+      if (!archived) props.onRestored();
+    },
+  });
+  const title = conversationDisplayTitle(props.conversation);
+
+  useEffect(() => {
+    if (restore.isPending || restore.error) return;
+    const timeout = window.setTimeout(props.onRestored, 6_000);
+    return () => window.clearTimeout(timeout);
+  }, [
+    props.conversation.id,
+    props.onRestored,
+    restore.error,
+    restore.isPending,
+  ]);
+
+  return (
+    <Notice
+      action={
+        <NoticeAction
+          aria-label={`Undo archive for ${title}`}
+          disabled={restore.isPending}
+          onClick={() =>
+            restore.mutate({
+              archived: false,
+              lastSeenAt: props.conversation.lastSeenAt,
+            })
+          }
+          title={`Undo archive for ${title}`}
+        >
+          {restore.isPending ? "Restoring…" : "Undo"}
+        </NoticeAction>
+      }
+      detail={title}
+      icon={ArchiveRestore}
+      title="Conversation archived"
+    >
+      {restore.error ? (
+        <div
+          className="border-t border-rose-300/25 bg-rose-400/[0.12] px-3 py-2 font-mono text-xs text-rose-50/85"
+          role="alert"
+        >
+          Could not restore the conversation.
+        </div>
+      ) : null}
+    </Notice>
+  );
+}

@@ -18,6 +18,11 @@ import {
 } from "@/chat/resource-events/catalog";
 import { generateShortTitle } from "@/chat/services/short-title";
 import { zodTool } from "@/chat/tool-support/zod-tool";
+import {
+  resolveTaskOutcomes,
+  taskOutcomeInputSchema,
+  type TaskOutcomeInput,
+} from "@/chat/task-outcomes";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 
@@ -61,6 +66,14 @@ export function createUpdateEventTaskTool(
         trigger: registeredEventTaskTriggerSchema(catalog)
           .nullable()
           .optional(),
+        outcomes: z
+          .array(taskOutcomeInputSchema)
+          .max(5)
+          .nullable()
+          .describe(
+            "Replacement messages to send after successful work. Use an empty list to send nothing. Omit or use null to leave unchanged.",
+          )
+          .optional(),
         credentialMode: z
           .enum(["system", "creator"])
           .nullable()
@@ -77,13 +90,15 @@ export function createUpdateEventTaskTool(
         trigger?: z.input<
           ReturnType<typeof registeredEventTaskTriggerSchema>
         > | null;
+        outcomes?: TaskOutcomeInput[] | null;
         credentialMode?: "creator" | "system" | null;
       };
-      const { credentialMode, task, trigger, ...prepared } = input;
+      const { credentialMode, outcomes, task, trigger, ...prepared } = input;
       return {
         ...prepared,
         ...(task != null ? { task } : undefined),
         ...(trigger != null ? { trigger } : undefined),
+        ...(outcomes != null ? { outcomes } : undefined),
         ...(credentialMode != null ? { credentialMode } : undefined),
       };
     },
@@ -100,9 +115,17 @@ export function createUpdateEventTaskTool(
           "Only the event task creator can enable creator credential use.",
         );
       }
+      // TODO(dcramer): Allow public Automation members to change outcomes after
+      // shared policy or the web UI can authorize the new Destination safely.
+      if (input.outcomes != null && !isCreator) {
+        throw new ToolInputError(
+          "Only the event task creator can change message destinations.",
+        );
+      }
       if (
         input.task === undefined &&
         input.trigger === undefined &&
+        input.outcomes == null &&
         input.credentialMode == null
       ) {
         throw new ToolInputError("Event task update requires a change.");
@@ -133,6 +156,14 @@ export function createUpdateEventTaskTool(
           changesExecution && !isCreator
             ? "system"
             : (input.credentialMode ?? current.credentialMode),
+        outcomes:
+          input.outcomes == null
+            ? current.outcomes
+            : await resolveTaskOutcomes(
+                input.outcomes,
+                current.destination,
+                current.createdBy.slackUserId,
+              ),
         task: { text: nextInstruction },
         trigger: nextTrigger,
       };

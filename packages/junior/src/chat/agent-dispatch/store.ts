@@ -6,6 +6,7 @@ import {
   isSlackDestination,
   replyAttributionSchema,
   sourceSchema,
+  taskOutcomeSchema,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import { credentialSubjectSchema } from "@/chat/credentials/context";
@@ -65,6 +66,7 @@ const dispatchRecordSchema = z
     replyAttribution: replyAttributionSchema.optional(),
     resultMessageTs: z.string().optional(),
     source: sourceSchema,
+    outcomes: z.array(taskOutcomeSchema).max(5).optional(),
     status: dispatchStatusSchema,
     updatedAtMs: z.number().finite(),
   })
@@ -190,7 +192,9 @@ function toDispatchProjection(record: DispatchRecord): DispatchProjection {
     ...(record.resultMessageTs
       ? { resultMessageTs: record.resultMessageTs }
       : undefined),
-    ...(record.errorMessage ? { errorMessage: record.errorMessage } : undefined),
+    ...(record.errorMessage
+      ? { errorMessage: record.errorMessage }
+      : undefined),
   };
 }
 
@@ -317,6 +321,9 @@ export async function createOrGetDispatch(args: {
       plugin: args.plugin,
       ...(args.options.replyAttribution
         ? { replyAttribution: args.options.replyAttribution }
+        : undefined),
+      ...(args.options.outcomes
+        ? { outcomes: args.options.outcomes }
         : undefined),
       status: "pending",
       source: args.options.source,

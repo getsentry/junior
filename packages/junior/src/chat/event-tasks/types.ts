@@ -4,6 +4,7 @@ import {
   resourceEventMatchSchema,
   resourceEventTypeSchema,
   slackDestinationSchema,
+  taskOutcomeSchema,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 
@@ -40,6 +41,8 @@ export const eventTaskSchema = z
     credentialMode: z.enum(["system", "creator"]),
     destination: slackDestinationSchema,
     destinationVisibility: destinationVisibilitySchema,
+    /** Visible effects after successful work. Missing legacy values send a message. */
+    outcomes: z.array(taskOutcomeSchema).max(5).optional(),
     task: z.object({ text: z.string().min(1) }).strict(),
     trigger: eventTaskTriggerSchema,
   })

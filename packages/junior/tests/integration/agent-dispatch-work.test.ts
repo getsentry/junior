@@ -153,6 +153,74 @@ describe("agent dispatch conversation work", () => {
     });
   });
 
+  it("sends successful work to each outcome destination in order", async () => {
+    const dispatch = await createDispatch(
+      "multiple-message-outcomes",
+      undefined,
+      undefined,
+      undefined,
+      "Send the result to both destinations.",
+      [
+        {
+          action: "send_message",
+          destination: { ...destination, channelId: "D123" },
+        },
+        {
+          action: "send_message",
+          destination: { ...destination, channelId: "C456" },
+        },
+      ],
+    );
+    const { queue, run, state } = await createAgentDispatchWorkHarness(
+      createModelAgentRunner(
+        createModelStream([{ type: "text", text: "Work complete" }]),
+      ),
+    );
+
+    await enqueueAgentDispatch(dispatch, { queue, state });
+    await processConversationQueueMessage(queue.takeMessage(), {
+      queue,
+      run,
+      state,
+    });
+
+    expect(
+      slackApiOutbox.messages().map((message) => message.params.channel),
+    ).toEqual(["D123", "C456"]);
+  });
+
+  it("completes work with no outcomes without posting the model result", async () => {
+    const dispatch = await createDispatch(
+      "no-outcomes",
+      undefined,
+      undefined,
+      undefined,
+      "Apply the requested maintenance.",
+      [],
+    );
+    const agentRunner = createModelAgentRunner(
+      createModelStream([{ type: "text", text: "Maintenance complete" }]),
+    );
+    const runAgent = vi.spyOn(agentRunner, "run");
+    const { queue, run, state } =
+      await createAgentDispatchWorkHarness(agentRunner);
+
+    await enqueueAgentDispatch(dispatch, { queue, state });
+    await processConversationQueueMessage(queue.takeMessage(), {
+      queue,
+      run,
+      state,
+    });
+
+    expect(slackApiOutbox.messages()).toEqual([]);
+    await expect(getDispatchRecord(dispatch.id)).resolves.toMatchObject({
+      status: "completed",
+      outcomes: [],
+    });
+    expect(runAgent).toHaveBeenCalledOnce();
+    expect(runAgent.mock.calls[0]?.[0]).not.toHaveProperty("delivery");
+  });
+
   it("projects a previously delivered reply without running the agent again", async () => {
     const dispatch = await createDispatch("delivered-replay");
     const conversationId = getDispatchConversationId(dispatch);

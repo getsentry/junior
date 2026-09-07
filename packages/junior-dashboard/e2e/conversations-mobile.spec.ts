@@ -116,7 +116,7 @@ test("starts a new conversation from a centered compose empty state", async ({
     page.getByRole("link", { name: "Back to conversations" }),
   ).toHaveCount(0);
   await expect(
-    page.getByRole("heading", { name: "Your conversations" }),
+    page.getByRole("list", { name: "Your conversations" }),
   ).toBeVisible();
   // Legacy create deep link collapses onto home.
   await page.goto(`${dashboard.baseURL}/conversations/new`);
@@ -174,7 +174,7 @@ test("opens and closes a conversation on mobile", async ({
     page.getByRole("heading", { name: "What do you need?" }),
   ).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "Your conversations" }),
+    page.getByRole("list", { name: "Your conversations" }),
   ).toBeVisible();
   const navigationTrigger = page.getByRole("button", {
     name: "Open navigation",
@@ -552,7 +552,7 @@ test("opens and closes a conversation on mobile", async ({
     page.getByRole("heading", { name: "What do you need?" }),
   ).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "Your conversations" }),
+    page.getByRole("list", { name: "Your conversations" }),
   ).toBeVisible();
 
   // Log out must POST and dismiss the sheet before the response completes.

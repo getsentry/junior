@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { Globe2, LockKeyhole } from "lucide-react";
 import { useNavigate, useParams } from "react-router";
 
@@ -16,7 +16,6 @@ import {
 } from "./queries";
 import { conversationPath, NEW_CONVERSATION_PATH } from "./conversationRoutes";
 import { buildConversations } from "../format";
-import { filterConversationList } from "./conversationList";
 import type { DashboardCoreData } from "../types";
 import type { Conversation } from "../types";
 import { cn, dashboardContainerClass } from "../styles";
@@ -28,12 +27,12 @@ const CONVERSATION_PAGE_SIZE = 20;
 export function ConversationWorkspace(props: { data: DashboardCoreData }) {
   const [page, setPage] = useState(1);
   const [query, setQuery] = useState("");
-  const [status, setStatus] = useState<"active" | "archived">("active");
+  const search = useDeferredValue(query.trim());
   const params = useParams();
   const navigate = useNavigate();
   const selectedId = params.conversationId;
   const home = !selectedId;
-  const feed = useConversationsData(status);
+  const feed = useConversationsData(search);
   const pendingArchiveUpdates = usePendingArchiveConversationUpdates();
   const createConversation = useCreateConversation();
   const conversations = useMemo(
@@ -44,34 +43,19 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
       ),
     [feed.data?.conversations, pendingArchiveUpdates],
   );
-  const visibleConversations = useMemo(
-    () => filterConversationList(conversations, { query, status }),
-    [conversations, query, status],
-  );
-
-  useEffect(() => {
-    if (!home) return;
-    // A new conversation starts in the active view.
-    setStatus("active");
-  }, [home]);
-
   const openCreate = () => {
     createConversation.reset();
-    setStatus("active");
     if (selectedId) navigate(NEW_CONVERSATION_PATH);
   };
 
-  const totalPages = pageCount(
-    visibleConversations.length,
-    CONVERSATION_PAGE_SIZE,
-  );
+  const totalPages = pageCount(conversations.length, CONVERSATION_PAGE_SIZE);
   const pagedConversations = useMemo(
-    () => pageItems(visibleConversations, page, CONVERSATION_PAGE_SIZE),
-    [page, visibleConversations],
+    () => pageItems(conversations, page, CONVERSATION_PAGE_SIZE),
+    [conversations, page],
   );
   useEffect(() => {
     setPage(1);
-  }, [query, status]);
+  }, [search]);
   useEffect(() => {
     if (page > totalPages) setPage(totalPages);
   }, [page, totalPages]);
@@ -99,58 +83,19 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
       <main
         className={cn(
           dashboardContainerClass,
-          "h-full min-h-0 overflow-y-auto overscroll-contain px-4 py-6 sm:px-6 sm:py-8 xl:border-x xl:border-dashboard-border-subtle",
+          "h-full min-h-0 overflow-y-auto overscroll-contain px-4 py-4 sm:px-6 sm:py-6 xl:border-x xl:border-dashboard-border-subtle",
         )}
       >
-        <div className="mx-auto grid w-full max-w-6xl gap-6">
-          <header className="border-b border-dashboard-border-subtle pb-5">
-            <h1 className="m-0 font-display text-3xl font-light tracking-[-0.03em] text-dashboard-text sm:text-4xl">
-              Conversations
-            </h1>
-            <p className="mb-0 mt-2 font-mono text-xs text-dashboard-text-muted sm:text-sm">
-              Start new work or review your recent conversations.
-            </p>
-          </header>
+        <div className="mx-auto grid w-full max-w-6xl gap-8">
           {createView}
-          <section
-            aria-labelledby="conversation-list-title"
-            className="grid gap-3"
-          >
-            <div className="flex flex-wrap items-center gap-2">
-              <h2
-                className="mr-auto font-display text-xl font-medium text-dashboard-text"
-                id="conversation-list-title"
-              >
-                Your conversations
-              </h2>
-              <SearchInput
-                className="w-full sm:w-72"
-                label="Search your conversations"
-                onChange={setQuery}
-                placeholder="Search conversations…"
-                value={query}
-              />
-              <div
-                aria-label="Conversation status"
-                className="flex gap-1"
-                role="group"
-              >
-                <ToggleButton
-                  onClick={() => setStatus("active")}
-                  pressed={status === "active"}
-                  variant="pill"
-                >
-                  Active
-                </ToggleButton>
-                <ToggleButton
-                  onClick={() => setStatus("archived")}
-                  pressed={status === "archived"}
-                  variant="pill"
-                >
-                  Archived
-                </ToggleButton>
-              </div>
-            </div>
+          <section aria-label="Conversations" className="grid gap-3">
+            <SearchInput
+              className="w-full sm:ml-auto sm:w-72"
+              label="Search your conversations"
+              onChange={setQuery}
+              placeholder="Search conversations…"
+              value={query}
+            />
             <ConversationHomeList
               conversations={pagedConversations}
               emptyLabel={feed.error?.message}
@@ -162,7 +107,7 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
               page={page}
               pageCount={totalPages}
               pageSize={CONVERSATION_PAGE_SIZE}
-              total={visibleConversations.length}
+              total={conversations.length}
             />
           </section>
         </div>
@@ -179,15 +124,13 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
     >
       <div className="hidden h-full min-h-0 overflow-hidden md:block">
         <ConversationSidebar
-          conversations={visibleConversations}
+          conversations={conversations}
           error={feed.error?.message}
           loading={feed.isPending}
           onNewConversation={openCreate}
           onQueryChange={setQuery}
-          onStatusChange={setStatus}
           query={query}
           selectedId={selectedId}
-          status={status}
           timeZone={props.data.config.timeZone}
         />
       </div>

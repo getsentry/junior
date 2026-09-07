@@ -1,5 +1,5 @@
 import type { User } from "@sentry/junior-plugin-api";
-import { and, asc, desc, eq, isNull, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, isNull, or, sql, type SQL } from "drizzle-orm";
 import { getDb } from "@/chat/db";
 import type { Conversation } from "@/chat/conversations/store";
 import { locationFromRow } from "@/chat/conversations/sql/location";
@@ -37,14 +37,19 @@ import { readLastUserMessageAtByConversation } from "./user-message-activity";
 import { readConversationActivityPreviews } from "./activity-preview";
 
 const CONVERSATION_FEED_LIMIT = 50;
+// Archived conversations stay in the default feed for this long after
+// archiving, so the sidebar's undo affordance works without a search. Search
+// still finds older archived conversations regardless of this window.
+const RECENT_ARCHIVE_WINDOW_MS = 48 * 60 * 60 * 1000;
 
 type ConversationFeedMembership =
   | { kind: "viewer"; userId: string }
   | { kind: "actorEmail"; email: string };
 
 function conversationFeedMembershipFilter(
-  status: "active" | "archived",
-  filter?: ConversationFeedMembership,
+  status: "active" | "archived" | "all",
+  filter: ConversationFeedMembership | undefined,
+  archivedAfter: Date,
 ): SQL | undefined {
   if (!filter) return status === "archived" ? sql`false` : undefined;
   if (filter.kind === "viewer") {
@@ -55,7 +60,12 @@ function conversationFeedMembershipFilter(
       }),
       status === "archived"
         ? conversationArchivedForUser(filter.userId)
-        : conversationNotArchivedForUser(filter.userId),
+        : status === "all"
+          ? undefined
+          : or(
+              conversationNotArchivedForUser(filter.userId),
+              conversationArchivedForUser(filter.userId, archivedAfter),
+            ),
     );
   }
   return and(
@@ -65,15 +75,22 @@ function conversationFeedMembershipFilter(
     }),
     status === "archived"
       ? conversationArchivedForEmail(filter.email)
-      : conversationNotArchivedForEmail(filter.email),
+      : status === "all"
+        ? undefined
+        : or(
+            conversationNotArchivedForEmail(filter.email),
+            conversationArchivedForEmail(filter.email, archivedAfter),
+          ),
   );
 }
 
 async function conversationRows(
   db: JuniorDatabase,
   limit: number,
-  status: "active" | "archived",
-  filter?: ConversationFeedMembership,
+  status: "active" | "archived" | "all",
+  filter: ConversationFeedMembership | undefined,
+  archivedAfter: Date,
+  query?: string,
 ) {
   return db
     .select({
@@ -100,7 +117,12 @@ async function conversationRows(
     .where(
       and(
         isNull(juniorConversations.parentConversationId),
-        conversationFeedMembershipFilter(status, filter),
+        conversationFeedMembershipFilter(status, filter, archivedAfter),
+        // TODO(dcramer): Search only matches conversation titles today. Expand
+        // to transcripts and semantic search once title search ships.
+        query
+          ? sql<boolean>`strpos(lower(coalesce(${juniorConversations.title}, '')), ${query}) > 0`
+          : undefined,
       ),
     )
     .orderBy(
@@ -254,6 +276,7 @@ export async function readConversationFeedFromSql(
   options: {
     actorEmail?: string;
     limit?: number;
+    q?: string;
     status?: "active" | "archived";
     viewer?: User;
   } = {},
@@ -261,11 +284,14 @@ export async function readConversationFeedFromSql(
   const nowMs = Date.now();
   const db = getDb();
   const filter = conversationFeedFilter(options);
+  const query = options.q?.trim().toLowerCase() || undefined;
   const rows = await conversationRows(
     db,
     options.limit ?? CONVERSATION_FEED_LIMIT,
-    options.status ?? "active",
+    query ? "all" : (options.status ?? "active"),
     filter,
+    new Date(nowMs - RECENT_ARCHIVE_WINDOW_MS),
+    query,
   );
   const conversations = rows.map((row) => conversationFromRow(row));
   const conversationIds = conversations.map(
@@ -398,6 +424,7 @@ export async function readConversationFeedFromSql(
 export async function readConversationFeed(
   options: {
     actorEmail?: string;
+    q?: string;
     status?: "active" | "archived";
     viewer?: User;
   } = {},

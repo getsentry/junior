@@ -844,7 +844,7 @@ describe("github plugin", () => {
     );
     await expect(request?.request.json()).resolves.toEqual({
       title: "Typed issue",
-      body: "Issue body\n\n<!-- junior-request-attribution:start -->\nRequested by **David Cramer**.\n<!-- junior-request-attribution:end -->",
+      body: "Issue body\n\n<!-- junior-request-attribution:start -->\nvia **David Cramer**.\n<!-- junior-request-attribution:end -->",
       labels: ["bug", "high-priority"],
     });
     expect(ctx.annotationInputs()).toEqual([
@@ -856,6 +856,96 @@ describe("github plugin", () => {
         url: "https://github.com/getsentry/junior/issues/660",
       },
     ]);
+  });
+
+  it("accumulates requester attribution instead of overwriting prior requesters", async () => {
+    process.env.GITHUB_WEBHOOK_SECRET = "test-secret";
+    const ctx = githubToolsContext({
+      actor: {
+        fullName: "Jane Doe",
+        platform: "slack",
+        teamId: "T1",
+        userId: "U2",
+      },
+      conversationId: "slack:C123:1712345.0002",
+    });
+    const plugin = githubPlugin();
+    const tool = plugin.hooks?.tools?.(ctx as any)?.createIssue;
+
+    await tool?.execute?.(
+      {
+        repo: "getsentry/junior",
+        title: "Typed issue",
+        body: "Issue body\n\n<!-- junior-request-attribution:start -->\nvia **David Cramer**.\n<!-- junior-request-attribution:end -->",
+        labels: ["bug"],
+      },
+      { toolCallId: "call-create-issue-accumulate" },
+    );
+
+    const request = ctx.egressRequests()[0];
+    await expect(request?.request.json()).resolves.toMatchObject({
+      body: "Issue body\n\n<!-- junior-request-attribution:start -->\nvia **David Cramer**, **Jane Doe**.\n<!-- junior-request-attribution:end -->",
+    });
+  });
+
+  it("does not duplicate a requester already present in the attribution block", async () => {
+    process.env.GITHUB_WEBHOOK_SECRET = "test-secret";
+    const ctx = githubToolsContext({
+      actor: {
+        fullName: "David Cramer",
+        platform: "slack",
+        teamId: "T1",
+        userId: "U1",
+      },
+      conversationId: "slack:C123:1712345.0003",
+    });
+    const plugin = githubPlugin();
+    const tool = plugin.hooks?.tools?.(ctx as any)?.createIssue;
+
+    await tool?.execute?.(
+      {
+        repo: "getsentry/junior",
+        title: "Typed issue",
+        body: "Issue body\n\n<!-- junior-request-attribution:start -->\nvia **David Cramer**.\n<!-- junior-request-attribution:end -->",
+        labels: ["bug"],
+      },
+      { toolCallId: "call-create-issue-dedupe" },
+    );
+
+    const request = ctx.egressRequests()[0];
+    await expect(request?.request.json()).resolves.toMatchObject({
+      body: "Issue body\n\n<!-- junior-request-attribution:start -->\nvia **David Cramer**.\n<!-- junior-request-attribution:end -->",
+    });
+  });
+
+  it("keeps a comma-containing display name intact when accumulating", async () => {
+    process.env.GITHUB_WEBHOOK_SECRET = "test-secret";
+    const ctx = githubToolsContext({
+      actor: {
+        fullName: "Jane Doe",
+        platform: "slack",
+        teamId: "T1",
+        userId: "U2",
+      },
+      conversationId: "slack:C123:1712345.0004",
+    });
+    const plugin = githubPlugin();
+    const tool = plugin.hooks?.tools?.(ctx as any)?.createIssue;
+
+    await tool?.execute?.(
+      {
+        repo: "getsentry/junior",
+        title: "Typed issue",
+        body: "Issue body\n\n<!-- junior-request-attribution:start -->\nvia **Cramer, David**.\n<!-- junior-request-attribution:end -->",
+        labels: ["bug"],
+      },
+      { toolCallId: "call-create-issue-comma-name" },
+    );
+
+    const request = ctx.egressRequests()[0];
+    await expect(request?.request.json()).resolves.toMatchObject({
+      body: "Issue body\n\n<!-- junior-request-attribution:start -->\nvia **Cramer, David**, **Jane Doe**.\n<!-- junior-request-attribution:end -->",
+    });
   });
 
   it("keeps issue annotation labels compact for long titles", async () => {
@@ -1289,7 +1379,7 @@ Conversation: \`local:test:old-conversation\`
       title: "Typed PR",
       head: "dcramer/gh-660-pr-create",
       base: "main",
-      body: "PR body\n\n<!-- junior-request-attribution:start -->\nRequested by **David Cramer**.\n<!-- junior-request-attribution:end -->",
+      body: "PR body\n\n<!-- junior-request-attribution:start -->\nvia **David Cramer**.\n<!-- junior-request-attribution:end -->",
       draft: true,
     });
     expect(ctx.annotationInputs()).toEqual([
@@ -1451,7 +1541,7 @@ Conversation: \`local:test:old-conversation\`
 
     const request = ctx.egressRequests()[0];
     await expect(request?.request.json()).resolves.toMatchObject({
-      body: "PR body\n\n<!-- junior-request-attribution:start -->\nRequested by **David Cramer**.\n<!-- junior-request-attribution:end -->",
+      body: "PR body\n\n<!-- junior-request-attribution:start -->\nvia **David Cramer**.\n<!-- junior-request-attribution:end -->",
     });
   });
 
@@ -1538,7 +1628,7 @@ Conversation: \`local:test:old-conversation\`
 
     const request = ctx.egressRequests()[0];
     await expect(request?.request.json()).resolves.toMatchObject({
-      body: "PR body\n\n<!-- junior-request-attribution:start -->\nRequested by **David Cramer**.\n<!-- junior-request-attribution:end -->",
+      body: "PR body\n\n<!-- junior-request-attribution:start -->\nvia **David Cramer**.\n<!-- junior-request-attribution:end -->",
     });
   });
 

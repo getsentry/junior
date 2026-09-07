@@ -75,7 +75,7 @@ test("reuses the fresh conversation feed after window focus", async ({
 
   await page.goto(dashboard.baseURL);
   await expect(
-    page.getByRole("heading", { name: "Conversations", exact: true }),
+    page.getByRole("heading", { name: "Conversations" }),
   ).toBeVisible();
   expect(requests).toBe(1);
 
@@ -141,12 +141,12 @@ test("shows the repo name for one annotation scope on mobile", async ({
   await page.setViewportSize({ height: 844, width: 390 });
   await page.goto(dashboard.baseURL);
 
-  const conversationRow = page.getByRole("listitem").filter({
-    has: page.getByRole("link", { name: /Checkout latency triage/ }),
+  const conversation = page.getByRole("link", {
+    name: /Checkout latency triage/,
   });
-  await expect(conversationRow).toBeVisible();
+  await expect(conversation).toBeVisible();
   await expect(
-    conversationRow.getByText("payments", { exact: true }),
+    conversation.getByText("payments", { exact: true }),
   ).toBeVisible();
 });
 
@@ -160,22 +160,19 @@ test("opens a conversation in the built dashboard", async ({
 
   await expect(page.getByRole("link", { name: "Junior home" })).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "Conversations", exact: true }),
+    page.getByRole("heading", { name: "Conversations" }),
   ).toBeVisible();
   const publicConversationLink = page.getByRole("link", {
     name: /Checkout latency triage/,
   });
-  const privateConversationRow = page
-    .getByRole("listitem")
-    .filter({ has: page.getByRole("link", { name: /Direct Message/ }) });
-  const publicConversationRow = page
-    .getByRole("listitem")
-    .filter({ has: publicConversationLink });
+  const privateConversationLink = page.getByRole("link", {
+    name: /Direct Message/,
+  });
   await expect(
-    privateConversationRow.getByLabel("Private conversation"),
+    privateConversationLink.getByLabel("Private conversation"),
   ).toBeVisible();
   await expect(
-    publicConversationRow.getByLabel("Private conversation"),
+    publicConversationLink.getByLabel("Private conversation"),
   ).toHaveCount(0);
   await publicConversationLink.click();
   await expect(page).toHaveURL(
@@ -658,21 +655,25 @@ test("inspects and copies an advisor transcript", async ({
   await expect(drawer).toBeVisible();
 });
 
-test("filters archived conversations and restores one", async ({
+test("finds an old archived conversation by title and restores it", async ({
   page,
   dashboard,
 }) => {
   await page.setViewportSize({ height: 900, width: 1600 });
   await page.goto(dashboard.baseURL);
-  await expect(
-    page.getByRole("link", { name: /Archived restore target/ }),
-  ).toHaveCount(0);
+  // The landing view keeps a hidden mobile sidebar mounted alongside the
+  // visible desktop one; scope to the desktop (first) instance throughout.
+  const conversationLink = page
+    .getByRole("link", {
+      name: /Archived restore target/,
+    })
+    .first();
+  await expect(conversationLink).toHaveCount(0);
 
-  await page.getByRole("button", { name: "Archived" }).click();
-
-  const conversationLink = page.getByRole("link", {
-    name: /Archived restore target/,
-  });
+  await page
+    .getByLabel("Search your conversations")
+    .first()
+    .fill("archived restore");
   await expect(conversationLink).toBeVisible();
   await conversationLink.hover();
   const restoreRequest = page.waitForRequest(
@@ -681,16 +682,14 @@ test("filters archived conversations and restores one", async ({
   );
   await page
     .getByRole("button", { name: "Restore Archived restore target" })
+    .first()
     .click();
   expect((await restoreRequest).postDataJSON()).toMatchObject({
     archived: false,
   });
-  await expect(conversationLink).toHaveCount(0);
 
-  await page.getByRole("button", { name: "Active" }).click();
-  await expect(
-    page.getByRole("link", { name: /Archived restore target/ }),
-  ).toBeVisible();
+  await page.getByLabel("Search your conversations").first().fill("");
+  await expect(conversationLink).toBeVisible();
 });
 
 test("archives and restores a conversation from the sidebar", async ({

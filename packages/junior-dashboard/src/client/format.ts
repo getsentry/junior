@@ -637,16 +637,6 @@ export function conversationActorLabel(
   return actorLabel(conversation?.actorIdentity);
 }
 
-/** Return the stable actor key used by dashboard list filters. */
-export function conversationActorKey(
-  conversation: Conversation | undefined,
-): string | undefined {
-  return (
-    conversation?.actorIdentity?.email?.trim() ||
-    conversationActorLabel(conversation)
-  );
-}
-
 /** Format the owner and permalink id line shared by conversation rows and headers. */
 export function conversationIdentityMeta(
   conversation: Conversation | undefined,

@@ -4,6 +4,7 @@ import type { JuniorApiEnv } from "@/api/route";
 import { apiErrorSchema } from "@/api/schema/common";
 import {
   taskExecutionListSchema,
+  taskListQuerySchema,
   taskListSchema,
   taskParamsSchema,
   taskRunListSchema,
@@ -21,10 +22,16 @@ import {
 /** Create authenticated native task list and action routes. */
 export function createTaskRoutes(): Hono<JuniorApiEnv> {
   const app = new Hono<JuniorApiEnv>();
-  app.get("/", requireViewer, async (context) => {
-    const user = context.get("viewer");
-    return jsonResponse(taskListSchema, await readViewerTasks(user));
-  });
+  app.get(
+    "/",
+    requireViewer,
+    validateRequest("query", taskListQuerySchema, "Invalid task list query."),
+    async (context) => {
+      const user = context.get("viewer");
+      const query = context.req.valid("query");
+      return jsonResponse(taskListSchema, await readViewerTasks(user, query));
+    },
+  );
   app.get("/runs", requireViewer, async (context) => {
     const user = context.get("viewer");
     return jsonResponse(taskRunListSchema, await readViewerTaskRuns(user));

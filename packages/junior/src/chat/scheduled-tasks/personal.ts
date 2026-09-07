@@ -129,13 +129,7 @@ export async function listViewerScheduledTasks(
         )
       : undefined;
     const search = query
-      ? or(
-          sql<boolean>`strpos(lower(${juniorSchedulerTasks.title}), ${query}) > 0`,
-          sql<boolean>`strpos(lower(${juniorSchedulerTasks.record}->'task'->>'text'), ${query}) > 0`,
-          sql<boolean>`strpos(lower(${juniorSchedulerTasks.record}->'schedule'->>'description'), ${query}) > 0`,
-          sql<boolean>`strpos(lower(${juniorSchedulerTasks.record}->'schedule'->>'timezone'), ${query}) > 0`,
-          sql<boolean>`strpos(lower(${juniorSchedulerTasks.status}), ${query}) > 0`,
-        )
+      ? sql<boolean>`strpos(lower(coalesce(${juniorSchedulerTasks.title}, ${juniorSchedulerTasks.record}->'task'->>'text')), ${query}) > 0`
       : undefined;
     const rows = await db
       .select({
