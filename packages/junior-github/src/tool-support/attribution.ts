@@ -67,8 +67,8 @@ function requesterLabel(args: {
 
 /**
  * Recover the ordered list of prior requester labels from an existing
- * attribution block, including the legacy single-requester `Requested by`
- * wording, so a new requester can be appended instead of replacing them.
+ * attribution block, including the legacy `Requested by` and `via A, via B`
+ * wordings, so a new requester can be appended instead of replacing them.
  */
 function parseExistingLabels(blockContents: string): string[] {
   const trimmed = blockContents.trim().replace(/\.$/, "");
@@ -76,18 +76,18 @@ function parseExistingLabels(blockContents: string): string[] {
     return [];
   }
   const withoutLeadIn = trimmed.replace(/^(?:Requested by|via)\s+/i, "");
-  // Only split on a comma immediately followed by "via" so a display name
-  // that itself contains a comma is not broken into extra labels.
+  // Only split on a comma that starts the next label (bold markdown, a
+  // system-actor label, or a legacy repeated "via") so a display name that
+  // itself contains a comma is not broken into extra labels.
   return withoutLeadIn
-    .split(/,\s*via\s+/i)
-    .map((entry) => entry.trim())
+    .split(/,\s*(?=\*\*|Junior system actor `|via\s)/i)
+    .map((entry) => entry.trim().replace(/^via\s+/i, ""))
     .filter(Boolean);
 }
 
 /** Render the attribution block wire format parsed by `parseExistingLabels`. */
 function formatAttributionBlock(labels: string[]): string {
-  const sentence = labels.map((entry) => `via ${entry}`).join(", ");
-  return `${GITHUB_REQUEST_ATTRIBUTION_START}\n${sentence}.\n${GITHUB_REQUEST_ATTRIBUTION_END}`;
+  return `${GITHUB_REQUEST_ATTRIBUTION_START}\nvia ${labels.join(", ")}.\n${GITHUB_REQUEST_ATTRIBUTION_END}`;
 }
 
 function applyAttribution(body: string, label: string | undefined): string {

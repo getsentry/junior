@@ -884,7 +884,7 @@ describe("github plugin", () => {
 
     const request = ctx.egressRequests()[0];
     await expect(request?.request.json()).resolves.toMatchObject({
-      body: "Issue body\n\n<!-- junior-request-attribution:start -->\nvia **David Cramer**, via **Jane Doe**.\n<!-- junior-request-attribution:end -->",
+      body: "Issue body\n\n<!-- junior-request-attribution:start -->\nvia **David Cramer**, **Jane Doe**.\n<!-- junior-request-attribution:end -->",
     });
   });
 
@@ -944,7 +944,7 @@ describe("github plugin", () => {
 
     const request = ctx.egressRequests()[0];
     await expect(request?.request.json()).resolves.toMatchObject({
-      body: "Issue body\n\n<!-- junior-request-attribution:start -->\nvia **Cramer, David**, via **Jane Doe**.\n<!-- junior-request-attribution:end -->",
+      body: "Issue body\n\n<!-- junior-request-attribution:start -->\nvia **Cramer, David**, **Jane Doe**.\n<!-- junior-request-attribution:end -->",
     });
   });
 
