@@ -380,7 +380,9 @@ function buildResumedRun(
       }
       await priorOnEvent?.(event);
     },
-    delivery,
+    ...(savedRun.dispatch?.successOutput === "silent"
+      ? undefined
+      : { delivery }),
     durability: {
       ...savedRun.durability,
       onSandboxRefChanged: async (sandboxRef) => {

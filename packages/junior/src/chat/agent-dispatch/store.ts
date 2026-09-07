@@ -65,6 +65,7 @@ const dispatchRecordSchema = z
     replyAttribution: replyAttributionSchema.optional(),
     resultMessageTs: z.string().optional(),
     source: sourceSchema,
+    successOutput: z.enum(["reply", "silent"]).optional(),
     status: dispatchStatusSchema,
     updatedAtMs: z.number().finite(),
   })
@@ -317,6 +318,9 @@ export async function createOrGetDispatch(args: {
       plugin: args.plugin,
       ...(args.options.replyAttribution
         ? { replyAttribution: args.options.replyAttribution }
+        : undefined),
+      ...(args.options.successOutput
+        ? { successOutput: args.options.successOutput }
         : undefined),
       status: "pending",
       source: args.options.source,

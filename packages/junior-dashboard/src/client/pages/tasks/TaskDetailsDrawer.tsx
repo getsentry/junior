@@ -88,6 +88,9 @@ export function TaskDetailsDrawer(props: {
               {detail.value}
             </Detail>
           ))}
+          <Detail label="Success output">
+            {task.successOutput === "silent" ? "Silent" : "Reply in Slack"}
+          </Detail>
           <Detail label="Destination">
             <span className="inline-flex items-center gap-1.5">
               <MapPin

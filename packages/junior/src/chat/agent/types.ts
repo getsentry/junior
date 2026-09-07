@@ -102,6 +102,8 @@ export type AgentDispatch = {
   metadata?: Record<string, string>;
   plugin?: string;
   replyAttribution?: ReplyAttribution;
+  /** Whether successful output is delivered to the Destination. */
+  successOutput?: "reply" | "silent";
 };
 
 /** Optional agent capabilities that a run slice can turn off. */

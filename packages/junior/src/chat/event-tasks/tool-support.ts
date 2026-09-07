@@ -31,6 +31,7 @@ const compactEventTaskResultSchema = z
     events: z.array(z.string().min(1)).min(1),
     match: z.record(z.string(), z.unknown()).optional(),
     credentialMode: z.enum(["system", "creator"]),
+    successOutput: z.enum(["reply", "silent"]),
     createdBy: eventTaskPrincipalSchema,
     triggerAvailable: z.boolean(),
   })
@@ -206,6 +207,7 @@ export function compactEventTask(
     events: task.trigger.events,
     ...(task.trigger.match ? { match: task.trigger.match } : undefined),
     credentialMode: task.credentialMode,
+    successOutput: task.successOutput ?? "reply",
     createdBy: task.createdBy,
     triggerAvailable: eventTaskTriggerAvailable(task, catalog),
   });

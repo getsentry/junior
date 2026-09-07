@@ -58,6 +58,7 @@ function eventInput(task: EventTask, event: ResourceEvent): string {
   return renderTaskInput({
     about: task.trigger.label,
     instructions: task.task.text,
+    successOutput: task.successOutput ?? "reply",
     guidance,
     trustedSummary: event.trustedSummary,
     trustedSummaryMaxLength: RESOURCE_EVENT_SUMMARY_MAX_LENGTH,
@@ -109,6 +110,7 @@ export async function ingestEventTasks(
           input: eventInput(task, event),
           metadata: { eventTaskId: task.id },
           replyAttribution: replyAttribution(task),
+          successOutput: task.successOutput,
         },
       });
       if (dispatch.status === "created") {

@@ -50,6 +50,7 @@ function singleLineMetadataValue(value: string): string {
 function buildDispatchInput(task: ScheduledTask): string {
   return renderTaskInput({
     instructions: task.task.text,
+    successOutput: task.successOutput ?? "reply",
   });
 }
 
@@ -420,6 +421,7 @@ export async function runScheduledTaskHeartbeat(args: {
           input: buildDispatchInput(task),
           metadata,
           replyAttribution: replyAttribution(task),
+          successOutput: task.successOutput,
         },
       });
     } catch (error) {

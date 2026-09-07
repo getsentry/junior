@@ -344,5 +344,6 @@ export const dispatchOptionsSchema = z
     input: nonBlankStringSchema.pipe(z.string().max(32_000)),
     metadata: dispatchMetadataSchema.optional(),
     replyAttribution: replyAttributionSchema.optional(),
+    successOutput: z.enum(["reply", "silent"]).optional(),
   })
   .strict();

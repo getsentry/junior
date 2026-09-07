@@ -1124,7 +1124,9 @@ export function createSlackTurn(deps: SlackTurnDeps) {
                 });
               }
             },
-            delivery: deliverAssistantMessage,
+            ...(options.execution?.dispatch?.successOutput === "silent"
+              ? undefined
+              : { delivery: deliverAssistantMessage }),
             durability: {
               onInputCommitted: options.ack,
               drainSteeringMessages,

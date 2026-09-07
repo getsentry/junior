@@ -54,6 +54,12 @@ export function createSlackScheduleUpdateTaskTool(
           .describe("Complete replacement schedule. Omit to keep it unchanged.")
           .nullable()
           .optional(),
+        success_output: z
+          .enum(["reply", "silent"])
+          .describe(
+            "Set reply when success should post in Slack, or silent for tool-only work. Omit to keep unchanged.",
+          )
+          .optional(),
         status: z
           .enum(["active", "blocked"])
           .describe(
@@ -196,6 +202,7 @@ export function createSlackScheduleUpdateTaskTool(
         statusReason:
           nextStatus === "blocked" ? lookup.statusReason : undefined,
         schedule: compiled?.schedule ?? lookup.schedule,
+        successOutput: input.success_output ?? lookup.successOutput,
         task: { text: nextInstruction },
       };
       if (instructionChanged) {
@@ -217,6 +224,8 @@ export function createSlackScheduleUpdateTaskTool(
         (input.credential_mode === undefined ||
           input.credential_mode === null ||
           input.credential_mode === lookup.credentialMode) &&
+        (input.success_output === undefined ||
+          input.success_output === lookup.successOutput) &&
         moveHere
       ) {
         return scheduleTaskToolResult(

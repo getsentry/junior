@@ -40,6 +40,8 @@ export const eventTaskSchema = z
     credentialMode: z.enum(["system", "creator"]),
     destination: slackDestinationSchema,
     destinationVisibility: destinationVisibilitySchema,
+    /** Stored output choice. Missing legacy values keep reply behavior. */
+    successOutput: z.enum(["reply", "silent"]).optional(),
     task: z.object({ text: z.string().min(1) }).strict(),
     trigger: eventTaskTriggerSchema,
   })

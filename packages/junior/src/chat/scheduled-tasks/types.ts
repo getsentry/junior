@@ -13,6 +13,7 @@ const scheduledTaskStatusSchema = z.enum([
 ]);
 export type ScheduledTaskStatus = z.output<typeof scheduledTaskStatusSchema>;
 const scheduledTaskCredentialModeSchema = z.enum(["system", "creator"]);
+const scheduledTaskSuccessOutputSchema = z.enum(["reply", "silent"]);
 export type ScheduledTaskCredentialMode = z.output<
   typeof scheduledTaskCredentialModeSchema
 >;
@@ -93,6 +94,8 @@ export const scheduledTaskSchema = z
     schedule: scheduledTaskScheduleSchema,
     status: scheduledTaskStatusSchema,
     statusReason: z.string().optional(),
+    /** Stored output choice. Missing legacy values keep reply behavior. */
+    successOutput: scheduledTaskSuccessOutputSchema.optional(),
     task: z.object({ text: z.string() }).strict(),
     /** SQL-backed short display title generated from the task instruction. */
     title: z.string().optional(),

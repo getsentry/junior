@@ -252,6 +252,7 @@ function scheduledTaskSummary(
     ownedByViewer,
     schedule: displayText(task.schedule.description, "Schedule unavailable"),
     status: task.status,
+    successOutput: task.successOutput ?? "reply",
     title: taskDisplayTitle(task.title, instruction, "Untitled scheduled task"),
   };
 }
@@ -282,6 +283,7 @@ function eventTaskSummary(
     ownedByViewer,
     resource: `${task.trigger.label} · ${task.trigger.identifier}`,
     source: task.trigger.namespace,
+    successOutput: task.successOutput ?? "reply",
     title: taskDisplayTitle(task.title, instruction, "Untitled event task"),
     triggerAvailable: eventTaskTriggerAvailable(
       task,

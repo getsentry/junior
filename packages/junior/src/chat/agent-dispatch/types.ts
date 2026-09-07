@@ -52,6 +52,8 @@ export interface DispatchRecord {
   replyAttribution?: ReplyAttribution;
   resultMessageTs?: string;
   source: Source;
+  /** Whether successful output is delivered to the Destination. */
+  successOutput?: "reply" | "silent";
   status: DispatchStatus;
   updatedAtMs: number;
 }

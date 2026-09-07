@@ -58,6 +58,7 @@ const compactTaskResultSchema = z
       })
       .strict(),
     credential_mode: z.enum(["system", "creator"]),
+    success_output: z.enum(["reply", "silent"]),
     dashboard_url: z.string().url().nullable(),
     last_run_at: z.string().nullable(),
     run_now_at: z.string().nullable(),
@@ -241,6 +242,7 @@ export function compactTask(task: ScheduledTask): CompactTaskResult {
     },
     conversation_access: task.conversationAccess,
     credential_mode: task.credentialMode,
+    success_output: task.successOutput ?? "reply",
     dashboard_url: getDashboardTaskLink(task.id) ?? null,
     last_run_at: task.lastRunAtMs
       ? new Date(task.lastRunAtMs).toISOString()

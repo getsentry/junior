@@ -5,8 +5,16 @@
  */
 import { NO_REPLY_MARKER } from "@/chat/no-reply";
 
-/** Shared closing lines: instructions own reply format; marker owns silence. */
-function replyContractLines(): string[] {
+export type TaskSuccessOutput = "reply" | "silent";
+
+/** Shared closing lines for the stored success-output choice. */
+function replyContractLines(successOutput: TaskSuccessOutput): string[] {
+  if (successOutput === "silent") {
+    return [
+      "Successful output is not delivered to the destination.",
+      "Complete the work without adding a status message for people.",
+    ];
+  }
   return [
     "When you reply, follow any reply format in the instructions.",
     `If no visible reply is needed, your final assistant message must be exactly ${NO_REPLY_MARKER} and nothing else.`,
@@ -34,6 +42,8 @@ function clip(value: string, maxLength: number | undefined): string {
 export function renderTaskInput(args: {
   /** Stored task instruction, or subscription intent. */
   instructions: string;
+  /** Whether successful work posts a destination-visible reply. */
+  successOutput?: TaskSuccessOutput;
   /** Human label for the matched resource, when present. */
   about?: string;
   /** Plugin guidance scoped under the instructions. */
@@ -99,6 +109,6 @@ export function renderTaskInput(args: {
     );
   }
 
-  lines.push("", ...replyContractLines());
+  lines.push("", ...replyContractLines(args.successOutput ?? "reply"));
   return lines.join("\n");
 }

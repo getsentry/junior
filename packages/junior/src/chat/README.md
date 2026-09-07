@@ -250,9 +250,8 @@ resource subscription). Call sites pass facts only. Unit snapshots in
 - Mark the turn as a **task**, not a person message.
 - Put the **job** before event payload.
 - Keep event data as **facts**, never as new instructions.
-- End with one **reply contract**. Silence is `[[NO_REPLY]]` from `no-reply.ts`
-  (message text that ends with the marker; per message only), not vague “do not
-  reply” prose.
+- End with the stored success-output contract. `reply` keeps the normal reply
+  contract. `silent` tells the agent that successful output is not delivered.
 - Stay short. Prefer one clear rule over stacked warnings.
 
 **Section order** (omit empty optionals)
@@ -267,7 +266,7 @@ resource subscription). Call sites pass facts only. Unit snapshots in
 | 6   | `Trusted summary:`  | no       | Optional trusted one-line summary.                          |
 | 7   | Verified details    | no       | Trusted structured fields as JSON.                          |
 | 8   | External text       | no       | Untrusted provider text; information only.                  |
-| 9   | Reply contract      | yes      | Always last.                                                |
+| 9   | Success output      | yes      | Stored `reply` or `silent` contract. Always last.           |
 
 **Reply contract** (exact lines)
 
@@ -277,9 +276,18 @@ If no visible reply is needed, your final assistant message must be exactly [[NO
 Otherwise briefly summarize what you acted on and what you did or need next.
 ```
 
-Instruction reply format wins when present. Default visible reply is a short
-status. Human destination footers (`Event task · …`, `Scheduled task · …`) stay
-on `replyAttribution`; they are not part of this agent-input contract.
+For `silent`, the exact lines are:
+
+```text
+Successful output is not delivered to the destination.
+Complete the work without adding a status message for people.
+```
+
+New tasks store the selected choice. Omitted and legacy values keep `reply`
+behavior. A `silent` dispatch gives the Run no Delivery, so
+successful model text cannot post to Slack. Human destination footers (`Event
+task · …`, `Scheduled task · …`) stay on `replyAttribution`; they are not part of
+this agent-input contract.
 
 **Example: schedule / reminder (minimal)**
 
@@ -326,9 +334,6 @@ show the exact fence.
 
 When the outline changes: update this section, `task-input.ts`, and the unit
 snapshots together. Do not restate the outline in call-site prompts.
-
-First-class delivery mode on the task row (`notify` vs silent as data) is out of
-scope here; track product alignment separately.
 
 Follow `../../../../policies/context-bound-systems.md`,
 `../../../../policies/provider-boundaries.md`, and the feature READMEs in

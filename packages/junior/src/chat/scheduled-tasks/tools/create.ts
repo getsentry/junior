@@ -61,6 +61,12 @@ export function createSlackScheduleCreateTaskTool(
         schedule: scheduleIntentSchema.describe(
           "When the task runs. The scheduler computes the exact next run from this intent and the server clock.",
         ),
+        success_output: z
+          .enum(["reply", "silent"])
+          .describe(
+            "Choose silent for tool-only work, or reply when success should post in Slack. Omit for reply.",
+          )
+          .optional(),
         credential_mode: z
           .enum(["creator", "system"])
           .nullable()
@@ -75,6 +81,7 @@ export function createSlackScheduleCreateTaskTool(
         task: string;
         title?: string | null;
         schedule: z.input<typeof scheduleIntentSchema>;
+        success_output?: "reply" | "silent";
         credential_mode?: "creator" | "system" | null;
       };
       const prepared = { ...input };
@@ -163,6 +170,7 @@ export function createSlackScheduleCreateTaskTool(
         originalRequest: context.userText,
         schedule: compiled.schedule,
         status: "active",
+        successOutput: input.success_output ?? "reply",
         task: {
           text: input.task,
         },

@@ -61,6 +61,13 @@ export function createUpdateEventTaskTool(
         trigger: registeredEventTaskTriggerSchema(catalog)
           .nullable()
           .optional(),
+        successOutput: z
+          .enum(["reply", "silent"])
+          .nullable()
+          .describe(
+            "Set reply when success should post in Slack, or silent for tool-only work. Omit or use null to leave unchanged.",
+          )
+          .optional(),
         credentialMode: z
           .enum(["system", "creator"])
           .nullable()
@@ -77,13 +84,16 @@ export function createUpdateEventTaskTool(
         trigger?: z.input<
           ReturnType<typeof registeredEventTaskTriggerSchema>
         > | null;
+        successOutput?: "reply" | "silent" | null;
         credentialMode?: "creator" | "system" | null;
       };
-      const { credentialMode, task, trigger, ...prepared } = input;
+      const { credentialMode, successOutput, task, trigger, ...prepared } =
+        input;
       return {
         ...prepared,
         ...(task != null ? { task } : undefined),
         ...(trigger != null ? { trigger } : undefined),
+        ...(successOutput != null ? { successOutput } : undefined),
         ...(credentialMode != null ? { credentialMode } : undefined),
       };
     },
@@ -103,6 +113,7 @@ export function createUpdateEventTaskTool(
       if (
         input.task === undefined &&
         input.trigger === undefined &&
+        input.successOutput == null &&
         input.credentialMode == null
       ) {
         throw new ToolInputError("Event task update requires a change.");
@@ -133,6 +144,7 @@ export function createUpdateEventTaskTool(
           changesExecution && !isCreator
             ? "system"
             : (input.credentialMode ?? current.credentialMode),
+        successOutput: input.successOutput ?? current.successOutput,
         task: { text: nextInstruction },
         trigger: nextTrigger,
       };

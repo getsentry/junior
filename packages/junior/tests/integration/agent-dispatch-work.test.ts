@@ -153,6 +153,38 @@ describe("agent dispatch conversation work", () => {
     });
   });
 
+  it("completes silent work without posting the model result", async () => {
+    const dispatch = await createDispatch(
+      "silent-success",
+      undefined,
+      undefined,
+      undefined,
+      "Apply the requested maintenance.",
+      "silent",
+    );
+    const agentRunner = createModelAgentRunner(
+      createModelStream([{ type: "text", text: "Maintenance complete" }]),
+    );
+    const runAgent = vi.spyOn(agentRunner, "run");
+    const { queue, run, state } =
+      await createAgentDispatchWorkHarness(agentRunner);
+
+    await enqueueAgentDispatch(dispatch, { queue, state });
+    await processConversationQueueMessage(queue.takeMessage(), {
+      queue,
+      run,
+      state,
+    });
+
+    expect(slackApiOutbox.messages()).toEqual([]);
+    await expect(getDispatchRecord(dispatch.id)).resolves.toMatchObject({
+      status: "completed",
+      successOutput: "silent",
+    });
+    expect(runAgent).toHaveBeenCalledOnce();
+    expect(runAgent.mock.calls[0]?.[0]).not.toHaveProperty("delivery");
+  });
+
   it("projects a previously delivered reply without running the agent again", async () => {
     const dispatch = await createDispatch("delivered-replay");
     const conversationId = getDispatchConversationId(dispatch);

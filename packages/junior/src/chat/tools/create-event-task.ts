@@ -80,6 +80,12 @@ export function createEventTaskTool(
           )
           .optional(),
         trigger,
+        successOutput: z
+          .enum(["reply", "silent"])
+          .describe(
+            "Choose silent for tool-only work, or reply when success should post in Slack. Omit for reply.",
+          )
+          .optional(),
         credentialMode: z
           .enum(["creator", "system"])
           .nullable()
@@ -94,6 +100,7 @@ export function createEventTaskTool(
         task: string;
         title?: string | null;
         trigger: z.input<typeof trigger>;
+        successOutput?: "reply" | "silent";
         credentialMode?: "creator" | "system" | null;
       };
       const prepared = { ...input };
@@ -149,6 +156,7 @@ export function createEventTaskTool(
         },
         credentialMode: input.credentialMode ?? "creator",
         destination,
+        successOutput: input.successOutput ?? "reply",
         task: { text: input.task },
         ...(title ? { title } : undefined),
         trigger: {

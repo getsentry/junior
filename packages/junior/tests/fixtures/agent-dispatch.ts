@@ -42,6 +42,7 @@ export async function createAgentDispatchTestRecord(
   source?: BoundDispatchOptions["source"],
   replyAttribution?: ReplyAttribution,
   input = "Post the scheduled digest.",
+  successOutput?: "reply" | "silent",
 ) {
   return (
     await createOrGetDispatch({
@@ -54,6 +55,7 @@ export async function createAgentDispatchTestRecord(
         input,
         ...(replyAttribution ? { replyAttribution } : undefined),
         source: source ?? { kind: "scheduled_task" },
+        ...(successOutput ? { successOutput } : undefined),
       },
       plugin: "scheduler",
     })
