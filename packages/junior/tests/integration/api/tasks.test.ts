@@ -387,6 +387,16 @@ describe("Tasks API", () => {
         truncated: false,
       });
 
+      const searchResponse = await authenticatedApi("viewer@example.com").request(
+        "http://localhost/api/tasks?q=closed%20issue",
+      );
+      expect(searchResponse.status).toBe(200);
+      expect(
+        taskListSchema
+          .parse(await searchResponse.json())
+          .tasks.map((task) => task.id),
+      ).toEqual(["event_tasks_api"]);
+
       const runsResponse = await authenticatedApi("viewer@example.com").request(
         "http://localhost/api/tasks/runs",
       );

@@ -329,7 +329,7 @@ export async function saveScheduledTaskInLock(
 export async function listPublicScheduledTasksForTeams(
   db: JuniorDatabase,
   teamIds: string[],
-  limit: number,
+  input: { limit: number; query?: string },
 ): Promise<ScheduledTask[]> {
   if (teamIds.length === 0) return [];
   const rows = await db
@@ -355,6 +355,9 @@ export async function listPublicScheduledTasksForTeams(
           "deleted",
           "paused",
         ]),
+        input.query
+          ? sql<boolean>`strpos(lower(coalesce(${juniorSchedulerTasks.title}, ${juniorSchedulerTasks.record}->'task'->>'text')), ${input.query}) > 0`
+          : undefined,
         eq(juniorDestinations.visibility, "public"),
       ),
     )
@@ -362,6 +365,6 @@ export async function listPublicScheduledTasksForTeams(
       desc(juniorSchedulerTasks.createdAtMs),
       desc(juniorSchedulerTasks.id),
     )
-    .limit(limit);
+    .limit(input.limit);
   return rows.map(parseScheduledTaskRow).filter(isListedScheduledTask);
 }

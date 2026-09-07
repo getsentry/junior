@@ -218,6 +218,7 @@ export async function listEventTasksCreatedBy(
   db: JuniorDatabase,
   user: User,
   limit: number,
+  query?: string,
 ): Promise<StoredEventTask[]> {
   const identities = viewerSlackIdentities(user);
   const ownership = or(
@@ -236,7 +237,15 @@ export async function listEventTasksCreatedBy(
       title: juniorEventTasks.title,
     })
     .from(juniorEventTasks)
-    .where(and(ownership, activeEventTaskWhere()))
+    .where(
+      and(
+        ownership,
+        activeEventTaskWhere(),
+        query
+          ? sql<boolean>`strpos(lower(coalesce(${juniorEventTasks.title}, ${juniorEventTasks.task}->'task'->>'text')), ${query}) > 0`
+          : undefined,
+      ),
+    )
     .orderBy(desc(juniorEventTasks.createdAtMs), desc(juniorEventTasks.id))
     .limit(limit);
   return rows.map(parseTask);
@@ -279,6 +288,7 @@ export async function listPublicEventTasksForTeams(
   db: JuniorDatabase,
   teamIds: string[],
   limit: number,
+  query?: string,
 ): Promise<StoredEventTask[]> {
   if (teamIds.length === 0) return [];
   const rows = await db
@@ -300,6 +310,9 @@ export async function listPublicEventTasksForTeams(
       and(
         inArray(juniorEventTasks.teamId, teamIds),
         activeEventTaskWhere(),
+        query
+          ? sql<boolean>`strpos(lower(coalesce(${juniorEventTasks.title}, ${juniorEventTasks.task}->'task'->>'text')), ${query}) > 0`
+          : undefined,
         eq(juniorDestinations.visibility, "public"),
       ),
     )

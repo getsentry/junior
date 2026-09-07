@@ -3,7 +3,6 @@ import { NOW_MS } from "../src/mock-reporting/fixtures";
 import type {
   ConversationReportEvent,
   ConversationReportEventData,
-  ConversationSummaryReport,
 } from "@sentry/junior/api/schema";
 
 import {
@@ -14,7 +13,6 @@ import {
   conversationFromDetail,
   conversationIdentityMeta,
   conversationMessageCount,
-  filterConversationList,
   formatActivityChartAverage,
   formatCompactNumber,
   formatConversationDuration,
@@ -311,45 +309,6 @@ describe("dashboard conversation formatting", () => {
       },
     ]);
     expect(conversationDisplayTitle(conversation)).toBe("Newer");
-  });
-
-  it("filters conversation rows by text and source", () => {
-    const summaries: ConversationSummaryReport[] = [
-      {
-        conversationId: "slack:C1:1",
-        cumulativeDurationMs: 0,
-        displayTitle: "Checkout incident",
-        isParticipant: false,
-        lastProgressAt: "2026-01-01T00:00:00.000Z",
-        lastSeenAt: "2026-01-01T00:00:00.000Z",
-        startedAt: "2026-01-01T00:00:00.000Z",
-        status: "failed",
-        surface: "slack",
-      },
-      {
-        conversationId: "scheduler:1",
-        cumulativeDurationMs: 0,
-        displayTitle: "Daily digest",
-        isParticipant: false,
-        lastProgressAt: "2026-01-01T00:00:00.000Z",
-        lastSeenAt: "2026-01-01T00:00:00.000Z",
-        startedAt: "2026-01-01T00:00:00.000Z",
-        status: "completed",
-        surface: "scheduler",
-      },
-    ];
-    const rows = buildConversations(summaries);
-    expect(filterConversationList(rows, { query: "checkout" })).toHaveLength(1);
-    expect(filterConversationList(rows, { source: "scheduler" })).toHaveLength(
-      1,
-    );
-    const archivedRows = [
-      ...rows,
-      { ...rows[0]!, archivedAt: "2026-01-02T00:00:00.000Z" },
-    ];
-    expect(
-      filterConversationList(archivedRows, { status: "archived" }),
-    ).toEqual([expect.objectContaining({ archivedAt: expect.any(String) })]);
   });
 
   it("formats actor and Slack labels", () => {
