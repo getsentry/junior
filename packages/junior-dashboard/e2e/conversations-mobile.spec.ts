@@ -147,10 +147,7 @@ test("starts a new conversation from a centered compose empty state", async ({
   const conversationList = page.getByRole("list", {
     name: "Your conversations",
   });
-  await expect(conversationList).toBeVisible();
-  await expect(conversationList.getByRole("listitem").first()).toContainText(
-    "Latest activity",
-  );
+  await expect(conversationList.getByRole("listitem").first()).toBeVisible();
   await expect(
     page.getByRole("searchbox", { name: "Search your conversations" }),
   ).toBeVisible();

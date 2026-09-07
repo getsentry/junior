@@ -131,7 +131,7 @@ function ConversationCard(props: {
   const isPrivate = conversation.visibility === "private";
   return (
     <article
-      className="group relative grid min-w-0 gap-4 rounded-lg border border-dashboard-border-subtle bg-dashboard-fill-faint px-4 py-4 transition-colors hover:border-dashboard-border hover:bg-dashboard-fill-soft md:grid-cols-[minmax(13rem,0.9fr)_minmax(18rem,1.4fr)_auto] md:items-center md:gap-6 md:px-5"
+      className="group relative grid min-w-0 grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-4 rounded-lg border border-dashboard-border-subtle bg-dashboard-fill-faint px-4 py-4 transition-colors hover:border-dashboard-border hover:bg-dashboard-fill-soft md:grid-cols-[minmax(0,1fr)_12rem_2.75rem] md:items-center md:gap-5 md:px-5"
       role="listitem"
     >
       <Link
@@ -139,7 +139,7 @@ function ConversationCard(props: {
         className="absolute inset-0 z-0 rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-dashboard-focus"
         to={conversationPath(conversation.id)}
       />
-      <div className="relative z-[1] flex min-w-0 items-start gap-2.5 pointer-events-none">
+      <div className="relative z-[1] col-span-2 flex min-w-0 items-start gap-2.5 pointer-events-none md:col-span-1">
         <span className="mt-1.5 grid size-3 shrink-0 place-items-center">
           {isPrivate ? (
             <LockKeyhole
@@ -160,11 +160,22 @@ function ConversationCard(props: {
             />
           )}
         </span>
-        <div className="min-w-0">
+        <div className="grid min-w-0 flex-1 gap-2">
           <h4 className="m-0 truncate font-display text-base font-medium leading-snug text-dashboard-text">
             {title}
           </h4>
-          <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 font-mono text-xs text-dashboard-text-muted">
+          {conversation.activityPreview ? (
+            <p className="m-0 line-clamp-2 min-h-10 font-sans text-sm leading-relaxed text-dashboard-text-subtle">
+              {formatConversationActivityPreview(
+                conversation.activityPreview.text,
+              )}
+            </p>
+          ) : (
+            <p className="m-0 min-h-10 font-sans text-sm leading-relaxed text-dashboard-text-muted">
+              {status === "active" ? "Working…" : "No recent message"}
+            </p>
+          )}
+          <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 font-mono text-xs text-dashboard-text-muted">
             {location ? <span className="truncate">{location}</span> : null}
             {location && actor ? <span aria-hidden="true">·</span> : null}
             {actor ? <span className="truncate">{actor}</span> : null}
@@ -174,36 +185,20 @@ function ConversationCard(props: {
           </div>
         </div>
       </div>
-      <div className="relative z-[1] min-w-0 pointer-events-none">
-        <div className="mb-1 font-mono text-xs text-dashboard-text-muted">
-          Latest activity
+      <dl className="relative z-[1] m-0 min-w-0 self-end font-mono text-xs pointer-events-none md:self-center md:text-right">
+        <div className="text-dashboard-text-muted">
+          <dt className="sr-only">Updated</dt>
+          <dd className="m-0">{formatRelativeTime(conversation.lastSeenAt)}</dd>
         </div>
-        {conversation.activityPreview ? (
-          <p className="m-0 line-clamp-2 font-sans text-sm leading-relaxed text-dashboard-text-subtle">
-            {formatConversationActivityPreview(
-              conversation.activityPreview.text,
-            )}
-          </p>
-        ) : (
-          <p className="m-0 font-sans text-sm text-dashboard-text-muted">
-            {status === "active" ? "Working…" : "No recent message"}
-          </p>
-        )}
-      </div>
-      <div className="relative z-[1] flex min-w-0 items-end justify-between gap-3 md:justify-end">
-        <dl className="m-0 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 font-mono text-xs pointer-events-none md:justify-end">
+        <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-dashboard-text-subtle md:justify-end">
           {tokens ? <ConversationStat label="Tokens" value={tokens} /> : null}
           {cost ? <ConversationStat label="Cost" value={cost} /> : null}
           {runtime ? (
             <ConversationStat label="Runtime" value={runtime} />
           ) : null}
-          <div className="text-dashboard-text-muted">
-            <dt className="sr-only">Updated</dt>
-            <dd className="m-0">
-              {formatRelativeTime(conversation.lastSeenAt)}
-            </dd>
-          </div>
-        </dl>
+        </div>
+      </dl>
+      <div className="relative z-[1] flex justify-end self-end md:self-center">
         <button
           aria-label={`${conversation.archivedAt ? "Restore" : "Archive"} ${title}`}
           className="grid size-11 shrink-0 cursor-pointer place-items-center rounded-md text-dashboard-text-muted transition hover:bg-dashboard-fill-hover hover:text-dashboard-text focus:outline-none focus:ring-2 focus:ring-dashboard-focus disabled:cursor-not-allowed disabled:opacity-50 md:size-9"
