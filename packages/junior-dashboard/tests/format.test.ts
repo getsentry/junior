@@ -33,7 +33,6 @@ import {
   summarizeToolCalls,
   summarizeTurns,
 } from "../src/client/format";
-import { filterConversationList } from "../src/client/conversations/conversationList";
 import { formatDuration } from "../src/client/components/Duration";
 import type { ConversationTranscript } from "../src/client/types";
 

@@ -75,7 +75,7 @@ test("reuses the fresh conversation feed after window focus", async ({
 
   await page.goto(dashboard.baseURL);
   await expect(
-    page.getByRole("heading", { name: "Conversations" }),
+    page.getByRole("region", { name: "Conversations" }),
   ).toBeVisible();
   expect(requests).toBe(1);
 
@@ -141,8 +141,8 @@ test("shows the repo name for one annotation scope on mobile", async ({
   await page.setViewportSize({ height: 844, width: 390 });
   await page.goto(dashboard.baseURL);
 
-  const conversation = page.getByRole("link", {
-    name: /Checkout latency triage/,
+  const conversation = page.getByRole("listitem").filter({
+    has: page.getByRole("heading", { name: "Checkout latency triage" }),
   });
   await expect(conversation).toBeVisible();
   await expect(
@@ -160,19 +160,22 @@ test("opens a conversation in the built dashboard", async ({
 
   await expect(page.getByRole("link", { name: "Junior home" })).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "Conversations" }),
+    page.getByRole("region", { name: "Conversations" }),
   ).toBeVisible();
   const publicConversationLink = page.getByRole("link", {
     name: /Checkout latency triage/,
   });
-  const privateConversationLink = page.getByRole("link", {
-    name: /Direct Message/,
+  const privateConversation = page
+    .getByRole("listitem")
+    .filter({ has: page.getByRole("heading", { name: "Direct Message" }) });
+  await expect(
+    privateConversation.getByLabel("Private conversation"),
+  ).toBeVisible();
+  const publicConversation = page.getByRole("listitem").filter({
+    has: page.getByRole("heading", { name: "Checkout latency triage" }),
   });
   await expect(
-    privateConversationLink.getByLabel("Private conversation"),
-  ).toBeVisible();
-  await expect(
-    publicConversationLink.getByLabel("Private conversation"),
+    publicConversation.getByLabel("Private conversation"),
   ).toHaveCount(0);
   await publicConversationLink.click();
   await expect(page).toHaveURL(
