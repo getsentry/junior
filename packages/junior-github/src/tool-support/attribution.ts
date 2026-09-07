@@ -84,6 +84,7 @@ function parseExistingLabels(blockContents: string): string[] {
     .filter(Boolean);
 }
 
+/** Render the attribution block wire format parsed by `parseExistingLabels`. */
 function formatAttributionBlock(labels: string[]): string {
   const sentence = labels.map((entry) => `via ${entry}`).join(", ");
   return `${GITHUB_REQUEST_ATTRIBUTION_START}\n${sentence}.\n${GITHUB_REQUEST_ATTRIBUTION_END}`;
@@ -102,7 +103,9 @@ function applyAttribution(body: string, label: string | undefined): string {
     label && !existingLabels.includes(label)
       ? [...existingLabels, label]
       : existingLabels;
-  const attribution = labels.length ? formatAttributionBlock(labels) : undefined;
+  const attribution = labels.length
+    ? formatAttributionBlock(labels)
+    : undefined;
   if (existingMatch) {
     return attribution
       ? normalizedBody.replace(existing, attribution)
