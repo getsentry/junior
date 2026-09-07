@@ -75,7 +75,7 @@ test("reuses the fresh conversation feed after window focus", async ({
 
   await page.goto(dashboard.baseURL);
   await expect(
-    page.getByRole("heading", { name: "Conversations" }),
+    page.getByRole("heading", { name: "Conversations", exact: true }),
   ).toBeVisible();
   expect(requests).toBe(1);
 
@@ -141,12 +141,12 @@ test("shows the repo name for one annotation scope on mobile", async ({
   await page.setViewportSize({ height: 844, width: 390 });
   await page.goto(dashboard.baseURL);
 
-  const conversation = page.getByRole("link", {
-    name: /Checkout latency triage/,
+  const conversationRow = page.getByRole("row").filter({
+    has: page.getByRole("link", { name: /Checkout latency triage/ }),
   });
-  await expect(conversation).toBeVisible();
+  await expect(conversationRow).toBeVisible();
   await expect(
-    conversation.getByText("payments", { exact: true }),
+    conversationRow.getByText("payments", { exact: true }),
   ).toBeVisible();
 });
 
@@ -160,19 +160,22 @@ test("opens a conversation in the built dashboard", async ({
 
   await expect(page.getByRole("link", { name: "Junior home" })).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "Conversations" }),
+    page.getByRole("heading", { name: "Conversations", exact: true }),
   ).toBeVisible();
   const publicConversationLink = page.getByRole("link", {
     name: /Checkout latency triage/,
   });
-  const privateConversationLink = page.getByRole("link", {
-    name: /Direct Message/,
-  });
+  const privateConversationRow = page
+    .getByRole("row")
+    .filter({ has: page.getByRole("link", { name: /Direct Message/ }) });
+  const publicConversationRow = page
+    .getByRole("row")
+    .filter({ has: publicConversationLink });
   await expect(
-    privateConversationLink.getByLabel("Private conversation"),
+    privateConversationRow.getByLabel("Private conversation"),
   ).toBeVisible();
   await expect(
-    publicConversationLink.getByLabel("Private conversation"),
+    publicConversationRow.getByLabel("Private conversation"),
   ).toHaveCount(0);
   await publicConversationLink.click();
   await expect(page).toHaveURL(
@@ -665,8 +668,7 @@ test("filters archived conversations and restores one", async ({
     page.getByRole("link", { name: /Archived restore target/ }),
   ).toHaveCount(0);
 
-  await page.getByRole("button", { name: "Filter conversations" }).click();
-  await page.getByRole("menuitemradio", { name: "Archived" }).click();
+  await page.getByRole("button", { name: "Archived" }).click();
 
   const conversationLink = page.getByRole("link", {
     name: /Archived restore target/,
@@ -685,8 +687,7 @@ test("filters archived conversations and restores one", async ({
   });
   await expect(conversationLink).toHaveCount(0);
 
-  await page.getByRole("button", { name: "Filter conversations" }).click();
-  await page.getByRole("menuitemradio", { name: "Active" }).click();
+  await page.getByRole("button", { name: "Active" }).click();
   await expect(
     page.getByRole("link", { name: /Archived restore target/ }),
   ).toBeVisible();

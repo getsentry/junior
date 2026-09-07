@@ -1,10 +1,15 @@
-import { Archive, ArchiveRestore, LockKeyhole } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import {
+  Archive,
+  ArchiveRestore,
+  CircleAlert,
+  LockKeyhole,
+} from "lucide-react";
 import { Link } from "react-router";
 
 import {
   conversationActorLabel,
   conversationDisplayTitle,
-  formatConversationActivityPreview,
   formatConversationCostTotal,
   formatRelativeTime,
   formatRuntime,
@@ -14,9 +19,11 @@ import {
 } from "../format";
 import { ActiveIndicator } from "../components/ActiveIndicator";
 import { EmptyTelemetry } from "../components/EmptyTelemetry";
+import { Notice, NoticeAction } from "../components/Notice";
 import { cn } from "../styles";
 import type { Conversation } from "../types";
 import { ConversationSidebarAnnotations } from "./ConversationMeta";
+import { formatConversationActivityPreview } from "./conversationActivityPreview";
 import { conversationPath } from "./conversationRoutes";
 import { useArchiveConversation } from "./queries";
 import {
@@ -30,13 +37,42 @@ export function ConversationHomeTable(props: {
   emptyLabel?: string;
   timeZone: string;
 }) {
+  const [archivedConversation, setArchivedConversation] =
+    useState<Conversation>();
+  const [archiveError, setArchiveError] = useState<Conversation>();
+  const dismissArchivedConversation = useCallback(
+    () => setArchivedConversation(undefined),
+    [],
+  );
+  const notices =
+    archivedConversation || archiveError ? (
+      <div className="fixed bottom-[max(0.75rem,env(safe-area-inset-bottom))] left-3 right-3 z-30 grid gap-2 sm:left-auto sm:w-96">
+        {archiveError ? (
+          <ArchiveErrorNotice
+            conversation={archiveError}
+            onDismiss={() => setArchiveError(undefined)}
+          />
+        ) : null}
+        {archivedConversation ? (
+          <ArchivedNotice
+            conversation={archivedConversation}
+            key={archivedConversation.id}
+            onRestored={dismissArchivedConversation}
+          />
+        ) : null}
+      </div>
+    ) : null;
+
   if (props.conversations.length === 0) {
     return (
-      <div className="rounded-lg border border-dashboard-border-subtle bg-dashboard-fill-faint p-4">
-        <EmptyTelemetry>
-          {props.emptyLabel ?? "No conversations match this view."}
-        </EmptyTelemetry>
-      </div>
+      <>
+        <div className="rounded-lg border border-dashboard-border-subtle bg-dashboard-fill-faint p-4">
+          <EmptyTelemetry>
+            {props.emptyLabel ?? "No conversations match this view."}
+          </EmptyTelemetry>
+        </div>
+        {notices}
+      </>
     );
   }
   const sections = buildConversationSections(props.conversations, {
@@ -44,31 +80,43 @@ export function ConversationHomeTable(props: {
     timeZone: props.timeZone,
   });
   return (
-    <div
-      className="min-w-[52rem] overflow-hidden rounded-lg border border-dashboard-border-subtle bg-dashboard-fill-faint"
-      role="table"
-    >
+    <>
       <div
-        className="grid grid-cols-[minmax(15rem,1.4fr)_minmax(22rem,1.8fr)_12rem_2.5rem] items-center gap-4 border-b border-dashboard-border-subtle bg-dashboard-overlay-soft px-4 py-2.5 font-mono text-xs uppercase tracking-[0.1em] text-dashboard-text-muted"
-        role="row"
+        className="min-w-[52rem] overflow-hidden rounded-lg border border-dashboard-border-subtle bg-dashboard-fill-faint"
+        role="table"
       >
-        <div role="columnheader">Conversation</div>
-        <div role="columnheader">Latest activity</div>
-        <div className="text-right" role="columnheader">
-          Stats
+        <div
+          className="grid grid-cols-[minmax(15rem,1.4fr)_minmax(22rem,1.8fr)_12rem_2.5rem] items-center gap-4 border-b border-dashboard-border-subtle bg-dashboard-overlay-soft px-4 py-2.5 font-mono text-xs uppercase tracking-[0.1em] text-dashboard-text-muted"
+          role="row"
+        >
+          <div role="columnheader">Conversation</div>
+          <div role="columnheader">Latest activity</div>
+          <div className="text-right" role="columnheader">
+            Stats
+          </div>
+          <span className="sr-only" role="columnheader">
+            Actions
+          </span>
         </div>
-        <span className="sr-only" role="columnheader">
-          Actions
-        </span>
+        {sections.map((section) => (
+          <ConversationTableSection
+            key={section.key}
+            onArchiveError={setArchiveError}
+            onArchived={setArchivedConversation}
+            section={section}
+          />
+        ))}
       </div>
-      {sections.map((section) => (
-        <ConversationTableSection key={section.key} section={section} />
-      ))}
-    </div>
+      {notices}
+    </>
   );
 }
 
-function ConversationTableSection(props: { section: ConversationSection }) {
+function ConversationTableSection(props: {
+  onArchiveError(conversation: Conversation): void;
+  onArchived(conversation: Conversation): void;
+  section: ConversationSection;
+}) {
   return (
     <div role="rowgroup">
       <div className="border-b border-dashboard-border-subtle bg-black/10 px-4 py-2 font-mono text-2xs font-semibold uppercase tracking-[0.08em] text-dashboard-text-muted/60">
@@ -78,15 +126,26 @@ function ConversationTableSection(props: { section: ConversationSection }) {
         <ConversationTableRow
           conversation={conversation}
           key={conversation.id}
+          onArchiveError={props.onArchiveError}
+          onArchived={props.onArchived}
         />
       ))}
     </div>
   );
 }
 
-function ConversationTableRow(props: { conversation: Conversation }) {
+function ConversationTableRow(props: {
+  conversation: Conversation;
+  onArchiveError(conversation: Conversation): void;
+  onArchived(conversation: Conversation): void;
+}) {
   const conversation = props.conversation;
-  const archive = useArchiveConversation(conversation.id);
+  const archive = useArchiveConversation(conversation.id, {
+    onError: () => props.onArchiveError(conversation),
+    onSuccess: (archived) => {
+      if (archived) props.onArchived(conversation);
+    },
+  });
   const status = visualStatusForConversation(conversation);
   const title = conversationDisplayTitle(conversation);
   const location = slackLocationLabel(conversation, { includeId: false });
@@ -192,5 +251,74 @@ function ConversationTableRow(props: { conversation: Conversation }) {
         </button>
       </div>
     </div>
+  );
+}
+
+function ArchiveErrorNotice(props: {
+  conversation: Conversation;
+  onDismiss(): void;
+}) {
+  const title = conversationDisplayTitle(props.conversation);
+  return (
+    <Notice
+      action={
+        <NoticeAction onClick={props.onDismiss} title="Dismiss" tone="error">
+          Dismiss
+        </NoticeAction>
+      }
+      detail={title}
+      icon={CircleAlert}
+      title={
+        props.conversation.archivedAt
+          ? "Could not restore"
+          : "Could not archive"
+      }
+      tone="error"
+    />
+  );
+}
+
+function ArchivedNotice(props: {
+  conversation: Conversation;
+  onRestored(): void;
+}) {
+  const restore = useArchiveConversation(props.conversation.id, {
+    onSuccess: (archived) => {
+      if (!archived) props.onRestored();
+    },
+  });
+  const title = conversationDisplayTitle(props.conversation);
+
+  useEffect(() => {
+    if (restore.isPending || restore.error) return;
+    const timeout = window.setTimeout(props.onRestored, 6_000);
+    return () => window.clearTimeout(timeout);
+  }, [
+    props.conversation.id,
+    props.onRestored,
+    restore.error,
+    restore.isPending,
+  ]);
+
+  return (
+    <Notice
+      action={
+        <NoticeAction
+          aria-label={`Undo archive for ${title}`}
+          disabled={restore.isPending}
+          onClick={() =>
+            restore.mutate({
+              archived: false,
+              lastSeenAt: props.conversation.lastSeenAt,
+            })
+          }
+          title={`Undo archive for ${title}`}
+        >
+          {restore.isPending ? "Restoring…" : "Undo"}
+        </NoticeAction>
+      }
+      detail={title}
+      title="Conversation archived"
+    />
   );
 }

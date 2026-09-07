@@ -15,7 +15,8 @@ import {
   type PendingArchiveConversationUpdate,
 } from "./queries";
 import { conversationPath, NEW_CONVERSATION_PATH } from "./conversationRoutes";
-import { buildConversations, filterConversationList } from "../format";
+import { buildConversations } from "../format";
+import { filterConversationList } from "./conversationList";
 import type { DashboardCoreData } from "../types";
 import type { Conversation } from "../types";
 import { cn, dashboardContainerClass } from "../styles";
