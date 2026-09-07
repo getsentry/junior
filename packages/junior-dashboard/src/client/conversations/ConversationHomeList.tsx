@@ -5,10 +5,7 @@ import { Link } from "react-router";
 import {
   conversationActorLabel,
   conversationDisplayTitle,
-  formatConversationCostTotal,
   formatRelativeTime,
-  formatRuntime,
-  formatUsageTotal,
   slackLocationLabel,
   visualStatusForConversation,
 } from "../format";
@@ -122,16 +119,10 @@ function ConversationCard(props: {
   const title = conversationDisplayTitle(conversation);
   const location = slackLocationLabel(conversation, { includeId: false });
   const actor = conversationActorLabel(conversation);
-  const tokens = formatUsageTotal(conversation.cumulativeUsage);
-  const cost = formatConversationCostTotal(
-    conversation.cumulativeUsage,
-    conversation.auxiliaryCosts,
-  );
-  const runtime = formatRuntime(conversation.cumulativeDurationMs);
   const isPrivate = conversation.visibility === "private";
   return (
     <article
-      className="group relative grid min-w-0 grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-4 rounded-lg border border-dashboard-border-subtle bg-dashboard-fill-faint px-4 py-4 transition-colors hover:border-dashboard-border hover:bg-dashboard-fill-soft md:grid-cols-[minmax(0,1fr)_12rem_2.75rem] md:items-center md:gap-5 md:px-5"
+      className="group relative grid min-w-0 grid-cols-[minmax(0,1fr)_2.75rem] items-center gap-3 rounded-lg border border-dashboard-border-subtle bg-dashboard-fill-faint px-4 py-4 transition-colors hover:border-dashboard-border hover:bg-dashboard-fill-soft md:gap-5 md:px-5"
       role="listitem"
     >
       <Link
@@ -139,7 +130,7 @@ function ConversationCard(props: {
         className="absolute inset-0 z-0 rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-dashboard-focus"
         to={conversationPath(conversation.id)}
       />
-      <div className="relative z-[1] col-span-2 flex min-w-0 items-start gap-2.5 pointer-events-none md:col-span-1">
+      <div className="relative z-[1] flex min-w-0 items-start gap-2.5 pointer-events-none">
         <span className="mt-1.5 grid size-3 shrink-0 place-items-center">
           {isPrivate ? (
             <LockKeyhole
@@ -165,40 +156,32 @@ function ConversationCard(props: {
             {title}
           </h4>
           {conversation.activityPreview ? (
-            <p className="m-0 line-clamp-2 min-h-10 font-sans text-sm leading-relaxed text-dashboard-text-subtle">
+            <p className="m-0 line-clamp-2 font-sans text-sm leading-relaxed text-dashboard-text-subtle">
               {formatConversationActivityPreview(
                 conversation.activityPreview.text,
               )}
             </p>
           ) : (
-            <p className="m-0 min-h-10 font-sans text-sm leading-relaxed text-dashboard-text-muted">
+            <p className="m-0 font-sans text-sm leading-relaxed text-dashboard-text-muted">
               {status === "active" ? "Working…" : "No recent message"}
             </p>
           )}
-          <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 font-mono text-xs text-dashboard-text-muted">
-            {location ? <span className="truncate">{location}</span> : null}
-            {location && actor ? <span aria-hidden="true">·</span> : null}
-            {actor ? <span className="truncate">{actor}</span> : null}
-            <ConversationSidebarAnnotations
-              annotations={conversation.sidebarAnnotations}
-            />
+          <div className="flex min-w-0 items-end justify-between gap-4 font-mono text-xs text-dashboard-text-muted">
+            <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1">
+              {location ? <span className="truncate">{location}</span> : null}
+              {location && actor ? <span aria-hidden="true">·</span> : null}
+              {actor ? <span className="truncate">{actor}</span> : null}
+              <ConversationSidebarAnnotations
+                annotations={conversation.sidebarAnnotations}
+              />
+            </div>
+            <span className="shrink-0">
+              {formatRelativeTime(conversation.lastSeenAt)}
+            </span>
           </div>
         </div>
       </div>
-      <dl className="relative z-[1] m-0 min-w-0 self-end font-mono text-xs pointer-events-none md:self-center md:text-right">
-        <div className="text-dashboard-text-muted">
-          <dt className="sr-only">Updated</dt>
-          <dd className="m-0">{formatRelativeTime(conversation.lastSeenAt)}</dd>
-        </div>
-        <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-dashboard-text-subtle md:justify-end">
-          {tokens ? <ConversationStat label="Tokens" value={tokens} /> : null}
-          {cost ? <ConversationStat label="Cost" value={cost} /> : null}
-          {runtime ? (
-            <ConversationStat label="Runtime" value={runtime} />
-          ) : null}
-        </div>
-      </dl>
-      <div className="relative z-[1] flex justify-end self-end md:self-center">
+      <div className="relative z-[1] flex justify-end">
         <button
           aria-label={`${conversation.archivedAt ? "Restore" : "Archive"} ${title}`}
           className="grid size-11 shrink-0 cursor-pointer place-items-center rounded-md text-dashboard-text-muted transition hover:bg-dashboard-fill-hover hover:text-dashboard-text focus:outline-none focus:ring-2 focus:ring-dashboard-focus disabled:cursor-not-allowed disabled:opacity-50 md:size-9"
@@ -219,14 +202,5 @@ function ConversationCard(props: {
         </button>
       </div>
     </article>
-  );
-}
-
-function ConversationStat(props: { label: string; value: string }) {
-  return (
-    <div className="text-dashboard-text-subtle">
-      <dt className="sr-only">{props.label}</dt>
-      <dd className="m-0">{props.value}</dd>
-    </div>
   );
 }
