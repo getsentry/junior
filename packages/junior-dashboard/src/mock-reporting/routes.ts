@@ -131,10 +131,16 @@ export function createMockReportingApi(): Hono<{
     }
     const archived = readMockConversationFeed(query.data.actorEmail, "archived");
     const search = query.data.q.toLowerCase();
+    const conversations = new Map(
+      [...report.conversations, ...archived.conversations].map((conversation) => [
+        conversation.conversationId,
+        conversation,
+      ]),
+    );
     return jsonResponse(conversationFeedSchema, {
       ...report,
-      conversations: [...report.conversations, ...archived.conversations].filter(
-        (conversation) => conversation.displayTitle.toLowerCase().includes(search),
+      conversations: [...conversations.values()].filter((conversation) =>
+        conversation.displayTitle.toLowerCase().includes(search),
       ),
     });
   });
