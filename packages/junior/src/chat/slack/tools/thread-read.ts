@@ -19,8 +19,11 @@ import {
 } from "@/chat/slack/timestamp-param";
 import type { SlackChannelId } from "@/chat/slack/ids";
 import type { SlackMessageTs } from "@/chat/slack/timestamp";
-import type { SlackThreadReply } from "@/chat/slack/channel";
-import { renderAttachmentText } from "@/chat/slack/message/attachments";
+import type { SlackFileRef, SlackThreadReply } from "@/chat/slack/channel";
+import {
+  extractAttachmentFiles,
+  renderAttachmentText,
+} from "@/chat/slack/message/attachments";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { matchSlackAttachments } from "@/chat/slack/attachments";
@@ -32,12 +35,31 @@ interface ThreadReadAttachmentDeps {
   db: JuniorSqlDatabase;
 }
 
+/**
+ * Combine top-level `files` with files nested inside `attachments`
+ * (forwarded/shared messages carry their files there), deduped by id.
+ */
+function collectMessageFiles(msg: SlackThreadReply): SlackFileRef[] {
+  const seen = new Set<string>();
+  const files: SlackFileRef[] = [];
+  for (const file of [
+    ...(msg.files ?? []),
+    ...extractAttachmentFiles(msg.attachments),
+  ]) {
+    if (!file.id || seen.has(file.id)) continue;
+    seen.add(file.id);
+    files.push(file);
+  }
+  return files;
+}
+
 /** Project a thread reply to safe output fields (strips url_private etc). */
 function sanitizeMessage(
   msg: SlackThreadReply,
   attachmentIdsBySlackFileId: ReadonlyMap<string, string>,
 ) {
   const attachmentText = renderAttachmentText(msg.attachments);
+  const files = collectMessageFiles(msg);
 
   return {
     ts: msg.ts,
@@ -48,9 +70,9 @@ function sanitizeMessage(
     bot_id: msg.bot_id,
     type: msg.type,
     ...(attachmentText ? { attachment_text: attachmentText } : undefined),
-    ...(msg.files?.length
+    ...(files.length
       ? {
-          files: msg.files.map((f) => ({
+          files: files.map((f) => ({
             id: f.id,
             name: f.name,
             mimetype: f.mimetype,
@@ -240,7 +262,7 @@ export function createSlackThreadReadTool(
         threadTs ?? root?.thread_ts ?? root?.ts ?? lookupTs;
 
       const slackFileIds = replies.flatMap((reply) =>
-        (reply.files ?? [])
+        collectMessageFiles(reply)
           .map((file) => file.id)
           .filter((fileId): fileId is string => Boolean(fileId)),
       );
