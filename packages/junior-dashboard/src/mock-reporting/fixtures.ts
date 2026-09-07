@@ -1502,7 +1502,9 @@ function mockGuardianStats(nowMs: number): ConversationStatsReport["guardian"] {
   const end = new Date(nowMs);
   end.setUTCMinutes(0, 0, 0);
   const metricHours = Array.from({ length: 7 * 24 }, (_, index) => {
-    const date = new Date(end.getTime() - (7 * 24 - 1 - index) * 60 * 60 * 1_000);
+    const date = new Date(
+      end.getTime() - (7 * 24 - 1 - index) * 60 * 60 * 1_000,
+    );
     const requests = index > 12 ? (index % 4) + 1 : 0;
     const deny = requests > 2 && index % 5 === 0 ? 1 : 0;
     const ask = requests > 1 && index % 3 === 0 ? 1 : 0;
@@ -1864,7 +1866,10 @@ function mockPeopleActivitySixHours(
   nowMs: number,
   summaries: ConversationSummaryReport[],
 ): PeopleActivityDayReport[] {
-  const bySix = new Map<string, { actors: Set<string>; conversations: number }>();
+  const bySix = new Map<
+    string,
+    { actors: Set<string>; conversations: number }
+  >();
   for (const summary of summaries) {
     const startMs = Date.parse(summary.lastSeenAt);
     if (Number.isNaN(startMs)) continue;
@@ -1872,7 +1877,10 @@ function mockPeopleActivitySixHours(
     bucket.setUTCMinutes(0, 0, 0);
     bucket.setUTCHours(Math.floor(bucket.getUTCHours() / 6) * 6, 0, 0, 0);
     const key = bucket.toISOString().slice(0, 13);
-    const current = bySix.get(key) ?? { actors: new Set<string>(), conversations: 0 };
+    const current = bySix.get(key) ?? {
+      actors: new Set<string>(),
+      conversations: 0,
+    };
     const email = summary.actorIdentity?.email?.toLowerCase();
     if (!email) continue;
     current.actors.add(email);
@@ -1888,7 +1896,6 @@ function mockPeopleActivitySixHours(
     };
   });
 }
-
 
 function emptyMockWindowMetrics(): ActorWindowMetrics {
   return {
@@ -2018,7 +2025,10 @@ function sumMockHoursIntoSixHours<T extends { date: string }>(
     }
     bySix.set(key, next);
   }
-  return trailingMetricSixHours(nowMs, (date) => bySix.get(date) ?? empty(date));
+  return trailingMetricSixHours(
+    nowMs,
+    (date) => bySix.get(date) ?? empty(date),
+  );
 }
 
 function activityDates(nowMs: number, days = PEOPLE_ACTIVITY_DAYS): string[] {
@@ -2459,7 +2469,12 @@ function mockTasks(): TaskSummary[] {
       runs: { 1: 1, 7: 3, 30: 12, 90: 48 },
       schedule: "Every Monday at 9:00 AM",
       status: "active",
-      successOutput: "reply",
+      outcomes: [
+        {
+          action: "send_message",
+          destination: { platform: "slack", teamId: "T123", channelId: "C123" },
+        },
+      ],
       title: "Weekly project summary",
       totalRuns: 48,
     },
@@ -2483,7 +2498,7 @@ function mockTasks(): TaskSummary[] {
       resource: "Issue · ACME-42",
       runs: { 1: 0, 7: 1, 30: 4, 90: 7 },
       source: "github",
-      successOutput: "silent",
+      outcomes: [],
       title: "Closed issue summary",
       totalRuns: 7,
       triggerAvailable: true,
@@ -2506,7 +2521,12 @@ function mockTasks(): TaskSummary[] {
       resource: "Incident · INC-17",
       runs: { 1: 0, 7: 0, 30: 0, 90: 0 },
       source: "pagerduty",
-      successOutput: "reply",
+      outcomes: [
+        {
+          action: "send_message",
+          destination: { platform: "slack", teamId: "T123", channelId: "C123" },
+        },
+      ],
       title: "Incident change alerts",
       totalRuns: 0,
       triggerAvailable: false,
@@ -2527,11 +2547,11 @@ export function readMockTaskList(nowMs = NOW_MS): TaskList {
     executionSixHours: sumMockHoursIntoSixHours(
       nowMs,
       trailingMetricHours(nowMs, (date) => ({
-      costUsd: 0,
-      date,
-      event: 0,
-      scheduled: 0,
-    })),
+        costUsd: 0,
+        date,
+        event: 0,
+        scheduled: 0,
+      })),
       (date) => ({ costUsd: 0, date, event: 0, scheduled: 0 }),
     ),
     tasks: mockTasks(),
@@ -2573,11 +2593,11 @@ export function readMockTaskExecutions(
       executionSixHours: sumMockHoursIntoSixHours(
         nowMs,
         trailingMetricHours(nowMs, (date) => ({
-        blocked: 0,
-        completed: 0,
-        date,
-        failed: 0,
-      })),
+          blocked: 0,
+          completed: 0,
+          date,
+          failed: 0,
+        })),
         (date) => ({ blocked: 0, completed: 0, date, failed: 0 }),
       ),
       executions: [],
@@ -2640,11 +2660,11 @@ export function readMockTaskExecutions(
     executionSixHours: sumMockHoursIntoSixHours(
       nowMs,
       trailingMetricHours(nowMs, (date) => ({
-      blocked: 0,
-      completed: 0,
-      date,
-      failed: 0,
-    })),
+        blocked: 0,
+        completed: 0,
+        date,
+        failed: 0,
+      })),
       (date) => ({ blocked: 0, completed: 0, date, failed: 0 }),
     ),
     executions,

@@ -7,6 +7,7 @@ import type {
   ScheduledTaskSource,
   Source,
   SlackDestination,
+  TaskOutcome,
 } from "@sentry/junior-plugin-api";
 import type {
   CredentialContext,
@@ -52,8 +53,8 @@ export interface DispatchRecord {
   replyAttribution?: ReplyAttribution;
   resultMessageTs?: string;
   source: Source;
-  /** Whether successful output is delivered to the Destination. */
-  successOutput?: "reply" | "silent";
+  /** Visible effects after successful work. */
+  outcomes?: TaskOutcome[];
   status: DispatchStatus;
   updatedAtMs: number;
 }

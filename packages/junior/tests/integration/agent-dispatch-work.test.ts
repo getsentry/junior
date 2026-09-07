@@ -153,14 +153,50 @@ describe("agent dispatch conversation work", () => {
     });
   });
 
-  it("completes silent work without posting the model result", async () => {
+  it("sends successful work to each outcome destination in order", async () => {
     const dispatch = await createDispatch(
-      "silent-success",
+      "multiple-message-outcomes",
+      undefined,
+      undefined,
+      undefined,
+      "Send the result to both destinations.",
+      [
+        {
+          action: "send_message",
+          destination: { ...destination, channelId: "D123" },
+        },
+        {
+          action: "send_message",
+          destination: { ...destination, channelId: "C456" },
+        },
+      ],
+    );
+    const { queue, run, state } = await createAgentDispatchWorkHarness(
+      createModelAgentRunner(
+        createModelStream([{ type: "text", text: "Work complete" }]),
+      ),
+    );
+
+    await enqueueAgentDispatch(dispatch, { queue, state });
+    await processConversationQueueMessage(queue.takeMessage(), {
+      queue,
+      run,
+      state,
+    });
+
+    expect(
+      slackApiOutbox.messages().map((message) => message.params.channel),
+    ).toEqual(["D123", "C456"]);
+  });
+
+  it("completes work with no outcomes without posting the model result", async () => {
+    const dispatch = await createDispatch(
+      "no-outcomes",
       undefined,
       undefined,
       undefined,
       "Apply the requested maintenance.",
-      "silent",
+      [],
     );
     const agentRunner = createModelAgentRunner(
       createModelStream([{ type: "text", text: "Maintenance complete" }]),
@@ -179,7 +215,7 @@ describe("agent dispatch conversation work", () => {
     expect(slackApiOutbox.messages()).toEqual([]);
     await expect(getDispatchRecord(dispatch.id)).resolves.toMatchObject({
       status: "completed",
-      successOutput: "silent",
+      outcomes: [],
     });
     expect(runAgent).toHaveBeenCalledOnce();
     expect(runAgent.mock.calls[0]?.[0]).not.toHaveProperty("delivery");

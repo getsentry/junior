@@ -6,6 +6,11 @@ import {
   SHORT_TITLE_MAX_LENGTH,
 } from "@/chat/services/short-title";
 import { zodTool } from "@/chat/tool-support/zod-tool";
+import {
+  resolveTaskOutcomes,
+  taskOutcomeInputSchema,
+  type TaskOutcomeInput,
+} from "@/chat/task-outcomes";
 import { z } from "zod";
 import { createScheduledTask, readScheduledTask } from "../tasks";
 import {
@@ -61,10 +66,11 @@ export function createSlackScheduleCreateTaskTool(
         schedule: scheduleIntentSchema.describe(
           "When the task runs. The scheduler computes the exact next run from this intent and the server clock.",
         ),
-        success_output: z
-          .enum(["reply", "silent"])
+        outcomes: z
+          .array(taskOutcomeInputSchema)
+          .max(5)
           .describe(
-            "Choose silent for tool-only work, or reply when success should post in Slack. Omit for reply.",
+            "Messages to send after successful work. Use an empty list to send nothing. Omit to send one message to the current Slack conversation.",
           )
           .optional(),
         credential_mode: z
@@ -81,7 +87,7 @@ export function createSlackScheduleCreateTaskTool(
         task: string;
         title?: string | null;
         schedule: z.input<typeof scheduleIntentSchema>;
-        success_output?: "reply" | "silent";
+        outcomes?: TaskOutcomeInput[];
         credential_mode?: "creator" | "system" | null;
       };
       const prepared = { ...input };
@@ -170,7 +176,7 @@ export function createSlackScheduleCreateTaskTool(
         originalRequest: context.userText,
         schedule: compiled.schedule,
         status: "active",
-        successOutput: input.success_output ?? "reply",
+        outcomes: await resolveTaskOutcomes(input.outcomes, destination),
         task: {
           text: input.task,
         },

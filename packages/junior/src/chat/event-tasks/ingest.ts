@@ -14,6 +14,7 @@ import {
 } from "@sentry/junior-plugin-api";
 import { dispatchEventTask } from "@/chat/agent-dispatch/context";
 import { renderTaskInput } from "@/chat/task-input";
+import { effectiveTaskOutcomes } from "@/chat/task-outcomes";
 import { getDb } from "@/chat/db";
 import { findMatchingEventTasks } from "@/chat/event-tasks/store";
 import type { EventTask } from "@/chat/event-tasks/types";
@@ -58,7 +59,7 @@ function eventInput(task: EventTask, event: ResourceEvent): string {
   return renderTaskInput({
     about: task.trigger.label,
     instructions: task.task.text,
-    successOutput: task.successOutput ?? "reply",
+    outcomes: effectiveTaskOutcomes(task.outcomes, task.destination),
     guidance,
     trustedSummary: event.trustedSummary,
     trustedSummaryMaxLength: RESOURCE_EVENT_SUMMARY_MAX_LENGTH,
@@ -110,7 +111,7 @@ export async function ingestEventTasks(
           input: eventInput(task, event),
           metadata: { eventTaskId: task.id },
           replyAttribution: replyAttribution(task),
-          successOutput: task.successOutput,
+          outcomes: task.outcomes,
         },
       });
       if (dispatch.status === "created") {

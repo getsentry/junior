@@ -21,10 +21,10 @@ describe("renderTaskInput", () => {
     `);
   });
 
-  it("renders stored silent success without a no-reply instruction", () => {
+  it("renders an empty outcome list without a no-reply instruction", () => {
     const text = renderTaskInput({
       instructions: "Apply the requested maintenance.",
-      successOutput: "silent",
+      outcomes: [],
     });
 
     expect(text).toContain(

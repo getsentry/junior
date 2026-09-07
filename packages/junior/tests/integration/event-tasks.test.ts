@@ -133,7 +133,7 @@ async function createTask(
     createEventTaskTool(taskContext, EVENT_CATALOG),
     {
       task,
-      successOutput: "silent",
+      outcomes: [],
       trigger: {
         namespace: "github",
         identifier: "getsentry/junior#1174",
@@ -219,7 +219,7 @@ describe("event tasks", () => {
             label: "Event task",
             detail: "GitHub PR getsentry/junior#1174",
           },
-          successOutput: "silent",
+          outcomes: [],
         }),
         expect.objectContaining({
           credentialSubject: expect.objectContaining({
@@ -233,7 +233,7 @@ describe("event tasks", () => {
             label: "Event task",
             detail: "GitHub PR getsentry/junior#1174",
           },
-          successOutput: "silent",
+          outcomes: [],
         }),
       ]),
     );

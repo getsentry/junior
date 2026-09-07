@@ -1,3 +1,4 @@
+import { taskOutcomeSchema } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 
 const taskDestinationSchema = z
@@ -30,7 +31,7 @@ const taskSummaryBaseSchema = z.object({
   lastRunAt: z.string().datetime().optional(),
   ownedByViewer: z.boolean(),
   runs: taskRunWindowsSchema,
-  successOutput: z.enum(["reply", "silent"]),
+  outcomes: z.array(taskOutcomeSchema).max(5),
   /** Short display title; falls back from instruction when unset. */
   title: z.string().min(1),
   totalRuns: z.number().int().nonnegative(),

@@ -380,9 +380,7 @@ function buildResumedRun(
       }
       await priorOnEvent?.(event);
     },
-    ...(savedRun.dispatch?.successOutput === "silent"
-      ? undefined
-      : { delivery }),
+    ...(savedRun.dispatch?.outcomes?.length === 0 ? undefined : { delivery }),
     durability: {
       ...savedRun.durability,
       onSandboxRefChanged: async (sandboxRef) => {
@@ -560,13 +558,27 @@ async function resumeSlackTurnInContext(
       const deliveryState = await getDeliveryConversation();
       let slackMessageTs: string[] = [];
       try {
-        slackMessageTs = await sendSlackReply({
-          channelId: runArgs.channelId,
-          conversationId: runArgs.conversationId,
-          replyAttribution: runArgs.run?.dispatch?.replyAttribution,
-          text,
-          threadTs: runArgs.threadTs,
-        });
+        const outcomes = runArgs.run?.dispatch?.outcomes;
+        if (outcomes) {
+          for (const outcome of outcomes) {
+            slackMessageTs.push(
+              ...(await sendSlackReply({
+                channelId: outcome.destination.channelId,
+                conversationId: runArgs.conversationId,
+                replyAttribution: runArgs.run?.dispatch?.replyAttribution,
+                text,
+              })),
+            );
+          }
+        } else {
+          slackMessageTs = await sendSlackReply({
+            channelId: runArgs.channelId,
+            conversationId: runArgs.conversationId,
+            replyAttribution: runArgs.run?.dispatch?.replyAttribution,
+            text,
+            threadTs: runArgs.threadTs,
+          });
+        }
       } catch (error) {
         if (isRetryableSlackPostError(error)) {
           throw new RetryableDeliveryError(error);

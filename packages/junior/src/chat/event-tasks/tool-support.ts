@@ -1,3 +1,4 @@
+import { taskOutcomeSchema } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import { getDb } from "@/chat/db";
 import { getEventTask } from "@/chat/event-tasks/store";
@@ -19,6 +20,7 @@ import {
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
+import { effectiveTaskOutcomes } from "@/chat/task-outcomes";
 
 const compactEventTaskResultSchema = z
   .object({
@@ -31,7 +33,7 @@ const compactEventTaskResultSchema = z
     events: z.array(z.string().min(1)).min(1),
     match: z.record(z.string(), z.unknown()).optional(),
     credentialMode: z.enum(["system", "creator"]),
-    successOutput: z.enum(["reply", "silent"]),
+    outcomes: z.array(taskOutcomeSchema).max(5),
     createdBy: eventTaskPrincipalSchema,
     triggerAvailable: z.boolean(),
   })
@@ -207,7 +209,7 @@ export function compactEventTask(
     events: task.trigger.events,
     ...(task.trigger.match ? { match: task.trigger.match } : undefined),
     credentialMode: task.credentialMode,
-    successOutput: task.successOutput ?? "reply",
+    outcomes: effectiveTaskOutcomes(task.outcomes, task.destination),
     createdBy: task.createdBy,
     triggerAvailable: eventTaskTriggerAvailable(task, catalog),
   });

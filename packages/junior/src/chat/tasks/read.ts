@@ -54,6 +54,7 @@ import {
   juniorSchedulerTasks,
   juniorUsers,
 } from "@/db/schema";
+import { effectiveTaskOutcomes } from "@/chat/task-outcomes";
 
 const TASK_LIST_LIMIT = 100;
 const TASK_FETCH_LIMIT = TASK_LIST_LIMIT + 1;
@@ -252,7 +253,7 @@ function scheduledTaskSummary(
     ownedByViewer,
     schedule: displayText(task.schedule.description, "Schedule unavailable"),
     status: task.status,
-    successOutput: task.successOutput ?? "reply",
+    outcomes: effectiveTaskOutcomes(task.outcomes, task.destination),
     title: taskDisplayTitle(task.title, instruction, "Untitled scheduled task"),
   };
 }
@@ -283,7 +284,7 @@ function eventTaskSummary(
     ownedByViewer,
     resource: `${task.trigger.label} · ${task.trigger.identifier}`,
     source: task.trigger.namespace,
-    successOutput: task.successOutput ?? "reply",
+    outcomes: effectiveTaskOutcomes(task.outcomes, task.destination),
     title: taskDisplayTitle(task.title, instruction, "Untitled event task"),
     triggerAvailable: eventTaskTriggerAvailable(
       task,

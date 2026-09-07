@@ -21,6 +21,11 @@ import {
   SHORT_TITLE_MAX_LENGTH,
 } from "@/chat/services/short-title";
 import { zodTool } from "@/chat/tool-support/zod-tool";
+import {
+  resolveTaskOutcomes,
+  taskOutcomeInputSchema,
+  type TaskOutcomeInput,
+} from "@/chat/task-outcomes";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 
@@ -80,10 +85,11 @@ export function createEventTaskTool(
           )
           .optional(),
         trigger,
-        successOutput: z
-          .enum(["reply", "silent"])
+        outcomes: z
+          .array(taskOutcomeInputSchema)
+          .max(5)
           .describe(
-            "Choose silent for tool-only work, or reply when success should post in Slack. Omit for reply.",
+            "Messages to send after successful work. Use an empty list to send nothing. Omit to send one message to the current Slack conversation.",
           )
           .optional(),
         credentialMode: z
@@ -100,7 +106,7 @@ export function createEventTaskTool(
         task: string;
         title?: string | null;
         trigger: z.input<typeof trigger>;
-        successOutput?: "reply" | "silent";
+        outcomes?: TaskOutcomeInput[];
         credentialMode?: "creator" | "system" | null;
       };
       const prepared = { ...input };
@@ -156,7 +162,7 @@ export function createEventTaskTool(
         },
         credentialMode: input.credentialMode ?? "creator",
         destination,
-        successOutput: input.successOutput ?? "reply",
+        outcomes: await resolveTaskOutcomes(input.outcomes, destination),
         task: { text: input.task },
         ...(title ? { title } : undefined),
         trigger: {

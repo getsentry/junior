@@ -387,7 +387,16 @@ export async function mockDashboardApis(
             runs: { 1: 1, 7: 3, 30: 12, 90: 48 },
             schedule: "Every Monday at 9:00 AM",
             status: "active",
-            successOutput: "reply",
+            outcomes: [
+              {
+                action: "send_message",
+                destination: {
+                  platform: "slack",
+                  teamId: "T123",
+                  channelId: "C123",
+                },
+              },
+            ],
             title: "Weekly project summary",
             totalRuns: 48,
           },
@@ -411,7 +420,7 @@ export async function mockDashboardApis(
             resource: "Issue · ACME-42",
             runs: { 1: 0, 7: 1, 30: 4, 90: 7 },
             source: "github",
-            successOutput: "silent",
+            outcomes: [],
             title: "Closed issue summary",
             totalRuns: 7,
             triggerAvailable: true,
@@ -434,7 +443,16 @@ export async function mockDashboardApis(
             resource: "Incident · INC-17",
             runs: { 1: 0, 7: 0, 30: 0, 90: 0 },
             source: "pagerduty",
-            successOutput: "reply",
+            outcomes: [
+              {
+                action: "send_message",
+                destination: {
+                  platform: "slack",
+                  teamId: "T123",
+                  channelId: "C123",
+                },
+              },
+            ],
             title: "Incident change alerts",
             totalRuns: 0,
             triggerAvailable: false,
@@ -474,7 +492,19 @@ export async function mockDashboardApis(
         kind === "scheduled"
           ? { 1: 1, 7: 3, 30: 12, 90: 48 }
           : { 1: 0, 7: 1, 30: 4, 90: 7 },
-      successOutput: kind === "scheduled" ? "reply" : "silent",
+      outcomes:
+        kind === "scheduled"
+          ? [
+              {
+                action: "send_message" as const,
+                destination: {
+                  channelId: "C123",
+                  platform: "slack" as const,
+                  teamId: "T123",
+                },
+              },
+            ]
+          : [],
       title:
         kind === "scheduled"
           ? "Weekly project summary"

@@ -4,6 +4,7 @@ import type {
   ReplyAttribution,
   Source,
   SystemActor,
+  TaskOutcome,
 } from "@sentry/junior-plugin-api";
 import type { Location } from "@/chat/conversations/location";
 import type { LocationConfigurationService } from "@/chat/configuration/types";
@@ -102,8 +103,8 @@ export type AgentDispatch = {
   metadata?: Record<string, string>;
   plugin?: string;
   replyAttribution?: ReplyAttribution;
-  /** Whether successful output is delivered to the Destination. */
-  successOutput?: "reply" | "silent";
+  /** Visible effects after successful work. */
+  outcomes?: TaskOutcome[];
 };
 
 /** Optional agent capabilities that a run slice can turn off. */

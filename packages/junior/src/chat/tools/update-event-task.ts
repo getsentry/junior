@@ -18,6 +18,11 @@ import {
 } from "@/chat/resource-events/catalog";
 import { generateShortTitle } from "@/chat/services/short-title";
 import { zodTool } from "@/chat/tool-support/zod-tool";
+import {
+  resolveTaskOutcomes,
+  taskOutcomeInputSchema,
+  type TaskOutcomeInput,
+} from "@/chat/task-outcomes";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 
@@ -61,11 +66,12 @@ export function createUpdateEventTaskTool(
         trigger: registeredEventTaskTriggerSchema(catalog)
           .nullable()
           .optional(),
-        successOutput: z
-          .enum(["reply", "silent"])
+        outcomes: z
+          .array(taskOutcomeInputSchema)
+          .max(5)
           .nullable()
           .describe(
-            "Set reply when success should post in Slack, or silent for tool-only work. Omit or use null to leave unchanged.",
+            "Replacement messages to send after successful work. Use an empty list to send nothing. Omit or use null to leave unchanged.",
           )
           .optional(),
         credentialMode: z
@@ -84,16 +90,15 @@ export function createUpdateEventTaskTool(
         trigger?: z.input<
           ReturnType<typeof registeredEventTaskTriggerSchema>
         > | null;
-        successOutput?: "reply" | "silent" | null;
+        outcomes?: TaskOutcomeInput[] | null;
         credentialMode?: "creator" | "system" | null;
       };
-      const { credentialMode, successOutput, task, trigger, ...prepared } =
-        input;
+      const { credentialMode, outcomes, task, trigger, ...prepared } = input;
       return {
         ...prepared,
         ...(task != null ? { task } : undefined),
         ...(trigger != null ? { trigger } : undefined),
-        ...(successOutput != null ? { successOutput } : undefined),
+        ...(outcomes != null ? { outcomes } : undefined),
         ...(credentialMode != null ? { credentialMode } : undefined),
       };
     },
@@ -113,7 +118,7 @@ export function createUpdateEventTaskTool(
       if (
         input.task === undefined &&
         input.trigger === undefined &&
-        input.successOutput == null &&
+        input.outcomes == null &&
         input.credentialMode == null
       ) {
         throw new ToolInputError("Event task update requires a change.");
@@ -144,7 +149,10 @@ export function createUpdateEventTaskTool(
           changesExecution && !isCreator
             ? "system"
             : (input.credentialMode ?? current.credentialMode),
-        successOutput: input.successOutput ?? current.successOutput,
+        outcomes:
+          input.outcomes == null
+            ? current.outcomes
+            : await resolveTaskOutcomes(input.outcomes, current.destination),
         task: { text: nextInstruction },
         trigger: nextTrigger,
       };

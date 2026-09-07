@@ -815,11 +815,33 @@ export function createSlackTurn(deps: SlackTurnDeps) {
           }
           boundaryFailureCode = "delivery_failed";
           let slackMessageTs: string[] = [];
+          const messageDestinations: Array<{
+            destination: Extract<Destination, { platform: "slack" }>;
+            messageId: string;
+          }> = [];
           // Prep runs outside the post try/catch so non-Slack failures are not
           // classified as retryable delivery errors.
           await beforeFirstResponsePost();
           try {
-            if (channelId && thread.adapter.name === "slack") {
+            const outcomes = options.execution?.dispatch?.outcomes;
+            if (outcomes) {
+              for (const outcome of outcomes) {
+                const messageIds = await sendSlackReply({
+                  channelId: outcome.destination.channelId,
+                  conversationId,
+                  replyAttribution:
+                    options.execution?.dispatch?.replyAttribution,
+                  text,
+                });
+                slackMessageTs.push(...messageIds);
+                messageDestinations.push(
+                  ...messageIds.map((messageId) => ({
+                    destination: outcome.destination,
+                    messageId,
+                  })),
+                );
+              }
+            } else if (channelId && thread.adapter.name === "slack") {
               slackMessageTs = await sendSlackReply({
                 channelId,
                 conversationId,
@@ -827,6 +849,12 @@ export function createSlackTurn(deps: SlackTurnDeps) {
                 text,
                 ...(threadTs ? { threadTs } : undefined),
               });
+              messageDestinations.push(
+                ...slackMessageTs.map((messageId) => ({
+                  destination,
+                  messageId: threadTs ?? messageId,
+                })),
+              );
             } else {
               for (const part of splitSlackReplyText(text)) {
                 const postedMessageTs = (
@@ -873,9 +901,6 @@ export function createSlackTurn(deps: SlackTurnDeps) {
             );
           }
           try {
-            const providerConversationIds = threadTs
-              ? [threadTs]
-              : slackMessageTs;
             await persistWithRetry(() =>
               commitAcceptedReply({
                 ...(agentMessage ? { agentMessage } : undefined),
@@ -883,14 +908,14 @@ export function createSlackTurn(deps: SlackTurnDeps) {
                 conversationMessageId: recordedMessageId,
                 conversationId,
                 ...(options.execution?.dispatch &&
-                providerConversationIds.length > 0
+                messageDestinations.length > 0
                   ? {
-                      providerConversationBindings: providerConversationIds.map(
-                        (providerConversationId) => ({
+                      providerConversationBindings: messageDestinations.map(
+                        ({ destination: messageDestination, messageId }) => ({
                           provider: "slack",
-                          providerDestinationId: destination.channelId,
-                          providerTenantId: destination.teamId,
-                          providerConversationId,
+                          providerDestinationId: messageDestination.channelId,
+                          providerTenantId: messageDestination.teamId,
+                          providerConversationId: messageId,
                         }),
                       ),
                     }
@@ -1124,7 +1149,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
                 });
               }
             },
-            ...(options.execution?.dispatch?.successOutput === "silent"
+            ...(options.execution?.dispatch?.outcomes?.length === 0
               ? undefined
               : { delivery: deliverAssistantMessage }),
             durability: {
@@ -1249,13 +1274,12 @@ export function createSlackTurn(deps: SlackTurnDeps) {
                 }),
               );
               await persistThreadRuntimeStateWithRetry(thread, completedState);
-              const automatedTurnLimit = await recordFinishedTurnForAutomatedLimit(
-                {
+              const automatedTurnLimit =
+                await recordFinishedTurnForAutomatedLimit({
                   conversationId,
                   maxTurns: botConfig.maxConsecutiveAutomatedTurns,
                   source,
-                },
-              );
+                });
               await maybePostAutomatedTurnLimitNotice({
                 conversationId,
                 maxTurns: botConfig.maxConsecutiveAutomatedTurns,

@@ -2,6 +2,10 @@ import { logInfo } from "@/chat/logging";
 import { completeText } from "@/chat/pi/client";
 import { generateShortTitle } from "@/chat/services/short-title";
 import { zodTool } from "@/chat/tool-support/zod-tool";
+import {
+  resolveTaskOutcomes,
+  taskOutcomeInputSchema,
+} from "@/chat/task-outcomes";
 import { z } from "zod";
 import { and, eq, inArray } from "drizzle-orm";
 import { getDb } from "@/chat/db";
@@ -54,10 +58,11 @@ export function createSlackScheduleUpdateTaskTool(
           .describe("Complete replacement schedule. Omit to keep it unchanged.")
           .nullable()
           .optional(),
-        success_output: z
-          .enum(["reply", "silent"])
+        outcomes: z
+          .array(taskOutcomeInputSchema)
+          .max(5)
           .describe(
-            "Set reply when success should post in Slack, or silent for tool-only work. Omit to keep unchanged.",
+            "Replacement messages to send after successful work. Use an empty list to send nothing. Omit to keep unchanged.",
           )
           .optional(),
         status: z
@@ -202,7 +207,10 @@ export function createSlackScheduleUpdateTaskTool(
         statusReason:
           nextStatus === "blocked" ? lookup.statusReason : undefined,
         schedule: compiled?.schedule ?? lookup.schedule,
-        successOutput: input.success_output ?? lookup.successOutput,
+        outcomes:
+          input.outcomes === undefined
+            ? lookup.outcomes
+            : await resolveTaskOutcomes(input.outcomes, activeDestination),
         task: { text: nextInstruction },
       };
       if (instructionChanged) {
@@ -224,8 +232,7 @@ export function createSlackScheduleUpdateTaskTool(
         (input.credential_mode === undefined ||
           input.credential_mode === null ||
           input.credential_mode === lookup.credentialMode) &&
-        (input.success_output === undefined ||
-          input.success_output === lookup.successOutput) &&
+        input.outcomes === undefined &&
         moveHere
       ) {
         return scheduleTaskToolResult(

@@ -88,8 +88,10 @@ export function TaskDetailsDrawer(props: {
               {detail.value}
             </Detail>
           ))}
-          <Detail label="Success output">
-            {task.successOutput === "silent" ? "Silent" : "Reply in Slack"}
+          <Detail label="Outcomes">
+            {task.outcomes.length === 0
+              ? "None"
+              : `${task.outcomes.length} message${task.outcomes.length === 1 ? "" : "s"}`}
           </Detail>
           <Detail label="Destination">
             <span className="inline-flex items-center gap-1.5">
@@ -127,12 +129,7 @@ function TaskExecutionSummary(props: {
   range: TimeRangeDays;
   task: Pick<
     TaskSummary,
-    | "id"
-    | "kind"
-    | "lastConversationId"
-    | "lastRunAt"
-    | "runs"
-    | "totalRuns"
+    "id" | "kind" | "lastConversationId" | "lastRunAt" | "runs" | "totalRuns"
   >;
 }) {
   const { range, task } = props;

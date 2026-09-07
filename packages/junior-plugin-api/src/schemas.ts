@@ -79,6 +79,14 @@ export const destinationSchema = z.discriminatedUnion("platform", [
   localDestinationSchema,
 ]);
 
+/** One visible effect after successful automated work. */
+export const taskOutcomeSchema = z
+  .object({
+    action: z.literal("send_message"),
+    destination: slackDestinationSchema,
+  })
+  .strict();
+
 /** Runtime-owned Slack input Source. */
 export const slackSourceSchema = z
   .object({
@@ -344,6 +352,6 @@ export const dispatchOptionsSchema = z
     input: nonBlankStringSchema.pipe(z.string().max(32_000)),
     metadata: dispatchMetadataSchema.optional(),
     replyAttribution: replyAttributionSchema.optional(),
-    successOutput: z.enum(["reply", "silent"]).optional(),
+    outcomes: z.array(taskOutcomeSchema).max(5).optional(),
   })
   .strict();

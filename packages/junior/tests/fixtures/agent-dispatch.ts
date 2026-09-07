@@ -1,4 +1,4 @@
-import type { ReplyAttribution } from "@sentry/junior-plugin-api";
+import type { ReplyAttribution, TaskOutcome } from "@sentry/junior-plugin-api";
 import { createOrGetDispatch } from "@/chat/agent-dispatch/store";
 import type { BoundDispatchOptions } from "@/chat/agent-dispatch/types";
 import { createConversationWork } from "@/chat/app/conversation-work";
@@ -42,7 +42,7 @@ export async function createAgentDispatchTestRecord(
   source?: BoundDispatchOptions["source"],
   replyAttribution?: ReplyAttribution,
   input = "Post the scheduled digest.",
-  successOutput?: "reply" | "silent",
+  outcomes?: TaskOutcome[],
 ) {
   return (
     await createOrGetDispatch({
@@ -55,7 +55,7 @@ export async function createAgentDispatchTestRecord(
         input,
         ...(replyAttribution ? { replyAttribution } : undefined),
         source: source ?? { kind: "scheduled_task" },
-        ...(successOutput ? { successOutput } : undefined),
+        ...(outcomes ? { outcomes } : undefined),
       },
       plugin: "scheduler",
     })

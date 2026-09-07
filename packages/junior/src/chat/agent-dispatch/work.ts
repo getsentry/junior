@@ -86,7 +86,7 @@ export function buildDispatchRoutingContext(
       metadata: dispatch.metadata,
       plugin: dispatch.plugin,
       replyAttribution: dispatch.replyAttribution,
-      successOutput: dispatch.successOutput,
+      outcomes: dispatch.outcomes,
     },
     surface: "api",
   };

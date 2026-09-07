@@ -128,6 +128,15 @@ export function validateDispatchOptions(
   if (!isSlackDestination(destination)) {
     throw new Error("Dispatch destination platform must be slack");
   }
+  if (
+    candidate.outcomes?.some(
+      (outcome) => outcome.destination.teamId !== destination.teamId,
+    )
+  ) {
+    throw new Error(
+      "Dispatch message destinations must be in the dispatch Slack workspace",
+    );
+  }
   if (credentialSubject !== undefined) {
     if (
       credentialSubject.allowedWhen === "private-direct-conversation" &&
