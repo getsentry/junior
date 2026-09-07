@@ -59,19 +59,45 @@ function ConversationLandingLoading() {
   return (
     <section
       aria-label="New conversation"
-      className="min-h-0 overflow-hidden bg-white/[0.012] px-4 py-10 md:flex md:flex-col md:justify-center md:px-8 md:py-12"
+      className="min-h-0 overflow-hidden bg-white/[0.012]"
     >
-      <div className="mx-auto flex w-full max-w-xl flex-col items-center gap-5 md:max-w-2xl md:gap-8">
-        <Skeleton className="h-8 w-56" />
-        <div className="w-full rounded-xl border border-dashboard-border-subtle bg-dashboard-surface-raised p-3">
-          <Skeleton className="h-20 w-full bg-dashboard-fill-faint" />
-          <div className="mt-3 flex justify-between">
-            <Skeleton className="h-7 w-28" />
-            <Skeleton className="size-8 rounded-md" />
+      <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden md:block">
+        <div className="px-4 py-10 md:flex md:min-h-full md:flex-col md:justify-center md:px-8 md:py-12">
+          <div className="mx-auto flex w-full max-w-xl flex-col items-center gap-5 md:max-w-2xl md:gap-8">
+            <Skeleton className="h-8 w-56" />
+            <div className="w-full rounded-xl border border-dashboard-border-subtle bg-dashboard-surface-raised p-3">
+              <Skeleton className="h-20 w-full bg-dashboard-fill-faint" />
+              <div className="mt-3 flex justify-between">
+                <Skeleton className="h-7 w-28" />
+                <Skeleton className="size-8 rounded-md" />
+              </div>
+            </div>
           </div>
         </div>
+        <MobileConversationListLoading />
       </div>
     </section>
+  );
+}
+
+function MobileConversationListLoading() {
+  return (
+    <div className="min-h-0 overflow-y-auto overscroll-contain border-t border-white/[0.07] px-1.5 pb-4 pt-5 md:hidden">
+      <div className="flex items-center justify-between gap-2 px-1.5 pb-2">
+        <Skeleton className="h-4 w-32" />
+        <Skeleton className="size-7 rounded-md" />
+      </div>
+      <Skeleton className="mb-2 h-9 w-full rounded-lg border border-dashboard-border bg-dashboard-overlay-soft" />
+      <Skeleton className="mb-1 ml-2.5 mt-1.5 h-2.5 w-12" />
+      {Array.from({ length: 4 }, (_, index) => (
+        <div className="grid gap-2 rounded-md px-2.5 py-2" key={index}>
+          <Skeleton
+            className={cn("h-3", index % 3 === 0 ? "w-4/5" : "w-3/5")}
+          />
+          <Skeleton className="h-2.5 w-2/5 opacity-70" />
+        </div>
+      ))}
+    </div>
   );
 }
 

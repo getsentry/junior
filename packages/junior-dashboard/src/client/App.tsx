@@ -581,9 +581,12 @@ function SystemRoute(props: { coreData: DashboardCoreData }) {
   const query = useSystemData(props.coreData);
   if (!query.data && !query.error) {
     return (
-      <SystemPageLayout>
-        <LoadingView label="Loading system" />
-      </SystemPageLayout>
+      <SystemRouteLoading
+        description="Runtime health, model usage, and loaded capabilities."
+        label="Loading system"
+        title="System"
+        variant="overview"
+      />
     );
   }
   return query.data ? (

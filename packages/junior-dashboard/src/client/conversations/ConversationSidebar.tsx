@@ -277,7 +277,13 @@ export function ConversationSidebar(props: {
 /** Match the usual conversation row density while the first feed loads. */
 function ConversationRowsLoading() {
   return (
-    <div aria-hidden="true" className="grid gap-0.5">
+    <div
+      aria-busy="true"
+      aria-live="polite"
+      className="grid gap-0.5"
+      role="status"
+    >
+      <span className="sr-only">Loading your conversations</span>
       <Skeleton className="mb-1 ml-2.5 mt-1.5 h-2.5 w-12" />
       {Array.from({ length: 7 }, (_, index) => (
         <div className="grid gap-2 rounded-md px-2.5 py-2" key={index}>

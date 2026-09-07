@@ -3,7 +3,13 @@ import { Skeleton } from "../components/Skeleton";
 /** Match the usual transcript rhythm while the selected conversation loads. */
 export function TranscriptLoading() {
   return (
-    <div aria-hidden="true" className="grid gap-6 py-2">
+    <div
+      aria-busy="true"
+      aria-live="polite"
+      className="grid gap-6 py-2"
+      role="status"
+    >
+      <span className="sr-only">Loading conversation transcript</span>
       <MessageLoading width="w-3/4" />
       <div className="grid gap-2 border-l border-dashboard-border-subtle py-1 pl-4">
         <Skeleton className="h-3 w-36 opacity-70" />
