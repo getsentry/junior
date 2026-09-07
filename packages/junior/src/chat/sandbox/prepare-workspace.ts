@@ -5,6 +5,14 @@ import {
 import type { SandboxSession } from "@/chat/sandbox/workspace";
 import type { Workspace } from "@/chat/workspaces/types";
 
+const WORKSPACE_SETUP_FAILURE_OUTPUT_MAX_CHARS = 7_000;
+const WORKSPACE_SETUP_FAILURE_TRUNCATION_MARKER =
+  "[earlier setup output truncated]\n";
+// Sandboxes often report less memory to Node than they have. That default
+// heap limit is too small for real build tools, so give setup scripts more
+// room up front instead of failing with an out-of-memory error.
+const WORKSPACE_SETUP_NODE_OPTIONS = "--max-old-space-size=4096";
+
 interface PrepareWorkspaceParams {
   sandbox: SandboxSession;
   workspace: Workspace;
@@ -33,16 +41,43 @@ export async function prepareWorkspaceRepositories(
   }
 }
 
+/** Return bounded setup output for a Workspace failure. */
+export function workspaceSetupFailureDetail(input: {
+  exitCode: number;
+  stdout: string;
+  stderr: string;
+}): string {
+  const output = [
+    input.stdout.trim() ? `stdout:\n${input.stdout.trim()}` : "",
+    input.stderr.trim() ? `stderr:\n${input.stderr.trim()}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+  if (!output) return `exit ${input.exitCode}`;
+  if (output.length <= WORKSPACE_SETUP_FAILURE_OUTPUT_MAX_CHARS) return output;
+
+  const keptChars =
+    WORKSPACE_SETUP_FAILURE_OUTPUT_MAX_CHARS -
+    WORKSPACE_SETUP_FAILURE_TRUNCATION_MARKER.length;
+  return `${WORKSPACE_SETUP_FAILURE_TRUNCATION_MARKER}${output.slice(-keptChars)}`;
+}
+
+/** Build the env vars shared by every Workspace setup command. */
+function workspaceSetupEnv(): Record<string, string> {
+  return {
+    JUNIOR_REPOS_ROOT: SANDBOX_REPOS_ROOT,
+    JUNIOR_WORKSPACE_ROOT: SANDBOX_WORKSPACE_ROOT,
+    NODE_OPTIONS: WORKSPACE_SETUP_NODE_OPTIONS,
+  };
+}
+
 /** Build the command for one Workspace setup script. */
 export function workspaceSetupCommand(workspace: Workspace) {
   return {
     cmd: "bash",
     args: ["-euo", "pipefail", "-c", workspace.setupScript],
     cwd: SANDBOX_WORKSPACE_ROOT,
-    env: {
-      JUNIOR_REPOS_ROOT: SANDBOX_REPOS_ROOT,
-      JUNIOR_WORKSPACE_ROOT: SANDBOX_WORKSPACE_ROOT,
-    },
+    env: workspaceSetupEnv(),
   };
 }
 
@@ -74,10 +109,7 @@ export function workspaceSnapshotSetupCommand(
       workspace.setupScript,
     ],
     cwd: SANDBOX_WORKSPACE_ROOT,
-    env: {
-      JUNIOR_REPOS_ROOT: SANDBOX_REPOS_ROOT,
-      JUNIOR_WORKSPACE_ROOT: SANDBOX_WORKSPACE_ROOT,
-    },
+    env: workspaceSetupEnv(),
   };
 }
 
@@ -94,7 +126,7 @@ export async function prepareWorkspaceSnapshot(
   });
   if (result.exitCode !== 0) {
     throw new Error(
-      `Workspace setup failed: ${result.stderr.trim() || `exit ${result.exitCode}`}`,
+      `Workspace setup failed: ${workspaceSetupFailureDetail(result)}`,
     );
   }
 }

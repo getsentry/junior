@@ -108,6 +108,66 @@ describe("Workspace snapshot completion", () => {
     expect(builder.delete).not.toHaveBeenCalled();
   });
 
+  it("saves stdout and stderr when a setup command fails", async () => {
+    const workspace = await createWorkspace({
+      name: `snapshot-setup-failure-${randomUUID()}`,
+      setupScript: "pnpm install --frozen-lockfile",
+      repos: [],
+    });
+    const value = profile.create(SANDBOX_RUNTIME, workspace);
+    if (!value) throw new Error("Workspace snapshot profile is missing");
+
+    const buildId = randomUUID();
+    await setWorkspaceSnapshotBuild(
+      workspace.id,
+      {
+        id: buildId,
+        status: "building",
+        phase: "repositories_prepared",
+        profileHash: value.hash,
+        startedAt: new Date(),
+        sandboxName: "failed-setup-owner",
+        commandId: "failed-setup-command",
+        error: null,
+      },
+      { insertIfMissing: true },
+    );
+
+    const builder = {
+      delete: vi.fn(),
+      getCommand: vi.fn(async () => ({
+        wait: vi.fn(async () => ({
+          exitCode: 1,
+          stdout: vi.fn(async () => "ERR_WORKER_OUT_OF_MEMORY"),
+          stderr: vi.fn(async () => "Lifecycle script failed"),
+        })),
+      })),
+    };
+    sandboxGetMock.mockResolvedValue(builder);
+
+    await expect(
+      resolveWorkspaceSnapshot({
+        workspace,
+        runtime: SANDBOX_RUNTIME,
+        shouldStop: () => false,
+        applyNetworkPolicy: async () => {},
+        removeCredentialRoute: false,
+      }),
+    ).rejects.toThrow(
+      "stdout:\nERR_WORKER_OUT_OF_MEMORY\n\nstderr:\nLifecycle script failed",
+    );
+
+    await expect(
+      loadSnapshotsForProfile(getDb(), workspace.id, value.hash),
+    ).resolves.toMatchObject({
+      build: {
+        status: "failed",
+        error: expect.stringContaining("ERR_WORKER_OUT_OF_MEMORY"),
+      },
+      ready: null,
+    });
+  });
+
   it("starts a rebuild when failed-builder deletion fails", async () => {
     const workspace = await createWorkspace({
       name: `snapshot-rebuild-${randomUUID()}`,
