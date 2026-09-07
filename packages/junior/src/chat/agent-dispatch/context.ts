@@ -142,7 +142,7 @@ export async function dispatchEventTask(args: {
   };
 }) {
   const plugin = "junior";
-  const { credentialSubject, ...unboundOptions } = args.options;
+  const { credentialSubject, outcomes, ...unboundOptions } = args.options;
   validateDispatchOptions({ ...unboundOptions });
   const boundSubject = credentialSubject
     ? bindEventTaskCredentialSubject({
@@ -155,6 +155,7 @@ export async function dispatchEventTask(args: {
   }
   const options: BoundDispatchOptions = {
     ...unboundOptions,
+    ...(outcomes !== undefined ? { outcomes } : undefined),
     ...(boundSubject ? { credentialSubject: boundSubject } : undefined),
     source: { kind: "event_task" },
   };
@@ -180,7 +181,7 @@ export async function dispatchScheduledTask(args: {
   };
 }) {
   const plugin = "scheduler";
-  const { credentialSubject, ...unboundOptions } = args.options;
+  const { credentialSubject, outcomes, ...unboundOptions } = args.options;
   validateDispatchOptions({ ...unboundOptions });
   const boundSubject = credentialSubject
     ? bindScheduledTaskCredentialSubject({
@@ -193,6 +194,7 @@ export async function dispatchScheduledTask(args: {
   }
   const options: BoundDispatchOptions = {
     ...unboundOptions,
+    ...(outcomes !== undefined ? { outcomes } : undefined),
     ...(boundSubject ? { credentialSubject: boundSubject } : undefined),
     source: { kind: "scheduled_task" },
   };

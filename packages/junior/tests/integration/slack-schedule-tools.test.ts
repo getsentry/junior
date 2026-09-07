@@ -27,9 +27,8 @@ import {
   createLocalJuniorSqlFixture,
   type LocalJuniorSqlFixture,
 } from "../fixtures/sql";
-import {
-  createSlackSource,
-} from "@sentry/junior-plugin-api";
+import { createSlackSource } from "@sentry/junior-plugin-api";
+import { getCapturedSlackApiCalls } from "../msw/handlers/slack-api";
 vi.hoisted(() => {
   process.env.JUNIOR_STATE_ADAPTER = "memory";
 });
@@ -241,6 +240,57 @@ describe("Slack schedule tools", () => {
         timing: { type: "after" },
       },
     });
+  });
+
+  it("stores a direct message outcome created from a channel", async () => {
+    const created = await createTask(createContext(), {
+      outcomes: [
+        {
+          action: "send_message",
+          destination: {
+            platform: "slack",
+            teamId: TEST_TEAM_ID,
+            userId: "U123",
+          },
+        },
+      ],
+    });
+
+    expect(getCapturedSlackApiCalls("conversations.open")).toEqual([
+      expect.objectContaining({
+        params: expect.objectContaining({ users: "U123" }),
+      }),
+    ]);
+    await expect(readScheduledTask(created.task.id)).resolves.toMatchObject({
+      destination: { channelId: "C123" },
+      outcomes: [
+        {
+          action: "send_message",
+          destination: {
+            channelId: "D0TEST",
+            platform: "slack",
+            teamId: TEST_TEAM_ID,
+          },
+        },
+      ],
+    });
+
+    await expect(
+      createTask(createContext(), {
+        outcomes: [
+          {
+            action: "send_message",
+            destination: {
+              platform: "slack",
+              teamId: TEST_TEAM_ID,
+              channelId: "C456",
+            },
+          },
+        ],
+      }),
+    ).rejects.toThrow(
+      "Messages can only be sent to the current Slack conversation or the task creator.",
+    );
   });
 
   it("creates and lists tasks only for the active Slack conversation", async () => {
@@ -729,13 +779,10 @@ describe("Slack schedule tools", () => {
     const tool = createSlackScheduleUpdateTaskTool(context);
 
     await expect(
-      executeTool(
-        tool,
-        ({
-          task_id: created.task.id,
-          next_run_at: "2026-06-01T16:00:00.000Z",
-        } as Parameters<NonNullable<typeof tool.execute>>[0]),
-      ),
+      executeTool(tool, {
+        task_id: created.task.id,
+        next_run_at: "2026-06-01T16:00:00.000Z",
+      } as Parameters<NonNullable<typeof tool.execute>>[0]),
     ).rejects.toThrow("Unrecognized key");
     await expect(readScheduledTask(created.task.id)).resolves.toMatchObject({
       nextRunAtMs: Date.parse("2026-05-25T16:00:00.000Z"),
@@ -750,17 +797,14 @@ describe("Slack schedule tools", () => {
     const updateTool = createSlackScheduleUpdateTaskTool(context);
 
     await expect(
-      executeTool(
-        updateTool,
-        ({
-          task_id: created.task.id,
-          schedule: {
-            kind: "recurring",
-            frequency: "hourly",
-            time: "09:00",
-          },
-        } as Parameters<NonNullable<typeof updateTool.execute>>[0]),
-      ),
+      executeTool(updateTool, {
+        task_id: created.task.id,
+        schedule: {
+          kind: "recurring",
+          frequency: "hourly",
+          time: "09:00",
+        },
+      } as Parameters<NonNullable<typeof updateTool.execute>>[0]),
     ).rejects.toThrow("Invalid tool arguments: schedule");
     await expect(readScheduledTask(created.task.id)).resolves.toMatchObject({
       schedule: {
@@ -886,6 +930,15 @@ describe("Slack schedule tools", () => {
         fullName: "Alice Reviewer",
       },
     });
+
+    await expect(
+      executeTool(createSlackScheduleUpdateTaskTool(otherActor), {
+        task_id: created.task.id,
+        outcomes: [],
+      }),
+    ).rejects.toThrow(
+      "Only the scheduled task creator can change message destinations.",
+    );
 
     const updated = await executeTool(
       createSlackScheduleUpdateTaskTool(otherActor),

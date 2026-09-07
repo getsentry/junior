@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import {
   sourceSchema,
+  taskOutcomeSchema,
   type Identity,
   type SlackDestination,
   type SlackActor,
@@ -20,6 +21,7 @@ import type {
   ScheduledTaskPrincipal,
   ScheduledTaskStatus,
 } from "./types";
+import { effectiveTaskOutcomes } from "@/chat/task-outcomes";
 
 export interface SchedulerToolContext {
   actor?: SlackActor;
@@ -58,6 +60,7 @@ const compactTaskResultSchema = z
       })
       .strict(),
     credential_mode: z.enum(["system", "creator"]),
+    outcomes: z.array(taskOutcomeSchema).max(5),
     dashboard_url: z.string().url().nullable(),
     last_run_at: z.string().nullable(),
     run_now_at: z.string().nullable(),
@@ -241,6 +244,7 @@ export function compactTask(task: ScheduledTask): CompactTaskResult {
     },
     conversation_access: task.conversationAccess,
     credential_mode: task.credentialMode,
+    outcomes: effectiveTaskOutcomes(task.outcomes, task.destination),
     dashboard_url: getDashboardTaskLink(task.id) ?? null,
     last_run_at: task.lastRunAtMs
       ? new Date(task.lastRunAtMs).toISOString()

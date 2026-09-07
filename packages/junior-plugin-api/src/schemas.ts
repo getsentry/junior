@@ -79,6 +79,14 @@ export const destinationSchema = z.discriminatedUnion("platform", [
   localDestinationSchema,
 ]);
 
+/** One visible effect after successful automated work. */
+export const taskOutcomeSchema = z
+  .object({
+    action: z.literal("send_message"),
+    destination: slackDestinationSchema,
+  })
+  .strict();
+
 /** Runtime-owned Slack input Source. */
 export const slackSourceSchema = z
   .object({

@@ -8,6 +8,7 @@ import {
 } from "@/chat/agent-dispatch/context";
 import { getDispatchConversationId } from "@/chat/agent-dispatch/store";
 import { renderTaskInput } from "@/chat/task-input";
+import { effectiveTaskOutcomes } from "@/chat/task-outcomes";
 import { getDb } from "@/chat/db";
 import { logInfo } from "@/chat/logging";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
@@ -50,6 +51,7 @@ function singleLineMetadataValue(value: string): string {
 function buildDispatchInput(task: ScheduledTask): string {
   return renderTaskInput({
     instructions: task.task.text,
+    outcomes: effectiveTaskOutcomes(task.outcomes, task.destination),
   });
 }
 
@@ -420,6 +422,7 @@ export async function runScheduledTaskHeartbeat(args: {
           input: buildDispatchInput(task),
           metadata,
           replyAttribution: replyAttribution(task),
+          outcomes: task.outcomes,
         },
       });
     } catch (error) {

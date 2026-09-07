@@ -2,6 +2,10 @@ import { logInfo } from "@/chat/logging";
 import { completeText } from "@/chat/pi/client";
 import { generateShortTitle } from "@/chat/services/short-title";
 import { zodTool } from "@/chat/tool-support/zod-tool";
+import {
+  resolveTaskOutcomes,
+  taskOutcomeInputSchema,
+} from "@/chat/task-outcomes";
 import { z } from "zod";
 import { and, eq, inArray } from "drizzle-orm";
 import { getDb } from "@/chat/db";
@@ -53,6 +57,13 @@ export function createSlackScheduleUpdateTaskTool(
         schedule: scheduleIntentSchema
           .describe("Complete replacement schedule. Omit to keep it unchanged.")
           .nullable()
+          .optional(),
+        outcomes: z
+          .array(taskOutcomeInputSchema)
+          .max(5)
+          .describe(
+            "Replacement messages to send after successful work. Use an empty list to send nothing. Omit to keep unchanged.",
+          )
           .optional(),
         status: z
           .enum(["active", "blocked"])
@@ -116,6 +127,13 @@ export function createSlackScheduleUpdateTaskTool(
       if (input.credential_mode === "creator" && !isCreator) {
         throwToolInputError(
           "Only the scheduled task creator can enable creator credential use.",
+        );
+      }
+      // TODO(dcramer): Allow public Automation members to change outcomes after
+      // shared policy or the web UI can authorize the new Destination safely.
+      if (input.outcomes !== undefined && !isCreator) {
+        throwToolInputError(
+          "Only the scheduled task creator can change message destinations.",
         );
       }
 
@@ -196,6 +214,14 @@ export function createSlackScheduleUpdateTaskTool(
         statusReason:
           nextStatus === "blocked" ? lookup.statusReason : undefined,
         schedule: compiled?.schedule ?? lookup.schedule,
+        outcomes:
+          input.outcomes === undefined
+            ? lookup.outcomes
+            : await resolveTaskOutcomes(
+                input.outcomes,
+                activeDestination,
+                lookup.createdBy.slackUserId,
+              ),
         task: { text: nextInstruction },
       };
       if (instructionChanged) {
@@ -217,6 +243,7 @@ export function createSlackScheduleUpdateTaskTool(
         (input.credential_mode === undefined ||
           input.credential_mode === null ||
           input.credential_mode === lookup.credentialMode) &&
+        input.outcomes === undefined &&
         moveHere
       ) {
         return scheduleTaskToolResult(
