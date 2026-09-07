@@ -897,6 +897,7 @@ export function buildConversations(
 ): Conversation[] {
   return summaries
     .map((summary) => ({
+      activityPreview: summary.activityPreview,
       annotations: summary.annotations,
       sidebarAnnotations: summary.sidebarAnnotations,
       archivedAt: summary.archivedAt,
@@ -948,6 +949,7 @@ function conversationSearchHaystack(conversation: Conversation): string {
   const actor = conversation.actorIdentity;
   return [
     conversation.displayTitle,
+    conversation.activityPreview?.text,
     conversation.id,
     conversation.channel,
     conversation.channelName,
@@ -961,6 +963,17 @@ function conversationSearchHaystack(conversation: Conversation): string {
     .filter(Boolean)
     .join(" ")
     .toLowerCase();
+}
+
+/** Reduce message Markdown to compact plain text for conversation previews. */
+export function formatConversationActivityPreview(text: string): string {
+  return text
+    .replace(/\[([^\]]+)\]\([^\s)]+(?:\s+"[^"]*")?\)/g, "$1")
+    .replace(/(^|\s)([*_~`]{1,3})(?=\S)/g, "$1")
+    .replace(/([*_~`]{1,3})(?=\s|$|[.,!?;:])/g, "")
+    .replace(/^\s*(?:#{1,6}|[-+*]|\d+\.)\s+/gm, "")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 /** Apply lightweight client-side search and facet filters to conversations. */

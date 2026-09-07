@@ -1304,6 +1304,26 @@ function mockConversations(nowMs: number): MockConversation[] {
 function summaryFromConversation(
   conversation: MockConversation,
 ): ConversationSummaryReport {
+  const activityEvent =
+    [...conversation.events]
+      .reverse()
+      .find(
+        (event) =>
+          event.data.type === "message" && event.data.role === "assistant",
+      ) ??
+    [...conversation.events]
+      .reverse()
+      .find(
+        (event) => event.data.type === "message" && event.data.role === "user",
+      );
+  const activityPreview =
+    activityEvent?.data.type === "message" && activityEvent.data.text
+      ? {
+          createdAt: activityEvent.createdAt,
+          role: activityEvent.data.role as "assistant" | "user",
+          text: activityEvent.data.text,
+        }
+      : undefined;
   const {
     eventHistory: _eventHistory,
     events: _events,
@@ -1315,14 +1335,19 @@ function summaryFromConversation(
     sourceTask: _sourceTask,
     ...summary
   } = conversation;
+  const summaryWithActivity = {
+    ...summary,
+    ...(activityPreview ? { activityPreview } : undefined),
+  };
   const withArchiveState = mockArchivedConversationIds.has(
     conversation.conversationId,
   )
     ? {
-        ...summary,
-        archivedAt: summary.archivedAt ?? iso(NOW_MS, -2 * 24 * 60 * 60_000),
+        ...summaryWithActivity,
+        archivedAt:
+          summaryWithActivity.archivedAt ?? iso(NOW_MS, -2 * 24 * 60 * 60_000),
       }
-    : { ...summary, archivedAt: undefined };
+    : { ...summaryWithActivity, archivedAt: undefined };
   return withArchiveState.channel &&
     PUBLIC_MOCK_CHANNEL_IDS.has(withArchiveState.channel)
     ? { ...withArchiveState, locationId: `mock:${withArchiveState.channel}` }
@@ -1502,7 +1527,9 @@ function mockGuardianStats(nowMs: number): ConversationStatsReport["guardian"] {
   const end = new Date(nowMs);
   end.setUTCMinutes(0, 0, 0);
   const metricHours = Array.from({ length: 7 * 24 }, (_, index) => {
-    const date = new Date(end.getTime() - (7 * 24 - 1 - index) * 60 * 60 * 1_000);
+    const date = new Date(
+      end.getTime() - (7 * 24 - 1 - index) * 60 * 60 * 1_000,
+    );
     const requests = index > 12 ? (index % 4) + 1 : 0;
     const deny = requests > 2 && index % 5 === 0 ? 1 : 0;
     const ask = requests > 1 && index % 3 === 0 ? 1 : 0;
@@ -1864,7 +1891,10 @@ function mockPeopleActivitySixHours(
   nowMs: number,
   summaries: ConversationSummaryReport[],
 ): PeopleActivityDayReport[] {
-  const bySix = new Map<string, { actors: Set<string>; conversations: number }>();
+  const bySix = new Map<
+    string,
+    { actors: Set<string>; conversations: number }
+  >();
   for (const summary of summaries) {
     const startMs = Date.parse(summary.lastSeenAt);
     if (Number.isNaN(startMs)) continue;
@@ -1872,7 +1902,10 @@ function mockPeopleActivitySixHours(
     bucket.setUTCMinutes(0, 0, 0);
     bucket.setUTCHours(Math.floor(bucket.getUTCHours() / 6) * 6, 0, 0, 0);
     const key = bucket.toISOString().slice(0, 13);
-    const current = bySix.get(key) ?? { actors: new Set<string>(), conversations: 0 };
+    const current = bySix.get(key) ?? {
+      actors: new Set<string>(),
+      conversations: 0,
+    };
     const email = summary.actorIdentity?.email?.toLowerCase();
     if (!email) continue;
     current.actors.add(email);
@@ -1888,7 +1921,6 @@ function mockPeopleActivitySixHours(
     };
   });
 }
-
 
 function emptyMockWindowMetrics(): ActorWindowMetrics {
   return {
@@ -2018,7 +2050,10 @@ function sumMockHoursIntoSixHours<T extends { date: string }>(
     }
     bySix.set(key, next);
   }
-  return trailingMetricSixHours(nowMs, (date) => bySix.get(date) ?? empty(date));
+  return trailingMetricSixHours(
+    nowMs,
+    (date) => bySix.get(date) ?? empty(date),
+  );
 }
 
 function activityDates(nowMs: number, days = PEOPLE_ACTIVITY_DAYS): string[] {
@@ -2524,11 +2559,11 @@ export function readMockTaskList(nowMs = NOW_MS): TaskList {
     executionSixHours: sumMockHoursIntoSixHours(
       nowMs,
       trailingMetricHours(nowMs, (date) => ({
-      costUsd: 0,
-      date,
-      event: 0,
-      scheduled: 0,
-    })),
+        costUsd: 0,
+        date,
+        event: 0,
+        scheduled: 0,
+      })),
       (date) => ({ costUsd: 0, date, event: 0, scheduled: 0 }),
     ),
     tasks: mockTasks(),
@@ -2570,11 +2605,11 @@ export function readMockTaskExecutions(
       executionSixHours: sumMockHoursIntoSixHours(
         nowMs,
         trailingMetricHours(nowMs, (date) => ({
-        blocked: 0,
-        completed: 0,
-        date,
-        failed: 0,
-      })),
+          blocked: 0,
+          completed: 0,
+          date,
+          failed: 0,
+        })),
         (date) => ({ blocked: 0, completed: 0, date, failed: 0 }),
       ),
       executions: [],
@@ -2637,11 +2672,11 @@ export function readMockTaskExecutions(
     executionSixHours: sumMockHoursIntoSixHours(
       nowMs,
       trailingMetricHours(nowMs, (date) => ({
-      blocked: 0,
-      completed: 0,
-      date,
-      failed: 0,
-    })),
+        blocked: 0,
+        completed: 0,
+        date,
+        failed: 0,
+      })),
       (date) => ({ blocked: 0, completed: 0, date, failed: 0 }),
     ),
     executions,

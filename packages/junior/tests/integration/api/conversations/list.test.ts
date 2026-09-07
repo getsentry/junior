@@ -617,28 +617,42 @@ describe("conversation list API", () => {
       await fixture.sql
         .db()
         .insert(juniorConversationEvents)
-        .values({
-          actorIdentityId: "identity-participant-slack",
-          conversationId: "slack:C1:shared-thread",
-          createdAt: new Date(5_500),
-          historyVersion: 0,
-          payload: {
-            messageId: "1786500342.616849",
-            meta: {
-              author: {
-                fullName: "Participant",
-                isBot: false,
-                userId: "U-PARTICIPANT",
-                userName: "participant",
+        .values([
+          {
+            actorIdentityId: "identity-participant-slack",
+            conversationId: "slack:C1:shared-thread",
+            createdAt: new Date(5_500),
+            historyVersion: 0,
+            payload: {
+              messageId: "1786500342.616849",
+              meta: {
+                author: {
+                  fullName: "Participant",
+                  isBot: false,
+                  userId: "U-PARTICIPANT",
+                  userName: "participant",
+                },
+                explicitMention: true,
               },
-              explicitMention: true,
+              role: "user",
+              text: "@junior make urls clickable",
             },
-            role: "user",
-            text: "@junior make urls clickable",
+            seq: 0,
+            type: "message",
           },
-          seq: 0,
-          type: "message",
-        });
+          {
+            conversationId: "slack:C1:shared-thread",
+            createdAt: new Date(5_400),
+            historyVersion: 0,
+            payload: {
+              messageId: "1786500342.616840",
+              role: "assistant",
+              text: "I updated the links and checked the result.",
+            },
+            seq: 1,
+            type: "message",
+          },
+        ]);
       await fixture.sql
         .db()
         .insert(juniorConversationParticipants)
@@ -661,6 +675,11 @@ describe("conversation list API", () => {
         "slack:C1:shared-thread",
       ]);
       expect(feed.conversations[0]).toMatchObject({
+        activityPreview: {
+          createdAt: new Date(5_400).toISOString(),
+          role: "assistant",
+          text: "I updated the links and checked the result.",
+        },
         actorIdentity: expect.objectContaining({
           slackUserId: "U-OWNER",
         }),
