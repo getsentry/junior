@@ -1,12 +1,12 @@
 import fs from "node:fs";
 import { describe, expect, it } from "vitest";
-import tsupConfig from "../../../tsup.config";
+import tsdownConfig from "../../../tsdown.config";
 
-function getTsupEntryNames(): string[] {
-  const config = Array.isArray(tsupConfig) ? tsupConfig[0] : tsupConfig;
+function getBuildEntryNames(): string[] {
+  const config = Array.isArray(tsdownConfig) ? tsdownConfig[0] : tsdownConfig;
 
   if (!config || typeof config !== "object" || !("entry" in config)) {
-    throw new Error("tsup config must expose entry points");
+    throw new Error("tsdown config must expose entry points");
   }
 
   return Object.keys(config.entry as Record<string, string>);
@@ -27,7 +27,7 @@ describe("CLI package build contract", () => {
     ];
 
     expect(loadedCliEntries.length).toBeGreaterThan(0);
-    expect(getTsupEntryNames()).toEqual(
+    expect(getBuildEntryNames()).toEqual(
       expect.arrayContaining(loadedCliEntries),
     );
   });

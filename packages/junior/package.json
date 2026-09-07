@@ -54,11 +54,11 @@
   "scripts": {
     "prepare": "pnpm run build",
     "prepack": "pnpm run build",
-    "build": "tsup && tsc -p tsconfig.build.json --emitDeclarationOnly && node scripts/rewrite-declaration-paths.mjs",
+    "build": "tsdown",
     "acp:smoke": "pnpm exec tsx scripts/acp-smoke.ts",
     "db:generate": "pnpm exec drizzle-kit generate --config drizzle.config.ts",
-    "lint": "oxlint --config .oxlintrc.json --deny-warnings src tests scripts bin tsup.config.ts && depcruise --config .dependency-cruiser.mjs src/chat",
-    "lint:fix": "oxlint --config .oxlintrc.json --deny-warnings --fix src tests scripts bin tsup.config.ts",
+    "lint": "oxlint --config .oxlintrc.json --deny-warnings src tests scripts bin tsdown.config.ts && depcruise --config .dependency-cruiser.mjs src/chat",
+    "lint:fix": "oxlint --config .oxlintrc.json --deny-warnings --fix src tests scripts bin tsdown.config.ts",
     "test": "vitest run --maxWorkers=4",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
@@ -119,7 +119,7 @@
     "msw": "^2.14.6",
     "nitro": "3.0.260522-beta",
     "oxlint": "^1.79.0",
-    "tsup": "^8.5.1",
+    "tsdown": "0.23.0",
     "typescript": "^6.0.3",
     "vercel": "^54.4.0",
     "vitest": "^4.1.7"
