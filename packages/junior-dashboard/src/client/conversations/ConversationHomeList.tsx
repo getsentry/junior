@@ -122,7 +122,7 @@ function ConversationCard(props: {
   const isPrivate = conversation.visibility === "private";
   return (
     <article
-      className="group relative grid min-w-0 grid-cols-[minmax(0,1fr)_5.5rem] gap-3 rounded-lg border border-dashboard-border-subtle bg-dashboard-fill-faint px-4 py-4 transition-colors hover:border-dashboard-border hover:bg-dashboard-fill-soft md:gap-5 md:px-5"
+      className="group relative grid min-w-0 grid-cols-[minmax(0,1fr)_max-content] gap-3 rounded-lg border border-dashboard-border-subtle bg-dashboard-fill-faint px-4 py-4 transition-colors hover:border-dashboard-border hover:bg-dashboard-fill-soft md:gap-5 md:px-5"
       role="listitem"
     >
       <Link
@@ -176,13 +176,13 @@ function ConversationCard(props: {
           </div>
         </div>
       </div>
-      <div className="relative z-[1] flex h-full flex-col items-end justify-between gap-3">
+      <div className="relative z-[1] flex items-start gap-2">
         <span className="whitespace-nowrap font-mono text-xs text-dashboard-text-muted">
           {formatRelativeTime(conversation.lastSeenAt)}
         </span>
         <button
           aria-label={`${conversation.archivedAt ? "Restore" : "Archive"} ${title}`}
-          className="grid size-11 shrink-0 cursor-pointer place-items-center rounded-md text-dashboard-text-muted transition hover:bg-dashboard-fill-hover hover:text-dashboard-text focus:outline-none focus:ring-2 focus:ring-dashboard-focus disabled:cursor-not-allowed disabled:opacity-50 md:size-9"
+          className="relative shrink-0 cursor-pointer border-0 bg-transparent p-0 text-dashboard-text-muted transition before:absolute before:-inset-2 hover:text-dashboard-text focus:outline-none focus:ring-2 focus:ring-dashboard-focus focus:ring-offset-2 focus:ring-offset-dashboard-canvas disabled:cursor-not-allowed disabled:opacity-50"
           disabled={archive.isPending}
           onClick={() =>
             archive.mutate({
