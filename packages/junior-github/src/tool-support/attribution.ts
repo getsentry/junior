@@ -65,15 +65,43 @@ function requesterLabel(args: {
   return display ? `**${display.replaceAll("*", "\\*")}**` : undefined;
 }
 
+/**
+ * Recover the ordered list of prior requester labels from an existing
+ * attribution block, including the legacy single-requester `Requested by`
+ * wording, so a new requester can be appended instead of replacing them.
+ */
+function parseExistingLabels(blockContents: string): string[] {
+  const trimmed = blockContents.trim().replace(/\.$/, "");
+  if (!trimmed) {
+    return [];
+  }
+  const withoutLeadIn = trimmed.replace(/^(?:Requested by|via)\s+/i, "");
+  return withoutLeadIn
+    .split(/,\s*(?:via\s+)?/i)
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
+
+function formatAttributionBlock(labels: string[]): string {
+  const sentence = labels.map((entry) => `via ${entry}`).join(", ");
+  return `${GITHUB_REQUEST_ATTRIBUTION_START}\n${sentence}.\n${GITHUB_REQUEST_ATTRIBUTION_END}`;
+}
+
 function applyAttribution(body: string, label: string | undefined): string {
-  const attribution = label
-    ? `${GITHUB_REQUEST_ATTRIBUTION_START}\nRequested by ${label}.\n${GITHUB_REQUEST_ATTRIBUTION_END}`
-    : undefined;
   const normalizedBody = body.trimEnd();
   const existing = new RegExp(
-    `${GITHUB_REQUEST_ATTRIBUTION_START}[\\s\\S]*?${GITHUB_REQUEST_ATTRIBUTION_END}`,
+    `${GITHUB_REQUEST_ATTRIBUTION_START}([\\s\\S]*?)${GITHUB_REQUEST_ATTRIBUTION_END}`,
   );
-  if (existing.test(normalizedBody)) {
+  const existingMatch = normalizedBody.match(existing);
+  const existingLabels = existingMatch
+    ? parseExistingLabels(existingMatch[1])
+    : [];
+  const labels =
+    label && !existingLabels.includes(label)
+      ? [...existingLabels, label]
+      : existingLabels;
+  const attribution = labels.length ? formatAttributionBlock(labels) : undefined;
+  if (existingMatch) {
     return attribution
       ? normalizedBody.replace(existing, attribution)
       : normalizedBody.replace(existing, "").trimEnd();
