@@ -4,6 +4,7 @@ import { ChatLayout } from "./ChatLayout";
 
 /** Keep the conversation workspace geometry stable while its first data loads. */
 export function ConversationWorkspaceLoading(props: { detail: boolean }) {
+  if (!props.detail) return <ConversationHomeLoading />;
   return (
     <div
       aria-busy="true"
@@ -14,13 +15,9 @@ export function ConversationWorkspaceLoading(props: { detail: boolean }) {
       )}
       role="status"
     >
-      <span className="sr-only">Loading conversations</span>
+      <span className="sr-only">Loading conversation</span>
       <ConversationSidebarLoading />
-      {props.detail ? (
-        <ConversationDetailLoading />
-      ) : (
-        <ConversationLandingLoading />
-      )}
+      <ConversationDetailLoading />
     </div>
   );
 }
@@ -55,48 +52,80 @@ function ConversationSidebarLoading() {
   );
 }
 
-function ConversationLandingLoading() {
+function ConversationHomeLoading() {
   return (
-    <section
-      aria-label="New conversation"
-      className="min-h-0 overflow-hidden bg-white/[0.012]"
+    <main
+      aria-busy="true"
+      aria-live="polite"
+      className={cn(
+        dashboardContainerClass,
+        "h-full min-h-0 overflow-y-auto overscroll-contain px-4 py-4 sm:px-6 sm:py-6 xl:border-x xl:border-dashboard-border-subtle",
+      )}
+      role="status"
     >
-      <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-hidden md:block">
-        <div className="px-4 py-10 md:flex md:min-h-full md:flex-col md:justify-center md:px-8 md:py-12">
-          <div className="mx-auto flex w-full max-w-xl flex-col items-center gap-5 md:max-w-2xl md:gap-8">
-            <Skeleton className="h-8 w-56" />
-            <div className="w-full rounded-xl border border-dashboard-border-subtle bg-dashboard-surface-raised p-3">
-              <Skeleton className="h-20 w-full bg-dashboard-fill-faint" />
-              <div className="mt-3 flex justify-between">
-                <Skeleton className="h-7 w-28" />
-                <Skeleton className="size-8 rounded-md" />
+      <span className="sr-only">Loading conversations</span>
+      <div className="mx-auto grid w-full max-w-6xl gap-8">
+        <section className="mx-auto grid w-full max-w-3xl gap-3">
+          <Skeleton className="mx-auto h-8 w-56" />
+          <div className="w-full rounded-xl border border-dashboard-border-subtle bg-dashboard-surface-raised p-3">
+            <Skeleton className="h-20 w-full bg-dashboard-fill-faint" />
+            <div className="mt-3 flex justify-between">
+              <Skeleton className="h-7 w-32" />
+              <Skeleton className="size-8 rounded-md" />
+            </div>
+          </div>
+        </section>
+        <section className="grid gap-3">
+          <Skeleton className="h-9 w-full rounded-lg border border-dashboard-border bg-dashboard-overlay-soft sm:ml-auto sm:w-72" />
+          <div className="grid gap-5">
+            <div>
+              <Skeleton className="mb-2 ml-1 h-3 w-16" />
+              <div className="grid gap-2">
+                {Array.from({ length: 3 }, (_, index) => (
+                  <ConversationCardLoading index={index} key={index} />
+                ))}
+              </div>
+            </div>
+            <div>
+              <Skeleton className="mb-2 ml-1 h-3 w-12" />
+              <div className="grid gap-2">
+                {Array.from({ length: 2 }, (_, index) => (
+                  <ConversationCardLoading index={index + 3} key={index} />
+                ))}
               </div>
             </div>
           </div>
-        </div>
-        <MobileConversationListLoading />
+        </section>
       </div>
-    </section>
+    </main>
   );
 }
 
-function MobileConversationListLoading() {
+function ConversationCardLoading(props: { index: number }) {
   return (
-    <div className="min-h-0 overflow-y-auto overscroll-contain border-t border-white/[0.07] px-1.5 pb-4 pt-5 md:hidden">
-      <div className="flex items-center justify-between gap-2 px-1.5 pb-2">
-        <Skeleton className="h-4 w-32" />
-        <Skeleton className="size-7 rounded-md" />
-      </div>
-      <Skeleton className="mb-2 h-9 w-full rounded-lg border border-dashboard-border bg-dashboard-overlay-soft" />
-      <Skeleton className="mb-1 ml-2.5 mt-1.5 h-2.5 w-12" />
-      {Array.from({ length: 4 }, (_, index) => (
-        <div className="grid gap-2 rounded-md px-2.5 py-2" key={index}>
+    <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_max-content] gap-3 rounded-lg border border-dashboard-border-subtle bg-dashboard-fill-faint px-4 py-4 md:gap-5 md:px-5">
+      <div className="flex min-w-0 items-start gap-2.5">
+        <Skeleton className="mt-1.5 size-3 shrink-0 rounded-full" />
+        <div className="grid min-w-0 flex-1 gap-2">
           <Skeleton
-            className={cn("h-3", index % 3 === 0 ? "w-4/5" : "w-3/5")}
+            className={cn(
+              "h-4",
+              props.index % 2 === 0 ? "w-56 max-w-4/5" : "w-44 max-w-3/5",
+            )}
           />
-          <Skeleton className="h-2.5 w-2/5 opacity-70" />
+          <div className="grid gap-1.5">
+            <Skeleton className="h-3 w-full max-w-3xl opacity-70" />
+            {props.index % 2 === 0 ? (
+              <Skeleton className="h-3 w-2/3 max-w-xl opacity-70" />
+            ) : null}
+          </div>
+          <Skeleton className="h-3 w-64 max-w-4/5 opacity-70" />
         </div>
-      ))}
+      </div>
+      <div className="flex items-start gap-2">
+        <Skeleton className="h-3 w-16 opacity-70" />
+        <Skeleton className="size-4" />
+      </div>
     </div>
   );
 }
