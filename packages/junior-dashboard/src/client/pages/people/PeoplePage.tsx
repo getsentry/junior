@@ -1,10 +1,5 @@
 import { useDeferredValue, useState } from "react";
-import {
-  Activity,
-  CircleDollarSign,
-  TrendingUp,
-  Users,
-} from "lucide-react";
+import { Activity, CircleDollarSign, TrendingUp, Users } from "lucide-react";
 import type {
   ActorDirectoryReport,
   ActorSummaryReport,
@@ -12,7 +7,6 @@ import type {
 
 import { useActorDirectoryData } from "../../api";
 import { EmptyTelemetry } from "../../components/EmptyTelemetry";
-import { LoadingView } from "../../components/LoadingView";
 import {
   selectTimeSeries,
   timeRangeBucketUnit,
@@ -28,7 +22,10 @@ import {
   useDebouncedSearchParam,
   useSearchParamEnum,
 } from "../../searchParams";
-import { SystemPageLayout } from "../system/SystemPageLayout";
+import {
+  SystemPageLayout,
+  SystemRouteLoading,
+} from "../system/SystemPageLayout";
 import { PeopleActivityChart } from "./PeopleActivityChart";
 import {
   filterPeople,
@@ -69,9 +66,12 @@ export function PeoplePageContent(props: {
   const deferredSort = useDeferredValue(sort);
   if (!props.data && !props.error) {
     return (
-      <SystemPageLayout>
-        <LoadingView label="Loading people" />
-      </SystemPageLayout>
+      <SystemRouteLoading
+        description="People, activity, and model spend."
+        label="Loading people"
+        title="People"
+        variant="stats"
+      />
     );
   }
 

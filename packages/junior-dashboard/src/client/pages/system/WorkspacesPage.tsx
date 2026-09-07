@@ -10,7 +10,6 @@ import { getDashboardAgentName } from "../../agentName";
 import { ButtonLink } from "../../components/Button";
 import { EmptyTelemetry } from "../../components/EmptyTelemetry";
 import { InlineError } from "../../components/InlineError";
-import { LoadingView } from "../../components/LoadingView";
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
 import {
@@ -19,7 +18,7 @@ import {
   fetchDashboardJson,
 } from "../../http";
 import { BaselineSnapshotCard } from "./BaselineSnapshotCard";
-import { SystemPageLayout } from "./SystemPageLayout";
+import { SystemPageLayout, SystemRouteLoading } from "./SystemPageLayout";
 import { WorkspaceList } from "./WorkspaceList";
 
 export const workspacesQueryKey = ["dashboard", "workspaces"] as const;
@@ -70,9 +69,12 @@ export function WorkspacesPage() {
 
   if (!workspacesQuery.data && !workspacesQuery.error) {
     return (
-      <SystemPageLayout>
-        <LoadingView label="Loading Workspaces" />
-      </SystemPageLayout>
+      <SystemRouteLoading
+        description="Repository recipes Junior can switch into."
+        label="Loading Workspaces"
+        title="Workspaces"
+        variant="list"
+      />
     );
   }
 

@@ -8,7 +8,6 @@ import type {
 
 import { useLocationDirectoryData } from "../../api";
 import { EmptyTelemetry } from "../../components/EmptyTelemetry";
-import { LoadingView } from "../../components/LoadingView";
 import {
   selectTimeSeries,
   timeRangeBucketUnit,
@@ -23,7 +22,10 @@ import {
   useDebouncedSearchParam,
   useSearchParamEnum,
 } from "../../searchParams";
-import { SystemPageLayout } from "../system/SystemPageLayout";
+import {
+  SystemPageLayout,
+  SystemRouteLoading,
+} from "../system/SystemPageLayout";
 import { LocationDirectoryActivityChart } from "./LocationDirectoryActivityChart";
 import { LocationDirectory, type LocationSort } from "./LocationDirectory";
 import { PrivateActivityCard } from "./PrivateActivityCard";
@@ -56,9 +58,12 @@ export function LocationsPageContent(props: {
   const [searchText, setSearchText, search] = useDebouncedSearchParam();
   if (!props.data && !props.error) {
     return (
-      <SystemPageLayout>
-        <LoadingView label="Loading locations" />
-      </SystemPageLayout>
+      <SystemRouteLoading
+        description="Public destinations and their conversation activity."
+        label="Loading locations"
+        title="Locations"
+        variant="stats"
+      />
     );
   }
 
@@ -143,7 +148,10 @@ export function LocationsPageContent(props: {
               )}
             />
           </div>
-          <LocationDirectoryActivityChart bucketUnit={bucketUnit} days={visibleActivity} />
+          <LocationDirectoryActivityChart
+            bucketUnit={bucketUnit}
+            days={visibleActivity}
+          />
           <LocationDirectory
             loading={sort !== deferredSort}
             locations={locations}
