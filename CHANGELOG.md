@@ -1,4 +1,10 @@
 # Changelog
+## 0.202.0
+
+### Bug Fixes 🐛
+
+- (attachments) Stop dropping or corrupting Slack attachments by @sentry-junior in [#1782](https://github.com/getsentry/junior/pull/1782)
+
 ## 0.201.0
 
 ### New Features ✨
