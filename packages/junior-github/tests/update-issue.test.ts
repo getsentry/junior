@@ -83,7 +83,7 @@ describe("updateIssue", () => {
       "https://api.github.com/repos/getsentry/junior/issues/691",
     );
     const body = (await call?.request.clone().json()) as { body: string };
-    expect(body.body).toContain("Requested by **David Cramer**.");
+    expect(body.body).toContain("via **David Cramer**.");
     expect(body.body).toContain(
       "[View Junior Session](https://example.com/session)",
     );
