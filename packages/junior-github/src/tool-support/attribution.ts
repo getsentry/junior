@@ -65,15 +65,48 @@ function requesterLabel(args: {
   return display ? `**${display.replaceAll("*", "\\*")}**` : undefined;
 }
 
+/**
+ * Recover the ordered list of prior requester labels from an existing
+ * attribution block, including the legacy `Requested by` and `via A, via B`
+ * wordings, so a new requester can be appended instead of replacing them.
+ */
+function parseExistingLabels(blockContents: string): string[] {
+  const trimmed = blockContents.trim().replace(/\.$/, "");
+  if (!trimmed) {
+    return [];
+  }
+  const withoutLeadIn = trimmed.replace(/^(?:Requested by|via)\s+/i, "");
+  // Only split on a comma that starts the next label (bold markdown, a
+  // system-actor label, or a legacy repeated "via") so a display name that
+  // itself contains a comma is not broken into extra labels.
+  return withoutLeadIn
+    .split(/,\s*(?=\*\*|Junior system actor `|via\s)/i)
+    .map((entry) => entry.trim().replace(/^via\s+/i, ""))
+    .filter(Boolean);
+}
+
+/** Render the attribution block wire format parsed by `parseExistingLabels`. */
+function formatAttributionBlock(labels: string[]): string {
+  return `${GITHUB_REQUEST_ATTRIBUTION_START}\nvia ${labels.join(", ")}.\n${GITHUB_REQUEST_ATTRIBUTION_END}`;
+}
+
 function applyAttribution(body: string, label: string | undefined): string {
-  const attribution = label
-    ? `${GITHUB_REQUEST_ATTRIBUTION_START}\nRequested by ${label}.\n${GITHUB_REQUEST_ATTRIBUTION_END}`
-    : undefined;
   const normalizedBody = body.trimEnd();
   const existing = new RegExp(
-    `${GITHUB_REQUEST_ATTRIBUTION_START}[\\s\\S]*?${GITHUB_REQUEST_ATTRIBUTION_END}`,
+    `${GITHUB_REQUEST_ATTRIBUTION_START}([\\s\\S]*?)${GITHUB_REQUEST_ATTRIBUTION_END}`,
   );
-  if (existing.test(normalizedBody)) {
+  const existingMatch = normalizedBody.match(existing);
+  const existingLabels = existingMatch
+    ? parseExistingLabels(existingMatch[1])
+    : [];
+  const labels =
+    label && !existingLabels.includes(label)
+      ? [...existingLabels, label]
+      : existingLabels;
+  const attribution = labels.length
+    ? formatAttributionBlock(labels)
+    : undefined;
+  if (existingMatch) {
     return attribution
       ? normalizedBody.replace(existing, attribution)
       : normalizedBody.replace(existing, "").trimEnd();
