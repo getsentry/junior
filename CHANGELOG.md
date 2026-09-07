@@ -1,4 +1,10 @@
 # Changelog
+## 0.203.0
+
+### Bug Fixes 🐛
+
+- (slack) Surface files nested in forwarded/shared message attachments by @sentry-junior in [#1783](https://github.com/getsentry/junior/pull/1783)
+
 ## 0.202.0
 
 ### Bug Fixes 🐛
