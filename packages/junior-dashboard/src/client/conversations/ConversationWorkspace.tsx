@@ -39,7 +39,6 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
       ),
     [feed.data?.conversations, pendingArchiveUpdates],
   );
-  const visibleConversations = conversations;
 
   const openCreate = () => {
     createConversation.reset();
@@ -77,7 +76,7 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
       >
         <div className="hidden h-full min-h-0 overflow-hidden md:block">
           <ConversationSidebar
-            conversations={visibleConversations}
+            conversations={conversations}
             error={feed.error?.message}
             loading={feed.isPending}
             onNewConversation={openCreate}
@@ -96,7 +95,7 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
             list={
               <div className="md:hidden">
                 <ConversationSidebar
-                  conversations={visibleConversations}
+                  conversations={conversations}
                   error={feed.error?.message}
                   loading={feed.isPending}
                   onNewConversation={openCreate}
@@ -123,7 +122,7 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
     >
       <div className="hidden h-full min-h-0 overflow-hidden md:block">
         <ConversationSidebar
-          conversations={visibleConversations}
+          conversations={conversations}
           error={feed.error?.message}
           loading={feed.isPending}
           onNewConversation={openCreate}
@@ -156,17 +155,13 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
   );
 }
 
-
 /**
  * Landing frame: non-scrolling hero above a list scroller.
  *
  * Keep the hero out of the overflow ancestor so iOS focus cannot pan it away.
  * List search owns the only scroll region under the hero.
  */
-function CreateLandingScroll(props: {
-  hero: ReactNode;
-  list: ReactNode;
-}) {
+function CreateLandingScroll(props: { hero: ReactNode; list: ReactNode }) {
   return (
     <div
       // Mobile: pin hero above a list scroller. Desktop: one page scroller so
@@ -204,48 +199,48 @@ function NewConversationView(props: {
       data-create-landing-hero=""
     >
       <div className="mx-auto flex w-full max-w-xl flex-col items-stretch gap-5 md:max-w-2xl md:gap-8">
-          <h2 className="m-0 text-center font-display text-2xl font-medium tracking-[-0.03em] text-dashboard-text md:text-3xl">
-            What do you need?
-          </h2>
-          <ConversationComposer
-            draftId="new"
-            error={props.error}
-            footerStart={
-              <div
-                aria-label="Conversation visibility"
-                className="inline-flex items-center gap-1"
-                role="group"
+        <h2 className="m-0 text-center font-display text-2xl font-medium tracking-[-0.03em] text-dashboard-text md:text-3xl">
+          What do you need?
+        </h2>
+        <ConversationComposer
+          draftId="new"
+          error={props.error}
+          footerStart={
+            <div
+              aria-label="Conversation visibility"
+              className="inline-flex items-center gap-1"
+              role="group"
+            >
+              <ToggleButton
+                onClick={() => setVisibility("public")}
+                pressed={isPublic}
+                type="button"
+                variant="segment"
               >
-                <ToggleButton
-                  onClick={() => setVisibility("public")}
-                  pressed={isPublic}
-                  type="button"
-                  variant="segment"
-                >
-                  <Globe2 aria-hidden="true" className="mr-1 inline size-3" />
-                  Public
-                </ToggleButton>
-                <ToggleButton
-                  onClick={() => setVisibility("private")}
-                  pressed={!isPublic}
-                  type="button"
-                  variant="segment"
-                >
-                  <LockKeyhole
-                    aria-hidden="true"
-                    className="mr-1 inline size-3"
-                  />
-                  Private
-                </ToggleButton>
-              </div>
-            }
-            label="Start a conversation"
-            restoreDraftOnError
-            submitLabel="Send"
-            onSubmit={(message, idempotencyKey) =>
-              props.onSubmit(message, idempotencyKey, visibility)
-            }
-          />
+                <Globe2 aria-hidden="true" className="mr-1 inline size-3" />
+                Public
+              </ToggleButton>
+              <ToggleButton
+                onClick={() => setVisibility("private")}
+                pressed={!isPublic}
+                type="button"
+                variant="segment"
+              >
+                <LockKeyhole
+                  aria-hidden="true"
+                  className="mr-1 inline size-3"
+                />
+                Private
+              </ToggleButton>
+            </div>
+          }
+          label="Start a conversation"
+          restoreDraftOnError
+          submitLabel="Send"
+          onSubmit={(message, idempotencyKey) =>
+            props.onSubmit(message, idempotencyKey, visibility)
+          }
+        />
       </div>
     </div>
   );

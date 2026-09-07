@@ -36,6 +36,9 @@ import { isConversationPriority } from "./priority";
 import { readLastUserMessageAtByConversation } from "./user-message-activity";
 
 const CONVERSATION_FEED_LIMIT = 50;
+// Archived conversations stay in the default feed for this long after
+// archiving, so the sidebar's undo affordance works without a search. Search
+// still finds older archived conversations regardless of this window.
 const RECENT_ARCHIVE_WINDOW_MS = 48 * 60 * 60 * 1000;
 
 type ConversationFeedMembership =
@@ -114,6 +117,8 @@ async function conversationRows(
       and(
         isNull(juniorConversations.parentConversationId),
         conversationFeedMembershipFilter(status, filter, archivedAfter),
+        // TODO(dcramer): Search only matches conversation titles today. Expand
+        // to transcripts and semantic search once title search ships.
         query
           ? sql<boolean>`strpos(lower(coalesce(${juniorConversations.title}, '')), ${query}) > 0`
           : undefined,

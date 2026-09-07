@@ -412,13 +412,14 @@ function taskExecutionStatusSixHours(
   });
 }
 
+/** List one viewer's scheduled and event tasks, optionally filtered by title or instruction search. */
 export async function readViewerTasks(
   user: User,
   input: { q?: string } = {},
 ): Promise<TaskList> {
   const db = getDb();
-  // TODO: Expand task search to conversation transcripts.
-  // TODO: Add semantic task search.
+  // TODO(dcramer): Search only matches task title and instruction text today.
+  // Expand to run history and semantic search once title search ships.
   const query = input.q?.trim().toLowerCase() || undefined;
   const identityIds = new Set(user.identities.map((identity) => identity.id));
   const teamIds = viewerTeamIds(user);
