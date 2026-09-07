@@ -10,6 +10,7 @@ import {
 } from "./api";
 import { ConnectionBanner } from "./components/ConnectionBanner";
 import { LoadingView } from "./components/LoadingView";
+import { PageRouteLoading } from "./components/PageRouteLoading";
 import { ProfileMenu } from "./components/ProfileMenu";
 import {
   DashboardChrome,
@@ -24,6 +25,7 @@ import {
 } from "./format";
 import { isNewConversationPath } from "./conversations/conversationRoutes";
 import { ConversationWorkspace } from "./conversations/ConversationWorkspace";
+import { ConversationWorkspaceLoading } from "./conversations/ConversationWorkspaceLoading";
 import { useConversationData } from "./conversations/queries";
 import { ComponentsPage } from "./pages/dev/ComponentsPage";
 import { CodePage } from "./pages/code/CodePage";
@@ -34,7 +36,10 @@ import { PersonalTokensPage } from "./pages/PersonalTokensPage";
 import { PersonProfilePage } from "./pages/people/PersonProfilePage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { SystemPage } from "./pages/system/SystemPage";
-import { SystemPageLayout } from "./pages/system/SystemPageLayout";
+import {
+  SystemPageLayout,
+  SystemRouteLoading,
+} from "./pages/system/SystemPageLayout";
 import { WorkspaceFormPage } from "./pages/system/WorkspaceFormPage";
 import { WorkspacesPage } from "./pages/system/WorkspacesPage";
 import { MemoryRouteLoading } from "./pages/memory/MemoryPageLayout";
@@ -304,9 +309,12 @@ export function DashboardShell() {
         <Route
           element={
             loading ? (
-              <SystemPageLayout>
-                <LoadingView label="Loading locations" />
-              </SystemPageLayout>
+              <SystemRouteLoading
+                description="Public destinations and their conversation activity."
+                label="Loading locations"
+                title="Locations"
+                variant="stats"
+              />
             ) : (
               <LocationsPage />
             )
@@ -328,7 +336,7 @@ export function DashboardShell() {
         <Route
           element={
             loading ? (
-              <LoadingView label="Loading your conversations" />
+              <ConversationWorkspaceLoading detail={false} />
             ) : data ? (
               <ConversationWorkspace data={data} />
             ) : (
@@ -347,7 +355,7 @@ export function DashboardShell() {
         <Route
           element={
             loading ? (
-              <LoadingView label="Loading your conversations" />
+              <ConversationWorkspaceLoading detail />
             ) : data ? (
               <ConversationWorkspace data={data} />
             ) : (
@@ -392,9 +400,12 @@ export function DashboardShell() {
         <Route
           element={
             loading ? (
-              <SystemPageLayout>
-                <LoadingView label="Loading people" />
-              </SystemPageLayout>
+              <SystemRouteLoading
+                description="People, activity, and model spend."
+                label="Loading people"
+                title="People"
+                variant="stats"
+              />
             ) : (
               <PeoplePage />
             )
@@ -404,9 +415,12 @@ export function DashboardShell() {
         <Route
           element={
             loading ? (
-              <SystemPageLayout>
-                <LoadingView label="Loading Workspaces" />
-              </SystemPageLayout>
+              <SystemRouteLoading
+                description="Repository recipes Junior can switch into."
+                label="Loading Workspaces"
+                title="Workspaces"
+                variant="list"
+              />
             ) : (
               <WorkspacesPage />
             )
@@ -440,9 +454,12 @@ export function DashboardShell() {
         <Route
           element={
             loading ? (
-              <SystemPageLayout>
-                <LoadingView label="Loading system" />
-              </SystemPageLayout>
+              <SystemRouteLoading
+                description="Runtime health, model usage, and loaded capabilities."
+                label="Loading system"
+                title="System"
+                variant="overview"
+              />
             ) : data ? (
               <SystemRoute coreData={data} />
             ) : (
@@ -458,7 +475,11 @@ export function DashboardShell() {
         <Route
           element={
             loading ? (
-              <LoadingView label="Loading settings" />
+              <PageRouteLoading
+                description="Manage your Junior profile and preferences."
+                label="Loading settings"
+                title="Settings"
+              />
             ) : loggedIn ? (
               <SettingsPage identity={data!.me} />
             ) : (
@@ -470,7 +491,12 @@ export function DashboardShell() {
         <Route
           element={
             loading ? (
-              <LoadingView label="Loading API tokens" />
+              <PageRouteLoading
+                description="Create and revoke personal API tokens."
+                label="Loading API tokens"
+                title="API tokens"
+                variant="list"
+              />
             ) : loggedIn ? (
               <PersonalTokensPage />
             ) : (
@@ -555,9 +581,12 @@ function SystemRoute(props: { coreData: DashboardCoreData }) {
   const query = useSystemData(props.coreData);
   if (!query.data && !query.error) {
     return (
-      <SystemPageLayout>
-        <LoadingView label="Loading system" />
-      </SystemPageLayout>
+      <SystemRouteLoading
+        description="Runtime health, model usage, and loaded capabilities."
+        label="Loading system"
+        title="System"
+        variant="overview"
+      />
     );
   }
   return query.data ? (

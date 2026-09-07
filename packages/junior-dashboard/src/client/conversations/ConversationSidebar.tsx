@@ -28,6 +28,7 @@ import {
 } from "./conversationSections";
 import { EmptyTelemetry } from "../components/EmptyTelemetry";
 import { SearchInput } from "../components/SearchInput";
+import { Skeleton } from "../components/Skeleton";
 import { ConversationSidebarAnnotations } from "./ConversationMeta";
 
 type ConversationSidebarEntry =
@@ -112,7 +113,10 @@ export function ConversationSidebar(props: {
           : "grid h-full min-h-0 grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden border-r border-white/[0.07] bg-white/[0.02]",
       )}
     >
-      <div className={cn("px-3 pb-2", isLanding ? "pt-5" : "pt-3")} ref={filterRef}>
+      <div
+        className={cn("px-3 pb-2", isLanding ? "pt-5" : "pt-3")}
+        ref={filterRef}
+      >
         <div className="flex items-center justify-between gap-2">
           <h2
             className={cn(
@@ -200,6 +204,8 @@ export function ConversationSidebar(props: {
           <div className="p-2">
             <EmptyTelemetry>{props.error}</EmptyTelemetry>
           </div>
+        ) : props.loading && entries.length === 0 ? (
+          <ConversationRowsLoading />
         ) : (
           <AnimatedList
             ariaLabel="Your conversations"
@@ -265,6 +271,29 @@ export function ConversationSidebar(props: {
         </div>
       ) : null}
     </aside>
+  );
+}
+
+/** Match the usual conversation row density while the first feed loads. */
+function ConversationRowsLoading() {
+  return (
+    <div
+      aria-busy="true"
+      aria-live="polite"
+      className="grid gap-0.5"
+      role="status"
+    >
+      <span className="sr-only">Loading your conversations</span>
+      <Skeleton className="mb-1 ml-2.5 mt-1.5 h-2.5 w-12" />
+      {Array.from({ length: 7 }, (_, index) => (
+        <div className="grid gap-2 rounded-md px-2.5 py-2" key={index}>
+          <Skeleton
+            className={cn("h-3", index % 3 === 0 ? "w-4/5" : "w-3/5")}
+          />
+          <Skeleton className="h-2.5 w-2/5 opacity-70" />
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -361,10 +390,7 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(props: {
       >
         <div className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-start gap-x-1.5">
           <div className="col-start-1 row-start-1 mt-[0.3rem] grid size-3 shrink-0 place-items-center">
-            <ConversationListStatusIcon
-              isPrivate={isPrivate}
-              status={status}
-            />
+            <ConversationListStatusIcon isPrivate={isPrivate} status={status} />
           </div>
           <div className="col-start-2 row-start-1 min-w-0 truncate font-display text-sm font-medium leading-snug text-dashboard-text">
             {title}
