@@ -7,7 +7,7 @@ import { ConversationSidebar } from "./ConversationSidebar";
 import { ToggleButton } from "../components/Button";
 import { SearchInput } from "../components/SearchInput";
 import { pageCount, pageItems, PagePagination } from "../components/Pagination";
-import { ConversationHomeTable } from "./ConversationHomeTable";
+import { ConversationHomeList } from "./ConversationHomeList";
 import { ConversationComposer } from "./ConversationComposer";
 import {
   useCreateConversation,
@@ -24,7 +24,7 @@ import { ConversationPage } from "./ConversationPage";
 
 const CONVERSATION_PAGE_SIZE = 20;
 
-/** Render the personal conversation workspace at the dashboard root. */
+/** Render the conversation home page or one selected conversation. */
 export function ConversationWorkspace(props: { data: DashboardCoreData }) {
   const [page, setPage] = useState(1);
   const [query, setQuery] = useState("");
@@ -32,9 +32,7 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
   const params = useParams();
   const navigate = useNavigate();
   const selectedId = params.conversationId;
-  // Home and create are one surface: no selected thread means the landing
-  // (compose hero + list nav). Desktop already did this; mobile matches it.
-  const landing = !selectedId;
+  const home = !selectedId;
   const feed = useConversationsData(status);
   const pendingArchiveUpdates = usePendingArchiveConversationUpdates();
   const createConversation = useCreateConversation();
@@ -47,21 +45,15 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
     [feed.data?.conversations, pendingArchiveUpdates],
   );
   const visibleConversations = useMemo(
-    () =>
-      filterConversationList(conversations, {
-        actor: "",
-        query,
-        source: "",
-        status,
-      }),
+    () => filterConversationList(conversations, { query, status }),
     [conversations, query, status],
   );
 
   useEffect(() => {
-    if (!landing) return;
-    // New chats are active; leave archived view so the created row can appear.
+    if (!home) return;
+    // A new conversation starts in the active view.
     setStatus("active");
-  }, [landing]);
+  }, [home]);
 
   const openCreate = () => {
     createConversation.reset();
@@ -102,7 +94,7 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
     />
   );
 
-  if (landing) {
+  if (home) {
     return (
       <main
         className={cn(
@@ -159,13 +151,11 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
                 </ToggleButton>
               </div>
             </div>
-            <div className="overflow-x-auto">
-              <ConversationHomeTable
-                conversations={pagedConversations}
-                emptyLabel={feed.error?.message}
-                timeZone={props.data.config.timeZone}
-              />
-            </div>
+            <ConversationHomeList
+              conversations={pagedConversations}
+              emptyLabel={feed.error?.message}
+              timeZone={props.data.config.timeZone}
+            />
             <PagePagination
               className="pt-1"
               onPageChange={setPage}

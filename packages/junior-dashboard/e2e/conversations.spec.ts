@@ -141,7 +141,7 @@ test("shows the repo name for one annotation scope on mobile", async ({
   await page.setViewportSize({ height: 844, width: 390 });
   await page.goto(dashboard.baseURL);
 
-  const conversationRow = page.getByRole("row").filter({
+  const conversationRow = page.getByRole("listitem").filter({
     has: page.getByRole("link", { name: /Checkout latency triage/ }),
   });
   await expect(conversationRow).toBeVisible();
@@ -166,10 +166,10 @@ test("opens a conversation in the built dashboard", async ({
     name: /Checkout latency triage/,
   });
   const privateConversationRow = page
-    .getByRole("row")
+    .getByRole("listitem")
     .filter({ has: page.getByRole("link", { name: /Direct Message/ }) });
   const publicConversationRow = page
-    .getByRole("row")
+    .getByRole("listitem")
     .filter({ has: publicConversationLink });
   await expect(
     privateConversationRow.getByLabel("Private conversation"),

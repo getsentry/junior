@@ -107,8 +107,7 @@ test("starts a new conversation from a centered compose empty state", async ({
   await composer.focus();
   await expect(composer).toBeFocused();
 
-  // Home and create are the same landing: app chrome, compose hero, and table.
-  // It is not a thread destination or a reply dock.
+  // Home and create share one page. It is not a conversation or a reply dock.
   await expect(page).toHaveURL(`${dashboard.baseURL}/`);
   await expect(
     page.getByRole("button", { name: "Open navigation" }),
@@ -145,20 +144,19 @@ test("starts a new conversation from a centered compose empty state", async ({
     )
     .toBe("landing-compose");
 
-  const table = page.getByRole("table");
-  await expect(table).toBeVisible();
-  await expect(
-    table.getByRole("columnheader", { name: "Conversation" }),
-  ).toBeVisible();
-  await expect(
-    table.getByRole("columnheader", { name: "Latest activity" }),
-  ).toBeVisible();
+  const conversationList = page.getByRole("list", {
+    name: "Your conversations",
+  });
+  await expect(conversationList).toBeVisible();
+  await expect(conversationList.getByRole("listitem").first()).toContainText(
+    "Latest activity",
+  );
   await expect(
     page.getByRole("searchbox", { name: "Search your conversations" }),
   ).toBeVisible();
 });
 
-test("opens and closes a conversation in the mobile workspace", async ({
+test("opens and closes a conversation on mobile", async ({
   page,
   dashboard,
 }) => {
@@ -360,9 +358,6 @@ test("opens and closes a conversation in the mobile workspace", async ({
       composer.evaluate((node) => {
         const form = node.closest("form");
         if (!form) return "missing-form";
-        if (form.closest("[data-create-landing-scroll]")) {
-          return "reply-on-landing-scroll";
-        }
         if (!form.closest("[data-composer-dock]"))
           return "missing-composer-dock";
         if (

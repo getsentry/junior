@@ -1,7 +1,7 @@
 import { conversationActorKey } from "../format";
 import type { Conversation } from "../types";
 
-export type ConversationListFilters = {
+type ConversationListFilters = {
   query?: string;
   actor?: string;
   location?: string;
