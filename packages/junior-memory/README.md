@@ -7,7 +7,8 @@ exported types, tools, and tests are authoritative.
 ## Surfaces
 
 - `createMemory`, `removeMemory`, `listMemories`, and `searchMemories` are
-  model-visible tools registered by `src/plugin.ts`.
+  model-visible tools registered by `src/plugin.ts`. `removeMemory` can forget
+  public memory or private memory owned by the current User.
 - `userPrompt` recall contributes bounded memory context before a run.
 - `processSession` reviews completed sessions asynchronously for passive
   learning.
