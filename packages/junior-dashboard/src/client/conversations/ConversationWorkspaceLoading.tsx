@@ -78,7 +78,7 @@ function ConversationHomeLoading() {
         </section>
         <section className="grid gap-3">
           <Skeleton className="h-9 w-full rounded-lg border border-dashboard-border bg-dashboard-overlay-soft sm:ml-auto sm:w-72" />
-          <ConversationHomeListLoading label="Loading conversations" />
+          <ConversationHomeListLoading />
         </section>
       </div>
     </main>

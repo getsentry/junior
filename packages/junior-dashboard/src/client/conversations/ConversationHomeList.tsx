@@ -98,15 +98,15 @@ export function ConversationHomeList(props: {
 }
 
 /** Match the grouped card list while its first feed request is pending. */
-export function ConversationHomeListLoading(props: { label: string }) {
+export function ConversationHomeListLoading(props: { label?: string }) {
   return (
     <div
-      aria-busy="true"
-      aria-live="polite"
+      aria-busy={props.label ? "true" : undefined}
+      aria-live={props.label ? "polite" : undefined}
       className="grid gap-5"
-      role="status"
+      role={props.label ? "status" : undefined}
     >
-      <span className="sr-only">{props.label}</span>
+      {props.label ? <span className="sr-only">{props.label}</span> : null}
       {[3, 2].map((count, sectionIndex) => (
         <div key={count}>
           <Skeleton
