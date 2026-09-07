@@ -129,6 +129,8 @@ export function createSlackScheduleUpdateTaskTool(
           "Only the scheduled task creator can enable creator credential use.",
         );
       }
+      // TODO(dcramer): Allow public Automation members to change outcomes after
+      // shared policy or the web UI can authorize the new Destination safely.
       if (input.outcomes !== undefined && !isCreator) {
         throwToolInputError(
           "Only the scheduled task creator can change message destinations.",
