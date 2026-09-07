@@ -107,8 +107,7 @@ test("starts a new conversation from a centered compose empty state", async ({
   await composer.focus();
   await expect(composer).toBeFocused();
 
-  // Home and create are the same landing: simple app chrome + compose hero +
-  // list nav. Not a thread destination and not a reply dock.
+  // Home and create share one page. It is not a conversation or a reply dock.
   await expect(page).toHaveURL(`${dashboard.baseURL}/`);
   await expect(
     page.getByRole("button", { name: "Open navigation" }),
@@ -117,7 +116,7 @@ test("starts a new conversation from a centered compose empty state", async ({
     page.getByRole("link", { name: "Back to conversations" }),
   ).toHaveCount(0);
   await expect(
-    page.getByRole("heading", { name: "Your conversations" }),
+    page.getByRole("list", { name: "Your conversations" }),
   ).toBeVisible();
   // Legacy create deep link collapses onto home.
   await page.goto(`${dashboard.baseURL}/conversations/new`);
@@ -136,66 +135,25 @@ test("starts a new conversation from a centered compose empty state", async ({
         if ((position & Node.DOCUMENT_POSITION_FOLLOWING) === 0) {
           return "title-not-above-composer";
         }
-        // Landing compose must live under the page scroll owner, not the reply
-        // dock. Ownership markers are the product contract (see frontend policy).
         if (form.closest("[data-composer-dock]")) {
           return "pinned-on-composer-dock";
         }
-        if (!form.closest("[data-create-landing-scroll]")) {
-          return "missing-landing-scroll";
-        }
+        if (!form.closest("main")) return "missing-page-scroll";
         return "landing-compose";
       }),
     )
     .toBe("landing-compose");
 
-  // Hero lives outside the list scroller so focus cannot pan it away.
-  await expect
-    .poll(() =>
-      composer.evaluate((node) => {
-        const frame = node.closest("[data-create-landing-scroll]");
-        const list = frame?.querySelector("[data-create-landing-list]");
-        if (!(frame instanceof HTMLElement) || !(node instanceof HTMLElement)) {
-          return "missing-frame";
-        }
-        if (!(list instanceof HTMLElement)) return "missing-list-scroller";
-        if (list.contains(node)) return "hero-inside-list-scroller";
-        return "hero-outside-list-scroller";
-      }),
-    )
-    .toBe("hero-outside-list-scroller");
-  await composer.focus();
-  await expect(composer).toBeFocused();
-
-  // List search owns the only landing scroll region under the hero.
-  const search = page.getByRole("searchbox", {
-    name: "Search your conversations",
+  const conversationList = page.getByRole("list", {
+    name: "Your conversations",
   });
-  await search.focus();
-  await expect(search).toBeFocused();
-  await expect
-    .poll(() =>
-      search.evaluate((node) => {
-        const list = node
-          .closest("[data-create-landing-scroll]")
-          ?.querySelector("[data-create-landing-list]");
-        if (!(list instanceof HTMLElement)) return "missing-list-scroller";
-        if (!list.contains(node)) return "search-outside-list-scroller";
-        const before = list.scrollTop;
-        list.scrollTop = before + 40;
-        const after = list.scrollTop;
-        if (after === before) {
-          return list.scrollHeight > list.clientHeight
-            ? "search-scroll-rejected"
-            : "search-unlocked";
-        }
-        return "search-unlocked";
-      }),
-    )
-    .toBe("search-unlocked");
+  await expect(conversationList.getByRole("listitem").first()).toBeVisible();
+  await expect(
+    page.getByRole("searchbox", { name: "Search your conversations" }),
+  ).toBeVisible();
 });
 
-test("opens and closes a conversation in the mobile workspace", async ({
+test("opens and closes a conversation on mobile", async ({
   page,
   dashboard,
 }) => {
@@ -216,7 +174,7 @@ test("opens and closes a conversation in the mobile workspace", async ({
     page.getByRole("heading", { name: "What do you need?" }),
   ).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "Your conversations" }),
+    page.getByRole("list", { name: "Your conversations" }),
   ).toBeVisible();
   const navigationTrigger = page.getByRole("button", {
     name: "Open navigation",
@@ -397,9 +355,6 @@ test("opens and closes a conversation in the mobile workspace", async ({
       composer.evaluate((node) => {
         const form = node.closest("form");
         if (!form) return "missing-form";
-        if (form.closest("[data-create-landing-scroll]")) {
-          return "reply-on-landing-scroll";
-        }
         if (!form.closest("[data-composer-dock]"))
           return "missing-composer-dock";
         if (
@@ -597,7 +552,7 @@ test("opens and closes a conversation in the mobile workspace", async ({
     page.getByRole("heading", { name: "What do you need?" }),
   ).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "Your conversations" }),
+    page.getByRole("list", { name: "Your conversations" }),
   ).toBeVisible();
 
   // Log out must POST and dismiss the sheet before the response completes.

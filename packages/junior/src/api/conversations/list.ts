@@ -34,6 +34,7 @@ import { listConversationSidebarAnnotations } from "@/chat/plugins/conversation-
 import { listConversationWork } from "@/chat/plugins/unfinished-work";
 import { isConversationPriority } from "./priority";
 import { readLastUserMessageAtByConversation } from "./user-message-activity";
+import { readConversationActivityPreviews } from "./activity-preview";
 
 const CONVERSATION_FEED_LIMIT = 50;
 // Archived conversations stay in the default feed for this long after
@@ -305,6 +306,7 @@ export async function readConversationFeedFromSql(
     teamDomainByTeamId,
     conversationWork,
     lastUserMessageAtByConversation,
+    activityPreviewByConversation,
   ] = await Promise.all([
     readConversationAccessFromSql(db, conversationIds, options.viewer),
     conversationArchiveTimes(
@@ -330,6 +332,7 @@ export async function readConversationFeedFromSql(
     ),
     listConversationWork(conversationIds),
     readLastUserMessageAtByConversation(db, conversationIds),
+    readConversationActivityPreviews(db, conversationIds),
   ]);
   const visibleAnnotationsByConversation = new Map(
     conversationIds.map((conversationId) => [
@@ -383,9 +386,13 @@ export async function readConversationFeedFromSql(
       const annotations = access?.canViewPrivateContent
         ? (annotationsByConversation.get(conversation.conversationId) ?? [])
         : [];
+      const activityPreview = access?.canViewPrivateContent
+        ? activityPreviewByConversation.get(conversation.conversationId)
+        : undefined;
       return {
         ...summary,
         ...work,
+        ...(activityPreview ? { activityPreview } : undefined),
         ...(annotations.length > 0 ? { annotations } : undefined),
         ...(sidebarAnnotationsByConversation[conversation.conversationId]
           ? {

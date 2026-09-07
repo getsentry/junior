@@ -887,6 +887,7 @@ export function buildConversations(
 ): Conversation[] {
   return summaries
     .map((summary) => ({
+      activityPreview: summary.activityPreview,
       annotations: summary.annotations,
       sidebarAnnotations: summary.sidebarAnnotations,
       archivedAt: summary.archivedAt,

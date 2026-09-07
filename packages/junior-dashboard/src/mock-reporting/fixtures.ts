@@ -1304,6 +1304,26 @@ function mockConversations(nowMs: number): MockConversation[] {
 function summaryFromConversation(
   conversation: MockConversation,
 ): ConversationSummaryReport {
+  const activityEvent =
+    [...conversation.events]
+      .reverse()
+      .find(
+        (event) =>
+          event.data.type === "message" && event.data.role === "assistant",
+      ) ??
+    [...conversation.events]
+      .reverse()
+      .find(
+        (event) => event.data.type === "message" && event.data.role === "user",
+      );
+  const activityPreview =
+    activityEvent?.data.type === "message" && activityEvent.data.text
+      ? {
+          createdAt: activityEvent.createdAt,
+          role: activityEvent.data.role as "assistant" | "user",
+          text: activityEvent.data.text,
+        }
+      : undefined;
   const {
     eventHistory: _eventHistory,
     events: _events,
@@ -1315,14 +1335,19 @@ function summaryFromConversation(
     sourceTask: _sourceTask,
     ...summary
   } = conversation;
+  const summaryWithActivity = {
+    ...summary,
+    ...(activityPreview ? { activityPreview } : undefined),
+  };
   const withArchiveState = mockArchivedConversationIds.has(
     conversation.conversationId,
   )
     ? {
-        ...summary,
-        archivedAt: summary.archivedAt ?? iso(NOW_MS, -2 * 24 * 60 * 60_000),
+        ...summaryWithActivity,
+        archivedAt:
+          summaryWithActivity.archivedAt ?? iso(NOW_MS, -2 * 24 * 60 * 60_000),
       }
-    : { ...summary, archivedAt: undefined };
+    : { ...summaryWithActivity, archivedAt: undefined };
   return withArchiveState.channel &&
     PUBLIC_MOCK_CHANNEL_IDS.has(withArchiveState.channel)
     ? { ...withArchiveState, locationId: `mock:${withArchiveState.channel}` }

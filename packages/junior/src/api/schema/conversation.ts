@@ -227,9 +227,18 @@ const conversationAnnotationReportSchema =
     }),
   );
 
+export const conversationActivityPreviewSchema = z
+  .object({
+    createdAt: z.string().datetime(),
+    role: z.enum(["assistant", "user"]),
+    text: z.string().min(1),
+  })
+  .strict();
+
 export const conversationSummaryReportSchema = z
   .object({
     displayTitle: z.string(),
+    activityPreview: conversationActivityPreviewSchema.optional(),
     cumulativeDurationMs: z.number(),
     cumulativeUsage: conversationUsageSchema.optional(),
     auxiliaryCosts: conversationAuxiliaryCostsSchema.optional(),
@@ -830,6 +839,9 @@ export type ConversationAuxiliaryCosts = z.infer<
   typeof conversationAuxiliaryCostsSchema
 >;
 export type ActorIdentity = z.infer<typeof actorIdentitySchema>;
+export type ConversationActivityPreview = z.infer<
+  typeof conversationActivityPreviewSchema
+>;
 export type ConversationSummaryReport = z.infer<
   typeof conversationSummaryReportSchema
 >;

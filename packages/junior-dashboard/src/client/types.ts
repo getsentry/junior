@@ -146,6 +146,7 @@ export type TranscriptViewMessage = {
 export type ConversationTranscript = ConversationDetailReport;
 
 export type Conversation = {
+  activityPreview?: ConversationSummaryReport["activityPreview"];
   annotations?: ConversationSummaryReport["annotations"];
   sidebarAnnotations?: ConversationSummaryReport["sidebarAnnotations"];
   archivedAt?: string | null;
