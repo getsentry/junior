@@ -99,6 +99,7 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
             <ConversationHomeList
               conversations={pagedConversations}
               emptyLabel={feed.error?.message}
+              loading={feed.isPending}
               timeZone={props.data.config.timeZone}
             />
             <PagePagination

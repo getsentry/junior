@@ -5,7 +5,20 @@ const ACTIVE_CONVERSATION_ID = "slack:CQA123:1770003600.000200";
 const DASHBOARD_QA_CONVERSATION_ID = "internal:dashboard-qa";
 
 test("records loaded conversation views", async ({ page, dashboard }) => {
-  await page.goto(dashboard.baseURL, { waitUntil: "networkidle" });
+  let releaseFeed: (() => void) | undefined;
+  const feedPending = new Promise<void>((resolve) => {
+    releaseFeed = resolve;
+  });
+  await page.route("**/api/conversations", async (route) => {
+    await feedPending;
+    await route.fallback();
+  });
+  await page.goto(dashboard.baseURL, { waitUntil: "domcontentloaded" });
+  await expect(page.getByText("Loading conversations")).toBeAttached();
+  await expect(page.getByText("No conversations match this view.")).toHaveCount(
+    0,
+  );
+  releaseFeed?.();
   await expect(
     page.getByRole("heading", { name: "What do you need?", exact: true }),
   ).toBeVisible();
@@ -162,9 +175,6 @@ test("opens a conversation in the built dashboard", async ({
   await expect(
     page.getByRole("region", { name: "Conversations" }),
   ).toBeVisible();
-  const publicConversationLink = page.getByRole("link", {
-    name: /Checkout latency triage/,
-  });
   const privateConversation = page
     .getByRole("listitem")
     .filter({ has: page.getByRole("heading", { name: "Direct Message" }) });
@@ -177,7 +187,7 @@ test("opens a conversation in the built dashboard", async ({
   await expect(
     publicConversation.getByLabel("Private conversation"),
   ).toHaveCount(0);
-  await publicConversationLink.click();
+  await publicConversation.getByText("41 minutes ago", { exact: true }).click();
   await expect(page).toHaveURL(
     `${dashboard.baseURL}/conversations/${encodeURIComponent("slack:CQA123:1770000000.000100")}`,
   );
@@ -864,11 +874,19 @@ test("shows archive failures after the row returns", async ({
   dashboard,
 }) => {
   await page.setViewportSize({ height: 900, width: 1600 });
+  let archiveRequests = 0;
   await page.route("**/api/conversations/*/archive", async (route) => {
-    await new Promise((resolve) => setTimeout(resolve, 250));
+    archiveRequests += 1;
+    if (archiveRequests === 1) {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      await route.fulfill({
+        json: { error: "Archive failed" },
+        status: 500,
+      });
+      return;
+    }
     await route.fulfill({
-      json: { error: "Archive failed" },
-      status: 500,
+      json: { archivedAt: "2026-08-21T16:45:00.000Z" },
     });
   });
   await page.goto(dashboard.baseURL);
@@ -887,6 +905,16 @@ test("shows archive failures after the row returns", async ({
   });
   await expect(archiveError).toBeVisible();
   await expect(archiveError).toContainText("Dashboard QA edge cases");
+
+  await page
+    .getByRole("button", { name: "Archive Dashboard QA edge cases" })
+    .click();
+  await expect(
+    page.getByRole("button", {
+      name: "Undo archive for Dashboard QA edge cases",
+    }),
+  ).toBeVisible();
+  await expect(archiveError).toHaveCount(0);
 });
 
 test("keeps undo available when another archive fails", async ({

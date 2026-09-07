@@ -11,6 +11,7 @@ import {
 } from "../format";
 import { ActiveIndicator } from "../components/ActiveIndicator";
 import { EmptyTelemetry } from "../components/EmptyTelemetry";
+import { Skeleton } from "../components/Skeleton";
 import { cn } from "../styles";
 import type { Conversation } from "../types";
 import { ConversationSidebarAnnotations } from "./ConversationMeta";
@@ -27,6 +28,7 @@ import {
 export function ConversationHomeList(props: {
   conversations: Conversation[];
   emptyLabel?: string;
+  loading?: boolean;
   timeZone: string;
 }) {
   const [archivedConversation, setArchivedConversation] =
@@ -41,6 +43,12 @@ export function ConversationHomeList(props: {
     },
     [],
   );
+  const handleArchived = useCallback((conversation: Conversation) => {
+    setArchiveError((current) =>
+      current?.conversation.id === conversation.id ? undefined : current,
+    );
+    setArchivedConversation(conversation);
+  }, []);
   const notices = (
     <ConversationArchiveNotices
       archivedConversation={archivedConversation}
@@ -50,6 +58,10 @@ export function ConversationHomeList(props: {
       onRestored={() => setArchivedConversation(undefined)}
     />
   );
+
+  if (props.loading && props.conversations.length === 0) {
+    return <ConversationHomeListLoading label="Loading conversations" />;
+  }
 
   if (props.conversations.length === 0) {
     return (
@@ -75,13 +87,74 @@ export function ConversationHomeList(props: {
           <ConversationCardSection
             key={section.key}
             onArchiveError={handleArchiveError}
-            onArchived={setArchivedConversation}
+            onArchived={handleArchived}
             section={section}
           />
         ))}
       </div>
       {notices}
     </>
+  );
+}
+
+/** Match the grouped card list while its first feed request is pending. */
+export function ConversationHomeListLoading(props: { label: string }) {
+  return (
+    <div
+      aria-busy="true"
+      aria-live="polite"
+      className="grid gap-5"
+      role="status"
+    >
+      <span className="sr-only">{props.label}</span>
+      {[3, 2].map((count, sectionIndex) => (
+        <div key={count}>
+          <Skeleton
+            className={cn(
+              "mb-2 ml-1 h-3",
+              sectionIndex === 0 ? "w-16" : "w-12",
+            )}
+          />
+          <div className="grid gap-2">
+            {Array.from({ length: count }, (_, index) => (
+              <ConversationCardLoading
+                index={index + sectionIndex * 3}
+                key={index}
+              />
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ConversationCardLoading(props: { index: number }) {
+  return (
+    <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_max-content] gap-3 rounded-lg border border-dashboard-border-subtle bg-dashboard-fill-faint px-4 py-4 md:gap-5 md:px-5">
+      <div className="flex min-w-0 items-start gap-2.5">
+        <Skeleton className="mt-1.5 size-3 shrink-0 rounded-full" />
+        <div className="grid min-w-0 flex-1 gap-2">
+          <Skeleton
+            className={cn(
+              "h-4",
+              props.index % 2 === 0 ? "w-56 max-w-4/5" : "w-44 max-w-3/5",
+            )}
+          />
+          <div className="grid gap-1.5">
+            <Skeleton className="h-3 w-full max-w-3xl opacity-70" />
+            {props.index % 2 === 0 ? (
+              <Skeleton className="h-3 w-2/3 max-w-xl opacity-70" />
+            ) : null}
+          </div>
+          <Skeleton className="h-3 w-64 max-w-4/5 opacity-70" />
+        </div>
+      </div>
+      <div className="flex items-start gap-2">
+        <Skeleton className="h-3 w-16 opacity-70" />
+        <Skeleton className="size-4" />
+      </div>
+    </div>
   );
 }
 
@@ -186,13 +259,16 @@ function ConversationCard(props: {
           </div>
         </div>
       </div>
-      <div className="relative z-[1] flex items-start gap-2">
-        <span className="whitespace-nowrap font-mono text-xs text-dashboard-text-muted">
+      <div className="pointer-events-none relative z-[1] flex items-start gap-2">
+        <Link
+          className="pointer-events-auto whitespace-nowrap font-mono text-xs text-dashboard-text-muted hover:text-dashboard-text focus:outline-none focus:ring-2 focus:ring-dashboard-focus"
+          to={conversationPath(conversation.id)}
+        >
           {formatRelativeTime(conversation.lastSeenAt)}
-        </span>
+        </Link>
         <button
           aria-label={`${conversation.archivedAt ? "Restore" : "Archive"} ${title}`}
-          className="relative shrink-0 cursor-pointer border-0 bg-transparent p-0 text-dashboard-text-muted transition before:absolute before:-inset-2 hover:text-dashboard-text focus:outline-none focus:ring-2 focus:ring-dashboard-focus focus:ring-offset-2 focus:ring-offset-dashboard-canvas disabled:cursor-not-allowed disabled:opacity-50"
+          className="pointer-events-auto relative shrink-0 cursor-pointer border-0 bg-transparent p-0 text-dashboard-text-muted transition before:absolute before:-inset-2 hover:text-dashboard-text focus:outline-none focus:ring-2 focus:ring-dashboard-focus focus:ring-offset-2 focus:ring-offset-dashboard-canvas disabled:cursor-not-allowed disabled:opacity-50"
           disabled={archive.isPending}
           onClick={() =>
             archive.mutate({

@@ -1,6 +1,7 @@
 import { Skeleton } from "../components/Skeleton";
 import { dashboardContainerClass, cn } from "../styles";
 import { ChatLayout } from "./ChatLayout";
+import { ConversationHomeListLoading } from "./ConversationHomeList";
 
 /** Keep the conversation workspace geometry stable while its first data loads. */
 export function ConversationWorkspaceLoading(props: { detail: boolean }) {
@@ -77,56 +78,10 @@ function ConversationHomeLoading() {
         </section>
         <section className="grid gap-3">
           <Skeleton className="h-9 w-full rounded-lg border border-dashboard-border bg-dashboard-overlay-soft sm:ml-auto sm:w-72" />
-          <div className="grid gap-5">
-            <div>
-              <Skeleton className="mb-2 ml-1 h-3 w-16" />
-              <div className="grid gap-2">
-                {Array.from({ length: 3 }, (_, index) => (
-                  <ConversationCardLoading index={index} key={index} />
-                ))}
-              </div>
-            </div>
-            <div>
-              <Skeleton className="mb-2 ml-1 h-3 w-12" />
-              <div className="grid gap-2">
-                {Array.from({ length: 2 }, (_, index) => (
-                  <ConversationCardLoading index={index + 3} key={index} />
-                ))}
-              </div>
-            </div>
-          </div>
+          <ConversationHomeListLoading label="Loading conversations" />
         </section>
       </div>
     </main>
-  );
-}
-
-function ConversationCardLoading(props: { index: number }) {
-  return (
-    <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_max-content] gap-3 rounded-lg border border-dashboard-border-subtle bg-dashboard-fill-faint px-4 py-4 md:gap-5 md:px-5">
-      <div className="flex min-w-0 items-start gap-2.5">
-        <Skeleton className="mt-1.5 size-3 shrink-0 rounded-full" />
-        <div className="grid min-w-0 flex-1 gap-2">
-          <Skeleton
-            className={cn(
-              "h-4",
-              props.index % 2 === 0 ? "w-56 max-w-4/5" : "w-44 max-w-3/5",
-            )}
-          />
-          <div className="grid gap-1.5">
-            <Skeleton className="h-3 w-full max-w-3xl opacity-70" />
-            {props.index % 2 === 0 ? (
-              <Skeleton className="h-3 w-2/3 max-w-xl opacity-70" />
-            ) : null}
-          </div>
-          <Skeleton className="h-3 w-64 max-w-4/5 opacity-70" />
-        </div>
-      </div>
-      <div className="flex items-start gap-2">
-        <Skeleton className="h-3 w-16 opacity-70" />
-        <Skeleton className="size-4" />
-      </div>
-    </div>
   );
 }
 
