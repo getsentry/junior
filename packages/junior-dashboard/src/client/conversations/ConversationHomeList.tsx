@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { Archive, ArchiveRestore, LockKeyhole } from "lucide-react";
 import { Link } from "react-router";
 
@@ -31,7 +31,16 @@ export function ConversationHomeList(props: {
 }) {
   const [archivedConversation, setArchivedConversation] =
     useState<Conversation>();
-  const [archiveError, setArchiveError] = useState<Conversation>();
+  const [archiveError, setArchiveError] = useState<{
+    conversation: Conversation;
+    wasArchiving: boolean;
+  }>();
+  const handleArchiveError = useCallback(
+    (conversation: Conversation, wasArchiving: boolean) => {
+      setArchiveError({ conversation, wasArchiving });
+    },
+    [],
+  );
   const notices = (
     <ConversationArchiveNotices
       archivedConversation={archivedConversation}
@@ -65,7 +74,7 @@ export function ConversationHomeList(props: {
         {sections.map((section) => (
           <ConversationCardSection
             key={section.key}
-            onArchiveError={setArchiveError}
+            onArchiveError={handleArchiveError}
             onArchived={setArchivedConversation}
             section={section}
           />
@@ -77,7 +86,7 @@ export function ConversationHomeList(props: {
 }
 
 function ConversationCardSection(props: {
-  onArchiveError(conversation: Conversation): void;
+  onArchiveError(conversation: Conversation, wasArchiving: boolean): void;
   onArchived(conversation: Conversation): void;
   section: ConversationSection;
 }) {
@@ -105,12 +114,13 @@ function ConversationCardSection(props: {
 
 function ConversationCard(props: {
   conversation: Conversation;
-  onArchiveError(conversation: Conversation): void;
+  onArchiveError(conversation: Conversation, wasArchiving: boolean): void;
   onArchived(conversation: Conversation): void;
 }) {
   const conversation = props.conversation;
   const archive = useArchiveConversation(conversation.id, {
-    onError: () => props.onArchiveError(conversation),
+    onError: () =>
+      props.onArchiveError(conversation, archive.variables?.archived ?? true),
     onSuccess: (archived) => {
       if (archived) props.onArchived(conversation);
     },

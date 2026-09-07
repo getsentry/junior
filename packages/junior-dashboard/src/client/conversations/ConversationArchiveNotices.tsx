@@ -10,7 +10,7 @@ import { useArchiveConversation } from "./queries";
 /** Show archive errors and the most recent reversible archive action. */
 export function ConversationArchiveNotices(props: {
   archivedConversation?: Conversation;
-  archiveError?: Conversation;
+  archiveError?: { conversation: Conversation; wasArchiving: boolean };
   className?: string;
   onDismissError(): void;
   onRestored(): void;
@@ -20,8 +20,9 @@ export function ConversationArchiveNotices(props: {
     <div className={cn("grid gap-2", props.className)}>
       {props.archiveError ? (
         <ArchiveErrorNotice
-          conversation={props.archiveError}
+          conversation={props.archiveError.conversation}
           onDismiss={props.onDismissError}
+          wasArchiving={props.archiveError.wasArchiving}
         />
       ) : null}
       {props.archivedConversation ? (
@@ -38,6 +39,7 @@ export function ConversationArchiveNotices(props: {
 function ArchiveErrorNotice(props: {
   conversation: Conversation;
   onDismiss(): void;
+  wasArchiving: boolean;
 }) {
   const title = conversationDisplayTitle(props.conversation);
   return (
@@ -49,11 +51,7 @@ function ArchiveErrorNotice(props: {
       }
       detail={title}
       icon={CircleAlert}
-      title={
-        props.conversation.archivedAt
-          ? "Could not restore"
-          : "Could not archive"
-      }
+      title={props.wasArchiving ? "Could not archive" : "Could not restore"}
       tone="error"
     />
   );
