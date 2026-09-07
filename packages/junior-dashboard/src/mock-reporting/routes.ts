@@ -122,10 +122,21 @@ export function createMockReportingApi(): Hono<{
     if (!query.success) {
       return errorResponse("Invalid query parameters.", 400);
     }
-    return jsonResponse(
-      conversationFeedSchema,
-      readMockConversationFeed(query.data.actorEmail, query.data.status),
+    const report = readMockConversationFeed(
+      query.data.actorEmail,
+      query.data.status,
     );
+    if (!query.data.q) {
+      return jsonResponse(conversationFeedSchema, report);
+    }
+    const archived = readMockConversationFeed(query.data.actorEmail, "archived");
+    const search = query.data.q.toLowerCase();
+    return jsonResponse(conversationFeedSchema, {
+      ...report,
+      conversations: [...report.conversations, ...archived.conversations].filter(
+        (conversation) => conversation.displayTitle.toLowerCase().includes(search),
+      ),
+    });
   });
   app.get("/conversations/stats", () =>
     jsonResponse(conversationStatsReportSchema, readMockConversationStats()),
@@ -228,7 +239,18 @@ export function createMockReportingApi(): Hono<{
     }
     return errorResponse("Attachment not found.", 404);
   });
-  app.get("/tasks", () => jsonResponse(taskListSchema, readMockTaskList()));
+  app.get("/tasks", (c) => {
+    const report = readMockTaskList();
+    const query = c.req.query("q")?.trim().toLowerCase();
+    return jsonResponse(taskListSchema, {
+      ...report,
+      tasks: query
+        ? report.tasks.filter((task) =>
+            task.title.toLowerCase().includes(query),
+          )
+        : report.tasks,
+    });
+  });
   app.get("/tasks/runs", () => {
     const tasks = readMockTaskList().tasks;
     const runs = tasks.flatMap((task) => {

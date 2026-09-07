@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useDeferredValue, useMemo, useState, type ReactNode } from "react";
 import { Globe2, LockKeyhole } from "lucide-react";
 import { useNavigate, useParams } from "react-router";
 
@@ -12,7 +12,7 @@ import {
   type PendingArchiveConversationUpdate,
 } from "./queries";
 import { conversationPath, NEW_CONVERSATION_PATH } from "./conversationRoutes";
-import { buildConversations, filterConversationList } from "../format";
+import { buildConversations } from "../format";
 import type { DashboardCoreData } from "../types";
 import type { Conversation } from "../types";
 import { cn, dashboardContainerClass } from "../styles";
@@ -21,14 +21,14 @@ import { ConversationPage } from "./ConversationPage";
 /** Render the personal split-pane conversation workspace at the dashboard root. */
 export function ConversationWorkspace(props: { data: DashboardCoreData }) {
   const [query, setQuery] = useState("");
-  const [status, setStatus] = useState<"active" | "archived">("active");
+  const search = useDeferredValue(query.trim());
   const params = useParams();
   const navigate = useNavigate();
   const selectedId = params.conversationId;
   // Home and create are one surface: no selected thread means the landing
   // (compose hero + list nav). Desktop already did this; mobile matches it.
   const landing = !selectedId;
-  const feed = useConversationsData(status);
+  const feed = useConversationsData(search);
   const pendingArchiveUpdates = usePendingArchiveConversationUpdates();
   const createConversation = useCreateConversation();
   const conversations = useMemo(
@@ -39,26 +39,10 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
       ),
     [feed.data?.conversations, pendingArchiveUpdates],
   );
-  const visibleConversations = useMemo(
-    () =>
-      filterConversationList(conversations, {
-        actor: "",
-        query,
-        source: "",
-        status,
-      }),
-    [conversations, query, status],
-  );
-
-  useEffect(() => {
-    if (!landing) return;
-    // New chats are active; leave archived view so the created row can appear.
-    setStatus("active");
-  }, [landing]);
+  const visibleConversations = conversations;
 
   const openCreate = () => {
     createConversation.reset();
-    setStatus("active");
     if (selectedId) navigate(NEW_CONVERSATION_PATH);
   };
 
@@ -98,10 +82,8 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
             loading={feed.isPending}
             onNewConversation={openCreate}
             onQueryChange={setQuery}
-            onStatusChange={setStatus}
             query={query}
             selectedId={undefined}
-            status={status}
             timeZone={props.data.config.timeZone}
           />
         </div>
@@ -119,10 +101,8 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
                   loading={feed.isPending}
                   onNewConversation={openCreate}
                   onQueryChange={setQuery}
-                  onStatusChange={setStatus}
                   query={query}
                   selectedId={undefined}
-                  status={status}
                   timeZone={props.data.config.timeZone}
                   variant="landing"
                 />
@@ -148,10 +128,8 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
           loading={feed.isPending}
           onNewConversation={openCreate}
           onQueryChange={setQuery}
-          onStatusChange={setStatus}
           query={query}
           selectedId={selectedId}
-          status={status}
           timeZone={props.data.config.timeZone}
         />
       </div>

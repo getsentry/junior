@@ -90,13 +90,13 @@ export function usePluginUserPagesData() {
 }
 
 /** Fetch the conversation summary feed used by list-oriented dashboard routes. */
-export function useConversationsData(status: "active" | "archived" = "active") {
+export function useConversationsData(search = "") {
   return useQuery({
-    queryKey: ["dashboard", "conversations", "viewer", status],
+    queryKey: ["dashboard", "conversations", "viewer", { search }],
     queryFn: ({ signal }) =>
       fetchDashboardJson(
         conversationFeedSchema,
-        `/api/conversations${status === "archived" ? "?status=archived" : ""}`,
+        `/api/conversations${search ? `?q=${encodeURIComponent(search)}` : ""}`,
         signal,
       ),
     retry: false,
@@ -114,12 +114,16 @@ export function useCodeOverviewData() {
 }
 
 /** Fetch the signed-in viewer's scheduled and event tasks. */
-export function useTasksData(enabled: boolean) {
+export function useTasksData(enabled: boolean, search: string) {
   return useQuery({
     enabled,
-    queryKey: ["dashboard", "tasks"],
+    queryKey: ["dashboard", "tasks", search],
     queryFn: ({ signal }) =>
-      fetchDashboardJson(taskListSchema, "/api/tasks", signal),
+      fetchDashboardJson(
+        taskListSchema,
+        `/api/tasks${search ? `?q=${encodeURIComponent(search)}` : ""}`,
+        signal,
+      ),
     retry: false,
   });
 }

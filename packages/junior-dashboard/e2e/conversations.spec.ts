@@ -655,22 +655,18 @@ test("inspects and copies an advisor transcript", async ({
   await expect(drawer).toBeVisible();
 });
 
-test("filters archived conversations and restores one", async ({
+test("finds an old archived conversation by title and restores it", async ({
   page,
   dashboard,
 }) => {
   await page.setViewportSize({ height: 900, width: 1600 });
   await page.goto(dashboard.baseURL);
-  await expect(
-    page.getByRole("link", { name: /Archived restore target/ }),
-  ).toHaveCount(0);
-
-  await page.getByRole("button", { name: "Filter conversations" }).click();
-  await page.getByRole("menuitemradio", { name: "Archived" }).click();
-
   const conversationLink = page.getByRole("link", {
     name: /Archived restore target/,
   });
+  await expect(conversationLink).toHaveCount(0);
+
+  await page.getByLabel("Search your conversations").fill("archived restore");
   await expect(conversationLink).toBeVisible();
   await conversationLink.hover();
   const restoreRequest = page.waitForRequest(
@@ -683,13 +679,9 @@ test("filters archived conversations and restores one", async ({
   expect((await restoreRequest).postDataJSON()).toMatchObject({
     archived: false,
   });
-  await expect(conversationLink).toHaveCount(0);
 
-  await page.getByRole("button", { name: "Filter conversations" }).click();
-  await page.getByRole("menuitemradio", { name: "Active" }).click();
-  await expect(
-    page.getByRole("link", { name: /Archived restore target/ }),
-  ).toBeVisible();
+  await page.getByLabel("Search your conversations").fill("");
+  await expect(conversationLink).toBeVisible();
 });
 
 test("archives and restores a conversation from the sidebar", async ({

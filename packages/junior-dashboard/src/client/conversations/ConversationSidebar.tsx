@@ -1,10 +1,8 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import {
   Archive,
   ArchiveRestore,
-  Check,
   CircleAlert,
-  ListFilter,
   LockKeyhole,
   SquarePen,
 } from "lucide-react";
@@ -44,7 +42,6 @@ export function ConversationSidebar(props: {
   query: string;
   selectedId?: string;
   timeZone: string;
-  status: "active" | "archived";
   /**
    * `panel` = split-pane dock with internal scroll.
    * `landing` = flow nav under create compose (parent owns scroll).
@@ -52,12 +49,9 @@ export function ConversationSidebar(props: {
   variant?: "panel" | "landing";
   onNewConversation(): void;
   onQueryChange(value: string): void;
-  onStatusChange(value: "active" | "archived"): void;
 }) {
   const variant = props.variant ?? "panel";
   const isLanding = variant === "landing";
-  const [filterOpen, setFilterOpen] = useState(false);
-  const filterRef = useRef<HTMLDivElement>(null);
   const [archivedConversation, setArchivedConversation] =
     useState<Conversation>();
   const [archiveError, setArchiveError] = useState<Conversation>();
@@ -74,23 +68,6 @@ export function ConversationSidebar(props: {
     );
     setArchivedConversation(conversation);
   }, []);
-  useEffect(() => {
-    if (!filterOpen) return;
-    function closeFilter(event: PointerEvent) {
-      if (!filterRef.current?.contains(event.target as Node)) {
-        setFilterOpen(false);
-      }
-    }
-    function closeFilterOnEscape(event: KeyboardEvent) {
-      if (event.key === "Escape") setFilterOpen(false);
-    }
-    document.addEventListener("pointerdown", closeFilter);
-    document.addEventListener("keydown", closeFilterOnEscape);
-    return () => {
-      document.removeEventListener("pointerdown", closeFilter);
-      document.removeEventListener("keydown", closeFilterOnEscape);
-    };
-  }, [filterOpen]);
   // Rebuild section rows only when the feed or timezone changes. Avoid fresh
   // Date.now() arrays on unrelated parent renders while the reader is scrolling.
   const entries = useMemo(
@@ -112,7 +89,7 @@ export function ConversationSidebar(props: {
           : "grid h-full min-h-0 grid-rows-[auto_auto_minmax(0,1fr)] overflow-hidden border-r border-white/[0.07] bg-white/[0.02]",
       )}
     >
-      <div className={cn("px-3 pb-2", isLanding ? "pt-5" : "pt-3")} ref={filterRef}>
+      <div className={cn("px-3 pb-2", isLanding ? "pt-5" : "pt-3")}>
         <div className="flex items-center justify-between gap-2">
           <h2
             className={cn(
@@ -123,22 +100,6 @@ export function ConversationSidebar(props: {
             {isLanding ? "Your conversations" : "Conversations"}
           </h2>
           <div className="flex items-center gap-0.5">
-            <button
-              aria-controls="conversation-status-filter"
-              aria-expanded={filterOpen}
-              aria-haspopup="menu"
-              aria-label="Filter conversations"
-              className={cn(
-                "grid size-7 cursor-pointer place-items-center rounded-md text-dashboard-text-muted transition hover:bg-white/[0.05] hover:text-dashboard-text focus:outline-none focus:ring-2 focus:ring-cyan-300/35",
-                (filterOpen || props.status === "archived") &&
-                  "bg-white/[0.06] text-dashboard-text",
-              )}
-              onClick={() => setFilterOpen((open) => !open)}
-              title="Filter conversations"
-              type="button"
-            >
-              <ListFilter aria-hidden="true" size={15} />
-            </button>
             {isLanding ? null : (
               <button
                 aria-label="New conversation"
@@ -152,32 +113,6 @@ export function ConversationSidebar(props: {
             )}
           </div>
         </div>
-        {filterOpen ? (
-          <div
-            className="mt-2 rounded-lg bg-dashboard-surface-raised/95 p-1 shadow-2xl shadow-black/75 backdrop-blur-xl"
-            id="conversation-status-filter"
-            role="menu"
-          >
-            {(["active", "archived"] as const).map((status) => (
-              <button
-                aria-checked={props.status === status}
-                className="flex w-full cursor-pointer items-center justify-between rounded-md px-2.5 py-2 text-left text-sm capitalize text-dashboard-text transition hover:bg-white/10 focus:bg-white/10 focus:outline-none"
-                key={status}
-                onClick={() => {
-                  props.onStatusChange(status);
-                  setFilterOpen(false);
-                }}
-                role="menuitemradio"
-                type="button"
-              >
-                {status}
-                {props.status === status ? (
-                  <Check aria-hidden="true" size={14} />
-                ) : null}
-              </button>
-            ))}
-          </div>
-        ) : null}
       </div>
       <div className="px-2 pb-2">
         <SearchInput

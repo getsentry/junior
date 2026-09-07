@@ -412,16 +412,28 @@ function taskExecutionStatusSixHours(
   });
 }
 
-export async function readViewerTasks(user: User): Promise<TaskList> {
+export async function readViewerTasks(
+  user: User,
+  input: { q?: string } = {},
+): Promise<TaskList> {
   const db = getDb();
+  // TODO: Expand task search to conversation transcripts.
+  // TODO: Add semantic task search.
+  const query = input.q?.trim().toLowerCase() || undefined;
   const identityIds = new Set(user.identities.map((identity) => identity.id));
   const teamIds = viewerTeamIds(user);
   const [scheduledPage, publicScheduled, eventTasks, publicEventTasks] =
     await Promise.all([
-      listViewerScheduledTasks(db, user, { limit: TASK_FETCH_LIMIT }),
-      listPublicScheduledTasksForTeams(db, teamIds, TASK_FETCH_LIMIT),
-      listEventTasksCreatedBy(db, user, TASK_FETCH_LIMIT),
-      listPublicEventTasksForTeams(db, teamIds, TASK_FETCH_LIMIT),
+      listViewerScheduledTasks(db, user, {
+        limit: TASK_FETCH_LIMIT,
+        query,
+      }),
+      listPublicScheduledTasksForTeams(db, teamIds, {
+        limit: TASK_FETCH_LIMIT,
+        query,
+      }),
+      listEventTasksCreatedBy(db, user, TASK_FETCH_LIMIT, query),
+      listPublicEventTasksForTeams(db, teamIds, TASK_FETCH_LIMIT, query),
     ]);
   const candidatesById = new Map<string, TaskCandidate>();
   const publicScheduledIds = new Set(publicScheduled.map((task) => task.id));
