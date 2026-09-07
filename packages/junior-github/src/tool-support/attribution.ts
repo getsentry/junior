@@ -76,8 +76,10 @@ function parseExistingLabels(blockContents: string): string[] {
     return [];
   }
   const withoutLeadIn = trimmed.replace(/^(?:Requested by|via)\s+/i, "");
+  // Only split on a comma immediately followed by "via" so a display name
+  // that itself contains a comma is not broken into extra labels.
   return withoutLeadIn
-    .split(/,\s*(?:via\s+)?/i)
+    .split(/,\s*via\s+/i)
     .map((entry) => entry.trim())
     .filter(Boolean);
 }

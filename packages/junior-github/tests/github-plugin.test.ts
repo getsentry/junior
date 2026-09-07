@@ -918,6 +918,36 @@ describe("github plugin", () => {
     });
   });
 
+  it("keeps a comma-containing display name intact when accumulating", async () => {
+    process.env.GITHUB_WEBHOOK_SECRET = "test-secret";
+    const ctx = githubToolsContext({
+      actor: {
+        fullName: "Jane Doe",
+        platform: "slack",
+        teamId: "T1",
+        userId: "U2",
+      },
+      conversationId: "slack:C123:1712345.0004",
+    });
+    const plugin = githubPlugin();
+    const tool = plugin.hooks?.tools?.(ctx as any)?.createIssue;
+
+    await tool?.execute?.(
+      {
+        repo: "getsentry/junior",
+        title: "Typed issue",
+        body: "Issue body\n\n<!-- junior-request-attribution:start -->\nvia **Cramer, David**.\n<!-- junior-request-attribution:end -->",
+        labels: ["bug"],
+      },
+      { toolCallId: "call-create-issue-comma-name" },
+    );
+
+    const request = ctx.egressRequests()[0];
+    await expect(request?.request.json()).resolves.toMatchObject({
+      body: "Issue body\n\n<!-- junior-request-attribution:start -->\nvia **Cramer, David**, via **Jane Doe**.\n<!-- junior-request-attribution:end -->",
+    });
+  });
+
   it("keeps issue annotation labels compact for long titles", async () => {
     const ctx = githubToolsContext();
     const tool = githubPlugin().hooks?.tools?.(ctx as any)?.createIssue;
