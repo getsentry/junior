@@ -561,6 +561,57 @@ describe("slackThreadRead", () => {
     expect(file).not.toHaveProperty("url_private_download");
   });
 
+  it("surfaces files nested inside a forwarded/shared message's attachments", async () => {
+    queueSlackApiResponse("conversations.replies", {
+      body: conversationsRepliesPage({
+        threadTs: "1700000000.300000",
+        messages: [
+          {
+            ts: "1700000000.300000",
+            thread_ts: "1700000000.300000",
+            user: "U1",
+            text: "Billing issue. can you diagnose",
+            attachments: [
+              {
+                is_share: true,
+                author_name: "David Cramer",
+                text: "Billing issue.",
+                files: [
+                  {
+                    id: "F_SHARED_1",
+                    name: "billing.png",
+                    mimetype: "image/png",
+                    size: 111,
+                    url_private: "https://files.slack.com/shared-1",
+                    url_private_download: "https://files.slack.com/shared-1-dl",
+                  },
+                  {
+                    id: "F_SHARED_2",
+                    name: "payment-form.png",
+                    mimetype: "image/png",
+                    size: 222,
+                  },
+                ],
+              },
+            ],
+          } as any,
+        ],
+      }),
+    });
+
+    const tool = createTool({});
+    const result = await executeTool(tool, {
+      channel_id: "C0SHARE",
+      ts: "1700000000.300000",
+    });
+
+    expect(result.messages[0].files).toEqual([
+      { id: "F_SHARED_1", name: "billing.png", mimetype: "image/png", size: 111 },
+      { id: "F_SHARED_2", name: "payment-form.png", mimetype: "image/png", size: 222 },
+    ]);
+    expect(result.messages[0].files[0]).not.toHaveProperty("url_private");
+  });
+
   it("does not call conversations.history — only conversations.replies", async () => {
     queueSlackApiResponse("conversations.replies", {
       body: conversationsRepliesPage({
