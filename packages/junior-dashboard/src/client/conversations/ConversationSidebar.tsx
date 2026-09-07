@@ -32,6 +32,10 @@ type ConversationSidebarEntry =
   | { first: boolean; key: string; kind: "section"; label: string }
   | { conversation: Conversation; key: string; kind: "conversation" };
 
+// Tracks the attempted direction alongside the conversation so a failed
+// archive can never read the row's already-optimistic archived state.
+type ArchiveErrorState = { conversation: Conversation; wasArchiving: boolean };
+
 const conversationEntryKey = (entry: ConversationSidebarEntry) => entry.key;
 
 /** Render the compact personal conversation picker used by the home workspace. */
@@ -54,17 +58,20 @@ export function ConversationSidebar(props: {
   const isLanding = variant === "landing";
   const [archivedConversation, setArchivedConversation] =
     useState<Conversation>();
-  const [archiveError, setArchiveError] = useState<Conversation>();
+  const [archiveError, setArchiveError] = useState<ArchiveErrorState>();
   const dismissArchivedConversation = useCallback(
     () => setArchivedConversation(undefined),
     [],
   );
-  const handleArchiveError = useCallback((conversation: Conversation) => {
-    setArchiveError(conversation);
-  }, []);
+  const handleArchiveError = useCallback(
+    (conversation: Conversation, wasArchiving: boolean) => {
+      setArchiveError({ conversation, wasArchiving });
+    },
+    [],
+  );
   const handleArchived = useCallback((conversation: Conversation) => {
     setArchiveError((current) =>
-      current?.id === conversation.id ? undefined : current,
+      current?.conversation.id === conversation.id ? undefined : current,
     );
     setArchivedConversation(conversation);
   }, []);
@@ -185,8 +192,9 @@ export function ConversationSidebar(props: {
         >
           {archiveError ? (
             <ArchiveConversationErrorNotice
-              conversation={archiveError}
+              conversation={archiveError.conversation}
               onDismiss={() => setArchiveError(undefined)}
+              wasArchiving={archiveError.wasArchiving}
             />
           ) : null}
           {archivedConversation ? (
@@ -259,12 +267,19 @@ function ConversationListStatusIcon(props: {
 
 const ConversationSidebarRow = memo(function ConversationSidebarRow(props: {
   conversation: Conversation;
-  onArchiveError(conversation: Conversation): void;
+  onArchiveError(conversation: Conversation, wasArchiving: boolean): void;
   onArchived(conversation: Conversation): void;
   selected: boolean;
 }) {
   const archive = useArchiveConversation(props.conversation.id, {
-    onError: () => props.onArchiveError(props.conversation),
+    // Read the attempted direction from the mutation call, not the (possibly
+    // already optimistically updated) conversation prop, so a failed archive
+    // never gets mislabeled as a failed restore.
+    onError: () =>
+      props.onArchiveError(
+        props.conversation,
+        archive.variables?.archived ?? true,
+      ),
     onSuccess: (archived) => {
       if (archived) props.onArchived(props.conversation);
     },
@@ -296,10 +311,7 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(props: {
       >
         <div className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-start gap-x-1.5">
           <div className="col-start-1 row-start-1 mt-[0.3rem] grid size-3 shrink-0 place-items-center">
-            <ConversationListStatusIcon
-              isPrivate={isPrivate}
-              status={status}
-            />
+            <ConversationListStatusIcon isPrivate={isPrivate} status={status} />
           </div>
           <div className="col-start-2 row-start-1 min-w-0 truncate font-display text-sm font-medium leading-snug text-dashboard-text">
             {title}
@@ -342,12 +354,12 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(props: {
 function ArchiveConversationErrorNotice(props: {
   conversation: Conversation;
   onDismiss(): void;
+  wasArchiving: boolean;
 }) {
   const title = conversationDisplayTitle(props.conversation);
-  // Restore failures still carry archivedAt from the archived row.
-  const actionTitle = props.conversation.archivedAt
-    ? "Could not restore"
-    : "Could not archive";
+  const actionTitle = props.wasArchiving
+    ? "Could not archive"
+    : "Could not restore";
   return (
     <Notice
       action={
