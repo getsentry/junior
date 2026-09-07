@@ -1529,10 +1529,7 @@ export function createMemoryStore(
     async archiveMemory(input) {
       input = archiveMemoryInputSchema.parse(input);
       const nowMs = getNowMs();
-      // Public memory is shared and has no single user owner.
-      const scopes = deriveVisibleMemoryScopes(runtimeContext).filter(
-        (scope) => scope.scope === "private",
-      );
+      const scopes = deriveVisibleMemoryScopes(runtimeContext);
       const predicate = activeVisiblePredicate({ nowMs, scopes });
       const idPrefix = input.id.trim();
       if (!idPrefix) {
