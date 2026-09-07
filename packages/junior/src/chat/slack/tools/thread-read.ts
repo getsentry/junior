@@ -19,7 +19,7 @@ import {
 } from "@/chat/slack/timestamp-param";
 import type { SlackChannelId } from "@/chat/slack/ids";
 import type { SlackMessageTs } from "@/chat/slack/timestamp";
-import type { SlackThreadReply } from "@/chat/slack/channel";
+import type { SlackFileRef, SlackThreadReply } from "@/chat/slack/channel";
 import {
   extractAttachmentFiles,
   renderAttachmentText,
@@ -35,14 +35,13 @@ interface ThreadReadAttachmentDeps {
   db: JuniorSqlDatabase;
 }
 
-/** Project a thread reply to safe output fields (strips url_private etc). */
 /**
  * Combine top-level `files` with files nested inside `attachments`
  * (forwarded/shared messages carry their files there), deduped by id.
  */
-function collectMessageFiles(msg: SlackThreadReply) {
+function collectMessageFiles(msg: SlackThreadReply): SlackFileRef[] {
   const seen = new Set<string>();
-  const files = [];
+  const files: SlackFileRef[] = [];
   for (const file of [
     ...(msg.files ?? []),
     ...extractAttachmentFiles(msg.attachments),
@@ -54,6 +53,7 @@ function collectMessageFiles(msg: SlackThreadReply) {
   return files;
 }
 
+/** Project a thread reply to safe output fields (strips url_private etc). */
 function sanitizeMessage(
   msg: SlackThreadReply,
   attachmentIdsBySlackFileId: ReadonlyMap<string, string>,
