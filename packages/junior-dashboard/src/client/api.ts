@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import type { ActorProfileReport } from "@sentry/junior/api/schema";
 import type { LocationDetailReport } from "@sentry/junior/api/schema";
 import {
@@ -99,6 +99,7 @@ export function useConversationsData(search = "") {
         `/api/conversations${search ? `?q=${encodeURIComponent(search)}` : ""}`,
         signal,
       ),
+    placeholderData: keepPreviousData,
     retry: false,
   });
 }
@@ -124,6 +125,7 @@ export function useTasksData(enabled: boolean, search: string) {
         `/api/tasks${search ? `?q=${encodeURIComponent(search)}` : ""}`,
         signal,
       ),
+    placeholderData: keepPreviousData,
     retry: false,
   });
 }

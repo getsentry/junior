@@ -1296,7 +1296,7 @@ function mockConversations(nowMs: number): MockConversation[] {
       conversationId: ARCHIVED_CONVERSATION_ID,
       displayTitle: "Archived restore target",
       surface: "internal",
-      archivedAt: iso(nowMs, -2 * 24 * 60 * 60_000),
+      archivedAt: iso(nowMs, -3 * 24 * 60 * 60_000),
     }),
   ];
 }
@@ -1545,17 +1545,21 @@ function mockGuardianStats(nowMs: number): ConversationStatsReport["guardian"] {
   );
 }
 
+const RECENT_ARCHIVE_WINDOW_MS = 48 * 60 * 60 * 1000;
+
 /** Return the explicit canonical-event visual-QA feed, optionally scoped by actor. */
 export function readMockConversationFeed(
   actorEmail?: string,
   status: "active" | "archived" = "active",
 ): ConversationFeed {
   const feed = mockConversationFeed(NOW_MS);
+  const recentArchiveCutoffMs = NOW_MS - RECENT_ARCHIVE_WINDOW_MS;
   const conversations = feed.conversations
     .filter((conversation) =>
       status === "archived"
         ? Boolean(conversation.archivedAt)
-        : !conversation.archivedAt,
+        : !conversation.archivedAt ||
+          Date.parse(conversation.archivedAt) >= recentArchiveCutoffMs,
     )
     .filter(
       (conversation) =>
