@@ -160,6 +160,22 @@ describe("buildSlackReplyBlocks", () => {
 
     expect(buildSlackReplyBlocks("   ", footer)).toBeUndefined();
   });
+
+  it("renders a mrkdwn section block for pre-formatted Slack mrkdwn text", () => {
+    // Regression test: auth-pause notices (`buildAuthPauseResponse`) emit
+    // Slack mrkdwn directly (mentions, `<url>` links) rather than CommonMark.
+    // Slack's markdown-to-rich_text converter rejects that content inside a
+    // `markdown` block with `invalid_blocks`, so callers with pre-formatted
+    // mrkdwn must request the `mrkdwn` body format instead.
+    const text =
+      "<@U123> I need access to GitHub to continue.\n\n*Why:* check out <https://github.com/foo/bar> and proceed\n\nI sent you a link.";
+    expect(buildSlackReplyBlocks(text, undefined, "mrkdwn")).toEqual([
+      {
+        type: "section",
+        text: { type: "mrkdwn", text },
+      },
+    ]);
+  });
 });
 
 describe("getDashboardTaskLink", () => {

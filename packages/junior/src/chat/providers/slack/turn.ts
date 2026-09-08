@@ -444,7 +444,13 @@ export function createSlackTurn(deps: SlackTurnDeps) {
           try {
             await beforeFirstResponsePost();
             if (channelId && threadTs) {
+              // `buildAuthPauseResponse` already produces Slack mrkdwn (e.g.
+              // `<@user>` mentions), not the CommonMark this pipeline
+              // otherwise expects for the `markdown` block. Deliver it as a
+              // `mrkdwn` section instead so Slack's markdown-to-rich_text
+              // conversion doesn't reject the payload (`invalid_blocks`).
               await sendSlackReply({
+                bodyFormat: "mrkdwn",
                 channelId,
                 conversationId,
                 replyAttribution: options.execution?.dispatch?.replyAttribution,

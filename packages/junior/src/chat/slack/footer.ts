@@ -90,20 +90,33 @@ export function buildSlackReplyFooter(args: {
     : undefined;
 }
 
-/** Build Slack blocks for a reply chunk using the Slack-flavored markdown block for the body. */
+/**
+ * Build Slack blocks for a reply chunk.
+ *
+ * `bodyFormat` selects how the main body block is rendered:
+ * - `"commonmark"` (default) uses the Slack-flavored `markdown` block, which
+ *   Slack renders natively from standard Markdown. Use this for model-authored
+ *   text normalized by `normalizeSlackReplyMarkdown`.
+ * - `"mrkdwn"` uses a `section` block with a `mrkdwn` text object. Use this
+ *   only for text that is already Slack mrkdwn (Slack mention syntax like
+ *   `<@U123>`, single-`*` emphasis, `<url>` links) such as auth-pause
+ *   notices built by `buildAuthPauseResponse`. Slack's markdown-to-rich_text
+ *   converter mishandles raw mrkdwn tokens inside a `markdown` block and
+ *   rejects the message with `invalid_blocks`.
+ */
 export function buildSlackReplyBlocks(
   text: string,
   footer: SlackReplyFooter | undefined,
+  bodyFormat: "commonmark" | "mrkdwn" = "commonmark",
 ): SlackMessageBlock[] | undefined {
   if (!text.trim()) {
     return undefined;
   }
 
   const blocks: SlackMessageBlock[] = [
-    {
-      type: "markdown",
-      text,
-    },
+    bodyFormat === "mrkdwn"
+      ? { type: "section", text: { type: "mrkdwn", text } }
+      : { type: "markdown", text },
   ];
 
   if (footer && (footer.attribution || footer.items.length > 0)) {
