@@ -199,6 +199,11 @@ export function createSlackScheduleUpdateTaskTool(
       const nextDestination = changingDestination
         ? activeDestination
         : lookup.destination;
+      // A moved task's origin thread belongs to its old channel. Rebind to
+      // the new conversation's thread, or clear it if there is none.
+      const nextThreadTs = changingDestination
+        ? (context.source?.threadTs ?? context.source?.messageTs)
+        : lookup.threadTs;
       const next: ScheduledTask = {
         ...lookup,
         conversationAccess: changingDestination
@@ -206,6 +211,7 @@ export function createSlackScheduleUpdateTaskTool(
           : lookup.conversationAccess,
         credentialMode,
         destination: nextDestination,
+        threadTs: nextThreadTs,
         updatedAtMs: nowMs,
         nextRunAtMs,
         runNowAtMs:
