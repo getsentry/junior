@@ -1,4 +1,30 @@
 # Changelog
+## 0.204.0
+
+### New Features ✨
+
+#### Dashboard
+
+- Add conversation command center by @sentry-junior in [#1792](https://github.com/getsentry/junior/pull/1792)
+- Search tasks and hide old archives by @sentry-junior in [#1791](https://github.com/getsentry/junior/pull/1791)
+- Add structure-aware loading skeletons by @sentry-junior in [#1786](https://github.com/getsentry/junior/pull/1786)
+
+#### Other
+
+- (automations) Store explicit outcomes by @sentry-junior in [#1788](https://github.com/getsentry/junior/pull/1788)
+- (memory) Allow removing public memories by @sentry-junior in [#1793](https://github.com/getsentry/junior/pull/1793)
+- (oauth) Polish callback result page by @sentry-junior in [#1790](https://github.com/getsentry/junior/pull/1790)
+
+### Bug Fixes 🐛
+
+- (chat) Raise turn tool-call limit to 250 by @sentry-junior in [#1789](https://github.com/getsentry/junior/pull/1789)
+- (github) Accumulate PR/issue requester attribution by @sentry-junior in [#1785](https://github.com/getsentry/junior/pull/1785)
+- (sandbox) Surface Workspace setup failures by @sentry-junior in [#1795](https://github.com/getsentry/junior/pull/1795)
+
+### Internal Changes 🔧
+
+- (package) Migrate Junior build to tsdown by @sentry-junior in [#1796](https://github.com/getsentry/junior/pull/1796)
+
 ## 0.203.0
 
 ### Bug Fixes 🐛
