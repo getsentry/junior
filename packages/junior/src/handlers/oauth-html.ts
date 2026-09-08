@@ -150,7 +150,7 @@ export function htmlCallbackResponse(
 </head>
 <body>
   <main>
-    <div class="brand"><span class="brand-mark" aria-hidden="true"></span>Junior</div>
+    <div class="brand"><span class="brand-mark" aria-hidden="true"></span>${botConfig.userName}</div>
     <div class="status ${statusClass}" aria-hidden="true">${statusIcon}</div>
     <h1>${title}</h1>
     <p class="message">${message}</p>
