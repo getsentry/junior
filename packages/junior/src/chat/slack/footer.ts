@@ -90,6 +90,17 @@ export function buildSlackReplyFooter(args: {
     : undefined;
 }
 
+/**
+ * Slack's `markdown` block renders standard Markdown and has no user-mention
+ * syntax (see docs.slack.dev/reference/block-kit/blocks/markdown-block). A
+ * literal `<@id>` mention token — valid only in `mrkdwn` text — left inside a
+ * `markdown` block makes Slack's markdown-to-rich_text conversion mis-tag an
+ * inline element and reject the whole message with `invalid_blocks`
+ * (JUNIOR-72). Replies that open with a mention (for example auth-pause
+ * notices) split that mention into its own `mrkdwn` context block instead.
+ */
+const LEADING_SLACK_MENTION_RE = /^<@([UW][A-Z0-9]+)>[ \t]*/;
+
 /** Build Slack blocks for a reply chunk using the Slack-flavored markdown block for the body. */
 export function buildSlackReplyBlocks(
   text: string,
@@ -99,12 +110,26 @@ export function buildSlackReplyBlocks(
     return undefined;
   }
 
-  const blocks: SlackMessageBlock[] = [
-    {
-      type: "markdown",
-      text,
-    },
-  ];
+  const mentionMatch = LEADING_SLACK_MENTION_RE.exec(text);
+  const body = mentionMatch ? text.slice(mentionMatch[0].length) : text;
+
+  const blocks: SlackMessageBlock[] = [];
+  if (mentionMatch) {
+    blocks.push({
+      type: "context",
+      elements: [{ type: "mrkdwn", text: mentionMatch[0].trimEnd() }],
+    });
+  }
+  blocks.push({
+    type: "markdown",
+    text: body,
+  });
+
+  if (mentionMatch && !body.trim()) {
+    // A mention-only reply has nothing left for the markdown block. Drop it
+    // rather than post a Slack-rejected empty `markdown` block.
+    blocks.pop();
+  }
 
   if (footer && (footer.attribution || footer.items.length > 0)) {
     const attributionElements: SlackPlainTextObject[] = footer.attribution

@@ -161,11 +161,13 @@ describe("buildSlackReplyBlocks", () => {
     expect(buildSlackReplyBlocks("   ", footer)).toBeUndefined();
   });
 
-  it("renders auth-pause-style text (mention, CommonMark bold, embedded URL) as a single markdown block", async () => {
-    // Regression test for JUNIOR-72: `buildAuthPauseResponse` is delivered
-    // through this same `markdown` block as every other reply. It must stay
-    // valid CommonMark — the earlier `*Why:*` (CommonMark italics, not bold)
-    // contributed to Slack's invalid_blocks rejection.
+  it("renders auth-pause-style text (leading mention, CommonMark bold, embedded URL) as a leading mention context block plus a markdown body", async () => {
+    // Regression test for JUNIOR-72: Slack's `markdown` block has no
+    // user-mention syntax (docs.slack.dev/reference/block-kit/blocks/markdown-block).
+    // A literal `<@id>` mention left inside that block made Slack's
+    // markdown-to-rich_text conversion reject the auth-pause notice as
+    // invalid_blocks. buildAuthPauseResponse's leading mention must be split
+    // into its own `mrkdwn` context block instead.
     const { buildAuthPauseResponse } = await import(
       "@/chat/services/auth-pause-response"
     );
@@ -180,8 +182,30 @@ describe("buildSlackReplyBlocks", () => {
     );
     expect(buildSlackReplyBlocks(text, undefined)).toEqual([
       {
+        type: "context",
+        elements: [{ type: "mrkdwn", text: "<@U123>" }],
+      },
+      {
         type: "markdown",
-        text,
+        text: "I need access to GitHub to continue.\n\n**Why:** check out https://github.com/foo/bar and proceed\n\nI sent you a link.",
+      },
+    ]);
+  });
+
+  it("drops the markdown block for a mention-only reply", () => {
+    expect(buildSlackReplyBlocks("<@U123> ", undefined)).toEqual([
+      {
+        type: "context",
+        elements: [{ type: "mrkdwn", text: "<@U123>" }],
+      },
+    ]);
+  });
+
+  it("does not treat a mention elsewhere in the text as a leading mention", () => {
+    expect(buildSlackReplyBlocks("cc <@U123> please review", undefined)).toEqual([
+      {
+        type: "markdown",
+        text: "cc <@U123> please review",
       },
     ]);
   });
