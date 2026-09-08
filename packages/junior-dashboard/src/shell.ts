@@ -203,6 +203,7 @@ export function renderDashboard(basePath: string, agentName: string): Response {
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="${escapeHtml(agentName)}" />
+  <link rel="icon" href="/favicon.ico" type="image/png" />
   <link rel="manifest" href="${DASHBOARD_MANIFEST_PATH}" />
   <link rel="apple-touch-icon" href="${DASHBOARD_INSTALL_ICON_PATH}" />
   <title>${escapeHtml(agentName)}</title>
@@ -278,12 +279,14 @@ export function renderDashboard(basePath: string, agentName: string): Response {
   );
 }
 
-/** Serve the dashboard favicon. */
+/** Serve the dashboard favicon using the same avatar image shown in the nav bar. */
 export function renderFavicon(): Response {
-  return new Response(
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" fill="#000000"/><text x="16" y="20.5" fill="#ffffff" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="11" font-weight="900" text-anchor="middle">Jr</text></svg>`,
-    { headers: { "content-type": "image/svg+xml" } },
-  );
+  return new Response(readDashboardAvatarHeader(), {
+    headers: {
+      "cache-control": "public, max-age=0, must-revalidate",
+      "content-type": "image/png",
+    },
+  });
 }
 
 /** Render a browser-readable access denied page for blocked dashboard users. */
@@ -294,6 +297,7 @@ export function renderForbiddenPage(agentName: string): Response {
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, interactive-widget=resizes-content" />
+  <link rel="icon" href="/favicon.ico" type="image/png" />
   <title>${escapeHtml(agentName)} access denied</title>
   <style>
     ${readDashboardTailwind()}
