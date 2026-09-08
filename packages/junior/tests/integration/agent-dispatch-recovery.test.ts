@@ -19,6 +19,7 @@ import {
 } from "../fixtures/agent-runner";
 import { createModelStream } from "../fixtures/model-stream";
 import {
+  agentDispatchTestDestination as destination,
   createAgentDispatchTestRecord as createDispatch,
   createAgentDispatchWorkHarness,
 } from "../fixtures/agent-dispatch";
@@ -106,8 +107,10 @@ describe("agent dispatch recovery", () => {
           signature: "v1=test",
         },
       },
-      undefined,
+      { kind: "scheduled_task", threadTs: "1700000000.000300" },
       { label: "Scheduled task", detail: "Weekly" },
+      "Post the scheduled digest.",
+      [{ action: "send_message", destination }],
     );
     const agentRunner = createModelAgentRunner(
       createModelStream([
@@ -138,6 +141,7 @@ describe("agent dispatch recovery", () => {
     expect(slackApiOutbox.messages()).toHaveLength(1);
     expect(slackApiOutbox.messages()[0]?.params).toMatchObject({
       text: "Resumed scheduled digest\n\nScheduled task · Weekly",
+      thread_ts: "1700000000.000300",
     });
     await expect(
       getTurnRecord(`agent-dispatch:${dispatch.id}`, `dispatch:${dispatch.id}`),
@@ -163,7 +167,7 @@ describe("agent dispatch recovery", () => {
         plugin: dispatch.plugin,
         replyAttribution: dispatch.replyAttribution,
       },
-      source: { kind: "scheduled_task" },
+      source: { kind: "scheduled_task", threadTs: "1700000000.000300" },
       surface: "api",
     });
     expect(resumedRun?.instruction.text).toBe(dispatch.input);

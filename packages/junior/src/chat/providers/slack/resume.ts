@@ -567,6 +567,12 @@ async function resumeSlackTurnInContext(
                 conversationId: runArgs.conversationId,
                 replyAttribution: runArgs.run?.dispatch?.replyAttribution,
                 text,
+                // An outcome that targets the dispatch's own channel is a
+                // same-place reply; bind it to the captured origin thread.
+                ...(runArgs.threadTs &&
+                outcome.destination.channelId === runArgs.channelId
+                  ? { threadTs: runArgs.threadTs }
+                  : undefined),
               })),
             );
           }
