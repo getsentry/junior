@@ -832,6 +832,11 @@ export function createSlackTurn(deps: SlackTurnDeps) {
                   replyAttribution:
                     options.execution?.dispatch?.replyAttribution,
                   text,
+                  // An outcome that targets the dispatch's own channel is a
+                  // same-place reply; bind it to the captured origin thread.
+                  ...(threadTs && outcome.destination.channelId === channelId
+                    ? { threadTs }
+                    : undefined),
                 });
                 slackMessageTs.push(...messageIds);
                 messageDestinations.push(
