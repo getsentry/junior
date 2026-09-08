@@ -16,7 +16,6 @@ import {
 } from "./queries";
 import { conversationPath, NEW_CONVERSATION_PATH } from "./conversationRoutes";
 import { buildConversations, getDashboardTimeZone } from "../format";
-import type { DashboardCoreData } from "../types";
 import type { Conversation } from "../types";
 import { cn, dashboardContainerClass } from "../styles";
 import { ConversationPage } from "./ConversationPage";
@@ -24,7 +23,7 @@ import { ConversationPage } from "./ConversationPage";
 const CONVERSATION_PAGE_SIZE = 20;
 
 /** Render the conversation home page or one selected conversation. */
-export function ConversationWorkspace(props: { data: DashboardCoreData }) {
+export function ConversationWorkspace() {
   const [page, setPage] = useState(1);
   const [query, setQuery] = useState("");
   const search = useDeferredValue(query.trim());
