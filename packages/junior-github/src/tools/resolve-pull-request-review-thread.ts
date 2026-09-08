@@ -142,28 +142,49 @@ export function createGitHubResolvePullRequestReviewThreadTool(
           `GitHub review thread lookup failed with HTTP ${lookupResponse.status}: ${githubError(lookupPayload)}`,
         );
       }
-      const thread = z
+      // GitHub's GraphQL shape is out of Junior's control and can add fields
+      // or resolve `node` to an unexpected type; use `passthrough()` so new
+      // fields don't break parsing, and `safeParse()` so a shape mismatch
+      // (missing thread, wrong node type) becomes the same clean
+      // "not found" error as an explicit `node: null`, instead of an
+      // unhandled ZodError.
+      const threadNodeSchema = z
         .object({
-          data: z.object({
-            node: z
-              .object({
-                id: z.string(),
-                isResolved: z.boolean(),
-                pullRequest: z.object({
-                  author: z
-                    .object({ databaseId: z.number().optional() })
-                    .nullable(),
-                  number: z.number(),
-                  repository: z.object({ nameWithOwner: z.string() }),
-                }),
-              })
-              .nullable(),
-          }),
+          id: z.string(),
+          isResolved: z.boolean(),
+          pullRequest: z
+            .object({
+              author: z
+                .object({ databaseId: z.number().optional() })
+                .passthrough()
+                .nullable(),
+              number: z.number(),
+              repository: z
+                .object({ nameWithOwner: z.string() })
+                .passthrough(),
+            })
+            .passthrough(),
         })
-        .parse(lookupPayload).data.node;
-      if (!thread) {
+        .passthrough();
+      const lookupResultSchema = z
+        .object({
+          data: z
+            .object({
+              node: z.unknown().nullable().optional(),
+            })
+            .passthrough(),
+        })
+        .passthrough();
+      const lookupResult = lookupResultSchema.safeParse(lookupPayload);
+      const rawNode = lookupResult.success
+        ? lookupResult.data.data.node
+        : undefined;
+      const parsedNode =
+        rawNode == null ? undefined : threadNodeSchema.safeParse(rawNode);
+      if (!parsedNode?.success) {
         throw new PluginToolInputError("GitHub review thread was not found.");
       }
+      const thread = parsedNode.data;
 
       const pullRequest = thread.pullRequest;
       const ownsPullRequest =
@@ -210,15 +231,28 @@ export function createGitHubResolvePullRequestReviewThreadTool(
           `GitHub review thread resolution failed with HTTP ${resolveResponse.status}: ${githubError(resolvePayload)}`,
         );
       }
-      const resolved = z
+      const resolveResultSchema = z
         .object({
-          data: z.object({
-            resolveReviewThread: z.object({
-              thread: z.object({ id: z.string(), isResolved: z.boolean() }),
-            }),
-          }),
+          data: z
+            .object({
+              resolveReviewThread: z
+                .object({
+                  thread: z
+                    .object({ id: z.string(), isResolved: z.boolean() })
+                    .passthrough(),
+                })
+                .passthrough(),
+            })
+            .passthrough(),
         })
-        .parse(resolvePayload).data.resolveReviewThread.thread;
+        .passthrough();
+      const resolveResult = resolveResultSchema.safeParse(resolvePayload);
+      if (!resolveResult.success) {
+        throw new Error(
+          `GitHub review thread resolution returned an unexpected response shape: ${resolveResult.error.message}`,
+        );
+      }
+      const resolved = resolveResult.data.data.resolveReviewThread.thread;
       if (resolved.id !== thread.id || !resolved.isResolved) {
         throw new Error("GitHub did not resolve the requested review thread.");
       }

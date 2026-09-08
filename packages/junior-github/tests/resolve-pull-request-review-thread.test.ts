@@ -137,4 +137,79 @@ describe("resolvePullRequestReviewThread", () => {
     });
     expect(fetch).toHaveBeenCalledTimes(1);
   });
+
+  it("reports a node that does not match a review thread as a repairable tool error instead of throwing", async () => {
+    const { fetch, tool } = toolContext([
+      // `node` resolved to a different GraphQL type, so none of the
+      // `PullRequestReviewThread` inline-fragment fields came back.
+      response({ data: { node: {} } }),
+    ]);
+
+    await expect(
+      tool.execute?.(
+        {
+          repo: "getsentry/junior",
+          threadId: "PRRT_wrong_type",
+        },
+        { toolCallId: "wrong-type-thread" },
+      ),
+    ).rejects.toMatchObject({
+      name: "PluginToolInputError",
+      message: "GitHub review thread was not found.",
+    });
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("tolerates unknown fields GitHub adds to the review thread response", async () => {
+    const { fetch, tool } = toolContext([
+      response({
+        data: {
+          node: {
+            id: "PRRT_kwDOthread",
+            isResolved: false,
+            newGithubField: "unexpected-but-fine",
+            pullRequest: {
+              author: { databaseId: BOT_USER_ID, newField: true },
+              number: 1572,
+              repository: {
+                nameWithOwner: "getsentry/junior",
+                newField: true,
+              },
+              newField: true,
+            },
+          },
+          extensions: { newTopLevelField: true },
+        },
+      }),
+      response({
+        data: {
+          resolveReviewThread: {
+            thread: {
+              id: "PRRT_kwDOthread",
+              isResolved: true,
+              newField: true,
+            },
+            newField: true,
+          },
+        },
+      }),
+    ]);
+
+    await expect(
+      tool.execute?.(
+        {
+          repo: "getsentry/junior",
+          threadId: "PRRT_kwDOthread",
+        },
+        { toolCallId: "resolve-thread-extra-fields" },
+      ),
+    ).resolves.toEqual({
+      target: "resolvePullRequestReviewThread",
+      repo: "getsentry/junior",
+      number: 1572,
+      threadId: "PRRT_kwDOthread",
+      resolved: true,
+    });
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
 });
