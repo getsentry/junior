@@ -339,13 +339,11 @@ describe("Slack resume result handling", () => {
     ]);
   });
 
-  it("binds a dispatch outcome reply to the run Source's thread when the resume conversation id carries none", async () => {
+  it("binds a dispatch outcome reply to the run Location thread when the resume conversation id carries none", async () => {
     const { resumeSlackTurn } = await import("@/chat/providers/slack/resume");
 
     // Agent-dispatch conversation ids are not Slack thread ids, so
-    // `resumeSlackTurn` never receives a top-level `threadTs` for them. The
-    // origin thread lives only on the scheduled-task Source captured at
-    // dispatch creation.
+    // `resumeSlackTurn` never receives a top-level `threadTs` for them.
     await resumeSlackTurn({
       messageText: "continue this turn",
       conversationId: "agent-dispatch:dispatch-thread-fallback",
@@ -356,7 +354,14 @@ describe("Slack resume result handling", () => {
           actor: { type: "user", userId: "U123" },
         },
         destination: TEST_SLACK_DESTINATION,
-        source: { kind: "scheduled_task", threadTs: "1700000000.099" },
+        location: {
+          id: "location-123",
+          provider: "slack",
+          teamId: "T123",
+          channelId: "C123",
+          threadTs: "1700000000.099",
+        },
+        source: { kind: "scheduled_task" },
         actor: { platform: "slack", teamId: "T123", userId: "U123" },
         dispatch: {
           id: "dispatch-thread-fallback",

@@ -361,8 +361,8 @@ describe("event tasks", () => {
     await expect(
       getDispatchRecord(conversationId!.replace(/^agent-dispatch:/, "")),
     ).resolves.toMatchObject({
-      destination: { channelId: "C123" },
-      source: { kind: "event_task", threadTs },
+      destination: { channelId: "C123", threadTs },
+      source: { kind: "event_task" },
     });
   });
 

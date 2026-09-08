@@ -54,7 +54,9 @@ export function locationForWrite(args: {
     provider: "slack",
     teamId: destination.teamId,
     channelId: destination.channelId,
-    ...(source?.threadTs ? { threadTs: source.threadTs } : undefined),
+    ...(source?.threadTs ?? destination.threadTs
+      ? { threadTs: source?.threadTs ?? destination.threadTs }
+      : undefined),
   });
 }
 

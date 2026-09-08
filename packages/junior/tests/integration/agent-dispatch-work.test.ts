@@ -157,10 +157,11 @@ describe("agent dispatch conversation work", () => {
     const dispatch = await createDispatch(
       "outcome-thread-binding",
       undefined,
-      { kind: "scheduled_task", threadTs: "1700000000.000200" },
+      { kind: "scheduled_task" },
       undefined,
       "Post the scheduled digest.",
       [{ action: "send_message", destination }],
+      { ...destination, threadTs: "1700000000.000200" },
     );
     const { queue, run, state } = await createAgentDispatchWorkHarness(
       createModelAgentRunner(

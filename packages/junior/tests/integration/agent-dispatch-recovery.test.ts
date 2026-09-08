@@ -107,10 +107,11 @@ describe("agent dispatch recovery", () => {
           signature: "v1=test",
         },
       },
-      { kind: "scheduled_task", threadTs: "1700000000.000300" },
+      { kind: "scheduled_task" },
       { label: "Scheduled task", detail: "Weekly" },
       "Post the scheduled digest.",
       [{ action: "send_message", destination }],
+      { ...destination, threadTs: "1700000000.000300" },
     );
     const agentRunner = createModelAgentRunner(
       createModelStream([
@@ -167,7 +168,8 @@ describe("agent dispatch recovery", () => {
         plugin: dispatch.plugin,
         replyAttribution: dispatch.replyAttribution,
       },
-      source: { kind: "scheduled_task", threadTs: "1700000000.000300" },
+      location: { threadTs: "1700000000.000300" },
+      source: { kind: "scheduled_task" },
       surface: "api",
     });
     expect(resumedRun?.instruction.text).toBe(dispatch.input);

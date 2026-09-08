@@ -94,8 +94,6 @@ export const scheduledTaskSchema = z
     schedule: scheduledTaskScheduleSchema,
     status: scheduledTaskStatusSchema,
     statusReason: z.string().optional(),
-    /** Slack thread the task was created in, if any. Binds dispatched turns to it. */
-    threadTs: z.string().min(1).optional(),
     /** Visible effects after successful work. Missing legacy values send a message. */
     outcomes: z.array(taskOutcomeSchema).max(5).optional(),
     task: z.object({ text: z.string() }).strict(),

@@ -6,7 +6,7 @@
  * authorization pause notices use `sendSlackReply` so the footer stays
  * consistent.
  */
-import type { ReplyAttribution, Source } from "@sentry/junior-plugin-api";
+import type { ReplyAttribution } from "@sentry/junior-plugin-api";
 import { botConfig } from "@/chat/config";
 import { defaultModelId } from "@/chat/model-profile";
 import { configValueSchema } from "@/chat/configuration/types";
@@ -212,23 +212,6 @@ interface ResumePreparedTurn {
   onAuthPause?: (pause: { providerDisplayName: string }) => Promise<void>;
   onSuspend?: (resumeVersion: number) => Promise<void>;
   onPostDeliveryCommitFailure?: (error: unknown) => Promise<void>;
-}
-
-/**
- * Read the origin Slack thread carried on a Run Source, when present.
- *
- * Slack, scheduled-task, and event-task Sources capture the thread the work
- * originated in; other Source kinds have no thread to bind.
- */
-function getSourceThreadTs(source: Source | undefined): string | undefined {
-  if (
-    source?.kind === "slack" ||
-    source?.kind === "scheduled_task" ||
-    source?.kind === "event_task"
-  ) {
-    return source.threadTs;
-  }
-  return undefined;
 }
 
 function getDefaultLockKey(
@@ -577,11 +560,8 @@ async function resumeSlackTurnInContext(
       try {
         const outcomes = runArgs.run?.dispatch?.outcomes;
         if (outcomes) {
-          // Agent-dispatch conversation ids (`agent-dispatch:*`) are not Slack
-          // thread ids, so `runArgs.threadTs` is unset for those resumes. Fall
-          // back to the origin thread captured on the run's own Source.
           const outcomeThreadTs =
-            runArgs.threadTs ?? getSourceThreadTs(runArgs.run?.source);
+            runArgs.threadTs ?? runArgs.run?.location?.threadTs;
           for (const outcome of outcomes) {
             slackMessageTs.push(
               ...(await sendSlackReply({

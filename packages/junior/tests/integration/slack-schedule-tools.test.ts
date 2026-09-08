@@ -525,8 +525,8 @@ describe("Slack schedule tools", () => {
         platform: "slack",
         teamId: TEST_TEAM_ID,
         channelId: "C123",
+        threadTs: "1700000000.000",
       },
-      threadTs: "1700000000.000",
     });
   });
 
@@ -1552,7 +1552,7 @@ describe("Slack schedule tools", () => {
       };
     };
     await expect(readScheduledTask(created.task.id)).resolves.toMatchObject({
-      threadTs: "1700000000.000100",
+      destination: { threadTs: "1700000000.000100" },
     });
 
     const publicTarget = createContext({
@@ -1589,7 +1589,7 @@ describe("Slack schedule tools", () => {
     // Moving into a new conversation drops the old channel's thread and
     // rebinds to the new one; a stale timestamp does not carry over.
     await expect(readScheduledTask(created.task.id)).resolves.toMatchObject({
-      threadTs: "1700000000.000200",
+      destination: { threadTs: "1700000000.000200" },
     });
 
     await expect(
@@ -1624,7 +1624,7 @@ describe("Slack schedule tools", () => {
     // The private target's context carries no thread; the move clears it.
     await expect(
       readScheduledTask(created.task.id),
-    ).resolves.not.toHaveProperty("threadTs");
+    ).resolves.not.toHaveProperty("destination.threadTs");
 
     // Replaying a destination update that already landed is a no-op success.
     await expect(
