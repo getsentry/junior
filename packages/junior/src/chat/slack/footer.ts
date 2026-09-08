@@ -14,6 +14,12 @@ interface SlackPlainTextObject {
   type: "plain_text";
 }
 
+/** Slack-flavored Markdown block — accepts a standard Markdown subset and Slack renders it natively. */
+interface SlackMarkdownBlock {
+  text: string;
+  type: "markdown";
+}
+
 interface SlackSectionBlock {
   text: SlackMrkdwnTextObject;
   type: "section";
@@ -24,7 +30,10 @@ interface SlackContextBlock {
   type: "context";
 }
 
-export type SlackMessageBlock = SlackSectionBlock | SlackContextBlock;
+export type SlackMessageBlock =
+  | SlackMarkdownBlock
+  | SlackSectionBlock
+  | SlackContextBlock;
 
 interface SlackReplyFooterItem {
   label: string;
@@ -36,6 +45,22 @@ export interface SlackReplyFooter {
   attribution?: ReplyAttribution;
   items: SlackReplyFooterItem[];
 }
+
+/**
+ * Controls which Slack block type is used for the reply body.
+ *
+ * - `"commonmark"` (default): wraps the text in a `{ type: "markdown" }` block,
+ *   which Slack renders from standard Markdown (bold, links, tables, headers).
+ *   Use this for normal agent replies where `normalizeSlackReplyMarkdown` has
+ *   already formatted the output for CommonMark delivery.
+ *
+ * - `"mrkdwn"`: wraps the text in a `{ type: "section", text: { type: "mrkdwn" } }`
+ *   block. Use this when the text is already pre-formatted as Slack mrkdwn
+ *   (e.g. `<@user>` mentions, `<url>` angle-bracket links, single-`*` emphasis)
+ *   and must not be passed through the markdown-to-rich_text converter, which
+ *   can mis-tag mrkdwn tokens and trigger `invalid_blocks`.
+ */
+export type SlackReplyBodyFormat = "commonmark" | "mrkdwn";
 
 /** Render compact reply attribution for the Slack footer. */
 export function formatReplyAttribution(attribution: ReplyAttribution): string {
@@ -81,21 +106,29 @@ export function buildSlackReplyFooter(args: {
     : undefined;
 }
 
-/** Build Slack blocks for a reply chunk using a mrkdwn section block for the body. */
+/**
+ * Build Slack blocks for a reply chunk.
+ *
+ * The body block format is controlled by `bodyFormat`:
+ * - `"commonmark"` (default): uses `{ type: "markdown" }` for CommonMark rendering.
+ * - `"mrkdwn"`: uses `{ type: "section", text: { type: "mrkdwn" } }` for
+ *   pre-formatted mrkdwn text (e.g. auth-pause notices with `<@user>` mentions).
+ */
 export function buildSlackReplyBlocks(
   text: string,
   footer: SlackReplyFooter | undefined,
+  bodyFormat: SlackReplyBodyFormat = "commonmark",
 ): SlackMessageBlock[] | undefined {
   if (!text.trim()) {
     return undefined;
   }
 
-  const blocks: SlackMessageBlock[] = [
-    {
-      type: "section",
-      text: { type: "mrkdwn", text },
-    },
-  ];
+  const bodyBlock: SlackMessageBlock =
+    bodyFormat === "mrkdwn"
+      ? { type: "section", text: { type: "mrkdwn", text } }
+      : { type: "markdown", text };
+
+  const blocks: SlackMessageBlock[] = [bodyBlock];
 
   if (footer && (footer.attribution || footer.items.length > 0)) {
     const attributionElements: SlackPlainTextObject[] = footer.attribution

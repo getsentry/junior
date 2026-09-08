@@ -8,6 +8,7 @@ import {
   buildSlackReplyBlocks,
   buildSlackReplyFooter,
   formatReplyAttribution,
+  type SlackReplyBodyFormat,
 } from "@/chat/slack/footer";
 import { escapeSlackMrkdwnText } from "@/chat/slack/mrkdwn";
 import { postSlackMessage } from "@/chat/slack/outbound";
@@ -20,6 +21,7 @@ import { splitSlackReplyText } from "@/chat/slack/output";
  * context, and posts through the shared Slack outbound boundary.
  */
 export async function sendSlackReply(args: {
+  bodyFormat?: SlackReplyBodyFormat;
   channelId: string;
   conversationId: string;
   replyAttribution?: ReplyAttribution;
@@ -41,6 +43,7 @@ export async function sendSlackReply(args: {
     const blocks = buildSlackReplyBlocks(
       text,
       isFinalChunk ? footer : undefined,
+      args.bodyFormat,
     );
     const fallbackText =
       isFinalChunk && args.replyAttribution

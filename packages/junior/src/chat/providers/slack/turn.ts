@@ -445,6 +445,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
             await beforeFirstResponsePost();
             if (channelId && threadTs) {
               await sendSlackReply({
+                bodyFormat: "mrkdwn",
                 channelId,
                 conversationId,
                 replyAttribution: options.execution?.dispatch?.replyAttribution,

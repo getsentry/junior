@@ -95,10 +95,12 @@ async function postSlackMessageBestEffort(
   text: string,
   conversationId?: string,
   replyAttribution?: ReplyAttribution,
+  bodyFormat?: import("@/chat/slack/footer").SlackReplyBodyFormat,
 ): Promise<void> {
   try {
     if (conversationId) {
       await sendSlackReply({
+        bodyFormat,
         channelId,
         conversationId,
         replyAttribution,
@@ -904,6 +906,7 @@ async function resumeSlackTurnInContext(
           ),
           runArgs.conversationId,
           runArgs.run?.dispatch?.replyAttribution,
+          "mrkdwn",
         );
       }
       return true;

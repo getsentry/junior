@@ -122,15 +122,15 @@ describe("buildSlackReplyFooter", () => {
 });
 
 describe("buildSlackReplyBlocks", () => {
-  it("renders the reply body as a mrkdwn section block plus a context footer", () => {
+  it("renders the reply body as a markdown block plus a context footer", () => {
     const footer = buildSlackReplyFooter({
       conversationId: "slack:C123:1700000000.000100",
     });
 
     expect(buildSlackReplyBlocks("Hello world", footer)).toEqual([
       {
-        type: "section",
-        text: { type: "mrkdwn", text: "Hello world" },
+        type: "markdown",
+        text: "Hello world",
       },
       {
         type: "context",
@@ -144,19 +144,19 @@ describe("buildSlackReplyBlocks", () => {
     ]);
   });
 
-  it("renders a mrkdwn section block without footer when footer is undefined", () => {
+  it("renders a markdown block without footer when footer is undefined", () => {
     expect(buildSlackReplyBlocks("Hello world", undefined)).toEqual([
       {
-        type: "section",
-        text: { type: "mrkdwn", text: "Hello world" },
+        type: "markdown",
+        text: "Hello world",
       },
     ]);
   });
 
-  it("renders a mrkdwn section block when text contains URLs", () => {
+  it("renders a mrkdwn section block for pre-formatted mrkdwn text (auth-pause path)", () => {
     const text =
       "<@U123> I need access to GitHub to continue.\n\n*Why:* check out <https://github.com/foo/bar> and proceed\n\nI sent you a link.";
-    expect(buildSlackReplyBlocks(text, undefined)).toEqual([
+    expect(buildSlackReplyBlocks(text, undefined, "mrkdwn")).toEqual([
       {
         type: "section",
         text: { type: "mrkdwn", text },
