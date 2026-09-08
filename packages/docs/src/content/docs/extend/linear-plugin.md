@@ -11,9 +11,9 @@ related:
   - /operate/security-hardening/
 ---
 
-Use the Linear plugin to find, create, update, comment on, and triage Linear issues from Slack. Each user connects their own Linear account through Linear's hosted MCP server.
+Use the Linear plugin to find, create, update, comment on, and triage Linear issues from Slack. A workspace admin installs one Linear OAuth app. Junior uses that app connection instead of asking each user to connect Linear.
 
-Optional webhooks let Junior publish `issue.created` resource events for subscriptions and event tasks. User MCP OAuth and webhook ingress stay separate.
+Optional webhooks let Junior publish `issue.created` resource events for watches and event tasks. OAuth and webhooks use separate secrets.
 
 ## Install
 
@@ -28,16 +28,19 @@ import { linearPlugin } from "@sentry/junior-linear";
 export const plugins = defineJuniorPlugins([linearPlugin()]);
 ```
 
-Register `linearPlugin()` so Junior loads the webhook route.
+Register `linearPlugin()` so Junior loads the Linear tools and webhook route.
 
-## Auth model
+## Connect Linear
 
-- No `LINEAR_API_KEY`, shared workspace token, or custom OAuth app is required for the default setup.
-- Each user completes Linear's MCP OAuth flow the first time Junior calls a Linear MCP tool on their behalf.
-- Junior sends the authorization link privately, then resumes the same thread automatically after the user authorizes.
-- Webhooks use a separate Linear webhook secret. They do not use the user's MCP OAuth grant.
+1. Create an OAuth app in Linear.
+2. Set its callback URL to `https://<junior-host>/api/oauth/callback/linear`.
+3. Give it the `read,write` scopes.
+4. Set `LINEAR_CLIENT_ID` and `LINEAR_CLIENT_SECRET` in Junior.
+5. Ask Junior to use Linear. A workspace admin must complete the install once.
 
-Junior uses Linear's hosted MCP tools for reads and writes. When an issue is created through that path, Junior links it to the current conversation.
+Junior requests `actor=app`. Linear records changes as made by the Junior app. The app can access every team available to it in the connected workspace. Junior uses the same app connection for requests from conversations, scheduled tasks, and event tasks.
+
+When Junior creates an issue, it links the issue to the current conversation. If Linear rejects the refresh token, an admin must install the app again.
 
 ## Config
 
@@ -70,6 +73,28 @@ Default project for issue creation when a request does not name one. Use it only
 </details>
 
 ### Environment variables
+
+<details class="plugin-config">
+<summary><code>LINEAR_CLIENT_ID</code></summary>
+
+Client ID for the Linear OAuth app.
+
+- **Define:** Set `LINEAR_CLIENT_ID` in the deployment environment
+- **Required:** Yes
+- **Environment override:** `LINEAR_CLIENT_ID`
+
+</details>
+
+<details class="plugin-config">
+<summary><code>LINEAR_CLIENT_SECRET</code></summary>
+
+Client secret for the Linear OAuth app.
+
+- **Define:** Set `LINEAR_CLIENT_SECRET` in the deployment environment
+- **Required:** Yes
+- **Environment override:** `LINEAR_CLIENT_SECRET`
+
+</details>
 
 <details class="plugin-config">
 <summary><code>LINEAR_WEBHOOK_SECRET</code></summary>
@@ -143,22 +168,23 @@ Optional `match` values come from the resource type. For Linear issue and team e
 
 ## Verify
 
-**OAuth:** Ask Junior to create or update a real Linear issue, complete the private authorization flow, and confirm the issue key or URL returns in the same thread.
+**OAuth:** Ask Junior to create or update a real Linear issue. If Linear is not connected, have a workspace admin complete the install. Confirm that Junior returns the issue key or URL in the same thread.
 
 **Webhooks:** Create an event task for a team key, then create a test issue in that team. You can also create an issue-scoped task with `match.teamKey` set to the same team key and confirm non-matching teams do not fire.
 
 ## Security
 
-- Junior stores user MCP grants and does not include them in model input.
-- Webhooks use the Linear webhook signing secret, not user MCP OAuth.
-- Issue title, description, and other payload text are untrusted event content.
+- Junior stores the app tokens outside the model and sandbox.
+- Webhooks use `LINEAR_WEBHOOK_SECRET`, not the OAuth app tokens.
+- Issue titles, descriptions, and other webhook text are untrusted input.
 
 ## Failure modes
 
-- **No auth prompt or no resume:** Retry the Linear request and complete the private authorization flow when prompted.
-- **Wrong team or project target:** Include the team name, project name, or existing Linear issue key explicitly in the Slack request.
-- **Duplicate or low-signal tickets:** Give Junior the core problem, impact, and any supporting URLs from the thread so it can create a grounded issue instead of a vague summary.
-- **Permission failures after connect:** The user's Linear account may not have access to that team, project, or issue. Retry with a resource the user can access.
+- **Linear is not connected:** Check `LINEAR_CLIENT_ID` and `LINEAR_CLIENT_SECRET`, then have a workspace admin install the app.
+- **The connection expired:** Have a workspace admin install the app again.
+- **Wrong team or project:** Name the team, project, or issue key in the Slack request.
+- **Duplicate or vague tickets:** Give Junior the core problem, impact, and useful links from the thread.
+- **Permission failure:** Confirm that the installed app can access the team, project, or issue.
 - **Webhooks are ignored:** Check `LINEAR_WEBHOOK_SECRET`, confirm the webhook points at `/api/webhooks/linear`, and confirm a matching subscription or event task exists.
 - **Event task stays unavailable:** Resource events stay disabled until `LINEAR_WEBHOOK_SECRET` is set and Junior is redeployed.
 

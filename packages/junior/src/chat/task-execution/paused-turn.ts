@@ -306,7 +306,7 @@ async function resolveResumeExecutionIdentity(args: {
   }
   return {
     actor,
-    credentialContext: credentialContextForActor(actor),
+    credentialContext: credentialContextForActor(actor, undefined, args.teamId),
   };
 }
 

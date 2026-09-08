@@ -1,6 +1,6 @@
 ---
 name: linear
-description: Manage Linear issues through Linear's hosted MCP server. Use when users ask to create a Linear ticket, update a Linear issue, add a Linear comment, move work between states, assign work, or look up Linear issue, team, or project details from Slack context.
+description: Manage Linear issues through Junior's Linear tools. Use when users ask to create a Linear ticket, update a Linear issue, add a Linear comment, move work between states, assign work, or look up Linear issue, team, or project details from Slack context.
 ---
 
 # Linear Operations
@@ -32,7 +32,7 @@ Load references conditionally based on the request:
 
 2. Prepare the Linear operation:
 
-- Prefer a short read/search step before mutating when you need to confirm the existing issue, team, project, or workflow state.
+- Read or search first when you need to confirm the issue, team, project, or workflow state.
 
 3. Draft issue content (create or substantial rewrite):
 
@@ -57,7 +57,7 @@ Attribute the reporter by name when clear from the thread (e.g. "Raised by Alice
 - Use only Linear's standard priority levels: `low`, `medium`, `high`, `urgent`.
 - Set project, labels, cycle, estimate, or assignee only when the user asked for them or the thread makes them clear.
 
-5. Verify draft before mutating:
+5. Check the draft before writing:
 
 - Title length ≤ 60 characters.
 - Delegated-action footer is the last line when applicable, using the action actor's real name, not the reporter's name unless they are the same person.
@@ -69,13 +69,13 @@ If any gate fails, revise and re-check before calling the Linear create/update t
 
 6. Execute:
 
-- Create or update issues with Linear's live hosted MCP tools. Discover the current create/update tool and copy only fields justified by its live schema.
-- For updates, prefer partial changes over full rewrites. Fetch current issue state first if the mutation could overwrite structured fields or duplicate an existing comment.
+- Use the `linear_*` tools. Look up team, project, workflow state, and issue IDs before writes.
+- For updates, change only the requested fields. Fetch the issue first if an update could overwrite fields or repeat a comment.
 - Check for duplicates silently before creating a new issue when the request appears related to existing work.
 
 7. Report the result:
 
-- Return the canonical Linear issue URL or key and what changed.
+- Return the Linear issue URL or key and what changed.
 - Report issue type when you created a new issue and it materially clarifies the outcome.
 
 ## Guardrails

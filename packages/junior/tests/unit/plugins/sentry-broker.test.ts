@@ -10,6 +10,7 @@ import type {
   StoredTokens,
   UserTokenStore,
 } from "@/chat/credentials/user-token-store";
+import type { InstallationTokenStore } from "@/chat/credentials/installation-token-store";
 
 const ORIGINAL_ENV = { ...process.env };
 const ORIGINAL_FETCH = globalThis.fetch;
@@ -62,6 +63,22 @@ function createMockTokenStore(
   };
 }
 
+function createMockInstallationTokenStore(
+  token?: StoredTokens,
+): InstallationTokenStore {
+  let stored = token;
+  return {
+    get: async () => stored,
+    set: async (_provider, tokens) => {
+      stored = tokens;
+    },
+    delete: async () => {
+      stored = undefined;
+    },
+    withRefresh: async (_provider, callback) => callback(),
+  };
+}
+
 function createBroker(tokenStore?: UserTokenStore) {
   return createOAuthBearerBroker(
     SENTRY_MANIFEST,
@@ -77,6 +94,45 @@ afterEach(() => {
 });
 
 describe("sentry credential broker (oauth-bearer plugin)", () => {
+  it("issues a lease from an installation OAuth token for system runs", async () => {
+    const manifest: PluginManifest = {
+      ...SENTRY_MANIFEST,
+      oauth: {
+        ...SENTRY_MANIFEST.oauth!,
+        tokenSubject: "installation",
+      },
+    };
+    const broker = createOAuthBearerBroker(
+      manifest,
+      manifest.credentials as OAuthBearerCredentials,
+      {
+        installationTokenStore: createMockInstallationTokenStore({
+          accessToken: "installation-access-token",
+          refreshToken: "installation-refresh-token",
+          expiresAt: Date.now() + 60 * 60 * 1000,
+          scope: SENTRY_SCOPE,
+        }),
+        userTokenStore: createMockTokenStore(),
+      },
+    );
+
+    const lease = await broker.issue({
+      context: SYSTEM_CREDENTIAL_CONTEXT,
+      reason: "test:installation-oauth",
+    });
+
+    expect(lease.headerTransforms).toEqual([
+      {
+        domain: "us.sentry.io",
+        headers: { Authorization: "Bearer installation-access-token" },
+      },
+      {
+        domain: "de.sentry.io",
+        headers: { Authorization: "Bearer installation-access-token" },
+      },
+    ]);
+  });
+
   it("issues a lease from a per-user OAuth token", async () => {
     const tokenStore = createMockTokenStore({
       "U123:sentry": {
@@ -200,14 +256,14 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
       },
     });
 
-        // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
-        globalThis.fetch = (vi.fn(async () => ({
-        ok: true,
-        json: async () => ({
-          access_token: "new-access-token",
-          expires_in: 3600,
-        }),
-      }))) as typeof fetch;
+    // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+    globalThis.fetch = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        access_token: "new-access-token",
+        expires_in: 3600,
+      }),
+    })) as typeof fetch;
 
     const broker = createBroker(tokenStore);
     const lease = await broker.issue({
@@ -256,16 +312,16 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
       },
     });
 
-        // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
-        globalThis.fetch = (vi.fn(async () => ({
-        ok: true,
-        json: async () => ({
-          access_token: "new-access-token",
-          refresh_token: "new-refresh-token",
-          expires_in: 3600,
-          refresh_token_expires_in: 7200,
-        }),
-      }))) as typeof fetch;
+    // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+    globalThis.fetch = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        access_token: "new-access-token",
+        refresh_token: "new-refresh-token",
+        expires_in: 3600,
+        refresh_token_expires_in: 7200,
+      }),
+    })) as typeof fetch;
 
     const broker = createBroker(tokenStore);
     await broker.issue({
@@ -305,7 +361,7 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
       delete: vi.fn(),
       withRefresh,
     };
-        globalThis.fetch = (vi.fn()) as typeof fetch;
+    globalThis.fetch = vi.fn() as typeof fetch;
 
     const broker = createBroker(tokenStore);
     const lease = await broker.issue({
@@ -340,12 +396,12 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
       },
     });
 
-        globalThis.fetch = (vi.fn(
-        async () =>
-          new Response(JSON.stringify({ error: "invalid_grant" }), {
-            status: 400,
-          }),
-      )) as typeof fetch;
+    globalThis.fetch = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ error: "invalid_grant" }), {
+          status: 400,
+        }),
+    ) as typeof fetch;
 
     const broker = createBroker(tokenStore);
     await expect(
@@ -370,12 +426,12 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
     });
 
     const providerText = "SENSITIVE_CANARY";
-        globalThis.fetch = (vi.fn(
-        async () =>
-          new Response(JSON.stringify({ error: providerText }), {
-            status: 500,
-          }),
-      )) as typeof fetch;
+    globalThis.fetch = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ error: providerText }), {
+          status: 500,
+        }),
+    ) as typeof fetch;
 
     const broker = createBroker(tokenStore);
     const error = await broker
@@ -420,7 +476,9 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
         cancelled = true;
       },
     });
-        globalThis.fetch = (vi.fn(async () => new Response(body, { status: 500 }))) as typeof fetch;
+    globalThis.fetch = vi.fn(
+      async () => new Response(body, { status: 500 }),
+    ) as typeof fetch;
 
     const broker = createBroker(tokenStore);
     await expect(
@@ -451,7 +509,9 @@ describe("sentry credential broker (oauth-bearer plugin)", () => {
         controller.error(new Error(providerText));
       },
     });
-        globalThis.fetch = (vi.fn(async () => new Response(body, { status: 500 }))) as typeof fetch;
+    globalThis.fetch = vi.fn(
+      async () => new Response(body, { status: 500 }),
+    ) as typeof fetch;
 
     const broker = createBroker(tokenStore);
     const error = await broker

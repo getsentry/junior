@@ -511,7 +511,9 @@ export function createPluginCatalogRuntime(): PluginCatalogRuntime {
           commands.push({
             cmd: command.cmd,
             ...(command.args ? { args: [...command.args] } : undefined),
-            ...(command.sudo !== undefined ? { sudo: command.sudo } : undefined),
+            ...(command.sudo !== undefined
+              ? { sudo: command.sudo }
+              : undefined),
           });
         }
       }
@@ -528,6 +530,9 @@ export function createPluginCatalogRuntime(): PluginCatalogRuntime {
         authorizeEndpoint: oauth.authorizeEndpoint,
         tokenEndpoint: oauth.tokenEndpoint,
         ...(oauth.scope ? { scope: oauth.scope } : undefined),
+        ...(oauth.tokenSubject
+          ? { tokenSubject: oauth.tokenSubject }
+          : undefined),
         ...(oauth.authorizeParams
           ? { authorizeParams: { ...oauth.authorizeParams } }
           : undefined),

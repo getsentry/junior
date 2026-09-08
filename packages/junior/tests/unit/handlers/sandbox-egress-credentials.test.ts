@@ -234,7 +234,7 @@ describe("sandboxEgressCredentialLease — credential error normalization", () =
 
     expect(issuePluginCredential).toHaveBeenCalledTimes(1);
     expect(stateStub.set.mock.calls.map(([key]) => key)).toEqual([
-      "sandbox-egress-lease:sentry:installation-write:shared",
+      "sandbox-egress-lease:sentry:installation-write:local",
     ]);
   });
 

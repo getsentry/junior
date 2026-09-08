@@ -93,16 +93,20 @@ export const credentialSubjectSchema = z.discriminatedUnion("allowedWhen", [
     }),
 ]);
 
+const credentialWorkspaceIdSchema = exactNonBlankStringSchema.optional();
+
 export const credentialContextSchema = z.union([
   z
     .object({
       actor: credentialUserActorSchema,
+      workspaceId: credentialWorkspaceIdSchema,
     })
     .strict(),
   z
     .object({
       actor: credentialSystemActorSchema,
       subject: credentialSubjectSchema.optional(),
+      workspaceId: credentialWorkspaceIdSchema,
     })
     .strict(),
 ]);
@@ -131,14 +135,25 @@ export type CredentialContext = z.output<typeof credentialContextSchema>;
 export function credentialContextForActor(
   actor: Actor,
   subject?: CredentialSubject,
+  workspaceId?: string,
 ): CredentialContext {
+  const scopedWorkspaceId =
+    workspaceId?.trim() ||
+    (actor.platform === "slack" ? actor.teamId : undefined);
   if (actor.platform === "system") {
-    return subject ? { actor, subject } : { actor };
+    return {
+      actor,
+      ...(subject ? { subject } : undefined),
+      ...(scopedWorkspaceId ? { workspaceId: scopedWorkspaceId } : undefined),
+    };
   }
   if (subject) {
     throw new TypeError("Delegated credential subjects require a system actor");
   }
-  return { actor: { type: "user", userId: actor.userId } };
+  return {
+    actor: { type: "user", userId: actor.userId },
+    ...(scopedWorkspaceId ? { workspaceId: scopedWorkspaceId } : undefined),
+  };
 }
 
 /** Return the user whose OAuth token may satisfy this credential request. */
@@ -149,6 +164,13 @@ export function credentialUserSubjectId(
     return context.actor.userId;
   }
   return "subject" in context ? context.subject?.userId : undefined;
+}
+
+/** Return the Slack workspace scope for installation OAuth grants. */
+export function credentialWorkspaceId(
+  context: CredentialContext,
+): string | undefined {
+  return context.workspaceId;
 }
 
 /** Parse an untrusted credential context payload from sandbox egress state. */

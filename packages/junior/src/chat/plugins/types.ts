@@ -4,6 +4,7 @@ import type {
   PluginRuntimePostinstallCommand,
 } from "@sentry/junior-plugin-api";
 import type { UserTokenStore } from "@/chat/credentials/user-token-store";
+import type { InstallationTokenStore } from "@/chat/credentials/installation-token-store";
 
 export type {
   PluginNpmRuntimeDependency,
@@ -20,6 +21,7 @@ export interface PluginOAuthConfig {
   authorizeEndpoint: string;
   tokenEndpoint: string;
   scope?: string;
+  tokenSubject?: "installation" | "user";
   /**
    * Set true when the provider returns an empty scope string even for authorized
    * grants (e.g. GitHub App user-to-server tokens always return `scope: ""`
@@ -143,6 +145,7 @@ export interface PluginCatalogConfig {
 }
 
 export interface PluginBrokerDeps {
+  installationTokenStore?: InstallationTokenStore;
   userTokenStore: UserTokenStore;
 }
 

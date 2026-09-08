@@ -25,6 +25,8 @@ import type {
 import { formatOAuthAuthorizationMessage } from "@/chat/slack/oauth-authorization-message";
 import { isRecord } from "@/chat/coerce";
 import { getStateAdapter } from "@/chat/state/adapter";
+import { StateAdapterInstallationTokenStore } from "@/chat/credentials/state-adapter-token-store";
+import { isSlackWorkspaceAdmin } from "@/chat/slack/admin";
 
 type PrivateDeliveryResult = "in_context" | "fallback_dm" | false;
 
@@ -240,6 +242,29 @@ export async function startOAuthFlow(
     };
   }
 
+  if (providerConfig.tokenSubject === "installation") {
+    if (
+      input.actor?.platform !== "slack" ||
+      !(await isSlackWorkspaceAdmin(input.actorId))
+    ) {
+      return {
+        ok: false,
+        error: `Only a Slack workspace admin can install ${formatProviderLabel(provider)}`,
+      };
+    }
+    if (
+      await new StateAdapterInstallationTokenStore(
+        getStateAdapter(),
+        input.actor.teamId,
+      ).get(provider)
+    ) {
+      return {
+        ok: false,
+        error: `${formatProviderLabel(provider)} is already installed. Disconnect it before installing it again`,
+      };
+    }
+  }
+
   const clientId = process.env[providerConfig.clientIdEnv]?.trim();
   if (!clientId) {
     return {
@@ -308,7 +333,10 @@ export async function startOAuthFlow(
   const authorizationUrl = `${providerConfig.authorizeEndpoint}?${authorizeParams.toString()}`;
   const authorizationRequest = {
     authorizationUrl,
-    label: `Click here to link your ${formatProviderLabel(provider)} account`,
+    label:
+      providerConfig.tokenSubject === "installation"
+        ? `Click here to install ${formatProviderLabel(provider)}`
+        : `Click here to link your ${formatProviderLabel(provider)} account`,
     completionText: input.resumeSessionId
       ? "Once you've authorized, Junior will continue automatically."
       : "Once you've authorized, you'll see a confirmation in Slack.",

@@ -457,7 +457,10 @@ export function usersInfoOk(
     email?: string;
     statusText?: string;
     statusEmoji?: string;
+    isAdmin?: boolean;
     isBot?: boolean;
+    isOwner?: boolean;
+    isPrimaryOwner?: boolean;
     deleted?: boolean;
     tz?: string;
     fields?: Record<string, { value?: string; alt?: string; label?: string }>;
@@ -472,7 +475,10 @@ export function usersInfoOk(
       name: input.userName ?? "testuser",
       real_name: input.realName ?? "Test User",
       deleted: input.deleted ?? false,
+      is_admin: input.isAdmin ?? false,
       is_bot: input.isBot ?? false,
+      is_owner: input.isOwner ?? false,
+      is_primary_owner: input.isPrimaryOwner ?? false,
       tz: input.tz ?? "America/Los_Angeles",
       profile: {
         display_name: input.displayName ?? "Test User",

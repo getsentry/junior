@@ -4,6 +4,8 @@ export interface PluginOAuthConfig {
   clientIdEnv: string;
   clientSecretEnv: string;
   scope?: string;
+  /** Store completed OAuth grants for the installation instead of the authorizing user. */
+  tokenSubject?: "installation" | "user";
   /**
    * Treat a provider token response with `scope: ""` like an omitted scope and
    * fall back to the requested scope string when storing the token.

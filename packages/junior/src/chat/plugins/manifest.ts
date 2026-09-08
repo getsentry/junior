@@ -216,6 +216,7 @@ const oauthSourceSchema = z
     "authorize-endpoint": httpsUrlString,
     "token-endpoint": httpsUrlString,
     scope: nonEmptyTrimmedString.optional(),
+    "token-subject": z.enum(["installation", "user"]).optional(),
     "authorize-params": stringMapSchema.optional(),
     "token-extra-headers": stringMapSchema.optional(),
     "token-auth-method": nonEmptyTrimmedString
@@ -375,6 +376,7 @@ function manifestConfigPatch(
       setDefined(oauth, "authorize-endpoint", config.oauth.authorizeEndpoint);
       setDefined(oauth, "token-endpoint", config.oauth.tokenEndpoint);
       setDefined(oauth, "scope", config.oauth.scope);
+      setDefined(oauth, "token-subject", config.oauth.tokenSubject);
       setDefined(oauth, "authorize-params", config.oauth.authorizeParams);
       setDefined(oauth, "token-auth-method", config.oauth.tokenAuthMethod);
       setDefined(oauth, "token-extra-headers", config.oauth.tokenExtraHeaders);
@@ -1134,6 +1136,9 @@ function parseManifestSource(
       authorizeEndpoint: result.data["authorize-endpoint"],
       tokenEndpoint: result.data["token-endpoint"],
       ...(result.data.scope ? { scope: result.data.scope } : undefined),
+      ...(result.data["token-subject"]
+        ? { tokenSubject: result.data["token-subject"] }
+        : undefined),
       ...(authorizeParams ? { authorizeParams } : undefined),
       ...(result.data["token-auth-method"]
         ? { tokenAuthMethod: result.data["token-auth-method"] }

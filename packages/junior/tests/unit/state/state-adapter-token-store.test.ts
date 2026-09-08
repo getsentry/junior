@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import type { StateAdapter } from "chat";
-import { StateAdapterTokenStore } from "@/chat/credentials/state-adapter-token-store";
+import {
+  StateAdapterInstallationTokenStore,
+  StateAdapterTokenStore,
+} from "@/chat/credentials/state-adapter-token-store";
 import { ACTIVE_LOCK_TTL_MS } from "@/chat/state/locks";
 
 describe("StateAdapterTokenStore", () => {
@@ -68,6 +71,57 @@ describe("StateAdapterTokenStore", () => {
         refreshTokenExpiresAt: new Date("2026-12-21T00:00:00Z").getTime(),
       },
       181 * 24 * 60 * 60 * 1000,
+    );
+  });
+
+  it("stores installation tokens in workspace slots", async () => {
+    const adapter = createAdapter();
+    const store = new StateAdapterInstallationTokenStore(adapter, "T123");
+
+    await store.set("linear", {
+      accessToken: "access-token",
+      refreshToken: "refresh-token",
+    });
+
+    expect(adapter.set).toHaveBeenCalledWith(
+      "oauth-installation-token:linear:T123",
+      {
+        accessToken: "access-token",
+        refreshToken: "refresh-token",
+      },
+      365 * 24 * 60 * 60 * 1000,
+    );
+  });
+
+  it("keeps installation token writes isolated by workspace", async () => {
+    const adapter = createAdapter();
+
+    await new StateAdapterInstallationTokenStore(adapter, "T123").set("linear", {
+      accessToken: "first-workspace-token",
+      refreshToken: "first-workspace-refresh-token",
+    });
+    await new StateAdapterInstallationTokenStore(adapter, "T456").set("linear", {
+      accessToken: "second-workspace-token",
+      refreshToken: "second-workspace-refresh-token",
+    });
+
+    expect(adapter.set).toHaveBeenNthCalledWith(
+      1,
+      "oauth-installation-token:linear:T123",
+      {
+        accessToken: "first-workspace-token",
+        refreshToken: "first-workspace-refresh-token",
+      },
+      365 * 24 * 60 * 60 * 1000,
+    );
+    expect(adapter.set).toHaveBeenNthCalledWith(
+      2,
+      "oauth-installation-token:linear:T456",
+      {
+        accessToken: "second-workspace-token",
+        refreshToken: "second-workspace-refresh-token",
+      },
+      365 * 24 * 60 * 60 * 1000,
     );
   });
 

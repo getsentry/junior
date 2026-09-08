@@ -37,7 +37,7 @@ Use these patterns to shape concrete Linear requests.
 ## 6. Reassign work or change ownership
 
 - Resolve the issue and confirm the target assignee when names are ambiguous.
-- Keep the mutation small. Do not rewrite unrelated fields.
+- Change only the requested fields.
 - Preserve the current project, labels, and workflow state unless the user asked to change them too.
 
 ## 7. Tighten an existing issue description
@@ -60,9 +60,9 @@ Use these patterns to shape concrete Linear requests.
 
 ## 10. Mark work as a duplicate
 
-- Search for the canonical destination issue first.
-- If the MCP tool supports duplicate relationships directly, use that instead of only posting a comment.
-- If the workflow exposes a dedicated duplicate status, prefer it; otherwise expect duplicate handling to land in the team's canceled category.
+- Search for the issue that should remain open.
+- Add a comment that links the duplicate to that issue.
+- Use the team's duplicate state if one exists. Otherwise use its canceled state.
 
 ## 11. When a user asks to set channel defaults for a Linear-heavy Slack thread
 
