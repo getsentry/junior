@@ -161,6 +161,7 @@ export function createSlackScheduleCreateTaskTool(
         instruction: input.task,
         title: input.title,
       });
+      const threadTs = context.source?.threadTs ?? context.source?.messageTs;
 
       const task: ScheduledTask = {
         id,
@@ -176,6 +177,9 @@ export function createSlackScheduleCreateTaskTool(
         originalRequest: context.userText,
         schedule: compiled.schedule,
         status: "active",
+        // Bind the task to the thread it was created in, so dispatched turns
+        // reply there instead of the channel root.
+        ...(threadTs ? { threadTs } : undefined),
         outcomes: await resolveTaskOutcomes(
           input.outcomes,
           destination,

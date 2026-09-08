@@ -123,7 +123,7 @@ export function createEventTaskTool(
     },
     outputSchema: eventTaskToolResultSchema,
     async execute(input, options) {
-      const { actor, destination, source } =
+      const { actor, destination, source, threadTs } =
         requireEventTaskSlackContext(context);
       const match = requireSupportedEventTaskTrigger(catalog, input.trigger);
       const id = buildEventTaskId({
@@ -162,6 +162,7 @@ export function createEventTaskTool(
         },
         credentialMode: input.credentialMode ?? "creator",
         destination,
+        ...(threadTs ? { threadTs } : undefined),
         outcomes: await resolveTaskOutcomes(
           input.outcomes,
           destination,

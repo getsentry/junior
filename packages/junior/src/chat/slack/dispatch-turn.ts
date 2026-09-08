@@ -13,6 +13,18 @@ import {
 } from "@/chat/agent-dispatch/store";
 import { buildDispatchRoutingContext } from "@/chat/agent-dispatch/work";
 
+/**
+ * Return the Slack thread an event or scheduled task was created in, so its
+ * dispatched turn binds into that thread instead of the channel root.
+ */
+function dispatchOriginThreadTs(
+  source: DispatchRecord["source"],
+): string | undefined {
+  return source.kind === "event_task" || source.kind === "scheduled_task"
+    ? source.threadTs
+    : undefined;
+}
+
 type ExecuteSlackTurn = (
   thread: ThreadImpl,
   message: Message,
@@ -47,6 +59,7 @@ export function createSlackDispatchTurnRunner(options: {
     await state.connect();
     const conversationId = getDispatchConversationId(dispatch);
     const adapter = options.getSlackAdapter();
+    const originThreadTs = dispatchOriginThreadTs(dispatch.source);
     // TODO(dcramer): Remove this synthetic Slack Message and Thread after
     // dispatch work supplies Slack Delivery to the shared Turn path.
     const message = new Message({
@@ -62,6 +75,9 @@ export function createSlackDispatchTurnRunner(options: {
       raw: {
         channel: dispatch.destination.channelId,
         team: dispatch.destination.teamId,
+        // Bind the dispatch reply into the originating thread, when the
+        // automation captured one, instead of posting at channel root.
+        ...(originThreadTs ? { thread_ts: originThreadTs } : undefined),
       },
       author: {
         userId: dispatch.actor.name,

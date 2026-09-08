@@ -41,6 +41,8 @@ export const eventTaskSchema = z
     credentialMode: z.enum(["system", "creator"]),
     destination: slackDestinationSchema,
     destinationVisibility: destinationVisibilitySchema,
+    /** Slack thread the task was created in, if any. Binds dispatched turns to it. */
+    threadTs: z.string().min(1).optional(),
     /** Visible effects after successful work. Missing legacy values send a message. */
     outcomes: z.array(taskOutcomeSchema).max(5).optional(),
     task: z.object({ text: z.string().min(1) }).strict(),

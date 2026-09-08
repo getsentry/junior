@@ -131,12 +131,26 @@ export const resourceEventSourceSchema = z
 
 /** Runtime-owned Scheduled task input Source. */
 export const scheduledTaskSourceSchema = z
-  .object({ kind: z.literal("scheduled_task") })
+  .object({
+    kind: z.literal("scheduled_task"),
+    /**
+     * Slack thread the task was created in, captured at creation so its
+     * dispatched turns reply there instead of the channel root.
+     */
+    threadTs: nonBlankStringSchema.optional(),
+  })
   .strict();
 
 /** Runtime-owned Event task input Source. */
 export const eventTaskSourceSchema = z
-  .object({ kind: z.literal("event_task") })
+  .object({
+    kind: z.literal("event_task"),
+    /**
+     * Slack thread the task was created in, captured at creation so its
+     * dispatched turns reply there instead of the channel root.
+     */
+    threadTs: nonBlankStringSchema.optional(),
+  })
   .strict();
 
 /** Runtime-owned Plugin dispatch input Source. */

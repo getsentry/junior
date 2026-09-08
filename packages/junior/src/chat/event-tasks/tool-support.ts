@@ -127,6 +127,9 @@ export function requireEventTaskSlackContext(context: ToolRuntimeContext) {
       channelId: context.source.channelId,
     },
     source: context.source,
+    // Bind the event task to the thread it was created in, so triggered
+    // replies land in that thread instead of the channel root.
+    threadTs: context.source.threadTs ?? context.source.messageTs,
   };
 }
 

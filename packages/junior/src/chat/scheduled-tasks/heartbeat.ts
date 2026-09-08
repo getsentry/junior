@@ -424,6 +424,7 @@ export async function runScheduledTaskHeartbeat(args: {
           replyAttribution: replyAttribution(task),
           outcomes: task.outcomes,
         },
+        ...(task.threadTs ? { threadTs: task.threadTs } : undefined),
       });
     } catch (error) {
       await finishClaimedRun({

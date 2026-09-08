@@ -140,6 +140,8 @@ export async function dispatchEventTask(args: {
       userId: string;
     };
   };
+  /** Slack thread the event task was created in, if any. */
+  threadTs?: string;
 }) {
   const plugin = "junior";
   const { credentialSubject, outcomes, ...unboundOptions } = args.options;
@@ -157,7 +159,10 @@ export async function dispatchEventTask(args: {
     ...unboundOptions,
     ...(outcomes !== undefined ? { outcomes } : undefined),
     ...(boundSubject ? { credentialSubject: boundSubject } : undefined),
-    source: { kind: "event_task" },
+    source: {
+      kind: "event_task",
+      ...(args.threadTs ? { threadTs: args.threadTs } : undefined),
+    },
   };
   return await dispatch({
     conversationWorkQueue: args.conversationWorkQueue,
@@ -179,6 +184,8 @@ export async function dispatchScheduledTask(args: {
       userId: string;
     };
   };
+  /** Slack thread the scheduled task was created in, if any. */
+  threadTs?: string;
 }) {
   const plugin = "scheduler";
   const { credentialSubject, outcomes, ...unboundOptions } = args.options;
@@ -196,7 +203,10 @@ export async function dispatchScheduledTask(args: {
     ...unboundOptions,
     ...(outcomes !== undefined ? { outcomes } : undefined),
     ...(boundSubject ? { credentialSubject: boundSubject } : undefined),
-    source: { kind: "scheduled_task" },
+    source: {
+      kind: "scheduled_task",
+      ...(args.threadTs ? { threadTs: args.threadTs } : undefined),
+    },
   };
   return await dispatch({
     conversationWorkQueue: args.conversationWorkQueue,

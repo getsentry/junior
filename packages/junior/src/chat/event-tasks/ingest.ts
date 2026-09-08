@@ -113,6 +113,7 @@ export async function ingestEventTasks(
           replyAttribution: replyAttribution(task),
           outcomes: task.outcomes,
         },
+        ...(task.threadTs ? { threadTs: task.threadTs } : undefined),
       });
       if (dispatch.status === "created") {
         dispatched += 1;

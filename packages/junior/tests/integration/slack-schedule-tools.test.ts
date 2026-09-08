@@ -526,6 +526,7 @@ describe("Slack schedule tools", () => {
         teamId: TEST_TEAM_ID,
         channelId: "C123",
       },
+      threadTs: "1700000000.000",
     });
   });
 
