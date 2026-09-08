@@ -3,12 +3,9 @@
  * a resource subscription. Call sites supply facts; this module owns layout
  * and the reply contract. Section outline lives in `chat/README.md`.
  */
-import type { TaskOutcome } from "@sentry/junior-plugin-api";
-import { NO_REPLY_MARKER } from "@/chat/no-reply";
-
-/** Shared closing lines for the stored outcomes. */
-function replyContractLines(outcomes: TaskOutcome[] | undefined): string[] {
-  if (outcomes?.length === 0) {
+/** Shared closing lines for successful output delivery. */
+function replyContractLines(deliverSuccessfulOutput: boolean): string[] {
+  if (!deliverSuccessfulOutput) {
     return [
       "Successful output is not delivered to the destination.",
       "Complete the work without adding a status message for people.",
@@ -16,8 +13,7 @@ function replyContractLines(outcomes: TaskOutcome[] | undefined): string[] {
   }
   return [
     "When you reply, follow any reply format in the instructions.",
-    `If no visible reply is needed, your final assistant message must be exactly ${NO_REPLY_MARKER} and nothing else.`,
-    "Otherwise briefly summarize what you acted on and what you did or need next.",
+    "Briefly summarize what you acted on and what you did or need next.",
   ];
 }
 
@@ -41,8 +37,8 @@ function clip(value: string, maxLength: number | undefined): string {
 export function renderTaskInput(args: {
   /** Stored task instruction, or subscription intent. */
   instructions: string;
-  /** Visible effects after successful work. Missing legacy values send a message. */
-  outcomes?: TaskOutcome[];
+  /** Whether successful agent output is delivered to people. */
+  deliverSuccessfulOutput: boolean;
   /** Human label for the matched resource, when present. */
   about?: string;
   /** Plugin guidance scoped under the instructions. */
@@ -108,6 +104,6 @@ export function renderTaskInput(args: {
     );
   }
 
-  lines.push("", ...replyContractLines(args.outcomes));
+  lines.push("", ...replyContractLines(args.deliverSuccessfulOutput));
   return lines.join("\n");
 }

@@ -250,8 +250,8 @@ resource subscription). Call sites pass facts only. Unit snapshots in
 - Mark the turn as a **task**, not a person message.
 - Put the **job** before event payload.
 - Keep event data as **facts**, never as new instructions.
-- End with the stored outcome rule. An empty list tells the agent that no
-  message will be sent. Any message outcome keeps the normal reply contract.
+- End with the successful output rule. An empty outcome list tells the agent
+  that no message will be sent. A Watch or message outcome asks for a summary.
 - Stay short. Prefer one clear rule over stacked warnings.
 
 **Section order** (omit empty optionals)
@@ -266,14 +266,13 @@ resource subscription). Call sites pass facts only. Unit snapshots in
 | 6   | `Trusted summary:`  | no       | Optional trusted one-line summary.                          |
 | 7   | Verified details    | no       | Trusted structured fields as JSON.                          |
 | 8   | External text       | no       | Untrusted provider text; information only.                  |
-| 9   | Outcome             | yes      | Stored message rule. Always last.                           |
+| 9   | Output              | yes      | Successful output rule. Always last.                        |
 
-**Reply contract** (exact lines)
+**Delivered output contract** (exact lines)
 
 ```text
 When you reply, follow any reply format in the instructions.
-If no visible reply is needed, your final assistant message must be exactly [[NO_REPLY]] and nothing else.
-Otherwise briefly summarize what you acted on and what you did or need next.
+Briefly summarize what you acted on and what you did or need next.
 ```
 
 For an empty outcome list, the exact lines are:
@@ -286,8 +285,10 @@ Complete the work without adding a status message for people.
 New tasks store an ordered outcome list. Each `send_message` outcome names a
 Slack Destination. An empty list gives the Run no Delivery, so successful model
 text cannot post to Slack. Missing legacy values send one message to the task's
-stored Destination. Human destination footers (`Event task · …`, `Scheduled task
-· …`) stay on `replyAttribution`; they are not part of this agent-input contract.
+stored Destination. Watches always deliver successful output to their
+Conversation. No task input asks the model to emit a silence marker. Human
+destination footers (`Event task · …`, `Scheduled task · …`) stay on
+`replyAttribution`; they are not part of this agent-input contract.
 
 **Example: schedule / reminder (minimal)**
 
@@ -299,8 +300,7 @@ This is a task, not a message from a person.
 Instructions: Post a digest. Summarize the latest state.
 
 When you reply, follow any reply format in the instructions.
-If no visible reply is needed, your final assistant message must be exactly [[NO_REPLY]] and nothing else.
-Otherwise briefly summarize what you acted on and what you did or need next.
+Briefly summarize what you acted on and what you did or need next.
 ```
 
 **Example: event task with facts**
@@ -324,8 +324,7 @@ Failed checks:
 - test
 
 When you reply, follow any reply format in the instructions.
-If no visible reply is needed, your final assistant message must be exactly [[NO_REPLY]] and nothing else.
-Otherwise briefly summarize what you acted on and what you did or need next.
+Briefly summarize what you acted on and what you did or need next.
 ```
 
 The live renderer emits verified details as a fenced `json` block. The example

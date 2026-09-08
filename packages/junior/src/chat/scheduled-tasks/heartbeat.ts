@@ -51,7 +51,8 @@ function singleLineMetadataValue(value: string): string {
 function buildDispatchInput(task: ScheduledTask): string {
   return renderTaskInput({
     instructions: task.task.text,
-    outcomes: effectiveTaskOutcomes(task.outcomes, task.destination),
+    deliverSuccessfulOutput:
+      effectiveTaskOutcomes(task.outcomes, task.destination).length > 0,
   });
 }
 

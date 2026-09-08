@@ -51,6 +51,7 @@ export function renderResourceEventNotificationText(
   return renderTaskInput({
     about: subscription.label,
     instructions: subscription.intent,
+    deliverSuccessfulOutput: true,
     guidance,
     trustedSummary: event.trustedSummary,
     verifiedDetails: event.data,
@@ -159,7 +160,8 @@ export async function enqueueResourceEventNotification(args: {
   if (decision.status === "paused") {
     logInfo("resource_events.automated_turn_limit.paused", {
       conversationId: args.subscription.conversationId,
-      "app.automated_turn_limit.consecutive": decision.consecutiveAutomatedTurns,
+      "app.automated_turn_limit.consecutive":
+        decision.consecutiveAutomatedTurns,
       "app.automated_turn_limit.max": maxTurns,
       "app.resource_event.event_type": args.event.eventType,
       "app.resource_event.namespace": args.event.namespace,
