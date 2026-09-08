@@ -15,7 +15,7 @@ import {
   type PendingArchiveConversationUpdate,
 } from "./queries";
 import { conversationPath, NEW_CONVERSATION_PATH } from "./conversationRoutes";
-import { buildConversations } from "../format";
+import { buildConversations, getDashboardTimeZone } from "../format";
 import type { DashboardCoreData } from "../types";
 import type { Conversation } from "../types";
 import { cn, dashboardContainerClass } from "../styles";
@@ -100,7 +100,7 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
               conversations={pagedConversations}
               emptyLabel={feed.error?.message}
               loading={feed.isPending}
-              timeZone={props.data.config.timeZone}
+              timeZone={getDashboardTimeZone()}
             />
             <PagePagination
               className="pt-1"
@@ -132,7 +132,7 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
           onQueryChange={setQuery}
           query={query}
           selectedId={selectedId}
-          timeZone={props.data.config.timeZone}
+          timeZone={getDashboardTimeZone()}
         />
       </div>
       <section
