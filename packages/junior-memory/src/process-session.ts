@@ -22,9 +22,9 @@ import { MEMORY_KINDS, memoryRuntimeContextSchema } from "./types";
 import { capturedMemory, memoriesCapturedEvent } from "./events";
 
 const MEMORY_TOOL_NAMES = new Set([
+  "archiveMemory",
   "createMemory",
   "listMemories",
-  "removeMemory",
   "searchMemories",
 ]);
 const MEMORY_TASK_STATE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
