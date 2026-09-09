@@ -1,4 +1,4 @@
-import type { BriefInput } from "./input";
+import type { BriefInput } from "./schema";
 import type { GeneratedBrief } from "./generate";
 
 function list(items: string[], empty: string): string {
@@ -163,7 +163,7 @@ export function renderBriefMarkdown(args: {
     `- Coerced decision kinds: ${evidence.coercedDecisionKinds}`,
     `- Dropped attributions: ${evidence.droppedAttributionCount}`,
     `- Dropped runtime-marker items: ${evidence.droppedRuntimeMarkerCount}`,
-    `- Merged claim without evidence: ${evidence.claims.mergedWithoutEvidence ? "yes" : "no"}`,
+    `- Merged claim without evidence: ${evidence.mergedClaimWithoutEvidence ? "yes" : "no"}`,
     `- Cost: ${formatCost(args.totalCostUsd)}`,
     "- Dropped URLs:",
     ...dropped.map((url) => `  - ${url}`),
