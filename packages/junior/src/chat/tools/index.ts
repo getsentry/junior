@@ -21,6 +21,7 @@ import { createEventTaskTools } from "@/chat/tools/event-tasks";
 import { createScheduledTaskTools } from "@/chat/tools/scheduled-tasks";
 import { createSlackChannelJoinTool } from "@/chat/slack/tools/channel-join";
 import { createSlackChannelListMessagesTool } from "@/chat/slack/tools/channel-list-messages";
+import { createSlackConversationBriefSearchPort } from "@/chat/slack/tools/conversation-brief-search";
 import { createSlackConversationMessageSearchTool } from "@/chat/slack/tools/conversation-message-search";
 import { createSlackPublicSearchTool } from "@/chat/slack/tools/public-search";
 import { getSlackToolContext } from "@/chat/slack/tool-support/context";
@@ -132,6 +133,9 @@ export function createTools(
           }
         : { kind: "public" },
       context.conversationId,
+      slackContext
+        ? createSlackConversationBriefSearchPort(slackContext.teamId)
+        : undefined,
     );
   }
   if (context.supportsImageInput) {

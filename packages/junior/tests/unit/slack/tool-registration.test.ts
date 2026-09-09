@@ -166,6 +166,9 @@ describe("Slack tool registration", () => {
     expect(tools.searchConversationMessages?.source?.id).toBe("conversations");
     expect(tools.searchConversationBriefs?.exposure).toBe("deferred");
     expect(tools.searchConversationBriefs?.source?.id).toBe("conversations");
+    expect(
+      tools.searchConversationBriefs?.inputSchema.properties,
+    ).toHaveProperty("channel_id");
     expect(tools.searchConversationEvents?.exposure).toBe("deferred");
     expect(tools.searchConversationEvents?.source?.id).toBe("conversations");
     expect(tools.stopWatchingResources?.exposure).toBe("deferred");
@@ -196,6 +199,9 @@ describe("Slack tool registration", () => {
     );
 
     expect(tools).toHaveProperty("searchConversationBriefs");
+    expect(
+      tools.searchConversationBriefs?.inputSchema.properties,
+    ).not.toHaveProperty("channel_id");
     expect(tools).not.toHaveProperty("searchConversationMessages");
   });
 

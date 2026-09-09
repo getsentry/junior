@@ -2,7 +2,9 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { ConversationBriefSearchScope } from "@/chat/briefs/search";
 import { appendConversationBrief } from "@/chat/briefs/store";
 import { closeDb, getConversationStore, getDb } from "@/chat/db";
-import { setDashboardConversationLinkOptions } from "@/chat/slack/dashboard-link";
+import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
+import { parseSlackTeamId } from "@/chat/slack/ids";
+import { createSlackConversationBriefSearchPort } from "@/chat/slack/tools/conversation-brief-search";
 import { createSearchConversationBriefsTool } from "@/chat/tools/search-conversation-briefs";
 import { conversationBriefFixture } from "../fixtures/conversation-brief";
 import {
@@ -16,6 +18,11 @@ const scope: ConversationBriefSearchScope = {
   provider: "slack",
   providerTenantId: "T123",
 };
+const teamId = parseSlackTeamId(scope.providerTenantId);
+if (!teamId) {
+  throw new Error("test Slack team id did not parse");
+}
+const slackProvider = createSlackConversationBriefSearchPort(teamId);
 
 async function executeTool<TInput>(tool: any, input: TInput) {
   if (typeof tool?.execute !== "function") {
@@ -77,7 +84,9 @@ describe("searchConversationBriefs", () => {
     const tool = createSearchConversationBriefsTool(
       scope,
       "slack:CREQUEST:1700000000.900000",
+      slackProvider,
     );
+    expect(tool.inputSchema.properties).toHaveProperty("channel_id");
     const result = await executeTool(tool, {
       after: null,
       annotation: null,
@@ -130,8 +139,19 @@ describe("searchConversationBriefs", () => {
       { kind: "public" },
       "local:test:current",
     );
-    await expect(
-      executeTool(publicTool, { channel_id: "CARCHIVE" }),
-    ).rejects.toThrow("channel_id is available only in Slack searches");
+    expect(publicTool.inputSchema.properties).not.toHaveProperty("channel_id");
+    expect(() =>
+      publicTool.prepareArguments({ channel_id: "CARCHIVE" }),
+    ).toThrow("Invalid tool arguments");
+    const publicResult = await executeTool(publicTool, {
+      query: "launch decision",
+    });
+    expect(publicResult.matches[0]).toMatchObject({
+      conversation_id: conversationId,
+      dashboard_url: `https://junior.example.com/conversations/${encodeURIComponent(conversationId)}`,
+    });
+    expect(publicResult.matches[0]).not.toHaveProperty("channel_id");
+    expect(publicResult.matches[0]).not.toHaveProperty("channel_name");
+    expect(publicResult.matches[0]).not.toHaveProperty("permalink");
   });
 });

@@ -2,24 +2,29 @@ import { z } from "zod";
 import { briefOutcomeStatusSchema, briefLinkSchema } from "@/chat/briefs/brief";
 import type {
   ConversationBriefSearchFilters,
+  ConversationBriefSearchResult,
   ConversationBriefSearchScope,
 } from "@/chat/briefs/search";
 import { CONVERSATIONS_TOOL_SOURCE } from "@/chat/conversations/tool-source";
+import { getDashboardConversationLink } from "@/chat/dashboard-link";
 import { getConversationBriefSearchStore } from "@/chat/db";
-import { parseSlackThreadId } from "@/chat/slack/context";
-import { getDashboardConversationLink } from "@/chat/slack/dashboard-link";
-import { parseSlackTeamId } from "@/chat/slack/ids";
-import { getSlackMessagePermalink } from "@/chat/slack/outbound";
-import {
-  resolveSlackChannelRef,
-  slackChannelRefParam,
-} from "@/chat/slack/tool-support/channel-target";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 
 const DEFAULT_LIMIT = 10;
 const MAX_LIMIT = 25;
+
+/** Provider-owned capabilities for filtering and describing Brief search matches. */
+export interface ConversationBriefSearchPort {
+  channelFilterSchema: z.ZodString;
+  describeMatch(match: ConversationBriefSearchResult): Promise<{
+    channel_id?: string;
+    channel_name?: string;
+    permalink?: string;
+  }>;
+  resolveChannel(input: string): Promise<string>;
+}
 
 const conversationBriefSearchOutputSchema = juniorToolOutputSchema.extend({
   after: z.string().datetime().optional(),
@@ -62,15 +67,15 @@ function parseTimestamp(
 }
 
 async function resolveSearchFilters(
-  scope: ConversationBriefSearchScope,
   input: {
     after?: string | null;
     annotation?: string | null;
     before?: string | null;
-    channel_id?: string | null;
+    channel_id?: unknown;
     query?: string | null;
     status?: z.output<typeof briefOutcomeStatusSchema> | null;
   },
+  provider?: ConversationBriefSearchPort,
 ): Promise<ConversationBriefSearchFilters> {
   const query = input.query?.trim() || undefined;
   const annotation = input.annotation?.trim() || undefined;
@@ -78,24 +83,13 @@ async function resolveSearchFilters(
   const beforeMs = parseTimestamp("before", input.before);
   let channelId: string | undefined;
 
-  if (input.channel_id != null && input.channel_id.trim() !== "") {
-    if (scope.kind !== "public_provider_tenant") {
+  if (typeof input.channel_id === "string" && input.channel_id.trim() !== "") {
+    if (!provider) {
       throw new ToolInputError(
-        "channel_id is available only in Slack searches",
+        "channel_id is not available in this conversation.",
       );
     }
-    const teamId = parseSlackTeamId(scope.providerTenantId);
-    if (!teamId) {
-      throw new ToolInputError(
-        "Cannot search Briefs without a valid Slack workspace id.",
-      );
-    }
-    const target = await resolveSlackChannelRef({
-      field: "channel_id",
-      value: input.channel_id,
-      teamId,
-    });
-    channelId = target.channelId;
+    channelId = await provider.resolveChannel(input.channel_id);
   }
 
   if (afterMs !== undefined && beforeMs !== undefined && afterMs >= beforeMs) {
@@ -115,6 +109,7 @@ async function resolveSearchFilters(
 export function createSearchConversationBriefsTool(
   scope: ConversationBriefSearchScope,
   currentConversationId: string,
+  provider?: ConversationBriefSearchPort,
 ) {
   return zodTool({
     description:
@@ -151,12 +146,11 @@ export function createSearchConversationBriefsTool(
           .nullable()
           .describe("Include Briefs updated before this timestamp.")
           .optional(),
-        channel_id: slackChannelRefParam
-          .nullable()
-          .describe(
-            "Slack channel filter. Available only in Slack conversations.",
-          )
-          .optional(),
+        ...(provider
+          ? {
+              channel_id: provider.channelFilterSchema.nullable().optional(),
+            }
+          : undefined),
         limit: z
           .number()
           .int()
@@ -183,7 +177,7 @@ export function createSearchConversationBriefsTool(
       .strict(),
     outputSchema: conversationBriefSearchOutputSchema,
     execute: async (input) => {
-      const filters = await resolveSearchFilters(scope, input);
+      const filters = await resolveSearchFilters(input, provider);
       const matches = await getConversationBriefSearchStore().search({
         currentConversationId,
         filters,
@@ -192,16 +186,8 @@ export function createSearchConversationBriefsTool(
       });
       const outputMatches = await Promise.all(
         matches.map(async (match) => {
-          const reference = parseSlackThreadId(match.conversationId);
-          const slackReference =
-            reference && reference.channelId === match.providerDestinationId
-              ? reference
-              : undefined;
-          const permalink = slackReference
-            ? await getSlackMessagePermalink({
-                channelId: slackReference.channelId,
-                messageTs: slackReference.threadTs,
-              })
+          const providerFields = provider
+            ? await provider.describeMatch(match)
             : undefined;
           const dashboardUrl = getDashboardConversationLink(
             match.conversationId,
@@ -215,14 +201,8 @@ export function createSearchConversationBriefsTool(
             excerpt: match.excerpt,
             links: match.links,
             ...(match.title ? { title: match.title } : undefined),
-            ...(slackReference
-              ? { channel_id: slackReference.channelId }
-              : undefined),
-            ...(slackReference && match.channelName
-              ? { channel_name: match.channelName }
-              : undefined),
             ...(dashboardUrl ? { dashboard_url: dashboardUrl } : undefined),
-            ...(permalink ? { permalink } : undefined),
+            ...providerFields,
           };
         }),
       );

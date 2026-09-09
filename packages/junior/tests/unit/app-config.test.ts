@@ -11,7 +11,7 @@ import {
   setConfigDefaults,
 } from "@/chat/configuration/defaults";
 import { getPlugins, setPlugins } from "@/chat/plugins/agent-hooks";
-import { setDashboardConversationLinkOptions } from "@/chat/slack/dashboard-link";
+import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
 import { buildSlackReplyFooter } from "@/chat/slack/footer";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import { validatePluginRegistrations } from "@/chat/plugins/validation";
