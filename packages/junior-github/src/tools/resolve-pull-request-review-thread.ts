@@ -246,9 +246,14 @@ export function createGitHubResolvePullRequestReviewThreadTool(
         .passthrough();
       const resolveResult = resolveResultSchema.safeParse(resolvePayload);
       if (!resolveResult.success) {
-        throw new PluginToolInputError("GitHub review thread was not found.", {
-          cause: resolveResult.error,
-        });
+        // At this point the thread was found and ownership-verified, and
+        // the resolve mutation was already sent, so this is not a "not
+        // found" case: the mutation may have succeeded despite the
+        // unexpected response shape.
+        throw new Error(
+          "GitHub review thread resolution returned an unexpected response shape.",
+          { cause: resolveResult.error },
+        );
       }
       const resolved = resolveResult.data.data.resolveReviewThread.thread;
       if (resolved.id !== thread.id || !resolved.isResolved) {
