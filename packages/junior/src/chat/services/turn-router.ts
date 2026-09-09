@@ -142,7 +142,6 @@ function buildClassifierSystemPrompt(
     "",
     "Return JSON only with reasoning_level, profile, confidence, and reason.",
     "confidence must be a number from 0 to 1, not a word label.",
-    "Keep reason to a short phrase, 8 words or fewer, so the full response fits the output budget.",
   ].join("\n");
 }
 
