@@ -42,6 +42,7 @@ the Conversation Location without giving the Run Delivery to that Location.
 - `conversations/`: baseline Conversation storage, Message history, and web
   input. HTTP routes call this code. They do not own another Conversation or
   Turn.
+- `briefs/`: durable, versioned Conversation Brief generation and storage.
 - `agent-dispatch/`: durable task and plugin dispatch authority, mailbox
   adaptation, and plugin-facing outcome projection.
 - `agent-invocations/`: durable parent/child bindings, delegated work, and

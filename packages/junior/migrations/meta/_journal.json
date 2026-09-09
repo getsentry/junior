@@ -281,6 +281,13 @@
       "when": 1788535952747,
       "tag": "0039_attachment_provider",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1788952455016,
+      "tag": "0040_conversation_briefs",
+      "breakpoints": true
     }
   ]
 }

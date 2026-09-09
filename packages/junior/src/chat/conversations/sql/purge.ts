@@ -4,6 +4,7 @@ import type { JuniorDestinationVisibility } from "@/db/schema/destinations";
 import { requestAttachmentDeletion } from "@/chat/attachments/store";
 import {
   juniorConversationEvents,
+  juniorConversationBriefs,
   juniorConversations,
   juniorDestinations,
   juniorAgentBindings,
@@ -291,12 +292,21 @@ export async function purgeConversationTree(
               ),
             );
           await requestAttachmentDeletion(executor, ids, args.nowMs);
+          const scrubMetadata = args.retention
+            ? !isPublic
+            : resolvedScrubMetadata;
+          if (scrubMetadata) {
+            await executor
+              .db()
+              .delete(juniorConversationBriefs)
+              .where(inArray(juniorConversationBriefs.conversationId, ids));
+          }
           await executor
             .db()
             .update(juniorConversations)
             .set({
               transcriptPurgedAt: new Date(args.nowMs),
-              ...((args.retention ? !isPublic : resolvedScrubMetadata)
+              ...(scrubMetadata
                 ? { title: null, channelName: null, actor: null }
                 : undefined),
             })

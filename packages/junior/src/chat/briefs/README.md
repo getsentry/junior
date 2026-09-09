@@ -1,6 +1,7 @@
 # Briefs
 
-This module owns the provider-neutral Brief shape, generator input, local snapshot adapter, evidence checks, and Markdown rendering.
+This module owns the provider-neutral Brief shape, generator input adapters,
+evidence checks, version storage, post-Turn generation, and Markdown rendering.
 
 A Brief is a compact record of a Conversation. It keeps a deterministic record, intent, outcome, decisions, open decisions, durable facts, evidence links, and keywords after the transcript expires.
 
@@ -26,6 +27,28 @@ The default prompt is in `prompt.ts`. The package uses tsdown, which does not co
 
 A run without `--model` resolves the app's configured default model when the run starts. The default model gives more accurate decisions than the fast model in production samples.
 
+## Storage and generation
+
+`junior_conversation_briefs` stores append-only versions. Each completed Turn
+can own only one version. The task allocates the next version while the
+Conversation row is locked. A retry with the same `turnId` returns the stored
+version.
+
+The core `briefs.updateBrief` task runs after completed Slack, web, and local
+Turns with a user instruction. It skips child Conversations. The task uses the
+configured default structured model. It emits `briefs/brief_updated` with the
+version, model id, item counts, and model cost. The event cost appears in the
+Conversation auxiliary-cost breakdown under the `briefs` namespace.
+
+A public Brief survives transcript purge. A non-public root loses every Brief
+in its Conversation tree when purge scrubs private metadata. This rule prevents
+private derived content from outliving the transcript. Later readers must apply
+the Conversation privacy gate before they expose a current private Brief.
+
+The SQL and snapshot input adapters use the same reporting-event-to-entry
+mapping. The SQL adapter also reads code changes and `resource_link`
+annotations from their durable stores.
+
 ## Snapshots
 
 A version 1 snapshot contains the conversation detail report, every older event page, and a code change list. `junior briefs pull` follows every `previousCursor` and writes the complete report without a token. The current detail API does not include code changes, so pulled snapshots start with an empty code change list. A local fixture can add code changes before replay.
@@ -34,4 +57,4 @@ A version 1 snapshot contains the conversation detail report, every older event 
 
 The adapter does not generate a Brief from redacted or expired transcript content.
 
-This module does not own SQL storage, version allocation, purge policy, privacy gates, search scope, or post-turn scheduling. Those boundaries must preserve these evidence rules when they call the generator.
+This module does not own API privacy gates or search scope. Those boundaries must preserve these evidence and purge rules.

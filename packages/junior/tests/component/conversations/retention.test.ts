@@ -13,6 +13,7 @@ import {
 import {
   juniorAttachments,
   juniorConversationEvents,
+  juniorConversationBriefs,
   juniorConversations,
   juniorDestinations,
   juniorAgentBindings,
@@ -857,6 +858,52 @@ describe("retention purge job", () => {
       lastActivityAtMs: BASE_MS,
       title: "Secret title",
     });
+    const brief = {
+      schemaVersion: 1 as const,
+      record: {
+        startedAt: new Date(BASE_MS).toISOString(),
+        lastActivityAt: new Date(BASE_MS).toISOString(),
+        durationMs: 0,
+        participants: [{ name: "Test User", messages: 1 }],
+        userMessages: 1,
+        assistantMessages: 1,
+        toolResults: 0,
+        events: 0,
+        turns: 1,
+        codeChanges: [],
+      },
+      summary: "Retention Brief",
+      intent: "Verify the purge rule.",
+      outcome: { status: "done" as const, text: "The rule was verified." },
+      decisions: [],
+      openDecisions: [],
+      facts: [],
+      links: [],
+      keywords: ["retention"],
+    };
+    await fixture.sql
+      .db()
+      .insert(juniorConversationBriefs)
+      .values([
+        {
+          conversationId: "pub",
+          version: 1,
+          turnId: "pub-turn",
+          throughSeq: 0,
+          content: brief,
+          searchText: "Public retention Brief",
+          modelId: "test-model",
+        },
+        {
+          conversationId: "priv",
+          version: 1,
+          turnId: "priv-turn",
+          throughSeq: 0,
+          content: brief,
+          searchText: "Private retention Brief",
+          modelId: "test-model",
+        },
+      ]);
 
     await runRetentionPurge(fixture.sql, { nowMs: BASE_MS + 100 * DAY_MS });
 
@@ -871,6 +918,10 @@ describe("retention purge job", () => {
     expect(priv.title).toBe(null);
     expect(priv.channelName).toBe(null);
     expect(priv.actor).toBe(null);
+    // Public Briefs survive expiry. Private Briefs are scrubbed with metadata.
+    await expect(
+      fixture.sql.db().select().from(juniorConversationBriefs),
+    ).resolves.toMatchObject([{ conversationId: "pub", version: 1 }]);
     // The metadata row itself survives the purge.
     expect(priv.conversationId).toBe("priv");
   });
