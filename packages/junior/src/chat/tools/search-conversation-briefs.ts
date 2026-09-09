@@ -1,13 +1,17 @@
 import { z } from "zod";
-import { briefOutcomeStatusSchema, briefLinkSchema } from "@/chat/briefs/brief";
-import type {
-  ConversationBriefSearchFilters,
-  ConversationBriefSearchResult,
-  ConversationBriefSearchScope,
+import {
+  briefLinkSchema,
+  briefOutcomeStatusSchema,
+} from "@/chat/briefs/schema";
+import {
+  searchConversationBriefs,
+  type ConversationBriefSearchFilters,
+  type ConversationBriefSearchResult,
+  type ConversationBriefSearchScope,
 } from "@/chat/briefs/search";
 import { CONVERSATIONS_TOOL_SOURCE } from "@/chat/conversations/tool-source";
 import { getDashboardConversationLink } from "@/chat/dashboard-link";
-import { getConversationBriefSearchStore } from "@/chat/db";
+import { getDb } from "@/chat/db";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
@@ -178,7 +182,7 @@ export function createSearchConversationBriefsTool(
     outputSchema: conversationBriefSearchOutputSchema,
     execute: async (input) => {
       const filters = await resolveSearchFilters(input, provider);
-      const matches = await getConversationBriefSearchStore().search({
+      const matches = await searchConversationBriefs(getDb(), {
         currentConversationId,
         filters,
         limit: input.limit ?? DEFAULT_LIMIT,
