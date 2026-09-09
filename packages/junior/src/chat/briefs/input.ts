@@ -19,6 +19,9 @@ export const briefCodeChangeSchema = z
     title: z.string().trim().min(1).max(400).optional(),
     url: z.string().url().max(2_048),
     state: codeChangeStateSchema,
+    openedAt: z.string().datetime().optional(),
+    mergedAt: z.string().datetime().optional(),
+    closedAt: z.string().datetime().optional(),
   })
   .strict();
 

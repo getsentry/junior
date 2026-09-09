@@ -2,18 +2,24 @@
 
 This module owns the provider-neutral Brief shape, generator input, local snapshot adapter, evidence checks, and Markdown rendering.
 
-A Brief is a compact record of a Conversation. It keeps intent, outcome, decisions, open decisions, durable facts, evidence links, and keywords after the transcript expires.
+A Brief is a compact record of a Conversation. It keeps a deterministic record, intent, outcome, decisions, open decisions, durable facts, evidence links, and keywords after the transcript expires.
+
+The record comes from `BriefInput`, not from the model. It contains the activity range, duration, message and Turn counts, named participants, Location, and code changes with their states and known dates. Each generated version covers entries through its `throughIndex`.
 
 ## Invariants
 
 - `generateBrief` is pure. Callers supply the input, previous Brief, prompt, model id, and structured completion function.
 - Code change and resource links come from trusted input. The model cannot add them.
-- A model URL is kept only when it matches deterministic evidence or when the exact URL occurs in an input entry or the previous Brief.
+- A model URL is normalized before its evidence check. Normalization removes common trailing punctuation, a trailing `/http` or `/https` fragment, and a trailing slash. The normalized URL is kept only when it matches deterministic evidence or occurs verbatim in an input entry or the previous Brief.
 - Code changes and resources take priority when the 40-link cap applies.
 - User and assistant text is limited to 4,000 characters per entry. The 60,000-character input budget keeps these messages before tool results and drops the oldest message only when the messages alone exceed the budget.
 - Tool result text is limited to 1,500 characters per entry. Newest tool results fill the remaining budget. Retained entries keep their original order, and the prompt reports omitted message and tool-result counts.
-- Output caps and normalization apply after model output is parsed.
-- `searchText` contains Brief content and link labels. It does not contain transcript text that the Brief omitted.
+- Core drops decision and open-decision attribution unless it matches a named participant, without case differences, or `Junior`.
+- Core drops facts, decisions, and open decisions that contain Junior runtime markers. The evidence check counts dropped attribution and marker items.
+- Core reports a merged claim in the summary or outcome when no code change or resource has a `merged` state. It does not rewrite model prose.
+- Output caps and normalization apply after model output is parsed. Summary, intent, and outcome truncation uses a sentence boundary when one occurs after 60% of the limit.
+- Output depth follows the record's user-message count. Small Briefs have at most 3 decisions, 2 open decisions, 5 facts, and 5 keywords. Medium Briefs have at most 8, 5, 10, and 8. Large Briefs have at most 20, 10, 15, and 12. Small means at most 3 user messages. Medium means at most 12.
+- `searchText` contains Brief content, link labels, participant names, and code change Repository numbers and states. It does not contain transcript text that the Brief omitted.
 
 The default prompt is in `prompt.ts`. The package uses tsdown, which does not copy Markdown assets. Keeping the prompt in a TypeScript string makes the source and packaged CLI use the same text without a file-system lookup.
 

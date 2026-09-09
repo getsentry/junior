@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { generateBrief } from "@/chat/briefs/generate";
 import {
   briefInputFromSnapshot,
   createConversationSnapshot,
@@ -101,7 +102,7 @@ const olderPage: ConversationEventPage = {
 };
 
 describe("Brief snapshot", () => {
-  it("projects detail and event pages into ordered Brief input", () => {
+  it("projects detail and event pages into a deterministic Brief record", async () => {
     const snapshot = createConversationSnapshot({
       detail,
       eventPages: [olderPage],
@@ -113,15 +114,20 @@ describe("Brief snapshot", () => {
           title: "Ship 1.2.3",
           url: "https://github.com/getsentry/junior/pull/42",
           state: "merged",
+          openedAt: "2025-12-31T23:00:00.000Z",
+          mergedAt: "2026-01-01T00:00:04.000Z",
         },
       ],
     });
 
-    expect(briefInputFromSnapshot(snapshot)).toMatchInlineSnapshot(`
+    const input = briefInputFromSnapshot(snapshot);
+    expect(input).toMatchInlineSnapshot(`
       {
         "codeChanges": [
           {
+            "mergedAt": "2026-01-01T00:00:04.000Z",
             "number": 42,
+            "openedAt": "2025-12-31T23:00:00.000Z",
             "repository": "getsentry/junior",
             "state": "merged",
             "title": "Ship 1.2.3",
@@ -171,5 +177,47 @@ describe("Brief snapshot", () => {
         "visibility": "public",
       }
     `);
+
+    const generation = await generateBrief({
+      input,
+      throughIndex: 5,
+      prompt: "Write a Brief.",
+      model: "test/model",
+      completeObject: async () => ({
+        object: {
+          summary: "Version 1.2.3 was released.",
+          intent: "Ship version 1.2.3.",
+          outcome: { status: "done", text: "The release is complete." },
+          decisions: [],
+          openDecisions: [],
+          facts: ["The version is 1.2.3."],
+          keywords: ["release"],
+          urls: [],
+        },
+      }),
+    });
+
+    expect(generation.brief.record).toEqual({
+      startedAt: "2026-01-01T00:00:00.000Z",
+      lastActivityAt: "2026-01-01T00:00:03.000Z",
+      durationMs: 3_000,
+      participants: [{ name: "Ada Lovelace", messages: 1 }],
+      userMessages: 1,
+      assistantMessages: 1,
+      toolResults: 1,
+      turns: 1,
+      location: { provider: "slack", channelName: "builds" },
+      codeChanges: [
+        {
+          repository: "getsentry/junior",
+          number: 42,
+          title: "Ship 1.2.3",
+          url: "https://github.com/getsentry/junior/pull/42",
+          state: "merged",
+          openedAt: "2025-12-31T23:00:00.000Z",
+          mergedAt: "2026-01-01T00:00:04.000Z",
+        },
+      ],
+    });
   });
 });

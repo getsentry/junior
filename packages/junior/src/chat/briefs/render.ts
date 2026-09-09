@@ -13,6 +13,21 @@ function formatCost(costUsd: number | undefined): string {
   return costUsd === undefined ? "not reported" : `$${costUsd.toFixed(6)}`;
 }
 
+function formatCount(count: number, noun: string): string {
+  return `${count} ${noun}${count === 1 ? "" : "s"}`;
+}
+
+function formatRecordCodeChange(
+  change: GeneratedBrief["brief"]["record"]["codeChanges"][number],
+): string {
+  const dates = [
+    change.openedAt ? `opened ${change.openedAt}` : undefined,
+    change.mergedAt ? `merged ${change.mergedAt}` : undefined,
+    change.closedAt ? `closed ${change.closedAt}` : undefined,
+  ].filter((value): value is string => Boolean(value));
+  return `[${escapeLabel(`${change.repository}#${change.number}${change.title ? ` · ${change.title}` : ""}`)}](${change.url}) · ${change.state}${dates.length ? ` · ${dates.join(" · ")}` : ""}`;
+}
+
 /** Render the final Brief and its local evidence check as readable Markdown. */
 export function renderBriefMarkdown(args: {
   generation: GeneratedBrief;
@@ -27,10 +42,39 @@ export function renderBriefMarkdown(args: {
       `[${escapeLabel(link.label)}](${link.url}) · ${link.kind}${link.status ? ` · ${link.status}` : ""}`,
   );
   const dropped = evidence.droppedUrls.length
-    ? evidence.droppedUrls.map((url) => `\`${url}\``)
+    ? evidence.droppedUrls.map(
+        (url) => `raw \`${url.raw}\` · normalized \`${url.normalized}\``,
+      )
     : ["None"];
+  const record = brief.record;
+  const location = record.location
+    ? `${record.location.provider}${record.location.channelName ? ` · ${record.location.channelName}` : ""}`
+    : "None";
   return [
     `# ${args.input.title ?? `Brief ${args.input.conversationId}`}`,
+    "",
+    "## Record",
+    "",
+    `- Started: ${record.startedAt}`,
+    `- Last activity: ${record.lastActivityAt}`,
+    `- Duration: ${record.durationMs} ms`,
+    `- Location: ${location}`,
+    `- Messages: ${formatCount(record.userMessages, "user message")} · ${formatCount(record.assistantMessages, "assistant message")} · ${formatCount(record.toolResults, "tool result")}`,
+    `- Turns: ${record.turns ?? "not reported"}`,
+    "- Participants:",
+    ...list(
+      record.participants.map(
+        (participant) =>
+          `${participant.name} · ${participant.messages} message${participant.messages === 1 ? "" : "s"}`,
+      ),
+      "None.",
+    )
+      .split("\n")
+      .map((line) => `  ${line}`),
+    "- Code changes:",
+    ...list(record.codeChanges.map(formatRecordCodeChange), "None.")
+      .split("\n")
+      .map((line) => `  ${line}`),
     "",
     "## Summary",
     "",
@@ -87,6 +131,9 @@ export function renderBriefMarkdown(args: {
     `- Code changes: ${evidence.codeChangeCount}`,
     `- Resources: ${evidence.resourceCount}`,
     `- Model URLs: ${evidence.keptUrlCount} kept of ${evidence.citedUrlCount}`,
+    `- Dropped attributions: ${evidence.droppedAttributionCount}`,
+    `- Dropped runtime-marker items: ${evidence.droppedRuntimeMarkerCount}`,
+    `- Merged claim without evidence: ${evidence.claims.mergedWithoutEvidence ? "yes" : "no"}`,
     `- Cost: ${formatCost(args.totalCostUsd)}`,
     "- Dropped URLs:",
     ...dropped.map((url) => `  - ${url}`),
