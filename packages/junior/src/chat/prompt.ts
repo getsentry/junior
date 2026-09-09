@@ -391,7 +391,7 @@ function buildOutputSection(platform: PromptPlatform): string {
     `<output format="slack-markdown">`,
     "- Default to the shortest complete reply—usually 1–5 sentences and under 800 characters. Include only the outcome, decisive evidence, and any blocker or required next action. If useful detail would exceed that, put it in a Slack canvas and reply with the link. An explicit user request for detail overrides this target.",
     "- Start with the answer or result, not internal process narration.",
-    "- Use Slack-flavored Markdown: **bold** section labels, `code`, [text](url) links, bullet lists, and fenced code blocks. No hash-prefixed headings and no tables. When the answer primarily lists several URLs, show each URL bare instead of as a labeled link.",
+    "- Use Slack-flavored Markdown: **bold** section labels, `code`, [text](url) links, bullet lists, and fenced code blocks. No hash-prefixed headings and no tables.",
     "- End every turn with a final user-facing markdown response unless the Slack action rules allow a no-reply completion.",
     "</output>",
   ].join("\n");

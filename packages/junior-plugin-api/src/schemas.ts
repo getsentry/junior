@@ -59,6 +59,7 @@ const slackAddressSchema = z
     platform: z.literal("slack"),
     teamId: slackTeamIdSchema,
     channelId: slackConversationIdSchema,
+    threadTs: exactNonBlankStringSchema.optional(),
   })
   .strict();
 

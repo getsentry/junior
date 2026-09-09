@@ -111,7 +111,7 @@ export async function ingestEventTasks(
           input: eventInput(task, event),
           metadata: { eventTaskId: task.id },
           replyAttribution: replyAttribution(task),
-          outcomes: task.outcomes,
+          outcomes: effectiveTaskOutcomes(task.outcomes, task.destination),
         },
       });
       if (dispatch.status === "created") {

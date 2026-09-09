@@ -62,6 +62,9 @@ export function createSlackDispatchTurnRunner(options: {
       raw: {
         channel: dispatch.destination.channelId,
         team: dispatch.destination.teamId,
+        ...(dispatch.destination.threadTs
+          ? { thread_ts: dispatch.destination.threadTs }
+          : undefined),
       },
       author: {
         userId: dispatch.actor.name,

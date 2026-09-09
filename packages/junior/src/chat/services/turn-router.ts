@@ -18,6 +18,7 @@ import {
   withSpan,
   type LogContext,
 } from "@/chat/logging";
+import { ProviderError } from "@/chat/services/provider-error";
 
 const CLASSIFIER_CONFIDENCE_THRESHOLD = 0.75;
 const MAX_ROUTER_CONTEXT_CHARS = 8_000;
@@ -329,6 +330,19 @@ function applyProfileReasoningOverride(
   };
 }
 
+/**
+ * The fast classifier model occasionally returns a malformed object
+ * (`ProviderError` kind `invalid_response`, e.g. the AI SDK's
+ * `NoObjectGeneratedError`) even though a retry usually succeeds. Give it
+ * one retry before falling back to `defaultProfile`; any other error kind
+ * still falls back immediately.
+ */
+const CLASSIFIER_MAX_ATTEMPTS = 2;
+
+function isRetryableClassifierError(error: unknown): boolean {
+  return error instanceof ProviderError && error.kind === "invalid_response";
+}
+
 async function classifyTurn(args: {
   completeObject: Parameters<typeof selectTurnRoute>[0]["completeObject"];
   defaultProfile: ModelProfile;
@@ -337,62 +351,79 @@ async function classifyTurn(args: {
   profiles: Readonly<Record<string, ModelProfileConfig>>;
   prompt: string;
 }): Promise<TurnRoute> {
-  try {
-    const schema = createTurnRouteSchema(args.profiles);
-    const result = await args.completeObject({
-      modelId: args.fastModelId,
-      schema,
-      maxTokens: 140,
-      metadata: args.metadata,
-      prompt: args.prompt,
-      thinkingLevel: "low",
-      system: buildClassifierSystemPrompt(
-        args.profiles,
-        Object.keys(args.profiles),
-        args.defaultProfile,
-      ),
-      temperature: 0,
-      promptName: "junior.thinking_route",
-    });
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= CLASSIFIER_MAX_ATTEMPTS; attempt++) {
+    try {
+      const schema = createTurnRouteSchema(args.profiles);
+      const result = await args.completeObject({
+        modelId: args.fastModelId,
+        schema,
+        // Sentry data showed successful classifier calls routinely landing at
+        // 120-140 output tokens against the old 140-token cap, with roughly
+        // half of all calls truncated mid-object (NoObjectGeneratedError).
+        // 5000 removes the cap as a realistic failure mode; the schema is
+        // small, so this does not meaningfully change normal output size.
+        maxTokens: 5000,
+        metadata: args.metadata,
+        prompt: args.prompt,
+        thinkingLevel: "low",
+        system: buildClassifierSystemPrompt(
+          args.profiles,
+          Object.keys(args.profiles),
+          args.defaultProfile,
+        ),
+        temperature: 0,
+        promptName: "junior.thinking_route",
+      });
 
-    const parsed = schema.parse(result.object);
-    const reason = parsed.reason.trim();
+      const parsed = schema.parse(result.object);
+      const reason = parsed.reason.trim();
 
-    if (parsed.confidence < CLASSIFIER_CONFIDENCE_THRESHOLD) {
+      if (parsed.confidence < CLASSIFIER_CONFIDENCE_THRESHOLD) {
+        return {
+          confidence: parsed.confidence,
+          ...(result.costUsd !== undefined
+            ? { costUsd: result.costUsd }
+            : undefined),
+          profile: args.defaultProfile,
+          reasoningLevel: CLASSIFIER_FALLBACK_REASONING_LEVEL,
+          reason: `low_confidence_medium_default:${reason}`,
+          source: "router",
+        };
+      }
+
       return {
         confidence: parsed.confidence,
         ...(result.costUsd !== undefined
           ? { costUsd: result.costUsd }
           : undefined),
-        profile: args.defaultProfile,
-        reasoningLevel: CLASSIFIER_FALLBACK_REASONING_LEVEL,
-        reason: `low_confidence_medium_default:${reason}`,
+        profile: parsed.profile,
+        reasoningLevel: parsed.reasoning_level,
+        reason,
         source: "router",
       };
+    } catch (error) {
+      lastError = error;
+      if (
+        attempt < CLASSIFIER_MAX_ATTEMPTS &&
+        isRetryableClassifierError(error)
+      ) {
+        continue;
+      }
+      break;
     }
-
-    return {
-      confidence: parsed.confidence,
-      ...(result.costUsd !== undefined
-        ? { costUsd: result.costUsd }
-        : undefined),
-      profile: parsed.profile,
-      reasoningLevel: parsed.reasoning_level,
-      reason,
-      source: "router",
-    };
-  } catch (error) {
-    logWarn("turn.router.classifier.failed", {
-      "exception.message":
-        error instanceof Error ? error.message : String(error),
-    });
-    return {
-      profile: args.defaultProfile,
-      reasoningLevel: CLASSIFIER_FALLBACK_REASONING_LEVEL,
-      reason: "classifier_error_default",
-      source: "router",
-    };
   }
+
+  logWarn("turn.router.classifier.failed", {
+    "exception.message":
+      lastError instanceof Error ? lastError.message : String(lastError),
+  });
+  return {
+    profile: args.defaultProfile,
+    reasoningLevel: CLASSIFIER_FALLBACK_REASONING_LEVEL,
+    reason: "classifier_error_default",
+    source: "router",
+  };
 }
 
 /** Convert a routing bucket into the Pi Agent reasoning setting for a main turn. */

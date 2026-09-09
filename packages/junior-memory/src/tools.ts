@@ -259,7 +259,7 @@ const createMemoryInputSchema = z
   })
   .strict();
 
-const removeMemoryInputSchema = z
+const archiveMemoryInputSchema = z
   .object({
     id: z
       .string()
@@ -493,7 +493,7 @@ export function createMemoryCreateTool(context: MemoryCreateToolContext) {
 }
 
 /** Create a tool that archives a visible memory in the active context. */
-export function createMemoryRemoveTool(context: MemoryToolContext) {
+export function createMemoryArchiveTool(context: MemoryToolContext) {
   return definePluginTool({
     annotations: {
       destructiveHint: true,
@@ -504,10 +504,13 @@ export function createMemoryRemoveTool(context: MemoryToolContext) {
     description:
       "Forget one active memory visible in the current context. This includes public memories and private memories owned by the current User. Use only ids or short id prefixes returned by listMemories or searchMemories. Never remove memories by hidden Actor, provider, scope, or subject ids.",
     executionMode: "sequential",
-    inputSchema: removeMemoryInputSchema,
+    inputSchema: archiveMemoryInputSchema,
     outputSchema: memorySingleOutputSchema,
     execute: async (input) => {
-      const parsedInput = parseMemoryToolInput(removeMemoryInputSchema, input);
+      const parsedInput = parseMemoryToolInput(
+        archiveMemoryInputSchema,
+        input,
+      );
       const runtimeContext = await memoryRuntimeContext(context);
       const memory = await (async () => {
         try {
@@ -519,7 +522,7 @@ export function createMemoryRemoveTool(context: MemoryToolContext) {
           asToolInputError(error);
         }
       })();
-      return memoryToolResult("removeMemory", {
+      return memoryToolResult("archiveMemory", {
         memory: compactMemory(memory),
       });
     },

@@ -135,7 +135,7 @@ describe("agent dispatch validation", () => {
           threadTs: "1700000000.000",
         },
       }),
-    ).toThrow("Dispatch destination must not include unknown fields");
+    ).not.toThrow();
     expect(() =>
       validateDispatchOptions({
         ...validOptions,
@@ -228,7 +228,12 @@ describe("agent dispatch validation", () => {
           threadTs: "1700000000.000",
         },
       }),
-    ).toBeUndefined();
+    ).toMatchObject({
+      destination: {
+        ...validOptions.destination,
+        threadTs: "1700000000.000",
+      },
+    });
 
     expect(
       parseDispatchRecord({

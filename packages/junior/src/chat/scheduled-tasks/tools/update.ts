@@ -3,6 +3,7 @@ import { completeText } from "@/chat/pi/client";
 import { generateShortTitle } from "@/chat/services/short-title";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import {
+  moveTaskOutcomes,
   resolveTaskOutcomes,
   taskOutcomeInputSchema,
 } from "@/chat/task-outcomes";
@@ -216,10 +217,16 @@ export function createSlackScheduleUpdateTaskTool(
         schedule: compiled?.schedule ?? lookup.schedule,
         outcomes:
           input.outcomes === undefined
-            ? lookup.outcomes
+            ? changingDestination
+              ? moveTaskOutcomes(
+                  lookup.outcomes,
+                  lookup.destination,
+                  nextDestination,
+                )
+              : lookup.outcomes
             : await resolveTaskOutcomes(
                 input.outcomes,
-                activeDestination,
+                nextDestination,
                 lookup.createdBy.slackUserId,
               ),
         task: { text: nextInstruction },

@@ -525,6 +525,7 @@ describe("Slack schedule tools", () => {
         platform: "slack",
         teamId: TEST_TEAM_ID,
         channelId: "C123",
+        threadTs: "1700000000.000",
       },
     });
   });
@@ -1531,7 +1532,15 @@ describe("Slack schedule tools", () => {
   });
 
   it("updates destination to here for a creator-owned task", async () => {
-    const source = createContext({ channelId: "CSOURCE" });
+    const source = createContext({
+      channelId: "CSOURCE",
+      source: createSlackSource({
+        teamId: TEST_TEAM_ID,
+        channelId: "CSOURCE",
+        threadTs: "1700000000.000100",
+        visibility: "public",
+      }),
+    });
     const created = (await createTask(source, {
       task: "Weekly planning reminder: post the agenda here.",
     })) as {
@@ -1542,8 +1551,36 @@ describe("Slack schedule tools", () => {
         credential_mode: string;
       };
     };
+    await expect(readScheduledTask(created.task.id)).resolves.toMatchObject({
+      destination: { threadTs: "1700000000.000100" },
+      outcomes: [
+        { destination: { threadTs: "1700000000.000100" } },
+      ],
+    });
+    await executeTool(createSlackScheduleUpdateTaskTool(source), {
+      task_id: created.task.id,
+      outcomes: [
+        {
+          action: "send_message",
+          destination: {
+            platform: "slack",
+            teamId: TEST_TEAM_ID,
+            channelId: "CSOURCE",
+            threadTs: "1700000000.000100",
+          },
+        },
+      ],
+    });
 
-    const publicTarget = createContext({ channelId: "CTARGET" });
+    const publicTarget = createContext({
+      channelId: "CTARGET",
+      source: createSlackSource({
+        teamId: TEST_TEAM_ID,
+        channelId: "CTARGET",
+        threadTs: "1700000000.000200",
+        visibility: "public",
+      }),
+    });
     const movedPublic = await executeTool(
       createSlackScheduleUpdateTaskTool(publicTarget),
       { task_id: created.task.id, destination: "here" },
@@ -1565,6 +1602,19 @@ describe("Slack schedule tools", () => {
           visibility: "public",
         },
       },
+    });
+    // Moving into a new conversation drops the old channel's thread and
+    // rebinds to the new one; a stale timestamp does not carry over.
+    await expect(readScheduledTask(created.task.id)).resolves.toMatchObject({
+      destination: { threadTs: "1700000000.000200" },
+      outcomes: [
+        {
+          destination: {
+            channelId: "CTARGET",
+            threadTs: "1700000000.000200",
+          },
+        },
+      ],
     });
 
     await expect(
@@ -1596,6 +1646,17 @@ describe("Slack schedule tools", () => {
         next_run_at: created.task.next_run_at,
       },
     });
+    // The private target's context carries no thread; the move clears it.
+    await expect(readScheduledTask(created.task.id)).resolves.toMatchObject({
+      destination: { channelId: "GPRIVATE" },
+      outcomes: [{ destination: { channelId: "GPRIVATE" } }],
+    });
+    await expect(
+      readScheduledTask(created.task.id),
+    ).resolves.not.toHaveProperty("destination.threadTs");
+    await expect(
+      readScheduledTask(created.task.id),
+    ).resolves.not.toHaveProperty("outcomes.0.destination.threadTs");
 
     // Replaying a destination update that already landed is a no-op success.
     await expect(

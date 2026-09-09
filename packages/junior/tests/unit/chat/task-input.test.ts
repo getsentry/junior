@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { NO_REPLY_MARKER } from "@/chat/no-reply";
 import { renderTaskInput } from "@/chat/task-input";
 
 describe("renderTaskInput", () => {
@@ -16,8 +15,7 @@ describe("renderTaskInput", () => {
       Instructions: Post a digest. Summarize the latest state.
 
       When you reply, follow any reply format in the instructions.
-      If no visible reply is needed, your final assistant message must be exactly ${NO_REPLY_MARKER} and nothing else.
-      Otherwise briefly summarize what you acted on and what you did or need next."
+      Briefly report what you did or what is needed next."
     `);
   });
 
@@ -27,10 +25,8 @@ describe("renderTaskInput", () => {
       outcomes: [],
     });
 
-    expect(text).toContain(
-      "Successful output is not delivered to the destination.",
-    );
-    expect(text).not.toContain(NO_REPLY_MARKER);
+    expect(text).toContain("No successful output will be delivered.");
+    expect(text).not.toContain("[[NO_REPLY]]");
   });
 
   it("renders optional facts between the job and reply contract", () => {
@@ -64,8 +60,7 @@ describe("renderTaskInput", () => {
       - test
 
       When you reply, follow any reply format in the instructions.
-      If no visible reply is needed, your final assistant message must be exactly ${NO_REPLY_MARKER} and nothing else.
-      Otherwise briefly summarize what you acted on and what you did or need next."
+      Briefly report what you did or what is needed next."
     `);
   });
 
@@ -96,8 +91,7 @@ describe("renderTaskInput", () => {
         "abc",
         "",
         "When you reply, follow any reply format in the instructions.",
-        `If no visible reply is needed, your final assistant message must be exactly ${NO_REPLY_MARKER} and nothing else.`,
-        "Otherwise briefly summarize what you acted on and what you did or need next.",
+        "Briefly report what you did or what is needed next.",
       ].join("\n"),
     );
   });
