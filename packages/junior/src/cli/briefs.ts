@@ -21,12 +21,9 @@ import {
   throughIndexFromSnapshot,
   type ConversationSnapshot,
 } from "@/chat/briefs/snapshot";
-import { botConfig } from "@/chat/config";
 import { defaultModelId } from "@/chat/model-profile";
 import { completeObject } from "@/chat/pi/client";
-
-const USAGE = `usage: junior briefs pull <conversationId...> --base-url <url> [--token <token>] --out <dir>
-       junior briefs run <snapshot...> [--model <id>] [--prompt <file>] [--turn-by-turn] [--out <dir>]`;
+import { CLI_USAGE } from "./run";
 
 type PullOptions = {
   baseUrl: string;
@@ -74,12 +71,12 @@ function parsePullOptions(argv: string[]): PullOptions {
     }
   }
   if (!baseUrl || !token || !out || conversationIds.length === 0) {
-    throw new Error(USAGE);
+    throw new Error(CLI_USAGE);
   }
   return { baseUrl, conversationIds, out, token };
 }
 
-function parseRunOptions(argv: string[]): RunOptions {
+async function parseRunOptions(argv: string[]): Promise<RunOptions> {
   const snapshots: string[] = [];
   let model: string | undefined;
   let promptFile: string | undefined;
@@ -104,14 +101,23 @@ function parseRunOptions(argv: string[]): RunOptions {
       snapshots.push(argument);
     }
   }
-  if (snapshots.length === 0) throw new Error(USAGE);
+  if (snapshots.length === 0) throw new Error(CLI_USAGE);
   return {
-    model: model ?? defaultModelId(botConfig),
+    model: model ?? (await configuredDefaultModelId()),
     out,
     promptFile,
     snapshots,
     turnByTurn,
   };
+}
+
+/**
+ * Read the app default model only when a run needs it. `chat/config` reads
+ * `DATABASE_URL` at import, and `briefs pull` must work with only a token.
+ */
+async function configuredDefaultModelId(): Promise<string> {
+  const { botConfig } = await import("@/chat/config");
+  return defaultModelId(botConfig);
 }
 
 function apiUrl(baseUrl: string, pathname: string): URL {
@@ -217,11 +223,11 @@ async function runSnapshot(
   const snapshot = conversationSnapshotSchema.parse(
     JSON.parse(await readFile(snapshotPath, "utf8")),
   );
-  const input = briefInputFromSnapshot(snapshot);
   const finalThroughIndex = throughIndexFromSnapshot(snapshot);
   if (finalThroughIndex === undefined) {
     throw new Error(`Snapshot ${snapshotPath} has no Conversation events`);
   }
+  const input = briefInputFromSnapshot(snapshot, finalThroughIndex);
   const versions: GeneratedBrief[] = [];
   for (const throughIndex of generationIndexes(
     snapshot,
@@ -232,7 +238,7 @@ async function runSnapshot(
       await generateBrief({
         completeObject: (request) =>
           completeObject({ ...request, modelId: options.model }),
-        input,
+        input: briefInputFromSnapshot(snapshot, throughIndex),
         previous: versions.at(-1)?.brief,
         prompt,
         throughIndex,
@@ -291,10 +297,10 @@ export async function runBriefs(argv: string[]): Promise<number> {
       return 0;
     }
     if (subcommand === "run") {
-      await runAll(parseRunOptions(rest));
+      await runAll(await parseRunOptions(rest));
       return 0;
     }
-    throw new Error(USAGE);
+    throw new Error(CLI_USAGE);
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
     return 1;

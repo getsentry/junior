@@ -4,6 +4,7 @@ import { CLI_USAGE, runCli } from "@/cli/run";
 describe("cli command dispatch", () => {
   function handlers() {
     return {
+      runBriefs: vi.fn(async () => 0),
       runChat: vi.fn(async () => 0),
       runInit: vi.fn(async () => undefined),
       runSnapshotCreate: vi.fn(async () => undefined),

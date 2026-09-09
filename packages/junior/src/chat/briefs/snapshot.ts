@@ -63,12 +63,48 @@ function assertAvailableHistory(snapshot: ConversationSnapshot): void {
   }
 }
 
-/** Project a downloaded conversation snapshot into generator input. */
+function codeChangeAt(
+  change: BriefCodeChange,
+  boundaryMs: number,
+): BriefCodeChange | undefined {
+  if (change.openedAt && Date.parse(change.openedAt) > boundaryMs) {
+    return undefined;
+  }
+  const mergedAt =
+    change.mergedAt && Date.parse(change.mergedAt) <= boundaryMs
+      ? change.mergedAt
+      : undefined;
+  const closedAt =
+    change.closedAt && Date.parse(change.closedAt) <= boundaryMs
+      ? change.closedAt
+      : undefined;
+  const { mergedAt: _mergedAt, closedAt: _closedAt, ...rest } = change;
+  return {
+    ...rest,
+    state: mergedAt ? "merged" : closedAt ? "closed" : "open",
+    ...(mergedAt ? { mergedAt } : undefined),
+    ...(closedAt ? { closedAt } : undefined),
+  };
+}
+
+/**
+ * Project a downloaded conversation snapshot into generator input. Evidence
+ * is limited to what existed at the `throughIndex` event, so a replayed
+ * earlier version cannot cite a later pull request or resource.
+ */
 export function briefInputFromSnapshot(
   snapshot: ConversationSnapshot,
+  throughIndex: number,
 ): BriefInput {
   assertAvailableHistory(snapshot);
   const detail = snapshot.detail;
+  const boundary = allEvents(snapshot)
+    .filter((event) => event.seq <= throughIndex)
+    .at(-1);
+  if (!boundary) {
+    throw new Error(`Snapshot has no event at or before index ${throughIndex}`);
+  }
+  const boundaryMs = Date.parse(boundary.createdAt);
   const channelName = detail.channelName?.trim() || detail.channel?.trim();
   const hasLocation = Boolean(channelName || detail.locationId);
   return parseBriefInput({
@@ -86,12 +122,17 @@ export function briefInputFromSnapshot(
         }
       : undefined),
     entries: briefEntriesFromReportEvents(allEvents(snapshot)),
-    codeChanges: snapshot.codeChanges,
-    resources: (detail.annotations ?? []).map((annotation) => ({
-      label: annotation.label,
-      url: annotation.url,
-      ...(annotation.status ? { status: annotation.status } : undefined),
-    })),
+    codeChanges: snapshot.codeChanges.flatMap((change) => {
+      const bounded = codeChangeAt(change, boundaryMs);
+      return bounded ? [bounded] : [];
+    }),
+    resources: (detail.annotations ?? [])
+      .filter((annotation) => Date.parse(annotation.createdAt) <= boundaryMs)
+      .map((annotation) => ({
+        label: annotation.label,
+        url: annotation.url,
+        ...(annotation.status ? { status: annotation.status } : undefined),
+      })),
   });
 }
 
