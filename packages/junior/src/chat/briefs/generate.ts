@@ -9,6 +9,7 @@ import {
 import { parseBriefInput, type BriefEntry, type BriefInput } from "./input";
 
 const MAX_INPUT_CHARS = 60_000;
+const MAX_MESSAGE_TEXT_CHARS = 4_000;
 const MAX_TOOL_TEXT_CHARS = 1_500;
 const MAX_LINKS = 40;
 
@@ -148,13 +149,17 @@ function normalizeModelBrief(
 function inputEntries(input: BriefInput, throughIndex: number): BriefEntry[] {
   return input.entries
     .filter((entry) => entry.index <= throughIndex)
-    .map((entry) => ({
-      ...entry,
-      text:
-        entry.role === "tool" && entry.text.length > MAX_TOOL_TEXT_CHARS
-          ? `${entry.text.slice(0, MAX_TOOL_TEXT_CHARS - 1)}…`
-          : entry.text,
-    }));
+    .map((entry) => {
+      const limit =
+        entry.role === "tool" ? MAX_TOOL_TEXT_CHARS : MAX_MESSAGE_TEXT_CHARS;
+      return {
+        ...entry,
+        text:
+          entry.text.length > limit
+            ? `${entry.text.slice(0, limit - 1)}…`
+            : entry.text,
+      };
+    });
 }
 
 function promptInput(args: {
@@ -162,7 +167,11 @@ function promptInput(args: {
   previous?: ConversationBrief;
   throughIndex: number;
 }): string {
-  const entries = inputEntries(args.input, args.throughIndex);
+  const candidates = inputEntries(args.input, args.throughIndex);
+  const messages = candidates.filter((entry) => entry.role !== "tool");
+  const tools = candidates.filter((entry) => entry.role === "tool");
+  const keptMessages = [...messages];
+  const keptTools: BriefEntry[] = [];
   const base = {
     conversation: {
       id: args.input.conversationId,
@@ -174,14 +183,37 @@ function promptInput(args: {
     codeChanges: args.input.codeChanges,
     resources: args.input.resources,
   };
-  let text = JSON.stringify({ ...base, entries });
-  while (text.length > MAX_INPUT_CHARS && entries.length > 0) {
-    entries.shift();
-    text = JSON.stringify({ ...base, entries });
+  const serialize = (): string => {
+    const kept = new Set([...keptMessages, ...keptTools]);
+    return JSON.stringify({
+      ...base,
+      omitted: {
+        messages: messages.length - keptMessages.length,
+        toolResults: tools.length - keptTools.length,
+      },
+      entries: candidates.filter((entry) => kept.has(entry)),
+    });
+  };
+
+  let text = serialize();
+  while (text.length > MAX_INPUT_CHARS && keptMessages.length > 0) {
+    keptMessages.shift();
+    text = serialize();
   }
   if (text.length > MAX_INPUT_CHARS) {
     throw new Error("Brief metadata exceeds the 60,000 character input limit");
   }
+
+  for (let index = tools.length - 1; index >= 0; index -= 1) {
+    keptTools.push(tools[index]!);
+    const candidate = serialize();
+    if (candidate.length <= MAX_INPUT_CHARS) {
+      text = candidate;
+    } else {
+      keptTools.pop();
+    }
+  }
+
   return [
     "<brief-input>",
     text,

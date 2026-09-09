@@ -131,4 +131,82 @@ describe("generateBrief", () => {
     expect(generation.searchText).toContain("Release incident");
     expect(generation.searchText).not.toContain("Use the runbook at");
   });
+
+  it("keeps messages before filling the budget with newest tool results", async () => {
+    const toolEntries: BriefInput["entries"] = Array.from(
+      { length: 40 },
+      (_, index) => ({
+        index: index + 2,
+        role: "tool",
+        author: "search",
+        text: `tool-${index}:${"x".repeat(1_600)}`,
+        createdAtMs: index + 2,
+        turnId: "turn-1",
+      }),
+    );
+    const longInput: BriefInput = {
+      ...input(),
+      entries: [
+        {
+          index: 1,
+          role: "user",
+          text: `user:${"u".repeat(5_000)}`,
+          createdAtMs: 1,
+          turnId: "turn-1",
+        },
+        ...toolEntries,
+        {
+          index: 100,
+          role: "assistant",
+          text: `assistant:${"a".repeat(5_000)}`,
+          createdAtMs: 100,
+          turnId: "turn-1",
+        },
+      ],
+    };
+    let capturedPrompt = "";
+
+    await generateBrief({
+      input: longInput,
+      throughIndex: 100,
+      prompt: "Write a Brief.",
+      model: "test/model",
+      completeObject: async (request) => {
+        capturedPrompt = request.prompt;
+        return {
+          object: {
+            summary: "Summary",
+            intent: "Intent",
+            outcome: { status: "done", text: "Done" },
+            decisions: [],
+            openDecisions: [],
+            facts: [],
+            keywords: [],
+            urls: [],
+          },
+        };
+      },
+    });
+
+    const match = capturedPrompt.match(/<brief-input>\n(.+)\n<\/brief-input>/s);
+    expect(match).not.toBeNull();
+    const payload = JSON.parse(match?.[1] ?? "{}") as {
+      entries: BriefInput["entries"];
+      omitted: { messages: number; toolResults: number };
+    };
+    const messages = payload.entries.filter((entry) => entry.role !== "tool");
+    const tools = payload.entries.filter((entry) => entry.role === "tool");
+
+    expect(match?.[1]?.length).toBeLessThanOrEqual(60_000);
+    expect(payload.omitted.messages).toBe(0);
+    expect(payload.omitted.toolResults).toBeGreaterThan(0);
+    expect(messages).toHaveLength(2);
+    expect(messages.map((entry) => entry.text.length)).toEqual([4_000, 4_000]);
+    expect(messages.every((entry) => entry.text.endsWith("…"))).toBe(true);
+    expect(tools.some((entry) => entry.text.startsWith("tool-39:"))).toBe(true);
+    expect(tools.some((entry) => entry.text.startsWith("tool-0:"))).toBe(false);
+    expect(payload.entries.map((entry) => entry.index)).toEqual(
+      [...payload.entries].map((entry) => entry.index).sort((a, b) => a - b),
+    );
+  });
 });
