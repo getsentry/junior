@@ -12,6 +12,7 @@ import { createSqlStore } from "@/chat/conversations/sql/store";
 import { DEFAULT_BRIEF_PROMPT, defaultBriefModelId } from "./config";
 import { briefUpdatedEvent } from "./events";
 import { generateBrief, type BriefCompleteObject } from "./generate";
+import { buildBriefsOperationalReport } from "./operational-report";
 import { briefInputFromSql } from "./sql/input";
 import {
   appendConversationBrief,
@@ -191,6 +192,19 @@ export const briefsTaskRegistration: PluginRegistration = {
   },
   model: { structuredModel: "default" },
   conversationEvents: [briefUpdatedEvent],
+  hooks: {
+    async operationalReport(context) {
+      const briefDays = await context.eventStats.costsByDay({
+        days: 90,
+        eventName: "brief_updated",
+      });
+      return await buildBriefsOperationalReport({
+        briefDays,
+        db: context.db as JuniorDatabase,
+        nowMs: context.nowMs,
+      });
+    },
+  },
   tasks: {
     updateBrief: {
       async run(context) {

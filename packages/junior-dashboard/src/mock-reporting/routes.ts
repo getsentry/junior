@@ -42,6 +42,7 @@ import {
   readMockPeopleDirectory,
   readMockPeoplePluginReports,
   readMockPeopleProfile,
+  readMockPluginReports,
   readMockPersonalSpend,
   readMockTaskExecutions,
   readMockTaskList,
@@ -60,6 +61,9 @@ export function createMockReportingApi(): Hono<{
 
   app.get("/code", () =>
     jsonResponse(codeOverviewReportSchema, readMockCodeOverview()),
+  );
+  app.get("/plugin-reports", () =>
+    jsonResponse(pluginOperationalReportFeedSchema, readMockPluginReports()),
   );
 
   app.get("/people", () =>
@@ -129,13 +133,15 @@ export function createMockReportingApi(): Hono<{
     if (!query.data.q) {
       return jsonResponse(conversationFeedSchema, report);
     }
-    const archived = readMockConversationFeed(query.data.actorEmail, "archived");
+    const archived = readMockConversationFeed(
+      query.data.actorEmail,
+      "archived",
+    );
     const search = query.data.q.toLowerCase();
     const conversations = new Map(
-      [...report.conversations, ...archived.conversations].map((conversation) => [
-        conversation.conversationId,
-        conversation,
-      ]),
+      [...report.conversations, ...archived.conversations].map(
+        (conversation) => [conversation.conversationId, conversation],
+      ),
     );
     return jsonResponse(conversationFeedSchema, {
       ...report,
