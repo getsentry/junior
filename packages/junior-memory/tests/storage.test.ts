@@ -2662,14 +2662,6 @@ describe("memory plugin storage", () => {
         id: publicMemory.memory.id,
       });
 
-      const publicDeleteResponse = await api.fetch(
-        new Request(`http://localhost/memories/${publicMemory.memory.id}`, {
-          method: "DELETE",
-        }),
-        requestContext,
-      );
-      expect(publicDeleteResponse.status).toBe(404);
-
       const dashboardResponse = await api.fetch(
         new Request("http://localhost/dashboard"),
         requestContext,
@@ -2724,13 +2716,23 @@ describe("memory plugin storage", () => {
       );
       expect(privateDeleteResponse.status).toBe(204);
 
+      const publicDeleteResponse = await api.fetch(
+        new Request(`http://localhost/memories/${publicMemory.memory.id}`, {
+          method: "DELETE",
+        }),
+        requestContext,
+      );
+      expect(publicDeleteResponse.status).toBe(204);
+
+      // `second` is a public-channel memory (default "C123" test channel),
+      // so it is visible and archivable like any other public memory.
       const deleteResponse = await api.fetch(
         new Request(`http://localhost/memories/${second.memory.id}`, {
           method: "DELETE",
         }),
         requestContext,
       );
-      expect(deleteResponse.status).toBe(404);
+      expect(deleteResponse.status).toBe(204);
 
       const hiddenDeleteResponse = await api.fetch(
         new Request(`http://localhost/memories/${hidden.memory.id}`, {
