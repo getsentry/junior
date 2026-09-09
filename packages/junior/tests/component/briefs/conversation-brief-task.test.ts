@@ -79,9 +79,22 @@ vi.mock("@/chat/pi/client", () => ({
   embedTexts: vi.fn(),
 }));
 
-function piMessages(instruction: string): PiMessage[] {
+function piMessages(instruction: string, turnId: string): PiMessage[] {
   return [
     { role: "user", content: instruction, timestamp: 1 } as PiMessage,
+    {
+      role: "toolResult",
+      toolCallId: `${turnId}:tool`,
+      toolName: "readRunbook",
+      isError: false,
+      content: [
+        {
+          type: "text",
+          text: "See https://docs.example.com/runbook for details.",
+        },
+      ],
+      timestamp: 2,
+    } as PiMessage,
     {
       role: "assistant",
       api: "openai-responses",
@@ -90,7 +103,7 @@ function piMessages(instruction: string): PiMessage[] {
       usage: {},
       stopReason: "stop",
       content: [{ type: "text", text: "Done." }],
-      timestamp: 2,
+      timestamp: 3,
     } as PiMessage,
   ];
 }
@@ -98,8 +111,34 @@ function piMessages(instruction: string): PiMessage[] {
 async function recordCompletedTurn(args: {
   conversationId: string;
   instruction: string;
+  previousPiMessages?: PiMessage[];
   turnId: string;
-}): Promise<number> {
+}): Promise<{ piMessages: PiMessage[]; throughSeq: number }> {
+  const previousPiMessages = args.previousPiMessages ?? [];
+  const turnPiMessages = piMessages(args.instruction, args.turnId);
+  const allPiMessages = [...previousPiMessages, ...turnPiMessages];
+  const { upsertTurnRecord } =
+    await import("@/chat/task-execution/turn-cursor");
+  await upsertTurnRecord({
+    conversationId: args.conversationId,
+    destination: { platform: "local", conversationId: args.conversationId },
+    actor: {
+      fullName: "Local CLI",
+      platform: "local",
+      userId: "local-cli",
+      userName: "local",
+    },
+    piMessages: allPiMessages,
+    turnId: args.turnId,
+    sliceId: 1,
+    source: createLocalSource(args.conversationId),
+    state: "completed",
+    surface: "internal",
+    ...(previousPiMessages.length > 0
+      ? { turnStartMessageIndex: previousPiMessages.length }
+      : undefined),
+  });
+
   const { getConversationEventStore } = await import("@/chat/db");
   const messageId = `${args.turnId}:message`;
   const appended = await getConversationEventStore().append(
@@ -128,29 +167,6 @@ async function recordCompletedTurn(args: {
       },
       {
         data: {
-          type: "tool_execution_started",
-          toolCallId: `${args.turnId}:tool`,
-          toolName: "readRunbook",
-        },
-        createdAtMs: 3,
-      },
-      {
-        data: {
-          type: "tool_result",
-          toolCallId: `${args.turnId}:tool`,
-          toolName: "readRunbook",
-          isError: false,
-          content: [
-            {
-              type: "text",
-              text: "See https://docs.example.com/runbook for details.",
-            },
-          ],
-        },
-        createdAtMs: 4,
-      },
-      {
-        data: {
           type: "message",
           messageId: `${args.turnId}:answer`,
           role: "assistant",
@@ -168,25 +184,7 @@ async function recordCompletedTurn(args: {
       },
     ],
   );
-  const { upsertTurnRecord } =
-    await import("@/chat/task-execution/turn-cursor");
-  await upsertTurnRecord({
-    conversationId: args.conversationId,
-    destination: { platform: "local", conversationId: args.conversationId },
-    actor: {
-      fullName: "Local CLI",
-      platform: "local",
-      userId: "local-cli",
-      userName: "local",
-    },
-    piMessages: piMessages(args.instruction),
-    turnId: args.turnId,
-    sliceId: 1,
-    source: createLocalSource(args.conversationId),
-    state: "completed",
-    surface: "internal",
-  });
-  return appended.at(-1)!.seq;
+  return { piMessages: allPiMessages, throughSeq: appended.at(-1)!.seq };
 }
 
 describe("Conversation Brief task", () => {
@@ -218,7 +216,8 @@ describe("Conversation Brief task", () => {
   });
 
   it("stores idempotent versions with evidence, cost, and previous context, but skips children", async () => {
-    const conversationId = `local:test:briefs:${randomUUID()}`;
+    const idSuffix = randomUUID();
+    const conversationId = `local:briefs:${idSuffix}`;
     const { getConversationStore, getDb } = await import("@/chat/db");
     await getConversationStore().recordActivity({
       conversationId,
@@ -259,7 +258,7 @@ describe("Conversation Brief task", () => {
       url: "https://github.com/getsentry/junior/pull/1805",
     } satisfies CodeChangeInput);
 
-    const firstThroughSeq = await recordCompletedTurn({
+    const firstTurn = await recordCompletedTurn({
       conversationId,
       instruction: "Store a durable Brief for this work.",
       turnId: "turn-1",
@@ -281,7 +280,7 @@ describe("Conversation Brief task", () => {
       conversationId,
       version: 1,
       turnId: "turn-1",
-      throughSeq: firstThroughSeq,
+      throughSeq: firstTurn.throughSeq,
       modelId: TEST.calls[0]?.modelId,
       costUsd: 0.0042,
     });
@@ -353,6 +352,7 @@ describe("Conversation Brief task", () => {
     await recordCompletedTurn({
       conversationId,
       instruction: "Update the Brief after a second Turn.",
+      previousPiMessages: firstTurn.piMessages,
       turnId: "turn-2",
     });
     await processPluginTask({
@@ -367,7 +367,7 @@ describe("Conversation Brief task", () => {
     expect(rows.map((row) => row.version)).toEqual([1, 2]);
     expect(TEST.calls[1]?.prompt).toContain('"summary":"Brief summary 1."');
 
-    const childConversationId = `${conversationId}:child`;
+    const childConversationId = `local:briefs-child:${idSuffix}`;
     await getConversationStore().createChild({
       childConversationId,
       parentConversationId: conversationId,
