@@ -1,9 +1,10 @@
+import { defaultModelId } from "@/chat/model-profile";
 import { BRIEF_PROMPT } from "./prompt";
 
-/** Resolve the configured fast model when a Brief run starts. */
+/** Resolve the configured default model when a Brief run starts. */
 export async function defaultBriefModelId(): Promise<string> {
   const { botConfig } = await import("@/chat/config");
-  return botConfig.fastModelId;
+  return defaultModelId(botConfig);
 }
 
 /** Default production prompt shared by local replay and background generation. */

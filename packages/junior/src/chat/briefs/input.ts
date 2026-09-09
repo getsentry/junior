@@ -4,7 +4,7 @@ import { z } from "zod";
 export const briefEntrySchema = z
   .object({
     index: z.number().int().nonnegative(),
-    role: z.enum(["user", "assistant", "tool"]),
+    role: z.enum(["user", "assistant", "tool", "event"]),
     author: z.string().trim().min(1).max(400).optional(),
     text: z.string().min(1),
     createdAtMs: z.number().int().nonnegative(),

@@ -60,6 +60,7 @@ export function renderBriefMarkdown(args: {
     `- Duration: ${record.durationMs} ms`,
     `- Location: ${location}`,
     `- Messages: ${formatCount(record.userMessages, "user message")} · ${formatCount(record.assistantMessages, "assistant message")} · ${formatCount(record.toolResults, "tool result")}`,
+    `- Events: ${record.events}`,
     `- Turns: ${record.turns ?? "not reported"}`,
     "- Participants:",
     ...list(
@@ -90,11 +91,39 @@ export function renderBriefMarkdown(args: {
     "",
     "## Decisions",
     "",
+    "### Stated",
+    "",
     list(
-      brief.decisions.map(
-        (decision) =>
-          `${decision.text}${decision.by ? ` — ${decision.by}` : ""}`,
-      ),
+      brief.decisions
+        .filter((decision) => decision.kind === "stated")
+        .map(
+          (decision) =>
+            `${decision.text}${decision.by ? ` — ${decision.by}` : ""}`,
+        ),
+      "None.",
+    ),
+    "",
+    "### Confirmed",
+    "",
+    list(
+      brief.decisions
+        .filter((decision) => decision.kind === "confirmed")
+        .map(
+          (decision) =>
+            `${decision.text}${decision.by ? ` — ${decision.by}` : ""}`,
+        ),
+      "None.",
+    ),
+    "",
+    "### Assumed by Junior (not confirmed)",
+    "",
+    list(
+      brief.decisions
+        .filter((decision) => decision.kind === "assumed")
+        .map(
+          (decision) =>
+            `${decision.text}${decision.by ? ` — ${decision.by}` : ""}`,
+        ),
       "None.",
     ),
     "",
@@ -131,6 +160,7 @@ export function renderBriefMarkdown(args: {
     `- Code changes: ${evidence.codeChangeCount}`,
     `- Resources: ${evidence.resourceCount}`,
     `- Model URLs: ${evidence.keptUrlCount} kept of ${evidence.citedUrlCount}`,
+    `- Coerced decision kinds: ${evidence.coercedDecisionKinds}`,
     `- Dropped attributions: ${evidence.droppedAttributionCount}`,
     `- Dropped runtime-marker items: ${evidence.droppedRuntimeMarkerCount}`,
     `- Merged claim without evidence: ${evidence.claims.mergedWithoutEvidence ? "yes" : "no"}`,

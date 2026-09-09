@@ -6,6 +6,7 @@ import {
   type ConversationEventPage,
   type ConversationReportEvent,
 } from "@/api/schema/conversation";
+import { RESOURCE_EVENT_AUTHOR_ID } from "@/chat/resource-events/actor";
 import {
   briefCodeChangeSchema,
   parseBriefInput,
@@ -55,17 +56,63 @@ function allEvents(snapshot: ConversationSnapshot): ConversationReportEvent[] {
   return [...bySequence.values()].sort((left, right) => left.seq - right.seq);
 }
 
-function actorName(
-  actor: Extract<
-    ConversationReportEvent["data"],
-    { type: "message" }
-  >["actorIdentity"],
-): string | undefined {
+type MessageActor = Extract<
+  ConversationReportEvent["data"],
+  { type: "message" }
+>["actorIdentity"];
+
+function actorIdentityKey(actor: MessageActor): string | undefined {
+  const slackUserId = actor?.slackUserId?.trim();
+  if (slackUserId) return `slack:${slackUserId}`;
+  const email = actor?.email?.trim();
+  return email ? `email:${email.toLowerCase()}` : undefined;
+}
+
+function bestActorName(actor: MessageActor): string | undefined {
   return (
-    actor?.fullName ??
-    actor?.slackUserName ??
-    actor?.email ??
-    actor?.slackUserId
+    actor?.fullName?.trim() ||
+    actor?.slackUserName?.trim() ||
+    actor?.email?.trim() ||
+    undefined
+  );
+}
+
+function actorNames(events: ConversationReportEvent[]): Map<string, string> {
+  const actors = new Map<
+    string,
+    { email?: string; fullName?: string; slackUserName?: string }
+  >();
+  for (const event of events) {
+    if (event.data.type !== "message") continue;
+    const actor = event.data.actorIdentity;
+    const key = actorIdentityKey(actor);
+    if (!key) continue;
+    const known = actors.get(key) ?? {};
+    actors.set(key, {
+      fullName: known.fullName ?? (actor?.fullName?.trim() || undefined),
+      slackUserName:
+        known.slackUserName ?? (actor?.slackUserName?.trim() || undefined),
+      email: known.email ?? (actor?.email?.trim() || undefined),
+    });
+  }
+  return new Map(
+    [...actors].map(([key, actor]) => [
+      key,
+      bestActorName(actor) ?? "unknown participant",
+    ]),
+  );
+}
+
+function actorName(
+  actor: MessageActor,
+  resolvedNames: ReadonlyMap<string, string>,
+): string | undefined {
+  if (!actor) return undefined;
+  const key = actorIdentityKey(actor);
+  return (
+    (key ? resolvedNames.get(key) : undefined) ??
+    bestActorName(actor) ??
+    "unknown participant"
   );
 }
 
@@ -80,6 +127,7 @@ function toolText(output: unknown): string | undefined {
 }
 
 function entriesFromEvents(events: ConversationReportEvent[]): BriefEntry[] {
+  const resolvedActorNames = actorNames(events);
   const turnByMessageId = new Map<string, string>();
   for (const event of events) {
     if (
@@ -109,12 +157,17 @@ function entriesFromEvents(events: ConversationReportEvent[]): BriefEntry[] {
         data.role === "user"
           ? turnByMessageId.get(data.messageId)
           : activeTurnId;
+      const author = actorName(data.actorIdentity, resolvedActorNames);
+      const role =
+        data.role === "user" &&
+        (Boolean(data.eventType) ||
+          data.actorIdentity?.slackUserId === RESOURCE_EVENT_AUTHOR_ID)
+          ? "event"
+          : data.role;
       entries.push({
         index: event.seq,
-        role: data.role,
-        ...(actorName(data.actorIdentity)
-          ? { author: actorName(data.actorIdentity) }
-          : undefined),
+        role,
+        ...(author ? { author } : undefined),
         text: data.text,
         createdAtMs: Date.parse(event.createdAt),
         ...(turnId ? { turnId } : undefined),

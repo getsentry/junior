@@ -35,7 +35,7 @@ const detail: ConversationDetailReport = {
   ],
   events: [
     {
-      seq: 3,
+      seq: 5,
       createdAt: "2026-01-01T00:00:02.000Z",
       data: {
         type: "tool_calls",
@@ -50,7 +50,7 @@ const detail: ConversationDetailReport = {
       },
     },
     {
-      seq: 4,
+      seq: 6,
       createdAt: "2026-01-01T00:00:03.000Z",
       data: {
         type: "message",
@@ -60,7 +60,7 @@ const detail: ConversationDetailReport = {
       },
     },
     {
-      seq: 5,
+      seq: 7,
       createdAt: "2026-01-01T00:00:04.000Z",
       data: {
         type: "turn_lifecycle",
@@ -83,17 +83,42 @@ const olderPage: ConversationEventPage = {
         messageId: "message-1",
         role: "user",
         text: "Ship version 1.2.3.",
-        actorIdentity: { fullName: "Ada Lovelace" },
+        actorIdentity: {
+          fullName: "Ada Lovelace",
+          slackUserId: "U039RR91S",
+        },
       },
     },
     {
       seq: 2,
+      createdAt: "2026-01-01T00:00:00.500Z",
+      data: {
+        type: "message",
+        messageId: "message-2",
+        role: "user",
+        text: "Use the existing release process.",
+        actorIdentity: { slackUserId: "U039RR91S" },
+      },
+    },
+    {
+      seq: 3,
+      createdAt: "2026-01-01T00:00:00.750Z",
+      data: {
+        type: "message",
+        messageId: "event-1",
+        role: "user",
+        text: "The release checks passed.",
+        actorIdentity: { slackUserId: "UJRNEVENT" },
+      },
+    },
+    {
+      seq: 4,
       createdAt: "2026-01-01T00:00:01.000Z",
       data: {
         type: "turn_lifecycle",
         turnId: "turn-1",
         state: "started",
-        inputMessageIds: ["message-1"],
+        inputMessageIds: ["message-1", "message-2", "event-1"],
       },
     },
   ],
@@ -145,9 +170,25 @@ describe("Brief snapshot", () => {
             "turnId": "turn-1",
           },
           {
+            "author": "Ada Lovelace",
+            "createdAtMs": 1767225600500,
+            "index": 2,
+            "role": "user",
+            "text": "Use the existing release process.",
+            "turnId": "turn-1",
+          },
+          {
+            "author": "unknown participant",
+            "createdAtMs": 1767225600750,
+            "index": 3,
+            "role": "event",
+            "text": "The release checks passed.",
+            "turnId": "turn-1",
+          },
+          {
             "author": "lookupRelease",
             "createdAtMs": 1767225602000,
-            "index": 3,
+            "index": 5,
             "role": "tool",
             "text": "{
         "version": "1.2.3"
@@ -156,7 +197,7 @@ describe("Brief snapshot", () => {
           },
           {
             "createdAtMs": 1767225603000,
-            "index": 4,
+            "index": 6,
             "role": "assistant",
             "text": "Released version 1.2.3.",
             "turnId": "turn-1",
@@ -180,7 +221,7 @@ describe("Brief snapshot", () => {
 
     const generation = await generateBrief({
       input,
-      throughIndex: 5,
+      throughIndex: 7,
       prompt: "Write a Brief.",
       model: "test/model",
       completeObject: async () => ({
@@ -201,10 +242,11 @@ describe("Brief snapshot", () => {
       startedAt: "2026-01-01T00:00:00.000Z",
       lastActivityAt: "2026-01-01T00:00:03.000Z",
       durationMs: 3_000,
-      participants: [{ name: "Ada Lovelace", messages: 1 }],
-      userMessages: 1,
+      participants: [{ name: "Ada Lovelace", messages: 2 }],
+      userMessages: 2,
       assistantMessages: 1,
       toolResults: 1,
+      events: 1,
       turns: 1,
       location: { provider: "slack", channelName: "builds" },
       codeChanges: [
