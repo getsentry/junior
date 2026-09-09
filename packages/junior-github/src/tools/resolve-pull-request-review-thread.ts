@@ -246,10 +246,9 @@ export function createGitHubResolvePullRequestReviewThreadTool(
         .passthrough();
       const resolveResult = resolveResultSchema.safeParse(resolvePayload);
       if (!resolveResult.success) {
-        throw new PluginToolInputError(
-          "GitHub did not resolve the requested review thread.",
-          { cause: resolveResult.error },
-        );
+        throw new PluginToolInputError("GitHub review thread was not found.", {
+          cause: resolveResult.error,
+        });
       }
       const resolved = resolveResult.data.data.resolveReviewThread.thread;
       if (resolved.id !== thread.id || !resolved.isResolved) {
