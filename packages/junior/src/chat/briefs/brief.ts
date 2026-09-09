@@ -18,9 +18,51 @@ export const briefLinkSchema = z
   })
   .strict();
 
+export const briefRecordSchema = z
+  .object({
+    startedAt: z.string().datetime(),
+    lastActivityAt: z.string().datetime(),
+    durationMs: z.number().int().nonnegative(),
+    participants: z.array(
+      z
+        .object({
+          name: z.string().trim().min(1).max(400),
+          messages: z.number().int().positive(),
+        })
+        .strict(),
+    ),
+    userMessages: z.number().int().nonnegative(),
+    assistantMessages: z.number().int().nonnegative(),
+    toolResults: z.number().int().nonnegative(),
+    turns: z.number().int().positive().optional(),
+    location: z
+      .object({
+        provider: z.string().trim().min(1).max(100),
+        channelName: z.string().trim().min(1).max(400).optional(),
+      })
+      .strict()
+      .optional(),
+    codeChanges: z.array(
+      z
+        .object({
+          repository: z.string().trim().min(1).max(400),
+          number: z.number().int().positive(),
+          title: z.string().trim().min(1).max(400).optional(),
+          url: z.string().url().max(2_048),
+          state: z.enum(["closed", "merged", "open"]),
+          openedAt: z.string().datetime().optional(),
+          mergedAt: z.string().datetime().optional(),
+          closedAt: z.string().datetime().optional(),
+        })
+        .strict(),
+    ),
+  })
+  .strict();
+
 export const conversationBriefSchema = z
   .object({
     schemaVersion: z.literal(1),
+    record: briefRecordSchema,
     summary: z.string().trim().min(1).max(600),
     intent: z.string().trim().min(1).max(400),
     outcome: z
@@ -74,6 +116,10 @@ export function buildBriefSearchText(
     ...brief.facts,
     ...brief.keywords,
     ...brief.links.map((link) => link.label),
+    ...brief.record.participants.map((participant) => participant.name),
+    ...brief.record.codeChanges.map(
+      (change) => `${change.repository}#${change.number} ${change.state}`,
+    ),
   ]
     .filter((value): value is string => Boolean(value?.trim()))
     .join("\n");

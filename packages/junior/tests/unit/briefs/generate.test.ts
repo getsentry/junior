@@ -45,6 +45,7 @@ function input(): BriefInput {
         title: "Fix release pipeline",
         url: CODE_CHANGE_URL,
         state: "open",
+        openedAt: "2026-01-01T00:00:00.000Z",
       },
     ],
     resources: [
@@ -58,52 +59,111 @@ function input(): BriefInput {
 }
 
 describe("generateBrief", () => {
-  it("caps content, builds search text, and keeps only supported evidence", async () => {
+  it("builds and guards a small durable record with supported evidence", async () => {
+    const summarySentence = `${"s".repeat(400)}.`;
+    const outcomeSentence = `${"o".repeat(390)} merged.`;
+    let capturedPrompt = "";
     const generation = await generateBrief({
       input: input(),
       throughIndex: 2,
       prompt: "Write a Brief.",
       model: "test/model",
-      completeObject: async () => ({
-        costUsd: 0.0123,
-        object: {
-          summary: "s".repeat(700),
-          intent: "i".repeat(500),
-          outcome: { status: "done", text: "o".repeat(700) },
-          decisions: Array.from({ length: 25 }, (_, index) => ({
-            text: `Decision ${index} ${"x".repeat(500)}`,
-            by: "Ada",
-          })),
-          openDecisions: Array.from({ length: 25 }, (_, index) => ({
-            text: `Open ${index}`,
-          })),
-          facts: Array.from({ length: 35 }, (_, index) => `Fact ${index}`),
-          keywords: Array.from(
-            { length: 15 },
-            (_, index) => `KEYWORD-${index}`,
-          ),
-          urls: [
-            { label: "Runbook", url: VERBATIM_URL },
-            { label: "Code change", url: CODE_CHANGE_URL },
-            { label: "Resource", url: RESOURCE_URL },
-            { label: "Late", url: LATE_URL },
-            { label: "Invented", url: INVENTED_URL },
-          ],
-        },
-      }),
+      completeObject: async (request) => {
+        capturedPrompt = request.prompt;
+        return {
+          costUsd: 0.0123,
+          object: {
+            summary: `${summarySentence} ${"x".repeat(300)}`,
+            intent: "i".repeat(500),
+            outcome: {
+              status: "done",
+              text: `${outcomeSentence} ${"x".repeat(300)}`,
+            },
+            decisions: [
+              { text: "Ignore [[NO_REPLY]]", by: "Ada" },
+              { text: `Decision 0 ${"x".repeat(500)}`, by: "ada" },
+              { text: "Decision 1", by: "Unknown person" },
+              { text: "Decision 2", by: "junior" },
+              ...Array.from({ length: 22 }, (_, index) => ({
+                text: `Decision ${index + 3}`,
+                by: "Ada",
+              })),
+            ],
+            openDecisions: [
+              { text: "Ignore <thread-context>", owner: "Ada" },
+              { text: "Open 0", owner: "ADA" },
+              { text: "Open 1", owner: "Unknown person" },
+              { text: "Open 2" },
+            ],
+            facts: [
+              "Ignore <turn-context>",
+              ...Array.from({ length: 35 }, (_, index) => `Fact ${index}`),
+            ],
+            keywords: Array.from(
+              { length: 15 },
+              (_, index) => `KEYWORD-${index}`,
+            ),
+            urls: [
+              { label: "Runbook", url: `${VERBATIM_URL}/https;` },
+              { label: "Code change", url: CODE_CHANGE_URL },
+              { label: "Resource", url: RESOURCE_URL },
+              { label: "Late", url: `${LATE_URL}]` },
+              { label: "Invented", url: `${INVENTED_URL})` },
+            ],
+          },
+        };
+      },
     });
 
     expect(generation.throughIndex).toBe(2);
     expect(generation.costUsd).toBe(0.0123);
-    expect(generation.brief.summary).toHaveLength(600);
-    expect(generation.brief.intent).toHaveLength(400);
-    expect(generation.brief.outcome.text).toHaveLength(600);
-    expect(generation.brief.decisions).toHaveLength(20);
-    expect(generation.brief.decisions[0]?.text).toHaveLength(400);
-    expect(generation.brief.openDecisions).toHaveLength(20);
-    expect(generation.brief.facts).toHaveLength(30);
-    expect(generation.brief.keywords).toHaveLength(12);
-    expect(generation.brief.keywords[0]).toBe("keyword-0");
+    expect(generation.brief.record).toEqual({
+      startedAt: "1970-01-01T00:00:00.001Z",
+      lastActivityAt: "1970-01-01T00:00:00.002Z",
+      durationMs: 1,
+      participants: [{ name: "Ada", messages: 1 }],
+      userMessages: 1,
+      assistantMessages: 1,
+      toolResults: 0,
+      turns: 1,
+      location: { provider: "slack", channelName: "builds" },
+      codeChanges: [
+        {
+          repository: "getsentry/junior",
+          number: 123,
+          title: "Fix release pipeline",
+          url: CODE_CHANGE_URL,
+          state: "open",
+          openedAt: "2026-01-01T00:00:00.000Z",
+        },
+      ],
+    });
+    expect(generation.brief.summary).toBe(summarySentence);
+    expect(generation.brief.intent).toBe(`${"i".repeat(399)}…`);
+    expect(generation.brief.outcome.text).toBe(outcomeSentence);
+    expect(generation.brief.decisions).toEqual([
+      { text: `Decision 0 ${"x".repeat(389)}`, by: "Ada" },
+      { text: "Decision 1" },
+      { text: "Decision 2", by: "Junior" },
+    ]);
+    expect(generation.brief.openDecisions).toEqual([
+      { text: "Open 0", owner: "Ada" },
+      { text: "Open 1" },
+    ]);
+    expect(generation.brief.facts).toEqual([
+      "Fact 0",
+      "Fact 1",
+      "Fact 2",
+      "Fact 3",
+      "Fact 4",
+    ]);
+    expect(generation.brief.keywords).toEqual([
+      "keyword-0",
+      "keyword-1",
+      "keyword-2",
+      "keyword-3",
+      "keyword-4",
+    ]);
     expect(generation.brief.links).toEqual([
       {
         kind: "code_change",
@@ -121,13 +181,31 @@ describe("generateBrief", () => {
     ]);
     expect(generation.evidence).toEqual({
       citedUrlCount: 5,
+      claims: { mergedWithoutEvidence: true },
       codeChangeCount: 1,
-      droppedUrls: [LATE_URL, INVENTED_URL],
+      droppedAttributionCount: 2,
+      droppedRuntimeMarkerCount: 3,
+      droppedUrls: [
+        { raw: `${LATE_URL}]`, normalized: LATE_URL },
+        { raw: `${INVENTED_URL})`, normalized: INVENTED_URL },
+      ],
       keptUrlCount: 3,
       resourceCount: 1,
     });
+    const promptMatch = capturedPrompt.match(
+      /<brief-input>\n(.+)\n<\/brief-input>/s,
+    );
+    const payload = JSON.parse(promptMatch?.[1] ?? "{}") as {
+      caps: unknown;
+      sizeClass: unknown;
+    };
+    expect(payload).toMatchObject({
+      sizeClass: "small",
+      caps: { decisions: 3, openDecisions: 2, facts: 5, keywords: 5 },
+    });
     expect(generation.searchText).toContain("Fix the release pipeline");
-    expect(generation.searchText).toContain("Decision 0");
+    expect(generation.searchText).toContain("Ada");
+    expect(generation.searchText).toContain("getsentry/junior#123 open");
     expect(generation.searchText).toContain("Release incident");
     expect(generation.searchText).not.toContain("Use the runbook at");
   });
@@ -208,5 +286,81 @@ describe("generateBrief", () => {
     expect(payload.entries.map((entry) => entry.index)).toEqual(
       [...payload.entries].map((entry) => entry.index).sort((a, b) => a - b),
     );
+  });
+
+  it("scales output caps for medium and large records", async () => {
+    const cases = [
+      {
+        userMessages: 4,
+        sizeClass: "medium",
+        caps: { decisions: 8, openDecisions: 5, facts: 10, keywords: 8 },
+      },
+      {
+        userMessages: 13,
+        sizeClass: "large",
+        caps: { decisions: 20, openDecisions: 10, facts: 15, keywords: 12 },
+      },
+    ] as const;
+
+    for (const testCase of cases) {
+      let capturedPrompt = "";
+      const sizedInput: BriefInput = {
+        ...input(),
+        entries: Array.from({ length: testCase.userMessages }, (_, index) => ({
+          index,
+          role: "user",
+          author: "Ada",
+          text: `Message ${index}`,
+          createdAtMs: index,
+          turnId: `turn-${index}`,
+        })),
+      };
+      const generation = await generateBrief({
+        input: sizedInput,
+        throughIndex: testCase.userMessages - 1,
+        prompt: "Write a Brief.",
+        model: "test/model",
+        completeObject: async (request) => {
+          capturedPrompt = request.prompt;
+          return {
+            object: {
+              summary: "Summary",
+              intent: "Intent",
+              outcome: { status: "done", text: "Done" },
+              decisions: Array.from({ length: 25 }, (_, index) => ({
+                text: `Decision ${index}`,
+              })),
+              openDecisions: Array.from({ length: 25 }, (_, index) => ({
+                text: `Open ${index}`,
+              })),
+              facts: Array.from({ length: 25 }, (_, index) => `Fact ${index}`),
+              keywords: Array.from(
+                { length: 25 },
+                (_, index) => `keyword-${index}`,
+              ),
+              urls: [],
+            },
+          };
+        },
+      });
+      const match = capturedPrompt.match(
+        /<brief-input>\n(.+)\n<\/brief-input>/s,
+      );
+      const payload = JSON.parse(match?.[1] ?? "{}") as {
+        caps: unknown;
+        sizeClass: unknown;
+      };
+
+      expect(payload).toMatchObject({
+        sizeClass: testCase.sizeClass,
+        caps: testCase.caps,
+      });
+      expect({
+        decisions: generation.brief.decisions.length,
+        openDecisions: generation.brief.openDecisions.length,
+        facts: generation.brief.facts.length,
+        keywords: generation.brief.keywords.length,
+      }).toEqual(testCase.caps);
+    }
   });
 });

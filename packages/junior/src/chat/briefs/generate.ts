@@ -13,6 +13,15 @@ const MAX_MESSAGE_TEXT_CHARS = 4_000;
 const MAX_TOOL_TEXT_CHARS = 1_500;
 const MAX_LINKS = 40;
 
+const SIZE_CAPS = {
+  small: { decisions: 3, openDecisions: 2, facts: 5, keywords: 5 },
+  medium: { decisions: 8, openDecisions: 5, facts: 10, keywords: 8 },
+  large: { decisions: 20, openDecisions: 10, facts: 15, keywords: 12 },
+} as const;
+
+type BriefSizeClass = keyof typeof SIZE_CAPS;
+type BriefSizeCaps = (typeof SIZE_CAPS)[BriefSizeClass];
+
 const modelBriefSchema = z
   .object({
     summary: z.string().trim().min(1),
@@ -70,8 +79,13 @@ export type BriefCompleteObject = (
 
 export type BriefEvidenceCheck = {
   citedUrlCount: number;
+  claims: {
+    mergedWithoutEvidence: boolean;
+  };
   codeChangeCount: number;
-  droppedUrls: string[];
+  droppedAttributionCount: number;
+  droppedRuntimeMarkerCount: number;
+  droppedUrls: Array<{ normalized: string; raw: string }>;
   keptUrlCount: number;
   resourceCount: number;
 };
@@ -98,9 +112,19 @@ function truncate(value: string, limit: number): string {
   return trimmed.length <= limit ? trimmed : trimmed.slice(0, limit);
 }
 
-function optionalTruncated(value: string | undefined): string | undefined {
-  if (!value?.trim()) return undefined;
-  return truncate(value, 400);
+function truncateSentence(value: string, limit: number): string {
+  const trimmed = value.trim();
+  if (trimmed.length <= limit) return trimmed;
+  const bounded = trimmed.slice(0, limit);
+  const boundary = Math.max(
+    bounded.lastIndexOf("."),
+    bounded.lastIndexOf("!"),
+    bounded.lastIndexOf("?"),
+  );
+  if (boundary + 1 >= limit * 0.6) {
+    return bounded.slice(0, boundary + 1).trim();
+  }
+  return `${trimmed.slice(0, limit - 1).trimEnd()}…`;
 }
 
 function uniqueStrings(values: string[], limit: number): string[] {
@@ -113,37 +137,92 @@ function uniqueStrings(values: string[], limit: number): string[] {
   return [...unique];
 }
 
-function normalizeModelBrief(
-  model: ModelBrief,
-  links: BriefLink[],
-): ConversationBrief {
-  return conversationBriefSchema.parse({
-    schemaVersion: 1,
-    summary: truncate(model.summary, 600),
-    intent: truncate(model.intent, 400),
-    outcome: {
-      status: model.outcome.status,
-      text: truncate(model.outcome.text, 600),
-    },
-    decisions: model.decisions.slice(0, 20).map((decision) => ({
-      text: truncate(decision.text, 400),
-      ...(optionalTruncated(decision.by)
-        ? { by: optionalTruncated(decision.by) }
-        : undefined),
-    })),
-    openDecisions: model.openDecisions.slice(0, 20).map((decision) => ({
-      text: truncate(decision.text, 400),
-      ...(optionalTruncated(decision.owner)
-        ? { owner: optionalTruncated(decision.owner) }
-        : undefined),
-    })),
-    facts: uniqueStrings(model.facts, 30),
-    links,
-    keywords: uniqueStrings(
-      model.keywords.map((keyword) => keyword.toLowerCase()),
-      12,
-    ),
+const RUNTIME_MARKER_PATTERN =
+  /\[\[NO_REPLY\]\]|<\/?(?:active-asks|analysis-error|available-skills|brief-input|compaction|current-instruction|image-attachment|omitted-image-attachments|pi-history|plugin-contribution|resolved-or-replaced-asks|runtime-turn-context|thread-compactions|thread-context|turn-context)\b/i;
+
+function hasRuntimeMarker(value: string): boolean {
+  return RUNTIME_MARKER_PATTERN.test(value);
+}
+
+function normalizeModelBrief(args: {
+  caps: BriefSizeCaps;
+  links: BriefLink[];
+  model: ModelBrief;
+  record: ConversationBrief["record"];
+}): {
+  brief: ConversationBrief;
+  droppedAttributionCount: number;
+  droppedRuntimeMarkerCount: number;
+} {
+  let droppedAttributionCount = 0;
+  let droppedRuntimeMarkerCount = 0;
+  const participantNames = new Map(
+    args.record.participants.map((participant) => [
+      participant.name.toLowerCase(),
+      participant.name,
+    ]),
+  );
+  participantNames.set("junior", "Junior");
+  const attribution = (value: string | undefined): string | undefined => {
+    if (!value?.trim()) return undefined;
+    const matched = participantNames.get(value.trim().toLowerCase());
+    if (!matched) droppedAttributionCount += 1;
+    return matched;
+  };
+  const decisions = args.model.decisions.flatMap((decision) => {
+    if (hasRuntimeMarker(decision.text)) {
+      droppedRuntimeMarkerCount += 1;
+      return [];
+    }
+    const by = attribution(decision.by);
+    return [
+      {
+        text: truncate(decision.text, 400),
+        ...(by ? { by } : undefined),
+      },
+    ];
   });
+  const openDecisions = args.model.openDecisions.flatMap((decision) => {
+    if (hasRuntimeMarker(decision.text)) {
+      droppedRuntimeMarkerCount += 1;
+      return [];
+    }
+    const owner = attribution(decision.owner);
+    return [
+      {
+        text: truncate(decision.text, 400),
+        ...(owner ? { owner } : undefined),
+      },
+    ];
+  });
+  const facts = args.model.facts.filter((fact) => {
+    const keep = !hasRuntimeMarker(fact);
+    if (!keep) droppedRuntimeMarkerCount += 1;
+    return keep;
+  });
+
+  return {
+    brief: conversationBriefSchema.parse({
+      schemaVersion: 1,
+      record: args.record,
+      summary: truncateSentence(args.model.summary, 600),
+      intent: truncateSentence(args.model.intent, 400),
+      outcome: {
+        status: args.model.outcome.status,
+        text: truncateSentence(args.model.outcome.text, 600),
+      },
+      decisions: decisions.slice(0, args.caps.decisions),
+      openDecisions: openDecisions.slice(0, args.caps.openDecisions),
+      facts: uniqueStrings(facts, args.caps.facts),
+      links: args.links,
+      keywords: uniqueStrings(
+        args.model.keywords.map((keyword) => keyword.toLowerCase()),
+        args.caps.keywords,
+      ),
+    }),
+    droppedAttributionCount,
+    droppedRuntimeMarkerCount,
+  };
 }
 
 function inputEntries(input: BriefInput, throughIndex: number): BriefEntry[] {
@@ -162,9 +241,60 @@ function inputEntries(input: BriefInput, throughIndex: number): BriefEntry[] {
     });
 }
 
+function buildBriefRecord(
+  input: BriefInput,
+  entries: BriefEntry[],
+): ConversationBrief["record"] {
+  if (entries.length === 0) {
+    throw new Error("A Brief requires at least one entry through its index");
+  }
+  const participantByName = new Map<
+    string,
+    { messages: number; name: string }
+  >();
+  for (const entry of entries) {
+    if (entry.role !== "user" || !entry.author?.trim()) continue;
+    const key = entry.author.trim().toLowerCase();
+    const participant = participantByName.get(key);
+    if (participant) {
+      participant.messages += 1;
+    } else {
+      participantByName.set(key, { name: entry.author.trim(), messages: 1 });
+    }
+  }
+  const activityTimes = entries.map((entry) => entry.createdAtMs);
+  const startedAtMs = Math.min(...activityTimes);
+  const lastActivityAtMs = Math.max(...activityTimes);
+  const turns = new Set(
+    entries.flatMap((entry) => (entry.turnId ? [entry.turnId] : [])),
+  ).size;
+  return {
+    startedAt: new Date(startedAtMs).toISOString(),
+    lastActivityAt: new Date(lastActivityAtMs).toISOString(),
+    durationMs: lastActivityAtMs - startedAtMs,
+    participants: [...participantByName.values()],
+    userMessages: entries.filter((entry) => entry.role === "user").length,
+    assistantMessages: entries.filter((entry) => entry.role === "assistant")
+      .length,
+    toolResults: entries.filter((entry) => entry.role === "tool").length,
+    ...(turns > 0 ? { turns } : undefined),
+    ...(input.location ? { location: input.location } : undefined),
+    codeChanges: input.codeChanges,
+  };
+}
+
+function briefSizeClass(record: ConversationBrief["record"]): BriefSizeClass {
+  if (record.userMessages <= 3) return "small";
+  if (record.userMessages <= 12) return "medium";
+  return "large";
+}
+
 function promptInput(args: {
+  caps: BriefSizeCaps;
   input: BriefInput;
   previous?: ConversationBrief;
+  record: ConversationBrief["record"];
+  sizeClass: BriefSizeClass;
   throughIndex: number;
 }): string {
   const candidates = inputEntries(args.input, args.throughIndex);
@@ -179,6 +309,9 @@ function promptInput(args: {
       visibility: args.input.visibility,
       location: args.input.location,
     },
+    record: args.record,
+    sizeClass: args.sizeClass,
+    caps: args.caps,
     previousBrief: args.previous,
     codeChanges: args.input.codeChanges,
     resources: args.input.resources,
@@ -242,6 +375,18 @@ function deterministicLinks(input: BriefInput): BriefLink[] {
   ];
 }
 
+function normalizeCitationUrl(raw: string): string {
+  let normalized = raw.trim();
+  let previous: string;
+  do {
+    previous = normalized;
+    normalized = normalized.replace(/[;,.)\]]+$/, "");
+    normalized = normalized.replace(/\/https?$/i, "");
+    normalized = normalized.replace(/\/+$/, "");
+  } while (normalized !== previous);
+  return normalized;
+}
+
 function buildEvidenceLinks(args: {
   input: BriefInput;
   model: ModelBrief;
@@ -253,48 +398,78 @@ function buildEvidenceLinks(args: {
     .map((entry) => entry.text)
     .join("\n");
   const allowedPriorUrls = new Set(
-    args.previous?.links.map((link) => link.url) ?? [],
+    (args.previous?.links ?? []).map((link) => normalizeCitationUrl(link.url)),
   );
-  const droppedUrls: string[] = [];
+  const droppedUrls: Array<{ normalized: string; raw: string }> = [];
   const acceptedUrls = new Set<string>();
-  const citedLinks: BriefLink[] = [];
-  const existingUrls = new Set(deterministic.map((link) => link.url));
+  const citedLinks: Array<{ link: BriefLink; raw: string }> = [];
+  const existingUrls = new Set(
+    deterministic.map((link) => normalizeCitationUrl(link.url)),
+  );
   for (const citation of args.model.urls) {
+    const normalized = normalizeCitationUrl(citation.url);
     const allowed =
-      existingUrls.has(citation.url) ||
-      transcriptText.includes(citation.url) ||
-      allowedPriorUrls.has(citation.url);
+      existingUrls.has(normalized) ||
+      transcriptText.includes(normalized) ||
+      allowedPriorUrls.has(normalized);
     if (!allowed) {
-      droppedUrls.push(citation.url);
+      droppedUrls.push({ raw: citation.url, normalized });
       continue;
     }
-    acceptedUrls.add(citation.url);
-    if (existingUrls.has(citation.url)) continue;
-    existingUrls.add(citation.url);
+    acceptedUrls.add(normalized);
+    if (existingUrls.has(normalized)) continue;
+    existingUrls.add(normalized);
     citedLinks.push({
-      kind: "url",
-      label: truncate(citation.label, 400),
-      url: citation.url,
+      raw: citation.url,
+      link: {
+        kind: "url",
+        label: truncate(citation.label, 400),
+        url: normalized,
+      },
     });
   }
-  const allLinks = [...deterministic, ...citedLinks];
-  for (const link of allLinks.slice(MAX_LINKS)) {
-    if (link.kind === "url") droppedUrls.push(link.url);
+  const citedLimit = Math.max(0, MAX_LINKS - deterministic.length);
+  for (const citation of citedLinks.slice(citedLimit)) {
+    droppedUrls.push({
+      raw: citation.raw,
+      normalized: citation.link.url,
+    });
   }
-  const links = allLinks.slice(0, MAX_LINKS);
-  const uniqueDroppedUrls = [...new Set(droppedUrls)];
+  const links = [
+    ...deterministic,
+    ...citedLinks.slice(0, citedLimit).map((citation) => citation.link),
+  ].slice(0, MAX_LINKS);
+  const keptEvidenceUrls = new Set(
+    links.map((link) => normalizeCitationUrl(link.url)),
+  );
+  const uniqueDroppedUrls = [
+    ...new Map(
+      droppedUrls.map((url) => [`${url.raw}\0${url.normalized}`, url]),
+    ).values(),
+  ];
   return {
     links,
     evidence: {
       citedUrlCount: args.model.urls.length,
+      claims: { mergedWithoutEvidence: false },
       codeChangeCount: args.input.codeChanges.length,
+      droppedAttributionCount: 0,
+      droppedRuntimeMarkerCount: 0,
       droppedUrls: uniqueDroppedUrls,
-      keptUrlCount: [...acceptedUrls].filter((url) =>
-        links.some((link) => link.url === url),
-      ).length,
+      keptUrlCount: [...acceptedUrls].filter((url) => keptEvidenceUrls.has(url))
+        .length,
       resourceCount: args.input.resources.length,
     },
   };
+}
+
+function hasMergedEvidence(input: BriefInput): boolean {
+  return (
+    input.codeChanges.some((change) => change.state === "merged") ||
+    input.resources.some(
+      (resource) => resource.status?.trim().toLowerCase() === "merged",
+    )
+  );
 }
 
 /** Generate one bounded Brief and attach only deterministic evidence links. */
@@ -305,31 +480,51 @@ export async function generateBrief(
   if (!Number.isSafeInteger(rawArgs.throughIndex) || rawArgs.throughIndex < 0) {
     throw new Error("throughIndex must be a non-negative integer");
   }
+  const record = buildBriefRecord(
+    input,
+    inputEntries(input, rawArgs.throughIndex),
+  );
+  const sizeClass = briefSizeClass(record);
+  const caps = SIZE_CAPS[sizeClass];
   const result = await rawArgs.completeObject({
     modelId: rawArgs.model,
     schema: modelBriefSchema,
     system: rawArgs.prompt,
     prompt: promptInput({
+      caps,
       input,
       previous: rawArgs.previous,
+      record,
+      sizeClass,
       throughIndex: rawArgs.throughIndex,
     }),
     temperature: 0,
     maxTokens: 2_500,
   });
   const model = modelBriefSchema.parse(result.object);
-  const { evidence, links } = buildEvidenceLinks({
+  const { evidence: linkEvidence, links } = buildEvidenceLinks({
     input,
     model,
     previous: rawArgs.previous,
     throughIndex: rawArgs.throughIndex,
   });
-  const brief = normalizeModelBrief(model, links);
+  const normalized = normalizeModelBrief({ caps, links, model, record });
+  const mergedClaim = /\bmerged\b/i.test(
+    `${normalized.brief.summary}\n${normalized.brief.outcome.text}`,
+  );
+  const evidence: BriefEvidenceCheck = {
+    ...linkEvidence,
+    claims: {
+      mergedWithoutEvidence: mergedClaim && !hasMergedEvidence(input),
+    },
+    droppedAttributionCount: normalized.droppedAttributionCount,
+    droppedRuntimeMarkerCount: normalized.droppedRuntimeMarkerCount,
+  };
   return {
-    brief,
+    brief: normalized.brief,
     ...(result.costUsd !== undefined ? { costUsd: result.costUsd } : undefined),
     evidence,
-    searchText: buildBriefSearchText(brief, input.title),
+    searchText: buildBriefSearchText(normalized.brief, input.title),
     throughIndex: rawArgs.throughIndex,
   };
 }
