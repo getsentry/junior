@@ -95,12 +95,12 @@ function actorNames(events: ConversationReportEvent[]): Map<string, string> {
       email: known.email ?? (actor?.email?.trim() || undefined),
     });
   }
-  return new Map(
-    [...actors].map(([key, actor]) => [
-      key,
-      bestActorName(actor) ?? "unknown participant",
-    ]),
-  );
+  const names = new Map<string, string>();
+  for (const [key, actor] of actors) {
+    const name = bestActorName(actor);
+    if (name) names.set(key, name);
+  }
+  return names;
 }
 
 function actorName(
@@ -109,11 +109,7 @@ function actorName(
 ): string | undefined {
   if (!actor) return undefined;
   const key = actorIdentityKey(actor);
-  return (
-    (key ? resolvedNames.get(key) : undefined) ??
-    bestActorName(actor) ??
-    "unknown participant"
-  );
+  return (key ? resolvedNames.get(key) : undefined) ?? bestActorName(actor);
 }
 
 function toolText(output: unknown): string | undefined {

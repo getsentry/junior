@@ -391,8 +391,22 @@ function deterministicLinks(input: BriefInput): BriefLink[] {
   ];
 }
 
+function decodeHtmlEntities(value: string): string {
+  const entities: Record<string, string> = {
+    "&#39;": "'",
+    "&amp;": "&",
+    "&gt;": ">",
+    "&lt;": "<",
+    "&quot;": '"',
+  };
+  return value.replace(
+    /&(?:amp|lt|gt|quot|#39);/g,
+    (entity) => entities[entity]!,
+  );
+}
+
 function normalizeCitationUrl(raw: string): string {
-  let normalized = raw.trim();
+  let normalized = decodeHtmlEntities(raw).trim();
   let previous: string;
   do {
     previous = normalized;
@@ -410,9 +424,11 @@ function buildEvidenceLinks(args: {
   throughIndex: number;
 }): { evidence: BriefEvidenceCheck; links: BriefLink[] } {
   const deterministic = deterministicLinks(args.input);
-  const transcriptText = inputEntries(args.input, args.throughIndex)
-    .map((entry) => entry.text)
-    .join("\n");
+  const transcriptText = decodeHtmlEntities(
+    inputEntries(args.input, args.throughIndex)
+      .map((entry) => entry.text)
+      .join("\n"),
+  );
   const allowedPriorUrls = new Set(
     (args.previous?.links ?? []).map((link) => normalizeCitationUrl(link.url)),
   );
@@ -529,10 +545,13 @@ export async function generateBrief(
   const mergedClaim = /\bmerged\b/i.test(
     `${normalized.brief.summary}\n${normalized.brief.outcome.text}`,
   );
+  const hasLinkedEvidence =
+    input.codeChanges.length > 0 || input.resources.length > 0;
   const evidence: BriefEvidenceCheck = {
     ...linkEvidence,
     claims: {
-      mergedWithoutEvidence: mergedClaim && !hasMergedEvidence(input),
+      mergedWithoutEvidence:
+        mergedClaim && hasLinkedEvidence && !hasMergedEvidence(input),
     },
     coercedDecisionKinds: normalized.coercedDecisionKinds,
     droppedAttributionCount: normalized.droppedAttributionCount,

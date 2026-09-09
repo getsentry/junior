@@ -4,6 +4,10 @@ import { generateBrief } from "@/chat/briefs/generate";
 import type { BriefInput } from "@/chat/briefs/input";
 
 const VERBATIM_URL = "https://example.com/runbook";
+const ESCAPED_TRANSCRIPT_URL = "https://example.com/thread?ts=1&amp;cid=2";
+const UNESCAPED_TRANSCRIPT_URL = "https://example.com/thread?ts=1&cid=2";
+const UNESCAPED_CITATION_URL = "https://example.com/admin?org=1&project=2";
+const ESCAPED_CITATION_URL = "https://example.com/admin?org=1&amp;project=2";
 const LATE_URL = "https://example.com/late";
 const INVENTED_URL = "https://example.com/invented";
 const CODE_CHANGE_URL = "https://github.com/getsentry/junior/pull/123";
@@ -28,7 +32,7 @@ function input(): BriefInput {
         index: 1,
         role: "user",
         author: "Ada",
-        text: `Use the runbook at ${VERBATIM_URL}.`,
+        text: `Use the runbook at ${VERBATIM_URL}, the thread at ${ESCAPED_TRANSCRIPT_URL}, and the admin page at ${UNESCAPED_CITATION_URL}.`,
         createdAtMs: 1,
         turnId: "turn-1",
       },
@@ -127,6 +131,8 @@ describe("generateBrief", () => {
             ),
             urls: [
               { label: "Runbook", url: `${VERBATIM_URL}/https;` },
+              { label: "Thread", url: UNESCAPED_TRANSCRIPT_URL },
+              { label: "Admin", url: ESCAPED_CITATION_URL },
               { label: "Code change", url: CODE_CHANGE_URL },
               { label: "Resource", url: RESOURCE_URL },
               { label: "Late", url: `${LATE_URL}]` },
@@ -205,9 +211,11 @@ describe("generateBrief", () => {
         url: RESOURCE_URL,
       },
       { kind: "url", label: "Runbook", url: VERBATIM_URL },
+      { kind: "url", label: "Thread", url: UNESCAPED_TRANSCRIPT_URL },
+      { kind: "url", label: "Admin", url: UNESCAPED_CITATION_URL },
     ]);
     expect(generation.evidence).toEqual({
-      citedUrlCount: 5,
+      citedUrlCount: 7,
       claims: { mergedWithoutEvidence: true },
       codeChangeCount: 1,
       coercedDecisionKinds: 3,
@@ -217,7 +225,7 @@ describe("generateBrief", () => {
         { raw: `${LATE_URL}]`, normalized: LATE_URL },
         { raw: `${INVENTED_URL})`, normalized: INVENTED_URL },
       ],
-      keptUrlCount: 3,
+      keptUrlCount: 5,
       resourceCount: 1,
     });
     const promptMatch = capturedPrompt.match(
@@ -236,6 +244,35 @@ describe("generateBrief", () => {
     expect(generation.searchText).toContain("getsentry/junior#123 open");
     expect(generation.searchText).toContain("Release incident");
     expect(generation.searchText).not.toContain("Use the runbook at");
+  });
+
+  it("does not flag merged discussion without linked evidence", async () => {
+    const noEvidenceInput = {
+      ...input(),
+      codeChanges: [],
+      resources: [],
+    };
+
+    const generation = await generateBrief({
+      input: noEvidenceInput,
+      throughIndex: 2,
+      prompt: "Write a Brief.",
+      model: "test/model",
+      completeObject: async () => ({
+        object: {
+          summary: "Another repository's change was merged.",
+          intent: "Review the upstream release.",
+          outcome: { status: "answered", text: "The merge was confirmed." },
+          decisions: [],
+          openDecisions: [],
+          facts: [],
+          keywords: [],
+          urls: [],
+        },
+      }),
+    });
+
+    expect(generation.evidence.claims.mergedWithoutEvidence).toBe(false);
   });
 
   it("keeps messages before filling the budget with newest tool results", async () => {
