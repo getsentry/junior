@@ -37,9 +37,9 @@ import { createMemoryCliCommand } from "../src/cli";
 import { memoryPlugin } from "../src/plugin";
 import { processMemorySession } from "../src/process-session";
 import {
+  createMemoryArchiveTool,
   createMemoryCreateTool,
   createMemoryListTool,
-  createMemoryRemoveTool,
   createMemorySearchTool,
   type MemoryReviewer,
 } from "../src/tools";
@@ -3592,7 +3592,7 @@ WHERE id = '${superseded.memory.id}'
       };
       const tools = {
         createMemory: createMemoryCreateTool(context),
-        removeMemory: createMemoryRemoveTool(context),
+        archiveMemory: createMemoryArchiveTool(context),
         listMemories: createMemoryListTool(context),
         searchMemories: createMemorySearchTool(context),
       };
@@ -3714,7 +3714,7 @@ WHERE id = '${superseded.memory.id}'
       );
       expect(personal).toBeDefined();
       await expect(
-        tools.removeMemory.execute({ id: personal!.id.slice(0, 12) }, {}),
+        tools.archiveMemory.execute({ id: personal!.id.slice(0, 12) }, {}),
       ).resolves.toMatchObject({
         memory: {
           id: personal!.id,
