@@ -3,17 +3,19 @@
  * a resource subscription. Call sites supply facts; this module owns layout
  * and the reply contract. Section outline lives in `chat/README.md`.
  */
-/** Shared closing lines for successful output delivery. */
-function replyContractLines(deliverSuccessfulOutput: boolean): string[] {
-  if (!deliverSuccessfulOutput) {
+import type { TaskOutcome } from "@sentry/junior-plugin-api";
+
+/** Shared closing lines for the stored outcomes. */
+function replyContractLines(outcomes: TaskOutcome[] | undefined): string[] {
+  if (outcomes?.length === 0) {
     return [
-      "Successful output is not delivered to the destination.",
-      "Complete the work without adding a status message for people.",
+      "Do the work without writing a status message.",
+      "No successful output will be delivered.",
     ];
   }
   return [
     "When you reply, follow any reply format in the instructions.",
-    "Briefly summarize what you acted on and what you did or need next.",
+    "Briefly report what you did or what is needed next.",
   ];
 }
 
@@ -37,8 +39,8 @@ function clip(value: string, maxLength: number | undefined): string {
 export function renderTaskInput(args: {
   /** Stored task instruction, or subscription intent. */
   instructions: string;
-  /** Whether successful agent output is delivered to people. */
-  deliverSuccessfulOutput: boolean;
+  /** Visible effects after successful work. Missing legacy values send a message. */
+  outcomes?: TaskOutcome[];
   /** Human label for the matched resource, when present. */
   about?: string;
   /** Plugin guidance scoped under the instructions. */
@@ -104,6 +106,6 @@ export function renderTaskInput(args: {
     );
   }
 
-  lines.push("", ...replyContractLines(args.deliverSuccessfulOutput));
+  lines.push("", ...replyContractLines(args.outcomes));
   return lines.join("\n");
 }

@@ -5,7 +5,6 @@ describe("renderTaskInput", () => {
   it("renders a minimal task with instructions and reply contract", () => {
     const text = renderTaskInput({
       instructions: "Post a digest. Summarize the latest state.",
-      deliverSuccessfulOutput: true,
     });
 
     expect(text).toMatchInlineSnapshot(`
@@ -16,19 +15,17 @@ describe("renderTaskInput", () => {
       Instructions: Post a digest. Summarize the latest state.
 
       When you reply, follow any reply format in the instructions.
-      Briefly summarize what you acted on and what you did or need next."
+      Briefly report what you did or what is needed next."
     `);
   });
 
-  it("renders silent output without a no-reply instruction", () => {
+  it("renders an empty outcome list without a no-reply instruction", () => {
     const text = renderTaskInput({
       instructions: "Apply the requested maintenance.",
-      deliverSuccessfulOutput: false,
+      outcomes: [],
     });
 
-    expect(text).toContain(
-      "Successful output is not delivered to the destination.",
-    );
+    expect(text).toContain("No successful output will be delivered.");
     expect(text).not.toContain("[[NO_REPLY]]");
   });
 
@@ -36,7 +33,6 @@ describe("renderTaskInput", () => {
     const text = renderTaskInput({
       about: "GitHub PR getsentry/junior#691",
       instructions: "Fix failed checks on this PR.",
-      deliverSuccessfulOutput: true,
       trustedSummary: "CI failed on workflow test.",
       verifiedDetails: { pullRequest: 691 },
       externalText: "Failed checks:\n- test",
@@ -64,7 +60,7 @@ describe("renderTaskInput", () => {
       - test
 
       When you reply, follow any reply format in the instructions.
-      Briefly summarize what you acted on and what you did or need next."
+      Briefly report what you did or what is needed next."
     `);
   });
 
@@ -72,7 +68,6 @@ describe("renderTaskInput", () => {
     const text = renderTaskInput({
       about: "  label  ",
       instructions: "  Tell me when checks fail.  ",
-      deliverSuccessfulOutput: true,
       guidance: "  ",
       trustedSummary: "long summary text",
       trustedSummaryMaxLength: 4,
@@ -96,7 +91,7 @@ describe("renderTaskInput", () => {
         "abc",
         "",
         "When you reply, follow any reply format in the instructions.",
-        "Briefly summarize what you acted on and what you did or need next.",
+        "Briefly report what you did or what is needed next.",
       ].join("\n"),
     );
   });

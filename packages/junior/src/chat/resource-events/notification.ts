@@ -51,7 +51,6 @@ export function renderResourceEventNotificationText(
   return renderTaskInput({
     about: subscription.label,
     instructions: subscription.intent,
-    deliverSuccessfulOutput: true,
     guidance,
     trustedSummary: event.trustedSummary,
     verifiedDetails: event.data,

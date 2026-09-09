@@ -59,8 +59,7 @@ function eventInput(task: EventTask, event: ResourceEvent): string {
   return renderTaskInput({
     about: task.trigger.label,
     instructions: task.task.text,
-    deliverSuccessfulOutput:
-      effectiveTaskOutcomes(task.outcomes, task.destination).length > 0,
+    outcomes: effectiveTaskOutcomes(task.outcomes, task.destination),
     guidance,
     trustedSummary: event.trustedSummary,
     trustedSummaryMaxLength: RESOURCE_EVENT_SUMMARY_MAX_LENGTH,
