@@ -174,12 +174,13 @@ function normalizeModelBrief(args: {
     }
     let by = attribution(decision.by);
     let kind = decision.kind;
-    if ((!by || by === "Junior") && kind !== "assumed") {
-      by = "Junior";
+    if (by === "Junior" && kind !== "assumed") {
+      // Junior cannot state or confirm a decision for a human.
       kind = "assumed";
       coercedDecisionKinds += 1;
     } else if (by && by !== "Junior" && kind === "assumed") {
-      kind = "confirmed";
+      // A human named on an assumed decision is not evidence of acceptance.
+      by = undefined;
       coercedDecisionKinds += 1;
     }
     return [
@@ -322,7 +323,6 @@ function promptInput(args: {
     sizeClass: args.sizeClass,
     caps: args.caps,
     previousBrief: args.previous,
-    codeChanges: args.input.codeChanges,
     resources: args.input.resources,
   };
   const serialize = (): string => {
@@ -415,10 +415,7 @@ function endsWithUnopenedBracket(
 function normalizeCitationUrl(raw: string): string {
   let url = decodeHtmlEntities(raw).trim();
   for (;;) {
-    let next = url
-      .replace(/[;,.]+$/, "")
-      .replace(/\/https?$/i, "")
-      .replace(/\/+$/, "");
+    let next = url.replace(/[;,.]+$/, "").replace(/\/+$/, "");
     if (
       endsWithUnopenedBracket(next, "(", ")") ||
       endsWithUnopenedBracket(next, "[", "]")
@@ -430,8 +427,16 @@ function normalizeCitationUrl(raw: string): string {
   }
 }
 
+/** Models sometimes append a stray `/https` to a cited URL; try without it. */
+function citationCandidates(raw: string): string[] {
+  const normalized = normalizeCitationUrl(raw);
+  const stripped = normalizeCitationUrl(normalized.replace(/\/https?$/i, ""));
+  return stripped === normalized ? [normalized] : [normalized, stripped];
+}
+
+/** URL tokens in prose or Slack `<url|label>` links, normalized for matching. */
 function normalizedUrlTokens(value: string): Set<string> {
-  const tokens = decodeHtmlEntities(value).match(/https?:\/\/[^\s<>"']+/gi);
+  const tokens = decodeHtmlEntities(value).match(/https?:\/\/[^\s<>"'|]+/gi);
   return new Set(
     (tokens ?? []).map(normalizeCitationUrl).filter((url) => url.length > 0),
   );
@@ -461,14 +466,16 @@ function buildEvidenceLinks(args: {
   const droppedUrls = new Map<string, { normalized: string; raw: string }>();
   const cited: Array<{ link: BriefLink; raw: string }> = [];
   for (const citation of args.model.urls) {
-    const normalized = normalizeCitationUrl(citation.url);
-    const supported =
-      linkedUrls.has(normalized) ||
-      transcriptUrls.has(normalized) ||
-      priorUrls.has(normalized);
-    if (!supported) {
-      droppedUrls.set(`${citation.url}\0${normalized}`, {
-        normalized,
+    const candidates = citationCandidates(citation.url);
+    const normalized = candidates.find(
+      (candidate) =>
+        linkedUrls.has(candidate) ||
+        transcriptUrls.has(candidate) ||
+        priorUrls.has(candidate),
+    );
+    if (normalized === undefined) {
+      droppedUrls.set(`${citation.url}\0${candidates[0]}`, {
+        normalized: candidates[0]!,
         raw: citation.url,
       });
       continue;
