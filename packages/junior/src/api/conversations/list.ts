@@ -6,6 +6,7 @@ import { locationFromRow } from "@/chat/conversations/sql/location";
 import { parseSessionSource } from "@/chat/source";
 import type { JuniorDatabase } from "@/db/db";
 import {
+  juniorConversationBriefs,
   juniorConversations,
   juniorDestinations,
   juniorIdentities,
@@ -118,10 +119,22 @@ async function conversationRows(
       and(
         isNull(juniorConversations.parentConversationId),
         conversationFeedMembershipFilter(status, filter, archivedAfter),
-        // TODO(dcramer): Search only matches conversation titles today. Expand
-        // to transcripts and semantic search once title search ships.
         query
-          ? sql<boolean>`strpos(lower(coalesce(${juniorConversations.title}, '')), ${query}) > 0`
+          ? or(
+              sql<boolean>`strpos(lower(coalesce(${juniorConversations.title}, '')), ${query}) > 0`,
+              sql<boolean>`exists (
+                select 1
+                from ${juniorConversationBriefs}
+                where ${juniorConversationBriefs.conversationId} = ${juniorConversations.conversationId}
+                  and ${juniorConversationBriefs.version} = (
+                    select max(${juniorConversationBriefs.version})
+                    from ${juniorConversationBriefs}
+                    where ${juniorConversationBriefs.conversationId} = ${juniorConversations.conversationId}
+                  )
+                  and to_tsvector('english', ${juniorConversationBriefs.searchText})
+                    @@ websearch_to_tsquery('english', ${query})
+              )`,
+            )
           : undefined,
       ),
     )

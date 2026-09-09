@@ -42,6 +42,7 @@ import { createPublishImageTool } from "@/chat/tools/publish-image";
 import { createUnpublishImageTool } from "@/chat/tools/unpublish-image";
 import { createLoadAttachmentTool } from "@/chat/tools/load-attachment";
 import { createSearchConversationEventsTool } from "@/chat/tools/search-conversation-events";
+import { createSearchConversationBriefsTool } from "@/chat/tools/search-conversation-briefs";
 import { createHandoffTool } from "@/chat/tools/handoff/tool";
 import type { ToolRegistry } from "@/chat/tools/definition";
 import type {
@@ -121,6 +122,18 @@ export function createTools(
     ...createWorkspaceTools(context),
   };
   tools.searchConversationEvents = createSearchConversationEventsTool(context);
+  if (context.conversationPrivacy === "public") {
+    tools.searchConversationBriefs = createSearchConversationBriefsTool(
+      slackContext
+        ? {
+            kind: "public_provider_tenant",
+            provider: "slack",
+            providerTenantId: slackContext.teamId,
+          }
+        : { kind: "public" },
+      context.conversationId,
+    );
+  }
   if (context.supportsImageInput) {
     tools.viewImage = createViewImageTool(
       context.workspace,

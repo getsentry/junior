@@ -158,11 +158,14 @@ describe("Slack tool registration", () => {
     expect(tools).toHaveProperty("addReaction");
     expect(tools).toHaveProperty("slackCanvasCreate");
     expect(tools).toHaveProperty("searchConversationMessages");
+    expect(tools).toHaveProperty("searchConversationBriefs");
     expect(tools).toHaveProperty("searchConversationEvents");
     expect(tools).toHaveProperty("stopWatchingResources");
     expect(tools).toHaveProperty("listResourceEventSubscriptions");
     expect(tools.searchConversationMessages?.exposure).toBe("deferred");
     expect(tools.searchConversationMessages?.source?.id).toBe("conversations");
+    expect(tools.searchConversationBriefs?.exposure).toBe("deferred");
+    expect(tools.searchConversationBriefs?.source?.id).toBe("conversations");
     expect(tools.searchConversationEvents?.exposure).toBe("deferred");
     expect(tools.searchConversationEvents?.source?.id).toBe("conversations");
     expect(tools.stopWatchingResources?.exposure).toBe("deferred");
@@ -181,6 +184,18 @@ describe("Slack tool registration", () => {
   it("does not register conversation search for a private Conversation", () => {
     const tools = createTools([], {}, ctx("C12345", "private"));
 
+    expect(tools).not.toHaveProperty("searchConversationMessages");
+    expect(tools).not.toHaveProperty("searchConversationBriefs");
+  });
+
+  it("registers Brief search for public non-Slack Conversations", () => {
+    const tools = createTools(
+      [],
+      {},
+      { ...ctx(), conversationPrivacy: "public" },
+    );
+
+    expect(tools).toHaveProperty("searchConversationBriefs");
     expect(tools).not.toHaveProperty("searchConversationMessages");
   });
 

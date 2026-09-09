@@ -10,6 +10,7 @@ import {
   readConversationRecordFromSql,
 } from "@/api/conversations/list";
 import { apiErrorSchema, conversationFeedSchema } from "@/api/schema";
+import { appendConversationBrief } from "@/chat/briefs/store";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
@@ -23,6 +24,7 @@ import {
   juniorIdentities,
   juniorUsers,
 } from "@/db/schema";
+import { conversationBriefFixture } from "../../../fixtures/conversation-brief";
 import { createConfiguredJuniorSqlFixture } from "../../../fixtures/sql";
 
 function dashboardAuthorIdFromEmail(email: string): string {
@@ -56,6 +58,26 @@ describe("conversation list API", () => {
           teamId: "T123",
           channelId: "C123",
         },
+      });
+      await appendConversationBrief(fixture.sql.db(), {
+        conversationId: archivedId,
+        turnId: "archived-brief-1",
+        throughSeq: 0,
+        content: conversationBriefFixture({
+          summary: "The retained orchid plan was replaced.",
+        }),
+        searchText: "retained orchid plan",
+        modelId: "test-model",
+      });
+      await appendConversationBrief(fixture.sql.db(), {
+        conversationId: archivedId,
+        turnId: "archived-brief-2",
+        throughSeq: 1,
+        content: conversationBriefFixture({
+          summary: "The durable sapphire choice is current.",
+        }),
+        searchText: "durable sapphire choice",
+        modelId: "test-model",
       });
       const viewer = await resolveViewerUser("viewer@example.com");
       expect(viewer).toBeDefined();
@@ -109,6 +131,22 @@ describe("conversation list API", () => {
           expect.objectContaining({ conversationId: recentArchivedId }),
         ]),
       );
+      const briefSearchResponse = await app.request(
+        "http://localhost/api/conversations?actorEmail=viewer%40example.com&q=durable%20sapphire",
+      );
+      expect(briefSearchResponse.status).toBe(200);
+      expect(
+        conversationFeedSchema.parse(await briefSearchResponse.json())
+          .conversations,
+      ).toEqual([expect.objectContaining({ conversationId: archivedId })]);
+      const staleBriefSearchResponse = await app.request(
+        "http://localhost/api/conversations?actorEmail=viewer%40example.com&q=retained%20orchid",
+      );
+      expect(staleBriefSearchResponse.status).toBe(200);
+      expect(
+        conversationFeedSchema.parse(await staleBriefSearchResponse.json())
+          .conversations,
+      ).toEqual([]);
       const archivedResponse = await app.request(
         "http://localhost/api/conversations?actorEmail=viewer%40example.com&status=archived",
       );
