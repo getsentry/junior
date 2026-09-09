@@ -43,10 +43,10 @@ Turns with a user instruction when Brief generation is enabled. It skips child C
 call, it skips a Turn whose terminal event is already covered by the latest
 Brief. A retry with the same `turnId` re-emits the stored version's idempotent
 `briefs/brief_updated` event, which repairs a failed first emission without a
-second model call. The task uses the configured default structured model. The
-event carries the version, model id, item counts, and model cost. Its cost
-appears in the Conversation auxiliary-cost breakdown under the `briefs`
-namespace.
+second model call. The task and `junior briefs run` send the same request to
+the configured default model. The event carries the version, model id, item
+counts, and model cost. Its cost appears in the Conversation auxiliary-cost
+breakdown under the `briefs` namespace.
 
 A public Brief survives transcript purge. A non-public root loses every Brief
 in its Conversation tree when purge scrubs private metadata. Remaining private

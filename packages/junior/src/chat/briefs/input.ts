@@ -9,8 +9,8 @@ import {
   juniorCodeRepositories,
   juniorConversationEvents,
 } from "@/db/schema";
-import { briefEntriesFromReportEvents } from "../event-entries";
-import { parseBriefInput, type BriefInput } from "../input";
+import { briefEntriesFromReportEvents } from "./event-entries";
+import { parseBriefInput, type BriefInput } from "./schema";
 
 const EVENT_PAGE_SIZE = 500;
 

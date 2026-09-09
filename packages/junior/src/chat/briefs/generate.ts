@@ -437,13 +437,6 @@ function normalizedUrlTokens(value: string): Set<string> {
   );
 }
 
-function normalizedUrlTokens(value: string): Set<string> {
-  const tokens = decodeHtmlEntities(value).match(/https?:\/\/[^\s<>"']+/gi);
-  return new Set(
-    (tokens ?? []).map(normalizeCitationUrl).filter((url) => url.length > 0),
-  );
-}
-
 function buildEvidenceLinks(args: {
   entries: BriefEntry[];
   input: BriefInput;
