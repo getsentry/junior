@@ -156,7 +156,7 @@ describe("Brief snapshot", () => {
       ],
     });
 
-    const input = briefInputFromSnapshot(snapshot);
+    const input = briefInputFromSnapshot(snapshot, 8);
     expect(input).toMatchInlineSnapshot(`
       {
         "codeChanges": [
@@ -292,5 +292,17 @@ describe("Brief snapshot", () => {
       { text: "Choose the release owner." },
     ]);
     expect(generation.evidence.droppedAttributionCount).toBe(2);
+
+    // Replay through the turn start sees the pull request as still open.
+    expect(briefInputFromSnapshot(snapshot, 5).codeChanges).toEqual([
+      {
+        repository: "getsentry/junior",
+        number: 42,
+        title: "Ship 1.2.3",
+        url: "https://github.com/getsentry/junior/pull/42",
+        state: "open",
+        openedAt: "2025-12-31T23:00:00.000Z",
+      },
+    ]);
   });
 });
