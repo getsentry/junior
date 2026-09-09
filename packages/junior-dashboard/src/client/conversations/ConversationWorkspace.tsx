@@ -223,8 +223,14 @@ function applyPendingArchiveUpdates(
   updates: PendingArchiveConversationUpdate[],
   includeArchived: boolean,
 ): Conversation[] {
+  // The optimistic cache write in useArchiveConversation sets archivedAt on
+  // success too, ahead of the feed invalidation settling. Drop already-
+  // archived rows here so they cannot reappear until the mutation leaves
+  // "pending" but the stale cache has not refetched yet.
   const byId = new Map(
-    conversations.map((conversation) => [conversation.id, conversation]),
+    conversations
+      .filter((conversation) => includeArchived || !conversation.archivedAt)
+      .map((conversation) => [conversation.id, conversation]),
   );
   for (const update of updates) {
     if (update.archived && !includeArchived) {
