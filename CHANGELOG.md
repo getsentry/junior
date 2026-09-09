@@ -1,4 +1,21 @@
 # Changelog
+## 0.205.0
+
+### Bug Fixes 🐛
+
+- (chat) Remove bare URL steering by @sentry-junior in [#1813](https://github.com/getsentry/junior/pull/1813)
+- (junior-github) Make review-thread GraphQL parsing lenient by @sentry-junior in [#1802](https://github.com/getsentry/junior/pull/1802)
+
+### Internal Changes 🔧
+
+- (automations) Remove task no-reply prompt contract by @sentry-junior in [#1804](https://github.com/getsentry/junior/pull/1804)
+
+### Other
+
+- Fix turn router classifier token truncation (invalid_response) by @sentry-junior in [#1814](https://github.com/getsentry/junior/pull/1814)
+- Declutter memory list rows to match task executions style by @sentry-junior in [#1812](https://github.com/getsentry/junior/pull/1812)
+- Keep automated task replies in their Slack thread by @sentry-junior in [#1801](https://github.com/getsentry/junior/pull/1801)
+
 ## 0.204.0
 
 ### New Features ✨
