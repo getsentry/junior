@@ -35,7 +35,7 @@ const detail: ConversationDetailReport = {
   ],
   events: [
     {
-      seq: 5,
+      seq: 6,
       createdAt: "2026-01-01T00:00:02.000Z",
       data: {
         type: "tool_calls",
@@ -50,7 +50,7 @@ const detail: ConversationDetailReport = {
       },
     },
     {
-      seq: 6,
+      seq: 7,
       createdAt: "2026-01-01T00:00:03.000Z",
       data: {
         type: "message",
@@ -60,7 +60,7 @@ const detail: ConversationDetailReport = {
       },
     },
     {
-      seq: 7,
+      seq: 8,
       createdAt: "2026-01-01T00:00:04.000Z",
       data: {
         type: "turn_lifecycle",
@@ -105,6 +105,17 @@ const olderPage: ConversationEventPage = {
       createdAt: "2026-01-01T00:00:00.750Z",
       data: {
         type: "message",
+        messageId: "message-3",
+        role: "user",
+        text: "Keep the release owner private.",
+        actorIdentity: { slackUserId: "UUNKNOWN" },
+      },
+    },
+    {
+      seq: 4,
+      createdAt: "2026-01-01T00:00:00.875Z",
+      data: {
+        type: "message",
         messageId: "event-1",
         role: "user",
         text: "The release checks passed.",
@@ -112,13 +123,13 @@ const olderPage: ConversationEventPage = {
       },
     },
     {
-      seq: 4,
+      seq: 5,
       createdAt: "2026-01-01T00:00:01.000Z",
       data: {
         type: "turn_lifecycle",
         turnId: "turn-1",
         state: "started",
-        inputMessageIds: ["message-1", "message-2", "event-1"],
+        inputMessageIds: ["message-1", "message-2", "message-3", "event-1"],
       },
     },
   ],
@@ -178,9 +189,15 @@ describe("Brief snapshot", () => {
             "turnId": "turn-1",
           },
           {
-            "author": "unknown participant",
             "createdAtMs": 1767225600750,
             "index": 3,
+            "role": "user",
+            "text": "Keep the release owner private.",
+            "turnId": "turn-1",
+          },
+          {
+            "createdAtMs": 1767225600875,
+            "index": 4,
             "role": "event",
             "text": "The release checks passed.",
             "turnId": "turn-1",
@@ -188,7 +205,7 @@ describe("Brief snapshot", () => {
           {
             "author": "lookupRelease",
             "createdAtMs": 1767225602000,
-            "index": 5,
+            "index": 6,
             "role": "tool",
             "text": "{
         "version": "1.2.3"
@@ -197,7 +214,7 @@ describe("Brief snapshot", () => {
           },
           {
             "createdAtMs": 1767225603000,
-            "index": 6,
+            "index": 7,
             "role": "assistant",
             "text": "Released version 1.2.3.",
             "turnId": "turn-1",
@@ -221,7 +238,7 @@ describe("Brief snapshot", () => {
 
     const generation = await generateBrief({
       input,
-      throughIndex: 7,
+      throughIndex: 8,
       prompt: "Write a Brief.",
       model: "test/model",
       completeObject: async () => ({
@@ -229,8 +246,16 @@ describe("Brief snapshot", () => {
           summary: "Version 1.2.3 was released.",
           intent: "Ship version 1.2.3.",
           outcome: { status: "done", text: "The release is complete." },
-          decisions: [],
-          openDecisions: [],
+          decisions: [
+            {
+              text: "Use the private release owner.",
+              by: "unknown participant",
+              kind: "assumed",
+            },
+          ],
+          openDecisions: [
+            { text: "Choose the release owner.", owner: "unknown participant" },
+          ],
           facts: ["The version is 1.2.3."],
           keywords: ["release"],
           urls: [],
@@ -243,7 +268,7 @@ describe("Brief snapshot", () => {
       lastActivityAt: "2026-01-01T00:00:03.000Z",
       durationMs: 3_000,
       participants: [{ name: "Ada Lovelace", messages: 2 }],
-      userMessages: 2,
+      userMessages: 3,
       assistantMessages: 1,
       toolResults: 1,
       events: 1,
@@ -261,5 +286,12 @@ describe("Brief snapshot", () => {
         },
       ],
     });
+    expect(generation.brief.decisions).toEqual([
+      { text: "Use the private release owner.", kind: "assumed" },
+    ]);
+    expect(generation.brief.openDecisions).toEqual([
+      { text: "Choose the release owner." },
+    ]);
+    expect(generation.evidence.droppedAttributionCount).toBe(2);
   });
 });
