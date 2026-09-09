@@ -8,13 +8,15 @@ A Brief is a compact record of a Conversation. It keeps intent, outcome, decisio
 
 - `generateBrief` is pure. Callers supply the input, previous Brief, prompt, model id, and structured completion function.
 - Code change and resource links come from trusted input. The model cannot add them.
-- A model URL is kept only when the exact URL occurs in an input entry or in the previous Brief.
+- A model URL is kept only when it matches deterministic evidence or when the exact URL occurs in an input entry or the previous Brief.
 - Code changes and resources take priority when the 40-link cap applies.
 - Tool result text is limited to 1,500 characters. Generator input is limited to 60,000 characters. The oldest entries are removed first.
 - Output caps and normalization apply after model output is parsed.
 - `searchText` contains Brief content and link labels. It does not contain transcript text that the Brief omitted.
 
 The default prompt is in `prompt.ts`. The package uses tsdown, which does not copy Markdown assets. Keeping the prompt in a TypeScript string makes the source and packaged CLI use the same text without a file-system lookup.
+
+A run without `--model` resolves the app's configured fast model when the run starts. This keeps the CLI and background generation on the same model configuration without pinning a provider model in core.
 
 ## Snapshots
 

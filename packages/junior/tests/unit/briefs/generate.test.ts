@@ -5,6 +5,8 @@ import type { BriefInput } from "@/chat/briefs/input";
 const VERBATIM_URL = "https://example.com/runbook";
 const LATE_URL = "https://example.com/late";
 const INVENTED_URL = "https://example.com/invented";
+const CODE_CHANGE_URL = "https://github.com/getsentry/junior/pull/123";
+const RESOURCE_URL = "https://sentry.example.com/issues/123";
 
 function input(): BriefInput {
   return {
@@ -41,14 +43,14 @@ function input(): BriefInput {
         repository: "getsentry/junior",
         number: 123,
         title: "Fix release pipeline",
-        url: "https://github.com/getsentry/junior/pull/123",
+        url: CODE_CHANGE_URL,
         state: "open",
       },
     ],
     resources: [
       {
         label: "Release incident",
-        url: "https://sentry.example.com/issues/123",
+        url: RESOURCE_URL,
         status: "warning",
       },
     ],
@@ -82,6 +84,8 @@ describe("generateBrief", () => {
           ),
           urls: [
             { label: "Runbook", url: VERBATIM_URL },
+            { label: "Code change", url: CODE_CHANGE_URL },
+            { label: "Resource", url: RESOURCE_URL },
             { label: "Late", url: LATE_URL },
             { label: "Invented", url: INVENTED_URL },
           ],
@@ -105,21 +109,21 @@ describe("generateBrief", () => {
         kind: "code_change",
         label: "getsentry/junior#123 · Fix release pipeline",
         status: "open",
-        url: "https://github.com/getsentry/junior/pull/123",
+        url: CODE_CHANGE_URL,
       },
       {
         kind: "resource",
         label: "Release incident",
         status: "warning",
-        url: "https://sentry.example.com/issues/123",
+        url: RESOURCE_URL,
       },
       { kind: "url", label: "Runbook", url: VERBATIM_URL },
     ]);
     expect(generation.evidence).toEqual({
-      citedUrlCount: 3,
+      citedUrlCount: 5,
       codeChangeCount: 1,
       droppedUrls: [LATE_URL, INVENTED_URL],
-      keptUrlCount: 1,
+      keptUrlCount: 3,
       resourceCount: 1,
     });
     expect(generation.searchText).toContain("Fix the release pipeline");
