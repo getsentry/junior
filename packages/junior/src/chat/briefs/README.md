@@ -34,8 +34,12 @@ can own only one version. The task allocates the next version while the
 Conversation row is locked. Storage rejects an insert after transcript purge
 when the root is not public.
 
+Brief generation is off by default. Apps enable it with
+`createApp({ briefs: { enabled: true } })`. The example app and `junior chat`
+enable it. Each completed Turn costs one default-model call when the task runs.
+
 The core `briefs.updateBrief` task runs after completed Slack, web, and local
-Turns with a user instruction. It skips child Conversations. Before a model
+Turns with a user instruction when Brief generation is enabled. It skips child Conversations. Before a model
 call, it skips a Turn whose terminal event is already covered by the latest
 Brief. A retry with the same `turnId` re-emits the stored version's idempotent
 `briefs/brief_updated` event, which repairs a failed first emission without a

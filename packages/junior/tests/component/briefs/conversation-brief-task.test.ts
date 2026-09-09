@@ -13,6 +13,7 @@ import {
   type CodeChangeInput,
 } from "@sentry/junior-plugin-api";
 import type { PiMessage } from "@/chat/pi/messages";
+import { setBriefsConfig } from "@/chat/briefs/registration";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import {
   juniorConversationBriefs,
@@ -192,6 +193,7 @@ describe("Conversation Brief task", () => {
   let fixture: LocalJuniorSqlFixture;
 
   beforeEach(async () => {
+    setBriefsConfig({ enabled: true });
     process.env.JUNIOR_STATE_ADAPTER = "memory";
     fixture = await createLocalJuniorSqlFixture();
     TEST.sql = fixture.sql;
@@ -200,6 +202,7 @@ describe("Conversation Brief task", () => {
   });
 
   afterEach(async () => {
+    setBriefsConfig(undefined);
     const { closeDb } = await import("@/chat/db");
     const { disconnectStateAdapter } = await import("@/chat/state/adapter");
     await disconnectStateAdapter();
@@ -264,12 +267,16 @@ describe("Conversation Brief task", () => {
       instruction: "Store a durable Brief for this work.",
       turnId: "turn-1",
     });
-    const { processPluginTask } = await import("@/chat/plugins/task-runner");
+    const { processPluginTask, scheduleSessionCompletedPluginTasks } =
+      await import("@/chat/plugins/task-runner");
     const firstTask = {
       plugin: "briefs",
       name: "updateBrief",
       params: { conversationId, sessionId: "turn-1" },
     };
+    const send = vi.fn();
+    await scheduleSessionCompletedPluginTasks(firstTask.params, { send });
+    expect(send).toHaveBeenCalledWith(firstTask);
     await processPluginTask(firstTask);
 
     let rows = await getDb()

@@ -228,11 +228,7 @@ describe("plugin background tasks", () => {
       { send: (message) => queue.send(message) },
     );
     const messages = queue.queuedMessages();
-    expect(messages).toHaveLength(2);
-    expect(messages[1]).toMatchObject({
-      plugin: "briefs",
-      name: "updateBrief",
-    });
+    expect(messages).toHaveLength(1);
 
     await processPluginTask(messages[0]!);
 
@@ -868,7 +864,6 @@ describe("plugin background tasks", () => {
     expect(attempted.map((message) => message.plugin)).toEqual([
       "task-send-failure-demo",
       "task-send-success-demo",
-      "briefs",
     ]);
   });
 
