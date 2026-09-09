@@ -2,12 +2,18 @@ import type {
   PluginConversationEventCostDay,
   PluginOperationalReportContent,
 } from "@sentry/junior-plugin-api";
-import { gte, sql } from "drizzle-orm";
+import { and, gte, lt, sql } from "drizzle-orm";
 import type { JuniorDatabase } from "@/db/db";
 import { juniorConversationBriefs } from "@/db/schema";
 
 const DAY_MS = 24 * 60 * 60 * 1_000;
 const WINDOWS = [7, 30, 90] as const;
+
+function startOfUtcDay(value: number): Date {
+  const date = new Date(value);
+  date.setUTCHours(0, 0, 0, 0);
+  return date;
+}
 
 function formatCount(value: number): string {
   return new Intl.NumberFormat("en-US").format(value);
@@ -29,7 +35,9 @@ export async function buildBriefsOperationalReport(args: {
   db: JuniorDatabase;
   nowMs: number;
 }): Promise<PluginOperationalReportContent> {
-  const thirtyDaysAgo = new Date(args.nowMs - 30 * DAY_MS);
+  const newestDay = startOfUtcDay(args.nowMs);
+  const windowStart = new Date(newestDay.getTime() - 29 * DAY_MS);
+  const windowEnd = new Date(newestDay.getTime() + DAY_MS);
   const [[counts], recentCounts] = await Promise.all([
     args.db
       .select({
@@ -43,9 +51,17 @@ export async function buildBriefsOperationalReport(args: {
     args.db
       .select({ stored: sql<number>`count(*)`.mapWith(Number) })
       .from(juniorConversationBriefs)
-      .where(gte(juniorConversationBriefs.createdAt, thirtyDaysAgo)),
+      .where(
+        and(
+          gte(juniorConversationBriefs.createdAt, windowStart),
+          lt(juniorConversationBriefs.createdAt, windowEnd),
+        ),
+      ),
   ]);
-  const recentDays = args.briefDays.slice(-30);
+  const recentDays = args.briefDays.filter((day) => {
+    const dayStart = Date.parse(`${day.date}T00:00:00.000Z`);
+    return dayStart >= windowStart.getTime() && dayStart < windowEnd.getTime();
+  });
   const recentCost = recentDays.reduce((total, day) => total + day.costUsd, 0);
   const recentBriefs = recentDays.reduce((total, day) => total + day.events, 0);
 
