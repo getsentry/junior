@@ -7,6 +7,7 @@ const ESCAPED_TRANSCRIPT_URL = "https://example.com/thread?ts=1&amp;cid=2";
 const UNESCAPED_TRANSCRIPT_URL = "https://example.com/thread?ts=1&cid=2";
 const UNESCAPED_CITATION_URL = "https://example.com/admin?org=1&project=2";
 const ESCAPED_CITATION_URL = "https://example.com/admin?org=1&amp;project=2";
+const HTTP_PATH_URL = "https://example.com/reference/http";
 const BRACKET_URL = "https://en.wikipedia.org/wiki/Release_(engineering)";
 const LATE_URL = "https://example.com/late";
 const PREFIX_URL = "https://example.com/prefix";
@@ -26,7 +27,7 @@ function input(): BriefInput {
         index: 1,
         role: "user",
         author: "Ada",
-        text: `Use the runbook at ${VERBATIM_URL}, the thread at ${ESCAPED_TRANSCRIPT_URL}, the admin page at ${UNESCAPED_CITATION_URL}, the exact source ${PREFIX_SOURCE_URL}, and the glossary (see ${BRACKET_URL}).`,
+        text: `Use the runbook at <${VERBATIM_URL}|Runbook>, the thread at ${ESCAPED_TRANSCRIPT_URL}, the admin page at ${UNESCAPED_CITATION_URL}, the reference at ${HTTP_PATH_URL}, the exact source ${PREFIX_SOURCE_URL}, and the glossary (see ${BRACKET_URL}).`,
         createdAtMs: 1,
         turnId: "turn-1",
       },
@@ -123,6 +124,7 @@ describe("generateBrief", () => {
               { label: "Thread", url: UNESCAPED_TRANSCRIPT_URL },
               { label: "Admin", url: ESCAPED_CITATION_URL },
               { label: "Glossary", url: `${BRACKET_URL})` },
+              { label: "Reference", url: HTTP_PATH_URL },
               { label: "Code change", url: CODE_CHANGE_URL },
               { label: "Resource", url: RESOURCE_URL },
               { label: "Late", url: `${LATE_URL}]` },
@@ -162,12 +164,8 @@ describe("generateBrief", () => {
     expect(generation.brief.intent).toBe(`${"i".repeat(399)}…`);
     expect(generation.brief.outcome.text).toBe(outcomeSentence);
     expect(generation.brief.decisions).toEqual([
-      {
-        text: `Decision 0 ${"x".repeat(389)}`,
-        by: "Ada",
-        kind: "confirmed",
-      },
-      { text: "Decision 1", by: "Junior", kind: "assumed" },
+      { text: `Decision 0 ${"x".repeat(389)}`, kind: "assumed" },
+      { text: "Decision 1", kind: "stated" },
       { text: "Decision 2", by: "Junior", kind: "assumed" },
     ]);
     expect(generation.brief.openDecisions).toEqual([
@@ -205,11 +203,12 @@ describe("generateBrief", () => {
       { kind: "url", label: "Thread", url: UNESCAPED_TRANSCRIPT_URL },
       { kind: "url", label: "Admin", url: UNESCAPED_CITATION_URL },
       { kind: "url", label: "Glossary", url: BRACKET_URL },
+      { kind: "url", label: "Reference", url: HTTP_PATH_URL },
     ]);
     expect(generation.evidence).toEqual({
-      citedUrlCount: 9,
+      citedUrlCount: 10,
       codeChangeCount: 1,
-      coercedDecisionKinds: 3,
+      coercedDecisionKinds: 2,
       droppedAttributionCount: 2,
       droppedRuntimeMarkerCount: 3,
       droppedUrls: [
@@ -217,7 +216,7 @@ describe("generateBrief", () => {
         { raw: PREFIX_URL, normalized: PREFIX_URL },
         { raw: `${INVENTED_URL})`, normalized: INVENTED_URL },
       ],
-      keptUrlCount: 6,
+      keptUrlCount: 7,
       mergedClaimWithoutEvidence: true,
       resourceCount: 1,
     });

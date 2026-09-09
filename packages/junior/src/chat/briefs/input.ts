@@ -1,28 +1,25 @@
-import { and, arrayContains, eq, isNotNull, max } from "drizzle-orm";
+import { and, arrayContains, eq, isNotNull } from "drizzle-orm";
 import type { ConversationReportEvent } from "@/api/schema/conversation";
 import { readConversationEventPage } from "@/api/conversations/event-page";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import { listConversationAnnotations } from "@/chat/plugins/annotations";
 import type { JuniorSqlDatabase } from "@/db/db";
-import {
-  juniorCodeChanges,
-  juniorCodeRepositories,
-  juniorConversationEvents,
-} from "@/db/schema";
+import { juniorCodeChanges, juniorCodeRepositories } from "@/db/schema";
 import { briefEntriesFromReportEvents } from "./event-entries";
 import { parseBriefInput, type BriefInput } from "./schema";
 
 const EVENT_PAGE_SIZE = 500;
 
-async function readAllReportEvents(
+async function readReportEventsThrough(
   executor: JuniorSqlDatabase,
   conversationId: string,
+  throughSeq: number,
 ): Promise<ConversationReportEvent[]> {
   const pages: ConversationReportEvent[][] = [];
-  let beforeSeq: number | undefined;
+  let beforeSeq: number | undefined = throughSeq + 1;
   do {
     const page = await readConversationEventPage(executor, {
-      ...(beforeSeq !== undefined ? { beforeSeq } : undefined),
+      beforeSeq,
       canExposePayload: true,
       conversationId,
       limit: EVENT_PAGE_SIZE,
@@ -36,18 +33,23 @@ async function readAllReportEvents(
   return [...bySequence.values()].sort((left, right) => left.seq - right.seq);
 }
 
-/** Build generator input and its durable event boundary from SQL. */
+/**
+ * Build generator input from SQL through one durable event. The caller owns
+ * the boundary, so a Turn that completes during the read cannot be covered by
+ * a Brief that never saw it.
+ */
 export async function briefInputFromSql(
   executor: JuniorSqlDatabase,
   conversationId: string,
-): Promise<{ input: BriefInput; throughSeq: number }> {
+  throughSeq: number,
+): Promise<BriefInput> {
   const db = executor.db();
   const conversation = await createSqlStore(executor).get({ conversationId });
   if (!conversation) {
     throw new Error(`Conversation ${conversationId} is unavailable`);
   }
-  const [events, annotations, codeChanges, sequenceRows] = await Promise.all([
-    readAllReportEvents(executor, conversationId),
+  const [events, annotations, codeChanges] = await Promise.all([
+    readReportEventsThrough(executor, conversationId, throughSeq),
     listConversationAnnotations(db, conversationId),
     db
       .select({
@@ -71,17 +73,9 @@ export async function briefInputFromSql(
           isNotNull(juniorCodeChanges.url),
         ),
       ),
-    db
-      .select({ seq: max(juniorConversationEvents.seq) })
-      .from(juniorConversationEvents)
-      .where(eq(juniorConversationEvents.conversationId, conversationId)),
   ]);
-  const throughSeq = sequenceRows[0]?.seq;
-  if (throughSeq === null || throughSeq === undefined) {
-    throw new Error(`Conversation ${conversationId} has no durable events`);
-  }
   const location = conversation.location;
-  const input = parseBriefInput({
+  return parseBriefInput({
     conversationId,
     ...(conversation.title ? { title: conversation.title } : undefined),
     visibility: conversation.visibility ?? "private",
@@ -116,5 +110,4 @@ export async function briefInputFromSql(
       ...(annotation.status ? { status: annotation.status } : undefined),
     })),
   });
-  return { input, throughSeq };
 }

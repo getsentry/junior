@@ -48,12 +48,9 @@ async function runBriefs(argv: string[]): Promise<number> {
   return await mod.runBriefs(argv);
 }
 
-function normalizedArgv(argv: string[]): string[] {
-  return argv[0] === "--" ? argv.slice(1) : argv;
-}
-
 function topLevelCommand(argv: string[]): string | undefined {
-  return normalizedArgv(argv)[0];
+  const normalized = argv[0] === "--" ? argv.slice(1) : argv;
+  return normalized[0];
 }
 
 /** Run the packaged CLI entrypoint with plugin command bootstrap enabled. */
@@ -67,15 +64,12 @@ export async function runMain(
     await initSentry();
   }
   const command = topLevelCommand(argv);
-  if (command === "briefs") {
-    const exitCode = await runBriefs(normalizedArgv(argv).slice(1));
-    if (instrument) {
-      await flushSentry();
-    }
-    process.exit(exitCode);
-  }
+  // `briefs pull` must work with only an API token, so it skips app plugin
+  // loading like `init` does.
   const cliPluginsModule =
-    command && command !== "init" ? await import("./plugins") : undefined;
+    command && command !== "init" && command !== "briefs"
+      ? await import("./plugins")
+      : undefined;
   const pluginSet = cliPluginsModule
     ? ((await cliPluginsModule.loadCliPluginSet()) ?? null)
     : undefined;
@@ -83,6 +77,7 @@ export async function runMain(
     ? await cliPluginsModule.loadCliPluginCommands(pluginSet)
     : undefined;
   const exitCode = await runCli(argv, {
+    runBriefs,
     runChat: async (chatArgv) => await runChat(chatArgv, pluginSet),
     runInit,
     runSnapshotCreate,

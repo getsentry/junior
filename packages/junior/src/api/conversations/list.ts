@@ -92,6 +92,7 @@ async function conversationRows(
   filter: ConversationFeedMembership | undefined,
   archivedAfter: Date,
   query?: string,
+  includePrivateBriefs = false,
 ) {
   return db
     .select({
@@ -126,6 +127,7 @@ async function conversationRows(
                 select 1
                 from ${juniorConversationBriefs}
                 where ${juniorConversationBriefs.conversationId} = ${juniorConversations.conversationId}
+                  and ${includePrivateBriefs ? sql`true` : eq(juniorDestinations.visibility, "public")}
                   and ${juniorConversationBriefs.version} = (
                     select max(${juniorConversationBriefs.version})
                     from ${juniorConversationBriefs}
@@ -305,6 +307,7 @@ export async function readConversationFeedFromSql(
     filter,
     new Date(nowMs - RECENT_ARCHIVE_WINDOW_MS),
     query,
+    filter?.kind === "viewer",
   );
   const conversations = rows.map((row) => conversationFromRow(row));
   const conversationIds = conversations.map(

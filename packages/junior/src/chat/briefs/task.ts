@@ -150,9 +150,10 @@ export async function updateConversationBrief(
         logSkip(context, run.conversationId, "turn_already_covered");
         return;
       }
-      const { input, throughSeq } = await briefInputFromSql(
+      const input = await briefInputFromSql(
         executor,
         run.conversationId,
+        terminalSeq,
       );
       // Same request as `junior briefs run`, so the tuned prompt and
       // temperature apply in production.
@@ -167,12 +168,12 @@ export async function updateConversationBrief(
         input,
         previous: previous?.content,
         prompt: BRIEF_PROMPT,
-        throughIndex: throughSeq,
+        throughIndex: terminalSeq,
       });
       const stored = await appendConversationBrief(db, {
         conversationId: run.conversationId,
         turnId: run.runId,
-        throughSeq,
+        throughSeq: terminalSeq,
         content: generation.brief,
         searchText: generation.searchText,
         modelId,
