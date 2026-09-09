@@ -362,8 +362,9 @@ async function classifyTurn(args: {
         // Sentry data showed successful classifier calls routinely landing at
         // 120-140 output tokens against the old 140-token cap, with roughly
         // half of all calls truncated mid-object (NoObjectGeneratedError).
-        // 320 keeps real headroom above observed usage.
-        maxTokens: 320,
+        // 5000 removes the cap as a realistic failure mode; the schema is
+        // small, so this does not meaningfully change normal output size.
+        maxTokens: 5000,
         metadata: args.metadata,
         prompt: args.prompt,
         thinkingLevel: "low",
