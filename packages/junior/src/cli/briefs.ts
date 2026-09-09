@@ -12,7 +12,7 @@ import {
 } from "@/api/schema/conversation";
 import { completeObject } from "@/chat/pi/client";
 import {
-  DEFAULT_BRIEF_MODEL_ID,
+  defaultBriefModelId,
   DEFAULT_BRIEF_PROMPT,
 } from "@/chat/briefs/config";
 import {
@@ -96,9 +96,9 @@ function parsePullOptions(argv: string[]): PullOptions {
   return { baseUrl, conversationIds, out, token };
 }
 
-function parseRunOptions(argv: string[]): RunOptions {
+async function parseRunOptions(argv: string[]): Promise<RunOptions> {
   const snapshots: string[] = [];
-  let model = DEFAULT_BRIEF_MODEL_ID;
+  let model: string | undefined;
   let promptFile: string | undefined;
   let out = process.cwd();
   let turnByTurn = false;
@@ -122,7 +122,13 @@ function parseRunOptions(argv: string[]): RunOptions {
     }
   }
   if (snapshots.length === 0) throw new Error(BRIEFS_USAGE);
-  return { model, out, promptFile, snapshots, turnByTurn };
+  return {
+    model: model ?? (await defaultBriefModelId()),
+    out,
+    promptFile,
+    snapshots,
+    turnByTurn,
+  };
 }
 
 function apiUrl(baseUrl: string, pathname: string): URL {
@@ -317,7 +323,7 @@ export async function runBriefs(
       return 0;
     }
     if (subcommand === "run") {
-      await runAll(parseRunOptions(rest), resolvedDeps);
+      await runAll(await parseRunOptions(rest), resolvedDeps);
       return 0;
     }
     throw new Error(BRIEFS_USAGE);

@@ -10,6 +10,6 @@ Rules:
 - Facts must be durable facts that will help after the transcript expires. Prefer ids, names, numbers, constraints, and stable technical details. Exclude transient progress and model implementation details.
 - Choose the outcome status that best describes where the Conversation ended.
 - Return at most 20 decisions, 20 open decisions, 30 facts, and 12 short lowercase keywords.
-- Cite a URL only when its exact full string occurs in an entry or the previous Brief. Return cited URLs in urls. Core adds code changes and resources separately.
+- Cite a URL only when its exact full string occurs in an entry, deterministic evidence, or the previous Brief. Return cited URLs in urls. Core adds code changes and resources separately.
 - Keep the summary under 600 characters, intent under 400 characters, outcome text under 600 characters, and each other string under 400 characters.
 `;

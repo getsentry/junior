@@ -229,6 +229,7 @@ function buildEvidenceLinks(args: {
   const existingUrls = new Set(deterministic.map((link) => link.url));
   for (const citation of args.model.urls) {
     const allowed =
+      existingUrls.has(citation.url) ||
       transcriptText.includes(citation.url) ||
       allowedPriorUrls.has(citation.url);
     if (!allowed) {
