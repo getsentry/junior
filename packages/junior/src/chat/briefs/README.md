@@ -50,7 +50,8 @@ Brief. A retry with the same `turnId` re-emits the stored version's idempotent
 second model call. The task and `junior briefs run` send the same request to
 the configured default model. The event carries the version, model id, item
 counts, and model cost. Its cost appears in the Conversation auxiliary-cost
-breakdown under the `briefs` namespace.
+breakdown under the `briefs` namespace. The System report sums retained events,
+so spend on purged private Conversations leaves the report with them.
 
 A public Brief survives transcript purge. A non-public root loses every Brief
 in its Conversation tree when purge scrubs private metadata. Remaining private

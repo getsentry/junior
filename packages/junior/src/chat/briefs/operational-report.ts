@@ -29,7 +29,11 @@ function formatUsd(value: number): string {
   }).format(value);
 }
 
-/** Build Brief storage and model-cost diagnostics for the System page. */
+/**
+ * Build Brief storage and model-cost diagnostics for the System page. Cost
+ * comes from retained Conversation events, so spend on purged private
+ * Conversations leaves the report with them; the labels say so.
+ */
 export async function buildBriefsOperationalReport(args: {
   briefDays: PluginConversationEventCostDay[];
   db: JuniorDatabase;
@@ -82,9 +86,9 @@ export async function buildBriefsOperationalReport(args: {
         label: "briefs · 30d",
         value: formatCount(recentCounts[0]?.stored ?? 0),
       },
-      { label: "cost · 30d", value: formatUsd(recentCost) },
+      { label: "cost · 30d · retained", value: formatUsd(recentCost) },
       {
-        label: "average cost per brief · 30d",
+        label: "average cost per brief · 30d · retained",
         value: formatUsd(recentBriefs === 0 ? 0 : recentCost / recentBriefs),
       },
     ],

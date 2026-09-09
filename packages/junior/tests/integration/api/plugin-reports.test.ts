@@ -111,8 +111,11 @@ describe("plugin reports API route", () => {
           { label: "briefs stored", tone: "good", value: "2" },
           { label: "conversations with a brief", value: "2" },
           { label: "briefs · 30d", value: "1" },
-          { label: "cost · 30d", value: "$0.0042" },
-          { label: "average cost per brief · 30d", value: "$0.0042" },
+          { label: "cost · 30d · retained", value: "$0.0042" },
+          {
+            label: "average cost per brief · 30d · retained",
+            value: "$0.0042",
+          },
         ],
       });
       expect(

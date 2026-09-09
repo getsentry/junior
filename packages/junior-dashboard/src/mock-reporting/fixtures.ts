@@ -2326,8 +2326,11 @@ export function readMockPluginReports(): PluginOperationalReportFeed {
           { label: "briefs stored", tone: "good", value: "148" },
           { label: "conversations with a brief", value: "93" },
           { label: "briefs · 30d", value: "61" },
-          { label: "cost · 30d", value: "$0.23" },
-          { label: "average cost per brief · 30d", value: "$0.0037" },
+          { label: "cost · 30d · retained", value: "$0.23" },
+          {
+            label: "average cost per brief · 30d · retained",
+            value: "$0.0037",
+          },
         ],
         widgets: [
           {
