@@ -1557,6 +1557,20 @@ describe("Slack schedule tools", () => {
         { destination: { threadTs: "1700000000.000100" } },
       ],
     });
+    await executeTool(createSlackScheduleUpdateTaskTool(source), {
+      task_id: created.task.id,
+      outcomes: [
+        {
+          action: "send_message",
+          destination: {
+            platform: "slack",
+            teamId: TEST_TEAM_ID,
+            channelId: "CSOURCE",
+            threadTs: "1700000000.000100",
+          },
+        },
+      ],
+    });
 
     const publicTarget = createContext({
       channelId: "CTARGET",

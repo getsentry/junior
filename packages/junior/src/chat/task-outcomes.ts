@@ -8,7 +8,7 @@ import { z } from "zod";
 import { getSlackClient, withSlackRetries } from "@/chat/slack/client";
 
 const taskMessageDestinationInputSchema = z.union([
-  slackDestinationSchema.omit({ threadTs: true }),
+  slackDestinationSchema,
   z
     .object({
       platform: z.literal("slack"),
@@ -52,12 +52,7 @@ export async function resolveTaskOutcomes(
       }
       resolved.push({
         action: "send_message",
-        destination: {
-          ...outcome.destination,
-          ...(currentDestination.threadTs
-            ? { threadTs: currentDestination.threadTs }
-            : undefined),
-        },
+        destination: currentDestination,
       });
       continue;
     }
