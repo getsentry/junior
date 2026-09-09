@@ -10,7 +10,7 @@ import {
   text,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
-import type { ConversationBrief } from "@/chat/briefs/brief";
+import type { ConversationBrief } from "@/chat/briefs/schema";
 import { juniorConversations } from "./conversations";
 import { timestamptz } from "./timestamps";
 

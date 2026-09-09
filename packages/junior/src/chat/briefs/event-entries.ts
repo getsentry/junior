@@ -1,6 +1,6 @@
 import type { ConversationReportEvent } from "@/api/schema/conversation";
 import { RESOURCE_EVENT_AUTHOR_ID } from "@/chat/resource-events/actor";
-import type { BriefEntry } from "./input";
+import type { BriefEntry } from "./schema";
 
 const TOOL_TEXT_LIMIT = 1_500;
 

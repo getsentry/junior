@@ -1,69 +1,120 @@
-import { codeChangeStateSchema } from "@sentry/junior-plugin-api";
-import { z } from "zod";
+import { and, arrayContains, eq, isNotNull, max } from "drizzle-orm";
+import type { ConversationReportEvent } from "@/api/schema/conversation";
+import { readConversationEventPage } from "@/api/conversations/event-page";
+import { createSqlStore } from "@/chat/conversations/sql/store";
+import { listConversationAnnotations } from "@/chat/plugins/annotations";
+import type { JuniorSqlDatabase } from "@/db/db";
+import {
+  juniorCodeChanges,
+  juniorCodeRepositories,
+  juniorConversationEvents,
+} from "@/db/schema";
+import { briefEntriesFromReportEvents } from "./event-entries";
+import { parseBriefInput, type BriefInput } from "./schema";
 
-export const briefEntrySchema = z
-  .object({
-    index: z.number().int().nonnegative(),
-    role: z.enum(["user", "assistant", "tool", "event"]),
-    author: z.string().trim().min(1).max(400).optional(),
-    text: z.string().min(1),
-    createdAtMs: z.number().int().nonnegative(),
-    turnId: z.string().min(1).optional(),
-  })
-  .strict();
+const EVENT_PAGE_SIZE = 500;
 
-export const briefCodeChangeSchema = z
-  .object({
-    repository: z.string().trim().min(1).max(400),
-    number: z.number().int().positive(),
-    title: z.string().trim().min(1).max(400).optional(),
-    url: z.string().url().max(2_048),
-    state: codeChangeStateSchema,
-    openedAt: z.string().datetime().optional(),
-    mergedAt: z.string().datetime().optional(),
-    closedAt: z.string().datetime().optional(),
-  })
-  .strict();
+async function readAllReportEvents(
+  executor: JuniorSqlDatabase,
+  conversationId: string,
+): Promise<ConversationReportEvent[]> {
+  const pages: ConversationReportEvent[][] = [];
+  let beforeSeq: number | undefined;
+  do {
+    const page = await readConversationEventPage(executor, {
+      ...(beforeSeq !== undefined ? { beforeSeq } : undefined),
+      canExposePayload: true,
+      conversationId,
+      limit: EVENT_PAGE_SIZE,
+    });
+    pages.unshift(page.events);
+    beforeSeq = page.previousSeq;
+  } while (beforeSeq !== undefined);
 
-export const briefResourceSchema = z
-  .object({
-    label: z.string().trim().min(1).max(400),
-    url: z.string().url().max(2_048),
-    status: z.string().trim().min(1).max(400).optional(),
-  })
-  .strict();
+  const bySequence = new Map<number, ConversationReportEvent>();
+  for (const event of pages.flat()) bySequence.set(event.seq, event);
+  return [...bySequence.values()].sort((left, right) => left.seq - right.seq);
+}
 
-export const briefInputSchema = z
-  .object({
-    conversationId: z.string().min(1),
-    title: z.string().trim().min(1).max(400).optional(),
-    visibility: z.enum(["private", "public"]),
-    location: z
-      .object({
-        provider: z.string().trim().min(1).max(100),
-        channelName: z.string().trim().min(1).max(400).optional(),
+/** Build generator input and its durable event boundary from SQL. */
+export async function briefInputFromSql(
+  executor: JuniorSqlDatabase,
+  conversationId: string,
+): Promise<{ input: BriefInput; throughSeq: number }> {
+  const db = executor.db();
+  const conversation = await createSqlStore(executor).get({ conversationId });
+  if (!conversation) {
+    throw new Error(`Conversation ${conversationId} is unavailable`);
+  }
+  const [events, annotations, codeChanges, sequenceRows] = await Promise.all([
+    readAllReportEvents(executor, conversationId),
+    listConversationAnnotations(db, conversationId),
+    db
+      .select({
+        closedAt: juniorCodeChanges.closedAt,
+        mergedAt: juniorCodeChanges.mergedAt,
+        number: juniorCodeChanges.number,
+        openedAt: juniorCodeChanges.openedAt,
+        repository: juniorCodeRepositories.name,
+        state: juniorCodeChanges.state,
+        title: juniorCodeChanges.title,
+        url: juniorCodeChanges.url,
       })
-      .strict()
-      .optional(),
-    entries: z.array(briefEntrySchema),
-    codeChanges: z.array(briefCodeChangeSchema),
-    resources: z.array(briefResourceSchema),
-  })
-  .strict();
-
-export type BriefEntry = z.output<typeof briefEntrySchema>;
-export type BriefCodeChange = z.output<typeof briefCodeChangeSchema>;
-export type BriefResource = z.output<typeof briefResourceSchema>;
-export type BriefInput = z.output<typeof briefInputSchema>;
-
-/** Parse the provider-neutral input used by every Brief generator adapter. */
-export function parseBriefInput(input: unknown): BriefInput {
-  const parsed = briefInputSchema.parse(input);
-  return {
-    ...parsed,
-    entries: [...parsed.entries].sort(
-      (left, right) =>
-        left.index - right.index || left.createdAtMs - right.createdAtMs,
-    ),
-  };
+      .from(juniorCodeChanges)
+      .innerJoin(
+        juniorCodeRepositories,
+        eq(juniorCodeRepositories.id, juniorCodeChanges.repositoryId),
+      )
+      .where(
+        and(
+          arrayContains(juniorCodeChanges.conversationIds, [conversationId]),
+          isNotNull(juniorCodeChanges.url),
+        ),
+      ),
+    db
+      .select({ seq: max(juniorConversationEvents.seq) })
+      .from(juniorConversationEvents)
+      .where(eq(juniorConversationEvents.conversationId, conversationId)),
+  ]);
+  const throughSeq = sequenceRows[0]?.seq;
+  if (throughSeq === null || throughSeq === undefined) {
+    throw new Error(`Conversation ${conversationId} has no durable events`);
+  }
+  const location = conversation.location;
+  const input = parseBriefInput({
+    conversationId,
+    ...(conversation.title ? { title: conversation.title } : undefined),
+    visibility: conversation.visibility ?? "private",
+    ...(location
+      ? {
+          location: {
+            provider: location.provider,
+            ...(conversation.channelName
+              ? { channelName: conversation.channelName }
+              : undefined),
+          },
+        }
+      : undefined),
+    entries: briefEntriesFromReportEvents(events),
+    codeChanges: codeChanges.map((change) => ({
+      repository: change.repository,
+      number: change.number,
+      ...(change.title ? { title: change.title } : undefined),
+      url: change.url!,
+      state: change.state,
+      openedAt: change.openedAt.toISOString(),
+      ...(change.mergedAt
+        ? { mergedAt: change.mergedAt.toISOString() }
+        : undefined),
+      ...(change.closedAt
+        ? { closedAt: change.closedAt.toISOString() }
+        : undefined),
+    })),
+    resources: annotations.map((annotation) => ({
+      label: annotation.label,
+      url: annotation.url,
+      ...(annotation.status ? { status: annotation.status } : undefined),
+    })),
+  });
+  return { input, throughSeq };
 }
