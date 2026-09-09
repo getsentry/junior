@@ -34,6 +34,7 @@ export const briefRecordSchema = z
     userMessages: z.number().int().nonnegative(),
     assistantMessages: z.number().int().nonnegative(),
     toolResults: z.number().int().nonnegative(),
+    events: z.number().int().nonnegative(),
     turns: z.number().int().positive().optional(),
     location: z
       .object({
@@ -77,6 +78,7 @@ export const conversationBriefSchema = z
           .object({
             text: z.string().trim().min(1).max(400),
             by: z.string().trim().min(1).max(400).optional(),
+            kind: z.enum(["stated", "confirmed", "assumed"]),
           })
           .strict(),
       )

@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { defaultBriefModelId } from "@/chat/briefs/config";
 import { generateBrief } from "@/chat/briefs/generate";
 import type { BriefInput } from "@/chat/briefs/input";
 
@@ -7,6 +8,14 @@ const LATE_URL = "https://example.com/late";
 const INVENTED_URL = "https://example.com/invented";
 const CODE_CHANGE_URL = "https://github.com/getsentry/junior/pull/123";
 const RESOURCE_URL = "https://sentry.example.com/issues/123";
+
+vi.mock("@/chat/config", () => ({
+  botConfig: {
+    defaultProfile: "standard",
+    fastModelId: "test/fast-model",
+    profiles: { standard: { modelId: "test/default-model" } },
+  },
+}));
 
 function input(): BriefInput {
   return {
@@ -59,6 +68,10 @@ function input(): BriefInput {
 }
 
 describe("generateBrief", () => {
+  it("resolves the configured default model", async () => {
+    await expect(defaultBriefModelId()).resolves.toBe("test/default-model");
+  });
+
   it("builds and guards a small durable record with supported evidence", async () => {
     const summarySentence = `${"s".repeat(400)}.`;
     const outcomeSentence = `${"o".repeat(390)} merged.`;
@@ -80,13 +93,22 @@ describe("generateBrief", () => {
               text: `${outcomeSentence} ${"x".repeat(300)}`,
             },
             decisions: [
-              { text: "Ignore [[NO_REPLY]]", by: "Ada" },
-              { text: `Decision 0 ${"x".repeat(500)}`, by: "ada" },
-              { text: "Decision 1", by: "Unknown person" },
-              { text: "Decision 2", by: "junior" },
+              { text: "Ignore [[NO_REPLY]]", by: "Ada", kind: "stated" },
+              {
+                text: `Decision 0 ${"x".repeat(500)}`,
+                by: "ada",
+                kind: "assumed",
+              },
+              {
+                text: "Decision 1",
+                by: "Unknown person",
+                kind: "stated",
+              },
+              { text: "Decision 2", by: "junior", kind: "confirmed" },
               ...Array.from({ length: 22 }, (_, index) => ({
                 text: `Decision ${index + 3}`,
                 by: "Ada",
+                kind: "stated" as const,
               })),
             ],
             openDecisions: [
@@ -125,6 +147,7 @@ describe("generateBrief", () => {
       userMessages: 1,
       assistantMessages: 1,
       toolResults: 0,
+      events: 0,
       turns: 1,
       location: { provider: "slack", channelName: "builds" },
       codeChanges: [
@@ -142,9 +165,13 @@ describe("generateBrief", () => {
     expect(generation.brief.intent).toBe(`${"i".repeat(399)}…`);
     expect(generation.brief.outcome.text).toBe(outcomeSentence);
     expect(generation.brief.decisions).toEqual([
-      { text: `Decision 0 ${"x".repeat(389)}`, by: "Ada" },
-      { text: "Decision 1" },
-      { text: "Decision 2", by: "Junior" },
+      {
+        text: `Decision 0 ${"x".repeat(389)}`,
+        by: "Ada",
+        kind: "confirmed",
+      },
+      { text: "Decision 1", by: "Junior", kind: "assumed" },
+      { text: "Decision 2", by: "Junior", kind: "assumed" },
     ]);
     expect(generation.brief.openDecisions).toEqual([
       { text: "Open 0", owner: "Ada" },
@@ -183,6 +210,7 @@ describe("generateBrief", () => {
       citedUrlCount: 5,
       claims: { mergedWithoutEvidence: true },
       codeChangeCount: 1,
+      coercedDecisionKinds: 3,
       droppedAttributionCount: 2,
       droppedRuntimeMarkerCount: 3,
       droppedUrls: [
@@ -329,6 +357,7 @@ describe("generateBrief", () => {
               outcome: { status: "done", text: "Done" },
               decisions: Array.from({ length: 25 }, (_, index) => ({
                 text: `Decision ${index}`,
+                kind: "assumed" as const,
               })),
               openDecisions: Array.from({ length: 25 }, (_, index) => ({
                 text: `Open ${index}`,

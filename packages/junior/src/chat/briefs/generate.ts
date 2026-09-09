@@ -37,6 +37,7 @@ const modelBriefSchema = z
         .object({
           text: z.string().trim().min(1),
           by: z.string().trim().min(1).optional(),
+          kind: z.enum(["stated", "confirmed", "assumed"]),
         })
         .strict(),
     ),
@@ -83,6 +84,7 @@ export type BriefEvidenceCheck = {
     mergedWithoutEvidence: boolean;
   };
   codeChangeCount: number;
+  coercedDecisionKinds: number;
   droppedAttributionCount: number;
   droppedRuntimeMarkerCount: number;
   droppedUrls: Array<{ normalized: string; raw: string }>;
@@ -151,9 +153,11 @@ function normalizeModelBrief(args: {
   record: ConversationBrief["record"];
 }): {
   brief: ConversationBrief;
+  coercedDecisionKinds: number;
   droppedAttributionCount: number;
   droppedRuntimeMarkerCount: number;
 } {
+  let coercedDecisionKinds = 0;
   let droppedAttributionCount = 0;
   let droppedRuntimeMarkerCount = 0;
   const participantNames = new Map(
@@ -174,11 +178,21 @@ function normalizeModelBrief(args: {
       droppedRuntimeMarkerCount += 1;
       return [];
     }
-    const by = attribution(decision.by);
+    let by = attribution(decision.by);
+    let kind = decision.kind;
+    if ((!by || by === "Junior") && kind !== "assumed") {
+      by = "Junior";
+      kind = "assumed";
+      coercedDecisionKinds += 1;
+    } else if (by && by !== "Junior" && kind === "assumed") {
+      kind = "confirmed";
+      coercedDecisionKinds += 1;
+    }
     return [
       {
         text: truncate(decision.text, 400),
         ...(by ? { by } : undefined),
+        kind,
       },
     ];
   });
@@ -220,6 +234,7 @@ function normalizeModelBrief(args: {
         args.caps.keywords,
       ),
     }),
+    coercedDecisionKinds,
     droppedAttributionCount,
     droppedRuntimeMarkerCount,
   };
@@ -277,6 +292,7 @@ function buildBriefRecord(
     assistantMessages: entries.filter((entry) => entry.role === "assistant")
       .length,
     toolResults: entries.filter((entry) => entry.role === "tool").length,
+    events: entries.filter((entry) => entry.role === "event").length,
     ...(turns > 0 ? { turns } : undefined),
     ...(input.location ? { location: input.location } : undefined),
     codeChanges: input.codeChanges,
@@ -453,6 +469,7 @@ function buildEvidenceLinks(args: {
       citedUrlCount: args.model.urls.length,
       claims: { mergedWithoutEvidence: false },
       codeChangeCount: args.input.codeChanges.length,
+      coercedDecisionKinds: 0,
       droppedAttributionCount: 0,
       droppedRuntimeMarkerCount: 0,
       droppedUrls: uniqueDroppedUrls,
@@ -517,6 +534,7 @@ export async function generateBrief(
     claims: {
       mergedWithoutEvidence: mergedClaim && !hasMergedEvidence(input),
     },
+    coercedDecisionKinds: normalized.coercedDecisionKinds,
     droppedAttributionCount: normalized.droppedAttributionCount,
     droppedRuntimeMarkerCount: normalized.droppedRuntimeMarkerCount,
   };
