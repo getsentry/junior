@@ -3,7 +3,7 @@ import {
   conversationTurnFailureCodeSchema,
   conversationTurnFailureReasonSchema,
 } from "@/chat/conversations/history";
-import { conversationBriefSchema } from "@/chat/briefs/brief";
+import { conversationBriefSchema } from "@/chat/briefs/schema";
 import { usageCostSchema, usageSchema } from "@/usage-schema";
 import {
   conversationAnnotationInputSchema,

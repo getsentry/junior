@@ -1,12 +1,13 @@
 import { z, type ZodTypeAny } from "zod";
 import {
   briefOutcomeStatusSchema,
-  buildBriefSearchText,
   conversationBriefSchema,
+  parseBriefInput,
+  type BriefEntry,
+  type BriefInput,
   type BriefLink,
   type ConversationBrief,
-} from "./brief";
-import { parseBriefInput, type BriefEntry, type BriefInput } from "./input";
+} from "./schema";
 
 const MAX_INPUT_CHARS = 60_000;
 const MAX_MESSAGE_TEXT_CHARS = 4_000;
@@ -64,31 +65,25 @@ const modelBriefSchema = z
 
 type ModelBrief = z.output<typeof modelBriefSchema>;
 
-type BriefModelRequest = {
-  maxTokens?: number;
-  modelId: string;
+/** Structured completion for one Brief. The caller binds the model. */
+export type BriefCompleteObject = (request: {
+  maxTokens: number;
   prompt: string;
   schema: ZodTypeAny;
-  system?: string;
-  temperature?: number;
-};
+  system: string;
+  temperature: number;
+}) => Promise<{ costUsd?: number; object: unknown }>;
 
-/** Narrow structured-completion capability required by Brief generation. */
-export type BriefCompleteObject = (
-  request: BriefModelRequest,
-) => Promise<{ costUsd?: number; object: unknown }>;
-
+/** Evidence-check diagnostics, rendered by the local replay CLI. */
 export type BriefEvidenceCheck = {
   citedUrlCount: number;
-  claims: {
-    mergedWithoutEvidence: boolean;
-  };
   codeChangeCount: number;
   coercedDecisionKinds: number;
   droppedAttributionCount: number;
   droppedRuntimeMarkerCount: number;
   droppedUrls: Array<{ normalized: string; raw: string }>;
   keptUrlCount: number;
+  mergedClaimWithoutEvidence: boolean;
   resourceCount: number;
 };
 
@@ -103,7 +98,6 @@ export type GeneratedBrief = {
 export type GenerateBriefArgs = {
   completeObject: BriefCompleteObject;
   input: BriefInput;
-  model: string;
   previous?: ConversationBrief;
   prompt: string;
   throughIndex: number;
@@ -307,15 +301,14 @@ function briefSizeClass(record: ConversationBrief["record"]): BriefSizeClass {
 
 function promptInput(args: {
   caps: BriefSizeCaps;
+  entries: BriefEntry[];
   input: BriefInput;
   previous?: ConversationBrief;
   record: ConversationBrief["record"];
   sizeClass: BriefSizeClass;
-  throughIndex: number;
 }): string {
-  const candidates = inputEntries(args.input, args.throughIndex);
-  const messages = candidates.filter((entry) => entry.role !== "tool");
-  const tools = candidates.filter((entry) => entry.role === "tool");
+  const messages = args.entries.filter((entry) => entry.role !== "tool");
+  const tools = args.entries.filter((entry) => entry.role === "tool");
   const keptMessages = [...messages];
   const keptTools: BriefEntry[] = [];
   const base = {
@@ -340,7 +333,7 @@ function promptInput(args: {
         messages: messages.length - keptMessages.length,
         toolResults: tools.length - keptTools.length,
       },
-      entries: candidates.filter((entry) => kept.has(entry)),
+      entries: args.entries.filter((entry) => kept.has(entry)),
     });
   };
 
@@ -405,16 +398,36 @@ function decodeHtmlEntities(value: string): string {
   );
 }
 
+function endsWithUnopenedBracket(
+  url: string,
+  open: string,
+  close: string,
+): boolean {
+  return (
+    url.endsWith(close) && url.split(open).length < url.split(close).length
+  );
+}
+
+/**
+ * Strip punctuation that prose attaches to a URL. A closing bracket stays when
+ * the URL opened it, so `wiki/Foo_(bar)` survives and `(see https://x/y)` does not.
+ */
 function normalizeCitationUrl(raw: string): string {
-  let normalized = decodeHtmlEntities(raw).trim();
-  let previous: string;
-  do {
-    previous = normalized;
-    normalized = normalized.replace(/[;,.)\]]+$/, "");
-    normalized = normalized.replace(/\/https?$/i, "");
-    normalized = normalized.replace(/\/+$/, "");
-  } while (normalized !== previous);
-  return normalized;
+  let url = decodeHtmlEntities(raw).trim();
+  for (;;) {
+    let next = url
+      .replace(/[;,.]+$/, "")
+      .replace(/\/https?$/i, "")
+      .replace(/\/+$/, "");
+    if (
+      endsWithUnopenedBracket(next, "(", ")") ||
+      endsWithUnopenedBracket(next, "[", "]")
+    ) {
+      next = next.slice(0, -1);
+    }
+    if (next === url) return url;
+    url = next;
+  }
 }
 
 function normalizedUrlTokens(value: string): Set<string> {
@@ -425,40 +438,45 @@ function normalizedUrlTokens(value: string): Set<string> {
 }
 
 function buildEvidenceLinks(args: {
+  entries: BriefEntry[];
   input: BriefInput;
   model: ModelBrief;
   previous?: ConversationBrief;
-  throughIndex: number;
-}): { evidence: BriefEvidenceCheck; links: BriefLink[] } {
+}): {
+  droppedUrls: BriefEvidenceCheck["droppedUrls"];
+  keptUrlCount: number;
+  links: BriefLink[];
+} {
   const deterministic = deterministicLinks(args.input);
   const transcriptUrls = normalizedUrlTokens(
-    inputEntries(args.input, args.throughIndex)
-      .map((entry) => entry.text)
-      .join("\n"),
+    args.entries.map((entry) => entry.text).join("\n"),
   );
-  const allowedPriorUrls = new Set(
+  const priorUrls = new Set(
     (args.previous?.links ?? []).map((link) => normalizeCitationUrl(link.url)),
   );
-  const droppedUrls: Array<{ normalized: string; raw: string }> = [];
-  const acceptedUrls = new Set<string>();
-  const citedLinks: Array<{ link: BriefLink; raw: string }> = [];
-  const existingUrls = new Set(
+  const linkedUrls = new Set(
     deterministic.map((link) => normalizeCitationUrl(link.url)),
   );
+  const supportedUrls = new Set<string>();
+  const droppedUrls = new Map<string, { normalized: string; raw: string }>();
+  const cited: Array<{ link: BriefLink; raw: string }> = [];
   for (const citation of args.model.urls) {
     const normalized = normalizeCitationUrl(citation.url);
-    const allowed =
-      existingUrls.has(normalized) ||
+    const supported =
+      linkedUrls.has(normalized) ||
       transcriptUrls.has(normalized) ||
-      allowedPriorUrls.has(normalized);
-    if (!allowed) {
-      droppedUrls.push({ raw: citation.url, normalized });
+      priorUrls.has(normalized);
+    if (!supported) {
+      droppedUrls.set(`${citation.url}\0${normalized}`, {
+        normalized,
+        raw: citation.url,
+      });
       continue;
     }
-    acceptedUrls.add(normalized);
-    if (existingUrls.has(normalized)) continue;
-    existingUrls.add(normalized);
-    citedLinks.push({
+    supportedUrls.add(normalized);
+    if (linkedUrls.has(normalized)) continue;
+    linkedUrls.add(normalized);
+    cited.push({
       raw: citation.url,
       link: {
         kind: "url",
@@ -468,38 +486,21 @@ function buildEvidenceLinks(args: {
     });
   }
   const citedLimit = Math.max(0, MAX_LINKS - deterministic.length);
-  for (const citation of citedLinks.slice(citedLimit)) {
-    droppedUrls.push({
-      raw: citation.raw,
+  for (const citation of cited.slice(citedLimit)) {
+    droppedUrls.set(`${citation.raw}\0${citation.link.url}`, {
       normalized: citation.link.url,
+      raw: citation.raw,
     });
   }
   const links = [
     ...deterministic,
-    ...citedLinks.slice(0, citedLimit).map((citation) => citation.link),
+    ...cited.slice(0, citedLimit).map((citation) => citation.link),
   ].slice(0, MAX_LINKS);
-  const keptEvidenceUrls = new Set(
-    links.map((link) => normalizeCitationUrl(link.url)),
-  );
-  const uniqueDroppedUrls = [
-    ...new Map(
-      droppedUrls.map((url) => [`${url.raw}\0${url.normalized}`, url]),
-    ).values(),
-  ];
+  const keptUrls = new Set(links.map((link) => normalizeCitationUrl(link.url)));
   return {
+    droppedUrls: [...droppedUrls.values()],
+    keptUrlCount: [...supportedUrls].filter((url) => keptUrls.has(url)).length,
     links,
-    evidence: {
-      citedUrlCount: args.model.urls.length,
-      claims: { mergedWithoutEvidence: false },
-      codeChangeCount: args.input.codeChanges.length,
-      coercedDecisionKinds: 0,
-      droppedAttributionCount: 0,
-      droppedRuntimeMarkerCount: 0,
-      droppedUrls: uniqueDroppedUrls,
-      keptUrlCount: [...acceptedUrls].filter((url) => keptEvidenceUrls.has(url))
-        .length,
-      resourceCount: args.input.resources.length,
-    },
   };
 }
 
@@ -512,41 +513,62 @@ function hasMergedEvidence(input: BriefInput): boolean {
   );
 }
 
+/** Build the text indexed for a Brief without adding transcript content. */
+function buildBriefSearchText(
+  brief: ConversationBrief,
+  title?: string,
+): string {
+  return [
+    title,
+    brief.summary,
+    brief.intent,
+    brief.outcome.text,
+    ...brief.decisions.map((decision) => decision.text),
+    ...brief.openDecisions.map((decision) => decision.text),
+    ...brief.facts,
+    ...brief.keywords,
+    ...brief.links.map((link) => link.label),
+    ...brief.record.participants.map((participant) => participant.name),
+    ...brief.record.codeChanges.map(
+      (change) => `${change.repository}#${change.number} ${change.state}`,
+    ),
+  ]
+    .filter((value): value is string => Boolean(value?.trim()))
+    .join("\n");
+}
+
 /** Generate one bounded Brief and attach only deterministic evidence links. */
 export async function generateBrief(
-  rawArgs: GenerateBriefArgs,
+  args: GenerateBriefArgs,
 ): Promise<GeneratedBrief> {
-  const input = parseBriefInput(rawArgs.input);
-  if (!Number.isSafeInteger(rawArgs.throughIndex) || rawArgs.throughIndex < 0) {
+  const input = parseBriefInput(args.input);
+  if (!Number.isSafeInteger(args.throughIndex) || args.throughIndex < 0) {
     throw new Error("throughIndex must be a non-negative integer");
   }
-  const record = buildBriefRecord(
-    input,
-    inputEntries(input, rawArgs.throughIndex),
-  );
+  const entries = inputEntries(input, args.throughIndex);
+  const record = buildBriefRecord(input, entries);
   const sizeClass = briefSizeClass(record);
   const caps = SIZE_CAPS[sizeClass];
-  const result = await rawArgs.completeObject({
-    modelId: rawArgs.model,
-    schema: modelBriefSchema,
-    system: rawArgs.prompt,
+  const result = await args.completeObject({
+    maxTokens: 2_500,
     prompt: promptInput({
       caps,
+      entries,
       input,
-      previous: rawArgs.previous,
+      previous: args.previous,
       record,
       sizeClass,
-      throughIndex: rawArgs.throughIndex,
     }),
+    schema: modelBriefSchema,
+    system: args.prompt,
     temperature: 0,
-    maxTokens: 2_500,
   });
   const model = modelBriefSchema.parse(result.object);
-  const { evidence: linkEvidence, links } = buildEvidenceLinks({
+  const { droppedUrls, keptUrlCount, links } = buildEvidenceLinks({
+    entries,
     input,
     model,
-    previous: rawArgs.previous,
-    throughIndex: rawArgs.throughIndex,
+    previous: args.previous,
   });
   const normalized = normalizeModelBrief({ caps, links, model, record });
   const mergedClaim = /\bmerged\b/i.test(
@@ -554,21 +576,22 @@ export async function generateBrief(
   );
   const hasLinkedEvidence =
     input.codeChanges.length > 0 || input.resources.length > 0;
-  const evidence: BriefEvidenceCheck = {
-    ...linkEvidence,
-    claims: {
-      mergedWithoutEvidence:
-        mergedClaim && hasLinkedEvidence && !hasMergedEvidence(input),
-    },
-    coercedDecisionKinds: normalized.coercedDecisionKinds,
-    droppedAttributionCount: normalized.droppedAttributionCount,
-    droppedRuntimeMarkerCount: normalized.droppedRuntimeMarkerCount,
-  };
   return {
     brief: normalized.brief,
     ...(result.costUsd !== undefined ? { costUsd: result.costUsd } : undefined),
-    evidence,
+    evidence: {
+      citedUrlCount: model.urls.length,
+      codeChangeCount: input.codeChanges.length,
+      coercedDecisionKinds: normalized.coercedDecisionKinds,
+      droppedAttributionCount: normalized.droppedAttributionCount,
+      droppedRuntimeMarkerCount: normalized.droppedRuntimeMarkerCount,
+      droppedUrls,
+      keptUrlCount,
+      mergedClaimWithoutEvidence:
+        mergedClaim && hasLinkedEvidence && !hasMergedEvidence(input),
+      resourceCount: input.resources.length,
+    },
     searchText: buildBriefSearchText(normalized.brief, input.title),
-    throughIndex: rawArgs.throughIndex,
+    throughIndex: args.throughIndex,
   };
 }

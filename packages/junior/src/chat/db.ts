@@ -5,8 +5,6 @@ import { createSqlConversationEventStore } from "@/chat/conversations/sql/histor
 import type { ConversationEventStore } from "@/chat/conversations/history";
 import { createSqlConversationMessageSearchStore } from "@/chat/conversations/sql/message-search";
 import type { ConversationMessageSearchStore } from "@/chat/conversations/message-search";
-import { createSqlConversationBriefSearchStore } from "@/chat/briefs/sql/search";
-import type { ConversationBriefSearchStore } from "@/chat/briefs/search";
 import type { JuniorDatabase, JuniorSqlExecutor } from "@/db/db";
 import { createJuniorSqlExecutor } from "@/db/executor";
 
@@ -17,9 +15,8 @@ let current:
       driver: SqlDriver;
       statementTimeoutMs: number | false;
       store: ConversationStore;
-      briefSearchStore: ConversationBriefSearchStore;
       eventStore: ConversationEventStore;
-      messageSearchStore: ConversationMessageSearchStore;
+      searchStore: ConversationMessageSearchStore;
     }
   | undefined;
 
@@ -59,9 +56,8 @@ export function getSqlExecutor(): JuniorSqlExecutor {
       statementTimeoutMs: sql.statementTimeoutMs,
       db,
       store: createSqlStore(db),
-      briefSearchStore: createSqlConversationBriefSearchStore(db),
       eventStore: createSqlConversationEventStore(db),
-      messageSearchStore: createSqlConversationMessageSearchStore(db),
+      searchStore: createSqlConversationMessageSearchStore(db),
     };
   }
   return current.db;
@@ -87,13 +83,7 @@ export function getConversationEventStore(): ConversationEventStore {
 /** Return the SQL-backed public provider-tenant conversation search store. */
 export function getConversationMessageSearchStore(): ConversationMessageSearchStore {
   getSqlExecutor();
-  return current!.messageSearchStore;
-}
-
-/** Return the SQL-backed public Conversation Brief search store. */
-export function getConversationBriefSearchStore(): ConversationBriefSearchStore {
-  getSqlExecutor();
-  return current!.briefSearchStore;
+  return current!.searchStore;
 }
 
 /** Close the process SQL database when it has been opened. */

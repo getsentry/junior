@@ -1,8 +1,8 @@
-import { and, desc, eq, inArray, max } from "drizzle-orm";
+import { and, desc, eq, max } from "drizzle-orm";
 import type { JuniorDatabase } from "@/db/db";
 import { juniorConversationBriefs, juniorConversations } from "@/db/schema";
 import { resolveRootVisibility } from "@/chat/conversations/sql/privacy";
-import { conversationBriefSchema, type ConversationBrief } from "./brief";
+import { conversationBriefSchema, type ConversationBrief } from "./schema";
 
 export type ConversationBriefVersion = {
   conversationId: string;
@@ -149,38 +149,4 @@ export async function readLatestConversationBrief(
     .orderBy(desc(juniorConversationBriefs.version))
     .limit(1);
   return rows[0] ? briefVersionFromRow(rows[0]) : undefined;
-}
-
-/** Read each Conversation's latest Brief version. */
-export async function readLatestConversationBriefs(
-  db: JuniorDatabase,
-  conversationIds: readonly string[],
-): Promise<Map<string, ConversationBriefVersion>> {
-  if (conversationIds.length === 0) return new Map();
-  const rows = await db
-    .selectDistinctOn([juniorConversationBriefs.conversationId])
-    .from(juniorConversationBriefs)
-    .where(
-      inArray(juniorConversationBriefs.conversationId, [...conversationIds]),
-    )
-    .orderBy(
-      juniorConversationBriefs.conversationId,
-      desc(juniorConversationBriefs.version),
-    );
-  return new Map(
-    rows.map((row) => [row.conversationId, briefVersionFromRow(row)]),
-  );
-}
-
-/** Delete all Brief versions for the selected Conversations. */
-export async function deleteConversationBriefs(
-  db: JuniorDatabase,
-  conversationIds: readonly string[],
-): Promise<void> {
-  if (conversationIds.length === 0) return;
-  await db
-    .delete(juniorConversationBriefs)
-    .where(
-      inArray(juniorConversationBriefs.conversationId, [...conversationIds]),
-    );
 }

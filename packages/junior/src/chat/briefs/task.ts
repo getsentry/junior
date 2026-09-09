@@ -6,14 +6,17 @@ import type {
 import { and, desc, eq, sql } from "drizzle-orm";
 import type { JuniorDatabase } from "@/db/db";
 import { juniorConversationEvents } from "@/db/schema";
-import { getSqlExecutor } from "@/chat/db";
+import { botConfig } from "@/chat/config";
 import { resolveRootVisibility } from "@/chat/conversations/sql/privacy";
 import { createSqlStore } from "@/chat/conversations/sql/store";
-import { DEFAULT_BRIEF_PROMPT, defaultBriefModelId } from "./config";
+import { getSqlExecutor } from "@/chat/db";
+import { defaultModelId } from "@/chat/model-profile";
+import { completeObject } from "@/chat/pi/client";
 import { briefUpdatedEvent } from "./events";
-import { generateBrief, type BriefCompleteObject } from "./generate";
+import { generateBrief } from "./generate";
+import { briefInputFromSql } from "./input";
 import { buildBriefsOperationalReport } from "./operational-report";
-import { briefInputFromSql } from "./sql/input";
+import { BRIEF_PROMPT } from "./prompt";
 import {
   appendConversationBrief,
   readConversationBriefForTurn,
@@ -151,17 +154,19 @@ export async function updateConversationBrief(
         executor,
         run.conversationId,
       );
-      const modelId = await defaultBriefModelId();
-      const completeObject: BriefCompleteObject = async ({
-        modelId: _modelId,
-        ...request
-      }) => await context.model.completeObject(request);
+      // Same request as `junior briefs run`, so the tuned prompt and
+      // temperature apply in production.
+      const modelId = defaultModelId(botConfig);
       const generation = await generateBrief({
-        completeObject,
+        completeObject: (request) =>
+          completeObject({
+            ...request,
+            modelId,
+            promptName: "junior.brief_update",
+          }),
         input,
-        model: modelId,
         previous: previous?.content,
-        prompt: DEFAULT_BRIEF_PROMPT,
+        prompt: BRIEF_PROMPT,
         throughIndex: throughSeq,
       });
       const stored = await appendConversationBrief(db, {
@@ -190,7 +195,6 @@ export const briefsTaskRegistration: PluginRegistration = {
     displayName: "Briefs",
     description: "Durable Conversation Brief generation",
   },
-  model: { structuredModel: "default" },
   conversationEvents: [briefUpdatedEvent],
   hooks: {
     async operationalReport(context) {

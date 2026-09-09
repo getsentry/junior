@@ -240,7 +240,6 @@ describe("Brief snapshot", () => {
       input,
       throughIndex: 8,
       prompt: "Write a Brief.",
-      model: "test/model",
       completeObject: async () => ({
         object: {
           summary: "Version 1.2.3 was released.",

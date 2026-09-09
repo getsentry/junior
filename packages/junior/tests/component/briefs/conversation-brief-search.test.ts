@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
-import { createSqlConversationBriefSearchStore } from "@/chat/briefs/sql/search";
+import { searchConversationBriefs } from "@/chat/briefs/search";
 import { appendConversationBrief } from "@/chat/briefs/store";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
@@ -22,7 +22,6 @@ describe("Conversation Brief search", () => {
       await migrateSchema(fixture.sql);
       const db = fixture.sql.db();
       const conversations = createSqlStore(fixture.sql);
-      const search = createSqlConversationBriefSearchStore(fixture.sql);
       const currentConversationId = "slack:CREQUEST:1700000000.100000";
       const targetConversationId = "slack:CARCHIVE:1700000000.200000";
       const otherTenantId = "slack:COTHER:1700000000.300000";
@@ -180,7 +179,7 @@ describe("Conversation Brief search", () => {
         url: "https://example.com/acme/widget/12",
       });
 
-      const matches = await search.search({
+      const matches = await searchConversationBriefs(db, {
         currentConversationId,
         filters: { query: "deployment decision" },
         limit: 10,
@@ -205,7 +204,7 @@ describe("Conversation Brief search", () => {
       expect(matches[0]?.excerpt).toContain("**deployment**");
 
       await expect(
-        search.search({
+        searchConversationBriefs(db, {
           currentConversationId,
           filters: { query: "obsolete migration" },
           limit: 10,
@@ -214,7 +213,7 @@ describe("Conversation Brief search", () => {
       ).resolves.toEqual([]);
 
       await expect(
-        search.search({
+        searchConversationBriefs(db, {
           currentConversationId,
           filters: {
             afterMs: Date.parse("2026-07-02T00:00:00.000Z"),
@@ -231,7 +230,7 @@ describe("Conversation Brief search", () => {
       ]);
 
       await expect(
-        search.search({
+        searchConversationBriefs(db, {
           currentConversationId,
           filters: { query: "browser launch" },
           limit: 10,

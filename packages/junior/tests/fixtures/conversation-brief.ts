@@ -2,7 +2,7 @@ import type {
   BriefLink,
   BriefOutcomeStatus,
   ConversationBrief,
-} from "@/chat/briefs/brief";
+} from "@/chat/briefs/schema";
 
 /** Build a valid compact Brief for storage and API tests. */
 export function conversationBriefFixture(

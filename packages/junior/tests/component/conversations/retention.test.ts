@@ -20,8 +20,8 @@ import {
   juniorAgentInvocations,
 } from "@/db/schema";
 import type { JuniorDestinationVisibility } from "@/db/schema/destinations";
-import type { ConversationBrief } from "@/chat/briefs/brief";
 import type { JuniorSqlDatabase } from "@/db/db";
+import { conversationBriefFixture } from "../../fixtures/conversation-brief";
 import {
   collectAttachmentGarbage,
   storeAttachment,
@@ -34,29 +34,6 @@ import {
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const BASE_MS = Date.UTC(2026, 0, 1);
-const TEST_BRIEF = {
-  schemaVersion: 1,
-  record: {
-    startedAt: new Date(BASE_MS).toISOString(),
-    lastActivityAt: new Date(BASE_MS).toISOString(),
-    durationMs: 0,
-    participants: [{ name: "Test User", messages: 1 }],
-    userMessages: 1,
-    assistantMessages: 1,
-    toolResults: 0,
-    events: 0,
-    turns: 1,
-    codeChanges: [],
-  },
-  summary: "Retention Brief",
-  intent: "Verify the purge rule.",
-  outcome: { status: "done", text: "The rule was verified." },
-  decisions: [],
-  openDecisions: [],
-  facts: [],
-  links: [],
-  keywords: ["retention"],
-} satisfies ConversationBrief;
 
 async function seedDestination(
   executor: JuniorSqlDatabase,
@@ -212,17 +189,20 @@ describe("retention purge job", () => {
       destinationId,
       lastActivityAtMs: BASE_MS,
     });
-    await fixture.sql.db().insert(juniorAttachments).values({
-      id: "attachment-1",
-      conversationId: "with-attachment",
-      storageProvider: "test",
-      storageKey: "key-1",
-      filename: "report.txt",
-      contentType: "text/plain",
-      bytes: 6,
-      sha256: "digest",
-      createdAt: new Date(BASE_MS),
-    });
+    await fixture.sql
+      .db()
+      .insert(juniorAttachments)
+      .values({
+        id: "attachment-1",
+        conversationId: "with-attachment",
+        storageProvider: "test",
+        storageKey: "key-1",
+        filename: "report.txt",
+        contentType: "text/plain",
+        bytes: 6,
+        sha256: "digest",
+        createdAt: new Date(BASE_MS),
+      });
     const deleted: string[][] = [];
     const storage: AttachmentStorage = {
       provider: "test",
@@ -250,30 +230,33 @@ describe("retention purge job", () => {
       destinationId,
       lastActivityAtMs: BASE_MS + 31 * DAY_MS,
     });
-    await fixture.sql.db().insert(juniorAttachments).values([
-      {
-        id: "expired-attachment",
-        conversationId: "active-with-attachments",
-        storageProvider: "test",
-        storageKey: "expired-key",
-        filename: "old.txt",
-        contentType: "text/plain",
-        bytes: 3,
-        sha256: "old",
-        createdAt: new Date(BASE_MS),
-      },
-      {
-        id: "current-attachment",
-        conversationId: "active-with-attachments",
-        storageProvider: "test",
-        storageKey: "current-key",
-        filename: "new.txt",
-        contentType: "text/plain",
-        bytes: 3,
-        sha256: "new",
-        createdAt: new Date(BASE_MS + 2 * DAY_MS),
-      },
-    ]);
+    await fixture.sql
+      .db()
+      .insert(juniorAttachments)
+      .values([
+        {
+          id: "expired-attachment",
+          conversationId: "active-with-attachments",
+          storageProvider: "test",
+          storageKey: "expired-key",
+          filename: "old.txt",
+          contentType: "text/plain",
+          bytes: 3,
+          sha256: "old",
+          createdAt: new Date(BASE_MS),
+        },
+        {
+          id: "current-attachment",
+          conversationId: "active-with-attachments",
+          storageProvider: "test",
+          storageKey: "current-key",
+          filename: "new.txt",
+          contentType: "text/plain",
+          bytes: 3,
+          sha256: "new",
+          createdAt: new Date(BASE_MS + 2 * DAY_MS),
+        },
+      ]);
     const deleted: string[][] = [];
     const storage: AttachmentStorage = {
       provider: "test",
@@ -304,18 +287,21 @@ describe("retention purge job", () => {
       destinationId,
       lastActivityAtMs: BASE_MS,
     });
-    await fixture.sql.db().insert(juniorAttachments).values({
-      id: "attachment-1",
-      conversationId: "with-attachment",
-      storageProvider: "test",
-      storageKey: "key-1",
-      filename: "report.txt",
-      contentType: "text/plain",
-      bytes: 6,
-      sha256: "digest",
-      createdAt: new Date(BASE_MS),
-      deleteRequestedAt: new Date(BASE_MS + DAY_MS),
-    });
+    await fixture.sql
+      .db()
+      .insert(juniorAttachments)
+      .values({
+        id: "attachment-1",
+        conversationId: "with-attachment",
+        storageProvider: "test",
+        storageKey: "key-1",
+        filename: "report.txt",
+        contentType: "text/plain",
+        bytes: 6,
+        sha256: "digest",
+        createdAt: new Date(BASE_MS),
+        deleteRequestedAt: new Date(BASE_MS + DAY_MS),
+      });
     const storage: AttachmentStorage = {
       provider: "test",
       get: async () => null,
@@ -354,17 +340,20 @@ describe("retention purge job", () => {
       .update(juniorConversations)
       .set({ transcriptPurgedAt: new Date(BASE_MS + DAY_MS) })
       .where(eq(juniorConversations.conversationId, "purged-owner"));
-    await fixture.sql.db().insert(juniorAttachments).values({
-      id: "orphan-attachment",
-      conversationId: "purged-owner",
-      storageProvider: "test",
-      storageKey: "orphan-key",
-      filename: "late.txt",
-      contentType: "text/plain",
-      bytes: 4,
-      sha256: "orphan",
-      createdAt: new Date(BASE_MS + DAY_MS),
-    });
+    await fixture.sql
+      .db()
+      .insert(juniorAttachments)
+      .values({
+        id: "orphan-attachment",
+        conversationId: "purged-owner",
+        storageProvider: "test",
+        storageKey: "orphan-key",
+        filename: "late.txt",
+        contentType: "text/plain",
+        bytes: 4,
+        sha256: "orphan",
+        createdAt: new Date(BASE_MS + DAY_MS),
+      });
     const deleted: string[][] = [];
     const storage: AttachmentStorage = {
       provider: "test",
@@ -861,7 +850,7 @@ describe("retention purge job", () => {
       version: 1,
       turnId: "brief-turn",
       throughSeq: 0,
-      content: TEST_BRIEF,
+      content: conversationBriefFixture(),
       searchText: "Private retention Brief",
       modelId: "test-model",
     });
@@ -938,7 +927,7 @@ describe("retention purge job", () => {
           version: 1,
           turnId: "pub-turn",
           throughSeq: 0,
-          content: TEST_BRIEF,
+          content: conversationBriefFixture(),
           searchText: "Public retention Brief",
           modelId: "test-model",
         },
@@ -947,7 +936,7 @@ describe("retention purge job", () => {
           version: 1,
           turnId: "priv-turn",
           throughSeq: 0,
-          content: TEST_BRIEF,
+          content: conversationBriefFixture(),
           searchText: "Private retention Brief",
           modelId: "test-model",
         },
