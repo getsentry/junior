@@ -161,7 +161,6 @@ export function createSlackScheduleCreateTaskTool(
         instruction: input.task,
         title: input.title,
       });
-      const threadTs = context.source?.threadTs ?? context.source?.messageTs;
       const task: ScheduledTask = {
         id,
         createdAtMs: nowMs,
@@ -170,10 +169,7 @@ export function createSlackScheduleCreateTaskTool(
         creatorIdentityId: identity.id,
         conversationAccess,
         credentialMode: input.credential_mode ?? "creator",
-        destination: {
-          ...destination,
-          ...(threadTs ? { threadTs } : undefined),
-        },
+        destination,
         executionActor: SCHEDULED_TASK_SYSTEM_ACTOR,
         nextRunAtMs: compiled.nextRunAtMs,
         originalRequest: context.userText,
