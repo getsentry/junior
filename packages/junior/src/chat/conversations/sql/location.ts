@@ -49,14 +49,13 @@ export function locationForWrite(args: {
   if (!destination || !args.destinationId) {
     return undefined;
   }
+  const threadTs = source?.threadTs ?? destination.threadTs;
   return locationSchema.parse({
     id: args.destinationId,
     provider: "slack",
     teamId: destination.teamId,
     channelId: destination.channelId,
-    ...(source?.threadTs ?? destination.threadTs
-      ? { threadTs: source?.threadTs ?? destination.threadTs }
-      : undefined),
+    ...(threadTs ? { threadTs } : undefined),
   });
 }
 

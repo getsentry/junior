@@ -196,10 +196,11 @@ export function createSlackScheduleUpdateTaskTool(
       const nextInstruction =
         input.task !== undefined ? input.task : lookup.task.text;
       const instructionChanged = nextInstruction !== lookup.task.text;
+      const threadTs = context.source?.threadTs ?? context.source?.messageTs;
       const nextDestination = changingDestination
         ? {
             ...activeDestination,
-            threadTs: context.source?.threadTs ?? context.source?.messageTs,
+            ...(threadTs ? { threadTs } : undefined),
           }
         : lookup.destination;
       const next: ScheduledTask = {
