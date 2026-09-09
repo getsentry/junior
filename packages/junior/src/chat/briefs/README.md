@@ -10,7 +10,8 @@ A Brief is a compact record of a Conversation. It keeps intent, outcome, decisio
 - Code change and resource links come from trusted input. The model cannot add them.
 - A model URL is kept only when it matches deterministic evidence or when the exact URL occurs in an input entry or the previous Brief.
 - Code changes and resources take priority when the 40-link cap applies.
-- Tool result text is limited to 1,500 characters. Generator input is limited to 60,000 characters. The oldest entries are removed first.
+- User and assistant text is limited to 4,000 characters per entry. The 60,000-character input budget keeps these messages before tool results and drops the oldest message only when the messages alone exceed the budget.
+- Tool result text is limited to 1,500 characters per entry. Newest tool results fill the remaining budget. Retained entries keep their original order, and the prompt reports omitted message and tool-result counts.
 - Output caps and normalization apply after model output is parsed.
 - `searchText` contains Brief content and link labels. It does not contain transcript text that the Brief omitted.
 
