@@ -432,10 +432,25 @@ describe("Conversation Brief task", () => {
       title: "Purged private Brief",
       visibility: "private",
     });
+    await recordCompletedTurn({
+      conversationId: purgedConversationId,
+      instruction: "Do not generate after private transcript purge.",
+      turnId: "purged-turn",
+    });
     await getDb()
       .update(juniorConversations)
       .set({ transcriptPurgedAt: new Date(30) })
       .where(eq(juniorConversations.conversationId, purgedConversationId));
+    await processPluginTask({
+      plugin: "briefs",
+      name: "updateBrief",
+      params: {
+        conversationId: purgedConversationId,
+        sessionId: "purged-turn",
+      },
+    });
+    expect(TEST.calls).toHaveLength(3);
+
     const { appendConversationBrief } = await import("@/chat/briefs/store");
     await expect(
       appendConversationBrief(getDb(), {

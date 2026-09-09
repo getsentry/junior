@@ -7,6 +7,7 @@ import { and, desc, eq, sql } from "drizzle-orm";
 import type { JuniorDatabase } from "@/db/db";
 import { juniorConversationEvents } from "@/db/schema";
 import { getSqlExecutor } from "@/chat/db";
+import { resolveRootVisibility } from "@/chat/conversations/sql/privacy";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import { DEFAULT_BRIEF_PROMPT, defaultBriefModelId } from "./config";
 import { briefUpdatedEvent } from "./events";
@@ -102,6 +103,13 @@ export async function updateConversationBrief(
   if (conversation?.parentConversationId) {
     logSkip(context, run.conversationId, "child_conversation");
     return;
+  }
+  if (conversation?.transcriptPurgedAtMs !== undefined) {
+    const root = await resolveRootVisibility(executor, run.conversationId);
+    if (root.visibility !== "public") {
+      logSkip(context, run.conversationId, "purged_private");
+      return;
+    }
   }
   if (!hasUserInstruction(run)) {
     logSkip(context, run.conversationId, "no_user_instruction");
