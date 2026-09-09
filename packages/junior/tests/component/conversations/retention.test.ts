@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   purgeConversation,
@@ -20,6 +20,7 @@ import {
   juniorAgentInvocations,
 } from "@/db/schema";
 import type { JuniorDestinationVisibility } from "@/db/schema/destinations";
+import type { ConversationBrief } from "@/chat/briefs/brief";
 import type { JuniorSqlDatabase } from "@/db/db";
 import {
   collectAttachmentGarbage,
@@ -33,6 +34,29 @@ import {
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const BASE_MS = Date.UTC(2026, 0, 1);
+const TEST_BRIEF = {
+  schemaVersion: 1,
+  record: {
+    startedAt: new Date(BASE_MS).toISOString(),
+    lastActivityAt: new Date(BASE_MS).toISOString(),
+    durationMs: 0,
+    participants: [{ name: "Test User", messages: 1 }],
+    userMessages: 1,
+    assistantMessages: 1,
+    toolResults: 0,
+    events: 0,
+    turns: 1,
+    codeChanges: [],
+  },
+  summary: "Retention Brief",
+  intent: "Verify the purge rule.",
+  outcome: { status: "done", text: "The rule was verified." },
+  decisions: [],
+  openDecisions: [],
+  facts: [],
+  links: [],
+  keywords: ["retention"],
+} satisfies ConversationBrief;
 
 async function seedDestination(
   executor: JuniorSqlDatabase,
@@ -808,6 +832,53 @@ describe("retention purge job", () => {
     ).resolves.toEqual([]);
   });
 
+  it("selects a private tree when its only remaining content is a Brief", async () => {
+    const destinationId = await seedDestination(fixture.sql, "private");
+    await seedConversation(fixture.sql, {
+      conversationId: "brief-root",
+      destinationId,
+      lastActivityAtMs: BASE_MS,
+      title: null,
+      channelName: null,
+      withContent: false,
+    });
+    await seedConversation(fixture.sql, {
+      conversationId: "brief-child",
+      parentConversationId: "brief-root",
+      lastActivityAtMs: BASE_MS,
+      title: null,
+      channelName: null,
+      withContent: false,
+    });
+    const treeIds = ["brief-root", "brief-child"];
+    await fixture.sql
+      .db()
+      .update(juniorConversations)
+      .set({ actor: null })
+      .where(inArray(juniorConversations.conversationId, treeIds));
+    await fixture.sql.db().insert(juniorConversationBriefs).values({
+      conversationId: "brief-child",
+      version: 1,
+      turnId: "brief-turn",
+      throughSeq: 0,
+      content: TEST_BRIEF,
+      searchText: "Private retention Brief",
+      modelId: "test-model",
+    });
+    const nowMs = BASE_MS + 30 * DAY_MS;
+
+    await expect(
+      selectExpiredRoots(fixture.sql, {
+        nowMs,
+        publicWindowMs: 90 * DAY_MS,
+        privateWindowMs: 14 * DAY_MS,
+        limit: 10,
+      }),
+    ).resolves.toEqual([
+      expect.objectContaining({ conversationId: "brief-root" }),
+    ]);
+  });
+
   it("purges up to the batch limit and leaves the remainder for the next run", async () => {
     const dest = await seedDestination(fixture.sql, "private");
     await seedConversation(fixture.sql, {
@@ -858,29 +929,6 @@ describe("retention purge job", () => {
       lastActivityAtMs: BASE_MS,
       title: "Secret title",
     });
-    const brief = {
-      schemaVersion: 1 as const,
-      record: {
-        startedAt: new Date(BASE_MS).toISOString(),
-        lastActivityAt: new Date(BASE_MS).toISOString(),
-        durationMs: 0,
-        participants: [{ name: "Test User", messages: 1 }],
-        userMessages: 1,
-        assistantMessages: 1,
-        toolResults: 0,
-        events: 0,
-        turns: 1,
-        codeChanges: [],
-      },
-      summary: "Retention Brief",
-      intent: "Verify the purge rule.",
-      outcome: { status: "done" as const, text: "The rule was verified." },
-      decisions: [],
-      openDecisions: [],
-      facts: [],
-      links: [],
-      keywords: ["retention"],
-    };
     await fixture.sql
       .db()
       .insert(juniorConversationBriefs)
@@ -890,7 +938,7 @@ describe("retention purge job", () => {
           version: 1,
           turnId: "pub-turn",
           throughSeq: 0,
-          content: brief,
+          content: TEST_BRIEF,
           searchText: "Public retention Brief",
           modelId: "test-model",
         },
@@ -899,7 +947,7 @@ describe("retention purge job", () => {
           version: 1,
           turnId: "priv-turn",
           throughSeq: 0,
-          content: brief,
+          content: TEST_BRIEF,
           searchText: "Private retention Brief",
           modelId: "test-model",
         },

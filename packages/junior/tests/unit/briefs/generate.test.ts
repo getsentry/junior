@@ -9,6 +9,8 @@ const UNESCAPED_TRANSCRIPT_URL = "https://example.com/thread?ts=1&cid=2";
 const UNESCAPED_CITATION_URL = "https://example.com/admin?org=1&project=2";
 const ESCAPED_CITATION_URL = "https://example.com/admin?org=1&amp;project=2";
 const LATE_URL = "https://example.com/late";
+const PREFIX_URL = "https://example.com/prefix";
+const PREFIX_SOURCE_URL = "https://example.com/prefix-longer";
 const INVENTED_URL = "https://example.com/invented";
 const CODE_CHANGE_URL = "https://github.com/getsentry/junior/pull/123";
 const RESOURCE_URL = "https://sentry.example.com/issues/123";
@@ -32,7 +34,7 @@ function input(): BriefInput {
         index: 1,
         role: "user",
         author: "Ada",
-        text: `Use the runbook at ${VERBATIM_URL}, the thread at ${ESCAPED_TRANSCRIPT_URL}, and the admin page at ${UNESCAPED_CITATION_URL}.`,
+        text: `Use the runbook at ${VERBATIM_URL}, the thread at ${ESCAPED_TRANSCRIPT_URL}, the admin page at ${UNESCAPED_CITATION_URL}, and the exact source ${PREFIX_SOURCE_URL}.`,
         createdAtMs: 1,
         turnId: "turn-1",
       },
@@ -136,6 +138,7 @@ describe("generateBrief", () => {
               { label: "Code change", url: CODE_CHANGE_URL },
               { label: "Resource", url: RESOURCE_URL },
               { label: "Late", url: `${LATE_URL}]` },
+              { label: "Prefix", url: PREFIX_URL },
               { label: "Invented", url: `${INVENTED_URL})` },
             ],
           },
@@ -215,7 +218,7 @@ describe("generateBrief", () => {
       { kind: "url", label: "Admin", url: UNESCAPED_CITATION_URL },
     ]);
     expect(generation.evidence).toEqual({
-      citedUrlCount: 7,
+      citedUrlCount: 8,
       claims: { mergedWithoutEvidence: true },
       codeChangeCount: 1,
       coercedDecisionKinds: 3,
@@ -223,6 +226,7 @@ describe("generateBrief", () => {
       droppedRuntimeMarkerCount: 3,
       droppedUrls: [
         { raw: `${LATE_URL}]`, normalized: LATE_URL },
+        { raw: PREFIX_URL, normalized: PREFIX_URL },
         { raw: `${INVENTED_URL})`, normalized: INVENTED_URL },
       ],
       keptUrlCount: 5,

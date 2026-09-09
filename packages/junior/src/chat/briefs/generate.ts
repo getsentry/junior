@@ -417,6 +417,13 @@ function normalizeCitationUrl(raw: string): string {
   return normalized;
 }
 
+function normalizedUrlTokens(value: string): Set<string> {
+  const tokens = decodeHtmlEntities(value).match(/https?:\/\/[^\s<>"']+/gi);
+  return new Set(
+    (tokens ?? []).map(normalizeCitationUrl).filter((url) => url.length > 0),
+  );
+}
+
 function buildEvidenceLinks(args: {
   input: BriefInput;
   model: ModelBrief;
@@ -424,7 +431,7 @@ function buildEvidenceLinks(args: {
   throughIndex: number;
 }): { evidence: BriefEvidenceCheck; links: BriefLink[] } {
   const deterministic = deterministicLinks(args.input);
-  const transcriptText = decodeHtmlEntities(
+  const transcriptUrls = normalizedUrlTokens(
     inputEntries(args.input, args.throughIndex)
       .map((entry) => entry.text)
       .join("\n"),
@@ -442,7 +449,7 @@ function buildEvidenceLinks(args: {
     const normalized = normalizeCitationUrl(citation.url);
     const allowed =
       existingUrls.has(normalized) ||
-      transcriptText.includes(normalized) ||
+      transcriptUrls.has(normalized) ||
       allowedPriorUrls.has(normalized);
     if (!allowed) {
       droppedUrls.push({ raw: citation.url, normalized });

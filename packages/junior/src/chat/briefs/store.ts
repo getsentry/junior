@@ -1,6 +1,7 @@
 import { and, desc, eq, inArray, max } from "drizzle-orm";
 import type { JuniorDatabase } from "@/db/db";
 import { juniorConversationBriefs, juniorConversations } from "@/db/schema";
+import { resolveRootVisibility } from "@/chat/conversations/sql/privacy";
 import { conversationBriefSchema, type ConversationBrief } from "./brief";
 
 export type ConversationBriefVersion = {
@@ -47,11 +48,29 @@ export async function appendConversationBrief(
   },
 ): Promise<{ inserted: boolean; value: ConversationBriefVersion }> {
   return await db.transaction(async (tx) => {
-    await tx
-      .select({ conversationId: juniorConversations.conversationId })
+    const conversations = await tx
+      .select({
+        conversationId: juniorConversations.conversationId,
+        transcriptPurgedAt: juniorConversations.transcriptPurgedAt,
+      })
       .from(juniorConversations)
       .where(eq(juniorConversations.conversationId, input.conversationId))
       .for("update");
+    const conversation = conversations[0];
+    if (!conversation) {
+      throw new Error(`Conversation ${input.conversationId} is unavailable`);
+    }
+    if (conversation.transcriptPurgedAt) {
+      const root = await resolveRootVisibility(
+        { db: () => tx },
+        input.conversationId,
+      );
+      if (root.visibility !== "public") {
+        throw new Error(
+          `Cannot append a Brief to purged non-public Conversation ${input.conversationId}`,
+        );
+      }
+    }
 
     const existing = await tx
       .select()
@@ -97,6 +116,25 @@ export async function appendConversationBrief(
     }
     return { inserted: true, value: briefVersionFromRow(row) };
   });
+}
+
+/** Read the Brief version produced for one completed Turn. */
+export async function readConversationBriefForTurn(
+  db: JuniorDatabase,
+  conversationId: string,
+  turnId: string,
+): Promise<ConversationBriefVersion | undefined> {
+  const rows = await db
+    .select()
+    .from(juniorConversationBriefs)
+    .where(
+      and(
+        eq(juniorConversationBriefs.conversationId, conversationId),
+        eq(juniorConversationBriefs.turnId, turnId),
+      ),
+    )
+    .limit(1);
+  return rows[0] ? briefVersionFromRow(rows[0]) : undefined;
 }
 
 /** Read the latest Brief version for one Conversation. */

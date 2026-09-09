@@ -121,14 +121,20 @@ export async function selectExpiredRoots(
       )
       or (
         ${juniorDestinations.visibility} is distinct from 'public'
-        and exists (
-          select 1 from junior_conversations metadata
-          where metadata.conversation_id = tree.conversation_id
-            and (
-              metadata.title is not null
-              or metadata.channel_name is not null
-              or metadata.actor_json is not null
-            )
+        and (
+          exists (
+            select 1 from junior_conversation_briefs briefs
+            where briefs.conversation_id = tree.conversation_id
+          )
+          or exists (
+            select 1 from junior_conversations metadata
+            where metadata.conversation_id = tree.conversation_id
+              and (
+                metadata.title is not null
+                or metadata.channel_name is not null
+                or metadata.actor_json is not null
+              )
+          )
         )
       )
   )`;

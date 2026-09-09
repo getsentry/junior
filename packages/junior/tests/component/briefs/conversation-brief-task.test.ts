@@ -17,8 +17,9 @@ import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import {
   juniorConversationBriefs,
   juniorConversationEvents,
+  juniorConversations,
 } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import {
   createLocalJuniorSqlFixture,
   type LocalJuniorSqlFixture,
@@ -343,13 +344,32 @@ describe("Conversation Brief task", () => {
       ]),
     );
 
+    await getDb()
+      .delete(juniorConversationEvents)
+      .where(
+        and(
+          eq(juniorConversationEvents.conversationId, conversationId),
+          eq(juniorConversationEvents.type, "structured_event"),
+        ),
+      );
     await processPluginTask(firstTask);
     expect(TEST.calls).toHaveLength(1);
     expect(await getDb().select().from(juniorConversationBriefs)).toHaveLength(
       1,
     );
+    expect(
+      await getDb()
+        .select()
+        .from(juniorConversationEvents)
+        .where(
+          and(
+            eq(juniorConversationEvents.conversationId, conversationId),
+            eq(juniorConversationEvents.type, "structured_event"),
+          ),
+        ),
+    ).toHaveLength(1);
 
-    await recordCompletedTurn({
+    const secondTurn = await recordCompletedTurn({
       conversationId,
       instruction: "Update the Brief after a second Turn.",
       previousPiMessages: firstTurn.piMessages,
@@ -366,6 +386,67 @@ describe("Conversation Brief task", () => {
       .orderBy(juniorConversationBriefs.version);
     expect(rows.map((row) => row.version)).toEqual([1, 2]);
     expect(TEST.calls[1]?.prompt).toContain('"summary":"Brief summary 1."');
+
+    const thirdTurn = await recordCompletedTurn({
+      conversationId,
+      instruction: "Update the Brief after a third Turn.",
+      previousPiMessages: secondTurn.piMessages,
+      turnId: "turn-3",
+    });
+    await recordCompletedTurn({
+      conversationId,
+      instruction: "Update the Brief after a fourth Turn.",
+      previousPiMessages: thirdTurn.piMessages,
+      turnId: "turn-4",
+    });
+    await processPluginTask({
+      plugin: "briefs",
+      name: "updateBrief",
+      params: { conversationId, sessionId: "turn-4" },
+    });
+    await processPluginTask({
+      plugin: "briefs",
+      name: "updateBrief",
+      params: { conversationId, sessionId: "turn-3" },
+    });
+    rows = await getDb()
+      .select()
+      .from(juniorConversationBriefs)
+      .orderBy(juniorConversationBriefs.version);
+    expect(TEST.calls).toHaveLength(3);
+    expect(rows.map((row) => row.turnId)).toEqual([
+      "turn-1",
+      "turn-2",
+      "turn-4",
+    ]);
+
+    const purgedConversationId = `local:briefs-purged:${idSuffix}`;
+    await getConversationStore().recordActivity({
+      conversationId: purgedConversationId,
+      destination: {
+        platform: "local",
+        conversationId: purgedConversationId,
+      },
+      nowMs: 20,
+      source: "local",
+      title: "Purged private Brief",
+      visibility: "private",
+    });
+    await getDb()
+      .update(juniorConversations)
+      .set({ transcriptPurgedAt: new Date(30) })
+      .where(eq(juniorConversations.conversationId, purgedConversationId));
+    const { appendConversationBrief } = await import("@/chat/briefs/store");
+    await expect(
+      appendConversationBrief(getDb(), {
+        conversationId: purgedConversationId,
+        turnId: "late-turn",
+        throughSeq: 1,
+        content: rows[0]!.content,
+        searchText: rows[0]!.searchText,
+        modelId: "test-model",
+      }),
+    ).rejects.toThrow("purged non-public Conversation");
 
     const childConversationId = `local:briefs-child:${idSuffix}`;
     await getConversationStore().createChild({
@@ -387,7 +468,7 @@ describe("Conversation Brief task", () => {
         sessionId: "child-turn",
       },
     });
-    expect(TEST.calls).toHaveLength(2);
+    expect(TEST.calls).toHaveLength(3);
     expect(
       await getDb()
         .select()
