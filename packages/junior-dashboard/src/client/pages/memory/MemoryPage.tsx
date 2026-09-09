@@ -1,11 +1,10 @@
 import {
   Bookmark,
   BrainCircuit,
-  ChevronRight,
   CircleAlert,
   Database,
   Globe2,
-  LockKeyhole,
+  Lock,
   Sparkles,
   UserRound,
 } from "lucide-react";
@@ -19,7 +18,6 @@ import { PageContentSkeleton } from "../../components/PageContentSkeleton";
 import { LoadMorePagination } from "../../components/Pagination";
 import { SearchInput } from "../../components/SearchInput";
 import { SelectableRow } from "../../components/SelectableRow";
-import { StatusChip } from "../../components/StatusChip";
 import {
   selectTimeSeries,
   timeRangeBucketUnit,
@@ -42,6 +40,14 @@ import { MemoryPageLayout } from "./MemoryPageLayout";
 import { MemoryTimeline } from "./MemoryTimeline";
 import { MemoryCostChart } from "./MemoryCostChart";
 import { useMemoryRecord } from "./memoryRecord";
+
+/**
+ * Leading memory column flexes; type and date columns stay equal fixed
+ * widths on `sm` and up. Below `sm` those columns are hidden, so the grid
+ * collapses to just the label and trailing visibility icon.
+ */
+const MEMORY_GRID =
+  "grid-cols-[minmax(0,1fr)_auto] sm:grid-cols-[minmax(0,1fr)_7rem_9rem_auto]";
 
 /** Render the temporary first-class dashboard experience for memory. */
 export function MemoryPage(props: { page: PluginUserPageLink }) {
@@ -300,14 +306,16 @@ function MemoryLibrary(props: {
 function MemoryListHeader() {
   return (
     <div
-      aria-hidden="true"
-      className="hidden grid-cols-[minmax(0,1fr)_7rem_7rem_9rem_auto] items-center gap-3 border-b border-white/[0.07] px-4 py-2.5 text-left font-mono text-xs uppercase tracking-[0.12em] text-dashboard-text-muted sm:grid"
+      className={cn(
+        "hidden items-center gap-3 border-b border-white/[0.07] px-4 py-2.5 text-left font-mono text-xs uppercase tracking-[0.12em] text-dashboard-text-muted sm:grid",
+        MEMORY_GRID,
+      )}
+      role="row"
     >
-      <span>Memory</span>
-      <span>Visibility</span>
-      <span>Type</span>
-      <span>Learned</span>
-      <span aria-hidden="true" className="size-4" />
+      <div>Memory</div>
+      <div>Type</div>
+      <div>Learned</div>
+      <div className="sr-only">Visibility</div>
     </div>
   );
 }
@@ -483,73 +491,67 @@ function MemoryRow(props: {
       <button
         aria-expanded={props.selected}
         aria-label={`View memory details: ${props.record.title}`}
-        className="grid min-w-0 flex-1 cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border-0 bg-transparent px-4 py-3 text-left sm:grid-cols-[minmax(0,1fr)_7rem_7rem_9rem_auto]"
+        className={cn(
+          "grid min-w-0 flex-1 cursor-pointer items-center gap-3 border-0 bg-transparent px-4 py-3 text-left",
+          MEMORY_GRID,
+        )}
         onClick={props.onSelect}
         type="button"
       >
-        <div className="flex min-w-0 items-center gap-3">
-          <div
-            className={cn(
-              "grid size-8 shrink-0 place-items-center rounded border",
-              props.selected
-                ? "border-cyan-300/20 bg-cyan-300/10 text-cyan-100"
-                : "border-white/10 bg-white/[0.025] text-dashboard-text-muted",
-            )}
-          >
-            <BrainCircuit aria-hidden="true" size={15} />
-          </div>
-          <div className="min-w-0 flex-1">
+        <div className="min-w-0 overflow-hidden">
+          <div className="flex min-w-0 items-center gap-2 overflow-hidden">
+            <VisibilityIcon
+              className="sm:hidden"
+              isPublic={isPublic}
+              size={14}
+            />
             <h3 className="m-0 truncate font-display text-base font-medium leading-snug text-dashboard-text">
               {props.record.title}
             </h3>
-            <div className="mt-1.5 flex min-w-0 items-center gap-x-2 font-mono text-xs text-dashboard-text-muted">
-              <span className="truncate">Source: {source}</span>
-              <span
-                aria-hidden="true"
-                className="text-dashboard-text-muted opacity-30 sm:hidden"
-              >
-                ·
-              </span>
-              <span className="truncate sm:hidden">
-                {kind} · {visibility} · {shortDate(remembered)}
-              </span>
-            </div>
+          </div>
+          <div className="mt-1.5 truncate font-mono text-xs leading-relaxed text-dashboard-text-muted">
+            Source: {source}
+            <span className="sm:hidden">
+              {" "}
+              · {kind} · {shortDate(remembered)}
+            </span>
           </div>
         </div>
-        <StatusChip
-          className="max-sm:hidden"
-          size="compact"
-          tone={isPublic ? "success" : "neutral"}
-        >
-          {isPublic ? (
-            <Globe2 aria-hidden="true" size={11} />
-          ) : (
-            <LockKeyhole aria-hidden="true" size={11} />
-          )}
-          {visibility}
-        </StatusChip>
-        <StatusChip
-          className="max-sm:hidden"
-          size="compact"
-          tone={memoryKindTone(kind)}
-        >
+        <span className="hidden truncate font-mono text-xs text-dashboard-text-muted sm:block">
           {kind}
-        </StatusChip>
+        </span>
         <span className="hidden truncate font-mono text-xs text-dashboard-text sm:block">
           {shortDate(remembered)}
         </span>
-        <ChevronRight
-          aria-hidden="true"
-          className={cn(
-            "shrink-0 transition-transform",
-            props.selected
-              ? "translate-x-0.5 text-cyan-200"
-              : "text-dashboard-text-muted group-hover:text-dashboard-text",
-          )}
-          size={16}
+        <VisibilityIcon
+          className="hidden justify-self-center sm:inline-flex"
+          isPublic={isPublic}
+          size={15}
         />
       </button>
     </SelectableRow>
+  );
+}
+
+/** Render the lock (private) or globe (public) mark for one memory's visibility. */
+function VisibilityIcon(props: {
+  className?: string;
+  isPublic: boolean;
+  size: number;
+}) {
+  const Icon = props.isPublic ? Globe2 : Lock;
+  const label = props.isPublic ? "Public" : "Private";
+  return (
+    <span
+      className={cn(
+        "inline-flex shrink-0 items-center text-dashboard-text-muted",
+        props.className,
+      )}
+      title={label}
+    >
+      <Icon aria-hidden="true" size={props.size} />
+      <span className="sr-only">{label}</span>
+    </span>
   );
 }
 
@@ -559,12 +561,4 @@ function metadataValue(record: PluginUserPageRecord, label: string): string {
 
 function shortDate(value: string): string {
   return value.split(",").slice(0, 2).join(",");
-}
-
-function memoryKindTone(
-  kind: string,
-): "accent" | "info" | "warning" {
-  if (kind === "Preference") return "info";
-  if (kind === "Procedure") return "warning";
-  return "accent";
 }

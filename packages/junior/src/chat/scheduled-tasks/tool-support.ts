@@ -126,6 +126,7 @@ export function requireActiveConversation(
     platform: "slack",
     teamId: parsed.data.teamId,
     channelId: parsed.data.channelId,
+    threadTs: parsed.data.threadTs ?? parsed.data.messageTs,
   };
 }
 

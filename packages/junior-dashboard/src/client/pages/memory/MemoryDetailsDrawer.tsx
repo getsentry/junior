@@ -1,5 +1,5 @@
 import type { UseMutationResult } from "@tanstack/react-query";
-import { BrainCircuit, Globe2, Trash2 } from "lucide-react";
+import { BrainCircuit, Trash2 } from "lucide-react";
 import { useEffect } from "react";
 
 import { Detail, DetailList } from "../../components/DetailList";
@@ -146,11 +146,6 @@ export function MemoryDetailsDrawer(props: {
             <Trash2 aria-hidden="true" size={13} />
             Forget this memory
           </button>
-        ) : isPublic ? (
-          <div className="inline-flex w-fit items-center gap-2 rounded border border-white/[0.08] px-3 py-2 font-mono text-xs uppercase tracking-[0.08em] text-dashboard-text-muted">
-            <Globe2 aria-hidden="true" size={13} />
-            View only · public memories can&apos;t be deleted
-          </div>
         ) : null}
       </section>
     </Drawer>

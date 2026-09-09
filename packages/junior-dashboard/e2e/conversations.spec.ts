@@ -749,20 +749,15 @@ test("archives and restores a conversation from the sidebar", async ({
   const archiveButton = page.getByRole("button", {
     name: "Archive Dashboard QA edge cases",
   });
-  await page
-    .getByRole("searchbox", { name: "Search your conversations" })
-    .fill("Dashboard QA edge cases");
   await conversationLink.hover();
 
   const currentUrl = page.url();
-  const emptyView = page.getByText("No conversations match this view.");
   const archiveRequestPromise = page.waitForRequest(
     (request) =>
       request.method() === "PATCH" && request.url().endsWith("/archive"),
   );
   await archiveButton.click();
-  // Optimistic pending keeps the row while the 1s archive mock is in flight.
-  await expect(emptyView).toHaveCount(0);
+  await expect(conversationLink).toHaveCount(0);
   const archiveRequest = await archiveRequestPromise;
   expect(archiveRequest.postDataJSON()).toMatchObject({ archived: true });
   expect(page.url()).toBe(currentUrl);

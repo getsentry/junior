@@ -832,6 +832,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
                   replyAttribution:
                     options.execution?.dispatch?.replyAttribution,
                   text,
+                  threadTs: outcome.destination.threadTs,
                 });
                 slackMessageTs.push(...messageIds);
                 messageDestinations.push(

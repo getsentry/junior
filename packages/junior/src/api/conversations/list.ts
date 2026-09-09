@@ -38,10 +38,6 @@ import { readLastUserMessageAtByConversation } from "./user-message-activity";
 import { readConversationActivityPreviews } from "./activity-preview";
 
 const CONVERSATION_FEED_LIMIT = 50;
-// Archived conversations stay in the default feed for this long after
-// archiving, so the sidebar's undo affordance works without a search. Search
-// still finds older archived conversations regardless of this window.
-const RECENT_ARCHIVE_WINDOW_MS = 48 * 60 * 60 * 1000;
 
 type ConversationFeedMembership =
   | { kind: "viewer"; userId: string }
@@ -50,7 +46,6 @@ type ConversationFeedMembership =
 function conversationFeedMembershipFilter(
   status: "active" | "archived" | "all",
   filter: ConversationFeedMembership | undefined,
-  archivedAfter: Date,
 ): SQL | undefined {
   if (!filter) return status === "archived" ? sql`false` : undefined;
   if (filter.kind === "viewer") {
@@ -63,10 +58,7 @@ function conversationFeedMembershipFilter(
         ? conversationArchivedForUser(filter.userId)
         : status === "all"
           ? undefined
-          : or(
-              conversationNotArchivedForUser(filter.userId),
-              conversationArchivedForUser(filter.userId, archivedAfter),
-            ),
+          : conversationNotArchivedForUser(filter.userId),
     );
   }
   return and(
@@ -78,10 +70,7 @@ function conversationFeedMembershipFilter(
       ? conversationArchivedForEmail(filter.email)
       : status === "all"
         ? undefined
-        : or(
-            conversationNotArchivedForEmail(filter.email),
-            conversationArchivedForEmail(filter.email, archivedAfter),
-          ),
+        : conversationNotArchivedForEmail(filter.email),
   );
 }
 
@@ -90,7 +79,6 @@ async function conversationRows(
   limit: number,
   status: "active" | "archived" | "all",
   filter: ConversationFeedMembership | undefined,
-  archivedAfter: Date,
   query?: string,
   includePrivateBriefs = false,
 ) {
@@ -119,7 +107,7 @@ async function conversationRows(
     .where(
       and(
         isNull(juniorConversations.parentConversationId),
-        conversationFeedMembershipFilter(status, filter, archivedAfter),
+        conversationFeedMembershipFilter(status, filter),
         query
           ? or(
               sql<boolean>`strpos(lower(coalesce(${juniorConversations.title}, '')), ${query}) > 0`,
@@ -305,7 +293,6 @@ export async function readConversationFeedFromSql(
     options.limit ?? CONVERSATION_FEED_LIMIT,
     query ? "all" : (options.status ?? "active"),
     filter,
-    new Date(nowMs - RECENT_ARCHIVE_WINDOW_MS),
     query,
     filter?.kind === "viewer",
   );
