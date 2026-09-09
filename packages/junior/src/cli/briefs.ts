@@ -10,16 +10,8 @@ import {
   conversationDetailReportSchema,
   conversationEventPageSchema,
 } from "@/api/schema/conversation";
-import { completeObject } from "@/chat/pi/client";
-import {
-  defaultBriefModelId,
-  DEFAULT_BRIEF_PROMPT,
-} from "@/chat/briefs/config";
-import {
-  generateBrief,
-  type BriefCompleteObject,
-  type GeneratedBrief,
-} from "@/chat/briefs/generate";
+import { generateBrief, type GeneratedBrief } from "@/chat/briefs/generate";
+import { BRIEF_PROMPT } from "@/chat/briefs/prompt";
 import { renderBriefMarkdown } from "@/chat/briefs/render";
 import {
   briefInputFromSnapshot,
@@ -29,8 +21,11 @@ import {
   throughIndexFromSnapshot,
   type ConversationSnapshot,
 } from "@/chat/briefs/snapshot";
+import { botConfig } from "@/chat/config";
+import { defaultModelId } from "@/chat/model-profile";
+import { completeObject } from "@/chat/pi/client";
 
-export const BRIEFS_USAGE = `usage: junior briefs pull <conversationId...> --base-url <url> [--token <token>] --out <dir>
+const USAGE = `usage: junior briefs pull <conversationId...> --base-url <url> [--token <token>] --out <dir>
        junior briefs run <snapshot...> [--model <id>] [--prompt <file>] [--turn-by-turn] [--out <dir>]`;
 
 type PullOptions = {
@@ -46,18 +41,6 @@ type RunOptions = {
   promptFile?: string;
   snapshots: string[];
   turnByTurn: boolean;
-};
-
-type BriefsDeps = {
-  completeObject: BriefCompleteObject;
-  fetch: typeof fetch;
-  log: (line: string) => void;
-};
-
-const DEFAULT_DEPS: BriefsDeps = {
-  completeObject: async (request) => await completeObject(request),
-  fetch,
-  log: console.log,
 };
 
 function optionValue(argv: string[], index: number, option: string): string {
@@ -91,12 +74,12 @@ function parsePullOptions(argv: string[]): PullOptions {
     }
   }
   if (!baseUrl || !token || !out || conversationIds.length === 0) {
-    throw new Error(BRIEFS_USAGE);
+    throw new Error(USAGE);
   }
   return { baseUrl, conversationIds, out, token };
 }
 
-async function parseRunOptions(argv: string[]): Promise<RunOptions> {
+function parseRunOptions(argv: string[]): RunOptions {
   const snapshots: string[] = [];
   let model: string | undefined;
   let promptFile: string | undefined;
@@ -121,9 +104,9 @@ async function parseRunOptions(argv: string[]): Promise<RunOptions> {
       snapshots.push(argument);
     }
   }
-  if (snapshots.length === 0) throw new Error(BRIEFS_USAGE);
+  if (snapshots.length === 0) throw new Error(USAGE);
   return {
-    model: model ?? (await defaultBriefModelId()),
+    model: model ?? defaultModelId(botConfig),
     out,
     promptFile,
     snapshots,
@@ -139,12 +122,8 @@ function apiUrl(baseUrl: string, pathname: string): URL {
   return new URL(pathname.replace(/^\//, ""), base);
 }
 
-async function fetchJson(
-  url: URL,
-  token: string,
-  request: typeof fetch,
-): Promise<unknown> {
-  const response = await request(url, {
+async function fetchJson(url: URL, token: string): Promise<unknown> {
+  const response = await fetch(url, {
     headers: {
       accept: "application/json",
       authorization: `Bearer ${token}`,
@@ -162,7 +141,6 @@ async function fetchJson(
 async function pullSnapshot(
   options: PullOptions,
   conversationId: string,
-  request: typeof fetch,
 ): Promise<ConversationSnapshot> {
   const detailUrl = apiUrl(
     options.baseUrl,
@@ -170,7 +148,7 @@ async function pullSnapshot(
   );
   detailUrl.searchParams.set("limit", "1000");
   const detail = conversationDetailReportSchema.parse(
-    await fetchJson(detailUrl, options.token, request),
+    await fetchJson(detailUrl, options.token),
   );
   const eventPages = [];
   const seenCursors = new Set<string>();
@@ -189,7 +167,7 @@ async function pullSnapshot(
     eventsUrl.searchParams.set("before", cursor);
     eventsUrl.searchParams.set("limit", "1000");
     const page = conversationEventPageSchema.parse(
-      await fetchJson(eventsUrl, options.token, request),
+      await fetchJson(eventsUrl, options.token),
     );
     eventPages.push(page);
     cursor = page.previousCursor;
@@ -205,16 +183,16 @@ function fileStem(conversationId: string): string {
   return stem;
 }
 
-async function pullAll(options: PullOptions, deps: BriefsDeps): Promise<void> {
+async function pullAll(options: PullOptions): Promise<void> {
   await mkdir(options.out, { recursive: true });
   for (const conversationId of options.conversationIds) {
-    const snapshot = await pullSnapshot(options, conversationId, deps.fetch);
+    const snapshot = await pullSnapshot(options, conversationId);
     const output = path.join(
       options.out,
       `${fileStem(snapshot.detail.conversationId)}.snapshot.json`,
     );
     await writeFile(output, `${JSON.stringify(snapshot, undefined, 2)}\n`);
-    deps.log(output);
+    console.log(output);
   }
 }
 
@@ -224,9 +202,7 @@ function generationIndexes(
   throughIndex: number,
 ): number[] {
   if (!turnByTurn) return [throughIndex];
-  const indexes = completedTurnIndexesFromSnapshot(snapshot).filter(
-    (index) => index >= 0,
-  );
+  const indexes = completedTurnIndexesFromSnapshot(snapshot);
   if (indexes.length === 0) {
     throw new Error("Snapshot has no completed turns");
   }
@@ -237,15 +213,11 @@ async function runSnapshot(
   snapshotPath: string,
   options: RunOptions,
   prompt: string,
-  deps: BriefsDeps,
 ): Promise<void> {
   const snapshot = conversationSnapshotSchema.parse(
     JSON.parse(await readFile(snapshotPath, "utf8")),
   );
   const input = briefInputFromSnapshot(snapshot);
-  if (input.entries.length === 0) {
-    throw new Error(`Snapshot ${snapshotPath} has no Brief entries`);
-  }
   const finalThroughIndex = throughIndexFromSnapshot(snapshot);
   if (finalThroughIndex === undefined) {
     throw new Error(`Snapshot ${snapshotPath} has no Conversation events`);
@@ -256,15 +228,16 @@ async function runSnapshot(
     options.turnByTurn,
     finalThroughIndex,
   )) {
-    const generation = await generateBrief({
-      input,
-      previous: versions.at(-1)?.brief,
-      throughIndex,
-      prompt,
-      model: options.model,
-      completeObject: deps.completeObject,
-    });
-    versions.push(generation);
+    versions.push(
+      await generateBrief({
+        completeObject: (request) =>
+          completeObject({ ...request, modelId: options.model }),
+        input,
+        previous: versions.at(-1)?.brief,
+        prompt,
+        throughIndex,
+      }),
+    );
   }
   const costs = versions.flatMap((version) =>
     version.costUsd === undefined ? [] : [version.costUsd],
@@ -281,13 +254,12 @@ async function runSnapshot(
     versions,
     ...(totalCostUsd !== undefined ? { totalCostUsd } : undefined),
   };
-  const finalGeneration = versions.at(-1)!;
   await Promise.all([
     writeFile(jsonPath, `${JSON.stringify(report, undefined, 2)}\n`),
     writeFile(
       markdownPath,
       renderBriefMarkdown({
-        generation: finalGeneration,
+        generation: versions.at(-1)!,
         input,
         model: options.model,
         totalCostUsd,
@@ -295,38 +267,34 @@ async function runSnapshot(
       }),
     ),
   ]);
-  deps.log(jsonPath);
-  deps.log(markdownPath);
+  console.log(jsonPath);
+  console.log(markdownPath);
 }
 
-async function runAll(options: RunOptions, deps: BriefsDeps): Promise<void> {
+async function runAll(options: RunOptions): Promise<void> {
   const prompt = options.promptFile
     ? await readFile(options.promptFile, "utf8")
-    : DEFAULT_BRIEF_PROMPT;
+    : BRIEF_PROMPT;
   if (!prompt.trim()) throw new Error("Brief prompt must not be empty");
   await mkdir(options.out, { recursive: true });
   for (const snapshot of options.snapshots) {
-    await runSnapshot(snapshot, options, prompt, deps);
+    await runSnapshot(snapshot, options, prompt);
   }
 }
 
 /** Run `junior briefs pull` or `junior briefs run`. */
-export async function runBriefs(
-  argv: string[],
-  deps: Partial<BriefsDeps> = {},
-): Promise<number> {
-  const resolvedDeps = { ...DEFAULT_DEPS, ...deps };
+export async function runBriefs(argv: string[]): Promise<number> {
   try {
     const [subcommand, ...rest] = argv;
     if (subcommand === "pull") {
-      await pullAll(parsePullOptions(rest), resolvedDeps);
+      await pullAll(parsePullOptions(rest));
       return 0;
     }
     if (subcommand === "run") {
-      await runAll(await parseRunOptions(rest), resolvedDeps);
+      await runAll(parseRunOptions(rest));
       return 0;
     }
-    throw new Error(BRIEFS_USAGE);
+    throw new Error(USAGE);
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
     return 1;

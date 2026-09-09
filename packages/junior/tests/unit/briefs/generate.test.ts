@@ -1,27 +1,19 @@
-import { describe, expect, it, vi } from "vitest";
-import { defaultBriefModelId } from "@/chat/briefs/config";
+import { describe, expect, it } from "vitest";
 import { generateBrief } from "@/chat/briefs/generate";
-import type { BriefInput } from "@/chat/briefs/input";
+import type { BriefInput } from "@/chat/briefs/schema";
 
 const VERBATIM_URL = "https://example.com/runbook";
 const ESCAPED_TRANSCRIPT_URL = "https://example.com/thread?ts=1&amp;cid=2";
 const UNESCAPED_TRANSCRIPT_URL = "https://example.com/thread?ts=1&cid=2";
 const UNESCAPED_CITATION_URL = "https://example.com/admin?org=1&project=2";
 const ESCAPED_CITATION_URL = "https://example.com/admin?org=1&amp;project=2";
+const BRACKET_URL = "https://en.wikipedia.org/wiki/Release_(engineering)";
 const LATE_URL = "https://example.com/late";
 const PREFIX_URL = "https://example.com/prefix";
 const PREFIX_SOURCE_URL = "https://example.com/prefix-longer";
 const INVENTED_URL = "https://example.com/invented";
 const CODE_CHANGE_URL = "https://github.com/getsentry/junior/pull/123";
 const RESOURCE_URL = "https://sentry.example.com/issues/123";
-
-vi.mock("@/chat/config", () => ({
-  botConfig: {
-    defaultProfile: "standard",
-    fastModelId: "test/fast-model",
-    profiles: { standard: { modelId: "test/default-model" } },
-  },
-}));
 
 function input(): BriefInput {
   return {
@@ -34,7 +26,7 @@ function input(): BriefInput {
         index: 1,
         role: "user",
         author: "Ada",
-        text: `Use the runbook at ${VERBATIM_URL}, the thread at ${ESCAPED_TRANSCRIPT_URL}, the admin page at ${UNESCAPED_CITATION_URL}, and the exact source ${PREFIX_SOURCE_URL}.`,
+        text: `Use the runbook at ${VERBATIM_URL}, the thread at ${ESCAPED_TRANSCRIPT_URL}, the admin page at ${UNESCAPED_CITATION_URL}, the exact source ${PREFIX_SOURCE_URL}, and the glossary (see ${BRACKET_URL}).`,
         createdAtMs: 1,
         turnId: "turn-1",
       },
@@ -74,10 +66,6 @@ function input(): BriefInput {
 }
 
 describe("generateBrief", () => {
-  it("resolves the configured default model", async () => {
-    await expect(defaultBriefModelId()).resolves.toBe("test/default-model");
-  });
-
   it("builds and guards a small durable record with supported evidence", async () => {
     const summarySentence = `${"s".repeat(400)}.`;
     const outcomeSentence = `${"o".repeat(390)} merged.`;
@@ -86,7 +74,6 @@ describe("generateBrief", () => {
       input: input(),
       throughIndex: 2,
       prompt: "Write a Brief.",
-      model: "test/model",
       completeObject: async (request) => {
         capturedPrompt = request.prompt;
         return {
@@ -135,6 +122,7 @@ describe("generateBrief", () => {
               { label: "Runbook", url: `${VERBATIM_URL}/https;` },
               { label: "Thread", url: UNESCAPED_TRANSCRIPT_URL },
               { label: "Admin", url: ESCAPED_CITATION_URL },
+              { label: "Glossary", url: `${BRACKET_URL})` },
               { label: "Code change", url: CODE_CHANGE_URL },
               { label: "Resource", url: RESOURCE_URL },
               { label: "Late", url: `${LATE_URL}]` },
@@ -216,10 +204,10 @@ describe("generateBrief", () => {
       { kind: "url", label: "Runbook", url: VERBATIM_URL },
       { kind: "url", label: "Thread", url: UNESCAPED_TRANSCRIPT_URL },
       { kind: "url", label: "Admin", url: UNESCAPED_CITATION_URL },
+      { kind: "url", label: "Glossary", url: BRACKET_URL },
     ]);
     expect(generation.evidence).toEqual({
-      citedUrlCount: 8,
-      claims: { mergedWithoutEvidence: true },
+      citedUrlCount: 9,
       codeChangeCount: 1,
       coercedDecisionKinds: 3,
       droppedAttributionCount: 2,
@@ -229,7 +217,8 @@ describe("generateBrief", () => {
         { raw: PREFIX_URL, normalized: PREFIX_URL },
         { raw: `${INVENTED_URL})`, normalized: INVENTED_URL },
       ],
-      keptUrlCount: 5,
+      keptUrlCount: 6,
+      mergedClaimWithoutEvidence: true,
       resourceCount: 1,
     });
     const promptMatch = capturedPrompt.match(
@@ -261,7 +250,6 @@ describe("generateBrief", () => {
       input: noEvidenceInput,
       throughIndex: 2,
       prompt: "Write a Brief.",
-      model: "test/model",
       completeObject: async () => ({
         object: {
           summary: "Another repository's change was merged.",
@@ -276,7 +264,7 @@ describe("generateBrief", () => {
       }),
     });
 
-    expect(generation.evidence.claims.mergedWithoutEvidence).toBe(false);
+    expect(generation.evidence.mergedClaimWithoutEvidence).toBe(false);
   });
 
   it("keeps messages before filling the budget with newest tool results", async () => {
@@ -317,7 +305,6 @@ describe("generateBrief", () => {
       input: longInput,
       throughIndex: 100,
       prompt: "Write a Brief.",
-      model: "test/model",
       completeObject: async (request) => {
         capturedPrompt = request.prompt;
         return {
@@ -388,7 +375,6 @@ describe("generateBrief", () => {
         input: sizedInput,
         throughIndex: testCase.userMessages - 1,
         prompt: "Write a Brief.",
-        model: "test/model",
         completeObject: async (request) => {
           capturedPrompt = request.prompt;
           return {

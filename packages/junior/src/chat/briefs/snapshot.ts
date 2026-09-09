@@ -11,7 +11,7 @@ import {
   parseBriefInput,
   type BriefCodeChange,
   type BriefInput,
-} from "./input";
+} from "./schema";
 import { briefEntriesFromReportEvents } from "./event-entries";
 
 export const conversationSnapshotSchema = z
@@ -64,8 +64,9 @@ function assertAvailableHistory(snapshot: ConversationSnapshot): void {
 }
 
 /** Project a downloaded conversation snapshot into generator input. */
-export function briefInputFromSnapshot(raw: unknown): BriefInput {
-  const snapshot = conversationSnapshotSchema.parse(raw);
+export function briefInputFromSnapshot(
+  snapshot: ConversationSnapshot,
+): BriefInput {
   assertAvailableHistory(snapshot);
   const detail = snapshot.detail;
   const channelName = detail.channelName?.trim() || detail.channel?.trim();
@@ -95,14 +96,16 @@ export function briefInputFromSnapshot(raw: unknown): BriefInput {
 }
 
 /** Return the last event index included in a conversation snapshot. */
-export function throughIndexFromSnapshot(raw: unknown): number | undefined {
-  const snapshot = conversationSnapshotSchema.parse(raw);
+export function throughIndexFromSnapshot(
+  snapshot: ConversationSnapshot,
+): number | undefined {
   return allEvents(snapshot).at(-1)?.seq;
 }
 
 /** Return event indexes for turns that reached a successful terminal state. */
-export function completedTurnIndexesFromSnapshot(raw: unknown): number[] {
-  const snapshot = conversationSnapshotSchema.parse(raw);
+export function completedTurnIndexesFromSnapshot(
+  snapshot: ConversationSnapshot,
+): number[] {
   return allEvents(snapshot)
     .filter(
       (event) =>
