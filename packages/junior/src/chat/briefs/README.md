@@ -54,8 +54,9 @@ Brief rows keep that tree eligible for another purge pass. This rule prevents
 private derived content from outliving the transcript. Later readers must apply
 the Conversation privacy gate before they expose a current private Brief.
 
-The SQL and snapshot input adapters use the same reporting-event-to-entry
-mapping. The SQL adapter also reads code changes and `resource_link`
+The task reads the Turn's terminal event sequence first and builds input
+only through that event. The SQL and snapshot input adapters use the same
+reporting-event-to-entry mapping. The SQL adapter also reads code changes and `resource_link`
 annotations from their durable stores.
 
 ## Snapshots
