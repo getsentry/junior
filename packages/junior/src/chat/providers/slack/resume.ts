@@ -567,6 +567,7 @@ async function resumeSlackTurnInContext(
                 conversationId: runArgs.conversationId,
                 replyAttribution: runArgs.run?.dispatch?.replyAttribution,
                 text,
+                threadTs: outcome.destination.threadTs,
               })),
             );
           }
