@@ -663,7 +663,7 @@ describe("plugin heartbeat", () => {
     expect(conversationWorkQueue.sentRecords()).toHaveLength(1);
     const dispatchRecord = await getDispatchRecord(running!.dispatchId!);
     expect(dispatchRecord?.input).toContain("[task]");
-    expect(dispatchRecord?.input).toContain("[[NO_REPLY]]");
+    expect(dispatchRecord?.input).not.toContain("[[NO_REPLY]]");
     expect(dispatchRecord?.input).toContain(
       "Instructions: Post a digest. Summarize the latest state.",
     );

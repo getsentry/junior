@@ -422,7 +422,7 @@ export async function runScheduledTaskHeartbeat(args: {
           input: buildDispatchInput(task),
           metadata,
           replyAttribution: replyAttribution(task),
-          outcomes: task.outcomes,
+          outcomes: effectiveTaskOutcomes(task.outcomes, task.destination),
         },
       });
     } catch (error) {

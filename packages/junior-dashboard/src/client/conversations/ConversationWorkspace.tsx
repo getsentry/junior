@@ -40,8 +40,9 @@ export function ConversationWorkspace(props: { data: DashboardCoreData }) {
       applyPendingArchiveUpdates(
         buildConversations(feed.data?.conversations ?? []),
         pendingArchiveUpdates,
+        Boolean(search),
       ),
-    [feed.data?.conversations, pendingArchiveUpdates],
+    [feed.data?.conversations, pendingArchiveUpdates, search],
   );
   const openCreate = () => {
     createConversation.reset();
@@ -220,11 +221,22 @@ function NewConversationView(props: {
 function applyPendingArchiveUpdates(
   conversations: Conversation[],
   updates: PendingArchiveConversationUpdate[],
+  includeArchived: boolean,
 ): Conversation[] {
+  // The optimistic cache write in useArchiveConversation sets archivedAt on
+  // success too, ahead of the feed invalidation settling. Drop already-
+  // archived rows here so they cannot reappear until the mutation leaves
+  // "pending" but the stale cache has not refetched yet.
   const byId = new Map(
-    conversations.map((conversation) => [conversation.id, conversation]),
+    conversations
+      .filter((conversation) => includeArchived || !conversation.archivedAt)
+      .map((conversation) => [conversation.id, conversation]),
   );
   for (const update of updates) {
+    if (update.archived && !includeArchived) {
+      byId.delete(update.conversationId);
+      continue;
+    }
     const existing = byId.get(update.conversationId);
     const conversation =
       existing ??

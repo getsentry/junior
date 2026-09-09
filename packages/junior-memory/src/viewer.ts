@@ -194,7 +194,7 @@ function encodeCursor(
   ).toString("base64url");
 }
 
-/** Archive one active private memory owned by the authenticated User. */
+/** Archive one active memory visible to the authenticated User: public memory or private memory they own. */
 export async function archiveMemory(db: MemoryDb, userId: string, id: string) {
   const memoryId = nonEmptyStringSchema.parse(id);
   const nowMs = Date.now();
@@ -206,7 +206,7 @@ export async function archiveMemory(db: MemoryDb, userId: string, id: string) {
     })
     .where(
       and(
-        activeMemoryPredicate(userId, nowMs, "private"),
+        activeMemoryPredicate(userId, nowMs),
         eq(juniorMemoryMemories.id, memoryId),
       ),
     )

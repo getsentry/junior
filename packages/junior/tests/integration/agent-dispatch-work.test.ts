@@ -153,6 +153,41 @@ describe("agent dispatch conversation work", () => {
     });
   });
 
+  it("binds the default same-channel outcome reply to the dispatch's origin thread", async () => {
+    const dispatch = await createDispatch(
+      "outcome-thread-binding",
+      undefined,
+      { kind: "scheduled_task" },
+      undefined,
+      "Post the scheduled digest.",
+      [
+        {
+          action: "send_message",
+          destination: { ...destination, threadTs: "1700000000.000200" },
+        },
+      ],
+      { ...destination, threadTs: "1700000000.000200" },
+    );
+    const { queue, run, state } = await createAgentDispatchWorkHarness(
+      createModelAgentRunner(
+        createModelStream([{ type: "text", text: "Scheduled digest" }]),
+      ),
+    );
+
+    await enqueueAgentDispatch(dispatch, { queue, state });
+    await processConversationQueueMessage(queue.takeMessage(), {
+      queue,
+      run,
+      state,
+    });
+
+    expect(slackApiOutbox.messages()).toHaveLength(1);
+    expect(slackApiOutbox.messages()[0]?.params).toMatchObject({
+      channel: destination.channelId,
+      thread_ts: "1700000000.000200",
+    });
+  });
+
   it("sends successful work to each outcome destination in order", async () => {
     const dispatch = await createDispatch(
       "multiple-message-outcomes",

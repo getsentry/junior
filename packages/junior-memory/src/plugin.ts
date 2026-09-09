@@ -3,9 +3,9 @@ import { createMemoryAgent } from "./agent";
 import { createMemoryApi } from "./api";
 import { createMemoryCliCommand } from "./cli";
 import {
+  createMemoryArchiveTool,
   createMemoryCreateTool,
   createMemoryListTool,
-  createMemoryRemoveTool,
   createMemorySearchTool,
   type MemoryCreateToolContext,
   type MemoryReviewer,
@@ -153,7 +153,7 @@ export function memoryPlugin(options: MemoryPluginOptions = {}) {
               supersessionDecider: agent,
             }),
           ),
-          removeMemory: createMemoryRemoveTool(context),
+          archiveMemory: createMemoryArchiveTool(context),
           listMemories: createMemoryListTool(context),
           searchMemories: createMemorySearchTool(context),
         };

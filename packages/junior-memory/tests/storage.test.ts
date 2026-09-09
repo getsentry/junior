@@ -37,9 +37,9 @@ import { createMemoryCliCommand } from "../src/cli";
 import { memoryPlugin } from "../src/plugin";
 import { processMemorySession } from "../src/process-session";
 import {
+  createMemoryArchiveTool,
   createMemoryCreateTool,
   createMemoryListTool,
-  createMemoryRemoveTool,
   createMemorySearchTool,
   type MemoryReviewer,
 } from "../src/tools";
@@ -2662,14 +2662,6 @@ describe("memory plugin storage", () => {
         id: publicMemory.memory.id,
       });
 
-      const publicDeleteResponse = await api.fetch(
-        new Request(`http://localhost/memories/${publicMemory.memory.id}`, {
-          method: "DELETE",
-        }),
-        requestContext,
-      );
-      expect(publicDeleteResponse.status).toBe(404);
-
       const dashboardResponse = await api.fetch(
         new Request("http://localhost/dashboard"),
         requestContext,
@@ -2724,13 +2716,23 @@ describe("memory plugin storage", () => {
       );
       expect(privateDeleteResponse.status).toBe(204);
 
+      const publicDeleteResponse = await api.fetch(
+        new Request(`http://localhost/memories/${publicMemory.memory.id}`, {
+          method: "DELETE",
+        }),
+        requestContext,
+      );
+      expect(publicDeleteResponse.status).toBe(204);
+
+      // `second` is a public-channel memory (default "C123" test channel),
+      // so it is visible and archivable like any other public memory.
       const deleteResponse = await api.fetch(
         new Request(`http://localhost/memories/${second.memory.id}`, {
           method: "DELETE",
         }),
         requestContext,
       );
-      expect(deleteResponse.status).toBe(404);
+      expect(deleteResponse.status).toBe(204);
 
       const hiddenDeleteResponse = await api.fetch(
         new Request(`http://localhost/memories/${hidden.memory.id}`, {
@@ -3592,7 +3594,7 @@ WHERE id = '${superseded.memory.id}'
       };
       const tools = {
         createMemory: createMemoryCreateTool(context),
-        removeMemory: createMemoryRemoveTool(context),
+        archiveMemory: createMemoryArchiveTool(context),
         listMemories: createMemoryListTool(context),
         searchMemories: createMemorySearchTool(context),
       };
@@ -3714,7 +3716,7 @@ WHERE id = '${superseded.memory.id}'
       );
       expect(personal).toBeDefined();
       await expect(
-        tools.removeMemory.execute({ id: personal!.id.slice(0, 12) }, {}),
+        tools.archiveMemory.execute({ id: personal!.id.slice(0, 12) }, {}),
       ).resolves.toMatchObject({
         memory: {
           id: personal!.id,

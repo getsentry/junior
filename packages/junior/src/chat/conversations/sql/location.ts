@@ -34,9 +34,11 @@ export function locationForWrite(args: {
     ) {
       throw new Error("Conversation Location changed");
     }
-    return source?.threadTs && !location.threadTs
-      ? { ...location, threadTs: source.threadTs }
-      : location;
+    const threadTs =
+      location.threadTs ?? destination?.threadTs ?? source?.threadTs;
+    return threadTs === location.threadTs
+      ? location
+      : { ...location, threadTs };
   }
   if (
     destination &&
@@ -49,12 +51,13 @@ export function locationForWrite(args: {
   if (!destination || !args.destinationId) {
     return undefined;
   }
+  const threadTs = destination.threadTs ?? source?.threadTs;
   return locationSchema.parse({
     id: args.destinationId,
     provider: "slack",
     teamId: destination.teamId,
     channelId: destination.channelId,
-    ...(source?.threadTs ? { threadTs: source.threadTs } : undefined),
+    ...(threadTs ? { threadTs } : undefined),
   });
 }
 
