@@ -43,9 +43,17 @@ async function runChat(
   return await mod.runChat(argv, undefined, { pluginSet });
 }
 
+async function runBriefs(argv: string[]): Promise<number> {
+  const mod = await import("./briefs");
+  return await mod.runBriefs(argv);
+}
+
+function normalizedArgv(argv: string[]): string[] {
+  return argv[0] === "--" ? argv.slice(1) : argv;
+}
+
 function topLevelCommand(argv: string[]): string | undefined {
-  const normalized = argv[0] === "--" ? argv.slice(1) : argv;
-  return normalized[0];
+  return normalizedArgv(argv)[0];
 }
 
 /** Run the packaged CLI entrypoint with plugin command bootstrap enabled. */
@@ -59,6 +67,13 @@ export async function runMain(
     await initSentry();
   }
   const command = topLevelCommand(argv);
+  if (command === "briefs") {
+    const exitCode = await runBriefs(normalizedArgv(argv).slice(1));
+    if (instrument) {
+      await flushSentry();
+    }
+    process.exit(exitCode);
+  }
   const cliPluginsModule =
     command && command !== "init" ? await import("./plugins") : undefined;
   const pluginSet = cliPluginsModule
