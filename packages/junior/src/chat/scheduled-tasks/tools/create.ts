@@ -161,6 +161,7 @@ export function createSlackScheduleCreateTaskTool(
         instruction: input.task,
         title: input.title,
       });
+
       const task: ScheduledTask = {
         id,
         createdAtMs: nowMs,

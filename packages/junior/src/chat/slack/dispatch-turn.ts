@@ -47,7 +47,6 @@ export function createSlackDispatchTurnRunner(options: {
     await state.connect();
     const conversationId = getDispatchConversationId(dispatch);
     const adapter = options.getSlackAdapter();
-    const originThreadTs = dispatch.destination.threadTs;
     // TODO(dcramer): Remove this synthetic Slack Message and Thread after
     // dispatch work supplies Slack Delivery to the shared Turn path.
     const message = new Message({
@@ -63,7 +62,9 @@ export function createSlackDispatchTurnRunner(options: {
       raw: {
         channel: dispatch.destination.channelId,
         team: dispatch.destination.teamId,
-        ...(originThreadTs ? { thread_ts: originThreadTs } : undefined),
+        ...(dispatch.destination.threadTs
+          ? { thread_ts: dispatch.destination.threadTs }
+          : undefined),
       },
       author: {
         userId: dispatch.actor.name,

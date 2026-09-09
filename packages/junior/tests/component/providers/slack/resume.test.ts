@@ -338,5 +338,4 @@ describe("Slack resume result handling", () => {
       ),
     ]);
   });
-
 });
