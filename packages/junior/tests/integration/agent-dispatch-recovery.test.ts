@@ -110,7 +110,12 @@ describe("agent dispatch recovery", () => {
       { kind: "scheduled_task" },
       { label: "Scheduled task", detail: "Weekly" },
       "Post the scheduled digest.",
-      [{ action: "send_message", destination }],
+      [
+        {
+          action: "send_message",
+          destination: { ...destination, threadTs: "1700000000.000300" },
+        },
+      ],
       { ...destination, threadTs: "1700000000.000300" },
     );
     const agentRunner = createModelAgentRunner(

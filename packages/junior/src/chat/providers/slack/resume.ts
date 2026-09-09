@@ -560,8 +560,6 @@ async function resumeSlackTurnInContext(
       try {
         const outcomes = runArgs.run?.dispatch?.outcomes;
         if (outcomes) {
-          const outcomeThreadTs =
-            runArgs.threadTs ?? runArgs.run?.location?.threadTs;
           for (const outcome of outcomes) {
             slackMessageTs.push(
               ...(await sendSlackReply({
@@ -569,12 +567,7 @@ async function resumeSlackTurnInContext(
                 conversationId: runArgs.conversationId,
                 replyAttribution: runArgs.run?.dispatch?.replyAttribution,
                 text,
-                // An outcome that targets the dispatch's own channel is a
-                // same-place reply; bind it to the captured origin thread.
-                ...(outcomeThreadTs &&
-                outcome.destination.channelId === runArgs.channelId
-                  ? { threadTs: outcomeThreadTs }
-                  : undefined),
+                threadTs: outcome.destination.threadTs,
               })),
             );
           }

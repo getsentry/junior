@@ -8,7 +8,7 @@ import { z } from "zod";
 import { getSlackClient, withSlackRetries } from "@/chat/slack/client";
 
 const taskMessageDestinationInputSchema = z.union([
-  slackDestinationSchema,
+  slackDestinationSchema.omit({ threadTs: true }),
   z
     .object({
       platform: z.literal("slack"),
@@ -52,7 +52,12 @@ export async function resolveTaskOutcomes(
       }
       resolved.push({
         action: "send_message",
-        destination: outcome.destination,
+        destination: {
+          ...outcome.destination,
+          ...(currentDestination.threadTs
+            ? { threadTs: currentDestination.threadTs }
+            : undefined),
+        },
       });
       continue;
     }
@@ -84,17 +89,43 @@ export async function resolveTaskOutcomes(
   return resolved;
 }
 
-/** Return stored outcomes, or preserve the legacy message Destination. */
+function outcomeTargetsDestination(
+  outcome: TaskOutcome,
+  destination: SlackDestination,
+): boolean {
+  return (
+    outcome.destination.teamId === destination.teamId &&
+    outcome.destination.channelId === destination.channelId &&
+    (!outcome.destination.threadTs ||
+      outcome.destination.threadTs === destination.threadTs)
+  );
+}
+
+/** Return outcomes with legacy same-channel messages bound to the task Destination. */
 export function effectiveTaskOutcomes(
   outcomes: TaskOutcome[] | undefined,
   destination: SlackDestination,
 ): TaskOutcome[] {
-  return (
-    outcomes ?? [
-      {
-        action: "send_message",
-        destination,
-      },
-    ]
+  return (outcomes ?? [{ action: "send_message", destination }]).map(
+    (outcome) =>
+      destination.threadTs && outcomeTargetsDestination(outcome, destination)
+        ? {
+            ...outcome,
+            destination,
+          }
+        : outcome,
+  );
+}
+
+/** Move outcomes that target the task Destination and keep other outcomes unchanged. */
+export function moveTaskOutcomes(
+  outcomes: TaskOutcome[] | undefined,
+  currentDestination: SlackDestination,
+  nextDestination: SlackDestination,
+): TaskOutcome[] {
+  return effectiveTaskOutcomes(outcomes, currentDestination).map((outcome) =>
+    outcomeTargetsDestination(outcome, currentDestination)
+      ? { ...outcome, destination: nextDestination }
+      : outcome,
   );
 }

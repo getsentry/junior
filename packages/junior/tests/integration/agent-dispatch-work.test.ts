@@ -160,7 +160,12 @@ describe("agent dispatch conversation work", () => {
       { kind: "scheduled_task" },
       undefined,
       "Post the scheduled digest.",
-      [{ action: "send_message", destination }],
+      [
+        {
+          action: "send_message",
+          destination: { ...destination, threadTs: "1700000000.000200" },
+        },
+      ],
       { ...destination, threadTs: "1700000000.000200" },
     );
     const { queue, run, state } = await createAgentDispatchWorkHarness(
