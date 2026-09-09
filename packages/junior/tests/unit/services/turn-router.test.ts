@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createProviderError } from "@/chat/services/provider-error";
 import {
   configuredTurnRoute,
   selectTurnRoute,
@@ -289,12 +290,102 @@ describe("selectTurnRoute", () => {
       reasoningLevel: "medium",
       reason: "classifier_error_default",
     });
+    expect(completeObject).toHaveBeenCalledTimes(1);
     expect(mocks.logWarn).toHaveBeenCalledWith(
       "turn.router.classifier.failed",
       {
         "exception.message": "router failed",
       },
     );
+  });
+
+  it("retries once and succeeds after a transient invalid_response failure", async () => {
+    const completeObject = vi
+      .fn()
+      .mockRejectedValueOnce(
+        createProviderError(new Error("malformed object"), {
+          kind: "invalid_response",
+        }),
+      )
+      .mockResolvedValueOnce({
+        object: {
+          reasoning_level: "high",
+          profile: "coding",
+          confidence: 0.95,
+          reason: "multi-step coding task",
+        },
+      });
+
+    const profile = await selectTurnRoute({
+      completeObject,
+      defaultProfile: "expert",
+      fastModelId: "openai/gpt-5.4-mini",
+      messageText: "refactor this module and add tests",
+      profiles: {
+        expert: { modelId: "anthropic/claude-opus-5" },
+        coding: { modelId: "openai/gpt-5.6-sol" },
+      },
+    });
+
+    expect(completeObject).toHaveBeenCalledTimes(2);
+    expect(profile).toMatchObject({
+      profile: "coding",
+      reasoningLevel: "high",
+      reason: "multi-step coding task",
+    });
+    expect(mocks.logWarn).not.toHaveBeenCalled();
+  });
+
+  it("gives up after a second consecutive invalid_response failure", async () => {
+    const completeObject = vi.fn(async () => {
+      throw createProviderError(new Error("still malformed"), {
+        kind: "invalid_response",
+      });
+    });
+
+    const profile = await selectTurnRoute({
+      completeObject,
+      defaultProfile: "expert",
+      fastModelId: "openai/gpt-5.4-mini",
+      messageText: "refactor this module and add tests",
+      profiles: {
+        expert: { modelId: "anthropic/claude-opus-5" },
+        coding: { modelId: "openai/gpt-5.6-sol" },
+      },
+    });
+
+    expect(completeObject).toHaveBeenCalledTimes(2);
+    expect(profile).toMatchObject({
+      profile: "expert",
+      reasoningLevel: "medium",
+      reason: "classifier_error_default",
+    });
+  });
+
+  it("does not retry non-retryable classifier errors", async () => {
+    const completeObject = vi.fn(async () => {
+      throw createProviderError(new Error("no credits"), {
+        kind: "quota",
+      });
+    });
+
+    const profile = await selectTurnRoute({
+      completeObject,
+      defaultProfile: "expert",
+      fastModelId: "openai/gpt-5.4-mini",
+      messageText: "refactor this module and add tests",
+      profiles: {
+        expert: { modelId: "anthropic/claude-opus-5" },
+        coding: { modelId: "openai/gpt-5.6-sol" },
+      },
+    });
+
+    expect(completeObject).toHaveBeenCalledTimes(1);
+    expect(profile).toMatchObject({
+      profile: "expert",
+      reasoningLevel: "medium",
+      reason: "classifier_error_default",
+    });
   });
 
   it("preserves high-confidence low classifications for deterministic simple work", async () => {
