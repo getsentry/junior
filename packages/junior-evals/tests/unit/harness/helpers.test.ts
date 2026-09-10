@@ -152,7 +152,7 @@ it("includes captured Slack posts in the rubric-visible transcript", async () =>
   ).not.toHaveProperty("rubric_visible", false);
 });
 
-it("records rubric judge usage in score metadata", async () => {
+it("reports rubric judge usage through the judge harness", async () => {
   completeTextMock.mockResolvedValueOnce({
     message: {
       model: "openai/gpt-5.4",
@@ -174,28 +174,21 @@ it("records rubric judge usage in score metadata", async () => {
     harness: slackHarness,
     input: { criteria: { pass: ["Answers correctly"] }, initialEvents: [] },
     output: undefined,
-    run: {
-      usage: { metadata: { costUsd: 0.5 } },
-    } as never,
+    run: { usage: {} } as never,
     runJudge: async () => judgeRun.output,
     session: { events: [] },
     toolCalls: [],
   });
 
-  expect(result.metadata).toMatchObject({
-    answer: "A",
-    costUsd: 0.531,
-    applicationCostUsd: 0.5,
-    judgeCostUsd: 0.031,
-    judgeUsage: {
-      provider: "vercel-ai-gateway",
-      model: "openai/gpt-5.4",
-      inputTokens: 120,
-      outputTokens: 20,
-      totalTokens: 140,
-      metadata: { costUsd: 0.031 },
-    },
+  expect(judgeRun.usage).toEqual({
+    provider: "vercel-ai-gateway",
+    model: "openai/gpt-5.4",
+    inputTokens: 120,
+    outputTokens: 20,
+    totalTokens: 140,
+    costUsd: 0.031,
   });
+  expect(result.metadata).toMatchObject({ answer: "A" });
 });
 
 it("scores the rubric judge without failing when cost is missing", async () => {
@@ -220,15 +213,11 @@ it("scores the rubric judge without failing when cost is missing", async () => {
     toolCalls: [],
   });
 
-  expect(result.metadata).toMatchObject({
-    answer: "A",
-    judgeUsage: {
-      provider: "vercel-ai-gateway",
-      model: "openai/gpt-5.4",
-    },
+  expect(judgeRun.usage).toEqual({
+    provider: "vercel-ai-gateway",
+    model: "openai/gpt-5.4",
   });
-  expect(result.metadata).not.toHaveProperty("costUsd");
-  expect(result.metadata).not.toHaveProperty("judgeUsage.metadata.costUsd");
+  expect(result.metadata).toMatchObject({ answer: "A" });
 });
 
 it("forwards the Vitest abort signal to the eval scenario", async () => {

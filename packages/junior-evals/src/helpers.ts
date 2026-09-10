@@ -398,18 +398,6 @@ function normalizedTokenUsage(
   };
 }
 
-function usageCostUsd(usage: unknown): number | undefined {
-  if (!usage || typeof usage !== "object" || Array.isArray(usage)) {
-    return undefined;
-  }
-  const metadata = (usage as Record<string, unknown>).metadata;
-  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
-    return undefined;
-  }
-  const value = (metadata as Record<string, unknown>).costUsd;
-  return typeof value === "number" ? value : undefined;
-}
-
 function toJudgeUsage(
   usage: AgentTurnUsage | undefined,
   model: string,
@@ -418,9 +406,7 @@ function toJudgeUsage(
     provider: GEN_AI_PROVIDER_NAME,
     model,
     ...normalizedTokenUsage(usage),
-    ...(usage?.cost?.total !== undefined
-      ? { metadata: { costUsd: usage.cost.total } }
-      : {}),
+    ...(usage?.cost?.total !== undefined ? { costUsd: usage.cost.total } : {}),
   };
 }
 
@@ -437,9 +423,6 @@ function toHarnessUsage(result: EvalResult): HarnessRun["usage"] {
       ? {
           currency: "USD",
           cost: usage.cost,
-          ...(usage.cost.total !== undefined
-            ? { costUsd: usage.cost.total }
-            : {}),
         }
       : {}),
     ...(result.modelIds.length > 1 ? { modelIds: result.modelIds } : {}),
@@ -448,6 +431,7 @@ function toHarnessUsage(result: EvalResult): HarnessRun["usage"] {
     provider: GEN_AI_PROVIDER_NAME,
     ...(result.modelIds.length === 1 ? { model: result.modelIds[0] } : {}),
     ...normalizedTokenUsage(usage),
+    ...(usage?.cost?.total !== undefined ? { costUsd: usage.cost.total } : {}),
     toolCalls: result.toolInvocations.length,
     ...(Object.keys(metadata).length > 0 ? { metadata } : {}),
   };
@@ -678,8 +662,24 @@ const judgeHarness = createJudgeHarness({
       temperature: 0,
     });
     return {
-      text,
+      output: text,
+      session: {
+        events: [
+          ...(system
+            ? [
+                {
+                  type: "message" as const,
+                  role: "system" as const,
+                  content: system,
+                },
+              ]
+            : []),
+          { type: "message", role: "user", content: prompt },
+          { type: "message", role: "assistant", content: text },
+        ],
+      },
       usage: toJudgeUsage(message.usage, message.model ?? EVAL_JUDGE_MODEL_ID),
+      errors: [],
     };
   },
 });
@@ -780,7 +780,6 @@ export const RubricJudge = createJudge(
   "RubricJudge",
   async ({
     input,
-    run,
     session,
     runJudge,
   }: JudgeContext<
@@ -788,58 +787,33 @@ export const RubricJudge = createJudge(
     JsonValue | undefined,
     typeof slackHarness
   >) => {
-    const applicationCostUsd = usageCostUsd(run.usage);
     if (!input.criteria) {
       return {
         score: 1,
-        metadata: {
-          skipped: "deterministic-only",
-          ...(typeof applicationCostUsd === "number"
-            ? { costUsd: applicationCostUsd, applicationCostUsd }
-            : {}),
-        },
+        metadata: { skipped: "deterministic-only" },
       };
     }
     if (!runJudge) {
       throw new Error("RubricJudge requires a configured judgeHarness.");
     }
-    const judgeResult = await runJudge({
-      prompt: formatJudgePrompt(
-        serializeVisibleTranscript(session),
-        formatRubric(input.criteria),
+    const object = parseJudgeResult(
+      String(
+        await runJudge({
+          prompt: formatJudgePrompt(
+            serializeVisibleTranscript(session),
+            formatRubric(input.criteria),
+          ),
+          system: EVAL_SYSTEM,
+        }),
       ),
-      system: EVAL_SYSTEM,
-    });
-    if (
-      !judgeResult ||
-      typeof judgeResult !== "object" ||
-      Array.isArray(judgeResult) ||
-      typeof judgeResult.text !== "string" ||
-      !judgeResult.usage ||
-      typeof judgeResult.usage !== "object" ||
-      Array.isArray(judgeResult.usage)
-    ) {
-      throw new Error("Rubric judge returned an invalid result.");
-    }
-    const object = parseJudgeResult(judgeResult.text);
+    );
     const answer = object.answer as keyof typeof CHOICE_SCORES;
-    const judgeCostUsd = usageCostUsd(judgeResult.usage);
-    const costUsd =
-      typeof applicationCostUsd === "number" && typeof judgeCostUsd === "number"
-        ? applicationCostUsd + judgeCostUsd
-        : undefined;
 
     return {
       score: CHOICE_SCORES[answer],
       metadata: {
         answer,
         rationale: object.rationale,
-        judgeUsage: judgeResult.usage,
-        ...(costUsd !== undefined ? { costUsd } : {}),
-        ...(typeof applicationCostUsd === "number"
-          ? { applicationCostUsd }
-          : {}),
-        ...(typeof judgeCostUsd === "number" ? { judgeCostUsd } : {}),
       },
     };
   },
