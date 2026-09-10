@@ -43,6 +43,11 @@ async function runChat(
   return await mod.runChat(argv, undefined, { pluginSet });
 }
 
+async function runBriefs(argv: string[]): Promise<number> {
+  const mod = await import("./briefs");
+  return await mod.runBriefs(argv);
+}
+
 function topLevelCommand(argv: string[]): string | undefined {
   const normalized = argv[0] === "--" ? argv.slice(1) : argv;
   return normalized[0];
@@ -59,8 +64,12 @@ export async function runMain(
     await initSentry();
   }
   const command = topLevelCommand(argv);
+  // `briefs pull` must work with only an API token, so it skips app plugin
+  // loading like `init` does.
   const cliPluginsModule =
-    command && command !== "init" ? await import("./plugins") : undefined;
+    command && command !== "init" && command !== "briefs"
+      ? await import("./plugins")
+      : undefined;
   const pluginSet = cliPluginsModule
     ? ((await cliPluginsModule.loadCliPluginSet()) ?? null)
     : undefined;
@@ -68,6 +77,7 @@ export async function runMain(
     ? await cliPluginsModule.loadCliPluginCommands(pluginSet)
     : undefined;
   const exitCode = await runCli(argv, {
+    runBriefs,
     runChat: async (chatArgv) => await runChat(chatArgv, pluginSet),
     runInit,
     runSnapshotCreate,
