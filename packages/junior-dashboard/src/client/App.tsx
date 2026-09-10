@@ -25,6 +25,7 @@ import {
   setDashboardTimeZone,
 } from "./format";
 import { isNewConversationPath } from "./conversations/conversationRoutes";
+import { useDashboardServerVersion } from "./dashboard-version";
 import { ConversationWorkspace } from "./conversations/ConversationWorkspace";
 import { ConversationWorkspaceLoading } from "./conversations/ConversationWorkspaceLoading";
 import { useConversationData } from "./conversations/queries";
@@ -71,6 +72,7 @@ export function DashboardShell() {
   const query = useDashboardCoreData();
   const userPagesQuery = usePluginUserPagesData();
   const data = query.data;
+  const serverVersion = useDashboardServerVersion(data?.config.version);
   const userPages = userPagesQuery.data ?? [];
   if (data) {
     setDashboardTimeZone(data.config.timeZone);
@@ -138,7 +140,7 @@ export function DashboardShell() {
         <DashboardChrome
           banner={
             <>
-              <VersionDriftBanner serverVersion={data?.config.version} />
+              <VersionDriftBanner serverVersion={serverVersion} />
               <ConnectionBanner />
             </>
           }

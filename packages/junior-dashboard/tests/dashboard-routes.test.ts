@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { JUNIOR_VERSION } from "@sentry/junior/version";
 import { createDashboardApp } from "../src/app";
+import { DASHBOARD_VERSION_HEADER } from "../src/dashboard-version";
 import type { DashboardSession } from "../src/auth";
 import { auth, resetDashboardEnv } from "./dashboard-test-helpers";
 
@@ -589,6 +591,7 @@ describe("dashboard routes", () => {
     );
 
     expect(response.status).toBe(200);
+    expect(response.headers.get(DASHBOARD_VERSION_HEADER)).toBe(JUNIOR_VERSION);
     expect(await response.json()).toEqual({
       allowedEmailCount: 1,
       allowedGoogleDomainCount: 1,

@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { z } from "zod";
 import type { ConversationReportEvent } from "@sentry/junior/api/schema";
 import { JUNIOR_VERSION } from "@sentry/junior/version";
 
 import { personalSpendRefreshDelay } from "../src/client/api";
 import { fetchDashboardJson } from "../src/client/http";
 import { dashboardVersionDrift } from "../src/client/components/VersionDriftBanner";
+import { DASHBOARD_VERSION_HEADER } from "../src/dashboard-version";
 import {
   conversationDetailQueryOptions,
   readConversationData,
@@ -138,34 +138,26 @@ describe("dashboard client API", () => {
     expect(dashboardVersionDrift()).toBe(false);
   });
 
-  it("ignores additive response fields from a newer server", async () => {
+  it("publishes the server version from dashboard responses", async () => {
+    const dispatchEvent = vi.fn();
+    vi.stubGlobal("window", { dispatchEvent });
     vi.stubGlobal(
       "fetch",
       vi.fn(async () =>
-        Response.json({
-          nested: { addedLater: true, name: "Junior" },
-          addedLater: true,
-        }),
+        Response.json(
+          { events: [], eventHistory: { status: "available" }, generatedAt },
+          { headers: { [DASHBOARD_VERSION_HEADER]: "999.0.0" } },
+        ),
       ),
     );
 
-    await expect(
-      fetchDashboardJson(
-        z.object({ nested: z.object({ name: z.string() }).strict() }).strict(),
-        "/api/test",
-      ),
-    ).resolves.toEqual({ nested: { name: "Junior" } });
-  });
+    await readConversationEvents("slack:C1:123", "history cursor");
 
-  it("rejects incompatible response field changes", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => Response.json({ count: "one" })),
-    );
-
-    await expect(
-      fetchDashboardJson(z.object({ count: z.number() }).strict(), "/api/test"),
-    ).rejects.toThrow();
+    expect(dispatchEvent).toHaveBeenCalledOnce();
+    expect(dispatchEvent.mock.calls[0]?.[0]).toMatchObject({
+      detail: "999.0.0",
+      type: "junior:dashboard-version",
+    });
   });
 
   it("does not redirect for non-auth product API failures", async () => {

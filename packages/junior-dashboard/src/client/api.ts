@@ -30,7 +30,6 @@ import { fetchDashboardJson } from "./http";
 import type { DashboardCoreData, SystemData } from "./types";
 
 const dashboardMetadataStaleTimeMs = 5 * 60_000;
-const dashboardVersionRefreshMs = 60_000;
 const PERSONAL_SPEND_REFRESH_MS = 5 * 60_000;
 const MIN_PERSONAL_SPEND_REFRESH_MS = 1_000;
 
@@ -63,7 +62,6 @@ export function useDashboardCoreData() {
         me,
       };
     },
-    refetchInterval: dashboardVersionRefreshMs,
     retry: false,
     staleTime: dashboardMetadataStaleTimeMs,
   });
