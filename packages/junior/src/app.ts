@@ -469,6 +469,8 @@ function dashboardHostRoutePaths(
     `${peoplePath}/*`,
     pagePath("automations"),
     `${pagePath("automations")}/*`,
+    pagePath("tasks"),
+    `${pagePath("tasks")}/*`,
     pagePath("memories"),
     `${pagePath("memories")}/*`,
     pagePath("system"),
