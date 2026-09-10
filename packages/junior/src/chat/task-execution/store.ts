@@ -246,7 +246,6 @@ async function enqueueAfterAppend(args: {
   nowMs?: number;
   queue: ConversationWorkQueue;
   state?: StateAdapter;
-  wakeDelayMs?: number;
 }): Promise<AppendAndEnqueueExclusiveInboundMessageResult> {
   const nowMs = args.nowMs ?? now();
   const appendResult = args.appendResult;
@@ -285,7 +284,6 @@ async function enqueueAfterAppend(args: {
     conversationId: args.message.conversationId,
     conversationStore: args.conversationStore,
     idempotencyKey,
-    delayMs: args.wakeDelayMs,
     nowMs,
     queue: args.queue,
     state: args.state,
@@ -312,7 +310,6 @@ export async function appendAndEnqueueInboundMessage(args: {
   nowMs?: number;
   queue: ConversationWorkQueue;
   state?: StateAdapter;
-  wakeDelayMs?: number;
 }): Promise<AppendAndEnqueueInboundMessageResult> {
   const nowMs = args.nowMs ?? now();
   const result = await enqueueAfterAppend({
