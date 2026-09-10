@@ -17,6 +17,7 @@ import {
   countPendingConversationMessages,
   drainConversationMailbox,
   getConversationWorkState,
+  hasConversationStop,
   listActiveConversationIds,
   listConversationsByActivity,
   ackMessages,
@@ -1767,9 +1768,7 @@ describe("conversation work execution", () => {
       workerGetKeys.filter((key) => key === CONVERSATION_WORK_STATE_KEY),
     ).toHaveLength(conversationReadsBeforeStop);
     expect(
-      workerGetKeys.some((key) =>
-        key.startsWith(`junior:conversation:v2:stop:${CONVERSATION_ID}:`),
-      ),
+      workerGetKeys.includes(`junior:conversation:v2:stop:${CONVERSATION_ID}`),
     ).toBe(true);
 
     await appendInboundMessage({
@@ -1789,7 +1788,6 @@ describe("conversation work execution", () => {
     await expect(
       getConversationWorkState({ conversationId: CONVERSATION_ID, state }),
     ).resolves.toMatchObject({
-      execution: { stop: undefined },
       messages: [expect.objectContaining({ inboundMessageId: "m3" })],
     });
   });
@@ -1827,14 +1825,16 @@ describe("conversation work execution", () => {
     finish.resolve();
 
     await expect(running).resolves.toEqual({ status: "pending_requeued" });
-    await expect(
-      getConversationWorkState({ conversationId: CONVERSATION_ID }),
-    ).resolves.toMatchObject({
-      execution: {
-        status: "paused",
-        stop: expect.objectContaining({ inboundMessageIds: [] }),
-      },
+    const paused = await getConversationWorkState({
+      conversationId: CONVERSATION_ID,
     });
+    expect(paused?.execution.status).toBe("paused");
+    await expect(
+      hasConversationStop({
+        conversationId: CONVERSATION_ID,
+        runId: paused!.execution.runId!,
+      }),
+    ).resolves.toBe(true);
 
     await expect(
       processConversationWork(queue.takeMessage(), {
@@ -1851,7 +1851,7 @@ describe("conversation work execution", () => {
     await expect(
       getConversationWorkState({ conversationId: CONVERSATION_ID }),
     ).resolves.toMatchObject({
-      execution: { status: "idle", stop: undefined },
+      execution: { status: "idle" },
     });
   });
 
@@ -1908,14 +1908,18 @@ describe("conversation work execution", () => {
     releaseCompletion.resolve();
 
     await expect(running).resolves.toEqual({ status: "pending_requeued" });
-    await expect(
-      getConversationWorkState({ conversationId: CONVERSATION_ID, state }),
-    ).resolves.toMatchObject({
-      execution: {
-        status: "paused",
-        stop: expect.objectContaining({ runId: expect.any(String) }),
-      },
+    const paused = await getConversationWorkState({
+      conversationId: CONVERSATION_ID,
+      state,
     });
+    expect(paused?.execution.status).toBe("paused");
+    await expect(
+      hasConversationStop({
+        conversationId: CONVERSATION_ID,
+        runId: paused!.execution.runId!,
+        state,
+      }),
+    ).resolves.toBe(true);
 
     await expect(
       processConversationWork(queue.takeMessage(), {
@@ -1932,7 +1936,7 @@ describe("conversation work execution", () => {
     await expect(
       getConversationWorkState({ conversationId: CONVERSATION_ID, state }),
     ).resolves.toMatchObject({
-      execution: { status: "idle", stop: undefined },
+      execution: { status: "idle" },
     });
   });
 

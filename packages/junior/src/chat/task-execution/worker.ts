@@ -24,7 +24,7 @@ import {
   drainConversationMailbox,
   ensureConversationWake,
   getConversationWorkState,
-  hasConversationStopRequest,
+  hasConversationStop,
   isFinalAttempt,
   isInvalidConversationRecordError,
   recordAttemptFailure,
@@ -289,7 +289,7 @@ function startLeaseCheckIn(args: {
 /** Poll the run-scoped stop marker only when an adapter observes remote stops. */
 function createConversationStopSignal(args: {
   conversationId: string;
-  initialStopRunId?: string;
+  initiallyStopped: boolean;
   options: ProcessConversationWorkOptions;
   runId: string;
 }) {
@@ -304,15 +304,13 @@ function createConversationStopSignal(args: {
       controller.abort(new Error("Conversation work stopped"));
     }
   };
-  if (args.initialStopRunId === args.runId) {
-    requestStop();
-  }
+  if (args.initiallyStopped) requestStop();
 
   const check = async (): Promise<void> => {
     if (checking || controller.signal.aborted) return;
     checking = true;
     try {
-      const stopped = await hasConversationStopRequest({
+      const stopped = await hasConversationStop({
         conversationId: args.conversationId,
         runId: args.runId,
         state: args.options.state,
@@ -633,7 +631,11 @@ async function processConversationWorkInContext(
       };
       const stop = createConversationStopSignal({
         conversationId,
-        initialStopRunId: leasedWork.execution.stop?.runId,
+        initiallyStopped: await hasConversationStop({
+          conversationId,
+          runId,
+          state: options.state,
+        }),
         options,
         runId,
       });
