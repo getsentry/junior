@@ -11,6 +11,7 @@ import {
 import { entryMatchesSearch } from "../src/client/conversations/transcriptSearch";
 import { conversationTranscriptMessages } from "../src/client/conversations/eventTranscript";
 import { buildConversationMarkdown } from "../src/client/markdownExport";
+import { capturedMemoriesFromEvents } from "../src/client/conversations/ConversationMemories";
 import type { ConversationTranscript } from "../src/client/types";
 
 function pluginEvent(
@@ -43,6 +44,63 @@ function conversation(
 }
 
 describe("plugin event transcript projection", () => {
+  it("projects captured memories in newest-first order", () => {
+    const first = pluginEvent({
+      type: "structured_event",
+      namespace: "memory",
+      name: "memories_captured",
+      version: 2,
+      presentation: {
+        title: "1 memory captured",
+        details: [
+          {
+            title: "Use pnpm.",
+            metadata: ["preference", "personal"],
+          },
+        ],
+      },
+    });
+    const second = {
+      ...pluginEvent({
+        type: "structured_event",
+        namespace: "memory",
+        name: "memories_captured",
+        version: 2,
+        presentation: {
+          title: "1 memory captured",
+          details: [{ title: "Keep changes small." }],
+        },
+      }),
+      seq: 2,
+      createdAt: "2026-01-01T00:00:02.000Z",
+    };
+    const recall = {
+      ...pluginEvent({
+        type: "structured_event",
+        namespace: "memory",
+        name: "memories_recalled",
+        version: 1,
+        presentation: { title: "Memory recalled" },
+      }),
+      seq: 3,
+    };
+
+    expect(capturedMemoriesFromEvents([first, second, recall])).toEqual([
+      {
+        content: "Keep changes small.",
+        createdAt: "2026-01-01T00:00:02.000Z",
+        metadata: [],
+        seq: 2,
+      },
+      {
+        content: "Use pnpm.",
+        createdAt: "2026-01-01T00:00:01.000Z",
+        metadata: ["preference", "personal"],
+        seq: 1,
+      },
+    ]);
+  });
+
   it("creates a searchable standalone event entry", () => {
     const messages = conversationTranscriptMessages(
       conversation([

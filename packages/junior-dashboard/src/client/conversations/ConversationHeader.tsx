@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import { Ellipsis, Menu } from "lucide-react";
+import type { ConversationDetailReport } from "@sentry/junior/api/schema";
 
 import { SearchInput } from "../components/SearchInput";
 import {
@@ -32,6 +33,7 @@ export function ConversationHeader(props: {
   conversationId: string;
   identity: ReactNode;
   live: boolean;
+  loadCompleteConversation(): Promise<ConversationDetailReport>;
   meta?: ReactNode;
   onSearchChange(value: string): void;
   onViewChange(value: TranscriptViewMode): void;
@@ -39,6 +41,7 @@ export function ConversationHeader(props: {
   search: string;
   stats: ReactNode;
   title: string;
+  transcript?: ConversationDetailReport;
   view: TranscriptViewMode;
 }) {
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -220,10 +223,12 @@ export function ConversationHeader(props: {
           brief={props.brief}
           conversationId={props.conversationId}
           identity={props.identity}
+          loadCompleteConversation={props.loadCompleteConversation}
           onClose={() => setDetailsOpen(false)}
           privacy={props.privacy}
           stats={props.stats}
           title={props.title}
+          transcript={props.transcript}
         />
       ) : null}
     </>
