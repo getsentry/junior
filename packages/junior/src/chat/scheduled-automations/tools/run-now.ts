@@ -27,7 +27,7 @@ export function createSlackScheduleRunAutomationNowTool(
       "Queue an existing active scheduled Junior task to run as soon as possible, without changing its cadence. Use when the user asks to run an existing scheduled automation now. Use only task IDs returned for this conversation.",
     executionMode: "sequential",
     inputSchema: z.object({
-      task_id: z
+      automationId: z
         .string()
         .min(1)
         .describe(
@@ -35,8 +35,8 @@ export function createSlackScheduleRunAutomationNowTool(
         ),
     }),
     outputSchema: scheduleAutomationToolResultSchema,
-    execute: async ({ task_id }) => {
-      const lookup = await getWritableTask({ context, taskId: task_id });
+    execute: async ({ automationId }) => {
+      const lookup = await getWritableTask({ context, taskId: automationId });
       if (lookup.status !== "active") {
         throwToolInputError(
           "Scheduled automation must be active before it can be run now.",
@@ -51,7 +51,7 @@ export function createSlackScheduleRunAutomationNowTool(
       };
 
       await saveScheduledAutomation(getDb(), next);
-      return scheduleAutomationToolResult(next);
+      return scheduleAutomationToolResult(next, context.actor?.userId);
     },
   });
 }

@@ -124,7 +124,7 @@ function jsonSchemaAllowsNull(schema: unknown): boolean {
 }
 
 async function createTask(
-  task: string,
+  instruction: string,
   toolCallId?: string,
   events = ["pull_request.review.changes_requested"],
   taskContext = context(),
@@ -132,7 +132,7 @@ async function createTask(
   return (await execute(
     createEventAutomationTool(taskContext, EVENT_CATALOG),
     {
-      task,
+      instruction,
       outcomes: [],
       trigger: {
         namespace: "github",
@@ -142,7 +142,7 @@ async function createTask(
         events,
       },
     },
-    toolCallId ?? task,
+    toolCallId ?? instruction,
   )) as { automation: { id: string } };
 }
 
@@ -288,7 +288,7 @@ describe("event automations", () => {
           EVENT_CATALOG,
         ),
         {
-          task: "Address the requested changes.",
+          instruction: "Address the requested changes.",
           trigger: {
             namespace: "github",
             identifier: "getsentry/junior#1174",
@@ -333,7 +333,7 @@ describe("event automations", () => {
         EVENT_CATALOG,
       ),
       {
-        task: "Address the requested changes.",
+        instruction: "Address the requested changes.",
         trigger: {
           namespace: "github",
           identifier: "getsentry/junior#1174",
@@ -372,7 +372,7 @@ describe("event automations", () => {
       execute(
         createEventAutomationTool(context(), EVENT_CATALOG),
         {
-          task: "Handle issue closure.",
+          instruction: "Handle issue closure.",
           trigger: {
             namespace: "github",
             identifier: "getsentry/junior#1174",
@@ -402,7 +402,7 @@ describe("event automations", () => {
     expect(jsonSchemaAllowsNull(createProperties?.credentialMode)).toBe(true);
 
     const createInput = {
-      task: "Address the requested changes.",
+      instruction: "Address the requested changes.",
       trigger: {
         namespace: "github",
         identifier: "getsentry/junior#1174",
@@ -440,17 +440,17 @@ describe("event automations", () => {
     const updateProperties = (
       updateTool.inputSchema as { properties?: Record<string, unknown> }
     ).properties;
-    expect(jsonSchemaAllowsNull(updateProperties?.task)).toBe(true);
+    expect(jsonSchemaAllowsNull(updateProperties?.instruction)).toBe(true);
     expect(jsonSchemaAllowsNull(updateProperties?.trigger)).toBe(true);
     expect(jsonSchemaAllowsNull(updateProperties?.credentialMode)).toBe(true);
     expect(
       updateTool.prepareArguments?.({
-        taskId: "evt_test",
-        task: null,
+        automationId: "evt_test",
+        instruction: null,
         trigger: null,
         credentialMode: null,
       }),
-    ).toEqual({ taskId: "evt_test" });
+    ).toEqual({ automationId: "evt_test" });
   });
 
   it("dispatches one task for every selected event type", async () => {
@@ -493,7 +493,7 @@ describe("event automations", () => {
     const created = (await execute(
       createEventAutomationTool(context(), EVENT_CATALOG),
       {
-        task: "Address the requested changes.",
+        instruction: "Address the requested changes.",
         trigger: {
           namespace: "github",
           identifier: "GetSentry/Junior#1174",
@@ -503,8 +503,8 @@ describe("event automations", () => {
         },
       },
       "mixed-case-identifier",
-    )) as { automation: { id: string; trigger: { resource: string } } };
-    expect(created.automation.trigger.resource).toBe("getsentry/junior#1174");
+    )) as { automation: { id: string; trigger: { identifier: string } } };
+    expect(created.automation.trigger.identifier).toBe("getsentry/junior#1174");
 
     await expect(
       ingestEventAutomations(
@@ -611,8 +611,8 @@ describe("event automations", () => {
     await execute(
       createUpdateEventAutomationTool(context("U999", "COTHER"), EVENT_CATALOG),
       {
-        taskId: created.automation.id,
-        task: "Change a public task from another channel.",
+        automationId: created.automation.id,
+        instruction: "Change a public task from another channel.",
       },
     );
     expect(
@@ -638,8 +638,8 @@ describe("event automations", () => {
           EVENT_CATALOG,
         ),
         {
-          taskId: created.automation.id,
-          task: "Change a private task from another channel.",
+          automationId: created.automation.id,
+          instruction: "Change a private task from another channel.",
         },
       ),
     ).rejects.toThrow("Event automation was not found.");
@@ -672,7 +672,7 @@ describe("event automations", () => {
 
     await expect(
       execute(createUpdateEventAutomationTool(context("U999"), EVENT_CATALOG), {
-        taskId: created.automation.id,
+        automationId: created.automation.id,
         credentialMode: "creator",
       }),
     ).rejects.toThrow(
@@ -681,7 +681,7 @@ describe("event automations", () => {
     await execute(
       createUpdateEventAutomationTool(context("U999"), EVENT_CATALOG),
       {
-        taskId: created.automation.id,
+        automationId: created.automation.id,
         trigger: {
           namespace: "github",
           identifier: "getsentry/junior#1174",
@@ -704,7 +704,7 @@ describe("event automations", () => {
     await execute(
       createUpdateEventAutomationTool(context("U999"), EVENT_CATALOG),
       {
-        taskId: created.automation.id,
+        automationId: created.automation.id,
         trigger: {
           namespace: "github",
           identifier: "getsentry/junior#1176",
@@ -722,16 +722,16 @@ describe("event automations", () => {
     });
 
     await execute(createUpdateEventAutomationTool(context(), EVENT_CATALOG), {
-      taskId: created.automation.id,
-      task: null,
+      automationId: created.automation.id,
+      instruction: null,
       trigger: null,
       credentialMode: "creator",
     });
     await execute(
       createUpdateEventAutomationTool(context("U999"), EVENT_CATALOG),
       {
-        taskId: created.automation.id,
-        task: "Address the requested changes.",
+        automationId: created.automation.id,
+        instruction: "Address the requested changes.",
       },
     );
     expect(
@@ -742,8 +742,8 @@ describe("event automations", () => {
     await execute(
       createUpdateEventAutomationTool(context("U999"), EVENT_CATALOG),
       {
-        taskId: created.automation.id,
-        task: "Only summarize the requested changes.",
+        automationId: created.automation.id,
+        instruction: "Only summarize the requested changes.",
       },
     );
     expect(
@@ -763,7 +763,7 @@ describe("event automations", () => {
     await execute(
       createDeleteEventAutomationTool(context("U999"), EVENT_CATALOG),
       {
-        taskId: created.automation.id,
+        automationId: created.automation.id,
       },
     );
     await expect(
@@ -774,8 +774,8 @@ describe("event automations", () => {
     });
     await expect(
       execute(createUpdateEventAutomationTool(context("U999"), EVENT_CATALOG), {
-        taskId: created.automation.id,
-        task: "Try to update the deleted task.",
+        automationId: created.automation.id,
+        instruction: "Try to update the deleted task.",
       }),
     ).rejects.toThrow("Event automation was not found.");
     const listed = (await execute(

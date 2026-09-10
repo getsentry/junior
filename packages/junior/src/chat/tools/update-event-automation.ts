@@ -60,8 +60,8 @@ export function createUpdateEventAutomationTool(
       "Update the instruction, registered trigger, or credential use for an event automation.",
     inputSchema: z
       .object({
-        taskId: z.string().min(1),
-        task: z.string().trim().min(1).max(4000).nullable().optional(),
+        automationId: z.string().min(1),
+        instruction: z.string().trim().min(1).max(4000).nullable().optional(),
         trigger: registeredEventAutomationTriggerSchema(catalog)
           .nullable()
           .optional(),
@@ -84,18 +84,19 @@ export function createUpdateEventAutomationTool(
       .strict(),
     prepareArguments(args) {
       const input = args as {
-        taskId: string;
-        task?: string | null;
+        automationId: string;
+        instruction?: string | null;
         trigger?: z.input<
           ReturnType<typeof registeredEventAutomationTriggerSchema>
         > | null;
         outcomes?: TaskOutcomeInput[] | null;
         credentialMode?: "creator" | "system" | null;
       };
-      const { credentialMode, outcomes, task, trigger, ...prepared } = input;
+      const { credentialMode, outcomes, instruction, trigger, ...prepared } =
+        input;
       return {
         ...prepared,
-        ...(task != null ? { task } : undefined),
+        ...(instruction != null ? { instruction } : undefined),
         ...(trigger != null ? { trigger } : undefined),
         ...(outcomes != null ? { outcomes } : undefined),
         ...(credentialMode != null ? { credentialMode } : undefined),
@@ -103,7 +104,10 @@ export function createUpdateEventAutomationTool(
     },
     outputSchema: eventAutomationToolResultSchema,
     async execute(input) {
-      const current = await writableEventAutomation(context, input.taskId);
+      const current = await writableEventAutomation(
+        context,
+        input.automationId,
+      );
       const match = input.trigger
         ? requireSupportedEventAutomationTrigger(catalog, input.trigger)
         : undefined;
@@ -122,7 +126,7 @@ export function createUpdateEventAutomationTool(
         );
       }
       if (
-        input.task === undefined &&
+        input.instruction === undefined &&
         input.trigger === undefined &&
         input.outcomes == null &&
         input.credentialMode == null
@@ -144,7 +148,7 @@ export function createUpdateEventAutomationTool(
           }
         : current.trigger;
       const nextInstruction =
-        input.task != null ? input.task : current.task.text;
+        input.instruction != null ? input.instruction : current.task.text;
       const instructionChanged = nextInstruction !== current.task.text;
       const changesExecution =
         instructionChanged ||
@@ -179,7 +183,7 @@ export function createUpdateEventAutomationTool(
       if (!saved) {
         throw new ToolInputError("Event automation was not found.");
       }
-      return eventAutomationToolResult(saved, catalog);
+      return eventAutomationToolResult(saved, catalog, actor.userId);
     },
   });
 }

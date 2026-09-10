@@ -319,7 +319,7 @@ describeEval("Event automation management", slackEvals, (it) => {
       eventAutomationManagementCalls(result.session, "deleteEventAutomation"),
     ).toEqual([
       expect.objectContaining({
-        arguments: { taskId: "evt_issue_state_summary" },
+        arguments: { automationId: "evt_issue_state_summary" },
       }),
     ]);
     expect(eventAutomationCreateCalls(result.session)).toEqual([]);

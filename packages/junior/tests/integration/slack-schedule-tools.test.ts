@@ -169,7 +169,8 @@ async function createTask(
 ) {
   const tool = createSlackScheduleCreateAutomationTool(context);
   return await executeTool(tool, {
-    task: "Weekly issue digest: Summarize open scheduler issues and post a concise summary.",
+    instruction:
+      "Weekly issue digest: Summarize open scheduler issues and post a concise summary.",
     schedule: {
       kind: "recurring",
       frequency: "weekly",
@@ -213,12 +214,12 @@ describe("Slack schedule tools", () => {
     // Read-only listing stays outside Guardian; mutating schedule tools do not.
     expect(listTool.approvalMode).toBeUndefined();
     expect(schema.required).toContain("schedule");
-    expect(schema.properties).not.toHaveProperty("next_run_at");
+    expect(schema.properties).not.toHaveProperty("nextRunAt");
     expect(schema.properties).not.toHaveProperty("schedule_kind");
     expect(
       (updateTool.inputSchema as { properties?: Record<string, unknown> })
         .properties,
-    ).toHaveProperty("credential_mode");
+    ).toHaveProperty("credentialMode");
   });
 
   it("accepts a structured relative one-off schedule", async () => {
@@ -226,7 +227,7 @@ describe("Slack schedule tools", () => {
 
     expect(
       tool.prepareArguments?.({
-        task: "Remind Greg to drink water.",
+        instruction: "Remind Greg to drink water.",
         schedule: {
           kind: "one_off",
           timezone: null,
@@ -278,11 +279,11 @@ describe("Slack schedule tools", () => {
     const created = await createTask();
     expect(created).toMatchObject({
       automation: {
-        conversation_access: {
+        conversationAccess: {
           audience: "channel",
           visibility: "public",
         },
-        credential_mode: "creator",
+        credentialMode: "creator",
         outcomes: [],
         status: "active",
         instruction:
@@ -292,7 +293,7 @@ describe("Slack schedule tools", () => {
           interval: 1,
           weekdays: [1],
         },
-        next_run_at: "2026-05-25T16:00:00.000Z",
+        nextRunAt: "2026-05-25T16:00:00.000Z",
       },
     });
     await expect(
@@ -346,7 +347,8 @@ describe("Slack schedule tools", () => {
     const result = await executeTool(
       createSlackScheduleCreateAutomationTool(createContext()),
       {
-        task: "Weekly issue digest: Summarize open scheduler issues and post a concise summary.",
+        instruction:
+          "Weekly issue digest: Summarize open scheduler issues and post a concise summary.",
         schedule: {
           kind: "recurring",
           frequency: "weekly",
@@ -382,7 +384,7 @@ describe("Slack schedule tools", () => {
     });
     const tool = createSlackScheduleCreateAutomationTool(context);
     const input = {
-      task: "Post the scheduler reminder.",
+      instruction: "Post the scheduler reminder.",
       schedule: {
         kind: "one_off" as const,
         timing: {
@@ -399,7 +401,7 @@ describe("Slack schedule tools", () => {
     ]);
 
     expect(replay.automation.id).toBe(first.automation.id);
-    expect(replay.automation.next_run_at).toBe(first.automation.next_run_at);
+    expect(replay.automation.nextRunAt).toBe(first.automation.nextRunAt);
     await expect(
       listScheduledAutomationsForTeam(TEST_TEAM_ID),
     ).resolves.toHaveLength(1);
@@ -408,7 +410,7 @@ describe("Slack schedule tools", () => {
   it("allows separate create calls to make equivalent tasks", async () => {
     const tool = createSlackScheduleCreateAutomationTool(createContext());
     const input = {
-      task: "Post the reminder.",
+      instruction: "Post the reminder.",
       schedule: {
         kind: "one_off" as const,
         timing: {
@@ -484,12 +486,12 @@ describe("Slack schedule tools", () => {
         createContext({ teamId: "D123" }),
       ),
       {
-        task: "Reminder: Remind David to wash his hands.",
+        instruction: "Reminder: Remind David to wash his hands.",
         schedule: {
           kind: "one_off",
           timing: { type: "after", value: 1, unit: "minute" },
         },
-        credential_mode: null,
+        credentialMode: null,
       },
     );
 
@@ -551,12 +553,12 @@ describe("Slack schedule tools", () => {
     await expect(
       saveScheduledAutomation(schedulerDb(), {
         ...task,
-        id: "sched_bad_credential_mode",
+        id: "sched_bad_credentialMode",
         credentialMode: "invalid" as ScheduledAutomation["credentialMode"],
       }),
     ).rejects.toThrow("Scheduled automation routing context is invalid.");
     await expect(
-      readScheduledAutomation("sched_bad_credential_mode"),
+      readScheduledAutomation("sched_bad_credentialMode"),
     ).resolves.toBe(undefined);
 
     await expect(
@@ -584,7 +586,7 @@ describe("Slack schedule tools", () => {
         }),
       ),
       {
-        task: "Wash hands reminder: Remind David to wash his hands.",
+        instruction: "Wash hands reminder: Remind David to wash his hands.",
         schedule: {
           kind: "one_off",
           timing: { type: "after", value: 1, unit: "minute" },
@@ -594,7 +596,7 @@ describe("Slack schedule tools", () => {
 
     expect(result).toMatchObject({
       automation: {
-        next_run_at: "2026-05-27T00:25:23.000Z",
+        nextRunAt: "2026-05-27T00:25:23.000Z",
         schedule: "In 1 minute",
         status: "active",
         instruction: "Wash hands reminder: Remind David to wash his hands.",
@@ -659,7 +661,7 @@ describe("Slack schedule tools", () => {
   it("rejects removed top-level scheduling fields", async () => {
     await expect(
       createTask(createContext(), {
-        next_run_at: "2026-05-25T16:00:00.000Z",
+        nextRunAt: "2026-05-25T16:00:00.000Z",
       }),
     ).rejects.toThrow("Unrecognized key");
     await expect(
@@ -708,8 +710,9 @@ describe("Slack schedule tools", () => {
     const updated = await executeTool(
       createSlackScheduleUpdateAutomationTool(context),
       {
-        task_id: taskId,
-        task: "Tuesday scheduler digest: Summarize open scheduler issues.",
+        automationId: taskId,
+        instruction:
+          "Tuesday scheduler digest: Summarize open scheduler issues.",
         schedule: {
           kind: "recurring",
           frequency: "weekly",
@@ -721,7 +724,7 @@ describe("Slack schedule tools", () => {
     expect(updated).toMatchObject({
       automation: {
         id: taskId,
-        next_run_at: "2026-05-26T17:00:00.000Z",
+        nextRunAt: "2026-05-26T17:00:00.000Z",
         instruction:
           "Tuesday scheduler digest: Summarize open scheduler issues.",
         schedule: "Every week on Tuesday at 10:00 (America/Los_Angeles)",
@@ -741,7 +744,7 @@ describe("Slack schedule tools", () => {
     const deleted = await executeTool(
       createSlackScheduleDeleteAutomationTool(context),
       {
-        task_id: taskId,
+        automationId: taskId,
       },
     );
     expect(deleted).toMatchObject({
@@ -761,22 +764,22 @@ describe("Slack schedule tools", () => {
   it("treats a null update schedule as omitted", async () => {
     const context = createContext();
     const created = (await createTask(context)) as {
-      automation: { id: string; next_run_at: string; instruction: string };
+      automation: { id: string; nextRunAt: string; instruction: string };
     };
 
     const updated = await executeTool(
       createSlackScheduleUpdateAutomationTool(context),
       {
-        task_id: created.automation.id,
+        automationId: created.automation.id,
         schedule: null,
-        task: `${created.automation.instruction} (edited)`,
+        instruction: `${created.automation.instruction} (edited)`,
       },
     );
 
     expect(updated).toMatchObject({
       automation: {
         id: created.automation.id,
-        next_run_at: created.automation.next_run_at,
+        nextRunAt: created.automation.nextRunAt,
         status: "active",
         instruction: `${created.automation.instruction} (edited)`,
       },
@@ -792,8 +795,8 @@ describe("Slack schedule tools", () => {
 
     await expect(
       executeTool(tool, {
-        task_id: created.automation.id,
-        next_run_at: "2026-06-01T16:00:00.000Z",
+        automationId: created.automation.id,
+        nextRunAt: "2026-06-01T16:00:00.000Z",
       } as Parameters<NonNullable<typeof tool.execute>>[0]),
     ).rejects.toThrow("Unrecognized key");
     await expect(
@@ -812,7 +815,7 @@ describe("Slack schedule tools", () => {
 
     await expect(
       executeTool(updateTool, {
-        task_id: created.automation.id,
+        automationId: created.automation.id,
         schedule: {
           kind: "recurring",
           frequency: "hourly",
@@ -838,7 +841,7 @@ describe("Slack schedule tools", () => {
     const updated = await executeTool(
       createSlackScheduleUpdateAutomationTool(context),
       {
-        task_id: created.automation.id,
+        automationId: created.automation.id,
         schedule: {
           kind: "one_off",
           timing: { type: "at", date: "2026-06-01", time: "09:00" },
@@ -849,7 +852,7 @@ describe("Slack schedule tools", () => {
     expect(updated).toMatchObject({
       automation: {
         id: created.automation.id,
-        next_run_at: "2026-06-01T16:00:00.000Z",
+        nextRunAt: "2026-06-01T16:00:00.000Z",
         recurrence: null,
         schedule: "Once on 2026-06-01 at 09:00 (America/Los_Angeles)",
       },
@@ -875,8 +878,8 @@ describe("Slack schedule tools", () => {
           createContext({ channelId: "C999" }),
         ),
         {
-          task_id: created.automation.id,
-          task: "Wrong channel edit.",
+          automationId: created.automation.id,
+          instruction: "Wrong channel edit.",
         },
       ),
     ).rejects.toThrow(
@@ -917,7 +920,7 @@ describe("Slack schedule tools", () => {
       createSlackScheduleDeleteAutomationTool(
         createContext({ channelId: "DDM" }),
       ),
-      { task_id: taskId },
+      { automationId: taskId },
     );
     expect(deleted).toMatchObject({
       automation: { id: taskId, status: "deleted" },
@@ -935,7 +938,7 @@ describe("Slack schedule tools", () => {
         createSlackScheduleDeleteAutomationTool(
           createContext({ channelId: "DBOB" }),
         ),
-        { task_id: created.automation.id },
+        { automationId: created.automation.id },
       ),
     ).rejects.toThrow(
       "Scheduled automation can only be managed from the Slack destination where it currently delivers.",
@@ -959,7 +962,7 @@ describe("Slack schedule tools", () => {
 
     await expect(
       executeTool(createSlackScheduleUpdateAutomationTool(otherActor), {
-        task_id: created.automation.id,
+        automationId: created.automation.id,
         outcomes: [],
       }),
     ).rejects.toThrow(
@@ -969,14 +972,14 @@ describe("Slack schedule tools", () => {
     const updated = await executeTool(
       createSlackScheduleUpdateAutomationTool(otherActor),
       {
-        task_id: created.automation.id,
-        task: "Team-owned digest: Summarize open scheduler issues.",
+        automationId: created.automation.id,
+        instruction: "Team-owned digest: Summarize open scheduler issues.",
       },
     );
     const deleted = await executeTool(
       createSlackScheduleDeleteAutomationTool(otherActor),
       {
-        task_id: created.automation.id,
+        automationId: created.automation.id,
       },
     );
 
@@ -1010,7 +1013,7 @@ describe("Slack schedule tools", () => {
     const created = await createTask(createContext());
 
     expect(created).toMatchObject({
-      automation: { credential_mode: "creator" },
+      automation: { credentialMode: "creator" },
     });
     await expect(
       listScheduledAutomationsForTeam(TEST_TEAM_ID),
@@ -1027,7 +1030,7 @@ describe("Slack schedule tools", () => {
     const context = createContext();
     const tool = createSlackScheduleCreateAutomationTool(context);
     const input = {
-      task: "Weekly issue digest: Summarize open scheduler issues.",
+      instruction: "Weekly issue digest: Summarize open scheduler issues.",
       schedule: {
         kind: "recurring" as const,
         frequency: "weekly" as const,
@@ -1035,22 +1038,20 @@ describe("Slack schedule tools", () => {
         weekdays: ["monday" as const],
         timezone: "America/Los_Angeles",
       },
-      credential_mode: "creator" as const,
+      credentialMode: "creator" as const,
     };
 
-    expect(tool.prepareArguments?.(input)).not.toHaveProperty(
-      "credential_mode",
-    );
+    expect(tool.prepareArguments?.(input)).not.toHaveProperty("credentialMode");
     expect(
-      tool.prepareArguments?.({ ...input, credential_mode: null }),
-    ).not.toHaveProperty("credential_mode");
+      tool.prepareArguments?.({ ...input, credentialMode: null }),
+    ).not.toHaveProperty("credentialMode");
     expect(
-      tool.prepareArguments?.({ ...input, credential_mode: "system" }),
-    ).toHaveProperty("credential_mode", "system");
+      tool.prepareArguments?.({ ...input, credentialMode: "system" }),
+    ).toHaveProperty("credentialMode", "system");
     const created = await executeTool(tool, input);
 
     expect(created).toMatchObject({
-      automation: { credential_mode: "creator" },
+      automation: { credentialMode: "creator" },
     });
   });
 
@@ -1068,7 +1069,7 @@ describe("Slack schedule tools", () => {
     });
 
     await executeTool(createSlackScheduleUpdateAutomationTool(otherActor), {
-      task_id: created.automation.id,
+      automationId: created.automation.id,
       schedule: {
         kind: "recurring",
         frequency: "weekly",
@@ -1084,8 +1085,9 @@ describe("Slack schedule tools", () => {
     });
 
     await executeTool(createSlackScheduleUpdateAutomationTool(otherActor), {
-      task_id: created.automation.id,
-      task: "Weekly issue digest: Summarize open scheduler issues and post a concise summary.",
+      automationId: created.automation.id,
+      instruction:
+        "Weekly issue digest: Summarize open scheduler issues and post a concise summary.",
     });
     await expect(
       readScheduledAutomation(created.automation.id),
@@ -1096,12 +1098,12 @@ describe("Slack schedule tools", () => {
     const updated = await executeTool(
       createSlackScheduleUpdateAutomationTool(otherActor),
       {
-        task_id: created.automation.id,
-        task: "Team-owned digest: Summarize open scheduler issues.",
+        automationId: created.automation.id,
+        instruction: "Team-owned digest: Summarize open scheduler issues.",
       },
     );
     expect(updated).toMatchObject({
-      automation: { credential_mode: "system" },
+      automation: { credentialMode: "system" },
     });
     await expect(
       readScheduledAutomation(created.automation.id),
@@ -1114,7 +1116,7 @@ describe("Slack schedule tools", () => {
     const context = createContext();
     const created = await createTask(context);
     expect(created).toMatchObject({
-      automation: { credential_mode: "creator" },
+      automation: { credentialMode: "creator" },
     });
     const taskId = (created as { automation: { id: string } }).automation.id;
     const original = await readScheduledAutomation(taskId);
@@ -1131,11 +1133,11 @@ describe("Slack schedule tools", () => {
 
     await expect(
       executeTool(createSlackScheduleUpdateAutomationTool(otherActor), {
-        task_id: taskId,
-        credential_mode: "system",
+        automationId: taskId,
+        credentialMode: "system",
       }),
     ).resolves.toMatchObject({
-      automation: { credential_mode: "system" },
+      automation: { credentialMode: "system" },
     });
     await expect(readScheduledAutomation(taskId)).resolves.toMatchObject({
       credentialMode: "system",
@@ -1148,8 +1150,8 @@ describe("Slack schedule tools", () => {
 
     await expect(
       executeTool(createSlackScheduleUpdateAutomationTool(otherActor), {
-        task_id: taskId,
-        credential_mode: "creator",
+        automationId: taskId,
+        credentialMode: "creator",
       }),
     ).rejects.toThrow(
       "Only the scheduled automation creator can enable creator credential use.",
@@ -1157,11 +1159,11 @@ describe("Slack schedule tools", () => {
 
     await expect(
       executeTool(createSlackScheduleUpdateAutomationTool(context), {
-        task_id: taskId,
-        credential_mode: "creator",
+        automationId: taskId,
+        credentialMode: "creator",
       }),
     ).resolves.toMatchObject({
-      automation: { credential_mode: "creator" },
+      automation: { credentialMode: "creator" },
     });
   });
 
@@ -1184,11 +1186,11 @@ describe("Slack schedule tools", () => {
 
     expect(result).toMatchObject({
       automation: {
-        conversation_access: {
+        conversationAccess: {
           audience: "group",
           visibility: "private",
         },
-        credential_mode: "creator",
+        credentialMode: "creator",
       },
     });
     const tasks = await listScheduledAutomationsForTeam(TEST_TEAM_ID);
@@ -1244,7 +1246,7 @@ describe("Slack schedule tools", () => {
 
     expect(result).toMatchObject({
       automation: {
-        conversation_access: {
+        conversationAccess: {
           audience: "direct",
           visibility: "private",
         },
@@ -1272,7 +1274,7 @@ describe("Slack schedule tools", () => {
 
     expect(created).toMatchObject({
       automation: {
-        next_run_at: "2026-05-26T16:00:00.000Z",
+        nextRunAt: "2026-05-26T16:00:00.000Z",
         recurrence: null,
         timezone: "America/Los_Angeles",
       },
@@ -1293,7 +1295,7 @@ describe("Slack schedule tools", () => {
 
     expect(created).toMatchObject({
       automation: {
-        next_run_at: "2026-05-26T13:00:00.000Z",
+        nextRunAt: "2026-05-26T13:00:00.000Z",
         recurrence: null,
         timezone: "America/New_York",
       },
@@ -1335,8 +1337,8 @@ describe("Slack schedule tools", () => {
     const updated = await executeTool(
       createSlackScheduleUpdateAutomationTool(context),
       {
-        task_id: created.automation.id,
-        task: "Renamed issue digest: Summarize open scheduler issues.",
+        automationId: created.automation.id,
+        instruction: "Renamed issue digest: Summarize open scheduler issues.",
       },
     );
 
@@ -1375,7 +1377,7 @@ describe("Slack schedule tools", () => {
     const updated = await executeTool(
       createSlackScheduleUpdateAutomationTool(context),
       {
-        task_id: created.automation.id,
+        automationId: created.automation.id,
         status: "active",
       },
     );
@@ -1411,7 +1413,7 @@ describe("Slack schedule tools", () => {
     const result = await executeTool(
       createSlackScheduleRunAutomationNowTool(context),
       {
-        task_id: created.automation.id,
+        automationId: created.automation.id,
       },
     );
     const afterMs = Date.now();
@@ -1420,7 +1422,7 @@ describe("Slack schedule tools", () => {
       automation: {
         id: created.automation.id,
         status: "active",
-        next_run_at: "2026-06-01T16:00:00.000Z",
+        nextRunAt: "2026-06-01T16:00:00.000Z",
       },
     });
     const due = await readScheduledAutomation(created.automation.id);
@@ -1464,7 +1466,7 @@ describe("Slack schedule tools", () => {
 
     await expect(
       executeTool(createSlackScheduleRunAutomationNowTool(context), {
-        task_id: created.automation.id,
+        automationId: created.automation.id,
       }),
     ).rejects.toThrow(
       "Scheduled automation must be active before it can be run now.",
@@ -1484,7 +1486,7 @@ describe("Slack schedule tools", () => {
     };
 
     await executeTool(createSlackScheduleDeleteAutomationTool(context), {
-      task_id: created.automation.id,
+      automationId: created.automation.id,
     });
 
     await expect(
@@ -1531,13 +1533,13 @@ describe("Slack schedule tools", () => {
     });
 
     const mine = (await createTask(creator, {
-      task: "Weekly planning reminder: post the agenda here.",
+      instruction: "Weekly planning reminder: post the agenda here.",
     })) as { automation: { id: string } };
     await createTask(otherChannel, {
-      task: "Weekly planning reminder: post the agenda here.",
+      instruction: "Weekly planning reminder: post the agenda here.",
     });
     const theirs = (await createTask(otherActor, {
-      task: "Someone else's planning reminder.",
+      instruction: "Someone else's planning reminder.",
     })) as { automation: { id: string } };
 
     const local = await executeTool(
@@ -1583,13 +1585,13 @@ describe("Slack schedule tools", () => {
       }),
     });
     const created = (await createTask(source, {
-      task: "Weekly planning reminder: post the agenda here.",
+      instruction: "Weekly planning reminder: post the agenda here.",
     })) as {
       automation: {
         id: string;
-        next_run_at: string | null;
+        nextRunAt: string | null;
         schedule: string;
-        credential_mode: string;
+        credentialMode: string;
       };
     };
     await expect(
@@ -1599,7 +1601,7 @@ describe("Slack schedule tools", () => {
       outcomes: [],
     });
     await executeTool(createSlackScheduleUpdateAutomationTool(source), {
-      task_id: created.automation.id,
+      automationId: created.automation.id,
       outcomes: [
         {
           action: "send_message",
@@ -1619,17 +1621,17 @@ describe("Slack schedule tools", () => {
     });
     const movedPublic = await executeTool(
       createSlackScheduleUpdateAutomationTool(publicTarget),
-      { task_id: created.automation.id, destination: "here" },
+      { automationId: created.automation.id, destination: "here" },
     );
     expect(movedPublic).toMatchObject({
       automation: {
         id: created.automation.id,
         instruction: "Weekly planning reminder: post the agenda here.",
         schedule: created.automation.schedule,
-        next_run_at: created.automation.next_run_at,
-        credential_mode: "creator",
+        nextRunAt: created.automation.nextRunAt,
+        credentialMode: "creator",
         destination: { channel: "CTARGET" },
-        conversation_access: {
+        conversationAccess: {
           audience: "channel",
           visibility: "public",
         },
@@ -1663,18 +1665,18 @@ describe("Slack schedule tools", () => {
     const privateTarget = createContext({ channelId: "GPRIVATE" });
     const movedPrivate = await executeTool(
       createSlackScheduleUpdateAutomationTool(privateTarget),
-      { task_id: created.automation.id, destination: "here" },
+      { automationId: created.automation.id, destination: "here" },
     );
     expect(movedPrivate).toMatchObject({
       automation: {
         id: created.automation.id,
         destination: { channel: "GPRIVATE" },
-        conversation_access: {
+        conversationAccess: {
           audience: "group",
           visibility: "private",
         },
-        credential_mode: "creator",
-        next_run_at: created.automation.next_run_at,
+        credentialMode: "creator",
+        nextRunAt: created.automation.nextRunAt,
       },
     });
     // The private target's context carries no thread; the move clears it.
@@ -1694,7 +1696,7 @@ describe("Slack schedule tools", () => {
     // Replaying a destination update that already landed is a no-op success.
     await expect(
       executeTool(createSlackScheduleUpdateAutomationTool(privateTarget), {
-        task_id: created.automation.id,
+        automationId: created.automation.id,
         destination: "here",
       }),
     ).resolves.toMatchObject({
@@ -1723,7 +1725,7 @@ describe("Slack schedule tools", () => {
 
     await expect(
       executeTool(createSlackScheduleUpdateAutomationTool(otherActor), {
-        task_id: created.automation.id,
+        automationId: created.automation.id,
         destination: "here",
       }),
     ).rejects.toThrow(
@@ -1735,7 +1737,7 @@ describe("Slack schedule tools", () => {
         createSlackScheduleUpdateAutomationTool(
           createContext({ channelId: "CTARGET", teamId: "TOTHER" }),
         ),
-        { task_id: created.automation.id, destination: "here" },
+        { automationId: created.automation.id, destination: "here" },
       ),
     ).rejects.toThrow(
       "Scheduled automations can only be managed within the same Slack workspace.",
@@ -1761,7 +1763,7 @@ describe("Slack schedule tools", () => {
           createContext({ channelId: "CTARGET" }),
         ),
         {
-          task_id: created.automation.id,
+          automationId: created.automation.id,
           destination: "here",
         },
       ),
@@ -1845,13 +1847,13 @@ describe("Slack schedule tool wiring via createTools", () => {
       const result = await executeRegisteredTool<{
         automation: { id: string };
       }>(tools.slackScheduleCreateAutomation, {
-        task: "Wiring test: post a weekly digest.",
+        instruction: "Wiring test: post a weekly digest.",
         schedule: {
           kind: "recurring",
           frequency: "weekly",
           time: "09:00",
           weekdays: ["monday"],
-          start_date: "2026-06-09",
+          startDate: "2026-06-09",
           timezone: "America/Los_Angeles",
         },
       });

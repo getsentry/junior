@@ -41,7 +41,7 @@ describeEval("Scheduled Credentials", slackEvals, (it) => {
       schedule: { kind: "recurring", frequency: "weekly" },
     });
     expect([undefined, "creator"]).toContain(
-      createCalls[0]!.arguments?.credential_mode,
+      createCalls[0]!.arguments?.credentialMode,
     );
   });
 
@@ -82,13 +82,13 @@ describeEval("Scheduled Credentials", slackEvals, (it) => {
     const createCalls = scheduledAutomationCreateCalls(result.session);
     expect(createCalls).toHaveLength(1);
     const createCall = createCalls[0]!;
-    expect(createCall.arguments?.credential_mode).toBe("system");
+    expect(createCall.arguments?.credentialMode).toBe("system");
     expect(
       toolCalls(result.session).filter(
         (call) =>
           call.name === "slackScheduleUpdateAutomation" &&
           call.status === "ok" &&
-          call.arguments?.credential_mode === "creator",
+          call.arguments?.credentialMode === "creator",
       ),
     ).toEqual([]);
   });
@@ -144,7 +144,7 @@ describeEval("Scheduled Credentials", slackEvals, (it) => {
         (call) =>
           call.name === "slackScheduleUpdateAutomation" &&
           call.status === "ok" &&
-          call.arguments?.credential_mode === "creator",
+          call.arguments?.credentialMode === "creator",
       ),
     ).toEqual([]);
   });
@@ -203,10 +203,10 @@ describeEval("Scheduled Credentials", slackEvals, (it) => {
 
     const credentialModeCalls = scheduledAutomationUpdateCalls(
       result.session,
-    ).filter((call) => call.arguments?.credential_mode !== undefined);
+    ).filter((call) => call.arguments?.credentialMode !== undefined);
     expect(credentialModeCalls).toHaveLength(1);
     expect(credentialModeCalls[0]?.arguments).toMatchObject({
-      credential_mode: "creator",
+      credentialMode: "creator",
     });
   });
 });

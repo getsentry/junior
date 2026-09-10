@@ -27,8 +27,8 @@ const compactEventAutomationResultSchema = z
     instruction: z.string().min(1),
     trigger: z
       .object({
-        source: z.string().min(1),
-        resource: z.string().min(1),
+        namespace: z.string().min(1),
+        identifier: z.string().min(1),
         resourceType: z.string().min(1),
         label: z.string().min(1),
         events: z.array(z.string().min(1)).min(1),
@@ -36,7 +36,7 @@ const compactEventAutomationResultSchema = z
         available: z.boolean(),
       })
       .strict(),
-    usesCreatorCredentials: z.boolean(),
+    credentialMode: z.enum(["system", "creator"]),
     isCreator: z.boolean(),
     outcomes: z
       .array(
@@ -228,15 +228,15 @@ export function compactEventAutomation(
     title: task.title?.trim() || null,
     instruction: task.task.text,
     trigger: {
-      source: task.trigger.namespace,
-      resource: task.trigger.identifier,
+      namespace: task.trigger.namespace,
+      identifier: task.trigger.identifier,
       resourceType: task.trigger.resourceType,
       label: task.trigger.label,
       events: task.trigger.events,
       ...(task.trigger.match ? { match: task.trigger.match } : undefined),
       available: eventAutomationTriggerAvailable(task, catalog),
     },
-    usesCreatorCredentials: task.credentialMode === "creator",
+    credentialMode: task.credentialMode,
     isCreator: task.createdBy.slackUserId === requesterSlackUserId,
     outcomes: effectiveTaskOutcomes(task.outcomes, task.destination).map(
       (outcome) => ({

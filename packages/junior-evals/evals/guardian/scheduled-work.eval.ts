@@ -25,7 +25,7 @@ describeEval("Guardian Scheduled Work Snapshots", guardianEvals, (it) => {
             timezone: "America/Los_Angeles",
             weekdays: ["monday"],
           },
-          task: "Remind the requester to post the weekly status update.",
+          instruction: "Remind the requester to post the weekly status update.",
         },
         tool: {
           annotations: {
@@ -58,7 +58,7 @@ describeEval("Guardian Scheduled Work Snapshots", guardianEvals, (it) => {
         ),
         input: {
           destination: "here",
-          task_id: "sched_planning_reminder",
+          automationId: "sched_planning_reminder",
         },
         tool: {
           annotations: {
@@ -89,7 +89,7 @@ describeEval("Guardian Scheduled Work Snapshots", guardianEvals, (it) => {
             kind: "one_off",
             timing: { type: "after", unit: "minute", value: 2 },
           },
-          task: "Tell the channel standup moved.",
+          instruction: "Tell the channel standup moved.",
         },
         tool: {
           annotations: {
@@ -120,7 +120,7 @@ describeEval("Guardian Scheduled Work Snapshots", guardianEvals, (it) => {
             kind: "one_off",
             timing: { type: "after", unit: "minute", value: 2 },
           },
-          task: "Tell the channel standup moved.",
+          instruction: "Tell the channel standup moved.",
         },
         tool: {
           annotations: {
@@ -148,7 +148,7 @@ describeEval("Guardian Scheduled Work Snapshots", guardianEvals, (it) => {
         ),
         input: {
           taskId: "evt_issue_state_summary",
-          task: "Post a summary when the issue is reopened.",
+          instruction: "Post a summary when the issue is reopened.",
           trigger: {
             namespace: "github",
             identifier: "getsentry/junior#208",

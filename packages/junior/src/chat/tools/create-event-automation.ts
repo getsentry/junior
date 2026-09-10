@@ -76,7 +76,7 @@ export function createEventAutomationTool(
       "Create a durable event automation that executes the supplied instruction for every matching event. Use for whenever-this-happens-do-X automation; ordinary watch, notify, or tell-me-when requests use watchEvents instead. The automation may use the creator's connected credentials. Prefer a subscribable tool result when available.",
     inputSchema: z
       .object({
-        task: z.string().trim().min(1).max(4000),
+        instruction: z.string().trim().min(1).max(4000),
         title: z
           .string()
           .trim()
@@ -106,7 +106,7 @@ export function createEventAutomationTool(
       .strict(),
     prepareArguments(args) {
       const input = args as {
-        task: string;
+        instruction: string;
         title?: string | null;
         trigger: z.input<typeof trigger>;
         outcomes?: TaskOutcomeInput[];
@@ -151,12 +151,12 @@ export function createEventAutomationTool(
         }
         // Live create retries stay idempotent. Deleted rows fall through and reactivate.
         if (existing.status !== "deleted") {
-          return eventAutomationToolResult(existing, catalog);
+          return eventAutomationToolResult(existing, catalog, actor.userId);
         }
       }
       const title = await resolveTaskTitle({
         completeText,
-        instruction: input.task,
+        instruction: input.instruction,
         title: input.title,
       });
       const task: EventAutomation = {
@@ -175,7 +175,7 @@ export function createEventAutomationTool(
           destination,
           actor.userId,
         ),
-        task: { text: input.task },
+        task: { text: input.instruction },
         ...(title ? { title } : undefined),
         trigger: {
           namespace: input.trigger.namespace,
@@ -193,6 +193,7 @@ export function createEventAutomationTool(
       return eventAutomationToolResult(
         await createEventAutomation(db, task),
         catalog,
+        actor.userId,
       );
     },
   });

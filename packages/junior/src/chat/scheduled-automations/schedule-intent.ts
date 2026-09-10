@@ -96,7 +96,7 @@ const recurringScheduleIntentSchema = z
       .describe("Required for weekly schedules.")
       .nullable()
       .optional(),
-    day_of_month: z
+    dayOfMonth: z
       .number()
       .int()
       .min(1)
@@ -112,7 +112,7 @@ const recurringScheduleIntentSchema = z
       .describe("Required for yearly schedules, where January is 1.")
       .nullable()
       .optional(),
-    start_date: localDateSchema
+    startDate: localDateSchema
       .describe(
         "Optional local calendar date that anchors the recurrence. Omit to start with the next matching occurrence.",
       )
@@ -131,12 +131,12 @@ const recurringScheduleIntentSchema = z
     }
     if (
       (schedule.frequency === "monthly" || schedule.frequency === "yearly") &&
-      schedule.day_of_month == null
+      schedule.dayOfMonth == null
     ) {
       context.addIssue({
         code: "custom",
-        message: `${schedule.frequency} schedules require day_of_month.`,
-        path: ["day_of_month"],
+        message: `${schedule.frequency} schedules require dayOfMonth.`,
+        path: ["dayOfMonth"],
       });
     }
     if (schedule.frequency === "yearly" && schedule.month == null) {
@@ -156,12 +156,12 @@ const recurringScheduleIntentSchema = z
     if (
       schedule.frequency !== "monthly" &&
       schedule.frequency !== "yearly" &&
-      schedule.day_of_month != null
+      schedule.dayOfMonth != null
     ) {
       context.addIssue({
         code: "custom",
-        message: "day_of_month applies only to monthly or yearly schedules.",
-        path: ["day_of_month"],
+        message: "dayOfMonth applies only to monthly or yearly schedules.",
+        path: ["dayOfMonth"],
       });
     }
     if (schedule.frequency !== "yearly" && schedule.month != null) {
@@ -252,10 +252,10 @@ function recurringDescription(
   if (schedule.frequency === "weekly") {
     detail = ` on ${formatWeekdays(schedule.weekdays!)}`;
   } else if (schedule.frequency === "monthly") {
-    detail = ` on day ${schedule.day_of_month}`;
+    detail = ` on day ${schedule.dayOfMonth}`;
   } else if (schedule.frequency === "yearly") {
     detail = ` on ${String(schedule.month).padStart(2, "0")}-${String(
-      schedule.day_of_month,
+      schedule.dayOfMonth,
     ).padStart(2, "0")}`;
   }
   return `Every ${cadence}${detail} at ${schedule.time} (${timezone})`;
@@ -325,7 +325,7 @@ export function compileScheduleIntent(args: {
   const recurrence: ScheduledAutomationRecurrence = {
     frequency: args.intent.frequency,
     interval: args.intent.interval ?? 1,
-    startDate: args.intent.start_date ?? localDateAt(args.nowMs, timezone),
+    startDate: args.intent.startDate ?? localDateAt(args.nowMs, timezone),
     time: parseLocalTime(args.intent.time),
     ...(args.intent.frequency === "weekly"
       ? {
@@ -338,13 +338,13 @@ export function compileScheduleIntent(args: {
       : undefined),
     ...(args.intent.frequency === "monthly" ||
     args.intent.frequency === "yearly"
-      ? { dayOfMonth: args.intent.day_of_month ?? undefined }
+      ? { dayOfMonth: args.intent.dayOfMonth ?? undefined }
       : undefined),
     ...(args.intent.frequency === "yearly"
       ? { month: args.intent.month ?? undefined }
       : undefined),
   };
-  const searchRecurrence = args.intent.start_date
+  const searchRecurrence = args.intent.startDate
     ? recurrence
     : { ...recurrence, interval: 1 };
   const nextRunAtMs = getFirstRunAtMs({
@@ -357,7 +357,7 @@ export function compileScheduleIntent(args: {
       "The recurring schedule has no valid future occurrence.",
     );
   }
-  const materializedRecurrence = args.intent.start_date
+  const materializedRecurrence = args.intent.startDate
     ? recurrence
     : { ...recurrence, startDate: localDateAt(nextRunAtMs, timezone) };
   return {

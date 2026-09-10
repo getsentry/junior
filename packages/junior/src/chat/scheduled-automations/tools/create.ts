@@ -51,7 +51,7 @@ export function createSlackScheduleCreateAutomationTool(
     executionMode: "sequential",
     inputSchema: z
       .object({
-        task: z.string().min(1).max(4000),
+        instruction: z.string().min(1).max(4000),
         title: z
           .string()
           .trim()
@@ -72,7 +72,7 @@ export function createSlackScheduleCreateAutomationTool(
             "Successful work is silent by default. Omit this field or use an empty list when the Automation should act through tools without a status message. Add send_message only when the user asks for a reminder, post, digest, summary, or other visible result.",
           )
           .optional(),
-        credential_mode: z
+        credentialMode: z
           .enum(["creator", "system"])
           .nullable()
           .describe(
@@ -83,21 +83,21 @@ export function createSlackScheduleCreateAutomationTool(
       .strict(),
     prepareArguments(args) {
       const input = args as {
-        task: string;
+        instruction: string;
         title?: string | null;
         schedule: z.input<typeof scheduleIntentSchema>;
         outcomes?: TaskOutcomeInput[];
-        credential_mode?: "creator" | "system" | null;
+        credentialMode?: "creator" | "system" | null;
       };
       const prepared = { ...input };
       if (prepared.title == null) {
         delete prepared.title;
       }
       if (
-        prepared.credential_mode === "creator" ||
-        prepared.credential_mode === null
+        prepared.credentialMode === "creator" ||
+        prepared.credentialMode === null
       ) {
-        delete prepared.credential_mode;
+        delete prepared.credentialMode;
       }
       return prepared;
     },
@@ -122,7 +122,7 @@ export function createSlackScheduleCreateAutomationTool(
             "Scheduled automation operation identity is invalid.",
           );
         }
-        return scheduleAutomationToolResult(existing);
+        return scheduleAutomationToolResult(existing, actor.slackUserId);
       }
 
       const creator = await context.users.resolveActor();
@@ -158,7 +158,7 @@ export function createSlackScheduleCreateAutomationTool(
       );
       const title = await resolveTaskTitle({
         completeText,
-        instruction: input.task,
+        instruction: input.instruction,
         title: input.title,
       });
 
@@ -169,7 +169,7 @@ export function createSlackScheduleCreateAutomationTool(
         createdBy: actor,
         creatorIdentityId: identity.id,
         conversationAccess,
-        credentialMode: input.credential_mode ?? "creator",
+        credentialMode: input.credentialMode ?? "creator",
         destination,
         executionActor: SCHEDULED_AUTOMATION_SYSTEM_ACTOR,
         nextRunAtMs: compiled.nextRunAtMs,
@@ -182,7 +182,7 @@ export function createSlackScheduleCreateAutomationTool(
           actor.slackUserId,
         ),
         task: {
-          text: input.task,
+          text: input.instruction,
         },
         ...(title ? { title } : undefined),
       };
@@ -200,7 +200,7 @@ export function createSlackScheduleCreateAutomationTool(
         "scheduled_automation.create.completed",
         scheduledAutomationAttributes(committed),
       );
-      return scheduleAutomationToolResult(committed);
+      return scheduleAutomationToolResult(committed, actor.slackUserId);
     },
   });
 }

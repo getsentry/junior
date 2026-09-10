@@ -35,7 +35,7 @@ describeEval("Schedule Creation", slackEvals, (it) => {
         timing: { type: "after", value: 1, unit: "minute" },
       },
     });
-    expect(createCall.arguments).not.toHaveProperty("next_run_at");
+    expect(createCall.arguments).not.toHaveProperty("nextRunAt");
   });
 
   it("when asked for a terse one-off reminder, create it without recurrence", async ({
@@ -64,7 +64,7 @@ describeEval("Schedule Creation", slackEvals, (it) => {
         timing: { type: "after", value: 1, unit: "minute" },
       },
     });
-    expect(createCall.arguments).not.toHaveProperty("next_run_at");
+    expect(createCall.arguments).not.toHaveProperty("nextRunAt");
   });
 
   it("when asked to tell the channel something later, preserve the future work in the schedule", async ({
@@ -87,10 +87,12 @@ describeEval("Schedule Creation", slackEvals, (it) => {
         timing: { type: "after", value: 2, unit: "minute" },
       },
     });
-    expect(createCall.arguments).not.toHaveProperty("next_run_at");
-    expect(createCall.arguments?.task).toMatch(/\bstandup\b/i);
-    expect(createCall.arguments?.task).toMatch(/\bmoved\b/i);
-    expect(createCall.arguments?.task).not.toMatch(/\bschedul(?:e|ing)\b/i);
+    expect(createCall.arguments).not.toHaveProperty("nextRunAt");
+    expect(createCall.arguments?.instruction).toMatch(/\bstandup\b/i);
+    expect(createCall.arguments?.instruction).toMatch(/\bmoved\b/i);
+    expect(createCall.arguments?.instruction).not.toMatch(
+      /\bschedul(?:e|ing)\b/i,
+    );
   });
 
   it("when asked for recurring maintenance, keep successful work silent", async ({

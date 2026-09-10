@@ -41,30 +41,30 @@ const compactTaskResultSchema = z
     id: z.string(),
     title: z.string().nullable(),
     status: z.enum(["active", "blocked", "completed", "deleted"]),
-    status_reason: z.string().nullable(),
-    created_at: z.string().datetime(),
-    updated_at: z.string().datetime(),
-    original_request: z.string().nullable(),
+    statusReason: z.string().nullable(),
+    createdAt: z.string().datetime(),
+    updatedAt: z.string().datetime(),
+    originalRequest: z.string().nullable(),
     instruction: z.string(),
     schedule: z.string(),
     timezone: z.string(),
     recurrence: z.unknown().nullable(),
-    next_run_at: z.string().nullable(),
+    nextRunAt: z.string().nullable(),
     destination: z
       .object({
         channel: z.string().min(1),
         thread: z.string().min(1).nullable(),
       })
       .strict(),
-    conversation_access: z
+    conversationAccess: z
       .object({
         audience: z.enum(["direct", "group", "channel"]),
         visibility: z.enum(["private", "public"]),
       })
       .strict(),
-    credential_mode: z.enum(["system", "creator"]),
-    is_creator: z.boolean(),
-    created_by: z
+    credentialMode: z.enum(["system", "creator"]),
+    isCreator: z.boolean(),
+    createdBy: z
       .object({
         name: z.string().min(1).nullable(),
         username: z.string().min(1).nullable(),
@@ -85,9 +85,9 @@ const compactTaskResultSchema = z
           .strict(),
       )
       .max(5),
-    dashboard_url: z.string().url().nullable(),
-    last_run_at: z.string().nullable(),
-    run_now_at: z.string().nullable(),
+    dashboardUrl: z.string().url().nullable(),
+    lastRunAt: z.string().nullable(),
+    runNowAt: z.string().nullable(),
   })
   .strict();
 
@@ -247,10 +247,10 @@ export function compactTask(
     id: task.id,
     title: task.title?.trim() || null,
     status: task.status,
-    status_reason: task.statusReason ?? null,
-    created_at: new Date(task.createdAtMs).toISOString(),
-    updated_at: new Date(task.updatedAtMs).toISOString(),
-    original_request: task.originalRequest ?? null,
+    statusReason: task.statusReason ?? null,
+    createdAt: new Date(task.createdAtMs).toISOString(),
+    updatedAt: new Date(task.updatedAtMs).toISOString(),
+    originalRequest: task.originalRequest ?? null,
     instruction: task.task.text,
     schedule: task.schedule.description,
     timezone: task.schedule.timezone,
@@ -258,24 +258,24 @@ export function compactTask(
       ? {
           frequency: task.schedule.recurrence.frequency,
           interval: task.schedule.recurrence.interval,
-          start_date: task.schedule.recurrence.startDate,
+          startDate: task.schedule.recurrence.startDate,
           time: task.schedule.recurrence.time,
           weekdays: task.schedule.recurrence.weekdays,
           month: task.schedule.recurrence.month,
-          day_of_month: task.schedule.recurrence.dayOfMonth,
+          dayOfMonth: task.schedule.recurrence.dayOfMonth,
         }
       : null,
-    next_run_at: task.nextRunAtMs
+    nextRunAt: task.nextRunAtMs
       ? new Date(task.nextRunAtMs).toISOString()
       : null,
     destination: {
       channel: task.destination.channelId,
       thread: task.destination.threadTs ?? null,
     },
-    conversation_access: task.conversationAccess,
-    credential_mode: task.credentialMode,
-    is_creator: task.createdBy.slackUserId === requesterSlackUserId,
-    created_by: {
+    conversationAccess: task.conversationAccess,
+    credentialMode: task.credentialMode,
+    isCreator: task.createdBy.slackUserId === requesterSlackUserId,
+    createdBy: {
       name: task.createdBy.fullName ?? null,
       username: task.createdBy.userName ?? null,
     },
@@ -288,19 +288,20 @@ export function compactTask(
         },
       }),
     ),
-    dashboard_url: getDashboardTaskLink(task.id) ?? null,
-    last_run_at: task.lastRunAtMs
+    dashboardUrl: getDashboardTaskLink(task.id) ?? null,
+    lastRunAt: task.lastRunAtMs
       ? new Date(task.lastRunAtMs).toISOString()
       : null,
-    run_now_at: task.runNowAtMs
-      ? new Date(task.runNowAtMs).toISOString()
-      : null,
+    runNowAt: task.runNowAtMs ? new Date(task.runNowAtMs).toISOString() : null,
   });
 }
 
 /** Build the structured result shared by single-task scheduler tools. */
-export function scheduleAutomationToolResult(task: ScheduledAutomation) {
-  return { automation: compactTask(task) } as const;
+export function scheduleAutomationToolResult(
+  task: ScheduledAutomation,
+  requesterSlackUserId?: string,
+) {
+  return { automation: compactTask(task, requesterSlackUserId) } as const;
 }
 
 /** Build the structured result for listing scheduler tools. */

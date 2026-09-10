@@ -4,6 +4,7 @@ import { deleteEventAutomation } from "@/chat/event-automations/store";
 import {
   eventAutomationToolResult,
   eventAutomationToolResultSchema,
+  requireEventAutomationSlackContext,
   writableEventAutomation,
 } from "@/chat/event-automations/tool-support";
 import type { EventCatalog } from "@/chat/events/catalog";
@@ -26,15 +27,16 @@ export function createDeleteEventAutomationTool(
     },
     executionMode: "sequential",
     description: "Delete an event automation.",
-    inputSchema: z.object({ taskId: z.string().min(1) }).strict(),
+    inputSchema: z.object({ automationId: z.string().min(1) }).strict(),
     outputSchema: eventAutomationToolResultSchema,
-    async execute({ taskId }) {
-      const current = await writableEventAutomation(context, taskId);
+    async execute({ automationId }) {
+      const { actor } = requireEventAutomationSlackContext(context);
+      const current = await writableEventAutomation(context, automationId);
       const deleted = await deleteEventAutomation(getDb(), current.id);
       if (!deleted) {
         throw new ToolInputError("Event automation was not found.");
       }
-      return eventAutomationToolResult(deleted, catalog);
+      return eventAutomationToolResult(deleted, catalog, actor.userId);
     },
   });
 }
