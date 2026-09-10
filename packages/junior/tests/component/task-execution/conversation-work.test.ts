@@ -1792,6 +1792,52 @@ describe("conversation work execution", () => {
     });
   });
 
+  it("does not apply a stale stop marker to a new run", async () => {
+    const queue = createConversationWorkQueueTestAdapter();
+    const entered = deferred<void>();
+    const finish = deferred<void>();
+    await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
+
+    const first = processConversationWork(conversationQueueMessage(), {
+      queue,
+      run: async (context) => {
+        await context.attempt.ack();
+        entered.resolve();
+        await finish.promise;
+        return { status: "completed" };
+      },
+    });
+    await entered.promise;
+    await expect(
+      stopConversationWork({
+        conversationId: CONVERSATION_ID,
+        nowMs: 2_000,
+      }),
+    ).resolves.toMatchObject({ status: "requested" });
+    finish.resolve();
+    await expect(first).resolves.toEqual({ status: "completed" });
+
+    await appendInboundMessage({
+      message: inboundMessage("m2", {
+        createdAtMs: 3_000,
+        receivedAtMs: 3_000,
+      }),
+      nowMs: 3_000,
+    });
+    await expect(
+      processConversationWork(conversationQueueMessage(), {
+        queue,
+        run: async (context) => {
+          const signal = context.stopSignal?.();
+          if (!signal) throw new Error("Expected a Conversation stop signal");
+          expect(signal.aborted).toBe(false);
+          await context.attempt.ack();
+          return { status: "completed" };
+        },
+      }),
+    ).resolves.toEqual({ status: "completed" });
+  });
+
   it("resumes a paused Turn when its stop missed the live poll", async () => {
     vi.useFakeTimers({ now: 1_000 });
     let currentNowMs = 1_000;

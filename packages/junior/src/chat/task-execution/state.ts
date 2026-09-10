@@ -1546,9 +1546,6 @@ export async function startConversationWork(args: {
       expiresAtMs: nowMs + CONVERSATION_WORK_LEASE_TTL_MS,
     };
     const startsNewRun = current.execution.runId === undefined;
-    const stop = startsNewRun
-      ? await readConversationStop(state, args.conversationId)
-      : undefined;
     await writeConversation(
       state,
       lock,
@@ -1558,7 +1555,7 @@ export async function startConversationWork(args: {
           ...current.execution,
           lease,
           status: current.execution.status === "paused" ? "paused" : "running",
-          runId: current.execution.runId ?? stop?.runId ?? randomUUID(),
+          runId: current.execution.runId ?? randomUUID(),
           lastEnqueuedAtMs: undefined,
           retryCount: startsNewRun ? 0 : current.execution.retryCount,
         },
