@@ -13,7 +13,10 @@ import { PluginPanels } from "./PluginPanels";
 import { PluginReports } from "./PluginReports";
 import { SkillInventory } from "./SkillInventory";
 import { SystemActivity } from "./SystemActivity";
-import { SystemPageLayout } from "./SystemPageLayout";
+import {
+  SystemPageLayout,
+  SystemRouteLoading,
+} from "./SystemPageLayout";
 import {
   buildSystemPlugins,
   normalizeSystemPath,
@@ -42,6 +45,15 @@ export function SystemPage(props: { data: SystemData }) {
   );
   const pluginPath = pathname.startsWith(`${systemPluginsPath}/`);
 
+  if (pluginPath && !plugin && props.data.pluginReportsLoading) {
+    return (
+      <SystemRouteLoading
+        description="Loading plugin details and operational reports."
+        label="Loading plugin"
+        title="Plugin"
+      />
+    );
+  }
   if (pluginPath && !plugin) {
     return <Navigate replace to={systemPluginsPath} />;
   }
