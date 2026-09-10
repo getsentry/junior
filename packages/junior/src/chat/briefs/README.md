@@ -23,7 +23,11 @@ The record comes from `BriefInput`, not from the model. It contains the activity
 - Output depth follows the record's human user-message count. Small Briefs have at most 3 decisions, 2 open decisions, 5 facts, and 5 keywords. Medium Briefs have at most 8, 5, 10, and 8. Large Briefs have at most 20, 10, 15, and 12. Small means at most 3 user messages. Medium means at most 12.
 - `searchText` contains Brief content, link labels, participant names, and code change Repository numbers and states. It does not contain transcript text that the Brief omitted.
 
-`schema.ts` owns the Brief and generator input schemas and their exported types. The default prompt is in `prompt.ts`. The package uses tsdown, which does not copy Markdown assets. Keeping the prompt in a TypeScript string makes the source and packaged CLI use the same text without a file-system lookup.
+## Layout
+
+`schema.ts` owns the Brief and generator input schemas and their exported types. `input.ts` builds generator input from SQL. `snapshot.ts` builds it from a downloaded snapshot. Both use `event-entries.ts`. `generate.ts` is the pure generator. `store.ts` appends and reads versions. `search.ts` queries the latest public Briefs. `task.ts` runs after each completed Turn and owns the core registration. `render.ts` writes the CLI Markdown.
+
+The default prompt is in `prompt.ts`. The package uses tsdown, which does not copy Markdown assets. Keeping the prompt in a TypeScript string makes the source and packaged CLI use the same text without a file-system lookup.
 
 A run without `--model` resolves the app's configured default model when the run starts. The default model gives more accurate decisions than the fast model in production samples.
 
@@ -46,7 +50,8 @@ Brief. A retry with the same `turnId` re-emits the stored version's idempotent
 second model call. The task and `junior briefs run` send the same request to
 the configured default model. The event carries the version, model id, item
 counts, and model cost. Its cost appears in the Conversation auxiliary-cost
-breakdown under the `briefs` namespace.
+breakdown under the `briefs` namespace. The System report sums retained events,
+so spend on purged private Conversations leaves the report with them.
 
 A public Brief survives transcript purge. A non-public root loses every Brief
 in its Conversation tree when purge scrubs private metadata. Remaining private

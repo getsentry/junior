@@ -28,6 +28,7 @@ export function ConversationHeader(props: {
   copyAction?: ReactNode;
   annotations: ReactNode;
   archive: ConversationArchiveAction;
+  brief?: ReactNode;
   conversationId: string;
   identity: ReactNode;
   live: boolean;
@@ -216,6 +217,7 @@ export function ConversationHeader(props: {
       {detailsOpen ? (
         <ConversationDetailsDrawer
           annotations={props.annotations}
+          brief={props.brief}
           conversationId={props.conversationId}
           identity={props.identity}
           onClose={() => setDetailsOpen(false)}

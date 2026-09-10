@@ -2,9 +2,10 @@ import type { ReactNode } from "react";
 
 import { Drawer } from "../components/Drawer";
 
-/** Show advanced identity, runtime, and resource details for a conversation. */
+/** Show the Brief, identity, runtime, and resource details for a Conversation. */
 export function ConversationDetailsDrawer(props: {
   annotations: ReactNode;
+  brief: ReactNode;
   conversationId: string;
   identity: ReactNode;
   onClose(): void;
@@ -14,6 +15,7 @@ export function ConversationDetailsDrawer(props: {
 }) {
   const titleId = "conversation-details-drawer-title";
   const sections = [
+    { content: props.brief, title: "Brief" },
     { content: props.identity, title: "Identity" },
     { content: props.stats, title: "Runtime" },
     { content: props.annotations, title: "Links" },

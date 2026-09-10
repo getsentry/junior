@@ -66,7 +66,7 @@ const modelBriefSchema = z
 type ModelBrief = z.output<typeof modelBriefSchema>;
 
 /** Structured completion for one Brief. The caller binds the model. */
-export type BriefCompleteObject = (request: {
+type BriefCompleteObject = (request: {
   maxTokens: number;
   prompt: string;
   schema: ZodTypeAny;

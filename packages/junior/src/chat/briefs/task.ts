@@ -15,6 +15,7 @@ import { completeObject } from "@/chat/pi/client";
 import { briefUpdatedEvent } from "./events";
 import { generateBrief } from "./generate";
 import { briefInputFromSql } from "./input";
+import { buildBriefsOperationalReport } from "./operational-report";
 import { BRIEF_PROMPT } from "./prompt";
 import {
   appendConversationBrief,
@@ -196,6 +197,19 @@ export const briefsTaskRegistration: PluginRegistration = {
     description: "Durable Conversation Brief generation",
   },
   conversationEvents: [briefUpdatedEvent],
+  hooks: {
+    async operationalReport(context) {
+      const briefDays = await context.eventStats.costsByDay({
+        days: 90,
+        eventName: "brief_updated",
+      });
+      return await buildBriefsOperationalReport({
+        briefDays,
+        db: context.db as JuniorDatabase,
+        nowMs: context.nowMs,
+      });
+    },
+  },
   tasks: {
     updateBrief: {
       async run(context) {
