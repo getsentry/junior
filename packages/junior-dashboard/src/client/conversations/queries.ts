@@ -21,6 +21,7 @@ import {
   conversationDetailReportSchema,
   conversationEventPageSchema,
   conversationPendingMessagesReportSchema,
+  stopConversationTurnResponseSchema,
 } from "@sentry/junior/api/schema";
 
 import {
@@ -199,7 +200,11 @@ export function useAppendConversationMessage(conversationId: string) {
   const queryClient = useQueryClient();
   const outboxQueryKey = conversationOutboxQueryKey(conversationId);
   return useMutation({
-    mutationFn: (args: { idempotencyKey: string; message: string }) =>
+    mutationFn: (args: {
+      delivery?: "defer" | "interrupt";
+      idempotencyKey: string;
+      message: string;
+    }) =>
       post(
         acceptedConversationMessageSchema,
         `/api/conversations/${encodeURIComponent(conversationId)}/messages`,
@@ -236,6 +241,30 @@ export function useAppendConversationMessage(conversationId: string) {
         exact: true,
         queryKey: conversationPendingMessagesQueryKey(conversationId),
       });
+    },
+  });
+}
+
+/** Request that the active Conversation Turn stop. */
+export function useStopConversationTurn(conversationId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      post(
+        stopConversationTurnResponseSchema,
+        `/api/conversations/${encodeURIComponent(conversationId)}/stop`,
+        {},
+      ),
+    onSettled: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ["dashboard", "conversations"],
+        }),
+        queryClient.invalidateQueries({
+          exact: true,
+          queryKey: conversationDetailQueryKey(conversationId),
+        }),
+      ]);
     },
   });
 }

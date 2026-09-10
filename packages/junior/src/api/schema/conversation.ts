@@ -89,6 +89,7 @@ export const createConversationBodySchema = z
 
 export const createConversationMessageBodySchema = z
   .object({
+    delivery: z.enum(["defer", "interrupt"]).default("defer"),
     idempotencyKey: z.string().trim().min(1).max(200),
     message: z.string().trim().min(1).max(32_000),
   })
@@ -99,6 +100,14 @@ export const acceptedConversationMessageSchema = z
     conversationId: z.string().min(1),
     messageId: z.string().min(1),
     status: z.enum(["accepted", "duplicate"]),
+  })
+  .strict();
+
+/** Result of requesting that the active Conversation Turn stop. */
+export const stopConversationTurnResponseSchema = z
+  .object({
+    conversationId: z.string().min(1),
+    status: z.enum(["no_work", "requested"]),
   })
   .strict();
 
@@ -896,6 +905,9 @@ export type CreateConversationMessageBody = z.infer<
 >;
 export type AcceptedConversationMessage = z.infer<
   typeof acceptedConversationMessageSchema
+>;
+export type StopConversationTurnResponse = z.infer<
+  typeof stopConversationTurnResponseSchema
 >;
 export type ConversationPendingMessageDelivery = z.infer<
   typeof conversationPendingMessageDeliverySchema

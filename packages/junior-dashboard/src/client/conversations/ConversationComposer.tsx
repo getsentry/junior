@@ -8,7 +8,7 @@ import {
   type KeyboardEvent,
   type ReactNode,
 } from "react";
-import { Send } from "lucide-react";
+import { Send, Zap } from "lucide-react";
 
 import { Button } from "../components/Button";
 import { useDashboardOnline } from "../connection";
@@ -63,8 +63,14 @@ type ConversationComposerProps = {
    */
   restoreDraftOnError?: boolean;
   submitLabel: string;
+  /** Show an explicit action that interrupts the active Turn. */
+  showSteer?: boolean;
   onFocus?: () => void;
-  onSubmit(message: string, idempotencyKey: string): Promise<void>;
+  onSubmit(
+    message: string,
+    idempotencyKey: string,
+    delivery: "defer" | "interrupt",
+  ): Promise<void>;
   onSubmitStart?: () => void;
 };
 
@@ -79,7 +85,9 @@ export const ConversationComposer = memo(function ConversationComposer(
   // New-conversation create holds the send control until accept settles so a
   // failed restore cannot race a later submit.
   const [createPending, setCreatePending] = useState(false);
-  const [canSend, setCanSend] = useState(() => Boolean(initialDraft.text.trim()));
+  const [canSend, setCanSend] = useState(() =>
+    Boolean(initialDraft.text.trim()),
+  );
   const online = useDashboardOnline();
   const id = useId();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -182,7 +190,10 @@ export const ConversationComposer = memo(function ConversationComposer(
     syncTextareaHeight();
   };
 
-  const submit = async (event?: FormEvent) => {
+  const submit = async (
+    event?: FormEvent,
+    delivery: "defer" | "interrupt" = "defer",
+  ) => {
     event?.preventDefault();
     const text = draftRef.current.text.trim();
     if (!text || !online || submittingRef.current || sendLocked) return;
@@ -220,7 +231,7 @@ export const ConversationComposer = memo(function ConversationComposer(
     }
 
     try {
-      await props.onSubmit(text, attempt.idempotencyKey);
+      await props.onSubmit(text, attempt.idempotencyKey, delivery);
     } catch {
       if (!props.restoreDraftOnError) {
         // Parent keeps the failed message in the mailbox queue for retry.
@@ -302,7 +313,9 @@ export const ConversationComposer = memo(function ConversationComposer(
         <div
           className={cn(
             "flex min-w-0 items-center gap-3 px-2 py-1.5 md:px-3 md:py-2",
-            props.footerStart ? "justify-between" : "justify-end md:justify-between",
+            props.footerStart
+              ? "justify-between"
+              : "justify-end md:justify-between",
           )}
         >
           <div className="flex min-w-0 items-center gap-3">
@@ -313,24 +326,39 @@ export const ConversationComposer = memo(function ConversationComposer(
               </div>
             )}
           </div>
-          <Button
-            aria-label={sendLocked ? "Sending message" : props.submitLabel}
-            className="!border-0 !bg-transparent hover:!border-0 hover:!bg-white/[0.06] focus-visible:outline focus-visible:outline-1 focus-visible:outline-cyan-300/55 disabled:hover:!border-0 disabled:hover:!bg-transparent"
-            disabled={!canSend || !online || sendLocked}
-            title={
-              !online
-                ? "Connect to send"
-                : sendLocked
-                  ? "Sending message"
-                  : props.submitLabel
-            }
-            type="submit"
-          >
-            <Send aria-hidden="true" size={14} />
-            <span className="hidden md:inline">
-              {sendLocked ? "Sending…" : props.submitLabel}
-            </span>
-          </Button>
+          <div className="flex items-center gap-1">
+            {props.showSteer ? (
+              <Button
+                aria-label="Steer active turn"
+                className="!border-0 !bg-transparent hover:!border-0 hover:!bg-amber-300/[0.08] hover:!text-amber-100 focus-visible:outline focus-visible:outline-1 focus-visible:outline-amber-300/55 disabled:hover:!border-0 disabled:hover:!bg-transparent"
+                disabled={!canSend || !online || sendLocked}
+                onClick={() => void submit(undefined, "interrupt")}
+                title="Send this message into the active turn"
+                type="button"
+              >
+                <Zap aria-hidden="true" size={14} />
+                <span className="hidden md:inline">Steer</span>
+              </Button>
+            ) : null}
+            <Button
+              aria-label={sendLocked ? "Sending message" : props.submitLabel}
+              className="!border-0 !bg-transparent hover:!border-0 hover:!bg-white/[0.06] focus-visible:outline focus-visible:outline-1 focus-visible:outline-cyan-300/55 disabled:hover:!border-0 disabled:hover:!bg-transparent"
+              disabled={!canSend || !online || sendLocked}
+              title={
+                !online
+                  ? "Connect to send"
+                  : sendLocked
+                    ? "Sending message"
+                    : props.submitLabel
+              }
+              type="submit"
+            >
+              <Send aria-hidden="true" size={14} />
+              <span className="hidden md:inline">
+                {sendLocked ? "Sending…" : props.submitLabel}
+              </span>
+            </Button>
+          </div>
         </div>
       </form>
     </div>

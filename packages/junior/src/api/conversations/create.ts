@@ -81,6 +81,7 @@ export async function appendConversationMessageForViewer(
       {
         actor: actorFromViewer(viewer),
         conversationId,
+        delivery: body.delivery,
         idempotencyKey: body.idempotencyKey,
         message: body.message,
       },

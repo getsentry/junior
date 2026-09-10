@@ -3,6 +3,7 @@ import type { ConversationPendingMessage } from "@sentry/junior/api/schema";
 /** Client-owned mailbox row waiting on accept or retry. */
 export type ConversationOutboxMessage = {
   createdAt: string;
+  delivery: "defer" | "interrupt";
   idempotencyKey: string;
   message: string;
   messageId: string;
@@ -22,6 +23,7 @@ export function conversationOutboxQueryKey(conversationId: string | undefined) {
 
 /** Build one optimistic outbox row for a composer submit. */
 export function conversationOutboxMessageForSubmit(input: {
+  delivery?: "defer" | "interrupt";
   idempotencyKey: string;
   message: string;
   now?: string;
@@ -29,6 +31,7 @@ export function conversationOutboxMessageForSubmit(input: {
   const createdAt = input.now ?? new Date().toISOString();
   return {
     createdAt,
+    delivery: input.delivery ?? "defer",
     idempotencyKey: input.idempotencyKey,
     message: input.message,
     messageId: `client:${input.idempotencyKey}`,
@@ -43,7 +46,7 @@ export function mailboxMessageFromOutbox(
   return {
     clientStatus: message.status,
     createdAt: message.createdAt,
-    delivery: "defer",
+    delivery: message.delivery,
     idempotencyKey: message.idempotencyKey,
     inboundMessageId: message.messageId,
     messageId: message.messageId,
@@ -72,7 +75,9 @@ export function mergeConversationMailboxMessages(
   const outboxMessages = outbox ?? [];
   let next: readonly ConversationMailboxMessage[] = serverMessages;
   if (outboxMessages.length > 0) {
-    const serverIds = new Set(serverMessages.map((message) => message.messageId));
+    const serverIds = new Set(
+      serverMessages.map((message) => message.messageId),
+    );
     const extras = outboxMessages
       .filter((message) => !serverIds.has(message.messageId))
       .map(mailboxMessageFromOutbox);

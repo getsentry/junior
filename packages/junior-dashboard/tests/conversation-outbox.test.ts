@@ -19,11 +19,24 @@ describe("conversation outbox", () => {
       }),
     ).toEqual({
       createdAt: "2026-01-01T00:00:00.000Z",
+      delivery: "defer",
       idempotencyKey: "attempt-1",
       message: "Continue in Junior",
       messageId: "client:attempt-1",
       status: "sending",
     });
+  });
+
+  it("keeps interrupt delivery on the optimistic row", () => {
+    expect(
+      mailboxMessageFromOutbox(
+        conversationOutboxMessageForSubmit({
+          delivery: "interrupt",
+          idempotencyKey: "attempt-steer",
+          message: "change course",
+        }),
+      ).delivery,
+    ).toBe("interrupt");
   });
 
   it("keeps failed outbox rows in the mailbox after accept fails", () => {
