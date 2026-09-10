@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { fauxAssistantMessage } from "@earendil-works/pi-ai/providers/faux";
+import {
+  fauxAssistantMessage,
+  fauxToolCall,
+} from "@earendil-works/pi-ai/providers/faux";
 import { NO_REPLY_MARKER } from "@/chat/no-reply";
 import {
   getSlackContinuationMarker,
@@ -243,6 +246,56 @@ describe("Slack behavior: finalized thread replies", () => {
         outcome: "no_reply",
       }),
     ]);
+  });
+
+  it("explains a content-policy error after tool use", async () => {
+    const errorMessage = JSON.stringify({
+      type: "error",
+      error: {
+        type: "api_error",
+        message:
+          "Invalid prompt: your prompt was flagged as potentially violating our usage policy. (invalid_prompt)",
+      },
+      code: "invalid_prompt",
+    });
+    const { slackRuntime } = createTestChatRuntime({
+      services: {
+        agentRunner: createModelAgentRunner(
+          createModelStream([
+            {
+              type: "message",
+              message: fauxAssistantMessage(
+                [
+                  { type: "text", text: errorMessage },
+                  fauxToolCall("bash", { command: "echo ignored" }),
+                ],
+                { stopReason: "error", errorMessage },
+              ),
+            },
+          ]),
+        ),
+      },
+    });
+
+    const thread = await createTestThread({
+      id: "slack:C0FINAL:1700006011.000",
+    });
+    await slackRuntime.handleNewMention(
+      thread,
+      createTestMessage({
+        id: "m-final-11",
+        text: "<@U0APP> inspect this",
+        isMention: true,
+        threadId: thread.id,
+      }),
+      { destination: createTestDestination(thread) },
+    );
+
+    expect(thread.posts).toHaveLength(1);
+    const postedText = toPostedText(thread.posts[0]);
+    expect(postedText).toContain("content policy");
+    expect(postedText).toContain("event_id=");
+    expect(postedText).not.toContain("internal error");
   });
 
   it("marks provider-error replies with partial text as interrupted", async () => {
