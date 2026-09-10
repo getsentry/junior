@@ -39,13 +39,13 @@ function requireConversationTurn(
   };
 }
 
-describe("event wake debounce", () => {
+describe("event wake delay", () => {
   afterEach(async () => {
     await closeConversationFixture();
     vi.restoreAllMocks();
   });
 
-  it("collects a burst of events into one Turn behind a renewable debounce", async () => {
+  it("waits for a burst of events before running one Turn", async () => {
     const { actor, conversationStore, queue, state } =
       await createConversationFixture();
     const conversationId = createConversationId({

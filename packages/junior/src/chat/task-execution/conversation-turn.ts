@@ -82,8 +82,11 @@ import {
   isEventMailboxMetadata,
   type EventMailboxMetadata,
 } from "@/chat/events/notification";
-import { remainingEventWakeDelayMs } from "@/chat/events/wake-debounce";
 import { isEventConversationMessage } from "@/chat/events/actor";
+
+const EVENT_WAIT_MS = 30_000;
+const EVENT_WAIT_PER_EXTRA_MESSAGE_MS = 5_000;
+const EVENT_MAX_WAIT_MS = 60_000;
 
 function stableHex(...parts: string[]): string {
   return createHash("sha256")
@@ -178,14 +181,13 @@ export function createConversationTurnWorker(
     if (resolved.kind === "mailbox") {
       const first = resolved.batch[0]!;
       if (isEventMailboxMetadata(first.message.input.metadata)) {
-        const delayMs = remainingEventWakeDelayMs({
-          eventCount: resolved.batch.length,
-          firstReceivedAtMs: first.message.receivedAtMs,
-          nowMs: Date.now(),
-        });
-        if (delayMs !== undefined) {
-          return { status: "deferred", delayMs };
-        }
+        const waitMs = Math.min(
+          EVENT_MAX_WAIT_MS,
+          EVENT_WAIT_MS +
+            EVENT_WAIT_PER_EXTRA_MESSAGE_MS * (resolved.batch.length - 1),
+        );
+        const delayMs = first.message.receivedAtMs + waitMs - Date.now();
+        if (delayMs > 0) return { status: "deferred", delayMs };
       }
     }
 
