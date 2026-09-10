@@ -177,6 +177,32 @@ it("records rubric judge cost in score metadata", async () => {
   expect(result.metadata).toMatchObject({ answer: "A", costUsd: 0.031 });
 });
 
+it("scores the rubric judge without failing when cost is missing", async () => {
+  completeTextMock.mockResolvedValueOnce({
+    message: {
+      usage: {},
+    },
+    text: '{"answer":"A","rationale":"The response meets the rubric."}',
+  });
+
+  const judgeRun = await slackEvals.judgeHarness.run(
+    { prompt: "Grade this.", system: "Return JSON." },
+    { artifacts: {}, setArtifact: vi.fn() },
+  );
+  const result = await RubricJudge.assess({
+    harness: slackHarness,
+    input: { criteria: { pass: ["Answers correctly"] }, initialEvents: [] },
+    output: undefined,
+    run: {} as never,
+    runJudge: async () => judgeRun.output,
+    session: { events: [] },
+    toolCalls: [],
+  });
+
+  expect(result.metadata).toMatchObject({ answer: "A" });
+  expect(result.metadata).not.toHaveProperty("costUsd");
+});
+
 it("forwards the Vitest abort signal to the eval scenario", async () => {
   runEvalScenarioMock.mockRejectedValueOnce(runError);
   const controller = new AbortController();

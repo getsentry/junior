@@ -643,7 +643,7 @@ const judgeHarness = createJudgeHarness({
       ],
       temperature: 0,
     });
-    return { costUsd: message.usage.cost.total, text };
+    return { costUsd: message.usage.cost?.total, text };
   },
 });
 
@@ -771,7 +771,8 @@ export const RubricJudge = createJudge(
       typeof judgeResult !== "object" ||
       Array.isArray(judgeResult) ||
       typeof judgeResult.text !== "string" ||
-      typeof judgeResult.costUsd !== "number"
+      (judgeResult.costUsd !== undefined &&
+        typeof judgeResult.costUsd !== "number")
     ) {
       throw new Error("Rubric judge returned an invalid result.");
     }
@@ -783,7 +784,9 @@ export const RubricJudge = createJudge(
       metadata: {
         answer,
         rationale: object.rationale,
-        costUsd: judgeResult.costUsd,
+        ...(judgeResult.costUsd !== undefined
+          ? { costUsd: judgeResult.costUsd }
+          : undefined),
       },
     };
   },
