@@ -288,6 +288,7 @@ export async function appendAndEnqueueWebMessage(
     conversationStore: options.conversationStore,
     nowMs,
     queue: options.queue,
+    replaceExistingWake: true,
     state: options.state,
   });
   const status = result.status === "appended" ? "accepted" : result.status;

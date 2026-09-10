@@ -120,9 +120,13 @@ function selectAttemptMessages(work: ConversationWorkState): InboundMessage[] {
   if (interrupts.length > 0) {
     return selectContiguousTurnBatch(interrupts);
   }
-  return work.execution.status === "paused"
-    ? []
-    : selectContiguousTurnBatch(messages);
+  if (work.execution.status === "paused") return [];
+  const nonEventMessages = messages.filter(
+    (message) => message.source !== "event",
+  );
+  return selectContiguousTurnBatch(
+    nonEventMessages.length > 0 ? nonEventMessages : messages,
+  );
 }
 
 function nudgeIdempotencyKey(

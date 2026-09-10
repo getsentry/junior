@@ -6,6 +6,7 @@ import {
 import type { AgentRun } from "@/chat/agent/types";
 import { getConversationEventStore } from "@/chat/db";
 import {
+  appendAndEnqueueWebMessage,
   createConversationId,
   recordWebConversationActivity,
 } from "@/chat/conversations/web-input";
@@ -112,6 +113,27 @@ describe("event wake delay", () => {
       ),
     );
 
+    nowSpy.mockReturnValue(baseMs + 100);
+    await appendAndEnqueueWebMessage(
+      {
+        actor,
+        conversationId,
+        idempotencyKey: "human-message",
+        message: "Please check now",
+      },
+      { conversationStore, queue, state },
+    );
+    expect(queue.sentRecords()).toHaveLength(2);
+    await expect(
+      processConversationQueueMessage(queue.takeMessage(), {
+        conversationStore,
+        queue,
+        run,
+        state,
+      }),
+    ).resolves.toEqual({ status: "pending_requeued" });
+    expect(agentRuns).toHaveLength(1);
+
     nowSpy.mockReturnValue(baseMs + 200);
     await appendAndEnqueueInboundMessage({
       conversationStore,
@@ -119,7 +141,7 @@ describe("event wake delay", () => {
       queue,
       state,
     });
-    expect(queue.sentRecords()).toHaveLength(1);
+    expect(queue.sentRecords()).toHaveLength(3);
 
     nowSpy.mockReturnValue(baseMs + 30_000);
     await expect(
@@ -130,7 +152,7 @@ describe("event wake delay", () => {
         state,
       }),
     ).resolves.toEqual({ status: "pending_requeued" });
-    expect(agentRuns).toHaveLength(0);
+    expect(agentRuns).toHaveLength(1);
     expect(queue.sentRecords().at(-1)).toMatchObject({ delayMs: 5_000 });
 
     nowSpy.mockReturnValue(baseMs + 35_000);
@@ -142,7 +164,7 @@ describe("event wake delay", () => {
         state,
       }),
     ).resolves.toEqual({ status: "completed" });
-    expect(agentRuns).toHaveLength(1);
+    expect(agentRuns).toHaveLength(2);
 
     const userMessages = (
       await getConversationEventStore().loadHistory(conversationId)
@@ -151,6 +173,9 @@ describe("event wake delay", () => {
         ? [event.data.text]
         : [],
     );
-    expect(userMessages).toEqual(["Check 1 failed\n\nCheck 2 failed"]);
+    expect(userMessages).toEqual([
+      "Please check now",
+      "Check 1 failed\n\nCheck 2 failed",
+    ]);
   });
 });
