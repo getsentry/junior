@@ -169,9 +169,9 @@ export const plugins = defineJuniorPlugins([
 - **Required:** No
 - **Environment override:** None
 
-`subscribeAfterCreate` creates a temporary watch after a successful `github_createPullRequest` call. It only runs in Slack conversations that can host watches, and only when GitHub webhooks are enabled. Forced events are removed from the tool result's suggested events so the model does not re-watch them. The subscription still expires like any other watch.
+`subscribeAfterCreate` creates a temporary watch after a successful `github_createPullRequest` call. It only runs in Slack conversations that can host watches, and only when GitHub webhooks are enabled. Forced events are removed from the tool result's suggested events so the model does not re-watch them. The watch still expires normally.
 
-`guidance` adds short app guidance when a matching pull request event reaches the agent. It applies within the subscription or event automation instruction. It cannot replace or expand that instruction, grant credentials, or bypass action review. Keep each value short.
+`guidance` adds short app guidance when a matching pull request event reaches the agent. It applies within the watch or event automation instruction. It cannot replace or expand that instruction, grant credentials, or bypass action review. Keep each value short.
 
 </details>
 
@@ -303,8 +303,8 @@ allowlist.
 ### Watches
 
 Set `GITHUB_WEBHOOK_SECRET` to enable events. See
-[Resource Subscriptions](/concepts/watches/) for temporary
-watches versus durable event automations.
+[Watches](/concepts/watches/) for temporary watches versus durable event
+automations.
 
 Issue and pull request events can target one item with `owner/repo#number`, or
 every item of that kind in a repository with `owner/repo`.
@@ -312,8 +312,8 @@ every item of that kind in a repository with `owner/repo`.
 To always watch selected events after Junior creates a pull request in this
 app, set `pullRequestEvents.subscribeAfterCreate` in `plugins.ts`. To add short
 app guidance for one pull request event type, set
-`pullRequestEvents.guidance`. The guidance applies within each subscription or
-event automation instruction. It does not replace or expand that instruction.
+`pullRequestEvents.guidance`. The guidance applies within each watch or event
+automation instruction. It does not replace or expand that instruction.
 
 #### `deployment_source`
 

@@ -216,10 +216,10 @@ Attributes: `gen_ai.tool.name`, `gen_ai.tool.call.id`,
 `app.sandbox.search.result_bytes`, `app.sandbox.search.limit`,
 `app.sandbox.search.limit_reached`, `app.tool.missing_annotations`
 
-### Scheduled Tasks
+### Scheduled automations
 
-A reminder or recurring task was created, claimed, dispatched, completed, or
-failed without an obvious Slack error.
+A scheduled automation was created, claimed, dispatched, completed, or failed
+without an obvious Slack error.
 
 Events: `scheduled_automation.create.completed`, `scheduled_automation.run.claimed`,
 `scheduled_automation.run.dispatched`, `scheduled_automation.run.completed`,

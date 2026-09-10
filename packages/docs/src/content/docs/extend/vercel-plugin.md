@@ -116,8 +116,8 @@ before accepting a delivery.
 ## Watches
 
 Set `VERCEL_WEBHOOK_SECRET` to enable watches. See
-[Resource Subscriptions](/concepts/watches/) for the difference
-between temporary subscriptions and durable event automations.
+[Watches](/concepts/watches/) for the difference between temporary watches
+and durable event automations.
 
 Deployment watches use Vercel's project ID. Users can give a project name or
 ID. Junior gets the project ID from Vercel's authenticated project API.
@@ -156,8 +156,8 @@ The deployment was canceled.
 
 </details>
 
-Create the subscription or event automation before the deployment finishes. Junior
-does not replay earlier webhooks. Project- and target-scoped watches keep
+Create the watch or event automation before the deployment finishes. Junior does
+not replay earlier webhooks. Project- and target-scoped watches keep
 receiving later deployments; commit-scoped watches complete on the terminal
 event.
 
@@ -240,10 +240,10 @@ If deployment webhooks are enabled, also verify one signed delivery:
   Junior domain and is not blocked by deployment protection, login, or another
   access-control layer.
 - Vercel accepts the webhook but no Slack update appears: confirm the original
-  conversation still has an active subscription or event automation for the same
+  conversation still has an active watch or event automation for the same
   project, optional target, optional commit SHA, and event type.
 
 ## Next step
 
-Review [Resource Subscriptions](/concepts/watches/) and
+Review [Watches](/concepts/watches/) and
 [Sandbox Snapshots](/operate/sandbox-snapshots/).

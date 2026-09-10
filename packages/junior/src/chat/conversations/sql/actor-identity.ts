@@ -64,7 +64,7 @@ export function systemIdentityFromSource(
       kind: "system",
       provider: "junior",
       providerSubjectId: "event",
-      displayName: "Resource Event",
+      displayName: "Event",
     };
   }
   return undefined;

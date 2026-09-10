@@ -111,7 +111,7 @@ Only workspace admins, or OAuth applications with the `admin` scope, can create 
 
 ## Watches
 
-Set `LINEAR_WEBHOOK_SECRET` to enable watches. See [Resource Subscriptions](/concepts/watches/) for the difference between temporary subscriptions and durable event automations.
+Set `LINEAR_WEBHOOK_SECRET` to enable watches. See [Watches](/concepts/watches/) for the difference between temporary watches and durable event automations.
 
 ### `issue`
 
@@ -135,17 +135,17 @@ An issue was created in the team.
 
 </details>
 
-Create the subscription or event automation before the issue arrives. Junior does not replay earlier webhooks.
+Create the watch or event automation before the issue arrives. Junior does not replay earlier webhooks.
 
 Identifiers are normalized to uppercase. Prefer team-scoped event automations for monitor workflows that create many new issues.
 
-Optional `match` values come from the resource type. For Linear issue and team events, `teamKey` is the uppercase team key such as `SRE`. Junior drops events that do not match before it wakes the agent. Prefer a team identifier for “all new issues in SRE”. Use `match.teamKey` when an issue-scoped watch or task needs an extra team guard.
+Optional `match` values come from the resource type. For Linear issue and team events, `teamKey` is the uppercase team key such as `SRE`. Junior drops events that do not match before it wakes the agent. Prefer a team identifier for “all new issues in SRE”. Use `match.teamKey` when an issue-scoped watch or event automation needs an extra team guard.
 
 ## Verify
 
 **OAuth:** Ask Junior to create or update a real Linear issue, complete the private authorization flow, and confirm the issue key or URL returns in the same thread.
 
-**Webhooks:** Create an event automation for a team key, then create a test issue in that team. You can also create an issue-scoped task with `match.teamKey` set to the same team key and confirm non-matching teams do not fire.
+**Webhooks:** Create an event automation for a team key, then create a test issue in that team. You can also create an issue-scoped event automation with `match.teamKey` set to the same team key and confirm non-matching teams do not fire.
 
 ## Security
 
@@ -159,9 +159,9 @@ Optional `match` values come from the resource type. For Linear issue and team e
 - **Wrong team or project target:** Include the team name, project name, or existing Linear issue key explicitly in the Slack request.
 - **Duplicate or low-signal tickets:** Give Junior the core problem, impact, and any supporting URLs from the thread so it can create a grounded issue instead of a vague summary.
 - **Permission failures after connect:** The user's Linear account may not have access to that team, project, or issue. Retry with a resource the user can access.
-- **Webhooks are ignored:** Check `LINEAR_WEBHOOK_SECRET`, confirm the webhook points at `/api/webhooks/linear`, and confirm a matching subscription or event automation exists.
+- **Webhooks are ignored:** Check `LINEAR_WEBHOOK_SECRET`, confirm the webhook points at `/api/webhooks/linear`, and confirm a matching watch or event automation exists.
 - **Event automation stays unavailable:** Events stay disabled until `LINEAR_WEBHOOK_SECRET` is set and Junior is redeployed.
 
 ## Next step
 
-Review [Resource Subscriptions](/concepts/watches/) and [Security Hardening](/operate/security-hardening/).
+Review [Watches](/concepts/watches/) and [Security Hardening](/operate/security-hardening/).

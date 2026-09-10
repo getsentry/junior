@@ -111,13 +111,13 @@ Explain provider-specific setup after install and config. Keep this section conc
 ## Watches
 
 If the plugin publishes events, list every resource type the agent can
-subscribe to. Link to [Resource Subscriptions](/concepts/watches/)
-for the core distinction between temporary watches and durable
+subscribe to. Link to [Watches](/concepts/watches/) for the core distinction
+between temporary watches and durable
 event automations; do not redefine those behaviors on every plugin page.
 
 Use one subsection per resource type, then one collapsed disclosure per event.
 Show the exact event name in the summary and its plain-language description
-inside. Do not add a separate subscription-details row.
+inside. Do not add a separate watch-details row.
 
 ### `issue`
 

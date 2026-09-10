@@ -139,7 +139,7 @@ Junior verifies each webhook signature and accepts webhooks only from the config
 
 ## Watches
 
-Set `SENTRY_WEBHOOK_ORG` and `SENTRY_WEBHOOK_SECRET` to enable watches. See [Resource Subscriptions](/concepts/watches/) for the difference between temporary subscriptions and durable event automations.
+Set `SENTRY_WEBHOOK_ORG` and `SENTRY_WEBHOOK_SECRET` to enable watches. See [Watches](/concepts/watches/) for the difference between temporary watches and durable event automations.
 
 ### `issue`
 
@@ -163,7 +163,7 @@ An issue was created in the project.
 
 </details>
 
-Create the subscription or event automation before the issue arrives. Junior does not replay earlier webhooks.
+Create the watch or event automation before the issue arrives. Junior does not replay earlier webhooks.
 
 ## Verify
 
@@ -183,9 +183,9 @@ Create the subscription or event automation before the issue arrives. Junior doe
 - **Sentry returns `401`:** Reconnect Sentry to replace the stale or revoked token.
 - **Sentry reports a missing scope:** Reconnect Sentry to grant the current scopes.
 - **Sentry returns `403`:** Connect an account with access to the requested organization and project.
-- **Webhooks are ignored:** Check `SENTRY_WEBHOOK_ORG` and `SENTRY_WEBHOOK_SECRET`, then confirm a matching subscription or event automation exists.
+- **Webhooks are ignored:** Check `SENTRY_WEBHOOK_ORG` and `SENTRY_WEBHOOK_SECRET`, then confirm a matching watch or event automation exists.
 - **Authorization links use the wrong host:** Set `JUNIOR_BASE_URL` to Junior's public URL.
 
 ## Next step
 
-Review [Resource Subscriptions](/concepts/watches/) and [Security Hardening](/operate/security-hardening/).
+Review [Watches](/concepts/watches/) and [Security Hardening](/operate/security-hardening/).
