@@ -14,6 +14,8 @@ import { eventGuidance } from "@/chat/events/catalog";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import { EVENT_AUTHOR_ID } from "@/chat/events/actor";
 
+export const EVENT_WAIT_MS = 30_000;
+
 export interface EventNotification {
   eventKey: string;
   eventType: string;
@@ -181,6 +183,7 @@ export async function enqueueEventNotification(args: {
       text,
     }),
     queue: args.queue,
+    queueDelayMs: EVENT_WAIT_MS,
     state: args.state,
   });
 }

@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createEventInboundMessage } from "@/chat/events/notification";
+import {
+  createEventInboundMessage,
+  EVENT_WAIT_MS,
+} from "@/chat/events/notification";
 import type { AgentRun } from "@/chat/agent/types";
 import { getConversationEventStore } from "@/chat/db";
 import {
@@ -90,8 +93,12 @@ describe("event wake delay", () => {
       conversationStore,
       message: eventMessage(1, baseMs),
       queue,
+      queueDelayMs: EVENT_WAIT_MS,
       state,
     });
+    expect(queue.sentRecords()).toEqual([
+      expect.objectContaining({ delayMs: 30_000 }),
+    ]);
 
     const agentRuns: AgentRun[] = [];
     const run = requireConversationTurn(
@@ -105,17 +112,6 @@ describe("event wake delay", () => {
       ),
     );
 
-    await expect(
-      processConversationQueueMessage(queue.takeMessage(), {
-        conversationStore,
-        queue,
-        run,
-        state,
-      }),
-    ).resolves.toEqual({ status: "pending_requeued" });
-    expect(agentRuns).toHaveLength(0);
-    expect(queue.sentRecords().at(-1)).toMatchObject({ delayMs: 30_000 });
-
     nowSpy.mockReturnValue(baseMs + 200);
     await appendAndEnqueueInboundMessage({
       conversationStore,
@@ -123,7 +119,7 @@ describe("event wake delay", () => {
       queue,
       state,
     });
-    expect(queue.sentRecords()).toHaveLength(2);
+    expect(queue.sentRecords()).toHaveLength(1);
 
     nowSpy.mockReturnValue(baseMs + 30_000);
     await expect(

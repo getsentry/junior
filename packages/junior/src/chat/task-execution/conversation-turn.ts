@@ -79,12 +79,12 @@ import {
 import { joinMailboxText } from "@/chat/task-execution/mailbox-input";
 import { resolveConversationDestination } from "@/chat/conversations/destination";
 import {
+  EVENT_WAIT_MS,
   isEventMailboxMetadata,
   type EventMailboxMetadata,
 } from "@/chat/events/notification";
 import { isEventConversationMessage } from "@/chat/events/actor";
 
-const EVENT_WAIT_MS = 30_000;
 const EVENT_WAIT_PER_EXTRA_MESSAGE_MS = 5_000;
 const EVENT_MAX_WAIT_MS = 60_000;
 
