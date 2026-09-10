@@ -1,6 +1,10 @@
 import type { User } from "@sentry/junior-plugin-api";
 import { getConversationStore, getDb } from "@/chat/db";
-import { promoteHumanFacingPendingMessage } from "@/chat/task-execution/store";
+import {
+  ensureConversationWake,
+  promoteHumanFacingPendingMessage,
+} from "@/chat/task-execution/store";
+import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
 import { throwApiError } from "../http";
 import type {
   PromoteConversationPendingMessageBody,
@@ -29,13 +33,24 @@ export async function promoteConversationPendingMessageForViewer(
     );
   }
 
+  const nowMs = Date.now();
   let result: Awaited<ReturnType<typeof promoteHumanFacingPendingMessage>>;
   try {
     result = await promoteHumanFacingPendingMessage({
       conversationId,
       inboundMessageId: body.inboundMessageId,
       conversationStore: getConversationStore(),
+      nowMs,
     });
+    if (result.status === "promoted") {
+      await ensureConversationWake({
+        conversationId,
+        conversationStore: getConversationStore(),
+        idempotencyKey: `steer:${body.inboundMessageId}:${nowMs}`,
+        nowMs,
+        queue: getVercelConversationWorkQueue(),
+      });
+    }
   } catch (error) {
     throwApiError(500, "Unable to steer queued message.", error);
   }

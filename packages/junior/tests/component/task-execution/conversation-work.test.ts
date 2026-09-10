@@ -20,6 +20,7 @@ import {
   listActiveConversationIds,
   listConversationsByActivity,
   ackMessages,
+  promoteHumanFacingPendingMessage,
   recordConversationActivity,
   requestAnotherSlice,
   requestConversationWork,
@@ -2227,6 +2228,42 @@ describe("conversation work execution", () => {
               receivedAtMs: 2_100,
             }),
             nowMs: 2_100,
+          });
+          const second = await context.attempt.drain(async () => {});
+          injected.push(second.map((message) => message.inboundMessageId));
+          return { status: "completed" };
+        },
+      }),
+    ).resolves.toEqual({ status: "completed" });
+
+    expect(injected).toEqual([["m1"], ["m2"]]);
+  });
+
+  it("injects an older queued Message after it is steered", async () => {
+    const queue = createConversationWorkQueueTestAdapter();
+    let currentNowMs = 1_500;
+    await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
+    await appendInboundMessage({
+      message: inboundMessage("m2", {
+        delivery: "defer",
+        source: "web",
+      }),
+      nowMs: 1_100,
+    });
+    const injected: string[][] = [];
+
+    await expect(
+      processConversationWork(conversationQueueMessage(), {
+        nowMs: () => currentNowMs,
+        queue,
+        run: async (context) => {
+          const first = await context.attempt.drain(async () => {});
+          injected.push(first.map((message) => message.inboundMessageId));
+          currentNowMs = 2_000;
+          await promoteHumanFacingPendingMessage({
+            conversationId: CONVERSATION_ID,
+            inboundMessageId: "m2",
+            nowMs: currentNowMs,
           });
           const second = await context.attempt.drain(async () => {});
           injected.push(second.map((message) => message.inboundMessageId));

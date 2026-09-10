@@ -478,13 +478,15 @@ async function processConversationWorkInContext(
       conversationStore: options.conversationStore,
       handle: async (messages) => {
         // Pending work that was not selected when the attempt started belongs
-        // to a later actor-scoped attempt. Selected or newly arrived
-        // interrupts remain eligible for this attempt's drain.
+        // to a later actor-scoped attempt. Selected, newly arrived, or newly
+        // steered interrupts remain eligible for this attempt's drain.
         const candidates = messages.filter(
           (message) =>
             message.delivery === "interrupt" &&
             (attemptSelectedMessageIds.has(message.inboundMessageId) ||
-              !attemptStartMessageIds.has(message.inboundMessageId)),
+              !attemptStartMessageIds.has(message.inboundMessageId) ||
+              (message.steeredAtMs !== undefined &&
+                message.steeredAtMs >= startedAtMs)),
         );
         if (candidates.length === 0) {
           return [];

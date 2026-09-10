@@ -116,6 +116,7 @@ export const inboundMessageSchema = z
     input: agentInputSchema,
     receivedAtMs: z.number().finite(),
     source: inboundMessageSourceSchema,
+    steeredAtMs: z.number().finite().optional(),
   })
   .strict();
 
@@ -1848,9 +1849,11 @@ export async function promoteHumanFacingPendingMessage(args: {
         return message;
       }
       promoted = true;
-      return message.delivery === "interrupt"
-        ? message
-        : { ...message, delivery: "interrupt" as const };
+      return {
+        ...message,
+        delivery: "interrupt" as const,
+        steeredAtMs: nowMs,
+      };
     });
     if (!promoted) return { status: "not_found" };
 
