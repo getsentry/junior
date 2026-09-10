@@ -1770,6 +1770,7 @@ export async function stopConversationWork(args: {
   nowMs?: number;
   state?: StateAdapter;
 }): Promise<StopConversationWorkResult> {
+  const nowMs = args.nowMs ?? now();
   return await withConversationMutation(args, async (state, lock) => {
     const current = await readConversation(state, args.conversationId);
     if (!current || !hasRunnableWork(current)) {
@@ -1780,6 +1781,17 @@ export async function stopConversationWork(args: {
     const inboundMessageIds = current.execution.pendingMessages
       .filter(isHumanFacingMessage)
       .map((message) => message.inboundMessageId);
+    if (current.execution.runId === undefined) {
+      await writeConversation(
+        state,
+        lock,
+        withExecutionUpdate(
+          current,
+          { ...current.execution, runId },
+          nowMs,
+        ),
+      );
+    }
     await fenceConversationMutation(state, lock, args.conversationId);
     await state.set(
       conversationStopKey(args.conversationId),
