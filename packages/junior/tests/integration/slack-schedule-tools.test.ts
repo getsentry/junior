@@ -298,6 +298,9 @@ describe("Slack schedule tools", () => {
   it("creates and lists tasks only for the active Slack conversation", async () => {
     const created = await createTask();
     expect(created).toMatchObject({
+      summary: expect.stringContaining(
+        "Outcome: Silent on success (no messages).",
+      ),
       task: {
         conversation_access: {
           audience: "channel",
@@ -319,6 +322,24 @@ describe("Slack schedule tools", () => {
       readScheduledAutomation(created.task.id),
     ).resolves.toMatchObject({
       creatorIdentityId: `identity:${TEST_TEAM_ID}:U123`,
+    });
+    expect(created.summary).toContain(
+      "Instruction: Weekly issue digest: Summarize open scheduler issues and post a concise summary.",
+    );
+    expect(created.summary).toContain(
+      "Schedule: Every week on Monday at 09:00 (America/Los_Angeles)",
+    );
+    expect(created.summary).toContain("Credentials: creator");
+    expect(created.summary).toContain("Created by: David Cramer (@dcramer)");
+    expect(created.summary).toContain("Managed in: Slack channel C123");
+    expect(created.task).toMatchObject({
+      created_by: {
+        slack_user_id: "U123",
+        full_name: "David Cramer",
+        user_name: "dcramer",
+      },
+      status_reason: null,
+      destination: { channel_id: "C123", thread_ts: null },
     });
     expect(created).not.toHaveProperty("data");
 
@@ -734,6 +755,9 @@ describe("Slack schedule tools", () => {
       },
     );
     expect(updated).toMatchObject({
+      summary: expect.stringContaining(
+        "Outcome: Silent on success (no messages).",
+      ),
       task: {
         id: taskId,
         next_run_at: "2026-05-26T17:00:00.000Z",
@@ -741,6 +765,12 @@ describe("Slack schedule tools", () => {
         schedule: "Every week on Tuesday at 10:00 (America/Los_Angeles)",
       },
     });
+    expect(updated.summary).toContain(
+      "Instruction: Tuesday scheduler digest: Summarize open scheduler issues.",
+    );
+    expect(updated.summary).toContain(
+      "Schedule: Every week on Tuesday at 10:00 (America/Los_Angeles)",
+    );
     await expect(readScheduledAutomation(taskId)).resolves.toMatchObject({
       nextRunAtMs: Date.parse("2026-05-26T17:00:00.000Z"),
       schedule: {

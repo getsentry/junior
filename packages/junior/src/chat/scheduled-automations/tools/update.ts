@@ -20,7 +20,6 @@ import {
 import { scheduledAutomationAttributes } from "../telemetry";
 import type { ScheduledAutomation } from "../types";
 import {
-  compactTask,
   getConversationAccess,
   getDefaultScheduleTimezone,
   normalizeStatus,
@@ -255,10 +254,7 @@ export function createSlackScheduleUpdateAutomationTool(
         input.outcomes === undefined &&
         moveHere
       ) {
-        return scheduleTaskToolResult(
-          "slackScheduleUpdateAutomation",
-          compactTask(lookup),
-        );
+        return scheduleTaskToolResult("slackScheduleUpdateAutomation", lookup);
       }
 
       const committed = await saveScheduledAutomation(db, next);
@@ -268,10 +264,7 @@ export function createSlackScheduleUpdateAutomationTool(
           scheduledAutomationAttributes(committed),
         );
       }
-      return scheduleTaskToolResult(
-        "slackScheduleUpdateAutomation",
-        compactTask(committed),
-      );
+      return scheduleTaskToolResult("slackScheduleUpdateAutomation", committed);
     },
   });
 }

@@ -4,7 +4,6 @@ import { getDb } from "@/chat/db";
 import { saveScheduledAutomation } from "../tasks";
 import type { ScheduledAutomation } from "../types";
 import {
-  compactTask,
   getWritableTask,
   scheduleTaskToolResult,
   scheduleTaskToolResultSchema,
@@ -52,10 +51,7 @@ export function createSlackScheduleRunAutomationNowTool(
       };
 
       await saveScheduledAutomation(getDb(), next);
-      return scheduleTaskToolResult(
-        "slackScheduleRunAutomationNow",
-        compactTask(next),
-      );
+      return scheduleTaskToolResult("slackScheduleRunAutomationNow", next);
     },
   });
 }

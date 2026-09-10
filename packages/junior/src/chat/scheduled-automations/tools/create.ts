@@ -23,7 +23,6 @@ import { SCHEDULED_AUTOMATION_SYSTEM_ACTOR } from "../types";
 import type { ScheduledAutomation } from "../types";
 import {
   buildTaskId,
-  compactTask,
   getConversationAccess,
   getDefaultScheduleTimezone,
   requireActiveConversation,
@@ -125,7 +124,7 @@ export function createSlackScheduleCreateAutomationTool(
         }
         return scheduleTaskToolResult(
           "slackScheduleCreateAutomation",
-          compactTask(existing),
+          existing,
         );
       }
 
@@ -204,10 +203,7 @@ export function createSlackScheduleCreateAutomationTool(
         "scheduled_automation.create.completed",
         scheduledAutomationAttributes(committed),
       );
-      return scheduleTaskToolResult(
-        "slackScheduleCreateAutomation",
-        compactTask(committed),
-      );
+      return scheduleTaskToolResult("slackScheduleCreateAutomation", committed);
     },
   });
 }

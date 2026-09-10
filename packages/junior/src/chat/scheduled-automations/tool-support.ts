@@ -13,7 +13,10 @@ import { getDashboardTaskLink } from "@/chat/dashboard-link";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import { z } from "zod";
-import { sanitizeScheduledAutomationPrincipal } from "./identity";
+import {
+  sanitizeScheduledAutomationPrincipal,
+  scheduledAutomationPrincipalLabel,
+} from "./identity";
 import { readScheduledAutomation } from "./tasks";
 import type {
   ScheduledAutomation,
@@ -40,7 +43,12 @@ const DEFAULT_SCHEDULE_TIMEZONE = "America/Los_Angeles";
 const compactTaskResultSchema = z
   .object({
     id: z.string(),
+    title: z.string().nullable(),
     status: z.enum(["active", "blocked", "completed", "deleted"]),
+    status_reason: z.string().nullable(),
+    created_at: z.string().datetime(),
+    updated_at: z.string().datetime(),
+    original_request: z.string().nullable(),
     task: z.string(),
     schedule: z.string(),
     timezone: z.string(),
@@ -51,6 +59,7 @@ const compactTaskResultSchema = z
         platform: z.literal("slack"),
         team_id: z.string().min(1),
         channel_id: z.string().min(1),
+        thread_ts: z.string().min(1).nullable(),
       })
       .strict(),
     conversation_access: z
@@ -60,6 +69,13 @@ const compactTaskResultSchema = z
       })
       .strict(),
     credential_mode: z.enum(["system", "creator"]),
+    created_by: z
+      .object({
+        slack_user_id: z.string().min(1),
+        full_name: z.string().min(1).nullable(),
+        user_name: z.string().min(1).nullable(),
+      })
+      .strict(),
     outcomes: z.array(taskOutcomeSchema).max(5),
     dashboard_url: z.string().url().nullable(),
     last_run_at: z.string().nullable(),
@@ -70,6 +86,7 @@ const compactTaskResultSchema = z
 export const scheduleTaskToolResultSchema = juniorToolOutputSchema
   .extend({
     target: z.string(),
+    summary: z.string().min(1),
     task: compactTaskResultSchema,
   })
   .strict();
@@ -216,11 +233,50 @@ export async function getWritableTask(args: {
   return task;
 }
 
+function scheduledAutomationOutcomeSummary(task: ScheduledAutomation): string {
+  if (task.outcomes.length === 0) {
+    return "Silent on success (no messages).";
+  }
+  return task.outcomes
+    .map((outcome) => {
+      const destination = outcome.destination;
+      const thread = destination.threadTs
+        ? ` thread ${destination.threadTs}`
+        : "";
+      return `Send a message to Slack channel ${destination.channelId}${thread}.`;
+    })
+    .join(" ");
+}
+
+/** Render the complete scheduled Automation state for the agent's user report. */
+export function scheduledAutomationSummary(task: ScheduledAutomation): string {
+  const nextRun = task.nextRunAtMs
+    ? new Date(task.nextRunAtMs).toISOString()
+    : "none";
+  return [
+    `Scheduled automation: ${task.title?.trim() || task.id}`,
+    `Status: ${task.status}${task.statusReason ? ` (${task.statusReason})` : ""}`,
+    `Instruction: ${task.task.text}`,
+    `Schedule: ${task.schedule.description}`,
+    `Timezone: ${task.schedule.timezone}`,
+    `Next run: ${nextRun}`,
+    `Outcome: ${scheduledAutomationOutcomeSummary(task)}`,
+    `Credentials: ${task.credentialMode}`,
+    `Created by: ${scheduledAutomationPrincipalLabel(task.createdBy)}`,
+    `Managed in: Slack channel ${task.destination.channelId}${task.destination.threadTs ? ` thread ${task.destination.threadTs}` : ""}`,
+  ].join("\n");
+}
+
 /** Project scheduled automation state into the stable model-facing result shape. */
 export function compactTask(task: ScheduledAutomation): CompactTaskResult {
   return compactTaskResultSchema.parse({
     id: task.id,
+    title: task.title?.trim() || null,
     status: task.status,
+    status_reason: task.statusReason ?? null,
+    created_at: new Date(task.createdAtMs).toISOString(),
+    updated_at: new Date(task.updatedAtMs).toISOString(),
+    original_request: task.originalRequest ?? null,
     task: task.task.text,
     schedule: task.schedule.description,
     timezone: task.schedule.timezone,
@@ -242,9 +298,15 @@ export function compactTask(task: ScheduledAutomation): CompactTaskResult {
       platform: "slack" as const,
       team_id: task.destination.teamId,
       channel_id: task.destination.channelId,
+      thread_ts: task.destination.threadTs ?? null,
     },
     conversation_access: task.conversationAccess,
     credential_mode: task.credentialMode,
+    created_by: {
+      slack_user_id: task.createdBy.slackUserId,
+      full_name: task.createdBy.fullName ?? null,
+      user_name: task.createdBy.userName ?? null,
+    },
     outcomes: effectiveTaskOutcomes(task.outcomes, task.destination),
     dashboard_url: getDashboardTaskLink(task.id) ?? null,
     last_run_at: task.lastRunAtMs
@@ -259,11 +321,12 @@ export function compactTask(task: ScheduledAutomation): CompactTaskResult {
 /** Build the structured result shared by single-task scheduler tools. */
 export function scheduleTaskToolResult(
   target: string,
-  task: CompactTaskResult,
+  task: ScheduledAutomation,
 ) {
   return {
     target,
-    task,
+    summary: scheduledAutomationSummary(task),
+    task: compactTask(task),
   } as const;
 }
 
