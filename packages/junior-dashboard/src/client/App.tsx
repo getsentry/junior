@@ -10,6 +10,7 @@ import {
 } from "./api";
 import { ConnectionBanner } from "./components/ConnectionBanner";
 import { LoadingView } from "./components/LoadingView";
+import { VersionDriftBanner } from "./components/VersionDriftBanner";
 import { PageRouteLoading } from "./components/PageRouteLoading";
 import { ProfileMenu } from "./components/ProfileMenu";
 import {
@@ -24,6 +25,7 @@ import {
   setDashboardTimeZone,
 } from "./format";
 import { isNewConversationPath } from "./conversations/conversationRoutes";
+import { useDashboardServerVersion } from "./dashboard-version";
 import { ConversationWorkspace } from "./conversations/ConversationWorkspace";
 import { ConversationWorkspaceLoading } from "./conversations/ConversationWorkspaceLoading";
 import { useConversationData } from "./conversations/queries";
@@ -70,6 +72,7 @@ export function DashboardShell() {
   const query = useDashboardCoreData();
   const userPagesQuery = usePluginUserPagesData();
   const data = query.data;
+  const serverVersion = useDashboardServerVersion(data?.config.version);
   const userPages = userPagesQuery.data ?? [];
   if (data) {
     setDashboardTimeZone(data.config.timeZone);
@@ -135,7 +138,12 @@ export function DashboardShell() {
     <DashboardChromeProvider>
       <VisualViewportShell className={dashboardShellBgClass} enabled={workspace}>
         <DashboardChrome
-          banner={<ConnectionBanner />}
+          banner={
+            <>
+              <VersionDriftBanner serverVersion={serverVersion} />
+              <ConnectionBanner />
+            </>
+          }
           header={
             <DashboardHeader
               compact={workspace}
