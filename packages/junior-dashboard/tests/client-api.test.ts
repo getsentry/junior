@@ -1,7 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 import type { ConversationReportEvent } from "@sentry/junior/api/schema";
+import { JUNIOR_VERSION } from "@sentry/junior/version";
 
 import { personalSpendRefreshDelay } from "../src/client/api";
+import { fetchDashboardJson } from "../src/client/http";
+import { dashboardVersionDrift } from "../src/client/components/VersionDriftBanner";
 import {
   conversationDetailQueryOptions,
   readConversationData,
@@ -125,6 +129,43 @@ describe("dashboard client API", () => {
     expect(personalSpendRefreshDelay("2026-08-03T11:54:00.000Z", nowMs)).toBe(
       1_000,
     );
+  });
+
+  it("detects a newer server version without false positives", () => {
+    expect(dashboardVersionDrift("999.0.0")).toBe(true);
+    expect(dashboardVersionDrift(JUNIOR_VERSION)).toBe(false);
+    expect(dashboardVersionDrift("unknown")).toBe(false);
+    expect(dashboardVersionDrift()).toBe(false);
+  });
+
+  it("ignores additive response fields from a newer server", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json({
+          nested: { addedLater: true, name: "Junior" },
+          addedLater: true,
+        }),
+      ),
+    );
+
+    await expect(
+      fetchDashboardJson(
+        z.object({ nested: z.object({ name: z.string() }).strict() }).strict(),
+        "/api/test",
+      ),
+    ).resolves.toEqual({ nested: { name: "Junior" } });
+  });
+
+  it("rejects incompatible response field changes", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => Response.json({ count: "one" })),
+    );
+
+    await expect(
+      fetchDashboardJson(z.object({ count: z.number() }).strict(), "/api/test"),
+    ).rejects.toThrow();
   });
 
   it("does not redirect for non-auth product API failures", async () => {

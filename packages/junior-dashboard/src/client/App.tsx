@@ -10,6 +10,7 @@ import {
 } from "./api";
 import { ConnectionBanner } from "./components/ConnectionBanner";
 import { LoadingView } from "./components/LoadingView";
+import { VersionDriftBanner } from "./components/VersionDriftBanner";
 import { PageRouteLoading } from "./components/PageRouteLoading";
 import { ProfileMenu } from "./components/ProfileMenu";
 import {
@@ -135,7 +136,12 @@ export function DashboardShell() {
     <DashboardChromeProvider>
       <VisualViewportShell className={dashboardShellBgClass} enabled={workspace}>
         <DashboardChrome
-          banner={<ConnectionBanner />}
+          banner={
+            <>
+              <VersionDriftBanner serverVersion={data?.config.version} />
+              <ConnectionBanner />
+            </>
+          }
           header={
             <DashboardHeader
               compact={workspace}

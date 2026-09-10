@@ -1,4 +1,4 @@
-import type { ZodType } from "zod";
+import { ZodError, type ZodType } from "zod";
 
 /** An authenticated dashboard request rejected by the product API. */
 export class DashboardApiError extends Error {
@@ -126,6 +126,36 @@ export async function del<T>(
   return schema.parse(await response.json());
 }
 
+function parseDashboardResponse<T>(schema: ZodType<T>, value: unknown): T {
+  try {
+    return schema.parse(value);
+  } catch (error) {
+    if (!(error instanceof ZodError)) throw error;
+    const unknownKeys = error.issues.filter(
+      (issue) => issue.code === "unrecognized_keys",
+    );
+    if (
+      unknownKeys.length === 0 ||
+      unknownKeys.length !== error.issues.length
+    ) {
+      throw error;
+    }
+    const compatibleValue = structuredClone(value);
+    for (const issue of unknownKeys) {
+      let target = compatibleValue;
+      for (const segment of issue.path) {
+        if (typeof target !== "object" || target === null) throw error;
+        target = (target as Record<PropertyKey, unknown>)[segment];
+      }
+      if (typeof target !== "object" || target === null) throw error;
+      for (const key of issue.keys) {
+        delete (target as Record<string, unknown>)[key];
+      }
+    }
+    return schema.parse(compatibleValue);
+  }
+}
+
 /** Fetch one authenticated dashboard JSON resource and validate its response. */
 export async function fetchDashboardJson<T>(
   schema: ZodType<T>,
@@ -141,5 +171,5 @@ export async function fetchDashboardJson<T>(
     await throwDashboardApiError(path, response);
   }
   if (!response.ok) await throwDashboardApiError(path, response);
-  return schema.parse(await response.json());
+  return parseDashboardResponse(schema, await response.json());
 }
