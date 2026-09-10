@@ -35,7 +35,7 @@ test("opens scheduled and event automations in the native Automations view", asy
   await expect(
     page.getByLabel("Automation execution spend during the last 7 days"),
   ).toBeVisible();
-  await expect(page.getByText("2 tasks")).not.toBeVisible();
+  await expect(page.getByText("2 automations")).not.toBeVisible();
   await expect(page.getByText("Weekly project summary")).not.toBeVisible();
   await page
     .getByLabel("Automations navigation")
@@ -59,7 +59,7 @@ test("opens scheduled and event automations in the native Automations view", asy
   await expect(
     page.getByLabel("Automation execution spend during the last 7 days"),
   ).toBeVisible();
-  await expect(page.getByText("2 tasks")).toBeVisible();
+  await expect(page.getByText("2 automations")).toBeVisible();
   await expect(page.getByText("Weekly project summary")).toBeVisible();
   await expect(page.getByText("Closed issue summary")).toBeVisible();
   await page.getByLabel("Search automations").fill("closed issue");
@@ -81,7 +81,7 @@ test("opens scheduled and event automations in the native Automations view", asy
   await expect(page.getByText("Assigned to")).toHaveCount(0);
   await expect(page.getByRole("dialog")).toHaveCount(0);
   const automationDetailsTrigger = page.getByRole("button", {
-    name: "View task details: Weekly project summary",
+    name: "View automation details: Weekly project summary",
   });
   await automationDetailsTrigger.click();
   await expect(page).toHaveURL(`${dashboard.baseURL}/automations/scheduled-1`);
@@ -91,7 +91,7 @@ test("opens scheduled and event automations in the native Automations view", asy
     .poll(() => page.evaluate(() => document.body.style.overflow))
     .toBe("hidden");
   const closeAutomationDetails = details.getByRole("button", {
-    name: "Close task details",
+    name: "Close automation details",
   });
   await expect(closeAutomationDetails).toBeFocused();
   await page.keyboard.press("Shift+Tab");
@@ -122,7 +122,7 @@ test("opens scheduled and event automations in the native Automations view", asy
   await expect(page.getByText("#incident-response").last()).toBeVisible();
   await page
     .getByRole("button", {
-      name: "View task details: Incident change alerts",
+      name: "View automation details: Incident change alerts",
     })
     .click();
   const publicDetails = page.getByRole("dialog");
@@ -160,7 +160,7 @@ test("lists runs across automations", async ({ page, dashboard }) => {
   ).toBeVisible();
 });
 
-test("opens one task's execution history", async ({ page, dashboard }) => {
+test("opens one automation's execution history", async ({ page, dashboard }) => {
   await page.goto(
     `${dashboard.baseURL}/automations/scheduled/scheduled-1/executions`,
   );

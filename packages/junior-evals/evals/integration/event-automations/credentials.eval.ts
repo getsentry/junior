@@ -111,7 +111,7 @@ describeEval("Event Task Credentials", slackEvals, (it) => {
     ).toEqual([
       expect.objectContaining({
         result: expect.objectContaining({
-          tasks: [
+          automations: [
             expect.objectContaining({
               createdBy: expect.objectContaining({
                 slackUserId: "UALICE",
@@ -178,7 +178,7 @@ describeEval("Event Task Credentials", slackEvals, (it) => {
     ).toEqual([
       expect.objectContaining({
         result: expect.objectContaining({
-          tasks: [
+          automations: [
             expect.objectContaining({
               createdBy: expect.objectContaining({
                 slackUserId: "UALICE",

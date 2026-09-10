@@ -782,7 +782,7 @@ describe("event delivery", () => {
 
     await expect(
       state.acquireLock(
-        `junior:event_subscription:v5:lock:${subscription.id}`,
+        `junior:resource_event_subscription:v5:lock:${subscription.id}`,
         10_000,
       ),
     ).resolves.toBeNull();

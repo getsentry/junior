@@ -218,7 +218,7 @@ describeEval("Event Task Management", slackEvals, (it) => {
     );
   });
 
-  it("when managing an existing event automation, list update and delete that task", async ({
+  it("when managing an existing event automation, list update and delete it", async ({
     run,
   }) => {
     const creationThread = {
@@ -277,7 +277,7 @@ describeEval("Event Task Management", slackEvals, (it) => {
     ).toEqual([
       expect.objectContaining({
         result: expect.objectContaining({
-          tasks: [
+          automations: [
             expect.objectContaining({
               id: "evt_issue_state_summary",
               triggerAvailable: true,
@@ -310,7 +310,7 @@ describeEval("Event Task Management", slackEvals, (it) => {
     expect(eventAutomationCreateCalls(result.session)).toEqual([]);
   });
 
-  it("when a stored task's plugin event is unavailable, explain that it cannot currently run", async ({
+  it("when a stored automation's plugin event is unavailable, explain that it cannot currently run", async ({
     run,
   }) => {
     const thread = {
@@ -352,7 +352,7 @@ describeEval("Event Task Management", slackEvals, (it) => {
     ).toEqual([
       expect.objectContaining({
         result: expect.objectContaining({
-          tasks: [
+          automations: [
             expect.objectContaining({
               id: "evt_unavailable_issue_summary",
               triggerAvailable: false,

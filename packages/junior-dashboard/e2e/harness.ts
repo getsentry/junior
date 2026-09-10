@@ -468,10 +468,13 @@ export async function mockDashboardApis(
     const kind = parts.at(-3);
     const id = parts.at(-2);
     if ((kind !== "scheduled" && kind !== "event") || !id) {
-      await route.fulfill({ status: 404, json: { error: "Task not found." } });
+      await route.fulfill({
+        status: 404,
+        json: { error: "Automation not found." },
+      });
       return;
     }
-    const task = {
+    const automation = {
       createdAt: "2026-07-28T16:00:00.000Z",
       createdBy: "Morgan",
       createdByEmail: "dev@example.com",
@@ -564,7 +567,7 @@ export async function mockDashboardApis(
             status: "blocked",
           },
         ],
-        task,
+        automation,
         truncated: false,
       },
     });
