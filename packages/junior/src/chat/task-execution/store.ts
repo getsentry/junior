@@ -489,6 +489,19 @@ export async function ackMessages(args: {
   return result;
 }
 
+/** Promote one human-facing pending Message into the active Turn. */
+export async function promoteHumanFacingPendingMessage(args: {
+  conversationId: string;
+  inboundMessageId: string;
+  conversationStore?: ConversationStore;
+  nowMs?: number;
+  state?: StateAdapter;
+}) {
+  const result = await workState.promoteHumanFacingPendingMessage(args);
+  if (result.status === "promoted") await recordExecutionMetadata(args);
+  return result;
+}
+
 /** Cancel human-facing pending mailbox rows without requiring a worker lease. */
 export async function cancelHumanFacingPendingMessages(args: {
   conversationId: string;

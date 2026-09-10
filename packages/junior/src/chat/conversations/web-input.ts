@@ -39,8 +39,6 @@ export interface AppendWebMessageInput {
   conversationId: string;
   message: string;
   idempotencyKey: string;
-  /** Interrupt the active Turn or wait for the next Turn. */
-  delivery?: "defer" | "interrupt";
   /** Applied only when this call creates the conversation root. */
   rootVisibility?: ConversationPrivacy;
 }
@@ -137,7 +135,6 @@ export function buildWebInboundMessage(args: {
   createdAtMs?: number;
   /** Existing Conversation Destination, when the root already exists. */
   destination?: Destination;
-  delivery?: "defer" | "interrupt";
   message: string;
   messageId: string;
   nowMs?: number;
@@ -157,7 +154,7 @@ export function buildWebInboundMessage(args: {
   return {
     conversationId: args.conversationId,
     createdAtMs: args.createdAtMs ?? nowMs,
-    delivery: args.delivery ?? "defer",
+    delivery: "defer",
     // TODO(dcramer): Remove InboundMessage.destination after workers read the
     // Conversation Location and no mailbox reader requires Destination.
     destination,
@@ -284,7 +281,6 @@ export async function appendAndEnqueueWebMessage(
       actor: input.actor,
       conversationId: input.conversationId,
       destination,
-      delivery: input.delivery,
       message: text,
       messageId,
       nowMs,

@@ -18,6 +18,7 @@ import {
   useArchiveConversation,
   useCancelConversationPendingMessages,
   useConversationData,
+  usePromoteConversationPendingMessage,
   useStopConversationTurn,
   type PendingArchiveConversationUpdate,
 } from "./queries";
@@ -319,6 +320,9 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
   const cancelPendingMessages = useCancelConversationPendingMessages(
     props.conversationId,
   );
+  const promotePendingMessage = usePromoteConversationPendingMessage(
+    props.conversationId,
+  );
   const stopTurn = useStopConversationTurn(props.conversationId);
   // Keep submit identity stable across mutation status flips so the memoized
   // composer does not re-render while the reader is still typing.
@@ -346,13 +350,8 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
     onPinRequestRef.current();
   }, [pendingMessageVersion]);
   const onSubmit = useCallback(
-    async (
-      message: string,
-      idempotencyKey: string,
-      delivery: "defer" | "interrupt",
-    ) => {
+    async (message: string, idempotencyKey: string) => {
       await appendMessageRef.current.mutateAsync({
-        delivery,
         idempotencyKey,
         message,
       });
@@ -362,7 +361,6 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
   const onRetry = useCallback((message: ConversationMailboxMessage) => {
     if (!message.idempotencyKey || !message.text) return;
     void appendMessageRef.current.mutateAsync({
-      delivery: message.delivery,
       idempotencyKey: message.idempotencyKey,
       message: message.text,
     });
@@ -377,6 +375,12 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
   const cancellableMessageIds = props.pendingMessages
     .filter((message) => message.clientStatus === undefined)
     .map((message) => message.inboundMessageId);
+  const onPromoteMessage = useCallback(
+    (message: ConversationMailboxMessage) => {
+      promotePendingMessage.mutate(message.inboundMessageId);
+    },
+    [promotePendingMessage],
+  );
   const onCancelMessage = useCallback(
     (message: ConversationMailboxMessage) => {
       const receivedBefore = props.pendingGeneratedAtRef.current;
@@ -423,7 +427,18 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
             messages={props.pendingMessages}
             onCancelMessage={onCancelMessage}
             onLayoutChange={onMailboxLayoutChange}
+            onPromoteMessage={props.active ? onPromoteMessage : undefined}
             onRetry={onRetry}
+            promoteErrorMessageId={
+              promotePendingMessage.error
+                ? promotePendingMessage.variables
+                : undefined
+            }
+            promotePendingMessageId={
+              promotePendingMessage.isPending
+                ? promotePendingMessage.variables
+                : undefined
+            }
           />
         </>
       }
@@ -446,8 +461,7 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
           ) : undefined
         }
         label="Continue this conversation"
-        showSteer={props.active}
-        submitLabel={props.active ? "Queue" : "Send"}
+        submitLabel="Send"
         onFocus={onComposerFocus}
         onSubmitStart={onSubmitStart}
         onSubmit={onSubmit}

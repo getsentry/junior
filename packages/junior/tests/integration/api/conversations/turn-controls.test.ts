@@ -5,6 +5,7 @@ import { stopConversationTurnForViewer } from "@/api/conversations/stop";
 import {
   acceptedConversationMessageSchema,
   conversationPendingMessagesReportSchema,
+  promoteConversationPendingMessageResponseSchema,
   stopConversationTurnResponseSchema,
 } from "@/api/schema";
 import { createAndEnqueueConversation } from "@/chat/conversations/web-input";
@@ -35,7 +36,7 @@ describe("conversation turn controls API", () => {
     await closeDb();
   });
 
-  it("accepts an explicit dashboard steering message", async () => {
+  it("promotes a queued dashboard message into the active turn", async () => {
     const { actor, conversationStore, queue, state } =
       await createConversationFixture();
     const created = await createAndEnqueueConversation(
@@ -52,7 +53,6 @@ describe("conversation turn controls API", () => {
       `http://localhost/api/conversations/${encodeURIComponent(created.conversationId)}/messages`,
       {
         body: JSON.stringify({
-          delivery: "interrupt",
           idempotencyKey: "steer-next",
           message: "change course",
         }),
@@ -69,9 +69,41 @@ describe("conversation turn controls API", () => {
     const pending = conversationPendingMessagesReportSchema.parse(
       await pendingResponse.json(),
     );
-    expect(pending.messages.at(-1)).toMatchObject({
-      delivery: "interrupt",
+    const queued = pending.messages.at(-1);
+    expect(queued).toMatchObject({
+      delivery: "defer",
       source: "web",
+      text: "change course",
+    });
+
+    const promoteResponse = await app.request(
+      `http://localhost/api/conversations/${encodeURIComponent(created.conversationId)}/pending-messages/promote`,
+      {
+        body: JSON.stringify({
+          inboundMessageId: queued?.inboundMessageId,
+        }),
+        headers: { "content-type": "application/json" },
+        method: "POST",
+      },
+    );
+    expect(promoteResponse.status).toBe(200);
+    expect(
+      promoteConversationPendingMessageResponseSchema.parse(
+        await promoteResponse.json(),
+      ),
+    ).toMatchObject({
+      inboundMessageId: queued?.inboundMessageId,
+      status: "promoted",
+    });
+
+    const promotedResponse = await app.request(
+      `http://localhost/api/conversations/${encodeURIComponent(created.conversationId)}/pending-messages`,
+    );
+    const promoted = conversationPendingMessagesReportSchema.parse(
+      await promotedResponse.json(),
+    );
+    expect(promoted.messages.at(-1)).toMatchObject({
+      delivery: "interrupt",
       text: "change course",
     });
   });

@@ -43,6 +43,8 @@ export {
   conversationSummaryReportSchema,
   createConversationBodySchema,
   createConversationMessageBodySchema,
+  promoteConversationPendingMessageBodySchema,
+  promoteConversationPendingMessageResponseSchema,
   stopConversationTurnResponseSchema,
 } from "./schema/conversation";
 export type {
@@ -79,6 +81,8 @@ export type {
   ConversationUsage,
   CreateConversationBody,
   CreateConversationMessageBody,
+  PromoteConversationPendingMessageBody,
+  PromoteConversationPendingMessageResponse,
   GuardianMetricDay,
   GuardianStats,
 } from "./schema/conversation";

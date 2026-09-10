@@ -89,7 +89,6 @@ export const createConversationBodySchema = z
 
 export const createConversationMessageBodySchema = z
   .object({
-    delivery: z.enum(["defer", "interrupt"]).default("defer"),
     idempotencyKey: z.string().trim().min(1).max(200),
     message: z.string().trim().min(1).max(32_000),
   })
@@ -172,6 +171,20 @@ export const conversationPendingMessagesReportSchema = z
     conversationId: z.string().min(1),
     generatedAt: z.string().datetime(),
     messages: z.array(conversationPendingMessageSchema),
+  })
+  .strict();
+
+/** Select one queued Message to promote into the active Turn. */
+export const promoteConversationPendingMessageBodySchema = z
+  .object({ inboundMessageId: z.string().min(1) })
+  .strict();
+
+/** Result of promoting one queued Message. */
+export const promoteConversationPendingMessageResponseSchema = z
+  .object({
+    conversationId: z.string().min(1),
+    inboundMessageId: z.string().min(1),
+    status: z.literal("promoted"),
   })
   .strict();
 
@@ -917,6 +930,12 @@ export type ConversationPendingMessage = z.infer<
 >;
 export type ConversationPendingMessagesReport = z.infer<
   typeof conversationPendingMessagesReportSchema
+>;
+export type PromoteConversationPendingMessageBody = z.infer<
+  typeof promoteConversationPendingMessageBodySchema
+>;
+export type PromoteConversationPendingMessageResponse = z.infer<
+  typeof promoteConversationPendingMessageResponseSchema
 >;
 export type CancelConversationPendingMessagesBody = z.infer<
   typeof cancelConversationPendingMessagesBodySchema

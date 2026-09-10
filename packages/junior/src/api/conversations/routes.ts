@@ -20,6 +20,8 @@ import {
   conversationStatsReportSchema,
   createConversationBodySchema,
   createConversationMessageBodySchema,
+  promoteConversationPendingMessageBodySchema,
+  promoteConversationPendingMessageResponseSchema,
   stopConversationTurnResponseSchema,
 } from "../schema/conversation";
 import { validateRequest } from "../validation";
@@ -38,6 +40,7 @@ import { readConversationEvents } from "./event-list";
 import { readConversationFeed } from "./list";
 import { cancelConversationPendingMessagesForViewer } from "./cancel-pending-messages";
 import { requireConversationPendingMessages } from "./pending-messages";
+import { promoteConversationPendingMessageForViewer } from "./promote-pending-message";
 import { readConversationStats } from "./stats";
 import { stopConversationTurnForViewer } from "./stop";
 
@@ -197,6 +200,34 @@ export function createConversationRoutes(options: {
         await requireConversationPendingMessages(conversationId, {
           viewer,
         }),
+      );
+    },
+  );
+
+  app.post(
+    "/:conversationId/pending-messages/promote",
+    requireViewer,
+    validateRequest(
+      "param",
+      conversationParamsSchema,
+      "Invalid route parameters.",
+    ),
+    validateRequest(
+      "json",
+      promoteConversationPendingMessageBodySchema,
+      "Invalid request body.",
+    ),
+    async (context) => {
+      const viewer = context.get("viewer");
+      const { conversationId } = context.req.valid("param");
+      const body = context.req.valid("json");
+      return jsonResponse(
+        promoteConversationPendingMessageResponseSchema,
+        await promoteConversationPendingMessageForViewer(
+          viewer,
+          conversationId,
+          body,
+        ),
       );
     },
   );
