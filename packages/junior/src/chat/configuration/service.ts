@@ -46,8 +46,9 @@ function sanitizeEntry(value: unknown): ConfigEntry | undefined {
 
 /** Coerce legacy persisted configuration into current Location entries. */
 export function coerceLegacyLocationConfig(raw: unknown): ConfigEntry[] {
-  const rawConfig =
-    isRecord(raw) && isRecord(raw.configuration) ? raw.configuration : {};
+  const rawConfig = isRecord(raw) && isRecord(raw.configuration)
+    ? raw.configuration
+    : {};
   const rawEntries = isRecord(rawConfig.entries) ? rawConfig.entries : {};
   return Object.values(rawEntries).flatMap((value) => {
     const entry = sanitizeEntry(value);
@@ -105,9 +106,7 @@ export function createLocationConfigurationService(
     options: { keys?: string[]; prefix?: string } = {},
   ): ReturnType<LocationConfigurationService["resolveValues"]> => {
     const keys = options.keys?.map((key) => key.trim()).filter(Boolean);
-    const entries = await list(
-      options.prefix ? { prefix: options.prefix } : {},
-    );
+    const entries = await list(options.prefix ? { prefix: options.prefix } : {});
     return Object.fromEntries(
       entries
         .filter((entry) => !keys || keys.includes(entry.key))

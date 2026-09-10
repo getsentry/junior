@@ -58,9 +58,7 @@ describe("spawnAgent", () => {
     ).rejects.toSatisfy(
       (error) =>
         error instanceof ToolInputError &&
-        error.message.includes(
-          'Named agent "researcher" already has active work',
-        ),
+        error.message.includes('Named agent "researcher" already has active work'),
     );
   });
 

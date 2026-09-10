@@ -80,7 +80,9 @@ export function MemoryTimeline(props: {
                 date={day.date}
                 summary={`${day.personal} personal, ${day.public} public, ${total} total memories`}
               >
-                <g tabIndex={0}>
+                <g
+                  tabIndex={0}
+                >
                   {series.map((item) => {
                     const value = day[item.key];
                     const segmentHeight = (value / maximum) * layout.plotHeight;

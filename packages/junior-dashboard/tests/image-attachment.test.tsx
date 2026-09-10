@@ -2,9 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { shouldPreviewImageAttachment } from "../src/client/components/ImageAttachment";
 
-function click(
-  overrides: Partial<Parameters<typeof shouldPreviewImageAttachment>[0]> = {},
-) {
+function click(overrides: Partial<Parameters<typeof shouldPreviewImageAttachment>[0]> = {}) {
   return {
     altKey: false,
     button: 0,

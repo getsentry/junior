@@ -29,7 +29,7 @@ function eventAutomationCallEvents(
   return events;
 }
 
-describeEval("Event Task Management", slackEvals, (it) => {
+describeEval("Event automation management", slackEvals, (it) => {
   it("when asked what events are available, search without creating anything", async ({
     run,
   }) => {
@@ -151,7 +151,7 @@ describeEval("Event Task Management", slackEvals, (it) => {
         ],
         fail: [
           "Do not create separate tasks for closed and reopened.",
-          "Do not claim a polling schedule, recurring timer, or resource watch was created.",
+          "Do not claim a polling schedule, recurring timer, or watch was created.",
         ],
       }),
     });
@@ -198,7 +198,7 @@ describeEval("Event Task Management", slackEvals, (it) => {
         fail: [
           "Do not narrow the task to one issue number.",
           "Do not create separate tasks for closed and reopened issues.",
-          "Do not claim a polling schedule or resource watch was created.",
+          "Do not claim a polling schedule or watch was created.",
         ],
       }),
     });
@@ -267,7 +267,7 @@ describeEval("Event Task Management", slackEvals, (it) => {
         ],
         fail: [
           "Do not create a replacement event automation.",
-          "Do not confuse the event automation with a temporary resource watch or scheduled automation.",
+          "Do not confuse the event automation with a temporary watch or scheduled automation.",
         ],
       }),
     });

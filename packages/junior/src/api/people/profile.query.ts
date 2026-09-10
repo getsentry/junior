@@ -240,9 +240,7 @@ export async function readPeopleProfileFromSql(
   const actor: ActorIdentity & { email: string } = {
     email: totalsRow.email,
     ...(totalsRow.fullName ? { fullName: totalsRow.fullName } : undefined),
-    ...(totalsRow.slackUserId
-      ? { slackUserId: totalsRow.slackUserId }
-      : undefined),
+    ...(totalsRow.slackUserId ? { slackUserId: totalsRow.slackUserId } : undefined),
     ...(totalsRow.slackUserName
       ? { slackUserName: totalsRow.slackUserName }
       : undefined),

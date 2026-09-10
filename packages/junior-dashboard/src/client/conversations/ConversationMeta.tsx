@@ -541,7 +541,7 @@ function SourceTask(props: {
   sourceTask: NonNullable<ConversationDetailReport["sourceTask"]>;
 }) {
   const kindLabel =
-    props.sourceTask.kind === "scheduled" ? "Scheduled Task" : "Event Task";
+    props.sourceTask.kind === "scheduled" ? "Scheduled automation" : "Event automation";
   const automationId = props.sourceTask.id?.trim();
   const title = props.sourceTask.title?.trim();
   const link = automationId ? (

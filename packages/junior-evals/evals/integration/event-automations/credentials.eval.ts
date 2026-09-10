@@ -7,7 +7,7 @@ import {
   seedEventAutomation,
 } from "./helpers";
 
-describeEval("Event Task Credentials", slackEvals, (it) => {
+describeEval("Event automation credentials", slackEvals, (it) => {
   it("when event work may need user-bound authorization, use the creator default", async ({
     run,
   }) => {

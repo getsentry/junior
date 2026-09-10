@@ -169,16 +169,12 @@ describe("mcp oauth callback handler", () => {
     );
 
     expect(response.status).toBe(400);
-    expect(putMcpStoredOAuthCredentialsMock).toHaveBeenCalledWith(
-      "U123",
-      "demo",
-      {
-        tokens: {
-          access_token: "keep-me",
-          token_type: "Bearer",
-        },
+    expect(putMcpStoredOAuthCredentialsMock).toHaveBeenCalledWith("U123", "demo", {
+      tokens: {
+        access_token: "keep-me",
+        token_type: "Bearer",
       },
-    );
+    });
     expect(deleteMcpAuthSessionMock).toHaveBeenCalledWith("state-123");
     expect(finalizeMcpAuthorizationMock).not.toHaveBeenCalled();
     expect(waitUntil.pendingCount()).toBe(0);

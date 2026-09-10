@@ -1,13 +1,12 @@
 # Event automations
 
-Core stores durable Slack-destination tasks that match normalized resource
-events by Slack workspace, namespace, identifier, and event type. Plugins own webhook
-verification, provider-scope validation, and event normalization; core binds
-their namespace when they publish an event. Plugins do not know which
-conversations or tasks consume it.
+Core stores event automations that match normalized events by Slack workspace,
+namespace, identifier, and event type. Plugins verify webhooks, validate provider
+scope, and normalize events. Core binds the plugin namespace when it publishes
+an event. Plugins do not know which conversations or automations consume it.
 
-One task selector has one Slack workspace, one namespace, one identifier, and
-one or more event types. Multiple tasks may use the same selector.
+One selector has one Slack workspace, namespace, identifier, and one or more
+event types. Multiple automations can use the same selector.
 `resourceType` and `label` are presentation metadata, not match keys.
 
 `searchEventTypes` exposes the same enabled plugin catalog used by
@@ -16,38 +15,36 @@ registered namespace, resource type, and event combinations. Runtime validation
 repeats that ownership check before persistence instead of relying on
 model-facing schemas alone.
 
-Each matching task receives an independent idempotent agent dispatch. A failure
-for one task does not prevent dispatch attempts for other matching tasks; the
-ingress boundary still receives the aggregate failure for provider retry. Task
-dispatch identity binds the task, plugin namespace, and provider event key, so
-provider retries do not execute the same task twice. A destination may still
+Each matching automation receives an independent idempotent agent dispatch. A
+failure for one automation does not stop other matching automations. The ingress
+boundary receives the combined failure so the provider can retry. Dispatch
+identity binds the automation, plugin namespace, and provider event key. A
+provider retry does not run the same automation twice. A destination may still
 stop further event-automation dispatches after too many automated turns with no user
 message. The Turn that hits the limit posts a plain notice, and later matching
 events stay quiet until a user message clears that pause.
-Listing stays bound to the
-destination where the task was created. Threads in that destination share the
-list. Update and delete also accept a public task by id from another destination
-in the same workspace. Private tasks stay local to their destination. Temporary
-resource watches remain thread-bound.
+Listing stays bound to the destination where the automation was created. Threads
+in that destination share the list. Update and delete also accept a public
+automation by id from another destination in the same workspace. Private
+automations stay local to their destination. Watches remain thread-bound.
 Creation and delivery require single-workspace Slack mode so core can verify the
 team that owns provider events. Multi-workspace mode fails closed until plugins
-can provide a real provider-to-workspace binding. A task matched before a
-concurrent update or deletion dispatches from that matched snapshot; later
-events use the current stored task. Event automations exist only while configured:
-deletion removes the stored task, and there is no pause state or separate
-event-automation run history.
+can provide a real provider-to-workspace binding. An automation matched before a concurrent update or deletion runs from that
+snapshot. Later events use the current stored automation. Deletion removes the
+stored automation. Event automations have no separate pause state or run
+history.
 
 The dispatched agent input uses shared framing from `task-input.ts`. See
-`chat/README.md` (Task agent input) for the section outline. The stored task
-text remains the instruction. Event text does not add instructions. Destination
+`chat/README.md` for the input format. The stored automation text remains the
+instruction. Event text does not add instructions. Destination
 replies get `replyAttribution` (`Event automation · <trigger label>`), matching
 scheduled-automation footers. The footer does not expose raw event keys.
 
 Event automations make the creator's connected credentials available by default when
 the work needs user-bound authorization. The creator may require system
 credentials instead. Only the creator may enable or re-enable creator mode; any
-member of the Slack destination may disable it, and another user's executable
-task edit clears it. Event execution remains a system actor, with creator
+member of the Slack destination may disable it. An executable edit by another
+user clears it. Event execution remains a system actor, with creator
 credentials bound to the exact event automation.
 
 Management results include creator attribution and whether the registered

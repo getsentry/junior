@@ -103,9 +103,7 @@ export function createMcpAuthOrchestration(
       userMessage: input.userMessage,
       ...(input.channelId ? { channelId: input.channelId } : undefined),
       ...(input.threadTs ? { threadTs: input.threadTs } : undefined),
-      ...(input.toolChannelId
-        ? { toolChannelId: input.toolChannelId }
-        : undefined),
+      ...(input.toolChannelId ? { toolChannelId: input.toolChannelId } : undefined),
       configuration: input.getConfiguration(),
       createAuthorizationState: input.authorization?.createState,
     });

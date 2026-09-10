@@ -49,8 +49,7 @@ const searchIconClass: Record<SearchInputSize, string> = {
 };
 
 const searchInputClass: Record<SearchInputSize, string> = {
-  compact:
-    "h-9 bg-dashboard-overlay-soft pr-3 pl-8 focus:ring-1 focus:ring-dashboard-focus/25",
+  compact: "h-9 bg-dashboard-overlay-soft pr-3 pl-8 focus:ring-1 focus:ring-dashboard-focus/25",
   default:
     "h-10 bg-dashboard-overlay-soft pr-3 pl-9 focus:ring-2 focus:ring-dashboard-focus/20",
 };

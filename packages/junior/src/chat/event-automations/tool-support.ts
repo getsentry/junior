@@ -143,8 +143,8 @@ export function eventAutomationMatchesDestination(
 }
 
 /**
- * Return whether the active destination may update or delete this task.
- * Same-destination tasks stay local. Public tasks may be managed by id from
+ * Return whether the active destination may update or delete this automation.
+ * Same-destination automations stay local. Public automations may be managed by id from
  * another destination in the same workspace.
  */
 export function eventAutomationIsWritableFrom(
@@ -160,7 +160,7 @@ export function eventAutomationIsWritableFrom(
   );
 }
 
-/** Load one task the active destination may update or delete. */
+/** Load one automation the active destination may update or delete. */
 export async function writableEventAutomation(
   context: ToolRuntimeContext,
   id: string,

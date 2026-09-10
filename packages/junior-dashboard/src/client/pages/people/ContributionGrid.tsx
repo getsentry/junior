@@ -85,10 +85,7 @@ export function ContributionGrid(props: { days: ContributionDay[] }) {
                       rows={[
                         ["conversations", day.conversations],
                         ["runtime", activityRuntime(day)],
-                        [
-                          "spend",
-                          formatCostSummary({ total: day.costUsd ?? 0 }),
-                        ],
+                        ["spend", formatCostSummary({ total: day.costUsd ?? 0 })],
                         ["tokens", formatCompactNumber(day.tokens ?? 0)],
                       ]}
                     />

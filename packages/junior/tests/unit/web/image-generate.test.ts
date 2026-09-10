@@ -3,8 +3,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/chat/pi/client", () => ({
   completeText: vi.fn(),
-  getGatewayApiKey: vi.fn(
-    async () => process.env.AI_GATEWAY_API_KEY ?? process.env.VERCEL_OIDC_TOKEN,
+  getGatewayApiKey: vi.fn(async () =>
+    process.env.AI_GATEWAY_API_KEY ?? process.env.VERCEL_OIDC_TOKEN,
   ),
   resolveGatewayModel: vi.fn((modelId: string) => modelId),
   MISSING_GATEWAY_CREDENTIALS_ERROR:

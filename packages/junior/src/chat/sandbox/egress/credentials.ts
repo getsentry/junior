@@ -146,9 +146,7 @@ export async function selectSandboxEgressGrant(input: {
   }
 
   const pluginGrant = await selectPluginGrant({
-    ...(input.bodyText !== undefined
-      ? { bodyText: input.bodyText }
-      : undefined),
+    ...(input.bodyText !== undefined ? { bodyText: input.bodyText } : undefined),
     ...(input.operation ? { operation: input.operation } : undefined),
     provider: input.provider,
     method: input.method,

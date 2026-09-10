@@ -170,23 +170,15 @@ function egressAttributes(input: {
   status?: number;
 }): Record<string, unknown> {
   return {
-    ...(input.egressId
-      ? { "app.sandbox.egress_id": input.egressId }
-      : undefined),
+    ...(input.egressId ? { "app.sandbox.egress_id": input.egressId } : undefined),
     ...(input.provider ? { "app.provider.name": input.provider } : undefined),
     ...(input.grantName ? { "app.grant.name": input.grantName } : undefined),
-    ...(input.grantAccess
-      ? { "app.grant.access": input.grantAccess }
-      : undefined),
-    ...(input.grantReason
-      ? { "app.grant.reason": input.grantReason }
-      : undefined),
+    ...(input.grantAccess ? { "app.grant.access": input.grantAccess } : undefined),
+    ...(input.grantReason ? { "app.grant.reason": input.grantReason } : undefined),
     ...(input.host ? { "server.address": input.host } : undefined),
     ...(input.method ? { "http.request.method": input.method } : undefined),
     ...(input.path ? { "url.path": input.path } : undefined),
-    ...(input.status
-      ? { "http.response.status_code": input.status }
-      : undefined),
+    ...(input.status ? { "http.response.status_code": input.status } : undefined),
   };
 }
 
@@ -553,9 +545,7 @@ async function recordSandboxAuthRequired(input: {
     provider: input.provider,
     grant: input.grant,
     kind: input.kind ?? "auth_required",
-    ...(input.authorization
-      ? { authorization: input.authorization }
-      : undefined),
+    ...(input.authorization ? { authorization: input.authorization } : undefined),
     message: input.message,
   });
 }
@@ -658,9 +648,7 @@ export async function executeCredentialedEgressRequest(input: {
   const recordPermissionDenied =
     deps.recordPermissionDenied ?? recordSandboxPermissionDenied;
 
-  async function resolveLease(): Promise<
-    SandboxEgressCredentialLease | Response
-  > {
+  async function resolveLease(): Promise<SandboxEgressCredentialLease | Response> {
     try {
       return await issueCredentialLease(
         provider,
@@ -766,7 +754,8 @@ export async function executeCredentialedEgressRequest(input: {
       return intercepted;
     }
 
-    const requestBody = body instanceof ArrayBuffer ? body.slice(0) : body;
+    const requestBody =
+      body instanceof ArrayBuffer ? body.slice(0) : body;
     const upstream = await fetchImpl(upstreamUrl, {
       method: request.method,
       headers,

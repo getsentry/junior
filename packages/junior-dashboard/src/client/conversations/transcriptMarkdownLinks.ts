@@ -36,7 +36,9 @@ export function findTranscriptMarkdownLinks(
     ...markdownLinks,
     ...autolinks,
     ...findBareLinks(text, bareRanges),
-  ].sort((left, right) => left.start - right.start || left.end - right.end);
+  ].sort(
+    (left, right) => left.start - right.start || left.end - right.end,
+  );
 }
 
 function findMarkdownLinks(

@@ -25,7 +25,7 @@ const resultDataSchema = z
 
 const outputSchema = juniorToolOutputSchema.merge(resultDataSchema);
 
-/** Create the tool that lists active resource watches for this conversation. */
+/** Create the tool that lists active watches for this conversation. */
 export function createListWatchesTool(context: ToolRuntimeContext) {
   return zodTool({
     annotations: {

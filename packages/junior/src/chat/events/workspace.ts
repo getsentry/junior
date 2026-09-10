@@ -4,8 +4,8 @@ import { getSlackClient } from "@/chat/slack/client";
 /**
  * Resolve the single-bot Slack team id for event-automation indexing.
  *
- * Resource watches do not use this. Event automations still key by destination team
- * until that store is conversation-owned. Resource-event delivery itself is
+ * Watches do not use this. Event automations still key by destination team
+ * until that store is conversation-owned. Event delivery itself is
  * not gated on Slack.
  */
 export function createEventTeamIdResolver(): () => Promise<string | undefined> {

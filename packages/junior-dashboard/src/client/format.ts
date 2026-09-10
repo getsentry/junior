@@ -726,7 +726,7 @@ export function locationPath(locationId: string): string {
   return `/system/locations/${encodeURIComponent(locationId)}`;
 }
 
-/** Build the canonical task detail route for a task id. */
+/** Build the canonical automation detail route for an automation id. */
 export function automationPath(automationId: string): string {
   return `/automations/${encodeURIComponent(automationId)}`;
 }

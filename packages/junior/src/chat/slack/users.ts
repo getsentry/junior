@@ -77,9 +77,7 @@ function normalizeUser(raw: SlackUserRaw): SlackUserProfile {
     is_bot: raw.is_bot ?? false,
     is_deleted: raw.deleted ?? false,
     timezone: raw.tz || undefined,
-    ...(profileFields.length > 0
-      ? { profile_fields: profileFields }
-      : undefined),
+    ...(profileFields.length > 0 ? { profile_fields: profileFields } : undefined),
   };
 }
 

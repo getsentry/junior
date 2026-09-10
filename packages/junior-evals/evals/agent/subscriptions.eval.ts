@@ -10,7 +10,7 @@ import {
   visibleThreadReplies,
 } from "../../src/helpers";
 
-describeEval("Resource Event Subscriptions", slackEvals, (it) => {
+describeEval("Watches", slackEvals, (it) => {
   it("looks up and subscribes to an exact deployment before GitHub creates it", async ({
     run,
   }) => {

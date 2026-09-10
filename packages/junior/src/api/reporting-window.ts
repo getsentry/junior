@@ -48,9 +48,9 @@ export function utcHourKey(value: Date | number): string {
 
 /** UTC 6-hour bucket key `YYYY-MM-DDTHH` at 00/06/12/18. */
 export function utcSixHourKey(value: Date | number): string {
-  return utcHourKey(
-    startOfUtcSixHour(typeof value === "number" ? value : value.getTime()),
-  );
+  return utcHourKey(startOfUtcSixHour(
+    typeof value === "number" ? value : value.getTime(),
+  ));
 }
 
 /** Inclusive trailing UTC day window ending on today's UTC day. */
@@ -62,7 +62,10 @@ export function trailingUtcDayWindow(nowMs: number, dayCount: number) {
 }
 
 /** Inclusive trailing UTC hour window ending on the current UTC hour. */
-export function trailingUtcHourWindow(nowMs: number, hourCount = WINDOW_HOURS) {
+export function trailingUtcHourWindow(
+  nowMs: number,
+  hourCount = WINDOW_HOURS,
+) {
   const end = startOfUtcHour(nowMs);
   const start = new Date(end.getTime() - (hourCount - 1) * HOUR_MS);
   return { end, start };

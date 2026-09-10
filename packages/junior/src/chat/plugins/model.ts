@@ -37,9 +37,7 @@ export function createPluginModel(
       });
       return {
         object: result.object,
-        ...(result.costUsd !== undefined
-          ? { costUsd: result.costUsd }
-          : undefined),
+        ...(result.costUsd !== undefined ? { costUsd: result.costUsd } : undefined),
       };
     },
   };

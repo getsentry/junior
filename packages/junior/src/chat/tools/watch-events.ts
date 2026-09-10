@@ -121,7 +121,7 @@ function ttlMs(input: Input): number {
     throw new ToolInputError("ttlMs must be a positive finite number");
   }
   if (input.ttlMs > RESOURCE_SUBSCRIPTION_MAX_TTL_MS) {
-    throw new ToolInputError("Resource watches cannot exceed 30 days");
+    throw new ToolInputError("Watches cannot exceed 30 days");
   }
   return input.ttlMs;
 }

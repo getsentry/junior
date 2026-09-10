@@ -270,7 +270,7 @@ export async function listEventAutomationsCreatedBy(
 
 /**
  * List deleted event automations created by one user, newest first.
- * Used only to keep historical runs after the live task list drops the row.
+ * Used only to keep historical runs after the live automation list drops the row.
  */
 export async function listDeletedEventAutomationsCreatedBy(
   db: JuniorDatabase,

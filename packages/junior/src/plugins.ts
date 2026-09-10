@@ -52,9 +52,7 @@ function cloneInlineManifests(
                   }
                 : undefined),
             },
-            ...(plugin.packageName
-              ? { packageName: plugin.packageName }
-              : undefined),
+            ...(plugin.packageName ? { packageName: plugin.packageName } : undefined),
           },
         ]
       : [],

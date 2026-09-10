@@ -227,8 +227,7 @@ function sameConversationEventVersion(
   for (let index = 0; index < previous.length; index += 1) {
     const left = previous[index]!;
     const right = next[index]!;
-    if (left.seq !== right.seq || left.createdAt !== right.createdAt)
-      return false;
+    if (left.seq !== right.seq || left.createdAt !== right.createdAt) return false;
   }
   return true;
 }

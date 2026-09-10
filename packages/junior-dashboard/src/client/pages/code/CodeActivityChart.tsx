@@ -40,10 +40,7 @@ export function CodeActivityChart(props: {
   const gap = Math.max(1, barWidth * 0.2);
   const groupWidth = barWidth * 3 + gap * 2;
   const totals = days.map((day) => day.created + day.merged + day.closed);
-  const maximum = Math.max(
-    1,
-    ...days.flatMap((day) => [day.created, day.merged, day.closed]),
-  );
+  const maximum = Math.max(1, ...days.flatMap((day) => [day.created, day.merged, day.closed]));
   const average = activityChartAverage(days.map((day) => day.created));
   const hasActivity = totals.some((total) => total > 0);
 
@@ -109,7 +106,9 @@ export function CodeActivityChart(props: {
                 date={day.date}
                 summary={`${day.created} created, ${day.merged} merged, ${day.closed} closed`}
               >
-                <g tabIndex={0}>
+                <g
+                  tabIndex={0}
+                >
                   {series.map((entry, seriesIndex) => {
                     const height = (entry.value / maximum) * layout.plotHeight;
                     const x = groupX + seriesIndex * (barWidth + gap);

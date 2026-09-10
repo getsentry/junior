@@ -184,6 +184,8 @@ function visibleCategoryCount(
   return availableRanges.includes(30) ? 30 : (availableRanges[0] ?? 30);
 }
 
+
+
 function formatChartNumber(value: number): string {
   return String(Number(value.toPrecision(12)));
 }

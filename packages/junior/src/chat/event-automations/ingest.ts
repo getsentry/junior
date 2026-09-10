@@ -1,7 +1,7 @@
 /**
  * Owns event matching and durable event-automation dispatch.
  *
- * Each matching task is independently idempotent. Aggregate failures propagate
+ * Each matching automation is independently idempotent. Aggregate failures propagate
  * so the provider can retry the original delivery.
  */
 import { createHash } from "node:crypto";
@@ -22,7 +22,7 @@ import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { eventGuidance } from "@/chat/events/catalog";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
 
-/** Bind provider delivery identity to one task's durable dispatch. */
+/** Bind provider delivery identity to one automation's durable dispatch. */
 function eventAutomationDispatchKey(
   taskId: string,
   namespace: string,
@@ -71,7 +71,7 @@ function eventInput(task: EventAutomation, event: Event): string {
   });
 }
 
-/** Match a normalized event and dispatch every matching task. */
+/** Match a normalized event and dispatch every matching automation. */
 export async function ingestEventAutomations(
   input: unknown,
   options: {

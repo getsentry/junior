@@ -365,7 +365,7 @@ export async function readAutomationExecutionByConversationId(args: {
   return { kind: row.kind, automationId: row.automationId };
 }
 
-/** Load newest-first executions for one task, with conversation titles when present. */
+/** Load newest-first executions for one automation, with conversation titles when present. */
 export async function readAutomationExecutions(args: {
   kind: AutomationExecutionType;
   limit: number;
@@ -509,7 +509,7 @@ function mapAutomationExecutionRecord(row: {
   };
 }
 
-/** Load a fixed trailing window of terminal executions for one task by status. */
+/** Load a fixed trailing window of terminal executions for one automation by status. */
 export async function readAutomationExecutionStatusDays(args: {
   dayCount?: number;
   kind: AutomationExecutionType;
@@ -562,7 +562,7 @@ export async function readAutomationExecutionStatusDays(args: {
   return [...byDate.values()];
 }
 
-/** Load a fixed trailing window of terminal executions for one task by hour. */
+/** Load a fixed trailing window of terminal executions for one automation by hour. */
 export async function readAutomationExecutionStatusHours(args: {
   hourCount?: number;
   kind: AutomationExecutionType;

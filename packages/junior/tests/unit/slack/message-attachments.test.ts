@@ -159,7 +159,9 @@ describe("renderAttachmentText", () => {
 describe("extractAttachmentFiles", () => {
   it("returns an empty list for invalid or fileless payloads", () => {
     expect(extractAttachmentFiles(undefined)).toEqual([]);
-    expect(extractAttachmentFiles([{ fallback: "no files here" }])).toEqual([]);
+    expect(extractAttachmentFiles([{ fallback: "no files here" }])).toEqual(
+      [],
+    );
   });
 
   it("extracts files nested inside a shared/forwarded message attachment", () => {
@@ -194,14 +196,12 @@ describe("extractAttachmentFiles", () => {
   it("dedupes files with the same id across attachments", () => {
     const raw = [
       { files: [{ id: "F1", name: "a.png" }] },
-      {
-        files: [
-          { id: "F1", name: "a.png" },
-          { id: "F2", name: "b.png" },
-        ],
-      },
+      { files: [{ id: "F1", name: "a.png" }, { id: "F2", name: "b.png" }] },
     ];
 
-    expect(extractAttachmentFiles(raw).map((f) => f.id)).toEqual(["F1", "F2"]);
+    expect(extractAttachmentFiles(raw).map((f) => f.id)).toEqual([
+      "F1",
+      "F2",
+    ]);
   });
 });

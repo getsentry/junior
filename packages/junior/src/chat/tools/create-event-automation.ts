@@ -32,7 +32,7 @@ import {
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import type { ToolRuntimeContext } from "@/chat/tools/types";
 
-/** Build a retry-stable task id scoped to actor, destination, and tool call. */
+/** Build a retry-stable automation id scoped to actor, destination, and tool call. */
 function buildEventAutomationId(args: {
   channelId: string;
   teamId: string;
@@ -73,7 +73,7 @@ export function createEventAutomationTool(
     },
     executionMode: "sequential",
     description:
-      "Create a durable event automation that executes the supplied instruction for every matching event. Use for whenever-this-happens-do-X automation; ordinary watch, notify, or tell-me-when requests use watchEvents instead. The task may use the creator's connected credentials. Prefer a subscribable tool result when available.",
+      "Create a durable event automation that executes the supplied instruction for every matching event. Use for whenever-this-happens-do-X automation; ordinary watch, notify, or tell-me-when requests use watchEvents instead. The automation may use the creator's connected credentials. Prefer a subscribable tool result when available.",
     inputSchema: z
       .object({
         task: z.string().trim().min(1).max(4000),

@@ -606,18 +606,8 @@ describe("slackThreadRead", () => {
     });
 
     expect(result.messages[0].files).toEqual([
-      {
-        id: "F_SHARED_1",
-        name: "billing.png",
-        mimetype: "image/png",
-        size: 111,
-      },
-      {
-        id: "F_SHARED_2",
-        name: "payment-form.png",
-        mimetype: "image/png",
-        size: 222,
-      },
+      { id: "F_SHARED_1", name: "billing.png", mimetype: "image/png", size: 111 },
+      { id: "F_SHARED_2", name: "payment-form.png", mimetype: "image/png", size: 222 },
     ]);
     expect(result.messages[0].files[0]).not.toHaveProperty("url_private");
   });

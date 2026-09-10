@@ -120,10 +120,7 @@ describe("conversation stats API", () => {
       });
       await store.recordActivity({
         conversationId: "local:test:scheduler-daily",
-        destination: {
-          platform: "local" as const,
-          conversationId: "local:test:scheduler-daily",
-        },
+        destination: { platform: "local" as const, conversationId: "local:test:scheduler-daily" },
         source: "scheduler",
         nowMs: Date.parse("2026-06-15T10:00:00.000Z"),
       });
@@ -278,9 +275,7 @@ describe("conversation stats API", () => {
       expect(report.guardian.metricHours).toHaveLength(7 * 24);
       expect(report.guardian.metricSixHours).toHaveLength(7 * 4);
       expect(
-        report.guardian.metricHours?.find(
-          (hour) => hour.date === "2026-06-15T11",
-        ),
+        report.guardian.metricHours?.find((hour) => hour.date === "2026-06-15T11"),
       ).toEqual({
         allow: 1,
         ask: 1,

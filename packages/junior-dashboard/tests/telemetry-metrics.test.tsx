@@ -63,7 +63,11 @@ describe("CostMetric", () => {
 
   it("shows provisional cost while conversation metrics are live", () => {
     const emptyHtml = renderToStaticMarkup(
-      <CostMetric live liveModelId="xai/grok-4-5" summary={undefined} />,
+      <CostMetric
+        live
+        liveModelId="xai/grok-4-5"
+        summary={undefined}
+      />,
     );
     expect(emptyHtml).toContain("$…");
     expect(emptyHtml).toContain("grok-4-5");

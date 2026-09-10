@@ -24,7 +24,10 @@ function mayDisplayInline(contentType: string): boolean {
   );
 }
 
-function attachmentUrl(conversationId: string, attachmentId: string): string {
+function attachmentUrl(
+  conversationId: string,
+  attachmentId: string,
+): string {
   return `/api/conversations/${encodeURIComponent(conversationId)}/attachments/${encodeURIComponent(attachmentId)}`;
 }
 

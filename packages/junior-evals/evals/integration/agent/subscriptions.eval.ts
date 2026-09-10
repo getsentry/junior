@@ -2,7 +2,7 @@ import { describeEval, toolCalls } from "vitest-evals";
 import { expect } from "vitest";
 import { mention, rubric, slackEvals } from "../../../src/helpers";
 
-describeEval("Resource Event Subscriptions", slackEvals, (it) => {
+describeEval("Watches", slackEvals, (it) => {
   it("when a follow-up stops monitoring, cancel the selected watch before confirming", async ({
     run,
   }) => {
@@ -52,7 +52,7 @@ describeEval("Resource Event Subscriptions", slackEvals, (it) => {
     const watch = calls.find((call) => call.name === "watchEvents");
     const stop = calls.find((call) => call.name === "stopWatchingResources");
     if (!watch || watch.status !== "ok") {
-      throw new Error("Expected a successful resource watch tool call");
+      throw new Error("Expected a successful watch tool call");
     }
     if (
       !watch.result ||
@@ -60,7 +60,7 @@ describeEval("Resource Event Subscriptions", slackEvals, (it) => {
       Array.isArray(watch.result) ||
       typeof watch.result.id !== "string"
     ) {
-      throw new Error("Resource watch result did not contain an id");
+      throw new Error("Watch result did not contain an id");
     }
     expect(stop).toMatchObject({
       arguments: { id: watch.result.id },

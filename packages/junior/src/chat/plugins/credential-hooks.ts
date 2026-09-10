@@ -121,9 +121,7 @@ export async function selectPluginGrant(
   const result = await hook({
     ...basePluginContext(plugin),
     request: {
-      ...(input.bodyText !== undefined
-        ? { bodyText: input.bodyText }
-        : undefined),
+      ...(input.bodyText !== undefined ? { bodyText: input.bodyText } : undefined),
       method: input.method,
       ...(input.operation ? { operation: input.operation } : undefined),
       url: input.upstreamUrl.toString(),

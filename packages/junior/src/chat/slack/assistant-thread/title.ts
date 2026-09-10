@@ -44,9 +44,7 @@ export async function maybeSyncAssistantTitle(args: {
   projectedAssistantTitles.add(key);
 
   try {
-    await args
-      .getSlackAdapter()
-      .setAssistantTitle(channelId, threadTs, args.title);
+    await args.getSlackAdapter().setAssistantTitle(channelId, threadTs, args.title);
   } catch (error) {
     // Allow a later turn to retry after a transient failure. Stable permission
     // denials stay terminal for this process.

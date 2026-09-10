@@ -317,7 +317,10 @@ export async function readPeopleListFromSql(): Promise<ActorDirectoryReport> {
           gte(juniorConversations.lastActivityAt, dayMetricStart),
         ),
       )
-      .groupBy(juniorUsers.primaryEmailNormalized, activityDate),
+      .groupBy(
+        juniorUsers.primaryEmailNormalized,
+        activityDate,
+      ),
     getDb()
       .select({
         email: juniorUsers.primaryEmailNormalized,
@@ -339,7 +342,10 @@ export async function readPeopleListFromSql(): Promise<ActorDirectoryReport> {
           gte(juniorConversations.lastActivityAt, hourMetricStart),
         ),
       )
-      .groupBy(juniorUsers.primaryEmailNormalized, activityHour),
+      .groupBy(
+        juniorUsers.primaryEmailNormalized,
+        activityHour,
+      ),
   ]);
 
   const dayBucketsByEmail = new Map<string, Map<string, MetricBucket>>();

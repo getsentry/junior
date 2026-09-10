@@ -187,20 +187,17 @@ describe("retention purge job", () => {
       destinationId,
       lastActivityAtMs: BASE_MS,
     });
-    await fixture.sql
-      .db()
-      .insert(juniorAttachments)
-      .values({
-        id: "attachment-1",
-        conversationId: "with-attachment",
-        storageProvider: "test",
-        storageKey: "key-1",
-        filename: "report.txt",
-        contentType: "text/plain",
-        bytes: 6,
-        sha256: "digest",
-        createdAt: new Date(BASE_MS),
-      });
+    await fixture.sql.db().insert(juniorAttachments).values({
+      id: "attachment-1",
+      conversationId: "with-attachment",
+      storageProvider: "test",
+      storageKey: "key-1",
+      filename: "report.txt",
+      contentType: "text/plain",
+      bytes: 6,
+      sha256: "digest",
+      createdAt: new Date(BASE_MS),
+    });
     const deleted: string[][] = [];
     const storage: AttachmentStorage = {
       provider: "test",
@@ -228,33 +225,30 @@ describe("retention purge job", () => {
       destinationId,
       lastActivityAtMs: BASE_MS + 31 * DAY_MS,
     });
-    await fixture.sql
-      .db()
-      .insert(juniorAttachments)
-      .values([
-        {
-          id: "expired-attachment",
-          conversationId: "active-with-attachments",
-          storageProvider: "test",
-          storageKey: "expired-key",
-          filename: "old.txt",
-          contentType: "text/plain",
-          bytes: 3,
-          sha256: "old",
-          createdAt: new Date(BASE_MS),
-        },
-        {
-          id: "current-attachment",
-          conversationId: "active-with-attachments",
-          storageProvider: "test",
-          storageKey: "current-key",
-          filename: "new.txt",
-          contentType: "text/plain",
-          bytes: 3,
-          sha256: "new",
-          createdAt: new Date(BASE_MS + 2 * DAY_MS),
-        },
-      ]);
+    await fixture.sql.db().insert(juniorAttachments).values([
+      {
+        id: "expired-attachment",
+        conversationId: "active-with-attachments",
+        storageProvider: "test",
+        storageKey: "expired-key",
+        filename: "old.txt",
+        contentType: "text/plain",
+        bytes: 3,
+        sha256: "old",
+        createdAt: new Date(BASE_MS),
+      },
+      {
+        id: "current-attachment",
+        conversationId: "active-with-attachments",
+        storageProvider: "test",
+        storageKey: "current-key",
+        filename: "new.txt",
+        contentType: "text/plain",
+        bytes: 3,
+        sha256: "new",
+        createdAt: new Date(BASE_MS + 2 * DAY_MS),
+      },
+    ]);
     const deleted: string[][] = [];
     const storage: AttachmentStorage = {
       provider: "test",
@@ -285,21 +279,18 @@ describe("retention purge job", () => {
       destinationId,
       lastActivityAtMs: BASE_MS,
     });
-    await fixture.sql
-      .db()
-      .insert(juniorAttachments)
-      .values({
-        id: "attachment-1",
-        conversationId: "with-attachment",
-        storageProvider: "test",
-        storageKey: "key-1",
-        filename: "report.txt",
-        contentType: "text/plain",
-        bytes: 6,
-        sha256: "digest",
-        createdAt: new Date(BASE_MS),
-        deleteRequestedAt: new Date(BASE_MS + DAY_MS),
-      });
+    await fixture.sql.db().insert(juniorAttachments).values({
+      id: "attachment-1",
+      conversationId: "with-attachment",
+      storageProvider: "test",
+      storageKey: "key-1",
+      filename: "report.txt",
+      contentType: "text/plain",
+      bytes: 6,
+      sha256: "digest",
+      createdAt: new Date(BASE_MS),
+      deleteRequestedAt: new Date(BASE_MS + DAY_MS),
+    });
     const storage: AttachmentStorage = {
       provider: "test",
       get: async () => null,
@@ -338,20 +329,17 @@ describe("retention purge job", () => {
       .update(juniorConversations)
       .set({ transcriptPurgedAt: new Date(BASE_MS + DAY_MS) })
       .where(eq(juniorConversations.conversationId, "purged-owner"));
-    await fixture.sql
-      .db()
-      .insert(juniorAttachments)
-      .values({
-        id: "orphan-attachment",
-        conversationId: "purged-owner",
-        storageProvider: "test",
-        storageKey: "orphan-key",
-        filename: "late.txt",
-        contentType: "text/plain",
-        bytes: 4,
-        sha256: "orphan",
-        createdAt: new Date(BASE_MS + DAY_MS),
-      });
+    await fixture.sql.db().insert(juniorAttachments).values({
+      id: "orphan-attachment",
+      conversationId: "purged-owner",
+      storageProvider: "test",
+      storageKey: "orphan-key",
+      filename: "late.txt",
+      contentType: "text/plain",
+      bytes: 4,
+      sha256: "orphan",
+      createdAt: new Date(BASE_MS + DAY_MS),
+    });
     const deleted: string[][] = [];
     const storage: AttachmentStorage = {
       provider: "test",

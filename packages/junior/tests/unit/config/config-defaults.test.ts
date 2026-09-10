@@ -43,15 +43,15 @@ describe("install config defaults", () => {
   });
 
   it("rejects null defaults", () => {
-    expect(() => setConfigDefaults(null)).toThrow(
-      "configDefaults must be an object keyed by plugin config key",
-    );
+    expect(() =>
+      setConfigDefaults(null),
+    ).toThrow("configDefaults must be an object keyed by plugin config key");
   });
 
   it("rejects array defaults", () => {
-    expect(() => setConfigDefaults([])).toThrow(
-      "configDefaults must be an object keyed by plugin config key",
-    );
+    expect(() =>
+      setConfigDefaults([]),
+    ).toThrow("configDefaults must be an object keyed by plugin config key");
   });
 
   it("does not mutate the input object", () => {

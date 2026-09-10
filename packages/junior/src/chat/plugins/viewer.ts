@@ -20,9 +20,7 @@ function identityFromRow(row: IdentityRow): Identity {
     id: row.id,
     provider: row.provider,
     providerSubjectId: row.providerSubjectId,
-    ...(row.providerTenantId
-      ? { providerTenantId: row.providerTenantId }
-      : undefined),
+    ...(row.providerTenantId ? { providerTenantId: row.providerTenantId } : undefined),
     ...(row.displayName ? { displayName: row.displayName } : undefined),
     ...(row.handle ? { handle: row.handle } : undefined),
   });

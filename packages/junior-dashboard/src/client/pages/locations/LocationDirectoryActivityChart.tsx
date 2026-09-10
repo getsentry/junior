@@ -24,7 +24,8 @@ export function LocationDirectoryActivityChart(props: {
   days: LocationActivityDayReport[];
 }) {
   const bucketUnit = props.bucketUnit ?? "day";
-  const perBucket = `Conversations per ${timeRangeBucketPerLabel(bucketUnit)}`;
+  const perBucket =
+    `Conversations per ${timeRangeBucketPerLabel(bucketUnit)}`;
 
   const layout = createActivityChartLayout(260);
   const maximum = Math.max(
@@ -41,7 +42,9 @@ export function LocationDirectoryActivityChart(props: {
   return (
     <Card>
       <CardHeader
-        description={`${timeRangeBucketAdjective(bucketUnit)} public volume compared with private activity in aggregate.`}
+        description={
+          `${timeRangeBucketAdjective(bucketUnit)} public volume compared with private activity in aggregate.`
+        }
         title={perBucket}
         trailing={
           <ChartLegend

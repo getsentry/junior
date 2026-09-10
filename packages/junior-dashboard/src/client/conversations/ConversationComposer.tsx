@@ -79,9 +79,7 @@ export const ConversationComposer = memo(function ConversationComposer(
   // New-conversation create holds the send control until accept settles so a
   // failed restore cannot race a later submit.
   const [createPending, setCreatePending] = useState(false);
-  const [canSend, setCanSend] = useState(() =>
-    Boolean(initialDraft.text.trim()),
-  );
+  const [canSend, setCanSend] = useState(() => Boolean(initialDraft.text.trim()));
   const online = useDashboardOnline();
   const id = useId();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -304,9 +302,7 @@ export const ConversationComposer = memo(function ConversationComposer(
         <div
           className={cn(
             "flex min-w-0 items-center gap-3 px-2 py-1.5 md:px-3 md:py-2",
-            props.footerStart
-              ? "justify-between"
-              : "justify-end md:justify-between",
+            props.footerStart ? "justify-between" : "justify-end md:justify-between",
           )}
         >
           <div className="flex min-w-0 items-center gap-3">

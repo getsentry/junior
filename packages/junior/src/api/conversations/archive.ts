@@ -57,10 +57,7 @@ async function setViewerArchive(args: {
             lastMessageAt: sql`greatest(${juniorConversationParticipants.lastMessageAt}, excluded.last_message_at)`,
           },
         });
-      return {
-        archivedAt: archivedAt.toISOString(),
-        status: "updated" as const,
-      };
+      return { archivedAt: archivedAt.toISOString(), status: "updated" as const };
     }
 
     await db

@@ -13,11 +13,7 @@ export type TextInputProps = Omit<
 };
 
 /** Render the dashboard's standard single-line text control. */
-export function TextInput({
-  className,
-  type = "text",
-  ...props
-}: TextInputProps) {
+export function TextInput({ className, type = "text", ...props }: TextInputProps) {
   return (
     <input
       {...props}

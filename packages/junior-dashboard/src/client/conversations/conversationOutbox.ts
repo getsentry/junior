@@ -72,9 +72,7 @@ export function mergeConversationMailboxMessages(
   const outboxMessages = outbox ?? [];
   let next: readonly ConversationMailboxMessage[] = serverMessages;
   if (outboxMessages.length > 0) {
-    const serverIds = new Set(
-      serverMessages.map((message) => message.messageId),
-    );
+    const serverIds = new Set(serverMessages.map((message) => message.messageId));
     const extras = outboxMessages
       .filter((message) => !serverIds.has(message.messageId))
       .map(mailboxMessageFromOutbox);

@@ -6,7 +6,10 @@ import { handleSlackWebhook } from "@/chat/ingress/slack-webhook";
 import { getWorkspaceTeamId } from "@/chat/slack/workspace-context";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { getSqlExecutor } from "@/chat/db";
-import { upsertIdentity, upsertLinkedIdentity } from "@/chat/identities/sql";
+import {
+  upsertIdentity,
+  upsertLinkedIdentity,
+} from "@/chat/identities/sql";
 import { juniorIdentities } from "@/db/schema";
 import { and, eq } from "drizzle-orm";
 import {

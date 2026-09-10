@@ -1,5 +1,5 @@
 name: eval-events
-display-name: Eval Resource Events
+display-name: Eval Events
 description: Creates eval pull requests with subscribable events
 
 mcp:

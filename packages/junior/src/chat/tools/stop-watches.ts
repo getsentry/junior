@@ -19,7 +19,7 @@ const resultDataSchema = z
 
 const outputSchema = juniorToolOutputSchema.merge(resultDataSchema);
 
-/** Create the tool that stops resource watches for this conversation. */
+/** Create the tool that stops watches for this conversation. */
 export function createStopWatchingResourcesTool(context: ToolRuntimeContext) {
   return zodTool({
     annotations: {
@@ -29,7 +29,7 @@ export function createStopWatchingResourcesTool(context: ToolRuntimeContext) {
       readOnlyHint: false,
     },
     description:
-      "Stop one resource watch in the current conversation by id. Omit id only when the user explicitly asks to stop every watch in this conversation. Infer terse stop requests from context, inspect active watches when the target is unclear, and call this tool before confirming that watching stopped.",
+      "Stop one watch in the current conversation by id. Omit id only when the user explicitly asks to stop every watch in this conversation. Infer terse stop requests from context, inspect active watches when the target is unclear, and call this tool before confirming that watching stopped.",
     exposure: "deferred",
     source: RESOURCE_WATCH_TOOL_SOURCE,
     inputSchema: z
@@ -45,7 +45,7 @@ export function createStopWatchingResourcesTool(context: ToolRuntimeContext) {
         });
         if (!stopped) {
           throw new ToolInputError(
-            "Resource watch was not found in the current conversation.",
+            "Watch was not found in the current conversation.",
           );
         }
         stoppedIds = [stopped.id];

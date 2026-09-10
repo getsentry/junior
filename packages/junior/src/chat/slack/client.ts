@@ -528,9 +528,7 @@ export async function withSlackRetries<T>(
       const baseLogAttributes: Record<string, string | number | boolean> = {
         "app.slack.action": action,
         "app.slack.error_code": mapped.code,
-        ...(mapped.apiError
-          ? { "app.slack.api_error": mapped.apiError }
-          : undefined),
+        ...(mapped.apiError ? { "app.slack.api_error": mapped.apiError } : undefined),
         ...(mapped.detail ? { "app.slack.detail": mapped.detail } : undefined),
         ...(mapped.detailLine !== undefined
           ? { "app.slack.detail_line": mapped.detailLine }

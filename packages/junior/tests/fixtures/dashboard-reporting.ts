@@ -32,9 +32,7 @@ export async function recordRoot(
       channelId: slackIdFromText("C", conversationId),
     },
     nowMs: 1,
-    ...(actor
-      ? { actor: { platform: "slack" as const, ...actor } }
-      : undefined),
+    ...(actor ? { actor: { platform: "slack" as const, ...actor } } : undefined),
     source: "slack",
     title: "Canonical event report",
     visibility,

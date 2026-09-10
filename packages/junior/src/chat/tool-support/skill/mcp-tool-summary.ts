@@ -28,9 +28,7 @@ export function toExposedToolSummary(
     ...(toolDef.title ? { title: toolDef.title } : undefined),
     description: toolDef.description,
     input_schema: toolDef.parameters,
-    ...(toolDef.outputSchema
-      ? { output_schema: toolDef.outputSchema }
-      : undefined),
+    ...(toolDef.outputSchema ? { output_schema: toolDef.outputSchema } : undefined),
     ...(toolDef.annotations ? { annotations: toolDef.annotations } : undefined),
   };
 }

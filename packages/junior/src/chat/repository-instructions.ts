@@ -193,7 +193,8 @@ function formatInstructionSources(
   }
   return sources
     .map(
-      (source) => `## ${path.posix.dirname(source.path)}\n\n${source.content}`,
+      (source) =>
+        `## ${path.posix.dirname(source.path)}\n\n${source.content}`,
     )
     .join("\n\n");
 }

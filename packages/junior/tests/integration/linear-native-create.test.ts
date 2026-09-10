@@ -5,7 +5,10 @@ import { afterEach, describe, expect, it } from "vitest";
 import { linearPlugin } from "../../../junior-linear/src/index.js";
 import { getConversationStore, getDb } from "@/chat/db";
 import { McpToolManager } from "@/chat/mcp/tool-manager";
-import { createPluginHookRunner, setPlugins } from "@/chat/plugins/agent-hooks";
+import {
+  createPluginHookRunner,
+  setPlugins,
+} from "@/chat/plugins/agent-hooks";
 import { listConversationAnnotations } from "@/chat/plugins/annotations";
 import { parseInlinePluginManifest } from "@/chat/plugins/manifest";
 import { mswServer } from "../msw/server";

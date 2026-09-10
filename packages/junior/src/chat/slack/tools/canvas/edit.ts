@@ -1,7 +1,4 @@
-import {
-  readCanvas,
-  writeCanvasMarkdown,
-} from "@/chat/slack/tool-support/canvas/api";
+import { readCanvas, writeCanvasMarkdown } from "@/chat/slack/tool-support/canvas/api";
 import {
   resolveCanvasTarget,
   slackCanvasRefParam,

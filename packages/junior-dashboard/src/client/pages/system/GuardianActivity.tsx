@@ -68,8 +68,8 @@ export function GuardianActivity(props: {
               Guardian reviews
             </h3>
             <p className="mt-1 mb-0 font-mono text-xs leading-relaxed text-dashboard-text-muted">
-              {timeRangeBucketAdjective(bucketUnit)} decisions before reviewed
-              actions execute.
+              {timeRangeBucketAdjective(bucketUnit)} decisions before
+              reviewed actions execute.
             </p>
           </div>
           <div className="font-mono text-xs uppercase tracking-[0.1em] text-dashboard-text-muted">

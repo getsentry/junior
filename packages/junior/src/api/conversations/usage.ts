@@ -63,12 +63,8 @@ function usageFromAggregate(
   const cost: AgentTurnCost = {
     ...(row.costInput === null ? undefined : { input: row.costInput }),
     ...(row.costOutput === null ? undefined : { output: row.costOutput }),
-    ...(row.costCacheRead === null
-      ? undefined
-      : { cacheRead: row.costCacheRead }),
-    ...(row.costCacheWrite === null
-      ? undefined
-      : { cacheWrite: row.costCacheWrite }),
+    ...(row.costCacheRead === null ? undefined : { cacheRead: row.costCacheRead }),
+    ...(row.costCacheWrite === null ? undefined : { cacheWrite: row.costCacheWrite }),
     ...(row.costTotal === null ? undefined : { total: row.costTotal }),
   };
   const result: AgentTurnUsage = {

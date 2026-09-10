@@ -1,7 +1,6 @@
-# Resource Events
+# Events
 
-Watches route events back into an existing
-conversation.
+Watches route events back into an existing conversation.
 
 ## Contract
 
@@ -10,13 +9,13 @@ conversation.
 - Core owns subscription creation, cancellation, expiry, deduplication, and the
   conversation association.
 - Inspection and stop actions stay in the tool catalog. A successful
-  subscription result identifies the exact watch id to stop. Omitting that id
+  watch result identifies the exact watch id to stop. Omitting that id
   is reserved for an explicit request to stop every watch in the thread.
 - A thread opt-out cancels every active subscription for that conversation
   before the Slack thread is marked unsubscribed.
 - Plugin route code validates and normalizes incoming events before calling
   the ingestion boundary.
-- Every conversation can hold a event watch. A matching event wakes
+- Every conversation can hold a watch. A matching event wakes
   that conversation mailbox; the conversation destination chooses the worker.
 - Plugin-owned routes publish normalized events through the route-hook resource
   event publisher; core binds the plugin namespace and never needs the raw
@@ -73,12 +72,12 @@ conversation.
   After that limit, later event wakes stay quiet until a user message
   clears the pause. The Turn that hits the limit posts a plain notice in the
   thread. Terminal watches can still complete after a refused wake.
-- A plugin cannot use a event to widen conversation visibility or
+- A plugin cannot use an event to widen conversation visibility or
   credential authority.
 - Watches default to 14 days and reject requested lifetimes over 30 days rather
   than silently shortening them.
-- Plugins may expose `events.subscribe()` so a successful tool can
-  create a temporary subscription without asking the model to call
+- Plugins may expose `events.subscribe()` so a successful tool can create a
+  watch without asking the model to call
   `watchEvents`. Forced subscriptions should omit those events from the
   tool result's suggested events.
 - Resource types may declare optional app guidance per event type. Core inserts
@@ -87,5 +86,5 @@ conversation.
   from trusted data and untrusted provider content.
 
 The plugin-facing types and publisher contract live in
-`packages/junior-plugin-api/src/events.ts`; subscription storage and
-ingestion live in this directory.
+`packages/junior-plugin-api/src/events.ts`. Watch storage and ingestion live in
+this directory.

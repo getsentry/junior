@@ -40,7 +40,9 @@ export function createSpawnAgentTool(
           .enum(TURN_REASONING_LEVELS)
           .nullable()
           .optional()
-          .describe("Optional reasoning level for this delegated task only"),
+          .describe(
+            "Optional reasoning level for this delegated task only",
+          ),
       })
       .strict(),
     outputSchema: spawnAgentOutputSchema,

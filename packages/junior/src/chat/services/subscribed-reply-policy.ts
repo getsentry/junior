@@ -42,9 +42,7 @@ export function createSubscribedReplyPolicy(
       ? `${decision.reason}:${decision.reasonDetail}`
       : decision.reason;
     return {
-      ...(decision.costUsd !== undefined
-        ? { costUsd: decision.costUsd }
-        : undefined),
+      ...(decision.costUsd !== undefined ? { costUsd: decision.costUsd } : undefined),
       shouldReply: decision.shouldReply,
       shouldUnsubscribe: decision.shouldUnsubscribe,
       reason,

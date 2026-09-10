@@ -16,7 +16,10 @@ import {
 } from "../../components/charts/ActivityChart";
 import { ChartHeader } from "../../components/charts/ChartHeader";
 import { Card } from "../../components/layout/Card";
-import { formatActivityChartAverage, formatCompactNumber } from "../../format";
+import {
+  formatActivityChartAverage,
+  formatCompactNumber,
+} from "../../format";
 
 /** Plot root conversations with recorded activity each day or hour. */
 export function ConversationActivityChart(props: {
@@ -64,7 +67,9 @@ export function ConversationActivityChart(props: {
                 date={day.date}
                 summary={`${day.conversations} conversations`}
               >
-                <g tabIndex={0}>
+                <g
+                  tabIndex={0}
+                >
                   <rect
                     fill="#22d3ee"
                     height={renderedHeight}

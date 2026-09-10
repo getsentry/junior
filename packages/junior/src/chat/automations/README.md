@@ -1,29 +1,20 @@
 # Automations
 
-This module projects the two native durable task kinds for signed-in users:
+This module projects scheduled and event automations for signed-in users. It
+includes automations that the user owns and automations in public destinations
+in the user's linked Slack workspaces.
 
-- automations owned through a canonical or viewer-linked Slack identity;
-- automations assigned to public destinations in the viewer's linked Slack workspaces.
+Results are newest-first. Owned and public results have separate limits. Public
+access and destination labels come from the destination directory. Missing or
+private directory entries do not grant access.
 
-The projection is newest-first and independently bounded for owned and public
-tasks so activity in one scope cannot crowd the other out. Public access and
-destination labels come from the current persisted destination directory;
-missing or non-public directory entries fail closed, with provider ids used
-only as label fallbacks. It does not merge the persistence models or dispatch paths:
-scheduled work is claimed by the heartbeat, while event work is matched during
-event ingestion. The dashboard API may delete only a task that belongs
-to the resolved viewer; visibility grants read access, not mutation authority.
-Empty legacy scheduled-automation text is projected with stable display placeholders
-so one malformed record cannot fail the entire list.
+Scheduled automations run through the heartbeat. Event automations run when a
+matching event arrives. The dashboard can delete only automations that the user
+owns. A public destination grants read access, not write access.
 
-Runs stay on the durable execution table after a task is deleted. The Runs view
-keeps historical executions for deleted scheduled and event automations the viewer
-owns. Both deletes keep the task row for titles and stop future matching or
-scheduled claims.
+Deleted automations keep their execution history and title. They do not match
+new events or schedules.
 
-Tasks store an optional short `title` generated from the instruction the same
-way conversation titles are generated. The title is a dedicated SQL column on
-both `junior_scheduler_tasks` and `junior_event_automations`, not a field inside the
-JSON task payload. The Automations API always projects a `title` for display, falling
-back to a truncated first line of the instruction when no generated title is
-stored yet.
+An automation title is stored in the SQL `title` column. It is not part of the
+legacy JSON payload. The API uses the first line of the instruction when a title
+is missing.

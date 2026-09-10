@@ -150,9 +150,7 @@ export async function completeText(params: {
     "gen_ai.operation.name": GEN_AI_OPERATION_CHAT,
     "gen_ai.request.model": params.modelId,
     "gen_ai.output.type": "text",
-    ...(params.promptName
-      ? { "gen_ai.prompt.name": params.promptName }
-      : undefined),
+    ...(params.promptName ? { "gen_ai.prompt.name": params.promptName } : undefined),
     "server.address": GEN_AI_SERVER_ADDRESS,
     "server.port": GEN_AI_SERVER_PORT,
     ...(hasCompactedConversationContext(params.messages)
@@ -234,9 +232,7 @@ export async function completeText(params: {
               ],
             }
           : undefined),
-        ...(message.model
-          ? { "gen_ai.response.model": message.model }
-          : undefined),
+        ...(message.model ? { "gen_ai.response.model": message.model } : undefined),
       };
       setSpanAttributes(endAttributes);
       if (message.stopReason === "error") {
@@ -372,9 +368,7 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
           model: provider.chat(params.modelId),
           schema: params.schema,
           prompt: params.prompt,
-          ...(params.system !== undefined
-            ? { system: params.system }
-            : undefined),
+          ...(params.system !== undefined ? { system: params.system } : undefined),
           ...(params.temperature !== undefined
             ? { temperature: params.temperature }
             : undefined),
@@ -510,9 +504,7 @@ export async function embedTexts(params: {
       },
     );
     return {
-      ...(result.costUsd !== undefined
-        ? { costUsd: result.costUsd }
-        : undefined),
+      ...(result.costUsd !== undefined ? { costUsd: result.costUsd } : undefined),
       dimensions: result.dimensions,
       model: params.modelId,
       provider: GEN_AI_PROVIDER_NAME,

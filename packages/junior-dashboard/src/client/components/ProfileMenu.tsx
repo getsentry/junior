@@ -78,9 +78,7 @@ export function ProfileMenu({
   const thirtyDaySpend = spend
     ? formatCostSummary({ total: spend.thirtyDaysUsd })
     : "—";
-  const profilePages = userPages.filter(
-    (page) => page.navigation === "profile",
-  );
+  const profilePages = userPages.filter((page) => page.navigation === "profile");
 
   function clearHoverTimers() {
     if (openTimerRef.current) clearTimeout(openTimerRef.current);
@@ -230,9 +228,7 @@ export function ProfileMenu({
         </span>
         <span className="whitespace-nowrap">
           7d{" "}
-          <span className="font-semibold text-dashboard-text">
-            {sevenDaySpend}
-          </span>
+          <span className="font-semibold text-dashboard-text">{sevenDaySpend}</span>
         </span>
         <span className="whitespace-nowrap">
           30d{" "}
@@ -347,10 +343,7 @@ export function ProfileMenu({
               {sevenDaySpend}
             </span>
           </span>
-          <span
-            aria-hidden="true"
-            className="h-3 w-px bg-dashboard-fill-strong"
-          />
+          <span aria-hidden="true" className="h-3 w-px bg-dashboard-fill-strong" />
           <span className="flex items-baseline gap-1 whitespace-nowrap tabular-nums">
             <span className="text-xs font-medium tracking-[0.08em] text-dashboard-text-muted">
               30d

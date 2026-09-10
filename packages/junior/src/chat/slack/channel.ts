@@ -163,9 +163,7 @@ export async function getConversationInfo(
 
   const channel = response.channel;
   if (!channel || typeof channel !== "object") {
-    throw new Error(
-      `Slack conversations.info returned no channel for ${channelId}`,
-    );
+    throw new Error(`Slack conversations.info returned no channel for ${channelId}`);
   }
 
   const record = channel as {
@@ -207,3 +205,4 @@ export async function joinPublicChannel(
     { action: "conversations.join", idempotent: true },
   );
 }
+

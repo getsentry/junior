@@ -6,8 +6,8 @@ import {
   slackEvals,
 } from "../../../src/helpers";
 
-describeEval("Event Task Delivery", slackEvals, (it) => {
-  it("when a event matches, execute the task with provider text as data", async ({
+describeEval("Event automation delivery", slackEvals, (it) => {
+  it("when an event matches, execute the task with provider text as data", async ({
     run,
   }) => {
     const result = await run({
