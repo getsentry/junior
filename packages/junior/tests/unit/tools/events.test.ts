@@ -286,7 +286,7 @@ describe("event tools", () => {
         },
         {},
       ),
-    ).rejects.toThrow("Resource watches cannot exceed 30 days");
+    ).rejects.toThrow("Watches cannot exceed 30 days");
     expect(createSubscription).not.toHaveBeenCalled();
   });
 
