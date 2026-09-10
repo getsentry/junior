@@ -85,12 +85,10 @@ export async function prepareWorkspace(
           })
         : undefined;
     const detachedSha = detachedHead?.stdout.trim();
-    const validDetachedSha =
+    const validDetachedHead =
       detachedHead?.exitCode === 0 &&
       detachedSha &&
-      /^[0-9a-f]{40,64}$/.test(detachedSha)
-        ? detachedSha
-        : undefined;
+      /^[0-9a-f]{40,64}$/.test(detachedSha);
     const upstream =
       branch?.exitCode === 0 && branchName
         ? await ctx.sandbox.run({
@@ -111,142 +109,36 @@ export async function prepareWorkspace(
     const upstreamBranch = upstreamRef?.startsWith(upstreamPrefix)
       ? upstreamRef.slice(upstreamPrefix.length)
       : undefined;
-    if (worktree.exitCode === 0 && (branchName || validDetachedSha)) {
-      const localBranch = branchName || "workspace-detached";
-      const remoteBranch = upstreamBranch || branchName;
-      const remoteRef = remoteBranch
-        ? `${upstreamPrefix}${remoteBranch}`
-        : validDetachedSha!;
-      // Build trusted Git metadata outside the checkout before replacing the
-      // snapshot metadata. Move the cached object database into it, but do not
-      // reuse snapshot hooks, filters, or remote config during credentialed Git
-      // commands. This Sandbox is still a disposable candidate, so a failed
-      // refresh cannot damage the ready snapshot or active Sandbox.
-      const tempDir = await ctx.sandbox.run({
-        cmd: "mktemp",
-        args: ["-d", `${ctx.sandbox.juniorRoot}/workspace-refresh.XXXXXX`],
-        cwd: ctx.sandbox.root,
-      });
-      const refreshGitDir = tempDir.stdout.trim();
-      if (tempDir.exitCode !== 0 || !refreshGitDir) {
-        throw new Error(
-          `GitHub workspace refresh temp directory failed for ${repo}: ${tempDir.stderr.trim() || `exit ${tempDir.exitCode}`}`,
-        );
-      }
-      const gitArgs = (...args: string[]) => [
-        "--git-dir",
-        refreshGitDir,
-        "--work-tree",
-        path,
-        ...args,
+    if (worktree.exitCode === 0 && (branchName || validDetachedHead)) {
+      const refreshCommands = [
+        ...(upstreamBranch
+          ? [
+              [
+                "-C",
+                path,
+                "fetch",
+                "--quiet",
+                "--no-tags",
+                "origin",
+                `+refs/heads/${upstreamBranch}:${upstreamRef}`,
+              ],
+            ]
+          : []),
+        ["-C", path, "reset", "--hard", upstreamBranch ? upstreamRef! : "HEAD"],
+        ["-C", path, "clean", "-fd"],
       ];
-      const refreshCommands: Array<{
-        args: string[];
-        cmd: string;
-        credentialed?: boolean;
-      }> = [
-        {
-          cmd: "git",
-          args: gitArgs("init", "--quiet", "--initial-branch", localBranch),
-          credentialed: true,
-        },
-        {
-          cmd: "git",
-          args: gitArgs("remote", "add", "origin", cloneUrl),
-          credentialed: true,
-        },
-        { cmd: "rm", args: ["-rf", "--", `${refreshGitDir}/objects`] },
-        {
-          cmd: "mv",
-          args: ["--", `${path}/.git/objects`, `${refreshGitDir}/objects`],
-        },
-        ...(remoteBranch
-          ? [
-              {
-                cmd: "git",
-                args: gitArgs(
-                  "fetch",
-                  "--quiet",
-                  "--prune",
-                  "--no-tags",
-                  "origin",
-                  `+refs/heads/${remoteBranch}:refs/remotes/origin/${remoteBranch}`,
-                ),
-                credentialed: true,
-              },
-            ]
-          : []),
-        ...(validDetachedSha
-          ? [
-              {
-                cmd: "git",
-                args: gitArgs(
-                  "update-ref",
-                  "--no-deref",
-                  "HEAD",
-                  validDetachedSha,
-                ),
-                credentialed: true,
-              },
-            ]
-          : []),
-        {
-          cmd: "git",
-          args: gitArgs("reset", "--hard", remoteRef),
-          credentialed: true,
-        },
-        ...(remoteBranch && branchName
-          ? [
-              {
-                cmd: "git",
-                args: gitArgs(
-                  "branch",
-                  `--set-upstream-to=origin/${remoteBranch}`,
-                  branchName,
-                ),
-                credentialed: true,
-              },
-            ]
-          : []),
-      ];
-      for (const command of refreshCommands) {
+      for (const args of refreshCommands) {
         const result = await ctx.sandbox.run({
-          cmd: command.cmd,
-          args: command.args,
+          cmd: "git",
+          args,
           cwd: ctx.sandbox.root,
-          ...(command.credentialed ? { env: gitEnv } : undefined),
+          env: gitEnv,
         });
         if (result.exitCode !== 0) {
           throw new Error(
             `GitHub workspace refresh failed for ${repo}: ${result.stderr.trim() || `exit ${result.exitCode}`}`,
           );
         }
-      }
-      for (const [cmd, args] of [
-        ["rm", ["-rf", "--", `${path}/.git`]],
-        ["mv", ["--", refreshGitDir, `${path}/.git`]],
-      ] as const) {
-        const result = await ctx.sandbox.run({
-          cmd,
-          args: [...args],
-          cwd: ctx.sandbox.root,
-        });
-        if (result.exitCode !== 0) {
-          throw new Error(
-            `GitHub workspace metadata replacement failed for ${repo}: ${result.stderr.trim() || `exit ${result.exitCode}`}`,
-          );
-        }
-      }
-      const clean = await ctx.sandbox.run({
-        cmd: "git",
-        args: ["-C", path, "clean", "-fd"],
-        cwd: ctx.sandbox.root,
-        env: gitEnv,
-      });
-      if (clean.exitCode !== 0) {
-        throw new Error(
-          `GitHub workspace refresh failed for ${repo}: ${clean.stderr.trim() || `exit ${clean.exitCode}`}`,
-        );
       }
       continue;
     }
