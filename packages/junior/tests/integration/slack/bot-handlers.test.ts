@@ -442,10 +442,7 @@ describe("bot handlers (integration)", () => {
     );
 
     expect(
-      postIncludes(
-        thread,
-        "I ran into an internal error while processing that.",
-      ),
+      postIncludes(thread, "The model provider returned an error."),
     ).toBe(true);
     expect(JSON.stringify(thread.posts)).not.toContain("LLM unavailable");
     const lifecycle = await loadTurnLifecycleEvents(conversationId);
