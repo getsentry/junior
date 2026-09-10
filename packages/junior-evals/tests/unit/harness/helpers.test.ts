@@ -152,24 +152,10 @@ it("includes captured Slack posts in the rubric-visible transcript", async () =>
   ).not.toHaveProperty("rubric_visible", false);
 });
 
-it("records rubric judge usage and cost in score metadata", async () => {
+it("records rubric judge cost in score metadata", async () => {
   completeTextMock.mockResolvedValueOnce({
     message: {
-      usage: {
-        input: 100,
-        output: 20,
-        cacheRead: 10,
-        cacheWrite: 0,
-        reasoning: 5,
-        totalTokens: 130,
-        cost: {
-          input: 0.01,
-          output: 0.02,
-          cacheRead: 0.001,
-          cacheWrite: 0,
-          total: 0.031,
-        },
-      },
+      usage: { cost: { total: 0.031 } },
     },
     text: '{"answer":"A","rationale":"The response meets the rubric."}',
   });
@@ -188,18 +174,7 @@ it("records rubric judge usage and cost in score metadata", async () => {
     toolCalls: [],
   });
 
-  expect(result.metadata).toMatchObject({
-    answer: "A",
-    costUsd: 0.031,
-    usage: {
-      inputTokens: 100,
-      outputTokens: 20,
-      cachedInputTokens: 10,
-      reasoningTokens: 5,
-      totalTokens: 130,
-      costUsd: 0.031,
-    },
-  });
+  expect(result.metadata).toMatchObject({ answer: "A", costUsd: 0.031 });
 });
 
 it("forwards the Vitest abort signal to the eval scenario", async () => {

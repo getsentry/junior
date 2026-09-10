@@ -616,11 +616,6 @@ interface JudgeResultPayload {
   rationale: string;
 }
 
-interface JudgeHarnessPayload extends Record<string, JsonValue> {
-  text: string;
-  usage: Record<string, JsonValue>;
-}
-
 const CHOICE_SCORES: Record<JudgeAnswer, number> = {
   A: 1,
   B: 0.75,
@@ -648,18 +643,7 @@ const judgeHarness = createJudgeHarness({
       ],
       temperature: 0,
     });
-    const usage = toJsonRecord({
-      inputTokens: message.usage.input,
-      outputTokens: message.usage.output,
-      cachedInputTokens: message.usage.cacheRead,
-      cacheCreationTokens: message.usage.cacheWrite,
-      reasoningTokens: message.usage.reasoning,
-      totalTokens: message.usage.totalTokens,
-      currency: "USD",
-      cost: message.usage.cost,
-      costUsd: message.usage.cost.total,
-    });
-    return { text, usage } satisfies JudgeHarnessPayload;
+    return { costUsd: message.usage.cost.total, text };
   },
 });
 
@@ -689,27 +673,6 @@ function isJudgeAnswer(value: unknown): value is JudgeAnswer {
     typeof value === "string" &&
     Object.prototype.hasOwnProperty.call(CHOICE_SCORES, value)
   );
-}
-
-function parseJudgeHarnessPayload(result: JsonValue | undefined): {
-  text: string;
-  usage?: Record<string, JsonValue>;
-} {
-  if (typeof result === "string") {
-    return { text: result };
-  }
-  if (
-    result &&
-    typeof result === "object" &&
-    !Array.isArray(result) &&
-    typeof result.text === "string" &&
-    result.usage &&
-    typeof result.usage === "object" &&
-    !Array.isArray(result.usage)
-  ) {
-    return { text: result.text, usage: result.usage };
-  }
-  throw new Error("Rubric judge returned an invalid harness payload.");
 }
 
 function parseJudgeResult(text: string): JudgeResultPayload {
@@ -796,15 +759,22 @@ export const RubricJudge = createJudge(
     if (!runJudge) {
       throw new Error("RubricJudge requires a configured judgeHarness.");
     }
-    const judgeResult = parseJudgeHarnessPayload(
-      await runJudge({
-        prompt: formatJudgePrompt(
-          serializeVisibleTranscript(session),
-          formatRubric(input.criteria),
-        ),
-        system: EVAL_SYSTEM,
-      }),
-    );
+    const judgeResult = await runJudge({
+      prompt: formatJudgePrompt(
+        serializeVisibleTranscript(session),
+        formatRubric(input.criteria),
+      ),
+      system: EVAL_SYSTEM,
+    });
+    if (
+      !judgeResult ||
+      typeof judgeResult !== "object" ||
+      Array.isArray(judgeResult) ||
+      typeof judgeResult.text !== "string" ||
+      typeof judgeResult.costUsd !== "number"
+    ) {
+      throw new Error("Rubric judge returned an invalid result.");
+    }
     const object = parseJudgeResult(judgeResult.text);
     const answer = object.answer as keyof typeof CHOICE_SCORES;
 
@@ -813,10 +783,7 @@ export const RubricJudge = createJudge(
       metadata: {
         answer,
         rationale: object.rationale,
-        ...(judgeResult.usage ? { usage: judgeResult.usage } : {}),
-        ...(typeof judgeResult.usage?.costUsd === "number"
-          ? { costUsd: judgeResult.usage.costUsd }
-          : {}),
+        costUsd: judgeResult.costUsd,
       },
     };
   },
