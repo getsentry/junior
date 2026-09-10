@@ -307,7 +307,7 @@ describeEval("Event automation management", slackEvals, (it) => {
     );
     expect(updateCalls).toHaveLength(1);
     expect(updateCalls[0]?.arguments).toMatchObject({
-      taskId: "evt_issue_state_summary",
+      automationId: "evt_issue_state_summary",
       trigger: {
         events: ["issue.reopened"],
         identifier: "getsentry/junior#208",
