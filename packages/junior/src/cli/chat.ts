@@ -240,6 +240,8 @@ async function prepareLocalChatRun(
   // subagents here so spawnAgent matches the wired child-worker path.
   const { setExperimentalFeatures } = await import("@/chat/experimental");
   setExperimentalFeatures({ subagents: true });
+  const { setBriefsConfig } = await import("@/chat/briefs/registration");
+  setBriefsConfig({ enabled: true });
   const { runLocalAgentTurn } = await import("@/chat/local/runner");
   const { startLocalOAuthCallbackServer } =
     await import("@/chat/local/oauth-callback-server");

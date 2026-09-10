@@ -10,6 +10,7 @@ import {
 import { apiErrorSchema } from "@sentry/junior/api/schema";
 import { initSentry } from "@sentry/junior/instrumentation";
 import { JUNIOR_VERSION } from "@sentry/junior/version";
+import { DASHBOARD_VERSION_HEADER } from "./dashboard-version";
 import type {
   PluginApiRouteRequestContext,
   PluginRouteApp,
@@ -434,6 +435,10 @@ export function createDashboardApp(
     : undefined;
   const app = new Hono<{ Variables: Variables }>();
   const authenticatedRoutes = options.authenticatedRoutes ?? [];
+  app.use("*", async (c, next) => {
+    await next();
+    c.header(DASHBOARD_VERSION_HEADER, JUNIOR_VERSION);
+  });
 
   app.get(dashboardLoginPath(basePath), async (c) => {
     const canonicalUrl = canonicalRequestUrl(c.req.raw, canonicalBaseURL);

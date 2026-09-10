@@ -50,7 +50,7 @@ function resolveDashboardBaseURL(
   return "http://localhost:3000";
 }
 
-/** Configure core dashboard links used in Slack footers. */
+/** Configure core dashboard links. */
 export function setDashboardConversationLinkOptions(
   options: DashboardConversationLinkOptions | undefined,
 ): DashboardConversationLinkOptions | undefined {

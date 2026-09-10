@@ -1,4 +1,5 @@
 import type { ZodType } from "zod";
+import { recordDashboardServerVersion } from "./dashboard-version";
 
 /** An authenticated dashboard request rejected by the product API. */
 export class DashboardApiError extends Error {
@@ -54,7 +55,7 @@ export async function patch<T>(
   path: string,
   body: unknown,
 ): Promise<T> {
-  const response = await fetch(path, {
+  const response = await fetchDashboard(path, {
     body: JSON.stringify(body),
     credentials: "same-origin",
     headers: { "content-type": "application/json" },
@@ -71,7 +72,7 @@ export async function post<T>(
   path: string,
   body: unknown,
 ): Promise<T> {
-  const response = await fetch(path, {
+  const response = await fetchDashboard(path, {
     body: JSON.stringify(body),
     credentials: "same-origin",
     headers: { "content-type": "application/json" },
@@ -88,7 +89,7 @@ export async function put<T>(
   path: string,
   body: unknown,
 ): Promise<T> {
-  const response = await fetch(path, {
+  const response = await fetchDashboard(path, {
     body: JSON.stringify(body),
     credentials: "same-origin",
     headers: { "content-type": "application/json" },
@@ -101,7 +102,7 @@ export async function put<T>(
 
 /** Delete one authenticated dashboard resource. */
 export async function deleteDashboardResource(path: string): Promise<void> {
-  const response = await fetch(path, {
+  const response = await fetchDashboard(path, {
     credentials: "same-origin",
     method: "DELETE",
   });
@@ -115,7 +116,7 @@ export async function del<T>(
   path: string,
   body: unknown = {},
 ): Promise<T> {
-  const response = await fetch(path, {
+  const response = await fetchDashboard(path, {
     body: JSON.stringify(body),
     credentials: "same-origin",
     headers: { "content-type": "application/json" },
@@ -126,13 +127,22 @@ export async function del<T>(
   return schema.parse(await response.json());
 }
 
+async function fetchDashboard(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+): Promise<Response> {
+  const response = await fetch(input, init);
+  recordDashboardServerVersion(response);
+  return response;
+}
+
 /** Fetch one authenticated dashboard JSON resource and validate its response. */
 export async function fetchDashboardJson<T>(
   schema: ZodType<T>,
   path: string,
   signal?: AbortSignal,
 ): Promise<T> {
-  const response = await fetch(path, {
+  const response = await fetchDashboard(path, {
     credentials: "same-origin",
     ...(signal ? { signal } : undefined),
   });

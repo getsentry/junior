@@ -20,6 +20,7 @@ import { readConversationAuxiliaryCostsFromSql } from "./auxiliary-costs";
 import { conversationDetailReportSchema } from "../schema/conversation";
 import type { ConversationDetailReport } from "../schema/conversation";
 import { listConversationAnnotations } from "@/chat/plugins/annotations";
+import { readLatestConversationBrief } from "@/chat/briefs/store";
 import { readConversationSourceTask } from "@/chat/automations/read";
 import { readConversationArchivedAt } from "./archive";
 
@@ -28,6 +29,7 @@ function projectConversationDetail(args: {
   access?: ConversationAccess;
   archivedAtMs?: number;
   auxiliaryCosts?: ConversationDetailReport["auxiliaryCosts"];
+  brief?: ConversationDetailReport["brief"];
   conversation: Conversation;
   durationMs: number;
   annotations: NonNullable<ConversationDetailReport["annotations"]>;
@@ -62,6 +64,7 @@ function projectConversationDetail(args: {
       usage: args.usage,
     }),
     annotations: canExposePayload ? args.annotations : [],
+    ...(canExposePayload && args.brief ? { brief: args.brief } : undefined),
     events: args.events,
     ...(args.previousSeq !== undefined
       ? {
@@ -103,6 +106,7 @@ async function readConversationDetailFromSql(
     accessByConversation,
     annotations,
     auxiliaryCostsByConversation,
+    briefVersion,
     modelUsage,
     metricsByRoot,
     sourceTask,
@@ -113,6 +117,7 @@ async function readConversationDetailFromSql(
     readConversationAuxiliaryCostsFromSql(getDb(), [conversationId], {
       includeDescendants: includeDescendantMetrics,
     }),
+    readLatestConversationBrief(getDb(), conversationId),
     record.conversation.transcriptPurgedAtMs === undefined
       ? readConversationModelUsageFromSql(executor, {
           conversationId,
@@ -149,6 +154,15 @@ async function readConversationDetailFromSql(
     ...(archivedAtMs === undefined ? undefined : { archivedAtMs }),
     annotations,
     auxiliaryCosts: auxiliaryCostsByConversation.get(conversationId),
+    ...(briefVersion
+      ? {
+          brief: {
+            content: briefVersion.content,
+            updatedAt: briefVersion.createdAt.toISOString(),
+            version: briefVersion.version,
+          },
+        }
+      : undefined),
     durationMs: metrics?.durationMs ?? record.durationMs,
     events: page.events,
     modelUsage,

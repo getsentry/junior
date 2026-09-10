@@ -1,4 +1,23 @@
 # Changelog
+## 0.206.0
+
+### New Features ✨
+
+#### Briefs
+
+- Show briefs and their cost in the dashboard by @HazAT in [#1810](https://github.com/getsentry/junior/pull/1810)
+- Search briefs from the agent, API, and feed by @HazAT in [#1808](https://github.com/getsentry/junior/pull/1808)
+- Store briefs after each completed turn by @HazAT in [#1806](https://github.com/getsentry/junior/pull/1806)
+- Conversation brief generator and local tuning loop by @HazAT in [#1805](https://github.com/getsentry/junior/pull/1805)
+
+#### Other
+
+- (memory) Allow forgetting public memories from the dashboard UI by @sentry-junior in [#1811](https://github.com/getsentry/junior/pull/1811)
+
+### Other
+
+- Hide archived conversations from the default dashboard feed by @sentry-junior in [#1803](https://github.com/getsentry/junior/pull/1803)
+
 ## 0.205.0
 
 ### Bug Fixes 🐛

@@ -165,6 +165,7 @@ export default defineConfig({
           items: [
             { label: "junior init", link: "/cli/init/" },
             { label: "junior chat", link: "/cli/chat/" },
+            { label: "junior briefs", link: "/cli/briefs/" },
             { label: "junior check", link: "/cli/check/" },
             {
               label: "junior snapshot create",

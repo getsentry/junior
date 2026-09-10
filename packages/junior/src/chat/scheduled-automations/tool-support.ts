@@ -9,7 +9,7 @@ import {
   type User,
 } from "@sentry/junior-plugin-api";
 import { getDb } from "@/chat/db";
-import { getDashboardTaskLink } from "@/chat/slack/dashboard-link";
+import { getDashboardTaskLink } from "@/chat/dashboard-link";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 import { z } from "zod";

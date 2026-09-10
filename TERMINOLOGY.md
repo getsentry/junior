@@ -16,6 +16,9 @@ Canonical words used across Junior's code and documentation.
 - **Conversation**: the durable container for visible history and execution
   state, identified by a globally unique `conversationId`. A Conversation may
   have one parent Conversation. Parent and Location are independent.
+- **Brief**: the durable, versioned record of a Conversation's intent, outcome,
+  decisions, facts, and evidence links. A public Brief stays available after
+  the transcript expires.
 - **Source**: the input that caused work, such as a Slack message, local CLI
   input, dashboard input, event, scheduled automation, plugin dispatch, or
   Agent invocation. Every Inbound message has one Source. A Turn stores the

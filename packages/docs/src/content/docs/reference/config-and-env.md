@@ -127,6 +127,22 @@ The egress proxy verifies Vercel-signed Sandbox OIDC tokens per request to authe
 
 Provider credentials and other plugin-specific variables live on each plugin setup page under [Extend](/extend/). Keep this page limited to core runtime configuration.
 
+## Brief generation
+
+Brief generation is off by default. Enable it in app configuration when each
+Conversation needs a durable Brief:
+
+```ts
+import { createApp } from "@sentry/junior";
+
+const app = await createApp({
+  briefs: { enabled: true },
+});
+```
+
+This option costs one default-model call per completed Turn. The example app and
+`junior chat` enable it.
+
 ## Experimental features
 
 Unstable product surfaces opt in through `createApp({ experimental })`, the same

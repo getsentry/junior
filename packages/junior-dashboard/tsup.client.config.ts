@@ -17,6 +17,7 @@ export default defineConfig({
   noExternal: [
     "@radix-ui/react-hover-card",
     "@sentry/junior/api/schema",
+    "@sentry/junior/version",
     "@sentry/junior-plugin-api",
     "@tanstack/react-query",
     "lucide-react",

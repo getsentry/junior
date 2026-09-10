@@ -1,6 +1,8 @@
 import { memo, useMemo, useRef, type ReactNode } from "react";
 
+import { Card } from "../components/layout/Card";
 import { unavailableTranscriptLabel } from "../format";
+import { ConversationBrief } from "./ConversationBrief";
 import { transcriptMessagesFromEvents } from "./eventTranscript";
 import type {
   ConversationTranscript,
@@ -107,7 +109,9 @@ function SegmentEvents(props: {
 }) {
   return (
     <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-3 md:gap-4">
-      {props.conversation.eventHistory.status === "available" ? (
+      {props.conversation.eventHistory.status === "expired" ? (
+        <ExpiredTranscriptView conversation={props.conversation} />
+      ) : props.conversation.eventHistory.status === "available" ? (
         <VisibleTranscriptEntries
           onOpenSubagentTranscript={props.onOpenSubagentTranscript}
           transcript={props.messages}
@@ -135,6 +139,26 @@ function SegmentEvents(props: {
       )}
       {props.responding ? <TranscriptTypingIndicator /> : null}
     </div>
+  );
+}
+
+function ExpiredTranscriptView(props: {
+  conversation: ConversationTranscript;
+}) {
+  return (
+    <>
+      {props.conversation.brief ? (
+        <Card as="section" padding="md" variant="section">
+          <h3 className="mt-0 mb-3 font-display text-lg font-medium text-dashboard-text">
+            Brief
+          </h3>
+          <ConversationBrief brief={props.conversation.brief} />
+        </Card>
+      ) : null}
+      <div className={transcriptEmptyClass()}>
+        {unavailableTranscriptLabel(props.conversation)}
+      </div>
+    </>
   );
 }
 

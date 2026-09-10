@@ -1,7 +1,7 @@
 import type { ReplyAttribution } from "@sentry/junior-plugin-api";
 import { buildSentryConversationUrl } from "@/chat/sentry-links";
 import { getPluginSlackConversationLink } from "@/chat/plugins/agent-hooks";
-import { getDashboardConversationLink } from "@/chat/slack/dashboard-link";
+import { getDashboardConversationLink } from "@/chat/dashboard-link";
 import { escapeSlackMrkdwnText, formatSlackLink } from "@/chat/slack/mrkdwn";
 
 interface SlackMrkdwnTextObject {

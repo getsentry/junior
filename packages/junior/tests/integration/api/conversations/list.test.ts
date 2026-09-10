@@ -10,6 +10,7 @@ import {
   readConversationRecordFromSql,
 } from "@/api/conversations/list";
 import { apiErrorSchema, conversationFeedSchema } from "@/api/schema";
+import { appendConversationBrief } from "@/chat/briefs/store";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
@@ -23,6 +24,7 @@ import {
   juniorIdentities,
   juniorUsers,
 } from "@/db/schema";
+import { conversationBriefFixture } from "../../../fixtures/conversation-brief";
 import { createConfiguredJuniorSqlFixture } from "../../../fixtures/sql";
 
 function dashboardAuthorIdFromEmail(email: string): string {
@@ -36,6 +38,7 @@ describe("conversation list API", () => {
       await migrateSchema(fixture.sql);
       const store = createSqlStore(fixture.sql);
       const archivedId = "slack:C123:archived";
+      const privateId = "slack:D123:private";
       await store.recordActivity({
         conversationId: archivedId,
         nowMs: 1_000,
@@ -45,6 +48,38 @@ describe("conversation list API", () => {
           teamId: "T123",
           channelId: "C123",
         },
+        visibility: "public",
+      });
+      await store.recordActivity({
+        conversationId: privateId,
+        nowMs: Date.now(),
+        title: "Private roadmap conversation",
+        destination: {
+          platform: "slack" as const,
+          teamId: "T123",
+          channelId: "D123",
+        },
+        visibility: "private",
+      });
+      await appendConversationBrief(fixture.sql.db(), {
+        conversationId: archivedId,
+        turnId: "archived-brief-1",
+        throughSeq: 0,
+        content: conversationBriefFixture({
+          summary: "The durable sapphire choice is current.",
+        }),
+        searchText: "durable sapphire choice",
+        modelId: "test-model",
+      });
+      await appendConversationBrief(fixture.sql.db(), {
+        conversationId: privateId,
+        turnId: "private-brief-1",
+        throughSeq: 0,
+        content: conversationBriefFixture({
+          summary: "The hidden marigold launch stays private.",
+        }),
+        searchText: "hidden marigold launch",
+        modelId: "test-model",
       });
       const viewer = await resolveViewerUser("viewer@example.com");
       expect(viewer).toBeDefined();
@@ -73,6 +108,30 @@ describe("conversation list API", () => {
       expect(
         conversationFeedSchema.parse(await searchResponse.json()).conversations,
       ).toEqual([expect.objectContaining({ conversationId: archivedId })]);
+      const briefSearchResponse = await app.request(
+        "http://localhost/api/conversations?actorEmail=viewer%40example.com&q=durable%20sapphire",
+      );
+      expect(briefSearchResponse.status).toBe(200);
+      expect(
+        conversationFeedSchema.parse(await briefSearchResponse.json())
+          .conversations,
+      ).toEqual([expect.objectContaining({ conversationId: archivedId })]);
+      const privateBriefSearchResponse = await app.request(
+        "http://localhost/api/conversations?q=hidden%20marigold",
+      );
+      expect(privateBriefSearchResponse.status).toBe(200);
+      expect(
+        conversationFeedSchema.parse(await privateBriefSearchResponse.json())
+          .conversations,
+      ).toEqual([]);
+      const privateTitleSearchResponse = await app.request(
+        "http://localhost/api/conversations?q=private%20roadmap",
+      );
+      expect(privateTitleSearchResponse.status).toBe(200);
+      expect(
+        conversationFeedSchema.parse(await privateTitleSearchResponse.json())
+          .conversations,
+      ).toEqual([expect.objectContaining({ conversationId: privateId })]);
       const archivedResponse = await app.request(
         "http://localhost/api/conversations?actorEmail=viewer%40example.com&status=archived",
       );

@@ -91,6 +91,27 @@ afterEach(async () => {
 });
 
 describe("plugin conversation events", () => {
+  it("renders core Brief events outside the installed plugin catalog", async () => {
+    const { renderPluginConversationEvent } =
+      await import("@/chat/plugins/conversation-events");
+
+    expect(
+      renderPluginConversationEvent({
+        namespace: "briefs",
+        name: "brief_updated",
+        version: 1,
+        content: {
+          version: 3,
+          modelId: "test-model",
+          costUsd: 0.0042,
+          decisions: 2,
+          openDecisions: 1,
+          links: 4,
+        },
+      }),
+    ).toEqual({ icon: "activity", title: "Brief updated (v3)" });
+  });
+
   it("binds user prompt events to the current turn and deduplicates retries", async () => {
     const runId = randomUUID();
     const conversationId = `local:test:prompt-event-${runId}`;

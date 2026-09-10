@@ -42,6 +42,7 @@ import {
   readMockPeopleDirectory,
   readMockPeoplePluginReports,
   readMockPeopleProfile,
+  readMockPluginReports,
   readMockPersonalSpend,
   readMockAutomationExecutions,
   readMockAutomationList,
@@ -60,6 +61,9 @@ export function createMockReportingApi(): Hono<{
 
   app.get("/code", () =>
     jsonResponse(codeOverviewReportSchema, readMockCodeOverview()),
+  );
+  app.get("/plugin-reports", () =>
+    jsonResponse(pluginOperationalReportFeedSchema, readMockPluginReports()),
   );
 
   app.get("/people", () =>
