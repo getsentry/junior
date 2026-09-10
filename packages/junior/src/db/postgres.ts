@@ -9,6 +9,7 @@ import { migrate } from "drizzle-orm/node-postgres/migrator";
 import type { MigrationConfig } from "drizzle-orm/migrator";
 import type { JuniorDatabase, JuniorSqlExecutor } from "./db";
 import { juniorSqlSchema } from "./schema";
+import { traceQueries } from "./tracing";
 
 const { Pool } = pg;
 
@@ -133,7 +134,10 @@ class PostgresExecutor implements JuniorSqlExecutor {
   }
 
   private queryClient(): QueryClient {
-    return this.transactionClient.getStore() ?? this.pool;
+    return traceQueries(
+      this.transactionClient.getStore() ?? this.pool,
+      "postgres",
+    );
   }
 }
 

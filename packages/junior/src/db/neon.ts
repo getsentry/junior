@@ -10,6 +10,7 @@ import { migrate } from "drizzle-orm/neon-serverless/migrator";
 import type { MigrationConfig } from "drizzle-orm/migrator";
 import type { JuniorDatabase, JuniorSqlExecutor } from "./db";
 import { juniorSqlSchema } from "./schema";
+import { traceQueries } from "./tracing";
 
 type QueryClient = Pool | PoolClient | Client;
 
@@ -135,7 +136,7 @@ class NeonExecutor implements NeonJuniorSqlExecutor {
   }
 
   private queryClient(): QueryClient {
-    return this.transactionClient.getStore() ?? this.pool;
+    return traceQueries(this.transactionClient.getStore() ?? this.pool, "neon");
   }
 }
 
