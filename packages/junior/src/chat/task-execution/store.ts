@@ -289,7 +289,11 @@ async function enqueueAfterAppend(args: {
     idempotencyKey,
     nowMs,
     queue: args.queue,
-    replaceExistingWake: args.replaceExistingWake,
+    // Human input must not wait out an event's queue delay: only event
+    // messages default to coalescing with an already-pending wake.
+    replaceExistingWake:
+      args.replaceExistingWake ??
+      (args.message.source === "event" ? undefined : true),
     state: args.state,
   });
   if (wake.status !== "enqueued") {
