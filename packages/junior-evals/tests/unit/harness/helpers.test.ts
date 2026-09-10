@@ -152,10 +152,16 @@ it("includes captured Slack posts in the rubric-visible transcript", async () =>
   ).not.toHaveProperty("rubric_visible", false);
 });
 
-it("records rubric judge cost in score metadata", async () => {
+it("records rubric judge usage in score metadata", async () => {
   completeTextMock.mockResolvedValueOnce({
     message: {
-      usage: { cost: { total: 0.031 } },
+      model: "openai/gpt-5.4",
+      usage: {
+        inputTokens: 120,
+        outputTokens: 20,
+        totalTokens: 140,
+        cost: { total: 0.031 },
+      },
     },
     text: '{"answer":"A","rationale":"The response meets the rubric."}',
   });
@@ -174,7 +180,17 @@ it("records rubric judge cost in score metadata", async () => {
     toolCalls: [],
   });
 
-  expect(result.metadata).toMatchObject({ answer: "A", costUsd: 0.031 });
+  expect(result.metadata).toMatchObject({
+    answer: "A",
+    usage: {
+      provider: "vercel-ai-gateway",
+      model: "openai/gpt-5.4",
+      inputTokens: 120,
+      outputTokens: 20,
+      totalTokens: 140,
+      metadata: { costUsd: 0.031 },
+    },
+  });
 });
 
 it("scores the rubric judge without failing when cost is missing", async () => {
@@ -199,8 +215,14 @@ it("scores the rubric judge without failing when cost is missing", async () => {
     toolCalls: [],
   });
 
-  expect(result.metadata).toMatchObject({ answer: "A" });
-  expect(result.metadata).not.toHaveProperty("costUsd");
+  expect(result.metadata).toMatchObject({
+    answer: "A",
+    usage: {
+      provider: "vercel-ai-gateway",
+      model: "openai/gpt-5.4",
+    },
+  });
+  expect(result.metadata).not.toHaveProperty("usage.metadata.costUsd");
 });
 
 it("forwards the Vitest abort signal to the eval scenario", async () => {

@@ -379,6 +379,38 @@ function usageTotal(usage: AgentTurnUsage | undefined): number | undefined {
     : undefined;
 }
 
+function toJudgeUsage(
+  usage: AgentTurnUsage | undefined,
+  model: string,
+): HarnessRun["usage"] {
+  const metadata = toJsonRecord({
+    ...(usage?.cachedInputTokens !== undefined
+      ? { cachedInputTokens: usage.cachedInputTokens }
+      : {}),
+    ...(usage?.cacheCreationTokens !== undefined
+      ? { cacheCreationTokens: usage.cacheCreationTokens }
+      : {}),
+    ...(usage?.cost?.total !== undefined ? { costUsd: usage.cost.total } : {}),
+  });
+  return {
+    provider: GEN_AI_PROVIDER_NAME,
+    model,
+    ...(usage?.inputTokens !== undefined
+      ? { inputTokens: usage.inputTokens }
+      : {}),
+    ...(usage?.outputTokens !== undefined
+      ? { outputTokens: usage.outputTokens }
+      : {}),
+    ...(usage?.reasoningTokens !== undefined
+      ? { reasoningTokens: usage.reasoningTokens }
+      : {}),
+    ...(usageTotal(usage) !== undefined
+      ? { totalTokens: usageTotal(usage) }
+      : {}),
+    ...(Object.keys(metadata).length > 0 ? { metadata } : {}),
+  };
+}
+
 function toHarnessUsage(result: EvalResult): HarnessRun["usage"] {
   const usage = result.usage;
   const metadata = toJsonRecord({
@@ -643,7 +675,10 @@ const judgeHarness = createJudgeHarness({
       ],
       temperature: 0,
     });
-    return { costUsd: message.usage.cost?.total, text };
+    return {
+      text,
+      usage: toJudgeUsage(message.usage, message.model ?? EVAL_JUDGE_MODEL_ID),
+    };
   },
 });
 
@@ -771,8 +806,9 @@ export const RubricJudge = createJudge(
       typeof judgeResult !== "object" ||
       Array.isArray(judgeResult) ||
       typeof judgeResult.text !== "string" ||
-      (judgeResult.costUsd !== undefined &&
-        typeof judgeResult.costUsd !== "number")
+      !judgeResult.usage ||
+      typeof judgeResult.usage !== "object" ||
+      Array.isArray(judgeResult.usage)
     ) {
       throw new Error("Rubric judge returned an invalid result.");
     }
@@ -784,9 +820,7 @@ export const RubricJudge = createJudge(
       metadata: {
         answer,
         rationale: object.rationale,
-        ...(judgeResult.costUsd !== undefined
-          ? { costUsd: judgeResult.costUsd }
-          : undefined),
+        usage: judgeResult.usage,
       },
     };
   },
