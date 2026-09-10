@@ -3271,13 +3271,7 @@ Conversation: \`local:test:old-conversation\`
         "origin",
         "+refs/heads/stable:refs/remotes/origin/stable",
       ],
-      [
-        "-C",
-        "repos/junior",
-        "reset",
-        "--hard",
-        "refs/remotes/origin/stable",
-      ],
+      ["-C", "repos/junior", "reset", "--hard", "refs/remotes/origin/stable"],
       ["-C", "repos/junior", "clean", "-fd"],
     ]);
     expect(runs.some((args) => args[0] === "clone")).toBe(false);

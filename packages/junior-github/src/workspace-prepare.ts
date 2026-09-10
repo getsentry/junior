@@ -85,10 +85,11 @@ export async function prepareWorkspace(
           })
         : undefined;
     const detachedSha = detachedHead?.stdout.trim();
-    const validDetachedHead =
+    const validDetachedHead = Boolean(
       detachedHead?.exitCode === 0 &&
       detachedSha &&
-      /^[0-9a-f]{40,64}$/.test(detachedSha);
+      /^[0-9a-f]{40,64}$/.test(detachedSha),
+    );
     const upstream =
       branch?.exitCode === 0 && branchName
         ? await ctx.sandbox.run({
@@ -110,6 +111,9 @@ export async function prepareWorkspace(
       ? upstreamRef.slice(upstreamPrefix.length)
       : undefined;
     if (worktree.exitCode === 0 && (branchName || validDetachedHead)) {
+      const refreshRef = upstreamBranch
+        ? `${upstreamPrefix}${upstreamBranch}`
+        : "HEAD";
       const refreshCommands = [
         ...(upstreamBranch
           ? [
@@ -120,11 +124,11 @@ export async function prepareWorkspace(
                 "--quiet",
                 "--no-tags",
                 "origin",
-                `+refs/heads/${upstreamBranch}:${upstreamRef}`,
+                `+refs/heads/${upstreamBranch}:${refreshRef}`,
               ],
             ]
           : []),
-        ["-C", path, "reset", "--hard", upstreamBranch ? upstreamRef! : "HEAD"],
+        ["-C", path, "reset", "--hard", refreshRef],
         ["-C", path, "clean", "-fd"],
       ];
       for (const args of refreshCommands) {
