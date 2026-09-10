@@ -36,6 +36,13 @@ describeEval("Event automation credentials", slackEvals, (it) => {
 
     const createCalls = eventAutomationCreateCalls(result.session);
     expect(createCalls).toHaveLength(1);
+    expect(
+      toolCalls(result.session).find(
+        (call) => call.name === "callMcpTool" && call.status === "ok",
+      )?.arguments,
+    ).toMatchObject({
+      arguments: { repository: "getsentry/junior" },
+    });
     expect(createCalls[0]!.arguments).toMatchObject({
       trigger: {
         events: ["pull_request.review.changes_requested"],

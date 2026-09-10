@@ -81,7 +81,7 @@ describeEval("Watches", slackEvals, (it) => {
       },
       initialEvents: [
         mention(
-          "$eval-events Create a pull request titled 'Prefer watches', then check it every five minutes and tell this thread if checks fail, review feedback arrives, it merges, or it closes.",
+          "$eval-events Create a pull request in getsentry/junior titled 'Prefer watches', then check it every five minutes and tell this thread if checks fail, review feedback arrives, it merges, or it closes.",
         ),
       ],
       criteria: rubric({
@@ -104,6 +104,7 @@ describeEval("Watches", slackEvals, (it) => {
           arguments: expect.objectContaining({
             tool_name: "mcp__eval-events__create-watchable-pull-request",
             arguments: expect.objectContaining({
+              repository: "getsentry/junior",
               title: "Prefer watches",
             }),
           }),

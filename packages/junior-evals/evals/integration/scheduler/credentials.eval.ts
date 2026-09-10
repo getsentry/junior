@@ -57,7 +57,7 @@ describeEval("Scheduled Credentials", slackEvals, (it) => {
     const result = await run({
       initialEvents: [
         mention(
-          "@bot prepare a task that posts a Sentry digest here every Monday at 9am Pacific. Ask me before registering it, and do not use any of my connected credentials.",
+          "@bot prepare a task that posts a digest of unresolved issues for the Acme Sentry organization here every Monday at 9am Pacific. Ask me before registering it, and do not use any of my connected credentials.",
           { thread },
         ),
       ],
