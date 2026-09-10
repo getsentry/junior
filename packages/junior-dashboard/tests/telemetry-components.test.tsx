@@ -1907,7 +1907,7 @@ describe("dashboard canonical-event components", () => {
     expect(html).toContain("tokens");
     expect(html).toContain("1.2k");
   });
-  it("links a task-triggered conversation with compact source metadata", () => {
+  it("links an automation-triggered conversation with compact source metadata", () => {
     const detail = conversation([], {
       sourceTask: {
         id: "sched_source_task",
@@ -1926,13 +1926,13 @@ describe("dashboard canonical-event components", () => {
     );
 
     expect(html).toMatch(
-      /href="\/automations\/sched_source_task"[^>]*>Triggered by Scheduled Task<\/a>/,
+      /href="\/automations\/sched_source_task"[^>]*>Triggered by Scheduled automation<\/a>/,
     );
-    // Full task prompts stay off hover chrome; open the task page for those.
+    // Full automation instructions stay off hover chrome; open the automation page for those.
     expect(html).not.toContain("Update getsentry/yc-scraper");
     expect(html).not.toContain("Instruction");
     expect(html).not.toContain(
-      "Triggered by Scheduled Task · Update getsentry/yc-scraper",
+      "Triggered by Scheduled automation · Update getsentry/yc-scraper",
     );
   });
 
