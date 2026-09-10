@@ -120,10 +120,9 @@ describeEval("Event automation credentials", slackEvals, (it) => {
         result: expect.objectContaining({
           automations: [
             expect.objectContaining({
-              createdBy: expect.objectContaining({
-                slackUserId: "UALICE",
-              }),
+              createdBy: expect.objectContaining({ username: "alice" }),
               id: "evt_alice_system_credentials",
+              isCreator: false,
             }),
           ],
         }),
@@ -187,10 +186,9 @@ describeEval("Event automation credentials", slackEvals, (it) => {
         result: expect.objectContaining({
           automations: [
             expect.objectContaining({
-              createdBy: expect.objectContaining({
-                slackUserId: "UALICE",
-              }),
+              createdBy: expect.objectContaining({ username: "alice" }),
               id: "evt_creator_system_credentials",
+              isCreator: true,
             }),
           ],
         }),

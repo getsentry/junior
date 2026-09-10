@@ -295,7 +295,7 @@ describeEval("Event automation management", slackEvals, (it) => {
           automations: [
             expect.objectContaining({
               id: "evt_issue_state_summary",
-              triggerAvailable: true,
+              trigger: expect.objectContaining({ available: true }),
             }),
           ],
         }),
@@ -370,7 +370,7 @@ describeEval("Event automation management", slackEvals, (it) => {
           automations: [
             expect.objectContaining({
               id: "evt_unavailable_issue_summary",
-              triggerAvailable: false,
+              trigger: expect.objectContaining({ available: false }),
             }),
           ],
         }),

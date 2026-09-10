@@ -36,7 +36,7 @@ export function createSlackScheduleListAutomationsTool(
 ) {
   return zodTool({
     description:
-      "List scheduled automations in this Slack conversation. To find one of the requester's automations elsewhere in the workspace, pass channel_id and/or query.",
+      "List scheduled automations in this Slack conversation. Each result says whether the requester is the creator. To find one of the requester's automations elsewhere in the workspace, pass channel_id and/or query.",
     annotations: {
       destructiveHint: false,
       idempotentHint: true,
@@ -110,7 +110,9 @@ export function createSlackScheduleListAutomationsTool(
             right.createdAtMs - left.createdAtMs ||
             right.id.localeCompare(left.id),
         );
-      const visible = matching.slice(0, MAX_LISTED_TASKS).map(compactTask);
+      const visible = matching
+        .slice(0, MAX_LISTED_TASKS)
+        .map((task) => compactTask(task, actor.slackUserId));
 
       return scheduleListToolResult({
         automations: visible,

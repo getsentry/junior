@@ -63,6 +63,7 @@ const compactTaskResultSchema = z
       })
       .strict(),
     credential_mode: z.enum(["system", "creator"]),
+    is_creator: z.boolean(),
     created_by: z
       .object({
         name: z.string().min(1).nullable(),
@@ -238,7 +239,10 @@ export async function getWritableTask(args: {
 }
 
 /** Project scheduled automation state into the stable model-facing result shape. */
-export function compactTask(task: ScheduledAutomation): CompactTaskResult {
+export function compactTask(
+  task: ScheduledAutomation,
+  requesterSlackUserId?: string,
+): CompactTaskResult {
   return compactTaskResultSchema.parse({
     id: task.id,
     title: task.title?.trim() || null,
@@ -270,6 +274,7 @@ export function compactTask(task: ScheduledAutomation): CompactTaskResult {
     },
     conversation_access: task.conversationAccess,
     credential_mode: task.credentialMode,
+    is_creator: task.createdBy.slackUserId === requesterSlackUserId,
     created_by: {
       name: task.createdBy.fullName ?? null,
       username: task.createdBy.userName ?? null,

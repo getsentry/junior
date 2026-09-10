@@ -26,17 +26,18 @@ export function createListEventAutomationsTool(
       readOnlyHint: true,
     },
     description:
-      "List event automations for the current destination. A false triggerAvailable value means the automation remains stored but its plugin event is not currently enabled.",
+      "List event automations for the current destination. Each result says whether the requester is the creator and whether its trigger is available.",
     inputSchema: z.object({}).strict(),
     outputSchema: eventAutomationListToolResultSchema,
     async execute() {
-      const { destination } = requireEventAutomationSlackContext(context);
+      const { actor, destination } =
+        requireEventAutomationSlackContext(context);
       const matching = (
         await listEventAutomationsForTeam(getDb(), destination.teamId)
       ).filter((task) => eventAutomationMatchesDestination(task, destination));
       const automations = matching
         .slice(0, MAX_LISTED_EVENT_AUTOMATIONS)
-        .map((task) => compactEventAutomation(task, catalog));
+        .map((task) => compactEventAutomation(task, catalog, actor.userId));
       return {
         automations,
         truncated: matching.length > automations.length,

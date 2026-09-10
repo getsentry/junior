@@ -37,6 +37,7 @@ const compactEventAutomationResultSchema = z
       })
       .strict(),
     usesCreatorCredentials: z.boolean(),
+    isCreator: z.boolean(),
     outcomes: z
       .array(
         z
@@ -220,6 +221,7 @@ export function eventAutomationTriggerAvailable(
 export function compactEventAutomation(
   task: EventAutomation,
   catalog: EventCatalog,
+  requesterSlackUserId?: string,
 ) {
   return compactEventAutomationResultSchema.parse({
     id: task.id,
@@ -235,6 +237,7 @@ export function compactEventAutomation(
       available: eventAutomationTriggerAvailable(task, catalog),
     },
     usesCreatorCredentials: task.credentialMode === "creator",
+    isCreator: task.createdBy.slackUserId === requesterSlackUserId,
     outcomes: effectiveTaskOutcomes(task.outcomes, task.destination).map(
       (outcome) => ({
         action: outcome.action,
@@ -255,8 +258,9 @@ export function compactEventAutomation(
 export function eventAutomationToolResult(
   task: EventAutomation,
   catalog: EventCatalog,
+  requesterSlackUserId?: string,
 ) {
   return {
-    automation: compactEventAutomation(task, catalog),
+    automation: compactEventAutomation(task, catalog, requesterSlackUserId),
   };
 }
