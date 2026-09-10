@@ -19,7 +19,7 @@ describeEval("Event automation credentials", slackEvals, (it) => {
       },
       initialEvents: [
         mention(
-          "$eval-events Create a pull request titled 'Credentialed review handling'. When review changes are requested, create an event automation that looks at the feedback and posts a fix plan in this channel.",
+          "$eval-events Create a pull request in getsentry/junior titled 'Credentialed review handling'. When review changes are requested, create an event automation that looks at the feedback and posts a fix plan in this channel.",
         ),
       ],
       criteria: rubric({
