@@ -131,9 +131,11 @@ export async function fetchDashboardJson<T>(
   schema: ZodType<T>,
   path: string,
   signal?: AbortSignal,
+  headers?: HeadersInit,
 ): Promise<T> {
   const response = await fetch(path, {
     credentials: "same-origin",
+    ...(headers ? { headers } : undefined),
     ...(signal ? { signal } : undefined),
   });
   if (response.status === 401) {

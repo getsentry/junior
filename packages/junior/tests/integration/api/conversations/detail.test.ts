@@ -47,7 +47,16 @@ describe("conversation detail API", () => {
       await detailResponse.json(),
     );
     expect(detail.events).toEqual([]);
-    expect(detail.brief).toMatchObject({
+    expect(detail.brief).toBeUndefined();
+
+    const briefResponse = await app.request(
+      `http://localhost/api/conversations/${conversationId}`,
+      { headers: { "x-junior-dashboard-conversation-brief": "1" } },
+    );
+    const detailWithBrief = conversationDetailReportSchema.parse(
+      await briefResponse.json(),
+    );
+    expect(detailWithBrief.brief).toMatchObject({
       content: {
         summary: "The public Brief is visible without transcript access.",
       },

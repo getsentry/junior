@@ -253,6 +253,8 @@ export function createConversationRoutes(options: {
       const viewer = context.get("viewer");
       const report = await readConversationDetail(conversationId, {
         ...query,
+        includeBrief:
+          context.req.header("x-junior-dashboard-conversation-brief") === "1",
         ...(viewer ? { viewer } : undefined),
       });
       if (!report) throwApiError(404, "Conversation not found.");

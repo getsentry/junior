@@ -90,6 +90,7 @@ function projectConversationDetail(args: {
 async function readConversationDetailFromSql(
   conversationId: string,
   options: {
+    includeBrief: boolean;
     limit: number;
     viewer?: User;
   },
@@ -117,7 +118,9 @@ async function readConversationDetailFromSql(
     readConversationAuxiliaryCostsFromSql(getDb(), [conversationId], {
       includeDescendants: includeDescendantMetrics,
     }),
-    readLatestConversationBrief(getDb(), conversationId),
+    options.includeBrief
+      ? readLatestConversationBrief(getDb(), conversationId)
+      : Promise.resolve(undefined),
     record.conversation.transcriptPurgedAtMs === undefined
       ? readConversationModelUsageFromSql(executor, {
           conversationId,
@@ -179,12 +182,14 @@ async function readConversationDetailFromSql(
 export async function readConversationDetail(
   conversationId: string,
   options: {
+    includeBrief?: boolean;
     limit?: number;
     viewer?: User;
   } = {},
 ): Promise<ConversationDetailReport | undefined> {
   const report = await readConversationDetailFromSql(conversationId, {
     ...options,
+    includeBrief: options.includeBrief ?? true,
     limit: options.limit ?? 500,
   });
   return report ? conversationDetailReportSchema.parse(report) : undefined;

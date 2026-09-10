@@ -604,6 +604,7 @@ export function readConversationData(
     conversationDetailReportSchema,
     `/api/conversations/${encodeURIComponent(conversationId)}`,
     signal,
+    { "x-junior-dashboard-conversation-brief": "1" },
   );
 }
 

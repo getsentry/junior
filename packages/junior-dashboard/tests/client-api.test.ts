@@ -28,12 +28,10 @@ describe("dashboard client API", () => {
 
   it("restarts Google sign-in when product API auth expires", async () => {
     const assign = vi.fn();
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () =>
-        Response.json({ error: "unauthenticated" }, { status: 401 }),
-      ),
+    const fetchMock = vi.fn(async () =>
+      Response.json({ error: "unauthenticated" }, { status: 401 }),
     );
+    vi.stubGlobal("fetch", fetchMock);
     vi.stubGlobal("window", {
       location: {
         assign,
@@ -47,6 +45,13 @@ describe("dashboard client API", () => {
     );
     expect(assign).toHaveBeenCalledWith(
       "/auth/login?next=%2Fconversations%3Ffilter%3Drecent",
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/conversations/slack%3AC1%3A123",
+      {
+        credentials: "same-origin",
+        headers: { "x-junior-dashboard-conversation-brief": "1" },
+      },
     );
   });
 
