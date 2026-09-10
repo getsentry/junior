@@ -138,7 +138,7 @@ test("keeps cached conversation and draft available through reconnect", async ({
     page.getByText("Connect to send. Your draft is saved."),
   ).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Queue", exact: true }),
+    page.getByRole("button", { name: "Send", exact: true }),
   ).toBeDisabled();
 
   await context.setOffline(false);
@@ -147,7 +147,7 @@ test("keeps cached conversation and draft available through reconnect", async ({
   ).toBeHidden();
   await expect(composer).toHaveValue("Keep this draft through reconnect");
   await expect(
-    page.getByRole("button", { name: "Queue", exact: true }),
+    page.getByRole("button", { name: "Send", exact: true }),
   ).toBeEnabled();
 });
 
