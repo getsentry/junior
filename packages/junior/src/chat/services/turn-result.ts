@@ -139,37 +139,33 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
   }
 
   const usedPrimaryText = Boolean(rawPrimaryText);
+  const suppressedPrimaryText = Boolean(
+    rawPrimaryText && !noReplyRequested && !primaryText,
+  );
   let outcome: AgentTurnDiagnostics["outcome"];
   if (isProviderError) {
     outcome = "provider_error";
+  } else if (suppressedPrimaryText) {
+    outcome = "execution_failure";
   } else if (primaryText || completedWithoutTerminalText) {
     outcome = "success";
   } else {
     outcome = "execution_failure";
   }
-  const suppressedPrimaryText = Boolean(
-    outcome !== "provider_error" &&
-      rawPrimaryText &&
-      !noReplyRequested &&
-      !primaryText,
-  );
-  const resolvedOutcome: AgentTurnDiagnostics["outcome"] = suppressedPrimaryText
-    ? "execution_failure"
-    : outcome;
 
   if (shouldTrace) {
     logInfo("agent.message.generated", {
       "app.message.kind": "assistant_outbound",
       "app.message.length": primaryText.length,
       "app.message.output": summarizeMessageText(primaryText),
-      "app.ai.outcome": resolvedOutcome,
+      "app.ai.outcome": outcome,
       "app.ai.assistant_messages": assistantMessages.length,
       ...(stopReason ? { "gen_ai.response.finish_reasons": [stopReason] } : undefined),
     });
   }
 
   const resolvedDiagnostics: AgentTurnDiagnostics = {
-    outcome: resolvedOutcome,
+    outcome,
     modelId,
     assistantMessageCount: assistantMessages.length,
     reasoningLevel: executionProfile.reasoningLevel,
@@ -182,7 +178,7 @@ export function buildTurnResult(input: TurnResultInput): AgentRunResult {
     stopReason,
     errorMessage,
     providerError:
-      resolvedOutcome === "provider_error" && errorMessage
+      outcome === "provider_error" && errorMessage
         ? createProviderError(errorMessage, {
             modelId,
             retryable:

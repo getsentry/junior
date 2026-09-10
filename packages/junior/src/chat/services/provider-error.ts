@@ -81,7 +81,7 @@ const TIMEOUT_ERROR_CODES = new Set([
 ]);
 
 const CONTENT_POLICY_PATTERN =
-  /\b(?:content|safety|usage)[ _-]?policy\b|\b(?:content|safety) (?:filter|violation)\b|\bmoderation (?:blocked|rejected|refused)\b|\bflagged as potentially violating\b/i;
+  /\b(?:content|safety|usage)[ _-]?policy\b|\b(?:content|safety) (?:filter|violation)\b|\bmoderation (?:blocked|rejected|refused)\b/i;
 const QUOTA_PATTERN =
   /insufficient.?quota|quota exceeded|usage limit|available balance|out of budget|billing (?:limit|quota|error)|payment required/i;
 const AUTH_PATTERN =
