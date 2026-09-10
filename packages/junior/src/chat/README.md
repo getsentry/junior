@@ -282,10 +282,11 @@ Do the work without writing a status message.
 No successful output will be delivered.
 ```
 
-New tasks store an ordered outcome list. An empty list sends no successful
-output. A missing list preserves the old behavior and sends one message to the
-stored Destination. Watches send their output to the Conversation. Task input
-never asks the model to emit a silence marker.
+Automations store an ordered outcome list. An empty list sends no successful
+output. New Automations use an empty list unless the user asks for a visible
+result. A `send_message` outcome sends that result to its explicit Destination.
+Watches send their output to the Conversation. Task input never asks the model
+to emit a silence marker.
 
 **Example: schedule / reminder (minimal)**
 

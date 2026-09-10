@@ -246,6 +246,7 @@ describe("conversation detail API", () => {
           teamId: "T123",
         },
         nextRunAtMs: nowMs + 60_000,
+        outcomes: [],
         schedule: {
           description: "Every Monday at 9:00 AM",
           kind: "recurring",

@@ -142,6 +142,7 @@ describe("Automations API", () => {
           teamId: "T123",
         },
         nextRunAtMs: nowMs + 60_000,
+        outcomes: [],
         schedule: {
           description: "",
           kind: "recurring",
@@ -183,6 +184,7 @@ describe("Automations API", () => {
           teamId: "T123",
         },
         destinationVisibility: "public",
+        outcomes: [],
         task: { text: "Summarize the closed issue." },
         trigger: {
           events: ["issue.closed"],
@@ -203,6 +205,7 @@ describe("Automations API", () => {
           teamId: "T123",
         },
         destinationVisibility: "public",
+        outcomes: [],
         task: { text: "Notify responders when the incident changes." },
         trigger: {
           events: ["incident.updated"],
@@ -223,6 +226,7 @@ describe("Automations API", () => {
           teamId: "T123",
         },
         destinationVisibility: "private",
+        outcomes: [],
         task: { text: "This private task must stay hidden." },
         trigger: {
           events: ["incident.updated"],

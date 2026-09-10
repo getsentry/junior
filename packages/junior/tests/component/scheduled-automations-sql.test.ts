@@ -38,6 +38,7 @@ function createTask(
       teamId: "T123",
       channelId: "C123",
     },
+    outcomes: [],
     nextRunAtMs: TEST_RUN_AT_MS,
     schedule: {
       description: "Once at noon",

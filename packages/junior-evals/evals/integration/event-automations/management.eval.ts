@@ -121,6 +121,9 @@ describeEval("Event automation management", slackEvals, (it) => {
       arguments: { repository: "getsentry/junior" },
     });
     expect(createCalls[0]!.arguments).toMatchObject({
+      outcomes: [
+        { action: "send_message", destination: { platform: "slack" } },
+      ],
       trigger: {
         namespace: "github",
         identifier: "getsentry/junior#208",

@@ -96,8 +96,8 @@ export const scheduledAutomationSchema = z
     schedule: scheduledAutomationScheduleSchema,
     status: scheduledAutomationStatusSchema,
     statusReason: z.string().optional(),
-    /** Visible effects after successful work. Missing legacy values send a message. */
-    outcomes: z.array(taskOutcomeSchema).max(5).optional(),
+    /** Explicit visible effects after successful work. An empty list is silent. */
+    outcomes: z.array(taskOutcomeSchema).max(5),
     task: z.object({ text: z.string() }).strict(),
     /** SQL-backed short display title generated from the task instruction. */
     title: z.string().optional(),

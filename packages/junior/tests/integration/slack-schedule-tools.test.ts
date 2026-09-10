@@ -304,6 +304,7 @@ describe("Slack schedule tools", () => {
           visibility: "public",
         },
         credential_mode: "creator",
+        outcomes: [],
         status: "active",
         task: "Weekly issue digest: Summarize open scheduler issues and post a concise summary.",
         recurrence: {
@@ -1609,7 +1610,7 @@ describe("Slack schedule tools", () => {
       readScheduledAutomation(created.task.id),
     ).resolves.toMatchObject({
       destination: { threadTs: "1700000000.000100" },
-      outcomes: [{ destination: { threadTs: "1700000000.000100" } }],
+      outcomes: [],
     });
     await executeTool(createSlackScheduleUpdateAutomationTool(source), {
       task_id: created.task.id,

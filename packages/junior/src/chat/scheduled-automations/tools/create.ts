@@ -70,7 +70,7 @@ export function createSlackScheduleCreateAutomationTool(
           .array(taskOutcomeInputSchema)
           .max(5)
           .describe(
-            "Messages to send after successful work. Use an empty list to send nothing. Omit to send one message to the current Slack conversation.",
+            "Successful work is silent by default. Omit this field or use an empty list when the Automation should act through tools without a status message. Add send_message only when the user asks for a reminder, post, digest, summary, or other visible result.",
           )
           .optional(),
         credential_mode: z

@@ -319,6 +319,7 @@ describe("event automations", () => {
       ).resolves.toMatchObject({
         destination: { channelId },
         destinationVisibility,
+        outcomes: [],
         source: { kind: "event_automation" },
       });
     },
