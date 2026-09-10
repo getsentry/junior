@@ -118,8 +118,8 @@ export async function prepareWorkspace(
         ? `${upstreamPrefix}${remoteBranch}`
         : validDetachedSha!;
       // Build trusted Git metadata outside the checkout before replacing the
-      // snapshot metadata. This keeps ignored setup outputs without running
-      // snapshot hooks or filters during credentialed Git commands.
+      // snapshot metadata. Reuse the cached object database, but do not reuse
+      // snapshot hooks, filters, or remote config during credentialed Git commands.
       const tempDir = await ctx.sandbox.run({
         cmd: "mktemp",
         args: ["-d", `${ctx.sandbox.juniorRoot}/workspace-refresh.XXXXXX`],
@@ -131,82 +131,93 @@ export async function prepareWorkspace(
           `GitHub workspace refresh temp directory failed for ${repo}: ${tempDir.stderr.trim() || `exit ${tempDir.exitCode}`}`,
         );
       }
-      for (const args of [
-        [
-          "--git-dir",
-          refreshGitDir,
-          "--work-tree",
-          path,
-          "init",
-          "--quiet",
-          "--initial-branch",
-          localBranch,
-        ],
-        [
-          "--git-dir",
-          refreshGitDir,
-          "--work-tree",
-          path,
-          "remote",
-          "add",
-          "origin",
-          cloneUrl,
-        ],
-        [
-          "--git-dir",
-          refreshGitDir,
-          "--work-tree",
-          path,
-          "fetch",
-          "--quiet",
-          "--prune",
-          "--tags",
-          "origin",
-          "+refs/heads/*:refs/remotes/origin/*",
-          ...(validDetachedSha ? [validDetachedSha] : []),
-        ],
+      const gitArgs = (...args: string[]) => [
+        "--git-dir",
+        refreshGitDir,
+        "--work-tree",
+        path,
+        ...args,
+      ];
+      const refreshCommands: Array<{
+        args: string[];
+        cmd: string;
+        credentialed?: boolean;
+      }> = [
+        {
+          cmd: "git",
+          args: gitArgs("init", "--quiet", "--initial-branch", localBranch),
+          credentialed: true,
+        },
+        {
+          cmd: "git",
+          args: gitArgs("remote", "add", "origin", cloneUrl),
+          credentialed: true,
+        },
+        { cmd: "rm", args: ["-rf", "--", `${refreshGitDir}/objects`] },
+        {
+          cmd: "cp",
+          args: [
+            "-al",
+            "--",
+            `${path}/.git/objects`,
+            `${refreshGitDir}/objects`,
+          ],
+        },
+        ...(remoteBranch
+          ? [
+              {
+                cmd: "git",
+                args: gitArgs(
+                  "fetch",
+                  "--quiet",
+                  "--prune",
+                  "--no-tags",
+                  "origin",
+                  `+refs/heads/${remoteBranch}:refs/remotes/origin/${remoteBranch}`,
+                ),
+                credentialed: true,
+              },
+            ]
+          : []),
         ...(validDetachedSha
           ? [
-              [
-                "--git-dir",
-                refreshGitDir,
-                "--work-tree",
-                path,
-                "update-ref",
-                "--no-deref",
-                "HEAD",
-                validDetachedSha,
-              ],
+              {
+                cmd: "git",
+                args: gitArgs(
+                  "update-ref",
+                  "--no-deref",
+                  "HEAD",
+                  validDetachedSha,
+                ),
+                credentialed: true,
+              },
             ]
           : []),
-        [
-          "--git-dir",
-          refreshGitDir,
-          "--work-tree",
-          path,
-          "reset",
-          "--hard",
-          remoteRef,
-        ],
+        {
+          cmd: "git",
+          args: gitArgs("reset", "--hard", remoteRef),
+          credentialed: true,
+        },
         ...(remoteBranch && branchName
           ? [
-              [
-                "--git-dir",
-                refreshGitDir,
-                "--work-tree",
-                path,
-                "branch",
-                `--set-upstream-to=origin/${remoteBranch}`,
-                branchName,
-              ],
+              {
+                cmd: "git",
+                args: gitArgs(
+                  "branch",
+                  `--set-upstream-to=origin/${remoteBranch}`,
+                  branchName,
+                ),
+                credentialed: true,
+              },
             ]
           : []),
-      ]) {
+      ];
+      for (const command of refreshCommands) {
         const result = await ctx.sandbox.run({
-          cmd: "git",
-          args,
+          cmd: command.cmd,
+          args: command.args,
           cwd: ctx.sandbox.root,
-          env: gitEnv,
+          ...(command.credentialed ? { env: gitEnv } : undefined),
         });
         if (result.exitCode !== 0) {
           throw new Error(

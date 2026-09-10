@@ -3283,6 +3283,13 @@ Conversation: \`local:test:old-conversation\`
         "origin",
         "https://github.com/getsentry/junior.git",
       ],
+      ["-rf", "--", "/vercel/sandbox/.junior/workspace-refresh.test/objects"],
+      [
+        "-al",
+        "--",
+        "repos/junior/.git/objects",
+        "/vercel/sandbox/.junior/workspace-refresh.test/objects",
+      ],
       [
         "--git-dir",
         "/vercel/sandbox/.junior/workspace-refresh.test",
@@ -3291,9 +3298,9 @@ Conversation: \`local:test:old-conversation\`
         "fetch",
         "--quiet",
         "--prune",
-        "--tags",
+        "--no-tags",
         "origin",
-        "+refs/heads/*:refs/remotes/origin/*",
+        "+refs/heads/stable:refs/remotes/origin/stable",
       ],
       [
         "--git-dir",
@@ -3361,6 +3368,12 @@ Conversation: \`local:test:old-conversation\`
     await githubPlugin().hooks?.workspacePrepare?.(ctx);
 
     expect(runs).toContainEqual([
+      "-al",
+      "--",
+      "repos/junior/.git/objects",
+      "/vercel/sandbox/.junior/workspace-refresh.test/objects",
+    ]);
+    expect(runs).toContainEqual([
       "--git-dir",
       "/vercel/sandbox/.junior/workspace-refresh.test",
       "--work-tree",
@@ -3368,9 +3381,9 @@ Conversation: \`local:test:old-conversation\`
       "fetch",
       "--quiet",
       "--prune",
-      "--tags",
+      "--no-tags",
       "origin",
-      "+refs/heads/*:refs/remotes/origin/*",
+      "+refs/heads/feature:refs/remotes/origin/feature",
     ]);
     expect(runs).toContainEqual([
       "--git-dir",
@@ -3430,6 +3443,7 @@ Conversation: \`local:test:old-conversation\`
 
     await githubPlugin().hooks?.workspacePrepare?.(ctx);
 
+    expect(runs.some((args) => args.includes("fetch"))).toBe(false);
     expect(runs).toContainEqual([
       "--git-dir",
       "/vercel/sandbox/.junior/workspace-refresh.test",
