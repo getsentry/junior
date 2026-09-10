@@ -1477,6 +1477,16 @@ describe("dashboard canonical-event components", () => {
       "This plugin does not expose operational activity yet.",
     );
 
+    const reportOnlyPluginHtml = renderToStaticMarkup(
+      <MemoryRouter initialEntries={["/system/plugins/briefs"]}>
+        <SystemPage data={loading} />
+      </MemoryRouter>,
+    );
+    expect(reportOnlyPluginHtml).toContain("Loading plugin");
+    expect(reportOnlyPluginHtml).toContain(
+      "Loading plugin details and operational reports.",
+    );
+
     const stale = systemData();
     stale.pluginReportsError = true;
     stale.plugins = [plugin("scheduler")];
