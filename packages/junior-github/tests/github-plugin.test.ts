@@ -3249,7 +3249,8 @@ Conversation: \`local:test:old-conversation\`
       },
     } as WorkspacePrepareHookContext;
 
-    await githubPlugin().hooks?.workspacePrepare?.(ctx);
+    const finalize = await githubPlugin().hooks?.workspacePrepare?.(ctx);
+    await finalize?.();
 
     expect(runs).toEqual([
       ["-p", "--", "repos"],
@@ -3263,12 +3264,15 @@ Conversation: \`local:test:old-conversation\`
         "@{upstream}",
       ],
       [
+        "-c",
+        "credential.helper=",
         "-C",
         "repos/junior",
         "fetch",
         "--quiet",
         "--no-tags",
-        "origin",
+        "--no-recurse-submodules",
+        "https://github.com/getsentry/junior.git",
         "+refs/heads/stable:refs/remotes/origin/stable",
       ],
       ["-C", "repos/junior", "reset", "--hard", "refs/remotes/origin/stable"],
@@ -3311,7 +3315,8 @@ Conversation: \`local:test:old-conversation\`
       },
     } as WorkspacePrepareHookContext;
 
-    await githubPlugin().hooks?.workspacePrepare?.(ctx);
+    const finalize = await githubPlugin().hooks?.workspacePrepare?.(ctx);
+    await finalize?.();
 
     expect(runs.some((args) => args.includes("fetch"))).toBe(false);
     expect(runs).toContainEqual([
@@ -3359,7 +3364,8 @@ Conversation: \`local:test:old-conversation\`
       },
     } as WorkspacePrepareHookContext;
 
-    await githubPlugin().hooks?.workspacePrepare?.(ctx);
+    const finalize = await githubPlugin().hooks?.workspacePrepare?.(ctx);
+    await finalize?.();
 
     expect(runs.some((args) => args.includes("fetch"))).toBe(false);
     expect(runs).toContainEqual([
@@ -3455,9 +3461,8 @@ Conversation: \`local:test:old-conversation\`
     await expect(githubPlugin().hooks?.workspacePrepare?.(ctx)).rejects.toThrow(
       "GitHub workspace clone failed",
     );
-    await expect(
-      githubPlugin().hooks?.workspacePrepare?.(ctx),
-    ).resolves.toBeUndefined();
+    const finalize = await githubPlugin().hooks?.workspacePrepare?.(ctx);
+    await finalize?.();
 
     expect(
       runs.filter(

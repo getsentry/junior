@@ -1792,6 +1792,13 @@ describe("agent plugin hooks", () => {
               args: ["clone", "https://example.com/demo.git", "demo"],
               cwd: ctx.sandbox.root,
             });
+            return async () => {
+              await ctx.sandbox.run({
+                cmd: "git",
+                args: ["-C", "demo", "reset", "--hard"],
+                cwd: ctx.sandbox.root,
+              });
+            };
           },
         },
       }),
@@ -1803,7 +1810,7 @@ describe("agent plugin hooks", () => {
         runCommand,
       };
 
-      await createPluginHookRunner().prepareWorkspace(
+      const finalize = await createPluginHookRunner().prepareWorkspace(
         sandbox,
         [
           {
@@ -1815,6 +1822,8 @@ describe("agent plugin hooks", () => {
       );
 
       expect(runCommand).toHaveBeenCalledTimes(1);
+      await finalize();
+      expect(runCommand).toHaveBeenCalledTimes(2);
       const command = runCommand.mock.calls[0]?.[0];
       expect(command).toMatchObject({
         cmd: "bash",

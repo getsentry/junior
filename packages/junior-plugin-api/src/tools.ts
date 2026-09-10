@@ -139,6 +139,9 @@ export interface PluginMcp {
   prepare(): Promise<"authorization_pending" | "ready">;
 }
 
+/** Complete Workspace repository preparation after credential egress is removed. */
+export type WorkspaceFinalize = () => Promise<void> | void;
+
 /**
  * Provider-owned, repeatable repository preparation for a Workspace Sandbox.
  * Implementations should refresh complete checkouts and replace missing or

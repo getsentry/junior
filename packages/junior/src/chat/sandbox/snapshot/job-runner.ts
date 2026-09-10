@@ -57,9 +57,7 @@ function createSnapshotBuildHelpers() {
     sandbox: SandboxSession,
     target: Workspace,
     signal?: AbortSignal,
-  ) => {
-    await pluginHooks.prepareWorkspace(sandbox, target.repos, signal);
-  };
+  ) => await pluginHooks.prepareWorkspace(sandbox, target.repos, signal);
   return { applyNetworkPolicy, prepareRepositories };
 }
 

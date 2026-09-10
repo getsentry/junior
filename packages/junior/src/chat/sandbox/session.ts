@@ -16,6 +16,7 @@ import {
   wrapSandboxSetupError,
 } from "@/chat/sandbox/errors";
 import { buildNonInteractiveShellScript } from "@/chat/sandbox/noninteractive-command";
+import type { WorkspaceFinalize } from "@sentry/junior-plugin-api";
 import { prepareWorkspaceSnapshot } from "@/chat/sandbox/prepare-workspace";
 import { getSandboxResources } from "@/chat/sandbox/resources";
 import { ensureWorkspaceSnapshotBuild } from "@/chat/sandbox/snapshot/job-runner";
@@ -138,7 +139,7 @@ interface SandboxRuntimeOptions {
     sandbox: SandboxSession,
     workspace: Workspace,
     signal?: AbortSignal,
-  ) => Promise<void>;
+  ) => Promise<WorkspaceFinalize | void>;
   onSandboxRefChanged?: (sandboxRef: SandboxRef) => void | Promise<void>;
 }
 
@@ -534,7 +535,16 @@ export function createSandboxRuntime(
     try {
       networkPolicyKey = await applyNetworkPolicy(createdSandbox);
       if (workspace) {
-        await options.onWorkspacePrepare?.(createdSandbox, workspace, signal);
+        const finalize = await options.onWorkspacePrepare?.(
+          createdSandbox,
+          workspace,
+          signal,
+        );
+        if (options.createNetworkPolicy) {
+          await createdSandbox.update({ networkPolicy: "allow-all" });
+          networkPolicyKey = undefined;
+        }
+        await finalize?.();
       }
       await prepareSandbox(createdSandbox);
     } catch (error) {

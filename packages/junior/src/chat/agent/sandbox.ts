@@ -45,7 +45,7 @@ export interface AgentSandboxOptions {
     workspace: SandboxWorkspace,
     recipe: Workspace,
     signal?: AbortSignal,
-  ): Promise<void>;
+  ): Promise<() => Promise<void>>;
   onSandboxRefChanged(sandboxRef: SandboxRef): void;
   persistSandboxRef?(sandboxRef: SandboxRef): void | Promise<void>;
 }

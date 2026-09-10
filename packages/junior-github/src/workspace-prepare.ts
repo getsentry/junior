@@ -1,10 +1,13 @@
-import type { WorkspacePrepareHookContext } from "@sentry/junior-plugin-api";
+import type {
+  WorkspaceFinalize,
+  WorkspacePrepareHookContext,
+} from "@sentry/junior-plugin-api";
 import { isReservedSandboxDirectory } from "./sandbox-paths.js";
 
 /** Clone missing GitHub repositories or refresh existing Workspace checkouts. */
 export async function prepareWorkspace(
   ctx: WorkspacePrepareHookContext,
-): Promise<void> {
+): Promise<WorkspaceFinalize> {
   const repos = ctx.repos.map((entry) => {
     const [owner, name, ...rest] = entry.repo.split("/");
     if (!owner || !name || rest.length > 0) {
@@ -41,6 +44,7 @@ export async function prepareWorkspace(
     GIT_CONFIG_NOSYSTEM: "1",
   };
 
+  const finalize: Array<{ path: string; repo: string; target: string }> = [];
   for (const { owner, name, path, repo } of repos) {
     const parent = path.includes("/")
       ? path.slice(0, path.lastIndexOf("/"))
@@ -111,30 +115,24 @@ export async function prepareWorkspace(
       ? upstreamRef.slice(upstreamPrefix.length)
       : undefined;
     if (worktree.exitCode === 0 && (branchName || validDetachedHead)) {
-      const refreshRef = upstreamBranch
+      const target = upstreamBranch
         ? `${upstreamPrefix}${upstreamBranch}`
         : "HEAD";
-      const refreshCommands = [
-        ...(upstreamBranch
-          ? [
-              [
-                "-C",
-                path,
-                "fetch",
-                "--quiet",
-                "--no-tags",
-                "origin",
-                `+refs/heads/${upstreamBranch}:${refreshRef}`,
-              ],
-            ]
-          : []),
-        ["-C", path, "reset", "--hard", refreshRef],
-        ["-C", path, "clean", "-fd"],
-      ];
-      for (const args of refreshCommands) {
+      if (upstreamBranch) {
         const result = await ctx.sandbox.run({
           cmd: "git",
-          args,
+          args: [
+            "-c",
+            "credential.helper=",
+            "-C",
+            path,
+            "fetch",
+            "--quiet",
+            "--no-tags",
+            "--no-recurse-submodules",
+            cloneUrl,
+            `+refs/heads/${upstreamBranch}:${target}`,
+          ],
           cwd: ctx.sandbox.root,
           env: gitEnv,
         });
@@ -144,6 +142,7 @@ export async function prepareWorkspace(
           );
         }
       }
+      finalize.push({ path, repo, target });
       continue;
     }
 
@@ -173,5 +172,27 @@ export async function prepareWorkspace(
         `GitHub workspace clone failed for ${repo}: ${result.stderr.trim() || `exit ${result.exitCode}`}`,
       );
     }
+    finalize.push({ path, repo, target: "HEAD" });
   }
+
+  return async () => {
+    for (const { path, repo, target } of finalize) {
+      for (const args of [
+        ["-C", path, "reset", "--hard", target],
+        ["-C", path, "clean", "-fd"],
+      ]) {
+        const result = await ctx.sandbox.run({
+          cmd: "git",
+          args,
+          cwd: ctx.sandbox.root,
+          env: gitEnv,
+        });
+        if (result.exitCode !== 0) {
+          throw new Error(
+            `GitHub workspace refresh failed for ${repo}: ${result.stderr.trim() || `exit ${result.exitCode}`}`,
+          );
+        }
+      }
+    }
+  };
 }

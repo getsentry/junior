@@ -106,7 +106,7 @@ export interface PluginHookRunner {
       repo: string;
     }>,
     signal?: AbortSignal,
-  ): Promise<void>;
+  ): Promise<() => Promise<void>>;
 }
 
 let registeredPlugins: PluginRegistration[] = [];
@@ -1573,6 +1573,7 @@ export function createPluginHookRunner(
       }
 
       const sandboxCapability = createSandboxCapability(sandbox, signal);
+      const finalizers: Array<() => Promise<void> | void> = [];
       for (const plugin of loaded) {
         const hook = plugin.hooks?.workspacePrepare;
         if (!hook) continue;
@@ -1583,12 +1584,16 @@ export function createPluginHookRunner(
             repo: repo.repo,
           }));
         if (selected.length === 0) continue;
-        await hook({
+        const finalize = await hook({
           ...basePluginContext(plugin),
           repos: selected,
           sandbox: sandboxCapability,
         });
+        if (finalize) finalizers.push(finalize);
       }
+      return async () => {
+        for (const finalize of finalizers) await finalize();
+      };
     },
     async prepareSandbox(sandbox) {
       const sandboxCapability = createSandboxCapability(sandbox);

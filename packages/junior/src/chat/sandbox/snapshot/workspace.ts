@@ -8,6 +8,7 @@ import {
   isAbortError,
   isSandboxApiTransientError,
 } from "@/chat/sandbox/errors";
+import type { WorkspaceFinalize } from "@sentry/junior-plugin-api";
 import {
   prepareWorkspaceRepositories,
   workspaceSetupFailureDetail,
@@ -394,7 +395,7 @@ async function continueBuild(params: {
     sandbox: SandboxSession,
     workspace: Workspace,
     signal?: AbortSignal,
-  ): Promise<void>;
+  ): Promise<WorkspaceFinalize | void>;
   removeCredentialRoute: boolean;
   beforeWrite: () => Promise<void>;
 }): Promise<void> {
@@ -519,7 +520,7 @@ async function advanceWorkspaceSnapshot(params: {
     sandbox: SandboxSession,
     workspace: Workspace,
     signal?: AbortSignal,
-  ): Promise<void>;
+  ): Promise<WorkspaceFinalize | void>;
   removeCredentialRoute: boolean;
 }): Promise<Snapshot | null> {
   const value = profile.create(params.runtime, params.workspace);
@@ -652,7 +653,7 @@ export async function resolveWorkspaceSnapshot(params: {
     sandbox: SandboxSession,
     workspace: Workspace,
     signal?: AbortSignal,
-  ): Promise<void>;
+  ): Promise<WorkspaceFinalize | void>;
   removeCredentialRoute: boolean;
 }): Promise<Snapshot> {
   // Do some work before the first time check. This prevents empty job runs.
