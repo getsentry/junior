@@ -27,6 +27,7 @@ import {
   setExperimentalFeatures,
   type ExperimentalFeaturesConfig,
 } from "@/chat/experimental";
+import { setBriefsConfig } from "@/chat/briefs/registration";
 import {
   getSandboxResourceConfig,
   setSandboxResourceConfig,
@@ -116,6 +117,11 @@ export type {
 } from "./plugins";
 export type { ModelProfileInput } from "@/chat/model-profile";
 export interface JuniorAppOptions extends BotModelConfig {
+  /**
+   * Generate a durable Brief after each completed Turn. This costs one
+   * default-model call per completed Turn. Disabled by default.
+   */
+  briefs?: { enabled?: boolean };
   /** Authenticated dashboard mounted by core when configured. */
   dashboard?: JuniorDashboardOptions;
   /**
@@ -699,6 +705,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   const previousSlackReactionConfig = getSlackReactionConfig();
   const previousSandboxResources = getSandboxResourceConfig();
   const previousExperimentalFeatures = getExperimentalFeatures();
+  const previousBriefsConfig = setBriefsConfig(options?.briefs);
   const previousDashboardLinkOptions =
     setDashboardConversationLinkOptions(dashboard);
   const restoreRuntimeConfig = (): void => {
@@ -709,6 +716,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     setSlackReactionConfig(previousSlackReactionConfig);
     setSandboxResourceConfig(previousSandboxResources);
     setExperimentalFeatures(previousExperimentalFeatures);
+    setBriefsConfig(previousBriefsConfig);
     setDashboardConversationLinkOptions(previousDashboardLinkOptions);
   };
   let pluginRoutes: PluginRouteRegistration[] = [];

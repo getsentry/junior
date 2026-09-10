@@ -1,6 +1,7 @@
 # Briefs
 
-This module owns the provider-neutral Brief shape, generator input, local snapshot adapter, evidence checks, and Markdown rendering.
+This module owns the provider-neutral Brief shape, generator input adapters,
+evidence checks, version storage, post-Turn generation, and Markdown rendering.
 
 A Brief is a compact record of a Conversation. It keeps a deterministic record, intent, outcome, decisions, open decisions, durable facts, evidence links, and keywords after the transcript expires.
 
@@ -26,6 +27,38 @@ The record comes from `BriefInput`, not from the model. It contains the activity
 
 A run without `--model` resolves the app's configured default model when the run starts. The default model gives more accurate decisions than the fast model in production samples.
 
+## Storage and generation
+
+`junior_conversation_briefs` stores append-only versions. Each completed Turn
+can own only one version. The task allocates the next version while the
+Conversation row is locked. Storage rejects an insert after transcript purge
+when the root is not public.
+
+Brief generation is off by default. Apps enable it with
+`createApp({ briefs: { enabled: true } })`. The example app and `junior chat`
+enable it. Each completed Turn costs one default-model call when the task runs.
+
+The core `briefs.updateBrief` task runs after completed Slack, web, and local
+Turns with a user instruction when Brief generation is enabled. It skips child Conversations. Before a model
+call, it skips a Turn whose terminal event is already covered by the latest
+Brief. A retry with the same `turnId` re-emits the stored version's idempotent
+`briefs/brief_updated` event, which repairs a failed first emission without a
+second model call. The task and `junior briefs run` send the same request to
+the configured default model. The event carries the version, model id, item
+counts, and model cost. Its cost appears in the Conversation auxiliary-cost
+breakdown under the `briefs` namespace.
+
+A public Brief survives transcript purge. A non-public root loses every Brief
+in its Conversation tree when purge scrubs private metadata. Remaining private
+Brief rows keep that tree eligible for another purge pass. This rule prevents
+private derived content from outliving the transcript. Later readers must apply
+the Conversation privacy gate before they expose a current private Brief.
+
+The task reads the Turn's terminal event sequence first and builds input
+only through that event. The SQL and snapshot input adapters use the same
+reporting-event-to-entry mapping. The SQL adapter also reads code changes and `resource_link`
+annotations from their durable stores.
+
 ## Snapshots
 
 A version 1 snapshot contains the conversation detail report, every older event page, and a code change list. `junior briefs pull` follows every `previousCursor` and writes the complete report without a token. The current detail API does not include code changes, so pulled snapshots start with an empty code change list. A local fixture can add code changes before replay.
@@ -34,4 +67,4 @@ A version 1 snapshot contains the conversation detail report, every older event 
 
 The adapter does not generate a Brief from redacted or expired transcript content. Replay through an earlier index only includes code changes and resources that existed at that event, with each code change state as of that time.
 
-This module does not own SQL storage, version allocation, purge policy, privacy gates, search scope, or post-turn scheduling. Those boundaries must preserve these evidence rules when they call the generator.
+This module does not own API privacy gates or search scope. Those boundaries must preserve these evidence and purge rules.
