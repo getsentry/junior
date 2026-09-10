@@ -1,22 +1,12 @@
-import {
-  actorUserIdSchema,
-  slackDestinationSchema,
-  type SlackDestination,
-  type TaskOutcome,
-} from "@sentry/junior-plugin-api";
+import type { SlackDestination, TaskOutcome } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import { getSlackClient, withSlackRetries } from "@/chat/slack/client";
 
-const taskMessageDestinationInputSchema = z.union([
-  slackDestinationSchema,
-  z
-    .object({
-      platform: z.literal("slack"),
-      teamId: z.string().min(1),
-      userId: actorUserIdSchema,
-    })
-    .strict(),
-]);
+const taskMessageDestinationInputSchema = z
+  .enum(["current_conversation", "task_creator"])
+  .describe(
+    "Where to send the message. Use current_conversation for posts, digests, summaries, and channel reminders. Use task_creator only when the user asks for a direct reminder or notification.",
+  );
 
 /** Input accepted by task authoring tools before a user becomes a DM Destination. */
 export const taskOutcomeInputSchema = z
@@ -39,27 +29,14 @@ export async function resolveTaskOutcomes(
   }
   const resolved: TaskOutcome[] = [];
   for (const outcome of outcomes) {
-    if (outcome.destination.teamId !== currentDestination.teamId) {
-      throw new Error(
-        "Message destinations must be in the current Slack workspace.",
-      );
-    }
-    if ("channelId" in outcome.destination) {
-      if (outcome.destination.channelId !== currentDestination.channelId) {
-        throw new Error(
-          "Messages can only be sent to the current Slack conversation or the task creator.",
-        );
-      }
+    if (outcome.destination === "current_conversation") {
       resolved.push({
         action: "send_message",
         destination: currentDestination,
       });
       continue;
     }
-    const userId = outcome.destination.userId;
-    if (userId !== creatorSlackUserId) {
-      throw new Error("Direct messages can only be sent to the task creator.");
-    }
+    const userId = creatorSlackUserId;
     const response = await withSlackRetries(
       () =>
         getSlackClient().conversations.open({

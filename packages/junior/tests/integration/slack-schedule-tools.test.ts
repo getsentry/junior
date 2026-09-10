@@ -247,11 +247,7 @@ describe("Slack schedule tools", () => {
       outcomes: [
         {
           action: "send_message",
-          destination: {
-            platform: "slack",
-            teamId: TEST_TEAM_ID,
-            userId: "U123",
-          },
+          destination: "task_creator",
         },
       ],
     });
@@ -276,23 +272,6 @@ describe("Slack schedule tools", () => {
         },
       ],
     });
-
-    await expect(
-      createTask(createContext(), {
-        outcomes: [
-          {
-            action: "send_message",
-            destination: {
-              platform: "slack",
-              teamId: TEST_TEAM_ID,
-              channelId: "C456",
-            },
-          },
-        ],
-      }),
-    ).rejects.toThrow(
-      "Messages can only be sent to the current Slack conversation or the task creator.",
-    );
   });
 
   it("creates and lists tasks only for the active Slack conversation", async () => {
@@ -1647,12 +1626,7 @@ describe("Slack schedule tools", () => {
       outcomes: [
         {
           action: "send_message",
-          destination: {
-            platform: "slack",
-            teamId: TEST_TEAM_ID,
-            channelId: "CSOURCE",
-            threadTs: "1700000000.000100",
-          },
+          destination: "current_conversation",
         },
       ],
     });

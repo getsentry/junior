@@ -122,7 +122,7 @@ describeEval("Event automation management", slackEvals, (it) => {
     });
     expect(createCalls[0]!.arguments).toMatchObject({
       outcomes: [
-        { action: "send_message", destination: { platform: "slack" } },
+        { action: "send_message", destination: "current_conversation" },
       ],
       trigger: {
         namespace: "github",

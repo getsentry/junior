@@ -28,7 +28,7 @@ describeEval("Schedule Creation", slackEvals, (it) => {
     const createCall = createCalls[0]!;
     expect(createCall.arguments).toMatchObject({
       outcomes: [
-        { action: "send_message", destination: { platform: "slack" } },
+        { action: "send_message", destination: "current_conversation" },
       ],
       schedule: {
         kind: "one_off",
@@ -80,7 +80,7 @@ describeEval("Schedule Creation", slackEvals, (it) => {
     const createCall = createCalls[0]!;
     expect(createCall.arguments).toMatchObject({
       outcomes: [
-        { action: "send_message", destination: { platform: "slack" } },
+        { action: "send_message", destination: "current_conversation" },
       ],
       schedule: {
         kind: "one_off",
@@ -140,7 +140,7 @@ describeEval("Schedule Creation", slackEvals, (it) => {
     expect(createCalls).toHaveLength(1);
     expect(createCalls[0]!.arguments).toMatchObject({
       outcomes: [
-        { action: "send_message", destination: { platform: "slack" } },
+        { action: "send_message", destination: "current_conversation" },
       ],
       schedule: {
         kind: "recurring",
