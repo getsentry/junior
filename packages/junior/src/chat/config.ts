@@ -242,7 +242,7 @@ function parseCrossActorMidRunMode(
 const DEFAULT_MODEL_ID = getModel("vercel-ai-gateway", "xai/grok-4.5").id;
 const DEFAULT_FAST_MODEL_ID = getModel(
   "vercel-ai-gateway",
-  "anthropic/claude-haiku-4.5",
+  "openai/gpt-5.6-luna",
 ).id;
 const DEFAULT_GUARDIAN_MODEL_ID = getModel(
   "vercel-ai-gateway",

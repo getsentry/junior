@@ -68,12 +68,12 @@ describe("chat config", () => {
     expect(botConfig.fastModelId).toBe("anthropic/claude-haiku-4.5");
   });
 
-  it("uses the default fast model when AI_MODEL and AI_FAST_MODEL are unset", async () => {
+  it("uses Luna as the default fast model when AI_MODEL and AI_FAST_MODEL are unset", async () => {
     delete process.env.AI_MODEL;
     delete process.env.AI_FAST_MODEL;
 
     const { botConfig } = await loadConfig();
-    expect(botConfig.fastModelId).toBe("anthropic/claude-haiku-4.5");
+    expect(botConfig.fastModelId).toBe("openai/gpt-5.6-luna");
   });
 
   it("uses Luna for Guardian when no override is configured", async () => {
