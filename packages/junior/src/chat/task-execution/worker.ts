@@ -64,6 +64,8 @@ export interface InboxAttempt {
 export interface ConversationWorkerResult {
   /** `paused` waits for an external wake but must resume if a stop raced it. */
   status: "completed" | "deferred" | "lost_lease" | "paused" | "yielded";
+  /** Wait before the next wake attempt. Only meaningful when `status` is `deferred`. */
+  delayMs?: number;
 }
 
 export interface ConversationWorkProcessResult {
@@ -734,6 +736,7 @@ async function processConversationWorkInContext(
         const wake = await ensureConversationWake({
           conversationId,
           conversationStore: options.conversationStore,
+          delayMs: result.delayMs,
           idempotencyKey: nudgeIdempotencyKey(
             "deferred",
             conversationId,

@@ -82,6 +82,7 @@ import {
   isEventMailboxMetadata,
   type EventMailboxMetadata,
 } from "@/chat/events/notification";
+import { remainingEventWakeDelayMs } from "@/chat/events/wake-debounce";
 import { isEventConversationMessage } from "@/chat/events/actor";
 
 function stableHex(...parts: string[]): string {
@@ -174,6 +175,20 @@ export function createConversationTurnWorker(
     context: ConversationWorkerContext,
     resolved: MailboxTurnWork,
   ): Promise<ConversationWorkerResult> => {
+    if (resolved.kind === "mailbox") {
+      const first = resolved.batch[0]!;
+      if (isEventMailboxMetadata(first.message.input.metadata)) {
+        const delayMs = remainingEventWakeDelayMs({
+          eventCount: resolved.batch.length,
+          firstReceivedAtMs: first.message.receivedAtMs,
+          nowMs: Date.now(),
+        });
+        if (delayMs !== undefined) {
+          return { status: "deferred", delayMs };
+        }
+      }
+    }
+
     const lifecycle = new ConversationTurnLifecycleService(
       getConversationEventStore(),
     );
