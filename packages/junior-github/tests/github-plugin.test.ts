@@ -3285,7 +3285,6 @@ Conversation: \`local:test:old-conversation\`
       ],
       ["-rf", "--", "/vercel/sandbox/.junior/workspace-refresh.test/objects"],
       [
-        "-al",
         "--",
         "repos/junior/.git/objects",
         "/vercel/sandbox/.junior/workspace-refresh.test/objects",
@@ -3368,7 +3367,6 @@ Conversation: \`local:test:old-conversation\`
     await githubPlugin().hooks?.workspacePrepare?.(ctx);
 
     expect(runs).toContainEqual([
-      "-al",
       "--",
       "repos/junior/.git/objects",
       "/vercel/sandbox/.junior/workspace-refresh.test/objects",

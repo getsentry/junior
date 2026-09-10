@@ -118,8 +118,10 @@ export async function prepareWorkspace(
         ? `${upstreamPrefix}${remoteBranch}`
         : validDetachedSha!;
       // Build trusted Git metadata outside the checkout before replacing the
-      // snapshot metadata. Reuse the cached object database, but do not reuse
-      // snapshot hooks, filters, or remote config during credentialed Git commands.
+      // snapshot metadata. Move the cached object database into it, but do not
+      // reuse snapshot hooks, filters, or remote config during credentialed Git
+      // commands. This Sandbox is still a disposable candidate, so a failed
+      // refresh cannot damage the ready snapshot or active Sandbox.
       const tempDir = await ctx.sandbox.run({
         cmd: "mktemp",
         args: ["-d", `${ctx.sandbox.juniorRoot}/workspace-refresh.XXXXXX`],
@@ -155,13 +157,8 @@ export async function prepareWorkspace(
         },
         { cmd: "rm", args: ["-rf", "--", `${refreshGitDir}/objects`] },
         {
-          cmd: "cp",
-          args: [
-            "-al",
-            "--",
-            `${path}/.git/objects`,
-            `${refreshGitDir}/objects`,
-          ],
+          cmd: "mv",
+          args: ["--", `${path}/.git/objects`, `${refreshGitDir}/objects`],
         },
         ...(remoteBranch
           ? [
