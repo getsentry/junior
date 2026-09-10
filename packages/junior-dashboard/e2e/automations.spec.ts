@@ -5,8 +5,12 @@ test("opens scheduled and event automations in the native Automations view", asy
   page,
   dashboard,
 }) => {
-  await page.goto(dashboard.baseURL);
+  await page.goto(`${dashboard.baseURL}/tasks/list?range=7#history`);
+  await expect(page).toHaveURL(
+    `${dashboard.baseURL}/automations/list?range=7#history`,
+  );
 
+  await page.goto(dashboard.baseURL);
   await page.getByRole("link", { name: "Automations" }).click();
 
   await expect(page).toHaveURL(`${dashboard.baseURL}/automations`);

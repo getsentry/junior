@@ -196,6 +196,8 @@ export function DashboardShell() {
           }
         />
         <Routes>
+          <Route element={<LegacyAutomationsRedirect />} path="/tasks" />
+          <Route element={<LegacyAutomationsRedirect />} path="/tasks/*" />
           <Route
             element={
               loading ? (
@@ -566,6 +568,17 @@ function conversationIdFromPath(pathname: string): string | undefined {
   } catch {
     return match[1];
   }
+}
+
+function LegacyAutomationsRedirect() {
+  const location = useLocation();
+  const suffix = location.pathname.slice("/tasks".length);
+  return (
+    <Navigate
+      replace
+      to={`/automations${suffix}${location.search}${location.hash}`}
+    />
+  );
 }
 
 function LegacySystemRedirect(props: { section: "locations" | "people" }) {

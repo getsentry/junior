@@ -129,6 +129,10 @@ export function dashboardPagePaths(
     },
     {
       nested: true,
+      path: basePath === "/" ? "/tasks" : `${basePath}/tasks`,
+    },
+    {
+      nested: true,
       path: basePath === "/" ? "/memories" : `${basePath}/memories`,
     },
     {
