@@ -1,4 +1,26 @@
 # Changelog
+## 0.207.0
+
+### New Features ✨
+
+- (automations) Default successful work to silent by @sentry-junior in [#1825](https://github.com/getsentry/junior/pull/1825)
+
+### Bug Fixes 🐛
+
+#### Dashboard
+
+- Preserve plugin deep links while loading by @sentry-junior in [#1827](https://github.com/getsentry/junior/pull/1827)
+- Detect frontend version drift by @sentry-junior in [#1824](https://github.com/getsentry/junior/pull/1824)
+
+#### Other
+
+- (chat) Preserve provider errors with suppressed output by @sentry-junior in [#1820](https://github.com/getsentry/junior/pull/1820)
+- (workspaces) Reuse cached Git objects on refresh by @sentry-junior in [#1828](https://github.com/getsentry/junior/pull/1828)
+
+### Internal Changes 🔧
+
+- (automations) Cut over product terminology by @sentry-junior in [#1818](https://github.com/getsentry/junior/pull/1818)
+
 ## 0.206.0
 
 ### New Features ✨
