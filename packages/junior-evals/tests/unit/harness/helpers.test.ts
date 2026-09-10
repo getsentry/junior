@@ -1,10 +1,17 @@
 import { expect, it, vi } from "vitest";
 
-const { runError, runEvalScenarioMock } = vi.hoisted(() => ({
+const { completeTextMock, runError, runEvalScenarioMock } = vi.hoisted(() => ({
+  completeTextMock: vi.fn(),
   runError: new Error("stop after capturing harness options"),
   runEvalScenarioMock: vi.fn(async () => {
     throw new Error("uninitialized run error");
   }),
+}));
+
+vi.mock("@/chat/pi/client", () => ({
+  completeText: completeTextMock,
+  GEN_AI_PROVIDER_NAME: "vercel-ai-gateway",
+  resolveGatewayModel: vi.fn((modelId: string) => ({ id: modelId })),
 }));
 
 vi.mock("../../../src/behavior-harness", () => ({
@@ -13,7 +20,9 @@ vi.mock("../../../src/behavior-harness", () => ({
 
 import {
   hasImageAttachment,
+  RubricJudge,
   serializeVisibleTranscript,
+  slackEvals,
   slackHarness,
   visibleAssistantText,
   visibleThreadReplies,
@@ -141,6 +150,56 @@ it("includes captured Slack posts in the rubric-visible transcript", async () =>
       (event) => event.type === "message" && event.role === "assistant",
     )?.metadata,
   ).not.toHaveProperty("rubric_visible", false);
+});
+
+it("records rubric judge usage and cost in score metadata", async () => {
+  completeTextMock.mockResolvedValueOnce({
+    message: {
+      usage: {
+        input: 100,
+        output: 20,
+        cacheRead: 10,
+        cacheWrite: 0,
+        reasoning: 5,
+        totalTokens: 130,
+        cost: {
+          input: 0.01,
+          output: 0.02,
+          cacheRead: 0.001,
+          cacheWrite: 0,
+          total: 0.031,
+        },
+      },
+    },
+    text: '{"answer":"A","rationale":"The response meets the rubric."}',
+  });
+
+  const judgeRun = await slackEvals.judgeHarness.run(
+    { prompt: "Grade this.", system: "Return JSON." },
+    { artifacts: {}, setArtifact: vi.fn() },
+  );
+  const result = await RubricJudge.assess({
+    harness: slackHarness,
+    input: { criteria: { pass: ["Answers correctly"] }, initialEvents: [] },
+    output: undefined,
+    run: {} as never,
+    runJudge: async () => judgeRun.output,
+    session: { events: [] },
+    toolCalls: [],
+  });
+
+  expect(result.metadata).toMatchObject({
+    answer: "A",
+    costUsd: 0.031,
+    usage: {
+      inputTokens: 100,
+      outputTokens: 20,
+      cachedInputTokens: 10,
+      reasoningTokens: 5,
+      totalTokens: 130,
+      costUsd: 0.031,
+    },
+  });
 });
 
 it("forwards the Vitest abort signal to the eval scenario", async () => {
