@@ -123,6 +123,14 @@ function selectAttemptMessages(work: ConversationWorkState): InboundMessage[] {
     : selectContiguousTurnBatch(messages);
 }
 
+function messageWasSteeredDuringAttempt(
+  message: InboundMessage,
+  startedAtMs: number,
+): boolean {
+  const steeredAtMs = message.input.metadata?.steeredAtMs;
+  return typeof steeredAtMs === "number" && steeredAtMs >= startedAtMs;
+}
+
 function nudgeIdempotencyKey(
   reason: string,
   conversationId: string,
@@ -485,8 +493,7 @@ async function processConversationWorkInContext(
             message.delivery === "interrupt" &&
             (attemptSelectedMessageIds.has(message.inboundMessageId) ||
               !attemptStartMessageIds.has(message.inboundMessageId) ||
-              (message.steeredAtMs !== undefined &&
-                message.steeredAtMs >= startedAtMs)),
+              messageWasSteeredDuringAttempt(message, startedAtMs)),
         );
         if (candidates.length === 0) {
           return [];
