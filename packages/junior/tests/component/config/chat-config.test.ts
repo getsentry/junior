@@ -252,11 +252,11 @@ describe("chat config", () => {
     expect(botConfig.embeddingModelId).toBe("openai/text-embedding-3-large");
   });
 
-  it("uses the default web search model when AI_WEB_SEARCH_MODEL is blank", async () => {
+  it("uses Luna as the default web search model when AI_WEB_SEARCH_MODEL is blank", async () => {
     process.env.AI_WEB_SEARCH_MODEL = "   ";
 
     const { botConfig } = await loadConfig();
-    expect(botConfig.webSearchModelId).toBe("openai/gpt-5.4");
+    expect(botConfig.webSearchModelId).toBe("openai/gpt-5.6-luna");
   });
 
   it("uses AI_WEB_SEARCH_MODEL when configured", async () => {
