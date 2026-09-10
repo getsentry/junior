@@ -19,7 +19,7 @@ describeEval("Resource Event Subscriptions", slackEvals, (it) => {
       },
       initialEvents: [
         mention(
-          "$eval-events Create a pull request titled 'Stop resource monitoring', watch its checks and review feedback, and keep me posted here.",
+          "$eval-events Create a pull request in getsentry/junior titled 'Stop resource monitoring', watch its checks and review feedback, and keep me posted here.",
           { thread },
         ),
       ],
