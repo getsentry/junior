@@ -110,7 +110,7 @@ export interface SandboxOptions {
     workspace: SandboxWorkspace,
     recipe: Workspace,
     signal?: AbortSignal,
-  ) => Promise<void>;
+  ) => Promise<() => Promise<void>>;
   onSandboxRefChanged?: (sandboxRef: SandboxRef) => void | Promise<void>;
 }
 

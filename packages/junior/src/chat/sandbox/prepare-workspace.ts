@@ -1,3 +1,4 @@
+import type { WorkspaceFinalize } from "@sentry/junior-plugin-api";
 import {
   SANDBOX_REPOS_ROOT,
   SANDBOX_WORKSPACE_ROOT,
@@ -22,7 +23,7 @@ interface PrepareWorkspaceParams {
     sandbox: SandboxSession,
     workspace: Workspace,
     signal?: AbortSignal,
-  ): Promise<void>;
+  ): Promise<WorkspaceFinalize | void>;
   removeCredentialRoute: boolean;
 }
 
@@ -33,12 +34,17 @@ export async function prepareWorkspaceRepositories(
   const { sandbox, workspace, signal } = params;
   signal?.throwIfAborted();
   await params.applyNetworkPolicy(sandbox);
-  await params.prepareRepositories?.(sandbox, workspace, signal);
+  const finalize = await params.prepareRepositories?.(
+    sandbox,
+    workspace,
+    signal,
+  );
   // Provider preparation uses credential egress. Remove that route before the
   // app-owned setup script runs and before the snapshot is captured.
   if (params.removeCredentialRoute) {
     await sandbox.update({ networkPolicy: "allow-all" });
   }
+  await finalize?.();
 }
 
 /** Return bounded setup output for a Workspace failure. */

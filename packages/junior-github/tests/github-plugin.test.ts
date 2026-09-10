@@ -3249,7 +3249,8 @@ Conversation: \`local:test:old-conversation\`
       },
     } as WorkspacePrepareHookContext;
 
-    await githubPlugin().hooks?.workspacePrepare?.(ctx);
+    const finalize = await githubPlugin().hooks?.workspacePrepare?.(ctx);
+    await finalize?.();
 
     expect(runs).toEqual([
       ["-p", "--", "repos"],
@@ -3262,63 +3263,19 @@ Conversation: \`local:test:old-conversation\`
         "--symbolic-full-name",
         "@{upstream}",
       ],
-      ["-d", "/vercel/sandbox/.junior/workspace-refresh.XXXXXX"],
       [
-        "--git-dir",
-        "/vercel/sandbox/.junior/workspace-refresh.test",
-        "--work-tree",
-        "repos/junior",
-        "init",
-        "--quiet",
-        "--initial-branch",
-        "feature",
-      ],
-      [
-        "--git-dir",
-        "/vercel/sandbox/.junior/workspace-refresh.test",
-        "--work-tree",
-        "repos/junior",
-        "remote",
-        "add",
-        "origin",
-        "https://github.com/getsentry/junior.git",
-      ],
-      [
-        "--git-dir",
-        "/vercel/sandbox/.junior/workspace-refresh.test",
-        "--work-tree",
+        "-c",
+        "credential.helper=",
+        "-C",
         "repos/junior",
         "fetch",
         "--quiet",
-        "--prune",
-        "--tags",
-        "origin",
-        "+refs/heads/*:refs/remotes/origin/*",
+        "--no-tags",
+        "--no-recurse-submodules",
+        "https://github.com/getsentry/junior.git",
+        "+refs/heads/stable:refs/remotes/origin/stable",
       ],
-      [
-        "--git-dir",
-        "/vercel/sandbox/.junior/workspace-refresh.test",
-        "--work-tree",
-        "repos/junior",
-        "reset",
-        "--hard",
-        "refs/remotes/origin/stable",
-      ],
-      [
-        "--git-dir",
-        "/vercel/sandbox/.junior/workspace-refresh.test",
-        "--work-tree",
-        "repos/junior",
-        "branch",
-        "--set-upstream-to=origin/stable",
-        "feature",
-      ],
-      ["-rf", "--", "repos/junior/.git"],
-      [
-        "--",
-        "/vercel/sandbox/.junior/workspace-refresh.test",
-        "repos/junior/.git",
-      ],
+      ["-C", "repos/junior", "reset", "--hard", "refs/remotes/origin/stable"],
       ["-C", "repos/junior", "clean", "-fd"],
     ]);
     expect(runs.some((args) => args[0] === "clone")).toBe(false);
@@ -3358,37 +3315,16 @@ Conversation: \`local:test:old-conversation\`
       },
     } as WorkspacePrepareHookContext;
 
-    await githubPlugin().hooks?.workspacePrepare?.(ctx);
+    const finalize = await githubPlugin().hooks?.workspacePrepare?.(ctx);
+    await finalize?.();
 
+    expect(runs.some((args) => args.includes("fetch"))).toBe(false);
     expect(runs).toContainEqual([
-      "--git-dir",
-      "/vercel/sandbox/.junior/workspace-refresh.test",
-      "--work-tree",
-      "repos/junior",
-      "fetch",
-      "--quiet",
-      "--prune",
-      "--tags",
-      "origin",
-      "+refs/heads/*:refs/remotes/origin/*",
-    ]);
-    expect(runs).toContainEqual([
-      "--git-dir",
-      "/vercel/sandbox/.junior/workspace-refresh.test",
-      "--work-tree",
+      "-C",
       "repos/junior",
       "reset",
       "--hard",
-      "refs/remotes/origin/feature",
-    ]);
-    expect(runs).toContainEqual([
-      "--git-dir",
-      "/vercel/sandbox/.junior/workspace-refresh.test",
-      "--work-tree",
-      "repos/junior",
-      "branch",
-      "--set-upstream-to=origin/feature",
-      "feature",
+      "HEAD",
     ]);
     expect(runs).not.toContainEqual(["-rf", "--", "repos/junior"]);
   });
@@ -3428,26 +3364,16 @@ Conversation: \`local:test:old-conversation\`
       },
     } as WorkspacePrepareHookContext;
 
-    await githubPlugin().hooks?.workspacePrepare?.(ctx);
+    const finalize = await githubPlugin().hooks?.workspacePrepare?.(ctx);
+    await finalize?.();
 
+    expect(runs.some((args) => args.includes("fetch"))).toBe(false);
     expect(runs).toContainEqual([
-      "--git-dir",
-      "/vercel/sandbox/.junior/workspace-refresh.test",
-      "--work-tree",
-      "repos/junior",
-      "update-ref",
-      "--no-deref",
-      "HEAD",
-      sha,
-    ]);
-    expect(runs).toContainEqual([
-      "--git-dir",
-      "/vercel/sandbox/.junior/workspace-refresh.test",
-      "--work-tree",
+      "-C",
       "repos/junior",
       "reset",
       "--hard",
-      sha,
+      "HEAD",
     ]);
     expect(runs).not.toContainEqual(["-rf", "--", "repos/junior"]);
   });
@@ -3535,9 +3461,8 @@ Conversation: \`local:test:old-conversation\`
     await expect(githubPlugin().hooks?.workspacePrepare?.(ctx)).rejects.toThrow(
       "GitHub workspace clone failed",
     );
-    await expect(
-      githubPlugin().hooks?.workspacePrepare?.(ctx),
-    ).resolves.toBeUndefined();
+    const finalize = await githubPlugin().hooks?.workspacePrepare?.(ctx);
+    await finalize?.();
 
     expect(
       runs.filter(

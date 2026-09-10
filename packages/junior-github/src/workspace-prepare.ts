@@ -1,10 +1,13 @@
-import type { WorkspacePrepareHookContext } from "@sentry/junior-plugin-api";
+import type {
+  WorkspaceFinalize,
+  WorkspacePrepareHookContext,
+} from "@sentry/junior-plugin-api";
 import { isReservedSandboxDirectory } from "./sandbox-paths.js";
 
 /** Clone missing GitHub repositories or refresh existing Workspace checkouts. */
 export async function prepareWorkspace(
   ctx: WorkspacePrepareHookContext,
-): Promise<void> {
+): Promise<WorkspaceFinalize> {
   const repos = ctx.repos.map((entry) => {
     const [owner, name, ...rest] = entry.repo.split("/");
     if (!owner || !name || rest.length > 0) {
@@ -41,6 +44,7 @@ export async function prepareWorkspace(
     GIT_CONFIG_NOSYSTEM: "1",
   };
 
+  const finalize: Array<{ path: string; repo: string; target: string }> = [];
   for (const { owner, name, path, repo } of repos) {
     const parent = path.includes("/")
       ? path.slice(0, path.lastIndexOf("/"))
@@ -85,12 +89,11 @@ export async function prepareWorkspace(
           })
         : undefined;
     const detachedSha = detachedHead?.stdout.trim();
-    const validDetachedSha =
+    const validDetachedHead = Boolean(
       detachedHead?.exitCode === 0 &&
       detachedSha &&
-      /^[0-9a-f]{40,64}$/.test(detachedSha)
-        ? detachedSha
-        : undefined;
+      /^[0-9a-f]{40,64}$/.test(detachedSha),
+    );
     const upstream =
       branch?.exitCode === 0 && branchName
         ? await ctx.sandbox.run({
@@ -111,100 +114,25 @@ export async function prepareWorkspace(
     const upstreamBranch = upstreamRef?.startsWith(upstreamPrefix)
       ? upstreamRef.slice(upstreamPrefix.length)
       : undefined;
-    if (worktree.exitCode === 0 && (branchName || validDetachedSha)) {
-      const localBranch = branchName || "workspace-detached";
-      const remoteBranch = upstreamBranch || branchName;
-      const remoteRef = remoteBranch
-        ? `${upstreamPrefix}${remoteBranch}`
-        : validDetachedSha!;
-      // Build trusted Git metadata outside the checkout before replacing the
-      // snapshot metadata. This keeps ignored setup outputs without running
-      // snapshot hooks or filters during credentialed Git commands.
-      const tempDir = await ctx.sandbox.run({
-        cmd: "mktemp",
-        args: ["-d", `${ctx.sandbox.juniorRoot}/workspace-refresh.XXXXXX`],
-        cwd: ctx.sandbox.root,
-      });
-      const refreshGitDir = tempDir.stdout.trim();
-      if (tempDir.exitCode !== 0 || !refreshGitDir) {
-        throw new Error(
-          `GitHub workspace refresh temp directory failed for ${repo}: ${tempDir.stderr.trim() || `exit ${tempDir.exitCode}`}`,
-        );
-      }
-      for (const args of [
-        [
-          "--git-dir",
-          refreshGitDir,
-          "--work-tree",
-          path,
-          "init",
-          "--quiet",
-          "--initial-branch",
-          localBranch,
-        ],
-        [
-          "--git-dir",
-          refreshGitDir,
-          "--work-tree",
-          path,
-          "remote",
-          "add",
-          "origin",
-          cloneUrl,
-        ],
-        [
-          "--git-dir",
-          refreshGitDir,
-          "--work-tree",
-          path,
-          "fetch",
-          "--quiet",
-          "--prune",
-          "--tags",
-          "origin",
-          "+refs/heads/*:refs/remotes/origin/*",
-          ...(validDetachedSha ? [validDetachedSha] : []),
-        ],
-        ...(validDetachedSha
-          ? [
-              [
-                "--git-dir",
-                refreshGitDir,
-                "--work-tree",
-                path,
-                "update-ref",
-                "--no-deref",
-                "HEAD",
-                validDetachedSha,
-              ],
-            ]
-          : []),
-        [
-          "--git-dir",
-          refreshGitDir,
-          "--work-tree",
-          path,
-          "reset",
-          "--hard",
-          remoteRef,
-        ],
-        ...(remoteBranch && branchName
-          ? [
-              [
-                "--git-dir",
-                refreshGitDir,
-                "--work-tree",
-                path,
-                "branch",
-                `--set-upstream-to=origin/${remoteBranch}`,
-                branchName,
-              ],
-            ]
-          : []),
-      ]) {
+    if (worktree.exitCode === 0 && (branchName || validDetachedHead)) {
+      const target = upstreamBranch
+        ? `${upstreamPrefix}${upstreamBranch}`
+        : "HEAD";
+      if (upstreamBranch) {
         const result = await ctx.sandbox.run({
           cmd: "git",
-          args,
+          args: [
+            "-c",
+            "credential.helper=",
+            "-C",
+            path,
+            "fetch",
+            "--quiet",
+            "--no-tags",
+            "--no-recurse-submodules",
+            cloneUrl,
+            `+refs/heads/${upstreamBranch}:${target}`,
+          ],
           cwd: ctx.sandbox.root,
           env: gitEnv,
         });
@@ -214,32 +142,7 @@ export async function prepareWorkspace(
           );
         }
       }
-      for (const [cmd, args] of [
-        ["rm", ["-rf", "--", `${path}/.git`]],
-        ["mv", ["--", refreshGitDir, `${path}/.git`]],
-      ] as const) {
-        const result = await ctx.sandbox.run({
-          cmd,
-          args: [...args],
-          cwd: ctx.sandbox.root,
-        });
-        if (result.exitCode !== 0) {
-          throw new Error(
-            `GitHub workspace metadata replacement failed for ${repo}: ${result.stderr.trim() || `exit ${result.exitCode}`}`,
-          );
-        }
-      }
-      const clean = await ctx.sandbox.run({
-        cmd: "git",
-        args: ["-C", path, "clean", "-fd"],
-        cwd: ctx.sandbox.root,
-        env: gitEnv,
-      });
-      if (clean.exitCode !== 0) {
-        throw new Error(
-          `GitHub workspace refresh failed for ${repo}: ${clean.stderr.trim() || `exit ${clean.exitCode}`}`,
-        );
-      }
+      finalize.push({ path, repo, target });
       continue;
     }
 
@@ -269,5 +172,27 @@ export async function prepareWorkspace(
         `GitHub workspace clone failed for ${repo}: ${result.stderr.trim() || `exit ${result.exitCode}`}`,
       );
     }
+    finalize.push({ path, repo, target: "HEAD" });
   }
+
+  return async () => {
+    for (const { path, repo, target } of finalize) {
+      for (const args of [
+        ["-C", path, "reset", "--hard", target],
+        ["-C", path, "clean", "-fd"],
+      ]) {
+        const result = await ctx.sandbox.run({
+          cmd: "git",
+          args,
+          cwd: ctx.sandbox.root,
+          env: gitEnv,
+        });
+        if (result.exitCode !== 0) {
+          throw new Error(
+            `GitHub workspace refresh failed for ${repo}: ${result.stderr.trim() || `exit ${result.exitCode}`}`,
+          );
+        }
+      }
+    }
+  };
 }
