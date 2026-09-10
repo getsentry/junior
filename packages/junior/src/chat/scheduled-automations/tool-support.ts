@@ -1,7 +1,6 @@
 import { createHash } from "node:crypto";
 import {
   sourceSchema,
-  taskOutcomeSchema,
   type Identity,
   type SlackDestination,
   type SlackActor,
@@ -46,17 +45,15 @@ const compactTaskResultSchema = z
     created_at: z.string().datetime(),
     updated_at: z.string().datetime(),
     original_request: z.string().nullable(),
-    task: z.string(),
+    instruction: z.string(),
     schedule: z.string(),
     timezone: z.string(),
     recurrence: z.unknown().nullable(),
     next_run_at: z.string().nullable(),
     destination: z
       .object({
-        platform: z.literal("slack"),
-        team_id: z.string().min(1),
-        channel_id: z.string().min(1),
-        thread_ts: z.string().min(1).nullable(),
+        channel: z.string().min(1),
+        thread: z.string().min(1).nullable(),
       })
       .strict(),
     conversation_access: z
@@ -68,12 +65,25 @@ const compactTaskResultSchema = z
     credential_mode: z.enum(["system", "creator"]),
     created_by: z
       .object({
-        slack_user_id: z.string().min(1),
-        full_name: z.string().min(1).nullable(),
-        user_name: z.string().min(1).nullable(),
+        name: z.string().min(1).nullable(),
+        username: z.string().min(1).nullable(),
       })
       .strict(),
-    outcomes: z.array(taskOutcomeSchema).max(5),
+    outcomes: z
+      .array(
+        z
+          .object({
+            action: z.literal("send_message"),
+            destination: z
+              .object({
+                channel: z.string().min(1),
+                thread: z.string().min(1).nullable(),
+              })
+              .strict(),
+          })
+          .strict(),
+      )
+      .max(5),
     dashboard_url: z.string().url().nullable(),
     last_run_at: z.string().nullable(),
     run_now_at: z.string().nullable(),
@@ -82,14 +92,12 @@ const compactTaskResultSchema = z
 
 export const scheduleAutomationToolResultSchema = juniorToolOutputSchema
   .extend({
-    target: z.string(),
     automation: compactTaskResultSchema,
   })
   .strict();
 
 export const scheduleListToolResultSchema = juniorToolOutputSchema
   .extend({
-    target: z.string(),
     automations: z.array(compactTaskResultSchema),
     truncated: z.boolean(),
   })
@@ -239,7 +247,7 @@ export function compactTask(task: ScheduledAutomation): CompactTaskResult {
     created_at: new Date(task.createdAtMs).toISOString(),
     updated_at: new Date(task.updatedAtMs).toISOString(),
     original_request: task.originalRequest ?? null,
-    task: task.task.text,
+    instruction: task.task.text,
     schedule: task.schedule.description,
     timezone: task.schedule.timezone,
     recurrence: task.schedule.recurrence
@@ -257,19 +265,24 @@ export function compactTask(task: ScheduledAutomation): CompactTaskResult {
       ? new Date(task.nextRunAtMs).toISOString()
       : null,
     destination: {
-      platform: "slack" as const,
-      team_id: task.destination.teamId,
-      channel_id: task.destination.channelId,
-      thread_ts: task.destination.threadTs ?? null,
+      channel: task.destination.channelId,
+      thread: task.destination.threadTs ?? null,
     },
     conversation_access: task.conversationAccess,
     credential_mode: task.credentialMode,
     created_by: {
-      slack_user_id: task.createdBy.slackUserId,
-      full_name: task.createdBy.fullName ?? null,
-      user_name: task.createdBy.userName ?? null,
+      name: task.createdBy.fullName ?? null,
+      username: task.createdBy.userName ?? null,
     },
-    outcomes: effectiveTaskOutcomes(task.outcomes, task.destination),
+    outcomes: effectiveTaskOutcomes(task.outcomes, task.destination).map(
+      (outcome) => ({
+        action: outcome.action,
+        destination: {
+          channel: outcome.destination.channelId,
+          thread: outcome.destination.threadTs ?? null,
+        },
+      }),
+    ),
     dashboard_url: getDashboardTaskLink(task.id) ?? null,
     last_run_at: task.lastRunAtMs
       ? new Date(task.lastRunAtMs).toISOString()
@@ -281,24 +294,16 @@ export function compactTask(task: ScheduledAutomation): CompactTaskResult {
 }
 
 /** Build the structured result shared by single-task scheduler tools. */
-export function scheduleAutomationToolResult(
-  target: string,
-  task: ScheduledAutomation,
-) {
-  return {
-    target,
-    automation: compactTask(task),
-  } as const;
+export function scheduleAutomationToolResult(task: ScheduledAutomation) {
+  return { automation: compactTask(task) } as const;
 }
 
 /** Build the structured result for listing scheduler tools. */
 export function scheduleListToolResult(args: {
-  target: string;
   automations: CompactTaskResult[];
   truncated: boolean;
 }) {
   return {
-    target: args.target,
     automations: args.automations,
     truncated: args.truncated,
   } as const;

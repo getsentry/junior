@@ -46,10 +46,7 @@ export function createSlackScheduleDeleteAutomationTool(
       };
 
       await saveScheduledAutomation(getDb(), next);
-      return scheduleAutomationToolResult(
-        "slackScheduleDeleteAutomation",
-        next,
-      );
+      return scheduleAutomationToolResult(next);
     },
   });
 }

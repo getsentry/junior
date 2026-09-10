@@ -503,8 +503,8 @@ describe("event automations", () => {
         },
       },
       "mixed-case-identifier",
-    )) as { automation: { id: string; identifier: string } };
-    expect(created.automation.identifier).toBe("getsentry/junior#1174");
+    )) as { automation: { id: string; trigger: { resource: string } } };
+    expect(created.automation.trigger.resource).toBe("getsentry/junior#1174");
 
     await expect(
       ingestEventAutomations(
@@ -601,8 +601,7 @@ describe("event automations", () => {
       created.automation.id,
     ]);
     expect(listed.automations[0]).toMatchObject({
-      createdBy: { slackUserId: "U123" },
-      triggerAvailable: true,
+      trigger: { available: true },
     });
     const otherChannel = (await execute(
       createListEventAutomationsTool(context("U999", "COTHER"), EVENT_CATALOG),
@@ -658,12 +657,12 @@ describe("event automations", () => {
       createListEventAutomationsTool(context(), {}),
       {},
     )) as {
-      automations: Array<{ id: string; triggerAvailable: boolean }>;
+      automations: Array<{ id: string; trigger: { available: boolean } }>;
     };
     expect(listed.automations).toEqual([
       expect.objectContaining({
         id: created.automation.id,
-        triggerAvailable: false,
+        trigger: expect.objectContaining({ available: false }),
       }),
     ]);
   });
@@ -793,7 +792,7 @@ describe("event automations", () => {
     );
     expect(recreated.automation).toMatchObject({
       id: created.automation.id,
-      task: "Summarize the requested changes after delete.",
+      instruction: "Summarize the requested changes after delete.",
     });
     await expect(
       getEventAutomation(fixture.sql.db(), created.automation.id),

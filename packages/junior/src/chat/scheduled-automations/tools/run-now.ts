@@ -51,10 +51,7 @@ export function createSlackScheduleRunAutomationNowTool(
       };
 
       await saveScheduledAutomation(getDb(), next);
-      return scheduleAutomationToolResult(
-        "slackScheduleRunAutomationNow",
-        next,
-      );
+      return scheduleAutomationToolResult(next);
     },
   });
 }

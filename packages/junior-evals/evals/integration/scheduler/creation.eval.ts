@@ -10,7 +10,9 @@ describeEval("Schedule Creation", slackEvals, (it) => {
     run,
   }) => {
     const result = await run({
-      initialEvents: [mention("@bot remind me in 1 minute to wash my hands")],
+      initialEvents: [
+        mention("@bot send me a direct reminder in 1 minute to wash my hands"),
+      ],
       criteria: rubric({
         pass: [
           "The reply confirms that a one-off reminder to wash hands was scheduled.",
@@ -97,7 +99,7 @@ describeEval("Schedule Creation", slackEvals, (it) => {
     const result = await run({
       initialEvents: [
         mention(
-          "@bot every night at 2am, fix failing CI checks in getsentry/junior.",
+          "@bot every night at 2am Pacific, fix failing CI checks in getsentry/junior.",
         ),
       ],
     });

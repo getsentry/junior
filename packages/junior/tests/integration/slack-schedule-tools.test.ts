@@ -285,7 +285,8 @@ describe("Slack schedule tools", () => {
         credential_mode: "creator",
         outcomes: [],
         status: "active",
-        task: "Weekly issue digest: Summarize open scheduler issues and post a concise summary.",
+        instruction:
+          "Weekly issue digest: Summarize open scheduler issues and post a concise summary.",
         recurrence: {
           frequency: "weekly",
           interval: 1,
@@ -308,7 +309,8 @@ describe("Slack schedule tools", () => {
     expect(listed).toMatchObject({
       automations: [
         {
-          task: "Weekly issue digest: Summarize open scheduler issues and post a concise summary.",
+          instruction:
+            "Weekly issue digest: Summarize open scheduler issues and post a concise summary.",
           schedule: "Every week on Monday at 09:00 (America/Los_Angeles)",
         },
       ],
@@ -322,7 +324,8 @@ describe("Slack schedule tools", () => {
     expect(sameChannelOtherThread).toMatchObject({
       automations: [
         {
-          task: "Weekly issue digest: Summarize open scheduler issues and post a concise summary.",
+          instruction:
+            "Weekly issue digest: Summarize open scheduler issues and post a concise summary.",
           schedule: "Every week on Monday at 09:00 (America/Los_Angeles)",
         },
       ],
@@ -358,7 +361,8 @@ describe("Slack schedule tools", () => {
       automation: {
         schedule: "Every week on Monday at 09:00 (America/Los_Angeles)",
         status: "active",
-        task: "Weekly issue digest: Summarize open scheduler issues and post a concise summary.",
+        instruction:
+          "Weekly issue digest: Summarize open scheduler issues and post a concise summary.",
       },
     });
     await expect(
@@ -593,7 +597,7 @@ describe("Slack schedule tools", () => {
         next_run_at: "2026-05-27T00:25:23.000Z",
         schedule: "In 1 minute",
         status: "active",
-        task: "Wash hands reminder: Remind David to wash his hands.",
+        instruction: "Wash hands reminder: Remind David to wash his hands.",
       },
     });
     await expect(
@@ -718,7 +722,8 @@ describe("Slack schedule tools", () => {
       automation: {
         id: taskId,
         next_run_at: "2026-05-26T17:00:00.000Z",
-        task: "Tuesday scheduler digest: Summarize open scheduler issues.",
+        instruction:
+          "Tuesday scheduler digest: Summarize open scheduler issues.",
         schedule: "Every week on Tuesday at 10:00 (America/Los_Angeles)",
       },
     });
@@ -756,7 +761,7 @@ describe("Slack schedule tools", () => {
   it("treats a null update schedule as omitted", async () => {
     const context = createContext();
     const created = (await createTask(context)) as {
-      automation: { id: string; next_run_at: string; task: string };
+      automation: { id: string; next_run_at: string; instruction: string };
     };
 
     const updated = await executeTool(
@@ -764,7 +769,7 @@ describe("Slack schedule tools", () => {
       {
         task_id: created.automation.id,
         schedule: null,
-        task: `${created.automation.task} (edited)`,
+        task: `${created.automation.instruction} (edited)`,
       },
     );
 
@@ -773,7 +778,7 @@ describe("Slack schedule tools", () => {
         id: created.automation.id,
         next_run_at: created.automation.next_run_at,
         status: "active",
-        task: `${created.automation.task} (edited)`,
+        instruction: `${created.automation.instruction} (edited)`,
       },
     });
   });
@@ -978,7 +983,7 @@ describe("Slack schedule tools", () => {
     expect(updated).toMatchObject({
       automation: {
         id: created.automation.id,
-        task: "Team-owned digest: Summarize open scheduler issues.",
+        instruction: "Team-owned digest: Summarize open scheduler issues.",
       },
     });
     expect(deleted).toMatchObject({
@@ -1337,7 +1342,7 @@ describe("Slack schedule tools", () => {
 
     expect(updated).toMatchObject({
       automation: {
-        task: "Renamed issue digest: Summarize open scheduler issues.",
+        instruction: "Renamed issue digest: Summarize open scheduler issues.",
       },
     });
     await expect(
@@ -1559,12 +1564,8 @@ describe("Slack schedule tools", () => {
       automations: [
         {
           id: mine.automation.id,
-          destination: {
-            platform: "slack",
-            team_id: TEST_TEAM_ID,
-            channel_id: "CSOURCE",
-          },
-          task: "Weekly planning reminder: post the agenda here.",
+          destination: { channel: "CSOURCE" },
+          instruction: "Weekly planning reminder: post the agenda here.",
         },
       ],
       truncated: false,
@@ -1623,15 +1624,11 @@ describe("Slack schedule tools", () => {
     expect(movedPublic).toMatchObject({
       automation: {
         id: created.automation.id,
-        task: "Weekly planning reminder: post the agenda here.",
+        instruction: "Weekly planning reminder: post the agenda here.",
         schedule: created.automation.schedule,
         next_run_at: created.automation.next_run_at,
         credential_mode: "creator",
-        destination: {
-          platform: "slack",
-          team_id: TEST_TEAM_ID,
-          channel_id: "CTARGET",
-        },
+        destination: { channel: "CTARGET" },
         conversation_access: {
           audience: "channel",
           visibility: "public",
@@ -1671,10 +1668,7 @@ describe("Slack schedule tools", () => {
     expect(movedPrivate).toMatchObject({
       automation: {
         id: created.automation.id,
-        destination: {
-          channel_id: "GPRIVATE",
-          team_id: TEST_TEAM_ID,
-        },
+        destination: { channel: "GPRIVATE" },
         conversation_access: {
           audience: "group",
           visibility: "private",
@@ -1706,7 +1700,7 @@ describe("Slack schedule tools", () => {
     ).resolves.toMatchObject({
       automation: {
         id: created.automation.id,
-        destination: { channel_id: "GPRIVATE" },
+        destination: { channel: "GPRIVATE" },
       },
     });
   });

@@ -113,7 +113,6 @@ export function createSlackScheduleListAutomationsTool(
       const visible = matching.slice(0, MAX_LISTED_TASKS).map(compactTask);
 
       return scheduleListToolResult({
-        target: "slackScheduleListAutomations",
         automations: visible,
         truncated: matching.length > visible.length,
       });
