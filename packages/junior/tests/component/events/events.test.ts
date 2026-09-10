@@ -134,6 +134,7 @@ describe("event delivery", () => {
     expect(queue.sentRecords()).toEqual([
       {
         conversationId: CONVERSATION_ID,
+        delayMs: 2_000,
         idempotencyKey: `event:${subscription.id}:delivery-1:check-suite-1`,
       },
     ]);
@@ -244,10 +245,12 @@ describe("event delivery", () => {
       expect.arrayContaining([
         {
           conversationId: CONVERSATION_ID,
+          delayMs: 2_000,
           idempotencyKey: `event:${threadWatch.id}:delivery-multi:check-suite-1`,
         },
         {
           conversationId: "agent:deadbeefcafebabe",
+          delayMs: 2_000,
           idempotencyKey: `event:${opaqueWatch.id}:delivery-multi:check-suite-1`,
         },
       ]),
@@ -360,6 +363,7 @@ describe("event delivery", () => {
           },
           {
             conversationId: CONVERSATION_ID,
+            delayMs: 2_000,
             idempotencyKey: `event:${subscription.id}:github:delivery-bridge:pull_request.comment.created`,
           },
         ]),
@@ -496,7 +500,9 @@ describe("event delivery", () => {
       ).resolves.toEqual({ enqueued: 1 });
     }
 
-    expect(queue.sentRecords()).toHaveLength(1);
+    expect(queue.sentRecords()).toEqual([
+      expect.objectContaining({ delayMs: 2_000 }),
+    ]);
     await expect(
       getConversationWorkState({ conversationId: CONVERSATION_ID }),
     ).resolves.toMatchObject({ messages: [{}, {}] });
@@ -540,6 +546,7 @@ describe("event delivery", () => {
     expect(queue.sentRecords()).toEqual([
       {
         conversationId: CONVERSATION_ID,
+        delayMs: 2_000,
         idempotencyKey: `event:${subscription.id}:delivery-3:check-suite-1`,
       },
     ]);
