@@ -174,7 +174,9 @@ it("records rubric judge usage in score metadata", async () => {
     harness: slackHarness,
     input: { criteria: { pass: ["Answers correctly"] }, initialEvents: [] },
     output: undefined,
-    run: {} as never,
+    run: {
+      usage: { metadata: { costUsd: 0.5 } },
+    } as never,
     runJudge: async () => judgeRun.output,
     session: { events: [] },
     toolCalls: [],
@@ -182,7 +184,10 @@ it("records rubric judge usage in score metadata", async () => {
 
   expect(result.metadata).toMatchObject({
     answer: "A",
-    usage: {
+    costUsd: 0.531,
+    applicationCostUsd: 0.5,
+    judgeCostUsd: 0.031,
+    judgeUsage: {
       provider: "vercel-ai-gateway",
       model: "openai/gpt-5.4",
       inputTokens: 120,
@@ -209,7 +214,7 @@ it("scores the rubric judge without failing when cost is missing", async () => {
     harness: slackHarness,
     input: { criteria: { pass: ["Answers correctly"] }, initialEvents: [] },
     output: undefined,
-    run: {} as never,
+    run: { usage: {} } as never,
     runJudge: async () => judgeRun.output,
     session: { events: [] },
     toolCalls: [],
@@ -217,12 +222,13 @@ it("scores the rubric judge without failing when cost is missing", async () => {
 
   expect(result.metadata).toMatchObject({
     answer: "A",
-    usage: {
+    judgeUsage: {
       provider: "vercel-ai-gateway",
       model: "openai/gpt-5.4",
     },
   });
-  expect(result.metadata).not.toHaveProperty("usage.metadata.costUsd");
+  expect(result.metadata).not.toHaveProperty("costUsd");
+  expect(result.metadata).not.toHaveProperty("judgeUsage.metadata.costUsd");
 });
 
 it("forwards the Vitest abort signal to the eval scenario", async () => {

@@ -398,6 +398,18 @@ function normalizedTokenUsage(
   };
 }
 
+function usageCostUsd(usage: unknown): number | undefined {
+  if (!usage || typeof usage !== "object" || Array.isArray(usage)) {
+    return undefined;
+  }
+  const metadata = (usage as Record<string, unknown>).metadata;
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
+    return undefined;
+  }
+  const value = (metadata as Record<string, unknown>).costUsd;
+  return typeof value === "number" ? value : undefined;
+}
+
 function toJudgeUsage(
   usage: AgentTurnUsage | undefined,
   model: string,
@@ -768,6 +780,7 @@ export const RubricJudge = createJudge(
   "RubricJudge",
   async ({
     input,
+    run,
     session,
     runJudge,
   }: JudgeContext<
@@ -775,10 +788,16 @@ export const RubricJudge = createJudge(
     JsonValue | undefined,
     typeof slackHarness
   >) => {
+    const applicationCostUsd = usageCostUsd(run.usage);
     if (!input.criteria) {
       return {
         score: 1,
-        metadata: { skipped: "deterministic-only" },
+        metadata: {
+          skipped: "deterministic-only",
+          ...(typeof applicationCostUsd === "number"
+            ? { costUsd: applicationCostUsd, applicationCostUsd }
+            : {}),
+        },
       };
     }
     if (!runJudge) {
@@ -804,13 +823,23 @@ export const RubricJudge = createJudge(
     }
     const object = parseJudgeResult(judgeResult.text);
     const answer = object.answer as keyof typeof CHOICE_SCORES;
+    const judgeCostUsd = usageCostUsd(judgeResult.usage);
+    const costUsd =
+      typeof applicationCostUsd === "number" && typeof judgeCostUsd === "number"
+        ? applicationCostUsd + judgeCostUsd
+        : undefined;
 
     return {
       score: CHOICE_SCORES[answer],
       metadata: {
         answer,
         rationale: object.rationale,
-        usage: judgeResult.usage,
+        judgeUsage: judgeResult.usage,
+        ...(costUsd !== undefined ? { costUsd } : {}),
+        ...(typeof applicationCostUsd === "number"
+          ? { applicationCostUsd }
+          : {}),
+        ...(typeof judgeCostUsd === "number" ? { judgeCostUsd } : {}),
       },
     };
   },
