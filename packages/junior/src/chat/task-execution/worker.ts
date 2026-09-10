@@ -24,6 +24,7 @@ import {
   drainConversationMailbox,
   ensureConversationWake,
   getConversationWorkState,
+  hasConversationStopRequest,
   isFinalAttempt,
   isInvalidConversationRecordError,
   recordAttemptFailure,
@@ -285,7 +286,7 @@ function startLeaseCheckIn(args: {
   return timer;
 }
 
-/** Poll shared state only when a worker adapter asks to observe remote stops. */
+/** Poll the run-scoped stop marker only when an adapter observes remote stops. */
 function createConversationStopSignal(args: {
   conversationId: string;
   initialStopRunId?: string;
@@ -311,13 +312,12 @@ function createConversationStopSignal(args: {
     if (checking || controller.signal.aborted) return;
     checking = true;
     try {
-      const current = await getConversationWorkState({
+      const stopped = await hasConversationStopRequest({
         conversationId: args.conversationId,
+        runId: args.runId,
         state: args.options.state,
       });
-      if (current?.execution.stop?.runId === args.runId) {
-        requestStop();
-      }
+      if (stopped) requestStop();
     } catch (error) {
       if (!failureCaptured) {
         failureCaptured = true;

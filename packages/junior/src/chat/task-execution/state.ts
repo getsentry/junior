@@ -268,6 +268,10 @@ function conversationKey(conversationId: string): string {
   return `${CONVERSATION_PREFIX}:${conversationId}`;
 }
 
+function conversationStopKey(conversationId: string, runId: string): string {
+  return `${CONVERSATION_PREFIX}:stop:${conversationId}:${runId}`;
+}
+
 function indexLockKey(indexKey: string): string {
   return `${indexKey}:lock`;
 }
@@ -1740,6 +1744,19 @@ function isHumanFacingMessage(message: InboundMessage): boolean {
   return message.source === "web" || message.source === "slack";
 }
 
+/** Return whether a durable stop request exists for one Conversation run. */
+export async function hasConversationStopRequest(args: {
+  conversationId: string;
+  runId: string;
+  state?: StateAdapter;
+}): Promise<boolean> {
+  const state = await getConnectedState(args.state);
+  return (
+    (await state.get(conversationStopKey(args.conversationId, args.runId))) !==
+    null
+  );
+}
+
 /** Persist a stop request for the current run without process affinity. */
 export async function stopConversationWork(args: {
   conversationId: string;
@@ -1769,6 +1786,11 @@ export async function stopConversationWork(args: {
         },
         nowMs,
       ),
+    );
+    await state.set(
+      conversationStopKey(args.conversationId, runId),
+      true,
+      JUNIOR_THREAD_STATE_TTL_MS,
     );
     return { runId, status: "requested" };
   });
@@ -1823,6 +1845,7 @@ export async function completeConversationStop(args: {
         nowMs,
       ),
     );
+    await state.delete(conversationStopKey(args.conversationId, args.runId));
     return { status: "cleared", removedInboundMessageIds };
   });
 }
