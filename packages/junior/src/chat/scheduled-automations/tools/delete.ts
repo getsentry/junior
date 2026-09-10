@@ -5,8 +5,8 @@ import { saveScheduledAutomation } from "../tasks";
 import type { ScheduledAutomation } from "../types";
 import {
   getWritableTask,
-  scheduleTaskToolResult,
-  scheduleTaskToolResultSchema,
+  scheduleAutomationToolResult,
+  scheduleAutomationToolResultSchema,
   type SchedulerToolContext,
 } from "../tool-support";
 
@@ -33,7 +33,7 @@ export function createSlackScheduleDeleteAutomationTool(
           "ID of the task to delete. Must be from this active Slack conversation.",
         ),
     }),
-    outputSchema: scheduleTaskToolResultSchema,
+    outputSchema: scheduleAutomationToolResultSchema,
     execute: async ({ task_id }) => {
       const lookup = await getWritableTask({ context, taskId: task_id });
 
@@ -46,7 +46,10 @@ export function createSlackScheduleDeleteAutomationTool(
       };
 
       await saveScheduledAutomation(getDb(), next);
-      return scheduleTaskToolResult("slackScheduleDeleteAutomation", next);
+      return scheduleAutomationToolResult(
+        "slackScheduleDeleteAutomation",
+        next,
+      );
     },
   });
 }

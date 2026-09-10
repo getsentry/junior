@@ -3,7 +3,7 @@ import { z } from "zod";
 import { getDb } from "@/chat/db";
 import { saveEventAutomation } from "@/chat/event-automations/store";
 import {
-  eventAutomationSuccess,
+  eventAutomationToolResult,
   eventAutomationToolResultSchema,
   registeredEventAutomationTriggerSchema,
   requireEventAutomationSlackContext,
@@ -179,7 +179,7 @@ export function createUpdateEventAutomationTool(
       if (!saved) {
         throw new ToolInputError("Event automation was not found.");
       }
-      return eventAutomationSuccess(saved, catalog);
+      return eventAutomationToolResult(saved, catalog);
     },
   });
 }

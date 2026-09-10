@@ -28,8 +28,8 @@ import {
   requireActiveConversation,
   requireActor,
   sameDestination,
-  scheduleTaskToolResult,
-  scheduleTaskToolResultSchema,
+  scheduleAutomationToolResult,
+  scheduleAutomationToolResultSchema,
   throwToolInputError,
   type SchedulerToolContext,
 } from "../tool-support";
@@ -101,7 +101,7 @@ export function createSlackScheduleCreateAutomationTool(
       }
       return prepared;
     },
-    outputSchema: scheduleTaskToolResultSchema,
+    outputSchema: scheduleAutomationToolResultSchema,
     execute: async (input, options) => {
       const destination = requireActiveConversation(context);
       const actor = requireActor(context, destination);
@@ -122,7 +122,7 @@ export function createSlackScheduleCreateAutomationTool(
             "Scheduled automation operation identity is invalid.",
           );
         }
-        return scheduleTaskToolResult(
+        return scheduleAutomationToolResult(
           "slackScheduleCreateAutomation",
           existing,
         );
@@ -203,7 +203,10 @@ export function createSlackScheduleCreateAutomationTool(
         "scheduled_automation.create.completed",
         scheduledAutomationAttributes(committed),
       );
-      return scheduleTaskToolResult("slackScheduleCreateAutomation", committed);
+      return scheduleAutomationToolResult(
+        "slackScheduleCreateAutomation",
+        committed,
+      );
     },
   });
 }

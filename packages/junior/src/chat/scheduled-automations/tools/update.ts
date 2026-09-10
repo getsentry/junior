@@ -26,8 +26,8 @@ import {
   requireActiveConversation,
   requireActor,
   sameDestination,
-  scheduleTaskToolResult,
-  scheduleTaskToolResultSchema,
+  scheduleAutomationToolResult,
+  scheduleAutomationToolResultSchema,
   throwToolInputError,
   type SchedulerToolContext,
 } from "../tool-support";
@@ -89,7 +89,7 @@ export function createSlackScheduleUpdateAutomationTool(
           .optional(),
       })
       .strict(),
-    outputSchema: scheduleTaskToolResultSchema,
+    outputSchema: scheduleAutomationToolResultSchema,
     execute: async (input) => {
       const activeDestination = requireActiveConversation(context);
       const actor = requireActor(context, activeDestination);
@@ -254,7 +254,10 @@ export function createSlackScheduleUpdateAutomationTool(
         input.outcomes === undefined &&
         moveHere
       ) {
-        return scheduleTaskToolResult("slackScheduleUpdateAutomation", lookup);
+        return scheduleAutomationToolResult(
+          "slackScheduleUpdateAutomation",
+          lookup,
+        );
       }
 
       const committed = await saveScheduledAutomation(db, next);
@@ -264,7 +267,10 @@ export function createSlackScheduleUpdateAutomationTool(
           scheduledAutomationAttributes(committed),
         );
       }
-      return scheduleTaskToolResult("slackScheduleUpdateAutomation", committed);
+      return scheduleAutomationToolResult(
+        "slackScheduleUpdateAutomation",
+        committed,
+      );
     },
   });
 }

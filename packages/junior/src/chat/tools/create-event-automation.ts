@@ -7,7 +7,7 @@ import {
 } from "@/chat/event-automations/store";
 import {
   eventAutomationMatchesDestination,
-  eventAutomationSuccess,
+  eventAutomationToolResult,
   eventAutomationToolResultSchema,
   registeredEventAutomationTriggerSchema,
   requireEventAutomationSlackContext,
@@ -151,7 +151,7 @@ export function createEventAutomationTool(
         }
         // Live create retries stay idempotent. Deleted rows fall through and reactivate.
         if (existing.status !== "deleted") {
-          return eventAutomationSuccess(existing, catalog);
+          return eventAutomationToolResult(existing, catalog);
         }
       }
       const title = await resolveTaskTitle({
@@ -190,7 +190,7 @@ export function createEventAutomationTool(
           ...(match ? { match } : undefined),
         },
       };
-      return eventAutomationSuccess(
+      return eventAutomationToolResult(
         await createEventAutomation(db, task),
         catalog,
       );

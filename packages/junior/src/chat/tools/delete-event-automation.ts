@@ -2,7 +2,7 @@ import { z } from "zod";
 import { getDb } from "@/chat/db";
 import { deleteEventAutomation } from "@/chat/event-automations/store";
 import {
-  eventAutomationSuccess,
+  eventAutomationToolResult,
   eventAutomationToolResultSchema,
   writableEventAutomation,
 } from "@/chat/event-automations/tool-support";
@@ -34,7 +34,7 @@ export function createDeleteEventAutomationTool(
       if (!deleted) {
         throw new ToolInputError("Event automation was not found.");
       }
-      return eventAutomationSuccess(deleted, catalog);
+      return eventAutomationToolResult(deleted, catalog);
     },
   });
 }

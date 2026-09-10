@@ -42,7 +42,7 @@ const compactEventAutomationResultSchema = z
 /** Validate one successful event-automation mutation result. */
 export const eventAutomationToolResultSchema = juniorToolOutputSchema
   .extend({
-    task: compactEventAutomationResultSchema,
+    automation: compactEventAutomationResultSchema,
   })
   .strict();
 
@@ -216,11 +216,11 @@ export function compactEventAutomation(
 }
 
 /** Return the standard successful event-automation tool result. */
-export function eventAutomationSuccess(
+export function eventAutomationToolResult(
   task: EventAutomation,
   catalog: EventCatalog,
 ) {
   return {
-    task: compactEventAutomation(task, catalog),
+    automation: compactEventAutomation(task, catalog),
   };
 }

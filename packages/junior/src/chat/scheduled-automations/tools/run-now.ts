@@ -5,8 +5,8 @@ import { saveScheduledAutomation } from "../tasks";
 import type { ScheduledAutomation } from "../types";
 import {
   getWritableTask,
-  scheduleTaskToolResult,
-  scheduleTaskToolResultSchema,
+  scheduleAutomationToolResult,
+  scheduleAutomationToolResultSchema,
   throwToolInputError,
   type SchedulerToolContext,
 } from "../tool-support";
@@ -34,7 +34,7 @@ export function createSlackScheduleRunAutomationNowTool(
           "ID of the active task to run now. Must be from this active Slack conversation.",
         ),
     }),
-    outputSchema: scheduleTaskToolResultSchema,
+    outputSchema: scheduleAutomationToolResultSchema,
     execute: async ({ task_id }) => {
       const lookup = await getWritableTask({ context, taskId: task_id });
       if (lookup.status !== "active") {
@@ -51,7 +51,10 @@ export function createSlackScheduleRunAutomationNowTool(
       };
 
       await saveScheduledAutomation(getDb(), next);
-      return scheduleTaskToolResult("slackScheduleRunAutomationNow", next);
+      return scheduleAutomationToolResult(
+        "slackScheduleRunAutomationNow",
+        next,
+      );
     },
   });
 }

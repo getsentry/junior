@@ -143,7 +143,7 @@ async function createTask(
       },
     },
     toolCallId ?? task,
-  )) as { task: { id: string } };
+  )) as { automation: { id: string } };
 }
 
 describe("event automations", () => {
@@ -210,7 +210,7 @@ describe("event automations", () => {
         expect.objectContaining({
           credentialSubject: expect.objectContaining({
             allowedWhen: "event-automation",
-            taskId: first.task.id,
+            taskId: first.automation.id,
             type: "user",
             userId: "U123",
           }),
@@ -224,7 +224,7 @@ describe("event automations", () => {
         expect.objectContaining({
           credentialSubject: expect.objectContaining({
             allowedWhen: "event-automation",
-            taskId: second.task.id,
+            taskId: second.automation.id,
             type: "user",
             userId: "U123",
           }),
@@ -240,7 +240,7 @@ describe("event automations", () => {
     const firstDispatch = dispatches.find(
       (dispatch) =>
         dispatch?.credentialSubject?.allowedWhen === "event-automation" &&
-        dispatch.credentialSubject.taskId === first.task.id,
+        dispatch.credentialSubject.taskId === first.automation.id,
     );
     expect(firstDispatch?.input).toMatchInlineSnapshot(`
       "[task]
@@ -503,8 +503,8 @@ describe("event automations", () => {
         },
       },
       "mixed-case-identifier",
-    )) as { task: { id: string; identifier: string } };
-    expect(created.task.identifier).toBe("getsentry/junior#1174");
+    )) as { automation: { id: string; identifier: string } };
+    expect(created.automation.identifier).toBe("getsentry/junior#1174");
 
     await expect(
       ingestEventAutomations(
@@ -598,7 +598,7 @@ describe("event automations", () => {
     };
     expect(listed).not.toHaveProperty("data");
     expect(listed.automations.map((task) => task.id)).toEqual([
-      created.task.id,
+      created.automation.id,
     ]);
     expect(listed.automations[0]).toMatchObject({
       createdBy: { slackUserId: "U123" },
@@ -612,12 +612,12 @@ describe("event automations", () => {
     await execute(
       createUpdateEventAutomationTool(context("U999", "COTHER"), EVENT_CATALOG),
       {
-        taskId: created.task.id,
+        taskId: created.automation.id,
         task: "Change a public task from another channel.",
       },
     );
     expect(
-      await getEventAutomation(fixture.sql.db(), created.task.id),
+      await getEventAutomation(fixture.sql.db(), created.automation.id),
     ).toMatchObject({
       credentialMode: "system",
       task: { text: "Change a public task from another channel." },
@@ -639,13 +639,13 @@ describe("event automations", () => {
           EVENT_CATALOG,
         ),
         {
-          taskId: created.task.id,
+          taskId: created.automation.id,
           task: "Change a private task from another channel.",
         },
       ),
     ).rejects.toThrow("Event automation was not found.");
     expect(
-      await getEventAutomation(fixture.sql.db(), created.task.id),
+      await getEventAutomation(fixture.sql.db(), created.automation.id),
     ).toMatchObject({
       task: { text: "Address the requested changes." },
     });
@@ -662,7 +662,7 @@ describe("event automations", () => {
     };
     expect(listed.automations).toEqual([
       expect.objectContaining({
-        id: created.task.id,
+        id: created.automation.id,
         triggerAvailable: false,
       }),
     ]);
@@ -673,7 +673,7 @@ describe("event automations", () => {
 
     await expect(
       execute(createUpdateEventAutomationTool(context("U999"), EVENT_CATALOG), {
-        taskId: created.task.id,
+        taskId: created.automation.id,
         credentialMode: "creator",
       }),
     ).rejects.toThrow(
@@ -682,7 +682,7 @@ describe("event automations", () => {
     await execute(
       createUpdateEventAutomationTool(context("U999"), EVENT_CATALOG),
       {
-        taskId: created.task.id,
+        taskId: created.automation.id,
         trigger: {
           namespace: "github",
           identifier: "getsentry/junior#1174",
@@ -693,7 +693,7 @@ describe("event automations", () => {
       },
     );
     expect(
-      await getEventAutomation(fixture.sql.db(), created.task.id),
+      await getEventAutomation(fixture.sql.db(), created.automation.id),
     ).toMatchObject({
       credentialMode: "creator",
       trigger: {
@@ -705,7 +705,7 @@ describe("event automations", () => {
     await execute(
       createUpdateEventAutomationTool(context("U999"), EVENT_CATALOG),
       {
-        taskId: created.task.id,
+        taskId: created.automation.id,
         trigger: {
           namespace: "github",
           identifier: "getsentry/junior#1176",
@@ -716,14 +716,14 @@ describe("event automations", () => {
       },
     );
     expect(
-      await getEventAutomation(fixture.sql.db(), created.task.id),
+      await getEventAutomation(fixture.sql.db(), created.automation.id),
     ).toMatchObject({
       credentialMode: "system",
       trigger: { identifier: "getsentry/junior#1176" },
     });
 
     await execute(createUpdateEventAutomationTool(context(), EVENT_CATALOG), {
-      taskId: created.task.id,
+      taskId: created.automation.id,
       task: null,
       trigger: null,
       credentialMode: "creator",
@@ -731,24 +731,24 @@ describe("event automations", () => {
     await execute(
       createUpdateEventAutomationTool(context("U999"), EVENT_CATALOG),
       {
-        taskId: created.task.id,
+        taskId: created.automation.id,
         task: "Address the requested changes.",
       },
     );
     expect(
-      await getEventAutomation(fixture.sql.db(), created.task.id),
+      await getEventAutomation(fixture.sql.db(), created.automation.id),
     ).toMatchObject({
       credentialMode: "creator",
     });
     await execute(
       createUpdateEventAutomationTool(context("U999"), EVENT_CATALOG),
       {
-        taskId: created.task.id,
+        taskId: created.automation.id,
         task: "Only summarize the requested changes.",
       },
     );
     expect(
-      await getEventAutomation(fixture.sql.db(), created.task.id),
+      await getEventAutomation(fixture.sql.db(), created.automation.id),
     ).toMatchObject({
       credentialMode: "system",
       task: { text: "Only summarize the requested changes." },
@@ -764,18 +764,18 @@ describe("event automations", () => {
     await execute(
       createDeleteEventAutomationTool(context("U999"), EVENT_CATALOG),
       {
-        taskId: created.task.id,
+        taskId: created.automation.id,
       },
     );
     await expect(
-      getEventAutomation(fixture.sql.db(), created.task.id),
+      getEventAutomation(fixture.sql.db(), created.automation.id),
     ).resolves.toMatchObject({
-      id: created.task.id,
+      id: created.automation.id,
       status: "deleted",
     });
     await expect(
       execute(createUpdateEventAutomationTool(context("U999"), EVENT_CATALOG), {
-        taskId: created.task.id,
+        taskId: created.automation.id,
         task: "Try to update the deleted task.",
       }),
     ).rejects.toThrow("Event automation was not found.");
@@ -791,14 +791,14 @@ describe("event automations", () => {
       "Summarize the requested changes after delete.",
       "event-automation-replayed-create",
     );
-    expect(recreated.task).toMatchObject({
-      id: created.task.id,
+    expect(recreated.automation).toMatchObject({
+      id: created.automation.id,
       task: "Summarize the requested changes after delete.",
     });
     await expect(
-      getEventAutomation(fixture.sql.db(), created.task.id),
+      getEventAutomation(fixture.sql.db(), created.automation.id),
     ).resolves.toMatchObject({
-      id: created.task.id,
+      id: created.automation.id,
       status: "active",
       task: { text: "Summarize the requested changes after delete." },
     });
