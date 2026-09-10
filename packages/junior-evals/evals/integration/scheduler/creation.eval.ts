@@ -97,7 +97,7 @@ describeEval("Schedule Creation", slackEvals, (it) => {
     const result = await run({
       initialEvents: [
         mention(
-          "@bot every night at 2am, close draft pull requests in getsentry/junior that have been inactive for 30 days.",
+          "@bot every night at 2am, fix failing CI checks in getsentry/junior.",
         ),
       ],
     });
