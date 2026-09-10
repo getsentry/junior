@@ -77,7 +77,7 @@ describeEval("Schedule Management", slackEvals, (it) => {
       },
     });
     for (const updateCall of updateCalls) {
-      expect(updateCall.arguments).not.toHaveProperty("next_run_at");
+      expect(updateCall.arguments).not.toHaveProperty("nextRunAt");
     }
   });
 });

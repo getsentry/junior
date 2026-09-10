@@ -1,22 +1,12 @@
-import {
-  actorUserIdSchema,
-  slackDestinationSchema,
-  type SlackDestination,
-  type TaskOutcome,
-} from "@sentry/junior-plugin-api";
+import type { SlackDestination, TaskOutcome } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import { getSlackClient, withSlackRetries } from "@/chat/slack/client";
 
-const taskMessageDestinationInputSchema = z.union([
-  slackDestinationSchema,
-  z
-    .object({
-      platform: z.literal("slack"),
-      teamId: z.string().min(1),
-      userId: actorUserIdSchema,
-    })
-    .strict(),
-]);
+const taskMessageDestinationInputSchema = z
+  .enum(["current_conversation", "task_creator"])
+  .describe(
+    "Where to send the message. Use current_conversation for posts, digests, summaries, and channel reminders. Use task_creator only when the user asks for a direct reminder or notification.",
+  );
 
 /** Input accepted by task authoring tools before a user becomes a DM Destination. */
 export const taskOutcomeInputSchema = z
@@ -28,38 +18,25 @@ export const taskOutcomeInputSchema = z
 
 export type TaskOutcomeInput = z.output<typeof taskOutcomeInputSchema>;
 
-/** Resolve tool input to the Slack Destinations stored on a task. */
+/** Resolve explicit message outcomes to the Slack Destinations stored on an Automation. */
 export async function resolveTaskOutcomes(
   outcomes: TaskOutcomeInput[] | undefined,
   currentDestination: SlackDestination,
   creatorSlackUserId: string,
 ): Promise<TaskOutcome[]> {
   if (outcomes === undefined) {
-    return [{ action: "send_message", destination: currentDestination }];
+    return [];
   }
   const resolved: TaskOutcome[] = [];
   for (const outcome of outcomes) {
-    if (outcome.destination.teamId !== currentDestination.teamId) {
-      throw new Error(
-        "Message destinations must be in the current Slack workspace.",
-      );
-    }
-    if ("channelId" in outcome.destination) {
-      if (outcome.destination.channelId !== currentDestination.channelId) {
-        throw new Error(
-          "Messages can only be sent to the current Slack conversation or the task creator.",
-        );
-      }
+    if (outcome.destination === "current_conversation") {
       resolved.push({
         action: "send_message",
         destination: currentDestination,
       });
       continue;
     }
-    const userId = outcome.destination.userId;
-    if (userId !== creatorSlackUserId) {
-      throw new Error("Direct messages can only be sent to the task creator.");
-    }
+    const userId = creatorSlackUserId;
     const response = await withSlackRetries(
       () =>
         getSlackClient().conversations.open({
@@ -96,25 +73,24 @@ function outcomeTargetsDestination(
   );
 }
 
-/** Return outcomes with legacy same-channel messages bound to the task Destination. */
+/** Bind same-channel message outcomes to the Automation Destination. */
 export function effectiveTaskOutcomes(
-  outcomes: TaskOutcome[] | undefined,
+  outcomes: TaskOutcome[],
   destination: SlackDestination,
 ): TaskOutcome[] {
-  return (outcomes ?? [{ action: "send_message", destination }]).map(
-    (outcome) =>
-      destination.threadTs && outcomeTargetsDestination(outcome, destination)
-        ? {
-            ...outcome,
-            destination,
-          }
-        : outcome,
+  return outcomes.map((outcome) =>
+    destination.threadTs && outcomeTargetsDestination(outcome, destination)
+      ? {
+          ...outcome,
+          destination,
+        }
+      : outcome,
   );
 }
 
 /** Move outcomes that target the task Destination and keep other outcomes unchanged. */
 export function moveTaskOutcomes(
-  outcomes: TaskOutcome[] | undefined,
+  outcomes: TaskOutcome[],
   currentDestination: SlackDestination,
   nextDestination: SlackDestination,
 ): TaskOutcome[] {

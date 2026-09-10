@@ -35,6 +35,7 @@ export async function seedEventAutomation(args: {
     credentialMode: args.credentialMode ?? "system",
     destination,
     destinationVisibility: "public",
+    outcomes: [],
     task: { text: args.taskText },
     trigger: {
       events: ["issue.closed", "issue.reopened"],

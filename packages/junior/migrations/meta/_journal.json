@@ -288,6 +288,13 @@
       "when": 1788952455016,
       "tag": "0040_conversation_briefs",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1789051768523,
+      "tag": "0041_automation_outcomes_backfill",
+      "breakpoints": true
     }
   ]
 }

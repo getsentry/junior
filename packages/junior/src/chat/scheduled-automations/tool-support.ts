@@ -1,7 +1,6 @@
 import { createHash } from "node:crypto";
 import {
   sourceSchema,
-  taskOutcomeSchema,
   type Identity,
   type SlackDestination,
   type SlackActor,
@@ -40,43 +39,66 @@ const DEFAULT_SCHEDULE_TIMEZONE = "America/Los_Angeles";
 const compactTaskResultSchema = z
   .object({
     id: z.string(),
+    title: z.string().nullable(),
     status: z.enum(["active", "blocked", "completed", "deleted"]),
-    task: z.string(),
+    statusReason: z.string().nullable(),
+    createdAt: z.string().datetime(),
+    updatedAt: z.string().datetime(),
+    originalRequest: z.string().nullable(),
+    instruction: z.string(),
     schedule: z.string(),
     timezone: z.string(),
     recurrence: z.unknown().nullable(),
-    next_run_at: z.string().nullable(),
+    nextRunAt: z.string().nullable(),
     destination: z
       .object({
-        platform: z.literal("slack"),
-        team_id: z.string().min(1),
-        channel_id: z.string().min(1),
+        channel: z.string().min(1),
+        thread: z.string().min(1).nullable(),
       })
       .strict(),
-    conversation_access: z
+    conversationAccess: z
       .object({
         audience: z.enum(["direct", "group", "channel"]),
         visibility: z.enum(["private", "public"]),
       })
       .strict(),
-    credential_mode: z.enum(["system", "creator"]),
-    outcomes: z.array(taskOutcomeSchema).max(5),
-    dashboard_url: z.string().url().nullable(),
-    last_run_at: z.string().nullable(),
-    run_now_at: z.string().nullable(),
+    credentialMode: z.enum(["system", "creator"]),
+    isCreator: z.boolean(),
+    createdBy: z
+      .object({
+        name: z.string().min(1).nullable(),
+        username: z.string().min(1).nullable(),
+      })
+      .strict(),
+    outcomes: z
+      .array(
+        z
+          .object({
+            action: z.literal("send_message"),
+            destination: z
+              .object({
+                channel: z.string().min(1),
+                thread: z.string().min(1).nullable(),
+              })
+              .strict(),
+          })
+          .strict(),
+      )
+      .max(5),
+    dashboardUrl: z.string().url().nullable(),
+    lastRunAt: z.string().nullable(),
+    runNowAt: z.string().nullable(),
   })
   .strict();
 
-export const scheduleTaskToolResultSchema = juniorToolOutputSchema
+export const scheduleAutomationToolResultSchema = juniorToolOutputSchema
   .extend({
-    target: z.string(),
-    task: compactTaskResultSchema,
+    automation: compactTaskResultSchema,
   })
   .strict();
 
 export const scheduleListToolResultSchema = juniorToolOutputSchema
   .extend({
-    target: z.string(),
     automations: z.array(compactTaskResultSchema),
     truncated: z.boolean(),
   })
@@ -217,64 +239,77 @@ export async function getWritableTask(args: {
 }
 
 /** Project scheduled automation state into the stable model-facing result shape. */
-export function compactTask(task: ScheduledAutomation): CompactTaskResult {
+export function compactTask(
+  task: ScheduledAutomation,
+  requesterSlackUserId?: string,
+): CompactTaskResult {
   return compactTaskResultSchema.parse({
     id: task.id,
+    title: task.title?.trim() || null,
     status: task.status,
-    task: task.task.text,
+    statusReason: task.statusReason ?? null,
+    createdAt: new Date(task.createdAtMs).toISOString(),
+    updatedAt: new Date(task.updatedAtMs).toISOString(),
+    originalRequest: task.originalRequest ?? null,
+    instruction: task.task.text,
     schedule: task.schedule.description,
     timezone: task.schedule.timezone,
     recurrence: task.schedule.recurrence
       ? {
           frequency: task.schedule.recurrence.frequency,
           interval: task.schedule.recurrence.interval,
-          start_date: task.schedule.recurrence.startDate,
+          startDate: task.schedule.recurrence.startDate,
           time: task.schedule.recurrence.time,
           weekdays: task.schedule.recurrence.weekdays,
           month: task.schedule.recurrence.month,
-          day_of_month: task.schedule.recurrence.dayOfMonth,
+          dayOfMonth: task.schedule.recurrence.dayOfMonth,
         }
       : null,
-    next_run_at: task.nextRunAtMs
+    nextRunAt: task.nextRunAtMs
       ? new Date(task.nextRunAtMs).toISOString()
       : null,
     destination: {
-      platform: "slack" as const,
-      team_id: task.destination.teamId,
-      channel_id: task.destination.channelId,
+      channel: task.destination.channelId,
+      thread: task.destination.threadTs ?? null,
     },
-    conversation_access: task.conversationAccess,
-    credential_mode: task.credentialMode,
-    outcomes: effectiveTaskOutcomes(task.outcomes, task.destination),
-    dashboard_url: getDashboardTaskLink(task.id) ?? null,
-    last_run_at: task.lastRunAtMs
+    conversationAccess: task.conversationAccess,
+    credentialMode: task.credentialMode,
+    isCreator: task.createdBy.slackUserId === requesterSlackUserId,
+    createdBy: {
+      name: task.createdBy.fullName ?? null,
+      username: task.createdBy.userName ?? null,
+    },
+    outcomes: effectiveTaskOutcomes(task.outcomes, task.destination).map(
+      (outcome) => ({
+        action: outcome.action,
+        destination: {
+          channel: outcome.destination.channelId,
+          thread: outcome.destination.threadTs ?? null,
+        },
+      }),
+    ),
+    dashboardUrl: getDashboardTaskLink(task.id) ?? null,
+    lastRunAt: task.lastRunAtMs
       ? new Date(task.lastRunAtMs).toISOString()
       : null,
-    run_now_at: task.runNowAtMs
-      ? new Date(task.runNowAtMs).toISOString()
-      : null,
+    runNowAt: task.runNowAtMs ? new Date(task.runNowAtMs).toISOString() : null,
   });
 }
 
 /** Build the structured result shared by single-task scheduler tools. */
-export function scheduleTaskToolResult(
-  target: string,
-  task: CompactTaskResult,
+export function scheduleAutomationToolResult(
+  task: ScheduledAutomation,
+  requesterSlackUserId?: string,
 ) {
-  return {
-    target,
-    task,
-  } as const;
+  return { automation: compactTask(task, requesterSlackUserId) } as const;
 }
 
 /** Build the structured result for listing scheduler tools. */
 export function scheduleListToolResult(args: {
-  target: string;
   automations: CompactTaskResult[];
   truncated: boolean;
 }) {
   return {
-    target: args.target,
     automations: args.automations,
     truncated: args.truncated,
   } as const;

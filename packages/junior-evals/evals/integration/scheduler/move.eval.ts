@@ -137,7 +137,7 @@ describeEval("Schedule Destination Updates", slackEvals, (it) => {
     const updateCalls = scheduledAutomationUpdateCalls(result.session);
     expect(updateCalls).toHaveLength(1);
     expect(updateCalls[0]!.arguments).toMatchObject({
-      task_id: taskId,
+      automationId: taskId,
       destination: "here",
     });
     expect(scheduledAutomationCreateCalls(result.session)).toEqual([]);

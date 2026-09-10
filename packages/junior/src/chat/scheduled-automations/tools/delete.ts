@@ -4,10 +4,9 @@ import { getDb } from "@/chat/db";
 import { saveScheduledAutomation } from "../tasks";
 import type { ScheduledAutomation } from "../types";
 import {
-  compactTask,
   getWritableTask,
-  scheduleTaskToolResult,
-  scheduleTaskToolResultSchema,
+  scheduleAutomationToolResult,
+  scheduleAutomationToolResultSchema,
   type SchedulerToolContext,
 } from "../tool-support";
 
@@ -27,16 +26,16 @@ export function createSlackScheduleDeleteAutomationTool(
       "Delete one scheduled Junior task from the active Slack conversation. Use only task IDs returned for this conversation. Do not delete schedules from threads, other channels, or another user's DM.",
     executionMode: "sequential",
     inputSchema: z.object({
-      task_id: z
+      automationId: z
         .string()
         .min(1)
         .describe(
           "ID of the task to delete. Must be from this active Slack conversation.",
         ),
     }),
-    outputSchema: scheduleTaskToolResultSchema,
-    execute: async ({ task_id }) => {
-      const lookup = await getWritableTask({ context, taskId: task_id });
+    outputSchema: scheduleAutomationToolResultSchema,
+    execute: async ({ automationId }) => {
+      const lookup = await getWritableTask({ context, taskId: automationId });
 
       const next: ScheduledAutomation = {
         ...lookup,
@@ -47,10 +46,7 @@ export function createSlackScheduleDeleteAutomationTool(
       };
 
       await saveScheduledAutomation(getDb(), next);
-      return scheduleTaskToolResult(
-        "slackScheduleDeleteAutomation",
-        compactTask(next),
-      );
+      return scheduleAutomationToolResult(next, context.actor?.userId);
     },
   });
 }

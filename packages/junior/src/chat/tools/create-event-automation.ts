@@ -7,7 +7,7 @@ import {
 } from "@/chat/event-automations/store";
 import {
   eventAutomationMatchesDestination,
-  eventAutomationSuccess,
+  eventAutomationToolResult,
   eventAutomationToolResultSchema,
   registeredEventAutomationTriggerSchema,
   requireEventAutomationSlackContext,
@@ -76,7 +76,7 @@ export function createEventAutomationTool(
       "Create a durable event automation that executes the supplied instruction for every matching event. Use for whenever-this-happens-do-X automation; ordinary watch, notify, or tell-me-when requests use watchEvents instead. The automation may use the creator's connected credentials. Prefer a subscribable tool result when available.",
     inputSchema: z
       .object({
-        task: z.string().trim().min(1).max(4000),
+        instruction: z.string().trim().min(1).max(4000),
         title: z
           .string()
           .trim()
@@ -92,7 +92,7 @@ export function createEventAutomationTool(
           .array(taskOutcomeInputSchema)
           .max(5)
           .describe(
-            "Messages to send after successful work. Use an empty list to send nothing. Omit to send one message to the current Slack conversation.",
+            "Successful work is silent by default. Omit this field or use an empty list when the Automation should act through tools without a status message. Add send_message only when the user asks for a notification, post, digest, summary, or other visible result.",
           )
           .optional(),
         credentialMode: z
@@ -106,7 +106,7 @@ export function createEventAutomationTool(
       .strict(),
     prepareArguments(args) {
       const input = args as {
-        task: string;
+        instruction: string;
         title?: string | null;
         trigger: z.input<typeof trigger>;
         outcomes?: TaskOutcomeInput[];
@@ -151,12 +151,12 @@ export function createEventAutomationTool(
         }
         // Live create retries stay idempotent. Deleted rows fall through and reactivate.
         if (existing.status !== "deleted") {
-          return eventAutomationSuccess(existing, catalog);
+          return eventAutomationToolResult(existing, catalog, actor.userId);
         }
       }
       const title = await resolveTaskTitle({
         completeText,
-        instruction: input.task,
+        instruction: input.instruction,
         title: input.title,
       });
       const task: EventAutomation = {
@@ -175,7 +175,7 @@ export function createEventAutomationTool(
           destination,
           actor.userId,
         ),
-        task: { text: input.task },
+        task: { text: input.instruction },
         ...(title ? { title } : undefined),
         trigger: {
           namespace: input.trigger.namespace,
@@ -190,9 +190,10 @@ export function createEventAutomationTool(
           ...(match ? { match } : undefined),
         },
       };
-      return eventAutomationSuccess(
+      return eventAutomationToolResult(
         await createEventAutomation(db, task),
         catalog,
+        actor.userId,
       );
     },
   });

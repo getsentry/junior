@@ -106,6 +106,7 @@ describe("event catalog", () => {
             channelId: "C1",
           },
           destinationVisibility: "public",
+          outcomes: [],
           task: { text: "Switch when ready." },
           trigger: {
             namespace: CORE_EVENT_NAMESPACE,

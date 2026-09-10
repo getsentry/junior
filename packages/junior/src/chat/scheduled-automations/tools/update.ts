@@ -20,15 +20,14 @@ import {
 import { scheduledAutomationAttributes } from "../telemetry";
 import type { ScheduledAutomation } from "../types";
 import {
-  compactTask,
   getConversationAccess,
   getDefaultScheduleTimezone,
   normalizeStatus,
   requireActiveConversation,
   requireActor,
   sameDestination,
-  scheduleTaskToolResult,
-  scheduleTaskToolResultSchema,
+  scheduleAutomationToolResult,
+  scheduleAutomationToolResultSchema,
   throwToolInputError,
   type SchedulerToolContext,
 } from "../tool-support";
@@ -50,13 +49,13 @@ export function createSlackScheduleUpdateAutomationTool(
     executionMode: "sequential",
     inputSchema: z
       .object({
-        task_id: z
+        automationId: z
           .string()
           .min(1)
           .describe(
             "Scheduled automation ID returned by slackScheduleListAutomations.",
           ),
-        task: z.string().min(1).max(4000).optional(),
+        instruction: z.string().min(1).max(4000).optional(),
         schedule: scheduleIntentSchema
           .describe("Complete replacement schedule. Omit to keep it unchanged.")
           .nullable()
@@ -81,7 +80,7 @@ export function createSlackScheduleUpdateAutomationTool(
             'Set to "here" to move the creator\'s task into this Slack conversation. Omit to keep its destination.',
           )
           .optional(),
-        credential_mode: z
+        credentialMode: z
           .enum(["system", "creator"])
           .nullable()
           .describe(
@@ -90,12 +89,12 @@ export function createSlackScheduleUpdateAutomationTool(
           .optional(),
       })
       .strict(),
-    outputSchema: scheduleTaskToolResultSchema,
+    outputSchema: scheduleAutomationToolResultSchema,
     execute: async (input) => {
       const activeDestination = requireActiveConversation(context);
       const actor = requireActor(context, activeDestination);
       const db = getDb();
-      const lookup = await readScheduledAutomation(db, input.task_id);
+      const lookup = await readScheduledAutomation(db, input.automationId);
       if (!lookup || lookup.status === "deleted") {
         throwToolInputError("Scheduled automation was not found.");
       }
@@ -127,7 +126,7 @@ export function createSlackScheduleUpdateAutomationTool(
           "Only the scheduled automation creator can move this task.",
         );
       }
-      if (input.credential_mode === "creator" && !isCreator) {
+      if (input.credentialMode === "creator" && !isCreator) {
         throwToolInputError(
           "Only the scheduled automation creator can enable creator credential use.",
         );
@@ -190,14 +189,14 @@ export function createSlackScheduleUpdateAutomationTool(
       const nextStatus = status ?? lookup.status;
       // Another actor changing executable text revokes creator delegation.
       const credentialMode =
-        input.task !== undefined &&
-        input.task !== lookup.task.text &&
+        input.instruction !== undefined &&
+        input.instruction !== lookup.task.text &&
         !isCreator
           ? "system"
-          : (input.credential_mode ?? lookup.credentialMode);
+          : (input.credentialMode ?? lookup.credentialMode);
 
       const nextInstruction =
-        input.task !== undefined ? input.task : lookup.task.text;
+        input.instruction !== undefined ? input.instruction : lookup.task.text;
       const instructionChanged = nextInstruction !== lookup.task.text;
       const nextDestination = changingDestination
         ? activeDestination
@@ -249,16 +248,13 @@ export function createSlackScheduleUpdateAutomationTool(
         !instructionChanged &&
         !compiled &&
         status === undefined &&
-        (input.credential_mode === undefined ||
-          input.credential_mode === null ||
-          input.credential_mode === lookup.credentialMode) &&
+        (input.credentialMode === undefined ||
+          input.credentialMode === null ||
+          input.credentialMode === lookup.credentialMode) &&
         input.outcomes === undefined &&
         moveHere
       ) {
-        return scheduleTaskToolResult(
-          "slackScheduleUpdateAutomation",
-          compactTask(lookup),
-        );
+        return scheduleAutomationToolResult(lookup, actor.slackUserId);
       }
 
       const committed = await saveScheduledAutomation(db, next);
@@ -268,10 +264,7 @@ export function createSlackScheduleUpdateAutomationTool(
           scheduledAutomationAttributes(committed),
         );
       }
-      return scheduleTaskToolResult(
-        "slackScheduleUpdateAutomation",
-        compactTask(committed),
-      );
+      return scheduleAutomationToolResult(committed, actor.slackUserId);
     },
   });
 }

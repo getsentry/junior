@@ -43,6 +43,18 @@ function parseTask(row: EventAutomationRow): StoredEventAutomation {
   if (raw && typeof raw === "object" && "title" in raw) {
     delete raw.title;
   }
+  // TODO(dcramer): Remove this rolling-deploy fallback after v0.205.x writers
+  // are unsupported. Migration 0041 backfills all rows present at upgrade time.
+  if (
+    raw &&
+    typeof raw === "object" &&
+    !("outcomes" in raw) &&
+    "destination" in raw
+  ) {
+    (raw as Record<string, unknown>).outcomes = [
+      { action: "send_message", destination: raw.destination },
+    ];
+  }
   const payload = eventAutomationSchema.parse(raw);
   const title = row.title?.trim();
   return {

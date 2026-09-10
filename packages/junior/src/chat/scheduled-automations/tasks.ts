@@ -40,7 +40,18 @@ export function parseScheduledAutomationRow(
     title: legacyTitle,
     ...retained
   } = record.data;
-  const parsed = retainedScheduledAutomationSchema.safeParse(retained);
+  // TODO(dcramer): Remove this rolling-deploy fallback after v0.205.x writers
+  // are unsupported. Migration 0041 backfills all rows present at upgrade time.
+  const current =
+    retained.outcomes === undefined && retained.destination !== undefined
+      ? {
+          ...retained,
+          outcomes: [
+            { action: "send_message", destination: retained.destination },
+          ],
+        }
+      : retained;
+  const parsed = retainedScheduledAutomationSchema.safeParse(current);
   if (!parsed.success) return undefined;
   const { status, version: _version, ...task } = parsed.data;
   // The indexed identity remains authoritative while older workers may rewrite JSON.

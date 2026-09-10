@@ -93,6 +93,7 @@ function createTask(
     creatorIdentityId: "identity-scheduler-user-123",
     credentialMode: "system",
     destination: SLACK_DESTINATION,
+    outcomes: [{ action: "send_message", destination: SLACK_DESTINATION }],
     nextRunAtMs,
     schedule: {
       description: "Once at noon",

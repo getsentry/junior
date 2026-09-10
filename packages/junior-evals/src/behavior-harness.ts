@@ -2211,6 +2211,9 @@ async function processEvents(args: {
     const nowMs = event.now_ms ?? Date.now();
     const scheduleKind = event.schedule_kind ?? "one_off";
     const taskId = `eval_schedule_${thread.channelId}_${nowMs}`;
+    const destination = createEvalDestination(
+      thread,
+    ) as ScheduledAutomation["destination"];
     const task: ScheduledAutomation = {
       id: taskId,
       conversationAccess: { audience: "channel", visibility: "public" },
@@ -2218,9 +2221,8 @@ async function processEvents(args: {
       createdBy: { slackUserId: TEST_USER_ID, userName: "testuser" },
       creatorIdentityId: `eval:slack:${TEST_USER_ID}`,
       credentialMode: event.credential_mode ?? "system",
-      destination: createEvalDestination(
-        thread,
-      ) as ScheduledAutomation["destination"],
+      destination,
+      outcomes: [{ action: "send_message", destination }],
       nextRunAtMs: nowMs,
       schedule: {
         description:
@@ -2386,13 +2388,15 @@ async function processEvents(args: {
     const { thread } = await getThreadRecord(event.thread);
     const nowMs = Date.now();
     const taskId = `eval_event_automation_${thread.channelId}_${nowMs}`;
+    const destination = createEvalDestination(thread);
     const task: EventAutomation = {
       id: taskId,
       createdAtMs: nowMs - 60_000,
       createdBy: { slackUserId: TEST_USER_ID, userName: "testuser" },
       credentialMode: "system",
-      destination: createEvalDestination(thread),
+      destination,
       destinationVisibility: "public",
+      outcomes: [{ action: "send_message", destination }],
       task: { text: event.task_text },
       trigger: {
         events: [event.event_type],

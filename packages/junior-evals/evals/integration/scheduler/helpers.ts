@@ -36,6 +36,7 @@ export async function seedScheduledAutomation(args: {
     creatorIdentityId: `eval:slack:TEVAL:${args.createdBy.slackUserId}`,
     credentialMode: args.credentialMode ?? "system",
     destination,
+    outcomes: [],
     nextRunAtMs: nowMs + 7 * 24 * 60 * 60 * 1000,
     schedule: {
       description: "Every Monday at 9:00 AM Pacific",

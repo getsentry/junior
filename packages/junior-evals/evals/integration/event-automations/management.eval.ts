@@ -96,7 +96,7 @@ describeEval("Event automation management", slackEvals, (it) => {
       },
       initialEvents: [
         mention(
-          "$eval-events Create a pull request in getsentry/junior titled 'Automate review handling'. Whenever a reviewer requests changes, set up an event automation that summarizes the requested changes and posts a concrete fix plan in this channel. Don't use any of my connected credentials for that task.",
+          "$eval-events Create a pull request in getsentry/junior titled 'Automate review handling'. Whenever a reviewer requests changes, set up an event automation that summarizes the requested changes and posts a concrete fix plan in this channel. Use system credentials for the event automation instead of my connected credentials.",
         ),
       ],
       criteria: rubric({
@@ -121,6 +121,9 @@ describeEval("Event automation management", slackEvals, (it) => {
       arguments: { repository: "getsentry/junior" },
     });
     expect(createCalls[0]!.arguments).toMatchObject({
+      outcomes: [
+        { action: "send_message", destination: "current_conversation" },
+      ],
       trigger: {
         namespace: "github",
         identifier: "getsentry/junior#208",
@@ -241,6 +244,11 @@ describeEval("Event automation management", slackEvals, (it) => {
       thread_ts: "1700000000.919000",
     };
     await seedEventAutomation({
+      createdBy: {
+        slackUserId: "U0TEST",
+        userName: "testuser",
+        fullName: "Test User",
+      },
       id: "evt_issue_state_summary",
       taskText: "Summarize issue closures and reopenings in this channel.",
       thread: creationThread,
@@ -287,7 +295,7 @@ describeEval("Event automation management", slackEvals, (it) => {
           automations: [
             expect.objectContaining({
               id: "evt_issue_state_summary",
-              triggerAvailable: true,
+              trigger: expect.objectContaining({ available: true }),
             }),
           ],
         }),
@@ -299,7 +307,7 @@ describeEval("Event automation management", slackEvals, (it) => {
     );
     expect(updateCalls).toHaveLength(1);
     expect(updateCalls[0]?.arguments).toMatchObject({
-      taskId: "evt_issue_state_summary",
+      automationId: "evt_issue_state_summary",
       trigger: {
         events: ["issue.reopened"],
         identifier: "getsentry/junior#208",
@@ -311,7 +319,7 @@ describeEval("Event automation management", slackEvals, (it) => {
       eventAutomationManagementCalls(result.session, "deleteEventAutomation"),
     ).toEqual([
       expect.objectContaining({
-        arguments: { taskId: "evt_issue_state_summary" },
+        arguments: { automationId: "evt_issue_state_summary" },
       }),
     ]);
     expect(eventAutomationCreateCalls(result.session)).toEqual([]);
@@ -362,7 +370,7 @@ describeEval("Event automation management", slackEvals, (it) => {
           automations: [
             expect.objectContaining({
               id: "evt_unavailable_issue_summary",
-              triggerAvailable: false,
+              trigger: expect.objectContaining({ available: false }),
             }),
           ],
         }),

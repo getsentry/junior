@@ -41,8 +41,8 @@ export const eventAutomationSchema = z
     credentialMode: z.enum(["system", "creator"]),
     destination: slackDestinationSchema,
     destinationVisibility: destinationVisibilitySchema,
-    /** Visible effects after successful work. Missing legacy values send a message. */
-    outcomes: z.array(taskOutcomeSchema).max(5).optional(),
+    /** Explicit visible effects after successful work. An empty list is silent. */
+    outcomes: z.array(taskOutcomeSchema).max(5),
     task: z.object({ text: z.string().min(1) }).strict(),
     trigger: eventAutomationTriggerSchema,
   })

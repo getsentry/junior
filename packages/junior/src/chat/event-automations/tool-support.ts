@@ -1,10 +1,8 @@
-import { taskOutcomeSchema } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import { getDb } from "@/chat/db";
 import { getEventAutomation } from "@/chat/event-automations/store";
 import {
   EVENT_AUTOMATION_IDENTIFIER_MAX_LENGTH,
-  eventAutomationPrincipalSchema,
   type EventAutomation,
 } from "@/chat/event-automations/types";
 import {
@@ -25,24 +23,49 @@ import { effectiveTaskOutcomes } from "@/chat/task-outcomes";
 const compactEventAutomationResultSchema = z
   .object({
     id: z.string().min(1),
-    task: z.string().min(1),
-    namespace: z.string().min(1),
-    identifier: z.string().min(1),
-    resourceType: z.string().min(1),
-    label: z.string().min(1),
-    events: z.array(z.string().min(1)).min(1),
-    match: z.record(z.string(), z.unknown()).optional(),
+    title: z.string().min(1).nullable(),
+    instruction: z.string().min(1),
+    trigger: z
+      .object({
+        namespace: z.string().min(1),
+        identifier: z.string().min(1),
+        resourceType: z.string().min(1),
+        label: z.string().min(1),
+        events: z.array(z.string().min(1)).min(1),
+        match: z.record(z.string(), z.unknown()).optional(),
+        available: z.boolean(),
+      })
+      .strict(),
     credentialMode: z.enum(["system", "creator"]),
-    outcomes: z.array(taskOutcomeSchema).max(5),
-    createdBy: eventAutomationPrincipalSchema,
-    triggerAvailable: z.boolean(),
+    isCreator: z.boolean(),
+    outcomes: z
+      .array(
+        z
+          .object({
+            action: z.literal("send_message"),
+            destination: z
+              .object({
+                channel: z.string().min(1),
+                thread: z.string().min(1).nullable(),
+              })
+              .strict(),
+          })
+          .strict(),
+      )
+      .max(5),
+    createdBy: z
+      .object({
+        name: z.string().min(1).nullable(),
+        username: z.string().min(1).nullable(),
+      })
+      .strict(),
   })
   .strict();
 
 /** Validate one successful event-automation mutation result. */
 export const eventAutomationToolResultSchema = juniorToolOutputSchema
   .extend({
-    task: compactEventAutomationResultSchema,
+    automation: compactEventAutomationResultSchema,
   })
   .strict();
 
@@ -198,29 +221,46 @@ export function eventAutomationTriggerAvailable(
 export function compactEventAutomation(
   task: EventAutomation,
   catalog: EventCatalog,
+  requesterSlackUserId?: string,
 ) {
   return compactEventAutomationResultSchema.parse({
     id: task.id,
-    task: task.task.text,
-    namespace: task.trigger.namespace,
-    identifier: task.trigger.identifier,
-    resourceType: task.trigger.resourceType,
-    label: task.trigger.label,
-    events: task.trigger.events,
-    ...(task.trigger.match ? { match: task.trigger.match } : undefined),
+    title: task.title?.trim() || null,
+    instruction: task.task.text,
+    trigger: {
+      namespace: task.trigger.namespace,
+      identifier: task.trigger.identifier,
+      resourceType: task.trigger.resourceType,
+      label: task.trigger.label,
+      events: task.trigger.events,
+      ...(task.trigger.match ? { match: task.trigger.match } : undefined),
+      available: eventAutomationTriggerAvailable(task, catalog),
+    },
     credentialMode: task.credentialMode,
-    outcomes: effectiveTaskOutcomes(task.outcomes, task.destination),
-    createdBy: task.createdBy,
-    triggerAvailable: eventAutomationTriggerAvailable(task, catalog),
+    isCreator: task.createdBy.slackUserId === requesterSlackUserId,
+    outcomes: effectiveTaskOutcomes(task.outcomes, task.destination).map(
+      (outcome) => ({
+        action: outcome.action,
+        destination: {
+          channel: outcome.destination.channelId,
+          thread: outcome.destination.threadTs ?? null,
+        },
+      }),
+    ),
+    createdBy: {
+      name: task.createdBy.fullName ?? null,
+      username: task.createdBy.userName ?? null,
+    },
   });
 }
 
 /** Return the standard successful event-automation tool result. */
-export function eventAutomationSuccess(
+export function eventAutomationToolResult(
   task: EventAutomation,
   catalog: EventCatalog,
+  requesterSlackUserId?: string,
 ) {
   return {
-    task: compactEventAutomation(task, catalog),
+    automation: compactEventAutomation(task, catalog, requesterSlackUserId),
   };
 }
