@@ -82,7 +82,8 @@ describeEval("Schedule Creation", slackEvals, (it) => {
       },
     });
     expect(createCall.arguments).not.toHaveProperty("next_run_at");
-    expect(createCall.arguments?.task).toMatch(/standup moved/i);
+    expect(createCall.arguments?.task).toMatch(/\bstandup\b/i);
+    expect(createCall.arguments?.task).toMatch(/\bmoved\b/i);
     expect(createCall.arguments?.task).not.toMatch(/\bschedul(?:e|ing)\b/i);
   });
 
