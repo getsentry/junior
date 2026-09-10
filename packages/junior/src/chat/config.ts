@@ -242,7 +242,7 @@ function parseCrossActorMidRunMode(
 const DEFAULT_MODEL_ID = getModel("vercel-ai-gateway", "xai/grok-4.5").id;
 const DEFAULT_FAST_MODEL_ID = getModel(
   "vercel-ai-gateway",
-  "anthropic/claude-haiku-4.5",
+  "openai/gpt-5.6-luna",
 ).id;
 const DEFAULT_GUARDIAN_MODEL_ID = getModel(
   "vercel-ai-gateway",
@@ -254,7 +254,7 @@ const DEFAULT_HANDOFF_MODEL_ID = getModel(
 ).id;
 const DEFAULT_WEB_SEARCH_MODEL_ID = getModel(
   "vercel-ai-gateway",
-  "openai/gpt-5.4",
+  "openai/gpt-5.6-luna",
 ).id;
 const DEFAULT_EMBEDDING_MODEL_ID = "openai/text-embedding-3-small";
 const DEFAULT_IMAGE_GENERATION_MODEL_ID = "google/gemini-3-pro-image";
