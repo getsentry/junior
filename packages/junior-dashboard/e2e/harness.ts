@@ -143,6 +143,31 @@ export async function mockDashboardApis(
       ],
     });
   });
+  await page.route(
+    "**/api/plugins/memory/conversations/*/memories",
+    async (route) => {
+      await route.fulfill({
+        json: {
+          memories: [
+            {
+              capturedAt: "2026-08-07T07:01:00.000Z",
+              content: "Use pnpm for repository commands.",
+              id: "captured-memory-1",
+              kind: "preference",
+              visibility: "private",
+            },
+            {
+              capturedAt: "2026-08-07T07:01:00.000Z",
+              content: "Dashboard transcript events should remain expandable.",
+              id: "captured-memory-2",
+              kind: "knowledge",
+              visibility: "public",
+            },
+          ],
+        },
+      });
+    },
+  );
   await page.route("**/api/plugins/memory/memories/*", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();

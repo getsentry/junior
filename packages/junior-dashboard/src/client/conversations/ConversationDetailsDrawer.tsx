@@ -1,5 +1,4 @@
 import { useState, type ReactNode } from "react";
-import type { ConversationDetailReport } from "@sentry/junior/api/schema";
 
 import { Drawer } from "../components/Drawer";
 import { FilterTabList } from "../components/FilterBar";
@@ -11,12 +10,10 @@ export function ConversationDetailsDrawer(props: {
   brief: ReactNode;
   conversationId: string;
   identity: ReactNode;
-  loadCompleteTranscript(): Promise<ConversationDetailReport>;
   onClose(): void;
   privacy: ReactNode;
   stats: ReactNode;
   title: string;
-  transcript?: ConversationDetailReport;
 }) {
   const [tab, setTab] = useState<"details" | "memories">("details");
   const titleId = "conversation-details-drawer-title";
@@ -62,11 +59,7 @@ export function ConversationDetailsDrawer(props: {
         />
         <div aria-label={`${tab} panel`} role="tabpanel">
           {tab === "memories" ? (
-            <ConversationMemories
-              active
-              initialConversation={props.transcript}
-              loadConversation={props.loadCompleteTranscript}
-            />
+            <ConversationMemories conversationId={props.conversationId} />
           ) : sections.length > 0 ? (
             <div className="grid min-w-0 gap-5">
               {sections.map((section) => (

@@ -24,6 +24,12 @@ const capturedMemorySchema = z
   })
   .strict();
 
+const legacyCapturedMemoriesSchema = z
+  .object({
+    memories: z.array(legacyCapturedMemorySchema).min(1).max(100),
+  })
+  .strict();
+
 const capturedMemoriesSchema = z
   .object({
     memories: z.array(capturedMemorySchema).max(100),
@@ -69,11 +75,7 @@ function renderCapturedMemories(event: {
 export const memoriesCapturedEventV1 = defineConversationEvent({
   name: "memories_captured",
   version: 1,
-  schema: z
-    .object({
-      memories: z.array(legacyCapturedMemorySchema).min(1).max(100),
-    })
-    .strict(),
+  schema: legacyCapturedMemoriesSchema,
   renderEvent: renderCapturedMemories,
 });
 
@@ -94,6 +96,24 @@ export const memoriesRecalledEvent = defineConversationEvent({
     return undefined;
   },
 });
+
+type CapturedMemory =
+  | z.output<typeof legacyCapturedMemorySchema>
+  | z.output<typeof capturedMemorySchema>;
+
+/** Parse one supported stored memory-capture event. */
+export function parseCapturedMemories(
+  version: number,
+  content: unknown,
+): CapturedMemory[] {
+  if (version === memoriesCapturedEventV1.version) {
+    return legacyCapturedMemoriesSchema.parse(content).memories;
+  }
+  if (version === memoriesCapturedEvent.version) {
+    return capturedMemoriesSchema.parse(content).memories;
+  }
+  return [];
+}
 
 /** Select the stable, safe memory fields retained in conversation history. */
 export function capturedMemory(memory: MemoryRecord) {

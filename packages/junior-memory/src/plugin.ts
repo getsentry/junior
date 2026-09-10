@@ -130,6 +130,7 @@ export function memoryPlugin(options: MemoryPluginOptions = {}) {
       },
       apiRoutes(ctx) {
         return createMemoryApi({
+          conversationEvents: ctx.conversationEvents,
           db: ctx.db as MemoryDb,
           eventStats: ctx.eventStats,
           users: ctx.users,

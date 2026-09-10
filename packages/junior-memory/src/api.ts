@@ -6,6 +6,7 @@
 import { z } from "zod";
 import {
   pluginApiRouteRequestContextSchema,
+  type PluginConversationEventReader,
   type PluginConversationEventStats,
   type PluginRouteApp,
   type User,
@@ -22,6 +23,7 @@ import {
   MemoryNotFoundError,
   type MemoryView,
 } from "./viewer";
+import { parseCapturedMemories } from "./events";
 import { MEMORY_SOURCE_PLATFORMS } from "./types";
 
 export const memoryApiSchema = z
@@ -43,6 +45,20 @@ export const memoryListResponseSchema = z
     memories: z.array(memoryApiSchema),
     nextCursor: z.string().min(1).optional(),
   })
+  .strict();
+
+export const conversationMemorySchema = z
+  .object({
+    capturedAt: z.iso.datetime(),
+    content: z.string().min(1),
+    id: z.string().min(1),
+    kind: z.enum(["preference", "procedure", "knowledge"]),
+    visibility: z.enum(["private", "public"]),
+  })
+  .strict();
+
+export const conversationMemoryListResponseSchema = z
+  .object({ memories: z.array(conversationMemorySchema) })
   .strict();
 
 const memoryBucketSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}(T\d{2})?$/);
@@ -104,6 +120,7 @@ const memoryListQuerySchema = z
   .strict();
 
 interface MemoryApiOptions {
+  conversationEvents: PluginConversationEventReader;
   db: MemoryDb;
   eventStats: PluginConversationEventStats;
   users: {
@@ -134,6 +151,12 @@ function apiMemory(memory: MemoryView): z.output<typeof memoryApiSchema> {
   };
 }
 
+function currentMemoryVisibility(
+  scope: "personal" | "conversation" | "private" | "public",
+): "private" | "public" {
+  return scope === "personal" || scope === "private" ? "private" : "public";
+}
+
 function viewerEmail(context: unknown): string | undefined {
   const parsed = pluginApiRouteRequestContextSchema.safeParse(context);
   if (!parsed.success || parsed.data.auth.user.emailVerified !== true) {
@@ -153,9 +176,12 @@ export function createMemoryApi(options: MemoryApiOptions): PluginRouteApp {
 
       const url = new URL(request.url);
       const memoryPath = /^\/memories\/([^/]+)$/.exec(url.pathname);
+      const conversationPath = /^\/conversations\/([^/]+)\/memories$/.exec(
+        url.pathname,
+      );
       const isCollection = url.pathname === "/memories";
       const isDashboard = url.pathname === "/dashboard";
-      if (!isCollection && !isDashboard && !memoryPath) {
+      if (!isCollection && !isDashboard && !memoryPath && !conversationPath) {
         return json({ error: "Not found." }, 404);
       }
       const isRead = request.method === "GET" || request.method === "HEAD";
@@ -214,6 +240,44 @@ export function createMemoryApi(options: MemoryApiOptions): PluginRouteApp {
             recallDays,
             recallHours,
             stats: { ...dashboardStats, personal },
+          });
+          return request.method === "HEAD"
+            ? new Response(null, {
+                headers: { "cache-control": "no-store" },
+                status: 200,
+              })
+            : json(body);
+        }
+
+        if (conversationPath && isRead) {
+          const events = await options.conversationEvents.list({
+            conversationId: decodeURIComponent(conversationPath[1]!),
+            eventName: "memories_captured",
+            viewer,
+          });
+          if (!events) return json({ error: "Conversation not found." }, 404);
+          const memories = new Map<
+            string,
+            z.input<typeof conversationMemorySchema>
+          >();
+          for (const event of events) {
+            for (const memory of parseCapturedMemories(
+              event.version,
+              event.content,
+            )) {
+              if (!memories.has(memory.id)) {
+                memories.set(memory.id, {
+                  capturedAt: event.createdAt,
+                  content: memory.content,
+                  id: memory.id,
+                  kind: memory.kind,
+                  visibility: currentMemoryVisibility(memory.scope),
+                });
+              }
+            }
+          }
+          const body = conversationMemoryListResponseSchema.parse({
+            memories: [...memories.values()],
           });
           return request.method === "HEAD"
             ? new Response(null, {

@@ -341,7 +341,6 @@ describe("dashboard canonical-event components", () => {
         conversationId="conversation-1"
         identity={null}
         live={false}
-        loadCompleteTranscript={async () => conversation([])}
         onSearchChange={() => {}}
         onViewChange={() => {}}
         privacy={null}

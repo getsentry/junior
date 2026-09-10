@@ -29,6 +29,7 @@ import type {
 import { getDb } from "@/chat/db";
 import { createPluginAnnotations } from "@/chat/plugins/annotations";
 import { createPluginConversationEvents } from "@/chat/plugins/conversation-events";
+import { createPluginConversationEventReader } from "@/chat/plugins/conversation-event-reader";
 import { createPluginConversationEventStats } from "@/chat/plugins/conversation-event-stats";
 import { logInfo, logWarn } from "@/chat/logging";
 import { createPluginLogger } from "@/chat/plugins/logging";
@@ -998,6 +999,7 @@ export function getPluginApiRoutes(): PluginApiRouteRegistration[] {
     }
     const app = hook({
       ...basePluginContext(plugin),
+      conversationEvents: createPluginConversationEventReader(plugin),
       eventStats: createPluginConversationEventStats(plugin),
       users: { resolve: resolveViewerUser },
     });

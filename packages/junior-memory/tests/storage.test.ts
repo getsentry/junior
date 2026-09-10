@@ -27,6 +27,7 @@ import { eq } from "drizzle-orm";
 import { describe, expect, it, vi } from "vitest";
 import * as memorySqlSchema from "../src/db/schema";
 import {
+  conversationMemoryListResponseSchema,
   createMemoryApi,
   memoryApiSchema,
   memoryDashboardResponseSchema,
@@ -2508,6 +2509,44 @@ describe("memory plugin storage", () => {
         kind: "knowledge",
       });
       const api = createMemoryApi({
+        conversationEvents: {
+          async list({ conversationId, eventName }) {
+            if (conversationId === "missing") return undefined;
+            expect(eventName).toBe("memories_captured");
+            return [
+              {
+                content: {
+                  memories: [
+                    {
+                      content: "Use pnpm.",
+                      id: "captured-memory",
+                      kind: "procedure",
+                      observedAtMs: TEST_NOW_MS,
+                      scope: "public",
+                    },
+                  ],
+                },
+                createdAt: "2026-07-28T12:01:00.000Z",
+                version: 2,
+              },
+              {
+                content: {
+                  memories: [
+                    {
+                      content: "Use pnpm.",
+                      id: "captured-memory",
+                      kind: "procedure",
+                      observedAtMs: TEST_NOW_MS,
+                      scope: "public",
+                    },
+                  ],
+                },
+                createdAt: "2026-07-28T12:00:00.000Z",
+                version: 2,
+              },
+            ];
+          },
+        },
         db: memoryDb(fixture),
         eventStats: {
           async costsByDay({ days, eventName }) {
@@ -2574,6 +2613,31 @@ describe("memory plugin storage", () => {
         requestContext,
       );
       expect(unknownRouteResponse.status).toBe(404);
+      const conversationResponse = await api.fetch(
+        new Request("http://localhost/conversations/conversation-1/memories"),
+        requestContext,
+      );
+      expect(conversationResponse.status).toBe(200);
+      expect(
+        conversationMemoryListResponseSchema.parse(
+          await conversationResponse.json(),
+        ),
+      ).toEqual({
+        memories: [
+          {
+            capturedAt: "2026-07-28T12:01:00.000Z",
+            content: "Use pnpm.",
+            id: "captured-memory",
+            kind: "procedure",
+            visibility: "public",
+          },
+        ],
+      });
+      const missingConversationResponse = await api.fetch(
+        new Request("http://localhost/conversations/missing/memories"),
+        requestContext,
+      );
+      expect(missingConversationResponse.status).toBe(404);
       const invalidMethodResponse = await api.fetch(
         new Request("http://localhost/memories", { method: "POST" }),
         requestContext,
