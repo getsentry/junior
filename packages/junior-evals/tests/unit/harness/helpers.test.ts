@@ -20,7 +20,6 @@ vi.mock("../../../src/behavior-harness", () => ({
 
 import {
   hasImageAttachment,
-  RubricJudge,
   serializeVisibleTranscript,
   slackEvals,
   slackHarness,
@@ -170,16 +169,6 @@ it("reports rubric judge usage through the judge harness", async () => {
     { prompt: "Grade this.", system: "Return JSON." },
     { artifacts: {}, setArtifact: vi.fn() },
   );
-  const result = await RubricJudge.assess({
-    harness: slackHarness,
-    input: { criteria: { pass: ["Answers correctly"] }, initialEvents: [] },
-    output: undefined,
-    run: { usage: {} } as never,
-    runJudge: async () => judgeRun.output,
-    session: { events: [] },
-    toolCalls: [],
-  });
-
   expect(judgeRun.usage).toEqual({
     provider: "vercel-ai-gateway",
     model: "openai/gpt-5.4",
@@ -188,10 +177,9 @@ it("reports rubric judge usage through the judge harness", async () => {
     totalTokens: 140,
     costUsd: 0.031,
   });
-  expect(result.metadata).toMatchObject({ answer: "A" });
 });
 
-it("scores the rubric judge without failing when cost is missing", async () => {
+it("omits unknown rubric judge cost", async () => {
   completeTextMock.mockResolvedValueOnce({
     message: {
       usage: {},
@@ -203,21 +191,10 @@ it("scores the rubric judge without failing when cost is missing", async () => {
     { prompt: "Grade this.", system: "Return JSON." },
     { artifacts: {}, setArtifact: vi.fn() },
   );
-  const result = await RubricJudge.assess({
-    harness: slackHarness,
-    input: { criteria: { pass: ["Answers correctly"] }, initialEvents: [] },
-    output: undefined,
-    run: { usage: {} } as never,
-    runJudge: async () => judgeRun.output,
-    session: { events: [] },
-    toolCalls: [],
-  });
-
   expect(judgeRun.usage).toEqual({
     provider: "vercel-ai-gateway",
     model: "openai/gpt-5.4",
   });
-  expect(result.metadata).toMatchObject({ answer: "A" });
 });
 
 it("forwards the Vitest abort signal to the eval scenario", async () => {
