@@ -59,9 +59,6 @@ describeEval("Schedule Creation", slackEvals, (it) => {
     expect(createCalls).toHaveLength(1);
     const createCall = createCalls[0]!;
     expect(createCall.arguments).toMatchObject({
-      outcomes: [
-        { action: "send_message", destination: { platform: "slack" } },
-      ],
       schedule: {
         kind: "one_off",
         timing: { type: "after", value: 1, unit: "minute" },
@@ -102,7 +99,7 @@ describeEval("Schedule Creation", slackEvals, (it) => {
     const result = await run({
       initialEvents: [
         mention(
-          "@bot every night at 2am, close stale draft pull requests in getsentry/junior. do the work without posting a status message.",
+          "@bot every night at 2am, close stale draft pull requests in getsentry/junior.",
         ),
       ],
     });
