@@ -169,14 +169,16 @@ export function hasRunnableConversationWork(
 /**
  * Ensure runnable conversation work has one accepted queue wake-up nudge.
  *
- * Ordinary wakes coalesce on a recent accepted marker. Replacement is only for
- * consumed or known-stale deliveries where another queue nudge must exist.
+ * Ordinary wakes coalesce on a recent accepted marker. A caller can ignore the
+ * marker without replacing an active lease. Replacement is only for consumed
+ * or known-stale deliveries where another queue nudge must exist.
  */
 export async function ensureConversationWake(args: {
   conversationId: string;
   conversationStore?: ConversationStore;
   delayMs?: number;
   idempotencyKey: string;
+  ignoreEnqueueMarker?: true;
   nowMs?: number;
   queue: ConversationWorkQueue;
   replaceExistingWake?: true;
@@ -198,6 +200,7 @@ export async function ensureConversationWake(args: {
     return { status: "lease_active" };
   }
   if (
+    args.ignoreEnqueueMarker !== true &&
     args.replaceExistingWake !== true &&
     hasRecentEnqueueMarker(conversation, nowMs)
   ) {
@@ -287,13 +290,12 @@ async function enqueueAfterAppend(args: {
     conversationStore: args.conversationStore,
     delayMs: args.queueDelayMs,
     idempotencyKey,
+    // Human input must not wait out an event's queue delay. An active worker
+    // still owns the mailbox, so do not replace its wake.
+    ignoreEnqueueMarker: args.message.source === "event" ? undefined : true,
     nowMs,
     queue: args.queue,
-    // Human input must not wait out an event's queue delay: only event
-    // messages default to coalescing with an already-pending wake.
-    replaceExistingWake:
-      args.replaceExistingWake ??
-      (args.message.source === "event" ? undefined : true),
+    replaceExistingWake: args.replaceExistingWake,
     state: args.state,
   });
   if (wake.status !== "enqueued") {
