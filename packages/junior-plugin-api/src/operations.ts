@@ -5,7 +5,10 @@ import { nonBlankStringSchema } from "./schemas";
 import type { PluginReadState, PluginState } from "./state";
 import type { EventPublisher } from "./events";
 import type { PluginConversationAnnotations } from "./annotations";
-import type { PluginConversationEventStats } from "./conversation-events";
+import type {
+  PluginConversationEventReader,
+  PluginConversationEventStats,
+} from "./conversation-events";
 import type { CodeChangePublisher } from "./code";
 
 export interface HeartbeatHookContext extends PluginContext {
@@ -161,6 +164,7 @@ export interface RouteRegistrationHookContext extends PluginContext {
 }
 
 export interface ApiRouteRegistrationHookContext extends PluginContext {
+  conversationEvents: PluginConversationEventReader;
   eventStats: PluginConversationEventStats;
   users: {
     /** Resolve or create the canonical user for one verified email. */
