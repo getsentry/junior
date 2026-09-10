@@ -430,7 +430,7 @@ function AutomationListHeader() {
       aria-hidden="true"
       className="hidden grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)_minmax(0,1fr)_4.5rem_7.5rem_auto_auto] items-center gap-3 border-b border-white/[0.07] px-4 py-2.5 text-left font-mono text-xs uppercase tracking-[0.12em] text-dashboard-text-muted lg:grid"
     >
-      <span>Task</span>
+      <span>Automation</span>
       <span>Destination</span>
       <span>Trigger</span>
       <span>Runs</span>

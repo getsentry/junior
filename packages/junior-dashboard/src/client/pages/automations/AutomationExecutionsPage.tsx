@@ -40,7 +40,7 @@ import { AutomationExecutionStatusChart } from "./AutomationExecutionStatusChart
 /** Leading conversation column flexes; metric columns stay equal fixed widths. */
 const EXECUTION_GRID = "grid-cols-[minmax(0,1fr)_5.5rem_5.5rem_5.5rem_auto]";
 
-/** Render one task's terminal executions as a browsable conversation-style list. */
+/** Render one automation's terminal executions as a conversation-style list. */
 export function AutomationExecutionsPage(props: { enabled: boolean }) {
   const { automationId, kind } = useParams();
   const [searchParams] = useSearchParams();
@@ -83,7 +83,7 @@ export function AutomationExecutionsPage(props: { enabled: boolean }) {
           <InlineError>
             {query.error instanceof DashboardApiError &&
             query.error.status === 404
-              ? "This task was not found or is not visible to you."
+              ? "This automation was not found or is not visible to you."
               : "Automation executions could not be loaded. Try again."}
           </InlineError>
           <Link
@@ -126,10 +126,10 @@ function AutomationExecutionsView(props: {
           to={props.backTo}
         >
           <ArrowLeft aria-hidden="true" size={14} />
-          Back to task
+          Back to automation
         </Link>
         <PageHeader
-          description={`${data.automation.kind} task · ${data.automation.destination.label} · ${statusSummary}`}
+          description={`${data.automation.kind} automation · ${data.automation.destination.label} · ${statusSummary}`}
           {...(data.executionDays.length > 0
             ? { onRangeChange: setRange, range }
             : {})}
@@ -167,7 +167,7 @@ function AutomationExecutionsView(props: {
       {data.executions.length === 0 ? (
         <Card padding="md">
           <p className="m-0 text-sm text-dashboard-text-muted">
-            This task has not produced any terminal executions yet.
+            This automation has not produced any terminal executions yet.
           </p>
         </Card>
       ) : (

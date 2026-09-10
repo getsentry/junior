@@ -230,7 +230,7 @@ export function DashboardShell() {
               <AutomationsPageLayout>
                 <AutomationsRouteLoading
                   description="Newest runs across your automations and automations in public destinations."
-                  label="Loading task runs"
+                  label="Loading automation runs"
                   title="Runs"
                   variant="list"
                 />

@@ -20,7 +20,7 @@ const series = [
   { color: "#fcd34d", key: "blocked", label: "Blocked" },
 ] as const;
 
-/** Render one task's terminal executions stacked by status over a trailing window. */
+/** Render one automation's terminal executions by status over a trailing window. */
 export function AutomationExecutionStatusChart(props: {
   bucketUnit?: TimeRangeBucketUnit;
 
@@ -46,10 +46,10 @@ export function AutomationExecutionStatusChart(props: {
         </h2>
         <p className="mt-1 mb-0 font-mono text-xs leading-relaxed text-dashboard-text-muted">
           {bucketUnit === "hour"
-            ? "Terminal runs for this task each hour."
+            ? "Terminal runs for this automation each hour."
             : bucketUnit === "6hour"
-              ? "Terminal runs for this task each 6 hours."
-              : "Terminal runs for this task each day."}
+              ? "Terminal runs for this automation each 6 hours."
+              : "Terminal runs for this automation each day."}
         </p>
       </div>
 

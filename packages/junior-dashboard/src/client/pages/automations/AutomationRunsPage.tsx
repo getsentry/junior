@@ -41,7 +41,7 @@ const RUN_GRID =
 type RunKindFilter = (typeof RUN_KINDS)[number];
 type RunStatusFilter = (typeof RUN_STATUSES)[number];
 
-/** Render newest runs across every task visible to the signed-in viewer. */
+/** Render newest runs across every automation visible to the signed-in viewer. */
 export function AutomationRunsPage(props: { enabled: boolean }) {
   const query = useAutomationRunsData(props.enabled);
   const [kind, setKind] = useSearchParamEnum("type", "all", RUN_KINDS);
@@ -93,14 +93,14 @@ export function AutomationRunsPage(props: { enabled: boolean }) {
         title="Runs"
       />
       {loading ? (
-        <PageContentSkeleton label="Loading task runs" variant="list" />
+        <PageContentSkeleton label="Loading automation runs" variant="list" />
       ) : (
         <>
           <FilterBar
             search={{
               label: "Search runs",
               onChange: setSearchText,
-              placeholder: "Task, conversation, or status",
+              placeholder: "Automation, conversation, or status",
               value: searchText,
             }}
           >
@@ -141,7 +141,7 @@ export function AutomationRunsPage(props: { enabled: boolean }) {
           {query.error ? (
             <Card padding="md">
               <InlineError>
-                Task runs could not be loaded. Try again.
+                Automation runs could not be loaded. Try again.
               </InlineError>
             </Card>
           ) : visibleRuns.length === 0 ? (
@@ -162,7 +162,7 @@ export function AutomationRunsPage(props: { enabled: boolean }) {
                     role="row"
                   >
                     <div>Run</div>
-                    <div>Task</div>
+                    <div>Automation</div>
                     <div>Duration</div>
                     <div>Tokens</div>
                     <div>Cost</div>
@@ -259,7 +259,7 @@ function AutomationRunRow(props: { run: AutomationRun }) {
           {run.automationTitle}
         </div>
         <div className="mt-1 flex min-w-0 items-center gap-1.5 overflow-hidden text-dashboard-text-muted">
-          <TaskKindIcon kind={run.kind} />
+          <AutomationKindIcon kind={run.kind} />
           <StatusDot label={run.status} tone={runStatusTone(run.status)} />
           <span className="truncate text-xs text-dashboard-text-muted">
             {run.status}
@@ -290,7 +290,7 @@ function MetricCell(props: { label: string; value: string }) {
   );
 }
 
-function TaskKindIcon(props: { kind: AutomationRun["kind"] }) {
+function AutomationKindIcon(props: { kind: AutomationRun["kind"] }) {
   const Icon = props.kind === "scheduled" ? CalendarClock : Zap;
   const label =
     props.kind === "scheduled" ? "Scheduled automation" : "Event automation";
