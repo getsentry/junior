@@ -379,22 +379,10 @@ function usageTotal(usage: AgentTurnUsage | undefined): number | undefined {
     : undefined;
 }
 
-function toJudgeUsage(
+function normalizedTokenUsage(
   usage: AgentTurnUsage | undefined,
-  model: string,
 ): HarnessRun["usage"] {
-  const metadata = toJsonRecord({
-    ...(usage?.cachedInputTokens !== undefined
-      ? { cachedInputTokens: usage.cachedInputTokens }
-      : {}),
-    ...(usage?.cacheCreationTokens !== undefined
-      ? { cacheCreationTokens: usage.cacheCreationTokens }
-      : {}),
-    ...(usage?.cost?.total !== undefined ? { costUsd: usage.cost.total } : {}),
-  });
   return {
-    provider: GEN_AI_PROVIDER_NAME,
-    model,
     ...(usage?.inputTokens !== undefined
       ? { inputTokens: usage.inputTokens }
       : {}),
@@ -407,7 +395,20 @@ function toJudgeUsage(
     ...(usageTotal(usage) !== undefined
       ? { totalTokens: usageTotal(usage) }
       : {}),
-    ...(Object.keys(metadata).length > 0 ? { metadata } : {}),
+  };
+}
+
+function toJudgeUsage(
+  usage: AgentTurnUsage | undefined,
+  model: string,
+): HarnessRun["usage"] {
+  return {
+    provider: GEN_AI_PROVIDER_NAME,
+    model,
+    ...normalizedTokenUsage(usage),
+    ...(usage?.cost?.total !== undefined
+      ? { metadata: { costUsd: usage.cost.total } }
+      : {}),
   };
 }
 
@@ -434,18 +435,7 @@ function toHarnessUsage(result: EvalResult): HarnessRun["usage"] {
   return {
     provider: GEN_AI_PROVIDER_NAME,
     ...(result.modelIds.length === 1 ? { model: result.modelIds[0] } : {}),
-    ...(usage?.inputTokens !== undefined
-      ? { inputTokens: usage.inputTokens }
-      : {}),
-    ...(usage?.outputTokens !== undefined
-      ? { outputTokens: usage.outputTokens }
-      : {}),
-    ...(usage?.reasoningTokens !== undefined
-      ? { reasoningTokens: usage.reasoningTokens }
-      : {}),
-    ...(usageTotal(usage) !== undefined
-      ? { totalTokens: usageTotal(usage) }
-      : {}),
+    ...normalizedTokenUsage(usage),
     toolCalls: result.toolInvocations.length,
     ...(Object.keys(metadata).length > 0 ? { metadata } : {}),
   };
