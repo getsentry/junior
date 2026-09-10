@@ -13,7 +13,7 @@ import {
 } from "@/chat/configuration/defaults";
 import { getPlugins, setPlugins } from "@/chat/plugins/agent-hooks";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
-import { setDashboardConversationLinkOptions } from "@/chat/slack/dashboard-link";
+import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { JUNIOR_THREAD_STATE_TTL_MS } from "@/chat/state/ttl";
 import { getConversationWorkState } from "@/chat/task-execution/store";

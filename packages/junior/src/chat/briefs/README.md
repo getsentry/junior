@@ -67,4 +67,4 @@ A version 1 snapshot contains the conversation detail report, every older event 
 
 The adapter does not generate a Brief from redacted or expired transcript content. Replay through an earlier index only includes code changes and resources that existed at that event, with each code change state as of that time.
 
-This module does not own API privacy gates or search scope. Those boundaries must preserve these evidence and purge rules.
+Brief search returns only the latest version for each public root Conversation. A Slack search stays in the current public tenant. Other public Conversations use the all-public scope. Search includes public Conversations whose transcripts were purged. The detail API applies the same privacy gate to a Brief as it applies to annotations.

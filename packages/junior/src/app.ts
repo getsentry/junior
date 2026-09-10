@@ -42,7 +42,7 @@ import {
   setPlugins,
   validatePlugins,
 } from "@/chat/plugins/agent-hooks";
-import { setDashboardConversationLinkOptions } from "@/chat/slack/dashboard-link";
+import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
 import type { PluginCatalogConfig } from "@/chat/plugins/types";
 import {
   validatePluginEgressCredentialHooks,

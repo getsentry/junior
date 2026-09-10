@@ -50,7 +50,7 @@ function resolveDashboardBaseURL(
   return "http://localhost:3000";
 }
 
-/** Configure core dashboard links used in Slack footers. */
+/** Configure core dashboard links. */
 export function setDashboardConversationLinkOptions(
   options: DashboardConversationLinkOptions | undefined,
 ): DashboardConversationLinkOptions | undefined {
@@ -68,8 +68,7 @@ function resolveDashboardPath(segmentPath: string): string | undefined {
     dashboardConversationLinkOptions.basePath,
     "/",
   );
-  const path =
-    basePath === "/" ? segmentPath : `${basePath}${segmentPath}`;
+  const path = basePath === "/" ? segmentPath : `${basePath}${segmentPath}`;
   return `${baseURL}${path}`;
 }
 

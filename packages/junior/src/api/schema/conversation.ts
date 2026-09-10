@@ -3,6 +3,7 @@ import {
   conversationTurnFailureCodeSchema,
   conversationTurnFailureReasonSchema,
 } from "@/chat/conversations/history";
+import { conversationBriefSchema } from "@/chat/briefs/schema";
 import { usageCostSchema, usageSchema } from "@/usage-schema";
 import {
   conversationAnnotationInputSchema,
@@ -718,6 +719,14 @@ function validateConversationEvents(
 
 export const conversationDetailReportSchema = conversationSummaryReportSchema
   .extend({
+    brief: z
+      .object({
+        content: conversationBriefSchema,
+        updatedAt: z.string().datetime(),
+        version: z.number().int().positive(),
+      })
+      .strict()
+      .optional(),
     modelUsage: z.array(conversationModelUsageSchema).optional(),
     events: z.array(conversationReportEventSchema),
     eventHistory: conversationEventHistorySchema,

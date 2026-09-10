@@ -10,6 +10,8 @@ import {
 } from "@/chat/db";
 import { createPluginAnnotations } from "@/chat/plugins/annotations";
 import { readConversationDetail } from "@/api/conversations/detail";
+import { appendConversationBrief } from "@/chat/briefs/store";
+import { conversationBriefFixture } from "../../../fixtures/conversation-brief";
 
 describe("conversation detail API", () => {
   afterEach(async () => {
@@ -24,6 +26,17 @@ describe("conversation detail API", () => {
       nowMs: 1,
       source: "internal",
       title: "Refreshed conversation",
+      visibility: "public",
+    });
+    await appendConversationBrief(getDb(), {
+      conversationId,
+      turnId: "brief-turn",
+      throughSeq: 0,
+      content: conversationBriefFixture({
+        summary: "The public Brief is visible without transcript access.",
+      }),
+      searchText: "public Brief visible",
+      modelId: "test-model",
     });
 
     const app = createJuniorApi();
@@ -34,6 +47,12 @@ describe("conversation detail API", () => {
       await detailResponse.json(),
     );
     expect(detail.events).toEqual([]);
+    expect(detail.brief).toMatchObject({
+      content: {
+        summary: "The public Brief is visible without transcript access.",
+      },
+      version: 1,
+    });
 
     await getConversationEventStore().append(conversationId, [
       {
@@ -127,18 +146,32 @@ describe("conversation detail API", () => {
       status: "open",
       url: "https://github.com/getsentry/junior/pull/1081",
     });
+    await appendConversationBrief(getDb(), {
+      conversationId,
+      turnId: "private-brief-turn",
+      throughSeq: 0,
+      content: conversationBriefFixture({
+        summary: "The private Brief is participant-only.",
+      }),
+      searchText: "private Brief participant only",
+      modelId: "test-model",
+    });
 
-    await expect(readConversationDetail(conversationId)).resolves.toMatchObject(
-      {
-        annotations: [],
-        eventHistory: { status: "redacted" },
-      },
-    );
+    const hidden = await readConversationDetail(conversationId);
+    expect(hidden).toMatchObject({
+      annotations: [],
+      eventHistory: { status: "redacted" },
+    });
+    expect(hidden).not.toHaveProperty("brief");
     await expect(
       readConversationDetail(conversationId, {
         viewer: testViewer("participant@example.com"),
       }),
     ).resolves.toMatchObject({
+      brief: {
+        content: { summary: "The private Brief is participant-only." },
+        version: 1,
+      },
       annotations: [
         {
           key: "getsentry/junior#1081",
