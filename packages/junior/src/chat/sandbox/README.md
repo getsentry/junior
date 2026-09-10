@@ -58,7 +58,7 @@ traffic through verified host egress.
   slice records its phase in SQL. The next job can continue after a soft yield
   or a worker stop.
 - When `switchWorkspace` finds no ready snapshot, it returns
-  `status: "building"` and a temporary resource subscription for
+  `status: "building"` and a temporary watch for
   `workspace_snapshot.ready` and `workspace_snapshot.failed`. It does not keep
   the tool call open. The build job publishes those core `junior` events when it
   finishes. The next Turn should call `switchWorkspace` again with the same

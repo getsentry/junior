@@ -143,13 +143,17 @@ export const evalMcpAuthHandlers = [
               name: "create-watchable-pull-request",
               title: "Create Watchable Pull Request",
               description:
-                "Create an eval pull request and return its subscribable resource events.",
+                "Create an eval pull request and return its subscribable events.",
               inputSchema: {
                 type: "object",
                 properties: {
+                  repository: {
+                    type: "string",
+                    description: "GitHub repository in owner/name format.",
+                  },
                   title: { type: "string" },
                 },
-                required: ["title"],
+                required: ["repository", "title"],
                 additionalProperties: false,
               },
             },
@@ -229,12 +233,15 @@ export const evalMcpAuthHandlers = [
             ? (message.params.arguments as Record<string, unknown>)
             : undefined;
         if (toolName === "create-watchable-pull-request") {
-          if (typeof args?.title !== "string") {
+          if (
+            typeof args?.repository !== "string" ||
+            typeof args?.title !== "string"
+          ) {
             return jsonRpcResult(message?.id ?? null, {
               content: [
                 {
                   type: "text",
-                  text: 'Input validation error: Invalid arguments for tool create-watchable-pull-request:\n- "title": expected string, received undefined',
+                  text: 'Input validation error: Invalid arguments for tool create-watchable-pull-request:\n- "repository": expected string\n- "title": expected string',
                 },
               ],
               isError: true,
@@ -246,13 +253,13 @@ export const evalMcpAuthHandlers = [
                 type: "text",
                 text: JSON.stringify({
                   number: 208,
-                  url: "https://github.com/getsentry/junior/pull/208",
+                  url: `https://github.com/${args.repository}/pull/208`,
                   title: args.title,
                   subscribable: {
                     namespace: "github",
                     type: "pull_request",
-                    identifier: "getsentry/junior#208",
-                    label: "GitHub PR getsentry/junior#208",
+                    identifier: `${args.repository}#208`,
+                    label: `GitHub PR ${args.repository}#208`,
                     supportedEvents: [
                       "pull_request.checks.failed",
                       "pull_request.comment.created",

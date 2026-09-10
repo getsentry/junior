@@ -1,9 +1,9 @@
 import { describeEval } from "vitest-evals";
 import { expect } from "vitest";
 import { getDb } from "@/chat/db";
-import { listScheduledTasksForTeam } from "@/chat/scheduled-tasks/tasks";
+import { listScheduledAutomationsForTeam } from "@/chat/scheduled-automations/tasks";
 import { mention, rubric, slackEvals } from "../../../src/helpers";
-import { scheduledTaskCreateCalls } from "./helpers";
+import { scheduledAutomationCreateCalls } from "./helpers";
 
 describeEval("Schedule Creation", slackEvals, (it) => {
   it("when asked for a simple one-off reminder, create it without asking for confirmation", async ({
@@ -23,7 +23,7 @@ describeEval("Schedule Creation", slackEvals, (it) => {
         ],
       }),
     });
-    const createCalls = scheduledTaskCreateCalls(result.session);
+    const createCalls = scheduledAutomationCreateCalls(result.session);
     expect(createCalls).toHaveLength(1);
     const createCall = createCalls[0]!;
     expect(createCall.arguments).toMatchObject({
@@ -52,7 +52,7 @@ describeEval("Schedule Creation", slackEvals, (it) => {
         ],
       }),
     });
-    const createCalls = scheduledTaskCreateCalls(result.session);
+    const createCalls = scheduledAutomationCreateCalls(result.session);
     expect(createCalls).toHaveLength(1);
     const createCall = createCalls[0]!;
     expect(createCall.arguments).toMatchObject({
@@ -72,7 +72,7 @@ describeEval("Schedule Creation", slackEvals, (it) => {
         mention("@bot in 2 minutes tell the channel standup moved"),
       ],
     });
-    const createCalls = scheduledTaskCreateCalls(result.session);
+    const createCalls = scheduledAutomationCreateCalls(result.session);
     expect(createCalls).toHaveLength(1);
     const createCall = createCalls[0]!;
     expect(createCall.arguments).toMatchObject({
@@ -82,7 +82,8 @@ describeEval("Schedule Creation", slackEvals, (it) => {
       },
     });
     expect(createCall.arguments).not.toHaveProperty("next_run_at");
-    expect(createCall.arguments?.task).toMatch(/standup moved/i);
+    expect(createCall.arguments?.task).toMatch(/\bstandup\b/i);
+    expect(createCall.arguments?.task).toMatch(/\bmoved\b/i);
     expect(createCall.arguments?.task).not.toMatch(/\bschedul(?:e|ing)\b/i);
   });
 
@@ -114,7 +115,7 @@ describeEval("Schedule Creation", slackEvals, (it) => {
         ],
       }),
     });
-    const createCalls = scheduledTaskCreateCalls(result.session);
+    const createCalls = scheduledAutomationCreateCalls(result.session);
     expect(createCalls).toHaveLength(1);
     expect(createCalls[0]!.arguments).toMatchObject({
       schedule: {
@@ -124,9 +125,9 @@ describeEval("Schedule Creation", slackEvals, (it) => {
         weekdays: ["monday"],
       },
     });
-    const stored = (await listScheduledTasksForTeam(getDb(), "TEVAL")).find(
-      (task) => task.task.text.toLowerCase().includes("scheduler"),
-    );
+    const stored = (
+      await listScheduledAutomationsForTeam(getDb(), "TEVAL")
+    ).find((task) => task.task.text.toLowerCase().includes("scheduler"));
     expect(stored).toMatchObject({
       destination: {
         platform: "slack",

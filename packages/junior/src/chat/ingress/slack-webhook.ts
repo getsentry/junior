@@ -12,7 +12,7 @@ import type { ConversationStore } from "@/chat/conversations/store";
 import { getConversationEventStore, getConversationStore } from "@/chat/db";
 import { appendConversationMessages } from "@/chat/conversations/messages";
 import { stopConversationTurn } from "@/chat/conversations/stop";
-import { cancelSubscriptions } from "@/chat/resource-events/store";
+import { cancelSubscriptions } from "@/chat/events/store";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { appendAndEnqueueInboundMessage } from "@/chat/task-execution/store";
 import {

@@ -95,7 +95,7 @@ describe("agent dispatch conversation work", () => {
       "shared-runtime",
       undefined,
       undefined,
-      { label: "Scheduled task", detail: "Weekly" },
+      { label: "Scheduled automation", detail: "Weekly" },
     );
     const agentRunner = createModelAgentRunner(
       createModelStream([{ type: "text", text: "Scheduled digest" }]),
@@ -124,7 +124,7 @@ describe("agent dispatch conversation work", () => {
     expect(slackApiOutbox.messages()).toHaveLength(1);
     expect(slackApiOutbox.messages()[0]?.params).toMatchObject({
       channel: destination.channelId,
-      text: "Scheduled digest\n\nScheduled task · Weekly",
+      text: "Scheduled digest\n\nScheduled automation · Weekly",
     });
     await expect(getDispatchRecord(dispatch.id)).resolves.toMatchObject({
       resultMessageTs: expect.any(String),
@@ -143,11 +143,11 @@ describe("agent dispatch conversation work", () => {
         id: dispatch.id,
         plugin: "scheduler",
         replyAttribution: {
-          label: "Scheduled task",
+          label: "Scheduled automation",
           detail: "Weekly",
         },
       },
-      source: { kind: "scheduled_task" },
+      source: { kind: "scheduled_automation" },
       surface: "api",
       disabledFeatures: ["interactive-auth"],
     });
@@ -157,7 +157,7 @@ describe("agent dispatch conversation work", () => {
     const dispatch = await createDispatch(
       "outcome-thread-binding",
       undefined,
-      { kind: "scheduled_task" },
+      { kind: "scheduled_automation" },
       undefined,
       "Post the scheduled digest.",
       [

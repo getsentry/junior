@@ -8,7 +8,7 @@ prerequisites:
 related:
   - /concepts/conversations/
   - /concepts/security-and-authority/
-  - /concepts/tasks/
+  - /concepts/automations/
 ---
 
 Junior stores work before processing it. This lets a turn continue after a timeout, authorization prompt, or worker restart.

@@ -10,7 +10,7 @@ export type ConversationSource =
   | "internal"
   | "local"
   | "plugin"
-  | "resource_event"
+  | "event"
   | "scheduler"
   | "slack"
   | "web";

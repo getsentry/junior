@@ -8,7 +8,7 @@ import { createLocationRoutes } from "./api/locations/routes";
 import { createPeopleRoutes } from "./api/people/routes";
 import { createPersonalTokenRoutes } from "./api/personal-tokens/routes";
 import { createUserPageRoutes } from "./api/user-pages/routes";
-import { createTaskRoutes } from "./api/tasks/routes";
+import { createAutomationRoutes } from "./api/automations/routes";
 import { createWorkspaceRoutes } from "./api/workspaces/routes";
 import type { JuniorApiEnv, JuniorApiVariables } from "./api/route";
 import { apiErrorSchema } from "./api/schema/common";
@@ -75,7 +75,7 @@ export function createJuniorApi(): Hono<JuniorApiEnv> {
   app.route("/api/people", createPeopleRoutes());
   app.route("/api/locations", createLocationRoutes());
   app.route("/api/user-pages", createUserPageRoutes());
-  app.route("/api/tasks", createTaskRoutes());
+  app.route("/api/automations", createAutomationRoutes());
   app.route("/api/workspaces", createWorkspaceRoutes());
   app.notFound(() =>
     jsonResponse(

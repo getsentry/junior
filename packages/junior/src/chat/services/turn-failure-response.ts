@@ -54,7 +54,9 @@ export function getTurnFailureReason(
     return undefined;
   }
   if (reply.diagnostics.outcome === "provider_error") {
-    return findProviderError(reply.diagnostics.providerError)?.kind ?? "unknown";
+    return (
+      findProviderError(reply.diagnostics.providerError)?.kind ?? "unknown"
+    );
   }
   if (reply.diagnostics.toolErrorCount > 0) {
     return "tool_errors";

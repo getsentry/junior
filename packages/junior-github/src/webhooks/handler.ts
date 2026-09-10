@@ -5,8 +5,8 @@ import type {
   PluginConversationAnnotations,
   PluginLogger,
   PluginRoute,
-  ResourceEventInput,
-  ResourceEventPublisher,
+  EventInput,
+  EventPublisher,
 } from "@sentry/junior-plugin-api";
 import type { GitHubDb } from "../db/database.js";
 import type { GitHubPullRequestCommitComposition } from "../db/schema.js";
@@ -34,7 +34,7 @@ import {
   needsCheckSuitePullRequestFacts,
   parseCheckSuitePublishTargets,
 } from "./check-suite.js";
-import { normalizeGitHubResourceEvents } from "./resource-events.js";
+import { normalizeGitHubEvents } from "./events.js";
 
 /** Verify GitHub's SHA-256 signature against the untouched request body. */
 function verifyGitHubSignature(
@@ -94,7 +94,7 @@ interface FeedbackTarget {
 
 /** Return comment-level pull request feedback that the webhook can mark. */
 function pullRequestFeedbackTarget(
-  events: ResourceEventInput[],
+  events: EventInput[],
 ): FeedbackTarget | undefined {
   const event = events.find(
     (candidate) =>
@@ -156,7 +156,7 @@ export function createGitHubWebhookRoute(args: {
   log?: Pick<PluginLogger, "error">;
   markFeedbackReviewing(input: FeedbackTarget): Promise<void>;
   privateKeyEnv: string;
-  resourceEvents: ResourceEventPublisher;
+  events: EventPublisher;
   webhookSecret(): string | undefined;
 }): PluginRoute {
   return {
@@ -307,8 +307,8 @@ export function createGitHubWebhookRoute(args: {
           ? parseCheckSuitePublishTargets(body)
           : undefined;
       const checkSuiteMatchKeys =
-        checkSuitePublishTargets && args.resourceEvents.neededMatchKeys
-          ? await args.resourceEvents.neededMatchKeys(checkSuitePublishTargets)
+        checkSuitePublishTargets && args.events.neededMatchKeys
+          ? await args.events.neededMatchKeys(checkSuitePublishTargets)
           : [];
       const checkSuiteFacts =
         eventName === "check_suite"
@@ -322,19 +322,19 @@ export function createGitHubWebhookRoute(args: {
               privateKeyEnv: args.privateKeyEnv,
             })
           : undefined;
-      const resourceEvents = normalizeGitHubResourceEvents({
+      const events = normalizeGitHubEvents({
         body,
         ...(checkSuiteFacts ? { checkSuiteFacts } : undefined),
         deliveryId,
         eventName,
       });
-      const feedbackTarget = pullRequestFeedbackTarget(resourceEvents);
-      const hasMatch = args.resourceEvents.hasMatch;
+      const feedbackTarget = pullRequestFeedbackTarget(events);
+      const hasMatch = args.events.hasMatch;
       const feedbackHasMatch =
         feedbackTarget && hasMatch
-          ? (
-              await Promise.all(resourceEvents.map((event) => hasMatch(event)))
-            ).some(Boolean)
+          ? (await Promise.all(events.map((event) => hasMatch(event)))).some(
+              Boolean,
+            )
           : false;
       if (feedbackTarget && feedbackHasMatch) {
         try {
@@ -348,8 +348,8 @@ export function createGitHubWebhookRoute(args: {
           });
         }
       }
-      for (const event of resourceEvents) {
-        await args.resourceEvents.publish(event);
+      for (const event of events) {
+        await args.events.publish(event);
       }
       if (
         !pullRequestOutcome &&
@@ -357,7 +357,7 @@ export function createGitHubWebhookRoute(args: {
         !recordedIssueConversations &&
         !recordedPullRequestConversations &&
         !recordedPullRequestLinkedIssues &&
-        resourceEvents.length === 0
+        events.length === 0
       ) {
         return new Response("Ignored", { status: 202 });
       }

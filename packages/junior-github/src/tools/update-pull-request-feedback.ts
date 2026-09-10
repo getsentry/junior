@@ -130,7 +130,7 @@ export function createGitHubUpdatePullRequestFeedbackTool(
       readOnlyHint: false,
     },
     description:
-      "Set Junior's status reaction on GitHub pull request feedback: reviewing (eyes), addressed (+1), or declined (-1). Use the commentId and commentKind from the resource event. Replaces only Junior's prior status reaction on that comment.",
+      "Set Junior's status reaction on GitHub pull request feedback: reviewing (eyes), addressed (+1), or declined (-1). Use the commentId and commentKind from the event. Replaces only Junior's prior status reaction on that comment.",
     exposure: "direct",
     inputSchema,
     outputSchema,

@@ -748,7 +748,7 @@ describe("createApp plugin config", () => {
     ).toThrow("defineJuniorPlugin() uses manifest.name for identity.");
   });
 
-  it("rejects invalid plugin resource event registrations", () => {
+  it("rejects invalid plugin event registrations", () => {
     expect(() =>
       defineJuniorPlugin({
         manifest: {
@@ -756,11 +756,11 @@ describe("createApp plugin config", () => {
           displayName: "Event Demo",
           description: "Invalid event registration",
         },
-        resourceEvents: {
+        events: {
           resourceTypes: [{ type: "issue", supportedEvents: ["closed"] }],
         },
       }),
-    ).toThrow('Junior plugin "event-demo" resourceEvents is invalid.');
+    ).toThrow('Junior plugin "event-demo" events is invalid.');
 
     expect(() =>
       defineJuniorPlugin({
@@ -769,7 +769,7 @@ describe("createApp plugin config", () => {
           displayName: "Event Demo",
           description: "Duplicate event registration",
         },
-        resourceEvents: {
+        events: {
           resourceTypes: [
             {
               type: "issue",
@@ -778,7 +778,7 @@ describe("createApp plugin config", () => {
           ],
         },
       }),
-    ).toThrow('Junior plugin "event-demo" resourceEvents is invalid.');
+    ).toThrow('Junior plugin "event-demo" events is invalid.');
   });
 
   it("forwards virtual plugin API route apps into dashboard setup", async () => {

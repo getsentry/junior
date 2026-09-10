@@ -23,10 +23,10 @@ import {
   personalSpendReportSchema,
   personParamsSchema,
   pluginOperationalReportFeedSchema,
-  taskExecutionListSchema,
-  taskListSchema,
-  taskParamsSchema,
-  taskRunListSchema,
+  automationExecutionListSchema,
+  automationListSchema,
+  automationParamsSchema,
+  automationRunListSchema,
 } from "@sentry/junior/api/schema";
 import { mockChartPng } from "./chart-png";
 import {
@@ -44,8 +44,8 @@ import {
   readMockPeopleProfile,
   readMockPluginReports,
   readMockPersonalSpend,
-  readMockTaskExecutions,
-  readMockTaskList,
+  readMockAutomationExecutions,
+  readMockAutomationList,
   setMockConversationArchived,
 } from "./fixtures";
 
@@ -251,44 +251,50 @@ export function createMockReportingApi(): Hono<{
     }
     return errorResponse("Attachment not found.", 404);
   });
-  app.get("/tasks", (c) => {
-    const report = readMockTaskList();
+  app.get("/automations", (c) => {
+    const report = readMockAutomationList();
     const query = c.req.query("q")?.trim().toLowerCase();
-    return jsonResponse(taskListSchema, {
+    return jsonResponse(automationListSchema, {
       ...report,
-      tasks: query
-        ? report.tasks.filter((task) =>
-            task.title.toLowerCase().includes(query),
+      automations: query
+        ? report.automations.filter((automation) =>
+            automation.title.toLowerCase().includes(query),
           )
-        : report.tasks,
+        : report.automations,
     });
   });
-  app.get("/tasks/runs", () => {
-    const tasks = readMockTaskList().tasks;
-    const runs = tasks.flatMap((task) => {
-      const report = readMockTaskExecutions(task.kind, task.id);
+  app.get("/automations/runs", () => {
+    const automations = readMockAutomationList().automations;
+    const runs = automations.flatMap((automation) => {
+      const report = readMockAutomationExecutions(
+        automation.kind,
+        automation.id,
+      );
       return (report?.executions ?? []).map((run) => ({
         ...run,
-        kind: task.kind,
-        taskId: task.id,
-        taskTitle: task.title,
+        kind: automation.kind,
+        automationId: automation.id,
+        automationTitle: automation.title,
       }));
     });
-    return jsonResponse(taskRunListSchema, {
+    return jsonResponse(automationRunListSchema, {
       runs: runs.sort((left, right) =>
         right.executedAt.localeCompare(left.executedAt),
       ),
       truncated: false,
     });
   });
-  app.get("/tasks/:kind/:id/executions", (c) => {
-    const params = taskParamsSchema.safeParse(c.req.param());
+  app.get("/automations/:kind/:id/executions", (c) => {
+    const params = automationParamsSchema.safeParse(c.req.param());
     if (!params.success) {
       return errorResponse("Invalid route parameters.", 400);
     }
-    const report = readMockTaskExecutions(params.data.kind, params.data.id);
+    const report = readMockAutomationExecutions(
+      params.data.kind,
+      params.data.id,
+    );
     return report
-      ? jsonResponse(taskExecutionListSchema, report)
+      ? jsonResponse(automationExecutionListSchema, report)
       : errorResponse("Task not found.", 404);
   });
 

@@ -12,7 +12,8 @@ const DASHBOARD_CLIENT_VERSION = Date.now().toString(36);
 export const DASHBOARD_CLIENT_PATH = "/_junior/dashboard/client.js";
 export const DASHBOARD_AVATAR_HEADER_PATH = "/_junior/dashboard/avatar.png";
 export const DASHBOARD_INSTALL_ICON_PATH = "/_junior/dashboard/icon-512.png";
-export const DASHBOARD_MANIFEST_PATH = "/_junior/dashboard/manifest.webmanifest";
+export const DASHBOARD_MANIFEST_PATH =
+  "/_junior/dashboard/manifest.webmanifest";
 const DASHBOARD_THEME_COLOR = "#000000";
 const DASHBOARD_BACKGROUND_COLOR = "#000000";
 
@@ -121,6 +122,10 @@ export function dashboardPagePaths(
     {
       nested: true,
       path: basePath === "/" ? "/system" : `${basePath}/system`,
+    },
+    {
+      nested: true,
+      path: basePath === "/" ? "/automations" : `${basePath}/automations`,
     },
     {
       nested: true,

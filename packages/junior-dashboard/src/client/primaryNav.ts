@@ -4,7 +4,7 @@ import type { DashboardHeaderNavItem } from "./components/layout/DashboardHeader
 import { pluginUserPagePath } from "./pages/user/PluginUserPage";
 
 const AUTH_PRIMARY_NAV_PREFIXES = [
-  "/tasks",
+  "/automations",
   "/memories",
   "/settings",
   "/plugins/",
@@ -12,7 +12,9 @@ const AUTH_PRIMARY_NAV_PREFIXES = [
 
 /** True when the path is only available to a signed-in viewer. */
 export function isAuthPrimaryNavPath(pathname: string): boolean {
-  return AUTH_PRIMARY_NAV_PREFIXES.some((prefix) => pathname.startsWith(prefix));
+  return AUTH_PRIMARY_NAV_PREFIXES.some((prefix) =>
+    pathname.startsWith(prefix),
+  );
 }
 
 /** Build the signed-in primary nav, holding auth slots while shell data loads. */
@@ -41,7 +43,9 @@ export function buildPrimaryNavItems(input: {
 
   return [
     { key: "code", label: "Code", to: "/code" },
-    ...(showTasksNav ? [{ key: "tasks", label: "Tasks", to: "/tasks" }] : []),
+    ...(showTasksNav
+      ? [{ key: "automations", label: "Automations", to: "/automations" }]
+      : []),
     ...(showMemoriesNav
       ? [
           {

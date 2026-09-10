@@ -163,7 +163,7 @@ describe("buildSlackReplyBlocks", () => {
 });
 
 describe("getDashboardTaskLink", () => {
-  it("builds a task detail URL when dashboard links are configured", async () => {
+  it("builds an automation detail URL when dashboard links are configured", async () => {
     const { getDashboardTaskLink } = await import("@/chat/dashboard-link");
     setDashboardConversationLinkOptions({
       basePath: "/ops",
@@ -171,7 +171,7 @@ describe("getDashboardTaskLink", () => {
     });
 
     expect(getDashboardTaskLink("sched_abc")).toBe(
-      "https://junior.example.com/ops/tasks/sched_abc",
+      "https://junior.example.com/ops/automations/sched_abc",
     );
   });
 

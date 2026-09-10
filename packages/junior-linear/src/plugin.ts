@@ -7,7 +7,7 @@ import { z } from "zod";
 import {
   LINEAR_ISSUE_EVENTS,
   LINEAR_ISSUE_MATCH_FIELDS,
-} from "./resource-events/issue.js";
+} from "./events/issue.js";
 import { createLinearWebhookRoute } from "./webhooks/handler.js";
 import { linearWebhookSecret } from "./webhooks/secret.js";
 
@@ -53,7 +53,7 @@ async function annotateCreatedIssue(
 export function linearPlugin(): PluginRegistration {
   return defineJuniorPlugin({
     packageName: "@sentry/junior-linear",
-    resourceEvents: {
+    events: {
       resourceTypes: [
         {
           type: "issue",
@@ -90,7 +90,7 @@ export function linearPlugin(): PluginRegistration {
       routes(ctx) {
         return [
           createLinearWebhookRoute({
-            resourceEvents: ctx.resourceEvents,
+            events: ctx.events,
             webhookSecret: linearWebhookSecret,
           }),
         ];

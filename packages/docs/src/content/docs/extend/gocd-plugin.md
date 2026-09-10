@@ -87,7 +87,7 @@ Apps behind an access proxy can pass credential hooks to `gocdPlugin({ hooks })`
 
 Junior can find visible pipelines and inspect pipeline history, one pipeline run, pipeline status, one stage run, or job history. All tools are read-only.
 
-This plugin does not support resource subscriptions.
+This plugin does not support watches.
 
 ## Verify
 

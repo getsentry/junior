@@ -1010,7 +1010,7 @@ export function steer(
   };
 }
 
-interface ResourceEventOptions {
+interface EventOptions {
   eventKey?: string;
   eventType: string;
   intent: string;
@@ -1038,7 +1038,7 @@ interface GitHubWebhookOptions {
   thread?: ThreadOverrides;
 }
 
-/** Builds a GitHub webhook delivery backed by a real resource subscription. */
+/** Builds a GitHub webhook delivery backed by a real watch. */
 export function githubWebhook(opts: GitHubWebhookOptions) {
   const seq = nextId();
   return {
@@ -1062,12 +1062,12 @@ export function githubWebhook(opts: GitHubWebhookOptions) {
   };
 }
 
-/** Builds a Resource event for the production mailbox path. */
-export function resourceEvent(opts: ResourceEventOptions) {
+/** Builds an Event for the production mailbox path. */
+export function event(opts: EventOptions) {
   const seq = nextId();
-  const eventKey = opts.eventKey ?? `eval-resource-event-${seq}`;
+  const eventKey = opts.eventKey ?? `eval-event-${seq}`;
   return {
-    type: "resource_event" as const,
+    type: "event" as const,
     thread: {
       id: `thread-${seq}`,
       channel_id: `C${seq}`,
@@ -1087,8 +1087,8 @@ export function resourceEvent(opts: ResourceEventOptions) {
   };
 }
 
-/** Builds an event for a scheduled task becoming due and dispatching output. */
-export function scheduledTaskDue(
+/** Builds an event for a scheduled automation becoming due and dispatching output. */
+export function scheduledAutomationDue(
   taskText: string,
   opts?: {
     credential_mode?: "creator" | "system";
@@ -1102,7 +1102,7 @@ export function scheduledTaskDue(
 ) {
   const seq = nextId();
   return {
-    type: "scheduled_task_due" as const,
+    type: "scheduled_automation_due" as const,
     thread: {
       id: `thread-${seq}`,
       channel_id: `C${seq}`,
@@ -1119,8 +1119,8 @@ export function scheduledTaskDue(
   };
 }
 
-/** Builds an event for a persisted event task matching a resource event. */
-export function eventTaskMatched(
+/** Builds an event for a persisted event automation matching a event. */
+export function eventAutomationMatched(
   taskText: string,
   opts: {
     eventKey?: string;
@@ -1136,14 +1136,14 @@ export function eventTaskMatched(
 ) {
   const seq = nextId();
   return {
-    type: "event_task_matched" as const,
+    type: "event_automation_matched" as const,
     thread: {
       id: `thread-${seq}`,
       channel_id: `C${seq}`,
       thread_ts: `17000000.${seq}`,
       ...opts.thread,
     },
-    event_key: opts.eventKey ?? `eval-event-task-${seq}`,
+    event_key: opts.eventKey ?? `eval-event-automation-${seq}`,
     event_type: opts.eventType,
     label: opts.label,
     namespace: opts.namespace ?? "github",

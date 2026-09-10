@@ -45,13 +45,13 @@ import {
 import { WorkspaceFormPage } from "./pages/system/WorkspaceFormPage";
 import { WorkspacesPage } from "./pages/system/WorkspacesPage";
 import { MemoryRouteLoading } from "./pages/memory/MemoryPageLayout";
-import { TaskExecutionsPage } from "./pages/tasks/TaskExecutionsPage";
-import { TaskRunsPage } from "./pages/tasks/TaskRunsPage";
-import { TasksPage } from "./pages/tasks/TasksPage";
+import { AutomationExecutionsPage } from "./pages/automations/AutomationExecutionsPage";
+import { AutomationRunsPage } from "./pages/automations/AutomationRunsPage";
+import { AutomationsPage } from "./pages/automations/AutomationsPage";
 import {
-  TasksPageLayout,
-  TasksRouteLoading,
-} from "./pages/tasks/TasksPageLayout";
+  AutomationsPageLayout,
+  AutomationsRouteLoading,
+} from "./pages/automations/AutomationsPageLayout";
 import {
   MemoryPermalinkRoute,
   PluginUserPageRoute,
@@ -201,110 +201,112 @@ export function DashboardShell() {
           }
         />
         <Routes>
+        <Route element={<LegacyAutomationsRedirect />} path="/tasks" />
+        <Route element={<LegacyAutomationsRedirect />} path="/tasks/*" />
         <Route
           element={
             loading ? (
-              <TasksPageLayout>
-                <TasksRouteLoading
-                  description="Terminal runs for one scheduled or event task."
-                  label="Loading task executions"
-                  title="Task executions"
+              <AutomationsPageLayout>
+                <AutomationsRouteLoading
+                  description="Terminal runs for one scheduled or event automation."
+                  label="Loading automation executions"
+                  title="Automation executions"
                   variant="list"
                 />
-              </TasksPageLayout>
+              </AutomationsPageLayout>
             ) : loggedIn ? (
-              <TasksPageLayout>
-                <TaskExecutionsPage enabled={loggedIn} />
-              </TasksPageLayout>
+              <AutomationsPageLayout>
+                <AutomationExecutionsPage enabled={loggedIn} />
+              </AutomationsPageLayout>
             ) : (
               <Navigate replace to="/" />
             )
           }
-          path="/tasks/:kind/:taskId/executions"
+          path="/automations/:kind/:automationId/executions"
         />
         <Route
           element={
             loading ? (
-              <TasksPageLayout>
-                <TasksRouteLoading
-                  description="Newest runs across your tasks and tasks in public destinations."
-                  label="Loading task runs"
+              <AutomationsPageLayout>
+                <AutomationsRouteLoading
+                  description="Newest runs across your automations and automations in public destinations."
+                  label="Loading automation runs"
                   title="Runs"
                   variant="list"
                 />
-              </TasksPageLayout>
+              </AutomationsPageLayout>
             ) : loggedIn ? (
-              <TasksPageLayout>
-                <TaskRunsPage enabled={loggedIn} />
-              </TasksPageLayout>
+              <AutomationsPageLayout>
+                <AutomationRunsPage enabled={loggedIn} />
+              </AutomationsPageLayout>
             ) : (
               <Navigate replace to="/" />
             )
           }
-          path="/tasks/runs"
+          path="/automations/runs"
         />
         <Route
           element={
             loading ? (
-              <TasksPageLayout>
-                <TasksRouteLoading
-                  description="Find and manage tasks across your linked workspaces."
-                  label="Loading tasks"
-                  title="All tasks"
+              <AutomationsPageLayout>
+                <AutomationsRouteLoading
+                  description="Find and manage automations across your linked workspaces."
+                  label="Loading automations"
+                  title="All automations"
                   variant="list"
                 />
-              </TasksPageLayout>
+              </AutomationsPageLayout>
             ) : loggedIn ? (
-              <TasksPageLayout>
-                <TasksPage enabled={loggedIn} view="list" />
-              </TasksPageLayout>
+              <AutomationsPageLayout>
+                <AutomationsPage enabled={loggedIn} view="list" />
+              </AutomationsPageLayout>
             ) : (
               <Navigate replace to="/" />
             )
           }
-          path="/tasks/list"
+          path="/automations/list"
         />
         <Route
           element={
             loading ? (
-              <TasksPageLayout>
-                <TasksRouteLoading
-                  description="Find and manage tasks across your linked workspaces."
-                  label="Loading tasks"
-                  title="All tasks"
+              <AutomationsPageLayout>
+                <AutomationsRouteLoading
+                  description="Find and manage automations across your linked workspaces."
+                  label="Loading automations"
+                  title="All automations"
                   variant="list"
                 />
-              </TasksPageLayout>
+              </AutomationsPageLayout>
             ) : loggedIn ? (
-              <TasksPageLayout>
-                <TasksPage enabled={loggedIn} view="list" />
-              </TasksPageLayout>
+              <AutomationsPageLayout>
+                <AutomationsPage enabled={loggedIn} view="list" />
+              </AutomationsPageLayout>
             ) : (
               <Navigate replace to="/" />
             )
           }
-          path="/tasks/:taskId"
+          path="/automations/:automationId"
         />
         <Route
           element={
             loading ? (
-              <TasksPageLayout>
-                <TasksRouteLoading
+              <AutomationsPageLayout>
+                <AutomationsRouteLoading
                   description="Scheduled and event-driven work created by users."
-                  label="Loading tasks"
-                  title="Tasks"
+                  label="Loading automations"
+                  title="Automations"
                   variant="stats"
                 />
-              </TasksPageLayout>
+              </AutomationsPageLayout>
             ) : loggedIn ? (
-              <TasksPageLayout>
-                <TasksPage enabled={loggedIn} view="overview" />
-              </TasksPageLayout>
+              <AutomationsPageLayout>
+                <AutomationsPage enabled={loggedIn} view="overview" />
+              </AutomationsPageLayout>
             ) : (
               <Navigate replace to="/" />
             )
           }
-          path="/tasks"
+          path="/automations"
         />
         <Route
           element={<LegacySystemRedirect section="locations" />}
@@ -571,6 +573,17 @@ function conversationIdFromPath(pathname: string): string | undefined {
   } catch {
     return match[1];
   }
+}
+
+function LegacyAutomationsRedirect() {
+  const location = useLocation();
+  const suffix = location.pathname.slice("/tasks".length);
+  return (
+    <Navigate
+      replace
+      to={`/automations${suffix}${location.search}${location.hash}`}
+    />
+  );
 }
 
 function LegacySystemRedirect(props: { section: "locations" | "people" }) {

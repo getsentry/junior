@@ -16,7 +16,7 @@ import {
   type LocalToolResult,
 } from "@/chat/local/runner";
 import { setPlugins } from "@/chat/plugins/agent-hooks";
-import { listResourceEventSubscriptions } from "@/chat/resource-events/store";
+import { listWatches } from "@/chat/events/store";
 import { juniorWorkspaceRepos, juniorWorkspaces } from "@/db/schema";
 import { createModelAgentRunner } from "../fixtures/agent-runner";
 import { createModelStream } from "../fixtures/model-stream";
@@ -433,9 +433,7 @@ describe("Workspace tools", () => {
         workspace: expect.objectContaining({ id: workspace.id }),
         sendAgain: true,
       });
-      await expect(
-        listResourceEventSubscriptions({ conversationId }),
-      ).resolves.toEqual([]);
+      await expect(listWatches({ conversationId })).resolves.toEqual([]);
     } finally {
       ensureSnapshot.mockRestore();
     }
@@ -552,7 +550,7 @@ describe("Workspace tools", () => {
     let subscribedBeforeSend = false;
     sendWorkspaceSnapshotJob.mockImplementationOnce(async () => {
       subscribedBeforeSend =
-        (await listResourceEventSubscriptions({ conversationId })).length === 1;
+        (await listWatches({ conversationId })).length === 1;
     });
 
     const tools = createWorkspaceTools(context);
@@ -563,10 +561,7 @@ describe("Workspace tools", () => {
       status: "building",
       subscription: {
         id: expect.any(String),
-        events: [
-          "workspace_snapshot.ready",
-          "workspace_snapshot.failed",
-        ],
+        events: ["workspace_snapshot.ready", "workspace_snapshot.failed"],
       },
     });
     expect(switchWorkspace).not.toHaveBeenCalled();
@@ -575,7 +570,7 @@ describe("Workspace tools", () => {
       workspaceId: workspace.id,
       profileHash: expect.any(String),
     });
-    const subscriptions = await listResourceEventSubscriptions({
+    const subscriptions = await listWatches({
       conversationId,
     });
     expect(subscriptions).toHaveLength(1);

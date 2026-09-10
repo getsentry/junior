@@ -59,7 +59,7 @@ export async function createAgentDispatchTestRecord(
         idempotencyKey,
         input,
         ...(replyAttribution ? { replyAttribution } : undefined),
-        source: source ?? { kind: "scheduled_task" },
+        source: source ?? { kind: "scheduled_automation" },
         ...(outcomes ? { outcomes } : undefined),
       },
       plugin: "scheduler",

@@ -20,7 +20,9 @@ function medianMergeTime(value: number | undefined): string {
 }
 
 function costUsd(value: number | undefined): string {
-  return formatCostSummary(value === undefined ? undefined : { total: value }) || "—";
+  return (
+    formatCostSummary(value === undefined ? undefined : { total: value }) || "—"
+  );
 }
 
 function hasCodeActivity(report: CodePersonReport): boolean {
@@ -28,9 +30,7 @@ function hasCodeActivity(report: CodePersonReport): boolean {
   return (
     summary.created + summary.merged + summary.closed > 0 ||
     (summary.costUsd ?? 0) > 0 ||
-    report.activityDays.some(
-      (day) => day.created + day.merged + day.closed > 0,
-    )
+    report.activityDays.some((day) => day.created + day.merged + day.closed > 0)
   );
 }
 

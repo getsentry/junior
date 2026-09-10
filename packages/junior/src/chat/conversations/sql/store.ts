@@ -119,7 +119,7 @@ function sourceFromValue(value: unknown): ConversationSource | undefined {
     value === "internal" ||
     value === "local" ||
     value === "plugin" ||
-    value === "resource_event" ||
+    value === "event" ||
     value === "scheduler" ||
     value === "slack" ||
     value === "web"

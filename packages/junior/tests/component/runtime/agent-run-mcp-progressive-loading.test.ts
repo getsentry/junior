@@ -1110,7 +1110,7 @@ describe("executeAgentRun progressive MCP loading", () => {
 
     await executeAgentRun(
       makeAgentRun(
-        "run the scheduled task",
+        "run the scheduled automation",
         {
           conversationId: "conversation-delegated-provider",
           threadTs: "1712345.0092",
@@ -1123,12 +1123,12 @@ describe("executeAgentRun progressive MCP loading", () => {
             subject: {
               type: "user",
               userId: "U123",
-              allowedWhen: "scheduled-task",
-              taskId: "scheduled-task-1",
+              allowedWhen: "scheduled-automation",
+              taskId: "scheduled-automation-1",
               binding: {
-                type: "scheduled-task",
+                type: "scheduled-automation",
                 plugin: "scheduler",
-                taskId: "scheduled-task-1",
+                taskId: "scheduled-automation-1",
                 signature: "v1=test",
               },
             },

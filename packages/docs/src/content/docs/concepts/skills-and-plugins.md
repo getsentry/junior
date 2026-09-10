@@ -8,19 +8,19 @@ prerequisites:
 related:
   - /extend/
   - /concepts/security-and-authority/
-  - /concepts/resource-subscriptions/
+  - /concepts/watches/
 ---
 
 Junior combines instructions with configured capabilities.
 
 ## Components
 
-| Component | Purpose |
-| --------- | ------- |
-| Skill | Instructions for a type of work |
-| Tool | An action Junior can take |
-| Plugin | An integration enabled by the app operator |
-| Sandbox | Isolated command execution |
+| Component | Purpose                                    |
+| --------- | ------------------------------------------ |
+| Skill     | Instructions for a type of work            |
+| Tool      | An action Junior can take                  |
+| Plugin    | An integration enabled by the app operator |
+| Sandbox   | Isolated command execution                 |
 
 ## Skills
 
@@ -40,7 +40,7 @@ Junior loads plugins only from explicit app configuration. A plugin can register
 - provider credentials and domains
 - MCP servers
 - runtime dependencies
-- routes and resource events
+- routes and events
 
 Plugins run as trusted application code. The host still owns credential handling, validation, action review, and durable execution.
 

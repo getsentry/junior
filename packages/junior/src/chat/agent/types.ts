@@ -359,9 +359,9 @@ export function assertRunConsistency(
       }
       break;
     }
-    case "resource_event":
-    case "scheduled_task":
-    case "event_task":
+    case "event":
+    case "scheduled_automation":
+    case "event_automation":
     case "plugin_dispatch":
     case "agent_invocation":
       // These Sources do not identify the Actor's platform.

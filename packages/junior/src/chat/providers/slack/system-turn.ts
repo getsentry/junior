@@ -10,7 +10,7 @@ import { sendSlackReply } from "@/chat/slack/reply";
  * Deliver system Turn output to Slack without a webhook Message.
  *
  * TODO(dcramer): Replace this Location-taking function with Delivery bound to one
- * Location after Resource event work supplies Delivery before the Run.
+ * Location after Event work supplies Delivery before the Run.
  */
 export function createSlackSystemTurnDelivery(args: {
   getSlackAdapter: () => SlackAdapter;

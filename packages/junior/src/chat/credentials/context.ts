@@ -18,18 +18,18 @@ const slackDirectCredentialSubjectBindingSchema = z
   })
   .strict();
 
-const scheduledTaskCredentialSubjectBindingSchema = z
+const scheduledAutomationCredentialSubjectBindingSchema = z
   .object({
-    type: z.literal("scheduled-task"),
+    type: z.literal("scheduled-automation"),
     plugin: z.string().min(1),
     taskId: exactNonBlankStringSchema,
     signature: z.string().min(1),
   })
   .strict();
 
-const eventTaskCredentialSubjectBindingSchema = z
+const eventAutomationCredentialSubjectBindingSchema = z
   .object({
-    type: z.literal("event-task"),
+    type: z.literal("event-automation"),
     plugin: z.string().min(1),
     taskId: exactNonBlankStringSchema,
     signature: z.string().min(1),
@@ -38,8 +38,8 @@ const eventTaskCredentialSubjectBindingSchema = z
 
 const credentialSubjectBindingSchema = z.discriminatedUnion("type", [
   slackDirectCredentialSubjectBindingSchema,
-  scheduledTaskCredentialSubjectBindingSchema,
-  eventTaskCredentialSubjectBindingSchema,
+  scheduledAutomationCredentialSubjectBindingSchema,
+  eventAutomationCredentialSubjectBindingSchema,
 ]);
 
 const credentialUserActorSchema = z
@@ -69,26 +69,26 @@ export const credentialSubjectSchema = z.discriminatedUnion("allowedWhen", [
     .object({
       type: z.literal("user"),
       userId: exactActorIdSchema,
-      allowedWhen: z.literal("scheduled-task"),
+      allowedWhen: z.literal("scheduled-automation"),
       taskId: exactNonBlankStringSchema,
-      binding: scheduledTaskCredentialSubjectBindingSchema,
+      binding: scheduledAutomationCredentialSubjectBindingSchema,
     })
     .strict()
     .refine((subject) => subject.binding.taskId === subject.taskId, {
-      message: "Scheduled task credential subject requires task binding",
+      message: "Scheduled automation credential subject requires task binding",
       path: ["binding"],
     }),
   z
     .object({
       type: z.literal("user"),
       userId: exactActorIdSchema,
-      allowedWhen: z.literal("event-task"),
+      allowedWhen: z.literal("event-automation"),
       taskId: exactNonBlankStringSchema,
-      binding: eventTaskCredentialSubjectBindingSchema,
+      binding: eventAutomationCredentialSubjectBindingSchema,
     })
     .strict()
     .refine((subject) => subject.binding.taskId === subject.taskId, {
-      message: "Event task credential subject requires task binding",
+      message: "Event automation credential subject requires task binding",
       path: ["binding"],
     }),
 ]);
@@ -125,7 +125,7 @@ export type CredentialContext = z.output<typeof credentialContextSchema>;
  * - system actor → `{ actor: systemActor, subject? }`
  *
  * They only diverge when a system run carries an explicit delegated `subject`
- * (scheduled/event-task creator credentials). Callers should set `actor` first,
+ * (scheduled/event-automation creator credentials). Callers should set `actor` first,
  * then derive this — do not hand-build parallel shapes.
  */
 export function credentialContextForActor(

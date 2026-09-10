@@ -137,31 +137,31 @@ export type {
   WorkspaceReport,
 } from "./schema/workspace";
 export {
-  eventTaskSummarySchema,
-  scheduledTaskSummarySchema,
-  taskExecutionListSchema,
-  taskExecutionSchema,
-  taskExecutionStatusDaySchema,
-  taskExecutionStatusSchema,
-  taskListQuerySchema,
-  taskListSchema,
-  taskParamsSchema,
-  taskRunListSchema,
-  taskRunSchema,
-  taskRunWindowsSchema,
-  taskSummarySchema,
-} from "./schema/task";
+  eventAutomationSummarySchema,
+  scheduledAutomationSummarySchema,
+  automationExecutionListSchema,
+  automationExecutionSchema,
+  automationExecutionStatusDaySchema,
+  automationExecutionStatusSchema,
+  automationListQuerySchema,
+  automationListSchema,
+  automationParamsSchema,
+  automationRunListSchema,
+  automationRunSchema,
+  automationRunWindowsSchema,
+  automationSummarySchema,
+} from "./schema/automation";
 export type {
-  TaskExecution,
-  TaskExecutionDay,
-  TaskExecutionList,
-  TaskExecutionStatusDay,
-  TaskList,
-  TaskRun,
-  TaskRunList,
-  TaskRunWindows,
-  TaskSummary,
-} from "./schema/task";
+  AutomationExecution,
+  AutomationExecutionDay,
+  AutomationExecutionList,
+  AutomationExecutionStatusDay,
+  AutomationList,
+  AutomationRun,
+  AutomationRunList,
+  AutomationRunWindows,
+  AutomationSummary,
+} from "./schema/automation";
 export { statSchema, statsReportSchema } from "./schema/stats";
 export type { StatReport, StatsReport } from "./schema/stats";
 export {

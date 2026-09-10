@@ -1,8 +1,5 @@
 import { z } from "zod";
-import {
-  resourceEventSubscriptionResultSchema,
-  type ResourceEventSubscriptionResult,
-} from "@sentry/junior-plugin-api";
+import { watchResultSchema, type WatchResult } from "@sentry/junior-plugin-api";
 import { getDb } from "@/chat/db";
 import { logWarn } from "@/chat/logging";
 import { getPlugins } from "@/chat/plugins/agent-hooks";
@@ -13,11 +10,8 @@ import {
 } from "@/chat/sandbox/snapshot/events";
 import { ensureWorkspaceSnapshotBuild } from "@/chat/sandbox/snapshot/job-runner";
 import { isWorkspaceSnapshotNotReadyError } from "@/chat/sandbox/snapshot/not-ready-error";
-import {
-  cancelResourceEventSubscription,
-  createResourceEventSubscription,
-} from "@/chat/resource-events/store";
-import { RESOURCE_SUBSCRIPTION_DEFAULT_TTL_MS } from "@/chat/resource-events/tool-support";
+import { cancelWatch, createWatch } from "@/chat/events/store";
+import { RESOURCE_SUBSCRIPTION_DEFAULT_TTL_MS } from "@/chat/events/tool-support";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
@@ -59,7 +53,7 @@ async function stopWorkspaceSnapshotWatch(input: {
   subscriptionId: string;
 }): Promise<void> {
   try {
-    await cancelResourceEventSubscription({
+    await cancelWatch({
       conversationId: input.conversationId,
       id: input.subscriptionId,
     });
@@ -99,7 +93,7 @@ function view(workspace: Workspace) {
 /** Return building status and any already-created snapshot subscription. */
 function buildingWorkspaceResult(input: {
   workspace: z.infer<typeof workspaceSchema>;
-  subscription?: Pick<ResourceEventSubscriptionResult, "id" | "events"> | null;
+  subscription?: Pick<WatchResult, "id" | "events"> | null;
 }) {
   return {
     workspace: input.workspace,
@@ -172,7 +166,9 @@ type WorkspaceWriteInput = z.infer<
 function writeInput(input: WorkspaceWriteInput) {
   return {
     name: input.name,
-    ...(input.setup_script == null ? undefined : { setupScript: input.setup_script }),
+    ...(input.setup_script == null
+      ? undefined
+      : { setupScript: input.setup_script }),
     repos: input.repos.map((repo) => ({
       provider: repo.provider,
       repo: repo.repo,
@@ -354,7 +350,7 @@ export function createWorkspaceTools(
       outputSchema: juniorToolOutputSchema.extend({
         workspace: workspaceSchema,
         status: z.enum(["ready", "building"]),
-        subscription: resourceEventSubscriptionResultSchema
+        subscription: watchResultSchema
           .optional()
           .describe(
             "Present when the snapshot ready and failed events are already watched for this conversation.",
@@ -373,7 +369,7 @@ export function createWorkspaceTools(
         });
         const conversationId = context.conversationId.trim();
         const subscription = conversationId
-          ? await createResourceEventSubscription({
+          ? await createWatch({
               conversationId,
               events: [
                 WORKSPACE_SNAPSHOT_READY_EVENT,

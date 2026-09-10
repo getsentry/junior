@@ -2,13 +2,13 @@ import {
   definePluginTool,
   EgressAuthRequired,
   PluginToolInputError,
-  type ResourceEventSubscriptionResult,
+  type WatchResult,
   type SubscribableResource,
   type PluginToolExecuteOptions,
   type PluginToolOutput,
   type ToolRegistrationHookContext,
   pluginToolOutputSchema,
-  resourceEventSubscriptionResultSchema,
+  watchResultSchema,
   subscribableResourceSchema,
 } from "@sentry/junior-plugin-api";
 import { Type, type Static } from "@sinclair/typebox";
@@ -18,7 +18,7 @@ import { appendGitHubFooter } from "./footer.js";
 import {
   gitHubPullRequestSubscribable,
   type GitHubPullRequestSubscriptionConfig,
-} from "../resource-events/pull-request.js";
+} from "../events/pull-request.js";
 import { appendGitHubRequesterAttribution } from "../tool-support/attribution.js";
 const GITHUB_PULL_REQUEST_CREATE_IDEMPOTENCY_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const GITHUB_PULL_REQUEST_CREATE_LOCK_TTL_MS = 60_000;
@@ -116,7 +116,7 @@ interface GitHubPullRequestResult {
 
 interface GitHubPullRequestToolResult extends GitHubPullRequestResult {
   subscribable?: SubscribableResource;
-  subscription?: ResourceEventSubscriptionResult;
+  subscription?: WatchResult;
 }
 
 interface GitHubPullRequestStructuredResult
@@ -128,7 +128,7 @@ const gitHubPullRequestDataSchema = z.object({
   number: z.number(),
   url: z.string(),
   subscribable: subscribableResourceSchema.optional(),
-  subscription: resourceEventSubscriptionResultSchema.optional(),
+  subscription: watchResultSchema.optional(),
 });
 
 const gitHubPullRequestOutputSchema = pluginToolOutputSchema.merge(
@@ -368,7 +368,7 @@ async function gitHubPullRequestStructuredResult(
   const base = gitHubPullRequestToolResult(
     input,
     result,
-    ctx.resourceEvents.canSubscribe,
+    ctx.events.canSubscribe,
   );
   if (!subscriptionConfig || !base.subscribable) {
     return {
@@ -377,7 +377,7 @@ async function gitHubPullRequestStructuredResult(
     };
   }
   try {
-    const subscription = await ctx.resourceEvents.subscribe({
+    const subscription = await ctx.events.subscribe({
       events: subscriptionConfig.events,
       intent: subscriptionConfig.intent,
       resource: base.subscribable,
@@ -385,7 +385,7 @@ async function gitHubPullRequestStructuredResult(
     const data = gitHubPullRequestToolResult(
       input,
       result,
-      ctx.resourceEvents.canSubscribe,
+      ctx.events.canSubscribe,
       subscriptionConfig.events,
     );
     return {

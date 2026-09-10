@@ -291,12 +291,12 @@ const TOOL_POLICY_RULES = [
   "- After changing files, name the changed paths and summarize the completed result in the final answer.",
   "- If a sandbox-backed tool reports that sandbox execution is unavailable, treat that as a blocker for local file/shell inspection; do not pretend host files were inspected.",
   "- For user-provided URLs, use `webFetch`; for discovery, use `webSearch` then fetch/read promising sources; for current time/date context, use `systemTime`.",
-  "- When searchResourceEventTypes is exposed, use it only when the user asks what resource events are supported or the required resource type or event name is unclear. It discovers options but does not watch a resource or create a task. When explaining how results can be used, distinguish temporary current-thread watches from durable event tasks.",
-  "- When a tool result includes a subscription, those events are already watched; do not call watchResourceEvents for them. When a tool result includes a subscribable resource with suggestedEvents, use watchResourceEvents only for those remaining events that serve the current intent. If suggestedEvents is empty or omitted, do not invent a watch. Do not create scheduled polling tasks for events a watch can deliver. Write a concise intent summary, and tell the user when the temporary watch expires. Stop only the requested watch by id unless the user explicitly asks to stop every watch in the thread.",
-  "- Use createEventTask only when the user explicitly asks for an event task or durable whenever-this-happens-do-X automation. Ordinary watch, notify, and tell-me-when requests use watchResourceEvents. When an event task's resource and events are known, create it without redundant confirmation.",
-  "- Event tasks make the task creator's connected credentials available by default when the requested work needs user-bound authorization. Do not ask for separate confirmation merely to use credentials needed for the requested work. On creation, omit credentialMode for the creator default and set system only when the creator explicitly requires it. For later changes, creator always means the task's original createdBy actor, never the current requester. If the requester is not that creator, do not attempt to enable creator credential use or suggest that confirmation could authorize it.",
-  "- Event tasks list for the current destination, not one thread. Public tasks can also be updated or deleted by task id from another destination in the same workspace. When listing them, use createdBy to explain creator-only credential changes and warn when triggerAvailable is false; an unavailable task remains stored but cannot receive events until its plugin event is enabled again.",
-  "- Scheduled tasks make the task creator's connected credentials available by default when the requested work needs user-bound authorization. Do not ask for separate confirmation merely to use credentials needed for the requested work. On creation, omit credential_mode for the creator default and set system only when the creator explicitly requires it. For later changes, creator always means the task's original created_by actor, never the current requester. If the requester is not that creator, do not attempt to enable creator credential use or suggest that confirmation could authorize it.",
+  "- When searchEventTypes is exposed, use it only when the user asks what events are supported or the required resource type or event name is unclear. It discovers options but does not watch a resource or create an automation. When explaining how results can be used, distinguish temporary current-thread watches from durable event automations.",
+  "- When a tool result includes a subscription, those events are already watched; do not call watchEvents for them. When a tool result includes a subscribable resource with suggestedEvents, use watchEvents only for those remaining events that serve the current intent. If suggestedEvents is empty or omitted, do not invent a watch. Do not create scheduled polling tasks for events a watch can deliver. Write a concise intent summary, and tell the user when the temporary watch expires. Stop only the requested watch by id unless the user explicitly asks to stop every watch in the thread.",
+  "- Use createEventAutomation only when the user explicitly asks for an event automation or durable whenever-this-happens-do-X automation. Ordinary watch, notify, and tell-me-when requests use watchEvents. When an event automation's resource and events are known, create it without redundant confirmation.",
+  "- Event automations make the automation creator's connected credentials available by default when the requested work needs user-bound authorization. Do not ask for separate confirmation merely to use credentials needed for the requested work. On creation, omit credentialMode for the creator default and set system only when the creator explicitly requires it. For later changes, creator always means the automation's original createdBy actor, never the current requester. If the requester is not that creator, do not attempt to enable creator credential use or suggest that confirmation could authorize it.",
+  "- Event automations list for the current destination, not one thread. Public automations can also be updated or deleted by automation id from another destination in the same workspace. When listing them, use createdBy to explain creator-only credential changes and warn when triggerAvailable is false; an unavailable automation remains stored but cannot receive events until its plugin event is enabled again.",
+  "- Scheduled automations make the automation creator's connected credentials available by default when the requested work needs user-bound authorization. Do not ask for separate confirmation merely to use credentials needed for the requested work. On creation, omit credential_mode for the creator default and set system only when the creator explicitly requires it. For later changes, creator always means the automation's original created_by actor, never the current requester. If the requester is not that creator, do not attempt to enable creator credential use or suggest that confirmation could authorize it.",
   "- When another model profile fits the task better, call `handoff` before substantial work. Follow the profile list and selection rules in the tool description.",
   "- Run `jr-rpc config get|set|unset|list` for provider defaults and `jr-rpc plugins list` for installed plugin introspection as standalone bash commands; do not chain them with `cd`, `&&`, pipes, or provider commands.",
   "- If the first result is empty, stale, ambiguous, or incomplete, try a focused alternate query, path, command, or source before concluding the answer cannot be verified.",
@@ -461,15 +461,15 @@ function formatSourceLines(source: Source): string[] {
           ? [`- source.thread_ts: ${escapeXml(source.threadTs)}`]
           : []),
       ];
-    case "resource_event":
+    case "event":
       return [
-        "- source.kind: resource_event",
+        "- source.kind: event",
         `- source.namespace: ${escapeXml(source.namespace)}`,
         `- source.identifier: ${escapeXml(source.identifier)}`,
         `- source.event_type: ${escapeXml(source.eventType)}`,
       ];
-    case "scheduled_task":
-    case "event_task":
+    case "scheduled_automation":
+    case "event_automation":
     case "plugin_dispatch":
     case "agent_invocation":
       return [`- source.kind: ${source.kind}`];

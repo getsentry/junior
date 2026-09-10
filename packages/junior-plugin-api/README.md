@@ -42,8 +42,8 @@ reports, and other typed hook surfaces exported by this package.
 
 - Hook context carries the active source, actor, conversation, plugin metadata,
   database, logging, and only the host capabilities required by that hook.
-- Source uses `kind` to state what produced the input. Resource events,
-  scheduled tasks, event tasks, Plugin dispatches, and Agent invocations do not
+- Source uses `kind` to state what produced the input. Events,
+  scheduled automations, event automations, Plugin dispatches, and Agent invocations do not
   name a provider. Actor and Destination still use `platform` to name one.
 - Prompt hooks return bounded structured prompt messages rather than mutate the
   core prompt.

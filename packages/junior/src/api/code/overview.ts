@@ -133,14 +133,13 @@ function ownershipFilter(userId: string | undefined): SQL | undefined {
   return ownedByUserSql(sql`${juniorCodeChanges.conversationIds}`, userId);
 }
 
-async function readCodeWindows(args: {
-  nowMs: number;
-  userId?: string;
-}) {
+async function readCodeWindows(args: { nowMs: number; userId?: string }) {
   const db = getDb();
   const windowEnd = new Date(args.nowMs);
   const windowStart = new Date(args.nowMs - WINDOW_DAYS * DAY_MS);
-  const activityStart = startOfUtcDay(args.nowMs - (ACTIVITY_DAYS - 1) * DAY_MS);
+  const activityStart = startOfUtcDay(
+    args.nowMs - (ACTIVITY_DAYS - 1) * DAY_MS,
+  );
   const changes = juniorCodeChanges;
   const ownership = ownershipFilter(args.userId);
   const conversationTreeCost = conversationTreeCostExpr();
@@ -149,8 +148,9 @@ async function readCodeWindows(args: {
   const activityHourStart = new Date(
     activityHourEnd.getTime() - (7 * 24 - 1) * (DAY_MS / 24),
   );
-  const [summaryResult, activityResult, activityHourResult] = await Promise.all([
-    db.execute(sql`
+  const [summaryResult, activityResult, activityHourResult] = await Promise.all(
+    [
+      db.execute(sql`
       WITH recent_changes AS (
         SELECT
           ${changes.id},
@@ -209,7 +209,7 @@ async function readCodeWindows(args: {
         )::double precision AS "medianCostUsd"
       FROM recent_changes
     `),
-    db.execute(sql`
+      db.execute(sql`
       WITH days AS (
         SELECT generate_series(
           date_trunc('day', ${activityStart}::timestamptz AT TIME ZONE 'UTC'),
@@ -250,7 +250,7 @@ async function readCodeWindows(args: {
       LEFT JOIN daily ON daily.day = days.day
       ORDER BY days.day
     `),
-    db.execute(sql`
+      db.execute(sql`
       WITH hours AS (
         SELECT generate_series(
           date_trunc('hour', ${activityHourStart}::timestamptz AT TIME ZONE 'UTC'),
@@ -291,7 +291,8 @@ async function readCodeWindows(args: {
       LEFT JOIN hourly ON hourly.hour = hours.hour
       ORDER BY hours.hour
     `),
-  ]);
+    ],
+  );
   const summary = summaryRowSchema.parse(
     queryRows(summaryResult)[0] ?? {
       closed: 0,

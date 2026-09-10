@@ -110,9 +110,9 @@ export function isAutomatedTurnSource(source: Source | undefined): boolean {
     return false;
   }
   return (
-    source.kind === "resource_event" ||
-    source.kind === "event_task" ||
-    source.kind === "scheduled_task" ||
+    source.kind === "event" ||
+    source.kind === "event_automation" ||
+    source.kind === "scheduled_automation" ||
     source.kind === "plugin_dispatch" ||
     source.kind === "agent_invocation"
   );
@@ -212,8 +212,7 @@ export async function countAutomatedTurn(args: {
     const current = parseState(await state.get(key)) ?? emptyState(nowMs);
     const consecutiveAutomatedTurns = current.consecutiveAutomatedTurns + 1;
     const paused = consecutiveAutomatedTurns >= args.maxTurns;
-    const shouldPostNotice =
-      paused && current.noticePostedAtMs === undefined;
+    const shouldPostNotice = paused && current.noticePostedAtMs === undefined;
     const next: AutomatedTurnLimitState = {
       consecutiveAutomatedTurns,
       paused,

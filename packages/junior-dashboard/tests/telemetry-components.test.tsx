@@ -657,7 +657,7 @@ describe("dashboard canonical-event components", () => {
           }),
           event(1, {
             type: "message",
-            messageId: "resource-event",
+            messageId: "event",
             role: "user",
             eventType: "pull_request.merged",
             redacted: true,
@@ -705,9 +705,7 @@ describe("dashboard canonical-event components", () => {
     expect(html).toContain(`data-transcript-failure-event-id="${eventId}"`);
     expect(html).toContain(`event_id=${eventId}`);
     // React serializes & as &amp; in HTML attributes.
-    expect(html).toContain(
-      `href="${sentryEventUrl.replaceAll("&", "&amp;")}"`,
-    );
+    expect(html).toContain(`href="${sentryEventUrl.replaceAll("&", "&amp;")}"`);
   });
 
   it("anchors structured events to the transcript rail", () => {
@@ -1596,7 +1594,9 @@ describe("dashboard canonical-event components", () => {
       }),
       plugin("scheduler", {}),
     ];
-    data.skills = [{ name: "scheduled-tasks", pluginProvider: "scheduler" }];
+    data.skills = [
+      { name: "scheduled-automations", pluginProvider: "scheduler" },
+    ];
     data.pluginReports!.reports = [
       {
         metrics: [{ label: "active tasks", value: "4" }],
@@ -1617,7 +1617,7 @@ describe("dashboard canonical-event components", () => {
     expect(html).not.toContain('href="/system/plugins/scheduler"');
     expect(html).toContain(">Scheduler<");
     expect(html).toContain(">active tasks<");
-    expect(html).toContain(">scheduled-tasks<");
+    expect(html).toContain(">scheduled-automations<");
     expect(html).not.toContain(">1 reporting<");
     expect(html).not.toContain("Usage over time");
   });
@@ -1907,7 +1907,7 @@ describe("dashboard canonical-event components", () => {
     expect(html).toContain("tokens");
     expect(html).toContain("1.2k");
   });
-  it("links a task-triggered conversation with compact source metadata", () => {
+  it("links an automation-triggered conversation with compact source metadata", () => {
     const detail = conversation([], {
       sourceTask: {
         id: "sched_source_task",
@@ -1926,13 +1926,13 @@ describe("dashboard canonical-event components", () => {
     );
 
     expect(html).toMatch(
-      /href="\/tasks\/sched_source_task"[^>]*>Triggered by Scheduled Task<\/a>/,
+      /href="\/automations\/sched_source_task"[^>]*>Triggered by Scheduled automation<\/a>/,
     );
-    // Full task prompts stay off hover chrome; open the task page for those.
+    // Full automation instructions stay off hover chrome; open the automation page for those.
     expect(html).not.toContain("Update getsentry/yc-scraper");
     expect(html).not.toContain("Instruction");
     expect(html).not.toContain(
-      "Triggered by Scheduled Task · Update getsentry/yc-scraper",
+      "Triggered by Scheduled automation · Update getsentry/yc-scraper",
     );
   });
 

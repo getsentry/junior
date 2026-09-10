@@ -3,7 +3,7 @@ import { beforeAll, expect } from "vitest";
 import {
   mention,
   rubric,
-  scheduledTaskDue,
+  scheduledAutomationDue,
   slackEvals,
   threadMessage,
 } from "../../src/helpers";
@@ -85,7 +85,7 @@ describeEval("Sentry Skill Workflows", slackEvals, (it) => {
         plugin_packages: ["@sentry/junior-sentry"],
       },
       initialEvents: [
-        scheduledTaskDue(
+        scheduledAutomationDue(
           "Query Sentry for the latest unresolved issues in the getsentry organization and post a short digest with issue details.",
           {
             credential_mode: "creator",
@@ -98,7 +98,7 @@ describeEval("Sentry Skill Workflows", slackEvals, (it) => {
       ],
       criteria: rubric({
         pass: [
-          "The delivered scheduled-task message reports Sentry issue data for getsentry, including `JUNIOR-1`, `Eval issue`, or the issue permalink.",
+          "The delivered scheduled-automation message reports Sentry issue data for getsentry, including `JUNIOR-1`, `Eval issue`, or the issue permalink.",
           "The scheduled run uses the available connected Sentry account without asking the user to authorize, reconnect, or provide a token.",
         ],
         fail: [

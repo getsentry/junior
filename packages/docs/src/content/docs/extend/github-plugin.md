@@ -1,20 +1,20 @@
 ---
 title: GitHub Plugin
-description: Configure the GitHub App and use Junior for repository workflows and resource events.
+description: Configure the GitHub App and use Junior for repository workflows and events.
 type: tutorial
-summary: Install the GitHub plugin, configure the App, then use repository workflows and resource subscriptions.
+summary: Install the GitHub plugin, configure the App, then use repository workflows and watches.
 prerequisites:
   - /extend/
 related:
   - /concepts/credentials-and-oauth/
-  - /concepts/resource-subscriptions/
+  - /concepts/watches/
   - /reference/config-and-env/
   - /reference/runtime-commands/
 ---
 
 Use the GitHub plugin when Junior should work in repositories through a GitHub
 App: issues, pull requests, reviews, branch pushes, workflow dispatches,
-reruns, and cancellations, deployment and release lookups, and resource subscriptions.
+reruns, and cancellations, deployment and release lookups, and watches.
 
 Junior uses the App installation for bot-owned work. Human OAuth is only for
 operations that must run as the requesting user, such as user-attachment uploads.
@@ -64,7 +64,7 @@ narrow write tokens.
 4. Copy the App ID, OAuth client ID and secret, installation ID, bot name, and
    bot noreply email into your deployment environment.
 
-If Junior should receive resource events or report PR/issue outcomes, also:
+If Junior should receive events or report PR/issue outcomes, also:
 
 1. Set the webhook URL to `https://<your-domain>/api/webhooks/github`.
 2. Set the webhook secret to the same value as `GITHUB_WEBHOOK_SECRET`.
@@ -169,9 +169,9 @@ export const plugins = defineJuniorPlugins([
 - **Required:** No
 - **Environment override:** None
 
-`subscribeAfterCreate` creates a temporary resource subscription after a successful `github_createPullRequest` call. It only runs in Slack conversations that can host resource subscriptions, and only when GitHub webhooks are enabled. Forced events are removed from the tool result's suggested events so the model does not re-watch them. The subscription still expires like any other watch.
+`subscribeAfterCreate` creates a temporary watch after a successful `github_createPullRequest` call. It only runs in Slack conversations that can host watches, and only when GitHub webhooks are enabled. Forced events are removed from the tool result's suggested events so the model does not re-watch them. The watch still expires normally.
 
-`guidance` adds short app guidance when a matching pull request event reaches the agent. It applies within the subscription or event task instruction. It cannot replace or expand that instruction, grant credentials, or bypass action review. Keep each value short.
+`guidance` adds short app guidance when a matching pull request event reaches the agent. It applies within the watch or event automation instruction. It cannot replace or expand that instruction, grant credentials, or bypass action review. Keep each value short.
 
 </details>
 
@@ -266,10 +266,10 @@ Use `<bot-user-id>+<app-slug>[bot]@users.noreply.github.com`. Get the bot user I
 <details class="plugin-config">
 <summary><code>GITHUB_WEBHOOK_SECRET</code></summary>
 
-Webhook signing secret for resource events and PR or issue outcome reporting.
+Webhook signing secret for events and PR or issue outcome reporting.
 
 - **Define:** Set `GITHUB_WEBHOOK_SECRET` in the deployment environment
-- **Required:** Yes for resource events and outcome reporting; otherwise no
+- **Required:** Yes for events and outcome reporting; otherwise no
 - **Environment override:** `GITHUB_WEBHOOK_SECRET`
 
 </details>
@@ -294,17 +294,17 @@ Once configured, Junior can:
 - Push branches and open draft pull requests
 - Dispatch workflows, rerun workflow runs or jobs, and cancel workflow runs
 - Look up deployments and releases
-- Watch or automate matching resource events when webhooks are enabled
+- Watch or automate matching events when webhooks are enabled
 
 Bot-owned writes use installation credentials. Personal operations still use
 private user authorization when required. Merge remains outside the write
 allowlist.
 
-### Resource subscriptions
+### Watches
 
-Set `GITHUB_WEBHOOK_SECRET` to enable resource events. See
-[Resource Subscriptions](/concepts/resource-subscriptions/) for temporary
-resource subscriptions versus durable event tasks.
+Set `GITHUB_WEBHOOK_SECRET` to enable events. See
+[Watches](/concepts/watches/) for temporary watches versus durable event
+automations.
 
 Issue and pull request events can target one item with `owner/repo#number`, or
 every item of that kind in a repository with `owner/repo`.
@@ -312,57 +312,57 @@ every item of that kind in a repository with `owner/repo`.
 To always watch selected events after Junior creates a pull request in this
 app, set `pullRequestEvents.subscribeAfterCreate` in `plugins.ts`. To add short
 app guidance for one pull request event type, set
-`pullRequestEvents.guidance`. The guidance applies within each subscription or
-event task instruction. It does not replace or expand that instruction.
+`pullRequestEvents.guidance`. The guidance applies within each watch or event
+automation instruction. It does not replace or expand that instruction.
 
 #### `deployment_source`
 
 One commit, optionally limited to an environment. Identifier:
 `deployment-source:owner/repo[:environment]:<full-commit-sha>`.
 
-<details class="resource-event">
+<details class="event">
 <summary><code>deployment.created</code></summary>
 
 A deployment was created.
 
 </details>
 
-<details class="resource-event">
+<details class="event">
 <summary><code>deployment.queued</code></summary>
 
 The deployment entered the queue.
 
 </details>
 
-<details class="resource-event">
+<details class="event">
 <summary><code>deployment.pending</code></summary>
 
 The deployment is waiting to start.
 
 </details>
 
-<details class="resource-event">
+<details class="event">
 <summary><code>deployment.in_progress</code></summary>
 
 The deployment started.
 
 </details>
 
-<details class="resource-event">
+<details class="event">
 <summary><code>deployment.succeeded</code></summary>
 
 The deployment completed successfully.
 
 </details>
 
-<details class="resource-event">
+<details class="event">
 <summary><code>deployment.failed</code></summary>
 
 The deployment failed.
 
 </details>
 
-<details class="resource-event">
+<details class="event">
 <summary><code>deployment.error</code></summary>
 
 The deployment reported an error.
@@ -373,28 +373,28 @@ The deployment reported an error.
 
 One issue: `owner/repo#number`.
 
-<details class="resource-event">
+<details class="event">
 <summary><code>issue.comment.created</code></summary>
 
 A comment was added.
 
 </details>
 
-<details class="resource-event">
+<details class="event">
 <summary><code>issue.opened</code></summary>
 
 The issue was opened.
 
 </details>
 
-<details class="resource-event">
+<details class="event">
 <summary><code>issue.closed</code></summary>
 
 The issue was closed.
 
 </details>
 
-<details class="resource-event">
+<details class="event">
 <summary><code>issue.reopened</code></summary>
 
 The issue was reopened.
@@ -405,77 +405,77 @@ The issue was reopened.
 
 One pull request: `owner/repo#number`.
 
-<details class="resource-event">
+<details class="event">
 <summary><code>pull_request.checks.failed</code></summary>
 
-A check suite finished with failure or timeout. Trusted data includes the full head SHA, suite id/url, optional `headBranch`, the PR number when one is attached, and failed check-run ids/urls when Junior can load them. Failed check names are untrusted provider content. Suites with no pull request publish only to the repository. When a watch or event task uses `isDraft`, `authorUsername`, or `authorEmail`, Junior loads those pull request fields for same-repo pull requests only. `headBranch` comes from the webhook and does not need that load.
+A check suite finished with failure or timeout. Trusted data includes the full head SHA, suite id/url, optional `headBranch`, the PR number when one is attached, and failed check-run ids/urls when Junior can load them. Failed check names are untrusted provider content. Suites with no pull request publish only to the repository. When a watch or event automation uses `isDraft`, `authorUsername`, or `authorEmail`, Junior loads those pull request fields for same-repo pull requests only. `headBranch` comes from the webhook and does not need that load.
 
 </details>
 
-<details class="resource-event">
+<details class="event">
 <summary><code>pull_request.checks.recovered</code></summary>
 
-A check suite finished successfully after a failure. Trusted data includes the full head SHA, suite id/url, optional `headBranch`, and the PR number when one is attached. This is for one suite only. It does not mean the whole PR or branch is green. Suites with no pull request publish only to the repository. When a watch or event task uses `isDraft`, `authorUsername`, or `authorEmail`, Junior loads those pull request fields for same-repo pull requests only. `headBranch` comes from the webhook and does not need that load.
+A check suite finished successfully after a failure. Trusted data includes the full head SHA, suite id/url, optional `headBranch`, and the PR number when one is attached. This is for one suite only. It does not mean the whole PR or branch is green. Suites with no pull request publish only to the repository. When a watch or event automation uses `isDraft`, `authorUsername`, or `authorEmail`, Junior loads those pull request fields for same-repo pull requests only. `headBranch` comes from the webhook and does not need that load.
 
 </details>
 
-<details class="resource-event">
+<details class="event">
 <summary><code>pull_request.comment.created</code></summary>
 
 A conversation comment was added.
 
 </details>
 
-<details class="resource-event">
+<details class="event">
 <summary><code>pull_request.opened</code></summary>
 
 The pull request was opened.
 
 </details>
 
-<details class="resource-event">
+<details class="event">
 <summary><code>pull_request.ready_for_review</code></summary>
 
 The pull request became ready for review.
 
 </details>
 
-<details class="resource-event">
+<details class="event">
 <summary><code>pull_request.review.approved</code></summary>
 
 A reviewer approved the pull request.
 
 </details>
 
-<details class="resource-event">
+<details class="event">
 <summary><code>pull_request.review.changes_requested</code></summary>
 
 A reviewer requested changes.
 
 </details>
 
-<details class="resource-event">
+<details class="event">
 <summary><code>pull_request.review.commented</code></summary>
 
 A reviewer submitted a comment-only review.
 
 </details>
 
-<details class="resource-event">
+<details class="event">
 <summary><code>pull_request.review_comment.created</code></summary>
 
 An inline review comment was added.
 
 </details>
 
-<details class="resource-event">
+<details class="event">
 <summary><code>pull_request.merged</code></summary>
 
 The pull request was merged.
 
 </details>
 
-<details class="resource-event">
+<details class="event">
 <summary><code>pull_request.closed_unmerged</code></summary>
 
 The pull request closed without merging.
@@ -487,7 +487,7 @@ The pull request closed without merging.
 One repository, optionally limited to a tag. Identifier:
 `release-source:owner/repo[:tag]`.
 
-<details class="resource-event">
+<details class="event">
 <summary><code>release.published</code></summary>
 
 A release was published.
@@ -533,8 +533,8 @@ A local `git commit` does not call GitHub. The write happens on push. Grant
   `GITHUB_WEBHOOK_SECRET`, or `X-Hub-Signature-256` is missing.
 - Webhook delivery returns `202 Ignored`: wrong installation, or an unsupported
   event mapping. Confirm `GITHUB_INSTALLATION_ID` and the event type.
-- Delivery succeeds but nothing appears in Slack: create a resource subscription
-  or event task first. A webhook alone does not create either one.
+- Delivery succeeds but nothing appears in Slack: create a watch
+  or event automation first. A webhook alone does not create either one.
 - Missing repository context: include `owner/repo`, or set a thread default
   repository.
 - A `403` that names `github_createIssue`, `github_updateIssue`,

@@ -29,7 +29,7 @@ import {
   RedactedMessageView,
   TranscriptMessageView,
 } from "./TranscriptMessageView";
-import { TranscriptResourceEventView } from "./TranscriptResourceEventView";
+import { TranscriptEventView } from "./TranscriptEventView";
 import { TranscriptTypingIndicator } from "./TranscriptTypingIndicator";
 import {
   groupTranscriptMessages,
@@ -200,8 +200,8 @@ const VisibleTranscriptEntries = memo(function VisibleTranscriptEntries(props: {
       )}
       renderMessage={(entry) =>
         entry.message.eventType ? (
-          <TranscriptRailEvent kind="resource_event">
-            <TranscriptResourceEventView message={entry.message} />
+          <TranscriptRailEvent kind="event">
+            <TranscriptEventView message={entry.message} />
           </TranscriptRailEvent>
         ) : entry.message.context ? (
           <TranscriptRailEvent kind="message_context">
@@ -301,7 +301,7 @@ function TranscriptEntryList(props: {
 
     if (isCollapsibleActivityEntry(entry)) {
       const previousEntry = index > 0 ? props.entries[index - 1] : undefined;
-      const followsResourceEvent =
+      const followsEvent =
         previousEntry?.kind === "message" &&
         Boolean(previousEntry.message.eventType);
       const activityEntries: RenderedTranscriptEntry[] = [];
@@ -327,7 +327,7 @@ function TranscriptEntryList(props: {
         rows.push(
           <div className="mobile-transcript-row" key={activityKey}>
             <TranscriptActivityGroup
-              separateFromPrevious={followsResourceEvent}
+              separateFromPrevious={followsEvent}
               entries={visibleEntries}
               renderEntry={renderEntry}
             />
@@ -415,8 +415,8 @@ function RedactedTranscriptView(props: {
       )}
       renderMessage={(entry) =>
         entry.message.eventType ? (
-          <TranscriptRailEvent kind="resource_event">
-            <TranscriptResourceEventView message={entry.message} />
+          <TranscriptRailEvent kind="event">
+            <TranscriptEventView message={entry.message} />
           </TranscriptRailEvent>
         ) : entry.message.context ? (
           <TranscriptRailEvent kind="message_context">

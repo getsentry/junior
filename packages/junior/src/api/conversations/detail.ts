@@ -21,7 +21,7 @@ import { conversationDetailReportSchema } from "../schema/conversation";
 import type { ConversationDetailReport } from "../schema/conversation";
 import { listConversationAnnotations } from "@/chat/plugins/annotations";
 import { readLatestConversationBrief } from "@/chat/briefs/store";
-import { readConversationSourceTask } from "@/chat/tasks/read";
+import { readConversationSourceTask } from "@/chat/automations/read";
 import { readConversationArchivedAt } from "./archive";
 
 /** Project stored metadata and a bounded event page into a signed history cursor. */

@@ -157,7 +157,7 @@ const app = await createApp({
   experimental: {
     // Reply to non-mention messages in Slack threads Junior already joined.
     // Off by default. Without this, Junior only replies to explicit @mentions
-    // and resource-event notifications in those threads.
+    // and event notifications in those threads.
     "passive-routing": true,
     // Model-facing spawnAgent for durable child agent work. Incomplete; keep off
     // unless you are testing the #879 runtime.

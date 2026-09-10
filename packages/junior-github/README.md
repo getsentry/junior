@@ -26,7 +26,7 @@ export const plugins = defineJuniorPlugins([
 Full setup guide: https://junior.sentry.dev/extend/github-plugin/
 
 The plugin owns its signed webhook route, deployment, pull request, and release
-resource events, and normalized pull request and issue outcome projections.
+events, and normalized pull request and issue outcome projections.
 Those projections also feed native code-change records used by the dashboard
 Code page and person profiles. Core only owns delivery from plugin-published
-resource events into matching conversation subscriptions.
+events into matching conversation subscriptions.

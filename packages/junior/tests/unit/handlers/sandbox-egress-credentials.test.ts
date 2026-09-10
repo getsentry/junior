@@ -303,9 +303,7 @@ describe("sandboxEgressCredentialLease — credential error normalization", () =
     };
     getStateAdapter.mockReturnValue(stateStub);
     issuePluginCredential.mockImplementation(
-      async (input: {
-        credentialSubject?: { userId?: string };
-      }) => ({
+      async (input: { credentialSubject?: { userId?: string } }) => ({
         type: "lease",
         lease: {
           expiresAt: new Date(Date.now() + 30 * 60_000).toISOString(),
@@ -333,14 +331,14 @@ describe("sandboxEgressCredentialLease — credential error normalization", () =
     };
     const firstSubject = {
       credentials: {
-        actor: { platform: "system" as const, name: "resource-event" },
+        actor: { platform: "system" as const, name: "event" },
         subject: {
           type: "user" as const,
           userId: "U123",
-          allowedWhen: "event-task" as const,
+          allowedWhen: "event-automation" as const,
           taskId: "task-1",
           binding: {
-            type: "event-task" as const,
+            type: "event-automation" as const,
             plugin: "github",
             taskId: "task-1",
             signature: "sig-1",

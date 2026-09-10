@@ -29,7 +29,7 @@ function toolContext(responses: Response[]) {
 }
 
 describe("updatePullRequestFeedback", () => {
-  it("is directly available to resource-event turns", () => {
+  it("is directly available to event turns", () => {
     expect(toolContext([]).tool.exposure).toBe("direct");
   });
 

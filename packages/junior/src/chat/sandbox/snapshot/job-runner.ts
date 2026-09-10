@@ -3,7 +3,7 @@ import { credentialContextForActor } from "@/chat/credentials/context";
 import { getDb } from "@/chat/db";
 import { logInfo } from "@/chat/logging";
 import { createPluginHookRunner } from "@/chat/plugins/agent-hooks";
-import { ingestResourceEvent } from "@/chat/resource-events/ingest";
+import { ingestEvent } from "@/chat/events/ingest";
 import { getTurnRequestDeadline } from "@/chat/runtime/request-deadline";
 import { buildSandboxEgressNetworkPolicy } from "@/chat/sandbox/egress/policy";
 import { createSandboxEgressCredentialToken } from "@/chat/sandbox/egress/session";
@@ -36,7 +36,7 @@ async function publishFinishedEvent(
 ): Promise<void> {
   const event = workspaceSnapshotFinishedEvent(input);
   const queue = getVercelConversationWorkQueue();
-  await ingestResourceEvent(event, { queue });
+  await ingestEvent(event, { queue });
 }
 
 function createSnapshotBuildHelpers() {

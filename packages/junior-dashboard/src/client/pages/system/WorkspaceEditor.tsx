@@ -169,12 +169,16 @@ export function WorkspaceEditor(props: WorkspaceEditorProps) {
             <>
               Runs once while Junior builds the reusable snapshot. Current
               working directory is{" "}
-              <code className="text-dashboard-text">$JUNIOR_WORKSPACE_ROOT</code>{" "}
+              <code className="text-dashboard-text">
+                $JUNIOR_WORKSPACE_ROOT
+              </code>{" "}
               (the Sandbox root, usually{" "}
               <code className="text-dashboard-text">/vercel/sandbox</code>).
               Cloned repositories live under{" "}
-              <code className="text-dashboard-text">$JUNIOR_REPOS_ROOT</code>{" "}
-              (<code className="text-dashboard-text">$JUNIOR_WORKSPACE_ROOT/repos</code>
+              <code className="text-dashboard-text">$JUNIOR_REPOS_ROOT</code> (
+              <code className="text-dashboard-text">
+                $JUNIOR_WORKSPACE_ROOT/repos
+              </code>
               ). Use those variables instead of hard-coded absolute paths.
             </>
           }

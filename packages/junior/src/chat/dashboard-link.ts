@@ -83,5 +83,5 @@ export function getDashboardConversationLink(
 
 /** Build the dashboard task detail URL when the core dashboard is enabled. */
 export function getDashboardTaskLink(taskId: string): string | undefined {
-  return resolveDashboardPath(`/tasks/${encodeURIComponent(taskId)}`);
+  return resolveDashboardPath(`/automations/${encodeURIComponent(taskId)}`);
 }

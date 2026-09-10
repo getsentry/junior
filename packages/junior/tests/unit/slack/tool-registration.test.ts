@@ -21,14 +21,14 @@ const noopEgress = {
   },
 };
 
-function resourceEventPlugin(enabled = true) {
+function eventPlugin(enabled = true) {
   return defineJuniorPlugin({
     manifest: {
-      name: "resource-events-test",
-      displayName: "Resource events test",
-      description: "Publishes test resource events",
+      name: "events-test",
+      displayName: "Events test",
+      description: "Publishes test events",
     },
-    resourceEvents: {
+    events: {
       resourceTypes: [{ type: "issue", supportedEvents: ["issue.closed"] }],
       isEnabled: () => enabled,
     },
@@ -97,7 +97,7 @@ describe("Slack tool registration", () => {
 
   it("lists only plugins that can verify identity accounts", () => {
     setPlugins([
-      resourceEventPlugin(),
+      eventPlugin(),
       defineJuniorPlugin({
         manifest: {
           name: "identity-test",
@@ -161,7 +161,7 @@ describe("Slack tool registration", () => {
     expect(tools).toHaveProperty("searchConversationBriefs");
     expect(tools).toHaveProperty("searchConversationEvents");
     expect(tools).toHaveProperty("stopWatchingResources");
-    expect(tools).toHaveProperty("listResourceEventSubscriptions");
+    expect(tools).toHaveProperty("listWatches");
     expect(tools.searchConversationMessages?.exposure).toBe("deferred");
     expect(tools.searchConversationMessages?.source?.id).toBe("conversations");
     expect(tools.searchConversationBriefs?.exposure).toBe("deferred");
@@ -172,7 +172,7 @@ describe("Slack tool registration", () => {
     expect(tools.searchConversationEvents?.exposure).toBe("deferred");
     expect(tools.searchConversationEvents?.source?.id).toBe("conversations");
     expect(tools.stopWatchingResources?.exposure).toBe("deferred");
-    expect(tools.listResourceEventSubscriptions?.exposure).toBe("deferred");
+    expect(tools.listWatches?.exposure).toBe("deferred");
   });
 
   it("still registers public search without an action token", () => {
@@ -236,7 +236,7 @@ describe("Slack tool registration", () => {
       {
         ...ctx("C12345"),
         actor: { platform: "system", name: "scheduler" },
-        source: { kind: "scheduled_task" },
+        source: { kind: "scheduled_automation" },
         slackActionToken: undefined,
       },
     );
@@ -269,7 +269,7 @@ describe("Slack tool registration", () => {
   });
 
   it("registers schedule tools only with complete Slack turn context", () => {
-    setPlugins([resourceEventPlugin()]);
+    setPlugins([eventPlugin()]);
     const incomplete = createTools([], {}, ctx("C12345"));
     const complete = createTools(
       [],
@@ -297,25 +297,25 @@ describe("Slack tool registration", () => {
       },
     );
 
-    expect(incomplete).not.toHaveProperty("slackScheduleCreateTask");
-    expect(incomplete).not.toHaveProperty("createEventTask");
-    expect(incomplete).toHaveProperty("searchResourceEventTypes");
-    expect(incomplete).toHaveProperty("watchResourceEvents");
-    expect(complete).toHaveProperty("slackScheduleCreateTask");
-    expect(complete).toHaveProperty("slackScheduleListTasks");
-    expect(complete).toHaveProperty("slackScheduleUpdateTask");
-    expect(complete).toHaveProperty("slackScheduleDeleteTask");
-    expect(complete).toHaveProperty("slackScheduleRunTaskNow");
-    expect(complete).toHaveProperty("createEventTask");
-    expect(complete).toHaveProperty("searchResourceEventTypes");
-    expect(complete).toHaveProperty("watchResourceEvents");
-    expect(complete).toHaveProperty("listEventTasks");
-    expect(complete).toHaveProperty("updateEventTask");
-    expect(complete).toHaveProperty("deleteEventTask");
+    expect(incomplete).not.toHaveProperty("slackScheduleCreateAutomation");
+    expect(incomplete).not.toHaveProperty("createEventAutomation");
+    expect(incomplete).toHaveProperty("searchEventTypes");
+    expect(incomplete).toHaveProperty("watchEvents");
+    expect(complete).toHaveProperty("slackScheduleCreateAutomation");
+    expect(complete).toHaveProperty("slackScheduleListAutomations");
+    expect(complete).toHaveProperty("slackScheduleUpdateAutomation");
+    expect(complete).toHaveProperty("slackScheduleDeleteAutomation");
+    expect(complete).toHaveProperty("slackScheduleRunAutomationNow");
+    expect(complete).toHaveProperty("createEventAutomation");
+    expect(complete).toHaveProperty("searchEventTypes");
+    expect(complete).toHaveProperty("watchEvents");
+    expect(complete).toHaveProperty("listEventAutomations");
+    expect(complete).toHaveProperty("updateEventAutomation");
+    expect(complete).toHaveProperty("deleteEventAutomation");
   });
 
-  it("keeps event task management but not creation without an active event plugin", () => {
-    setPlugins([resourceEventPlugin(false)]);
+  it("keeps event automation management but not creation without an active event plugin", () => {
+    setPlugins([eventPlugin(false)]);
     const tools = createTools(
       [],
       {},
@@ -331,12 +331,12 @@ describe("Slack tool registration", () => {
 
     // Core Workspace snapshot events stay searchable/watchable. Durable event
     // task creation still needs a plugin publisher.
-    expect(tools).not.toHaveProperty("createEventTask");
-    expect(tools).toHaveProperty("searchResourceEventTypes");
-    expect(tools).toHaveProperty("watchResourceEvents");
-    expect(tools).toHaveProperty("listEventTasks");
-    expect(tools).toHaveProperty("updateEventTask");
-    expect(tools).toHaveProperty("deleteEventTask");
+    expect(tools).not.toHaveProperty("createEventAutomation");
+    expect(tools).toHaveProperty("searchEventTypes");
+    expect(tools).toHaveProperty("watchEvents");
+    expect(tools).toHaveProperty("listEventAutomations");
+    expect(tools).toHaveProperty("updateEventAutomation");
+    expect(tools).toHaveProperty("deleteEventAutomation");
   });
 
   it("does not register schedule tools without a actor", () => {
@@ -348,12 +348,12 @@ describe("Slack tool registration", () => {
       },
     );
 
-    expect(tools).not.toHaveProperty("slackScheduleCreateTask");
-    expect(tools).not.toHaveProperty("slackScheduleListTasks");
-    expect(tools).not.toHaveProperty("slackScheduleUpdateTask");
-    expect(tools).not.toHaveProperty("slackScheduleDeleteTask");
-    expect(tools).not.toHaveProperty("slackScheduleRunTaskNow");
-    expect(tools).not.toHaveProperty("createEventTask");
+    expect(tools).not.toHaveProperty("slackScheduleCreateAutomation");
+    expect(tools).not.toHaveProperty("slackScheduleListAutomations");
+    expect(tools).not.toHaveProperty("slackScheduleUpdateAutomation");
+    expect(tools).not.toHaveProperty("slackScheduleDeleteAutomation");
+    expect(tools).not.toHaveProperty("slackScheduleRunAutomationNow");
+    expect(tools).not.toHaveProperty("createEventAutomation");
   });
 
   it("does not register canvas create when channel context is unavailable", () => {

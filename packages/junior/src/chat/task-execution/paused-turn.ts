@@ -67,9 +67,9 @@ import {
 } from "@/chat/actor";
 import { getConversationWorkState } from "@/chat/task-execution/store";
 import {
-  isResourceEventConversationMessage,
-  RESOURCE_EVENT_SYSTEM_ACTOR,
-} from "@/chat/resource-events/actor";
+  isEventConversationMessage,
+  EVENT_SYSTEM_ACTOR,
+} from "@/chat/events/actor";
 import type { AgentRunResult } from "@/chat/services/turn-result";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import { executeTurn } from "@/chat/runtime/turn-execution";
@@ -256,7 +256,7 @@ async function resolveSlackResumeUserActor(args: {
  * Sources, in order:
  * 1. Actor saved on the Turn.
  * 2. Actor and credentials supplied by dispatch or OAuth.
- * 3. Legacy Resource event or Slack Message data.
+ * 3. Legacy Event or Slack Message data.
  *
  * TODO(dcramer): Remove the routing and Message Actor fallbacks after no
  * deployed Turn cursor can omit Actor.
@@ -291,8 +291,8 @@ async function resolveResumeExecutionIdentity(args: {
   }
 
   let actor: Actor | undefined = args.actor ?? routing?.actor;
-  if (!actor && isResourceEventConversationMessage(args.userMessage)) {
-    actor = RESOURCE_EVENT_SYSTEM_ACTOR;
+  if (!actor && isEventConversationMessage(args.userMessage)) {
+    actor = EVENT_SYSTEM_ACTOR;
   }
   if (!actor && args.userMessage.author?.userId) {
     actor = await resolveSlackResumeUserActor({

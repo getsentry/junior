@@ -24,11 +24,9 @@ vi.mock("@/chat/sentry", () => ({
   withActiveSpan,
 }));
 
-
 function fakeModel(id: string): Model<"anthropic-messages"> {
-  return ({ id }) as Model<"anthropic-messages">;
+  return { id } as Model<"anthropic-messages">;
 }
-
 
 function spanStartOptions(value: unknown): {
   name?: string;
@@ -84,7 +82,7 @@ describe("createTracedStreamFn", () => {
     const stream = createAssistantMessageEventStream();
     const base = vi.fn(() => stream);
 
-    const traced = createTracedStreamFn((base) as StreamFn);
+    const traced = createTracedStreamFn(base as StreamFn);
     const returned = await traced(
       fakeModel("openai/gpt-5.4"),
       { messages: [{ role: "user", content: "hi", timestamp: 0 }] },
@@ -103,7 +101,7 @@ describe("createTracedStreamFn", () => {
     const stream = createAssistantMessageEventStream();
     const base = vi.fn(() => stream);
 
-    const traced = createTracedStreamFn((base) as StreamFn);
+    const traced = createTracedStreamFn(base as StreamFn);
     await traced(
       fakeModel("openai/gpt-5.4"),
       {
@@ -141,7 +139,7 @@ describe("createTracedStreamFn", () => {
       "private prompt\nslack.conversation.type: private_channel\nslack.conversation.name: #private-roadmap";
 
     const traced = createTracedStreamFn({
-      base: (base) as StreamFn,
+      base: base as StreamFn,
       conversationPrivacy: "private",
     });
     await traced(
@@ -185,7 +183,7 @@ describe("createTracedStreamFn", () => {
     const base = vi.fn(() => stream);
 
     const traced = createTracedStreamFn({
-      base: (base) as StreamFn,
+      base: base as StreamFn,
       conversationPrivacy: "public",
     });
     const returned = await traced(
@@ -221,7 +219,7 @@ describe("createTracedStreamFn", () => {
     const base = vi.fn(() => stream);
 
     const traced = createTracedStreamFn({
-      base: (base) as StreamFn,
+      base: base as StreamFn,
       conversationPrivacy: "public",
     });
     await traced(
@@ -292,7 +290,7 @@ describe("createTracedStreamFn", () => {
     const stream = createAssistantMessageEventStream();
     const base = vi.fn(() => stream);
 
-    const traced = createTracedStreamFn((base) as StreamFn);
+    const traced = createTracedStreamFn(base as StreamFn);
     await traced(
       fakeModel("openai/gpt-5.4"),
       { messages: [{ role: "user", content: "hi", timestamp: 0 }] },
@@ -317,7 +315,7 @@ describe("createTracedStreamFn", () => {
     const { createTracedStreamFn } = await import("@/chat/pi/traced-stream");
     const stream = createAssistantMessageEventStream();
     const base = vi.fn(() => stream);
-    const traced = createTracedStreamFn((base) as StreamFn);
+    const traced = createTracedStreamFn(base as StreamFn);
 
     await withLogContext(
       { conversationId: "conv_123", runId: "run_456" },
@@ -342,7 +340,7 @@ describe("createTracedStreamFn", () => {
     const { createTracedStreamFn } = await import("@/chat/pi/traced-stream");
     const stream = createAssistantMessageEventStream();
     const base = vi.fn(() => stream);
-    const traced = createTracedStreamFn((base) as StreamFn);
+    const traced = createTracedStreamFn(base as StreamFn);
 
     await traced(
       fakeModel("openai/gpt-5.4"),
@@ -372,7 +370,7 @@ describe("createTracedStreamFn", () => {
     const stream = createAssistantMessageEventStream();
     const base = vi.fn(() => stream);
 
-    const traced = createTracedStreamFn((base) as StreamFn);
+    const traced = createTracedStreamFn(base as StreamFn);
     await traced(
       fakeModel("openai/gpt-5.4"),
       { messages: [{ role: "user", content: "hi", timestamp: 0 }] },
@@ -404,7 +402,7 @@ describe("createTracedStreamFn", () => {
       throw new Error("gateway down");
     });
 
-    const traced = createTracedStreamFn((base) as StreamFn);
+    const traced = createTracedStreamFn(base as StreamFn);
     await expect(
       traced(
         fakeModel("openai/gpt-5.4"),
@@ -429,7 +427,7 @@ describe("createTracedStreamFn", () => {
     const base = vi.fn(() => fakeStream);
 
     // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
-    const traced = createTracedStreamFn((base) as StreamFn);
+    const traced = createTracedStreamFn(base as StreamFn);
     await traced(
       fakeModel("openai/gpt-5.4"),
       { messages: [{ role: "user", content: "hi", timestamp: 0 }] },
@@ -451,7 +449,7 @@ describe("createTracedStreamFn", () => {
     const stream = createAssistantMessageEventStream();
     const base = vi.fn(() => stream);
 
-    const traced = createTracedStreamFn((base) as StreamFn);
+    const traced = createTracedStreamFn(base as StreamFn);
     await traced(
       fakeModel("openai/gpt-5.4"),
       { messages: [{ role: "user", content: "hi", timestamp: 0 }] },

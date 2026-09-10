@@ -300,10 +300,10 @@ function sourceLabel(source: z.output<typeof sourceSchema>): string {
     case "web":
     case "local":
       return `${source.kind}:${source.conversationId}`;
-    case "resource_event":
-      return `resource-event:${source.namespace}:${source.eventKey}`;
-    case "scheduled_task":
-    case "event_task":
+    case "event":
+      return `event:${source.namespace}:${source.eventKey}`;
+    case "scheduled_automation":
+    case "event_automation":
     case "plugin_dispatch":
     case "agent_invocation":
       return source.kind;
@@ -569,7 +569,9 @@ export function createMemoryAgent(model: PluginModel): MemoryAgent {
         relevantIds: [...new Set(decision.relevantIds)].filter((id) =>
           candidateIds.has(id),
         ),
-        ...(result.costUsd !== undefined ? { costUsd: result.costUsd } : undefined),
+        ...(result.costUsd !== undefined
+          ? { costUsd: result.costUsd }
+          : undefined),
       };
     },
     async adjudicateSupersession(rawRequest) {
@@ -594,7 +596,9 @@ export function createMemoryAgent(model: PluginModel): MemoryAgent {
         memories: extractedMemoriesFromResponse(
           extractMemoriesResponseSchema.parse(result.object),
         ),
-        ...(result.costUsd !== undefined ? { costUsd: result.costUsd } : undefined),
+        ...(result.costUsd !== undefined
+          ? { costUsd: result.costUsd }
+          : undefined),
       };
     },
     async reviewCreateRequest(rawRequest) {

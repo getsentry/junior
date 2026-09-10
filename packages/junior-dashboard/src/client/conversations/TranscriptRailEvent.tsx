@@ -27,7 +27,7 @@ type TranscriptRailEventKind =
   | "compaction"
   | "handoff"
   | "message_context"
-  | "resource_event"
+  | "event"
   | "structured_event"
   | "subagent";
 
@@ -69,7 +69,7 @@ function transcriptRailMarker(kind: TranscriptRailEventKind): {
       icon: MessageSquareText,
     };
   }
-  if (kind === "resource_event") {
+  if (kind === "event") {
     return {
       className: "text-violet-200",
       icon: Webhook,

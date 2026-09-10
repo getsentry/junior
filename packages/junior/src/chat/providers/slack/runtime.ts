@@ -134,9 +134,7 @@ type RuntimeLogContext = Record<string, unknown> & {
 
 export interface SlackTurnRuntimeDependencies<TPreparedState> {
   assistantUserName: string;
-  cancelEventSubscriptions: (input: {
-    conversationId: string;
-  }) => Promise<void>;
+  cancelWatches: (input: { conversationId: string }) => Promise<void>;
   getBotUserId: () => string | undefined;
   getPreparedConversationContext: (
     preparedState: TPreparedState,
@@ -384,7 +382,7 @@ export function createSlackTurnRuntime<
       return false;
     }
 
-    await deps.cancelEventSubscriptions({ conversationId: args.thread.id });
+    await deps.cancelWatches({ conversationId: args.thread.id });
     await args.thread.unsubscribe();
     await args.beforeFirstResponsePost?.();
     await args.thread.post(THREAD_OPTOUT_ACK);

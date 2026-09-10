@@ -397,8 +397,8 @@ const slackConversationMessageMetadataSchema = z.union([
   slackConversationMessageMetadataBaseSchema.strict(),
   slackConversationMessageMetadataBaseSchema
     .extend({
-      kind: z.literal("resource_event"),
-      resourceEvent: z
+      kind: z.literal("event"),
+      event: z
         .object({
           eventKey: z.string(),
           eventType: z.string(),

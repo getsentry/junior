@@ -15,10 +15,10 @@ import { createReadFileTool } from "@/chat/tools/sandbox/read-file";
 import { createViewImageTool } from "@/chat/tools/sandbox/view-image";
 import { createReportProgressTool } from "@/chat/tools/runtime/report-progress";
 import { createSpawnAgentTool } from "@/chat/tools/runtime/spawn-agent";
-import { createResourceEventTools } from "@/chat/tools/resource-events";
-import { getResourceEventCatalog } from "@/chat/resource-events/runtime-catalog";
-import { createEventTaskTools } from "@/chat/tools/event-tasks";
-import { createScheduledTaskTools } from "@/chat/tools/scheduled-tasks";
+import { createEventTools } from "@/chat/tools/events";
+import { getEventCatalog } from "@/chat/events/runtime-catalog";
+import { createEventAutomationTools } from "@/chat/tools/event-automations";
+import { createScheduledAutomationTools } from "@/chat/tools/scheduled-automations";
 import { createSlackChannelJoinTool } from "@/chat/slack/tools/channel-join";
 import { createSlackChannelListMessagesTool } from "@/chat/slack/tools/channel-list-messages";
 import { createSlackConversationBriefSearchPort } from "@/chat/slack/tools/conversation-brief-search";
@@ -92,7 +92,7 @@ export function createTools(
   const canSendFilesToActiveConversation = Boolean(
     slackContext && slackLocationCapabilities?.canSendFiles,
   );
-  const resourceEventCatalog = getResourceEventCatalog();
+  const eventCatalog = getEventCatalog();
   const tools: ToolRegistry = {
     ...(options.includeLoadSkill === false
       ? undefined
@@ -117,9 +117,9 @@ export function createTools(
     webFetch: createWebFetchTool(hooks, {
       canSendFilesToActiveConversation,
     }),
-    ...createResourceEventTools(context, resourceEventCatalog),
-    ...createEventTaskTools(context, resourceEventCatalog),
-    ...createScheduledTaskTools(context),
+    ...createEventTools(context, eventCatalog),
+    ...createEventAutomationTools(context, eventCatalog),
+    ...createScheduledAutomationTools(context),
     ...createWorkspaceTools(context),
   };
   tools.searchConversationEvents = createSearchConversationEventsTool(context);

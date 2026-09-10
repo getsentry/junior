@@ -21,7 +21,7 @@ describe("sendSlackReply", () => {
       channelId: "C123",
       conversationId: "slack:C123:1700000000.000100",
       replyAttribution: {
-        label: "Scheduled task",
+        label: "Scheduled automation",
         detail: "Weekly",
       },
       text: "hello",
@@ -34,7 +34,7 @@ describe("sendSlackReply", () => {
         params: expect.objectContaining({
           channel: "C123",
           thread_ts: "1700000000.000100",
-          text: "hello\n\nScheduled task · Weekly",
+          text: "hello\n\nScheduled automation · Weekly",
           blocks: [
             {
               type: "markdown",
@@ -45,7 +45,7 @@ describe("sendSlackReply", () => {
               elements: [
                 {
                   type: "plain_text",
-                  text: "Scheduled task · Weekly",
+                  text: "Scheduled automation · Weekly",
                 },
                 {
                   type: "mrkdwn",

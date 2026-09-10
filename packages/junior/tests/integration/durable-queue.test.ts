@@ -51,7 +51,7 @@ import {
 } from "../msw/handlers/slack-api";
 import { createModelStream } from "../fixtures/model-stream";
 import { createModelAgentRunner } from "../fixtures/agent-runner";
-import { createResourceEventInboundMessage } from "@/chat/resource-events/notification";
+import { createEventInboundMessage } from "@/chat/events/notification";
 import { conversationTurnIdForMessage } from "@/chat/conversations/web-input";
 
 /**
@@ -414,10 +414,10 @@ describe("durable queue contract", () => {
           channelId: SLACK_DESTINATION.channelId,
           visibility: "public",
         }),
-        source: "resource_event",
+        source: "event",
         visibility: "public",
       });
-      const message = createResourceEventInboundMessage({
+      const message = createEventInboundMessage({
         event: {
           eventKey: "checks-failed-1",
           eventType: "pull_request.checks.failed",
@@ -454,7 +454,7 @@ describe("durable queue contract", () => {
       await expect(
         getTurnRecord(CONVERSATION_ID, turnId),
       ).resolves.toMatchObject({
-        actors: [{ platform: "system", name: "resource-event" }],
+        actors: [{ platform: "system", name: "event" }],
         state: "completed",
         surface: "slack",
       });

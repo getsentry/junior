@@ -59,23 +59,23 @@ import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import { addAgentTurnUsage, type AgentTurnUsage } from "@/chat/usage";
 import { ACTIVE_TURN_COMPACTION_SUMMARY_PREFIX } from "@/chat/services/context-compaction-marker";
 import { TURN_CONTEXT_TAG } from "@/chat/turn-context-tag";
-import { listIncompleteScheduledRuns } from "@/chat/scheduled-tasks/runs";
+import { listIncompleteScheduledRuns } from "@/chat/scheduled-automations/runs";
 import {
-  readScheduledTask,
-  saveScheduledTask,
-} from "@/chat/scheduled-tasks/tasks";
-import type { ScheduledTask } from "@/chat/scheduled-tasks/types";
+  readScheduledAutomation,
+  saveScheduledAutomation,
+} from "@/chat/scheduled-automations/tasks";
+import type { ScheduledAutomation } from "@/chat/scheduled-automations/types";
 import { githubPlugin } from "@sentry/junior-github";
 import { memoryPlugin } from "@sentry/junior-memory";
 import { sentryPlugin } from "@sentry/junior-sentry";
 import { runPluginHeartbeats } from "@/chat/agent-dispatch/heartbeat";
-import { runScheduledTaskHeartbeat } from "@/chat/scheduled-tasks/heartbeat";
+import { runScheduledAutomationHeartbeat } from "@/chat/scheduled-automations/heartbeat";
 import { getDispatchRecord } from "@/chat/agent-dispatch/store";
-import { ingestResourceEvent } from "@/chat/resource-events/ingest";
-import { createResourceEventSubscription } from "@/chat/resource-events/store";
-import { ingestEventTasks } from "@/chat/event-tasks/ingest";
-import { createEventTask } from "@/chat/event-tasks/store";
-import type { EventTask } from "@/chat/event-tasks/types";
+import { ingestEvent } from "@/chat/events/ingest";
+import { createWatch } from "@/chat/events/store";
+import { ingestEventAutomations } from "@/chat/event-automations/ingest";
+import { createEventAutomation } from "@/chat/event-automations/store";
+import type { EventAutomation } from "@/chat/event-automations/types";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { upsertTurnRecord } from "@/chat/task-execution/turn-cursor";
 import { turnCursorKey } from "@/chat/task-execution/turn-cursor-keys";
@@ -120,7 +120,7 @@ import {
 } from "@junior-tests/fixtures/slack/factories/ids";
 import { createSlackDestination } from "@/chat/destination";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
-import { normalizeGitHubResourceEvents } from "@sentry/junior-github/testing";
+import { normalizeGitHubEvents } from "@sentry/junior-github/testing";
 import { createMemoryAttachmentStorage } from "./fixtures/attachment-storage";
 import { createMockImageGenerateDeps } from "./fixtures/image-generate";
 import { parseSlackMrkdwnLinkUrl } from "./slack-link";
@@ -247,8 +247,8 @@ interface AssistantContextChangedEvent extends EvalBaseEvent {
   user_id?: string;
 }
 
-interface ScheduledTaskDueEvent extends EvalBaseEvent {
-  type: "scheduled_task_due";
+interface ScheduledAutomationDueEvent extends EvalBaseEvent {
+  type: "scheduled_automation_due";
   credential_mode?: "creator" | "system";
   now_ms?: number;
   recurrence?: "daily" | "weekly" | "monthly" | "yearly";
@@ -258,8 +258,8 @@ interface ScheduledTaskDueEvent extends EvalBaseEvent {
   timezone?: string;
 }
 
-interface EventTaskMatchedEvent extends EvalBaseEvent {
-  type: "event_task_matched";
+interface EventAutomationMatchedEvent extends EvalBaseEvent {
+  type: "event_automation_matched";
   event_key: string;
   event_type: string;
   label: string;
@@ -271,8 +271,8 @@ interface EventTaskMatchedEvent extends EvalBaseEvent {
   untrusted_text?: string;
 }
 
-interface ResourceEventFixture extends EvalBaseEvent {
-  type: "resource_event";
+interface EventFixture extends EvalBaseEvent {
+  type: "event";
   data?: Record<string, unknown>;
   event_key: string;
   event_type: string;
@@ -304,9 +304,9 @@ export type EvalEvent =
   | SubscribedMessageEvent
   | AssistantThreadStartedEvent
   | AssistantContextChangedEvent
-  | ScheduledTaskDueEvent
-  | EventTaskMatchedEvent
-  | ResourceEventFixture
+  | ScheduledAutomationDueEvent
+  | EventAutomationMatchedEvent
+  | EventFixture
   | GitHubWebhookEvent;
 
 type SlackMessageEvent = MentionEvent | SubscribedMessageEvent;
@@ -349,7 +349,7 @@ export interface EvalOverrides {
   auto_complete_oauth?: string[];
   credential_providers?: Array<"github" | "sentry">;
   expired_oauth_tokens?: string[];
-  github_resource_events?: boolean;
+  github_events?: boolean;
   mock_image_generation?: boolean;
   plugin_dirs?: string[];
   plugin_packages?: string[];
@@ -1598,7 +1598,7 @@ async function setupHarnessEnvironment(
     }
 
     configureCredentialProviderEnv(credentialProviders);
-    if (scenario.overrides?.github_resource_events) {
+    if (scenario.overrides?.github_events) {
       process.env.GITHUB_WEBHOOK_SECRET = "eval-github-webhook-secret";
     } else {
       delete process.env.GITHUB_WEBHOOK_SECRET;
@@ -2204,14 +2204,14 @@ async function processEvents(args: {
     await slackRuntime.handleAssistantContextChanged(lifecycleEvent);
   };
 
-  const runScheduledTaskDue = async (
-    event: ScheduledTaskDueEvent,
+  const runScheduledAutomationDue = async (
+    event: ScheduledAutomationDueEvent,
   ): Promise<void> => {
     const { thread } = await getThreadRecord(event.thread);
     const nowMs = event.now_ms ?? Date.now();
     const scheduleKind = event.schedule_kind ?? "one_off";
     const taskId = `eval_schedule_${thread.channelId}_${nowMs}`;
-    const task: ScheduledTask = {
+    const task: ScheduledAutomation = {
       id: taskId,
       conversationAccess: { audience: "channel", visibility: "public" },
       createdAtMs: nowMs - 60_000,
@@ -2220,7 +2220,7 @@ async function processEvents(args: {
       credentialMode: event.credential_mode ?? "system",
       destination: createEvalDestination(
         thread,
-      ) as ScheduledTask["destination"],
+      ) as ScheduledAutomation["destination"],
       nextRunAtMs: nowMs,
       schedule: {
         description:
@@ -2244,9 +2244,9 @@ async function processEvents(args: {
       updatedAtMs: nowMs - 60_000,
     };
     const db = getDb();
-    await saveScheduledTask(db, task);
+    await saveScheduledAutomation(db, task);
 
-    await runScheduledTaskHeartbeat({
+    await runScheduledAutomationHeartbeat({
       conversationWorkQueue,
       nowMs,
     });
@@ -2256,7 +2256,7 @@ async function processEvents(args: {
     );
     const dispatchedRuns = runs.filter((run) => run.dispatchId);
     if (dispatchedRuns.length === 0) {
-      const savedTask = await readScheduledTask(db, taskId);
+      const savedTask = await readScheduledAutomation(db, taskId);
       throw new Error(
         `Scheduled eval task did not create a dispatch: ${JSON.stringify({ runs, savedTask })}`,
       );
@@ -2272,9 +2272,9 @@ async function processEvents(args: {
           !subject ||
           subject.type !== "user" ||
           subject.userId !== TEST_USER_ID ||
-          subject.allowedWhen !== "scheduled-task" ||
+          subject.allowedWhen !== "scheduled-automation" ||
           subject.taskId !== taskId ||
-          subject.binding.type !== "scheduled-task" ||
+          subject.binding.type !== "scheduled-automation" ||
           subject.binding.plugin !== "scheduler" ||
           subject.binding.taskId !== taskId
         ) {
@@ -2294,7 +2294,7 @@ async function processEvents(args: {
   const runGitHubWebhook = async (event: GitHubWebhookEvent): Promise<void> => {
     const { thread } = await getThreadRecord(event.thread);
     const nowMs = Date.now();
-    await createResourceEventSubscription(
+    await createWatch(
       {
         conversationId: thread.id,
         events: event.subscription.events,
@@ -2307,13 +2307,13 @@ async function processEvents(args: {
       },
       { nowMs, state: env.stateAdapter },
     );
-    const normalizedEvents = normalizeGitHubResourceEvents({
+    const normalizedEvents = normalizeGitHubEvents({
       body: event.body,
       deliveryId: event.delivery_id,
       eventName: event.event_name,
     });
     for (const normalizedEvent of normalizedEvents) {
-      await ingestResourceEvent(
+      await ingestEvent(
         { ...normalizedEvent, namespace: "github" },
         {
           nowMs,
@@ -2325,9 +2325,7 @@ async function processEvents(args: {
     await drainQueuedConversationWork();
   };
 
-  const runResourceEvent = async (
-    event: ResourceEventFixture,
-  ): Promise<void> => {
+  const runEvent = async (event: EventFixture): Promise<void> => {
     const { thread } = await getThreadRecord(event.thread);
     const nowMs = Date.now();
     const destination = createEvalDestination(thread);
@@ -2344,7 +2342,7 @@ async function processEvents(args: {
       source: "slack",
       visibility: "public",
     });
-    await createResourceEventSubscription(
+    await createWatch(
       {
         conversationId: thread.id,
         events: [event.event_type],
@@ -2357,7 +2355,7 @@ async function processEvents(args: {
       },
       { nowMs, state: env.stateAdapter },
     );
-    const result = await ingestResourceEvent(
+    const result = await ingestEvent(
       {
         data: event.data,
         eventKey: event.event_key,
@@ -2376,19 +2374,19 @@ async function processEvents(args: {
     );
     if (result.enqueued !== 1) {
       throw new Error(
-        `Resource event eval expected one queued input, got ${result.enqueued}`,
+        `Event eval expected one queued input, got ${result.enqueued}`,
       );
     }
     await drainQueuedConversationWork();
   };
 
-  const runEventTaskMatched = async (
-    event: EventTaskMatchedEvent,
+  const runEventAutomationMatched = async (
+    event: EventAutomationMatchedEvent,
   ): Promise<void> => {
     const { thread } = await getThreadRecord(event.thread);
     const nowMs = Date.now();
-    const taskId = `eval_event_task_${thread.channelId}_${nowMs}`;
-    const task: EventTask = {
+    const taskId = `eval_event_automation_${thread.channelId}_${nowMs}`;
+    const task: EventAutomation = {
       id: taskId,
       createdAtMs: nowMs - 60_000,
       createdBy: { slackUserId: TEST_USER_ID, userName: "testuser" },
@@ -2404,8 +2402,8 @@ async function processEvents(args: {
         resourceType: event.resource_type,
       },
     };
-    await createEventTask(getDb(), task);
-    const result = await ingestEventTasks(
+    await createEventAutomation(getDb(), task);
+    const result = await ingestEventAutomations(
       {
         eventKey: event.event_key,
         eventType: event.event_type,
@@ -2425,7 +2423,7 @@ async function processEvents(args: {
     );
     if (result.dispatched !== 1) {
       throw new Error(
-        `Event task eval expected one dispatch, got ${result.dispatched}`,
+        `Event automation eval expected one dispatch, got ${result.dispatched}`,
       );
     }
     await drainQueuedConversationWork();
@@ -2434,12 +2432,12 @@ async function processEvents(args: {
   const processSettledEvent = async (event: EvalEvent): Promise<void> => {
     if (event.type === "new_mention" || event.type === "subscribed_message") {
       await enqueueEvent(event);
-    } else if (event.type === "scheduled_task_due") {
-      await runScheduledTaskDue(event);
-    } else if (event.type === "event_task_matched") {
-      await runEventTaskMatched(event);
-    } else if (event.type === "resource_event") {
-      await runResourceEvent(event);
+    } else if (event.type === "scheduled_automation_due") {
+      await runScheduledAutomationDue(event);
+    } else if (event.type === "event_automation_matched") {
+      await runEventAutomationMatched(event);
+    } else if (event.type === "event") {
+      await runEvent(event);
     } else if (event.type === "github_webhook") {
       await runGitHubWebhook(event);
     } else {
@@ -2489,8 +2487,8 @@ async function processEvents(args: {
     }
   };
 
-  const processResourceEvent = async (
-    event: ResourceEventFixture,
+  const processEvent = async (
+    event: EventFixture,
     steering?: SteerEvent,
   ): Promise<void> => {
     if (steering) {
@@ -2500,7 +2498,7 @@ async function processEvents(args: {
     if (steeringDelivery.deliver) {
       steeringDelivery.deliver = undefined;
       throw new Error(
-        "steer() requires the preceding Resource event to start an agent run",
+        "steer() requires the preceding Event to start an agent run",
       );
     }
   };
@@ -2534,12 +2532,10 @@ async function processEvents(args: {
     const initialEvent = scenario.initialEvents[0];
     if (initialEvent) {
       if (initialSteering) {
-        if (initialEvent.type !== "resource_event") {
-          throw new Error(
-            "steer() must follow a Slack message or Resource event",
-          );
+        if (initialEvent.type !== "event") {
+          throw new Error("steer() must follow a Slack message or Event");
         }
-        await processResourceEvent(initialEvent, initialSteering);
+        await processEvent(initialEvent, initialSteering);
       } else {
         await processSettledEvent(initialEvent);
       }
@@ -2557,17 +2553,15 @@ async function processEvents(args: {
     const nextEvent = remainingEvents[nextIndex + 1];
     const steering = nextEvent?.type === "steer" ? nextEvent : undefined;
     if (steering) {
-      if (event.type === "resource_event") {
-        await processResourceEvent(event, steering);
+      if (event.type === "event") {
+        await processEvent(event, steering);
       } else if (
         event.type === "new_mention" ||
         event.type === "subscribed_message"
       ) {
         await processMessageGroup([event], steering);
       } else {
-        throw new Error(
-          "steer() must follow a Slack message or Resource event",
-        );
+        throw new Error("steer() must follow a Slack message or Event");
       }
       nextIndex += 2;
       continue;

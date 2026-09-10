@@ -15,12 +15,12 @@ Junior can read data and take action through connected tools. Its security model
 
 ## Security Boundaries
 
-| Boundary | How it works |
-| -------- | ------------ |
-| Identity | The current user drives the turn. Thread history, display names, and channel membership do not grant access. |
-| Destination | Replies and files stay bound to the active conversation. |
-| Credentials | Provider access is short-lived and belongs to the current user or an exact task delegation. |
-| Execution | User-influenced commands run in an isolated sandbox. Long-lived secrets stay on the host. |
+| Boundary     | How it works                                                                                                   |
+| ------------ | -------------------------------------------------------------------------------------------------------------- |
+| Identity     | The current user drives the turn. Thread history, display names, and channel membership do not grant access.   |
+| Destination  | Replies and files stay bound to the active conversation.                                                       |
+| Credentials  | Provider access is short-lived and belongs to the current user or an exact task delegation.                    |
+| Execution    | User-influenced commands run in an isolated sandbox. Long-lived secrets stay on the host.                      |
 | Capabilities | Junior loads only the plugins configured by the app operator. Skills cannot add credentials or runtime access. |
 
 Junior rejects work when required identity or destination context is missing.

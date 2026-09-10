@@ -19,7 +19,7 @@ import {
   slackLocationLabel,
   summarizeCost,
   summarizeUsage,
-  taskPath,
+  automationPath,
 } from "../format";
 import { Tooltip } from "../components/Tooltip";
 import { MetricList, type MetricListItem } from "../components/Metric";
@@ -541,13 +541,13 @@ function SourceTask(props: {
   sourceTask: NonNullable<ConversationDetailReport["sourceTask"]>;
 }) {
   const kindLabel =
-    props.sourceTask.kind === "scheduled" ? "Scheduled Task" : "Event Task";
-  const taskId = props.sourceTask.id?.trim();
+    props.sourceTask.kind === "scheduled" ? "Scheduled automation" : "Event automation";
+  const automationId = props.sourceTask.id?.trim();
   const title = props.sourceTask.title?.trim();
-  const link = taskId ? (
+  const link = automationId ? (
     <Link
       className="text-dashboard-text underline decoration-white/20 underline-offset-2 transition-colors hover:decoration-white/60"
-      to={taskPath(taskId)}
+      to={automationPath(automationId)}
     >
       Triggered by {kindLabel}
     </Link>
@@ -564,10 +564,12 @@ function SourceTask(props: {
         <span className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1">
           <span>Title</span>
           <span className="text-dashboard-text">{title}</span>
-          {taskId ? (
+          {automationId ? (
             <>
               <span>ID</span>
-              <span className="break-all text-dashboard-text">{taskId}</span>
+              <span className="break-all text-dashboard-text">
+                {automationId}
+              </span>
             </>
           ) : null}
         </span>

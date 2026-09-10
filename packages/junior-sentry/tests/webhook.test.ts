@@ -1,9 +1,9 @@
 import { createHmac } from "node:crypto";
-import type { ResourceEventInput } from "@sentry/junior-plugin-api";
+import type { EventInput } from "@sentry/junior-plugin-api";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { sentryPlugin } from "../src";
 import { createSentryWebhookRoute } from "../src/webhooks/handler";
-import { normalizeSentryResourceEvents } from "../src/webhooks/resource-events";
+import { normalizeSentryEvents } from "../src/webhooks/events";
 
 const SECRET = "sentry-webhook-secret";
 const REQUEST_ID = "6f54fb51-5c5b-4d18-899a-3c40f13c77bb";
@@ -67,11 +67,11 @@ function signedRequest(
 }
 
 function routeFixture() {
-  const events: ResourceEventInput[] = [];
+  const events: EventInput[] = [];
   return {
     events,
     route: createSentryWebhookRoute({
-      resourceEvents: {
+      events: {
         async publish(event) {
           events.push(event);
         },
@@ -86,10 +86,10 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 
-describe("Sentry webhook resource events", () => {
+describe("Sentry webhook events", () => {
   it("normalizes a created issue for the issue and project", () => {
     expect(
-      normalizeSentryResourceEvents({
+      normalizeSentryEvents({
         body: issueBody(),
         hookResource: "issue",
         hookTimestamp: "2026-08-05T23:00:01.000Z",
@@ -130,7 +130,7 @@ describe("Sentry webhook resource events", () => {
     delete body.data.issue.firstSeen;
 
     expect(
-      normalizeSentryResourceEvents({
+      normalizeSentryEvents({
         body,
         hookResource: "issue",
         hookTimestamp: "1785976800",
@@ -176,7 +176,7 @@ describe("Sentry webhook resource events", () => {
     const publish = vi.fn(async () => {});
     const [route] =
       sentryPlugin().hooks?.routes?.({
-        resourceEvents: { publish },
+        events: { publish },
       } as never) ?? [];
 
     const response = await route?.handler(signedRequest(issueBody()));
@@ -245,7 +245,7 @@ describe("Sentry webhook resource events", () => {
 
   it("propagates publisher failures so Sentry can retry", async () => {
     const route = createSentryWebhookRoute({
-      resourceEvents: {
+      events: {
         async publish() {
           throw new Error("queue unavailable");
         },

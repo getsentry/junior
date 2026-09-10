@@ -726,9 +726,9 @@ export function locationPath(locationId: string): string {
   return `/system/locations/${encodeURIComponent(locationId)}`;
 }
 
-/** Build the canonical task detail route for a task id. */
-export function taskPath(taskId: string): string {
-  return `/tasks/${encodeURIComponent(taskId)}`;
+/** Build the canonical automation detail route for an automation id. */
+export function automationPath(automationId: string): string {
+  return `/automations/${encodeURIComponent(automationId)}`;
 }
 
 function normalizeLanguage(language: string | undefined): BundledLanguage {

@@ -47,7 +47,7 @@ function threadLookup(overrides?: {
 }
 
 describe("resolvePullRequestReviewThread", () => {
-  it("is directly available to resource-event turns", () => {
+  it("is directly available to event turns", () => {
     expect(toolContext([]).tool.exposure).toBe("direct");
   });
 

@@ -29,7 +29,7 @@ Use the same baseline that the scaffolded CI workflow uses:
 - Node.js 24
 - pnpm
 - A Postgres database for Junior SQL records and the default memory plugin
-- A Redis URL for runtime state, locks, and durable task records
+- A Redis URL for runtime state, locks, and durable automation records
 
 Slack credentials are needed before the bot can reply in Slack. You can scaffold and verify the local health route first, then finish [Slack App Setup](/start-here/slack-app-setup/).
 
@@ -71,7 +71,7 @@ Set these values before running real turns:
 | `SLACK_BOT_TOKEN`         | Yes, for Slack replies | Posts thread replies and calls Slack APIs.                    |
 | `DATABASE_URL`            | Yes                    | Postgres connection string for Junior SQL records and memory. |
 | `JUNIOR_DATABASE_DRIVER`  | No                     | SQL client driver: `neon` or `postgres`.                      |
-| `REDIS_URL`               | Yes                    | Runtime state, locks, and durable background task records.    |
+| `REDIS_URL`               | Yes                    | Runtime state, locks, and durable background automation records.    |
 | `JUNIOR_SECRET`           | Yes                    | Signs internal resume callbacks and sandbox actor context.    |
 | `JUNIOR_BOT_NAME`         | No                     | Bot display/config name.                                      |
 | `JUNIOR_SLASH_COMMAND`    | No                     | Slack slash command name. Defaults to `/jr`.                  |
@@ -192,8 +192,8 @@ pnpm check
 ```
 
 The runtime-safe plugin set is also where runtime hooks are registered.
-Scheduled task tools and heartbeat behavior are built into Junior, while
-`githubPlugin()` enforces Git commit attribution. See [Tasks](/concepts/tasks/)
+Scheduled automation tools and heartbeat behavior are built into Junior, while
+`githubPlugin()` enforces Git commit attribution. See [Automations](/concepts/automations/)
 and [GitHub Plugin](/extend/github-plugin/) for those setups.
 
 ## Verify plugin content
