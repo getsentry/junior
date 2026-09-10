@@ -79,10 +79,10 @@ import {
 import { joinMailboxText } from "@/chat/task-execution/mailbox-input";
 import { resolveConversationDestination } from "@/chat/conversations/destination";
 import {
-  isResourceEventMailboxMetadata,
-  type ResourceEventMailboxMetadata,
-} from "@/chat/resource-events/notification";
-import { isResourceEventConversationMessage } from "@/chat/resource-events/actor";
+  isEventMailboxMetadata,
+  type EventMailboxMetadata,
+} from "@/chat/events/notification";
+import { isEventConversationMessage } from "@/chat/events/actor";
 
 function stableHex(...parts: string[]): string {
   return createHash("sha256")
@@ -164,7 +164,7 @@ async function completeCancelledConversationTurn(args: {
 }
 
 /**
- * Create the shared mailbox worker for web and resource-event Turns.
+ * Create the shared mailbox worker for web and event Turns.
  */
 export function createConversationTurnWorker(
   agentRunner: AgentRunner,
@@ -185,9 +185,7 @@ export function createConversationTurnWorker(
     let userMessageId = "";
     let startedAtMs = Date.now();
     let inputMessageIds: string[] = [];
-    let resourceEvent:
-      | ResourceEventMailboxMetadata["resourceEvent"]
-      | undefined;
+    let event: EventMailboxMetadata["event"] | undefined;
 
     const storedConversation = await getConversationStore().get({
       conversationId: context.conversationId,
@@ -213,8 +211,8 @@ export function createConversationTurnWorker(
         (entry) => entry.message.inboundMessageId,
       );
       turnInputFacts = first;
-      if (isResourceEventMailboxMetadata(first.message.input.metadata)) {
-        resourceEvent = first.message.input.metadata.resourceEvent;
+      if (isEventMailboxMetadata(first.message.input.metadata)) {
+        event = first.message.input.metadata.event;
       }
     } else {
       turnId = resolved.turnId;
@@ -229,7 +227,7 @@ export function createConversationTurnWorker(
     const savedTurn = isResume
       ? await getTurnRecord(context.conversationId, turnId)
       : undefined;
-    let savedMessageIsResourceEvent = false;
+    let savedMessageIsEvent = false;
     if (isResume) {
       const userMessage = getTurnUserMessage(conversation, turnId);
       if (!userMessage) {
@@ -237,8 +235,7 @@ export function createConversationTurnWorker(
           `Unable to locate the persisted user message for Turn "${turnId}"`,
         );
       }
-      savedMessageIsResourceEvent =
-        isResourceEventConversationMessage(userMessage);
+      savedMessageIsEvent = isEventConversationMessage(userMessage);
       // Resume has no new input. Restore Source and Actor from the Turn.
       // TODO(dcramer): Remove the saved Message fallback after no deployed Turn
       // cursor can omit Source or Actor.
@@ -268,15 +265,15 @@ export function createConversationTurnWorker(
     const webActor = actor.platform === "web" ? actor : undefined;
     const conversationLocation = storedConversation?.location;
     // TODO(dcramer): Remove the saved Message check after every deployed Turn
-    // cursor stores Resource event Source.
+    // cursor stores Event Source.
     // TODO(dcramer): Remove this Source-based Delivery choice after the core
-    // Turn lifecycle stores assistant Messages and web and Resource event work
+    // Turn lifecycle stores assistant Messages and web and Event work
     // each supplies optional provider Delivery. Source must not select Delivery.
     const deliverToProvider =
       Boolean(conversationLocation) &&
-      (source.kind === "resource_event" || savedMessageIsResourceEvent);
+      (source.kind === "event" || savedMessageIsEvent);
     // TODO(dcramer): Stop deriving surface from Delivery after active Turn
-    // lookup and reporting read Source for web and Resource event Turns.
+    // lookup and reporting read Source for web and Event Turns.
     const surface = deliverToProvider ? ("slack" as const) : ("api" as const);
 
     return await withLogContext(
@@ -349,11 +346,11 @@ export function createConversationTurnWorker(
               ...(source.kind === "web"
                 ? { source: "web" as const }
                 : undefined),
-              ...(resourceEvent
+              ...(event
                 ? {
-                    eventType: resourceEvent.eventType,
-                    ...(resourceEvent.trustedSummary
-                      ? { trustedSummary: resourceEvent.trustedSummary }
+                    eventType: event.eventType,
+                    ...(event.trustedSummary
+                      ? { trustedSummary: event.trustedSummary }
                       : undefined),
                   }
                 : undefined),

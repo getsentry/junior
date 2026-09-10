@@ -431,7 +431,9 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
       stdout_truncated: result.stdoutTruncated,
       stderr_truncated: result.stderrTruncated,
       ...(authRequired ? { auth_required: authRequired } : undefined),
-      ...(permissionDenied ? { permission_denied: permissionDenied } : undefined),
+      ...(permissionDenied
+        ? { permission_denied: permissionDenied }
+        : undefined),
     }) as T;
   };
 
@@ -633,8 +635,12 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
               context.setToolCallSpanAttributes,
             ),
           pattern,
-          ...(typeof rawInput.path === "string" ? { path: rawInput.path } : undefined),
-          ...(typeof rawInput.glob === "string" ? { glob: rawInput.glob } : undefined),
+          ...(typeof rawInput.path === "string"
+            ? { path: rawInput.path }
+            : undefined),
+          ...(typeof rawInput.glob === "string"
+            ? { glob: rawInput.glob }
+            : undefined),
           ...(typeof rawInput.ignoreCase === "boolean"
             ? { ignoreCase: rawInput.ignoreCase }
             : undefined),
@@ -681,7 +687,9 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
               context.setToolCallSpanAttributes,
             ),
           pattern,
-          ...(typeof rawInput.path === "string" ? { path: rawInput.path } : undefined),
+          ...(typeof rawInput.path === "string"
+            ? { path: rawInput.path }
+            : undefined),
           ...(limit ? { limit } : undefined),
         });
         setSpanStatus("ok");
@@ -706,7 +714,9 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
       async () => {
         const response = await listDir({
           fs: fileSystem,
-          ...(typeof rawInput.path === "string" ? { path: rawInput.path } : undefined),
+          ...(typeof rawInput.path === "string"
+            ? { path: rawInput.path }
+            : undefined),
           ...(limit ? { limit } : undefined),
         });
         setSpanStatus("ok");
@@ -792,9 +802,12 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
     } catch (error) {
       const notReady = getWorkspaceSnapshotNotReadyError(error);
       if (notReady) {
-        throw new ToolInputError(workspaceSnapshotNotReadyUserMessage(notReady), {
-          cause: notReady,
-        });
+        throw new ToolInputError(
+          workspaceSnapshotNotReadyUserMessage(notReady),
+          {
+            cause: notReady,
+          },
+        );
       }
       if (isSandboxUnavailableError(error)) {
         throw createSandboxUnavailableToolError(operation, error);

@@ -180,7 +180,9 @@ async function fetchWithPinnedLookup(
         path: `${url.pathname}${url.search}`,
         method: "GET",
         lookup,
-        ...(url.protocol === "https:" ? { servername: url.hostname } : undefined),
+        ...(url.protocol === "https:"
+          ? { servername: url.hostname }
+          : undefined),
         headers: {
           "user-agent": USER_AGENT,
           "accept-encoding": "identity",

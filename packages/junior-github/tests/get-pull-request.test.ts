@@ -10,12 +10,12 @@ function toolContext(
       body: {
         base: { ref: "main" },
         draft: false,
-        head: { ref: "feat/resource-events", sha: HEAD_SHA },
+        head: { ref: "feat/events", sha: HEAD_SHA },
         html_url: "https://github.com/getsentry/junior/pull/691",
         merged: false,
         number: 691,
         state: "open",
-        title: "Add resource events",
+        title: "Add events",
       },
     },
   ],
@@ -23,7 +23,7 @@ function toolContext(
   const adapter = createGitHubApiTestAdapter(responses);
   const ctx = {
     egress: adapter.egress,
-    resourceEvents: { canSubscribe },
+    events: { canSubscribe },
   };
   return { adapter, tool: createGitHubGetPullRequestTool(ctx) };
 }

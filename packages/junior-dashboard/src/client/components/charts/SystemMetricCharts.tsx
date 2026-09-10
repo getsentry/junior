@@ -52,7 +52,12 @@ function tokenChart(bucketUnit: TimeRangeBucketUnit): ChartConfig {
   return {
     axisFormat: formatCompactNumber,
     color: "#22d3ee",
-    description: bucketUnit === "hour" ? "Hourly model tokens" : bucketUnit === "6hour" ? "6-hour model tokens" : "Daily model tokens",
+    description:
+      bucketUnit === "hour"
+        ? "Hourly model tokens"
+        : bucketUnit === "6hour"
+          ? "6-hour model tokens"
+          : "Daily model tokens",
     format: formatCompactNumber,
     metric: "tokens",
     title: "Token usage",
@@ -64,7 +69,12 @@ function inputCacheChart(bucketUnit: TimeRangeBucketUnit): ChartConfig {
   return {
     axisFormat: formatCompactNumber,
     color: "#22d3ee",
-    description: bucketUnit === "hour" ? "Hourly cache mix" : bucketUnit === "6hour" ? "6-hour cache mix" : "Daily cache mix",
+    description:
+      bucketUnit === "hour"
+        ? "Hourly cache mix"
+        : bucketUnit === "6hour"
+          ? "6-hour cache mix"
+          : "Daily cache mix",
     format: formatCompactNumber,
     metric: "inputTokens",
     title: "Input token cache",
@@ -78,7 +88,11 @@ function supportingCharts(bucketUnit: TimeRangeBucketUnit): ChartConfig[] {
       axisFormat: compactCurrency,
       color: "#fbbf24",
       description:
-        bucketUnit === "hour" ? "Hourly estimated cost" : bucketUnit === "6hour" ? "6-hour estimated cost" : "Daily estimated cost",
+        bucketUnit === "hour"
+          ? "Hourly estimated cost"
+          : bucketUnit === "6hour"
+            ? "6-hour estimated cost"
+            : "Daily estimated cost",
       format: (value) => formatCostSummary({ total: value }),
       metric: "costUsd",
       title: "Model spend",

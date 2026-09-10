@@ -89,7 +89,7 @@ describe("createMcpAuthOrchestration", () => {
       channelId: "C123",
       source: slackSource,
       threadTs: "1700000000.000000",
-      userMessage: "<scheduled-task-run />",
+      userMessage: "<scheduled-automation-run />",
       getConfiguration: () => ({}),
       interactiveAuthEnabled: false,
     });

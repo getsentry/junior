@@ -30,10 +30,10 @@ instead of copying Tailwind blocks.
    - `layout/VisualViewportShell` — fixed shell, visualViewport CSS vars, body lock
    - `conversations/ChatLayout` — scroll-above-dock frame for reply threads
    - `conversations/ComposerDock` — reply bottom pad / dock chrome only
-   Pages pass children only. Home and create are one landing surface, not a dock,
-   and must
-   not reuse `ComposerDock`. Do not invent viewport height, offset, or bottom
-   safe-area math in page modules.
+     Pages pass children only. Home and create are one landing surface, not a dock,
+     and must
+     not reuse `ComposerDock`. Do not invent viewport height, offset, or bottom
+     safe-area math in page modules.
 3. **Features** — stay under `conversations/` or `pages/` until a surface is
    shared by two real callers.
 

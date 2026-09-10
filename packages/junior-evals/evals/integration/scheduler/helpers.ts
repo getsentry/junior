@@ -1,15 +1,15 @@
 import { toolCalls } from "vitest-evals";
 import { getDb } from "@/chat/db";
 import { createSlackDestination } from "@/chat/destination";
-import { saveScheduledTask } from "@/chat/scheduled-tasks/tasks";
-import type { ScheduledTask } from "@/chat/scheduled-tasks/types";
+import { saveScheduledAutomation } from "@/chat/scheduled-automations/tasks";
+import type { ScheduledAutomation } from "@/chat/scheduled-automations/types";
 
-interface ScheduledTaskThread {
+interface ScheduledAutomationThread {
   channel_id: string;
 }
 
-/** Seed an existing scheduled task so management evals exercise only the requested follow-up. */
-export async function seedScheduledTask(args: {
+/** Seed an existing scheduled automation so management evals exercise only the requested follow-up. */
+export async function seedScheduledAutomation(args: {
   createdBy: {
     fullName?: string;
     slackUserId: string;
@@ -18,17 +18,17 @@ export async function seedScheduledTask(args: {
   credentialMode?: "creator" | "system";
   id: string;
   taskText: string;
-  thread: ScheduledTaskThread;
+  thread: ScheduledAutomationThread;
 }) {
   const destination = createSlackDestination({
     channelId: args.thread.channel_id,
     teamId: "TEVAL",
   });
   if (!destination || destination.platform !== "slack") {
-    throw new Error("Scheduled task eval requires a Slack destination");
+    throw new Error("Scheduled automation eval requires a Slack destination");
   }
   const nowMs = Date.now();
-  const task: ScheduledTask = {
+  const task: ScheduledAutomation = {
     id: args.id,
     conversationAccess: { audience: "channel", visibility: "public" },
     createdAtMs: nowMs - 60_000,
@@ -53,48 +53,48 @@ export async function seedScheduledTask(args: {
     task: { text: args.taskText },
     updatedAtMs: nowMs - 60_000,
   };
-  await saveScheduledTask(getDb(), task);
+  await saveScheduledAutomation(getDb(), task);
 }
 
-export function scheduledTaskCreateCalls(
+export function scheduledAutomationCreateCalls(
   session: Parameters<typeof toolCalls>[0],
 ) {
   return toolCalls(session).filter(
     (call) =>
-      call.name === "slackScheduleCreateTask" &&
+      call.name === "slackScheduleCreateAutomation" &&
       call.status === "ok" &&
       call.result !== undefined,
   );
 }
 
-export function scheduledTaskUpdateCalls(
+export function scheduledAutomationUpdateCalls(
   session: Parameters<typeof toolCalls>[0],
 ) {
   return toolCalls(session).filter(
     (call) =>
-      call.name === "slackScheduleUpdateTask" &&
+      call.name === "slackScheduleUpdateAutomation" &&
       call.status === "ok" &&
       call.result !== undefined,
   );
 }
 
-export function scheduledTaskDeleteCalls(
+export function scheduledAutomationDeleteCalls(
   session: Parameters<typeof toolCalls>[0],
 ) {
   return toolCalls(session).filter(
     (call) =>
-      call.name === "slackScheduleDeleteTask" &&
+      call.name === "slackScheduleDeleteAutomation" &&
       call.status === "ok" &&
       call.result !== undefined,
   );
 }
 
-export function scheduledTaskListCalls(
+export function scheduledAutomationListCalls(
   session: Parameters<typeof toolCalls>[0],
 ) {
   return toolCalls(session).filter(
     (call) =>
-      call.name === "slackScheduleListTasks" &&
+      call.name === "slackScheduleListAutomations" &&
       call.status === "ok" &&
       call.result !== undefined,
   );

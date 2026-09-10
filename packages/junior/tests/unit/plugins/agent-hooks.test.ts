@@ -6,9 +6,9 @@ import {
   definePluginTool,
   defineJuniorPlugin,
   pluginToolOutputSchema,
-  RESOURCE_EVENT_SUMMARY_MAX_LENGTH,
-  RESOURCE_EVENT_TEXT_MAX_LENGTH,
-  type ResourceEvent,
+  EVENT_SUMMARY_MAX_LENGTH,
+  EVENT_TEXT_MAX_LENGTH,
+  type Event,
   type ToolExposure,
   type ToolRegistrationHookContext,
 } from "@sentry/junior-plugin-api";
@@ -614,7 +614,7 @@ describe("agent plugin hooks", () => {
           displayName: "Agent Demo",
           description: "Agent demo",
         },
-        resourceEvents: {
+        events: {
           resourceTypes: [
             { type: "demo", supportedEvents: ["demo.completed"] },
           ],
@@ -622,7 +622,7 @@ describe("agent plugin hooks", () => {
         hooks: {
           tools(ctx) {
             expect(ctx.actor).toEqual(TEST_ACTOR);
-            expect(ctx.resourceEvents.canSubscribe).toBe(true);
+            expect(ctx.events.canSubscribe).toBe(true);
             resolveActor = ctx.users.resolveActor;
             return {
               demoTool: demoPluginTool("Demo tool", "review"),
@@ -663,7 +663,7 @@ describe("agent plugin hooks", () => {
     }
   });
 
-  it("allows resource subscription hints for conversations", () => {
+  it("allows watch hints for conversations", () => {
     const webActor = {
       platform: "web" as const,
       userId: "dashboard:alice",
@@ -677,14 +677,14 @@ describe("agent plugin hooks", () => {
           displayName: "Agent Demo",
           description: "Agent demo",
         },
-        resourceEvents: {
+        events: {
           resourceTypes: [
             { type: "demo", supportedEvents: ["demo.completed"] },
           ],
         },
         hooks: {
           tools(ctx) {
-            expect(ctx.resourceEvents.canSubscribe).toBe(true);
+            expect(ctx.events.canSubscribe).toBe(true);
             return {
               demoTool: demoPluginTool("Demo tool", "review"),
             };
@@ -765,7 +765,7 @@ describe("agent plugin hooks", () => {
         },
         hooks: {
           tools(ctx) {
-            expect(ctx.resourceEvents.canSubscribe).toBe(false);
+            expect(ctx.events.canSubscribe).toBe(false);
             return {
               prototypeTool,
             };
@@ -1078,7 +1078,7 @@ describe("agent plugin hooks", () => {
   it("collects route handlers from configured plugins", async () => {
     const previous = setPlugins([
       defineJuniorPlugin({
-        resourceEvents: {
+        events: {
           resourceTypes: [{ type: "demo", supportedEvents: ["demo.created"] }],
           normalizeIdentifier: (identifier) => identifier.toLowerCase(),
         },
@@ -1093,17 +1093,13 @@ describe("agent plugin hooks", () => {
               {
                 path: "/demo",
                 async handler() {
-                  await ctx.resourceEvents.publish({
+                  await ctx.events.publish({
                     eventKey: "demo:event",
                     eventType: "demo.created",
                     occurredAtMs: 1,
                     identifier: "Resource:1",
-                    trustedSummary: "s".repeat(
-                      RESOURCE_EVENT_SUMMARY_MAX_LENGTH + 1,
-                    ),
-                    untrustedText: "u".repeat(
-                      RESOURCE_EVENT_TEXT_MAX_LENGTH + 1,
-                    ),
+                    trustedSummary: "s".repeat(EVENT_SUMMARY_MAX_LENGTH + 1),
+                    untrustedText: "u".repeat(EVENT_TEXT_MAX_LENGTH + 1),
                   });
                   return new Response("demo");
                 },
@@ -1114,8 +1110,8 @@ describe("agent plugin hooks", () => {
       }),
     ]);
     try {
-      const publish = vi.fn(async (_event: ResourceEvent) => {});
-      const routes = getPluginRoutes({ resourceEvents: { publish } });
+      const publish = vi.fn(async (_event: Event) => {});
+      const routes = getPluginRoutes({ events: { publish } });
 
       expect(routes).toHaveLength(1);
       expect(routes[0]?.pluginName).toBe("agent-demo");
@@ -1132,18 +1128,14 @@ describe("agent plugin hooks", () => {
         }),
       );
       const published = publish.mock.calls[0]?.[0];
-      expect(published?.trustedSummary).toHaveLength(
-        RESOURCE_EVENT_SUMMARY_MAX_LENGTH,
-      );
-      expect(published?.untrustedText).toHaveLength(
-        RESOURCE_EVENT_TEXT_MAX_LENGTH,
-      );
+      expect(published?.trustedSummary).toHaveLength(EVENT_SUMMARY_MAX_LENGTH);
+      expect(published?.untrustedText).toHaveLength(EVENT_TEXT_MAX_LENGTH);
     } finally {
       setPlugins(previous);
     }
   });
 
-  it("rejects plugin-supplied resource event namespaces", async () => {
+  it("rejects plugin-supplied event namespaces", async () => {
     const previous = setPlugins([
       defineJuniorPlugin({
         manifest: {
@@ -1157,7 +1149,7 @@ describe("agent plugin hooks", () => {
               {
                 path: "/demo",
                 async handler() {
-                  await ctx.resourceEvents.publish({
+                  await ctx.events.publish({
                     eventKey: "other:event",
                     eventType: "demo.created",
                     occurredAtMs: 1,
@@ -1175,7 +1167,7 @@ describe("agent plugin hooks", () => {
     ]);
     try {
       const publish = vi.fn(async () => {});
-      const [route] = getPluginRoutes({ resourceEvents: { publish } });
+      const [route] = getPluginRoutes({ events: { publish } });
 
       await expect(
         route!.handler(new Request("http://localhost/demo")),
@@ -1189,12 +1181,12 @@ describe("agent plugin hooks", () => {
   it.each([
     {
       label: "without a registration",
-      resourceEvents: undefined,
+      events: undefined,
       error: "without an active registration",
     },
     {
       label: "while its registration is disabled",
-      resourceEvents: {
+      events: {
         resourceTypes: [{ type: "demo", supportedEvents: ["demo.created"] }],
         isEnabled: () => false,
       },
@@ -1202,56 +1194,53 @@ describe("agent plugin hooks", () => {
     },
     {
       label: "when the event type is undeclared",
-      resourceEvents: {
+      events: {
         resourceTypes: [{ type: "demo", supportedEvents: ["demo.created"] }],
       },
-      error: 'did not register resource event "demo.deleted"',
+      error: 'did not register event "demo.deleted"',
     },
-  ])(
-    "rejects resource event publication $label",
-    async ({ resourceEvents, error }) => {
-      const previous = setPlugins([
-        defineJuniorPlugin({
-          ...(resourceEvents ? { resourceEvents } : undefined),
-          manifest: {
-            name: "agent-demo",
-            displayName: "Agent Demo",
-            description: "Agent demo",
-          },
-          hooks: {
-            routes(ctx) {
-              return [
-                {
-                  path: "/demo",
-                  async handler() {
-                    await ctx.resourceEvents.publish({
-                      eventKey: "demo:event",
-                      eventType: "demo.deleted",
-                      occurredAtMs: 1,
-                      identifier: "resource:1",
-                      trustedSummary: "Demo deleted",
-                    });
-                    return new Response("demo");
-                  },
+  ])("rejects event publication $label", async ({ events, error }) => {
+    const previous = setPlugins([
+      defineJuniorPlugin({
+        ...(events ? { events } : undefined),
+        manifest: {
+          name: "agent-demo",
+          displayName: "Agent Demo",
+          description: "Agent demo",
+        },
+        hooks: {
+          routes(ctx) {
+            return [
+              {
+                path: "/demo",
+                async handler() {
+                  await ctx.events.publish({
+                    eventKey: "demo:event",
+                    eventType: "demo.deleted",
+                    occurredAtMs: 1,
+                    identifier: "resource:1",
+                    trustedSummary: "Demo deleted",
+                  });
+                  return new Response("demo");
                 },
-              ];
-            },
+              },
+            ];
           },
-        }),
-      ]);
-      try {
-        const publish = vi.fn(async () => {});
-        const [route] = getPluginRoutes({ resourceEvents: { publish } });
+        },
+      }),
+    ]);
+    try {
+      const publish = vi.fn(async () => {});
+      const [route] = getPluginRoutes({ events: { publish } });
 
-        await expect(
-          route!.handler(new Request("http://localhost/demo")),
-        ).rejects.toThrow(error);
-        expect(publish).not.toHaveBeenCalled();
-      } finally {
-        setPlugins(previous);
-      }
-    },
-  );
+      await expect(
+        route!.handler(new Request("http://localhost/demo")),
+      ).rejects.toThrow(error);
+      expect(publish).not.toHaveBeenCalled();
+    } finally {
+      setPlugins(previous);
+    }
+  });
 
   it("rejects invalid route methods from configured plugins", () => {
     const previous = setPlugins([
@@ -1277,7 +1266,7 @@ describe("agent plugin hooks", () => {
     try {
       expect(() =>
         getPluginRoutes({
-          resourceEvents: { publish: async () => {} },
+          events: { publish: async () => {} },
         }),
       ).toThrow(
         'Plugin route "/demo" from plugin "agent-demo" has invalid method "TRACE"',
@@ -1311,7 +1300,7 @@ describe("agent plugin hooks", () => {
     try {
       expect(() =>
         getPluginRoutes({
-          resourceEvents: { publish: async () => {} },
+          events: { publish: async () => {} },
         }),
       ).toThrow(
         'Plugin route "/demo" from plugin "agent-demo" must not combine ALL with explicit methods',
@@ -1350,7 +1339,7 @@ describe("agent plugin hooks", () => {
     try {
       expect(() =>
         getPluginRoutes({
-          resourceEvents: { publish: async () => {} },
+          events: { publish: async () => {} },
         }),
       ).toThrow(
         'Plugin route "/demo" conflicts with an ALL route for the same path',

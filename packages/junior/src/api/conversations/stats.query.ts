@@ -172,7 +172,6 @@ type GuardianRow = {
   requests: number;
 };
 
-
 function metricPoint(
   date: string,
   row:
@@ -223,7 +222,6 @@ function metricDays(rows: MetricRow[], endMs: number): ConversationMetricDay[] {
   return days;
 }
 
-
 function emptyMetricDay(date: string): ConversationMetricDay {
   return { conversations: 0, date, durationMs: 0 };
 }
@@ -254,8 +252,10 @@ function sumGuardianHoursIntoSixHours(
   });
 }
 
-
-function metricHours(rows: MetricRow[], endMs: number): ConversationMetricDay[] {
+function metricHours(
+  rows: MetricRow[],
+  endMs: number,
+): ConversationMetricDay[] {
   const byHour = new Map(rows.map((row) => [row.date, row]));
   const end = startOfUtcHour(endMs);
   const start = new Date(end.getTime() - (WINDOW_HOURS - 1) * HOUR_MS);
@@ -356,128 +356,123 @@ async function aggregateStats(db: JuniorDatabase, start: Date, end: Date) {
     ${juniorConversations.lastActivityAt} AT TIME ZONE 'UTC',
     'YYYY-MM-DD"T"HH24'
   )`;
-  const [
-    totalsRows,
-    actorRows,
-    locationRows,
-    metricRows,
-    metricHourRows,
-  ] = await Promise.all([
-    db
-      .select(treeAggregateColumns)
-      .from(juniorConversations)
-      .innerJoin(
-        treeConversation,
-        eq(
-          treeConversation.rootConversationId,
-          juniorConversations.conversationId,
+  const [totalsRows, actorRows, locationRows, metricRows, metricHourRows] =
+    await Promise.all([
+      db
+        .select(treeAggregateColumns)
+        .from(juniorConversations)
+        .innerJoin(
+          treeConversation,
+          eq(
+            treeConversation.rootConversationId,
+            juniorConversations.conversationId,
+          ),
+        )
+        .where(where),
+      db
+        .select({
+          identityDisplayName: juniorIdentities.displayName,
+          identityEmail: juniorIdentities.emailNormalized,
+          identityHandle: juniorIdentities.handle,
+          identitySubjectId: juniorIdentities.providerSubjectId,
+          userDisplayName: juniorUsers.displayName,
+          userEmail: juniorUsers.primaryEmailNormalized,
+          ...treeAggregateColumns,
+        })
+        .from(juniorConversations)
+        .innerJoin(
+          treeConversation,
+          eq(
+            treeConversation.rootConversationId,
+            juniorConversations.conversationId,
+          ),
+        )
+        .leftJoin(
+          juniorIdentities,
+          eq(juniorIdentities.id, juniorConversations.actorIdentityId),
+        )
+        .leftJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
+        .where(where)
+        .groupBy(
+          juniorIdentities.displayName,
+          juniorIdentities.emailNormalized,
+          juniorIdentities.handle,
+          juniorIdentities.providerSubjectId,
+          juniorUsers.displayName,
+          juniorUsers.primaryEmailNormalized,
         ),
-      )
-      .where(where),
-    db
-      .select({
-        identityDisplayName: juniorIdentities.displayName,
-        identityEmail: juniorIdentities.emailNormalized,
-        identityHandle: juniorIdentities.handle,
-        identitySubjectId: juniorIdentities.providerSubjectId,
-        userDisplayName: juniorUsers.displayName,
-        userEmail: juniorUsers.primaryEmailNormalized,
-        ...treeAggregateColumns,
-      })
-      .from(juniorConversations)
-      .innerJoin(
-        treeConversation,
-        eq(
-          treeConversation.rootConversationId,
-          juniorConversations.conversationId,
+      db
+        .select({
+          channelName: juniorConversations.channelName,
+          destinationDisplayName: juniorDestinations.displayName,
+          destinationKind: juniorDestinations.kind,
+          destinationProvider: juniorDestinations.provider,
+          destinationVisibility: juniorDestinations.visibility,
+          source: juniorConversations.source,
+          ...treeAggregateColumns,
+        })
+        .from(juniorConversations)
+        .innerJoin(
+          treeConversation,
+          eq(
+            treeConversation.rootConversationId,
+            juniorConversations.conversationId,
+          ),
+        )
+        .leftJoin(
+          juniorDestinations,
+          eq(juniorDestinations.id, juniorConversations.destinationId),
+        )
+        .where(where)
+        .groupBy(
+          juniorConversations.channelName,
+          juniorConversations.source,
+          juniorDestinations.displayName,
+          juniorDestinations.kind,
+          juniorDestinations.provider,
+          juniorDestinations.visibility,
         ),
-      )
-      .leftJoin(
-        juniorIdentities,
-        eq(juniorIdentities.id, juniorConversations.actorIdentityId),
-      )
-      .leftJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
-      .where(where)
-      .groupBy(
-        juniorIdentities.displayName,
-        juniorIdentities.emailNormalized,
-        juniorIdentities.handle,
-        juniorIdentities.providerSubjectId,
-        juniorUsers.displayName,
-        juniorUsers.primaryEmailNormalized,
-      ),
-    db
-      .select({
-        channelName: juniorConversations.channelName,
-        destinationDisplayName: juniorDestinations.displayName,
-        destinationKind: juniorDestinations.kind,
-        destinationProvider: juniorDestinations.provider,
-        destinationVisibility: juniorDestinations.visibility,
-        source: juniorConversations.source,
-        ...treeAggregateColumns,
-      })
-      .from(juniorConversations)
-      .innerJoin(
-        treeConversation,
-        eq(
-          treeConversation.rootConversationId,
-          juniorConversations.conversationId,
-        ),
-      )
-      .leftJoin(
-        juniorDestinations,
-        eq(juniorDestinations.id, juniorConversations.destinationId),
-      )
-      .where(where)
-      .groupBy(
-        juniorConversations.channelName,
-        juniorConversations.source,
-        juniorDestinations.displayName,
-        juniorDestinations.kind,
-        juniorDestinations.provider,
-        juniorDestinations.visibility,
-      ),
-    db
-      .select({
-        cachedInputTokens: treeAggregateColumns.cachedInputTokens,
-        conversations: treeAggregateColumns.conversations,
-        costUsd: treeAggregateColumns.costUsd,
-        date: activityDate,
-        durationMs: treeAggregateColumns.durationMs,
-        inputTokens: treeAggregateColumns.inputTokens,
-        tokens: treeAggregateColumns.tokens,
-      })
-      .from(juniorConversations)
-      .innerJoin(
-        treeConversation,
-        eq(
-          treeConversation.rootConversationId,
-          juniorConversations.conversationId,
-        ),
-      )
-      .where(where)
-      .groupBy(activityDate),
-    db
-      .select({
-        cachedInputTokens: treeAggregateColumns.cachedInputTokens,
-        conversations: treeAggregateColumns.conversations,
-        costUsd: treeAggregateColumns.costUsd,
-        date: activityHour,
-        durationMs: treeAggregateColumns.durationMs,
-        inputTokens: treeAggregateColumns.inputTokens,
-        tokens: treeAggregateColumns.tokens,
-      })
-      .from(juniorConversations)
-      .innerJoin(
-        treeConversation,
-        eq(
-          treeConversation.rootConversationId,
-          juniorConversations.conversationId,
-        ),
-      )
-      .where(where)
-      .groupBy(activityHour),
-  ]);
+      db
+        .select({
+          cachedInputTokens: treeAggregateColumns.cachedInputTokens,
+          conversations: treeAggregateColumns.conversations,
+          costUsd: treeAggregateColumns.costUsd,
+          date: activityDate,
+          durationMs: treeAggregateColumns.durationMs,
+          inputTokens: treeAggregateColumns.inputTokens,
+          tokens: treeAggregateColumns.tokens,
+        })
+        .from(juniorConversations)
+        .innerJoin(
+          treeConversation,
+          eq(
+            treeConversation.rootConversationId,
+            juniorConversations.conversationId,
+          ),
+        )
+        .where(where)
+        .groupBy(activityDate),
+      db
+        .select({
+          cachedInputTokens: treeAggregateColumns.cachedInputTokens,
+          conversations: treeAggregateColumns.conversations,
+          costUsd: treeAggregateColumns.costUsd,
+          date: activityHour,
+          durationMs: treeAggregateColumns.durationMs,
+          inputTokens: treeAggregateColumns.inputTokens,
+          tokens: treeAggregateColumns.tokens,
+        })
+        .from(juniorConversations)
+        .innerJoin(
+          treeConversation,
+          eq(
+            treeConversation.rootConversationId,
+            juniorConversations.conversationId,
+          ),
+        )
+        .where(where)
+        .groupBy(activityHour),
+    ]);
   return {
     actorRows,
     locationRows,

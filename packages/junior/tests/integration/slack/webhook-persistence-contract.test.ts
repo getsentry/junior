@@ -196,9 +196,8 @@ describe("Slack webhook persistence contract", () => {
 
       expect(response.status).toBe(200);
       expect(queue.queuedMessages()).toEqual([]);
-      const history = await getConversationEventStore().loadMessageHistory(
-        threadId,
-      );
+      const history =
+        await getConversationEventStore().loadMessageHistory(threadId);
       expect(history.events).toEqual([
         expect.objectContaining({
           data: expect.objectContaining({

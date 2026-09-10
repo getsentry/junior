@@ -2,7 +2,7 @@ import { describeEval } from "vitest-evals";
 import { expect } from "vitest";
 import {
   mention,
-  resourceEvent,
+  event,
   rubric,
   slackEvals,
   steer,
@@ -22,7 +22,7 @@ describeEval("Conversation Routing", slackEvals, (it) => {
   }) => {
     const result = await run({
       initialEvents: [
-        resourceEvent({
+        event({
           eventKey: "linear-issue-linked",
           eventType: "issue.linked",
           intent: "Track linked infrastructure work in this Slack thread.",

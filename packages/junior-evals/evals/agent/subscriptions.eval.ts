@@ -3,7 +3,7 @@ import { expect } from "vitest";
 import {
   githubWebhook,
   mention,
-  resourceEvent,
+  event,
   rubric,
   slackEvals,
   visibleAssistantText,
@@ -18,7 +18,7 @@ describeEval("Resource Event Subscriptions", slackEvals, (it) => {
     const result = await run({
       overrides: {
         credential_providers: ["github"],
-        github_resource_events: true,
+        github_events: true,
         plugin_packages: ["@sentry/junior-github"],
       },
       initialEvents: [
@@ -50,7 +50,7 @@ describeEval("Resource Event Subscriptions", slackEvals, (it) => {
           },
         }),
         expect.objectContaining({
-          name: "watchResourceEvents",
+          name: "watchEvents",
           status: "ok",
           arguments: expect.objectContaining({
             events: expect.arrayContaining([
@@ -66,7 +66,7 @@ describeEval("Resource Event Subscriptions", slackEvals, (it) => {
       ]),
     );
     expect(toolCalls(result.session).map((call) => call.name)).not.toContain(
-      "slackScheduleCreateTask",
+      "slackScheduleCreateAutomation",
     );
   });
 
@@ -75,13 +75,13 @@ describeEval("Resource Event Subscriptions", slackEvals, (it) => {
   }) => {
     const result = await run({
       overrides: {
-        github_resource_events: true,
-        plugin_dirs: ["fixtures/resource-event-plugins"],
+        github_events: true,
+        plugin_dirs: ["fixtures/event-plugins"],
         plugin_packages: ["@sentry/junior-github"],
       },
       initialEvents: [
         mention(
-          "$eval-resource-events Create a pull request titled 'Prefer event subscriptions', then check it every five minutes and tell this thread if checks fail, review feedback arrives, it merges, or it closes.",
+          "$eval-events Create a pull request titled 'Prefer watches', then check it every five minutes and tell this thread if checks fail, review feedback arrives, it merges, or it closes.",
         ),
       ],
       criteria: rubric({
@@ -102,15 +102,14 @@ describeEval("Resource Event Subscriptions", slackEvals, (it) => {
           name: "callMcpTool",
           status: "ok",
           arguments: expect.objectContaining({
-            tool_name:
-              "mcp__eval-resource-events__create-watchable-pull-request",
+            tool_name: "mcp__eval-events__create-watchable-pull-request",
             arguments: expect.objectContaining({
-              title: "Prefer event subscriptions",
+              title: "Prefer watches",
             }),
           }),
         }),
         expect.objectContaining({
-          name: "watchResourceEvents",
+          name: "watchEvents",
           status: "ok",
           arguments: expect.objectContaining({
             namespace: "github",
@@ -138,7 +137,7 @@ describeEval("Resource Event Subscriptions", slackEvals, (it) => {
       ]),
     );
     expect(toolCalls(result.session).map((call) => call.name)).not.toContain(
-      "slackScheduleCreateTask",
+      "slackScheduleCreateAutomation",
     );
   });
 
@@ -177,7 +176,7 @@ describeEval("Resource Event Subscriptions", slackEvals, (it) => {
   }) => {
     const result = await run({
       initialEvents: [
-        resourceEvent({
+        event({
           eventKey: "github-delivery-checks-failed",
           eventType: "pull_request.checks.failed",
           intent:
@@ -234,7 +233,7 @@ describeEval("Resource Event Subscriptions", slackEvals, (it) => {
   }) => {
     const result = await run({
       initialEvents: [
-        resourceEvent({
+        event({
           eventKey: "github-delivery-pr-merged",
           eventType: "pull_request.merged",
           intent:

@@ -26,7 +26,7 @@ file.
    delivery or intentional no-reply completion commits the durable turn outcome.
 
 The local CLI uses `local/runner.ts` directly. `conversations/web-input.ts`
-stores web input in the mailbox. Web input and resource events then use the
+stores web input in the mailbox. Web input and events then use the
 worker in `task-execution/conversation-turn.ts`. A dashboard continue may keep
 the Conversation Location without giving the Run Delivery to that Location.
 
@@ -46,12 +46,12 @@ the Conversation Location without giving the Run Delivery to that Location.
   adaptation, and plugin-facing outcome projection.
 - `agent-invocations/`: durable parent/child bindings, delegated work, and
   internal terminal results.
-- `event-tasks/`: durable instructions matched to normalized resource events.
-- `scheduled-tasks/`: durable scheduled instructions, authoring tools, and
+- `event-automations/`: durable instructions matched to normalized events.
+- `scheduled-automations/`: durable scheduled instructions, authoring tools, and
   heartbeat dispatch.
 - `task-input.ts`: shared agent input for tasks (from a schedule, event, or
-  resource subscription). Section outline lives under **Task agent input** below.
-- `tasks/`: signed-in user projection across scheduled and event tasks.
+  watch). Section outline lives under **Task agent input** below.
+- `automations/`: signed-in user projection across scheduled and event automations.
 - `agent/` and `pi/`: model execution and Pi state conversion.
 - `services/`: consumer-owned domain decisions.
 - `attachments/`: provider-neutral attachment metadata, object storage, and garbage collection.
@@ -105,9 +105,9 @@ type Source =
   | SlackSource
   | WebSource
   | LocalSource
-  | ResourceEventSource
-  | ScheduledTaskSource
-  | EventTaskSource
+  | EventSource
+  | ScheduledAutomationSource
+  | EventAutomationSource
   | PluginDispatchSource
   | AgentInvocationSource;
 
@@ -146,7 +146,7 @@ type AgentRun = {
 selected input to the Turn. It loads Location from the Conversation. Before
 every new or resumed Run, the work owner supplies Delivery. Slack input gets
 Slack Delivery. Web and local input do not get provider Delivery. Resource
-events get Delivery for the Conversation Location. Scheduled, Event task, and
+events get Delivery for the Conversation Location. Scheduled, Event automation, and
 plugin dispatch work gets Delivery for its explicit Destination. Agent
 invocation does not get Delivery. A feature may use Destination to select a
 target before it creates a Conversation. That target becomes the new
@@ -242,7 +242,7 @@ delegation without becoming the execution actor or a general task owner.
 ## Task agent input
 
 `task-input.ts` owns agent input for every task run (schedule, event, or
-resource subscription). Call sites pass facts only. Unit snapshots in
+watch). Call sites pass facts only. Unit snapshots in
 `tests/unit/chat/task-input.test.ts` are authoritative for exact prose.
 
 **Goals**
@@ -299,7 +299,7 @@ When you reply, follow any reply format in the instructions.
 Briefly report what you did or what is needed next.
 ```
 
-**Example: event task with facts**
+**Example: event automation with facts**
 
 ```text
 [task]

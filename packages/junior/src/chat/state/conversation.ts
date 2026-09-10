@@ -16,7 +16,7 @@ export interface ConversationMessageMeta {
   source?: "slack" | "web";
   eventType?: string;
   explicitMention?: boolean;
-  /** Short summary supplied by the Resource event publisher. */
+  /** Short summary supplied by the Event publisher. */
   trustedSummary?: string;
   imageAttachmentCount?: number;
   imageFileIds?: string[];

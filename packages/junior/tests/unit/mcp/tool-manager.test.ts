@@ -76,8 +76,12 @@ function buildPlugin(
       mcp: {
         transport: "http",
         url: "https://mcp.example.com",
-        ...(options.allowedTools ? { allowedTools: options.allowedTools } : undefined),
-        ...(options.wrappedTools ? { wrappedTools: options.wrappedTools } : undefined),
+        ...(options.allowedTools
+          ? { allowedTools: options.allowedTools }
+          : undefined),
+        ...(options.wrappedTools
+          ? { wrappedTools: options.wrappedTools }
+          : undefined),
       },
     },
   };

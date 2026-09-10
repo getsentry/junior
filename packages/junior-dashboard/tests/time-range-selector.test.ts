@@ -33,13 +33,17 @@ describe("selectTimeSeries", () => {
     value: index,
   }));
   const hours = Array.from({ length: 48 }, (_, index) => {
-    const date = new Date(Date.parse("2026-06-15T00:00:00.000Z") + index * 3600_000);
+    const date = new Date(
+      Date.parse("2026-06-15T00:00:00.000Z") + index * 3600_000,
+    );
     return { date: date.toISOString().slice(0, 13), value: 1 };
   });
 
   it("keeps trailing 24 hours for 24h range even when hours are longer", () => {
     const longHours = Array.from({ length: 168 }, (_, index) => {
-      const date = new Date(Date.parse("2026-06-08T14:00:00.000Z") + index * 3600_000);
+      const date = new Date(
+        Date.parse("2026-06-08T14:00:00.000Z") + index * 3600_000,
+      );
       return { date: date.toISOString().slice(0, 13), value: 1 };
     });
     const series = selectTimeSeries({ days, hours: longHours, range: 1 });
@@ -55,7 +59,9 @@ describe("selectTimeSeries", () => {
       emptySixHour: (date) => ({ date, value: 0 }),
     });
     expect(series).toHaveLength(28);
-    expect(series.every((row) => Number(row.date.slice(-2)) % 6 === 0)).toBe(true);
+    expect(series.every((row) => Number(row.date.slice(-2)) % 6 === 0)).toBe(
+      true,
+    );
   });
 
   it("prefers dedicated sixHours series", () => {
@@ -78,8 +84,8 @@ describe("selectTimeSeries", () => {
   });
 
   it("slices daily series for 30d", () => {
-    expect(selectTimeSeries({ days, range: 30 }).map((row) => row.date)).toEqual(
-      days.slice(-30).map((row) => row.date),
-    );
+    expect(
+      selectTimeSeries({ days, range: 30 }).map((row) => row.date),
+    ).toEqual(days.slice(-30).map((row) => row.date));
   });
 });

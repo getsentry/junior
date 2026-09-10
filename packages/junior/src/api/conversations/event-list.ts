@@ -51,7 +51,9 @@ export async function readConversationEvents(
     events: page.events,
     eventHistory: conversationEventHistory({
       canExposePayload,
-      ...(transcriptPurgedAtMs === undefined ? undefined : { transcriptPurgedAtMs }),
+      ...(transcriptPurgedAtMs === undefined
+        ? undefined
+        : { transcriptPurgedAtMs }),
     }),
     ...(page.previousSeq === undefined
       ? undefined

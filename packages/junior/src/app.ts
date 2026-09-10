@@ -96,7 +96,7 @@ import { createAgentRunner } from "@/chat/runtime/agent-runner";
 import { createVercelAttachmentStorage } from "@/chat/attachments/vercel";
 import { publicArtifactGET } from "@/handlers/artifacts";
 import type { WaitUntilFn } from "@/handlers/types";
-import { createResourceEventAppPublisher } from "@/chat/resource-events/app-publisher";
+import { createEventAppPublisher } from "@/chat/events/app-publisher";
 import { receiveLocalOAuthCredential } from "@/chat/local/credential-sync";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { createAcpConversations } from "@/api/acp/conversations";
@@ -467,8 +467,8 @@ function dashboardHostRoutePaths(
     `${pagePath("locations")}/*`,
     peoplePath,
     `${peoplePath}/*`,
-    pagePath("tasks"),
-    `${pagePath("tasks")}/*`,
+    pagePath("automations"),
+    `${pagePath("automations")}/*`,
     pagePath("memories"),
     `${pagePath("memories")}/*`,
     pagePath("system"),
@@ -498,8 +498,8 @@ function dashboardHostRoutePaths(
     "/api/plugin-reports",
     "/api/user-pages",
     "/api/user-pages/*",
-    "/api/tasks",
-    "/api/tasks/*",
+    "/api/automations",
+    "/api/automations/*",
     "/api/skills",
     "/api/code",
     "/api/stats",
@@ -713,7 +713,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   };
   let pluginRoutes: PluginRouteRegistration[] = [];
   let pluginApiRoutes: PluginApiRouteRegistration[] = [];
-  const resourceEvents = createResourceEventAppPublisher({
+  const events = createEventAppPublisher({
     conversationWork: () => getConversationWorkOptions(),
   });
   let sandboxEgressTracePropagationDomains: string[] = [];
@@ -742,7 +742,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
         configuredPlugins?.registrations ?? [],
       );
     }
-    pluginRoutes = getPluginRoutes({ resourceEvents });
+    pluginRoutes = getPluginRoutes({ events });
     if (dashboard && !dashboard.disabled) {
       pluginApiRoutes = getPluginApiRoutes();
     }

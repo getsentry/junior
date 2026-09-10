@@ -65,12 +65,16 @@ function egressAttributes(input: {
   status?: number;
 }): Record<string, unknown> {
   return {
-    ...(input.egressId ? { "app.sandbox.egress_id": input.egressId } : undefined),
+    ...(input.egressId
+      ? { "app.sandbox.egress_id": input.egressId }
+      : undefined),
     ...(input.provider ? { "app.provider.name": input.provider } : undefined),
     ...(input.host ? { "server.address": input.host } : undefined),
     ...(input.method ? { "http.request.method": input.method } : undefined),
     ...(input.path ? { "url.path": input.path } : undefined),
-    ...(input.status ? { "http.response.status_code": input.status } : undefined),
+    ...(input.status
+      ? { "http.response.status_code": input.status }
+      : undefined),
   };
 }
 

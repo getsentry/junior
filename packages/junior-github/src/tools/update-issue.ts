@@ -12,7 +12,7 @@ import {
   type SubscribableResource,
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
-import { gitHubIssueSubscribable } from "../resource-events/issue.js";
+import { gitHubIssueSubscribable } from "../events/issue.js";
 import { appendGitHubRequesterAttribution } from "../tool-support/attribution.js";
 import { appendGitHubFooter } from "./footer.js";
 
@@ -101,7 +101,7 @@ export function createGitHubUpdateIssueTool(ctx: {
   conversationId?: string;
   egress: PluginEgress;
   log: PluginLogger;
-  resourceEvents: { canSubscribe: boolean };
+  events: { canSubscribe: boolean };
   slack?: { conversationLink?: { url?: string } };
   users: {
     resolveActor(): Promise<{ identity?: Identity; user?: User } | undefined>;
@@ -171,7 +171,7 @@ export function createGitHubUpdateIssueTool(ctx: {
           title: z.string(),
         })
         .parse(parsed);
-      const subscribable = ctx.resourceEvents.canSubscribe
+      const subscribable = ctx.events.canSubscribe
         ? gitHubIssueSubscribable({
             number: providerResult.number,
             repo: repo.ref,

@@ -105,9 +105,9 @@ describe("dashboard shell routes", () => {
       "/people/person%40sentry.io",
       "/system",
       "/system/plugins/github",
-      "/tasks",
-      "/tasks/task-1",
-      "/tasks/scheduled/task-1/executions",
+      "/automations",
+      "/automations/task-1",
+      "/automations/scheduled/task-1/executions",
       "/memories",
       "/memories/memory-1",
       "/settings",
@@ -288,5 +288,4 @@ describe("dashboard shell routes", () => {
     expect(html).toContain("<style>");
     expect(html).toContain("Access denied");
   });
-
 });

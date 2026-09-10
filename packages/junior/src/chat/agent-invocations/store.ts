@@ -121,8 +121,7 @@ function sameCreateInput(
     JSON.stringify(invocation.actor) === JSON.stringify(input.actor) &&
     JSON.stringify(invocation.credentialContext) ===
       JSON.stringify(input.credentialContext) &&
-    JSON.stringify(invocation.destination) ===
-      JSON.stringify(input.destination)
+    JSON.stringify(invocation.destination) === JSON.stringify(input.destination)
   );
 }
 

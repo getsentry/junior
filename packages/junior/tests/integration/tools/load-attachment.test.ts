@@ -15,11 +15,13 @@ function workspace(): SandboxWorkspace & {
     written,
     readFileToBuffer: vi.fn(async () => null),
     runCommand: vi.fn(async () => ({ exitCode: 0, stderr: "", stdout: "" })),
-    writeFiles: vi.fn(async (files: Array<{ content: Buffer; path: string }>) => {
-      written.push(
-        ...files.map((file) => ({ content: file.content, path: file.path })),
-      );
-    }),
+    writeFiles: vi.fn(
+      async (files: Array<{ content: Buffer; path: string }>) => {
+        written.push(
+          ...files.map((file) => ({ content: file.content, path: file.path })),
+        );
+      },
+    ),
   };
 }
 

@@ -38,7 +38,7 @@ vi.mock("@vercel/sandbox", () => ({
     };
 
     constructor(session: { fs: MockSandbox["fs"] }) {
-      this.fs = (session.fs as typeof this.fs);
+      this.fs = session.fs as typeof this.fs;
     }
 
     readFile(
@@ -113,37 +113,37 @@ const {
   missingErrorMock,
   hashMock,
 } = vi.hoisted(() => ({
-    resolveMock: vi.fn<
-      (...args: any[]) => Promise<{
-        snapshotId?: string;
-        profileHash?: string;
-        dependencyCount: number;
-        cacheHit: boolean;
-        resolveOutcome: string;
-        rebuildReason?: string;
-      }>
-    >(async () => ({
-      dependencyCount: 0,
-      cacheHit: false,
-      resolveOutcome: "no_profile",
-    })),
-    ensureWorkspaceSnapshotBuildMock: vi.fn(async () => "building" as const),
-    getReadyWorkspaceMock: vi.fn<
-      (...args: any[]) => Promise<{
-        snapshotId?: string;
-        profileHash?: string;
-        dependencyCount: number;
-        cacheHit: boolean;
-        resolveOutcome: string;
-      }>
-    >(async () => ({
-      dependencyCount: 0,
-      cacheHit: false,
-      resolveOutcome: "no_profile",
-    })),
-    missingErrorMock: vi.fn<(error: unknown) => boolean>(() => false),
-    hashMock: vi.fn<(runtime: string) => string | undefined>(() => undefined),
-  }));
+  resolveMock: vi.fn<
+    (...args: any[]) => Promise<{
+      snapshotId?: string;
+      profileHash?: string;
+      dependencyCount: number;
+      cacheHit: boolean;
+      resolveOutcome: string;
+      rebuildReason?: string;
+    }>
+  >(async () => ({
+    dependencyCount: 0,
+    cacheHit: false,
+    resolveOutcome: "no_profile",
+  })),
+  ensureWorkspaceSnapshotBuildMock: vi.fn(async () => "building" as const),
+  getReadyWorkspaceMock: vi.fn<
+    (...args: any[]) => Promise<{
+      snapshotId?: string;
+      profileHash?: string;
+      dependencyCount: number;
+      cacheHit: boolean;
+      resolveOutcome: string;
+    }>
+  >(async () => ({
+    dependencyCount: 0,
+    cacheHit: false,
+    resolveOutcome: "no_profile",
+  })),
+  missingErrorMock: vi.fn<(error: unknown) => boolean>(() => false),
+  hashMock: vi.fn<(runtime: string) => string | undefined>(() => undefined),
+}));
 
 vi.mock("@/chat/sandbox/snapshot/job-runner", () => ({
   ensureWorkspaceSnapshotBuild: ensureWorkspaceSnapshotBuildMock,
@@ -2949,7 +2949,9 @@ describe("createTestSandbox", () => {
       isWorkspaceSnapshotNotReadyError,
     );
 
-    expect(ensureWorkspaceSnapshotBuildMock).toHaveBeenCalledWith({ workspace });
+    expect(ensureWorkspaceSnapshotBuildMock).toHaveBeenCalledWith({
+      workspace,
+    });
     expect(sandboxCreateMock).not.toHaveBeenCalled();
   });
 
@@ -2984,7 +2986,9 @@ describe("createTestSandbox", () => {
       },
     });
 
-    expect(ensureWorkspaceSnapshotBuildMock).toHaveBeenCalledWith({ workspace });
+    expect(ensureWorkspaceSnapshotBuildMock).toHaveBeenCalledWith({
+      workspace,
+    });
     expect(sandboxCreateMock).not.toHaveBeenCalled();
   });
 
@@ -3016,7 +3020,9 @@ describe("createTestSandbox", () => {
         isWorkspaceSnapshotNotReadyError(error),
     );
 
-    expect(ensureWorkspaceSnapshotBuildMock).toHaveBeenCalledWith({ workspace });
+    expect(ensureWorkspaceSnapshotBuildMock).toHaveBeenCalledWith({
+      workspace,
+    });
     expect(sandboxCreateMock).not.toHaveBeenCalled();
   });
 

@@ -18,7 +18,7 @@ event sequence. Callers must not derive or modify cursor positions.
 
 Canonical storage contains runtime and Pi-shaped events that are not a suitable
 REST contract. The reporting adapter projects those facts into normalized
-resource events:
+events:
 
 - `tool_calls` carries one or more tool observations. Each observation has a
   stable tool call id, name, and current status; input and model-visible output

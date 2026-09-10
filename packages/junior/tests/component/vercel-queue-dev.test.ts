@@ -32,9 +32,7 @@ type PluginQueueCall =
     ]
   | undefined;
 
-type WorkspaceQueueMetadata = Parameters<
-  NonNullable<PluginQueueCall>[0]
->[1];
+type WorkspaceQueueMetadata = Parameters<NonNullable<PluginQueueCall>[0]>[1];
 
 type WorkspaceDevConsumer = {
   client: {
@@ -45,7 +43,10 @@ type WorkspaceDevConsumer = {
     ): Promise<{ messageId: string }>;
   };
   consumerGroup: string;
-  handler: (message: unknown, metadata: WorkspaceQueueMetadata) => Promise<void>;
+  handler: (
+    message: unknown,
+    metadata: WorkspaceQueueMetadata,
+  ) => Promise<void>;
   retry: (error: unknown, metadata: WorkspaceQueueMetadata) => unknown;
   topic: string;
 };
@@ -81,7 +82,6 @@ type ConversationQueueCall =
       },
     ]
   | undefined;
-
 
 const originalNodeEnv = process.env.NODE_ENV;
 const originalQueueTopic = process.env.JUNIOR_CONVERSATION_WORK_QUEUE_TOPIC;
@@ -537,7 +537,22 @@ describe("registerVercelConversationWorkDevConsumer", () => {
     createVercelConversationWorkCallback({ run });
 
     // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
-    const call = (handleCallback.mock.calls[0]) as | [ ( message: unknown, metadata: { consumerGroup: string; createdAt: Date; deliveryCount: number; expiresAt: Date; messageId: string; region: string; topicName: string; }, ) => Promise<void>, ] | undefined;
+    const call = handleCallback.mock.calls[0] as
+      | [
+          (
+            message: unknown,
+            metadata: {
+              consumerGroup: string;
+              createdAt: Date;
+              deliveryCount: number;
+              expiresAt: Date;
+              messageId: string;
+              region: string;
+              topicName: string;
+            },
+          ) => Promise<void>,
+        ]
+      | undefined;
     const handler = call?.[0];
     if (!handler) {
       throw new Error("Expected conversation queue handler");

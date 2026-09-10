@@ -110,12 +110,7 @@ function appendTranscriptMessages(
   for (const entry of groupTranscriptMessages(messages)) {
     if (entry.kind === "message") {
       if (entry.message.eventType) {
-        appendResourceEvent(
-          lines,
-          conversationTranscript,
-          entry.message,
-          redacted,
-        );
+        appendEvent(lines, conversationTranscript, entry.message, redacted);
       } else if (entry.message.context) {
         appendMessageContext(
           lines,
@@ -229,10 +224,7 @@ function appendFailure(
   sentryEventUrl: string | undefined,
   timestamp: number | undefined,
 ): void {
-  lines.push(
-    "",
-    `### ${transcriptFailureTitle(failureCode, failureReason)}`,
-  );
+  lines.push("", `### ${transcriptFailureTitle(failureCode, failureReason)}`);
   addEventMeta(lines, conversationTranscript, timestamp);
   lines.push("", transcriptFailureDescription(failureCode, failureReason));
   addMetaLine(lines, "Code", failureCode);
@@ -308,7 +300,7 @@ function appendContextEvent(
   }
 }
 
-function appendResourceEvent(
+function appendEvent(
   lines: string[],
   conversationTranscript: ConversationTranscript,
   message: TranscriptViewMessage,

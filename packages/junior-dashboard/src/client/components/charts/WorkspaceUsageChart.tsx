@@ -11,10 +11,7 @@ import {
 import { ChartHeader } from "./ChartHeader";
 import type { TimeRangeDays } from "../controls/TimeRangeSelector";
 import { Card } from "../layout/Card";
-import {
-  formatActivityChartAverage,
-  formatCompactNumber,
-} from "../../format";
+import { formatActivityChartAverage, formatCompactNumber } from "../../format";
 import type { WorkspaceUsageDay } from "./workspaceUsage";
 
 const USAGE_COLOR = "#a78bfa";
@@ -59,15 +56,11 @@ export function WorkspaceUsageChart(props: {
             return (
               <ActivityChartTooltip
                 key={day.date}
-                content={
-                  <ActivityTooltipRows rows={[["usage", day.count]]} />
-                }
+                content={<ActivityTooltipRows rows={[["usage", day.count]]} />}
                 date={day.date}
                 summary={`${day.count} switches`}
               >
-                <g
-                  tabIndex={0}
-                >
+                <g tabIndex={0}>
                   <rect
                     fill={USAGE_COLOR}
                     height={renderedHeight}

@@ -406,7 +406,7 @@ describe("behavior harness", () => {
     ]);
   });
 
-  it("routes Resource event fixtures through Conversation work", async () => {
+  it("routes Event fixtures through Conversation work", async () => {
     executeAgentRunMock.mockImplementationOnce(async (request) => {
       await (
         request as {
@@ -419,7 +419,7 @@ describe("behavior harness", () => {
           text: "",
           diagnostics: {
             assistantMessageCount: 0,
-            modelId: "fake-resource-event",
+            modelId: "fake-event",
             outcome: "success",
             toolCalls: [],
             toolErrorCount: 0,
@@ -434,13 +434,13 @@ describe("behavior harness", () => {
       initialEvents: [],
       events: [
         {
-          type: "resource_event",
+          type: "event",
           thread: {
-            id: "fixture-resource-event",
+            id: "fixture-event",
             channel_id: "CRESOURCE",
             thread_ts: "1700000000.0005",
           },
-          event_key: "resource-event-1",
+          event_key: "event-1",
           event_type: "pull_request.merged",
           intent: "Report when the pull request merges.",
           label: "GitHub PR getsentry/junior#1730",
@@ -455,12 +455,12 @@ describe("behavior harness", () => {
             {
               type: "new_mention",
               thread: {
-                id: "fixture-resource-event",
+                id: "fixture-event",
                 channel_id: "CRESOURCE",
                 thread_ts: "1700000000.0005",
               },
               message: {
-                id: "resource-event-steer-1",
+                id: "event-steer-1",
                 text: "The owner is Alice. Tell the thread.",
                 is_mention: true,
                 author: { user_id: "URESOURCE" },
@@ -489,8 +489,8 @@ describe("behavior harness", () => {
         threadTs: "1700000000.0005",
       },
       source: {
-        kind: "resource_event",
-        eventKey: "resource-event-1",
+        kind: "event",
+        eventKey: "event-1",
         eventType: "pull_request.merged",
         namespace: "github",
         identifier: "getsentry/junior#1730",

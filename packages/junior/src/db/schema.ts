@@ -13,14 +13,14 @@ import {
 } from "./schema/agent-invocations";
 import { juniorLocationConfigurations } from "./schema/location-configurations";
 import { juniorDestinations } from "./schema/destinations";
-import { juniorEventTasks } from "./schema/event-tasks";
+import { juniorEventAutomations } from "./schema/event-automations";
 import { juniorIdentities } from "./schema/identities";
 import { juniorStats } from "./schema/stats";
-import { juniorTaskExecutions } from "./schema/task-executions";
+import { juniorAutomationExecutions } from "./schema/automation-executions";
 import {
   juniorSchedulerRuns,
   juniorSchedulerTasks,
-} from "./schema/scheduled-tasks";
+} from "./schema/scheduled-automations";
 import { juniorSnapshots } from "./schema/snapshots";
 import { juniorUsers } from "./schema/users";
 import { juniorWorkspaceRepos, juniorWorkspaces } from "./schema/workspaces";
@@ -40,11 +40,11 @@ export {
   juniorConversations,
   juniorLocationConfigurations,
   juniorDestinations,
-  juniorEventTasks,
+  juniorEventAutomations,
   juniorIdentities,
   juniorSnapshots,
   juniorStats,
-  juniorTaskExecutions,
+  juniorAutomationExecutions,
   juniorSchedulerRuns,
   juniorSchedulerTasks,
   juniorUsers,
@@ -67,11 +67,11 @@ export const juniorSqlSchema = {
   juniorConversations,
   juniorLocationConfigurations,
   juniorDestinations,
-  juniorEventTasks,
+  juniorEventAutomations,
   juniorIdentities,
   juniorSnapshots,
   juniorStats,
-  juniorTaskExecutions,
+  juniorAutomationExecutions,
   juniorSchedulerRuns,
   juniorSchedulerTasks,
   juniorUsers,

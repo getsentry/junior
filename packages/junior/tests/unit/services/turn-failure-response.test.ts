@@ -25,7 +25,9 @@ function providerErrorReply(args: {
       toolErrorCount: 0,
       usedPrimaryText: false,
       ...(args.errorMessage ? { errorMessage: args.errorMessage } : undefined),
-      ...(args.providerError ? { providerError: args.providerError } : undefined),
+      ...(args.providerError
+        ? { providerError: args.providerError }
+        : undefined),
     },
   };
 }
@@ -77,9 +79,9 @@ describe("finalizeFailedTurnReply", () => {
       "gen_ai.request.model": "xai/grok-4.5",
     });
     expect(attributes).not.toHaveProperty("exception.message");
-    expect(String(attributes?.["app.ai.provider_error.summary"] ?? "")).not.toContain(
-      "providerMetadata",
-    );
+    expect(
+      String(attributes?.["app.ai.provider_error.summary"] ?? ""),
+    ).not.toContain("providerMetadata");
   });
 
   it("classifies empty execution failures without raw exception text", () => {

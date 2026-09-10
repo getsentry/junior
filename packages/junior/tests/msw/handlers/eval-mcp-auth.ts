@@ -143,7 +143,7 @@ export const evalMcpAuthHandlers = [
               name: "create-watchable-pull-request",
               title: "Create Watchable Pull Request",
               description:
-                "Create an eval pull request and return its subscribable resource events.",
+                "Create an eval pull request and return its subscribable events.",
               inputSchema: {
                 type: "object",
                 properties: {

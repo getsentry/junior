@@ -29,10 +29,7 @@ import {
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
 import { isUserActor } from "@/chat/actor";
 import type { CrossActorMidRunMode } from "@/chat/config";
-import {
-  createResourceEventSubscription,
-  listResourceEventSubscriptions,
-} from "@/chat/resource-events/store";
+import { createWatch, listWatches } from "@/chat/events/store";
 import {
   createModelAgentRunnerForRun,
   neverRunAgentRunner,
@@ -681,7 +678,7 @@ describe("Slack behavior: durable turn steering", () => {
         agentRunner,
         state,
       });
-    await createResourceEventSubscription(
+    await createWatch(
       {
         conversationId,
         events: ["pull_request.checks.failed"],
@@ -745,9 +742,7 @@ describe("Slack behavior: durable turn steering", () => {
       await runNextQueuedWork();
     }
     expect(await state.isSubscribed(conversationId)).toBe(false);
-    await expect(
-      listResourceEventSubscriptions({ conversationId, state }),
-    ).resolves.toEqual([]);
+    await expect(listWatches({ conversationId, state })).resolves.toEqual([]);
     expect(agentRuns).toHaveLength(1);
 
     expect(reactionTargetsByName("eyes")).toEqual([

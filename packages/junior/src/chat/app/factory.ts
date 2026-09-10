@@ -24,7 +24,7 @@ import { recordSkippedConversationMessage } from "@/chat/runtime/conversation-me
 import { markConversationMessage } from "@/chat/services/conversation-memory";
 import { botConfig } from "@/chat/config";
 import { defaultModelId } from "@/chat/model-profile";
-import { cancelSubscriptions as cancelEventSubscriptions } from "@/chat/resource-events/store";
+import { cancelSubscriptions as cancelWatches } from "@/chat/events/store";
 import { recordSubscribedReplyRoute } from "@/chat/conversations/projection";
 import { createSlackDispatchTurnRunner } from "@/chat/slack/dispatch-turn";
 import {
@@ -104,7 +104,7 @@ export function createSlackRuntime(options: CreateSlackRuntimeOptions) {
     AssistantLifecycleEvent
   >({
     assistantUserName: botConfig.userName,
-    cancelEventSubscriptions,
+    cancelWatches,
     getBotUserId: () => options.getSlackAdapter().botUserId,
     modelId: defaultModelId(botConfig),
     now: options.now ?? (() => Date.now()),

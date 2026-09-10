@@ -128,9 +128,7 @@ export function MemoryCostChart(props: {
                 date={day.date}
                 summary={`extraction ${formatCostSummary({ total: day.extraction.costUsd })}, ${formatRunCount(day.extraction.events)}; recall ${formatCostSummary({ total: day.recall.costUsd })}, ${formatRunCount(day.recall.events)}`}
               >
-                <g
-                  tabIndex={0}
-                >
+                <g tabIndex={0}>
                   <rect
                     fill="#67e8f9"
                     height={extractionHeight}

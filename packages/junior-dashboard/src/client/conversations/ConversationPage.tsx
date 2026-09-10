@@ -213,7 +213,9 @@ export function ConversationPage(props: {
               onSearchChange={setSearch}
               onViewChange={setView}
               privacy={
-                <ConversationPrivacyChip visibility={conversation?.visibility} />
+                <ConversationPrivacyChip
+                  visibility={conversation?.visibility}
+                />
               }
               search={search}
               stats={
@@ -241,7 +243,8 @@ export function ConversationPage(props: {
               <>
                 {detail.error ? (
                   <div className="mb-3 rounded-lg border border-amber-300/15 bg-amber-300/[0.045] px-3 py-2 font-sans text-xs text-amber-100/65">
-                    Transcript refresh failed. Showing the latest available data.
+                    Transcript refresh failed. Showing the latest available
+                    data.
                   </div>
                 ) : null}
                 <Transcript
@@ -286,7 +289,6 @@ export function ConversationPage(props: {
     </>
   );
 }
-
 
 /**
  * Own mutation state and mailbox chrome outside the page tree that re-renders
@@ -358,14 +360,17 @@ const ConversationReplyFooter = memo(function ConversationReplyFooter(props: {
   const cancellableMessageIds = props.pendingMessages
     .filter((message) => message.clientStatus === undefined)
     .map((message) => message.inboundMessageId);
-  const onCancelMessage = useCallback((message: ConversationMailboxMessage) => {
-    const receivedBefore = props.pendingGeneratedAtRef.current;
-    if (!receivedBefore) return;
-    cancelPendingMessagesRef.current.mutate({
-      inboundMessageIds: [message.inboundMessageId],
-      receivedBefore,
-    });
-  }, [props.pendingGeneratedAtRef]);
+  const onCancelMessage = useCallback(
+    (message: ConversationMailboxMessage) => {
+      const receivedBefore = props.pendingGeneratedAtRef.current;
+      if (!receivedBefore) return;
+      cancelPendingMessagesRef.current.mutate({
+        inboundMessageIds: [message.inboundMessageId],
+        receivedBefore,
+      });
+    },
+    [props.pendingGeneratedAtRef],
+  );
   const cancelTargetInboundMessageId =
     cancelPendingMessages.variables?.inboundMessageIds[0];
   const cancelError = Boolean(

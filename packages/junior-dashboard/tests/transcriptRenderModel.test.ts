@@ -245,7 +245,7 @@ describe("canonical event transcript reduction", () => {
     );
   });
 
-  it("keeps Resource event fields for transcript display", () => {
+  it("keeps Event fields for transcript display", () => {
     const [message] = conversationTranscriptMessages(
       conversation([
         event(0, "2026-01-01T00:00:00.000Z", {

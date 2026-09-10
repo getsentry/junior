@@ -12,7 +12,7 @@ import {
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import { subscribableResourceSchema } from "@sentry/junior-plugin-api";
-import { gitHubPullRequestSubscribable } from "../resource-events/pull-request.js";
+import { gitHubPullRequestSubscribable } from "../events/pull-request.js";
 import { appendGitHubRequesterAttribution } from "../tool-support/attribution.js";
 import { appendGitHubFooter } from "./footer.js";
 
@@ -114,7 +114,7 @@ export function createGitHubUpdatePullRequestTool(ctx: {
   conversationId?: string;
   egress: PluginEgress;
   log: PluginLogger;
-  resourceEvents: { canSubscribe: boolean };
+  events: { canSubscribe: boolean };
   slack?: { conversationLink?: { url?: string } };
   users: {
     resolveActor(): Promise<{ identity?: Identity; user?: User } | undefined>;
@@ -188,7 +188,7 @@ export function createGitHubUpdatePullRequestTool(ctx: {
           title: z.string(),
         })
         .parse(parsed);
-      const subscribable = ctx.resourceEvents.canSubscribe
+      const subscribable = ctx.events.canSubscribe
         ? gitHubPullRequestSubscribable({
             number: providerResult.number,
             repo: repo.ref,

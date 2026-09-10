@@ -164,9 +164,8 @@ describe("buildSlackReplyBlocks", () => {
 
 describe("getDashboardTaskLink", () => {
   it("builds a task detail URL when dashboard links are configured", async () => {
-    const { getDashboardTaskLink } = await import(
-      "@/chat/slack/dashboard-link"
-    );
+    const { getDashboardTaskLink } =
+      await import("@/chat/slack/dashboard-link");
     setDashboardConversationLinkOptions({
       basePath: "/ops",
       baseURL: "https://junior.example.com",
@@ -178,9 +177,8 @@ describe("getDashboardTaskLink", () => {
   });
 
   it("returns undefined when dashboard links are disabled", async () => {
-    const { getDashboardTaskLink } = await import(
-      "@/chat/slack/dashboard-link"
-    );
+    const { getDashboardTaskLink } =
+      await import("@/chat/slack/dashboard-link");
     expect(getDashboardTaskLink("sched_abc")).toBeUndefined();
   });
 });

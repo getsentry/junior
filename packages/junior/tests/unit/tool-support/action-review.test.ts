@@ -38,10 +38,10 @@ function reviewContext(
         subject: {
           type: "user",
           userId: "U123",
-          allowedWhen: "scheduled-task",
+          allowedWhen: "scheduled-automation",
           taskId: "task-123",
           binding: {
-            type: "scheduled-task",
+            type: "scheduled-automation",
             plugin: "scheduler",
             taskId: "task-123",
             signature: "must-not-reach-guardian",
@@ -136,7 +136,7 @@ describe("tool action review", () => {
         credential: {
           actor: { platform: "system", name: "scheduler" },
           subject: {
-            allowedWhen: "scheduled-task",
+            allowedWhen: "scheduled-automation",
             taskId: "task-123",
             type: "user",
             userId: "U123",

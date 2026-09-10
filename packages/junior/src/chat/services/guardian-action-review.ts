@@ -87,7 +87,9 @@ export function createGuardianActionReviewer(options: {
       }
       return {
         ...guardianDecisionSchema.parse(result.object),
-        ...(result.costUsd !== undefined ? { costUsd: result.costUsd } : undefined),
+        ...(result.costUsd !== undefined
+          ? { costUsd: result.costUsd }
+          : undefined),
       };
     },
   };

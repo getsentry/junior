@@ -67,7 +67,7 @@ If your existing app already owns routes, make sure the Junior Hono app still re
 
 Some packages export runtime hooks instead of `plugin.yaml`. Add those
 plugin factories to the same `plugins.ts` set. For example, see
-[Scheduler Plugin](/extend/scheduler-plugin/) for scheduled tasks and
+[Scheduler Plugin](/extend/scheduler-plugin/) for scheduled automations and
 [GitHub Plugin](/extend/github-plugin/) for the `githubPlugin()` setup.
 
 ## Add app files

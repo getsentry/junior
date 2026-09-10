@@ -3,13 +3,13 @@
 Hard-fail scheduler system contracts and their helpers live under `evals/integration/scheduler/`:
 
 - creating clear one-off and recurring schedules without confirmation
-- preserving executable future work in scheduled task text
+- preserving executable future work in scheduled automation text
 - creator vs system credential mode
 - rescheduling existing tasks
 
 This folder keeps behavioral due-occurrence delivery quality:
 
-- delivering due one-off and recurring scheduled task occurrences
+- delivering due one-off and recurring scheduled automation occurrences
 - addressing the known task creator without a name lookup
 
 Run the suites with:

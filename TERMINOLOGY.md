@@ -17,7 +17,7 @@ Canonical words used across Junior's code and documentation.
   state, identified by a globally unique `conversationId`. A Conversation may
   have one parent Conversation. Parent and Location are independent.
 - **Source**: the input that caused work, such as a Slack message, local CLI
-  input, dashboard input, resource event, scheduled task, plugin dispatch, or
+  input, dashboard input, event, scheduled automation, plugin dispatch, or
   Agent invocation. Every Inbound message has one Source. A Turn stores the
   Source selected from the input that started it.
 - **Destination**: an explicit target for output or a side effect. Do not use
@@ -38,14 +38,17 @@ Canonical words used across Junior's code and documentation.
   fields that the agent or tools need. Those fields do not select the runtime.
   A Turn stores the Actor selected from the input that started it. Steering
   inputs keep their own Actors.
-- **Resource event**: one normalized change identified by namespace, identifier,
-  event type, and an idempotency key. Plugins and core can publish them.
-  A Resource event can wake a Conversation. Location stays on that
-  Conversation.
-- **Resource subscription**: a temporary conversation association that delivers
-  matching resource events back into that conversation.
-- **Event task**: a durable instruction that dispatches when a matching
-  resource event occurs.
+- **Automation**: a saved instruction that Junior runs later. It has an owner,
+  a trigger, an instruction, and an ordered list of outcomes.
+- **Schedule**: a time-based trigger for an Automation.
+- **Event**: one normalized change identified by namespace, identifier, event
+  type, and an idempotency key. Plugins and core can publish Events. An Event
+  can wake a Conversation. Location stays on that Conversation.
+- **Watch**: a temporary association between an Event and a Conversation. It
+  delivers matching Events to that Conversation and expires. It is not an
+  Automation.
+- **Scheduled automation**: an Automation that has a Schedule trigger.
+- **Event automation**: an Automation that has an Event trigger.
 - **Inbound message**: one normalized source event made available to the agent.
 - **Agent input**: the inbound content, context, and runtime metadata selected
   for a turn.

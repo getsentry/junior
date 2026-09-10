@@ -48,12 +48,15 @@ describe("conversation list API", () => {
       });
       const viewer = await resolveViewerUser("viewer@example.com");
       expect(viewer).toBeDefined();
-      await fixture.sql.db().insert(juniorConversationParticipants).values({
-        archivedAt: new Date(2_000),
-        lastMessageAt: new Date(1_000),
-        rootConversationId: archivedId,
-        userId: viewer!.id,
-      });
+      await fixture.sql
+        .db()
+        .insert(juniorConversationParticipants)
+        .values({
+          archivedAt: new Date(2_000),
+          lastMessageAt: new Date(1_000),
+          rootConversationId: archivedId,
+          userId: viewer!.id,
+        });
       const app = createJuniorApi();
 
       const response = await app.request(
@@ -165,7 +168,7 @@ describe("conversation list API", () => {
               content: "Pull request merged.",
               provenance: {
                 authority: "instruction",
-                actor: { name: "resource-event", platform: "system" },
+                actor: { name: "event", platform: "system" },
               },
               timestamp: nowMs - 30_000,
             },

@@ -927,7 +927,7 @@ async function upsertTurnRecordLocked(
       ? hasProviderLocation &&
         (Boolean(dispatchId) ||
           turnSource?.kind === "slack" ||
-          turnSource?.kind === "resource_event")
+          turnSource?.kind === "event")
       : (existingRecord?.publishExternally ?? false);
 
   return await setStoredRecord({
@@ -963,7 +963,8 @@ async function upsertTurnRecordLocked(
       previousVersion: existingRecord?.version,
       ...definedProps({
         cumulativeToolCallCount:
-          args.cumulativeToolCallCount ?? existingRecord?.cumulativeToolCallCount,
+          args.cumulativeToolCallCount ??
+          existingRecord?.cumulativeToolCallCount,
         dispatchId,
         dispatchOutcome:
           args.dispatchOutcome ?? existingRecord?.dispatchOutcome,

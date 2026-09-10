@@ -61,8 +61,8 @@ export interface ToolActionProposal {
       subject?: {
         allowedWhen:
           | "private-direct-conversation"
-          | "scheduled-task"
-          | "event-task";
+          | "scheduled-automation"
+          | "event-automation";
         taskId?: string;
         type: "user";
         userId: string;
@@ -198,9 +198,7 @@ export class ToolActionReviewUnavailableError extends Error {
 /** Telemetry-only marker when action review exhausts consecutive rejections. */
 export class ToolActionReviewLimitError extends Error {
   constructor() {
-    super(
-      "Action review rejected three consecutive tool execution attempts.",
-    );
+    super("Action review rejected three consecutive tool execution attempts.");
     this.name = "ToolActionReviewLimitError";
   }
 }
@@ -514,8 +512,7 @@ export function createToolActionReview(options: {
       const reviewedAction = projectedRejection(proposal, decision);
       appendVisibleRejection(priorRejections, reviewedAction);
       consecutiveRejections += 1;
-      const exhausted =
-        consecutiveRejections >= MAX_CONSECUTIVE_REJECTIONS;
+      const exhausted = consecutiveRejections >= MAX_CONSECUTIVE_REJECTIONS;
       if (exhausted) {
         // Keep Sentry visibility for the limit without aborting the run.
         logException(

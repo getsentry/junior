@@ -26,7 +26,7 @@ function context(): ToolRuntimeContext {
       channelId: "C123",
       threadTs: "1700000000.100000",
     },
-    source: { kind: "scheduled_task" },
+    source: { kind: "scheduled_automation" },
     egress: {
       async fetch() {
         return new Response("ok");

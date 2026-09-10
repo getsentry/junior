@@ -271,7 +271,7 @@ export async function mockDashboardApis(
       },
     });
   });
-  await page.route("**/api/tasks", async (route) => {
+  await page.route("**/api/automations", async (route) => {
     await route.fulfill({
       json: {
         executionDays: [
@@ -366,7 +366,7 @@ export async function mockDashboardApis(
           { costUsd: 0.36, date: "2026-08-03", event: 1, scheduled: 3 },
           { costUsd: 0.0, date: "2026-08-04", event: 0, scheduled: 0 },
         ],
-        tasks: [
+        automations: [
           {
             createdAt: "2026-07-28T16:00:00.000Z",
             createdBy: "Morgan",
@@ -462,7 +462,7 @@ export async function mockDashboardApis(
       },
     });
   });
-  await page.route("**/api/tasks/*/*/executions", async (route) => {
+  await page.route("**/api/automations/*/*/executions", async (route) => {
     const url = new URL(route.request().url());
     const parts = url.pathname.split("/").filter(Boolean);
     const kind = parts.at(-3);

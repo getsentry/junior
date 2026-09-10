@@ -1,7 +1,7 @@
 /**
  * GitHub plugin runtime boundary.
  *
- * This module composes GitHub hooks, resource events, and credentials.
+ * This module composes GitHub hooks, events, and credentials.
  */
 import {
   defineJuniorPlugin,
@@ -21,22 +21,22 @@ import { createGitHubWebhookRoute } from "./webhooks/handler.js";
 import {
   GITHUB_DEPLOYMENT_EVENTS,
   GITHUB_DEPLOYMENT_SUGGESTED_EVENTS,
-} from "./resource-events/deployment.js";
+} from "./events/deployment.js";
 import {
   GITHUB_ISSUE_EVENTS,
   GITHUB_ISSUE_SUGGESTED_EVENTS,
-} from "./resource-events/issue.js";
+} from "./events/issue.js";
 import {
   GITHUB_PULL_REQUEST_EVENTS,
   GITHUB_PULL_REQUEST_MATCH_FIELDS,
   GITHUB_PULL_REQUEST_SUGGESTED_EVENTS,
   gitHubPullRequestEventGuidance,
   type GitHubPullRequestEventOptions,
-} from "./resource-events/pull-request.js";
+} from "./events/pull-request.js";
 import {
   GITHUB_RELEASE_EVENTS,
   GITHUB_RELEASE_SUGGESTED_EVENTS,
-} from "./resource-events/release.js";
+} from "./events/release.js";
 import type { GitHubDb } from "./db/database.js";
 import { classifyGitHubPullRequestCommitComposition } from "./pull-request-outcomes/commit-composition.js";
 import { githubSidebarAnnotations } from "./annotations.js";
@@ -119,7 +119,7 @@ export interface GitHubPluginOptions {
   installationIdEnv?: string;
   /** Environment variable containing the GitHub App private key. */
   privateKeyEnv?: string;
-  /** App-configured pull request resource event behavior. */
+  /** App-configured pull request event behavior. */
   pullRequestEvents?: GitHubPullRequestEventOptions;
 }
 
@@ -145,7 +145,7 @@ export function githubPlugin(
 
   return defineJuniorPlugin({
     packageName: "@sentry/junior-github",
-    resourceEvents: {
+    events: {
       resourceTypes: [
         {
           type: "deployment_source",
@@ -343,7 +343,7 @@ export function githubPlugin(
               );
             },
             privateKeyEnv,
-            resourceEvents: ctx.resourceEvents,
+            events: ctx.events,
             webhookSecret: () => readEnv("GITHUB_WEBHOOK_SECRET"),
           }),
         ];

@@ -17,7 +17,9 @@ export async function readPeopleCode(email: string) {
         open: 0,
       },
       windowEnd: now.toISOString(),
-      windowStart: new Date(now.getTime() - 30 * 24 * 60 * 60 * 1_000).toISOString(),
+      windowStart: new Date(
+        now.getTime() - 30 * 24 * 60 * 60 * 1_000,
+      ).toISOString(),
     });
   }
   return await readPersonCodeOverview({ userId: subject.id });

@@ -66,7 +66,11 @@ export function SnapshotSummary(props: {
             )}
             <Detail label="Snapshot ID" valueClassName="font-mono text-xs">
               <span className="inline-flex items-center gap-2 break-all">
-                <Fingerprint aria-hidden="true" className="shrink-0" size={14} />
+                <Fingerprint
+                  aria-hidden="true"
+                  className="shrink-0"
+                  size={14}
+                />
                 {snapshot.id}
               </span>
             </Detail>

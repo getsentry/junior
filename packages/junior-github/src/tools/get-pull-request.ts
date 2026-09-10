@@ -8,7 +8,7 @@ import {
 } from "@sentry/junior-plugin-api";
 import { z } from "zod";
 import { subscribableResourceSchema } from "@sentry/junior-plugin-api";
-import { gitHubPullRequestSubscribable } from "../resource-events/pull-request.js";
+import { gitHubPullRequestSubscribable } from "../events/pull-request.js";
 
 const commitShaSchema = z.string().regex(/^[0-9a-f]{40}$/i);
 const inputSchema = z
@@ -57,9 +57,10 @@ async function readJson(response: Response): Promise<unknown> {
 }
 
 /** Read one PR and expose its stable subscription identity when webhooks are enabled. */
-export function createGitHubGetPullRequestTool(
-  ctx: { egress: PluginEgress; resourceEvents: { canSubscribe: boolean } },
-) {
+export function createGitHubGetPullRequestTool(ctx: {
+  egress: PluginEgress;
+  events: { canSubscribe: boolean };
+}) {
   return definePluginTool({
     annotations: {
       destructiveHint: false,
@@ -68,7 +69,7 @@ export function createGitHubGetPullRequestTool(
       readOnlyHint: true,
     },
     description:
-      "Get a GitHub pull request. Use this when an existing PR may need resource-event monitoring; the result includes a subscribable hint when GitHub webhooks are configured.",
+      "Get a GitHub pull request. Use this when an existing PR may need event monitoring; the result includes a subscribable hint when GitHub webhooks are configured.",
     inputSchema,
     outputSchema,
     async execute(input): Promise<Result> {
@@ -107,7 +108,7 @@ export function createGitHubGetPullRequestTool(
           title: z.string(),
         })
         .parse(parsed);
-      const subscribable = ctx.resourceEvents.canSubscribe
+      const subscribable = ctx.events.canSubscribe
         ? gitHubPullRequestSubscribable({
             number: providerResult.number,
             repo: repo.ref,

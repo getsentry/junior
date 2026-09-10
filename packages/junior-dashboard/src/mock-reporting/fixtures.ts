@@ -26,9 +26,9 @@ import type {
   PeopleActivityDayReport,
   PersonalSpendReport,
   PluginOperationalReportFeed,
-  TaskExecutionList,
-  TaskList,
-  TaskSummary,
+  AutomationExecutionList,
+  AutomationList,
+  AutomationSummary,
 } from "@sentry/junior/api/schema";
 
 /** Fixed current time for mock reports and browser tests. */
@@ -535,7 +535,7 @@ function dashboardQaConversation(nowMs: number): ConversationDetailReport {
             status: "running",
             startedSeq: 1,
             startedAt: iso(Date.parse(startedAt), 2_000),
-            input: { task: "Review the dashboard plan" },
+            input: { automation: "Review the dashboard plan" },
           },
         ],
       }),
@@ -2457,7 +2457,9 @@ export function readMockLocationDetail(
   };
 }
 
-function mockTaskExecutionDays(nowMs: number): TaskList["executionDays"] {
+function mockAutomationExecutionDays(
+  nowMs: number,
+): AutomationList["executionDays"] {
   return Array.from({ length: 90 }, (_, index) => {
     const date = new Date(nowMs - (89 - index) * 86_400_000)
       .toISOString()
@@ -2476,7 +2478,7 @@ function mockTaskExecutionDays(nowMs: number): TaskList["executionDays"] {
   });
 }
 
-function mockTasks(): TaskSummary[] {
+function mockTasks(): AutomationSummary[] {
   return [
     {
       createdAt: "2026-07-28T16:00:00.000Z",
@@ -2564,9 +2566,9 @@ function mockTasks(): TaskSummary[] {
 }
 
 /** Build mock Tasks list for local dashboard development. */
-export function readMockTaskList(nowMs = NOW_MS): TaskList {
+export function readMockAutomationList(nowMs = NOW_MS): AutomationList {
   return {
-    executionDays: mockTaskExecutionDays(nowMs),
+    executionDays: mockAutomationExecutionDays(nowMs),
     executionHours: trailingMetricHours(nowMs, (date) => ({
       costUsd: 0,
       date,
@@ -2583,12 +2585,14 @@ export function readMockTaskList(nowMs = NOW_MS): TaskList {
       })),
       (date) => ({ costUsd: 0, date, event: 0, scheduled: 0 }),
     ),
-    tasks: mockTasks(),
+    automations: mockTasks(),
     truncated: false,
   };
 }
 
-function mockStatusDays(nowMs: number): TaskExecutionList["executionDays"] {
+function mockStatusDays(
+  nowMs: number,
+): AutomationExecutionList["executionDays"] {
   return Array.from({ length: 90 }, (_, index) => {
     const date = new Date(nowMs - (89 - index) * 86_400_000)
       .toISOString()
@@ -2601,11 +2605,11 @@ function mockStatusDays(nowMs: number): TaskExecutionList["executionDays"] {
 }
 
 /** Build mock terminal executions for one viewer-visible task. */
-export function readMockTaskExecutions(
+export function readMockAutomationExecutions(
   kind: "scheduled" | "event",
   id: string,
   nowMs = NOW_MS,
-): TaskExecutionList | undefined {
+): AutomationExecutionList | undefined {
   const task = mockTasks().find(
     (candidate) => candidate.kind === kind && candidate.id === id,
   );
@@ -2630,7 +2634,7 @@ export function readMockTaskExecutions(
         (date) => ({ blocked: 0, completed: 0, date, failed: 0 }),
       ),
       executions: [],
-      task,
+      automation: task,
       truncated: false,
     };
   }
@@ -2697,7 +2701,7 @@ export function readMockTaskExecutions(
       (date) => ({ blocked: 0, completed: 0, date, failed: 0 }),
     ),
     executions,
-    task,
+    automation: task,
     truncated: task.totalRuns > executions.length,
   };
 }

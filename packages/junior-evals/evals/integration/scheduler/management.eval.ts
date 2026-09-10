@@ -1,10 +1,15 @@
 import { describeEval } from "vitest-evals";
 import { expect } from "vitest";
-import { mention, rubric, slackEvals, threadMessage } from "../../../src/helpers";
 import {
-  scheduledTaskCreateCalls,
-  scheduledTaskUpdateCalls,
-  seedScheduledTask,
+  mention,
+  rubric,
+  slackEvals,
+  threadMessage,
+} from "../../../src/helpers";
+import {
+  scheduledAutomationCreateCalls,
+  scheduledAutomationUpdateCalls,
+  seedScheduledAutomation,
 } from "./helpers";
 
 describeEval("Schedule Management", slackEvals, (it) => {
@@ -22,7 +27,7 @@ describeEval("Schedule Management", slackEvals, (it) => {
       user_name: "alice",
       full_name: "Alice Example",
     };
-    await seedScheduledTask({
+    await seedScheduledAutomation({
       createdBy: {
         slackUserId: author.user_id,
         userName: author.user_name,
@@ -48,7 +53,7 @@ describeEval("Schedule Management", slackEvals, (it) => {
       ],
       criteria: rubric({
         pass: [
-          "After the requested confirmation, the reply confirms that the scheduled task now runs every Tuesday at 10am Pacific.",
+          "After the requested confirmation, the reply confirms that the scheduled automation now runs every Tuesday at 10am Pacific.",
         ],
         fail: [
           "Do not claim the task still runs on Monday at 9am.",
@@ -57,8 +62,8 @@ describeEval("Schedule Management", slackEvals, (it) => {
       }),
     });
 
-    const createCalls = scheduledTaskCreateCalls(result.session);
-    const updateCalls = scheduledTaskUpdateCalls(result.session);
+    const createCalls = scheduledAutomationCreateCalls(result.session);
+    const updateCalls = scheduledAutomationUpdateCalls(result.session);
     expect(createCalls).toEqual([]);
     const scheduleUpdate = updateCalls.find(
       (call) => call.arguments?.schedule !== undefined,

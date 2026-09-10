@@ -616,9 +616,13 @@ export async function GET(
         await deleteMcpAuthSession(pendingSession.authSessionId);
       }
     } catch (cleanupError) {
-      logException(cleanupError, "mcp.oauth_callback.provider_error_cleanup.failed", {
-        "app.credential.provider": provider,
-      });
+      logException(
+        cleanupError,
+        "mcp.oauth_callback.provider_error_cleanup.failed",
+        {
+          "app.credential.provider": provider,
+        },
+      );
     }
     return htmlResponse("provider_error");
   }

@@ -13,7 +13,7 @@ import { credentialSubjectSchema } from "@/chat/credentials/context";
 import { getConversationStore } from "@/chat/db";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { JUNIOR_THREAD_STATE_TTL_MS } from "@/chat/state/ttl";
-import { recordTaskExecution } from "@/chat/tasks/execution-stats";
+import { recordAutomationExecution } from "@/chat/automations/execution-stats";
 import type {
   BoundDispatchOptions,
   DispatchCreateResult,
@@ -388,21 +388,21 @@ export async function markDispatchAwaitingResume(
   );
 }
 
-async function recordEventTaskExecution(
+async function recordEventAutomationExecution(
   previous: DispatchRecord | undefined,
   next: DispatchRecord | undefined,
   status: "blocked" | "completed" | "failed",
 ): Promise<void> {
   if (!next || next.status !== status || previous?.status === status) return;
   if (next.plugin !== "junior") return;
-  const eventTaskId = next.metadata?.eventTaskId;
-  if (!eventTaskId) return;
+  const eventAutomationId = next.metadata?.eventAutomationId;
+  if (!eventAutomationId) return;
   // Only link a conversation when enqueue already created the durable row.
   // Early failed/blocked dispatches can terminate before that write, and the
   // execution table still FKs conversation_id when present.
   const conversationId = getDispatchConversationId(next);
   const conversation = await getConversationStore().get({ conversationId });
-  await recordTaskExecution("event", eventTaskId, {
+  await recordAutomationExecution("event", eventAutomationId, {
     ...(conversation ? { conversationId } : undefined),
     executionId: next.id,
     nowMs: next.updatedAtMs,
@@ -427,7 +427,7 @@ export async function markDispatchBlocked(
           status: "blocked",
         },
   );
-  await recordEventTaskExecution(previous, next, "blocked");
+  await recordEventAutomationExecution(previous, next, "blocked");
   return next;
 }
 
@@ -447,7 +447,7 @@ export async function markDispatchCompleted(
           status: "completed",
         },
   );
-  await recordEventTaskExecution(previous, next, "completed");
+  await recordEventAutomationExecution(previous, next, "completed");
   return next;
 }
 
@@ -468,7 +468,7 @@ export async function markDispatchFailed(
           status: "failed",
         },
   );
-  await recordEventTaskExecution(previous, next, "failed");
+  await recordEventAutomationExecution(previous, next, "failed");
   return next;
 }
 

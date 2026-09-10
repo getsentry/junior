@@ -20,7 +20,7 @@ import { readConversationAuxiliaryCostsFromSql } from "./auxiliary-costs";
 import { conversationDetailReportSchema } from "../schema/conversation";
 import type { ConversationDetailReport } from "../schema/conversation";
 import { listConversationAnnotations } from "@/chat/plugins/annotations";
-import { readConversationSourceTask } from "@/chat/tasks/read";
+import { readConversationSourceTask } from "@/chat/automations/read";
 import { readConversationArchivedAt } from "./archive";
 
 /** Project stored metadata and a bounded event page into a signed history cursor. */

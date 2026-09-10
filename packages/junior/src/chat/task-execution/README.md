@@ -48,12 +48,12 @@ Runtime and Redis status is `paused`. SQL free-text / enum rows may still say
   delivery. A provider conversation stores its destination. Child work without
   a destination gets its authority from its stored agent invocation.
 - The Conversation always stores each completed assistant Message. Slack input
-  delivers to Slack. Web and local input stay in Junior. Resource events use the
-  Conversation Location. Scheduled, Event task, and plugin dispatch work uses
+  delivers to Slack. Web and local input stay in Junior. Events use the
+  Conversation Location. Scheduled, Event automation, and plugin dispatch work uses
   its explicit Destination. Agent invocation has no Delivery. A child
   Conversation does not use its parent's Location for Delivery.
-- The shared web and Resource event worker still uses Run Delivery to store the
-  completed assistant Message. It checks Resource event Source before it also
+- The shared web and Event worker still uses Run Delivery to store the
+  completed assistant Message. It checks Event Source before it also
   calls Slack. This is temporary. The owning code has a removal TODO for the
   Source check and for storing the Message through Run Delivery.
 - A lease grants one worker temporary execution ownership.

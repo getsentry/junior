@@ -10,10 +10,7 @@ import type {
 import type { PluginCredentialSubject } from "./credentials";
 import type { PluginAnnotations } from "./annotations";
 import type { SlackConversationLink } from "./operations";
-import type {
-  ResourceEventSubscriptionResult,
-  SubscribableResource,
-} from "./resource-events";
+import type { WatchResult, SubscribableResource } from "./events";
 import type { PluginState } from "./state";
 import { z, type ZodTypeAny } from "zod";
 
@@ -533,15 +530,15 @@ export interface SlackToolRegistrationHookContext {
   >;
 }
 
-export interface PluginResourceEventToolContext {
-  /** Whether this invocation can create a working resource subscription. */
+export interface PluginEventToolContext {
+  /** Whether this invocation can create a working watch. */
   canSubscribe: boolean;
-  /** Create a temporary resource subscription for the current conversation. */
+  /** Create a temporary watch for the current conversation. */
   subscribe(input: {
     events: string[];
     intent: string;
     resource: SubscribableResource;
-  }): Promise<ResourceEventSubscriptionResult>;
+  }): Promise<WatchResult>;
 }
 
 export interface PluginWorkspaceToolContext {
@@ -565,7 +562,7 @@ interface BaseToolRegistrationHookContext extends PluginContext {
   egress: PluginEgress;
   mcp?: PluginMcp;
   model: PluginModel;
-  resourceEvents: PluginResourceEventToolContext;
+  events: PluginEventToolContext;
   /** Sandbox filesystem and command capability for plugin-owned workspace tools. */
   sandbox: PluginSandbox;
   state: PluginState;

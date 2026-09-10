@@ -32,7 +32,7 @@ fixed behavior that code must control.
 | [Maintenance](/extend/maintenance-plugin/)     | Repository maintenance workflows              |
 | [Memory](/extend/memory-plugin/)               | Long-term scoped memory                       |
 | [Notion](/extend/notion-plugin/)               | Notion content                                |
-| [Scheduler](/extend/scheduler-plugin/)         | Durable scheduled tasks                       |
+| [Scheduler](/extend/scheduler-plugin/)         | Durable scheduled automations                 |
 | [Sentry](/extend/sentry-plugin/)               | Sentry issues, telemetry, and issue webhooks  |
 | [Vercel](/extend/vercel-plugin/)               | Vercel projects and deployments               |
 

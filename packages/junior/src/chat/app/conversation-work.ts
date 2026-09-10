@@ -85,7 +85,9 @@ export function createConversationWork(
   });
   const runtime = options.wrapRuntime?.(baseRuntime) ?? baseRuntime;
   const scheduleCompletedPluginTasks = options.sendPluginTask
-    ? async (params: Parameters<typeof scheduleSessionCompletedPluginTasks>[0]) =>
+    ? async (
+        params: Parameters<typeof scheduleSessionCompletedPluginTasks>[0],
+      ) =>
         await scheduleSessionCompletedPluginTasks(params, {
           send: options.sendPluginTask,
         })

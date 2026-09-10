@@ -40,9 +40,7 @@ describe("textMentionsBot", () => {
   });
 
   it("detects a mention after a same-line fence close", () => {
-    expect(
-      textMentionsBot("```code``` " + `<@${BOT}> help`, BOT),
-    ).toBe(true);
+    expect(textMentionsBot("```code``` " + `<@${BOT}> help`, BOT)).toBe(true);
     expect(
       textMentionsBot(
         ["```", "code", "``` " + `<@${BOT}> help`].join("\n"),

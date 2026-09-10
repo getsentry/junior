@@ -142,7 +142,9 @@ function extractTransportKind(
 
   const providerError = error as ProviderErrorFields;
   const code =
-    typeof providerError.code === "string" ? providerError.code.toUpperCase() : undefined;
+    typeof providerError.code === "string"
+      ? providerError.code.toUpperCase()
+      : undefined;
   if (code && TIMEOUT_ERROR_CODES.has(code)) return "timeout";
   if (code && NETWORK_ERROR_CODES.has(code)) return "network";
   return extractTransportKind(providerError.cause, depth + 1);
@@ -152,7 +154,8 @@ function extractStatus(error: unknown, message: string): number | undefined {
   if (error instanceof Error) {
     const providerError = error as ProviderErrorFields;
     if (typeof providerError.status === "number") return providerError.status;
-    if (typeof providerError.statusCode === "number") return providerError.statusCode;
+    if (typeof providerError.statusCode === "number")
+      return providerError.statusCode;
   }
 
   const match = message.match(

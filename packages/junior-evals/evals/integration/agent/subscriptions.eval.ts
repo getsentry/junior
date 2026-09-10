@@ -7,19 +7,19 @@ describeEval("Resource Event Subscriptions", slackEvals, (it) => {
     run,
   }) => {
     const thread = {
-      id: "thread-resource-event-stop",
+      id: "thread-event-stop",
       channel_id: "CRESOURCEEVENTSTOP",
       thread_ts: "17000000.7301",
     };
     const result = await run({
       overrides: {
-        github_resource_events: true,
-        plugin_dirs: ["fixtures/resource-event-plugins"],
+        github_events: true,
+        plugin_dirs: ["fixtures/event-plugins"],
         plugin_packages: ["@sentry/junior-github"],
       },
       initialEvents: [
         mention(
-          "$eval-resource-events Create a pull request titled 'Stop resource monitoring', watch its checks and review feedback, and keep me posted here.",
+          "$eval-events Create a pull request titled 'Stop resource monitoring', watch its checks and review feedback, and keep me posted here.",
           { thread },
         ),
       ],
@@ -40,7 +40,7 @@ describeEval("Resource Event Subscriptions", slackEvals, (it) => {
     expect(calls).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          name: "watchResourceEvents",
+          name: "watchEvents",
           status: "ok",
         }),
         expect.objectContaining({
@@ -49,7 +49,7 @@ describeEval("Resource Event Subscriptions", slackEvals, (it) => {
         }),
       ]),
     );
-    const watch = calls.find((call) => call.name === "watchResourceEvents");
+    const watch = calls.find((call) => call.name === "watchEvents");
     const stop = calls.find((call) => call.name === "stopWatchingResources");
     if (!watch || watch.status !== "ok") {
       throw new Error("Expected a successful resource watch tool call");

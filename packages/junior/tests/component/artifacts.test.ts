@@ -1,10 +1,7 @@
 import { eq } from "drizzle-orm";
 import { afterEach, describe, expect, it } from "vitest";
 import type { AttachmentStorage } from "@/chat/attachments/storage";
-import {
-  publishImage,
-  unpublishArtifact,
-} from "@/chat/artifacts/store";
+import { publishImage, unpublishArtifact } from "@/chat/artifacts/store";
 import { publicArtifactGET } from "@/handlers/artifacts";
 import { juniorArtifacts } from "@/db/schema";
 import {

@@ -28,7 +28,9 @@ describe("global sandbox runtime dependencies", () => {
     expect(script).toContain("/usr/local/bin/docker");
     expect(script).toContain("/usr/local/bin/docker-compose");
     expect(script).toContain("/vercel/sandbox/.junior/bin/docker");
-    expect(script).toContain(Buffer.from(DOCKER_ENSURE_SCRIPT, "utf8").toString("base64"));
+    expect(script).toContain(
+      Buffer.from(DOCKER_ENSURE_SCRIPT, "utf8").toString("base64"),
+    );
     expect(script).toContain(
       Buffer.from(DOCKER_CLI_WRAPPER_SCRIPT, "utf8").toString("base64"),
     );

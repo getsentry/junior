@@ -725,7 +725,9 @@ export class McpToolManager {
     try {
       result = await tool.execute(args, {
         conversationPrivacy: "private",
-        ...(options?.toolCallId ? { toolCallId: options.toolCallId } : undefined),
+        ...(options?.toolCallId
+          ? { toolCallId: options.toolCallId }
+          : undefined),
       });
     } catch (error) {
       if (error instanceof McpToolError) {

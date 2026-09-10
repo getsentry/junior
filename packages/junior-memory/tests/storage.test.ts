@@ -8,7 +8,7 @@ import {
   type LocalPgliteFixture,
 } from "@sentry/junior-testing/pglite";
 import {
-  createResourceEventSource,
+  createEventSource,
   createWebSource,
   createLocalSource,
   createSlackSource,
@@ -1006,8 +1006,8 @@ describe("memory plugin storage", () => {
     }
   });
 
-  it("does not extract Memory from Resource event Turns", async () => {
-    const actor = { platform: "system", name: "resource-event" } as const;
+  it("does not extract Memory from Event Turns", async () => {
+    const actor = { platform: "system", name: "event" } as const;
     await expect(
       processMemorySession(
         processSessionContext({
@@ -1018,7 +1018,7 @@ describe("memory plugin storage", () => {
                 actor,
                 actorUserId: undefined,
                 actors: [actor],
-                source: createResourceEventSource({
+                source: createEventSource({
                   eventKey: "event-1",
                   eventType: "issue.updated",
                   identifier: "PROJ-123",

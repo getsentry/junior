@@ -1,6 +1,6 @@
 /**
  * Shared agent input for tasks. A task can come from a schedule, an event, or
- * a resource subscription. Call sites supply facts; this module owns layout
+ * a watch. Call sites supply facts; this module owns layout
  * and the reply contract. Section outline lives in `chat/README.md`.
  */
 import type { TaskOutcome } from "@sentry/junior-plugin-api";

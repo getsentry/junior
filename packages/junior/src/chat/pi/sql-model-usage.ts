@@ -106,8 +106,12 @@ function usageFromRow(row: ModelUsageRow): AgentTurnUsage | undefined {
     ...(row.reasoningTokens === null
       ? undefined
       : { reasoningTokens: row.reasoningTokens }),
-    ...(row.totalTokens === null ? undefined : { totalTokens: row.totalTokens }),
-    ...(Object.keys(definedCost).length > 0 ? { cost: definedCost } : undefined),
+    ...(row.totalTokens === null
+      ? undefined
+      : { totalTokens: row.totalTokens }),
+    ...(Object.keys(definedCost).length > 0
+      ? { cost: definedCost }
+      : undefined),
   };
   return hasAgentTurnUsage(result)
     ? agentTurnUsageSchema.parse(result)

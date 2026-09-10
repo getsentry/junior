@@ -19,7 +19,11 @@ import { DirectoryMetric } from "../../components/directory/DirectoryMetric";
 import { Card } from "../../components/layout/Card";
 import { CardHeader } from "../../components/layout/CardHeader";
 import { cn } from "../../styles";
-import { formatCompactNumber, formatCostSummary, peoplePath } from "../../format";
+import {
+  formatCompactNumber,
+  formatCostSummary,
+  peoplePath,
+} from "../../format";
 
 export type PeopleSort =
   | "conversations"

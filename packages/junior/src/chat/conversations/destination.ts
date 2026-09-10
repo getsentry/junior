@@ -19,7 +19,7 @@ function requireLocalDestination(conversationId: string): LocalDestination {
  * Keep a stored Destination, or create the temporary local Destination.
  *
  * TODO(dcramer): Delete this module after Conversation and AgentRun use
- * Location, and web and resource-event Turns no longer need a local
+ * Location, and web and event Turns no longer need a local
  * Destination.
  */
 export function resolveConversationDestination(args: {

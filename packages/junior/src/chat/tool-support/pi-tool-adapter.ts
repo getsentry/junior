@@ -252,7 +252,9 @@ export function createPiAgentTools(
     if (toolResultAttribute) {
       setSpanAttributes({
         "gen_ai.tool.call.result": toolResultAttribute,
-        ...(hasProjectedPrivateResult ? privateTraceResultAttributes() : undefined),
+        ...(hasProjectedPrivateResult
+          ? privateTraceResultAttributes()
+          : undefined),
         ...toGenAiPayloadTraceAttributes(
           "gen_ai.tool.call.result",
           resultAttributeValue,

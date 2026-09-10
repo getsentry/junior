@@ -62,8 +62,12 @@ export async function createMcpOAuthClientProvider(input: {
       userMessage: input.userMessage,
       ...(input.channelId ? { channelId: input.channelId } : undefined),
       ...(input.threadTs ? { threadTs: input.threadTs } : undefined),
-      ...(input.toolChannelId ? { toolChannelId: input.toolChannelId } : undefined),
-      ...(input.configuration ? { configuration: input.configuration } : undefined),
+      ...(input.toolChannelId
+        ? { toolChannelId: input.toolChannelId }
+        : undefined),
+      ...(input.configuration
+        ? { configuration: input.configuration }
+        : undefined),
     },
   );
 }

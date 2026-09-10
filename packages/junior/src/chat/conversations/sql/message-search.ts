@@ -1,14 +1,4 @@
-import {
-  and,
-  desc,
-  eq,
-  gte,
-  isNull,
-  lt,
-  ne,
-  sql,
-  type SQL,
-} from "drizzle-orm";
+import { and, desc, eq, gte, isNull, lt, ne, sql, type SQL } from "drizzle-orm";
 import type { JuniorSqlDatabase } from "@/db/db";
 import {
   juniorConversationAnnotations,

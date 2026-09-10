@@ -3,21 +3,21 @@
  *
  * This package owns per-user Sentry OAuth, CLI setup, internal-integration
  * issue webhook normalization, and Sentry resource identities. Junior core owns
- * watches and event tasks.
+ * watches and event automations.
  */
 import {
   defineJuniorPlugin,
   type PluginRegistration,
 } from "@sentry/junior-plugin-api";
-import { SENTRY_ISSUE_EVENTS } from "./resource-events/issue.js";
+import { SENTRY_ISSUE_EVENTS } from "./events/issue.js";
 import { createSentryWebhookRoute } from "./webhooks/handler.js";
 import { sentryWebhookOrg, sentryWebhookSecret } from "./webhooks/secret.js";
 
-/** Register Sentry runtime metadata and signed resource-event ingress. */
+/** Register Sentry runtime metadata and signed event ingress. */
 export function sentryPlugin(): PluginRegistration {
   return defineJuniorPlugin({
     packageName: "@sentry/junior-sentry",
-    resourceEvents: {
+    events: {
       resourceTypes: [
         {
           type: "issue",
@@ -75,7 +75,7 @@ export function sentryPlugin(): PluginRegistration {
       routes(ctx) {
         return [
           createSentryWebhookRoute({
-            resourceEvents: ctx.resourceEvents,
+            events: ctx.events,
             webhookOrg: sentryWebhookOrg,
             webhookSecret: sentryWebhookSecret,
           }),

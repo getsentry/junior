@@ -186,9 +186,8 @@ describe("plugin auth runtime slack integration", () => {
     pluginApp = await createPluginAppFixture([EVAL_OAUTH_PLUGIN_ROOT]);
 
     vi.resetModules();
-    const { restoreSuiteExperimentalFeatures } = await import(
-      "../../fixtures/experimental-setup"
-    );
+    const { restoreSuiteExperimentalFeatures } =
+      await import("../../fixtures/experimental-setup");
     restoreSuiteExperimentalFeatures();
     chatRuntimeModule = await import("../../fixtures/chat-runtime");
     stateAdapterModule = await import("@/chat/state/adapter");

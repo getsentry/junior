@@ -5,14 +5,13 @@ import type {
   SandboxSession,
 } from "@/chat/sandbox/workspace";
 
-
 function session(
   run: (
     input: SandboxCommandInput,
   ) => Promise<{ exitCode: number; stderr: string; stdout: string }>,
 ): SandboxSession {
-      // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
-      return ({ runCommand: vi.fn(run) }) as SandboxSession;
+  // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+  return { runCommand: vi.fn(run) } as SandboxSession;
 }
 
 function script(input: SandboxCommandInput): string {

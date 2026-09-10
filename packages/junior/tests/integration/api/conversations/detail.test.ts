@@ -160,9 +160,10 @@ describe("conversation detail API", () => {
       await import("@/chat/conversations/sql/migrations");
     const { createSqlStore } = await import("@/chat/conversations/sql/store");
     const { resolveViewerUserFromSql } = await import("@/chat/plugins/viewer");
-    const { saveScheduledTask } = await import("@/chat/scheduled-tasks/tasks");
-    const { recordTaskExecution } =
-      await import("@/chat/tasks/execution-stats");
+    const { saveScheduledAutomation } =
+      await import("@/chat/scheduled-automations/tasks");
+    const { recordAutomationExecution } =
+      await import("@/chat/automations/execution-stats");
     const fixture = createConfiguredJuniorSqlFixture();
     const conversationStore = createSqlStore(fixture.sql);
     try {
@@ -199,7 +200,7 @@ describe("conversation detail API", () => {
       );
       expect(identity).toBeDefined();
       const nowMs = 2;
-      await saveScheduledTask(fixture.sql.db(), {
+      await saveScheduledAutomation(fixture.sql.db(), {
         id: "sched_source_task",
         conversationAccess: { audience: "channel", visibility: "public" },
         createdAtMs: nowMs,
@@ -229,7 +230,7 @@ describe("conversation detail API", () => {
         title: "Weekly project summary",
         updatedAtMs: nowMs,
       });
-      await recordTaskExecution("scheduled", "sched_source_task", {
+      await recordAutomationExecution("scheduled", "sched_source_task", {
         conversationId,
         executionId: "run_source_task",
         nowMs: nowMs + 1,

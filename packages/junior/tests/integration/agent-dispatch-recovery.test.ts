@@ -98,17 +98,17 @@ describe("agent dispatch recovery", () => {
       {
         type: "user",
         userId: "U123",
-        allowedWhen: "scheduled-task",
+        allowedWhen: "scheduled-automation",
         taskId: "task-123",
         binding: {
-          type: "scheduled-task",
+          type: "scheduled-automation",
           plugin: "scheduler",
           taskId: "task-123",
           signature: "v1=test",
         },
       },
-      { kind: "scheduled_task" },
-      { label: "Scheduled task", detail: "Weekly" },
+      { kind: "scheduled_automation" },
+      { label: "Scheduled automation", detail: "Weekly" },
       "Post the scheduled digest.",
       [
         {
@@ -146,7 +146,7 @@ describe("agent dispatch recovery", () => {
 
     expect(slackApiOutbox.messages()).toHaveLength(1);
     expect(slackApiOutbox.messages()[0]?.params).toMatchObject({
-      text: "Resumed scheduled digest\n\nScheduled task · Weekly",
+      text: "Resumed scheduled digest\n\nScheduled automation · Weekly",
       thread_ts: "1700000000.000300",
     });
     await expect(
@@ -174,7 +174,7 @@ describe("agent dispatch recovery", () => {
         replyAttribution: dispatch.replyAttribution,
       },
       location: { threadTs: "1700000000.000300" },
-      source: { kind: "scheduled_task" },
+      source: { kind: "scheduled_automation" },
       surface: "api",
     });
     expect(resumedRun?.instruction.text).toBe(dispatch.input);

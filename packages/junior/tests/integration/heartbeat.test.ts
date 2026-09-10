@@ -6,15 +6,15 @@ import {
 import { eq } from "drizzle-orm";
 import { createHeartbeatContext } from "@/chat/agent-dispatch/context";
 import {
-  readScheduledTask,
-  saveScheduledTask,
-} from "@/chat/scheduled-tasks/tasks";
+  readScheduledAutomation,
+  saveScheduledAutomation,
+} from "@/chat/scheduled-automations/tasks";
 import {
   scheduledRunSchema,
-  type ScheduledTask,
-} from "@/chat/scheduled-tasks/types";
+  type ScheduledAutomation,
+} from "@/chat/scheduled-automations/types";
 import type { JuniorDatabase } from "@/db/db";
-import { juniorSchedulerRuns } from "@/db/schema/scheduled-tasks";
+import { juniorSchedulerRuns } from "@/db/schema/scheduled-automations";
 import { getDb } from "@/chat/db";
 import {
   getDispatchRecord,
@@ -71,7 +71,7 @@ function testHeartbeat(
   });
 }
 
-const scheduledTaskDb = (): JuniorDatabase => getDb();
+const scheduledAutomationDb = (): JuniorDatabase => getDb();
 async function readScheduledRun(db: JuniorDatabase, id: string) {
   const rows = await db
     .select({ record: juniorSchedulerRuns.record })
@@ -81,7 +81,9 @@ async function readScheduledRun(db: JuniorDatabase, id: string) {
   return parsed.success ? parsed.data : undefined;
 }
 
-function createTask(overrides: Partial<ScheduledTask> = {}): ScheduledTask {
+function createTask(
+  overrides: Partial<ScheduledAutomation> = {},
+): ScheduledAutomation {
   const nextRunAtMs = TEST_RUN_AT_MS;
   return {
     id: "sched_plugin_1",
@@ -107,8 +109,8 @@ function createTask(overrides: Partial<ScheduledTask> = {}): ScheduledTask {
 }
 
 function createDailyTask(
-  overrides: Partial<ScheduledTask> = {},
-): ScheduledTask {
+  overrides: Partial<ScheduledAutomation> = {},
+): ScheduledAutomation {
   const nextRunAtMs = Date.parse("2026-05-24T12:00:00.000Z");
   return createTask({
     id: "sched_plugin_daily",
@@ -449,7 +451,7 @@ describe("plugin heartbeat", () => {
       idempotencyKey: "run-1",
       destination: SLACK_DESTINATION,
       destinationVisibility: "private",
-      input: "Run the scheduled task.",
+      input: "Run the scheduled automation.",
       metadata: { runId: "run-1" },
     });
 
@@ -465,7 +467,7 @@ describe("plugin heartbeat", () => {
     ).resolves.toBeUndefined();
 
     await expect(getDispatchRecord(result.id)).resolves.toMatchObject({
-      input: "Run the scheduled task.",
+      input: "Run the scheduled automation.",
       destination: { channelId: "C123" },
       metadata: { runId: "run-1" },
       source: { kind: "plugin_dispatch" },
@@ -505,7 +507,7 @@ describe("plugin heartbeat", () => {
         idempotencyKey: `run-${index}`,
         destination: SLACK_DESTINATION,
         destinationVisibility: "private",
-        input: "Run the scheduled task.",
+        input: "Run the scheduled automation.",
       });
     }
 
@@ -514,7 +516,7 @@ describe("plugin heartbeat", () => {
         idempotencyKey: "run-over-limit",
         destination: SLACK_DESTINATION,
         destinationVisibility: "private",
-        input: "Run the scheduled task.",
+        input: "Run the scheduled automation.",
       }),
     ).rejects.toThrow("Plugin heartbeat exceeded the dispatch limit");
   });
@@ -540,7 +542,7 @@ describe("plugin heartbeat", () => {
             channelId: "C123",
           },
           destinationVisibility: "private",
-          input: "Run the scheduled task.",
+          input: "Run the scheduled automation.",
         }),
       ).rejects.toThrow("Dispatch destination teamId must be a Slack team id");
     }
@@ -550,7 +552,7 @@ describe("plugin heartbeat", () => {
         idempotencyKey: "valid-after-invalid",
         destination: SLACK_DESTINATION,
         destinationVisibility: "private",
-        input: "Run the scheduled task.",
+        input: "Run the scheduled automation.",
       }),
     ).resolves.toMatchObject({ status: "created" });
   });
@@ -579,7 +581,7 @@ describe("plugin heartbeat", () => {
           channelId: "D123",
         },
         destinationVisibility: "private",
-        input: "Run the scheduled task.",
+        input: "Run the scheduled automation.",
       }),
     ).rejects.toThrow("Dispatch credentialSubject binding is runtime-owned");
     expect(getCapturedSlackApiCalls("conversations.info")).toHaveLength(0);
@@ -600,7 +602,7 @@ describe("plugin heartbeat", () => {
         channelId: "D123",
       },
       destinationVisibility: "private",
-      input: "Run the scheduled task.",
+      input: "Run the scheduled automation.",
     });
 
     await expect(getDispatchRecord(result.id)).resolves.toMatchObject({
@@ -624,8 +626,8 @@ describe("plugin heartbeat", () => {
       return new Response("Accepted", { status: 202 });
     });
     global.fetch = fetchMock as typeof fetch;
-    const db = scheduledTaskDb();
-    await saveScheduledTask(
+    const db = scheduledAutomationDb();
+    await saveScheduledAutomation(
       db,
       createTask({
         createdBy: {
@@ -669,7 +671,7 @@ describe("plugin heartbeat", () => {
     );
     expect(dispatchRecord?.destination).toEqual(SLACK_DESTINATION);
     expect(dispatchRecord?.destinationVisibility).toBe("public");
-    expect(dispatchRecord?.source).toEqual({ kind: "scheduled_task" });
+    expect(dispatchRecord?.source).toEqual({ kind: "scheduled_automation" });
     expect(dispatchRecord?.metadata).toMatchObject({
       runId: `sched_plugin_1:${TEST_RUN_AT_MS}`,
       schedule: "Once at noon",
@@ -683,7 +685,7 @@ describe("plugin heartbeat", () => {
     expect(dispatchRecord?.metadata).not.toHaveProperty("creatorUserName");
     expect(dispatchRecord?.metadata).not.toHaveProperty("creatorFullName");
     expect(dispatchRecord?.replyAttribution).toEqual({
-      label: "Scheduled task",
+      label: "Scheduled automation",
       detail: "One-time",
     });
 
@@ -704,7 +706,7 @@ describe("plugin heartbeat", () => {
       resultMessageTs: "1700000000.000001",
     });
     await expect(
-      readScheduledTask(db, "sched_plugin_1"),
+      readScheduledAutomation(db, "sched_plugin_1"),
     ).resolves.toMatchObject({
       lastRunAtMs: Date.parse("2026-05-26T12:00:00.000Z"),
       status: "completed",
@@ -729,10 +731,10 @@ describe("plugin heartbeat", () => {
       label: "DM",
     },
   ])(
-    "binds creator credentials to the scheduled task dispatch in a $label",
+    "binds creator credentials to the scheduled automation dispatch in a $label",
     async ({ conversationAccess, destination }) => {
-      const db = scheduledTaskDb();
-      await saveScheduledTask(
+      const db = scheduledAutomationDb();
+      await saveScheduledAutomation(
         db,
         createTask({
           conversationAccess,
@@ -762,10 +764,10 @@ describe("plugin heartbeat", () => {
         credentialSubject: {
           type: "user",
           userId: "U123",
-          allowedWhen: "scheduled-task",
+          allowedWhen: "scheduled-automation",
           taskId: "sched_plugin_1",
           binding: {
-            type: "scheduled-task",
+            type: "scheduled-automation",
             plugin: "scheduler",
             taskId: "sched_plugin_1",
             signature: expect.any(String),
@@ -783,8 +785,8 @@ describe("plugin heartbeat", () => {
       return new Response("Accepted", { status: 202 });
     });
     global.fetch = fetchMock as typeof fetch;
-    const db = scheduledTaskDb();
-    await saveScheduledTask(db, createTask());
+    const db = scheduledAutomationDb();
+    await saveScheduledAutomation(db, createTask());
 
     const firstWaitUntil = createWaitUntilCollector();
     const firstResponse = await testHeartbeat(
@@ -820,22 +822,22 @@ describe("plugin heartbeat", () => {
 
     await expect(readScheduledRun(db, running!.id)).resolves.toMatchObject({
       status: "failed",
-      errorMessage: "Scheduled task dispatch record is missing.",
+      errorMessage: "Scheduled automation dispatch record is missing.",
     });
     await expect(
-      readScheduledTask(db, "sched_plugin_1"),
+      readScheduledAutomation(db, "sched_plugin_1"),
     ).resolves.toMatchObject({
       status: "deleted",
     });
   }, 30_000);
 
-  it("blocks malformed scheduled tasks without stopping the core heartbeat", async () => {
+  it("blocks malformed scheduled automations without stopping the core heartbeat", async () => {
     const fetchMock = vi.fn(async () => {
       return new Response("Accepted", { status: 202 });
     });
     global.fetch = fetchMock as typeof fetch;
-    const db = scheduledTaskDb();
-    await saveScheduledTask(db, {
+    const db = scheduledAutomationDb();
+    await saveScheduledAutomation(db, {
       ...createTask(),
       id: "sched_plugin_malformed",
       task: { text: "" },
@@ -856,17 +858,20 @@ describe("plugin heartbeat", () => {
     ).resolves.toMatchObject({
       status: "blocked",
       errorMessage: expect.stringContaining(
-        "Scheduled task dispatch metadata could not be built",
+        "Scheduled automation dispatch metadata could not be built",
       ),
     });
-    const blockedTask = await readScheduledTask(db, "sched_plugin_malformed");
+    const blockedTask = await readScheduledAutomation(
+      db,
+      "sched_plugin_malformed",
+    );
     expect(blockedTask).toMatchObject({
       status: "blocked",
       statusReason: expect.stringContaining(
-        "Scheduled task dispatch metadata could not be built",
+        "Scheduled automation dispatch metadata could not be built",
       ),
     });
-    await saveScheduledTask(db, {
+    await saveScheduledAutomation(db, {
       ...blockedTask!,
       nextRunAtMs: TEST_RUN_AT_MS,
       status: "active",
@@ -891,9 +896,9 @@ describe("plugin heartbeat", () => {
       return new Response("Accepted", { status: 202 });
     });
     global.fetch = fetchMock as typeof fetch;
-    const db = scheduledTaskDb();
+    const db = scheduledAutomationDb();
     const task = createDailyTask();
-    await saveScheduledTask(db, task);
+    await saveScheduledAutomation(db, task);
 
     const waitUntil = createWaitUntilCollector();
     const response = await testHeartbeat(
@@ -911,7 +916,7 @@ describe("plugin heartbeat", () => {
       status: "skipped",
       errorMessage: expect.stringContaining("more than 24 hours late"),
     });
-    await expect(readScheduledTask(db, task.id)).resolves.toMatchObject({
+    await expect(readScheduledAutomation(db, task.id)).resolves.toMatchObject({
       status: "active",
       nextRunAtMs: Date.parse("2026-05-27T12:00:00.000Z"),
     });
@@ -923,7 +928,7 @@ describe("plugin heartbeat", () => {
       return new Response("Accepted", { status: 202 });
     });
     global.fetch = fetchMock as typeof fetch;
-    const db = scheduledTaskDb();
+    const db = scheduledAutomationDb();
     const first = createDailyTask({
       id: "sched_plugin_duplicate_a",
       createdAtMs: Date.parse("2026-05-24T12:00:00.000Z"),
@@ -932,8 +937,8 @@ describe("plugin heartbeat", () => {
       id: "sched_plugin_duplicate_b",
       createdAtMs: Date.parse("2026-05-24T12:00:01.000Z"),
     });
-    await saveScheduledTask(db, first);
-    await saveScheduledTask(db, duplicate);
+    await saveScheduledAutomation(db, first);
+    await saveScheduledAutomation(db, duplicate);
 
     const waitUntil = createWaitUntilCollector();
     const response = await testHeartbeat(
@@ -950,14 +955,14 @@ describe("plugin heartbeat", () => {
     ).resolves.toMatchObject({
       status: "skipped",
       errorMessage: expect.stringContaining(
-        "Duplicate stale scheduled task was skipped",
+        "Duplicate stale scheduled automation was skipped",
       ),
     });
-    await expect(readScheduledTask(db, first.id)).resolves.toMatchObject({
+    await expect(readScheduledAutomation(db, first.id)).resolves.toMatchObject({
       status: "active",
       nextRunAtMs: Date.parse("2026-05-27T12:00:00.000Z"),
     });
-    const duplicateTask = await readScheduledTask(db, duplicate.id);
+    const duplicateTask = await readScheduledAutomation(db, duplicate.id);
     expect(duplicateTask).toMatchObject({
       status: "deleted",
       statusReason: expect.stringContaining(first.id),

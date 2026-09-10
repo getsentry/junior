@@ -43,7 +43,9 @@ describe("resolveGatewayCredential", () => {
 
   it("falls back to AI_GATEWAY_API_KEY when OIDC is unavailable", async () => {
     mocks.getVercelOidcToken.mockRejectedValue(
-      new Error("The 'x-vercel-oidc-token' header is missing from the request."),
+      new Error(
+        "The 'x-vercel-oidc-token' header is missing from the request.",
+      ),
     );
     mocks.getEnvApiKey.mockReturnValue("  api-key  ");
 

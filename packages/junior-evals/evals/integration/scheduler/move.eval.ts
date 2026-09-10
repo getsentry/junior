@@ -1,14 +1,14 @@
 import { describeEval } from "vitest-evals";
 import { expect } from "vitest";
 import { getDb } from "@/chat/db";
-import { readScheduledTask } from "@/chat/scheduled-tasks/tasks";
+import { readScheduledAutomation } from "@/chat/scheduled-automations/tasks";
 import { mention, rubric, slackEvals } from "../../../src/helpers";
 import {
-  scheduledTaskCreateCalls,
-  scheduledTaskDeleteCalls,
-  scheduledTaskListCalls,
-  scheduledTaskUpdateCalls,
-  seedScheduledTask,
+  scheduledAutomationCreateCalls,
+  scheduledAutomationDeleteCalls,
+  scheduledAutomationListCalls,
+  scheduledAutomationUpdateCalls,
+  seedScheduledAutomation,
 } from "./helpers";
 
 describeEval("Schedule Destination Updates", slackEvals, (it) => {
@@ -29,7 +29,7 @@ describeEval("Schedule Destination Updates", slackEvals, (it) => {
     const elsewhere = {
       channel_id: "CSCHEDELSE",
     };
-    await seedScheduledTask({
+    await seedScheduledAutomation({
       createdBy: {
         slackUserId: author.user_id,
         userName: author.user_name,
@@ -39,7 +39,7 @@ describeEval("Schedule Destination Updates", slackEvals, (it) => {
       taskText: "Post a planning reminder in this channel.",
       thread: here,
     });
-    await seedScheduledTask({
+    await seedScheduledAutomation({
       createdBy: {
         slackUserId: author.user_id,
         userName: author.user_name,
@@ -52,7 +52,7 @@ describeEval("Schedule Destination Updates", slackEvals, (it) => {
 
     const result = await run({
       initialEvents: [
-        mention("@bot what scheduled tasks are in this channel?", {
+        mention("@bot what scheduled automations are in this channel?", {
           thread: here,
           author,
         }),
@@ -68,7 +68,7 @@ describeEval("Schedule Destination Updates", slackEvals, (it) => {
       }),
     });
 
-    const listCalls = scheduledTaskListCalls(result.session);
+    const listCalls = scheduledAutomationListCalls(result.session);
     expect(listCalls.length).toBeGreaterThan(0);
     for (const call of listCalls) {
       expect(
@@ -76,7 +76,7 @@ describeEval("Schedule Destination Updates", slackEvals, (it) => {
           call.arguments?.channel_id === here.channel_id,
       ).toBe(true);
     }
-    expect(scheduledTaskUpdateCalls(result.session)).toEqual([]);
+    expect(scheduledAutomationUpdateCalls(result.session)).toEqual([]);
   });
 
   it("when asked once in the destination channel, update the requester task to deliver here", async ({
@@ -97,7 +97,7 @@ describeEval("Schedule Destination Updates", slackEvals, (it) => {
       thread_ts: "1700000000.902000",
     };
     const taskId = "sched_move_planning_reminder";
-    await seedScheduledTask({
+    await seedScheduledAutomation({
       createdBy: {
         slackUserId: author.user_id,
         userName: author.user_name,
@@ -131,17 +131,19 @@ describeEval("Schedule Destination Updates", slackEvals, (it) => {
       }),
     });
 
-    expect(scheduledTaskListCalls(result.session).length).toBeGreaterThan(0);
-    const updateCalls = scheduledTaskUpdateCalls(result.session);
+    expect(scheduledAutomationListCalls(result.session).length).toBeGreaterThan(
+      0,
+    );
+    const updateCalls = scheduledAutomationUpdateCalls(result.session);
     expect(updateCalls).toHaveLength(1);
     expect(updateCalls[0]!.arguments).toMatchObject({
       task_id: taskId,
       destination: "here",
     });
-    expect(scheduledTaskCreateCalls(result.session)).toEqual([]);
-    expect(scheduledTaskDeleteCalls(result.session)).toEqual([]);
+    expect(scheduledAutomationCreateCalls(result.session)).toEqual([]);
+    expect(scheduledAutomationDeleteCalls(result.session)).toEqual([]);
 
-    const stored = await readScheduledTask(getDb(), taskId);
+    const stored = await readScheduledAutomation(getDb(), taskId);
     expect(stored).toMatchObject({
       id: taskId,
       credentialMode: "creator",

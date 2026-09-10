@@ -66,9 +66,9 @@ describe("dashboard routes", () => {
       "/locations/destination-1",
       "/system",
       "/system/plugins/github",
-      "/tasks",
-      "/tasks/task-1",
-      "/tasks/scheduled/task-1/executions",
+      "/automations",
+      "/automations/task-1",
+      "/automations/scheduled/task-1/executions",
       "/memories",
       "/memories/memory-1",
       "/settings",
@@ -686,5 +686,4 @@ describe("dashboard routes", () => {
       }),
     ).toThrow("JUNIOR_DASHBOARD_ALLOWED_EMAILS must be a JSON string array");
   });
-
 });

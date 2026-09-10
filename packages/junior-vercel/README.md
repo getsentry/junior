@@ -51,7 +51,7 @@ Supported scopes (`deployment` resource type):
 - `<project-id>:production` for every production deployment
 - `<project-id>:production:<sha>` for one commit-scoped deployment
 
-Create the conversation watch or event task before the terminal deployment event. A valid webhook delivery does not create a watch by itself, and unmatched deliveries are not replayed later.
+Create the conversation watch or event automation before the terminal deployment event. A valid webhook delivery does not create a watch by itself, and unmatched deliveries are not replayed later.
 
 ## Auth model
 

@@ -201,7 +201,9 @@ export function parseSkillFile(
       name: result.data.name,
       description: result.data.description,
       body: stripFrontmatter(raw),
-      ...(result.data.metadata ? { metadata: result.data.metadata } : undefined),
+      ...(result.data.metadata
+        ? { metadata: result.data.metadata }
+        : undefined),
       ...(result.data.compatibility !== undefined
         ? { compatibility: result.data.compatibility }
         : undefined),

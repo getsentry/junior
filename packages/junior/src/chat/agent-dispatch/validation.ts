@@ -4,8 +4,8 @@ import {
 } from "@sentry/junior-plugin-api";
 import type { BoundDispatchOptions, SlackDispatchOptions } from "./types";
 import {
-  verifyEventTaskCredentialSubject,
-  verifyScheduledTaskCredentialSubject,
+  verifyEventAutomationCredentialSubject,
+  verifyScheduledAutomationCredentialSubject,
   verifySlackDirectCredentialSubject,
 } from "@/chat/credentials/subject";
 import { isDmChannel } from "@/chat/slack/client";
@@ -150,13 +150,13 @@ export async function verifyDispatchCredentialSubjectAccess(
   }
 
   const verified =
-    options.credentialSubject.allowedWhen === "scheduled-task"
-      ? verifyScheduledTaskCredentialSubject({
+    options.credentialSubject.allowedWhen === "scheduled-automation"
+      ? verifyScheduledAutomationCredentialSubject({
           plugin,
           subject: options.credentialSubject,
         })
-      : options.credentialSubject.allowedWhen === "event-task"
-        ? verifyEventTaskCredentialSubject({
+      : options.credentialSubject.allowedWhen === "event-automation"
+        ? verifyEventAutomationCredentialSubject({
             plugin,
             subject: options.credentialSubject,
           })

@@ -1,9 +1,6 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
-import type {
-  PluginRoute,
-  ResourceEventPublisher,
-} from "@sentry/junior-plugin-api";
-import { normalizeLinearResourceEvents } from "./resource-events.js";
+import type { PluginRoute, EventPublisher } from "@sentry/junior-plugin-api";
+import { normalizeLinearEvents } from "./events.js";
 
 function verifyLinearSignature(
   body: string,
@@ -26,9 +23,9 @@ function parseJson(body: string): unknown {
   }
 }
 
-/** Create the public, signed Linear resource-event webhook route. */
+/** Create the public, signed Linear event webhook route. */
 export function createLinearWebhookRoute(args: {
-  resourceEvents: ResourceEventPublisher;
+  events: EventPublisher;
   webhookSecret(): string | undefined;
 }): PluginRoute {
   return {
@@ -51,9 +48,9 @@ export function createLinearWebhookRoute(args: {
           status: 400,
         });
       }
-      const events = normalizeLinearResourceEvents({ body, linearEvent });
+      const events = normalizeLinearEvents({ body, linearEvent });
       for (const event of events) {
-        await args.resourceEvents.publish(event);
+        await args.events.publish(event);
       }
       return new Response(events.length ? "Accepted" : "Ignored", {
         status: 200,

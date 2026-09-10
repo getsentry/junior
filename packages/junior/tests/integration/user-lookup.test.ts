@@ -2,10 +2,7 @@ import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { createSlackSource } from "@sentry/junior-plugin-api";
 import { getSqlExecutor } from "@/chat/db";
-import {
-  upsertIdentity,
-  upsertLinkedIdentity,
-} from "@/chat/identities/sql";
+import { upsertIdentity, upsertLinkedIdentity } from "@/chat/identities/sql";
 import { parseSlackTeamId } from "@/chat/slack/ids";
 import { createUserLookupTool } from "@/chat/tools/user-lookup";
 import { juniorIdentities } from "@/db/schema";
@@ -300,9 +297,9 @@ describe("userLookup", () => {
         count: 2,
       });
       expect(result.mention).toBeUndefined();
-      expect(result.users.map((user: { id: string }) => user.id).sort()).toEqual(
-        ["U_COLIN_CURTIN", "U_COLIN_KAWAI"],
-      );
+      expect(
+        result.users.map((user: { id: string }) => user.id).sort(),
+      ).toEqual(["U_COLIN_CURTIN", "U_COLIN_KAWAI"]);
     });
 
     it("ranks a multi-token name above another first-name match", async () => {

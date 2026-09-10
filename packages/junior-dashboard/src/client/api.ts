@@ -14,9 +14,9 @@ import {
   locationDetailReportSchema,
   locationDirectoryReportSchema,
   personalSpendReportSchema,
-  taskExecutionListSchema,
-  taskListSchema,
-  taskRunListSchema,
+  automationExecutionListSchema,
+  automationListSchema,
+  automationRunListSchema,
 } from "@sentry/junior/api/schema";
 import {
   pluginOperationalReportFeedSchema,
@@ -114,15 +114,15 @@ export function useCodeOverviewData() {
   });
 }
 
-/** Fetch the signed-in viewer's scheduled and event tasks. */
-export function useTasksData(enabled: boolean, search: string) {
+/** Fetch the signed-in viewer's scheduled and event automations. */
+export function useAutomationsData(enabled: boolean, search: string) {
   return useQuery({
     enabled,
-    queryKey: ["dashboard", "tasks", search],
+    queryKey: ["dashboard", "automations", search],
     queryFn: ({ signal }) =>
       fetchDashboardJson(
-        taskListSchema,
-        `/api/tasks${search ? `?q=${encodeURIComponent(search)}` : ""}`,
+        automationListSchema,
+        `/api/automations${search ? `?q=${encodeURIComponent(search)}` : ""}`,
         signal,
       ),
     placeholderData: keepPreviousData,
@@ -130,30 +130,34 @@ export function useTasksData(enabled: boolean, search: string) {
   });
 }
 
-/** Fetch newest runs across all viewer-visible tasks. */
-export function useTaskRunsData(enabled: boolean) {
+/** Fetch newest runs across all viewer-visible automations. */
+export function useAutomationRunsData(enabled: boolean) {
   return useQuery({
     enabled,
-    queryKey: ["dashboard", "tasks", "runs"],
+    queryKey: ["dashboard", "automations", "runs"],
     queryFn: ({ signal }) =>
-      fetchDashboardJson(taskRunListSchema, "/api/tasks/runs", signal),
+      fetchDashboardJson(
+        automationRunListSchema,
+        "/api/automations/runs",
+        signal,
+      ),
     retry: false,
   });
 }
 
 /** Fetch terminal executions for one viewer-visible task. */
-export function useTaskExecutionsData(
+export function useAutomationExecutionsData(
   enabled: boolean,
   kind: "scheduled" | "event" | undefined,
-  taskId: string | undefined,
+  automationId: string | undefined,
 ) {
   return useQuery({
-    enabled: enabled && Boolean(kind && taskId),
-    queryKey: ["dashboard", "tasks", kind, taskId, "executions"],
+    enabled: enabled && Boolean(kind && automationId),
+    queryKey: ["dashboard", "automations", kind, automationId, "executions"],
     queryFn: ({ signal }) =>
       fetchDashboardJson(
-        taskExecutionListSchema,
-        `/api/tasks/${kind}/${encodeURIComponent(taskId!)}/executions`,
+        automationExecutionListSchema,
+        `/api/automations/${kind}/${encodeURIComponent(automationId!)}/executions`,
         signal,
       ),
     retry: false,

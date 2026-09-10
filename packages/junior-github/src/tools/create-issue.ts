@@ -13,7 +13,7 @@ import { Type, type Static } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { z } from "zod";
 import { appendGitHubFooter } from "./footer.js";
-import { gitHubIssueSubscribable } from "../resource-events/issue.js";
+import { gitHubIssueSubscribable } from "../events/issue.js";
 import { appendGitHubRequesterAttribution } from "../tool-support/attribution.js";
 const GITHUB_ISSUE_CREATE_IDEMPOTENCY_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const GITHUB_ISSUE_CREATE_LOCK_TTL_MS = 60_000;
@@ -340,7 +340,7 @@ export function createGitHubIssueTool(ctx: ToolRegistrationHookContext) {
             return gitHubIssueToolResult(
               completedInput,
               completedResult,
-              ctx.resourceEvents.canSubscribe,
+              ctx.events.canSubscribe,
             );
           }
           if (state?.status === "pending") {
@@ -383,7 +383,7 @@ export function createGitHubIssueTool(ctx: ToolRegistrationHookContext) {
             return gitHubIssueToolResult(
               parsedInput,
               result,
-              ctx.resourceEvents.canSubscribe,
+              ctx.events.canSubscribe,
             );
           } catch (error) {
             if (

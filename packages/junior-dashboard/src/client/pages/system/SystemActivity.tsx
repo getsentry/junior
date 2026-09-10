@@ -123,11 +123,7 @@ export function SystemActivity(props: {
         />
       </div>
       <ConversationActivityChart bucketUnit={bucketUnit} days={days} />
-      <SystemMetricCharts
-        bucketUnit={bucketUnit}
-        cacheBreakdown
-        days={days}
-      />
+      <SystemMetricCharts bucketUnit={bucketUnit} cacheBreakdown days={days} />
       <GuardianActivity bucketUnit={bucketUnit} days={guardianDays} />
     </section>
   );

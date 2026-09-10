@@ -4,7 +4,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type {
   ConversationAnnotationInput,
-  ResourceEventInput,
+  EventInput,
 } from "@sentry/junior-plugin-api";
 import {
   createLocalPgliteFixture,
@@ -29,11 +29,11 @@ import { createGitHubWebhookRoute } from "../src/webhooks/handler";
 import {
   buildCheckSuiteUrl,
   needsCheckSuitePullRequestFacts,
-  normalizeGitHubResourceEvents,
+  normalizeGitHubEvents,
   parseCheckSuiteFactsTarget,
   parseCheckSuitePublishTargets,
   selectFailingChecks,
-} from "../src/webhooks/resource-events";
+} from "../src/webhooks/events";
 
 /** Minimal repository object for check_suite webhook fixtures. */
 function checkSuiteRepository(repo = "getsentry/junior", id = 1) {
@@ -277,7 +277,7 @@ function signedRequest(body: unknown, eventName = "pull_request"): Request {
 
 function webhookRoute(
   fixture: GitHubFixture,
-  published: ResourceEventInput[] = [],
+  published: EventInput[] = [],
   botEmail: () => string | undefined = () =>
     "264270552+sentry-junior[bot]@users.noreply.github.com",
   classifyPullRequestCommits?: () => Promise<
@@ -323,7 +323,7 @@ function webhookRoute(
     log: { error },
     markFeedbackReviewing,
     privateKeyEnv: "GITHUB_APP_PRIVATE_KEY",
-    resourceEvents: {
+    events: {
       hasMatch,
       async publish(event) {
         published.push(event);
@@ -338,7 +338,7 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 
-describe("GitHub webhook resource events", () => {
+describe("GitHub webhook events", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.setSystemTime(1_000);
@@ -346,7 +346,7 @@ describe("GitHub webhook resource events", () => {
 
   it("uses the provider merge timestamp", () => {
     vi.setSystemTime(new Date("2026-07-20T12:00:00.000Z"));
-    const events = normalizeGitHubResourceEvents({
+    const events = normalizeGitHubEvents({
       body: {
         action: "closed",
         repository: { full_name: "getsentry/junior" },
@@ -382,13 +382,13 @@ describe("GitHub webhook resource events", () => {
   it("normalizes non-draft opens as opened and ready for review", () => {
     vi.setSystemTime(new Date("2026-07-20T12:00:00.000Z"));
     const untrustedText =
-      "Title: feat(github): expose pull_request.opened\n\nAdds pull_request.opened resource events.";
-    const events = normalizeGitHubResourceEvents({
+      "Title: feat(github): expose pull_request.opened\n\nAdds pull_request.opened events.";
+    const events = normalizeGitHubEvents({
       body: {
         action: "opened",
         repository: { full_name: "getsentry/junior" },
         pull_request: {
-          body: "Adds pull_request.opened resource events.\n",
+          body: "Adds pull_request.opened events.\n",
           created_at: "2026-07-10T12:00:00.000Z",
           draft: false,
           number: 946,
@@ -462,7 +462,7 @@ describe("GitHub webhook resource events", () => {
   it("keeps draft opens as opened only until ready_for_review", () => {
     vi.setSystemTime(new Date("2026-07-20T12:00:00.000Z"));
     expect(
-      normalizeGitHubResourceEvents({
+      normalizeGitHubEvents({
         body: {
           action: "opened",
           repository: { full_name: "getsentry/junior" },
@@ -499,7 +499,7 @@ describe("GitHub webhook resource events", () => {
     ]);
 
     expect(
-      normalizeGitHubResourceEvents({
+      normalizeGitHubEvents({
         body: {
           action: "ready_for_review",
           repository: { full_name: "getsentry/junior" },
@@ -725,7 +725,7 @@ describe("GitHub webhook resource events", () => {
 
     for (const testCase of cases) {
       expect(
-        normalizeGitHubResourceEvents({
+        normalizeGitHubEvents({
           body: testCase.body,
           deliveryId: "delivery-event",
           eventName: testCase.eventName,
@@ -744,7 +744,7 @@ describe("GitHub webhook resource events", () => {
 
   it("emits repository check suite events for bare branch builds", () => {
     expect(
-      normalizeGitHubResourceEvents({
+      normalizeGitHubEvents({
         body: {
           action: "completed",
           repository: checkSuiteRepository("getsentry/junior"),
@@ -788,7 +788,7 @@ describe("GitHub webhook resource events", () => {
   it("attaches headBranch from the check suite webhook without a pull request API load", () => {
     expect(needsCheckSuitePullRequestFacts(["headBranch"])).toBe(false);
     expect(
-      normalizeGitHubResourceEvents({
+      normalizeGitHubEvents({
         body: {
           action: "completed",
           repository: checkSuiteRepository("getsentry/junior"),
@@ -857,7 +857,7 @@ describe("GitHub webhook resource events", () => {
 
   it("emits recovered check suite events without draft or author fields", () => {
     expect(
-      normalizeGitHubResourceEvents({
+      normalizeGitHubEvents({
         body: {
           action: "completed",
           repository: checkSuiteRepository("getsentry/junior"),
@@ -957,7 +957,7 @@ describe("GitHub webhook resource events", () => {
 
   it("attaches failing check-run handles when check suite data is provided", () => {
     expect(
-      normalizeGitHubResourceEvents({
+      normalizeGitHubEvents({
         body: {
           action: "completed",
           repository: checkSuiteRepository("getsentry/junior"),
@@ -1077,7 +1077,7 @@ describe("GitHub webhook resource events", () => {
 
   it("drops check-suite PRs whose base is a foreign fork of the suite repo", () => {
     expect(
-      normalizeGitHubResourceEvents({
+      normalizeGitHubEvents({
         body: {
           action: "completed",
           repository: checkSuiteRepository("getsentry/sentry", 873328),
@@ -1267,7 +1267,7 @@ describe("GitHub webhook resource events", () => {
 
   it("attaches loaded pull request match fields on check suite events", () => {
     expect(
-      normalizeGitHubResourceEvents({
+      normalizeGitHubEvents({
         body: {
           action: "completed",
           repository: checkSuiteRepository("getsentry/junior"),
@@ -1386,7 +1386,7 @@ describe("GitHub webhook resource events", () => {
 
   it("normalizes issue lifecycle and comments for issue and repository tasks", () => {
     expect(
-      normalizeGitHubResourceEvents({
+      normalizeGitHubEvents({
         body: {
           action: "created",
           repository: { full_name: "getsentry/junior" },
@@ -1422,7 +1422,7 @@ describe("GitHub webhook resource events", () => {
     ]);
 
     expect(
-      normalizeGitHubResourceEvents({
+      normalizeGitHubEvents({
         body: {
           action: "closed",
           repository: { full_name: "getsentry/junior" },
@@ -1458,7 +1458,7 @@ describe("GitHub webhook resource events", () => {
     ]);
 
     expect(
-      normalizeGitHubResourceEvents({
+      normalizeGitHubEvents({
         body: {
           action: "reopened",
           repository: { full_name: "getsentry/junior" },
@@ -1739,7 +1739,7 @@ describe("GitHub-owned pull request outcomes", () => {
 
   it("does not mark pull request comments without an event consumer", async () => {
     const fixture = await createGitHubFixture();
-    const published: ResourceEventInput[] = [];
+    const published: EventInput[] = [];
     const markFeedbackReviewing = vi.fn(async () => {});
     try {
       const route = webhookRoute(
@@ -1771,9 +1771,9 @@ describe("GitHub-owned pull request outcomes", () => {
     }
   });
 
-  it("marks pull request comments before publishing their resource events", async () => {
+  it("marks pull request comments before publishing their events", async () => {
     const fixture = await createGitHubFixture();
-    const published: ResourceEventInput[] = [];
+    const published: EventInput[] = [];
     const markFeedbackReviewing = vi.fn(async () => {
       expect(published).toEqual([]);
     });
@@ -1820,7 +1820,7 @@ describe("GitHub-owned pull request outcomes", () => {
 
   it("publishes comment events when the reviewing reaction fails", async () => {
     const fixture = await createGitHubFixture();
-    const published: ResourceEventInput[] = [];
+    const published: EventInput[] = [];
     const errors: string[] = [];
     try {
       const route = webhookRoute(
@@ -1859,7 +1859,7 @@ describe("GitHub-owned pull request outcomes", () => {
 
   it("rejects unsigned deliveries before touching storage", async () => {
     const fixture = await createGitHubFixture();
-    const published: ResourceEventInput[] = [];
+    const published: EventInput[] = [];
     try {
       const route = webhookRoute(fixture, published);
       const response = await route.handler(
@@ -1880,7 +1880,7 @@ describe("GitHub-owned pull request outcomes", () => {
 
   it("ignores signed deliveries from another installation", async () => {
     const fixture = await createGitHubFixture();
-    const published: ResourceEventInput[] = [];
+    const published: EventInput[] = [];
     try {
       const route = webhookRoute(fixture, published);
       const response = await route.handler(
@@ -1978,7 +1978,7 @@ describe("GitHub-owned pull request outcomes", () => {
           async associateConversations() {},
           record: codeChangesRecord,
         },
-        resourceEvents: { async publish() {} },
+        events: { async publish() {} },
       });
 
       expect(
@@ -2066,7 +2066,7 @@ describe("GitHub-owned pull request outcomes", () => {
         db: fixture.db(),
         log: { error() {}, info() {}, warn() {} },
         plugin: { name: "github" },
-        resourceEvents: { async publish() {} },
+        events: { async publish() {} },
       });
       const opened = pullRequestPayload();
       await route!.handler(signedRequest(opened));
@@ -2110,7 +2110,7 @@ describe("GitHub-owned pull request outcomes", () => {
 
   it("tracks one idempotent projection and ignores stale lifecycle events", async () => {
     const fixture = await createGitHubFixture();
-    const published: ResourceEventInput[] = [];
+    const published: EventInput[] = [];
     try {
       const annotations: Array<{
         annotation: ConversationAnnotationInput;
@@ -2228,7 +2228,7 @@ describe("GitHub-owned pull request outcomes", () => {
           eventType: "pull_request.ready_for_review",
           identifier: "getsentry/junior",
         }),
-        // Duplicate open delivery still publishes resource events; outcome
+        // Duplicate open delivery still publishes events; outcome
         // storage remains idempotent.
         expect.objectContaining({
           eventType: "pull_request.opened",
@@ -2462,7 +2462,7 @@ describe("GitHub-owned pull request outcomes", () => {
 
   it("does not adopt a human PR but still publishes its subscription event", async () => {
     const fixture = await createGitHubFixture();
-    const published: ResourceEventInput[] = [];
+    const published: EventInput[] = [];
     try {
       const route = webhookRoute(fixture, published);
       const opened = pullRequestPayload();

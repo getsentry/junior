@@ -67,7 +67,7 @@ const inboundMessageSourceSchema = z.enum([
   "internal",
   "local",
   "plugin",
-  "resource_event",
+  "event",
   "scheduler",
   "slack",
   "web",
@@ -1031,7 +1031,7 @@ async function writeConversation(
           message,
           hasSlackDestination &&
             (message.source === "slack" ||
-              message.source === "resource_event" ||
+              message.source === "event" ||
               message.source === "plugin" ||
               message.source === "scheduler"),
         ),

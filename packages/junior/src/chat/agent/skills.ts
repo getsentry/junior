@@ -46,7 +46,9 @@ export async function discoverRunSkills(args: {
   return availableSkills;
 }
 
-function lastLoadedSkillName(messages: readonly PiMessage[]): string | undefined {
+function lastLoadedSkillName(
+  messages: readonly PiMessage[],
+): string | undefined {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index] as {
       details?: unknown;

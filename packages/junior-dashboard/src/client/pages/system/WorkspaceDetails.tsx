@@ -1,7 +1,4 @@
-import type {
-  StatsReport,
-  WorkspaceReport,
-} from "@sentry/junior/api/schema";
+import type { StatsReport, WorkspaceReport } from "@sentry/junior/api/schema";
 
 import { useStatsData } from "../../api";
 import { EmptyTelemetry } from "../../components/EmptyTelemetry";

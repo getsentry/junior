@@ -12,10 +12,10 @@ import type { AgentTool } from "@earendil-works/pi-agent-core";
 import type {
   AgentInvocationSource,
   Destination,
-  EventTaskSource,
+  EventAutomationSource,
   PluginDispatchSource,
-  ResourceEventSource,
-  ScheduledTaskSource,
+  EventSource,
+  ScheduledAutomationSource,
 } from "@sentry/junior-plugin-api";
 import type { FileUpload } from "chat";
 import { createUserTokenStore } from "@/chat/capabilities/factory";
@@ -155,10 +155,10 @@ type ToolRuntimeRoute =
       destination: Destination;
       source:
         | AgentInvocationSource
-        | EventTaskSource
+        | EventAutomationSource
         | PluginDispatchSource
-        | ResourceEventSource
-        | ScheduledTaskSource;
+        | EventSource
+        | ScheduledAutomationSource;
     };
 
 /** Resolve provider-specific tool routing without changing turn delivery. */
@@ -198,9 +198,9 @@ function resolveToolRuntimeRoute(args: {
         actor: args.actor?.platform === "web" ? args.actor : undefined,
         source: args.run.source,
       };
-    case "resource_event":
-    case "scheduled_task":
-    case "event_task":
+    case "event":
+    case "scheduled_automation":
+    case "event_automation":
     case "plugin_dispatch":
     case "agent_invocation":
       return {

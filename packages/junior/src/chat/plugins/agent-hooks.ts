@@ -1,10 +1,10 @@
 import {
   missingToolAnnotationKeys,
-  normalizeResourceEventIdentifier,
-  pluginResourceEventsSchema,
+  normalizeEventIdentifier,
+  pluginEventsSchema,
   promptContextSchema,
   promptMessageSchema,
-  resourceEventInputSchema,
+  eventInputSchema,
 } from "@sentry/junior-plugin-api";
 import type {
   InvocationContext,
@@ -18,7 +18,7 @@ import type {
   PluginOperationalTone,
   PluginRouteApp,
   Platform,
-  ResourceEvent,
+  Event,
   SlackConversationLink,
   PluginRegistration,
   SlackToolRegistrationHookContext,
@@ -39,8 +39,8 @@ import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
 import { runNonInteractiveCommand } from "@/chat/sandbox/noninteractive-command";
 import type { AnyToolDefinition } from "@/chat/tools/definition";
 import { getDashboardConversationLink } from "@/chat/slack/dashboard-link";
-import { createResourceEventSubscription } from "@/chat/resource-events/store";
-import { RESOURCE_SUBSCRIPTION_DEFAULT_TTL_MS } from "@/chat/resource-events/tool-support";
+import { createWatch } from "@/chat/events/store";
+import { RESOURCE_SUBSCRIPTION_DEFAULT_TTL_MS } from "@/chat/events/tool-support";
 
 import { getSlackToolContext } from "@/chat/slack/tool-support/context";
 import { readActorIdentity, resolveViewerUser } from "@/chat/plugins/viewer";
@@ -204,9 +204,9 @@ function pluginInvocationContext(
         destination: context.destination,
         source: context.source,
       };
-    case "resource_event":
-    case "scheduled_task":
-    case "event_task":
+    case "event":
+    case "scheduled_automation":
+    case "event_automation":
     case "plugin_dispatch":
     case "agent_invocation":
       return {
@@ -392,10 +392,10 @@ export function validatePlugins(plugins: PluginRegistration[]): void {
       throw new Error(`Duplicate plugin name "${name}"`);
     }
     if (
-      plugin.resourceEvents !== undefined &&
-      !pluginResourceEventsSchema.safeParse(plugin.resourceEvents).success
+      plugin.events !== undefined &&
+      !pluginEventsSchema.safeParse(plugin.events).success
     ) {
-      throw new Error(`Plugin "${name}" resourceEvents is invalid`);
+      throw new Error(`Plugin "${name}" events is invalid`);
     }
     for (const [taskName, task] of Object.entries(plugin.tasks ?? {})) {
       if (!PLUGIN_TOOL_NAME_RE.test(taskName)) {
@@ -646,17 +646,14 @@ export function getPluginTools(
     });
     const mcp = pluginMcpContext(plugin, context);
     const canSubscribe =
-      Boolean(plugin.resourceEvents) &&
-      plugin.resourceEvents?.isEnabled?.() !== false;
-    const resourceEvents: ToolRegistrationHookContext["resourceEvents"] = {
+      Boolean(plugin.events) && plugin.events?.isEnabled?.() !== false;
+    const events: ToolRegistrationHookContext["events"] = {
       canSubscribe,
       async subscribe(input) {
         if (!canSubscribe) {
-          throw new Error(
-            "Resource subscriptions are not available in this conversation.",
-          );
+          throw new Error("Watches are not available in this conversation.");
         }
-        const registration = plugin.resourceEvents;
+        const registration = plugin.events;
         const resourceType = registration?.resourceTypes.find(
           (candidate) => candidate.type === input.resource.type,
         );
@@ -669,17 +666,17 @@ export function getPluginTools(
           )
         ) {
           throw new Error(
-            "Resource subscription contains an event or resource that the plugin does not support.",
+            "Watch contains an event or resource that the plugin does not support.",
           );
         }
-        const subscription = await createResourceEventSubscription({
+        const subscription = await createWatch({
           conversationId: context.conversationId,
           events: input.events,
           expiresAtMs: Date.now() + RESOURCE_SUBSCRIPTION_DEFAULT_TTL_MS,
           intent: input.intent,
           label: input.resource.label,
           namespace: pluginName,
-          identifier: normalizeResourceEventIdentifier(
+          identifier: normalizeEventIdentifier(
             registration,
             input.resource.identifier,
           ),
@@ -704,7 +701,7 @@ export function getPluginTools(
       egress: context.egress,
       ...(mcp ? { mcp } : undefined),
       model: createPluginModel(pluginName, plugin.model),
-      resourceEvents,
+      events,
       sandbox,
       state: createPluginState(pluginName),
       users: { resolveActor },
@@ -752,9 +749,9 @@ export function getPluginTools(
           source: context.source,
         };
         break;
-      case "resource_event":
-      case "scheduled_task":
-      case "event_task":
+      case "event":
+      case "scheduled_automation":
+      case "event_automation":
       case "plugin_dispatch":
       case "agent_invocation":
         pluginContext = {
@@ -836,14 +833,14 @@ function routeMethods(
   return methods;
 }
 
-function requirePublishedResourceEvent(
+function requirePublishedEvent(
   plugin: PluginRegistration,
   eventType: string,
 ): void {
-  const registration = plugin.resourceEvents;
+  const registration = plugin.events;
   if (!registration || registration.isEnabled?.() === false) {
     throw new Error(
-      `Plugin "${plugin.manifest.name}" cannot publish resource events without an active registration`,
+      `Plugin "${plugin.manifest.name}" cannot publish events without an active registration`,
     );
   }
   if (
@@ -852,21 +849,21 @@ function requirePublishedResourceEvent(
     )
   ) {
     throw new Error(
-      `Plugin "${plugin.manifest.name}" did not register resource event "${eventType}"`,
+      `Plugin "${plugin.manifest.name}" did not register event "${eventType}"`,
     );
   }
 }
 
 /** Collect route handlers exposed by plugins for app-level mounting. */
 export function getPluginRoutes(options: {
-  resourceEvents: {
-    hasMatch?(event: ResourceEvent): Promise<boolean>;
+  events: {
+    hasMatch?(event: Event): Promise<boolean>;
     neededMatchKeys?(input: {
       eventTypes: string[];
       identifiers: string[];
       namespace: string;
     }): Promise<string[]>;
-    publish(event: ResourceEvent): Promise<void>;
+    publish(event: Event): Promise<void>;
   };
 }): PluginRouteRegistration[] {
   const routes: PluginRouteRegistration[] = [];
@@ -890,30 +887,27 @@ export function getPluginRoutes(options: {
           }),
       },
       codeChanges: createCodeChangePublisher(pluginName),
-      resourceEvents: {
+      events: {
         async hasMatch(event) {
-          if (!options.resourceEvents.hasMatch) return false;
-          const parsed = resourceEventInputSchema.parse(event);
-          requirePublishedResourceEvent(plugin, parsed.eventType);
-          return await options.resourceEvents.hasMatch({
+          if (!options.events.hasMatch) return false;
+          const parsed = eventInputSchema.parse(event);
+          requirePublishedEvent(plugin, parsed.eventType);
+          return await options.events.hasMatch({
             ...parsed,
-            identifier: normalizeResourceEventIdentifier(
-              plugin.resourceEvents,
+            identifier: normalizeEventIdentifier(
+              plugin.events,
               parsed.identifier,
             ),
             namespace: pluginName,
           });
         },
         async neededMatchKeys(input) {
-          if (!options.resourceEvents.neededMatchKeys) return [];
+          if (!options.events.neededMatchKeys) return [];
           const identifiers = [
             ...new Set(
               input.identifiers
                 .map((identifier) =>
-                  normalizeResourceEventIdentifier(
-                    plugin.resourceEvents,
-                    identifier,
-                  ),
+                  normalizeEventIdentifier(plugin.events, identifier),
                 )
                 .filter(Boolean),
             ),
@@ -921,19 +915,19 @@ export function getPluginRoutes(options: {
           if (identifiers.length === 0 || input.eventTypes.length === 0) {
             return [];
           }
-          return await options.resourceEvents.neededMatchKeys({
+          return await options.events.neededMatchKeys({
             eventTypes: input.eventTypes,
             identifiers,
             namespace: pluginName,
           });
         },
         async publish(event) {
-          const parsed = resourceEventInputSchema.parse(event);
-          requirePublishedResourceEvent(plugin, parsed.eventType);
-          await options.resourceEvents.publish({
+          const parsed = eventInputSchema.parse(event);
+          requirePublishedEvent(plugin, parsed.eventType);
+          await options.events.publish({
             ...parsed,
-            identifier: normalizeResourceEventIdentifier(
-              plugin.resourceEvents,
+            identifier: normalizeEventIdentifier(
+              plugin.events,
               parsed.identifier,
             ),
             namespace: pluginName,

@@ -133,7 +133,7 @@ export function verifySlackDirectCredentialSubject(input: {
 }
 
 /** Bind a delegated user subject to one scheduler task dispatch. */
-export function bindScheduledTaskCredentialSubject(input: {
+export function bindScheduledAutomationCredentialSubject(input: {
   plugin: string;
   subject: PluginCredentialSubject;
 }): CredentialSubject | undefined {
@@ -144,7 +144,7 @@ export function bindScheduledTaskCredentialSubject(input: {
     !secret ||
     plugin !== "scheduler" ||
     !userId ||
-    input.subject.allowedWhen !== "scheduled-task"
+    input.subject.allowedWhen !== "scheduled-automation"
   ) {
     return undefined;
   }
@@ -156,22 +156,22 @@ export function bindScheduledTaskCredentialSubject(input: {
   return {
     type: "user",
     userId,
-    allowedWhen: "scheduled-task",
+    allowedWhen: "scheduled-automation",
     taskId,
     binding: {
-      type: "scheduled-task",
+      type: "scheduled-automation",
       plugin,
       taskId,
       signature: signPayload(
         secret,
-        buildPayload(["scheduled-task", plugin, taskId, userId]),
+        buildPayload(["scheduled-automation", plugin, taskId, userId]),
       ),
     },
   };
 }
 
 /** Verify that a delegated subject was signed for one scheduler task. */
-export function verifyScheduledTaskCredentialSubject(input: {
+export function verifyScheduledAutomationCredentialSubject(input: {
   plugin: string;
   subject: CredentialSubject;
 }): boolean {
@@ -183,9 +183,9 @@ export function verifyScheduledTaskCredentialSubject(input: {
     input.plugin !== "scheduler" ||
     subject.type !== "user" ||
     !isActorUserId(subject.userId) ||
-    subject.allowedWhen !== "scheduled-task" ||
+    subject.allowedWhen !== "scheduled-automation" ||
     !subject.taskId ||
-    binding.type !== "scheduled-task" ||
+    binding.type !== "scheduled-automation" ||
     binding.plugin !== input.plugin ||
     binding.taskId !== subject.taskId
   ) {
@@ -195,7 +195,7 @@ export function verifyScheduledTaskCredentialSubject(input: {
   const expected = signPayload(
     secret,
     buildPayload([
-      "scheduled-task",
+      "scheduled-automation",
       binding.plugin,
       binding.taskId,
       subject.userId,
@@ -204,11 +204,11 @@ export function verifyScheduledTaskCredentialSubject(input: {
   return timingSafeMatch(expected, binding.signature);
 }
 
-/** Bind a delegated user subject to one event task dispatch. */
-export function bindEventTaskCredentialSubject(input: {
+/** Bind a delegated user subject to one event automation dispatch. */
+export function bindEventAutomationCredentialSubject(input: {
   plugin: string;
   subject: {
-    allowedWhen: "event-task";
+    allowedWhen: "event-automation";
     taskId: string;
     type: "user";
     userId: string;
@@ -221,7 +221,7 @@ export function bindEventTaskCredentialSubject(input: {
     !secret ||
     plugin !== "junior" ||
     !userId ||
-    input.subject.allowedWhen !== "event-task"
+    input.subject.allowedWhen !== "event-automation"
   ) {
     return undefined;
   }
@@ -233,22 +233,22 @@ export function bindEventTaskCredentialSubject(input: {
   return {
     type: "user",
     userId,
-    allowedWhen: "event-task",
+    allowedWhen: "event-automation",
     taskId,
     binding: {
-      type: "event-task",
+      type: "event-automation",
       plugin,
       taskId,
       signature: signPayload(
         secret,
-        buildPayload(["event-task", plugin, taskId, userId]),
+        buildPayload(["event-automation", plugin, taskId, userId]),
       ),
     },
   };
 }
 
-/** Verify that a delegated subject was signed for one event task. */
-export function verifyEventTaskCredentialSubject(input: {
+/** Verify that a delegated subject was signed for one event automation. */
+export function verifyEventAutomationCredentialSubject(input: {
   plugin: string;
   subject: CredentialSubject;
 }): boolean {
@@ -260,9 +260,9 @@ export function verifyEventTaskCredentialSubject(input: {
     input.plugin !== "junior" ||
     subject.type !== "user" ||
     !isActorUserId(subject.userId) ||
-    subject.allowedWhen !== "event-task" ||
+    subject.allowedWhen !== "event-automation" ||
     !subject.taskId ||
-    binding.type !== "event-task" ||
+    binding.type !== "event-automation" ||
     binding.plugin !== input.plugin ||
     binding.taskId !== subject.taskId
   ) {
@@ -272,7 +272,7 @@ export function verifyEventTaskCredentialSubject(input: {
   const expected = signPayload(
     secret,
     buildPayload([
-      "event-task",
+      "event-automation",
       binding.plugin,
       binding.taskId,
       subject.userId,

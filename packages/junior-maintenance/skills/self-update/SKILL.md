@@ -129,7 +129,7 @@ When PR creation returns a subscribable resource hint, watch the PR for suggeste
 
 ## Automatic updates from GitHub releases
 
-When asked to keep an app current whenever Junior publishes a release, resolve `getsentry/junior` with `github_getRelease` (no tag) and create a durable event task on `release.published`. The task instruction should load this skill and run the update against the published tag from the event's untrusted text / release payload. Prefer an event task for ongoing automation; use a temporary watch only when following one manually initiated update.
+When asked to keep an app current whenever Junior publishes a release, resolve `getsentry/junior` with `github_getRelease` (no tag) and create a durable event automation on `release.published`. The task instruction should load this skill and run the update against the published tag from the event's untrusted text / release payload. Prefer an event automation for ongoing automation; use a temporary watch only when following one manually initiated update.
 
 ## Stop conditions
 

@@ -55,7 +55,7 @@ const HUMAN_INSTRUCTION_PLATFORMS = new Set(["slack", "local", "web"]);
 /**
  * Whether one event should restore an archived conversation to the feed.
  *
- * Archive hides finished noise until a human comes back. Resource events,
+ * Archive hides finished noise until a human comes back. Events,
  * turn lifecycle, compaction, and other system writes may still refresh
  * activity clocks, but they must not unarchive on their own.
  */
@@ -126,7 +126,9 @@ function eventFromRow(row: ConversationEventRow): ConversationEvent {
     schemaVersion: row.schemaVersion,
     seq: row.seq,
     historyVersion: row.historyVersion,
-    ...(row.idempotencyKey ? { idempotencyKey: row.idempotencyKey } : undefined),
+    ...(row.idempotencyKey
+      ? { idempotencyKey: row.idempotencyKey }
+      : undefined),
     createdAtMs: row.createdAt.getTime(),
     type: row.type,
     payload,

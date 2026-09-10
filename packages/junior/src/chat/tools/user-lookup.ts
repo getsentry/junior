@@ -16,9 +16,14 @@ import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
 
-const linkedSlackIdentity = alias(juniorIdentities, "user_lookup_slack_identity");
+const linkedSlackIdentity = alias(
+  juniorIdentities,
+  "user_lookup_slack_identity",
+);
 
-type UserLookupProfile = SlackUserProfile | Pick<SlackUserProfile, "id" | "name">;
+type UserLookupProfile =
+  | SlackUserProfile
+  | Pick<SlackUserProfile, "id" | "name">;
 type UserLookupMatch = UserLookupProfile & { mention: string };
 
 type UserLookupSearchMeta = {
@@ -237,7 +242,9 @@ export function createUserLookupTool(
     },
     inputSchema: z
       .object({
-        provider: z.enum(providers).describe("Enabled identity provider to query."),
+        provider: z
+          .enum(providers)
+          .describe("Enabled identity provider to query."),
         query: z
           .string()
           .trim()

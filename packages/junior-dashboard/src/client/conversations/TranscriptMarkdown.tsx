@@ -234,7 +234,9 @@ function tableCellAlignClass(alignment: TableAlignment): string | undefined {
 function matchTable(
   lines: readonly string[],
   index: number,
-): { block: Extract<MarkdownBlock, { type: "table" }>; nextIndex: number } | undefined {
+):
+  | { block: Extract<MarkdownBlock, { type: "table" }>; nextIndex: number }
+  | undefined {
   const headerLine = lines[index] ?? "";
   const separatorLine = lines[index + 1] ?? "";
   if (!isTableRowLine(headerLine) || !isTableSeparatorLine(separatorLine)) {
@@ -390,7 +392,10 @@ function renderEmphasisText(text: string, keyBase: string): ReactNode[] {
   while ((match = pattern.exec(text))) {
     if (match.index > cursor) {
       nodes.push(
-        ...renderLinkText(text.slice(cursor, match.index), `${keyBase}-t-${part++}`),
+        ...renderLinkText(
+          text.slice(cursor, match.index),
+          `${keyBase}-t-${part++}`,
+        ),
       );
     }
     nodes.push(

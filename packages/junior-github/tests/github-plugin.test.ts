@@ -312,7 +312,7 @@ function githubToolsContext(input?: {
   }) => Promise<Response>;
   resolveActor?: ToolRegistrationHookContext["users"]["resolveActor"];
   stateSet?: (input: { key: string; value: unknown }) => Promise<void> | void;
-  subscribe?: ToolRegistrationHookContext["resourceEvents"]["subscribe"];
+  subscribe?: ToolRegistrationHookContext["events"]["subscribe"];
 }) {
   const conversationId = input?.conversationId ?? "local:test:github-tool";
   const annotations: ConversationAnnotationInput[] = [];
@@ -364,7 +364,7 @@ function githubToolsContext(input?: {
       },
     },
     model: {},
-    resourceEvents: {
+    events: {
       canSubscribe: true,
       subscribe:
         input?.subscribe ??
@@ -521,7 +521,7 @@ describe("github plugin", () => {
   });
 
   it("suggests issue and pull request events for repository watches", () => {
-    const repository = githubPlugin().resourceEvents?.resourceTypes.find(
+    const repository = githubPlugin().events?.resourceTypes.find(
       (resourceType) => resourceType.type === "repository",
     );
 
@@ -566,7 +566,7 @@ describe("github plugin", () => {
           "pull_request.checks.failed": "Inspect the failed checks.",
         },
       },
-    }).resourceEvents?.resourceTypes.find(
+    }).events?.resourceTypes.find(
       (resourceType) => resourceType.type === "pull_request",
     );
 
@@ -600,7 +600,7 @@ describe("github plugin", () => {
   });
 
   it("registers release source watches", () => {
-    const releaseSource = githubPlugin().resourceEvents?.resourceTypes.find(
+    const releaseSource = githubPlugin().events?.resourceTypes.find(
       (resourceType) => resourceType.type === "release_source",
     );
 
@@ -2392,7 +2392,7 @@ Conversation: \`local:test:old-conversation\`
     });
 
     const result = await plugin.hooks?.issueCredential?.({
-      actor: { platform: "system", name: "resource-event" },
+      actor: { platform: "system", name: "event" },
       grant: {
         name: "installation-write",
         access: "write",

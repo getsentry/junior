@@ -33,9 +33,9 @@ export function normalizeSessionSource(
     };
   }
   if (
-    value.kind === "resource_event" ||
-    value.kind === "scheduled_task" ||
-    value.kind === "event_task" ||
+    value.kind === "event" ||
+    value.kind === "scheduled_automation" ||
+    value.kind === "event_automation" ||
     value.kind === "plugin_dispatch" ||
     value.kind === "agent_invocation"
   ) {

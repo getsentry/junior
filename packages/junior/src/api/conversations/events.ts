@@ -138,7 +138,9 @@ function reportMessageActorIdentity(
   const actorIdentity = {
     ...(author.data.fullName ? { fullName: author.data.fullName } : undefined),
     ...(author.data.userId ? { slackUserId: author.data.userId } : undefined),
-    ...(author.data.userName ? { slackUserName: author.data.userName } : undefined),
+    ...(author.data.userName
+      ? { slackUserName: author.data.userName }
+      : undefined),
   };
   return Object.keys(actorIdentity).length > 0 ? actorIdentity : undefined;
 }
@@ -269,7 +271,9 @@ function reportToolResult(args: {
               startedSeq: args.start.seq,
             }
           : undefined),
-        ...(args.canExposePayload && output !== undefined ? { output } : undefined),
+        ...(args.canExposePayload && output !== undefined
+          ? { output }
+          : undefined),
       },
     ],
   };

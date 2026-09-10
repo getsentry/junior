@@ -511,7 +511,9 @@ export function createPluginCatalogRuntime(): PluginCatalogRuntime {
           commands.push({
             cmd: command.cmd,
             ...(command.args ? { args: [...command.args] } : undefined),
-            ...(command.sudo !== undefined ? { sudo: command.sudo } : undefined),
+            ...(command.sudo !== undefined
+              ? { sudo: command.sudo }
+              : undefined),
           });
         }
       }

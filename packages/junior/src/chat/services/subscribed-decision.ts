@@ -90,8 +90,7 @@ const TRANSCRIPT_MESSAGE_LINE_RE =
 /** `!stop` may appear anywhere in the message. */
 const BANG_STOP_RE = /(?:^|\s)!stop(?=\s|$|[.!?,;:])/i;
 /** Drop a leading `@jr` / mention before matching bare `stop`. */
-const LEADING_ADDRESS_RE =
-  /^(?:(?:<@[^>]+>|@[\w.-]+)\s*[,:\-–—]?\s*)+/i;
+const LEADING_ADDRESS_RE = /^(?:(?:<@[^>]+>|@[\w.-]+)\s*[,:\-–—]?\s*)+/i;
 /** Whole message is only `stop` after any leading address. */
 const BARE_STOP_RE = /^stop(?:\s*[.!…]+)?$/i;
 const ACKNOWLEDGMENT_ONLY_RE =
@@ -532,7 +531,9 @@ export async function decideSubscribedThreadReply(args: {
     if (parsed.should_unsubscribe) {
       if (parsed.confidence < ROUTER_CONFIDENCE_THRESHOLD) {
         return {
-          ...(result.costUsd !== undefined ? { costUsd: result.costUsd } : undefined),
+          ...(result.costUsd !== undefined
+            ? { costUsd: result.costUsd }
+            : undefined),
           shouldReply: false,
           reason: SubscribedReplyReason.LowConfidence,
           reasonDetail: `${parsed.confidence.toFixed(2)}: ${reason}`,
@@ -540,7 +541,9 @@ export async function decideSubscribedThreadReply(args: {
       }
 
       return {
-        ...(result.costUsd !== undefined ? { costUsd: result.costUsd } : undefined),
+        ...(result.costUsd !== undefined
+          ? { costUsd: result.costUsd }
+          : undefined),
         shouldReply: false,
         shouldUnsubscribe: true,
         reason: SubscribedReplyReason.ThreadOptOut,
@@ -550,7 +553,9 @@ export async function decideSubscribedThreadReply(args: {
 
     if (!parsed.should_reply) {
       return {
-        ...(result.costUsd !== undefined ? { costUsd: result.costUsd } : undefined),
+        ...(result.costUsd !== undefined
+          ? { costUsd: result.costUsd }
+          : undefined),
         shouldReply: false,
         reason: SubscribedReplyReason.SideConversation,
         reasonDetail: reason,
@@ -559,7 +564,9 @@ export async function decideSubscribedThreadReply(args: {
 
     if (parsed.confidence < ROUTER_CONFIDENCE_THRESHOLD) {
       return {
-        ...(result.costUsd !== undefined ? { costUsd: result.costUsd } : undefined),
+        ...(result.costUsd !== undefined
+          ? { costUsd: result.costUsd }
+          : undefined),
         shouldReply: false,
         reason: SubscribedReplyReason.LowConfidence,
         reasonDetail: `${parsed.confidence.toFixed(2)}: ${reason}`,
@@ -567,7 +574,9 @@ export async function decideSubscribedThreadReply(args: {
     }
 
     return {
-      ...(result.costUsd !== undefined ? { costUsd: result.costUsd } : undefined),
+      ...(result.costUsd !== undefined
+        ? { costUsd: result.costUsd }
+        : undefined),
       shouldReply: true,
       reason: SubscribedReplyReason.Classifier,
       reasonDetail: reason,

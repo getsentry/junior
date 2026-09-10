@@ -17,7 +17,7 @@ function completedMessages(): PiMessage[] {
   return [
     {
       role: "user",
-      content: "Run the registered plugin event task.",
+      content: "Run the registered plugin event automation.",
       timestamp: 1,
     },
     {

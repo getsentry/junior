@@ -20,7 +20,7 @@ import {
 } from "@/chat/task-execution/store";
 import { processConversationWork } from "@/chat/task-execution/worker";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
-import { createResourceEventInboundMessage } from "@/chat/resource-events/notification";
+import { createEventInboundMessage } from "@/chat/events/notification";
 import {
   buildSlackInboundMessage,
   createSlackConversationWorker,
@@ -912,7 +912,7 @@ describe("Slack conversation work execution", () => {
     });
   });
 
-  it("leaves resource events deferred during an active turn", async () => {
+  it("leaves events deferred during an active turn", async () => {
     const queue = createConversationWorkQueueTestAdapter();
     let currentNowMs = 1_000;
     const state = getStateAdapter();
@@ -939,7 +939,7 @@ describe("Slack conversation work execution", () => {
       handleNewMention: async (_thread, _message, hooks) => {
         await hooks.ack?.();
         await appendInboundMessage({
-          message: createResourceEventInboundMessage({
+          message: createEventInboundMessage({
             event: {
               eventKey: "check-suite-1",
               eventType: "check_suite.completed",
@@ -963,7 +963,7 @@ describe("Slack conversation work execution", () => {
         currentNowMs = 2_001;
       },
       handleSubscribedMessage: async () => {
-        throw new Error("resource event should remain queued for follow-up");
+        throw new Error("event should remain queued for follow-up");
       },
     };
 
@@ -986,7 +986,7 @@ describe("Slack conversation work execution", () => {
     expect(work?.execution.pendingMessages).toEqual([
       expect.objectContaining({
         delivery: "defer",
-        source: "resource_event",
+        source: "event",
       }),
     ]);
   });

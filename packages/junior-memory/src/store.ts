@@ -192,9 +192,9 @@ function storedMemorySource(
     case "local":
     case "web":
       return source.kind;
-    case "resource_event":
-    case "scheduled_task":
-    case "event_task":
+    case "event":
+    case "scheduled_automation":
+    case "event_automation":
     case "plugin_dispatch":
     case "agent_invocation":
       throw new Error(`${source.kind} Source cannot own a Memory.`);
@@ -426,11 +426,15 @@ export function parseMemoryRow(row: unknown): MemoryRecord {
     ...(parsed.supersededAtMs !== undefined
       ? { supersededAtMs: parsed.supersededAtMs }
       : undefined),
-    ...(parsed.supersededById ? { supersededById: parsed.supersededById } : undefined),
+    ...(parsed.supersededById
+      ? { supersededById: parsed.supersededById }
+      : undefined),
     ...(parsed.archivedAtMs !== undefined
       ? { archivedAtMs: parsed.archivedAtMs }
       : undefined),
-    ...(parsed.archiveReason ? { archiveReason: parsed.archiveReason } : undefined),
+    ...(parsed.archiveReason
+      ? { archiveReason: parsed.archiveReason }
+      : undefined),
   });
 }
 

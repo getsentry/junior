@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { getZonedDateTimeParts } from "@/chat/scheduled-tasks/cadence";
+import { getZonedDateTimeParts } from "@/chat/scheduled-automations/cadence";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
@@ -56,11 +56,12 @@ export function createSystemTimeTool() {
           throw new ToolInputError("timezone must be a valid IANA time zone.");
         }
         const parts = getZonedDateTimeParts(now.getTime(), timezone);
-        const isoLocal = [
-          String(parts.year).padStart(4, "0"),
-          String(parts.month).padStart(2, "0"),
-          String(parts.day).padStart(2, "0"),
-        ].join("-") +
+        const isoLocal =
+          [
+            String(parts.year).padStart(4, "0"),
+            String(parts.month).padStart(2, "0"),
+            String(parts.day).padStart(2, "0"),
+          ].join("-") +
           "T" +
           [
             String(parts.hour).padStart(2, "0"),
@@ -101,7 +102,10 @@ function isValidTimeZone(timezone: string): boolean {
   }
 }
 
-function getTimeZoneOffsetMinutes(timestampMs: number, timezone: string): number {
+function getTimeZoneOffsetMinutes(
+  timestampMs: number,
+  timezone: string,
+): number {
   const parts = getZonedDateTimeParts(timestampMs, timezone);
   const asUtcMs = Date.UTC(
     parts.year,

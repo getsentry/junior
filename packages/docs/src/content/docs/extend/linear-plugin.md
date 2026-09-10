@@ -1,19 +1,19 @@
 ---
 title: Linear Plugin
-description: Configure Linear issue workflows and issue-created resource events.
+description: Configure Linear issue workflows and issue-created events.
 type: tutorial
-summary: Connect Linear for issue work, then optionally enable webhooks for issue.created event tasks.
+summary: Connect Linear for issue work, then optionally enable webhooks for issue.created event automations.
 prerequisites:
   - /extend/
 related:
   - /concepts/credentials-and-oauth/
-  - /concepts/resource-subscriptions/
+  - /concepts/watches/
   - /operate/security-hardening/
 ---
 
 Use the Linear plugin to find, create, update, comment on, and triage Linear issues from Slack. Each user connects their own Linear account through Linear's hosted MCP server.
 
-Optional webhooks let Junior publish `issue.created` resource events for subscriptions and event tasks. User MCP OAuth and webhook ingress stay separate.
+Optional webhooks let Junior publish `issue.created` events for subscriptions and event automations. User MCP OAuth and webhook ingress stay separate.
 
 ## Install
 
@@ -77,7 +77,7 @@ Default project for issue creation when a request does not name one. Use it only
 Webhook signing secret used to verify Linear issue webhooks.
 
 - **Define:** Set `LINEAR_WEBHOOK_SECRET` in the deployment environment
-- **Required:** Yes for resource events; otherwise no
+- **Required:** Yes for events; otherwise no
 - **Environment override:** `LINEAR_WEBHOOK_SECRET`
 
 </details>
@@ -88,7 +88,7 @@ Webhook signing secret used to verify Linear issue webhooks.
 - Create a new Linear issue from Slack thread context.
 - Update issue fields such as state, assignee, title, or description.
 - Add comments that preserve relevant code, Sentry, or reproduction links already present in the conversation.
-- Create temporary watches or durable event tasks for new Linear issues when webhooks are enabled.
+- Create temporary watches or durable event automations for new Linear issues when webhooks are enabled.
 
 ## Set up issue webhooks
 
@@ -105,19 +105,19 @@ https://<junior-host>/api/webhooks/linear
 4. Copy the webhook signing secret into `LINEAR_WEBHOOK_SECRET`.
 5. Redeploy Junior.
 
-Junior verifies the `Linear-Signature` header on every delivery. Resource events stay disabled until `LINEAR_WEBHOOK_SECRET` is set.
+Junior verifies the `Linear-Signature` header on every delivery. Events stay disabled until `LINEAR_WEBHOOK_SECRET` is set.
 
 Only workspace admins, or OAuth applications with the `admin` scope, can create or read Linear webhooks.
 
-## Resource subscriptions
+## Watches
 
-Set `LINEAR_WEBHOOK_SECRET` to enable resource subscriptions. See [Resource Subscriptions](/concepts/resource-subscriptions/) for the difference between temporary subscriptions and durable event tasks.
+Set `LINEAR_WEBHOOK_SECRET` to enable watches. See [Resource Subscriptions](/concepts/watches/) for the difference between temporary subscriptions and durable event automations.
 
 ### `issue`
 
 Subscribe to one issue with its Linear identifier, such as `SRE-123`.
 
-<details class="resource-event">
+<details class="event">
 <summary><code>issue.created</code></summary>
 
 The issue was created.
@@ -128,16 +128,16 @@ The issue was created.
 
 Subscribe to all new issues in a team with the Linear team key, such as `SRE`.
 
-<details class="resource-event">
+<details class="event">
 <summary><code>issue.created</code></summary>
 
 An issue was created in the team.
 
 </details>
 
-Create the subscription or event task before the issue arrives. Junior does not replay earlier webhooks.
+Create the subscription or event automation before the issue arrives. Junior does not replay earlier webhooks.
 
-Identifiers are normalized to uppercase. Prefer team-scoped event tasks for monitor workflows that create many new issues.
+Identifiers are normalized to uppercase. Prefer team-scoped event automations for monitor workflows that create many new issues.
 
 Optional `match` values come from the resource type. For Linear issue and team events, `teamKey` is the uppercase team key such as `SRE`. Junior drops events that do not match before it wakes the agent. Prefer a team identifier for “all new issues in SRE”. Use `match.teamKey` when an issue-scoped watch or task needs an extra team guard.
 
@@ -145,7 +145,7 @@ Optional `match` values come from the resource type. For Linear issue and team e
 
 **OAuth:** Ask Junior to create or update a real Linear issue, complete the private authorization flow, and confirm the issue key or URL returns in the same thread.
 
-**Webhooks:** Create an event task for a team key, then create a test issue in that team. You can also create an issue-scoped task with `match.teamKey` set to the same team key and confirm non-matching teams do not fire.
+**Webhooks:** Create an event automation for a team key, then create a test issue in that team. You can also create an issue-scoped task with `match.teamKey` set to the same team key and confirm non-matching teams do not fire.
 
 ## Security
 
@@ -159,9 +159,9 @@ Optional `match` values come from the resource type. For Linear issue and team e
 - **Wrong team or project target:** Include the team name, project name, or existing Linear issue key explicitly in the Slack request.
 - **Duplicate or low-signal tickets:** Give Junior the core problem, impact, and any supporting URLs from the thread so it can create a grounded issue instead of a vague summary.
 - **Permission failures after connect:** The user's Linear account may not have access to that team, project, or issue. Retry with a resource the user can access.
-- **Webhooks are ignored:** Check `LINEAR_WEBHOOK_SECRET`, confirm the webhook points at `/api/webhooks/linear`, and confirm a matching subscription or event task exists.
-- **Event task stays unavailable:** Resource events stay disabled until `LINEAR_WEBHOOK_SECRET` is set and Junior is redeployed.
+- **Webhooks are ignored:** Check `LINEAR_WEBHOOK_SECRET`, confirm the webhook points at `/api/webhooks/linear`, and confirm a matching subscription or event automation exists.
+- **Event automation stays unavailable:** Events stay disabled until `LINEAR_WEBHOOK_SECRET` is set and Junior is redeployed.
 
 ## Next step
 
-Review [Resource Subscriptions](/concepts/resource-subscriptions/) and [Security Hardening](/operate/security-hardening/).
+Review [Resource Subscriptions](/concepts/watches/) and [Security Hardening](/operate/security-hardening/).

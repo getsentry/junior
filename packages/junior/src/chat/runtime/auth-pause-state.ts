@@ -4,9 +4,7 @@ import {
 } from "@/chat/runtime/thread-state";
 import { markTurnClosed } from "@/chat/runtime/turn";
 import { getTurnUserMessageId } from "@/chat/runtime/turn-user-message";
-import {
-  markConversationMessage,
-} from "@/chat/services/conversation-memory";
+import { markConversationMessage } from "@/chat/services/conversation-memory";
 import {
   coerceThreadConversationState,
   type ThreadConversationState,

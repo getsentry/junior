@@ -21,13 +21,13 @@ This package does not require a shared `LINEAR_API_KEY` or a custom OAuth app fo
 
 Linear operations use Linear's hosted MCP tools directly. When an issue is created through that path, Junior links it to the current conversation.
 
-To run watches or event tasks when Linear issues are created:
+To run watches or event automations when Linear issues are created:
 
 1. Set `LINEAR_WEBHOOK_SECRET` to the Linear webhook signing secret.
 2. Create a Linear webhook for the `Issue` resource at `https://<junior-host>/api/webhooks/linear`.
 3. Redeploy Junior.
 
-The plugin verifies the `Linear-Signature` header and publishes `issue.created` for the issue identifier and the team key. Team event tasks use the Linear team key, such as `SRE`. Issue and team watches also accept an optional `match.teamKey` filter on trusted event data.
+The plugin verifies the `Linear-Signature` header and publishes `issue.created` for the issue identifier and the team key. Team event automations use the Linear team key, such as `SRE`. Issue and team watches also accept an optional `match.teamKey` filter on trusted event data.
 
 Optional: set channel defaults when a Slack thread usually routes work to the same Linear destination:
 

@@ -13,7 +13,7 @@ import { createVercelDeploymentTool } from "./tools/deployment.js";
 import {
   VERCEL_DEPLOYMENT_EVENTS,
   VERCEL_DEPLOYMENT_SUGGESTED_EVENTS,
-} from "./resource-events/deployment.js";
+} from "./events/deployment.js";
 import { createVercelWebhookRoute } from "./webhooks/handler.js";
 import { vercelWebhookSecret } from "./webhooks/secret.js";
 
@@ -21,7 +21,7 @@ import { vercelWebhookSecret } from "./webhooks/secret.js";
 export function vercelPlugin(): PluginRegistration {
   return defineJuniorPlugin({
     packageName: "@sentry/junior-vercel",
-    resourceEvents: {
+    events: {
       resourceTypes: [
         {
           type: "deployment",
@@ -60,7 +60,7 @@ export function vercelPlugin(): PluginRegistration {
       routes(ctx) {
         return [
           createVercelWebhookRoute({
-            resourceEvents: ctx.resourceEvents,
+            events: ctx.events,
             webhookSecret: vercelWebhookSecret,
           }),
         ];

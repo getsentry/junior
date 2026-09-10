@@ -1,7 +1,6 @@
 import type { SlashCommandEvent } from "chat";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-
 const ORIGINAL_ENV = { ...process.env };
 
 async function loadHandler() {
@@ -22,13 +21,13 @@ function createSlashEvent(
     isMe: false,
     ...userOverrides,
   };
-      // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
-      const event = ({
+  // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+  const event = {
     text,
     user,
     channel: { postEphemeral },
     raw: {},
-  }) as SlashCommandEvent;
+  } as SlashCommandEvent;
 
   return { event, postEphemeral, user };
 }

@@ -1,11 +1,16 @@
 import { describeEval } from "vitest-evals";
 import { expect } from "vitest";
 import { toolCalls } from "vitest-evals";
-import { mention, rubric, slackEvals, threadMessage } from "../../../src/helpers";
 import {
-  scheduledTaskCreateCalls,
-  scheduledTaskUpdateCalls,
-  seedScheduledTask,
+  mention,
+  rubric,
+  slackEvals,
+  threadMessage,
+} from "../../../src/helpers";
+import {
+  scheduledAutomationCreateCalls,
+  scheduledAutomationUpdateCalls,
+  seedScheduledAutomation,
 } from "./helpers";
 
 describeEval("Scheduled Credentials", slackEvals, (it) => {
@@ -21,7 +26,7 @@ describeEval("Scheduled Credentials", slackEvals, (it) => {
       criteria: rubric({
         pass: [
           "The recurring task is created without asking for separate confirmation to use credentials needed for the requested work.",
-          "The reply may accurately say Junior's scheduled task can use the creator's connected Sentry access; credential access alone does not mean the task executes as the user.",
+          "The reply may accurately say Junior's scheduled automation can use the creator's connected Sentry access; credential access alone does not mean the task executes as the user.",
         ],
         fail: [
           "Do not require the user to separately authorize routine connected credential use.",
@@ -30,7 +35,7 @@ describeEval("Scheduled Credentials", slackEvals, (it) => {
       }),
     });
 
-    const createCalls = scheduledTaskCreateCalls(result.session);
+    const createCalls = scheduledAutomationCreateCalls(result.session);
     expect(createCalls).toHaveLength(1);
     expect(createCalls[0]!.arguments).toMatchObject({
       schedule: { kind: "recurring", frequency: "weekly" },
@@ -74,14 +79,14 @@ describeEval("Scheduled Credentials", slackEvals, (it) => {
       }),
     });
 
-    const createCalls = scheduledTaskCreateCalls(result.session);
+    const createCalls = scheduledAutomationCreateCalls(result.session);
     expect(createCalls).toHaveLength(1);
     const createCall = createCalls[0]!;
     expect(createCall.arguments?.credential_mode).toBe("system");
     expect(
       toolCalls(result.session).filter(
         (call) =>
-          call.name === "slackScheduleUpdateTask" &&
+          call.name === "slackScheduleUpdateAutomation" &&
           call.status === "ok" &&
           call.arguments?.credential_mode === "creator",
       ),
@@ -97,7 +102,7 @@ describeEval("Scheduled Credentials", slackEvals, (it) => {
       id: "thread-scheduler-credential-creator",
       thread_ts: "1700000000.875000",
     };
-    await seedScheduledTask({
+    await seedScheduledAutomation({
       createdBy: {
         slackUserId: "UALICE",
         userName: "alice",
@@ -111,7 +116,7 @@ describeEval("Scheduled Credentials", slackEvals, (it) => {
     const result = await run({
       initialEvents: [
         mention(
-          "@bot update that scheduled task to use my connected credentials instead.",
+          "@bot update that scheduled automation to use my connected credentials instead.",
           {
             thread,
             author: {
@@ -133,11 +138,11 @@ describeEval("Scheduled Credentials", slackEvals, (it) => {
       }),
     });
 
-    expect(scheduledTaskCreateCalls(result.session)).toEqual([]);
+    expect(scheduledAutomationCreateCalls(result.session)).toEqual([]);
     expect(
       toolCalls(result.session).filter(
         (call) =>
-          call.name === "slackScheduleUpdateTask" &&
+          call.name === "slackScheduleUpdateAutomation" &&
           call.status === "ok" &&
           call.arguments?.credential_mode === "creator",
       ),
@@ -158,7 +163,7 @@ describeEval("Scheduled Credentials", slackEvals, (it) => {
       user_name: "alice",
       full_name: "Alice Example",
     };
-    await seedScheduledTask({
+    await seedScheduledAutomation({
       createdBy: {
         slackUserId: author.user_id,
         userName: author.user_name,
@@ -172,7 +177,7 @@ describeEval("Scheduled Credentials", slackEvals, (it) => {
     const result = await run({
       initialEvents: [
         mention(
-          "@bot prepare to update that scheduled task so it can use my account if needed, but ask me before applying the change.",
+          "@bot prepare to update that scheduled automation so it can use my account if needed, but ask me before applying the change.",
           {
             thread,
             author,
@@ -196,9 +201,9 @@ describeEval("Scheduled Credentials", slackEvals, (it) => {
       }),
     });
 
-    const credentialModeCalls = scheduledTaskUpdateCalls(result.session).filter(
-      (call) => call.arguments?.credential_mode !== undefined,
-    );
+    const credentialModeCalls = scheduledAutomationUpdateCalls(
+      result.session,
+    ).filter((call) => call.arguments?.credential_mode !== undefined);
     expect(credentialModeCalls).toHaveLength(1);
     expect(credentialModeCalls[0]?.arguments).toMatchObject({
       credential_mode: "creator",

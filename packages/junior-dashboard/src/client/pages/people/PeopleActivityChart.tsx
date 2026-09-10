@@ -44,8 +44,7 @@ export function PeopleActivityChart(props: {
   days: PeopleActivityDayReport[];
 }) {
   const bucketUnit = props.bucketUnit ?? "day";
-  const chartTitle =
-    `Active people per ${timeRangeBucketPerLabel(bucketUnit)}`;
+  const chartTitle = `Active people per ${timeRangeBucketPerLabel(bucketUnit)}`;
 
   const layout = createActivityChartLayout(260);
   const values = props.days.map((day) => day.activePeople);

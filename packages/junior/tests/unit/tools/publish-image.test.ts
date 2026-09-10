@@ -81,9 +81,7 @@ function memoryDb(): JuniorSqlDatabase & {
               rows.set(next.id, next);
               return {
                 returning() {
-                  return Promise.resolve([
-                    { ext: next.ext, id: next.id },
-                  ]);
+                  return Promise.resolve([{ ext: next.ext, id: next.id }]);
                 },
               };
             },
@@ -160,7 +158,9 @@ describe("publishImage tool", () => {
       workspace: workspace(Buffer.from("not-an-image")),
     });
 
-    await expect(tool.execute?.({ path: "notes.txt" }, {})).rejects.toMatchObject({
+    await expect(
+      tool.execute?.({ path: "notes.txt" }, {}),
+    ).rejects.toMatchObject({
       name: "ToolInputError",
       message: expect.stringContaining("unsupported image format"),
     });
@@ -179,7 +179,9 @@ describe("publishImage tool", () => {
       workspace: workspace(PNG_BYTES),
     });
 
-    await expect(tool.execute?.({ path: "chart.png" }, {})).rejects.toMatchObject({
+    await expect(
+      tool.execute?.({ path: "chart.png" }, {}),
+    ).rejects.toMatchObject({
       name: "Error",
       message: "blob unavailable",
     });

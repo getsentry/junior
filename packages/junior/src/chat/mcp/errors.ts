@@ -77,7 +77,9 @@ export function getMcpProviderErrorAttributes(
     ...(error.status !== undefined
       ? { "http.response.status_code": error.status }
       : undefined),
-    ...(error.resourceHost ? { "server.address": error.resourceHost } : undefined),
+    ...(error.resourceHost
+      ? { "server.address": error.resourceHost }
+      : undefined),
   };
 }
 

@@ -33,8 +33,8 @@ use the query recipes below to find the failing turn and next query.
 | `messaging.destination.name`        | Slack channel                 | logs, spans               | channel-scoped search |
 | `gen_ai.tool.name`                  | tool name                     | tool spans/logs           | tool failures         |
 | `app.credential.provider`           | auth provider                 | auth logs                 | auth/resume search    |
-| `app.task.id`                       | scheduled/event task id       | task lifecycle logs       | task timeline         |
-| `app.task.run.id`                   | scheduled-task run id         | scheduler run logs        | run outcome           |
+| `app.task.id`                       | scheduled/event automation id | task lifecycle logs       | task timeline         |
+| `app.task.run.id`                   | scheduled-automation run id   | scheduler run logs        | run outcome           |
 | `app.dispatch.id`                   | agent dispatch id             | task/dispatch logs        | fire conversation     |
 
 ## Query Recipes
@@ -103,7 +103,7 @@ fields=timestamp,event.name,gen_ai.conversation.id,messaging.destination.name,ap
 sort=-timestamp
 ```
 
-Scheduled task lifecycle by task id.
+Scheduled automation lifecycle by task id.
 
 ```text
 dataset=logs query='app.task.id:"<task_id>"'
@@ -111,18 +111,18 @@ fields=timestamp,event.name,app.task.id,app.task.run.id,app.dispatch.id,app.task
 sort=timestamp
 ```
 
-Scheduled task fire path by channel.
+Scheduled automation fire path by channel.
 
 ```text
-dataset=logs query='event.name:scheduled_task.run.dispatched messaging.destination.name:"<channel_id>"'
+dataset=logs query='event.name:scheduled_automation.run.dispatched messaging.destination.name:"<channel_id>"'
 fields=timestamp,event.name,app.task.id,app.task.run.id,app.dispatch.id,app.task.schedule.kind,app.task.destination.visibility
 sort=-timestamp
 ```
 
-Recent scheduled-task create/fire outcomes.
+Recent scheduled-automation create/fire outcomes.
 
 ```text
-dataset=logs query='event.name:scheduled_task.create.completed OR event.name:scheduled_task.run.claimed OR event.name:scheduled_task.run.dispatched OR event.name:scheduled_task.run.completed OR event.name:scheduled_task.run.failed OR event.name:scheduled_task.run.blocked OR event.name:scheduled_task.run.skipped'
+dataset=logs query='event.name:scheduled_automation.create.completed OR event.name:scheduled_automation.run.claimed OR event.name:scheduled_automation.run.dispatched OR event.name:scheduled_automation.run.completed OR event.name:scheduled_automation.run.failed OR event.name:scheduled_automation.run.blocked OR event.name:scheduled_automation.run.skipped'
 fields=timestamp,event.name,app.task.id,app.task.run.id,app.dispatch.id,app.task.schedule.kind,app.task.status,messaging.destination.name
 sort=-timestamp
 ```
@@ -221,14 +221,14 @@ Attributes: `gen_ai.tool.name`, `gen_ai.tool.call.id`,
 A reminder or recurring task was created, claimed, dispatched, completed, or
 failed without an obvious Slack error.
 
-Events: `scheduled_task.create.completed`, `scheduled_task.run.claimed`,
-`scheduled_task.run.dispatched`, `scheduled_task.run.completed`,
-`scheduled_task.run.failed`, `scheduled_task.run.blocked`,
-`scheduled_task.run.skipped` (heartbeat `shouldSkipRun` and claim-time late/stale
-skips), `scheduled_tasks.heartbeat.dispatched`,
-`scheduled_tasks.heartbeat.failed`, `task.execution.stat_failed`
+Events: `scheduled_automation.create.completed`, `scheduled_automation.run.claimed`,
+`scheduled_automation.run.dispatched`, `scheduled_automation.run.completed`,
+`scheduled_automation.run.failed`, `scheduled_automation.run.blocked`,
+`scheduled_automation.run.skipped` (heartbeat `shouldSkipRun` and claim-time late/stale
+skips), `scheduled_automations.heartbeat.dispatched`,
+`scheduled_automations.heartbeat.failed`, `task.execution.stat_failed`
 
-Spans: create-turn `gen_ai.execute_tool` for `slackScheduleCreateTask`; fire
+Spans: create-turn `gen_ai.execute_tool` for `slackScheduleCreateAutomation`; fire
 path `POST /api/internal/agent/continue` for the dispatch conversation
 
 Attributes: `app.task.id`, `app.task.type`, `app.task.status`,
@@ -293,12 +293,12 @@ Attributes: `app.message.attachment_count`,
 
 ## Configuration
 
-| Setting                     | Controls                 | Default                       |
-| --------------------------- | ------------------------ | ----------------------------- |
-| `SENTRY_DSN`                | Sentry ingestion         | disabled                      |
-| `SENTRY_ENVIRONMENT`        | Sentry environment       | `VERCEL_ENV` or `NODE_ENV`    |
+| Setting                     | Controls                 | Default                                    |
+| --------------------------- | ------------------------ | ------------------------------------------ |
+| `SENTRY_DSN`                | Sentry ingestion         | disabled                                   |
+| `SENTRY_ENVIRONMENT`        | Sentry environment       | `VERCEL_ENV` or `NODE_ENV`                 |
 | `SENTRY_RELEASE`            | Sentry release           | `<Junior version>+<VERCEL_GIT_COMMIT_SHA>` |
-| `SENTRY_ENABLE_LOGS`        | structured logs          | true when `SENTRY_DSN` is set |
-| `SENTRY_TRACES_SAMPLE_RATE` | traces                   | `1`                           |
-| `SENTRY_ORG_SLUG`           | Slack footer trace links | unset                         |
-| `JUNIOR_LOG_FORMAT`         | console format           | compact unless `structured`   |
+| `SENTRY_ENABLE_LOGS`        | structured logs          | true when `SENTRY_DSN` is set              |
+| `SENTRY_TRACES_SAMPLE_RATE` | traces                   | `1`                                        |
+| `SENTRY_ORG_SLUG`           | Slack footer trace links | unset                                      |
+| `JUNIOR_LOG_FORMAT`         | console format           | compact unless `structured`                |

@@ -64,9 +64,7 @@ export function DashboardHeader(props: {
   // fallback; explicit empty string means no title (create compose).
   const conversationMode = Boolean(props.mobileBackTo);
   const mobileTitle =
-    props.mobileTitle === undefined
-      ? "Conversation"
-      : props.mobileTitle.trim();
+    props.mobileTitle === undefined ? "Conversation" : props.mobileTitle.trim();
 
   useRegisterOpenMobileNavigation(() => {
     onOpenChangeRef.current(true);

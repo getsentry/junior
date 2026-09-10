@@ -80,7 +80,9 @@ export function pendingTranscriptMessage(
     // Keep pending rows after history without colliding with real event seqs.
     sourceSeq: Number.MAX_SAFE_INTEGER - 1_000_000 + index,
     timestamp: Date.parse(message.createdAt),
-    ...(message.actorIdentity ? { actorIdentity: message.actorIdentity } : undefined),
+    ...(message.actorIdentity
+      ? { actorIdentity: message.actorIdentity }
+      : undefined),
   };
 }
 
@@ -197,7 +199,9 @@ export function transcriptMessagesFromEvents(
             : { type: "text", text: data.text! },
         ]),
         messageId: data.messageId,
-        ...(data.actorIdentity ? { actorIdentity: data.actorIdentity } : undefined),
+        ...(data.actorIdentity
+          ? { actorIdentity: data.actorIdentity }
+          : undefined),
         ...(data.eventType ? { eventType: data.eventType } : undefined),
         ...(data.trustedSummary
           ? { trustedSummary: data.trustedSummary }

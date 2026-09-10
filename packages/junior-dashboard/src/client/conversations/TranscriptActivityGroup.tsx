@@ -99,9 +99,7 @@ export function activityGroupSummary(
   const attachmentsCount = entries.filter(
     (entry) => entry.kind === "attachments_delivered",
   ).length;
-  const resourceEventCount = entries.filter(
-    (entry) => entry.kind === "message",
-  ).length;
+  const eventCount = entries.filter((entry) => entry.kind === "message").length;
   const handoffSummary =
     handoffs.length === 1
       ? `model handoff to ${handoffs[0].modelId} (${handoffs[0].modelProfile})`
@@ -129,9 +127,7 @@ export function activityGroupSummary(
     attachmentsCount > 0
       ? countLabel(attachmentsCount, "1 file delivery", "file deliveries")
       : undefined,
-    resourceEventCount > 0
-      ? countLabel(resourceEventCount, "1 resource event", "resource events")
-      : undefined,
+    eventCount > 0 ? countLabel(eventCount, "1 event", "events") : undefined,
   ].filter((value): value is string => value !== undefined);
 
   return parts.length > 0 ? parts.join(" · ") : activityGroupLabel(entries);

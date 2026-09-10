@@ -1,20 +1,20 @@
 ---
 title: Vercel Plugin
-description: Configure read-only Vercel investigations and deployment resource events.
+description: Configure read-only Vercel investigations and deployment events.
 type: tutorial
 summary: Let Junior inspect Vercel deployments and receive signed deployment outcomes in Slack.
 prerequisites:
   - /extend/
 related:
   - /concepts/credentials-and-oauth/
-  - /concepts/resource-subscriptions/
+  - /concepts/watches/
   - /operate/security-hardening/
   - /operate/sandbox-snapshots/
 ---
 
 Use the Vercel plugin to inspect deployments, fetch build logs, search runtime
-logs, and respond to deployment outcomes through resource subscriptions and
-event tasks.
+logs, and respond to deployment outcomes through watches and
+event automations.
 
 Junior keeps this plugin read-only. Its runtime registration installs the CLI
 and injects host-managed Vercel API auth, while the bundled skill limits Junior
@@ -83,10 +83,10 @@ Create a [Vercel access token](https://vercel.com/account/tokens) scoped to the 
 <details class="plugin-config">
 <summary><code>VERCEL_WEBHOOK_SECRET</code></summary>
 
-Account webhook secret used to verify deployment resource events.
+Account webhook secret used to verify deployment events.
 
 - **Define:** Set `VERCEL_WEBHOOK_SECRET` in the deployment environment
-- **Required:** Yes for resource events; otherwise no
+- **Required:** Yes for events; otherwise no
 - **Environment override:** `VERCEL_WEBHOOK_SECRET`
 
 </details>
@@ -113,11 +113,11 @@ Pro and Enterprise teams.
 Junior verifies Vercel's `x-vercel-signature` against the untouched request body
 before accepting a delivery.
 
-## Resource subscriptions
+## Watches
 
-Set `VERCEL_WEBHOOK_SECRET` to enable resource subscriptions. See
-[Resource Subscriptions](/concepts/resource-subscriptions/) for the difference
-between temporary subscriptions and durable event tasks.
+Set `VERCEL_WEBHOOK_SECRET` to enable watches. See
+[Resource Subscriptions](/concepts/watches/) for the difference
+between temporary subscriptions and durable event automations.
 
 Deployment watches use Vercel's project ID. Users can give a project name or
 ID. Junior gets the project ID from Vercel's authenticated project API.
@@ -135,28 +135,28 @@ One Vercel project, optionally limited to a target or one commit. Identifier:
 - `<project-id>:production:<sha>` watches one production deployment for that
   commit.
 
-<details class="resource-event">
+<details class="event">
 <summary><code>deployment.succeeded</code></summary>
 
 The deployment completed successfully.
 
 </details>
 
-<details class="resource-event">
+<details class="event">
 <summary><code>deployment.error</code></summary>
 
 The deployment failed.
 
 </details>
 
-<details class="resource-event">
+<details class="event">
 <summary><code>deployment.canceled</code></summary>
 
 The deployment was canceled.
 
 </details>
 
-Create the subscription or event task before the deployment finishes. Junior
+Create the subscription or event automation before the deployment finishes. Junior
 does not replay earlier webhooks. Project- and target-scoped watches keep
 receiving later deployments; commit-scoped watches complete on the terminal
 event.
@@ -204,7 +204,7 @@ Confirm Junior can query Vercel successfully:
 If deployment webhooks are enabled, also verify one signed delivery:
 
 1. Ask Junior: `Whenever production deployments fail for junior-prod, tell me in this channel.`
-2. Ask Junior to list the active event tasks or watches in the same conversation
+2. Ask Junior to list the active event automations or watches in the same conversation
    and confirm the Vercel project ID, optional `production` target, and event
    types are correct.
 3. Trigger a matching deployment.
@@ -230,7 +230,7 @@ If deployment webhooks are enabled, also verify one signed delivery:
 - Junior does not offer a deployment watch: configure `VERCEL_WEBHOOK_SECRET`
   and `SLACK_BOT_TOKEN`, redeploy, and provide a project name or configure
   `vercel.project` for the conversation. Multi-workspace Slack OAuth mode does
-  not support resource-event delivery yet.
+  not support event delivery yet.
 - Webhook delivery returns `401`: the Vercel account webhook secret does not
   match `VERCEL_WEBHOOK_SECRET`, or the request lacks `x-vercel-signature`.
 - Webhook delivery returns `202 Ignored`: the signed event is unsupported or
@@ -240,10 +240,10 @@ If deployment webhooks are enabled, also verify one signed delivery:
   Junior domain and is not blocked by deployment protection, login, or another
   access-control layer.
 - Vercel accepts the webhook but no Slack update appears: confirm the original
-  conversation still has an active subscription or event task for the same
+  conversation still has an active subscription or event automation for the same
   project, optional target, optional commit SHA, and event type.
 
 ## Next step
 
-Review [Resource Subscriptions](/concepts/resource-subscriptions/) and
+Review [Resource Subscriptions](/concepts/watches/) and
 [Sandbox Snapshots](/operate/sandbox-snapshots/).

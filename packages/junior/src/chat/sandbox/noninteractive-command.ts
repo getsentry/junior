@@ -108,7 +108,9 @@ export async function runNonInteractiveCommand(
     ...(input.cwd ? { cwd: input.cwd } : undefined),
     ...(input.signal ? { signal: input.signal } : undefined),
     ...(input.sudo !== undefined ? { sudo: input.sudo } : undefined),
-    ...(input.timeoutMs !== undefined ? { timeoutMs: input.timeoutMs } : undefined),
+    ...(input.timeoutMs !== undefined
+      ? { timeoutMs: input.timeoutMs }
+      : undefined),
   };
   return await sandbox.runCommand(command);
 }

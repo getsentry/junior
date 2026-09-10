@@ -39,7 +39,6 @@ afterEach(() => {
   vi.resetModules();
 });
 
-
 describe("Sentry context", () => {
   it("extends only the active sanitized log context", async () => {
     const { getLogContextAttributes, setTags, withLogContext } =
@@ -124,7 +123,7 @@ describe("Sentry context", () => {
 
     logging.setSentryScopeContext(
       // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
-      (scope) as Scope,
+      scope as Scope,
       {
         conversationId: "thread_123",
         userId: "U123",

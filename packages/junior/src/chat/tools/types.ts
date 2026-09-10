@@ -1,9 +1,9 @@
 import type { FileUpload } from "chat";
 import type {
   AgentInvocationSource,
-  EventTaskSource,
+  EventAutomationSource,
   WebSource,
-  ResourceEventSource,
+  EventSource,
   Destination,
   Identity,
   Location,
@@ -14,7 +14,7 @@ import type {
   SlackDestination,
   SlackSource,
   Source,
-  ScheduledTaskSource,
+  ScheduledAutomationSource,
   User,
 } from "@sentry/junior-plugin-api";
 import type { McpToolManager } from "@/chat/mcp/tool-manager";
@@ -159,10 +159,10 @@ export type ToolRuntimeContext =
       actor?: Actor;
       source:
         | AgentInvocationSource
-        | EventTaskSource
+        | EventAutomationSource
         | PluginDispatchSource
-        | ResourceEventSource
-        | ScheduledTaskSource;
+        | EventSource
+        | ScheduledAutomationSource;
       slackActionToken?: never;
     });
 
