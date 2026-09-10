@@ -276,6 +276,16 @@ describe("provider retry helpers", () => {
     }
   });
 
+  it("uses safe provider copy when classification fails", () => {
+    const message = getProviderErrorUserMessage(
+      createProviderError("unrecognized raw-error-sentinel token=secret"),
+    );
+
+    expect(message).toContain("model provider returned an error");
+    expect(message).not.toContain("raw-error-sentinel");
+    expect(message).not.toContain("token=secret");
+  });
+
   it("does not claim a retry happened in terminal capacity copy", () => {
     const message = getProviderErrorUserMessage(
       createProviderError("Provider capacity exceeded"),

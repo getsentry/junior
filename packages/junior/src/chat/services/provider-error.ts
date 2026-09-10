@@ -80,6 +80,9 @@ const TIMEOUT_ERROR_CODES = new Set([
   "ESOCKETTIMEDOUT",
 ]);
 
+// Provider and SDK text changes without notice. These patterns only select
+// retry behavior and more specific user copy. An unmatched provider failure
+// stays a ProviderError and gets generic provider copy. Never show raw text.
 const CONTENT_POLICY_PATTERN =
   /\b(?:content|safety|usage)[ _-]?policy\b|\b(?:content|safety) (?:filter|violation)\b|\bmoderation (?:blocked|rejected|refused)\b/i;
 const QUOTA_PATTERN =
@@ -294,7 +297,7 @@ export function getProviderErrorUserMessage(error: ProviderError): string {
     case "invalid_response":
       return "The model provider returned an invalid response. Please try again.";
     default:
-      return "";
+      return "The model provider returned an error. Please try again.";
   }
 }
 
