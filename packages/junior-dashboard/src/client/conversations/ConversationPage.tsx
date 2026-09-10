@@ -184,7 +184,7 @@ export function ConversationPage(props: {
                 ) : null
               }
               live={live}
-              loadCompleteConversation={detail.loadCompleteTranscript}
+              loadCompleteTranscript={detail.loadCompleteTranscript}
               meta={
                 <ConversationHeaderMeta
                   identity={

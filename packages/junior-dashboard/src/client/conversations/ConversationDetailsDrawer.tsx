@@ -11,7 +11,7 @@ export function ConversationDetailsDrawer(props: {
   brief: ReactNode;
   conversationId: string;
   identity: ReactNode;
-  loadCompleteConversation(): Promise<ConversationDetailReport>;
+  loadCompleteTranscript(): Promise<ConversationDetailReport>;
   onClose(): void;
   privacy: ReactNode;
   stats: ReactNode;
@@ -65,7 +65,7 @@ export function ConversationDetailsDrawer(props: {
             <ConversationMemories
               active
               initialConversation={props.transcript}
-              loadConversation={props.loadCompleteConversation}
+              loadConversation={props.loadCompleteTranscript}
             />
           ) : sections.length > 0 ? (
             <div className="grid min-w-0 gap-5">

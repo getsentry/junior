@@ -33,7 +33,7 @@ export function ConversationHeader(props: {
   conversationId: string;
   identity: ReactNode;
   live: boolean;
-  loadCompleteConversation(): Promise<ConversationDetailReport>;
+  loadCompleteTranscript(): Promise<ConversationDetailReport>;
   meta?: ReactNode;
   onSearchChange(value: string): void;
   onViewChange(value: TranscriptViewMode): void;
@@ -223,7 +223,7 @@ export function ConversationHeader(props: {
           brief={props.brief}
           conversationId={props.conversationId}
           identity={props.identity}
-          loadCompleteConversation={props.loadCompleteConversation}
+          loadCompleteTranscript={props.loadCompleteTranscript}
           onClose={() => setDetailsOpen(false)}
           privacy={props.privacy}
           stats={props.stats}
