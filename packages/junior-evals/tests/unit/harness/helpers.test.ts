@@ -1,10 +1,17 @@
 import { expect, it, vi } from "vitest";
 
-const { runError, runEvalScenarioMock } = vi.hoisted(() => ({
+const { completeTextMock, runError, runEvalScenarioMock } = vi.hoisted(() => ({
+  completeTextMock: vi.fn(),
   runError: new Error("stop after capturing harness options"),
   runEvalScenarioMock: vi.fn(async () => {
     throw new Error("uninitialized run error");
   }),
+}));
+
+vi.mock("@/chat/pi/client", () => ({
+  completeText: completeTextMock,
+  GEN_AI_PROVIDER_NAME: "vercel-ai-gateway",
+  resolveGatewayModel: vi.fn((modelId: string) => ({ id: modelId })),
 }));
 
 vi.mock("../../../src/behavior-harness", () => ({
@@ -14,6 +21,7 @@ vi.mock("../../../src/behavior-harness", () => ({
 import {
   hasImageAttachment,
   serializeVisibleTranscript,
+  slackEvals,
   slackHarness,
   visibleAssistantText,
   visibleThreadReplies,
@@ -141,6 +149,52 @@ it("includes captured Slack posts in the rubric-visible transcript", async () =>
       (event) => event.type === "message" && event.role === "assistant",
     )?.metadata,
   ).not.toHaveProperty("rubric_visible", false);
+});
+
+it("reports rubric judge usage through the judge harness", async () => {
+  completeTextMock.mockResolvedValueOnce({
+    message: {
+      model: "openai/gpt-5.4",
+      usage: {
+        inputTokens: 120,
+        outputTokens: 20,
+        totalTokens: 140,
+        cost: { total: 0.031 },
+      },
+    },
+    text: '{"answer":"A","rationale":"The response meets the rubric."}',
+  });
+
+  const judgeRun = await slackEvals.judgeHarness.run(
+    { prompt: "Grade this.", system: "Return JSON." },
+    { artifacts: {}, setArtifact: vi.fn() },
+  );
+  expect(judgeRun.usage).toEqual({
+    provider: "vercel-ai-gateway",
+    model: "openai/gpt-5.4",
+    inputTokens: 120,
+    outputTokens: 20,
+    totalTokens: 140,
+    costUsd: 0.031,
+  });
+});
+
+it("omits unknown rubric judge cost", async () => {
+  completeTextMock.mockResolvedValueOnce({
+    message: {
+      usage: {},
+    },
+    text: '{"answer":"A","rationale":"The response meets the rubric."}',
+  });
+
+  const judgeRun = await slackEvals.judgeHarness.run(
+    { prompt: "Grade this.", system: "Return JSON." },
+    { artifacts: {}, setArtifact: vi.fn() },
+  );
+  expect(judgeRun.usage).toEqual({
+    provider: "vercel-ai-gateway",
+    model: "openai/gpt-5.4",
+  });
 });
 
 it("forwards the Vitest abort signal to the eval scenario", async () => {
