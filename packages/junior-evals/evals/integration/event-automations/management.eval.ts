@@ -96,7 +96,7 @@ describeEval("Event automation management", slackEvals, (it) => {
       },
       initialEvents: [
         mention(
-          "$eval-events Create a pull request titled 'Automate review handling'. Whenever a reviewer requests changes, set up an event automation that summarizes the requested changes and posts a concrete fix plan in this channel. Don't use any of my connected credentials for that task.",
+          "$eval-events Create a pull request in getsentry/junior titled 'Automate review handling'. Whenever a reviewer requests changes, set up an event automation that summarizes the requested changes and posts a concrete fix plan in this channel. Don't use any of my connected credentials for that task.",
         ),
       ],
       criteria: rubric({
