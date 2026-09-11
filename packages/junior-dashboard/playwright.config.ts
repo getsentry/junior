@@ -17,7 +17,12 @@ export default defineConfig({
   projects: [
     {
       name: "chromium",
-      use: { ...devices["Desktop Chrome"] },
+      use: {
+        ...devices["Desktop Chrome"],
+        // Blacksmith's Ubuntu runner includes Chrome. Use it in CI so the e2e
+        // job does not depend on apt package mirrors during Playwright setup.
+        ...(process.env.CI ? { channel: "chrome" } : undefined),
+      },
     },
   ],
 });
