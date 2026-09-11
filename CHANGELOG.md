@@ -1,4 +1,14 @@
 # Changelog
+## 0.214.0
+
+### New Features ✨
+
+- (dashboard) Mark newly finished conversations by @sentry-junior in [#1854](https://github.com/getsentry/junior/pull/1854)
+
+### Bug Fixes 🐛
+
+- (dashboard) Reconcile cache token usage by @sentry-junior in [#1853](https://github.com/getsentry/junior/pull/1853)
+
 ## 0.213.0
 
 - No documented changes.
