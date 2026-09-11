@@ -11,6 +11,7 @@ export {
   pluginBriefOutcomeStatusSchema,
   pluginBriefSchema,
   pluginBriefSummarySchema,
+  PLUGIN_PROMPT_CONTEXT_MAX_BYTES,
   promptContextSchema,
   promptMessageSchema,
   type PluginBrief,

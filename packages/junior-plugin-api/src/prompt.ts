@@ -13,6 +13,9 @@ import type {
 import type { PluginState } from "./state";
 import type { PluginConversationEvents } from "./conversation-events";
 
+/** Maximum serialized byte size for one plugin prompt context content value. */
+export const PLUGIN_PROMPT_CONTEXT_MAX_BYTES = 8_000;
+
 const promptContextKindSchema = z
   .string()
   .trim()

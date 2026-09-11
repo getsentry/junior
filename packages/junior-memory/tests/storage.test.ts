@@ -14,6 +14,7 @@ import {
   createSlackSource,
   pluginApiRouteRequestContextSchema,
   PluginToolInputError,
+  PLUGIN_PROMPT_CONTEXT_MAX_BYTES,
   type PluginConversationEventValue,
   type PluginLogger,
   type PluginModel,
@@ -4198,6 +4199,101 @@ WHERE id = '${superseded.memory.id}'
           },
         }),
       ]);
+    } finally {
+      await fixture.close();
+    }
+  }, 15_000);
+
+  it("keeps memory recall when Unicode Brief context reaches the byte budget", async () => {
+    const fixture = await createMemoryFixture();
+
+    try {
+      const firstOrigin = slackContext({
+        channelId: "C998",
+        threadTs: "1700000000.000001",
+      });
+      const secondOrigin = slackContext({
+        channelId: "C999",
+        threadTs: "1700000000.000002",
+      });
+      const context = slackContext();
+      const first = await createMemoryStore(memoryDb(fixture), firstOrigin, {
+        now: () => TEST_NOW_MS,
+      }).createConversationMemory({
+        content: "Release notes live in Notion.",
+        kind: "knowledge",
+        idempotencyKey: "memory-test:unicode-brief-first",
+      });
+      const second = await createMemoryStore(memoryDb(fixture), secondOrigin, {
+        now: () => TEST_NOW_MS,
+      }).createConversationMemory({
+        content: "Deploy notes live in GitHub.",
+        kind: "knowledge",
+        idempotencyKey: "memory-test:unicode-brief-second",
+      });
+      const denseText = "漢".repeat(600);
+      const briefs = Object.fromEntries(
+        [firstOrigin, secondOrigin].map((origin) => [
+          origin.conversationId,
+          {
+            conversationId: origin.conversationId,
+            summary: denseText,
+            outcome: { status: "done" as const, text: denseText },
+            decisions: [],
+            links: Array.from({ length: 2 }, (_, index) => ({
+              label: `Runbook ${index + 1}`,
+              status: "漢".repeat(400),
+              url: `https://example.com/runbook-${index + 1}`,
+            })),
+            updatedAt: "2026-06-19T12:00:00.000Z",
+          },
+        ]),
+      );
+
+      const result = await memoryPlugin().hooks?.userPrompt?.({
+        ...context,
+        destination: slackDestination(context),
+        briefs: {
+          async readLatest() {
+            return briefs;
+          },
+        },
+        users: memoryUsers(context.userId),
+        db: memoryDb(fixture),
+        embedder: createTestEmbedder(),
+        log: noopLogger,
+        model: selectAllRecallModel,
+        plugin: { name: "memory" },
+        state: memoryState,
+        text: "Where do release and deploy notes live?",
+      });
+
+      expect(result?.[0]).toMatchObject({
+        context: {
+          kind: "recall",
+          content: {
+            memories: expect.arrayContaining([
+              expect.objectContaining({ id: first.memory.id }),
+              expect.objectContaining({ id: second.memory.id }),
+            ]),
+          },
+        },
+      });
+      const briefContribution = result?.[1];
+      expect(briefContribution && "context" in briefContribution).toBe(true);
+      if (!briefContribution || !("context" in briefContribution)) {
+        throw new Error("Memory recall did not return bounded Brief context");
+      }
+      expect(
+        briefContribution.context.content.briefs.flatMap(
+          (brief) => brief.links,
+        ),
+      ).toHaveLength(0);
+      expect(
+        new TextEncoder().encode(
+          JSON.stringify(briefContribution.context.content),
+        ).byteLength,
+      ).toBeLessThanOrEqual(PLUGIN_PROMPT_CONTEXT_MAX_BYTES);
     } finally {
       await fixture.close();
     }

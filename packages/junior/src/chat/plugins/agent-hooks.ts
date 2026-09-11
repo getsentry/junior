@@ -2,6 +2,7 @@ import {
   missingToolAnnotationKeys,
   normalizeEventIdentifier,
   pluginEventsSchema,
+  PLUGIN_PROMPT_CONTEXT_MAX_BYTES,
   promptContextSchema,
   promptMessageSchema,
   eventInputSchema,
@@ -134,7 +135,6 @@ const PLUGIN_ROUTE_METHODS = new Set<PluginRouteMethod>([
   "ALL",
 ]);
 const PLUGIN_PROMPT_CONTRIBUTION_TOTAL_MAX_CHARS = 16_000;
-const PLUGIN_PROMPT_CONTEXT_MAX_BYTES = 8_000;
 const PLUGIN_PROMPT_CONTEXT_TOTAL_MAX_BYTES = 16_000;
 const systemPromptMessageArraySchema = z.array(promptMessageSchema);
 

@@ -4,6 +4,7 @@ import {
   type Actor,
   type Identity,
   pluginBriefSchema,
+  PLUGIN_PROMPT_CONTEXT_MAX_BYTES,
   type PluginBrief,
   type PluginConversationEvents,
   type PluginLogger,
@@ -172,6 +173,17 @@ function renderBriefs(briefs: PluginBrief[]): string {
     .join("\n\n");
 }
 
+function serializedBriefBytes(briefs: PluginBrief[]): number {
+  return new TextEncoder().encode(JSON.stringify({ briefs })).byteLength;
+}
+
+function briefsExceedPromptBudget(briefs: PluginBrief[]): boolean {
+  return (
+    renderBriefs(briefs).length > MAX_BRIEF_PROMPT_CHARS ||
+    serializedBriefBytes(briefs) > PLUGIN_PROMPT_CONTEXT_MAX_BYTES
+  );
+}
+
 function packBriefs(briefs: PluginBrief[]): PluginBrief[] {
   let packed = briefs.map((brief) => ({
     ...brief,
@@ -179,7 +191,7 @@ function packBriefs(briefs: PluginBrief[]): PluginBrief[] {
     links: brief.links.slice(0, MAX_BRIEF_LINKS),
   }));
   while (
-    renderBriefs(packed).length > MAX_BRIEF_PROMPT_CHARS &&
+    briefsExceedPromptBudget(packed) &&
     packed.some((brief) => brief.links.length > 0)
   ) {
     for (let index = packed.length - 1; index >= 0; index -= 1) {
@@ -191,7 +203,7 @@ function packBriefs(briefs: PluginBrief[]): PluginBrief[] {
     }
   }
   while (
-    renderBriefs(packed).length > MAX_BRIEF_PROMPT_CHARS &&
+    briefsExceedPromptBudget(packed) &&
     packed.some((brief) => brief.decisions.length > 0)
   ) {
     for (let index = packed.length - 1; index >= 0; index -= 1) {
@@ -202,10 +214,10 @@ function packBriefs(briefs: PluginBrief[]): PluginBrief[] {
       }
     }
   }
-  if (renderBriefs(packed).length > MAX_BRIEF_PROMPT_CHARS) {
+  if (briefsExceedPromptBudget(packed)) {
     packed = packed.slice(0, 1);
   }
-  return packed;
+  return briefsExceedPromptBudget(packed) ? [] : packed;
 }
 
 const recallBriefsContext = definePromptContext({
