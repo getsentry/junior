@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { StreamFn } from "@earendil-works/pi-agent-core";
 import { fauxAssistantMessage } from "@earendil-works/pi-ai/providers/faux";
 import { createSlackSource } from "@sentry/junior-plugin-api";
@@ -396,6 +396,48 @@ describe("durable queue contract", () => {
         replies: ["Deploy checked."],
       });
       await expectNextTurn(q, "1712345.0010");
+    });
+
+    it("keeps the complete prior model request as an exact prefix across Turns", async () => {
+      const requests: Array<{
+        messages: Parameters<StreamFn>[1]["messages"];
+        systemPrompt: string | undefined;
+      }> = [];
+      const generated = createModelStream([
+        { type: "text", text: "First reply." },
+        { type: "text", text: "Second reply." },
+      ]);
+      const modelStream = vi.fn<StreamFn>((model, context, options) => {
+        requests.push({
+          messages: structuredClone(context.messages),
+          systemPrompt: context.systemPrompt,
+        });
+        return generated(model, context, options);
+      });
+      const q = await slack({ modelStream });
+
+      await expect(
+        q.send({ text: `<@${SLACK_BOT_USER_ID}> first request` }),
+      ).resolves.toMatchObject({ status: 200 });
+      await expect(q.next()).resolves.toEqual({ status: "completed" });
+      await expect(
+        q.send({
+          text: `<@${SLACK_BOT_USER_ID}> second request`,
+          threadTs: "1712345.0001",
+          ts: "1712345.0010",
+        }),
+      ).resolves.toMatchObject({ status: 200 });
+      await expect(q.next()).resolves.toEqual({ status: "completed" });
+
+      expect(modelStream).toHaveBeenCalledTimes(2);
+      const firstRequest = requests[0];
+      const secondRequest = requests[1];
+      expect(firstRequest).toBeDefined();
+      expect(secondRequest).toBeDefined();
+      expect(secondRequest!.systemPrompt).toBe(firstRequest!.systemPrompt);
+      expect(
+        secondRequest!.messages.slice(0, firstRequest!.messages.length),
+      ).toEqual(firstRequest!.messages);
     });
 
     it("publishes a resource wake from a channel-level Slack Location", async () => {
