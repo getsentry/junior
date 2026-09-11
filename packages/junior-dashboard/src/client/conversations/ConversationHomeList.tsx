@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import { Archive, ArchiveRestore, LockKeyhole } from "lucide-react";
+import { Archive, ArchiveRestore } from "lucide-react";
 import { Link } from "react-router";
 
 import {
@@ -9,7 +9,6 @@ import {
   slackLocationLabel,
   visualStatusForConversation,
 } from "../format";
-import { ActiveIndicator } from "../components/ActiveIndicator";
 import { EmptyTelemetry } from "../components/EmptyTelemetry";
 import { Skeleton } from "../components/Skeleton";
 import { cn } from "../styles";
@@ -17,6 +16,7 @@ import type { Conversation } from "../types";
 import { ConversationSidebarAnnotations } from "./ConversationMeta";
 import { formatConversationActivityPreview } from "./conversationActivityPreview";
 import { ConversationArchiveNotices } from "./ConversationArchiveNotices";
+import { ConversationListStatusIcon } from "./ConversationListStatusIcon";
 import { conversationPath } from "./conversationRoutes";
 import { useArchiveConversation } from "./queries";
 import {
@@ -223,37 +223,11 @@ function ConversationCard(props: {
       <div className="relative z-[1] grid min-w-0 grid-cols-[minmax(0,1fr)_max-content] items-start gap-3 pointer-events-none">
         <div className="flex min-w-0 items-start gap-2.5">
           <span className="mt-1.5 grid size-3 shrink-0 place-items-center">
-            {isPrivate ? (
-              <LockKeyhole
-                aria-label="Private conversation"
-                className={cn(
-                  "size-3",
-                  props.finishedSinceSeen
-                    ? "text-orange-300"
-                    : "text-dashboard-text-muted",
-                )}
-              />
-            ) : status === "active" ? (
-              <ActiveIndicator className="size-1.5" />
-            ) : (
-              <span
-                aria-label={
-                  props.finishedSinceSeen
-                    ? "Finished since last viewed"
-                    : undefined
-                }
-                aria-hidden={props.finishedSinceSeen ? undefined : "true"}
-                className={cn(
-                  "size-1.5 rounded-full",
-                  props.finishedSinceSeen
-                    ? "bg-orange-300"
-                    : status === "failed"
-                      ? "bg-rose-300"
-                      : "bg-dashboard-text-muted/40",
-                )}
-                role={props.finishedSinceSeen ? "img" : undefined}
-              />
-            )}
+            <ConversationListStatusIcon
+              finishedSinceSeen={props.finishedSinceSeen}
+              isPrivate={isPrivate}
+              status={status}
+            />
           </span>
           <h4 className="m-0 truncate font-display text-base font-medium leading-snug text-dashboard-text">
             {title}

@@ -1,18 +1,22 @@
 import { describe, expect, it } from "vitest";
 
-import { reconcileStoredStates } from "../src/client/conversations/useConversationFinishedIndicators";
+import {
+  finishedConversationIds,
+  reconcileStoredStates,
+} from "../src/client/conversations/useConversationFinishedIndicators";
 import type { Conversation } from "../src/client/types";
 
 function conversation(
   id: string,
   status: Conversation["status"],
+  lastSeenAt = "2026-09-11T00:00:00.000Z",
 ): Conversation {
   return {
     cumulativeDurationMs: 0,
     displayTitle: id,
     id,
-    lastProgressAt: "2026-09-11T00:00:00.000Z",
-    lastSeenAt: "2026-09-11T00:00:00.000Z",
+    lastProgressAt: lastSeenAt,
+    lastSeenAt,
     startedAt: "2026-09-11T00:00:00.000Z",
     status,
     surface: "api",
@@ -20,34 +24,29 @@ function conversation(
 }
 
 describe("conversation finished indicators", () => {
-  it("marks a visible conversation when it changes from active to completed", () => {
-    const active = reconcileStoredStates(
+  it("marks an idle conversation when it has activity after the last read", () => {
+    const states = reconcileStoredStates(
       {},
       [conversation("a", "active")],
       undefined,
     );
-    const completed = reconcileStoredStates(
-      active,
-      [conversation("a", "completed")],
-      undefined,
-    );
+    const updated = conversation("a", "completed", "2026-09-11T00:01:00.000Z");
 
-    expect(completed.a).toEqual({
-      finishedSinceSeen: true,
-      status: "completed",
-    });
+    expect([...finishedConversationIds(states, [updated], undefined)]).toEqual([
+      "a",
+    ]);
   });
 
-  it("clears selected conversations and removes conversations outside the visible list", () => {
+  it("records a selected conversation as read and removes hidden conversations", () => {
     const current = {
-      a: { finishedSinceSeen: true, status: "completed" as const },
-      hidden: { finishedSinceSeen: true, status: "completed" as const },
+      a: { lastReadAt: "2026-09-11T00:00:00.000Z" },
+      hidden: { lastReadAt: "2026-09-11T00:00:00.000Z" },
     };
+    const updated = conversation("a", "completed", "2026-09-11T00:01:00.000Z");
 
-    expect(
-      reconcileStoredStates(current, [conversation("a", "completed")], "a"),
-    ).toEqual({
-      a: { finishedSinceSeen: false, status: "completed" },
+    expect(reconcileStoredStates(current, [updated], "a")).toEqual({
+      a: { lastReadAt: "2026-09-11T00:01:00.000Z" },
     });
+    expect([...finishedConversationIds(current, [updated], "a")]).toEqual([]);
   });
 });

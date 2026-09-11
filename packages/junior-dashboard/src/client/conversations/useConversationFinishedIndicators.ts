@@ -5,13 +5,12 @@ import type { Conversation } from "../types";
 const STORAGE_KEY = "junior:conversation-finished-indicators";
 
 type StoredConversationState = {
-  finishedSinceSeen: boolean;
-  status: Conversation["status"];
+  lastReadAt: string;
 };
 
 type StoredConversationStates = Record<string, StoredConversationState>;
 
-/** Track visible conversations that completed after the user last saw them active. */
+/** Track visible idle conversations that have activity after the user read them. */
 export function useConversationFinishedIndicators(
   conversations: Conversation[],
   selectedId: string | undefined,
@@ -30,17 +29,33 @@ export function useConversationFinishedIndicators(
   }, [conversations, ready, selectedId]);
 
   return useMemo(
-    () =>
-      new Set(
-        Object.entries(storedStates)
-          .filter(([, state]) => state.finishedSinceSeen)
-          .map(([conversationId]) => conversationId),
-      ),
-    [storedStates],
+    () => finishedConversationIds(storedStates, conversations, selectedId),
+    [conversations, selectedId, storedStates],
   );
 }
 
-/** Update completion markers and remove conversations outside the visible list. */
+/** Find idle conversations with activity after the user read them. */
+export function finishedConversationIds(
+  states: StoredConversationStates,
+  conversations: Conversation[],
+  selectedId: string | undefined,
+): ReadonlySet<string> {
+  return new Set(
+    conversations
+      .filter((conversation) => {
+        const state = states[conversation.id];
+        return (
+          conversation.id !== selectedId &&
+          conversation.status === "completed" &&
+          state !== undefined &&
+          isAfter(conversation.lastSeenAt, state.lastReadAt)
+        );
+      })
+      .map((conversation) => conversation.id),
+  );
+}
+
+/** Record reads and remove conversations outside the visible list. */
 export function reconcileStoredStates(
   current: StoredConversationStates,
   conversations: Conversation[],
@@ -49,16 +64,23 @@ export function reconcileStoredStates(
   return Object.fromEntries(
     conversations.map((conversation) => {
       const previous = current[conversation.id];
-      const finishedSinceSeen =
-        conversation.id !== selectedId &&
-        conversation.status === "completed" &&
-        (previous?.finishedSinceSeen || previous?.status === "active");
+      const lastReadAt =
+        conversation.id === selectedId || previous === undefined
+          ? conversation.lastSeenAt
+          : previous.lastReadAt;
 
-      return [
-        conversation.id,
-        { finishedSinceSeen, status: conversation.status },
-      ];
+      return [conversation.id, { lastReadAt }];
     }),
+  );
+}
+
+function isAfter(value: string, reference: string): boolean {
+  const valueTime = Date.parse(value);
+  const referenceTime = Date.parse(reference);
+  return (
+    Number.isFinite(valueTime) &&
+    Number.isFinite(referenceTime) &&
+    valueTime > referenceTime
   );
 }
 
@@ -78,12 +100,9 @@ function readStoredStates(): StoredConversationStates {
           return (
             state !== null &&
             typeof state === "object" &&
-            "finishedSinceSeen" in state &&
-            typeof state.finishedSinceSeen === "boolean" &&
-            "status" in state &&
-            (state.status === "active" ||
-              state.status === "completed" ||
-              state.status === "failed")
+            "lastReadAt" in state &&
+            typeof state.lastReadAt === "string" &&
+            Number.isFinite(Date.parse(state.lastReadAt))
           );
         },
       ),
