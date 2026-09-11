@@ -1,11 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
-import {
-  Archive,
-  ArchiveRestore,
-  CircleAlert,
-  LockKeyhole,
-  SquarePen,
-} from "lucide-react";
+import { Archive, ArchiveRestore, CircleAlert, SquarePen } from "lucide-react";
 import { Link } from "react-router";
 
 import { useArchiveConversation } from "./queries";
@@ -16,8 +10,7 @@ import {
   visualStatusForConversation,
 } from "../format";
 import { cn } from "../styles";
-import type { Conversation, VisualStatus } from "../types";
-import { ActiveIndicator } from "../components/ActiveIndicator";
+import type { Conversation } from "../types";
 import { Notice, NoticeAction } from "../components/Notice";
 import { AnimatedList } from "./AnimatedList";
 import {
@@ -28,6 +21,7 @@ import { EmptyTelemetry } from "../components/EmptyTelemetry";
 import { SearchInput } from "../components/SearchInput";
 import { Skeleton } from "../components/Skeleton";
 import { ConversationSidebarAnnotations } from "./ConversationMeta";
+import { ConversationListStatusIcon } from "./ConversationListStatusIcon";
 
 type ConversationSidebarEntry =
   | { first: boolean; key: string; kind: "section"; label: string }
@@ -43,6 +37,7 @@ const conversationEntryKey = (entry: ConversationSidebarEntry) => entry.key;
 export function ConversationSidebar(props: {
   conversations: Conversation[];
   error?: string;
+  finishedConversationIds: ReadonlySet<string>;
   loading: boolean;
   query: string;
   selectedId?: string;
@@ -173,6 +168,9 @@ export function ConversationSidebar(props: {
               ) : (
                 <ConversationSidebarRow
                   conversation={entry.conversation}
+                  finishedSinceSeen={props.finishedConversationIds.has(
+                    entry.conversation.id,
+                  )}
                   onArchiveError={handleArchiveError}
                   onArchived={handleArchived}
                   selected={entry.conversation.id === props.selectedId}
@@ -255,44 +253,9 @@ function conversationSidebarEntries(
   ]);
 }
 
-/** Status glyph for a sidebar row; private rows use the lock instead of a dot. */
-function ConversationListStatusIcon(props: {
-  isPrivate: boolean;
-  status: VisualStatus;
-}) {
-  if (props.isPrivate) {
-    return (
-      <LockKeyhole
-        aria-label="Private conversation"
-        className={cn(
-          "size-3 shrink-0",
-          props.status === "active" &&
-            "animate-[junior-active-indicator_1.8s_ease-in-out_infinite] text-emerald-300 drop-shadow-[0_0_6px_rgba(110,231,183,0.55)] motion-reduce:animate-none",
-          props.status === "failed" && "text-rose-300",
-          props.status === "idle" && "text-dashboard-text-muted",
-        )}
-      />
-    );
-  }
-
-  if (props.status === "active") {
-    return <ActiveIndicator className="size-1.5" />;
-  }
-
-  return (
-    <span
-      aria-hidden="true"
-      className={cn(
-        "size-1.5 shrink-0 rounded-full",
-        props.status === "failed" && "bg-rose-300",
-        props.status === "idle" && "bg-white/25",
-      )}
-    />
-  );
-}
-
 const ConversationSidebarRow = memo(function ConversationSidebarRow(props: {
   conversation: Conversation;
+  finishedSinceSeen: boolean;
   onArchiveError(conversation: Conversation, wasArchiving: boolean): void;
   onArchived(conversation: Conversation): void;
   selected: boolean;
@@ -337,7 +300,11 @@ const ConversationSidebarRow = memo(function ConversationSidebarRow(props: {
       >
         <div className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-start gap-x-1.5">
           <div className="col-start-1 row-start-1 mt-[0.3rem] grid size-3 shrink-0 place-items-center">
-            <ConversationListStatusIcon isPrivate={isPrivate} status={status} />
+            <ConversationListStatusIcon
+              finishedSinceSeen={props.finishedSinceSeen}
+              isPrivate={isPrivate}
+              status={status}
+            />
           </div>
           <div className="col-start-2 row-start-1 min-w-0 truncate font-display text-sm font-medium leading-snug text-dashboard-text">
             {title}

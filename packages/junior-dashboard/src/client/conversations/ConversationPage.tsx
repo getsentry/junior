@@ -66,6 +66,7 @@ export { liveModelId } from "./ConversationMeta";
 export function ConversationPage(props: {
   conversationId: string;
   data?: { conversations: ConversationFeed };
+  onRead?(conversationId: string, lastReadAt: string): void;
   pendingArchiveUpdate?: PendingArchiveConversationUpdate;
 }) {
   const [subagentTarget, setSubagentTarget] =
@@ -74,6 +75,7 @@ export function ConversationPage(props: {
   const [search, setSearch] = useState("");
   const [pinRequestVersion, setPinRequestVersion] = useState(0);
   const conversationId = props.conversationId;
+  const onRead = props.onRead;
   const summaries = props.data?.conversations.conversations ?? [];
   const conversations = buildConversations(summaries);
   const detail = useConversationData(conversationId);
@@ -86,6 +88,10 @@ export function ConversationPage(props: {
     props.pendingArchiveUpdate,
   );
   const conversationDetail = detail.data;
+  useEffect(() => {
+    if (!conversation) return;
+    onRead?.(conversation.id, conversation.lastSeenAt);
+  }, [conversation, onRead]);
   // Live polls can rebuild a large transcript tree every 2s. Defer that paint so
   // composer keystrokes stay urgent without changing visible transcript content.
   // Fall back to the latest detail on first load so the body is never blank while

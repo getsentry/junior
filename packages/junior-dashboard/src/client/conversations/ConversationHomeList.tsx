@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import { Archive, ArchiveRestore, LockKeyhole } from "lucide-react";
+import { Archive, ArchiveRestore } from "lucide-react";
 import { Link } from "react-router";
 
 import {
@@ -9,7 +9,6 @@ import {
   slackLocationLabel,
   visualStatusForConversation,
 } from "../format";
-import { ActiveIndicator } from "../components/ActiveIndicator";
 import { EmptyTelemetry } from "../components/EmptyTelemetry";
 import { Skeleton } from "../components/Skeleton";
 import { cn } from "../styles";
@@ -17,6 +16,7 @@ import type { Conversation } from "../types";
 import { ConversationSidebarAnnotations } from "./ConversationMeta";
 import { formatConversationActivityPreview } from "./conversationActivityPreview";
 import { ConversationArchiveNotices } from "./ConversationArchiveNotices";
+import { ConversationListStatusIcon } from "./ConversationListStatusIcon";
 import { conversationPath } from "./conversationRoutes";
 import { useArchiveConversation } from "./queries";
 import {
@@ -28,6 +28,7 @@ import {
 export function ConversationHomeList(props: {
   conversations: Conversation[];
   emptyLabel?: string;
+  finishedConversationIds: ReadonlySet<string>;
   loading?: boolean;
   timeZone: string;
 }) {
@@ -85,6 +86,7 @@ export function ConversationHomeList(props: {
       <div aria-label="Your conversations" className="grid gap-5" role="list">
         {sections.map((section) => (
           <ConversationCardSection
+            finishedConversationIds={props.finishedConversationIds}
             key={section.key}
             onArchiveError={handleArchiveError}
             onArchived={handleArchived}
@@ -159,6 +161,7 @@ function ConversationCardLoading(props: { index: number }) {
 }
 
 function ConversationCardSection(props: {
+  finishedConversationIds: ReadonlySet<string>;
   onArchiveError(conversation: Conversation, wasArchiving: boolean): void;
   onArchived(conversation: Conversation): void;
   section: ConversationSection;
@@ -175,6 +178,9 @@ function ConversationCardSection(props: {
         {props.section.conversations.map((conversation) => (
           <ConversationCard
             conversation={conversation}
+            finishedSinceSeen={props.finishedConversationIds.has(
+              conversation.id,
+            )}
             key={conversation.id}
             onArchiveError={props.onArchiveError}
             onArchived={props.onArchived}
@@ -187,6 +193,7 @@ function ConversationCardSection(props: {
 
 function ConversationCard(props: {
   conversation: Conversation;
+  finishedSinceSeen: boolean;
   onArchiveError(conversation: Conversation, wasArchiving: boolean): void;
   onArchived(conversation: Conversation): void;
 }) {
@@ -216,24 +223,11 @@ function ConversationCard(props: {
       <div className="relative z-[1] grid min-w-0 grid-cols-[minmax(0,1fr)_max-content] items-start gap-3 pointer-events-none">
         <div className="flex min-w-0 items-start gap-2.5">
           <span className="mt-1.5 grid size-3 shrink-0 place-items-center">
-            {isPrivate ? (
-              <LockKeyhole
-                aria-label="Private conversation"
-                className="size-3 text-dashboard-text-muted"
-              />
-            ) : status === "active" ? (
-              <ActiveIndicator className="size-1.5" />
-            ) : (
-              <span
-                aria-hidden="true"
-                className={cn(
-                  "size-1.5 rounded-full",
-                  status === "failed"
-                    ? "bg-rose-300"
-                    : "bg-dashboard-text-muted/40",
-                )}
-              />
-            )}
+            <ConversationListStatusIcon
+              finishedSinceSeen={props.finishedSinceSeen}
+              isPrivate={isPrivate}
+              status={status}
+            />
           </span>
           <h4 className="m-0 truncate font-display text-base font-medium leading-snug text-dashboard-text">
             {title}
