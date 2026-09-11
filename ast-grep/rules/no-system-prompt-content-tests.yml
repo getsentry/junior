@@ -17,5 +17,11 @@ rule:
     - pattern: expect($OBJECT.systemPrompt).not.toContain($TEXT)
     - pattern: expect($OBJECT.systemPrompt).toMatch($TEXT)
     - pattern: expect($OBJECT.systemPrompt).not.toMatch($TEXT)
-    - pattern: expect($OBJECT.systemPrompt).toBe($TEXT)
-    - pattern: expect($OBJECT.systemPrompt).toEqual($TEXT)
+    - all:
+        - pattern: expect($OBJECT.systemPrompt).toBe($TEXT)
+        - not:
+            pattern: expect($OBJECT.systemPrompt).toBe($OTHER.systemPrompt)
+    - all:
+        - pattern: expect($OBJECT.systemPrompt).toEqual($TEXT)
+        - not:
+            pattern: expect($OBJECT.systemPrompt).toEqual($OTHER.systemPrompt)

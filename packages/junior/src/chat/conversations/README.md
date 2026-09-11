@@ -70,9 +70,9 @@ events append to it. The internal `history_version` column makes loading that
 active history efficient. There is no initial-history event. Database migrations
 normalize older history shapes before the runtime reads them.
 
-Volatile `<runtime-turn-context>` bootstrap is kept only in an unfinished turn's
-session record. It is removed before SQL history is written and restored for an
-auth or timeout resume, so agent replay does not need an automatic rollback.
+`<runtime-turn-context>` is part of the exact model history. Normal execution
+stores and replays it unchanged. Reporting projections can omit it from the UI.
+Compaction and handoff can replace it with the current context.
 
 Message summarization is separate from agent-history compaction. A
 `messages_summarized` event stores the latest bounded summaries used to render

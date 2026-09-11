@@ -689,21 +689,23 @@ describe("local agent runner", () => {
     const generatedMessages = await loadProjection({
       conversationId: conversationId!,
     });
-    expect(generatedMessages).toEqual([
-      expect.objectContaining({
-        role: "user",
-        content: [
-          {
-            type: "text",
-            text: expect.stringContaining("hello"),
-          },
-        ],
-      }),
-      expect.objectContaining({
-        role: "assistant",
-        content: [{ type: "text", text: "persisted visible output" }],
-      }),
-    ]);
+    expect(generatedMessages).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: expect.stringContaining("hello"),
+            },
+          ],
+        }),
+        expect.objectContaining({
+          role: "assistant",
+          content: [{ type: "text", text: "persisted visible output" }],
+        }),
+      ]),
+    );
 
     const agentRuns: CapturedAgentRun[] = [];
     const followUpAgentRunner = createModelAgentRunnerForRun((run) => {
@@ -854,17 +856,19 @@ describe("local agent runner", () => {
     const projection = await loadProjection({
       conversationId: conversationId!,
     });
-    expect(projection).toEqual([
-      expect.objectContaining({
-        role: "user",
-        content: expect.arrayContaining([
-          expect.objectContaining({
-            type: "text",
-            text: expect.stringContaining("hello"),
-          }),
-        ]),
-      }),
-    ]);
+    expect(projection).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          role: "user",
+          content: expect.arrayContaining([
+            expect.objectContaining({
+              type: "text",
+              text: expect.stringContaining("hello"),
+            }),
+          ]),
+        }),
+      ]),
+    );
     expect(projection.some((message) => message.role === "assistant")).toBe(
       false,
     );

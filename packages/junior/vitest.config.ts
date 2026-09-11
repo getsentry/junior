@@ -37,6 +37,7 @@ export default defineConfig({
       "tests/msw/setup.ts",
       "tests/fixtures/postgres/setup.ts",
       "tests/fixtures/experimental-setup.ts",
+      "tests/fixtures/setup.ts",
     ],
     coverage: {
       provider: "v8",

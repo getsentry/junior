@@ -394,12 +394,12 @@ describe("Slack behavior: message content", () => {
 
     expect(calls).toHaveLength(2);
     expect(calls[1]?.contextConversation ?? "").toContain("budget by Friday");
-    expect(calls[1]?.piMessages).toHaveLength(2);
+    expect(calls[1]?.piMessages).toHaveLength(3);
     expect(JSON.stringify(calls[1]?.piMessages)).toContain(
       "I need the budget by Friday",
     );
     expect(JSON.stringify(calls[1]?.piMessages)).toContain("First response.");
-    expect(JSON.stringify(calls[1]?.piMessages)).not.toContain(
+    expect(JSON.stringify(calls[1]?.piMessages)).toContain(
       "<runtime-turn-context>",
     );
   });
@@ -501,13 +501,6 @@ describe("Slack behavior: message content", () => {
         timestamp: 3,
       },
     ] as PiMessage[];
-    const expectedActiveMessages: PiMessage[] = [
-      {
-        role: "user",
-        content: [{ type: "text", text: "active session record tool context" }],
-        timestamp: 3,
-      },
-    ] as PiMessage[];
     const priorMessages: PiMessage[] = [
       {
         role: "user",
@@ -575,6 +568,6 @@ describe("Slack behavior: message content", () => {
     ).rejects.toBeInstanceOf(TurnInputCommitLostError);
 
     expect(calls).toHaveLength(1);
-    expect(calls[0]?.piMessages).toEqual(expectedActiveMessages);
+    expect(calls[0]?.piMessages).toEqual(activeMessages);
   });
 });

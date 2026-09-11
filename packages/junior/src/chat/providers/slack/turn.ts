@@ -139,10 +139,7 @@ import {
   loadConversationProjection,
 } from "@/chat/conversations/projection";
 import { persistWithRetry } from "@/chat/services/persist-retry";
-import {
-  stripRuntimeTurnContext,
-  trimTrailingAssistantMessages,
-} from "@/chat/pi/transcript";
+import { trimTrailingAssistantMessages } from "@/chat/pi/transcript";
 import { requireSlackDestination } from "@/chat/destination";
 import { persistConversationMessages } from "@/chat/conversations/messages";
 import { getTurnLifecycle } from "@/chat/conversations/turn-lifecycle";
@@ -202,9 +199,7 @@ async function loadPiMessagesForTurn(args: {
     );
     if (sessionRecord?.piMessages.length) {
       return {
-        piMessages: stripRuntimeTurnContext(
-          trimTrailingAssistantMessages(sessionRecord.piMessages),
-        ),
+        piMessages: trimTrailingAssistantMessages(sessionRecord.piMessages),
       };
     }
   }
