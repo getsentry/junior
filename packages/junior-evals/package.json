@@ -26,7 +26,7 @@
     "tinyrainbow": "^3.1.0",
     "typescript": "^6.0.3",
     "undici": "7.29.0",
-    "vitest": "^4.1.7",
+    "vitest": "^4.1.11",
     "vitest-evals": "0.16.1",
     "zod": "catalog:"
   }
