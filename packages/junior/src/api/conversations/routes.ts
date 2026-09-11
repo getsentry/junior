@@ -20,6 +20,7 @@ import {
   conversationStatsReportSchema,
   createConversationBodySchema,
   createConversationMessageBodySchema,
+  stopConversationResponseSchema,
 } from "../schema/conversation";
 import { validateRequest } from "../validation";
 import { requireViewer } from "../viewer";
@@ -38,6 +39,7 @@ import { readConversationFeed } from "./list";
 import { cancelConversationPendingMessagesForViewer } from "./cancel-pending-messages";
 import { requireConversationPendingMessages } from "./pending-messages";
 import { readConversationStats } from "./stats";
+import { stopConversationForViewer } from "./stop";
 
 /** Create the HTTP routes owned by the conversations API. */
 export function createConversationRoutes(options: {
@@ -109,6 +111,24 @@ export function createConversationRoutes(options: {
       return jsonResponse(
         acceptedConversationMessageSchema,
         await appendConversationMessageForViewer(viewer, conversationId, body),
+      );
+    },
+  );
+
+  app.post(
+    "/:conversationId/stop",
+    requireViewer,
+    validateRequest(
+      "param",
+      conversationParamsSchema,
+      "Invalid route parameters.",
+    ),
+    async (context) => {
+      const viewer = context.get("viewer");
+      const { conversationId } = context.req.valid("param");
+      return jsonResponse(
+        stopConversationResponseSchema,
+        await stopConversationForViewer(viewer, conversationId),
       );
     },
   );
