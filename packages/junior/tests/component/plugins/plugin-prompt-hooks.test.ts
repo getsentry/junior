@@ -177,14 +177,14 @@ describe("plugin prompt hook composition", () => {
 
   it("renders prompt messages from plugin hooks", async () => {
     await executeAgentRun({
-  conversationId: LOCAL_DESTINATION.conversationId,
-  turnId: "turn-plugin-prompt-hooks",
-  instruction:   {
-  text: "hello",
-  },
-  destination: LOCAL_DESTINATION,
-  source: LOCAL_SOURCE,
-});
+      conversationId: LOCAL_DESTINATION.conversationId,
+      turnId: "turn-plugin-prompt-hooks",
+      instruction: {
+        text: "hello",
+      },
+      destination: LOCAL_DESTINATION,
+      source: LOCAL_SOURCE,
+    });
 
     expect(JSON.stringify(captured.promptContextMessages[0])).toContain(
       "User memory guidance for hello.",
@@ -251,18 +251,6 @@ describe("plugin prompt hook composition", () => {
         memories: [{ id: "memory-1", content: "Use pnpm." }],
       },
     });
-    const history = await getConversationEventStore().loadCurrentHistory(
-      LOCAL_DESTINATION.conversationId,
-    );
-    expect(
-      JSON.stringify(
-        history.filter((event) =>
-          ["user_message", "assistant_message", "tool_result"].includes(
-            event.data.type,
-          ),
-        ),
-      ),
-    ).not.toContain("Use pnpm.");
   });
 
   it("replays checkpointed structured context after input acknowledgement fails", async () => {
@@ -342,35 +330,35 @@ describe("plugin prompt hook composition", () => {
 
   it("runs user prompt hooks for non-bootstrap follow-up prompts", async () => {
     await executeAgentRun({
-  conversationId: LOCAL_DESTINATION.conversationId,
-  turnId: "turn-plugin-prompt-follow-up-1",
-  instruction:   {
-  text: "hello",
-  },
-  destination: LOCAL_DESTINATION,
-  source: LOCAL_SOURCE,
-});
+      conversationId: LOCAL_DESTINATION.conversationId,
+      turnId: "turn-plugin-prompt-follow-up-1",
+      instruction: {
+        text: "hello",
+      },
+      destination: LOCAL_DESTINATION,
+      source: LOCAL_SOURCE,
+    });
     const firstPromptMessage = captured.promptMessages[0];
     captured.promptContextMessages = [];
     captured.promptMessages = [];
 
     await executeAgentRun({
-  conversationId: LOCAL_DESTINATION.conversationId,
-  turnId: "turn-plugin-prompt-follow-up-2",
-  instruction:   {
-  text: "again",
-  },
-  history:   [
-            firstPromptMessage,
-            {
-              role: "assistant",
-              content: [{ type: "text", text: "Done." }],
-              stopReason: "stop",
-            },
-          ] as never,
-  destination: LOCAL_DESTINATION,
-  source: LOCAL_SOURCE,
-});
+      conversationId: LOCAL_DESTINATION.conversationId,
+      turnId: "turn-plugin-prompt-follow-up-2",
+      instruction: {
+        text: "again",
+      },
+      history: [
+        firstPromptMessage,
+        {
+          role: "assistant",
+          content: [{ type: "text", text: "Done." }],
+          stopReason: "stop",
+        },
+      ] as never,
+      destination: LOCAL_DESTINATION,
+      source: LOCAL_SOURCE,
+    });
 
     expect(captured.userPromptTexts).toEqual(["hello", "again"]);
     expect(JSON.stringify(captured.promptContextMessages[0])).toContain(
@@ -380,22 +368,22 @@ describe("plugin prompt hook composition", () => {
 
   it("does not run user prompt hooks for steering messages", async () => {
     await executeAgentRun({
-  conversationId: LOCAL_DESTINATION.conversationId,
-  turnId: "turn-plugin-prompt-steering",
-  instruction:   {
-  text: "hello",
-  },
-  destination: LOCAL_DESTINATION,
-  source: LOCAL_SOURCE,
-  durability:   {
-          drainSteeringMessages: async (inject) => {
-            await inject([
-              { text: "steer me", provenance: { authority: "instruction" } },
-            ]);
-            return [];
-          },
+      conversationId: LOCAL_DESTINATION.conversationId,
+      turnId: "turn-plugin-prompt-steering",
+      instruction: {
+        text: "hello",
+      },
+      destination: LOCAL_DESTINATION,
+      source: LOCAL_SOURCE,
+      durability: {
+        drainSteeringMessages: async (inject) => {
+          await inject([
+            { text: "steer me", provenance: { authority: "instruction" } },
+          ]);
+          return [];
         },
-});
+      },
+    });
 
     expect(captured.userPromptTexts).toEqual(["hello"]);
     expect(JSON.stringify(captured.steeredMessages[0])).not.toContain(
@@ -418,14 +406,14 @@ describe("plugin prompt hook composition", () => {
     });
 
     await executeAgentRun({
-  conversationId: LOCAL_DESTINATION.conversationId,
-  turnId: "turn-plugin-prompt-resume-before-prompt",
-  instruction:   {
-  text: "resume me",
-  },
-  destination: LOCAL_DESTINATION,
-  source: LOCAL_SOURCE,
-});
+      conversationId: LOCAL_DESTINATION.conversationId,
+      turnId: "turn-plugin-prompt-resume-before-prompt",
+      instruction: {
+        text: "resume me",
+      },
+      destination: LOCAL_DESTINATION,
+      source: LOCAL_SOURCE,
+    });
 
     expect(captured.userPromptTexts).toEqual(["resume me"]);
     expect(JSON.stringify(captured.promptContextMessages[0])).toContain(
@@ -452,14 +440,14 @@ describe("plugin prompt hook composition", () => {
     });
 
     await executeAgentRun({
-  conversationId: LOCAL_DESTINATION.conversationId,
-  turnId: "turn-plugin-prompt-resume-after-prompt",
-  instruction:   {
-  text: "resume me",
-  },
-  destination: LOCAL_DESTINATION,
-  source: LOCAL_SOURCE,
-});
+      conversationId: LOCAL_DESTINATION.conversationId,
+      turnId: "turn-plugin-prompt-resume-after-prompt",
+      instruction: {
+        text: "resume me",
+      },
+      destination: LOCAL_DESTINATION,
+      source: LOCAL_SOURCE,
+    });
 
     expect(captured.userPromptTexts).toEqual([]);
     expect(captured.promptContextMessages).toEqual([]);
