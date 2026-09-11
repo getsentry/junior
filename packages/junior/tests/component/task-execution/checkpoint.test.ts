@@ -1882,52 +1882,74 @@ describe("turn checkpoint", () => {
     });
   });
 
-  it("restores unmatched runtime context before an active-turn replacement", async () => {
+  it("ignores model context left in an old turn cursor", async () => {
     const { loadTurnCheckpoint } =
       await import("@/chat/task-execution/checkpoint");
+    const { getStateAdapter } = await import("@/chat/state/adapter");
+    const { turnCursorKey } =
+      await import("@/chat/task-execution/turn-cursor-keys");
     const { upsertTurnRecord } =
       await import("@/chat/task-execution/turn-cursor");
-    const runtimeContext: PiMessage = {
-      role: "user",
-      content: [
-        {
-          type: "text",
-          text: "<runtime-turn-context>trusted runtime context</runtime-turn-context>",
-        },
-      ],
-      timestamp: 1,
-    };
+    const conversationId = "conversation-old-context-resume";
+    const turnId = "turn-old-context-resume";
     const instruction: PiMessage = {
       role: "user",
       content: [{ type: "text", text: "finish the current request" }],
       timestamp: 2,
     };
-    const summary: PiMessage = {
+    const followup: PiMessage = {
       role: "user",
-      content: [{ type: "text", text: "active-turn summary" }],
+      content: [{ type: "text", text: "continue" }],
       timestamp: 3,
     };
 
     await upsertTurnRecord({
-      conversationId: "conversation-active-compaction-resume",
-      turnId: "turn-active-compaction-resume",
+      conversationId,
+      turnId,
       sliceId: 1,
       state: "paused",
       resumeReason: "yield",
-      piMessages: [runtimeContext, instruction, summary],
+      piMessages: [instruction],
     });
+    const state = getStateAdapter();
+    const key = turnCursorKey(conversationId, turnId);
+    const stored = await state.get(key);
+    await state.set(
+      key,
+      {
+        ...(stored as Record<string, unknown>),
+        runtimeContext: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: "<runtime-turn-context>old context</runtime-turn-context>",
+              },
+            ],
+            timestamp: 1,
+          },
+        ],
+      },
+      60_000,
+    );
 
-    const resumed = await loadTurnCheckpoint({
-      conversationId: "conversation-active-compaction-resume",
-      turnId: "turn-active-compaction-resume",
+    const resumed = await loadTurnCheckpoint({ conversationId, turnId });
+
+    expect(resumed).toMatchObject({
+      resumed: true,
+      record: { piMessages: [instruction] },
     });
-
-    expect(resumed.resumed).toBe(true);
-    expect(resumed.record?.piMessages).toEqual([
-      runtimeContext,
-      instruction,
-      summary,
-    ]);
+    await expect(
+      upsertTurnRecord({
+        conversationId,
+        turnId,
+        sliceId: 2,
+        state: "paused",
+        resumeReason: "yield",
+        piMessages: [instruction, followup],
+      }),
+    ).resolves.toMatchObject({ piMessages: [instruction, followup] });
   });
 
   it("restores mid-run AGENTS context at its causal position", async () => {

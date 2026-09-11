@@ -17,7 +17,6 @@ import { z } from "zod";
 import { piMessageSchema, type PiMessage } from "@/chat/pi/messages";
 import { toStoredSlackActor, type Actor } from "@/chat/actor";
 import {
-  contextProvenance,
   instructionActors,
   instructionProvenanceFor,
   type ConversationMessageProvenance,
@@ -33,7 +32,6 @@ import { getStateAdapter } from "@/chat/state/adapter";
 import { fenceLock, MUTATION_LOCK_TTL_MS, withLock } from "@/chat/state/locks";
 import { botConfig } from "@/chat/config";
 import { getConversationEventStore, getConversationStore } from "@/chat/db";
-import { isAgentsInstructionsMessage } from "@/chat/repository-instructions";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import type {
   ConversationExecution,
@@ -189,7 +187,11 @@ interface StoredTurnRecord extends Omit<
    * projected message before the prompt, or -1 when the turn starts the epoch.
    */
   turnStartSeq?: number;
-  /** Legacy bootstrap from cursors written before SQL stored exact model history. */
+  /**
+   * Old cursors can contain model context that SQL did not retain. Parse the
+   * field so those cursors remain readable, but do not add it back during
+   * resume. Adding it would rewrite the committed history prefix.
+   */
   runtimeContext?: PiMessage[];
 }
 
@@ -427,14 +429,8 @@ function materializeTurnRecord(
   stored: StoredTurnRecord,
   piProjection: ConversationMessageProjection,
   turnStartMessageIndex?: number,
-  restoreVolatileContext = true,
   runtimeMetrics?: ConversationRuntimeMetrics,
 ): TurnRecord {
-  const restoredProjection =
-    restoreVolatileContext &&
-    (stored.state === "running" || stored.state === "paused")
-      ? restoreRuntimeContext(piProjection, stored.runtimeContext)
-      : piProjection;
   return {
     ...definedProps({ actor: stored.actor }),
     schemaVersion: stored.schemaVersion,
@@ -446,8 +442,8 @@ function materializeTurnRecord(
     startedAtMs: stored.startedAtMs,
     lastProgressAtMs: stored.lastProgressAtMs,
     updatedAtMs: stored.updatedAtMs,
-    piMessages: restoredProjection.messages,
-    piMessageProvenance: restoredProjection.provenance,
+    piMessages: piProjection.messages,
+    piMessageProvenance: piProjection.provenance,
     actors: instructionActors(piProjection.provenance),
     cumulativeDurationMs: runtimeMetrics?.cumulativeDurationMs ?? 0,
     ...definedProps({
@@ -465,56 +461,6 @@ function materializeTurnRecord(
       traceId: stored.traceId,
       turnStartMessageIndex,
     }),
-  };
-}
-
-function restoreRuntimeContext(
-  projection: ConversationMessageProjection,
-  runtimeContext: PiMessage[] | undefined,
-): ConversationMessageProjection {
-  if (!runtimeContext || runtimeContext.length === 0) return projection;
-  const restoredMessages = [...projection.messages];
-  const restoredProvenance = [...projection.provenance];
-  const unmatchedRuntimeContext: PiMessage[] = [];
-  for (const runtimeMessage of runtimeContext) {
-    const runtime = runtimeMessage as {
-      timestamp?: unknown;
-      content?: unknown;
-    };
-    const targetIndex = restoredMessages.findIndex((message) => {
-      const candidate = message as { role?: unknown; timestamp?: unknown };
-      return (
-        candidate.role === "user" && candidate.timestamp === runtime.timestamp
-      );
-    });
-    if (targetIndex < 0) {
-      if (isAgentsInstructionsMessage(runtimeMessage)) {
-        const followingIndex = restoredMessages.findIndex((message) => {
-          const timestamp = (message as { timestamp?: unknown }).timestamp;
-          return (
-            typeof runtime.timestamp === "number" &&
-            typeof timestamp === "number" &&
-            timestamp > runtime.timestamp
-          );
-        });
-        const insertionIndex =
-          followingIndex < 0 ? restoredMessages.length : followingIndex;
-        restoredMessages.splice(insertionIndex, 0, runtimeMessage);
-        restoredProvenance.splice(insertionIndex, 0, contextProvenance);
-      } else {
-        unmatchedRuntimeContext.push(runtimeMessage);
-      }
-      continue;
-    }
-    restoredMessages.splice(targetIndex, 0, runtimeMessage);
-    restoredProvenance.splice(targetIndex, 0, contextProvenance);
-  }
-  return {
-    messages: [...unmatchedRuntimeContext, ...restoredMessages],
-    provenance: [
-      ...unmatchedRuntimeContext.map(() => contextProvenance),
-      ...restoredProvenance,
-    ],
   };
 }
 
@@ -572,19 +518,11 @@ async function materializeStoredTurnRecord(
 
   const conversation = await getConversationStore().get({ conversationId });
   const executionMetrics = executionMetricsForTurn(conversation, turnId);
-  return materializeTurnRecord(
-    parsed,
-    piProjection,
-    turnStartMessageIndex,
-    !followsReplacement &&
-      (parsed.historyVersion === undefined ||
-        parsed.historyVersion === currentHistoryVersion),
-    {
-      channelName: conversation?.channelName,
-      cumulativeDurationMs: executionMetrics?.durationMs,
-      cumulativeUsage: executionMetrics?.usage,
-    },
-  );
+  return materializeTurnRecord(parsed, piProjection, turnStartMessageIndex, {
+    channelName: conversation?.channelName,
+    cumulativeDurationMs: executionMetrics?.durationMs,
+    cumulativeUsage: executionMetrics?.usage,
+  });
 }
 
 /** Read a turn record pinned to the history version containing its checkpoint. */
@@ -720,7 +658,6 @@ async function setStoredRecord(args: {
       provenance: [...args.piMessageProvenance],
     },
     args.turnStartMessageIndex,
-    true,
     args.runtimeMetrics,
   );
 }
