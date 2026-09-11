@@ -33,10 +33,10 @@ describe("updatePullRequestFeedback", () => {
     expect(toolContext([]).tool.exposure).toBe("direct");
   });
 
-  it("adds the eyes reaction for a fresh conversation comment", async () => {
+  it("adds the addressed reaction for a fresh conversation comment", async () => {
     const { fetch, tool } = toolContext([
       response([]),
-      response({ id: 91, content: "eyes", user: { id: BOT_USER_ID } }, 201),
+      response({ id: 91, content: "+1", user: { id: BOT_USER_ID } }, 201),
     ]);
 
     await expect(
@@ -45,15 +45,15 @@ describe("updatePullRequestFeedback", () => {
           repo: "getsentry/junior",
           commentKind: "conversation",
           commentId: 55,
-          status: "reviewing",
+          status: "addressed",
         },
-        { toolCallId: "mark-reviewing" },
+        { toolCallId: "mark-addressed" },
       ),
     ).resolves.toEqual({
       target: "updatePullRequestFeedback",
       repo: "getsentry/junior",
       commentId: 55,
-      status: "reviewing",
+      status: "addressed",
       reactionId: 91,
     });
 
@@ -70,7 +70,7 @@ describe("updatePullRequestFeedback", () => {
       "/repos/getsentry/junior/issues/comments/55/reactions",
     );
     await expect(createRequest.text()).resolves.toBe(
-      JSON.stringify({ content: "eyes" }),
+      JSON.stringify({ content: "+1" }),
     );
   });
 
@@ -151,10 +151,28 @@ describe("updatePullRequestFeedback", () => {
     expect(fetch).toHaveBeenCalledTimes(3);
   });
 
-  it("is idempotent when the status reaction already exists", async () => {
+  it("is idempotent when the outcome reaction already exists", async () => {
     const { fetch, tool } = toolContext([
-      response([{ id: 9, content: "eyes", user: { id: BOT_USER_ID } }]),
+      response([{ id: 9, content: "+1", user: { id: BOT_USER_ID } }]),
     ]);
+
+    await expect(
+      tool.execute?.(
+        {
+          repo: "getsentry/junior",
+          commentKind: "conversation",
+          commentId: 55,
+          status: "addressed",
+        },
+        { toolCallId: "already-addressed" },
+      ),
+    ).resolves.toMatchObject({ status: "addressed", reactionId: 9 });
+
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not expose the webhook-owned reviewing state", async () => {
+    const { fetch, tool } = toolContext([]);
 
     await expect(
       tool.execute?.(
@@ -164,10 +182,10 @@ describe("updatePullRequestFeedback", () => {
           commentId: 55,
           status: "reviewing",
         },
-        { toolCallId: "already-reviewing" },
+        { toolCallId: "mark-reviewing" },
       ),
-    ).resolves.toMatchObject({ status: "reviewing", reactionId: 9 });
+    ).rejects.toThrow("Invalid GitHub updatePullRequestFeedback input");
 
-    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(fetch).not.toHaveBeenCalled();
   });
 });
