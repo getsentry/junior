@@ -1,9 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
 import { createJuniorApi } from "@/api";
-import {
-  conversationStatsReportSchema,
-  type ConversationStatsReport,
-} from "@/api/schema";
+import { conversationStatsReportSchema } from "@/api/schema";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
 import { createSqlStore } from "@/chat/conversations/sql/store";
@@ -194,9 +191,7 @@ describe("conversation stats API", () => {
         "http://localhost/api/conversations/stats",
       );
       expect(response.status).toBe(200);
-      const report = conversationStatsReportSchema.parse(
-        await response.json(),
-      ) satisfies ConversationStatsReport;
+      const report = conversationStatsReportSchema.parse(await response.json());
 
       expect(report).toMatchObject({
         active: 1,
@@ -335,9 +330,7 @@ describe("conversation stats API", () => {
         "http://localhost/api/conversations/stats",
       );
       expect(response.status).toBe(200);
-      const report = conversationStatsReportSchema.parse(
-        await response.json(),
-      ) satisfies ConversationStatsReport;
+      const report = conversationStatsReportSchema.parse(await response.json());
 
       expect(report).toMatchObject({
         conversations: 5_001,
