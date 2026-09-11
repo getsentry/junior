@@ -79,7 +79,10 @@ describe("generateBrief", () => {
       prompt: "Write a Brief.",
       completeObject: async (request) => {
         capturedPrompt = request.prompt;
-        capturedSchema = z.toJSONSchema(request.schema);
+        capturedSchema = z.toJSONSchema(request.schema, {
+          target: "draft-7",
+          io: "input",
+        });
         return {
           costUsd: 0.0123,
           object: {
@@ -416,10 +419,12 @@ describe("generateBrief", () => {
               outcome: { status: "done", text: "Done" },
               decisions: Array.from({ length: 25 }, (_, index) => ({
                 text: `Decision ${index}`,
+                by: null,
                 kind: "assumed" as const,
               })),
               openDecisions: Array.from({ length: 25 }, (_, index) => ({
                 text: `Open ${index}`,
+                owner: null,
               })),
               facts: Array.from({ length: 25 }, (_, index) => `Fact ${index}`),
               keywords: Array.from(

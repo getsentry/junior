@@ -37,7 +37,7 @@ const modelBriefSchema = z
       z
         .object({
           text: z.string().trim().min(1),
-          by: z.string().trim().min(1).nullable().default(null),
+          by: z.string().trim().min(1).nullable(),
           kind: z.enum(["stated", "confirmed", "assumed"]),
         })
         .strict(),
@@ -46,7 +46,7 @@ const modelBriefSchema = z
       z
         .object({
           text: z.string().trim().min(1),
-          owner: z.string().trim().min(1).nullable().default(null),
+          owner: z.string().trim().min(1).nullable(),
         })
         .strict(),
     ),
