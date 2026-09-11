@@ -1,11 +1,13 @@
-import type { Message } from "@earendil-works/pi-ai";
+import type { Context, Message } from "@earendil-works/pi-ai";
 import { vi } from "vitest";
 import { createConversationWebHarness } from "./conversation";
 import { createModelStream } from "./model-stream";
 
+type ModelInput = Pick<Context, "systemPrompt"> & { messages: Message[] };
+
 type Agent = {
   run(prompt: string): Promise<void>;
-  snapshot(): Message[];
+  snapshot(): ModelInput;
 };
 
 /** Create an Agent that runs complete Conversation Turns through production code. */
@@ -45,7 +47,10 @@ export async function createAgent(): Promise<Agent> {
     snapshot() {
       const context = model.mock.lastCall?.[1];
       if (!context) throw new Error("No model request to snapshot");
-      return structuredClone(context.messages);
+      return {
+        systemPrompt: context.systemPrompt,
+        messages: structuredClone(context.messages),
+      };
     },
   };
 }
