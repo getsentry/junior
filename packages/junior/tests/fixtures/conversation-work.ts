@@ -431,6 +431,8 @@ export type ConversationWorkSlackHarness = {
     user?: string;
   }) => Promise<Response>;
   mention: (user: string, text: string) => Promise<string>;
+  /** Run one complete Slack Turn for the default test actor. */
+  run: (text: string) => Promise<void>;
   /** Non-mention thread message (subscribed path). */
   passive: (user: string, text: string) => Promise<string>;
 };
@@ -518,6 +520,19 @@ export async function createConversationWorkSlackHarness(
     return ts;
   };
 
+  const drain = async () => {
+    for (let i = 0; i < 12 && wakes.hasQueuedMessages(); i += 1) {
+      await processConversationQueueMessage(wakes.takeMessage(), {
+        queue: wakes,
+        run: work.run,
+        state,
+      });
+    }
+    if (wakes.hasQueuedMessages()) {
+      throw new Error("queue still has work after drain");
+    }
+  };
+
   return {
     agentRunner,
     state,
@@ -548,18 +563,7 @@ export async function createConversationWorkSlackHarness(
         ? await process()
         : await runWithTurnRequestDeadline(process, requestStartedAtMs);
     },
-    drain: async () => {
-      for (let i = 0; i < 12 && wakes.hasQueuedMessages(); i += 1) {
-        await processConversationQueueMessage(wakes.takeMessage(), {
-          queue: wakes,
-          run: work.run,
-          state,
-        });
-      }
-      if (wakes.hasQueuedMessages()) {
-        throw new Error("queue still has work after drain");
-      }
-    },
+    drain,
     send: async (input = {}) =>
       await handleSlackWebhookAndFlush({
         request: slackWebhookRequest(
@@ -572,6 +576,10 @@ export async function createConversationWorkSlackHarness(
       }),
     mention: async (user: string, text: string) =>
       await post({ eventType: "app_mention", user, text }),
+    run: async (text: string) => {
+      await post({ eventType: "app_mention", user: "U123", text });
+      await drain();
+    },
     passive: async (user: string, text: string) =>
       await post({ eventType: "message", user, text }),
   };

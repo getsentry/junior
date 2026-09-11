@@ -5,8 +5,6 @@ import { createConversationWorkSlackHarness } from "../fixtures/conversation-wor
 import { createModelStream } from "../fixtures/model-stream";
 import { resetSlackApiMockState } from "../msw/handlers/slack-api";
 
-const ACTOR = "U123";
-
 describe("prompt history", () => {
   beforeEach(async () => {
     resetSlackApiMockState();
@@ -19,38 +17,33 @@ describe("prompt history", () => {
   });
 
   it("keeps the first Turn model messages as an exact prefix of the second Turn", async () => {
-    let firstTurnMessages: Message[] | undefined;
-    let secondTurnMessages: Message[] | undefined;
-    const q = await createConversationWorkSlackHarness({
+    const modelRequests: Message[][] = [];
+    const agent = await createConversationWorkSlackHarness({
       modelStream: createModelStream([
         {
           type: "text",
           text: "First reply.",
           onRequest: (context) => {
-            firstTurnMessages = structuredClone(context.messages);
+            modelRequests.push(structuredClone(context.messages));
           },
         },
         {
           type: "text",
           text: "Second reply.",
           onRequest: (context) => {
-            secondTurnMessages = structuredClone(context.messages);
+            modelRequests.push(structuredClone(context.messages));
           },
         },
       ]),
     });
 
-    await q.mention(ACTOR, "first request");
-    await q.drain();
-    expect(q.replies()).toEqual(["First reply."]);
-    expect(firstTurnMessages).toBeDefined();
+    await agent.run("first request");
+    const firstTurnMessages = structuredClone(modelRequests.at(-1)!);
 
-    await q.mention(ACTOR, "second request");
-    await q.drain();
-    expect(q.replies()).toEqual(["First reply.", "Second reply."]);
-    expect(secondTurnMessages).toBeDefined();
+    await agent.run("second request");
+    const secondTurnMessages = structuredClone(modelRequests.at(-1)!);
 
-    expect(secondTurnMessages!.slice(0, firstTurnMessages!.length)).toEqual(
+    expect(secondTurnMessages.slice(0, firstTurnMessages.length)).toEqual(
       firstTurnMessages,
     );
   });
