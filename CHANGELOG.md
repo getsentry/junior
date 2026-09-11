@@ -1,4 +1,19 @@
 # Changelog
+## 0.212.0
+
+### New Features ✨
+
+- (release) Allow exact version override by @sentry-junior in [#1852](https://github.com/getsentry/junior/pull/1852)
+
+### Bug Fixes 🐛
+
+- (chat) Preserve model history across Turns by @sentry-junior in [#1848](https://github.com/getsentry/junior/pull/1848)
+- (github) Keep reviewing reactions out of agent tools by @sentry-junior in [#1851](https://github.com/getsentry/junior/pull/1851)
+
+### Internal Changes 🔧
+
+- (metrics) Store Conversation Run metrics as rows by @sentry-junior in [#1847](https://github.com/getsentry/junior/pull/1847)
+
 ## 0.210.2
 
 - revert: Acknowledge large tasks before tools by @sentry-junior in [#1846](https://github.com/getsentry/junior/pull/1846)
