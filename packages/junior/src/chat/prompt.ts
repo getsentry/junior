@@ -586,7 +586,8 @@ function buildContextSection(params: {
   return renderTagBlock("context", body);
 }
 
-function buildCapabilitiesSection(params: {
+/** Render the capability catalog before conversation history for prompt-cache reuse. */
+export function buildCapabilitiesPrompt(params: {
   availableSkills: SkillMetadata[];
   activeMcpCatalogs: ActiveMcpCatalogSummary[];
   toolGuidance?: ToolPromptContext[];
@@ -615,7 +616,7 @@ function buildCapabilitiesSection(params: {
     return null;
   }
 
-  return blocks.join("\n\n");
+  return renderTagBlock("runtime-capabilities", blocks.join("\n\n"));
 }
 
 function buildPluginPromptContributionsSection(
@@ -722,18 +723,7 @@ export function buildTurnContextPrompt(
     return null;
   }
 
-  // Pi-agent discloses only stable runtime tools natively. MCP tool catalogs
-  // are dynamic data, so expose them through loadSkill/searchMcpTools/
-  // <active-mcp-catalogs> and execute them through callMcpTool without mutating
-  // the native tool list.
   const runtimeSections = [
-    includeSessionContext
-      ? buildCapabilitiesSection({
-          availableSkills: params.availableSkills,
-          activeMcpCatalogs: params.activeMcpCatalogs ?? [],
-          toolGuidance: params.toolGuidance ?? [],
-        })
-      : null,
     pluginPromptContributions,
     includeSessionContext
       ? buildContextSection({
