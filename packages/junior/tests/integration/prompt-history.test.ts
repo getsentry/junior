@@ -1,50 +1,21 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { Message } from "@earendil-works/pi-ai";
-import { disconnectStateAdapter } from "@/chat/state/adapter";
-import { createConversationWorkSlackHarness } from "../fixtures/conversation-work";
-import { createModelStream } from "../fixtures/model-stream";
-import { resetSlackApiMockState } from "../msw/handlers/slack-api";
+import { afterEach, describe, expect, it } from "vitest";
+import { closeConversationFixture } from "../fixtures/conversation";
+import { createAgent } from "../fixtures/agent";
 
 describe("prompt history", () => {
-  beforeEach(async () => {
-    resetSlackApiMockState();
-    await disconnectStateAdapter();
-  });
-
   afterEach(async () => {
-    resetSlackApiMockState();
-    await disconnectStateAdapter();
+    await closeConversationFixture();
   });
 
-  it("keeps the first Turn model messages as an exact prefix of the second Turn", async () => {
-    const modelRequests: Message[][] = [];
-    const agent = await createConversationWorkSlackHarness({
-      modelStream: createModelStream([
-        {
-          type: "text",
-          text: "First reply.",
-          onRequest: (context) => {
-            modelRequests.push(structuredClone(context.messages));
-          },
-        },
-        {
-          type: "text",
-          text: "Second reply.",
-          onRequest: (context) => {
-            modelRequests.push(structuredClone(context.messages));
-          },
-        },
-      ]),
-    });
+  it("keeps each model request as an exact prefix of the next", async () => {
+    const agent = await createAgent();
 
     await agent.run("first request");
-    const firstTurnMessages = structuredClone(modelRequests.at(-1)!);
+    const first = agent.snapshot();
 
     await agent.run("second request");
-    const secondTurnMessages = structuredClone(modelRequests.at(-1)!);
+    const second = agent.snapshot();
 
-    expect(secondTurnMessages.slice(0, firstTurnMessages.length)).toEqual(
-      firstTurnMessages,
-    );
+    expect(second.slice(0, first.length)).toEqual(first);
   });
 });

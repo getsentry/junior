@@ -62,6 +62,10 @@ Agent integration tests use `fixtures/model-stream.ts` to set fixed model
 output. Use it with the real agent. Do not replace the agent runner only to
 control model output.
 
+Use `fixtures/agent.ts` when a test only needs complete provider-neutral Turns.
+Its `run` method uses the real mailbox, queue, Conversation Turn, and agent path.
+Its `snapshot` method copies the Messages from the latest model request.
+
 ## Postgres Harness
 
 When `JUNIOR_TEST_DATABASE_URL` is configured, global setup creates a migrated
