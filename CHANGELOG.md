@@ -1,4 +1,21 @@
 # Changelog
+## 0.210.0
+
+### New Features ✨
+
+- (slack) Acknowledge large tasks before tools by @sentry-junior in [#1840](https://github.com/getsentry/junior/pull/1840)
+
+### Bug Fixes 🐛
+
+- (briefs) Make output schema provider-safe by @sentry-junior in [#1842](https://github.com/getsentry/junior/pull/1842)
+- (ci) Use preinstalled Chrome for dashboard e2e by @sentry-junior in [#1841](https://github.com/getsentry/junior/pull/1841)
+- (db) Emit OpenTelemetry query metadata by @sentry-junior in [#1837](https://github.com/getsentry/junior/pull/1837)
+- (events) Wait for watch event bursts by @sentry-junior in [#1831](https://github.com/getsentry/junior/pull/1831)
+
+### Other
+
+- Default dashboard timestamps to the viewer's browser timezone by @sentry-junior in [#1800](https://github.com/getsentry/junior/pull/1800)
+
 ## 0.209.0
 
 ### Bug Fixes 🐛
