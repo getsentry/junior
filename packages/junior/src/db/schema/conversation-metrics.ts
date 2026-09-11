@@ -31,6 +31,7 @@ export const juniorConversationMetrics = pgTable(
     metric: text("metric").$type<ConversationMetric>().notNull(),
     value: doublePrecision("value").notNull(),
     occurredAt: timestamptz("occurred_at").notNull(),
+    updatedAt: timestamptz("updated_at").notNull(),
   },
   (table) => [
     primaryKey({

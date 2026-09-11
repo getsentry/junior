@@ -169,31 +169,43 @@ type MetricRow = {
 
 function applyMetricBuckets(
   rows: MetricRow[],
-  facts: ConversationMetricBucket[],
+  metrics: ConversationMetricBucket[],
 ): MetricRow[] {
-  const byDate = new Map(rows.map((row) => [row.date, row]));
-  for (const fact of facts) {
-    const row = byDate.get(fact.date) ?? {
+  const byDate = new Map<string, MetricRow>(
+    rows.map((row) => [
+      row.date,
+      {
+        ...row,
+        cachedInputTokens: null,
+        costUsd: null,
+        durationMs: 0,
+        inputTokens: null,
+        tokens: null,
+      },
+    ]),
+  );
+  for (const metric of metrics) {
+    const row = byDate.get(metric.date) ?? {
       cachedInputTokens: null,
       conversations: 0,
       costUsd: null,
-      date: fact.date,
+      date: metric.date,
       durationMs: 0,
       inputTokens: null,
       tokens: null,
     };
-    if (fact.metric === "cached_input_tokens") {
-      row.cachedInputTokens = fact.value;
-    } else if (fact.metric === "cost_usd") {
-      row.costUsd = fact.value;
-    } else if (fact.metric === "duration_ms") {
-      row.durationMs = fact.value;
-    } else if (fact.metric === "input_tokens") {
-      row.inputTokens = fact.value;
-    } else if (fact.metric === "total_tokens") {
-      row.tokens = fact.value;
+    if (metric.metric === "cached_input_tokens") {
+      row.cachedInputTokens = metric.value;
+    } else if (metric.metric === "cost_usd") {
+      row.costUsd = metric.value;
+    } else if (metric.metric === "duration_ms") {
+      row.durationMs = metric.value;
+    } else if (metric.metric === "input_tokens") {
+      row.inputTokens = metric.value;
+    } else if (metric.metric === "total_tokens") {
+      row.tokens = metric.value;
     }
-    byDate.set(fact.date, row);
+    byDate.set(metric.date, row);
   }
   return [...byDate.values()];
 }
@@ -397,8 +409,8 @@ async function aggregateStats(db: JuniorDatabase, start: Date, end: Date) {
     locationRows,
     metricRows,
     metricHourRows,
-    metricFacts,
-    metricHourFacts,
+    dayMetrics,
+    hourMetrics,
   ] = await Promise.all([
     db
       .select(treeAggregateColumns)
@@ -520,8 +532,8 @@ async function aggregateStats(db: JuniorDatabase, start: Date, end: Date) {
   return {
     actorRows,
     locationRows,
-    metricHourRows: applyMetricBuckets(metricHourRows, metricHourFacts),
-    metricRows: applyMetricBuckets(metricRows, metricFacts),
+    metricHourRows: applyMetricBuckets(metricHourRows, hourMetrics),
+    metricRows: applyMetricBuckets(metricRows, dayMetrics),
     totals: totalsRows[0],
   };
 }

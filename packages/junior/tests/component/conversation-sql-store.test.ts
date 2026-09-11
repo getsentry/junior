@@ -1061,8 +1061,23 @@ INSERT INTO junior_conversations (
       await migrateSchema(fixture.sql);
       await store.recordExecution({
         conversationId: CONVERSATION_ID,
-        createdAtMs: 1_000,
+        createdAtMs: 500,
         destination: inboundMessage("exec-metrics").destination,
+        execution: {
+          runId: "run-opaque",
+          status: "running",
+          updatedAtMs: 1_000,
+        },
+        metrics: {
+          durationMs: 100,
+          usage: { totalTokens: 100, cost: { total: 0.01 } },
+        },
+        lastActivityAtMs: 1_000,
+        updatedAtMs: 1_000,
+      });
+      await store.recordExecution({
+        conversationId: CONVERSATION_ID,
+        createdAtMs: 1_000,
         execution: {
           runId: "run-1",
           status: "running",
@@ -1116,6 +1131,18 @@ INSERT INTO junior_conversations (
         lastActivityAtMs: 4_000,
         updatedAtMs: 4_000,
       });
+      await store.recordExecution({
+        conversationId: CONVERSATION_ID,
+        createdAtMs: 1_000,
+        execution: {
+          runId: "run-1",
+          status: "running",
+          updatedAtMs: 3_500,
+        },
+        metrics: { durationMs: 1, usage: { totalTokens: 1 } },
+        lastActivityAtMs: 3_500,
+        updatedAtMs: 3_500,
+      });
 
       const [metrics] = await fixture.sql.query<{
         durationMs: number;
@@ -1135,17 +1162,13 @@ WHERE conversation_id = $1
         [CONVERSATION_ID],
       );
       expect(metrics).toMatchObject({
-        durationMs: 1_500,
+        durationMs: 1_600,
         executionDurationMs: 1_500,
         metricRunId: "run-1",
         usage: {
-          cacheCreationTokens: 2,
-          cachedInputTokens: 5,
-          cost: { total: 0.015 },
-          inputTokens: 5,
-          outputTokens: 3,
+          cost: { total: 0.025 },
           reasoningTokens: 2,
-          totalTokens: 15,
+          totalTokens: 115,
         },
       });
       expect(

@@ -61,7 +61,7 @@ describe("conversation stats API", () => {
       });
       await store.recordExecution({
         conversationId: "slack:D1:failed",
-        createdAtMs: Date.parse("2026-06-15T11:00:00.000Z"),
+        createdAtMs: Date.parse("2026-06-14T23:55:00.000Z"),
         destination: {
           platform: "slack",
           teamId: "T1",
@@ -271,29 +271,51 @@ describe("conversation stats API", () => {
         deny: 1,
         requests: 3,
       });
+      expect(report.metricDays.at(-2)).toEqual(
+        expect.objectContaining({
+          conversations: 0,
+          costUsd: 0.0015,
+          date: "2026-06-14",
+          durationMs: 500,
+          tokens: 30,
+        }),
+      );
       expect(report.metricDays.at(-1)).toEqual(
         expect.objectContaining({
           cachedInputTokens: 300,
           conversations: 3,
-          costUsd: 0.0045,
+          costUsd: 0.003,
           date: "2026-06-15",
-          durationMs: 2_004,
+          durationMs: 1_504,
           inputTokens: 100,
-          tokens: 457,
+          tokens: 427,
         }),
       );
       expect(report.metricHours).toHaveLength(7 * 24);
       expect(report.metricSixHours).toHaveLength(7 * 4);
       expect(report.metricHours?.at(-1)?.date).toBe("2026-06-15T12");
       expect(
+        report.metricHours?.find((hour) => hour.date === "2026-06-14T23"),
+      ).toEqual(
+        expect.objectContaining({
+          conversations: 0,
+          costUsd: 0.0015,
+          date: "2026-06-14T23",
+          durationMs: 500,
+          tokens: 30,
+        }),
+      );
+      expect(
         report.metricHours?.find((hour) => hour.date === "2026-06-15T11"),
       ).toEqual(
         expect.objectContaining({
           cachedInputTokens: 300,
-          conversations: expect.any(Number),
+          conversations: 2,
+          costUsd: 0.003,
           date: "2026-06-15T11",
-          durationMs: expect.any(Number),
+          durationMs: 1_504,
           inputTokens: 100,
+          tokens: 427,
         }),
       );
       expect(

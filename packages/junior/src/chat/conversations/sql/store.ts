@@ -540,6 +540,7 @@ export class SqlStore implements ConversationStore {
           conversationId: args.conversationId,
           runId: args.execution.runId,
           occurredAtMs: args.createdAtMs,
+          updatedAtMs: incomingExecutionAt,
           ...args.metrics,
         });
         if (incomingIsFresh) {

@@ -42,10 +42,24 @@ export async function replaceConversationMetrics(
     conversationId: string;
     runId: string;
     occurredAtMs: number;
+    updatedAtMs: number;
     durationMs: number;
     usage?: AgentTurnUsage;
   },
 ): Promise<void> {
+  const [current] = await executor
+    .db()
+    .select({ updatedAt: juniorConversationMetrics.updatedAt })
+    .from(juniorConversationMetrics)
+    .where(
+      and(
+        eq(juniorConversationMetrics.conversationId, args.conversationId),
+        eq(juniorConversationMetrics.runId, args.runId),
+      ),
+    )
+    .limit(1);
+  if (current && current.updatedAt.getTime() > args.updatedAtMs) return;
+
   await executor
     .db()
     .delete(juniorConversationMetrics)
@@ -70,6 +84,7 @@ export async function replaceConversationMetrics(
             metric,
             value,
             occurredAt: new Date(args.occurredAtMs),
+            updatedAt: new Date(args.updatedAtMs),
           },
         ];
   });
@@ -82,21 +97,45 @@ export async function replaceConversationMetrics(
     where ${juniorConversationMetrics.conversationId} = ${args.conversationId}
       and ${juniorConversationMetrics.metric} = ${name}
   )`;
+  const totalTokens = metric("total_tokens");
+  const componentTokens = sql<number>`
+    coalesce(${metric("input_tokens")}, 0)
+      + coalesce(${metric("output_tokens")}, 0)
+      + coalesce(${metric("cached_input_tokens")}, 0)
+      + coalesce(${metric("cache_creation_tokens")}, 0)
+  `;
+  const hasComponents = sql`
+    ${metric("input_tokens")} is not null
+      or ${metric("output_tokens")} is not null
+      or ${metric("cached_input_tokens")} is not null
+      or ${metric("cache_creation_tokens")} is not null
+  `;
+  const cost = sql`case when ${metric("cost_usd")} is null then null
+    else jsonb_build_object('total', ${metric("cost_usd")}) end`;
   await executor
     .db()
     .update(juniorConversations)
     .set({
       durationMs: sql`coalesce(${metric("duration_ms")}, 0)`,
-      usage: sql`jsonb_strip_nulls(jsonb_build_object(
-        'totalTokens', ${metric("total_tokens")},
-        'inputTokens', ${metric("input_tokens")},
-        'outputTokens', ${metric("output_tokens")},
-        'cachedInputTokens', ${metric("cached_input_tokens")},
-        'cacheCreationTokens', ${metric("cache_creation_tokens")},
-        'reasoningTokens', ${metric("reasoning_tokens")},
-        'cost', case when ${metric("cost_usd")} is null then null
-          else jsonb_build_object('total', ${metric("cost_usd")}) end
-      ))`,
+      usage: sql`case
+        when ${totalTokens} is not null
+          and (${hasComponents})
+          and ${totalTokens} <> ${componentTokens}
+        then jsonb_strip_nulls(jsonb_build_object(
+          'totalTokens', ${totalTokens},
+          'reasoningTokens', ${metric("reasoning_tokens")},
+          'cost', ${cost}
+        ))
+        else jsonb_strip_nulls(jsonb_build_object(
+          'totalTokens', ${totalTokens},
+          'inputTokens', ${metric("input_tokens")},
+          'outputTokens', ${metric("output_tokens")},
+          'cachedInputTokens', ${metric("cached_input_tokens")},
+          'cacheCreationTokens', ${metric("cache_creation_tokens")},
+          'reasoningTokens', ${metric("reasoning_tokens")},
+          'cost', ${cost}
+        ))
+      end`,
     })
     .where(eq(juniorConversations.conversationId, args.conversationId));
 }
