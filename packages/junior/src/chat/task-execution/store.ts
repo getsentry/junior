@@ -14,6 +14,7 @@ export {
   CONVERSATION_WORK_MAX_DELIVERY_ATTEMPTS,
   CONVERSATION_WORK_MAX_RETRIES,
   CONVERSATION_WORK_STALE_ENQUEUE_MS,
+  hasConversationStop,
   isFinalAttempt,
   isInvalidConversationRecordError,
   type AgentInput,

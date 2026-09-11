@@ -24,6 +24,7 @@ import {
   drainConversationMailbox,
   ensureConversationWake,
   getConversationWorkState,
+  hasConversationStop,
   isFinalAttempt,
   isInvalidConversationRecordError,
   recordAttemptFailure,
@@ -285,10 +286,10 @@ function startLeaseCheckIn(args: {
   return timer;
 }
 
-/** Poll shared state only when a worker adapter asks to observe remote stops. */
+/** Poll the run-scoped stop marker only when an adapter observes remote stops. */
 function createConversationStopSignal(args: {
   conversationId: string;
-  initialStopRunId?: string;
+  initiallyStopped: boolean;
   options: ProcessConversationWorkOptions;
   runId: string;
 }) {
@@ -303,21 +304,18 @@ function createConversationStopSignal(args: {
       controller.abort(new Error("Conversation work stopped"));
     }
   };
-  if (args.initialStopRunId === args.runId) {
-    requestStop();
-  }
+  if (args.initiallyStopped) requestStop();
 
   const check = async (): Promise<void> => {
     if (checking || controller.signal.aborted) return;
     checking = true;
     try {
-      const current = await getConversationWorkState({
+      const stopped = await hasConversationStop({
         conversationId: args.conversationId,
+        runId: args.runId,
         state: args.options.state,
       });
-      if (current?.execution.stop?.runId === args.runId) {
-        requestStop();
-      }
+      if (stopped) requestStop();
     } catch (error) {
       if (!failureCaptured) {
         failureCaptured = true;
@@ -633,7 +631,11 @@ async function processConversationWorkInContext(
       };
       const stop = createConversationStopSignal({
         conversationId,
-        initialStopRunId: leasedWork.execution.stop?.runId,
+        initiallyStopped: await hasConversationStop({
+          conversationId,
+          runId,
+          state: options.state,
+        }),
         options,
         runId,
       });
