@@ -148,14 +148,13 @@ export interface ConversationStore {
     visibility?: ConversationPrivacy;
   }): Promise<void>;
   /**
-   * Materialize execution and usage aggregates beside canonical metadata.
-   * Metrics are cumulative for `execution.runId`. A later write for the same
-   * Run replaces its prior contribution. A different Run adds a contribution.
-   * These fields serve reporting and runtime control, never history hydration.
+   * Store execution state and one Run's metric facts.
+   * Conversation metric fields are derived rollups for existing readers.
    */
   recordExecution(args: {
     channelName?: string;
     conversationId: string;
+    /** When this Run started. */
     createdAtMs: number;
     destination?: Destination;
     execution: ConversationExecution;

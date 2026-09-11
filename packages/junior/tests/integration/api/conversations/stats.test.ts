@@ -128,20 +128,28 @@ describe("conversation stats API", () => {
         nowMs: Date.parse("2026-02-01T10:00:00.000Z"),
       });
       const childAt = new Date("2026-06-15T11:55:00.000Z");
-      await fixture.sql
-        .db()
-        .insert(juniorConversations)
-        .values({
-          conversationId: "advisor:child",
-          parentConversationId: "slack:C1:recent",
-          rootConversationId: "slack:C1:recent",
-          durationMs: 4,
-          usage: { totalTokens: 7 },
-          createdAt: childAt,
-          lastActivityAt: childAt,
-          updatedAt: childAt,
-          executionStatus: "idle",
-        });
+      await fixture.sql.db().insert(juniorConversations).values({
+        conversationId: "advisor:child",
+        parentConversationId: "slack:C1:recent",
+        rootConversationId: "slack:C1:recent",
+        createdAt: childAt,
+        lastActivityAt: childAt,
+        updatedAt: childAt,
+        executionStatus: "idle",
+      });
+      await store.recordExecution({
+        conversationId: "advisor:child",
+        createdAtMs: childAt.getTime(),
+        execution: {
+          runId: "turn-child",
+          status: "idle",
+          updatedAtMs: childAt.getTime(),
+        },
+        lastActivityAtMs: childAt.getTime(),
+        metrics: { durationMs: 4, usage: { totalTokens: 7 } },
+        source: "internal",
+        updatedAtMs: childAt.getTime(),
+      });
       const eventStore = createSqlConversationEventStore(fixture.sql);
       await eventStore.append("slack:C1:recent", [
         {

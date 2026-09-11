@@ -1126,6 +1126,21 @@ WHERE conversation_id = $1
         metricRunId: "run-1",
         usage: { cost: { total: 0.015 }, totalTokens: 15 },
       });
+      expect(
+        await fixture.sql.query<{ metric: string; value: number }>(
+          `
+SELECT metric, value
+FROM junior_conversation_metrics
+WHERE conversation_id = $1 AND run_id = 'run-1'
+ORDER BY metric
+`,
+          [CONVERSATION_ID],
+        ),
+      ).toEqual([
+        { metric: "cost_usd", value: 0.015 },
+        { metric: "duration_ms", value: 1_500 },
+        { metric: "tokens", value: 15 },
+      ]);
     } finally {
       await fixture.close();
     }

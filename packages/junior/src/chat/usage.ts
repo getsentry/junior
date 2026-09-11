@@ -102,88 +102,58 @@ export function agentTurnTotalTokens(
   return getFiniteCount(usage.totalTokens);
 }
 
-interface UsageTerm {
-  factor: -1 | 1;
-  usage: AgentTurnUsage | undefined;
-}
-
-function sumAgentTurnUsage(terms: UsageTerm[]): AgentTurnUsage | undefined {
-  const components: AgentTurnUsage = {};
-  let totalTokens = 0;
-  let hasTokens = false;
-  let hasOpaqueTokens = false;
-  let reasoningTokens = 0;
-  let hasReasoningTokens = false;
-  const cost: AgentTurnCost = {};
-
-  for (const { factor, usage } of terms) {
-    if (!usage) continue;
-    const componentTotal = getComponentTotal(usage);
-    const usageTotal = componentTotal ?? getFiniteCount(usage.totalTokens);
-    if (usageTotal !== undefined) {
-      totalTokens += factor * usageTotal;
-      hasTokens = true;
-      hasOpaqueTokens ||= componentTotal === undefined;
-    }
-    if (componentTotal !== undefined) {
-      for (const field of COMPONENT_USAGE_FIELDS) {
-        const value = getFiniteCount(usage[field]);
-        if (value === undefined) continue;
-        components[field] = (components[field] ?? 0) + factor * value;
-      }
-    }
-
-    const reasoning = getFiniteCount(usage.reasoningTokens);
-    if (reasoning !== undefined) {
-      reasoningTokens += factor * reasoning;
-      hasReasoningTokens = true;
-    }
-    for (const field of [...COST_COMPONENT_FIELDS, "total"] as const) {
-      const value = getFiniteCost(usage.cost?.[field]);
-      if (value === undefined) continue;
-      cost[field] = addCost(cost[field], factor * value);
-    }
-  }
-
-  for (const field of COMPONENT_USAGE_FIELDS) {
-    if (components[field] !== undefined) {
-      components[field] = Math.max(0, components[field]);
-    }
-  }
-  const result: AgentTurnUsage = hasOpaqueTokens
-    ? { totalTokens: Math.max(0, totalTokens) }
-    : components;
-  if (hasTokens && !hasOpaqueTokens && Object.keys(components).length === 0) {
-    result.totalTokens = Math.max(0, totalTokens);
-  }
-  if (hasReasoningTokens) {
-    result.reasoningTokens = Math.max(0, reasoningTokens);
-  }
-  for (const field of [...COST_COMPONENT_FIELDS, "total"] as const) {
-    if (cost[field] !== undefined) cost[field] = Math.max(0, cost[field]);
-  }
-  if (Object.keys(cost).length > 0) result.cost = cost;
-  return hasAgentTurnUsage(result) ? result : undefined;
-}
-
-/** Replace one run's contribution in persisted Conversation usage. */
-export function replaceAgentTurnUsage(args: {
-  current: AgentTurnUsage | undefined;
-  next: AgentTurnUsage;
-  previous: AgentTurnUsage | undefined;
-}): AgentTurnUsage | undefined {
-  return sumAgentTurnUsage([
-    { factor: 1, usage: args.current },
-    { factor: -1, usage: args.previous },
-    { factor: 1, usage: args.next },
-  ]);
-}
-
 /** Aggregate token usage across slices without double-counting provider totals. */
 export function addAgentTurnUsage(
   ...usages: Array<AgentTurnUsage | undefined>
 ): AgentTurnUsage | undefined {
-  return sumAgentTurnUsage(
-    usages.map((usage) => ({ factor: 1 as const, usage })),
-  );
+  const components: AgentTurnUsage = {};
+  let componentTotal: number | undefined;
+  let totalOnlyTokens: number | undefined;
+  let reasoningTokens: number | undefined;
+  const cost: AgentTurnCost = {};
+
+  for (const usage of usages) {
+    if (!usage) continue;
+    const reasoning = getFiniteCount(usage.reasoningTokens);
+    if (reasoning !== undefined) {
+      reasoningTokens = (reasoningTokens ?? 0) + reasoning;
+    }
+    if (usage.cost) {
+      for (const field of [...COST_COMPONENT_FIELDS, "total"] as const) {
+        const value = getFiniteCost(usage.cost[field]);
+        if (value === undefined) continue;
+        cost[field] = addCost(cost[field], value);
+      }
+    }
+    const usageComponentTotal = getComponentTotal(usage);
+    if (usageComponentTotal !== undefined) {
+      componentTotal = (componentTotal ?? 0) + usageComponentTotal;
+      for (const field of COMPONENT_USAGE_FIELDS) {
+        const value = getFiniteCount(usage[field]);
+        if (value === undefined) continue;
+        components[field] = (components[field] ?? 0) + value;
+      }
+      continue;
+    }
+
+    const totalTokens = getFiniteCount(usage.totalTokens);
+    if (totalTokens !== undefined) {
+      totalOnlyTokens = (totalOnlyTokens ?? 0) + totalTokens;
+    }
+  }
+
+  if (totalOnlyTokens !== undefined) {
+    return {
+      totalTokens: totalOnlyTokens + (componentTotal ?? 0),
+      ...(reasoningTokens !== undefined ? { reasoningTokens } : undefined),
+      ...(Object.keys(cost).length > 0 ? { cost } : undefined),
+    };
+  }
+
+  const result: AgentTurnUsage = {
+    ...components,
+    ...(reasoningTokens !== undefined ? { reasoningTokens } : undefined),
+    ...(Object.keys(cost).length > 0 ? { cost } : undefined),
+  };
+  return hasAgentTurnUsage(result) ? result : undefined;
 }
