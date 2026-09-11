@@ -164,6 +164,7 @@ export function memoryPlugin(options: MemoryPluginOptions = {}) {
             async userPrompt(ctx) {
               return await createMemoryPromptContributions({
                 agent: createMemoryAgent(ctx.model),
+                briefs: ctx.briefs,
                 ...(ctx.conversationId
                   ? { conversationId: ctx.conversationId }
                   : undefined),

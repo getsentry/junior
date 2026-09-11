@@ -41,6 +41,7 @@ const recalledMemoriesSchema = z
   .object({
     // Matches the automatic-recall candidate window; admission packs by char budget.
     memories: z.array(z.string().min(1)).max(20),
+    briefs: z.array(z.string().min(1)).max(2).optional(),
     costUsd: z.number().finite().nonnegative().optional(),
   })
   .strict();

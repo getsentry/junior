@@ -2,6 +2,7 @@ import {
   missingToolAnnotationKeys,
   normalizeEventIdentifier,
   pluginEventsSchema,
+  PLUGIN_PROMPT_CONTEXT_MAX_BYTES,
   promptContextSchema,
   promptMessageSchema,
   eventInputSchema,
@@ -58,6 +59,7 @@ import { workspaceRepoCheckoutPath } from "@/chat/workspaces/checkout-path";
 import { listWorkspaceNamesByRepository } from "@/chat/workspaces/store";
 import { createCodeChangePublisher } from "@/chat/code/publisher";
 import { coreTaskRegistrations } from "@/chat/briefs/registration";
+import { readPublicBriefsForPlugins } from "@/chat/briefs/plugin-reader";
 
 /** Signal that a plugin intentionally denied a tool execution. */
 export class PluginHookDeniedError extends Error {
@@ -133,7 +135,6 @@ const PLUGIN_ROUTE_METHODS = new Set<PluginRouteMethod>([
   "ALL",
 ]);
 const PLUGIN_PROMPT_CONTRIBUTION_TOTAL_MAX_CHARS = 16_000;
-const PLUGIN_PROMPT_CONTEXT_MAX_BYTES = 8_000;
 const PLUGIN_PROMPT_CONTEXT_TOTAL_MAX_BYTES = 16_000;
 const systemPromptMessageArraySchema = z.array(promptMessageSchema);
 
@@ -239,6 +240,29 @@ function invocationPluginContext(
     ...base,
     conversationId: context.conversationId,
     locationId: context.locationId,
+    briefs: {
+      async readLatest(conversationIds: readonly string[]) {
+        const source = context.source;
+        if (
+          (source.kind !== "slack" && source.kind !== "web") ||
+          source.visibility !== "public"
+        ) {
+          return {};
+        }
+        return await readPublicBriefsForPlugins(getDb(), {
+          conversationIds,
+          currentConversationId: context.conversationId,
+          scope:
+            source.kind === "slack"
+              ? {
+                  kind: "public_provider_tenant",
+                  provider: "slack",
+                  providerTenantId: source.teamId,
+                }
+              : { kind: "public" },
+        });
+      },
+    },
     embedder: createPluginEmbedder(plugin.manifest.name),
     ...(context.conversationId && turnId
       ? {

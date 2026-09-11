@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
+import { readPublicBriefsForPlugins } from "@/chat/briefs/plugin-reader";
 import { searchConversationBriefs } from "@/chat/briefs/search";
 import { appendConversationBrief } from "@/chat/briefs/store";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
@@ -177,6 +178,25 @@ describe("Conversation Brief search", () => {
         key: "acme/widget#12",
         label: "acme/widget#12",
         url: "https://example.com/acme/widget/12",
+      });
+
+      await expect(
+        readPublicBriefsForPlugins(db, {
+          conversationIds: [
+            currentConversationId,
+            targetConversationId,
+            privateId,
+            childId,
+            otherTenantId,
+          ],
+          currentConversationId,
+          scope: tenantScope,
+        }),
+      ).resolves.toEqual({
+        [targetConversationId]: expect.objectContaining({
+          conversationId: targetConversationId,
+          summary: "The deployment decision uses the blue rollout.",
+        }),
       });
 
       const matches = await searchConversationBriefs(db, {
