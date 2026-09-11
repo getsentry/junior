@@ -498,6 +498,7 @@ vi.mock("@/chat/prompt", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/chat/prompt")>();
   return {
     ...actual,
+    buildCapabilitiesPrompt: () => null,
     buildSystemPrompt: () => "System prompt",
     buildTurnContextPrompt: (input: {
       availableSkills?: Array<{ name: string }>;
