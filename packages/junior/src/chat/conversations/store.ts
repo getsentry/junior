@@ -149,6 +149,8 @@ export interface ConversationStore {
   }): Promise<void>;
   /**
    * Materialize execution and usage aggregates beside canonical metadata.
+   * Metrics are cumulative for `execution.runId`. A later write for the same
+   * Run replaces its prior contribution. A different Run adds a contribution.
    * These fields serve reporting and runtime control, never history hydration.
    */
   recordExecution(args: {

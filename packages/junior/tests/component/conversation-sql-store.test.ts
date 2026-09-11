@@ -2,7 +2,6 @@ import { describe, expect, it, vi } from "vitest";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import { upsertIdentity, upsertLinkedIdentity } from "@/chat/identities/sql";
-import type { AgentTurnUsage } from "@/chat/usage";
 import {
   appendInboundMessage,
   drainConversationMailbox,
@@ -1071,13 +1070,7 @@ INSERT INTO junior_conversations (
         },
         metrics: {
           durationMs: 1_000,
-          usage: {
-            inputTokens: 4,
-            outputTokens: 2,
-            cachedInputTokens: 3,
-            cacheCreationTokens: 1,
-            cost: { total: 0.01 },
-          },
+          usage: { totalTokens: 10, cost: { total: 0.01 } },
         },
         lastActivityAtMs: 2_000,
         updatedAtMs: 2_000,
@@ -1104,13 +1097,7 @@ INSERT INTO junior_conversations (
         },
         metrics: {
           durationMs: 1_500,
-          usage: {
-            inputTokens: 5,
-            outputTokens: 3,
-            cachedInputTokens: 5,
-            cacheCreationTokens: 2,
-            cost: { total: 0.015 },
-          },
+          usage: { totalTokens: 15, cost: { total: 0.015 } },
         },
         lastActivityAtMs: 4_000,
         updatedAtMs: 4_000,
@@ -1120,7 +1107,7 @@ INSERT INTO junior_conversations (
         durationMs: number;
         executionDurationMs: number;
         metricRunId: string | null;
-        usage: AgentTurnUsage | null;
+        usage: { cost?: { total?: number }; totalTokens?: number } | null;
       }>(
         `
 SELECT
@@ -1137,14 +1124,7 @@ WHERE conversation_id = $1
         durationMs: 1_500,
         executionDurationMs: 1_500,
         metricRunId: "run-1",
-        usage: {
-          cacheCreationTokens: 2,
-          cachedInputTokens: 5,
-          cost: { total: 0.015 },
-          inputTokens: 5,
-          outputTokens: 3,
-          totalTokens: 15,
-        },
+        usage: { cost: { total: 0.015 }, totalTokens: 15 },
       });
     } finally {
       await fixture.close();

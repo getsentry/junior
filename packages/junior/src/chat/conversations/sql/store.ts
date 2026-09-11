@@ -26,7 +26,7 @@ import {
   juniorUsers,
 } from "@/db/schema";
 import { conversationReadColumns } from "@/db/schema/conversations";
-import type { AgentTurnCost, AgentTurnUsage } from "@/chat/usage";
+import { replaceAgentTurnUsage, type AgentTurnUsage } from "@/chat/usage";
 import type {
   JuniorDestinationKind,
   JuniorDestinationVisibility,
@@ -342,73 +342,6 @@ function assertSameConversationDestination(args: {
   );
 }
 
-function tokenTotal(usage: AgentTurnUsage | undefined): number {
-  if (!usage) return 0;
-  if (usage.totalTokens !== undefined) return usage.totalTokens;
-  return (
-    (usage.inputTokens ?? 0) +
-    (usage.outputTokens ?? 0) +
-    (usage.cachedInputTokens ?? 0) +
-    (usage.cacheCreationTokens ?? 0)
-  );
-}
-
-function updateConversationUsage(args: {
-  current: AgentTurnUsage | undefined;
-  previousExecution: AgentTurnUsage | undefined;
-  nextExecution: AgentTurnUsage;
-}): AgentTurnUsage {
-  const usage: AgentTurnUsage = {
-    totalTokens:
-      tokenTotal(args.current) -
-      tokenTotal(args.previousExecution) +
-      tokenTotal(args.nextExecution),
-  };
-  const tokenFields = [
-    "inputTokens",
-    "outputTokens",
-    "cachedInputTokens",
-    "cacheCreationTokens",
-    "reasoningTokens",
-  ] as const satisfies ReadonlyArray<keyof AgentTurnUsage>;
-  for (const field of tokenFields) {
-    const current = args.current?.[field];
-    const previous = args.previousExecution?.[field];
-    const next = args.nextExecution[field];
-    if (current === undefined) {
-      if (next !== undefined) usage[field] = next;
-      continue;
-    }
-    usage[field] = current - (previous ?? 0) + (next ?? 0);
-  }
-  const costFields = [
-    "input",
-    "output",
-    "cacheRead",
-    "cacheWrite",
-    "total",
-  ] as const satisfies ReadonlyArray<keyof AgentTurnCost>;
-  const cost: AgentTurnCost = {};
-  for (const field of costFields) {
-    if (
-      args.current?.cost?.[field] === undefined &&
-      args.previousExecution?.cost?.[field] === undefined &&
-      args.nextExecution.cost?.[field] === undefined
-    ) {
-      continue;
-    }
-    cost[field] =
-      Math.round(
-        ((args.current?.cost?.[field] ?? 0) -
-          (args.previousExecution?.cost?.[field] ?? 0) +
-          (args.nextExecution.cost?.[field] ?? 0)) *
-          1e12,
-      ) / 1e12;
-  }
-  if (Object.keys(cost).length > 0) usage.cost = cost;
-  return usage;
-}
-
 export class SqlStore implements ConversationStore {
   constructor(private readonly executor: JuniorSqlDatabase) {}
 
@@ -604,12 +537,12 @@ export class SqlStore implements ConversationStore {
       if (incomingIsFresh && args.metrics) {
         const row = existingRow?.conversation;
         const usage = args.metrics.usage
-          ? updateConversationUsage({
+          ? replaceAgentTurnUsage({
               current: row?.usage ?? undefined,
-              previousExecution: sameRun
+              previous: sameRun
                 ? (row?.executionUsage ?? undefined)
                 : undefined,
-              nextExecution: args.metrics.usage,
+              next: args.metrics.usage,
             })
           : (row?.usage ?? undefined);
         await this.executor

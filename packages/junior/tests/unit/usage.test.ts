@@ -4,7 +4,58 @@ import {
   agentTurnCostUsd,
   agentTurnTotalTokens,
   hasAgentTurnUsage,
+  replaceAgentTurnUsage,
 } from "@/chat/usage";
+
+describe("replaceAgentTurnUsage", () => {
+  it("preserves component counters when one run is replaced", () => {
+    expect(
+      replaceAgentTurnUsage({
+        current: {
+          inputTokens: 14,
+          outputTokens: 5,
+          cachedInputTokens: 7,
+          cacheCreationTokens: 3,
+          reasoningTokens: 4,
+          cost: { total: 0.029 },
+        },
+        previous: {
+          inputTokens: 4,
+          outputTokens: 2,
+          cachedInputTokens: 3,
+          cacheCreationTokens: 1,
+          reasoningTokens: 1,
+          cost: { total: 0.01 },
+        },
+        next: {
+          inputTokens: 5,
+          outputTokens: 3,
+          cachedInputTokens: 5,
+          cacheCreationTokens: 2,
+          reasoningTokens: 2,
+          cost: { total: 0.015 },
+        },
+      }),
+    ).toEqual({
+      inputTokens: 15,
+      outputTokens: 6,
+      cachedInputTokens: 9,
+      cacheCreationTokens: 4,
+      reasoningTokens: 5,
+      cost: { total: 0.034 },
+    });
+  });
+
+  it("keeps mixed opaque and component usage as one total", () => {
+    expect(
+      replaceAgentTurnUsage({
+        current: { totalTokens: 100 },
+        previous: undefined,
+        next: { inputTokens: 10, cachedInputTokens: 20 },
+      }),
+    ).toEqual({ totalTokens: 130 });
+  });
+});
 
 describe("addAgentTurnUsage", () => {
   it("preserves component counters when all slices report components", () => {
