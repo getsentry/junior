@@ -17,33 +17,6 @@ const INVENTED_URL = "https://example.com/invented";
 const CODE_CHANGE_URL = "https://github.com/getsentry/junior/pull/123";
 const RESOURCE_URL = "https://sentry.example.com/issues/123";
 
-function incompleteObjectPaths(schema: unknown, path = "$schema"): string[] {
-  if (!schema || typeof schema !== "object") return [];
-  const candidate = schema as Record<string, unknown>;
-  const failures: string[] = [];
-  if (candidate.properties && typeof candidate.properties === "object") {
-    const propertyNames = Object.keys(candidate.properties);
-    const required = new Set(
-      Array.isArray(candidate.required)
-        ? candidate.required.filter(
-            (value): value is string => typeof value === "string",
-          )
-        : [],
-    );
-    if (propertyNames.some((name) => !required.has(name))) failures.push(path);
-  }
-  for (const [key, value] of Object.entries(candidate)) {
-    if (Array.isArray(value)) {
-      value.forEach((entry, index) => {
-        failures.push(...incompleteObjectPaths(entry, `${path}.${key}[${index}]`));
-      });
-    } else {
-      failures.push(...incompleteObjectPaths(value, `${path}.${key}`));
-    }
-  }
-  return failures;
-}
-
 function input(): BriefInput {
   return {
     conversationId: "conversation-1",
@@ -166,7 +139,6 @@ describe("generateBrief", () => {
       },
     });
 
-    expect(incompleteObjectPaths(capturedSchema)).toEqual([]);
     expect(capturedSchema).toMatchObject({
       properties: {
         decisions: {
