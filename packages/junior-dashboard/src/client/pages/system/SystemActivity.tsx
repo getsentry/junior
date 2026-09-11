@@ -22,6 +22,8 @@ function periodTotals(days: ConversationMetricDay[]) {
   return days.reduce(
     (total, day) => ({
       cachedInputTokens: total.cachedInputTokens + (day.cachedInputTokens ?? 0),
+      cacheCreationTokens:
+        total.cacheCreationTokens + (day.cacheCreationTokens ?? 0),
       conversations: total.conversations + day.conversations,
       costUsd: total.costUsd + (day.costUsd ?? 0),
       inputTokens: total.inputTokens + (day.inputTokens ?? 0),
@@ -29,6 +31,7 @@ function periodTotals(days: ConversationMetricDay[]) {
     }),
     {
       cachedInputTokens: 0,
+      cacheCreationTokens: 0,
       conversations: 0,
       costUsd: 0,
       inputTokens: 0,
@@ -37,10 +40,17 @@ function periodTotals(days: ConversationMetricDay[]) {
   );
 }
 
-function formatCacheHitRate(inputTokens: number, cachedInputTokens: number) {
-  const totalInputTokens = inputTokens + cachedInputTokens;
+function formatCachedInputShare(
+  uncachedInputTokens: number,
+  cachedInputTokens: number,
+  cacheCreationTokens: number,
+) {
+  const totalInputTokens =
+    uncachedInputTokens + cachedInputTokens + cacheCreationTokens;
   if (!totalInputTokens) return "—";
-  return `${((cachedInputTokens / totalInputTokens) * 100).toFixed(1)}%`;
+  const percentage = (cachedInputTokens / totalInputTokens) * 100;
+  if (percentage < 100 && percentage >= 99.95) return "<100%";
+  return `${percentage.toFixed(1)}%`;
 }
 
 /** Present selectable daily runtime and model-usage trends. */
@@ -113,21 +123,18 @@ export function SystemActivity(props: {
           value={formatCostSummary({ total: totals.costUsd })}
         />
         <StatCard
-          detail={`${formatCompactNumber(totals.cachedInputTokens)} cached · ${formatCompactNumber(totals.inputTokens)} uncached`}
+          detail={`${formatCompactNumber(totals.cachedInputTokens)} read · ${formatCompactNumber(totals.cacheCreationTokens)} written · ${formatCompactNumber(totals.inputTokens)} uncached`}
           icon={Gauge}
-          label="Cache hit rate"
-          value={formatCacheHitRate(
+          label="Cached input share"
+          value={formatCachedInputShare(
             totals.inputTokens,
             totals.cachedInputTokens,
+            totals.cacheCreationTokens,
           )}
         />
       </div>
       <ConversationActivityChart bucketUnit={bucketUnit} days={days} />
-      <SystemMetricCharts
-        bucketUnit={bucketUnit}
-        cacheBreakdown
-        days={days}
-      />
+      <SystemMetricCharts bucketUnit={bucketUnit} cacheBreakdown days={days} />
       <GuardianActivity bucketUnit={bucketUnit} days={guardianDays} />
     </section>
   );

@@ -240,6 +240,7 @@ describe("SystemMetricCharts average line", () => {
       costUsd: 1.5,
       date: "2026-05-01",
       cachedInputTokens: 750_000_000,
+      cacheCreationTokens: 100_000_000,
       durationMs: 120_000,
       inputTokens: 250_000_000,
       tokens: 1_000_000_000,
@@ -249,6 +250,7 @@ describe("SystemMetricCharts average line", () => {
       costUsd: 2.5,
       date: "2026-05-02",
       cachedInputTokens: 1_000_000_000,
+      cacheCreationTokens: 200_000_000,
       durationMs: 180_000,
       inputTokens: 400_000_000,
       tokens: 1_400_000_000,
@@ -267,16 +269,18 @@ describe("SystemMetricCharts average line", () => {
     expect(html).toContain("Runtime");
   });
 
-  it("stacks cached and uncached input tokens only for cache breakdown", () => {
+  it("stacks cached, written, and uncached input tokens only for cache breakdown", () => {
     const html = renderToStaticMarkup(
       <SystemMetricCharts cacheBreakdown days={days} />,
     );
 
     expect(html).toContain("Input token cache");
     expect(html).toContain("Cached");
+    expect(html).toContain("Written");
     expect(html).toContain("Uncached");
+    expect(html).toContain('aria-label="May 1: 1.1b input tokens"');
     expect(html).toContain("input tokens");
-    expect(html).toContain('aria-label="average 1.2b / day"');
+    expect(html).toContain('aria-label="average 1.3b / day"');
     expect(html).not.toContain("Token usage");
   });
 });

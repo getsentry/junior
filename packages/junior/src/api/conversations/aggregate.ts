@@ -11,7 +11,7 @@ interface ConversationAggregateSource {
 
 function usageTokenValue(
   source: ConversationAggregateSource,
-  field: "cachedInputTokens" | "inputTokens",
+  field: "cachedInputTokens" | "cacheCreationTokens" | "inputTokens",
 ) {
   return sql<number | null>`CASE
     WHEN ${source.usage}->>${field} IS NOT NULL
@@ -83,6 +83,9 @@ export function conversationAggregateColumns(sources?: {
     cachedInputTokens: sql<
       number | null
     >`SUM(${usageTokenValue(metrics, "cachedInputTokens")})::double precision`,
+    cacheCreationTokens: sql<
+      number | null
+    >`SUM(${usageTokenValue(metrics, "cacheCreationTokens")})::double precision`,
     costUsd: sql<number | null>`SUM(${costValue(metrics)})::double precision`,
     durationMs: sql<number>`COALESCE(SUM(${metrics.durationMs}), 0)::double precision`,
     failed: sql<number>`${conversationCount} FILTER (

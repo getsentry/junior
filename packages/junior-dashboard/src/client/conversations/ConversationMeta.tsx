@@ -18,6 +18,7 @@ import {
   peoplePath,
   slackLocationLabel,
   summarizeCost,
+  summarizeModelUsage,
   summarizeUsage,
   automationPath,
 } from "../format";
@@ -541,7 +542,9 @@ function SourceTask(props: {
   sourceTask: NonNullable<ConversationDetailReport["sourceTask"]>;
 }) {
   const kindLabel =
-    props.sourceTask.kind === "scheduled" ? "Scheduled automation" : "Event automation";
+    props.sourceTask.kind === "scheduled"
+      ? "Scheduled automation"
+      : "Event automation";
   const automationId = props.sourceTask.id?.trim();
   const title = props.sourceTask.title?.trim();
   const link = automationId ? (
@@ -643,7 +646,8 @@ function conversationStatItems(props: {
     : props.detail;
   const usage =
     props.detail?.cumulativeUsage ?? props.conversation.cumulativeUsage;
-  const tokenSummary = summarizeUsage(usage);
+  const tokenSummary =
+    summarizeModelUsage(props.detail?.modelUsage) ?? summarizeUsage(usage);
   const costSummary = summarizeCost(usage);
   const location = slackLocationLabel(props.conversation, {
     includeId: false,

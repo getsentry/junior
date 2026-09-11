@@ -102,6 +102,7 @@ function locationLabel(row: {
 type AggregateRow = {
   active: number;
   cachedInputTokens: number | null;
+  cacheCreationTokens: number | null;
   conversations: number;
   costUsd: number | null;
   durationMs: number;
@@ -159,6 +160,7 @@ const WINDOW_HOURS = WINDOW_SEVEN_DAY_HOURS;
 
 type MetricRow = {
   cachedInputTokens: number | null;
+  cacheCreationTokens: number | null;
   conversations: number;
   costUsd: number | null;
   date: string;
@@ -177,6 +179,7 @@ function applyMetricBuckets(
       {
         ...row,
         cachedInputTokens: null,
+        cacheCreationTokens: null,
         costUsd: null,
         durationMs: 0,
         inputTokens: null,
@@ -187,6 +190,7 @@ function applyMetricBuckets(
   for (const metric of metrics) {
     const row = byDate.get(metric.date) ?? {
       cachedInputTokens: null,
+      cacheCreationTokens: null,
       conversations: 0,
       costUsd: null,
       date: metric.date,
@@ -196,6 +200,8 @@ function applyMetricBuckets(
     };
     if (metric.metric === "cached_input_tokens") {
       row.cachedInputTokens = metric.value;
+    } else if (metric.metric === "cache_creation_tokens") {
+      row.cacheCreationTokens = metric.value;
     } else if (metric.metric === "cost_usd") {
       row.costUsd = metric.value;
     } else if (metric.metric === "duration_ms") {
@@ -224,6 +230,7 @@ function metricPoint(
   row:
     | {
         cachedInputTokens?: number | null;
+        cacheCreationTokens?: number | null;
         conversations?: number;
         costUsd?: number | null;
         durationMs?: number;
@@ -238,6 +245,10 @@ function metricPoint(
     durationMs: row?.durationMs ?? 0,
     ...(row?.cachedInputTokens !== null && row?.cachedInputTokens !== undefined
       ? { cachedInputTokens: row.cachedInputTokens }
+      : undefined),
+    ...(row?.cacheCreationTokens !== null &&
+    row?.cacheCreationTokens !== undefined
+      ? { cacheCreationTokens: row.cacheCreationTokens }
       : undefined),
     ...(row?.costUsd !== null && row?.costUsd !== undefined
       ? { costUsd: addUsd(undefined, row.costUsd) }
@@ -601,6 +612,10 @@ export async function readConversationStatsFromSql(): Promise<ConversationStatsR
     ...(totals?.cachedInputTokens !== null &&
     totals?.cachedInputTokens !== undefined
       ? { cachedInputTokens: totals.cachedInputTokens }
+      : undefined),
+    ...(totals?.cacheCreationTokens !== null &&
+    totals?.cacheCreationTokens !== undefined
+      ? { cacheCreationTokens: totals.cacheCreationTokens }
       : undefined),
     conversations: totals?.conversations ?? 0,
     durationMs: totals?.durationMs ?? 0,
