@@ -1,6 +1,6 @@
 {
   "name": "@sentry/junior-memory",
-  "version": "0.210.2",
+  "version": "0.212.0",
   "private": false,
   "publishConfig": {
     "access": "public"
