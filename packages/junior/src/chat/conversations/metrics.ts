@@ -17,7 +17,7 @@ function finite(value: number | undefined): number | undefined {
     : undefined;
 }
 
-/** Convert one Run summary to independent numeric facts. */
+/** Convert one Run summary to metric rows. */
 export function conversationMetricValues(args: {
   durationMs: number;
   usage?: AgentTurnUsage;
@@ -35,7 +35,7 @@ export function conversationMetricValues(args: {
   };
 }
 
-/** Replace the metric facts for one Run inside the caller's transaction. */
+/** Replace one Run's metric rows and refresh its Conversation totals. */
 export async function replaceConversationMetrics(
   executor: JuniorSqlDatabase,
   args: {

@@ -148,8 +148,8 @@ export interface ConversationStore {
     visibility?: ConversationPrivacy;
   }): Promise<void>;
   /**
-   * Store execution state and one Run's metric facts.
-   * Conversation metric fields are derived rollups for existing readers.
+   * Store execution state and one Run's metrics.
+   * Conversation metric fields cache totals for existing readers.
    */
   recordExecution(args: {
     channelName?: string;

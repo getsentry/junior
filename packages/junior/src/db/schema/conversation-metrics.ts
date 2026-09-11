@@ -22,7 +22,7 @@ export const CONVERSATION_METRICS = [
 
 export type ConversationMetric = (typeof CONVERSATION_METRICS)[number];
 
-/** One numeric fact for one Conversation Run. */
+/** One metric value for one Conversation Run. */
 export const juniorConversationMetrics = pgTable(
   "junior_conversation_metrics",
   {
