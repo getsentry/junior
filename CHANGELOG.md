@@ -1,4 +1,10 @@
 # Changelog
+## 0.210.1
+
+### Bug Fixes 🐛
+
+- Make structured-output schemas provider-safe by @sentry-junior in [#1843](https://github.com/getsentry/junior/pull/1843)
+
 ## 0.210.0
 
 ### New Features ✨
