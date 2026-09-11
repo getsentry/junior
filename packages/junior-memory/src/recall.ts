@@ -178,9 +178,6 @@ function packBriefs(briefs: PluginBrief[]): PluginBrief[] {
     decisions: brief.decisions.slice(0, MAX_BRIEF_DECISIONS),
     links: brief.links.slice(0, MAX_BRIEF_LINKS),
   }));
-  if (renderBriefs(packed).length > MAX_BRIEF_PROMPT_CHARS) {
-    packed = packed.slice(0, 1);
-  }
   while (
     renderBriefs(packed).length > MAX_BRIEF_PROMPT_CHARS &&
     packed.some((brief) => brief.links.length > 0)
@@ -204,6 +201,9 @@ function packBriefs(briefs: PluginBrief[]): PluginBrief[] {
         break;
       }
     }
+  }
+  if (renderBriefs(packed).length > MAX_BRIEF_PROMPT_CHARS) {
+    packed = packed.slice(0, 1);
   }
   return packed;
 }
@@ -279,28 +279,27 @@ export async function createMemoryPromptContributions(
     .map((id) => candidatesById.get(id))
     .filter((memory): memory is MemoryRecord => memory !== undefined);
   const selected = selectPromptMemories(relevant);
-  const selectedIds = new Set(selected.map(({ id }) => id));
   const conversationIds = [
     ...new Set(
       relevant
-        .filter((memory) => selectedIds.has(memory.id))
+        .slice(0, selected.length)
         .map((memory) => memory.conversationId)
         .filter((conversationId): conversationId is string =>
           Boolean(conversationId),
         ),
     ),
-  ]
-    .filter((conversationId) => conversationId !== context.conversationId)
-    .slice(0, MAX_RECALL_BRIEFS);
+  ];
   let briefs: PluginBrief[] = [];
   if (conversationIds.length > 0) {
     try {
       const briefsByConversation =
         await context.briefs.readLatest(conversationIds);
-      briefs = conversationIds.flatMap((conversationId) => {
-        const brief = briefsByConversation[conversationId];
-        return brief ? [brief] : [];
-      });
+      briefs = conversationIds
+        .flatMap((conversationId) => {
+          const brief = briefsByConversation[conversationId];
+          return brief ? [brief] : [];
+        })
+        .slice(0, MAX_RECALL_BRIEFS);
     } catch {
       context.log.warn("memory_recall_brief_read_failed");
     }

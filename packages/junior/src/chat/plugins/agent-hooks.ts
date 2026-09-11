@@ -242,9 +242,24 @@ function invocationPluginContext(
     locationId: context.locationId,
     briefs: {
       async readLatest(conversationIds: readonly string[]) {
+        const source = context.source;
+        if (
+          (source.kind !== "slack" && source.kind !== "web") ||
+          source.visibility !== "public"
+        ) {
+          return {};
+        }
         return await readPublicBriefsForPlugins(getDb(), {
           conversationIds,
           currentConversationId: context.conversationId,
+          scope:
+            source.kind === "slack"
+              ? {
+                  kind: "public_provider_tenant",
+                  provider: "slack",
+                  providerTenantId: source.teamId,
+                }
+              : { kind: "public" },
         });
       },
     },

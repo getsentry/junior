@@ -1,4 +1,5 @@
-import { and, desc, eq, inArray, isNull, ne } from "drizzle-orm";
+import { and, eq, gt, inArray, isNull, ne, notExists, sql } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import { pluginBriefSchema, type PluginBrief } from "@sentry/junior-plugin-api";
 import type { JuniorDatabase } from "@/db/db";
 import {
@@ -7,6 +8,7 @@ import {
   juniorDestinations,
 } from "@/db/schema";
 import { conversationBriefSchema } from "./schema";
+import type { ConversationBriefSearchScope } from "./search";
 
 /** Read the latest Briefs for authorized public root Conversations. */
 export async function readPublicBriefsForPlugins(
@@ -14,13 +16,40 @@ export async function readPublicBriefsForPlugins(
   args: {
     conversationIds: readonly string[];
     currentConversationId?: string;
+    scope: ConversationBriefSearchScope;
   },
 ): Promise<Record<string, PluginBrief>> {
-  const conversationIds = [...new Set(args.conversationIds)].filter(
-    (conversationId) => conversationId !== args.currentConversationId,
-  );
+  const conversationIds = [...new Set(args.conversationIds)];
   if (conversationIds.length === 0) {
     return {};
+  }
+
+  const newer = alias(juniorConversationBriefs, "newer_plugin_briefs");
+  const conditions = [
+    inArray(juniorConversationBriefs.conversationId, conversationIds),
+    notExists(
+      db
+        .select({ one: sql`1` })
+        .from(newer)
+        .where(
+          and(
+            eq(newer.conversationId, juniorConversationBriefs.conversationId),
+            gt(newer.version, juniorConversationBriefs.version),
+          ),
+        ),
+    ),
+    isNull(juniorConversations.parentConversationId),
+    eq(juniorDestinations.visibility, "public"),
+    ...(args.currentConversationId
+      ? [ne(juniorConversations.conversationId, args.currentConversationId)]
+      : []),
+  ];
+  if (args.scope.kind === "public_provider_tenant") {
+    conditions.push(
+      eq(juniorConversations.source, args.scope.provider),
+      eq(juniorDestinations.provider, args.scope.provider),
+      eq(juniorDestinations.providerTenantId, args.scope.providerTenantId),
+    );
   }
 
   const rows = await db
@@ -41,26 +70,10 @@ export async function readPublicBriefsForPlugins(
       juniorDestinations,
       eq(juniorDestinations.id, juniorConversations.destinationId),
     )
-    .where(
-      and(
-        inArray(juniorConversationBriefs.conversationId, conversationIds),
-        isNull(juniorConversations.parentConversationId),
-        eq(juniorDestinations.visibility, "public"),
-        ...(args.currentConversationId
-          ? [ne(juniorConversations.conversationId, args.currentConversationId)]
-          : []),
-      ),
-    )
-    .orderBy(
-      desc(juniorConversationBriefs.version),
-      desc(juniorConversationBriefs.createdAt),
-    );
+    .where(and(...conditions));
 
   const briefs: Record<string, PluginBrief> = {};
   for (const row of rows) {
-    if (briefs[row.conversationId]) {
-      continue;
-    }
     const content = conversationBriefSchema.parse(row.content);
     briefs[row.conversationId] = pluginBriefSchema.parse({
       conversationId: row.conversationId,

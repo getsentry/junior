@@ -7,17 +7,24 @@ import {
   type MemoryDb,
 } from "@sentry/junior-memory";
 import { defineJuniorPlugins } from "@/plugins";
-import { getPluginTools, setPlugins } from "@/chat/plugins/agent-hooks";
+import {
+  getPluginTools,
+  getPluginUserPromptContributions,
+  setPlugins,
+} from "@/chat/plugins/agent-hooks";
 import { migratePluginSchemas } from "@/chat/plugins/migrations";
 import { readMigrationFiles } from "drizzle-orm/migrator";
 import { closeDb } from "@/chat/db";
+import { appendConversationBrief } from "@/chat/briefs/store";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import { readActorIdentity, resolveViewerUser } from "@/chat/plugins/viewer";
 import { readPluginUserPage } from "@/chat/plugins/user-pages";
 import { migratePluginsToSql } from "@/cli/upgrade/migrations/plugin-sql";
 import { runUpgrade } from "@/cli/upgrade";
+import { completeObject } from "@/chat/pi/client";
 import { createLocalJuniorSqlFixture } from "../fixtures/sql";
+import { conversationBriefFixture } from "../fixtures/conversation-brief";
 import {
   createSlackSource,
   defineJuniorPlugin,
@@ -477,6 +484,92 @@ WHERE indexname = 'junior_memory_memories_search_idx'
         ],
         target: "listMemories",
       });
+    } finally {
+      await fixture.close();
+    }
+  }, 15_000);
+
+  it("loads an origin Brief through host-wired memory recall", async () => {
+    const fixture = await createLocalJuniorSqlFixture();
+    setPlugins([memoryPlugin()]);
+    NEON.sql = fixture.sql;
+
+    try {
+      await migrateSchema(fixture.sql);
+      await migrateMemorySchema(fixture);
+      const conversations = createSqlStore(fixture.sql);
+      const originConversationId = "slack:C123:1718800000.000000";
+      const currentConversationId = "slack:C456:1718800001.000000";
+      for (const [conversationId, channelId] of [
+        [originConversationId, "C123"],
+        [currentConversationId, "C456"],
+      ] as const) {
+        await conversations.recordActivity({
+          conversationId,
+          destination: { channelId, platform: "slack", teamId: "T123" },
+          nowMs: Date.parse("2026-09-11T08:00:00.000Z"),
+          source: "slack",
+          visibility: "public",
+        });
+      }
+      await appendConversationBrief(fixture.sql.db(), {
+        conversationId: originConversationId,
+        turnId: "origin-turn",
+        throughSeq: 1,
+        content: conversationBriefFixture({
+          summary: "The release notes moved to Notion.",
+        }),
+        searchText: "release notes Notion",
+        modelId: "test-model",
+      });
+      const memory = await createMemoryStore(
+        // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+        fixture.sql.db() as MemoryDb,
+        {
+          conversationId: originConversationId,
+          source: createSlackSource({
+            teamId: "T123",
+            channelId: "C123",
+            messageTs: "1718800000.000000",
+            visibility: "public",
+          }),
+        },
+      ).createConversationMemory({
+        content: "Release notes live in Notion.",
+        idempotencyKey: "component-memory-brief-recall",
+        kind: "knowledge",
+      });
+      vi.mocked(completeObject).mockResolvedValueOnce({
+        object: { relevantIds: [memory.memory.id] },
+      });
+
+      await expect(
+        getPluginUserPromptContributions({
+          context: {
+            conversationId: currentConversationId,
+            destination: {
+              platform: "slack",
+              teamId: "T123",
+              channelId: "C456",
+            },
+            source: createSlackSource({
+              teamId: "T123",
+              channelId: "C456",
+              messageTs: "1718800001.000000",
+              visibility: "public",
+            }),
+            userText: "Where do release notes live?",
+          },
+          turnId: "current-turn",
+        }),
+      ).resolves.toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            context: expect.objectContaining({ kind: "recall_briefs" }),
+            text: expect.stringContaining("The release notes moved to Notion."),
+          }),
+        ]),
+      );
     } finally {
       await fixture.close();
     }

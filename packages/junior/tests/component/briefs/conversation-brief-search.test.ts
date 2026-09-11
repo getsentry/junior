@@ -187,8 +187,10 @@ describe("Conversation Brief search", () => {
             targetConversationId,
             privateId,
             childId,
+            otherTenantId,
           ],
           currentConversationId,
+          scope: tenantScope,
         }),
       ).resolves.toEqual({
         [targetConversationId]: expect.objectContaining({

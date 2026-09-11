@@ -6,7 +6,11 @@ export * from "./context";
 export * from "./state";
 export {
   definePromptContext,
+  pluginBriefDecisionKindSchema,
+  pluginBriefLineSchema,
+  pluginBriefOutcomeStatusSchema,
   pluginBriefSchema,
+  pluginBriefSummarySchema,
   promptContextSchema,
   promptMessageSchema,
   type PluginBrief,

@@ -2,10 +2,16 @@
  * Runtime schemas for the Brief record and the generator input. Both cross a
  * durable or CLI edge, so these schemas own the exported types.
  */
-import { codeChangeStateSchema } from "@sentry/junior-plugin-api";
+import {
+  codeChangeStateSchema,
+  pluginBriefDecisionKindSchema,
+  pluginBriefLineSchema,
+  pluginBriefOutcomeStatusSchema,
+  pluginBriefSummarySchema,
+} from "@sentry/junior-plugin-api";
 import { z } from "zod";
 
-const lineSchema = z.string().trim().min(1).max(400);
+const lineSchema = pluginBriefLineSchema;
 const urlSchema = z.string().url().max(2_048);
 const timestampSchema = z.string().datetime();
 
@@ -16,14 +22,7 @@ const briefLocationSchema = z
   })
   .strict();
 
-export const briefOutcomeStatusSchema = z.enum([
-  "in_progress",
-  "answered",
-  "done",
-  "partial",
-  "blocked",
-  "abandoned",
-]);
+export const briefOutcomeStatusSchema = pluginBriefOutcomeStatusSchema;
 
 export const briefCodeChangeSchema = z
   .object({
@@ -74,12 +73,12 @@ export const conversationBriefSchema = z
   .object({
     schemaVersion: z.literal(1),
     record: briefRecordSchema,
-    summary: z.string().trim().min(1).max(600),
+    summary: pluginBriefSummarySchema,
     intent: lineSchema,
     outcome: z
       .object({
         status: briefOutcomeStatusSchema,
-        text: z.string().trim().min(1).max(600),
+        text: pluginBriefSummarySchema,
       })
       .strict(),
     decisions: z
@@ -88,7 +87,7 @@ export const conversationBriefSchema = z
           .object({
             text: lineSchema,
             by: lineSchema.optional(),
-            kind: z.enum(["stated", "confirmed", "assumed"]),
+            kind: pluginBriefDecisionKindSchema,
           })
           .strict(),
       )

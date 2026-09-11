@@ -70,29 +70,38 @@ export function definePromptContext<
 /** One request-scoped plugin contribution to the model-visible user prompt. */
 export type UserPromptContribution = PromptMessage | PromptContextContribution;
 
+export const pluginBriefLineSchema = z.string().trim().min(1).max(400);
+export const pluginBriefSummarySchema = z.string().trim().min(1).max(600);
+export const pluginBriefOutcomeStatusSchema = z.enum([
+  "in_progress",
+  "answered",
+  "done",
+  "partial",
+  "blocked",
+  "abandoned",
+]);
+export const pluginBriefDecisionKindSchema = z.enum([
+  "stated",
+  "confirmed",
+  "assumed",
+]);
+
 export const pluginBriefSchema = z
   .object({
     conversationId: z.string().min(1),
-    summary: z.string().trim().min(1).max(600),
+    summary: pluginBriefSummarySchema,
     outcome: z
       .object({
-        status: z.enum([
-          "in_progress",
-          "answered",
-          "done",
-          "partial",
-          "blocked",
-          "abandoned",
-        ]),
-        text: z.string().trim().min(1).max(600),
+        status: pluginBriefOutcomeStatusSchema,
+        text: pluginBriefSummarySchema,
       })
       .strict(),
     decisions: z
       .array(
         z
           .object({
-            kind: z.enum(["stated", "confirmed", "assumed"]),
-            text: z.string().trim().min(1).max(400),
+            kind: pluginBriefDecisionKindSchema,
+            text: pluginBriefLineSchema,
           })
           .strict(),
       )
@@ -101,9 +110,9 @@ export const pluginBriefSchema = z
       .array(
         z
           .object({
-            label: z.string().trim().min(1).max(400),
+            label: pluginBriefLineSchema,
             url: z.string().url().max(2_048),
-            status: z.string().trim().min(1).max(400).optional(),
+            status: pluginBriefLineSchema.optional(),
           })
           .strict(),
       )
