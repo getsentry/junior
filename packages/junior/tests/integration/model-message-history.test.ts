@@ -2,12 +2,12 @@ import { afterEach, describe, expect, it } from "vitest";
 import { closeConversationFixture } from "../fixtures/conversation";
 import { createAgent } from "../fixtures/agent";
 
-describe("prompt history", () => {
+describe("model message history", () => {
   afterEach(async () => {
     await closeConversationFixture();
   });
 
-  it("keeps each model request as an exact prefix of the next", async () => {
+  it("keeps earlier model messages unchanged", async () => {
     const agent = await createAgent();
 
     await agent.run("first request");

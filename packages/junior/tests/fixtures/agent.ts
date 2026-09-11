@@ -3,14 +3,12 @@ import { toCanonicalInputMessage } from "@/chat/conversation-privacy";
 import { createConversationWebHarness } from "./conversation";
 import { createModelStream } from "./model-stream";
 
-export type Agent = {
-  /** Run one complete Turn with the given prompt. */
-  run: (prompt: string) => Promise<void>;
-  /** Copy the canonical Messages sent in the latest model request. */
-  snapshot: () => Record<string, unknown>[];
+type Agent = {
+  run(prompt: string): Promise<void>;
+  snapshot(): Record<string, unknown>[];
 };
 
-/** Run complete Conversation Turns through production composition. */
+/** Create an Agent that runs complete Conversation Turns through production code. */
 export async function createAgent(): Promise<Agent> {
   const modelRequests: Message[][] = [];
   const conversation = await createConversationWebHarness(
@@ -18,9 +16,8 @@ export async function createAgent(): Promise<Agent> {
       ["First reply.", "Second reply."].map((text) => ({
         type: "text" as const,
         text,
-        onRequest: (context) => {
-          modelRequests.push(structuredClone(context.messages));
-        },
+        onRequest: ({ messages }) =>
+          modelRequests.push(structuredClone(messages)),
       })),
     ),
   );
@@ -28,8 +25,10 @@ export async function createAgent(): Promise<Agent> {
   let turn = 0;
 
   return {
-    run: async (prompt) => {
+    async run(prompt) {
       turn += 1;
+      // TODO(dcramer): Remove this web start/continue choice when the shared
+      // Conversation fixture can run consecutive prompts directly.
       if (conversationId) {
         await conversation.continue({
           conversationId,
@@ -45,11 +44,9 @@ export async function createAgent(): Promise<Agent> {
       }
       await conversation.drain();
     },
-    snapshot: () => {
+    snapshot() {
       const messages = modelRequests.at(-1);
-      if (!messages) {
-        throw new Error("Agent has not sent a model request");
-      }
+      if (!messages) throw new Error("No model request to snapshot");
       return structuredClone(messages.map(toCanonicalInputMessage));
     },
   };

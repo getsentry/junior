@@ -7,32 +7,19 @@ import {
   type FauxResponseStep,
 } from "@earendil-works/pi-ai/providers/faux";
 
-type FixedModelOutput =
-  | {
-      type: "text";
-      text: string;
-      onRequest?: (context: Context) => void;
-      waitFor?: Promise<unknown>;
-    }
+type FixedModelOutput = (
+  | { type: "text"; text: string }
   | {
       type: "toolCall";
       name: string;
       arguments: Parameters<typeof fauxToolCall>[1];
-      onRequest?: (context: Context) => void;
-      waitFor?: Promise<unknown>;
     }
-  | {
-      type: "error";
-      errorMessage: string;
-      onRequest?: (context: Context) => void;
-      waitFor?: Promise<unknown>;
-    }
-  | {
-      type: "message";
-      message: AssistantMessage;
-      onRequest?: (context: Context) => void;
-      waitFor?: Promise<unknown>;
-    };
+  | { type: "error"; errorMessage: string }
+  | { type: "message"; message: AssistantMessage }
+) & {
+  onRequest?: (context: Context) => void;
+  waitFor?: Promise<unknown>;
+};
 
 function createAssistantMessage(output: FixedModelOutput): AssistantMessage {
   if (output.type === "text") {

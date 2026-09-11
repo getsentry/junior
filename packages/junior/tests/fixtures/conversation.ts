@@ -145,6 +145,8 @@ export async function createConversationWebHarness(
   const work = createConversationWork({
     agentRunner,
     conversationStore,
+    // TODO(dcramer): Remove this Slack adapter when Conversation work no
+    // longer requires one for web input.
     getSlackAdapter: () => createSlackAdapterFixture(),
     queue,
     state,
