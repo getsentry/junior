@@ -13,7 +13,7 @@
     "@astrojs/check": "^0.9.9",
     "@astrojs/starlight": "^0.41.5",
     "@sentry/starlight-theme": "catalog:",
-    "astro": "^7.1.1",
+    "astro": "^7.2.8",
     "typescript": "^6.0.3"
   }
 }
