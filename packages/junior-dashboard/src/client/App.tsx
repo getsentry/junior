@@ -348,7 +348,7 @@ export function DashboardShell() {
             loading ? (
               <ConversationWorkspaceLoading detail={false} />
             ) : data ? (
-              <ConversationWorkspace data={data} />
+              <ConversationWorkspace />
             ) : (
               <LoadingView
                 label={query.error?.message ?? "Dashboard unavailable"}
@@ -367,7 +367,7 @@ export function DashboardShell() {
             loading ? (
               <ConversationWorkspaceLoading detail />
             ) : data ? (
-              <ConversationWorkspace data={data} />
+              <ConversationWorkspace />
             ) : (
               <LoadingView
                 label={query.error?.message ?? "Dashboard unavailable"}

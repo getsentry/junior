@@ -600,7 +600,6 @@ describe("dashboard routes", () => {
       basePath: "/",
       componentGallery: false,
       sentryConversationLinks: true,
-      timeZone: "America/Los_Angeles",
       version: expect.stringMatching(/\S+/),
     });
   });

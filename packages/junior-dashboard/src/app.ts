@@ -347,8 +347,9 @@ function mockViewerFromSession(session: DashboardSession) {
   };
 }
 
-function dashboardTimeZone(): string {
-  return process.env.JUNIOR_TIMEZONE || "America/Los_Angeles";
+/** Return an operator-configured timezone override, or undefined to let each viewer's browser use its own local timezone. */
+function dashboardTimeZone(): string | undefined {
+  return process.env.JUNIOR_TIMEZONE || undefined;
 }
 
 function pluginRoutePrefix(pluginName: string): string {

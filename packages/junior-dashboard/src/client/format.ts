@@ -17,11 +17,20 @@ import { getDashboardAgentName } from "./agentName";
 import { formatDuration } from "./components/Duration";
 import { conversationTranscriptMessages } from "./conversations/eventTranscript";
 
-let dashboardTimeZone = "America/Los_Angeles";
+/** Detect the viewer's own local timezone as the default display timezone. */
+function browserTimeZone(): string {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone;
+  } catch {
+    return "UTC";
+  }
+}
 
-/** Set the dashboard display timezone returned by the authenticated config API. */
-export function setDashboardTimeZone(timeZone: string): void {
-  dashboardTimeZone = timeZone;
+let dashboardTimeZone = browserTimeZone();
+
+/** Apply an operator-configured timezone override from the config API, if any. Otherwise the viewer's own browser timezone is used. */
+export function setDashboardTimeZone(timeZone: string | undefined): void {
+  dashboardTimeZone = timeZone || browserTimeZone();
 }
 
 /** Read the dashboard display timezone used for absolute timestamps and charts. */

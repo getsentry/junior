@@ -24,7 +24,7 @@ import {
   ConversationAnnotations,
   ConversationStats,
 } from "../src/client/conversations/ConversationMeta";
-import { conversationFromDetail } from "../src/client/format";
+import { conversationFromDetail, setDashboardTimeZone } from "../src/client/format";
 import { TranscriptMarkdown } from "../src/client/conversations/TranscriptMarkdown";
 import { TranscriptText } from "../src/client/conversations/TranscriptText";
 import { TranscriptToolView } from "../src/client/conversations/TranscriptToolView";
@@ -1784,6 +1784,9 @@ describe("dashboard canonical-event components", () => {
   });
 
   it("renders 24 trailing hour categories for the 24h range", () => {
+    // Pin the display timezone so hour-bucket rendering is deterministic
+    // regardless of the test runner's own local timezone.
+    setDashboardTimeZone("America/Los_Angeles");
     const categories = Array.from({ length: 48 }, (_, index) => {
       const date = new Date("2026-07-30T00:00:00.000Z");
       date.setUTCHours(date.getUTCHours() + index);
