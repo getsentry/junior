@@ -56,7 +56,10 @@ const modelBriefSchema = z
       z
         .object({
           label: z.string().trim().min(1),
-          url: z.string().url().max(2_048),
+          // No `.url()`: strict structured-output providers reject JSON
+          // Schema `format: uri`. Evidence matching and the stored schema
+          // validate cited URLs.
+          url: z.string().trim().min(1).max(2_048),
         })
         .strict(),
     ),

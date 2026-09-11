@@ -17,6 +17,67 @@ const INVENTED_URL = "https://example.com/invented";
 const CODE_CHANGE_URL = "https://github.com/getsentry/junior/pull/123";
 const RESOURCE_URL = "https://sentry.example.com/issues/123";
 
+// OpenAI strict structured outputs accept only this JSON Schema subset.
+const STRICT_STRING_FORMATS = new Set([
+  "date-time",
+  "time",
+  "date",
+  "duration",
+  "email",
+  "hostname",
+  "ipv4",
+  "ipv6",
+  "uuid",
+]);
+const STRICT_UNSUPPORTED_KEYWORDS = [
+  "allOf",
+  "not",
+  "if",
+  "then",
+  "else",
+  "dependentRequired",
+  "dependentSchemas",
+  "patternProperties",
+];
+
+/** List every schema node a strict structured-output provider rejects. */
+function strictProviderSchemaProblems(node: unknown, path = "$"): string[] {
+  if (Array.isArray(node)) {
+    return node.flatMap((item, index) =>
+      strictProviderSchemaProblems(item, `${path}[${index}]`),
+    );
+  }
+  if (node === null || typeof node !== "object") return [];
+  const schema = node as Record<string, unknown>;
+  const problems = STRICT_UNSUPPORTED_KEYWORDS.filter(
+    (keyword) => keyword in schema,
+  ).map((keyword) => `${path} uses unsupported keyword ${keyword}`);
+  if (schema.type === "object") {
+    const properties = Object.keys(
+      (schema.properties as Record<string, unknown> | undefined) ?? {},
+    );
+    if (schema.additionalProperties !== false) {
+      problems.push(`${path} allows additional properties`);
+    }
+    const required = Array.isArray(schema.required) ? schema.required : [];
+    if (properties.some((property) => !required.includes(property))) {
+      problems.push(`${path} has optional properties`);
+    }
+  }
+  if (
+    schema.type === "string" &&
+    typeof schema.format === "string" &&
+    !STRICT_STRING_FORMATS.has(schema.format)
+  ) {
+    problems.push(`${path} uses unsupported format ${schema.format}`);
+  }
+  for (const [key, value] of Object.entries(schema)) {
+    if (key === "enum" || key === "required") continue;
+    problems.push(...strictProviderSchemaProblems(value, `${path}.${key}`));
+  }
+  return problems;
+}
+
 function input(): BriefInput {
   return {
     conversationId: "conversation-1",
@@ -142,16 +203,21 @@ describe("generateBrief", () => {
       },
     });
 
+    expect(strictProviderSchemaProblems(capturedSchema)).toEqual([]);
     expect(capturedSchema).toMatchObject({
       properties: {
+        urls: {
+          items: {
+            properties: {
+              url: { type: "string", minLength: 1, maxLength: 2048 },
+            },
+          },
+        },
         decisions: {
           items: {
             properties: {
               by: {
-                anyOf: [
-                  { type: "string", minLength: 1 },
-                  { type: "null" },
-                ],
+                anyOf: [{ type: "string", minLength: 1 }, { type: "null" }],
               },
             },
             required: ["text", "by", "kind"],
@@ -161,10 +227,7 @@ describe("generateBrief", () => {
           items: {
             properties: {
               owner: {
-                anyOf: [
-                  { type: "string", minLength: 1 },
-                  { type: "null" },
-                ],
+                anyOf: [{ type: "string", minLength: 1 }, { type: "null" }],
               },
             },
             required: ["text", "owner"],
