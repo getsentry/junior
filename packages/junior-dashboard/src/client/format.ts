@@ -2,6 +2,7 @@ import { bundledLanguages, type BundledLanguage } from "shiki/bundle/web";
 import type {
   ActorIdentity,
   ConversationAuxiliaryCosts,
+  ConversationModelUsage,
   ConversationSummaryReport,
   ConversationUsage,
 } from "@sentry/junior/api/schema";
@@ -491,6 +492,30 @@ export function summarizeUsage(
     }
   }
 
+  return summary.totalTokens > 0 ? summary : undefined;
+}
+
+/** Sum model token components for a conversation detail. */
+export function summarizeModelUsage(
+  modelUsage: ConversationModelUsage[] | undefined,
+): TokenUsageSummary | undefined {
+  if (!modelUsage?.length) return undefined;
+  const summary: TokenUsageSummary = { totalTokens: 0 };
+  for (const item of modelUsage) {
+    const model = summarizeUsage(item.usage);
+    if (!model) continue;
+    summary.totalTokens += model.totalTokens;
+    for (const field of [
+      "inputTokens",
+      "outputTokens",
+      "cachedInputTokens",
+      "cacheCreationTokens",
+      "reasoningTokens",
+    ] as const) {
+      const value = model[field];
+      if (value !== undefined) summary[field] = (summary[field] ?? 0) + value;
+    }
+  }
   return summary.totalTokens > 0 ? summary : undefined;
 }
 

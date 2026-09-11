@@ -776,6 +776,7 @@ export const conversationMetricBucketSchema = z
 export const conversationMetricDaySchema = z
   .object({
     cachedInputTokens: z.number().optional(),
+    cacheCreationTokens: z.number().optional(),
     conversations: z.number(),
     costUsd: z.number().optional(),
     date: conversationMetricBucketSchema,
@@ -813,6 +814,7 @@ export const conversationStatsReportSchema = z
   .object({
     active: z.number(),
     cachedInputTokens: z.number().optional(),
+    cacheCreationTokens: z.number().optional(),
     conversations: z.number(),
     durationMs: z.number(),
     failed: z.number(),

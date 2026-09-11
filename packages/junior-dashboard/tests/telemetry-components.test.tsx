@@ -1586,7 +1586,9 @@ describe("dashboard canonical-event components", () => {
       </MemoryRouter>,
     );
     expect(nearCompleteCacheHtml).toContain("&lt;100%");
-    expect(nearCompleteCacheHtml).toContain("9.9k cached · 1 uncached");
+    expect(nearCompleteCacheHtml).toContain(
+      "9.9k read · 0 written · 1 uncached",
+    );
     expect(systemHtml).not.toContain(">quiet<");
     expect(systemHtml).not.toContain(">metrics<");
     expect(systemHtml).not.toContain(">datasets<");

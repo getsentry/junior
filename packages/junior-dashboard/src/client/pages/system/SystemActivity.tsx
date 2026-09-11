@@ -22,6 +22,8 @@ function periodTotals(days: ConversationMetricDay[]) {
   return days.reduce(
     (total, day) => ({
       cachedInputTokens: total.cachedInputTokens + (day.cachedInputTokens ?? 0),
+      cacheCreationTokens:
+        total.cacheCreationTokens + (day.cacheCreationTokens ?? 0),
       conversations: total.conversations + day.conversations,
       costUsd: total.costUsd + (day.costUsd ?? 0),
       inputTokens: total.inputTokens + (day.inputTokens ?? 0),
@@ -29,6 +31,7 @@ function periodTotals(days: ConversationMetricDay[]) {
     }),
     {
       cachedInputTokens: 0,
+      cacheCreationTokens: 0,
       conversations: 0,
       costUsd: 0,
       inputTokens: 0,
@@ -40,8 +43,10 @@ function periodTotals(days: ConversationMetricDay[]) {
 function formatCachedInputShare(
   uncachedInputTokens: number,
   cachedInputTokens: number,
+  cacheCreationTokens: number,
 ) {
-  const totalInputTokens = uncachedInputTokens + cachedInputTokens;
+  const totalInputTokens =
+    uncachedInputTokens + cachedInputTokens + cacheCreationTokens;
   if (!totalInputTokens) return "—";
   const percentage = (cachedInputTokens / totalInputTokens) * 100;
   if (percentage < 100 && percentage >= 99.95) return "<100%";
@@ -118,12 +123,13 @@ export function SystemActivity(props: {
           value={formatCostSummary({ total: totals.costUsd })}
         />
         <StatCard
-          detail={`${formatCompactNumber(totals.cachedInputTokens)} cached · ${formatCompactNumber(totals.inputTokens)} uncached`}
+          detail={`${formatCompactNumber(totals.cachedInputTokens)} read · ${formatCompactNumber(totals.cacheCreationTokens)} written · ${formatCompactNumber(totals.inputTokens)} uncached`}
           icon={Gauge}
           label="Cached input share"
           value={formatCachedInputShare(
             totals.inputTokens,
             totals.cachedInputTokens,
+            totals.cacheCreationTokens,
           )}
         />
       </div>
