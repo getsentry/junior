@@ -24,6 +24,12 @@ through real wiring or remove it when stronger coverage owns the behavior.
 A test that needs internal module replacement, or a non-Slack/non-LLM external
 fake, belongs in `component/` unless it is rewritten to use real wiring.
 
+Every schema passed to `completeObject` must pass
+`strictProviderSchemaProblems` from `@sentry/junior-testing/structured-output`
+in its owning unit test. Strict structured-output providers reject optional
+properties, unions at the root, and string formats such as `uri`, and the
+gateway only reports this at request time.
+
 Use `../../junior-evals/README.md` for model-dependent behavior and
 `../../docs/src/content/docs/contribute/local-agent-validation.md` for local
 app-facing validation.

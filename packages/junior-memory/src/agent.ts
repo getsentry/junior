@@ -135,29 +135,44 @@ const memoryReviewDecisionSchema = z.discriminatedUnion("decision", [
     })
     .strict(),
 ]);
-const memoryReviewResponseSchema = z.discriminatedUnion("decision", [
-  z
-    .object({
-      decision: z.literal("store"),
-      kind: memoryKindSchema.describe(
-        "Use preference only for actor-owned personal preferences, opinions, habits, or workflows. Use procedure for reusable task or process instructions. Use knowledge for shared project, channel, operational, or runbook facts.",
+// Model-facing schemas are one flat object with required nullable fields.
+// Strict structured-output providers reject a union at the root and any
+// optional property.
+const memoryReviewResponseSchema = z
+  .object({
+    decision: z.enum(["store", "reject"]),
+    kind: memoryKindSchema
+      .nullable()
+      .describe(
+        "Use preference only for actor-owned personal preferences, opinions, habits, or workflows. Use procedure for reusable task or process instructions. Use knowledge for shared project, channel, operational, or runbook facts. Null when rejecting.",
       ),
-      canonicalFact: z
-        .string()
-        .min(1)
-        .describe(
-          "Stored memory text. It must be self-contained and must not include actor names, actor/user labels, source labels, or first- or second-person wording.",
-        ),
-      expiresAtMs: expiresAtMsSchema,
-    })
-    .strict(),
-  z
-    .object({
-      decision: z.literal("reject"),
-      reason: memoryRejectReasonSchema,
-    })
-    .strict(),
-]);
+    canonicalFact: z
+      .string()
+      .min(1)
+      .nullable()
+      .describe(
+        "Stored memory text. It must be self-contained and must not include actor names, actor/user labels, source labels, or first- or second-person wording. Null when rejecting.",
+      ),
+    expiresAtMs: expiresAtMsSchema,
+    reason: memoryRejectReasonSchema
+      .nullable()
+      .describe("Reject reason. Null when storing."),
+  })
+  .strict();
+const memorySupersessionResponseSchema = z
+  .object({
+    decision: z.enum(["duplicate", "supersedes_old", "distinct", "uncertain"]),
+    duplicateId: z
+      .string()
+      .min(1)
+      .nullable()
+      .describe("Existing memory id for duplicate, otherwise null."),
+    supersededIds: z
+      .array(z.string().min(1))
+      .nullable()
+      .describe("Existing memory ids for supersedes_old, otherwise null."),
+  })
+  .strict();
 const extractedMemorySchema = z
   .object({
     kind: memoryKindSchema.describe(
@@ -192,6 +207,9 @@ const extractMemoriesResponseSchema = z
   })
   .strict();
 type MemoryReviewResponse = z.output<typeof memoryReviewResponseSchema>;
+type MemorySupersessionResponse = z.output<
+  typeof memorySupersessionResponseSchema
+>;
 type ExtractMemoriesResponse = z.output<typeof extractMemoriesResponseSchema>;
 
 export type MemoryReview = z.output<typeof memoryReviewDecisionSchema>;
@@ -409,6 +427,7 @@ function reviewPrompt(request: CreateMemoryRequest): string {
     "- Reject third-party personal profile facts, even if they mention a name.",
     "- Reject vague content such as 'remember this' unless the candidate or current-user-message contains the concrete fact.",
     "- Preserve the requested expiration when one exists; otherwise set expiresAtMs to null.",
+    "- When storing, set reason to null. When rejecting, set kind, canonicalFact, and expiresAtMs to null.",
     "- If unsure, reject.",
     "</rules>",
     "</memory-review-input>",
@@ -546,6 +565,7 @@ function preferenceAdjudicationPrompt(
     "- Return uncertain when broader or narrower wording makes equivalence or replacement unclear.",
     "- Do not supersede memories from different topics even if they are both preferences.",
     "- duplicateId and supersededIds may contain only ids from existing-memories.",
+    "- Set duplicateId to null unless the decision is duplicate. Set supersededIds to null unless the decision is supersedes_old.",
     "- If unsure, return uncertain.",
     "</rules>",
     "</memory-preference-adjudication-input>",
@@ -577,12 +597,14 @@ export function createMemoryAgent(model: PluginModel): MemoryAgent {
     async adjudicateSupersession(rawRequest) {
       const request = memorySupersessionInputSchema.parse(rawRequest);
       const result = await model.completeObject({
-        schema: memorySupersessionDecisionSchema,
+        schema: memorySupersessionResponseSchema,
         system: MEMORY_PREFERENCE_ADJUDICATION_SYSTEM,
         prompt: preferenceAdjudicationPrompt(request),
         maxTokens: 400,
       });
-      return memorySupersessionDecisionSchema.parse(result.object);
+      return memorySupersessionFromResponse(
+        memorySupersessionResponseSchema.parse(result.object),
+      );
     },
     async extractSessionMemories(rawRequest) {
       const request = extractSessionRequestSchema.parse(rawRequest);
@@ -632,6 +654,25 @@ function memoryReviewFromResponse(
     decision: "reject",
     reason: response.reason,
   });
+}
+
+function memorySupersessionFromResponse(
+  response: MemorySupersessionResponse,
+): MemorySupersessionDecision {
+  switch (response.decision) {
+    case "duplicate":
+      return memorySupersessionDecisionSchema.parse({
+        decision: "duplicate",
+        duplicateId: response.duplicateId,
+      });
+    case "supersedes_old":
+      return memorySupersessionDecisionSchema.parse({
+        decision: "supersedes_old",
+        supersededIds: response.supersededIds,
+      });
+    default:
+      return { decision: response.decision };
+  }
 }
 
 function extractedMemoriesFromResponse(

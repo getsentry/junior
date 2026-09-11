@@ -1,7 +1,9 @@
+import { strictProviderSchemaProblems } from "@sentry/junior-testing/structured-output";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createGuardianActionReviewer } from "@/chat/services/guardian-action-review";
 import { ProviderError } from "@/chat/services/provider-error";
 import type { ToolActionProposal } from "@/chat/tool-support/action-review";
+import type { ZodType } from "zod";
 
 const mocks = vi.hoisted(() => ({
   logWarn: vi.fn(),
@@ -44,7 +46,12 @@ describe("Guardian action review", () => {
   });
 
   it("returns a schema-constrained decision for the exact proposal", async () => {
-    const completeObject = vi.fn(async () => ({
+    const completeObject = vi.fn<
+      (request: { schema: ZodType }) => Promise<{
+        costUsd: number;
+        object: Record<string, unknown>;
+      }>
+    >(async () => ({
       object: {
         decision: "ask" as const,
         reason: "Recurring work should be confirmed.",
@@ -65,6 +72,9 @@ describe("Guardian action review", () => {
       riskLevel: "medium",
       userAuthorization: "low",
     });
+    expect(
+      strictProviderSchemaProblems(completeObject.mock.calls[0]![0].schema),
+    ).toEqual([]);
     expect(completeObject).toHaveBeenCalledWith(
       expect.objectContaining({
         maxTokens: 2_000,

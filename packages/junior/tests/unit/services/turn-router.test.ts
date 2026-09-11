@@ -1,3 +1,4 @@
+import { strictProviderSchemaProblems } from "@sentry/junior-testing/structured-output";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createProviderError } from "@/chat/services/provider-error";
 import {
@@ -47,7 +48,9 @@ describe("selectTurnRoute", () => {
   });
 
   it("classifies even simple acknowledgment turns with the fast model", async () => {
-    const completeObject = vi.fn(async () => ({
+    const completeObject = vi.fn<
+      Parameters<typeof selectTurnRoute>[0]["completeObject"]
+    >(async () => ({
       costUsd: 0.00012,
       object: {
         reasoning_level: "none",
@@ -69,6 +72,9 @@ describe("selectTurnRoute", () => {
       profile: "standard",
       reason: "acknowledgment only",
     });
+    expect(
+      strictProviderSchemaProblems(completeObject.mock.calls[0]![0].schema),
+    ).toEqual([]);
     expect(completeObject).toHaveBeenCalledWith(
       expect.objectContaining({
         modelId: "openai/gpt-5.4-mini",
