@@ -37,7 +37,7 @@ const modelBriefSchema = z
       z
         .object({
           text: z.string().trim().min(1),
-          by: z.string().trim().min(1).optional(),
+          by: z.string().trim().min(1).nullable().default(null),
           kind: z.enum(["stated", "confirmed", "assumed"]),
         })
         .strict(),
@@ -46,7 +46,7 @@ const modelBriefSchema = z
       z
         .object({
           text: z.string().trim().min(1),
-          owner: z.string().trim().min(1).optional(),
+          owner: z.string().trim().min(1).nullable().default(null),
         })
         .strict(),
     ),
@@ -161,7 +161,9 @@ function normalizeModelBrief(args: {
     ]),
   );
   participantNames.set("junior", "Junior");
-  const attribution = (value: string | undefined): string | undefined => {
+  const attribution = (
+    value: string | null | undefined,
+  ): string | undefined => {
     if (!value?.trim()) return undefined;
     const matched = participantNames.get(value.trim().toLowerCase());
     if (!matched) droppedAttributionCount += 1;

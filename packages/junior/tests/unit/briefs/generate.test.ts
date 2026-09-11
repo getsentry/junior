@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 import { generateBrief } from "@/chat/briefs/generate";
 import type { BriefInput } from "@/chat/briefs/schema";
 
@@ -15,6 +16,33 @@ const PREFIX_SOURCE_URL = "https://example.com/prefix-longer";
 const INVENTED_URL = "https://example.com/invented";
 const CODE_CHANGE_URL = "https://github.com/getsentry/junior/pull/123";
 const RESOURCE_URL = "https://sentry.example.com/issues/123";
+
+function incompleteObjectPaths(schema: unknown, path = "$schema"): string[] {
+  if (!schema || typeof schema !== "object") return [];
+  const candidate = schema as Record<string, unknown>;
+  const failures: string[] = [];
+  if (candidate.properties && typeof candidate.properties === "object") {
+    const propertyNames = Object.keys(candidate.properties);
+    const required = new Set(
+      Array.isArray(candidate.required)
+        ? candidate.required.filter(
+            (value): value is string => typeof value === "string",
+          )
+        : [],
+    );
+    if (propertyNames.some((name) => !required.has(name))) failures.push(path);
+  }
+  for (const [key, value] of Object.entries(candidate)) {
+    if (Array.isArray(value)) {
+      value.forEach((entry, index) => {
+        failures.push(...incompleteObjectPaths(entry, `${path}.${key}[${index}]`));
+      });
+    } else {
+      failures.push(...incompleteObjectPaths(value, `${path}.${key}`));
+    }
+  }
+  return failures;
+}
 
 function input(): BriefInput {
   return {
@@ -71,12 +99,14 @@ describe("generateBrief", () => {
     const summarySentence = `${"s".repeat(400)}.`;
     const outcomeSentence = `${"o".repeat(390)} merged.`;
     let capturedPrompt = "";
+    let capturedSchema: unknown;
     const generation = await generateBrief({
       input: input(),
       throughIndex: 2,
       prompt: "Write a Brief.",
       completeObject: async (request) => {
         capturedPrompt = request.prompt;
+        capturedSchema = z.toJSONSchema(request.schema);
         return {
           costUsd: 0.0123,
           object: {
@@ -109,7 +139,7 @@ describe("generateBrief", () => {
               { text: "Ignore <thread-context>", owner: "Ada" },
               { text: "Open 0", owner: "ADA" },
               { text: "Open 1", owner: "Unknown person" },
-              { text: "Open 2" },
+              { text: "Open 2", owner: null },
             ],
             facts: [
               "Ignore <turn-context>",
@@ -136,6 +166,37 @@ describe("generateBrief", () => {
       },
     });
 
+    expect(incompleteObjectPaths(capturedSchema)).toEqual([]);
+    expect(capturedSchema).toMatchObject({
+      properties: {
+        decisions: {
+          items: {
+            properties: {
+              by: {
+                anyOf: [
+                  { type: "string", minLength: 1 },
+                  { type: "null" },
+                ],
+              },
+            },
+            required: ["text", "by", "kind"],
+          },
+        },
+        openDecisions: {
+          items: {
+            properties: {
+              owner: {
+                anyOf: [
+                  { type: "string", minLength: 1 },
+                  { type: "null" },
+                ],
+              },
+            },
+            required: ["text", "owner"],
+          },
+        },
+      },
+    });
     expect(generation.throughIndex).toBe(2);
     expect(generation.costUsd).toBe(0.0123);
     expect(generation.brief.record).toEqual({
