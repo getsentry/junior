@@ -62,6 +62,12 @@ const noopLogger: PluginLogger = {
   warn() {},
 };
 
+const emptyBriefReader = {
+  async readLatest() {
+    return {};
+  },
+};
+
 const memoryState: PluginState = {
   async delete() {},
   async get() {
@@ -3953,6 +3959,7 @@ WHERE id = '${superseded.memory.id}'
       const result = await plugin.hooks?.userPrompt?.({
         ...context,
         destination: slackDestination(context),
+        briefs: emptyBriefReader,
         users: memoryUsers(context.userId),
         db: memoryDb(fixture),
         embedder: createTestEmbedder({}, { costUsd: 0.0003 }),
@@ -4045,6 +4052,7 @@ WHERE id = '${superseded.memory.id}'
       const result = await plugin.hooks?.userPrompt?.({
         ...context,
         destination: slackDestination(context),
+        briefs: emptyBriefReader,
         users: memoryUsers(context.userId),
         db: memoryDb(fixture),
         embedder: createTestEmbedder(),
@@ -4086,23 +4094,51 @@ WHERE id = '${superseded.memory.id}'
     }
   }, 15_000);
 
-  it("retains conversation memory recall as structured prompt context", async () => {
+  it("retains memory and origin Brief recall as structured prompt context", async () => {
     const fixture = await createMemoryFixture();
 
     try {
+      const origin = slackContext({
+        channelId: "C999",
+        threadTs: "1700000000.000000",
+      });
       const context = slackContext();
-      const conversation = await createMemoryStore(memoryDb(fixture), context, {
+      const conversation = await createMemoryStore(memoryDb(fixture), origin, {
         now: () => TEST_NOW_MS,
       }).createConversationMemory({
         content: "Release notes live in Notion.",
         kind: "knowledge",
         idempotencyKey: "memory-test:recall-conversation-context",
       });
+      const brief = {
+        conversationId: origin.conversationId,
+        summary: "The team chose Notion for release notes.",
+        outcome: { status: "done" as const, text: "Release notes moved." },
+        decisions: [
+          { kind: "confirmed" as const, text: "Keep release notes in Notion." },
+        ],
+        links: [
+          { label: "Release notes", url: "https://example.com/release-notes" },
+        ],
+        updatedAt: "2026-06-19T12:00:00.000Z",
+      };
+      const emitted: PluginConversationEventValue[] = [];
 
       const plugin = memoryPlugin();
       const result = await plugin.hooks?.userPrompt?.({
         ...context,
         destination: slackDestination(context),
+        briefs: {
+          async readLatest(conversationIds) {
+            expect(conversationIds).toEqual([origin.conversationId]);
+            return { [origin.conversationId]: brief };
+          },
+        },
+        events: {
+          async emit(event) {
+            emitted.push(event);
+          },
+        },
         users: memoryUsers(context.userId),
         db: memoryDb(fixture),
         embedder: createTestEmbedder(),
@@ -4141,6 +4177,27 @@ WHERE id = '${superseded.memory.id}'
           "Treat these as possibly stale context. Current user instructions and repository evidence take priority.",
         ].join("\n"),
       );
+      const briefContribution = result?.[1];
+      expect(briefContribution && "context" in briefContribution).toBe(true);
+      if (!briefContribution || !("context" in briefContribution)) {
+        throw new Error("Memory recall did not return Brief context");
+      }
+      expect(briefContribution.context).toEqual({
+        kind: "recall_briefs",
+        version: 1,
+        content: { briefs: [brief] },
+      });
+      expect(briefContribution.renderPrompt()).toContain(
+        `Brief from Conversation ${origin.conversationId}: ${brief.summary}`,
+      );
+      expect(emitted).toEqual([
+        expect.objectContaining({
+          data: {
+            briefs: [origin.conversationId],
+            memories: [conversation.memory.id],
+          },
+        }),
+      ]);
     } finally {
       await fixture.close();
     }
@@ -4175,6 +4232,7 @@ WHERE id = '${superseded.memory.id}'
       const result = await plugin.hooks?.userPrompt?.({
         ...context,
         destination: slackDestination(context),
+        briefs: emptyBriefReader,
         users: memoryUsers(context.userId),
         db: memoryDb(fixture),
         embedder: createTestEmbedder(),
@@ -4221,6 +4279,7 @@ WHERE id = '${superseded.memory.id}'
         plugin.hooks?.userPrompt?.({
           ...context,
           destination: slackDestination(context),
+          briefs: emptyBriefReader,
           users: memoryUsers(context.userId),
           db: memoryDb(fixture),
           embedder: createTestEmbedder({}, { costUsd: 0.0002 }),
@@ -4261,6 +4320,7 @@ WHERE id = '${superseded.memory.id}'
         plugin.hooks?.userPrompt?.({
           ...context,
           destination: slackDestination(context),
+          briefs: emptyBriefReader,
           users: memoryUsers(context.userId),
           db: memoryDb(fixture),
           embedder: createTestEmbedder({}, { costUsd: 0.0002 }),
@@ -4320,6 +4380,7 @@ WHERE id = '${superseded.memory.id}'
         plugin.hooks?.userPrompt?.({
           ...context,
           destination: slackDestination(context),
+          briefs: emptyBriefReader,
           users: memoryUsers(context.userId),
           db: memoryDb(fixture),
           embedder: createTestEmbedder(),
@@ -4356,6 +4417,7 @@ WHERE id = '${superseded.memory.id}'
         plugin.hooks?.userPrompt?.({
           ...context,
           destination: slackDestination(context),
+          briefs: emptyBriefReader,
           users: memoryUsers(context.userId),
           db: memoryDb(fixture),
           embedder: createTestEmbedder(),
@@ -4395,6 +4457,7 @@ WHERE id = '${superseded.memory.id}'
       const result = await plugin.hooks?.userPrompt?.({
         ...context,
         destination: slackDestination(context),
+        briefs: emptyBriefReader,
         users: memoryUsers(context.userId),
         db: memoryDb(fixture),
         embedder,

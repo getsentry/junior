@@ -45,8 +45,8 @@ exported types, tools, and tests are authoritative.
 
 - The Drizzle schema in `src/db/schema.ts` and generated migrations define the
   database contract.
-- Records retain provenance, lifecycle status, supersession relationships, and
-  timestamps needed for review and deletion.
+- Records retain provenance, the optional origin `conversation_id`, lifecycle
+  status, supersession relationships, and timestamps needed for review and deletion.
 - Embeddings are derived indexes, not independent memory authority.
 - Embedding distance never decides that two memories are duplicates. Exact
   content and preference review own duplicate and supersession decisions.
@@ -80,6 +80,9 @@ exported types, tools, and tests are authoritative.
 - Automatic recall retrieves a bounded candidate window, then uses the
   memory relevance model and prompt limit to select useful memories. An empty
   result adds no prompt text.
+- After admission, recall can attach the latest Briefs for up to two origin
+  Conversations. Only public root Briefs are available. The Brief block is
+  limited to 3,000 characters and does not reduce the 4,000-character memory limit.
 - Every completed automatic recall attempt emits an invisible, namespaced
   `memory/memories_recalled` conversation event with the admitted memory IDs
   and best-effort embedding and relevance-model cost, including retrievals that

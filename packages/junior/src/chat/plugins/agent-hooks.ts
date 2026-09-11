@@ -58,6 +58,7 @@ import { workspaceRepoCheckoutPath } from "@/chat/workspaces/checkout-path";
 import { listWorkspaceNamesByRepository } from "@/chat/workspaces/store";
 import { createCodeChangePublisher } from "@/chat/code/publisher";
 import { coreTaskRegistrations } from "@/chat/briefs/registration";
+import { readPublicBriefsForPlugins } from "@/chat/briefs/plugin-reader";
 
 /** Signal that a plugin intentionally denied a tool execution. */
 export class PluginHookDeniedError extends Error {
@@ -239,6 +240,14 @@ function invocationPluginContext(
     ...base,
     conversationId: context.conversationId,
     locationId: context.locationId,
+    briefs: {
+      async readLatest(conversationIds: readonly string[]) {
+        return await readPublicBriefsForPlugins(getDb(), {
+          conversationIds,
+          currentConversationId: context.conversationId,
+        });
+      },
+    },
     embedder: createPluginEmbedder(plugin.manifest.name),
     ...(context.conversationId && turnId
       ? {

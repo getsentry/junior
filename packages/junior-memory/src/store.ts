@@ -146,6 +146,7 @@ const memoryRowSchema = z
     archivedAtMs: optionalNumberSchema,
     archiveReason: optionalStringSchema,
     content: memoryContentSchema,
+    conversationId: optionalNonEmptyStringSchema,
     createdAtMs: z.coerce.number(),
     expiresAtMs: optionalNumberSchema,
     id: z.string().min(1),
@@ -206,6 +207,7 @@ const memoryRecordSchema = z
     archivedAtMs: numberSchema.optional(),
     archiveReason: nonEmptyStringSchema.optional(),
     content: memoryContentSchema,
+    conversationId: nonEmptyStringSchema.optional(),
     createdAtMs: numberSchema,
     expiresAtMs: numberSchema.optional(),
     id: nonEmptyStringSchema,
@@ -418,6 +420,9 @@ export function parseMemoryRow(row: unknown): MemoryRecord {
     kind: parsed.kind,
     subjectType: parsed.subjectType,
     content: parsed.content,
+    ...(parsed.conversationId
+      ? { conversationId: parsed.conversationId }
+      : undefined),
     observedAtMs: parsed.observedAtMs,
     createdAtMs: parsed.createdAtMs,
     ...(parsed.expiresAtMs !== undefined
@@ -781,6 +786,7 @@ async function rememberDuplicateIdempotency(args: {
     .insert(juniorMemoryMemories)
     .values({
       content: args.content,
+      conversationId: args.runtimeContext.conversationId,
       createdAtMs: args.nowMs,
       expiresAtMs: args.duplicate.expiresAtMs,
       id: idempotencyAliasId({
@@ -1040,6 +1046,7 @@ async function searchVisibleLexicalMemories(args: {
         archiveReason: candidates.archiveReason,
         archivedAtMs: candidates.archivedAtMs,
         content: candidates.content,
+        conversationId: candidates.conversationId,
         createdAtMs: candidates.createdAtMs,
         expiresAtMs: candidates.expiresAtMs,
         id: candidates.id,
@@ -1301,6 +1308,7 @@ export function createMemoryStore(
         .insert(juniorMemoryMemories)
         .values({
           content,
+          conversationId: runtimeContext.conversationId,
           createdAtMs: nowMs,
           expiresAtMs: input.expiresAtMs,
           id,

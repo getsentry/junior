@@ -70,6 +70,51 @@ export function definePromptContext<
 /** One request-scoped plugin contribution to the model-visible user prompt. */
 export type UserPromptContribution = PromptMessage | PromptContextContribution;
 
+export const pluginBriefSchema = z
+  .object({
+    conversationId: z.string().min(1),
+    summary: z.string().trim().min(1).max(600),
+    outcome: z
+      .object({
+        status: z.enum([
+          "in_progress",
+          "answered",
+          "done",
+          "partial",
+          "blocked",
+          "abandoned",
+        ]),
+        text: z.string().trim().min(1).max(600),
+      })
+      .strict(),
+    decisions: z
+      .array(
+        z
+          .object({
+            kind: z.enum(["stated", "confirmed", "assumed"]),
+            text: z.string().trim().min(1).max(400),
+          })
+          .strict(),
+      )
+      .max(20),
+    links: z
+      .array(
+        z
+          .object({
+            label: z.string().trim().min(1).max(400),
+            url: z.string().url().max(2_048),
+            status: z.string().trim().min(1).max(400).optional(),
+          })
+          .strict(),
+      )
+      .max(40),
+    updatedAt: z.string().datetime(),
+  })
+  .strict();
+
+/** Public Brief fields that a plugin can add to prompt context. */
+export type PluginBrief = z.output<typeof pluginBriefSchema>;
+
 /** Stable platform context for plugin system prompt guidance. */
 export type SystemPromptContext = Pick<
   PluginContext,
@@ -81,6 +126,12 @@ export type SystemPromptContext = Pick<
 /** Runtime facts available while building plugin user prompt context. */
 export type UserPromptContext = Pick<PluginContext, "db" | "log" | "plugin"> & {
   conversationId?: string;
+  briefs: {
+    /** Read the latest Briefs for authorized public root Conversations. */
+    readLatest(
+      conversationIds: readonly string[],
+    ): Promise<Record<string, PluginBrief>>;
+  };
   destination: Destination;
   embedder: PluginEmbedder;
   /** Conversation-bound event writer when the prompt belongs to a durable turn. */

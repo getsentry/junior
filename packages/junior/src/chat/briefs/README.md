@@ -25,7 +25,7 @@ The record comes from `BriefInput`, not from the model. It contains the activity
 
 ## Layout
 
-`schema.ts` owns the Brief and generator input schemas and their exported types. `input.ts` builds generator input from SQL. `snapshot.ts` builds it from a downloaded snapshot. Both use `event-entries.ts`. `generate.ts` is the pure generator. `store.ts` appends and reads versions. `search.ts` queries the latest public Briefs. `task.ts` runs after each completed Turn and owns the core registration. `render.ts` writes the CLI Markdown.
+`schema.ts` owns the Brief and generator input schemas and their exported types. `input.ts` builds generator input from SQL. `snapshot.ts` builds it from a downloaded snapshot. Both use `event-entries.ts`. `generate.ts` is the pure generator. `store.ts` appends and reads versions. `search.ts` queries the latest public Briefs. `plugin-reader.ts` exposes a small provider-neutral view of latest public root Briefs to prompt hooks. `task.ts` runs after each completed Turn and owns the core registration. `render.ts` writes the CLI Markdown.
 
 The default prompt is in `prompt.ts`. The package uses tsdown, which does not copy Markdown assets. Keeping the prompt in a TypeScript string makes the source and packaged CLI use the same text without a file-system lookup.
 

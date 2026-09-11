@@ -3,6 +3,8 @@ import {
   type UserPromptContribution,
   type Actor,
   type Identity,
+  pluginBriefSchema,
+  type PluginBrief,
   type PluginConversationEvents,
   type PluginLogger,
   type Source,
@@ -22,10 +24,19 @@ import { memoryRuntimeContextSchema } from "./types";
 const RECALL_CANDIDATE_LIMIT = 20;
 const MAX_PROMPT_CHARS = 4_000;
 const MAX_MEMORY_LINE_CHARS = 600;
+const MAX_RECALL_BRIEFS = 2;
+const MAX_BRIEF_PROMPT_CHARS = 3_000;
+const MAX_BRIEF_DECISIONS = 5;
+const MAX_BRIEF_LINKS = 5;
 
 export interface MemoryRecallContext {
   agent: Pick<MemoryAgent, "selectRelevantMemories">;
   conversationId?: string;
+  briefs: {
+    readLatest(
+      conversationIds: readonly string[],
+    ): Promise<Record<string, PluginBrief>>;
+  };
   db: MemoryDb;
   embedder?: MemoryEmbeddingProvider;
   events?: PluginConversationEvents;
@@ -119,6 +130,7 @@ function addUsd(
 }
 
 async function emitRecallOutcome(args: {
+  briefs: string[];
   costUsd?: number;
   events?: PluginConversationEvents;
   memories: string[];
@@ -126,6 +138,7 @@ async function emitRecallOutcome(args: {
   await args.events?.emit(
     memoriesRecalledEvent({
       memories: args.memories,
+      ...(args.briefs.length > 0 ? { briefs: args.briefs } : undefined),
       ...(args.costUsd !== undefined ? { costUsd: args.costUsd } : undefined),
     }),
   );
@@ -136,6 +149,70 @@ const memoryRecallContext = definePromptContext({
   version: 1,
   schema: memoryRecallContextSchema,
   renderPrompt: (content) => renderMemoryPrompt(content.memories),
+});
+
+const recallBriefsContextSchema = z
+  .object({
+    briefs: z.array(pluginBriefSchema).min(1).max(MAX_RECALL_BRIEFS),
+  })
+  .strict();
+
+function renderBriefs(briefs: PluginBrief[]): string {
+  return briefs
+    .map((brief) =>
+      [
+        `Brief from Conversation ${brief.conversationId}: ${brief.summary}`,
+        `Outcome (${brief.outcome.status}): ${brief.outcome.text}`,
+        ...brief.decisions.map(
+          (decision) => `Decision (${decision.kind}): ${decision.text}`,
+        ),
+        ...brief.links.map((link) => `- ${link.label}: ${link.url}`),
+      ].join("\n"),
+    )
+    .join("\n\n");
+}
+
+function packBriefs(briefs: PluginBrief[]): PluginBrief[] {
+  let packed = briefs.map((brief) => ({
+    ...brief,
+    decisions: brief.decisions.slice(0, MAX_BRIEF_DECISIONS),
+    links: brief.links.slice(0, MAX_BRIEF_LINKS),
+  }));
+  if (renderBriefs(packed).length > MAX_BRIEF_PROMPT_CHARS) {
+    packed = packed.slice(0, 1);
+  }
+  while (
+    renderBriefs(packed).length > MAX_BRIEF_PROMPT_CHARS &&
+    packed.some((brief) => brief.links.length > 0)
+  ) {
+    for (let index = packed.length - 1; index >= 0; index -= 1) {
+      const brief = packed[index];
+      if (brief && brief.links.length > 0) {
+        brief.links.pop();
+        break;
+      }
+    }
+  }
+  while (
+    renderBriefs(packed).length > MAX_BRIEF_PROMPT_CHARS &&
+    packed.some((brief) => brief.decisions.length > 0)
+  ) {
+    for (let index = packed.length - 1; index >= 0; index -= 1) {
+      const brief = packed[index];
+      if (brief && brief.decisions.length > 0) {
+        brief.decisions.pop();
+        break;
+      }
+    }
+  }
+  return packed;
+}
+
+const recallBriefsContext = definePromptContext({
+  kind: "recall_briefs",
+  version: 1,
+  schema: recallBriefsContextSchema,
+  renderPrompt: ({ briefs }) => renderBriefs(briefs),
 });
 
 /** Build active memory recall contributions. */
@@ -174,7 +251,10 @@ export async function createMemoryPromptContributions(
   });
   if (candidates.length === 0) {
     await emitRecallOutcome({
-      ...(embeddingCostUsd !== undefined ? { costUsd: embeddingCostUsd } : undefined),
+      ...(embeddingCostUsd !== undefined
+        ? { costUsd: embeddingCostUsd }
+        : undefined),
+      briefs: [],
       events: context.events,
       memories: [],
     });
@@ -199,8 +279,36 @@ export async function createMemoryPromptContributions(
     .map((id) => candidatesById.get(id))
     .filter((memory): memory is MemoryRecord => memory !== undefined);
   const selected = selectPromptMemories(relevant);
+  const selectedIds = new Set(selected.map(({ id }) => id));
+  const conversationIds = [
+    ...new Set(
+      relevant
+        .filter((memory) => selectedIds.has(memory.id))
+        .map((memory) => memory.conversationId)
+        .filter((conversationId): conversationId is string =>
+          Boolean(conversationId),
+        ),
+    ),
+  ]
+    .filter((conversationId) => conversationId !== context.conversationId)
+    .slice(0, MAX_RECALL_BRIEFS);
+  let briefs: PluginBrief[] = [];
+  if (conversationIds.length > 0) {
+    try {
+      const briefsByConversation =
+        await context.briefs.readLatest(conversationIds);
+      briefs = conversationIds.flatMap((conversationId) => {
+        const brief = briefsByConversation[conversationId];
+        return brief ? [brief] : [];
+      });
+    } catch {
+      context.log.warn("memory_recall_brief_read_failed");
+    }
+  }
+  const renderedBriefs = packBriefs(briefs);
   const costUsd = addUsd(embeddingCostUsd, recall.costUsd);
   await emitRecallOutcome({
+    briefs: renderedBriefs.map(({ conversationId }) => conversationId),
     ...(costUsd !== undefined ? { costUsd } : undefined),
     events: context.events,
     memories: selected.map(({ id }) => id),
@@ -208,5 +316,10 @@ export async function createMemoryPromptContributions(
   if (selected.length === 0) {
     return undefined;
   }
-  return [memoryRecallContext({ memories: selected })];
+  return [
+    memoryRecallContext({ memories: selected }),
+    ...(renderedBriefs.length > 0
+      ? [recallBriefsContext({ briefs: renderedBriefs })]
+      : []),
+  ];
 }
